@@ -1,0 +1,171 @@
+-- ===================================================
+-- JALV2 PICmicro specifications for 12F510
+--
+-- Created with Dev2Jal Rexx script version 0.0.29
+-- Author: Rob Hamerling
+-- File creation date/time: 27 Jul 2008 19:34:50
+--
+-- Sources of information:
+--  - x:/mplab814/mplab_ide/device/PIC12F510.dev
+--  - x:/mplab814/mpasm_suite/lkr/12F510_g.lkr
+--
+-- ---------------------------------------------------
+-- Summary of manual changes
+--
+--   date        description
+-- ---------    --------------------------------------
+-- yyyy/mm/dd   ... text ....
+--
+--
+--
+-- ---------------------------------------------------
+--
+-- DataSheet: DS-41268
+-- Programming Specifications: DS-41257
+-- Vdd Range: 2.000-5.500 Nominal: 5.000
+-- Vpp Range: 10.000-12.000 Default: 11.000
+--
+-- ===================================================
+--
+include ChipDef                     -- common constants
+--
+pragma  target  cpu   pic_12    -- (banks = 2)
+pragma  target  chip  12F510
+pragma  target  bank  0x0020
+pragma  target  page  0x0200
+pragma  stack   2
+pragma  code    1024
+pragma  data    0x10-0x1F,0x30-0x3F
+pragma  shared  0x0A-0x0F
+--
+var volatile byte _pic_accum shared at { 0xE,0x2E }   -- (compiler)
+var volatile byte _pic_isr_w shared at { 0xF,0x2F }   -- (compiler)
+--
+const word  _fuses_ct             = 1
+const word  _fuse_base            = 0xFFF
+const word  _fuses                = 0xFFF
+--
+const word  _ID_ct                = 4
+const word  _ID_base[_ID_ct]      = { 0x0400,0x0401,0x0402,0x0403 }
+const word  _ID[_ID_ct]           = { 0x0000,0x0000,0x0000,0x0000 }
+--
+-- ------------------------------------------------
+var volatile byte  INDF                 at { 0x0,0x20 }
+var volatile byte  _ind                 at { 0x0,0x20 }      -- (compiler)
+-- ------------------------------------------------
+var volatile byte  TMR0                 at { 0x1,0x21 }
+-- ------------------------------------------------
+var volatile byte  PCL                  at { 0x2,0x22 }
+var volatile byte  _pcl                 at { 0x2,0x22 }      -- (compiler)
+-- ------------------------------------------------
+var volatile byte  STATUS               at { 0x3,0x23 }
+var volatile bit   GPWUF                at STATUS : 7
+var volatile bit   CWUF                 at STATUS : 6
+var volatile bit   PA0                  at STATUS : 5
+var volatile bit   NTO                  at STATUS : 4
+var volatile bit   NPD                  at STATUS : 3
+var volatile bit   Z                    at STATUS : 2
+var volatile bit   DC                   at STATUS : 1
+var volatile bit   C                    at STATUS : 0
+var volatile byte  _status              at { 0x3,0x23 }      -- (compiler)
+const        byte  _gpwuf               =  7      -- (compiler)
+const        byte  _cwuf                =  6      -- (compiler)
+const        byte  _pa0                 =  5      -- (compiler)
+const        byte  _not_to              =  4      -- (compiler)
+const        byte  _not_pd              =  3      -- (compiler)
+const        byte  _z                   =  2      -- (compiler)
+const        byte  _dc                  =  1      -- (compiler)
+const        byte  _c                   =  0      -- (compiler)
+-- ------------------------------------------------
+var volatile byte  FSR                  at { 0x4,0x24 }
+var volatile byte  _fsr                 at { 0x4,0x24 }      -- (compiler)
+-- ------------------------------------------------
+var volatile byte  OSCCAL               at { 0x5,0x25 }
+var volatile bit*7 CAL                  at OSCCAL : 1
+-- ------------------------------------------------
+var volatile byte  GPIO                 at { 0x6,0x26 }
+var volatile byte  PORTA                at GPIO
+--
+var          byte  _port_A_shadow        = PORTA
+--
+procedure _port_A_flush is
+  pragma inline
+  PORTA = _port_A_shadow
+end procedure
+--
+procedure portA'put (byte in x) is
+  pragma inline
+  _port_A_shadow = x
+  _port_A_flush
+end procedure
+--
+var  byte port_A_low
+procedure port_A_low'put(byte in x) is
+  _port_A_shadow = (_port_A_shadow & 0xF0) | (x & 0x0F)
+  _port_A_flush
+end procedure
+function port_A_low'get return byte is
+  return PORTA & 0x0F
+end function
+--
+var  byte port_A_high
+procedure port_A_high'put(byte in x) is
+  _port_A_shadow = (_port_A_shadow & 0x0F) | (x << 4)
+  _port_A_flush
+end procedure
+function port_A_high'get return byte is
+  return PORTA >> 4
+end function
+--
+var volatile bit*6 GP                   at GPIO : 0
+-- ------------------------------------------------
+var volatile byte  CM1CON0              at { 0x7,0x27 }
+var volatile bit   CM1CON0_C1OUT        at CM1CON0 : 7        -- !!!
+var volatile bit   CM1CON0_NC1OUTEN     at CM1CON0 : 6        -- !!!
+var volatile bit   CM1CON0_C1POL        at CM1CON0 : 5        -- !!!
+var volatile bit   CM1CON0_NC1T0CS      at CM1CON0 : 4        -- !!!
+var volatile bit   CM1CON0_C1ON         at CM1CON0 : 3        -- !!!
+var volatile bit   CM1CON0_C1NREF       at CM1CON0 : 2        -- !!!
+var volatile bit   CM1CON0_C1PREF       at CM1CON0 : 1        -- !!!
+var volatile bit   CM1CON0_NC1WU        at CM1CON0 : 0        -- !!!
+-- ------------------------------------------------
+var volatile byte  ADCON0               at { 0x8,0x28 }
+var volatile bit*2 ANS                  at ADCON0 : 6
+var volatile bit*2 ADCS                 at ADCON0 : 4
+var volatile bit*2 CHS                  at ADCON0 : 2
+var volatile bit   GO                   at ADCON0 : 1
+var volatile bit   NDONE                at ADCON0 : 1
+var volatile bit   ADON                 at ADCON0 : 0
+-- ------------------------------------------------
+var volatile byte  ADRES                at { 0x9,0x29 }
+--
+-- ==================================================
+--
+-- Symbolic Fuse definitions
+-- -------------------------
+--
+-- addr 0xFFF
+--
+pragma fuse_def OSC 0x3 {
+       EXTOSC_NOCLKOUT = 0x3
+       INTOSC_NOCLKOUT = 0x2
+       XT = 0x1
+       LP = 0x0
+       }
+pragma fuse_def WDT 0x4 {
+       ENABLED = 0x4
+       DISABLED = 0x0
+       }
+pragma fuse_def CP 0x8 {
+       DISABLED = 0x8
+       ENABLED = 0x0
+       }
+pragma fuse_def MCLR 0x10 {
+       EXTERNAL = 0x10
+       INTERNAL = 0x0
+       }
+pragma fuse_def IOSCFS 0x20 {
+       _8_MHZ_INTOSC_SPEED = 0x20
+       _4_MHZ_INTOSC_SPEED = 0x0
+       }
+--
