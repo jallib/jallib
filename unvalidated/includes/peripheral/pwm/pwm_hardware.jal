@@ -1,0 +1,416 @@
+-- -----------------------------------------------------------------------------
+-- Title: hardware PWM control
+-- Author: Stef Mientki, Copyright (C) 2002-2006 Stef Mientki
+-- Adapted-by: Sebastien Lelong
+-- Compiler: >= 2.4g
+--
+-- Description: library for using both PWM outputs,
+-- the main program should define frequency, duty-cycle 
+-- There are 2 principal different ways to use the PWMs:
+--   * either you choose to have a accurate frequency or,
+--   * you choose for a high resolution control.
+-- Let's look at the basic parameters:
+--   * total period time = 4 * (pr2 + 1) * Tclock * Prescaler2
+--   * positive period time = duty * Tclock * Prescaler2
+-- Now from these figures you can see that the positive period (which determines
+-- the dutycycle) can only vary from 0 to (4*(pr2 + 1)). As PR2 is just 8 bits,
+-- 4*PR2 has a maximum of 10 bits. So the only way to achieve a 10-bit dutycyle
+-- range is to set PR2 = 0xFF !!! In that case there are only 3 fixed frequencies
+-- available, determined by the PreScaler2, of 1kHz, 5kHz and 20kHz (to be exact
+-- 1.22, 4.88, 19.5 kHz). This choice yields for both pwms.
+-- This library supports both settings. 
+--
+--
+-- --------------------------------------------------------------------
+-- <Example
+-- --------------------------------------------------------------------
+;   -- PWM for 38 kHz IR modulation
+;   -- define all the parameters and include the library
+;   const pwm_frequency = 38_000   -- pwm frequency in Hz
+;   const pwm1_dutycycle = 50       -- dutycycle in percent
+;   const pwm2_dutycycle = 50       -- dutycycle in percent
+;
+;   -- init and start only PWM1
+;   PWM_init_resolution (true, false)
+;
+;   -- stop the PWM
+;   pwm1_stop
+;
+-- --------------------------------------------------------------------
+;   -- PWM for control of 2 motors by a joystick
+;   -- define all the parameters and include the library
+;   -- even we don't use these values, the constants must be definied
+;   const pwm_frequency = 38_000   -- pwm frequency in Hz
+;   const pwm1_dutycycle = 50       -- dutycycle in percent
+;   const pwm1_dutycycle = 50       -- dutycycle in percent
+;
+;   -- init and start both PWMs at a rate of 1 kHz
+;   PWM_init_frequency (1,true, true)
+;
+;   -- adapt the dutycycle
+;   pwm_set_dutycycle (joystick1,joystick2)
+;
+;   -- OR, if the joysticks doesn't reach 0 and 0xFF
+;   -- we set the minimum and maximum values first
+;   pwm_init_minmax (Min_JoyStick1, Max_JoyStick1,
+;                    Min_JoyStick2, Max_JoyStick2)
+;
+;   -- and adapt the dutycycle, with regards to min/max
+;   pwm_set_dutycycle_limites (joystick1,joystick2)
+;
+-- --------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- global variables to remember some values
+-- -----------------------------------------------------------------------------
+var volatile byte CCPR1L_shadow
+var volatile byte CCP1CON_shadow 
+var volatile byte CCPR2L_shadow
+var volatile byte CCP2CON_shadow 
+var volatile byte pwm_min1
+var volatile byte pmw_max1
+var volatile byte pwm_min2
+var volatile byte pwm_max2
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- starts both the PWM oscillators
+-- (initializing should have be done prior)
+-- -----------------------------------------------------------------------------
+procedure pwm1_start() is
+	CCPR1L  = CCPR1L_shadow   -- reload 8 high order bits of dutycycle
+	CCP1CON = CCP1CON_shadow  -- reload 2 low  order bits of dutycycle 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- starts both the PWM oscillators
+-- (initializing should have be done prior)
+-- -----------------------------------------------------------------------------
+procedure pwm2_start() is
+	CCPR2L  = CCPR2L_shadow   -- reload 8 high order bits of dutycycle
+	CCP2CON = CCP2CON_shadow  -- reload 2 low  order bits of dutycycle 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- starts both the PWM oscillators
+-- (initializing should have be done prior)
+-- -----------------------------------------------------------------------------
+procedure pwm12_start() is
+	CCPR1L  = CCPR1L_shadow   -- reload 8 high order bits of dutycycle
+	CCP1CON = CCP1CON_shadow  -- reload 2 low  order bits of dutycycle 
+	CCPR2L  = CCPR2L_shadow   -- reload 8 high order bits of dutycycle
+	CCP2CON = CCP2CON_shadow  -- reload 2 low  order bits of dutycycle 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- stops the PWM-1 oscillator
+-- -----------------------------------------------------------------------------
+procedure pwm1_stop() is
+	CCPR1L  = 0             -- clear 8 high order bits of dutycycle
+	CCP1CON = 0b_0000_1111  -- clear 2 low  order bits of dutycyle
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- stops the PWM-2 oscillator
+-- -----------------------------------------------------------------------------
+procedure pwm2_stop() is
+	CCPR2L  = 0             -- clear 8 high order bits of dutycycle
+	CCP2CON = 0b_0000_1111  -- clear 2 low  order bits of dutycyle
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- stops both the PWM-1 and PWM-2 oscillators
+-- -----------------------------------------------------------------------------
+procedure pwm12_stop() is
+	CCPR1L  = 0             -- clear 8 high order bits of dutycycle
+	CCP1CON = 0b_0000_1111  -- clear 2 low  order bits of dutycyle
+	CCPR2L  = 0             -- clear 8 high order bits of dutycycle
+	CCP2CON = 0b_0000_1111  -- clear 2 low  order bits of dutycyle
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- This procedure makes it possible to enable / disable 
+-- each of the pwm-oscillators independant of each other
+-- -----------------------------------------------------------------------------
+procedure pwm_start_stop(bit in startstop1,bit in startstop2) is
+
+	if startstop1 then
+		CCPR1L  = CCPR1L_shadow   -- reload 8 high order bits of dutycycle
+		CCP1CON = CCP1CON_shadow  -- reload 2 low  order bits of dutycycle 
+	else 
+		CCPR1L  = 0             -- clear 8 high order bits of dutycycle
+		CCP1CON = 0b_0000_1111  -- clear 2 low  order bits of dutycyle
+	end if
+	
+	if startstop2 then
+		CCPR2L  = CCPR2L_shadow   -- reload 8 high order bits of dutycycle
+		CCP2CON = CCP2CON_shadow  -- reload 2 low  order bits of dutycycle 
+	else
+		CCPR2L  = 0             -- clear 8 high order bits of dutycycle
+		CCP2CON = 0b_0000_1111  -- clear 2 low  order bits of dutycyle
+	end if
+
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- sets dutycyle of both the PWM oscillators in low resolution mode
+-- (if duty cycle not zero, the PWM oscillators are also started)
+-- Note that if you set one of the pwm to zero duty cycle,
+-- you can not start it with a start command (because shadows are zero),
+-- and you've to start the pwm with this procedure
+-- -----------------------------------------------------------------------------
+procedure pwm_set_dutycycle(byte in duty1,byte in duty2) is
+	CCPR1L_shadow = duty1
+	CCPR2L_shadow = duty2 
+	CCPR1L  = CCPR1L_shadow   -- reload 8 high order bits of dutycycle
+	CCP1CON = CCP1CON_shadow  -- reload 2 low  order bits of dutycycle 
+	CCPR2L  = CCPR2L_shadow   -- reload 8 high order bits of dutycycle
+	CCP2CON = CCP2CON_shadow  -- reload 2 low  order bits of dutycycle 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+procedure pwm_init_minmax(byte in min1,byte in max1,byte in min2,byte in max2) is
+	pwm_min1 = min1 
+	pwm_min2 = min2 
+	pmw_max1 = max1 
+	pwm_max2 = max2 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- sets dutycyle of both the PWM oscillators in low resolution mode
+-- (if duty cycle not zero, the PWM oscillators are also started)
+-- Note that if you set one of the pwm to zero duty cycle,
+-- you can not start it with a start command (because shadows are zero),
+-- and you've to start the pwm with this procedure
+-- -----------------------------------------------------------------------------
+procedure pwm_set_dutycycle_limited(byte in duty1,byte in duty2) is
+	CCPR1L_shadow = duty1 
+	CCPR2L_shadow = duty2 
+
+	if CCPR1L_shadow <= pwm_min1 then
+		CCPR1L_shadow = pwm_min1
+	elsif CCPR1L_shadow >= pmw_max1 then
+		CCPR1L_shadow = pmw_max1
+	end if
+	if CCPR2L_shadow <= pwm_min2 then
+		CCPR2L_shadow = pwm_min2
+	elsif CCPR2L_shadow >= pwm_max2 then
+		CCPR2L_shadow = pwm_max2
+	end if
+
+	CCPR1L  = CCPR1L_shadow   -- reload 8 high order bits of dutycycle
+	CCP1CON = CCP1CON_shadow  -- reload 2 low  order bits of dutycycle 
+	CCPR2L  = CCPR2L_shadow   -- reload 8 high order bits of dutycycle
+	CCP2CON = CCP2CON_shadow  -- reload 2 low  order bits of dutycycle 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- sets dutycyle of both the PWM oscillators in high resolution mod
+-- the max resolution is 10 bits and the bits are normally (right) aligned
+-- (if duty cycle not zero, the PWM oscillators are also started)
+-- Note that if you set one of the pwm to zero duty cycle,
+-- you can not start it with a start command (because shadows are zero),
+-- and you've to start the pwm with this procedure
+-- -----------------------------------------------------------------------------
+procedure pwm_set_dutycycle_highres(byte in duty1h, byte in duty1l,byte in duty2h, byte in duty2l) is
+	var byte temp
+
+	temp = duty1l
+	assembler 
+		bank   rrf    duty1h,f   ;get 2 MSB into temp
+		bank   rrf    temp,f
+		bank   rrf    duty1h,f
+		bank   rrf    temp,f
+	end assembler  
+	
+	CCPR1L_shadow = temp 
+	CCP1CON_shadow = (duty1l & 0b_0000_0011) << 4
+	
+	temp = duty2l
+	assembler 
+		bank   rrf    duty2h,f   ;get 2 MSB into temp
+		bank   rrf    temp,f
+		bank   rrf    duty2h,f
+		bank   rrf    temp,f
+	end assembler  
+	
+	CCPR2L_shadow = temp 
+	CCP2CON_shadow = (duty2l & 0b_0000_0011) << 4
+	
+	CCPR1L  = CCPR1L_shadow   -- reload 8 high order bits of dutycycle
+	CCP1CON = CCP1CON_shadow  -- reload 2 low  order bits of dutycycle 
+	CCPR2L  = CCPR2L_shadow   -- reload 8 high order bits of dutycycle
+	CCP2CON = CCP2CON_shadow  -- reload 2 low  order bits of dutycycle 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- internal routine that defines the pins for different PICs
+-- -----------------------------------------------------------------------------
+procedure _pwm_enable_pins(bit in enable1,bit in enable2) is
+	-- set IO-pin to output
+	if (target_chip == PIC_16F877) | 
+			(target_chip == PIC_16F877A) |
+			(target_chip == PIC_16F876) then
+		-- Note that the pin definition is somewhat unlogical !!
+		if enable1 then 
+			pin_c2_direction = output
+		end if
+		if enable2 then 
+			pin_c1_direction = output
+		end if
+	else
+		pragma error  ;pwm not supported by this pic-type
+	end if
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- initializes the PWM for high resolution (10 bits) and starts the PWM 
+-- Freq can only be 1,5,20 kHz
+-- -----------------------------------------------------------------------------
+procedure pwm_init_resolution(byte in frequency,bit in enable1,bit in enable2) is
+	
+	-- set both pwms at 50% duty cycle
+	CCPR1L_shadow = 0x80
+	CCP1CON_shadow = 0b_0000_1111
+	CCPR2L_shadow = 0x80
+	CCP2CON_shadow = 0b_0000_1111
+	CCPR1L = CCPR1L_shadow
+	CCP1CON = CCP1CON_shadow
+	CCPR2L = CCPR2L_shadow
+	CCP2CON = CCP2CON_shadow
+
+	pwm_min1 = 0 
+	pwm_min2 = 0 
+	pmw_max1 = 0xFF 
+	pwm_max2 = 0xFF 
+	
+	-- set timervalue to maximum resolution
+	PR2 = 0xFF
+	
+	-- set TMR2 prescaler and turn TMR2 on
+	if frequency == 20 then
+		T2CON = 0b_0000_0100
+	elsif frequency == 5  then
+		T2CON = 0b_0000_0101
+	elsif frequency == 1  then
+		T2CON = 0b_0000_0111
+	else
+		;THIS PRAGMA IS NOT CORRECTLY HANDLED BY JAL $.59 !!
+		;pragma error  ;pwm frequency is not allowed for high resolution
+		; Seb: but it should be handled correctly in jalv2 2.4. Let's try
+		pragma error  ;pwm frequency is not allowed for high resolution
+	end if
+	
+	-- set IO-pin to output
+	_pwm_enable_pins(enable1,enable2)  
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- initializes the PWM for accurate frequency and starts the PWM
+-- Frequency and dutycycli should be set by the following constants
+--     const pwm_frequency = 2_000    -- pwm frequency in Hz
+--     const pwm1_dutycycle = 50      -- dutycycle in percent of PWM1
+--     const pwm2_dutycycle = 50      -- dutycycle in percent of PWM2
+-- -----------------------------------------------------------------------------
+procedure pwm_init_frequency(bit in enable1,bit in enable2) is
+
+	const _pr2_1   = target_clock / ( 1 *  4 * pwm_frequency )
+	const _pr2_4   = target_clock / ( 4 *  4 * pwm_frequency )
+	const _pr2_16  = target_clock / ( 16 * 4 * pwm_frequency )
+	-- due to a limitation in JAL, the brackects below are VERY essential
+	const _duty1_1  = ((pwm1_dutycycle * 4) * _pr2_1) / 100
+	const _duty1_4  = ((pwm1_dutycycle * 4) * _pr2_4) / 100
+	const _duty1_16 = ((pwm1_dutycycle * 4) * _pr2_16) / 100
+	
+	const _duty2_1  = ((pwm2_dutycycle * 4) * _pr2_1) / 100
+	const _duty2_4  = ((pwm2_dutycycle * 4) * _pr2_4) / 100
+	const _duty2_16 = ((pwm2_dutycycle * 4) * _pr2_16) / 100
+	
+	var byte pre_scaler
+	-- calculate prescaler and divider
+	if _pr2_1 == 0 then
+		pragma error    -- pwm frequency is too high
+	elsif _pr2_1 <= 256 then
+		PR2 = _pr2_1 - 1                     -- load timer value (base period)
+		CCPR1L_shadow = _duty1_1 / 4        -- 8 high order bits of dutycycle
+		CCPR2L_shadow = _duty2_1 / 4        -- 8 high order bits of dutycycle
+		-- 5:4 - 2 least order bits of dutycycle
+		CCP1CON_shadow = ( _duty1_1 & 0b_0000_0011 ) * 16 
+		CCP2CON_shadow = ( _duty2_1 & 0b_0000_0011 ) * 16
+		pre_scaler = 0b_100
+	elsif _pr2_4 <= 256 then
+		PR2 = _pr2_4 - 1
+		CCPR1L_shadow = _duty1_4 / 4
+		CCPR2L_shadow = _duty2_4 / 4
+		CCP1CON_shadow = ( _duty1_4 & 0b_0000_0011 ) * 16
+		CCP2CON_shadow = ( _duty2_4 & 0b_0000_0011 ) * 16
+		pre_scaler = 0b_101 
+		
+	elsif _pr2_16 <= 256 then
+		PR2 = _pr2_16 - 1
+		CCPR1L_shadow = _duty1_16 / 4
+		CCPR2L_shadow = _duty2_16 / 4
+		CCP1CON_shadow = ( _duty1_16 & 0b_0000_0011 ) * 16
+		CCP2CON_shadow = ( _duty2_16 & 0b_0000_0011 ) * 16
+		pre_scaler = 0b_110 
+	else
+		pragma error  -- pwm frequency is too low to be realized by this routine,
+		-- use the post scaler and interrupt
+	end if
+
+	-- load tmr2 prescaler, and turn it on
+	-- (post-scaler is not used in PWM !!)
+	T2CON   = ( T2CON & 0b_1111_1000 ) | pre_scaler   
+	
+	pwm_min1 = 0 
+	pwm_min2 = 0 
+	pmw_max1 = 0xFF 
+	pwm_max2 = 0xFF 
+	
+	-- set PWM mode --11xx
+	if enable1 then
+		CCP1CON_shadow = CCP1CON_shadow | 0x0F
+	else
+		CCP1CON_shadow = CCP1CON_shadow & 0xF0
+	end if
+	if enable2 then
+		CCP2CON_shadow = CCP2CON_shadow | 0x0F
+	else
+		CCP2CON_shadow = CCP2CON_shadow & 0xF0
+	end if
+	pwm12_start()
+
+	-- set IO-pin to output
+	_pwm_enable_pins(enable1,enable2)  
+end procedure
+-- -----------------------------------------------------------------------------
+
