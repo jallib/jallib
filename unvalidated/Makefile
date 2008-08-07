@@ -23,4 +23,9 @@ clean :
 test :
 	# run testsuite
 
+compile:
+	for f in `find ./samples -name \*.jal`; \
+	do \
+		jalv2 -s "`find ./includes -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
+	done 
 
