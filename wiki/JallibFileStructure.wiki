@@ -4,18 +4,49 @@
 
 = Library structure =
 
+==The overal picture==
+
+{{{
+                      +----------+   +-----------+
+                      | device   |   |  general  |
+                      | specific |---|  include  |
+                      | include  |   |chipdef.jal|
+                      +----------+   +-----------+
+                           |
+           +---------------+---------------+-------------
+           |               |               |
+     +----------+    +----------+    +----------+    +---
+     | function |    | function |    | function |    |
+     | include  |    | include  |    | include  |    | etc
+     | 'delay'  |    |  'adc'   |    |  'lcd'   |    |
+     +----------+    +----------+    +----------+    +---
+}}}
+
+This schematic shows the organisation of the JalLib files. 
+A program should first indicate for which target chip it is meant by including the appropriate device include file (which includes itself 'chipdef.jal').
+Depending on the functionality of the program it may also include one or more function include files. 
+
+----
 
 == Device File ==
 
-There is a device include file for every (supported) PICmicro.
-The device files are automatically generated from information obtained from MPLAB files (ic .dev and .lkr files). The include files contain information about all ports and special function registers. In addition these contain some 'standard' functions like automatic shadowing of ports and pins.
-
-It lists the various configuration settings. 
+There is a device include file for every _supported_ PICmicro.
 
 File name format: <pictype>.jal, more specifically `xxfyyyy.jal` in which
   * 'xx' can be 10, 12, 16, or 18
   * 'f' can be f, hv, or lf 
   * 'yyyy' is a combination of digits and letters  
+
+The device specific include files contain:
+  * cpu type (12-, 14- or 16-bits core)
+  * program size specification
+  * data (EEPROM) location and size specification
+  * config and ID memory specification
+  * General purpose register (GPR, RAM) location, range and sharing
+  * Special function register (SFR) address and mirror adresses, alias names and bit names.
+  * procedures and functions for shadowing of I/O ports for the baseline and midrange
+  * forced use of LATx registers for the 18F series 
+  * configuration bit declarations
 
 Device include files do not intialize any register or configuration bit (fuse). This falls under the responsibility of the user program.
 Other user program responsibilities:
@@ -23,6 +54,43 @@ Other user program responsibilities:
     `pragma clockspeed 4_000_000`
   * Enabling digital I/O when the chip has analog features and the port(s) are by default in analog mode. For this purpose each device include file contains a special function: `enable_digital_io()`, which contains the instructions for the specific PICmicro.
 
+=== Naming conventions for Ports and Port pins ===
+
+For all registers of the chip a name is defined and where appropriate also
+the individual bits or groups of bits are defined.  
+For all ports and port pins a device independent alias is defined
+and a similar direction definition, as the following examples show:
+
+For PORTA and TRISA:
+{{{
+  var volatile byte PORTA  at <addr>
+  var volatile bit  PIN_A0 at PORTA : 0
+  var volatile byte TRISA  at <addr>
+  var volatile byte PORT_A_DIRECTION at TRISA 
+  var volatile bit  PIN_A0_DIRECTION at TRISA : 0
+  etc. (for all other existing pins and other ports)
+}}}
+Smaller chips with GPIO and TRISIO registers have
+{{{
+  var volatile byte GPIO   at <addr>
+  var volatile byte PORTA  at GPIO  
+  and in addition all the declarations for PORTA above
+}}}   
+Also declared are several pseudo variables:  
+{{{
+  var          byte PORT_A_LOW                -- low order nibble
+  var          byte PORT_A_HIGH               -- high order nibble
+  var          byte PORT_A_LOW_DIRECTION
+  var          byte PORT_A_HIGH DIRECTION
+}}}
+  
+----
+
+== Function Includes ==
+
+(to be done)
+
+----
 
 == Samples ==
 
