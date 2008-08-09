@@ -144,8 +144,8 @@
    C1ON = off                            -- disable comparator C1
    C2ON = off                            -- disable comparator C2
 
-   portA = 0                             -- initialise Port A
-   port_A_direction = all_output         -- set type of use of the pins
+   PORTA = 0                             -- initialise Port A
+   PORt_A_DIRECTION = all_output         -- set type of use of the pins
                                          -- PortB and PortC ignored
 
    var volatile bit LED is pin_A1        -- define alias for pin_A1
@@ -153,11 +153,10 @@
    LED = on                              -- there is light!
 
    forever loop                          -- endless loop
-
+     LED = on                            -- there is light!
      _usec_delay(250000)                 -- spin 1/4 seconds
-
-     LED = !LED                          -- flip (on->off,off->on)
-
+     LED = off                           -- flip (on->off,off->on)
+     _usec_delay(250000)                 -- spin 1/4 seconds
    end loop
 
  When loaded in a 16F886 with 20 MHz resonator or crystal an LED connected
@@ -191,30 +190,32 @@
 
  For PORTA and TRISA:
    var volatile byte PORTA  at <addr>
-   var          byte port_A_low                -- low order nibble
-   var          byte port_A_high               -- high order nibble
-   var volatile bit  pin_A0 at PORTA : 0
+   var          byte PORT_A_low                -- low order nibble
+   var          byte PORT_A_high               -- high order nibble
+   var volatile bit  PIN_A0 at PORTA : 0
    var volatile byte TRISA  at <addr>
-   var volatile byte port_A_direction at TRISA
-   var volatile bit  pin_A0_direction at TRISA : 0
+   var volatile byte PORT_A_DIRECTION at TRISA
+   var volatile bit  PIN_A0_DIRECTION at TRISA : 0
    etc. (for all other existing pins and ports)
 
  Similarly for GPIO and TRISIO (with the smaller chips):
    var volatile byte GPIO   at <addr>
    var volatile byte PORTA  at GPIO
-   var          byte port_A_low                -- low order nibble
-   var          byte port_A_high               -- high order nibble
-   var volatile bit  pin_A0 at GPIO : 0
+   var          byte PORT_A_LOW                -- low order nibble
+   var          byte PORT_A_HIGH               -- high order nibble
+   var volatile bit  PIN_A0 at GPIO : 0
    var volatile byte TRISIO at <addr>
    var volatile byte TRISA  at TRISIO
-   var volatile byte port_A_direction at TRISIO
-   var volatile bit  pin_A0_direction at TRISIO : 0
+   var volatile byte PORT_A_DIRECTION at TRISIO
+   var volatile bit  PIN_A0_DIRECTION at TRISIO : 0
    etc. (for all other existing pins)
 
  In addition procedures and functions are defined to read and set the
- direction of lower and upper nibbles of ports:
-   Port_x_low_direction
-   Port_x_high_direction
+ lower and upper nibbles of ports and their direction:
+   PORT_x_LOW
+   PORT_x_HIGH
+   PORT_x_LOW_DIRECTION
+   PORT_x_HIGH_DIRECTION
 
  Note: See the extra alias declarations for the GPIO and TRISIO registers
        and their bits. Programs and function libraries can access the GPIO
@@ -251,9 +252,9 @@
  With these device include files shadowing is automatic, as long as you use
  the following names:
    PORTx          - all bits of port x
-   port_x_low     - low order nibble of port x (bits 3..0)
-   port_x_high    - high order nibble of port x (bits 7..4)
-   pin_xy         - single bit 'y' of port 'x'
+   PORT_x_LOW     - low order nibble of port x (bits 3..0)
+   PORT_x_HIGH    - high order nibble of port x (bits 7..4)
+   PIN_xy         - single bit 'y' of port 'x'
  (in which 'x' is a port-letter and 'y' a bit- or pin-number).
 
  If you want to use other names for pins or nibbles or the whole port you
@@ -262,7 +263,7 @@
 
    var volatile bit LED_red is pin_A0
 
- and use 'LED-red = on' or 'LED-red = off' in your program.
+ and use 'LED_red = on' or 'LED_red = off' in your program.
 
  You should avoid direct pin and I/O port manipulation, because it will be
  overruled by the automatic shadowing mechanism. For example do not specify:
@@ -272,6 +273,14 @@
  With this specification a 'LED-red = on' will have the desired result, but
  it will not update the shadow register. Any next operation which uses the
  shadowing mechanism will override the previous direct control operation.
+
+ The shadowing is also bypassed when you initialise the alias with the
+ declaration. So declaring and initialising an alias as follows:
+
+   var volatile bit LED_red is pin_A0 = off
+
+ is bad practice!
+
 
 
  Naming convention for configuration bitmasks (fuses)
@@ -406,8 +415,10 @@
   pragma  target fuses 12 0b0000_1111       -- no table read protection
   pragma  target fuses 13 0b0100_0000       -- no boot block write protect
 
- Note: When a PIC has multiple config words or bytes the index value
-       of the word or byte should be specified before the value.
+ Notes: - All pragma statements must be specified after the include
+          statement of the device file.
+        - When a PIC has multiple config words or bytes the index value
+          of the word or byte should be specified before the value.
 
  The meaning of config bits can be found in the DataSheet of the specific
  PICmicro, or in the Programming Specifications. For your convenience the
