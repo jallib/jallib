@@ -1,18 +1,41 @@
-/* Blink.cmd - compile BLINK program with JalV2 for a series of PICs */
+/* ------------------------------------------------------------------------ */
+/* Title: Blink.cmd - Create and test link-an-LED samples.                  */
+/*                                                                          */
+/* Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.    */
+/*                                                                          */
+/* Adapted-by:                                                              */
+/*                                                                          */
+/* Compiler: >= 2.4g                                                        */
+/*                                                                          */
+/* This file is part of jallib  http://jallib.googlecode.com                */
+/* Released under the BSD license                                           */
+/*                http://www.opensource.org/licenses/bsd-license.php        */
+/*                                                                          */
+/* Description: Rexx script to create a blink-an_LED for every PIC.         */
+/*              The program is submitted to the compiler and the            */
+/*              console log is checked for errors and warning.              */
+/*                                                                          */
+/* Sources:                                                                 */
+/*                                                                          */
+/* Notes:                                                                   */
+/*  - Written in 'Classic Rexx' style, but requires 'Object Rexx' to run.   */
+/*  - There is no summary of changes maintained for this script.            */
+/*                                                                          */
+/* ------------------------------------------------------------------------ */
 
 Parse upper arg p1 .
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
-call SysLoadFuncs                         /* load Rexx utilities   */
+call SysLoadFuncs                               /* load Rexx utilities      */
 
-if p1 = 'DEBUG' then                      /* debug */
-  I = 'k:/jal/dev2jal/'                   /* include directory */
+if p1 = 'DEBUG' then                            /* script debug mode        */
+  I = 'k:/jal/dev2jal/'                         /* include directory        */
 else
-  I = 'k:/jallib/unvalidated/includes/devices/'   /* SVN include directory */
-J = 'k:/c/Jalv2/JalV2.exe'                /* compiler (eCS)         */
-O = '-Wno-all -no-fuse -s' I       /* compiler options       */
+  I = 'k:/jallib/unvalidated/includes/device/'  /* SVN include directory    */
+J = 'k:/c/Jalv2/JalV2.exe'                      /* compiler path (eCS)      */
+O = '-Wno-all -no-fuse -s' I                    /* compiler options         */
 
-call SysFileTree I'1*.jal', pic, 'FSO'    /* get list of filespecs */
+call SysFileTree I'1*.jal', pic, 'FO'           /* list of inludes this dir */
 if dir.0 < 1 then do
   say 'No appropriate device files found in directory' devdir
   return 1
@@ -35,7 +58,7 @@ do i=1 to pic.0
   call lineout B, '--'
   call lineout B, '-- Adapted-by:'
   call lineout B, '--'
-  call lineout B, '-- Compiler: >= JalV2.4g'
+  call lineout B, '-- Compiler: >=2.4g'
   call lineout B, '--'
   call lineout B, '-- This file is part of jallib',
                          ' (http://jallib.googlecode.com)'
@@ -76,7 +99,7 @@ do i=1 to pic.0
         call SysFileSearch ' TRIS'port.p, pic.i, tris., 'C'  /* search any TRISx */
         if tris.0 > 0 then do                                /* found */
           call SysFileSearch ' pin_'port.p||q'_direction', pic.i, tris., 'C'
-          if tris.0 > 0 then do                              /* found */
+          if tris.0 > 0 then do                              /* found pin direction */
             call lineout B, 'var bit LED           is pin_'port.p||q'   -- alias'
             call lineout B, 'var bit LED_direction is pin_'port.p||q'_direction'
             call lineout B, '--'
@@ -87,7 +110,7 @@ do i=1 to pic.0
             nop   /* say 'not found:' ' pin_'port.p||q'_direction' */
           end
         end
-        else do                                                 /* no tris */
+        else do                                              /* no tris found */
           call lineout B, 'var bit LED           is pin_'port.p||q'   -- alias'
           leave p
         end
@@ -95,7 +118,7 @@ do i=1 to pic.0
     end
   end
   if p > port.0 then do
-    say 'Could not find suitable I/O pin for LED on' M
+    say 'Error: Could not find suitable I/O pin for LED on' M
     iterate
   end
 
@@ -112,12 +135,12 @@ do i=1 to pic.0
   if p1 = 'DEBUG' then
     '@'J O B '>b'M'.log'
   else
-    '@'J O B '-a nul' '>b'M'.log'
+    '@'J O B '-a nul' '>b'M'.log'               /* no asm output */
 
-  if rc \= 0 then                       /* error */
-    leave                               /* terminate */
+  if rc \= 0 then                               /* compiler error */
+    leave                                       /* terminate */
 
-  B = 'b'M                              /* add 'B' prefix to name */
+  B = 'b'M                                      /* add 'B' prefix to name */
   '@erase' B'.cod' B'.err' B'.lst' B'.obj' '1>nul 2>nul'
 
   call SysFileSearch 'WARNING', B'.log', LG.    /* find warning line in log */
