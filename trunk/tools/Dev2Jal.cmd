@@ -5,40 +5,41 @@
 /*                                                                          */
 /* Adapted-by:                                                              */
 /*                                                                          */
-/* Compiler: >= 2.4g                                                        */
+/* Compiler: >=2.4g                                                         */
 /*                                                                          */
 /* This file is part of jallib  http://jallib.googlecode.com                */
 /* Released under the BSD license                                           */
-/*                http://www.opensource.org/licenses/bsd-license.php        */
+/*              http://www.opensource.org/licenses/bsd-license.php          */
 /*                                                                          */
-/* Description: Rexx script to created device include files for JALV2,      */
+/* Description: Rexx script to create device include files for JALV2,       */
 /*              and the file Chipdef.Jal, included by each of these.        */
 /*              Apart from declaration of all ports and pins of the chip    */
 /*              the include files will contain shadowing procedures to      */
-/*              prevent the 'read-modify-write' problems of midrage PICs.   */
+/*              prevent the 'read-modify-write' problems of midrange PICs   */
+/*              and for the 18F force the use of LATx in stead of PORTx.    */
 /*              In addition some device dependent procedures are provided   */
 /*              for common operations, like 'enable-digital-io.             */
 /*                                                                          */
 /* Sources:                                                                 */
 /*                                                                          */
 /* Notes:                                                                   */
-/*  - written in 'Classic Rexx' style, but requires 'Object Rexx' to run    */
+/*  - Written in 'Classic Rexx' style, but requires 'Object Rexx' to run.   */
+/*  - Summary of internal changes is kept in 'changes.txt' (not published). */
+/*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.36'                   /*                          */
+   ScriptVersion   = '0.0.37'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
-   CompilerVersion = 'JalV2.4g'                 /*                          */
-/* ------------------------------------------------------------------------ */
-/* For a summary of non-trivial changes: see file 'changes.txt'             */
+   CompilerVersion = '2.4g'                     /*                          */
 /* ------------------------------------------------------------------------ */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
 say 'Creating JALV2 include files for PIC specifications ...'
 
-signal on syntax  name syntax_catch
-signal on error   name error_catch
+signal on syntax name syntax_catch              /* catch syntax error       */
+signal on error  name error_catch               /* catch execution errors   */
 
-parse upper arg collection .           /* 'all', otherwise pre-selected */
+parse upper arg collection .           /* 'all', otherwise pre-selected     */
 if collection \= 'ALL' & collection \= '' then do
   say 'Error: "All" is the only expected parameter'
   return 1
@@ -935,7 +936,7 @@ do i = 1 to Dev.0
     end
     else if reg = 'GPIO' | reg = 'GP' then do   /* port */
       call lineout JalFile, 'var volatile byte ' left('PORTA',20) 'at' reg
-      call list_port1x_shadow PORTA
+      call list_port1x_shadow 'PORTA'
     end
     else if reg = 'TRISIO' then do              /* tris */
       call lineout JalFile, 'var volatile byte ' left('TRISA',20) 'at' reg
@@ -1870,7 +1871,7 @@ return
 /* --------------------------------------- */
 list_head:
 call lineout JalFile, '-- ==================================================='
-call lineout JalFile, '-- Title: JalV2 device include file for' PicName
+call lineout JalFile, '-- Title: JalV2 device include file for PIC'PicName
 call list_copyright_etc JalFile
 call lineout JalFile, '-- Description:' 'Device include file for PIC'PicName', containing:'
 call lineout JalFile, '--                - Declaration of ports and pins of the chip.'
@@ -1882,6 +1883,7 @@ else do                                         /* for the 18F series */
   call lineout JalFile, '--                - Procedures to force the use of the LATx register'
   call lineout JalFile, '--                  when PORTx is addressed.'
 end
+call lineout JalFile, '--                - Symbolic definitions for config bits (fuses)'
 call lineout JalFile, '--                - Some device dependent procedures for common'
 call lineout JalFile, '--                  operations, like:'
 call lineout JalFile, '--                   . enable-digital-io.'
@@ -2041,7 +2043,7 @@ call lineout ListFile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2008,',
 call lineout ListFile, '--'
 call lineout ListFile, '-- Adapted-by:'
 call lineout ListFile, '--'
-call lineout ListFile, '-- Compiler: >=' CompilerVersion
+call lineout ListFile, '-- Compiler: >='CompilerVersion
 call lineout ListFile, '--'
 call lineout ListFile, '-- This file is part of jallib',
                        ' (http://jallib.googlecode.com)'
