@@ -1,0 +1,378 @@
+-- -----------------------------------------------------------------------------
+-- <title Writes formatted values to output device
+-- <License                              
+-- freeware, under the terms of the BSD-license
+--  Copyright (C) 2002 .. 2006 Stef Mientki  
+-- mailto:S.Mientki@mailbox.kun.nl
+-- -----------------------------------------------------------------------------
+-- <Description
+-- Writes formatted signed/unsiged bytes/words to the specified output device.
+-- Decimal (with fraction), Hex and Time formats available.
+--
+--    procedure format_byte_dec(Device,Data,Ntot,N2) 
+--    procedure format_sbyte_dec(Device,Data,Ntot,N2) 
+--    procedure format_byte_hex(Device,Data) 
+--
+--    procedure format_word_dec(Device,Data,Ntot,N2) 
+--    procedure format_sword_dec(Device,Data,Ntot,N2) 
+--    procedure format_word_hex(Device,Data) 
+--
+--    procedure format_time_word (Device, Minutes) 
+--    procedure format_time_bytes(Device,HH,MM) 
+--
+--
+-- <non-tag                       
+-- <Version: 5      ,15-07-2006, Stef Mientki
+--    - sometimes intermediate zeroes were formatted as spaces,
+--      corrected, thanks to Brett.
+--
+-- <Version: 4      ,07-04-2006, Stef Mientki
+--    - completly rewritten, for many inputs and any output device
+--
+-- <Version: 3      ,02-03-2006, Stef Mientki
+--    - type word implemented wherever possible
+--    - if value is too large, ">>>>" will be displayed
+--
+-- <Version: 2.0    ,29-12-2005, Stef Mientki
+--    - pJAL compatible
+--
+-- <Version: 1.4    ,30-07-2005, Stef Mientki
+--    - added: include byte3_math
+--
+-- <Version: 1.3    ,12-04-2005, Stef Mientki
+--    - added: procedure time_HM_to_LCD_pos
+--
+-- <Version: 1.2    ,01-09-2004, Stef Mientki
+--    - Extra delay in Init procedure, after 4-bits setting, 
+--      needed for VARITRONIX MDLS-16268-series
+--        Problem was a uncomplete reset, after which the total behaviour was instable
+--    - procedure LCD_init made explicitly available
+--    - added: procedure value_to_LCD_10X_3pos 
+--    - added: procedure value_to_LCD_10X_4pos 
+--
+-- <Version: 1.1    ,07-07-2004, Stef Mientki
+--    - Naming of io-pins changed, according JALcc macro definitions
+--    - auto-initialisation now includes display clear and display of version
+--
+-- <Version: 1.0    ,29-03-2002, Stef Mientki
+--    - orginal release
+--
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- <Example 
+;
+; var sword BHL = -684
+;
+; -- send the signed word to the LCD display
+; -- with 2 digits behind the decimal point
+; format_sword_dec(LCD_char,BHL,6,2)
+;
+; -- and now send the same signed word to the serial port
+; format_sword_dec(Serial_HW_data,BHL,6,2)
+-- -----------------------------------------------------------------------------
+
+
+-- <code
+
+
+-- -----------------------------------------------------------------------------
+-- global vars
+-- -----------------------------------------------------------------------------
+var byte _format_leader
+var byte _format_digit
+var byte _format_sign
+var bit  _format_signed
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+procedure _write_real_digit(volatile byte out Device) is
+  if _format_signed then
+    Device = _format_sign
+    _format_signed = false
+  end if
+
+  if _format_Digit < 10 then
+    Device = "0" + _format_Digit
+  else
+    Device = "A" + _format_Digit - 10
+  end if
+  
+  -- after writing a real digit, always make leader a "0" !!
+  _format_leader = "0"
+  
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+procedure _write_digit 
+  (volatile byte out Device, byte in Digit, bit in Point) is
+
+  _format_Digit = Digit
+  if Point then
+    _write_real_digit(Device)
+    Device = "."
+  else
+    if _format_Digit == 0 then Device = _format_leader
+    else _write_real_digit(Device)
+    end if 
+  end if
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted byte to output Device
+-- the output can be specified as a fraction
+--   Ntot = the total length (including sign and decimal point)
+--   N2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_byte_dec 
+  (volatile byte out Device,
+   byte in Data,
+   byte in Ntot,
+   byte in N2) is
+   
+const word C100   = 100
+const word C10    = 10
+var byte Digit
+
+  -- start with spaces as a leader
+  _format_leader = " "
+
+  -- determine the next digit and display it
+  if Ntot >= 3 then
+    Digit = Data / C100
+    Data  = Data % C100
+    _write_digit(Device, Digit, N2==2)
+  end if
+  
+  if Ntot >= 2 then
+    Digit = Data / C10
+    Data  = Data % C10
+    _write_digit(Device, Digit, N2==1)
+  end if
+
+  -- last digit must always be written
+  _format_Digit = Data
+  _write_real_digit(Device)  
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted word to output Device
+-- the output can be specified as a fraction
+--   Ntot = the total length (including sign and decimal point)
+--   N2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_word_dec 
+  (volatile byte out Device,
+   word in Data,
+   byte in Ntot,
+   byte in N2) is
+   
+const word C10000 = 10000
+const word C1000  = 1000
+const word C100   = 100
+const word C10    = 10
+var byte Digit
+
+  -- start with spaces as a leader
+  _format_leader = " "
+
+  -- determine the next digit and display it
+  if Ntot >=5 then
+    Digit = Data / C10000
+    Data  = Data % C10000
+    _write_digit(Device, Digit, N2==4)
+  end if
+  
+  if Ntot >= 4 then
+    Digit = Data / C1000
+    Data  = Data % C1000
+    _write_digit(Device, Digit, N2==3)
+  end if
+  
+  if Ntot >= 3 then
+    Digit = Data / C100
+    Data  = Data % C100
+    _write_digit(Device, Digit, N2==2)
+  end if
+  
+  if Ntot >= 2 then
+    Digit = Data / C10
+    Data  = Data % C10
+    _write_digit(Device, Digit, N2==1)
+  end if
+
+  -- last digit must always be written
+  _format_Digit = Data
+  _write_real_digit(Device)  
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted signed byte to output Device
+-- the output can be specified as a fraction
+--   Ntot = the total length (including sign and decimal point)
+--   N2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_sbyte_dec 
+  (volatile byte out Device,
+   sbyte in Data,
+   byte in Ntot,
+   byte in N2) is
+   
+var bit sign at Data:7
+
+  if sign then 
+    _format_sign = "-"
+    Data = -Data
+  else 
+    _format_sign = " "
+  end if
+
+  _format_signed = true
+  format_byte_dec(Device, Data, Ntot-1, N2) 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted signed word to output Device
+-- the output can be specified as a fraction
+--   Ntot = the total length (including sign and decimal point)
+--   N2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_sword_dec 
+  (volatile byte out Device,
+   sword in Data,
+   byte in Ntot,
+   byte in N2) is
+   
+;var byte Digit
+;var byte B[2] at Data
+;var bit sign at B[1]:7
+var bit sign at Data:15
+
+  if sign then 
+    _format_sign = "-"
+    Data = -Data
+  else 
+    _format_sign = " "
+  end if
+
+  _format_signed = true
+  format_word_dec(Device, Data, Ntot-1, N2) 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes hex formatted byte to output Device
+-- -----------------------------------------------------------------------------
+procedure format_byte_hex
+  (volatile byte out Device,
+   byte in Data) is
+   
+var byte Digit
+
+  -- start with zeroes as a leader
+  _format_leader = "0"
+
+  -- determine the next digit and display it
+  for 2 loop
+    Digit = (Data & 0xF0) >> 4 
+    Data  = Data << 4
+    _write_digit(Device,Digit,false)
+  end loop
+  
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes hex formatted word to output Device
+-- -----------------------------------------------------------------------------
+procedure format_word_hex
+  (volatile byte out Device,
+   word in Data) is
+   
+var byte Digit
+var byte B[2] at Data
+
+  -- start with zeroes as a leader
+  _format_leader = "0"
+
+  -- determine the next digit and display it
+  for 4 loop
+    Digit = (B[1] & 0xF0) >> 4 
+    Data  = Data << 4
+    _write_digit(Device,Digit,false)
+  end loop
+  
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- Displays a time in HH:MM notation at specified position
+-- Hours and Minutes are specified separate
+-- -----------------------------------------------------------------------------
+procedure format_time_bytes 
+  (volatile byte out Device,byte in HH, byte in MM) is
+var byte D10
+
+  D10 = HH / 10
+  HH  = HH % 10
+
+  -- always dsiplay Zeroes
+  device = "0" + D10
+  device = "0" + HH
+  device = ":"
+
+  D10 = MM / 10
+  MM  = MM % 10
+
+  device = "0" + D10
+  device = "0" + MM
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- Displays a time in HH:MM notation at specified position
+-- the input is specified in minutes
+-- -----------------------------------------------------------------------------
+procedure format_time_word 
+  (volatile byte out Device,word in Minutes) is
+var byte D10
+var byte HH
+var byte MM
+
+  HH = (Minutes / 60 )
+  MM = (Minutes % 60 )
+  HH = HH % 24
+  
+  format_time_bytes(Device, HH, MM) 
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- --------------------------------------------------------------------
+-- Library ID
+-- --------------------------------------------------------------------
+const word Format_ID = 19
+const word Format_Version = 5
+if Ask_Library_IDentity then
+  my_identity (Format_ID, Format_Version)
+end if
+-- --------------------------------------------------------------------
