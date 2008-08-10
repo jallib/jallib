@@ -1,23 +1,25 @@
 #summary structure and relation between different libraries
 #labels Phase-Implementation
 
+----
 
 = Library structure =
 
 This document tries to help you with the use of our include files.
 
----
+----
 
 ==The overall picture==
 
 {{{
-                      .----------.   .-----------.
-                      | device   |   |  general  |
-                      | specific |---|  include  |
-                      | include  |   |chipdef.jal|
-                      '----------'   '-----------'
-                           |
-           .---------------+---------------+-------------
+                    ┌─────────────┐   ┌─────────────┐
+                    │   device    │   │   common    │
+                    │  specific   ├───┤   include   │
+                    │   include   │   │             │  
+                    │<pictype>.jal│   │ chipdef.jal │
+                    └──────┬──────┘   └─────────────┘
+                           │
+           .---------------┼---------------+-------------
            |               |               |
      .----------.    .----------.    .----------.    .---
      | function |    | function |    | function |    |
@@ -27,12 +29,12 @@ This document tries to help you with the use of our include files.
 }}}
 
 This schematic shows the organization of the JalLib files. 
-A program should first indicate for which target chip it is meant by including the appropriate device include file (which includes itself 'chipdef.jal').
+A program should first indicate for which target chip it is meant by including the appropriate device include file (which includes itself:{{{chipdef.jal}}}).
 Depending on the functionality of the program it may also include one or more function include files. 
 
 ----
 
-== Device File ==
+==Device File==
 
 There is a device include file for every _supported_ PICmicro.
 
@@ -69,13 +71,15 @@ For *PORTA* and *TRISA*:
   var volatile byte TRISA  at <addr>
   var volatile byte PORT_A_DIRECTION at TRISA 
   var volatile bit  PIN_A0_DIRECTION at TRISA : 0
-  etc. (for all other existing pins and other ports)
+
+etc. for all other existing pins and other ports.
 }}}
 Smaller chips with *GPIO* and *TRISIO* registers have:
 {{{
   var volatile byte GPIO   at <addr>
   var volatile byte PORTA  at GPIO  
-  and all the other declarations as for PORTA above, so it can be used as PORTA.
+
+and all the other declarations as for PORTA above, so it can be used as PORTA.
 }}}   
 Also declared are several pseudo variables:  
 {{{
@@ -90,7 +94,7 @@ The names of subfields of registers have the register as prefix. For example the
   var volatile bit   STATUS_C 
 }}}
 
-=== About Port Shadowing ===
+===About Port Shadowing===
 
 Port shadowing is a technique to prevent the Read-Modify-Write problem with I/O ports of baseline and midrange PICmicros. This is a problem related to its hardware design and may occur when a read of a port is immediately followed by writing to that port.
 With shadowing a RAM location is used as replacement for the port. Reading is done from the port directly. Writing is done to the shadow register and then its contents flushed to the real port. 
@@ -122,7 +126,7 @@ The shadowing is also bypassed when you initialize the alias with the  declarati
 is bad practice!
 
 
-=== Naming convention for configuration bitmasks (fuses)===
+===Naming convention for configuration bitmasks (fuses)===
 
 The configuration bits or groups of bits is such a large variety that it
 is not easy to have a naming convention which covers it all.
@@ -211,7 +215,7 @@ Notes:
   * In addition to the 'standard' fuse_defs above there may be others, depending  on the features of the specific PICmicro. Please read the include file to see which fuse-defs are available for your target PICmicro.
   * The terms *Enabled* and *Disabled* may need to be specified where usually *On* and *Off* are used.
 
-You may also specify the fuse-word(s) or -byte(s) explicitly with bit patterns in stead of using fuse option pragma statements. For example for the PIC16F690 the following group of statements:
+The symbolic specification with {{{pragma target}}} is preferred, since it is more portable. But in stead you may specify the fuse-word(s) or -byte(s) explicitly with bit patterns. For example for the PIC16F690 the following group of statements:
 {{{
   pragma target OSC       HS
   pragma target WDT       Disabled
@@ -227,6 +231,7 @@ is equivalent with:
 {{{
   pragma target fuses   0b_11_0011_1110_0010
 }}}
+
 PICs with 16-bits core (the 18F series) have such a large variety of configuration bits that explicit specification is probably the best way to make sure all config bits are set correctly for your program. As an example see the following list for a simple blink-a-LED program with an 18F242.
 {{{
  pragma  target fuses 0  0b_0010_0010       -- not switchable, HS osc, no PLL
@@ -245,11 +250,10 @@ PICs with 16-bits core (the 18F series) have such a large variety of configurati
 }}}
 
 Notes: 
-  * All pragma statements target must be specified after the include statement of the device file (options must be declared before use).
-  * When a PIC has multiple config words or bytes the index value of the word or  byte should be specified before the value.
+  * All pragma target statements target must be specified after the include statement of the device file.
+  * When a PIC has multiple config words or bytes the index value should be specified between pragma target fuses and the value, as shown in the example for the 18F242 above.
 
-The meaning of config bits can be found in the DataSheet of the specific PICmicro, or in the Programming Specifications. For your convenience the MicroChip document numbers are mentioned in the heading of the device include files (when present in the MPlab .dev files!).
-
+The meaning of config bits can be found in in the Programming Specifications of the specific PICmicro, and frequently in the DataSheet as well. For your convenience the MicroChip document numbers are mentioned in the heading of the device include files (when found in the MPlab .dev file). 
 
 ----
 
@@ -261,7 +265,7 @@ The meaning of config bits can be found in the DataSheet of the specific PICmicr
 
 == Samples ==
 
-The sample program that explains a library sets the default needed parameters. It also includes paramaters that have a defualt setting in the library, so need not be declared by the user, in comments, with the default value. Example:
+The sample program that explains a library sets the default needed parameters. It also includes parameters that have a default setting in the library, so need not be declared by the user, in comments, with the default value. Example:
  
 
 {{{
