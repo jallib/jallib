@@ -28,9 +28,9 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.37'                   /*                          */
+   ScriptVersion   = '0.0.38'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
-   CompilerVersion = '2.4g'                     /*                          */
+   CompilerVersion = '>=2.4g'                   /*                          */
 /* ------------------------------------------------------------------------ */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
@@ -83,7 +83,8 @@ do i=1 to dir.0                                 /* all entries */
   CfgAddr.0   = 0                               /* )          */
   IDAddr.0    = 0                               /* ) decimal! */
 
-  parse upper value filespec('Name', dir.i) with 'PIC' PicName '.DEV'
+  parse lower var dir.i dir.i                   /* to lower case */
+  parse value filespec('Name', dir.i) with 'pic' PicName '.dev'
   if PicName = '' then do
     Say 'Error: Could not derive PIC name from filespec: "'dir.i'"'
     iterate                                     /* next entry */
@@ -93,55 +94,55 @@ do i=1 to dir.0                                 /* all entries */
 
   rx = 1                                        /* assume not processed */
 
-  if left(PicName,3) = '10F' then do            /* 12-bit core */
+  if left(PicName,3) = '10f' then do            /* 12-bit core */
     if collection = 'ALL' |,                    /* all or selected */
-       left(PicName,5) = '10F22' ,
+       left(PicName,5) = '10f22' ,
     then
       rx = dev2Jal12(dir.i, lkrdir)             /* 12 -bits core */
   end
 
-  else if left(PicName,3) = '12F'  |,
-          left(PicName,4) = '12HV' |,
-          left(PicName,3) = '16F'  |,
-          left(PicName,4) = '16HV' |,
-          left(PicName,4) = '16LF' then do      /* 14- (or 12)-bits core */
+  else if left(PicName,3) = '12f'  |,
+          left(PicName,4) = '12hv' |,
+          left(PicName,3) = '16f'  |,
+          left(PicName,4) = '16hv' |,
+          left(PicName,4) = '16lf' then do      /* 14- (or 12)-bits core */
     if collection = 'ALL' |,                    /* all or selected */
-              PicName      = '12F609'  |,
-              PicName      = '12F629'  |,
-              PicName      = '12F683'  |,
-              PicName      = '16F59'   |,
-              PicName      = '16HV540' |,
-              PicName      = '16F648A' |,
-              PicName      = '16F690'  |,
-              PicName      = '16F676'  |,
-              PicName      = '16HV785' |,
-              PicName      = '16F818'  |,
-              PicName      = '16F819'  |,
-              PicName      = '16F84A'  |,
-              PicName      = '16F870'  |,
-              PicName      = '16F874'  |,
-              PicName      = '16F874A' |,
-              PicName      = '16F877A' |,
-              PicName      = '16F88'   |,
-              PicName      = '16F886'  |,
-              PicName      = '16F917'   ,
+              PicName      = '12f609'  |,
+              PicName      = '12f629'  |,
+              PicName      = '12f683'  |,
+              PicName      = '16f59'   |,
+              PicName      = '16hv540' |,
+              PicName      = '16f648a' |,
+              PicName      = '16f690'  |,
+              PicName      = '16f676'  |,
+              PicName      = '16hv785' |,
+              PicName      = '16f818'  |,
+              PicName      = '16f819'  |,
+              PicName      = '16f84a'  |,
+              PicName      = '16f870'  |,
+              PicName      = '16f874'  |,
+              PicName      = '16f874a' |,
+              PicName      = '16f877a' |,
+              PicName      = '16f88'   |,
+              PicName      = '16f886'  |,
+              PicName      = '16f917'   ,
     then
       rx = dev2Jal14(dir.i, lkrdir)             /* 14-bits core */
   end
 
-  else if left(PicName,3) = '18F'  |,
-          left(PicName,4) = '18LF' then do      /* 16 bit core */
+  else if left(PicName,3) = '18f'  |,
+          left(PicName,4) = '18lf' then do      /* 16 bit core */
     if collection = 'ALL' |,                    /* all or selected */
-              PicName      = '18F242'    |,
-              PicName      = '18F2455'   |,
-              PicName      = '18F24J10'  |,
-              PicName      = '18F2620'   |,
-              PicName      = '18F458'    |,
-              PicName      = '18F4685'   |,
-              PicName      = '18F97J60'  |,
-              PicName      = '18LF13K50' |,
-              PicName      = '18LF24J11' |,
-              PicName      = '18LF45J10'  ,
+              PicName      = '18f242'    |,
+              PicName      = '18f2455'   |,
+              PicName      = '18f24j10'  |,
+              PicName      = '18f2620'   |,
+              PicName      = '18f458'    |,
+              PicName      = '18f4685'   |,
+              PicName      = '18f97j60'  |,
+              PicName      = '18lf13k50' |,
+              PicName      = '18lf24j11' |,
+              PicName      = '18lf45j10'  ,
     then
       rx = dev2Jal16(dir.i, lkrdir)             /* 16-bits core */
   end
@@ -219,7 +220,7 @@ call list_head                                  /* header */
 call list_fuses_words1x                         /* config memory */
 call list_IDmem                                 /* ID memory */
 call list_sfr1x                                 /* register info */
-call list_misc_functions                        /* register info */
+call list_analog_functions                      /* register info */
 call list_fuses_bits                            /* fuses details */
 call stream JalFile, 'c', 'close'               /* done! */
 return 0
@@ -284,7 +285,7 @@ call list_head                                  /* header */
 call list_fuses_words1x                         /* config memory */
 call list_IDmem                                 /* ID memory */
 call list_sfr1x                                 /* register info */
-call list_misc_functions                        /* register info */
+call list_analog_functions                      /* register info */
 call list_fuses_bits                            /* fuses details */
 call stream JalFile, 'c', 'close'               /* done! */
 return 0
@@ -324,7 +325,7 @@ say PicName                                     /* progress signal */
 LkrFile = arg(2)||PicName'_g.lkr'               /* generic .lkr file */
 call File_read_lkr                              /* read .lkr file */
 if Lkr.0 = 0 then do                            /* zero records */
-  if pos('LF',PicName) > 0 then do              /* low voltage type */
+  if pos('lf',PicName) > 0 then do              /* low voltage type */
     LkrFile = arg(2)||left(PicName,2)||substr(PicName,4)'_g.lkr'
     call File_read_lkr                          /* try 18Fxxxx.lkr */
     if Lkr.0 = 0 then do                        /* zero records */
@@ -352,7 +353,7 @@ call list_head                                  /* header */
 call list_fuses_bytes16                         /* config memory */
 call list_IDmem                                 /* ID memory */
 call list_sfr16                                 /* register info */
-call list_misc_functions                        /* register info */
+call list_analog_functions                      /* register info */
 call list_fuses_bits                            /* fuses details */
 call stream JalFile, 'c', 'close'               /* done! */
 return 0
@@ -574,11 +575,11 @@ do i = 1 to Dev.0
   end
 end
 if DevId == '0000' then do                      /* DevID not found */
-  if PicName = '16F627' then                    /* missing MPLAB */
+  if PicName = '16f627' then                    /* missing MPLAB */
     Devid = '07A0'
-  else if PicName = '16F628' then               /* missing in MPlab */
+  else if PicName = '16f628' then               /* missing in MPlab */
     Devid = '07C0'
-  else if PicName = '16F84A' then               /* missing in MPlab */
+  else if PicName = '16f84A' then               /* missing in MPlab */
     Devid = '0560'
 end
 if DevId \== '0000' then do                     /* not missing DevID */
@@ -672,21 +673,21 @@ return
 /* --------------------------------------------------------------- */
 list_shared_data_range: procedure expose Lkr. JalFile Core MaxSharedRAM PicName
 select                                          /* exceptions first */
-  when PicName = '16F818' then do               /* exceptional PIC */
+  when PicName = '16f818' then do               /* exceptional PIC */
     DataRange = '0x40-0x7F'                     /* shared data range */
     MaxSharedRAM = X2D(7F)                      /* upper bound */
     end
-  when PicName = '16F819'  |,
-       PicName = '16F870'  |,
-       PicName = '16F871'  |,
-       PicName = '16F872' then do
+  when PicName = '16f819'  |,
+       PicName = '16f870'  |,
+       PicName = '16f871'  |,
+       PicName = '16f872' then do
     DataRange = '0x70-0x7F'
     MaxSharedRAM = X2D(7F)
     end
-  when PicName = '16F873'  |,
-       PicName = '16F873A' |,
-       PicName = '16F874'  |,
-       PicName = '16F874A' then do
+  when PicName = '16f873'  |,
+       PicName = '16f873a' |,
+       PicName = '16f874'  |,
+       PicName = '16f874a' then do
     DataRange = ''                              /* no shared RAM */
     MaxSharedRAM = 0
     end
@@ -725,24 +726,24 @@ return DataRange                                /* range */
 /* ------------------------------------------------------------- */
 list_unshared_data_range: procedure expose Lkr. JalFile MaxUnsharedRAM PicName
 select                                          /* exceptions first */
-  when PicName = '16F818' then do               /* exceptional PIC */
+  when PicName = '16f818' then do               /* exceptional PIC */
     DataRange = '0x20-0x3F,0xA0-0xBF'           /* unshared RAM range */
     MaxUnsharedRAM = X2D(3F)                    /* upper bound */
     end
-  when PicName = '16F819' then do
+  when PicName = '16f819' then do
     DataRange = '0x20-0x6F,0xA0-0xEF,0x120-0x16F'
     MaxUnsharedRAM = X2D(6F)
     end
-  when PicName = '16F870'  |,
-       PicName = '16F871'  |,
-       PicName = '16F872'  then do
+  when PicName = '16f870'  |,
+       PicName = '16f871'  |,
+       PicName = '16f872'  then do
     DataRange = '0x20-0x6F,0xA0-0xBF'
     MaxUnsharedRAM = X2D(6F)
     end
-  when PicName = '16F873'  |,
-       PicName = '16F873A' |,
-       PicName = '16F874'  |,
-       PicName = '16F874A' then do
+  when PicName = '16f873'  |,
+       PicName = '16f873a' |,
+       PicName = '16f874'  |,
+       PicName = '16f874a' then do
     DataRange = '0x20-0x7F,0xA0-0xFF'
     MaxUnsharedRAM = X2D(7F)
     end
@@ -1550,11 +1551,17 @@ do i = 1 to dev.0                               /* scan .dev file */
           ln = Dev.i
           iterate
         end
-        if pos('OSC',key) > 0     &,            /* catches ...OSC... */
-           pos('OSCS',key) = 0    &,            /* excl OSCS */
-           pos('IOSCFS',key) = 0  &,            /* excl IOSCFS */
-           pos('LPT1OSC',key) = 0 then          /* excl LPT1OSC */
+        if pos('OSC',key) > 0      &,           /* catches ...OSC... */
+           pos('OSCS',key) = 0     &,           /* excl OSCS */
+           pos('IOSCFS',key) = 0   &,           /* excl IOSCFS */
+           pos('LPT1OSC',key) = 0  &,           /* excl LPT1OSC */
+           pos('DSWDTOSC',key) = 0 &,           /* excl LPT1OSC */
+           pos('RTCOSC',key) = 0   then         /* excl LPT1OSC */
           key = 'OSC'
+        else if pos('DSWDTEN',key) > 0 then
+          key = 'DSWDTEN'
+        else if pos('DSWDTPS',key) > 0 then
+          key = 'DSWDTPS'
         else if pos('WDTPS',key) > 0 then
           key = 'WDTPS'
         else if pos('WDT',key) > 0 then
@@ -1584,6 +1591,8 @@ do i = 1 to dev.0                               /* scan .dev file */
         end
         if key = 'OSC' then
           call list_fuse_def_osc i
+        else if key = 'DSWDTPS' then
+          call list_fuse_def_wdtps i
         else if key = 'WDTPS' then
           call list_fuse_def_wdtps i
         else if key = 'WDT' then
@@ -1692,6 +1701,11 @@ do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
     parse var val2 p0 ':' p1            /* split */
     p1 = translate(p1, '______','.,()=/')  /* to underscore */
     p1 = word(p1,1)
+    offset = pos('_',p1)
+    do while offset > 1                 /* remove underscores */
+      p1 = substr(p1,1,offset-1)||substr(p1,offset+1)
+      offset = pos('_',p1)
+    end
     call lineout JalFile, '       P'p1 '= 0x'val1
   end
 end
@@ -1707,7 +1721,7 @@ do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
                          val1 'DESC' '=' '"' val2 '"' ')' .
   if val1 \= '' then do
     val1 = strip(val1)                  /* remove blanks */
-    if val2 = 'ON' then                 /* replace */
+    if val2 = 'ON' | pos('ENABLE', val2) > 0  then      /* replace */
       val2 = 'ENABLED'
     else if val2 = 'OFF' | pos('DISABLE',val2) > 0 then   /* replace */
       val2 = 'DISABLED'
@@ -1770,7 +1784,7 @@ do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
                          val1 'DESC' '=' '"' val2 '"' ')' .
   if val1 \= '' then do
     val1 = strip(val1)                  /* remove blanks */
-    if pos('SLEEP',val2) \= 0 then
+    if pos('SLEEP',val2) > 0  &  pos('DEEP SLEEP',val2) = 0 then
       Val2 = 'RUNONLY'
     else if pos('ENABLE',val2) \= 0  |,
             val2 = 'ON' then
@@ -1815,53 +1829,92 @@ end
 return
 
 
-/* --------------------------------------- */
-/* Generate some miscellaneous functions   */
-/* --------------------------------------- */
-list_misc_functions: procedure expose JalFile Name.
+/* -------------------------------------------------------- */
+/* Generate functions w.r.t. analog modules.                */
+/* First individual procedures for different analog modules */
+/* then a procedure to invoke these procedures              */
+/* -------------------------------------------------------- */
+list_analog_functions: procedure expose JalFile Name.
 call lineout JalFile, '--'
 call lineout JalFile, '-- ==================================================='
-call lineout JalFile, '-- Special device dependent procedures/functions'
+call lineout JalFile, '-- Special device dependent procedures'
 call lineout JalFile, '--'
-call lineout JalFile, '-- ---------------------------------------------------'
-call lineout JalFile, '-- Change ports which have analog function by default'
-call lineout JalFile, '-- into digital I/O.'
-call lineout JalFile, '-- Note: May not be complete!'
-call lineout JalFile, '--'
-call lineout JalFile, 'procedure enable_digital_io() is'
-call lineout JalFile, '--pragma inline  (temporary disabled) */'
-if Name.ANSEL \= '-' then do                           /* ANSEL declared */
-  call lineout JalFile, '  ANSEL  = 0b0000_0000         -- disable analog I/O'
-  if Name.ANSELH \= '-' then do
-    call lineout JalFile, '  ANSELH = 0b0000_0000'
+
+analog. = '-'                                           /* no analog modules */
+
+if Name.ANSEL \= '-' | Name.ANSEL1 \= '-' | Name.ANSELA \= '-' then do
+  analog.ANSEL = 'analog'                               /* analog functions present */
+  call lineout JalFile, '-- ---------------------------------------------------'
+  call lineout JalFile, '-- Change analog I/O pins into digital I/O pins.'
+  call lineout JalFile, '--'
+  call lineout JalFile, 'procedure analog_off() is'
+  call lineout JalFile, '--pragma inline  (temporary disabled)'
+  if Name.ANSEL \= '-' then do                          /* ANSEL declared */
+    call lineout JalFile, '  ANSEL  = 0b0000_0000         -- disable analog I/O'
+    if Name.ANSELH \= '-' then do
+      call lineout JalFile, '  ANSELH = 0b0000_0000'
+    end
   end
-end
-else if Name.ANSEL1 \= '-' then do                     /* ANSEL1 declared */
-  call lineout JalFile, '  ANSEL1 = 0b0000_0000         -- disable analog I/O'
-  if Name.ANSEL2 \= '-' then do
-    call lineout JalFile, '  ANSEL2 = 0b0000_0000'
+  else if Name.ANSEL1 \= '-' then do                    /* ANSEL1 declared */
+    call lineout JalFile, '  ANSEL1 = 0b0000_0000         -- disable analog I/O'
+    if Name.ANSEL2 \= '-' then do
+      call lineout JalFile, '  ANSEL2 = 0b0000_0000'
+    end
   end
-end
-else if Name.ANSELA \= '-' then do                     /* ANSELA declared */
-  call lineout JalFile, '  ANSELA = 0b0000_0000         -- disable analog I/O'
-  if Name.ANSELB \= '-' then do
-    call lineout JalFile, '  ANSELB = 0b0000_0000'
+  else if Name.ANSELA \= '-' then do                    /* ANSELA declared */
+    call lineout JalFile, '  ANSELA = 0b0000_0000         -- disable analog I/O'
+    if Name.ANSELB \= '-' then do
+      call lineout JalFile, '  ANSELB = 0b0000_0000'
+    end
   end
+  call lineout JalFile, 'end procedure'
+  call lineout JalFile, '--'
 end
+
 if Name.ADCON0 \= '-' then do
+  analog.ADC = 'adc'                                    /* ADC module present */
+  call lineout JalFile, '-- ---------------------------------------------------'
+  call lineout JalFile, '-- Disable ADC module.'
+  call lineout JalFile, '--'
+  call lineout JalFile, 'procedure adc_off() is'
+  call lineout JalFile, '--pragma inline  (temporary disabled)'
   call lineout JalFile, '  ADCON0 = 0b0000_0000         -- disable ADC'
   if Name.ADCON1 \= '-' then do
     call lineout JalFile, '  ADCON1 = 0b0000_0111         -- digital I/O'
   end
+  call lineout JalFile, 'end procedure'
+  call lineout JalFile, '--'
 end
-if Name.CMCON \= '-' then do
-  call lineout JalFile, '  CMCON  = 0b0000_0111         -- disable comparators'
+
+if Name.CMCON \= '-' | Name.CMCON0 \= '-' then do
+  analog.CMCON = 'comparator'                           /* Comparator present */
+  call lineout JalFile, '-- ---------------------------------------------------'
+  call lineout JalFile, '-- Disable comparator module'
+  call lineout JalFile, '--'
+  call lineout JalFile, 'procedure comparator_off() is'
+  call lineout JalFile, '--pragma inline  (temporary disabled)'
+  if Name.CMCON \= '-' then do
+    call lineout JalFile, '  CMCON  = 0b0000_0111         -- disable comparators'
+  end
+  else if Name.CMCON0 \= '-' then do
+    call lineout JalFile, '  CMCON0 = 0b0000_0111         -- disable comparators'
+  end
+  call lineout JalFile, 'end procedure'
+  call lineout JalFile, '--'
 end
-else if Name.CMCON0 \= '-' then do
-  call lineout JalFile, '  CMCON0 = 0b0000_0111         -- disable comparators'
+
+call lineout JalFile, '-- ---------------------------------------------------'
+call lineout JalFile, '-- Change ports which have analog function by default'
+call lineout JalFile, '-- into digital I/O.'
+call lineout JalFile, '--'
+call lineout JalFile, 'procedure enable_digital_io() is'
+call lineout JalFile, '--pragma inline  (temporary disabled)'
+do k over analog.
+  call lineout JalFile, '  'analog.k'_off()'
 end
 call lineout JalFile, 'end procedure'
 call lineout JalFile, '--'
+
 return
 
 
@@ -1871,9 +1924,9 @@ return
 /* --------------------------------------- */
 list_head:
 call lineout JalFile, '-- ==================================================='
-call lineout JalFile, '-- Title: JalV2 device include file for PIC'PicName
+call lineout JalFile, '-- Title: JalV2 device include file for pic'PicName
 call list_copyright_etc JalFile
-call lineout JalFile, '-- Description:' 'Device include file for PIC'PicName', containing:'
+call lineout JalFile, '-- Description:' 'Device include file for pic'PicName', containing:'
 call lineout JalFile, '--                - Declaration of ports and pins of the chip.'
 if core \= 16 then do                           /* for the midrange and baseline */
   call lineout JalFile, '--                - Procedures for shadowing of ports and pins'
@@ -1931,8 +1984,8 @@ MaxSharedRAM = 0                                /* no shared RAM */
 x = list_shared_data_range()                    /* returns range string */
 /* -----------------temporary?---------------------------------- */
 if MaxUnsharedRAM = 0  &  MaxSharedRAM > 0 then do      /* no unshared RAM */
-  if PicName \= '12F629' & PicName \= '12F675'  &,      /* known as 'OK' */
-     PicName \= '16F630' & PicName \= '16F676'   ,
+  if PicName \= '12f629' & PicName \= '12f675'  &,      /* known as 'OK' */
+     PicName \= '16f630' & PicName \= '16f676'   ,
   then do
     say 'Warning:' PicName 'has only shared, no unshared RAM!'
     Say '         May have to be handled as exceptional chip!'
@@ -1940,12 +1993,13 @@ if MaxUnsharedRAM = 0  &  MaxSharedRAM > 0 then do      /* no unshared RAM */
 end
 else if MaxSharedRAM = 0 then do                        /* no shared RAM */
   if Core \= 12                                 &,      /* known as 'OK' */
-     PicName \= '16F73'  & PicName \= '16F74'   &,
-     PicName \= '16F83'                         &,
-     PicName \= '16F84'  & PicName \= '16F84A'  &,
-     PicName \= '16F873' & PicName \= '16F873A' &,
-     PicName \= '16F874' & PicName \= '16F874A' &,
-     PicName \= '16HV540'                        ,
+     PicName \= '16f73'                         &,
+     PicName \= '16f74'                         &,
+     PicName \= '16f83'                         &,
+     PicName \= '16f84'  & PicName \= '16f84a'  &,
+     PicName \= '16f873' & PicName \= '16f873a' &,
+     PicName \= '16f874' & PicName \= '16f874a' &,
+     PicName \= '16hv540'                        ,
   then do
     say 'Warning:' PicName 'has no shared RAM!'
     Say '         May have to be handled as exceptional chip!'
@@ -2043,7 +2097,7 @@ call lineout ListFile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2008,',
 call lineout ListFile, '--'
 call lineout ListFile, '-- Adapted-by:'
 call lineout ListFile, '--'
-call lineout ListFile, '-- Compiler: >='CompilerVersion
+call lineout ListFile, '-- Compiler:' CompilerVersion
 call lineout ListFile, '--'
 call lineout ListFile, '-- This file is part of jallib',
                        ' (http://jallib.googlecode.com)'
