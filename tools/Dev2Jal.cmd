@@ -28,7 +28,7 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.38'                   /*                          */
+   ScriptVersion   = '0.0.39'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4g'                   /*                          */
 /* ------------------------------------------------------------------------ */
@@ -55,7 +55,7 @@ call SysLoadFuncs                               /* load Rexx utilities   */
 
 dstdir = './'                                   /* current dir */
 if Collection = 'ALL' then do                   /* 'all' -> separate dir */
-  dstdir = '/jallib/unvalidated/includes/device/' /* destination base */
+  dstdir = '/jallib/unvalidated/include/device/'  /* destination base */
 end
 
 ChipFile = dstdir'chipdef.jal'                  /* common file */
@@ -166,7 +166,7 @@ return 0
 
 
 /* ==================================================================== */
-/*                   DEV2JAL12                                          */
+/*       M A I N L I N E   F O R   1 2 - B I T S   C O R E              */
 /* ==================================================================== */
 dev2jal12: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             PicName DstDir,
@@ -227,7 +227,7 @@ return 0
 
 
 /* ==================================================================== */
-/*                   DEV2JAL14                                          */
+/*       M A I N L I N E   F O R   1 4 - B I T S   C O R E              */
 /* ==================================================================== */
 dev2jal14: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             PicName DstDir,
@@ -292,7 +292,7 @@ return 0
 
 
 /* ==================================================================== */
-/*                   DEV2JAL16                                          */
+/*       M A I N L I N E   F O R   1 6 - B I T S   C O R E              */
 /* ==================================================================== */
 dev2jal16: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             PicName DstDir,
@@ -941,12 +941,12 @@ do i = 1 to Dev.0
     end
     else if reg = 'TRISIO' then do              /* tris */
       call lineout JalFile, 'var volatile byte ' left('TRISA',20) 'at' reg
-      call lineout JalFile, 'var volatile byte ' left('PORT_A_DIRECTION',20) 'at' reg
-      call list_tris_shadow 'TRISA'             /* niblle direction */
+      call lineout JalFile, 'var volatile byte ' left('PORTA_DIRECTION',20) 'at' reg
+      call list_tris_shadow 'TRISA'             /* nibble direction */
     end
     else if left(reg,4) = 'TRIS' then do        /* TRISx */
       call lineout JalFile, 'var volatile byte ',
-                           left('PORT_'substr(reg,5)'_DIRECTION',20) 'at' reg
+                           left('PORT'substr(reg,5)'_DIRECTION',20) 'at' reg
       call list_tris_shadow reg                 /* nibble direction */
     end
 
@@ -1004,7 +1004,7 @@ do i = 1 to Dev.0
     end
     else if left(reg,4) = 'TRIS' then do        /* TRISx */
       call lineout JalFile, 'var volatile byte  ',
-             left('PORT_'substr(reg,5)'_DIRECTION',20) 'shared at' reg
+             left('PORT'substr(reg,5)'_DIRECTION',20) 'shared at' reg
       call list_tris_shadow reg                 /* nibble directions */
     end
 
@@ -1042,11 +1042,11 @@ return 0
 /* ---------------------------------------------- */
 list_port1x_shadow: procedure expose JalFile
 reg = arg(1)
-shadow = '_PORT_'substr(reg,5)'_SHADOW'
+shadow = '_PORT'substr(reg,5)'_SHADOW'
 call lineout JalFile, '--'
 call lineout JalFile, 'var          byte ' shadow '       = 'reg
 call lineout JalFile, '--'
-call lineout JalFile, 'procedure _port_'substr(reg,5)'_flush is'
+call lineout JalFile, 'procedure _port'substr(reg,5)'_flush is'
 call lineout JalFile, '  pragma inline'
 call lineout JalFile, ' ' reg '=' shadow
 call lineout JalFile, 'end procedure'
@@ -1054,24 +1054,24 @@ call lineout JalFile, '--'
 call lineout JalFile, 'procedure' reg"'put" '(byte in x) is'
 call lineout JalFile, '  pragma inline'
 call lineout JalFile, '  'shadow '= x'
-call lineout JalFile, '  _port_'substr(reg,5)'_flush'
+call lineout JalFile, '  _port'substr(reg,5)'_flush'
 call lineout JalFile, 'end procedure'
 call lineout JalFile, '--'
-half = 'PORT_'substr(reg,5)'_LOW'
+half = 'PORT'substr(reg,5)'_LOW'
 call lineout JalFile, 'var  byte' half
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
-call lineout JalFile, '  _port_'substr(reg,5)'_flush'
+call lineout JalFile, '  _port'substr(reg,5)'_flush'
 call lineout JalFile, 'end procedure'
 call lineout JalFile, 'function' half"'get" 'return byte is'
 call lineout JalFile, '  return' reg '& 0x0F'
 call lineout JalFile, 'end function'
 call lineout JalFile, '--'
-half = 'PORT_'substr(reg,5)'_HIGH'
+half = 'PORT'substr(reg,5)'_HIGH'
 call lineout JalFile, 'var  byte' half
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'shadow '= ('shadow '& 0x0F) | (x << 4)'
-call lineout JalFile, '  _port_'substr(reg,5)'_flush'
+call lineout JalFile, '  _port'substr(reg,5)'_flush'
 call lineout JalFile, 'end procedure'
 call lineout JalFile, 'function' half"'get" 'return byte is'
 call lineout JalFile, '  return' reg '>> 4'
@@ -1094,7 +1094,7 @@ call lineout JalFile, '--pragma inline   (temporary disabled)'
 call lineout JalFile, '  'lat '= x'
 call lineout JalFile, 'end procedure'
 call lineout JalFile, '--'
-half = 'PORT_'substr(lat,4)'_LOW'
+half = 'PORT'substr(lat,4)'_LOW'
 call lineout JalFile, 'var  byte' half
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'lat '= ('lat '& 0xF0) | (x & 0x0F)'
@@ -1103,7 +1103,7 @@ call lineout JalFile, 'function' half"'get" 'return byte is'
 call lineout JalFile, '  return' lat '& 0x0F'
 call lineout JalFile, 'end function'
 call lineout JalFile, '--'
-half = 'PORT_'substr(lat,4)'_HIGH'
+half = 'PORT'substr(lat,4)'_HIGH'
 call lineout JalFile, 'var  byte' half
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'lat '= ('lat '& 0x0F) | (x << 4)'
@@ -1123,7 +1123,7 @@ return
 list_tris_shadow: procedure expose JalFile
 reg = arg(1)
 call lineout JalFile, '--'
-half = 'PORT_'substr(reg,5)'_LOW_DIRECTION'
+half = 'PORT'substr(reg,5)'_LOW_DIRECTION'
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'reg '= ('reg '& 0xF0) | (x & 0x0F)'
 call lineout JalFile, 'end procedure'
@@ -1131,7 +1131,7 @@ call lineout JalFile, 'function' half"'get" 'return byte is'
 call lineout JalFile, '  return' reg '& 0x0F'
 call lineout JalFile, 'end function'
 call lineout JalFile, '--'
-half = 'PORT_'substr(reg,5)'_HIGH_DIRECTION'
+half = 'PORT'substr(reg,5)'_HIGH_DIRECTION'
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'reg '= ('reg '& 0x0F) | (x << 4)'
 call lineout JalFile, 'end procedure'
@@ -1215,7 +1215,7 @@ do k = 0 to 8 while word(Dev.i,1) \= 'SFR'  &,          /* max # of records */
               else if left(reg,4) = 'PORT' then do
                 if left(n.j,1) = 'R'  &,
                     substr(n.j,2,1) = right(reg,1) then do  /* prob. I/O pin */
-                  shadow = '_PORT_'right(reg,1)'_SHADOW'
+                  shadow = '_PORT'right(reg,1)'_SHADOW'
                   pin = 'PIN_'||substr(n.j,2)
                   call lineout JalFile, 'var volatile bit  ',
                                         left(pin,20) 'at' reg ':' offset
@@ -1223,13 +1223,13 @@ do k = 0 to 8 while word(Dev.i,1) \= 'SFR'  &,          /* max # of records */
                   call lineout JalFile, '  pragma inline'
                   call lineout JalFile, '  var bit _Tmp_Bit at' shadow ':' offset
                   call lineout JalFile, '  _Tmp_Bit = x'
-                  call lineout JalFile, '  _port_'substr(reg,5)'_flush'
+                  call lineout JalFile, '  _port'substr(reg,5)'_flush'
                   call lineout JalFile, 'end procedure'
                   call lineout JalFile, '--'
                 end
               end
               else if reg = 'GPIO' | reg = 'GP' then do
-                shadow = '_PORT_A_SHADOW'
+                shadow = '_PORTA_SHADOW'
                 pin = 'PIN_A'right(n.j,1)
                 call lineout JalFile, 'var volatile bit  ',
                                       left(pin,20) 'at' reg ':' offset
@@ -1237,7 +1237,7 @@ do k = 0 to 8 while word(Dev.i,1) \= 'SFR'  &,          /* max # of records */
                 call lineout JalFile, '  pragma inline'
                 call lineout JalFile, '  var bit _Tmp_Bit at' shadow ':' offset
                 call lineout JalFile, '  _Tmp_Bit = x'
-                call lineout JalFile, '  _port_A_flush'
+                call lineout JalFile, '  _portA_flush'
                 call lineout JalFile, 'end procedure'
                 call lineout JalFile, '--'
               end
@@ -1552,18 +1552,24 @@ do i = 1 to dev.0                               /* scan .dev file */
           iterate
         end
         if pos('OSC',key) > 0      &,           /* catches ...OSC... */
+           pos('FOSC2',key) = 0    &,           /* excl FOSC2 */
            pos('OSCS',key) = 0     &,           /* excl OSCS */
            pos('IOSCFS',key) = 0   &,           /* excl IOSCFS */
            pos('LPT1OSC',key) = 0  &,           /* excl LPT1OSC */
-           pos('DSWDTOSC',key) = 0 &,           /* excl LPT1OSC */
-           pos('RTCOSC',key) = 0   then         /* excl LPT1OSC */
+           pos('DSWDTOSC',key) = 0 &,           /* excl deep sleep WDT osc */
+           pos('RTCOSC',key) = 0   &,           /* excl RTC OSC */
+           pos('T1OSC',key) = 0   then          /* excl T1 OSC mux */
           key = 'OSC'
         else if pos('DSWDTEN',key) > 0 then
           key = 'DSWDTEN'
+        else if pos('DSWDTOSC',key) > 0 then
+          key = 'DSWDTOSC'
         else if pos('DSWDTPS',key) > 0 then
           key = 'DSWDTPS'
         else if pos('WDTPS',key) > 0 then
           key = 'WDTPS'
+        else if pos('WDTCS',key) > 0 then
+          key = 'WDTCS'
         else if pos('WDT',key) > 0 then
           key = 'WDT'
         else if pos('BODENV',key) > 0 |,
@@ -1848,7 +1854,7 @@ if Name.ANSEL \= '-' | Name.ANSEL1 \= '-' | Name.ANSELA \= '-' then do
   call lineout JalFile, '-- Change analog I/O pins into digital I/O pins.'
   call lineout JalFile, '--'
   call lineout JalFile, 'procedure analog_off() is'
-  call lineout JalFile, '--pragma inline  (temporary disabled)'
+  call lineout JalFile, '  pragma inline'
   if Name.ANSEL \= '-' then do                          /* ANSEL declared */
     call lineout JalFile, '  ANSEL  = 0b0000_0000         -- disable analog I/O'
     if Name.ANSELH \= '-' then do
@@ -1877,7 +1883,7 @@ if Name.ADCON0 \= '-' then do
   call lineout JalFile, '-- Disable ADC module.'
   call lineout JalFile, '--'
   call lineout JalFile, 'procedure adc_off() is'
-  call lineout JalFile, '--pragma inline  (temporary disabled)'
+  call lineout JalFile, '  pragma inline'
   call lineout JalFile, '  ADCON0 = 0b0000_0000         -- disable ADC'
   if Name.ADCON1 \= '-' then do
     call lineout JalFile, '  ADCON1 = 0b0000_0111         -- digital I/O'
@@ -1892,7 +1898,7 @@ if Name.CMCON \= '-' | Name.CMCON0 \= '-' then do
   call lineout JalFile, '-- Disable comparator module'
   call lineout JalFile, '--'
   call lineout JalFile, 'procedure comparator_off() is'
-  call lineout JalFile, '--pragma inline  (temporary disabled)'
+  call lineout JalFile, '  pragma inline'
   if Name.CMCON \= '-' then do
     call lineout JalFile, '  CMCON  = 0b0000_0111         -- disable comparators'
   end
@@ -1908,7 +1914,7 @@ call lineout JalFile, '-- Change ports which have analog function by default'
 call lineout JalFile, '-- into digital I/O.'
 call lineout JalFile, '--'
 call lineout JalFile, 'procedure enable_digital_io() is'
-call lineout JalFile, '--pragma inline  (temporary disabled)'
+call lineout JalFile, '  pragma inline'
 do k over analog.
   call lineout JalFile, '  'analog.k'_off()'
 end
