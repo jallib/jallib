@@ -12,8 +12,8 @@
 all : clean test
 
 ENV=unvalidated
-SAMPLIR_DIR=../${ENV}/samples
-INCLUDE_DIR=../${ENV}/includes
+SAMPLIR_DIR=../${ENV}/sample
+INCLUDE_DIR=../${ENV}/include
 
 clean :
 	# clean what jal produces
