@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------------ */
-/* Title: blink-an-led.cmd - Create and test blink-an-LED samples.          */
+/* Title: blink-an-led.cmd - Create and compile blink-an-LED samples.       */
 /*                                                                          */
 /* Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.    */
 /*                                                                          */
@@ -34,7 +34,7 @@ call SysLoadFuncs                               /* load Rexx utilities      */
 if p1 = 'DEBUG' then                            /* script debug mode        */
   I = 'k:/jal/dev2jal/'                         /* include directory        */
 else                                            /* normal mode              */
-  I = 'k:/jallib/unvalidated/includes/device/'  /* SVN include directory    */
+  I = 'k:/jallib/unvalidated/include/device/'   /* SVN include directory    */
 J = 'k:/c/Jalv2/JalV2.exe'                      /* compiler path (eCS)      */
 O = '-Wno-all -no-fuse -s' I                    /* compiler options         */
 
@@ -44,7 +44,7 @@ if dir.0 < 1 then do
   return 1
 end
 
-dst = '\jallib\unvalidated\samples\blink\'      /* destination directory    */
+dst = '\jallib\unvalidated\sample\blink\'       /* destination directory    */
 k = 0
 
 do i=1 to pic.0
@@ -77,15 +77,35 @@ do i=1 to pic.0
   call lineout B, '--'
   call lineout B, '-- ------------------------------------------------------'
   call lineout B, '--'
-  call lineout B, 'include' M '                 -- target PICmicro'
+  call lineout B, 'include' M '                   -- target PICmicro'
   call lineout B, '--'
-  call lineout B, '-- Specify "pragma target xxx" to obtain a working program, e.g.'
-  call lineout B, '--   pragma target OSC  HS        -- with a crystal or resonator'
-  call lineout B, '--   pragma target WDT  disabled  -- '
-  call lineout B, '--   pragma target LVP  disabled  -- if applicable'
-  call lineout B, '--'
-  call lineout B, '-- You may want to change the clock speed:'
-  call lineout B, 'pragma target clock 20_000_000    -- oscillator frequency'
+  call SysFileSearch 'pragma fuse_def OSC', pic.i, osc.
+  if osc.0 > 0 then do                                  /* oscillator pragma present */
+    call SysFileSearch 'HS =', pic.i, osc.
+    if  osc.0 > 0 then do                               /* HS mode supported */
+      call lineout B, '-- This program assumes you use a 20 MHz resonator or crystal'
+      call lineout B, '-- connected to pins OSC1 and OSC2.'
+      call lineout B, 'pragma target OSC HS              -- HS crystal or resonator'
+      call lineout B, 'pragma target clock 20_000_000    -- oscillator frequency'
+    end
+    else do                                             /* assume internal oscillator */
+      call lineout B, '-- This program assumes you use the internal oscillator.'
+      call lineout B, 'pragma target OSC INTOSC_NOCLKOUT  -- internal oscillator'
+      call lineout B, 'pragma target clock 4_000_000      -- oscillator frequency'
+    end
+  end
+  else do
+    call lineout B, 'pragma target clock 4_000_000      -- oscillator frequency'
+  end
+  call lineout B, '-- You may want to change the clock speed!'
+  call SysFileSearch 'pragma fuse_def WDT', pic.i, wdt.
+  if wdt.0 > 0 then do
+    call lineout B, 'pragma target WDT  disabled'
+  end
+  call SysFileSearch 'pragma fuse_def LVP', pic.i, wdt.
+  if wdt.0 > 0 then do
+    call lineout B, 'pragma target LVP  disabled'
+  end
   call lineout B, '--'
   call lineout B, 'enable_digital_io()               -- disable analog I/O (if any)'
   call lineout B, '--'
@@ -97,24 +117,24 @@ do i=1 to pic.0
   port.3 = 'C'
   do p=1 to port.0
     do q=0 to 7
-      call SysFileSearch ' pin_'port.p||q' ', pic.i, pin., 'C'  /* search I/O pin */
+      call SysFileSearch ' PIN_'port.p||q' ', pic.i, pin.    /* search I/O pin */
       if pin.0 > 0 then do                                   /* pin found */
-        call SysFileSearch ' TRIS'port.p, pic.i, tris., 'C'  /* search any TRISx */
+        call SysFileSearch ' TRIS'port.p, pic.i, tris.       /* search TRISx */
         if tris.0 > 0 then do                                /* found */
-          call SysFileSearch ' pin_'port.p||q'_direction', pic.i, tris., 'C'
+          call SysFileSearch ' PIN_'port.p||q'_DIRECTION', pic.i, tris.
           if tris.0 > 0 then do                              /* found pin direction */
-            call lineout B, 'var bit LED           is pin_'port.p||q'   -- alias'
-            call lineout B, 'var bit LED_direction is pin_'port.p||q'_direction'
+            call lineout B, 'var bit LED           is PIN_'port.p||q'   -- alias'
+            call lineout B, 'var bit LED_DIRECTION is PIN_'port.p||q'_DIRECTION'
             call lineout B, '--'
-            call lineout B, 'LED_direction = output'
+            call lineout B, 'LED_DIRECTION = output'
             leave p
           end
           else do
             nop   /* say 'not found:' ' pin_'port.p||q'_direction' */
           end
         end
-        else do                                              /* no tris found */
-          call lineout B, 'var bit LED           is pin_'port.p||q'   -- alias'
+        else do                                              /* no TRISx found */
+          call lineout B, 'var bit LED           is PIN_'port.p||q'   -- alias'
           leave p
         end
       end
@@ -161,7 +181,7 @@ do i=1 to pic.0
     say 'Compilation of' B'.jal failed, file' B'.log' 'not found'
   end
 
-/*  if k > 300 then exit loop */
+  if k > 500 then exit loop     /* set (low) limit for test purposes */
 
 end
 
