@@ -20,7 +20,7 @@
 /*              In addition some device dependent procedures are provided   */
 /*              for common operations, like 'enable-digital-io.             */
 /*                                                                          */
-/* Sources:                                                                 */
+/* Sources:  MPLAB .dev and .lkr files                                      */
 /*                                                                          */
 /* Notes:                                                                   */
 /*  - Written in 'Classic Rexx' style, but requires 'Object Rexx' to run.   */
@@ -28,7 +28,7 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.39'                   /*                          */
+   ScriptVersion   = '0.0.40'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4g'                   /*                          */
 /* ------------------------------------------------------------------------ */
@@ -83,7 +83,7 @@ do i=1 to dir.0                                 /* all entries */
   CfgAddr.0   = 0                               /* )          */
   IDAddr.0    = 0                               /* ) decimal! */
 
-  parse lower var dir.i dir.i                   /* to lower case */
+  parse lower var dir.i dir.i                   /* LOWER case !!!!*/
   parse value filespec('Name', dir.i) with 'pic' PicName '.dev'
   if PicName = '' then do
     Say 'Error: Could not derive PIC name from filespec: "'dir.i'"'
@@ -109,12 +109,14 @@ do i=1 to dir.0                                 /* all entries */
     if collection = 'ALL' |,                    /* all or selected */
               PicName      = '12f609'  |,
               PicName      = '12f629'  |,
+              PicName      = '12f675'  |,
               PicName      = '12f683'  |,
               PicName      = '16f59'   |,
               PicName      = '16hv540' |,
               PicName      = '16f648a' |,
               PicName      = '16f690'  |,
               PicName      = '16f676'  |,
+              PicName      = '16f727'  |,
               PicName      = '16hv785' |,
               PicName      = '16f818'  |,
               PicName      = '16f819'  |,
@@ -142,7 +144,8 @@ do i=1 to dir.0                                 /* all entries */
               PicName      = '18f97j60'  |,
               PicName      = '18lf13k50' |,
               PicName      = '18lf24j11' |,
-              PicName      = '18lf45j10'  ,
+              PicName      = '18lf45j10' |,
+              PicName      = '18lf46j11'  ,
     then
       rx = dev2Jal16(dir.i, lkrdir)             /* 16-bits core */
   end
@@ -365,6 +368,93 @@ return 0
 
 
 /* ---------------------------------------------- */
+/* script debugging                               */
+/* ---------------------------------------------- */
+error_catch:
+Say 'Execution error, rc' rc 'at script line' SIGL
+return rc
+
+syntax_catch:
+if rc = 4 then                                  /* interrupted */
+  exit
+Say 'Syntax error, rc' rc 'at script line' SIGL
+return rc
+
+
+/* ---------------------------------- */
+/* Read .dev file into stem variable  */
+/* input: - DevFile                   */
+/*        - Dev.                      */
+/*                                    */
+/* Collect only relevant lines!       */
+/* ---------------------------------- */
+File_read_dev: procedure expose DevFile Dev.
+DevFile = translate(DevFile, '/', '\')          /* enforce forward slashes */
+Dev.0 = 0                                       /* no records read yet */
+if stream(DevFile, 'c', 'open read') \= 'READY:' then
+  return
+i = 1                                           /* first record */
+do while lines(DevFile) > 0
+  parse upper value linein(DevFile) with Dev.i  /* store line in upper case */
+  if length(Dev.i) \< 3 then do                 /* not empty */
+    if left(word(Dev.i,1),1) \= '#' then        /* not comment */
+      i = i + 1                                 /* keep this record */
+    else do                                     /* comment */
+      parse var Dev.i '#' val0 'S' val1         /* pgm spec */
+      if (val0 = 'D' | val0 = 'P')  &,          /* 'PS' or 'DS' found */
+          val1 \= '' then                       /* document number present */
+        i = i + 1                               /* keep this record */
+    end
+  end
+end
+Dev.0 = i - 1                                   /* # of stored records */
+call stream DevFile, 'c', 'close'               /* done */
+return
+
+
+/* ---------------------------------- */
+/* Read .lkr file into stem variable  */
+/* input: - LkrFile                   */
+/*        - Lkr.                      */
+/*                                    */
+/* Collect only relevant lines!       */
+/* ---------------------------------- */
+File_read_lkr: procedure expose LkrFile Lkr.
+LkrFile = translate(LkrFile, '/', '\')          /* enforce forward slashes */
+Lkr.0 = 0                                       /* no records read */
+if stream(LkrFile, 'c', 'open read') \= 'READY:' then
+  return
+i = 1                                           /* first record */
+do while lines(LkrFile) > 0                     /* whole file */
+  parse upper value linein(LkrFile) with Lkr.i  /* store line in upper case */
+  if length(Lkr.i) \> 2           |,            /* empty */
+     left(word(Lkr.i,1),2) = '//' |,            /* .lkr comment */
+     word(Lkr.i,1) = '#FI'        |,            /* end if */
+     word(Lkr.i,1) = '#DEFINE'    |,            /* const definition */
+     word(Lkr.i,1) = 'LIBPATH' then             /* Library path */
+    iterate                                     /* skip these lines */
+  if word(Lkr.i,1) = '#IFDEF' then do           /* conditional part */
+    if left(word(Lkr.i,2),6) = '_DEBUG'  |,     /* debugging */
+       left(word(Lkr.i,2),6) = '_EXTEN' then do /* extended mode */
+      do while lines(LkrFile) > 0               /* skip lines */
+        parse upper value linein(LkrFile) with ln  /* read line */
+        if word(ln,1) = '#ELSE' |,              /* other than debugging */
+           word(ln,1) = '#FI' then do           /* end conditional part */
+          leave                                 /* resume normal */
+        end
+      end
+    end
+  end
+  else do                                       /* not skipped */
+    i = i + 1                                   /* keep this record */
+  end
+end
+Lkr.0 = i - 1                                  /* # non-comment records */
+call stream LkrFile, 'c', 'close'              /* done */
+return
+
+
+/* ---------------------------------------------- */
 /* procedure to collect Config (fuses) info       */
 /* input:  - nothing                              */
 /* ---------------------------------------------- */
@@ -381,12 +471,9 @@ do i = 1 to Dev.0
       Core = 14
     else                                        /* presumably 16-bits core */
       Core = 16
-    CfgAddr.0 = X2D(val2) - X2D(val1) + 1       /* count config bytes */
+    CfgAddr.0 = X2D(val2) - X2D(val1) + 1       /* number of config bytes */
     do j = 1 to CfgAddr.0                       /* all config bytes */
-      if Core = 12 | Core = 14 then             /* 12- or 14-bits core */
-        CfgAddr.j = X2D(val1) + j - 1           /* address (word) */
-      else                                      /* presumably 16-bits core */
-        CfgAddr.j = X2D(val1) + j - 1           /* address (3 bytes) */
+      CfgAddr.j = X2D(val1) + j - 1             /* address */
     end
     leave                                       /* 1st occurence */
   end
@@ -575,7 +662,7 @@ do i = 1 to Dev.0
   end
 end
 if DevId == '0000' then do                      /* DevID not found */
-  if PicName = '16f627' then                    /* missing MPLAB */
+  if PicName = '16f627' then                    /* missing in MPLAB */
     Devid = '07A0'
   else if PicName = '16f628' then               /* missing in MPlab */
     Devid = '07C0'
@@ -888,22 +975,6 @@ if IDaddr.0 > 0 then do
   call lineout JalFile, '--'
 end
 return
-
-
-/* --------------------------------------------------------- */
-/* procedure to extend address with mirrored addresses       */
-/* input:  - register number (decimal)                       */
-/* returns string of addresses between {}                    */
-/* (not used for 16-bit core)                                */
-/* --------------------------------------------------------- */
-sfr_mirror: procedure expose Ram. BANKSIZE NumBanks
-addr = arg(1)
-addr_list = '{ 0x'D2X(addr)                     /* open bracket, orig. addr */
-do i = addr + BANKSIZE to NumBanks * BANKSIZE - 1 by BANKSIZE   /* avail ram */
-  if addr = Ram.i then                          /* matching reg number */
-    addr_list = addr_list',0x'D2X(i)            /* concatenate to string */
-end
-return addr_list' }'                            /* complete string */
 
 
 /* -------------------------------------------------- */
@@ -1400,27 +1471,6 @@ end
 return 0
 
 
-/* --------------------------------------------- */
-/* Signal duplicates name.                       */
-/* Collect all names in Name. compound var       */
-/* Return - 0 when name is unique                */
-/*        - 1 when name is dumplicate            */
-/* --------------------------------------------- */
-duplicate_name: procedure expose Name.
-newname = arg(1)
-if newname = '' then                            /* no name specified */
-  return 1                                      /* not acceptable */
-reg = arg(2)                                    /* register */
-if Name.newname = '-' then do                   /* name not in use yet */
-  Name.newname = reg                            /* mark in use by which reg */
-  return 0                                      /* unique */
-end
-if reg \= newname then do                       /* not alias of register */
-  Say 'Duplicate name:' newname 'in' reg'. First occurence:' Name.newname
-  return 1                                      /* duplicate */
-end
-
-
 /* -------------------------------------------------------- */
 /* Special _extra_ formatting of STATUS register            */
 /* input:  - index in .dev                                  */
@@ -1839,39 +1889,62 @@ return
 /* Generate functions w.r.t. analog modules.                */
 /* First individual procedures for different analog modules */
 /* then a procedure to invoke these procedures              */
+/*                                                          */
+/* Possible combinations for the different PICS:            */
+/* ANSEL   [ANSELH]                                         */
+/* ANSEL0  [ANSEL1]                                         */
+/* ANSELA   ANSELB [ANSELD  ANSELE]                         */
+/* ADCON0  [ADCON1 [ADCON2 [ADCON3]]]                       */
+/* ANCON0   ANCON1                                          */
+/* CMCON                                                    */
+/* CMCON0  [CMCON1]                                         */
+/* Between brackets optional, otherwise always together.    */
 /* -------------------------------------------------------- */
 list_analog_functions: procedure expose JalFile Name.
 call lineout JalFile, '--'
 call lineout JalFile, '-- ==================================================='
+call lineout JalFile, '--'
 call lineout JalFile, '-- Special device dependent procedures'
 call lineout JalFile, '--'
 
 analog. = '-'                                           /* no analog modules */
 
-if Name.ANSEL \= '-' | Name.ANSEL1 \= '-' | Name.ANSELA \= '-' then do
-  analog.ANSEL = 'analog'                               /* analog functions present */
+if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,
+   Name.ANSELA \= '-' | Name.ANCON0 \= '-'  then do
+  analog.ANSEL = 'analog'                       /* analog functions present */
   call lineout JalFile, '-- ---------------------------------------------------'
   call lineout JalFile, '-- Change analog I/O pins into digital I/O pins.'
   call lineout JalFile, '--'
   call lineout JalFile, 'procedure analog_off() is'
   call lineout JalFile, '  pragma inline'
   if Name.ANSEL \= '-' then do                          /* ANSEL declared */
-    call lineout JalFile, '  ANSEL  = 0b0000_0000         -- disable analog I/O'
-    if Name.ANSELH \= '-' then do
-      call lineout JalFile, '  ANSELH = 0b0000_0000'
+    call lineout JalFile, '  ANSEL  = 0b0000_0000        -- all digital'
+    if Name.ANSELH \= '-' then
+      call lineout JalFile, '  ANSELH = 0b0000_0000        -- all digital'
+  end
+  if Name.ANSEL0 \= '-' then do                         /* ANSEL0 declared */
+    suffix = '0123456789'                               /* suffix numbers */
+    do i = 1 to length(suffix)
+      qname = 'ANSEL'substr(suffix,i,1)                 /* qualified name */
+      if Name.qname \= '-' then                         /* ANSELx declared */
+        call lineout JalFile, '  'qname '= 0b0000_0000        -- all digital'
     end
   end
-  else if Name.ANSEL1 \= '-' then do                    /* ANSEL1 declared */
-    call lineout JalFile, '  ANSEL1 = 0b0000_0000         -- disable analog I/O'
-    if Name.ANSEL2 \= '-' then do
-      call lineout JalFile, '  ANSEL2 = 0b0000_0000'
+  if Name.ANSELA \= '-' then do                         /* ANSELA declared */
+    suffix = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'               /* suffix letters */
+    do i = 1 to length(suffix)
+      qname = 'ANSEL'substr(suffix,i,1)                 /* qualified name */
+      if Name.qname \= '-' then                         /* ANSELx declared */
+        call lineout JalFile, '  'qname '= 0b0000_0000        -- all digital'
     end
   end
-  else if Name.ANSELA \= '-' then do                    /* ANSELA declared */
-    call lineout JalFile, '  ANSELA = 0b0000_0000         -- disable analog I/O'
-    if Name.ANSELB \= '-' then do
-      call lineout JalFile, '  ANSELB = 0b0000_0000'
-    end
+  if Name.ANCON0 \= '-' then do                         /* ANCON0 declared */
+    if Name.WDTCON_ADSHR \= '-' then
+      call lineout JalFile, '  WDTCON_ADSHR = true         -- make ADCONx addressable'
+    call lineout JalFile, '  ANCON0 = 0b1111_1111        -- all digital'
+    call lineout JalFile, '  ANCON1 = 0b1111_1111        -- all digital'
+    if Name.WDTCON_ADSHR \= '-' then
+      call lineout JalFile, '  WDTCON_ADSHR = false        -- release ADCONx'
   end
   call lineout JalFile, 'end procedure'
   call lineout JalFile, '--'
@@ -1884,10 +1957,19 @@ if Name.ADCON0 \= '-' then do
   call lineout JalFile, '--'
   call lineout JalFile, 'procedure adc_off() is'
   call lineout JalFile, '  pragma inline'
-  call lineout JalFile, '  ADCON0 = 0b0000_0000         -- disable ADC'
+  call lineout JalFile, '  ADCON0_ADON = false        -- disable ADC'
   if Name.ADCON1 \= '-' then do
-    call lineout JalFile, '  ADCON1 = 0b0000_0111         -- digital I/O'
+    call lineout JalFile, '  ADCON1 = 0b1111_1111       -- digital I/O'
   end
+/* temporary(?) disabled code: no more selective setting with all-ones in ADCON1 above
+  if Name.ADCON1 \= '-' then do
+    if PicName = '16F737' | PicName == '16F747' |,
+       PicName = '16F767' | PicName == '16F777' then
+      call lineout JalFile, '  ADCON1 = 0b0000_1111        -- digital I/O'
+    else
+      call lineout JalFile, '  ADCON1 = 0b0000_0111        -- digital I/O'
+  end
+*/
   call lineout JalFile, 'end procedure'
   call lineout JalFile, '--'
 end
@@ -1900,10 +1982,10 @@ if Name.CMCON \= '-' | Name.CMCON0 \= '-' then do
   call lineout JalFile, 'procedure comparator_off() is'
   call lineout JalFile, '  pragma inline'
   if Name.CMCON \= '-' then do
-    call lineout JalFile, '  CMCON  = 0b0000_0111         -- disable comparators'
+    call lineout JalFile, '  CMCON  = 0b0000_0111        -- disable comparators'
   end
   else if Name.CMCON0 \= '-' then do
-    call lineout JalFile, '  CMCON0 = 0b0000_0111         -- disable comparators'
+    call lineout JalFile, '  CMCON0 = 0b0000_0111        -- disable comparators'
   end
   call lineout JalFile, 'end procedure'
   call lineout JalFile, '--'
@@ -1924,7 +2006,6 @@ call lineout JalFile, '--'
 return
 
 
-
 /* --------------------------------------- */
 /* Generate common header                  */
 /* --------------------------------------- */
@@ -1934,7 +2015,7 @@ call lineout JalFile, '-- Title: JalV2 device include file for pic'PicName
 call list_copyright_etc JalFile
 call lineout JalFile, '-- Description:' 'Device include file for pic'PicName', containing:'
 call lineout JalFile, '--                - Declaration of ports and pins of the chip.'
-if core \= 16 then do                           /* for the midrange and baseline */
+if core \= 16 then do                           /* for the baseline and midrange */
   call lineout JalFile, '--                - Procedures for shadowing of ports and pins'
   call lineout JalFile, '--                  to circumvent the read-modify-write problem.'
 end
@@ -1988,7 +2069,7 @@ MaxUnsharedRAM = 0                              /* no unshared RAM */
 call list_unshared_data_range
 MaxSharedRAM = 0                                /* no shared RAM */
 x = list_shared_data_range()                    /* returns range string */
-/* -----------------temporary?---------------------------------- */
+/* - - - - - - - -  temporary? - - - - - - - - - - - - - - - - - */
 if MaxUnsharedRAM = 0  &  MaxSharedRAM > 0 then do      /* no unshared RAM */
   if PicName \= '12f629' & PicName \= '12f675'  &,      /* known as 'OK' */
      PicName \= '16f630' & PicName \= '16f676'   ,
@@ -2011,7 +2092,7 @@ else if MaxSharedRAM = 0 then do                        /* no shared RAM */
     Say '         May have to be handled as exceptional chip!'
   end
 end
-/* ------------------------------------------------------------- */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 call lineout JalFile, '--'
 if Core = 12  | Core = 14 then do
   if x \= '' then do                            /* with shared RAM */
@@ -2112,88 +2193,40 @@ call lineout ListFile, '-- Released under the BSD license',
 call lineout ListFile, '--'
 return
 
-/* ---------------------------------- */
-/* Read .dev file into stem variable  */
-/* input: - DevFile                   */
-/*        - Dev.                      */
-/*                                    */
-/* Collect only relevant lines!       */
-/* ---------------------------------- */
-File_read_dev: procedure expose DevFile Dev.
-DevFile = translate(DevFile, '/', '\')          /* enforce forward slashes */
-Dev.0 = 0                                       /* no records read yet */
-if stream(DevFile, 'c', 'open read') \= 'READY:' then
-  return
-i = 1                                           /* first record */
-do while lines(DevFile) > 0
-  parse upper value linein(DevFile) with Dev.i  /* store line in upper case */
-  if length(Dev.i) \< 3 then do                 /* not empty */
-    if left(word(Dev.i,1),1) \= '#' then        /* not comment */
-      i = i + 1                                 /* keep this record */
-    else do                                     /* comment */
-      parse var Dev.i '#' val0 'S' val1         /* pgm spec */
-      if (val0 = 'D' | val0 = 'P')  &,          /* 'PS' or 'DS' found */
-          val1 \= '' then                       /* document number present */
-        i = i + 1                               /* keep this record */
-    end
-  end
+/* --------------------------------------------------------- */
+/* procedure to extend address with mirrored addresses       */
+/* input:  - register number (decimal)                       */
+/* returns string of addresses between {}                    */
+/* (not used for 16-bit core)                                */
+/* --------------------------------------------------------- */
+sfr_mirror: procedure expose Ram. BANKSIZE NumBanks
+addr = arg(1)
+addr_list = '{ 0x'D2X(addr)                     /* open bracket, orig. addr */
+do i = addr + BANKSIZE to NumBanks * BANKSIZE - 1 by BANKSIZE   /* avail ram */
+  if addr = Ram.i then                          /* matching reg number */
+    addr_list = addr_list',0x'D2X(i)            /* concatenate to string */
 end
-Dev.0 = i - 1                                   /* # of stored records */
-call stream DevFile, 'c', 'close'               /* done */
-return
+return addr_list' }'                            /* complete string */
 
 
-/* ---------------------------------- */
-/* Read .lkr file into stem variable  */
-/* input: - LkrFile                   */
-/*        - Lkr.                      */
-/*                                    */
-/* Collect only relevant lines!       */
-/* ---------------------------------- */
-File_read_lkr: procedure expose LkrFile Lkr.
-LkrFile = translate(LkrFile, '/', '\')          /* enforce forward slashes */
-Lkr.0 = 0                                       /* no records read */
-if stream(LkrFile, 'c', 'open read') \= 'READY:' then
-  return
-i = 1                                           /* first record */
-do while lines(LkrFile) > 0                     /* whole file */
-  parse upper value linein(LkrFile) with Lkr.i  /* store line in upper case */
-  if length(Lkr.i) \> 2           |,            /* empty */
-     left(word(Lkr.i,1),2) = '//' |,            /* .lkr comment */
-     word(Lkr.i,1) = '#FI'        |,            /* end if */
-     word(Lkr.i,1) = '#DEFINE'    |,            /* const definition */
-     word(Lkr.i,1) = 'LIBPATH' then             /* Library path */
-    iterate                                     /* skip these lines */
-  if word(Lkr.i,1) = '#IFDEF' then do           /* conditional part */
-    if left(word(Lkr.i,2),6) = '_DEBUG'  |,     /* debugging */
-       left(word(Lkr.i,2),6) = '_EXTEN' then do /* extended mode */
-      do while lines(LkrFile) > 0               /* skip lines */
-        parse upper value linein(LkrFile) with ln  /* read line */
-        if word(ln,1) = '#ELSE' |,              /* other than debugging */
-           word(ln,1) = '#FI' then do           /* end conditional part */
-          leave                                 /* resume normal */
-        end
-      end
-    end
-  end
-  else do                                       /* not skipped */
-    i = i + 1                                   /* keep this record */
-  end
+/* --------------------------------------------- */
+/* Signal duplicates name.                       */
+/* Collect all names in Name. compound var       */
+/* Return - 0 when name is unique                */
+/*        - 1 when name is dumplicate            */
+/* --------------------------------------------- */
+duplicate_name: procedure expose Name.
+newname = arg(1)
+if newname = '' then                            /* no name specified */
+  return 1                                      /* not acceptable */
+reg = arg(2)                                    /* register */
+if Name.newname = '-' then do                   /* name not in use yet */
+  Name.newname = reg                            /* mark in use by which reg */
+  return 0                                      /* unique */
 end
-Lkr.0 = i - 1                                  /* # non-comment records */
-call stream LkrFile, 'c', 'close'              /* done */
-return
+if reg \= newname then do                       /* not alias of register */
+  Say 'Duplicate name:' newname 'in' reg'. First occurence:' Name.newname
+  return 1                                      /* duplicate */
+end
 
-
-/* ------------ script debugging ----------------------- */
-
-error_catch:
-Say 'Execution error, rc' rc 'at script line' SIGL
-return rc
-
-syntax_catch:
-if rc = 4 then                                  /* interrupted */
-  exit
-Say 'Syntax error, rc' rc 'at script line' SIGL
-return rc
 
