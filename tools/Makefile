@@ -1,11 +1,10 @@
-# Makefile to handle common task
-# Copyright (c) 2008, Sebastien Lelong. All rights reserved.
+# Title: Makefile to handle common task
+# Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
 # Adapted by:
 # 
 # This file is part of jallib (http://jallib.googlecode.com)
 # Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 #
-# Sources of information:
 #
 
 
@@ -31,5 +30,15 @@ compile:
 	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
 	do \
 		jalv2 -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
+	done 
+
+jsg:
+	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
+	do \
+		./jsg_validator.py $$f ;\
+	done 
+	for f in `find ${INCLUDE_DIR} -name \*.jal`; \
+	do \
+		./jsg_validator.py $$f ;\
 	done 
 
