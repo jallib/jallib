@@ -132,10 +132,56 @@ def validate_filename(filename):
 		warnings.append("Filename doesn't have '*.jal' extention: %s" % filename)
 	pass
 
+
+def validate_lower_case(content):
+	# tokenize content, searching for infamous CamelCase words
+	# Also search Capitalized ones...
+	tokenizer = re.compile("\w+")
+	caps = re.compile("[A-Z]")
+	# no check in comments
+	codeonly = []
+	for line in content:
+		if line.startswith(";") or line.startswith("--"):	
+			continue
+		l = line.split()
+		def nocomment(l,c):
+			# dirty search comments...
+			if c in l:
+				l = l[:l.index(c)]
+			return l
+		# first check ";" *then* "--"
+		# so things like ";;;;-- Note" are not considered
+		# (else produces wrong splitting...)
+		l = nocomment(l,";")
+		l = nocomment(l,"--")
+		codeonly.append(" ".join(l))
+		
+	weird = []	# stores all errors
+	for token in tokenizer.findall("\n".join(codeonly)):
+		# it can be all in caps (constants)
+		if token.upper() == token:
+			continue
+		# hex definition, give up
+		if "0x" in token:
+			continue
+		# exception for port and pin
+		if "pin" in token.lower() or "port" in token.lower():
+			continue
+		if caps.findall(token):
+			weird.append("Found Capitals in token: %s" % repr(token))
+	# unique token error 
+	errors.extend(set(weird))
+
+def validate_code(content):
+	validate_lower_case(content)
+	# ...
+
 def validate(filename):
 	validate_filename(filename)
 	content = open(filename,"r").readlines()
 	validate_header(content)
+	# remaining content has no more header
+	validate_code(content)
 
 
 def report(filename):
