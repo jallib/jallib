@@ -52,6 +52,13 @@ do i=1 to pic.0
   parse value filespec('Name', pic.i) with M '.jal'
   say M
 
+  '@python jsg_validator.py' pic.i '>'m'.pylog'       /* validate include */
+  if rc \= 0 then do
+    say 'returncode of validation include file' M'.jal is:' rc
+    exit rc                                           /* terminate! */
+  end
+  '@erase' m'.pylog'                            /* when OK, discard log */
+
   B = 'b'M'.jal'                                /* source file to create */
   call stream  B, 'c', 'open write replace'
   call lineout B, '-- ------------------------------------------------------'
@@ -83,21 +90,23 @@ do i=1 to pic.0
   if osc.0 > 0 then do                                  /* oscillator pragma present */
     call SysFileSearch 'HS =', pic.i, osc.
     if  osc.0 > 0 then do                               /* HS mode supported */
-      call lineout B, '-- This program assumes you use a 20 MHz resonator or crystal'
-      call lineout B, '-- connected to pins OSC1 and OSC2.'
-      call lineout B, 'pragma target OSC HS              -- HS crystal or resonator'
-      call lineout B, 'pragma target clock 20_000_000    -- oscillator frequency'
+      call lineout B, '-- This program assumes a 20 MHz resonator or crystal'
+      call lineout B, '-- is connected to pins OSC1 and OSC2.'
+      call lineout B, 'pragma target OSC HS               -- HS crystal or resonator'
+      call lineout B, 'pragma target clock 20_000_000     -- oscillator frequency'
     end
     else do                                             /* assume internal oscillator */
-      call lineout B, '-- This program assumes you use the internal oscillator.'
+      call lineout B, '-- This program assumes the internal oscillator'
+      call lineout B, '-- is used with a frequency of 4 MHz.'
       call lineout B, 'pragma target OSC INTOSC_NOCLKOUT  -- internal oscillator'
       call lineout B, 'pragma target clock 4_000_000      -- oscillator frequency'
     end
   end
   else do
+    call lineout B, '-- This program assumes the internal oscillator'
+    call lineout B, '-- is used with a frequency of 4 MHz.'
     call lineout B, 'pragma target clock 4_000_000      -- oscillator frequency'
   end
-  call lineout B, '-- You may want to change the clock speed!'
   call SysFileSearch 'pragma fuse_def WDT', pic.i, wdt.
   if wdt.0 > 0 then do
     call lineout B, 'pragma target WDT  disabled'
@@ -107,7 +116,7 @@ do i=1 to pic.0
     call lineout B, 'pragma target LVP  disabled'
   end
   call lineout B, '--'
-  call lineout B, 'enable_digital_io()               -- disable analog I/O (if any)'
+  call lineout B, 'enable_digital_io()                -- disable analog I/O (if any)'
   call lineout B, '--'
   call lineout B, '-- You may want to change the selected pin:'
 
@@ -117,16 +126,16 @@ do i=1 to pic.0
   port.3 = 'C'
   do p=1 to port.0
     do q=0 to 7
-      call SysFileSearch ' PIN_'port.p||q' ', pic.i, pin.    /* search I/O pin */
+      call SysFileSearch ' pin_'port.p||q' ', pic.i, pin.    /* search I/O pin */
       if pin.0 > 0 then do                                   /* pin found */
         call SysFileSearch ' TRIS'port.p, pic.i, tris.       /* search TRISx */
         if tris.0 > 0 then do                                /* found */
-          call SysFileSearch ' PIN_'port.p||q'_DIRECTION', pic.i, tris.
+          call SysFileSearch ' pin_'port.p||q'_direction', pic.i, tris.
           if tris.0 > 0 then do                              /* found pin direction */
-            call lineout B, 'var bit LED           is PIN_'port.p||q'   -- alias'
-            call lineout B, 'var bit LED_DIRECTION is PIN_'port.p||q'_DIRECTION'
+            call lineout B, 'var bit led           is pin_'port.p||q'   -- alias'
+            call lineout B, 'var bit led_direction is pin_'port.p||q'_direction'
             call lineout B, '--'
-            call lineout B, 'LED_DIRECTION = output'
+            call lineout B, 'led_direction = output'
             leave p
           end
           else do
@@ -134,7 +143,7 @@ do i=1 to pic.0
           end
         end
         else do                                              /* no TRISx found */
-          call lineout B, 'var bit LED           is PIN_'port.p||q'   -- alias'
+          call lineout B, 'var bit led           is pin_'port.p||q'   -- alias'
           leave p
         end
       end
@@ -147,13 +156,21 @@ do i=1 to pic.0
 
   call lineout B, '--'
   call lineout B, 'forever loop'
-  call lineout B, '  LED = on'
+  call lineout B, '  led = on'
   call lineout B, '  _usec_delay(250000)'
-  call lineout B, '  LED = off'
+  call lineout B, '  led = off'
   call lineout B, '  _usec_delay(250000)'
   call lineout B, 'end loop'
   call lineout B, '--'
   call stream B, 'c', 'close'
+
+
+  '@python jsg_validator.py' B '>'m'.pylog'     /* validate blink program */
+  if rc \= 0 then do
+    say 'returncode of validation blink program' B 'is:' rc
+    exit rc                                           /* terminate! */
+  end
+  '@erase' m'.pylog'                            /* when OK, discard log */
 
   if p1 = 'DEBUG' then
     '@'J O B '>b'M'.log'
@@ -172,7 +189,7 @@ do i=1 to pic.0
     if errs = 0 & wngs = 0 then do
       k = k + 1
       '@copy'  B'.jal' dst'*' '1>nul'
-      '@erase' B'.hex' B'.asm' B'.jal' '1>nul 2>nul'
+      '@erase' B'.hex' B'.asm' B'.jal' B'.log' '1>nul 2>nul'
     end
     else
       say 'Compilation of' B'.jal failed:' LG.1
