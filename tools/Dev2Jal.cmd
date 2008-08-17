@@ -28,7 +28,7 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.40'                   /*                          */
+   ScriptVersion   = '0.0.41'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4g'                   /*                          */
 /* ------------------------------------------------------------------------ */
@@ -39,9 +39,15 @@ say 'Creating JALV2 include files for PIC specifications ...'
 signal on syntax name syntax_catch              /* catch syntax error       */
 signal on error  name error_catch               /* catch execution errors   */
 
-parse upper arg collection .           /* 'all', otherwise pre-selected     */
-if collection \= 'ALL' & collection \= '' then do
-  say 'Error: "All" is the only expected parameter'
+parse upper arg destination                     /* where to store jal files */
+if destination = 'PROD' then do
+  dstdir = '/jallib/unvalidated/include/device/'  /* production base */
+end
+else if destination = 'TEST' then do
+  dstdir = '/jallib/test/'                      /* test base */
+end
+else do
+  say 'Error: Required parameter missing: "prod" or "test"'
   return 1
 end
 
@@ -52,11 +58,6 @@ wildcard = 'PIC1*.dev'                          /* selected device files */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load Rexx utilities   */
-
-dstdir = './'                                   /* current dir */
-if Collection = 'ALL' then do                   /* 'all' -> separate dir */
-  dstdir = '/jallib/unvalidated/include/device/'  /* destination base */
-end
 
 ChipFile = dstdir'chipdef.jal'                  /* common file */
 
@@ -95,10 +96,7 @@ do i=1 to dir.0                                 /* all entries */
   rx = 1                                        /* assume not processed */
 
   if left(PicName,3) = '10f' then do            /* 12-bit core */
-    if collection = 'ALL' |,                    /* all or selected */
-       left(PicName,5) = '10f22' ,
-    then
-      rx = dev2Jal12(dir.i, lkrdir)             /* 12 -bits core */
+    rx = dev2Jal12(dir.i, lkrdir)
   end
 
   else if left(PicName,3) = '12f'  |,
@@ -106,48 +104,12 @@ do i=1 to dir.0                                 /* all entries */
           left(PicName,3) = '16f'  |,
           left(PicName,4) = '16hv' |,
           left(PicName,4) = '16lf' then do      /* 14- (or 12)-bits core */
-    if collection = 'ALL' |,                    /* all or selected */
-              PicName      = '12f609'  |,
-              PicName      = '12f629'  |,
-              PicName      = '12f675'  |,
-              PicName      = '12f683'  |,
-              PicName      = '16f59'   |,
-              PicName      = '16hv540' |,
-              PicName      = '16f648a' |,
-              PicName      = '16f690'  |,
-              PicName      = '16f676'  |,
-              PicName      = '16f727'  |,
-              PicName      = '16hv785' |,
-              PicName      = '16f818'  |,
-              PicName      = '16f819'  |,
-              PicName      = '16f84a'  |,
-              PicName      = '16f870'  |,
-              PicName      = '16f874'  |,
-              PicName      = '16f874a' |,
-              PicName      = '16f877a' |,
-              PicName      = '16f88'   |,
-              PicName      = '16f886'  |,
-              PicName      = '16f917'   ,
-    then
-      rx = dev2Jal14(dir.i, lkrdir)             /* 14-bits core */
+    rx = dev2Jal14(dir.i, lkrdir)
   end
 
   else if left(PicName,3) = '18f'  |,
           left(PicName,4) = '18lf' then do      /* 16 bit core */
-    if collection = 'ALL' |,                    /* all or selected */
-              PicName      = '18f242'    |,
-              PicName      = '18f2455'   |,
-              PicName      = '18f24j10'  |,
-              PicName      = '18f2620'   |,
-              PicName      = '18f458'    |,
-              PicName      = '18f4685'   |,
-              PicName      = '18f97j60'  |,
-              PicName      = '18lf13k50' |,
-              PicName      = '18lf24j11' |,
-              PicName      = '18lf45j10' |,
-              PicName      = '18lf46j11'  ,
-    then
-      rx = dev2Jal16(dir.i, lkrdir)             /* 16-bits core */
+    rx = dev2Jal16(dir.i, lkrdir)
   end
 
   if rx = 0 then do                             /* success */
@@ -156,7 +118,7 @@ do i=1 to dir.0                                 /* all entries */
 
 end
 
-if test = 'ALL' then do
+if test = 'PROD' then do
   'del 16f1937.jal'                             /* do not distribute */
 end
 
@@ -169,7 +131,7 @@ return 0
 
 
 /* ==================================================================== */
-/*       M A I N L I N E   F O R   1 2 - B I T S   C O R E              */
+/*                 1 2 - B I T S   C O R E                              */
 /* ==================================================================== */
 dev2jal12: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             PicName DstDir,
@@ -230,7 +192,7 @@ return 0
 
 
 /* ==================================================================== */
-/*       M A I N L I N E   F O R   1 4 - B I T S   C O R E              */
+/*                       1 4 - B I T S   C O R E                        */
 /* ==================================================================== */
 dev2jal14: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             PicName DstDir,
@@ -295,7 +257,7 @@ return 0
 
 
 /* ==================================================================== */
-/*       M A I N L I N E   F O R   1 6 - B I T S   C O R E              */
+/*                      1 6 - B I T S   C O R E                         */
 /* ==================================================================== */
 dev2jal16: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             PicName DstDir,
@@ -669,16 +631,17 @@ if DevId == '0000' then do                      /* DevID not found */
   else if PicName = '16f84A' then               /* missing in MPlab */
     Devid = '0560'
 end
+parse upper var PicName PicNameUpper
 if DevId \== '0000' then do                     /* not missing DevID */
   call lineout JalFile, '-- Device-ID: 0x'DevId
-  call lineout ChipFile, left('const       pic_'PicName,29) '= 0x_'Core'_'DevID
+  call lineout ChipFile, left('const       PIC_'PicNameUpper,29) '= 0x_'Core'_'DevID
 end
 else do                                         /* unknown device ID */
   DevID = right(PicName,3)                      /* rightmost 3 chars */
   if datatype(Devid,'X') = 0 then do            /* not all hex digits */
     DevID = right(right(PicName,2),3,'F')       /* 'F' + rightmost 2 chars */
   end
-  call lineout ChipFile, left('const       pic_'PicName,29) '= 0x_'Core'_F'DevID
+  call lineout ChipFile, left('const       PIC_'PicNameUpper,29) '= 0x_'Core'_F'DevID
 end
 return
 
@@ -868,12 +831,12 @@ return
 /* 12-bit and 14-bit core                         */
 /* ---------------------------------------------- */
 list_fuses_words1x: procedure expose JalFile CfgAddr. Core
-call lineout JalFile, 'const word  _fuses_ct             =' CfgAddr.0
+call lineout JalFile, 'const word  _FUSES_CT             =' CfgAddr.0
 if CfgAddr.0 = 1 then do
-  call lineout JalFile, 'const word  _fuse_base            = 0x'D2X(CfgAddr.1)
+  call lineout JalFile, 'const word  _FUSE_BASE            = 0x'D2X(CfgAddr.1)
 end
 else do
-  call charout JalFile, 'const word  _fuse_base[_fuses_ct] = { '
+  call charout JalFile, 'const word  _FUSE_BASE[_FUSES_CT] = { '
   do  j = 1 to CfgAddr.0
     call charout JalFile, '0x'D2X(CfgAddr.j)
     if j < CfgAddr.0 then
@@ -882,14 +845,14 @@ else do
   call lineout JalFile, ' }'
 end
 if CfgAddr.0 = 1 then do
-  call charout JalFile, 'const word  _fuses                = '
+  call charout JalFile, 'const word  _FUSES                = '
   if Core = 12 then                             /* 12-bits code */
     call lineout JalFile, '0xFFF'
   else                                          /* 14-bits core */
     call lineout JalFile, '0x3FFF'
 end
 else do
-  call charout JalFile, 'const word  _fuses[_fuses_ct]     = { '
+  call charout JalFile, 'const word  _FUSES[_FUSES_CT]     = { '
   do  j = 1 to CfgAddr.0
     if Core = 12 then                           /* 12-bits code */
       call charout JalFile, '0xFFF'
@@ -910,8 +873,8 @@ return
 /* 16-bit core                                    */
 /* ---------------------------------------------- */
 list_fuses_bytes16: procedure expose JalFile CfgAddr.
-call lineout JalFile, 'const word  _fuses_ct             =' CfgAddr.0
-call charout JalFile, 'const dword _fuse_base[_fuses_ct] = { '
+call lineout JalFile, 'const word  _FUSES_CT             =' CfgAddr.0
+call charout JalFile, 'const dword _FUSE_BASE[_FUSES_CT] = { '
 do  i = 1 to CfgAddr.0
   call charout JalFile, '0x'D2X(CfgAddr.i,6)
   if i < CfgAddr.0 then do
@@ -920,7 +883,7 @@ do  i = 1 to CfgAddr.0
   end
 end
 call lineout JalFile, ' }'
-call charout JalFile, 'const byte  _fuses[_fuses_ct]     = { '
+call charout JalFile, 'const byte  _FUSES[_FUSES_CT]     = { '
 do  i = 1 to CfgAddr.0
   call charout JalFile, '0xFF'
   if i < CfgAddr.0 then do
@@ -939,11 +902,11 @@ return
 /* ---------------------------------------------- */
 list_IDmem: procedure expose JalFile IDaddr. Core
 if IDaddr.0 > 0 then do
-  call lineout JalFile, 'const word  _ID_ct                =' IDAddr.0
+  call lineout JalFile, 'const word  _ID_CT                =' IDAddr.0
   if  core = 12 | core = 14 then
-    call charout JalFile, 'const word  _ID_base[_ID_ct]      = { '
+    call charout JalFile, 'const word  _ID_BASE[_ID_CT]      = { '
   else                                          /* 16-bits core */
-    call charout JalFile, 'const dword _ID_base[_ID_ct]      = { '
+    call charout JalFile, 'const dword _ID_BASE[_ID_CT]      = { '
   do  j = 1 to IDaddr.0
     if Core = 12 | Core = 14 then do
       call charout JalFile, '0x'D2X(IDaddr.j,4)  /* address */
@@ -960,9 +923,9 @@ if IDaddr.0 > 0 then do
   end
   call lineout JalFile, ' }'
   if Core = 12 | Core = 14 then
-    call charout JalFile, 'const word  _ID[_ID_ct]           = { '
+    call charout JalFile, 'const word  _ID[_ID_CT]           = { '
   else
-    call charout JalFile, 'const byte  _ID[_ID_ct]           = { '
+    call charout JalFile, 'const byte  _ID[_ID_CT]           = { '
   do  j = 1 to IDaddr.0
     if Core = 12 | Core = 14 then
       call charout JalFile, '0x0000'              /* word */
@@ -1012,12 +975,12 @@ do i = 1 to Dev.0
     end
     else if reg = 'TRISIO' then do              /* tris */
       call lineout JalFile, 'var volatile byte ' left('TRISA',20) 'at' reg
-      call lineout JalFile, 'var volatile byte ' left('PORTA_DIRECTION',20) 'at' reg
+      call lineout JalFile, 'var volatile byte ' left('PORTA_direction',20) 'at' reg
       call list_tris_shadow 'TRISA'             /* nibble direction */
     end
     else if left(reg,4) = 'TRIS' then do        /* TRISx */
       call lineout JalFile, 'var volatile byte ',
-                           left('PORT'substr(reg,5)'_DIRECTION',20) 'at' reg
+                           left('PORT'substr(reg,5)'_direction',20) 'at' reg
       call list_tris_shadow reg                 /* nibble direction */
     end
 
@@ -1075,7 +1038,7 @@ do i = 1 to Dev.0
     end
     else if left(reg,4) = 'TRIS' then do        /* TRISx */
       call lineout JalFile, 'var volatile byte  ',
-             left('PORT'substr(reg,5)'_DIRECTION',20) 'shared at' reg
+             left('PORT'substr(reg,5)'_direction',20) 'shared at' reg
       call list_tris_shadow reg                 /* nibble directions */
     end
 
@@ -1128,7 +1091,7 @@ call lineout JalFile, '  'shadow '= x'
 call lineout JalFile, '  _port'substr(reg,5)'_flush'
 call lineout JalFile, 'end procedure'
 call lineout JalFile, '--'
-half = 'PORT'substr(reg,5)'_LOW'
+half = 'PORT'substr(reg,5)'_low'
 call lineout JalFile, 'var  byte' half
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
@@ -1138,7 +1101,7 @@ call lineout JalFile, 'function' half"'get" 'return byte is'
 call lineout JalFile, '  return' reg '& 0x0F'
 call lineout JalFile, 'end function'
 call lineout JalFile, '--'
-half = 'PORT'substr(reg,5)'_HIGH'
+half = 'PORT'substr(reg,5)'_high'
 call lineout JalFile, 'var  byte' half
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'shadow '= ('shadow '& 0x0F) | (x << 4)'
@@ -1165,7 +1128,7 @@ call lineout JalFile, '--pragma inline   (temporary disabled)'
 call lineout JalFile, '  'lat '= x'
 call lineout JalFile, 'end procedure'
 call lineout JalFile, '--'
-half = 'PORT'substr(lat,4)'_LOW'
+half = 'PORT'substr(lat,4)'_low'
 call lineout JalFile, 'var  byte' half
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'lat '= ('lat '& 0xF0) | (x & 0x0F)'
@@ -1174,7 +1137,7 @@ call lineout JalFile, 'function' half"'get" 'return byte is'
 call lineout JalFile, '  return' lat '& 0x0F'
 call lineout JalFile, 'end function'
 call lineout JalFile, '--'
-half = 'PORT'substr(lat,4)'_HIGH'
+half = 'PORT'substr(lat,4)'_high'
 call lineout JalFile, 'var  byte' half
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'lat '= ('lat '& 0x0F) | (x << 4)'
@@ -1194,7 +1157,7 @@ return
 list_tris_shadow: procedure expose JalFile
 reg = arg(1)
 call lineout JalFile, '--'
-half = 'PORT'substr(reg,5)'_LOW_DIRECTION'
+half = 'PORT'substr(reg,5)'_low_direction'
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'reg '= ('reg '& 0xF0) | (x & 0x0F)'
 call lineout JalFile, 'end procedure'
@@ -1202,7 +1165,7 @@ call lineout JalFile, 'function' half"'get" 'return byte is'
 call lineout JalFile, '  return' reg '& 0x0F'
 call lineout JalFile, 'end function'
 call lineout JalFile, '--'
-half = 'PORT'substr(reg,5)'_HIGH_DIRECTION'
+half = 'PORT'substr(reg,5)'_high_direction'
 call lineout JalFile, 'procedure' half"'put"'(byte in x) is'
 call lineout JalFile, '  'reg '= ('reg '& 0x0F) | (x << 4)'
 call lineout JalFile, 'end procedure'
@@ -1287,13 +1250,13 @@ do k = 0 to 8 while word(Dev.i,1) \= 'SFR'  &,          /* max # of records */
                 if left(n.j,1) = 'R'  &,
                     substr(n.j,2,1) = right(reg,1) then do  /* prob. I/O pin */
                   shadow = '_PORT'right(reg,1)'_SHADOW'
-                  pin = 'PIN_'||substr(n.j,2)
+                  pin = 'pin_'||substr(n.j,2)
                   call lineout JalFile, 'var volatile bit  ',
                                         left(pin,20) 'at' reg ':' offset
                   call lineout JalFile, 'procedure' pin"'put"'(bit in x) is'
                   call lineout JalFile, '  pragma inline'
-                  call lineout JalFile, '  var bit _Tmp_Bit at' shadow ':' offset
-                  call lineout JalFile, '  _Tmp_Bit = x'
+                  call lineout JalFile, '  var bit _tmp_bit at' shadow ':' offset
+                  call lineout JalFile, '  _tmp_bit = x'
                   call lineout JalFile, '  _port'substr(reg,5)'_flush'
                   call lineout JalFile, 'end procedure'
                   call lineout JalFile, '--'
@@ -1301,13 +1264,13 @@ do k = 0 to 8 while word(Dev.i,1) \= 'SFR'  &,          /* max # of records */
               end
               else if reg = 'GPIO' | reg = 'GP' then do
                 shadow = '_PORTA_SHADOW'
-                pin = 'PIN_A'right(n.j,1)
+                pin = 'pin_A'right(n.j,1)
                 call lineout JalFile, 'var volatile bit  ',
                                       left(pin,20) 'at' reg ':' offset
                 call lineout JalFile, 'procedure' pin"'put"'(bit in x) is'
                 call lineout JalFile, '  pragma inline'
-                call lineout JalFile, '  var bit _Tmp_Bit at' shadow ':' offset
-                call lineout JalFile, '  _Tmp_Bit = x'
+                call lineout JalFile, '  var bit _tmp_bit at' shadow ':' offset
+                call lineout JalFile, '  _tmp_bit = x'
                 call lineout JalFile, '  _portA_flush'
                 call lineout JalFile, 'end procedure'
                 call lineout JalFile, '--'
@@ -1316,12 +1279,12 @@ do k = 0 to 8 while word(Dev.i,1) \= 'SFR'  &,          /* max # of records */
                 call lineout JalFile, 'var volatile bit  ',
                     left('TRISA'right(n.j,1),20) 'at' reg ':' offset
                 call lineout JalFile, 'var volatile bit  ',
-                    left('PIN_A'substr(n.j,7)'_DIRECTION',20) 'at' reg ':' offset
+                    left('pin_A'substr(n.j,7)'_direction',20) 'at' reg ':' offset
               end
               else if left(reg,4) = 'TRIS' then do
                 if left(n.j,4) = 'TRIS' then
                   call lineout JalFile, 'var volatile bit  ',
-                    left('PIN_'substr(n.j,5)'_DIRECTION',20) 'at' reg ':' offset
+                    left('pin_'substr(n.j,5)'_direction',20) 'at' reg ':' offset
               end
             end
             offset = offset - 1                         /* next bit */
@@ -1430,19 +1393,19 @@ do k = 0 to 8 while word(Dev.i,1) \= 'SFR'   &,         /* max # of records */
               else if left(reg,3) = 'LAT' then do       /* LATx register */
                 if left(n.j,3) = 'LAT'   &,
                     substr(n.j,4,1) = right(reg,1) then do  /* prob. I/O pin */
-                  pin = 'PIN_'||substr(n.j,4)
+                  pin = 'pin_'||substr(n.j,4)
                   call lineout JalFile, 'var volatile bit',
                                         pin 'shared at' reg ':' offset
                   call lineout JalFile, 'procedure' pin"'put"'(bit in x) is'
                   call lineout JalFile, '--pragma inline  (temporary disabled)'
-                  call lineout JalFile, '  var bit _Tmp_Bit at' reg ':' offset
-                  call lineout JalFile, '  _Tmp_Bit = x'
+                  call lineout JalFile, '  var bit _tmp_bit at' reg ':' offset
+                  call lineout JalFile, '  _tmp_bit = x'
                   call lineout JalFile, 'end procedure'
                   call lineout JalFile, '--'
                 end
               end
               else if left(reg,4) = 'TRIS' then do
-                pin = 'PIN_'||substr(n.j,5)'_DIRECTION'
+                pin = 'pin_'||substr(n.j,5)'_direction'
                 if  left(n.j,4) = 'TRIS' then           /* only TRIS bits */
                   call lineout JalFile, 'var volatile bit   ',
                                left(pin,20) 'shared at' reg ':' offset
@@ -1940,11 +1903,11 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,
   end
   if Name.ANCON0 \= '-' then do                         /* ANCON0 declared */
     if Name.WDTCON_ADSHR \= '-' then
-      call lineout JalFile, '  WDTCON_ADSHR = true         -- make ADCONx addressable'
+      call lineout JalFile, '  WDTCON_ADSHR = TRUE         -- make ADCONx addressable'
     call lineout JalFile, '  ANCON0 = 0b1111_1111        -- all digital'
     call lineout JalFile, '  ANCON1 = 0b1111_1111        -- all digital'
     if Name.WDTCON_ADSHR \= '-' then
-      call lineout JalFile, '  WDTCON_ADSHR = false        -- release ADCONx'
+      call lineout JalFile, '  WDTCON_ADSHR = FALSE        -- release ADCONx'
   end
   call lineout JalFile, 'end procedure'
   call lineout JalFile, '--'
@@ -1957,7 +1920,7 @@ if Name.ADCON0 \= '-' then do
   call lineout JalFile, '--'
   call lineout JalFile, 'procedure adc_off() is'
   call lineout JalFile, '  pragma inline'
-  call lineout JalFile, '  ADCON0_ADON = false        -- disable ADC'
+  call lineout JalFile, '  ADCON0_ADON = FALSE        -- disable ADC'
   if Name.ADCON1 \= '-' then do
     call lineout JalFile, '  ADCON1 = 0b1111_1111       -- digital I/O'
   end
@@ -2049,8 +2012,8 @@ call lineout JalFile, '-- ---------------------------------------------------'
 call lineout JalFile, '--'
 call lineout JalFile, 'include chipdef                     -- common constants'
 call lineout JalFile, '--'
-call lineout JalFile, 'pragma  target  cpu   pic_'Core '   -- (banks = 'Numbanks')'
-call lineout JalFile, 'pragma  target  chip  'PICName
+call lineout JalFile, 'pragma  target  cpu   PIC_'Core '   -- (banks = 'Numbanks')'
+call lineout JalFile, 'pragma  target  chip  'PicName
 call lineout JalFile, 'pragma  target  bank  0x'D2X(BANKSIZE,4)
 if core = 12  then do
   call lineout JalFile, 'pragma  target  page  0x'D2X(PAGESIZE,4)
@@ -2135,28 +2098,28 @@ call lineout ChipFile, '--  - Created with Dev2Jal Rexx script version' ScriptVe
 call lineout ChipFile, '--  - File creation date/time:' date('N') time('N')'.'
 call lineout ChipFile, '--'
 call lineout ChipFile, '-- ---------------------------------------------------'
-call lineout ChipFile, 'const       pic_12            = 1'
-call lineout ChipFile, 'const       pic_14            = 2'
-call lineout ChipFile, 'const       pic_16            = 3'
-call lineout ChipFile, 'const       sx_12             = 4'
+call lineout ChipFile, 'const       PIC_12            = 1'
+call lineout ChipFile, 'const       PIC_14            = 2'
+call lineout ChipFile, 'const       PIC_16            = 3'
+call lineout ChipFile, 'const       SX_12             = 4'
 call lineout ChipFile, '--'
 call lineout ChipFile, 'const bit   PJAL              = 1'
 call lineout ChipFile, '--'
-call lineout ChipFile, 'const byte  w                 = 0'
-call lineout ChipFile, 'const byte  f                 = 1'
+call lineout ChipFile, 'const byte  W                 = 0'
+call lineout ChipFile, 'const byte  F                 = 1'
 call lineout ChipFile, '--'
-call lineout ChipFile, 'const bit   true              = 1'
-call lineout ChipFile, 'const bit   false             = 0'
-call lineout ChipFile, 'const bit   high              = true'
-call lineout ChipFile, 'const bit   low               = false'
-call lineout ChipFile, 'const bit   on                = true'
-call lineout ChipFile, 'const bit   off               = false'
-call lineout ChipFile, 'const bit   enabled           = true'
-call lineout ChipFile, 'const bit   disabled          = false'
-call lineout ChipFile, 'const bit   input             = true'
-call lineout ChipFile, 'const bit   output            = false'
-call lineout ChipFile, 'const byte  all_input         = 0b_1111_1111'
-call lineout ChipFile, 'const byte  all_output        = 0b_0000_0000'
+call lineout ChipFile, 'const bit   TRUE              = 1'
+call lineout ChipFile, 'const bit   FALSE             = 0'
+call lineout ChipFile, 'const bit   HIGH              = TRUE'
+call lineout ChipFile, 'const bit   LOW               = FALSE'
+call lineout ChipFile, 'const bit   ON                = TRUE'
+call lineout ChipFile, 'const bit   OFF               = FALSE'
+call lineout ChipFile, 'const bit   ENABLED           = TRUE'
+call lineout ChipFile, 'const bit   DISABLED          = FALSE'
+call lineout ChipFile, 'const bit   INPUT             = TRUE'
+call lineout ChipFile, 'const bit   OUTPUT            = FALSE'
+call lineout ChipFile, 'const byte  ALL_INPUT         = 0b_1111_1111'
+call lineout ChipFile, 'const byte  ALL_OUTPUT        = 0b_0000_0000'
 call lineout ChipFile, '--'
 call lineout ChipFile, '-- =================================================================='
 call lineout ChipFile, '--'
@@ -2164,7 +2127,7 @@ call lineout ChipFile, '-- Values assigned to const "target_chip" by'
 call lineout ChipFile, '-- "pragma target chip" in device include files.'
 call lineout ChipFile, '-- Can be used for conditional compilation,',
                        'for example:'
-call lineout ChipFile, '--    if (target_chip = pic_16f88) then'
+call lineout ChipFile, '--    if (target_chip = PIC_16F88) then'
 call lineout ChipFile, '--      ....                                  -- for 16F88 only'
 call lineout ChipFile, '--    endif'
 call lineout ChipFile, '--'
