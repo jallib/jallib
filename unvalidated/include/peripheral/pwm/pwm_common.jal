@@ -1,4 +1,4 @@
--- Title: hardware PWM control
+-- Title: hardware PWM control, generic procedures
 -- Author: Stef Mientki, Copyright (C) 2002-2006, all rights reserved. 
 -- Adapted-by: Sebastien Lelong
 -- Compiler: >=2.4g
@@ -42,85 +42,53 @@ end procedure
 -- -----------------------------------------------------------------------------
 
 
+-- Store potential PR2 value that could be used to actually
+-- perform the accurate frequency
+var volatile dword _pr2_1
+var volatile dword _pr2_4
+var volatile dword _pr2_16
+
 -- -----------------------------------------------------------------------------
 -- initializes the PWM for accurate frequency and starts the PWM
 -- Frequency and dutycycle should be set by the following constants
 --     const pwm_frequency = 2_000    -- pwm frequency in Hz
 --     const pwm1_dutycycle = 50      -- dutycycle in percent of PWM1
 --     const pwm2_dutycycle = 50      -- dutycycle in percent of PWM2
--- Seb: why pwm_frequency is not passed to the procedure ?
 -- -----------------------------------------------------------------------------
--- TODO: need to refactor/break this chunk of code...
--- procedure pwm_init_frequency() is
--- 
--- 	const _pr2_1   = target_clock / ( 1 *  4 * pwm_frequency )
--- 	const _pr2_4   = target_clock / ( 4 *  4 * pwm_frequency )
--- 	const _pr2_16  = target_clock / ( 16 * 4 * pwm_frequency )
--- 	-- due to a limitation in JAL, the brackects below are VERY essential
--- 	const _duty1_1  = ((pwm1_dutycycle * 4) * _pr2_1) / 100
--- 	const _duty1_4  = ((pwm1_dutycycle * 4) * _pr2_4) / 100
--- 	const _duty1_16 = ((pwm1_dutycycle * 4) * _pr2_16) / 100
--- 	
--- 	const _duty2_1  = ((pwm2_dutycycle * 4) * _pr2_1) / 100
--- 	const _duty2_4  = ((pwm2_dutycycle * 4) * _pr2_4) / 100
--- 	const _duty2_16 = ((pwm2_dutycycle * 4) * _pr2_16) / 100
--- 	
--- 	var byte pre_scaler
--- 	;;;; TOOD: should probably use function here. REFACTORING
--- 	;;;;-- calculate prescaler and divider
--- 	;;;;if _pr2_1 == 0 then
--- 	;;;;	pragma error    -- pwm frequency is too high
--- 	;;;;elsif _pr2_1 <= 256 then
--- 	;;;;	PR2 = _pr2_1 - 1                     -- load timer value (base period)
--- 	;;;;	CCPR1L_shadow = _duty1_1 / 4        -- 8 high order bits of dutycycle
--- 	;;;;	CCPR2L_shadow = _duty2_1 / 4        -- 8 high order bits of dutycycle
--- 	;;;;	-- 5:4 - 2 least order bits of dutycycle
--- 	;;;;	CCP1CON_shadow = ( _duty1_1 & 0b_0000_0011 ) * 16 
--- 	;;;;	CCP2CON_shadow = ( _duty2_1 & 0b_0000_0011 ) * 16
--- 	;;;;	pre_scaler = 0b_100
--- 	;;;;elsif _pr2_4 <= 256 then
--- 	;;;;	PR2 = _pr2_4 - 1
--- 	;;;;	CCPR1L_shadow = _duty1_4 / 4
--- 	;;;;	CCPR2L_shadow = _duty2_4 / 4
--- 	;;;;	CCP1CON_shadow = ( _duty1_4 & 0b_0000_0011 ) * 16
--- 	;;;;	CCP2CON_shadow = ( _duty2_4 & 0b_0000_0011 ) * 16
--- 	;;;;	pre_scaler = 0b_101 
--- 	;;;;	
--- 	;;;;elsif _pr2_16 <= 256 then
--- 	;;;;	PR2 = _pr2_16 - 1
--- 	;;;;	CCPR1L_shadow = _duty1_16 / 4
--- 	;;;;	CCPR2L_shadow = _duty2_16 / 4
--- 	;;;;	CCP1CON_shadow = ( _duty1_16 & 0b_0000_0011 ) * 16
--- 	;;;;	CCP2CON_shadow = ( _duty2_16 & 0b_0000_0011 ) * 16
--- 	;;;;	pre_scaler = 0b_110 
--- 	;;;;else
--- 	;;;;	pragma error  -- pwm frequency is too low to be realized by this routine,
--- 	;;;;	-- use the post scaler and interrupt
--- 	;;;;end if
--- 
--- 	-- load tmr2 prescaler, and turn it on
--- 	-- (post-scaler is not used in PWM !!)
--- 	T2CON   = ( T2CON & 0b_1111_1000 ) | pre_scaler   
--- 	
--- 	-- Seb: this is handled in pwmx_start,pwmx_stop, _pwm_init_pinx procedures, right ?
--- 	;;;;pwm_min1 = 0 
--- 	;;;;pwm_min2 = 0 
--- 	;;;;pmw_max1 = 0xFF 
--- 	;;;;pwm_max2 = 0xFF 
--- 	;;;;
--- 	;;;;-- set PWM mode --11xx
--- 	;;;;if enable1 then
--- 	;;;;	CCP1CON_shadow = CCP1CON_shadow | 0b_0000_1111
--- 	;;;;else
--- 	;;;;	CCP1CON_shadow = CCP1CON_shadow & 0b_1111_0000
--- 	;;;;end if
--- 	;;;;if enable2 then
--- 	;;;;	CCP2CON_shadow = CCP2CON_shadow | 0b_0000_1111
--- 	;;;;else
--- 	;;;;	CCP2CON_shadow = CCP2CON_shadow & 0b_1111_0000
--- 	;;;;end if
--- 	;;;;pwm12_start()
--- 
--- end procedure
--- -- -----------------------------------------------------------------------------
+procedure pwm_set_frequency(dword in freq) is
+	-- compute all values
+	_pr2_1 = target_clock / ( 1 *  4 * freq )
+	_pr2_4   = target_clock / ( 4 *  4 * freq )
+	_pr2_16  = target_clock / ( 16 * 4 * freq )
+	-- calculate prescaler and divider
+	var byte pre_scaler
+	if _pr2_1 == 0 then
+		-- since now it's a byte, cannot pragma error'ing...
+		-- what should we do ?
+		;;pragma error    -- pwm frequency is too high
+		-- turn pwm off
+		pre_scaler = 0b_0000_0000
+	elsif _pr2_1 <= 256 then
+		PR2 = byte(_pr2_1) - 1                     -- load timer value (base period)
+		pre_scaler = 0b_0000_0100
+	elsif _pr2_4 <= 256 then
+		PR2 = byte(_pr2_4) - 1
+		pre_scaler = 0b_0000_0101 
+	elsif _pr2_16 <= 256 then
+		PR2 = byte(_pr2_16) - 1
+		pre_scaler = 0b_0000_0110 
+	else
+		-- again, cannot pragma error'ing...
+		;;pragma error  -- pwm frequency is too low to be realized by this routine,
+		;;-- use the post scaler and interrupt
+		pre_scaler = 0b_0000_0000
+	end if
+
+	-- load tmr2 prescaler, and turn it on
+	-- (post-scaler is not used in PWM !!)
+	var byte t2con_tmp = T2CON & 0b_1111_1000
+	T2CON   = t2con_tmp | pre_scaler   
+
+end procedure
+
 
