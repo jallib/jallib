@@ -1,0 +1,70 @@
+-- Title: keyboard, scans 4x4 keybaord and returns 0x00..0x0F is keypressed, 0x10 if none pressed
+-- Author: Javier Martínez, Copyright (c) 2003, all rights reserved.
+-- Adapted-by: Eur van Andel, eur@fiwihex.nl
+-- Compiler: Jal 2.4g
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This library consist of a single funtion: getkey() that scans a 4x4 matrix keyboard. 
+-- it needs two variables: keydrive and keyscan. 
+--
+-- Adaptation: soldering your wires in the right order is a lot harder than you think.
+-- So keep portx_low on the rows and portx_high on the columns or vice versa. 
+-- Connect the keyboard and press the buttons. Make a local copy of this library and 
+-- adapt the row and column constants so pressing the buttons give the right result.
+
+--
+--  1 2 3 A     row1    (4)
+--  4 5 6 B     row2    (5)
+--  7 8 9 C     row3    (6)
+--  * 0 # D     row4    (7)
+--
+--  col 1 2 3 4
+--
+
+const row1 = 0b0000_0100       -- match these constants to your soldering skills
+const row2 = 0b0000_0001
+const row3 = 0b0000_0010
+const row4 = 0b0000_1000
+const col1 = 0b0000_1000
+const col2 = 0b0000_0010
+const col3 = 0b0000_0100
+const col4 = 0b0000_0001
+
+function getkey return byte is
+var byte scan0, scan1, scan2, scan3
+
+   keydrive = col1      --               LSB        MSB
+   scan0 = keyscan & 0x0F  -- active col [1] [4] [7] [A]
+   keydrive = col2
+   scan1 = keyscan & 0x0F  -- active col [2] [5] [8] [0]
+   keydrive = col3
+   scan2 = keyscan & 0x0F  -- active col [3] [6] [9] [B]
+   keydrive = col4
+   scan3 = keyscan & 0x0F  -- active col [F] [E] [D] [C]
+
+   if ( scan3 == 0x00 ) & ( scan2 == 0x00  ) &
+      ( scan1 == 0x00 ) & ( scan0 == 0x00  ) then return 0x10 -- 16
+
+   elsif scan3 == row1 then return 0x01
+   elsif scan3 == row2 then return 0x04
+   elsif scan3 == row3 then return 0x07
+   elsif scan3 == row4 then return 0x0A
+   elsif scan2 == row1 then return 0x02     
+   elsif scan2 == row2 then return 0x05
+   elsif scan2 == row3 then return 0x08
+   elsif scan2 == row4 then return 0x00
+   elsif scan1 == row1 then return 0x03
+   elsif scan1 == row2 then return 0x06
+   elsif scan1 == row3 then return 0x09
+   elsif scan1 == row4 then return 0x0B
+   elsif scan0 == row1 then return 0x0F     
+   elsif scan0 == row2 then return 0x0E
+   elsif scan0 == row3 then return 0x0D
+   elsif scan0 == row4 then return 0x0C
+   end if
+   
+   return 0x11  -- 17                   -- error
+
+end function
