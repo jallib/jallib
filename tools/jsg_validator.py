@@ -172,8 +172,16 @@ def validate_lower_case(content):
 	# unique token error 
 	errors.extend(set(weird))
 
+def validate_no_args(content):
+	# no () in definition
+	noargs = re.compile("^(procedure|function)\s+\w+\s+is")
+	for line in content:
+		if noargs.match(line):
+			errors.append("%s missing (). Calls must also be explicit" % repr(line))
+
 def validate_code(content):
 	validate_lower_case(content)
+	validate_no_args(content)
 	# ...
 
 def validate(filename):
