@@ -1,0 +1,170 @@
+-- prog.jal, to test LCD
+
+include 16F877a          
+
+pragma target clock 20_000_000                  -- xtal frequency
+pragma target OSC        hs
+pragma target   LVP disabled
+pragma target   WDT disabled
+
+enable_digital_io()
+
+
+var bit  LED        is pin_a0       -- LED to see proper PIC startup
+pin_a0_direction    = output         
+
+var  bit  RS        is pin_b5       -- LCD command/data select.
+var  bit  EN        is pin_b4       -- LCD data trigger
+var byte data_port  is portb_low    -- LCD data
+
+portb_direction     = all_output    -- LCD data is portb_low
+
+
+include format
+include lcd                         -- LCD library
+include delay_any_mc
+
+for 4 loop
+   LED = on
+   delay_100ms(3)
+   LED = off
+   delay_100ms(3)
+end loop
+
+
+var byte counter = 0
+
+forever loop                                  -- loop forever
+
+   lcdsetcursor(0, 0) 
+   hd44780 = "T"    hd44780 = "e"    hd44780 = "s"    hd44780 = "t"    hd44780 = ":"    hd44780 = " "
+   format_byte_dec (hd44780, counter, 3, 1)  -- print a byte as fixed point var with 1 decimal, 
+                                             --   3 positions (including decimal point) in total
+   -- clear first part of lower line
+   lcdsetcursor(1, 0) 
+   for 8 loop
+      hd44780 = " "
+   end loop
+
+   -- set cursor at start of line1
+   lcdsetcursor(1, 0) 
+
+   CASE counter OF
+
+      0 : block
+         -- hex byte output
+         format_byte_hex(hd44780, 0xEA) 
+         counter = counter + 1
+      end block
+
+      1 : block
+         -- hex word output
+         format_word_hex(hd44780, 0xFD22) -- VIC20 reset vector ;-)
+         counter = 10
+      end block
+
+      10 : block
+         -- decimal output ' 1.2'
+         format_byte_dec(hd44780, 12, 3, 1) 
+         counter = counter + 1
+      end block
+
+      11 : block
+         -- decimal output '0.12'
+         format_byte_dec(hd44780, 12, 3, 2) 
+         counter = counter + 1
+      end block
+
+      12 : block
+         -- decimal output ' 12'
+         format_byte_dec(hd44780, 12, 3, 0) 
+         counter = counter + 1
+      end block
+
+      13 : block
+         -- decimal output '12.0'
+         format_byte_dec(hd44780, 120, 3, 1) 
+         counter = 20
+      end block
+
+      20 : block
+         -- decimal output '-12'
+         format_sbyte_dec(hd44780, -12, 3, 0) 
+         counter = counter + 1
+      end block
+
+      21 : block
+         -- decimal output '-1.2'
+         format_sbyte_dec(hd44780, -12, 3, 1) 
+         counter = counter + 1
+      end block
+
+      22 : block
+         -- decimal output '-12'
+         format_sbyte_dec(hd44780, -12, 3, 2) 
+         counter = 30
+      end block
+         
+      30 : block
+         -- decimal output ' 0.012'
+         format_word_dec(hd44780, 12, 6, 3) 
+         counter = counter + 1
+      end block
+
+      31 : block
+         -- decimal output '   1.2'
+         format_word_dec(hd44780, 12, 6, 1) 
+         counter = counter + 1
+      end block
+         
+      32 : block
+         -- decimal output '   12'
+         format_word_dec(hd44780, 12, 6, 0) 
+         counter = 40
+      end block
+         
+
+      40 : block
+         -- decimal output ' -0.012'
+         format_sword_dec(hd44780, -12, 6, 3) 
+         counter = 50  -- (no more examples in this group - you should get it by now...)
+      end block
+
+      50 : block
+         -- decimal output '23:55'
+         format_time_bytes(hd44780, 23, 55)  -- 5 minutes to midnight
+         counter = counter + 1
+      end block
+
+      51 : block
+         -- decimal output '23:56'
+         format_time_word(hd44780, 23 * 60 + 56)  -- 4 minutes to midnight
+         counter = 99
+      end block
+
+      OTHERWISE block
+         hd44780 = "E"    hd44780 = "n"    hd44780 = "d"
+         counter = 0
+      end block
+
+
+   END CASE
+
+
+   hd44780 = "<"
+
+
+
+ 
+
+
+
+   delay_100ms(30)
+
+end loop
+
+
+
+
+
+
