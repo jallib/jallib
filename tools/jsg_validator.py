@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 #
 #
 # Title: Jallib Style Guide validator script
@@ -138,11 +138,14 @@ def validate_lower_case(content):
 	# Also search Capitalized ones...
 	tokenizer = re.compile("\w+")
 	caps = re.compile("[A-Z]")
+	freetext = re.compile('(("|\').*("|\'))')
 	# no check in comments
 	codeonly = []
 	for line in content:
 		if line.startswith(";") or line.startswith("--"):	
 			continue
+		# don't consider free text (between quotes)
+		line = freetext.sub("",line)
 		l = line.split()
 		def nocomment(l,c):
 			# dirty search comments...
@@ -164,8 +167,9 @@ def validate_lower_case(content):
 		# hex definition, give up
 		if "0x" in token:
 			continue
-		# exception for port and pin
-		if "pin" in token.lower() or "port" in token.lower():
+		# exceptions for port and pin
+		if "pin" in token.lower() or "port" in token.lower() or \
+		   "tris" in token.lower():
 			continue
 		if caps.findall(token):
 			weird.append("Found Capitals in token: %s" % repr(token))
