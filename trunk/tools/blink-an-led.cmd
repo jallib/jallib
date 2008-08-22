@@ -138,7 +138,7 @@ do i=1 to pic.0
     do q=0 to 7
       call SysFileSearch ' pin_'port.p||q' ', pic.i, pin.    /* search I/O pin */
       if pin.0 > 0 then do                                   /* pin found */
-        call SysFileSearch ' TRIS'port.p, pic.i, tris.       /* search TRISx */
+        call SysFileSearch ' pin_'port.p||q'_direction', pic.i, tris.       /* TRISx */
         if tris.0 > 0 then do                                /* found */
           call SysFileSearch ' pin_'port.p||q'_direction', pic.i, tris.
           if tris.0 > 0 then do                              /* found pin direction */
@@ -153,9 +153,7 @@ do i=1 to pic.0
           end
         end
         else do                                              /* no TRISx found */
-          call lineout B, 'var  bit   led         is pin_'port.p||q'   -- alias'
-          call lineout B, 'asm  clrf  W                       -- all bits off'
-          call lineout B, 'asm  tris  6                       -- GPIO/PORTA'
+          say 'Missing pin_'port.p||q'_direction declaration'
           leave p
         end
       end
