@@ -26,25 +26,33 @@
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
 
-Parse upper arg p1 .
+parse upper arg runtype selection .             /* where to store jal files */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
-call SysLoadFuncs                               /* load Rexx utilities      */
+call SysLoadFuncs                               /* load Rexx utilities */
 
-if p1 = 'DEBUG' then                            /* script debug mode        */
-  I = 'k:/jal/dev2jal/'                         /* include directory        */
-else                                            /* normal mode              */
-  I = 'k:/jallib/unvalidated/include/device/'   /* SVN include directory    */
-J = 'k:/c/Jalv2/JalV2.exe'                      /* compiler path (eCS)      */
-O = '-Wno-all -no-fuse -s' I                    /* compiler options         */
+J = 'k:/c/Jalv2/JalV2.exe'                      /* compiler path (eCS) */
 
-call SysFileTree I'1*.jal', pic, 'FO'           /* list of device includes  */
+if runtype = 'TEST' then do                     /* test mode */
+  I = 'k:/jallib/test/'                         /* test include directory */
+  O = '-Wno-all -s' I                           /* compiler options */
+end
+else do                                         /* normal mode */
+  I = 'k:/jallib/unvalidated/include/device/'   /* SVN include directory */
+  O = '-Wno-all -a nul -s' I                    /* no asm output */
+end
+
+if selection = '' then
+  call SysFileTree I'1*.jal', pic, 'FO'          /* list of device includes  */
+else
+  call SysFileTree I||selection, pic, 'FO'         /* list of device includes  */
+
 if dir.0 < 1 then do
   say 'No appropriate device files found in directory' devdir
   return 1
 end
 
-dst = '\jallib\unvalidated\sample\blink\'       /* destination directory    */
+dst = '\jallib\unvalidated\sample\blink\'       /* destination directory */
 k = 0
 
 do i=1 to pic.0
@@ -52,12 +60,14 @@ do i=1 to pic.0
   parse value filespec('Name', pic.i) with M '.jal'
   say M
 
-  '@python jsg_validator.py' pic.i '>'m'.pylog'       /* validate include */
+/*
+  '@python jsg_validator.py' pic.i '>'m'.pylog'
   if rc \= 0 then do
     say 'returncode of validation include file' M'.jal is:' rc
-    exit rc                                           /* terminate! */
+    exit rc
   end
   '@erase' m'.pylog'                            /* when OK, discard log */
+*/
 
   B = 'b'M'.jal'                                /* source file to create */
   call stream  B, 'c', 'open write replace'
@@ -143,7 +153,9 @@ do i=1 to pic.0
           end
         end
         else do                                              /* no TRISx found */
-          call lineout B, 'var bit led           is pin_'port.p||q'   -- alias'
+          call lineout B, 'var  bit   led         is pin_'port.p||q'   -- alias'
+          call lineout B, 'asm  clrf  W                       -- all bits off'
+          call lineout B, 'asm  tris  6                       -- GPIO/PORTA'
           leave p
         end
       end
@@ -168,14 +180,11 @@ do i=1 to pic.0
   '@python jsg_validator.py' B '>'m'.pylog'     /* validate blink program */
   if rc \= 0 then do
     say 'returncode of validation blink program' B 'is:' rc
-    exit rc                                           /* terminate! */
+    exit rc                                     /* terminate! */
   end
   '@erase' m'.pylog'                            /* when OK, discard log */
 
-  if p1 = 'DEBUG' then
-    '@'J O B '>b'M'.log'
-  else
-    '@'J O B '-a nul' '>b'M'.log'               /* no asm output */
+  '@'J O B '>b'M'.log'                          /* compile */
 
   if rc \= 0 then                               /* compiler error */
     leave                                       /* terminate */
@@ -187,16 +196,23 @@ do i=1 to pic.0
   if LG.0 > 0 then do
     parse upper var LG.1 errs 'ERRORS,' wngs 'WARNINGS'
     if errs = 0 & wngs = 0 then do
-      k = k + 1
-      '@copy'  B'.jal' dst'*' '1>nul'
-      '@erase' B'.hex' B'.asm' B'.jal' B'.log' '1>nul 2>nul'
+      if stream(B'.hex', 'c', 'query exists') = '' then do
+        Say 'Zero warnings and errors, but no hex file. Compiler failure!'
+      end
+      else do
+        k = k + 1                               /* all OK */
+        '@copy'  B'.jal' dst'*' '1>nul'
+        if runtype \= 'TEST' then
+          '@erase' B'.hex' B'.asm' B'.jal' B'.log' '1>nul 2>nul'
+      end
     end
     else
-      say 'Compilation of' B'.jal failed:' LG.1
+      say 'Compilation of' B'.jal failed:' LG.1
   end
   else do
     say 'Compilation of' B'.jal failed, file' B'.log' 'not found'
   end
+
 
   if k > 500 then exit loop     /* set (low) limit for test purposes */
 
