@@ -5,7 +5,7 @@
 --
 -- Adapted-by:
 --
--- Compiler: >=2.4g
+-- Compiler: =2.4
 --
 -- This file is part of jallib  (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
@@ -24,8 +24,8 @@
 --  - x:/mplab814/mpasm_suite/lkr/10f200_g.lkr
 --
 -- Notes:
---  - Created with Dev2Jal Rexx script version 0.0.42
---  - File creation date/time: 22 Aug 2008 13:34:21.
+--  - Created with Dev2Jal Rexx script version 0.0.43
+--  - File creation date/time: 23 Aug 2008 21:45:26.
 --
 -- ===================================================
 --
@@ -92,7 +92,7 @@ var volatile byte  PORTA                at GPIO
 --
 var          byte  _PORTA_shadow        = PORTA
 --
-procedure _PORTA_flush is
+procedure _PORTA_flush() is
   pragma inline
   PORTA = _PORTA_shadow
 end procedure
@@ -100,25 +100,25 @@ end procedure
 procedure PORTA'put (byte in x) is
   pragma inline
   _PORTA_shadow = x
-  _PORTA_flush
+  _PORTA_flush()
 end procedure
 --
 var  byte PORTA_low
 procedure PORTA_low'put(byte in x) is
   _PORTA_shadow = (_PORTA_shadow & 0xF0) | (x & 0x0F)
-  _PORTA_flush
+  _PORTA_flush()
 end procedure
 function PORTA_low'get return byte is
-  return PORTA & 0x0F
+  return (PORTA & 0x0F)
 end function
 --
 var  byte PORTA_high
 procedure PORTA_high'put(byte in x) is
   _PORTA_shadow = (_PORTA_shadow & 0x0F) | (x << 4)
-  _PORTA_flush
+  _PORTA_flush()
 end procedure
 function PORTA_high'get return byte is
-  return PORTA >> 4
+  return (PORTA >> 4)
 end function
 --
 var volatile bit   GPIO_GPIO3           at GPIO : 3
@@ -127,7 +127,7 @@ procedure pin_A3'put(bit in x) is
   pragma inline
   var bit _tmp_bit at _PORTA_shadow : 3
   _tmp_bit = x
-  _PORTA_flush
+  _PORTA_flush()
 end procedure
 --
 var volatile bit   GPIO_GPIO2           at GPIO : 2
@@ -136,7 +136,7 @@ procedure pin_A2'put(bit in x) is
   pragma inline
   var bit _tmp_bit at _PORTA_shadow : 2
   _tmp_bit = x
-  _PORTA_flush
+  _PORTA_flush()
 end procedure
 --
 var volatile bit   GPIO_GPIO1           at GPIO : 1
@@ -145,7 +145,7 @@ procedure pin_A1'put(bit in x) is
   pragma inline
   var bit _tmp_bit at _PORTA_shadow : 1
   _tmp_bit = x
-  _PORTA_flush
+  _PORTA_flush()
 end procedure
 --
 var volatile bit   GPIO_GPIO0           at GPIO : 0
@@ -154,14 +154,13 @@ procedure pin_A0'put(bit in x) is
   pragma inline
   var bit _tmp_bit at _PORTA_shadow : 0
   _tmp_bit = x
-  _PORTA_flush
+  _PORTA_flush()
 end procedure
 --
 --
 --
 -- ------------------------------------------------
---
-var  byte _TRISA_shadow = 0b1111_1111
+var  byte _TRISA_shadow = 0b1111_1111         -- default all input
 --
 procedure PORTA_direction'put (byte in x) is
   pragma inline
@@ -170,41 +169,106 @@ procedure PORTA_direction'put (byte in x) is
   asm tris 6
 end procedure
 --
-procedure pin_A0_direction'put (bit in x) is
---pragma inline   (temporary disabled)
-  asm  bcf _TRISA_shadow,0
-  if x == TRUE then
-    asm bsf _TRISA_shadow,0
-  end if
+procedure PORTA_low_direction'put(byte in x) is
+  _TRISA_shadow = (_TRISA_shadow & 0xF0) | (x & 0x0F)
   asm movf _TRISA_shadow,W
   asm tris 6
 end procedure
 --
-procedure pin_A1_direction'put (bit in x) is
---pragma inline   (temporary disabled)
-  asm  bcf _TRISA_shadow,1
-  if x == TRUE then
-    asm bsf _TRISA_shadow,1
-  end if
+procedure PORTA_high_direction'put(byte in x) is
+  _TRISA_shadow = (_TRISA_shadow & 0x0F) | (x << 4)
+  asm movf _TRISA_shadow,W
+  asm tris 6
+end procedure
+--
+--
+procedure pin_A3_direction'put (bit in x) is
+  pragma inline
+  var bit _tmp_bit at _TRISA_shadow : 3
+  _tmp_bit = x
   asm movf _TRISA_shadow,W
   asm tris 6
 end procedure
 --
 procedure pin_A2_direction'put (bit in x) is
---pragma inline   (temporary disabled)
-  asm  bcf _TRISA_shadow,2
-  if x == TRUE then
-    asm bsf _TRISA_shadow,2
-  end if
+  pragma inline
+  var bit _tmp_bit at _TRISA_shadow : 2
+  _tmp_bit = x
+  asm movf _TRISA_shadow,W
+  asm tris 6
+end procedure
+--
+procedure pin_A1_direction'put (bit in x) is
+  pragma inline
+  var bit _tmp_bit at _TRISA_shadow : 1
+  _tmp_bit = x
+  asm movf _TRISA_shadow,W
+  asm tris 6
+end procedure
+--
+procedure pin_A0_direction'put (bit in x) is
+  pragma inline
+  var bit _tmp_bit at _TRISA_shadow : 0
+  _tmp_bit = x
   asm movf _TRISA_shadow,W
   asm tris 6
 end procedure
 --
 -- ------------------------------------------------
+var  byte _OPTION_REG_shadow = 0b1111_1111         -- default all set
 --
 procedure OPTION_REG'put (byte in x) is
   pragma inline
-  asm movf x,0
+  _OPTION_REG_shadow = X
+  asm movf _OPTION_REG_shadow,0
+  asm option
+end procedure
+--
+procedure OPTION_REG_NGPWU'put (bit in x) is
+  pragma inline
+  var bit _tmp_bit at _OPTION_REG_shadow : 7
+  _tmp_bit = x
+  asm movf _OPTION_REG_shadow,0
+  asm option
+end procedure
+--
+procedure OPTION_REG_NGPPU'put (bit in x) is
+  pragma inline
+  var bit _tmp_bit at _OPTION_REG_shadow : 6
+  _tmp_bit = x
+  asm movf _OPTION_REG_shadow,0
+  asm option
+end procedure
+--
+procedure OPTION_REG_T0CS'put (bit in x) is
+  pragma inline
+  var bit _tmp_bit at _OPTION_REG_shadow : 5
+  _tmp_bit = x
+  asm movf _OPTION_REG_shadow,0
+  asm option
+end procedure
+--
+procedure OPTION_REG_T0SE'put (bit in x) is
+  pragma inline
+  var bit _tmp_bit at _OPTION_REG_shadow : 4
+  _tmp_bit = x
+  asm movf _OPTION_REG_shadow,0
+  asm option
+end procedure
+--
+procedure OPTION_REG_PSA'put (bit in x) is
+  pragma inline
+  var bit _tmp_bit at _OPTION_REG_shadow : 3
+  _tmp_bit = x
+  asm movf _OPTION_REG_shadow,0
+  asm option
+end procedure
+--
+procedure OPTION_REG_PS'put (byte in x) is
+  pragma inline
+  var bit*3 _tmp_field at _OPTION_REG_shadow : 0
+  _tmp_field = x
+  asm movf _OPTION_REG_shadow,0
   asm option
 end procedure
 --
