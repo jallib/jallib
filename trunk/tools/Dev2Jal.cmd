@@ -5,7 +5,7 @@
 /*                                                                          */
 /* Adapted-by:                                                              */
 /*                                                                          */
-/* Compiler: >=2.4g                                                         */
+/* Compiler: =2.4                                                           */
 /*                                                                          */
 /* This file is part of jallib  http://jallib.googlecode.com                */
 /* Released under the BSD license                                           */
@@ -28,9 +28,9 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.42'                   /*                          */
+   ScriptVersion   = '0.0.43'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
-   CompilerVersion = '>=2.4g'                   /*                          */
+   CompilerVersion = '=2.4'                     /*                          */
 /* ------------------------------------------------------------------------ */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
@@ -1031,70 +1031,6 @@ end
 return 0
 
 
-/* -------------------------------------------------------- */
-/* procedure to list special function registers             */
-/* input:  - nothing                                        */
-/* Note: - name is stored but not checked on duplicates     */
-/* 16-bit core                                              */
-/* -------------------------------------------------------  */
-list_sfr16: procedure expose Dev. Ram. Name. jalfile BANKSIZE NumBanks
-do i = 1 to Dev.0
-  if word(Dev.i,1) \= 'SFR' then
-    iterate
-  parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 .
-  if val1 \= '' then do
-    reg = strip(val1)                           /* register name */
-    Name.reg = reg                              /* remember name */
-    addr = strip(val2)
-    k = X2D(addr)                               /* address decimal */
-    size = strip(val3)                          /* # bytes */
-    if size = 1 then                            /* single byte */
-      field = 'byte  '
-    else if size = 2 then                       /* two bytes */
-      field = 'word  '
-    else                                        /* three bytes */
-      field = 'byte*3'
-    Ram.k = k                                   /* mark in use */
-    call lineout jalfile, '-- ------------------------------------------------'
-    call lineout jalfile, 'var volatile' field left(reg,20),
-                          'shared at 0x'addr
-
-    if left(reg,3) = 'LAT' then do              /* LATx register */
-      call list_port16_shadow reg               /* force use of LATx */
-                                                /* when accessing PORTx */
-    end
-    else if left(reg,4) = 'TRIS' then do        /* TRISx */
-      call lineout jalfile, 'var volatile byte  ',
-             left('PORT'substr(reg,5)'_direction',20) 'shared at' reg
-      call list_tris_shadow reg                 /* nibble directions */
-    end
-
-    call list_sfr_subfields16 i, reg            /* bit fields */
-
-    if  reg = 'FSR0'   |,
-        reg = 'FSR0L'  |,
-        reg = 'FSR0H'  |,
-        reg = 'PCL'    |,
-        reg = 'PCLATH' |,
-        reg = 'PCLATU' |,
-        reg = 'TABLAT' |,
-        reg = 'TBLPTR'    then do
-      parse lower var reg reg                   /* to lower case */
-      call lineout jalfile, 'var volatile' field left('_'reg,20),
-                            'shared at 0x'addr '     -- (compiler)'
-    end
-    else if  reg = 'INDF0'  then do
-      call lineout jalfile, 'var volatile' field left('_ind0',20),
-                            'shared at 0x'addr '     -- (compiler)'
-    end
-    else if reg = 'STATUS' then do              /* status register */
-      call list_status16 i, addr                /* extra for compiler */
-    end
-  end
-end
-return 0
-
-
 /* ------------------------------------------------- */
 /* Formatting of special function register subfields */
 /* input:  - index in .dev                           */
@@ -1108,13 +1044,14 @@ reg = arg(2)                                            /* register (name) */
 do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                      word(Dev.i,1) \= 'NMMR')           /* other type */
   parse var Dev.i 'BIT' val0 'NAMES' '=' val1 'WIDTH' '=' val2 ')' .
-  if val1 \= ''  &  pos('SCL', val0) = 0 then do        /* found, not 'scl' */
+  if val1 \= ''   &,                                    /* found */
+     pos('SCL', val0) = 0  then do                      /* not 'scl' */
     names = strip(strip(val1), 'B', "'")                /* strip blanks */
     sizes = strip(strip(val2), 'B', "'")                /*   and quotes */
     n. = '-'                                            /* reset */
     parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
     parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
-    if s.1 = 8 | s.1 = 16 then do                       /* full byte/word */
+    if s.1 = 8  | s.1 = 16 then do                      /* full byte or word */
       if n.1 \= reg then do                             /* different name */
         if s.1 = 8 then                                 /* single byte */
           field_type = 'byte '
@@ -1176,7 +1113,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   call lineout jalfile, '  pragma inline'
                   call lineout jalfile, '  var bit _tmp_bit at' shadow ':' offset
                   call lineout jalfile, '  _tmp_bit = x'
-                  call lineout jalfile, '  _PORT'substr(reg,5)'_flush'
+                  call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
                   call lineout jalfile, 'end procedure'
                   call lineout jalfile, '--'
                 end
@@ -1190,7 +1127,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                 call lineout jalfile, '  pragma inline'
                 call lineout jalfile, '  var bit _tmp_bit at' shadow ':' offset
                 call lineout jalfile, '  _tmp_bit = x'
-                call lineout jalfile, '  _PORTA_flush'
+                call lineout jalfile, '  _PORTA_flush()'
                 call lineout jalfile, 'end procedure'
                 call lineout jalfile, '--'
               end
@@ -1232,6 +1169,70 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
     end
   end
   i = i + 1                                     /* next record */
+end
+return 0
+
+
+/* -------------------------------------------------------- */
+/* procedure to list special function registers             */
+/* input:  - nothing                                        */
+/* Note: - name is stored but not checked on duplicates     */
+/* 16-bit core                                              */
+/* -------------------------------------------------------  */
+list_sfr16: procedure expose Dev. Ram. Name. jalfile BANKSIZE NumBanks
+do i = 1 to Dev.0
+  if word(Dev.i,1) \= 'SFR' then
+    iterate
+  parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 .
+  if val1 \= '' then do
+    reg = strip(val1)                           /* register name */
+    Name.reg = reg                              /* remember name */
+    addr = strip(val2)
+    k = X2D(addr)                               /* address decimal */
+    size = strip(val3)                          /* # bytes */
+    if size = 1 then                            /* single byte */
+      field = 'byte  '
+    else if size = 2 then                       /* two bytes */
+      field = 'word  '
+    else                                        /* three bytes */
+      field = 'byte*3'
+    Ram.k = k                                   /* mark in use */
+    call lineout jalfile, '-- ------------------------------------------------'
+    call lineout jalfile, 'var volatile' field left(reg,20),
+                          'shared at 0x'addr
+
+    if left(reg,3) = 'LAT' then do              /* LATx register */
+      call list_port16_shadow reg               /* force use of LATx */
+                                                /* when accessing PORTx */
+    end
+    else if left(reg,4) = 'TRIS' then do        /* TRISx */
+      call lineout jalfile, 'var volatile byte  ',
+             left('PORT'substr(reg,5)'_direction',20) 'shared at' reg
+      call list_tris_shadow reg                 /* nibble directions */
+    end
+
+    call list_sfr_subfields16 i, reg            /* bit fields */
+
+    if  reg = 'FSR0'   |,
+        reg = 'FSR0L'  |,
+        reg = 'FSR0H'  |,
+        reg = 'PCL'    |,
+        reg = 'PCLATH' |,
+        reg = 'PCLATU' |,
+        reg = 'TABLAT' |,
+        reg = 'TBLPTR'    then do
+      parse lower var reg reg                   /* to lower case */
+      call lineout jalfile, 'var volatile' field left('_'reg,20),
+                            'shared at 0x'addr '     -- (compiler)'
+    end
+    else if  reg = 'INDF0'  then do
+      call lineout jalfile, 'var volatile' field left('_ind0',20),
+                            'shared at 0x'addr '     -- (compiler)'
+    end
+    else if reg = 'STATUS' then do              /* status register */
+      call list_status16 i, addr                /* extra for compiler */
+    end
+  end
 end
 return 0
 
@@ -1355,41 +1356,115 @@ return 0
 
 /* -------------------------------------------------- */
 /* procedure to list non memory mapped registers      */
-/* of 12-bit core as pseudo variables                 */
+/* of 12-bit core as pseudo variables.                */
+/* Only some selected registers are handled:          */
+/* TRISxx and OPTIONxx                                */
 /* input:  - nothing                                  */
 /* Note: name is stored but not checked on duplicates */
 /* 12-bit core                                        */
 /* -------------------------------------------------- */
 list_nmmr12: procedure expose Dev. Ram. Name. jalfile BANKSIZE NumBanks
 do i = 1 to Dev.0
-  if word(Dev.i,1) \= 'NMMR' then               /* not 'nmmr' */
-    iterate                                     /* skip */
+  if word(Dev.i,1) \= 'NMMR' then                       /* not 'nmmr' */
+    iterate                                             /* skip */
   parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 .
-  if val1 \= '' then do                         /* found! */
-    reg = strip(val1)                           /* register name */
-    Name.reg = reg                              /* add to collection of names */
-    if left(reg,4)  = 'TRIS' then do            /* TRISxx */
+  if val1 \= '' then do                                 /* found! */
+    reg = strip(val1)                                   /* register name */
+
+    if left(reg,4)  = 'TRIS' then do                    /* handle TRISxx */
+      Name.reg = reg                                    /* add to collection of names */
       call lineout jalfile, '-- ------------------------------------------------'
       portletter = substr(reg,5)
-      if portletter = 'IO' then                 /* TRISIO */
-        portletter = 'A'                        /* handle as TRISA */
-      call lineout jalfile, '--'
-      call lineout jalfile, 'var  byte _TRIS'portletter'_shadow = 0b1111_1111'
+      if portletter = 'IO' then                         /* TRISIO */
+        portletter = 'A'                                /* handle it as TRISA */
+      shadow = '_TRIS'portletter'_shadow'
+      call lineout jalfile, 'var  byte' shadow '= 0b1111_1111         -- default all input'
       call lineout jalfile, '--'
       call lineout jalfile, 'procedure PORT'portletter"_direction'put (byte in x) is"
       call lineout jalfile, '  pragma inline'
-      call lineout jalfile, '  _TRIS'portletter'_shadow = x'
-      call lineout jalfile, '  asm movf _TRIS'portletter'_shadow,W'
-      call lineout jalfile, '  asm tris 6'
+      call lineout jalfile, '  'shadow '= x'
+      call lineout jalfile, '  asm movf' shadow',W'
+      if reg = 'TRISIO' then                            /* TRISIO */
+        call lineout jalfile, '  asm tris 6'
+      else                                              /* TRISx */
+        call lineout jalfile, '  asm tris' 5 + C2D(portletter) - C2D('A')
       call lineout jalfile, 'end procedure'
-      do j = 0 to 2                             /* 3 pins */
+      call lineout jalfile, '--'
+      half = 'PORT'portletter'_low_direction'
+      call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+      call lineout jalfile, '  'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
+      call lineout jalfile, '  asm movf _TRIS'portletter'_shadow,W'
+      if reg = 'TRISIO' then                            /* TRISIO */
+        call lineout jalfile, '  asm tris 6'
+      else                                              /* TRISx */
+        call lineout jalfile, '  asm tris' 5 + C2D(portletter) - C2D('A')
+      call lineout jalfile, 'end procedure'
+      call lineout jalfile, '--'
+      half = 'PORT'portletter'_high_direction'
+      call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+      call lineout jalfile, '  'shadow '= ('shadow '& 0x0F) | (x << 4)'
+      call lineout jalfile, '  asm movf _TRIS'portletter'_shadow,W'
+      if reg = 'TRISIO' then                            /* TRISIO */
+        call lineout jalfile, '  asm tris 6'
+      else                                              /* TRISx */
+        call lineout jalfile, '  asm tris' 5 + C2D(portletter) - C2D('A')
+      call lineout jalfile, 'end procedure'
+      call lineout jalfile, '--'
+      call list_nmmr_sub_tris_12 i, reg                 /* individual TRIS bits */
+    end
+
+    else if reg = 'OPTION_REG' | reg = OPTION2 then do  /* option */
+      Name.reg = reg                                    /* add to collection of names */
+      shadow = '_'reg'_shadow'
+      call lineout jalfile, '-- ------------------------------------------------'
+      call lineout jalfile, 'var  byte' shadow '= 0b1111_1111         -- default all set'
+      call lineout jalfile, '--'
+      call lineout jalfile, 'procedure' reg"'put (byte in x) is"
+      call lineout jalfile, '  pragma inline'
+      call lineout jalfile, '  'shadow '=' x
+      call lineout jalfile, '  asm movf' shadow',0'
+      if reg = 'OPTION_REG' then                        /* OPTION_REG */
+        call lineout jalfile, '  asm option'
+      else                                              /* OPTION2 */
+        call lineout jalfile, '  asm tris 7'
+      call lineout jalfile, 'end procedure'
+      call list_nmmr_sub_option_12 i, reg               /* subfields */
+    end
+
+    call lineout jalfile, '--'
+  end
+end
+return 0
+
+
+/* ---------------------------------------- */
+/* Formatting of non memory mapped register */
+/* subfields of TRISx                       */
+/* input:  - index in .dev                  */
+/*         - port letter                    */
+/* 12-bit core                              */
+/* ---------------------------------------- */
+list_nmmr_sub_tris_12: procedure expose Dev. Name. jalfile
+i = arg(1) + 1                                          /* 1st after reg */
+reg = arg(2)                                            /* register (name) */
+do k = 0 to 3 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
+                     word(Dev.i,1) \= 'NMMR')           /* other register */
+  parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
+  if val1 \= '' then do                                 /* found */
+    names = strip(strip(val1), 'B', "'")                /* strip blanks .. */
+    parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
+    portletter = substr(reg,5)
+    if portletter = 'IO' then                           /* TRISIO */
+      portletter = 'A'                                  /* handle as TRISA */
+    shadow = '_TRIS'portletter'_shadow'
+    offset = 7                                          /* MSbit first */
+    do j = 1 to 8                                       /* 8 bits */
+      if n.j \= '-' then do
         call lineout jalfile, '--'
-        call lineout jalfile, 'procedure pin_'portletter||j"_direction'put (bit in x) is"
-        call lineout jalfile, '--pragma inline   (temporary disabled)'
-        call lineout jalfile, '  asm  bcf _TRIS'portletter'_shadow,'j
-        call lineout jalfile, '  if x == TRUE then'
-        call lineout jalfile, '    asm bsf _TRIS'portletter'_shadow,'j
-        call lineout jalfile, '  end if'
+        call lineout jalfile, 'procedure pin_'portletter||offset"_direction'put (bit in x) is"
+        call lineout jalfile, '  pragma inline'
+        call lineout jalfile, '  var bit _tmp_bit at' shadow ':' offset
+        call lineout jalfile, '  _tmp_bit = x'
         call lineout jalfile, '  asm movf _TRIS'portletter'_shadow,W'
         if reg = 'TRISIO' then                          /* TRISIO */
           call lineout jalfile, '  asm tris 6'
@@ -1397,22 +1472,64 @@ do i = 1 to Dev.0
           call lineout jalfile, '  asm tris' 5 + C2D(portletter) - C2D('A')
         call lineout jalfile, 'end procedure'
       end
+      offset = offset - 1
     end
-    if reg = 'OPTION_REG' | reg = OPTION2 then do    /* option */
-      call lineout jalfile, '-- ------------------------------------------------'
-      call lineout jalfile, '--'
-      call lineout jalfile, 'procedure' reg"'put (byte in x) is"
-      call lineout jalfile, '  pragma inline'
-      call lineout jalfile, '  asm movf x,0'
-      if reg = 'OPTION_REG' then                        /* OPTION_REG */
-        call lineout jalfile, '  asm option'
-      else                                              /* OPTION2 */
-        call lineout jalfile, '  asm tris 7'
-      call lineout jalfile, 'end procedure'
-    end
-    call lineout jalfile, '--'
-    call list_nmmr_subfields12 i, reg             /* subfield declarations */
   end
+  i = i + 1                                             /* next record */
+end
+return 0
+
+
+/* ------------------------------------------------- */
+/* Formatting of non memory mapped registers:        */
+/* OPTION_REG and OPTION2                            */
+/* input:  - index in .dev                           */
+/*         - register name                           */
+/* Generates names for pins or bits                  */
+/* 12-bit and 14-bit core                            */
+/* ------------------------------------------------- */
+list_nmmr_sub_option_12: procedure expose Dev. Name. jalfile
+i = arg(1) + 1                                          /* first after reg */
+reg = arg(2)                                            /* register (name) */
+do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
+                     word(Dev.i,1) \= 'NMMR')           /* other type */
+  parse var Dev.i 'BIT' val0 'NAMES' '=' val1 'WIDTH' '=' val2 ')' .
+  if val1 \= '' then do                                 /* found */
+    names = strip(strip(val1), 'B', "'")                /* strip blanks */
+    sizes = strip(strip(val2), 'B', "'")                /*   and quotes */
+    n. = '-'                                            /* reset */
+    parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
+    parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
+    shadow = '_'reg'_shadow'
+    offset = 7                                          /* MSbit first */
+    do j = 1 to 8                                       /* max 8 bits */
+      if n.j \= '-' & n.j \= '' then do                 /* bit(s) in use */
+        call lineout jalfile, '--'
+        if s.j = 1 then do                              /* single bit */
+          field = reg'_'n.j
+          call lineout jalfile, 'procedure' field"'put (bit in x) is"
+          call lineout jalfile, '  pragma inline'
+          call lineout jalfile, '  var bit _tmp_bit at' shadow ': 'offset
+          call lineout jalfile, '  _tmp_bit = x'
+        end
+        else if s.j > 1 then do                         /* multi-bit */
+          field = reg'_'n.j
+          call lineout jalfile, 'procedure' field"'put (byte in x) is"
+          call lineout jalfile, '  pragma inline'
+          call lineout jalfile, '  var bit*'s.j '_tmp_field at' shadow ':' offset - s.j + 1
+          call lineout jalfile, '  _tmp_field = x'
+        end
+        call lineout jalfile, '  asm movf' shadow',0'
+        if reg = 'OPTION_REG' then                      /* OPTION_REG */
+          call lineout jalfile, '  asm option'
+        else                                            /* OPTION2 */
+          call lineout jalfile, '  asm tris 7'
+        call lineout jalfile, 'end procedure'
+        offset = offset - s.j
+      end
+    end
+  end
+  i = i + 1                                             /* next record */
 end
 return 0
 
@@ -1438,10 +1555,9 @@ do i = 1 to Dev.0
     addr = strip(val2)
     size = strip(val3)                          /* # bytes */
     call lineout jalfile, '-- ------------------------------------------------'
-    call lineout jalfile, '--'
     call lineout jalfile, 'var volatile byte  ' left(reg,20) 'shared at 0x'addr
     call lineout jalfile, '--'
-    call lineout jalfile, 'procedure' reg'_flush (byte in x) is'
+    call lineout jalfile, 'procedure _'reg'_flush(byte in x) is'
     call lineout jalfile, '--pragma inline (temporary disabled)'
     if pos('ANCON',reg) > 0 then
       call lineout jalfile, '  WDTCON_ADSHR = TRUE        -- map register'
@@ -1452,159 +1568,13 @@ do i = 1 to Dev.0
     call lineout jalfile, '--'
     call lineout jalfile, 'procedure' reg"'put" '(byte in x) is'
     call lineout jalfile, '--pragma inline (temporary disabled)'
-    call lineout jalfile, '  'reg'_flush(x)'
-    call lineout jalfile, '--'
+    call lineout jalfile, '  _'reg'_flush(x)'
     call lineout jalfile, 'end procedure'
+    call lineout jalfile, '--'
 
-    call list_nmmr_subfields16 i, reg
+/*  subfields to be handled? */
 
   end
-end
-return 0
-
-
-/* ---------------------------------------- */
-/* Formatting of non memory mapped register */
-/* subfields as pseudo varibables           */
-/* input:  - index in .dev                  */
-/*         - register name                  */
-/* Generates names for pins or bits         */
-/* 12-bit core                              */
-/* ---------------------------------------- */
-list_nmmr_subfields12: procedure expose Dev. Name. jalfile
-i = arg(1) + 1                                          /* 1st after reg */
-reg = arg(2)                                            /* register (name) */
-do k = 0 to 3 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
-                     word(Dev.i,1) \= 'NMMR')           /* other register */
-  parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
-  if val1 \= '' then do                                 /* found */
-    names = strip(strip(val1), 'B', "'")                /* strip blanks .. */
-    sizes = strip(strip(val2), 'B', "'")                /* .. and quotes */
-    parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
-    parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
-    offset = 7                                        /* MSbit first */
-    do j = 1 to 8                                     /* 8 bits */
-      if n.j = '-' then do                            /* bit not used */
-        offset = offset - 1
-      end
-      else if datatype(s.j) = 'NUM' then do           /* numeric */
-        if s.j = 1 then do                            /* single bit */
-          field = reg'_'n.j
-          if duplicate_name(field,reg) = 0 then do  /* unique */
-/* temp
-            call lineout jalfile, 'var volatile bit   ',
-                 left(field,20) 'shared at' reg ':' offset
-*/
-          end
-          offset = offset - 1                         /* next bit */
-        end
-        else if s.j < 8 then do                       /* not full byte */
-          if s.j > 1 then do                          /* multi-bit */
-            field = reg'_'n.j
-            if field \= reg then do                   /* not reg alias */
-              if duplicate_name(field,reg) = 0 then do  /* unique */
- /* temp
-                call lineout jalfile, 'var volatile bit*'s.j' ',
-                      left(field,20) 'shared at' reg ':' offset - s.j + 1
- */
-              end
-            end
-            offset = offset - s.j
-          end
-        end
-      end
-    end
-  end
-  i = i + 1                                             /* next record */
-end
-return 0
-
-
-/* ---------------------------------------- */
-/* Formatting of non memory mapped register */
-/* input:  - index in .dev                  */
-/*         - register name                  */
-/* Generates names for pins or bits         */
-/* 16-bit core                              */
-/* ---------------------------------------- */
-list_nmmr_subfields16: procedure expose Dev. Name. jalfile
-i = arg(1) + 1                                          /* 1st after reg */
-reg = arg(2)                                            /* register (name) */
-do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
-                     word(Dev.i,1) \= 'NMMR')           /* other register */
-  parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
-  if val1 \= ''  &,                                     /* found */
-     pos('SCL', val0) = 0  &,                           /* not 'scl' */
-     word(Dev.i,1) \= 'QBIT' then do                    /* not 'qbit' */
-    names = strip(strip(val1), 'B', "'")                /* strip blanks .. */
-    sizes = strip(strip(val2), 'B', "'")                /* .. and quotes */
-    parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
-    parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
-    if s.1 = 8 | s.1 = 16 | s.1 = 24 then do            /* (multi) byte */
-      if n.1 \= reg then do                             /* other name */
-        if s.1 = 8 then                                 /* single byte */
-          field_type = 'byte  '
-        else if s.1 = 16 then                           /* two bytes */
-          field_type = 'word  '
-        else                                            /* three bytes */
-          field_type = 'byte*3'
-        field = reg'_'n.1
-        if duplicate_name(field,reg) = 0 then do        /* unique */
-          call lineout jalfile, 'var volatile' field_type left(field,20) 'shared at' reg
-        end
-      end
-    end
-    else do                                             /* sub-div of reg */
-      offset = 7                                        /* MSbit first */
-      do j = 1 to 8                                     /* 8 bits */
-        if n.j = '-' then do                            /* bit not used */
-          offset = offset - 1
-        end
-        else if datatype(s.j) = 'NUM' then do           /* numeric */
-          if s.j = 1 then do                            /* single bit */
-            if pos('/', n.j) \= 0 then do               /* twin name */
-              parse var n.j val1'/'val2 .
-              if val1 \= '' then do
-                field = reg'_'val1
-                if duplicate_name(field,reg) = 0 then do  /* unique */
-                  call lineout jalfile, 'var volatile bit   ',
-                       left(field,20) 'shared at' reg ':' offset
-                end
-              end
-              if val2 \= '' then do
-                field = reg'_'val2
-                if duplicate_name(field,reg) = 0 then do  /* unique */
-                  call lineout jalfile, 'var volatile bit   ',
-                       left(field,20) 'shared at' reg ':' offset
-                end
-              end
-            end
-            else do
-              field = reg'_'n.j
-              if duplicate_name(field,reg) = 0 then do  /* unique */
-                call lineout jalfile, 'var volatile bit   ',
-                     left(field,20) 'shared at' reg ':' offset
-              end
-            end
-            offset = offset - 1                         /* next bit */
-          end
-          else if s.j < 8 then do                       /* not full byte */
-            if s.j > 1 then do                          /* multi-bit */
-              field = reg'_'n.j
-              if field \= reg then do                   /* not reg alias */
-                if duplicate_name(field,reg) = 0 then do  /* unique */
-                  call lineout jalfile, 'var volatile bit*'s.j' ',
-                        left(field,20) 'shared at' reg ':' offset - s.j + 1
-                end
-              end
-              offset = offset - s.j
-            end
-          end
-        end
-      end
-    end
-  end
-  i = i + 1                                             /* next record */
 end
 return 0
 
@@ -1621,7 +1591,7 @@ shadow = '_PORT'substr(reg,5)'_shadow'
 call lineout jalfile, '--'
 call lineout jalfile, 'var          byte ' shadow '       = 'reg
 call lineout jalfile, '--'
-call lineout jalfile, 'procedure _PORT'substr(reg,5)'_flush is'
+call lineout jalfile, 'procedure _PORT'substr(reg,5)'_flush() is'
 call lineout jalfile, '  pragma inline'
 call lineout jalfile, ' ' reg '=' shadow
 call lineout jalfile, 'end procedure'
@@ -1629,27 +1599,27 @@ call lineout jalfile, '--'
 call lineout jalfile, 'procedure' reg"'put" '(byte in x) is'
 call lineout jalfile, '  pragma inline'
 call lineout jalfile, '  'shadow '= x'
-call lineout jalfile, '  _PORT'substr(reg,5)'_flush'
+call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_low'
 call lineout jalfile, 'var  byte' half
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
-call lineout jalfile, '  _PORT'substr(reg,5)'_flush'
+call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get" 'return byte is'
-call lineout jalfile, '  return' reg '& 0x0F'
+call lineout jalfile, '  return ('reg '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_high'
 call lineout jalfile, 'var  byte' half
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'shadow '= ('shadow '& 0x0F) | (x << 4)'
-call lineout jalfile, '  _PORT'substr(reg,5)'_flush'
+call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get" 'return byte is'
-call lineout jalfile, '  return' reg '>> 4'
+call lineout jalfile, '  return ('reg '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 return
@@ -1675,7 +1645,7 @@ call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'lat '= ('lat '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get" 'return byte is'
-call lineout jalfile, '  return' lat '& 0x0F'
+call lineout jalfile, '  return ('lat '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_high'
@@ -1684,7 +1654,7 @@ call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'lat '= ('lat '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get" 'return byte is'
-call lineout jalfile, '  return' lat '>> 4'
+call lineout jalfile, '  return ('lat '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 return
@@ -1703,7 +1673,7 @@ call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'reg '= ('reg '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get" 'return byte is'
-call lineout jalfile, '  return' reg '& 0x0F'
+call lineout jalfile, '  return ('reg '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_high_direction'
@@ -2146,7 +2116,7 @@ return
 /* CMCON0  [CMCON1]                                         */
 /* Between brackets optional, otherwise always together.    */
 /* -------------------------------------------------------- */
-list_analog_functions: procedure expose jalfile Name.
+list_analog_functions: procedure expose jalfile Name. Core
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
@@ -2201,17 +2171,14 @@ if Name.ADCON0 \= '-' then do
   call lineout jalfile, '  pragma inline'
   call lineout jalfile, '  ADCON0 = 0b0000_0000         -- disable ADC'
   if Name.ADCON1 \= '-' then do
-    call lineout jalfile, '  ADCON1 = 0b1111_1111       -- digital I/O'
-  end
-/* temporary(?) disabled code: no more selective setting with all-ones in ADCON1 above
-  if Name.ADCON1 \= '-' then do
-    if PicName = '16F737' | PicName == '16F747' |,
+    if PicName = '16F737' | PicName == '16F747' |,       /* some midrange PICs */
        PicName = '16F767' | PicName == '16F777' then
-      call lineout jalfile, '  ADCON1 = 0b0000_1111        -- digital I/O'
-    else
-      call lineout jalfile, '  ADCON1 = 0b0000_0111        -- digital I/O'
+      call lineout jalfile, '  ADCON1 = 0b0000_1111         -- digital I/O'
+    else if Core = 16 then                               /* 18Fs */
+      call lineout jalfile, '  ADCON1 = 0b1111_1111         -- digital I/O'
+    else                                                 /* other */
+      call lineout jalfile, '  ADCON1 = 0b0000_0111         -- digital I/O'
   end
-*/
   call lineout jalfile, 'end procedure'
   call lineout jalfile, '--'
 end
