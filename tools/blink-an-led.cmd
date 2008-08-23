@@ -5,7 +5,7 @@
 /*                                                                          */
 /* Adapted-by:                                                              */
 /*                                                                          */
-/* Compiler: >=2.4g                                                         */
+/* Compiler: =2.4                                                           */
 /*                                                                          */
 /* This file is part of jallib  http://jallib.googlecode.com                */
 /* Released under the BSD license                                           */
@@ -47,8 +47,8 @@ if selection = '' then
 else
   call SysFileTree I||selection, pic, 'FO'         /* list of device includes  */
 
-if dir.0 < 1 then do
-  say 'No appropriate device files found in directory' devdir
+if pic.0 < 1 then do
+  say 'No appropriate device files found in directory' I
   return 1
 end
 
@@ -60,14 +60,12 @@ do i=1 to pic.0
   parse value filespec('Name', pic.i) with M '.jal'
   say M
 
-/*
   '@python jsg_validator.py' pic.i '>'m'.pylog'
   if rc \= 0 then do
     say 'returncode of validation include file' M'.jal is:' rc
     exit rc
   end
   '@erase' m'.pylog'                            /* when OK, discard log */
-*/
 
   B = 'b'M'.jal'                                /* source file to create */
   call stream  B, 'c', 'open write replace'
@@ -78,7 +76,7 @@ do i=1 to pic.0
   call lineout B, '--'
   call lineout B, '-- Adapted-by:'
   call lineout B, '--'
-  call lineout B, '-- Compiler: >=2.4g'
+  call lineout B, '-- Compiler: =2.4'
   call lineout B, '--'
   call lineout B, '-- This file is part of jallib',
                          ' (http://jallib.googlecode.com)'
@@ -140,25 +138,19 @@ do i=1 to pic.0
       if pin.0 > 0 then do                                   /* pin found */
         call SysFileSearch ' pin_'port.p||q'_direction', pic.i, tris.       /* TRISx */
         if tris.0 > 0 then do                                /* found */
-          call SysFileSearch ' pin_'port.p||q'_direction', pic.i, tris.
-          if tris.0 > 0 then do                              /* found pin direction */
-            call lineout B, 'var bit led           is pin_'port.p||q'   -- alias'
-            call lineout B, 'var bit led_direction is pin_'port.p||q'_direction'
-            call lineout B, '--'
-            call lineout B, 'led_direction = output'
-            leave p
-          end
-          else do
-            nop   /* say 'not found:' ' pin_'port.p||q'_direction' */
-          end
+          call lineout B, 'var bit led           is pin_'port.p||q'   -- alias'
+          call lineout B, 'var bit led_direction is pin_'port.p||q'_direction'
+          call lineout B, '--'
+          call lineout B, 'led_direction = output'
+          leave p
         end
         else do                                              /* no TRISx found */
-          say 'Missing pin_'port.p||q'_direction declaration'
-          leave p
+          say 'Found pin_'port.p||q', but missing pin_'port.p||q'_direction declaration'
         end
       end
     end
   end
+
   if p > port.0 then do
     say 'Error: Could not find suitable I/O pin for LED on' M
     iterate
