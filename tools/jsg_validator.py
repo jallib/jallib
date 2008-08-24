@@ -185,9 +185,10 @@ def validate_lower_case(content):
 
 def validate_no_args(content):
 	# no () in definition
-	noargs = re.compile("^(procedure|function)\s+\w+\s+is")
+	func_proc = re.compile("^(procedure|function)")
 	for i,line in content:
-		if noargs.match(line):
+		# don't even check both (), not needed
+		if func_proc.match(line) and not "(" in line:
 			errors.append("%d: %s missing (). Calls must also be explicit" % (i,repr(line)))
 
 def validate_code(content):
