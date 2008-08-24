@@ -33,6 +33,9 @@ def compiler_version(val):
 JALLIB = """^-- This file is part of jallib\s+\(http://jallib.googlecode.com\)"""
 LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
 
+# exceptions while checking case
+ALLOWED_MIXED_CASE = """.*(pin|port|tris|option|ancon).*"""
+
 FIELDS = [
 		{'field':"Title",'predicate' : content_not_empty,'mandatory': True, 'multiline' :False},
 		{'field':"Author",'predicate':content_not_empty,'mandatory':True,'multiline':False},
@@ -139,6 +142,7 @@ def validate_lower_case(content):
 	tokenizer = re.compile("\w+")
 	caps = re.compile("[A-Z]")
 	freetext = re.compile('(("|\').*("|\'))')
+	mixed = re.compile(ALLOWED_MIXED_CASE,re.IGNORECASE)
 	# no check in comments
 	codeonly = []
 	for i,line in content:
@@ -169,9 +173,8 @@ def validate_lower_case(content):
 			# hex definition, give up
 			if "0x" in token:
 				continue
-			# exceptions for port and pin
-			if "pin" in token.lower() or "port" in token.lower() or \
-			   "tris" in token.lower():
+			# exceptions...
+			if mixed.match(token.lower()):
 				continue
 			if caps.findall(token):
 				weird.setdefault("Found Capitals in token: %s" % repr(token),[]).append(i)
