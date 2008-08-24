@@ -48,13 +48,13 @@ def extract_header(content):
 	content.reverse()
 	header = []
 	while True:
-		l = content.pop()
+		i,l = content.pop()
 		if not l.startswith("--"):
 			# not a header line, put it again
-			content.append(l)
+			content.append((i,l))
 			break
 		else:
-			header.append(l)
+			header.append((i,l))
 	# remaining content: back to forward...
 	content.reverse()
 	return header
@@ -65,39 +65,39 @@ def validate_field(data,field,predicate,mandatory,multiline=False):
 
 	def single_line_content(line):
 		return "".join(re.sub(syntax,lambda x:x.group(1),line))
-	def multi_line_content(line,data):
+	def multi_line_content(num,line,data):
 		c = single_line_content(line)
-		for l in data[data.index(line) + 1:]:
+		for i,l in data[data.index((num,line)) + 1:]:
 			# Check no comment gap
 			if not re.match("^--\s",l):
-				errors.append("Cannot extract content, line is not starting with comment: %s" % repr(l))
+				errors.append("%d: cannot extract content, line is not starting with comment: %s" % (i,repr(l)))
 				return ""
 			# No other field within content
 			for f in [d['field'] for d in FIELDS]:
 				if l.startswith("-- %s:" % f):
-					errors.append("Detected field %s within content of field %s" % (f,field))
+					errors.append("%d: detected field %s within content of field %s" % (i,f,field))
 					return ""
 			if l.strip() == '--':
 				# got end of block
 				break
 			c += l.replace("-- ","")
 		else:
-			errors.append("Cannot find end of field content %s" % field)
+			errors.append("%d: cannot find end of field content %s" % (i,field))
 		return c
 		
 	# eat header, and check fields (mandatory or not) and 
 	# content (using predicate)
-	for l in data:
+	for i,l in data:
 		if re.match(syntax,l):
 			# got it, check field content
 			if multiline:
-				c = multi_line_content(l,data)
+				c = multi_line_content(i,l,data)
 			else:
 				c = single_line_content(l)
 			# and check with predicate
 			valid = predicate(c)
 			if mandatory and not valid:
-				errors.append("Content for field %s is not valid: %s" % (field,repr(c)))
+				errors.append("%d: content for field %s is not valid: %s" % (i,field,repr(c)))
 			break
 	else:
 		if mandatory:
@@ -110,7 +110,7 @@ def validate_header(content):
 	# check stuff about jallib and license
 	jallib = False
 	license = False
-	for line in header:
+	for i,line in header:
 		if re.match(JALLIB,line):
 			jallib = True
 			if license: break
@@ -141,7 +141,7 @@ def validate_lower_case(content):
 	freetext = re.compile('(("|\').*("|\'))')
 	# no check in comments
 	codeonly = []
-	for line in content:
+	for i,line in content:
 		if line.startswith(";") or line.startswith("--"):	
 			continue
 		# don't consider free text (between quotes)
@@ -157,31 +157,35 @@ def validate_lower_case(content):
 		# (else produces wrong splitting...)
 		l = nocomment(l,";")
 		l = nocomment(l,"--")
-		codeonly.append(" ".join(l))
+		# propagate line number
+		codeonly.append((i," ".join(l)))
 		
-	weird = []	# stores all errors
-	for token in tokenizer.findall("\n".join(codeonly)):
-		# it can be all in caps (constants)
-		if token.upper() == token:
-			continue
-		# hex definition, give up
-		if "0x" in token:
-			continue
-		# exceptions for port and pin
-		if "pin" in token.lower() or "port" in token.lower() or \
-		   "tris" in token.lower():
-			continue
-		if caps.findall(token):
-			weird.append("Found Capitals in token: %s" % repr(token))
-	# unique token error 
-	errors.extend(set(weird))
+	weird = {}	# stores all errors
+	for i,line in codeonly:
+		for token in tokenizer.findall(line):
+			# it can be all in caps (constants)
+			if token.upper() == token:
+				continue
+			# hex definition, give up
+			if "0x" in token:
+				continue
+			# exceptions for port and pin
+			if "pin" in token.lower() or "port" in token.lower() or \
+			   "tris" in token.lower():
+				continue
+			if caps.findall(token):
+				weird.setdefault("Found Capitals in token: %s" % repr(token),[]).append(i)
+	# reconsitute errors, with multiple line number if error has occured multiple time
+	for s,nums in weird.items():
+		err = "%s: %s" % (",".join(map(str,nums)),s)
+		errors.append(err)
 
 def validate_no_args(content):
 	# no () in definition
 	noargs = re.compile("^(procedure|function)\s+\w+\s+is")
-	for line in content:
+	for i,line in content:
 		if noargs.match(line):
-			errors.append("%s missing (). Calls must also be explicit" % repr(line))
+			errors.append("%d: %s missing (). Calls must also be explicit" % (i,repr(line)))
 
 def validate_code(content):
 	validate_lower_case(content)
@@ -190,7 +194,8 @@ def validate_code(content):
 
 def validate(filename):
 	validate_filename(filename)
-	content = open(filename,"r").readlines()
+	# also extract line number (enumerate from 0, count from 1)
+	content = [(i + 1,l) for i,l in enumerate(open(filename,"r").readlines())]
 	validate_header(content)
 	# remaining content has no more header
 	validate_code(content)
