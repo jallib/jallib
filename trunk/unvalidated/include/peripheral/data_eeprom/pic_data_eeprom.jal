@@ -1,0 +1,110 @@
+-- Title: reading/writing of PIC's data EEPROM
+-- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
+-- Adapted-by: Sebastien Lelong.
+-- Compiler: >=2.4g
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this library can write/read 8-bits data to/from data-eeprom
+--
+--
+
+
+-- --------------------------------------------------------------------
+-- reading of data-EEprom
+-- --------------------------------------------------------------------
+procedure data_eeprom_read( byte in address, byte out data ) is
+	EEADR = address
+	if defined(EECON1_EEPGD) == true then
+		EECON1_EEPGD = false                  ; select data EEprom
+	end if
+	EECON1_RD = true
+	data = EEDATA
+end procedure
+-- --------------------------------------------------------------------
+procedure data_eeprom_read_word( byte in address, word out data ) is
+	var byte temp[2] at data
+	data_eeprom_read(address,temp[0])
+	data_eeprom_read(address+1,temp[1])
+end procedure
+-- --------------------------------------------------------------------
+procedure data_eeprom_read_dword( byte in address, dword out data ) is
+	var byte temp[4] at data
+	data_eeprom_read(address,temp[0])
+	data_eeprom_read(address+1,temp[1])
+	data_eeprom_read(address+2,temp[2])
+	data_eeprom_read(address+3,temp[3])
+end procedure
+-- --------------------------------------------------------------------
+
+
+-- --------------------------------------------------------------------
+-- data_eeprom_read as a function
+-- --------------------------------------------------------------------
+function data_eeprom(byte in address) return byte is
+	var byte data
+	data_eeprom_read(address,data)
+	return data
+end function
+-- --------------------------------------------------------------------
+function data_eeprom_word(byte in address) return word is
+	var word data
+	data_eeprom_read_word(address,data)
+	return data
+end function
+-- --------------------------------------------------------------------
+function data_eeprom_dword(byte in address) return dword is
+	var dword data
+	data_eeprom_read_dword(address,data)
+	return data
+end function
+-- --------------------------------------------------------------------
+
+
+-- --------------------------------------------------------------------
+-- writing to data-EEprom, waits till finished
+-- --------------------------------------------------------------------
+procedure data_eeprom_write(byte in address, byte in data) is
+
+	var bit gie_old
+	
+	EEDATA = data 
+	EEADR = address
+	
+	if defined(EECON1_EEPGD) == true then 
+		EECON1_EEPGD = false               ; select data EEprom
+	end if
+	
+	gie_old = INTCON_GIE
+	EECON1_WREN = true
+	INTCON_GIE = false
+	assembler
+				movlw   0x55		; required sequence
+		bank	movwf   EECON2		;
+				movlw   0xAA		;
+				movwf   EECON2		;
+				bsf     EECON1_WR	; start write operation
+	end assembler
+	INTCON_GIE = gie_old         ; restore interrupt status
+	EECON1_WREN = false          ; disable further writine
+	
+	while EECON1_WR loop end loop
+
+end procedure
+-- --------------------------------------------------------------------
+procedure data_eeprom_write_word(byte in address, word in data) is
+	var byte temp[2] at data
+	data_eeprom_write(address,temp[0])
+	data_eeprom_write(address+1,temp[1])
+end procedure
+-- --------------------------------------------------------------------
+procedure data_eeprom_write_dword(byte in address, dword in data) is
+	var byte temp[4] at data
+	data_eeprom_write(address,temp[0])
+	data_eeprom_write(address+1,temp[1])
+	data_eeprom_write(address+2,temp[2])
+	data_eeprom_write(address+3,temp[3])
+end procedure
+-- --------------------------------------------------------------------
+
