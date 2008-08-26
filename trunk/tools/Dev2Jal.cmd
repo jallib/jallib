@@ -28,7 +28,7 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.43'                   /*                          */
+   ScriptVersion   = '0.0.44'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '=2.4'                     /*                          */
 /* ------------------------------------------------------------------------ */
@@ -1545,30 +1545,31 @@ list_nmmr16: procedure expose Dev. Ram. Name. jalfile BANKSIZE NumBanks
 do i = 1 to Dev.0
   if word(Dev.i,1) \= 'NMMR' then
     iterate
-  if pos('ANCON',Dev.i) > 0 then
-    parse var Dev.i 'NMMR' '(KEY=' val1 'MAPADDR=0X' val2 ' ADDR=0X' val0 'SIZE=' val3 .
-  else
+  if pos('ANCON',Dev.i) = 0 then                /* only ANCONx handled at this moment */
     iterate
+  parse var Dev.i 'NMMR' '(KEY=' val1 'MAPADDR=0X' val2 ' ADDR=0X' val0 'SIZE=' val3 .
   if val1 \= '' then do
     reg = strip(val1)                           /* register name */
     Name.reg = reg                              /* remember name */
+    shadow = '_'reg'_shadow'                    /* its shadow */
     addr = strip(val2)
     size = strip(val3)                          /* # bytes */
     call lineout jalfile, '-- ------------------------------------------------'
     call lineout jalfile, 'var volatile byte  ' left(reg,20) 'shared at 0x'addr
     call lineout jalfile, '--'
-    call lineout jalfile, 'procedure _'reg'_flush(byte in x) is'
-    call lineout jalfile, '--pragma inline (temporary disabled)'
-    if pos('ANCON',reg) > 0 then
-      call lineout jalfile, '  WDTCON_ADSHR = TRUE        -- map register'
-    call lineout jalfile, ' ' reg '= x'
-    if pos('ANCON',reg) > 0 then
-      call lineout jalfile, '  WDTCON_ADSHR = FALSE       -- unmap register'
+    call lineout jalfile, 'var          byte  ' shadow '       = 0b1111_1111'
+    call lineout jalfile, '--'
+    call lineout jalfile, 'procedure _'reg'_flush() is'
+    call lineout jalfile, '  pragma inline'
+    call lineout jalfile, '  WDTCON_ADSHR = TRUE        -- map register'
+    call lineout jalfile, '  'reg '=' shadow
+    call lineout jalfile, '  WDTCON_ADSHR = FALSE       -- unmap register'
     call lineout jalfile, 'end procedure'
     call lineout jalfile, '--'
     call lineout jalfile, 'procedure' reg"'put" '(byte in x) is'
-    call lineout jalfile, '--pragma inline (temporary disabled)'
-    call lineout jalfile, '  _'reg'_flush(x)'
+    call lineout jalfile, '  pragma inline'
+    call lineout jalfile, '  'shadow '= x'
+    call lineout jalfile, '  _'reg'_flush()'
     call lineout jalfile, 'end procedure'
     call lineout jalfile, '--'
 
@@ -1608,7 +1609,7 @@ call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get" 'return byte is'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '  return ('reg '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
@@ -1618,7 +1619,7 @@ call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'shadow '= ('shadow '& 0x0F) | (x << 4)'
 call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get" 'return byte is'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '  return ('reg '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
@@ -1644,7 +1645,7 @@ call lineout jalfile, 'var  byte' half
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'lat '= ('lat '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get" 'return byte is'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '  return ('lat '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
@@ -1653,7 +1654,7 @@ call lineout jalfile, 'var  byte' half
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'lat '= ('lat '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get" 'return byte is'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '  return ('lat '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
@@ -1672,7 +1673,7 @@ half = 'PORT'substr(reg,5)'_low_direction'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'reg '= ('reg '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get" 'return byte is'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '  return ('reg '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
@@ -1680,7 +1681,7 @@ half = 'PORT'substr(reg,5)'_high_direction'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '  'reg '= ('reg '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get" 'return byte is'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '  return ('reg '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
@@ -2101,22 +2102,43 @@ end
 return
 
 
-/* -------------------------------------------------------- */
-/* Generate functions w.r.t. analog modules.                */
-/* First individual procedures for different analog modules */
-/* then a procedure to invoke these procedures              */
-/*                                                          */
-/* Possible combinations for the different PICS:            */
-/* ANSEL   [ANSELH]                                         */
-/* ANSEL0  [ANSEL1]                                         */
-/* ANSELA   ANSELB [ANSELD  ANSELE]                         */
-/* ADCON0  [ADCON1 [ADCON2 [ADCON3]]]                       */
-/* ANCON0   ANCON1                                          */
-/* CMCON                                                    */
-/* CMCON0  [CMCON1]                                         */
-/* Between brackets optional, otherwise always together.    */
-/* -------------------------------------------------------- */
-list_analog_functions: procedure expose jalfile Name. Core
+/* ----------------------------------------------------------------------------- */
+/* Generate functions w.r.t. analog modules.                                     */
+/* First individual procedures for different analog modules,                     */
+/* then a procedure to invoke these procedures.                                  */
+/*                                                                               */
+/* Possible combinations for the different PICS:                                 */
+/* ANSEL   [ANSELH]                                                              */
+/* ANSEL0  [ANSEL1]                                                              */
+/* ANSELA   ANSELB [ANSELD  ANSELE]                                              */
+/* ADCON0  [ADCON1 [ADCON2 [ADCON3]]]                                            */
+/* ANCON0   ANCON1                                                               */
+/* CMCON                                                                         */
+/* CMCON0  [CMCON1]                                                              */
+/* Between brackets optional, otherwise always together.                         */
+/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+/* PICs are classified in groups for ADC module settings                         */
+/* ADC_V0   ADCON0 = 0b0000_0000 [ADCON1 = 0b0000_0000]                          */
+/*          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000  (or ANSEL_/H,A/B/D/E)    */
+/* ADC_V1   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0111                           */
+/* ADC_V2   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
+/* ADC_V3   ADCON0 = 0b0000_0000  ADCON1 = 0b1111_1111                           */
+/* ADC_V4   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           */
+/* ADC_V5   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
+/* ADC_V6   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
+/* ADC_V7   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     */
+/*          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000                           */
+/* ADC_V7_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     */
+/*          ANSEL  = 0b0000_0000 [ANSELH = 0b0000_0000]                          */
+/* ADC_V8   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     */
+/*          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           */
+/* ADC_V9   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           */
+/*          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           */
+/* ADC_V10  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           */
+/*          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           */
+/* ADC_V11  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111   (no datasheet found)    */
+/* ----------------------------------------------------------------------------- */
+list_analog_functions: procedure expose jalfile Name. Core PicName
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
@@ -2125,7 +2147,7 @@ call lineout jalfile, '--'
 
 analog. = '-'                                           /* no analog modules */
 
-if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,
+if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
    Name.ANSELA \= '-' | Name.ANCON0 \= '-'  then do
   analog.ANSEL = 'analog'                       /* analog functions present */
   call lineout jalfile, '-- ---------------------------------------------------'
@@ -2162,28 +2184,43 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,
   call lineout jalfile, '--'
 end
 
-if Name.ADCON0 \= '-' then do
+ADCgroup = adcgetgroup(PicName)
+if ADCgroup = '-' then do                               /* no group found! */
+  say 'Warning:' PicName 'is unknown in ADC group table'
+end
+
+if Name.ADCON0 \= '-' then do                           /* check on presence */
   analog.ADC = 'adc'                                    /* ADC module present */
   call lineout jalfile, '-- ---------------------------------------------------'
-  call lineout jalfile, '-- Disable ADC module.'
+  call lineout jalfile, '-- Disable ADC module (ADC_group' ADCgroup')'
   call lineout jalfile, '--'
   call lineout jalfile, 'procedure adc_off() is'
   call lineout jalfile, '  pragma inline'
   call lineout jalfile, '  ADCON0 = 0b0000_0000         -- disable ADC'
-  if Name.ADCON1 \= '-' then do
-    if PicName = '16F737' | PicName == '16F747' |,       /* some midrange PICs */
-       PicName = '16F767' | PicName == '16F777' then
-      call lineout jalfile, '  ADCON1 = 0b0000_1111         -- digital I/O'
-    else if Core = 16 then                               /* 18Fs */
-      call lineout jalfile, '  ADCON1 = 0b1111_1111         -- digital I/O'
-    else                                                 /* other */
+  if Name.ADCON1 \= '-' then do                         /* ADCON1 declared */
+    if ADCgroup = 'ADC_V0' then
+      call lineout jalfile, '  ADCON1 = 0b0000_0000'
+    else if ADCgroup = 'ADC_V1' then
       call lineout jalfile, '  ADCON1 = 0b0000_0111         -- digital I/O'
+    else if ADCgroup = 'ADC_V2'  |,
+            ADCgroup = 'ADC_V5'  |,
+            ADCgroup = 'ADC_V6'  |,
+            ADCgroup = 'ADC_V11' then
+      call lineout jalfile, '  ADCON1 = 0b0000_1111         -- digital I/O'
+    else if ADCgroup = 'ADC_V3' then
+      call lineout jalfile, '  ADCON1 = 0b1111_1111         -- digital I/O'
+    else if ADCgroup = 'ADC_V4' then
+      call lineout jalfile, '  ADCON1 = 0b0000_0000'
+    else                                                /* ADC_V7,7_1,8,9,10 */
+      call lineout jalfile, '  ADCON1 = 0b0000_0000'
+    if Name.ADCON2 \= '-' then                          /* ADCON2 declared */
+      call lineout jalfile, '  ADCON2 = 0b0000_0000'    /* all groups */
   end
   call lineout jalfile, 'end procedure'
   call lineout jalfile, '--'
 end
 
-if Name.CMCON \= '-' | Name.CMCON0 \= '-' then do
+if Name.CMCON \= '-' | Name.CMCON0 \= '-' then do       /* check on presence */
   analog.CMCON = 'comparator'                           /* Comparator present */
   call lineout jalfile, '-- ---------------------------------------------------'
   call lineout jalfile, '-- Disable comparator module'
@@ -2201,13 +2238,12 @@ if Name.CMCON \= '-' | Name.CMCON0 \= '-' then do
 end
 
 call lineout jalfile, '-- ---------------------------------------------------'
-call lineout jalfile, '-- Change ports which have analog function by default'
-call lineout jalfile, '-- into digital I/O.'
+call lineout jalfile, '-- Set all ports into digital mode (if any analog module present).'
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure enable_digital_io() is'
 call lineout jalfile, '  pragma inline'
-do k over analog.
-  call lineout jalfile, '  'analog.k'_off()'
+do k over analog.                               /* all present analog function */
+  call lineout jalfile, '  'analog.k'_off()'    /* call individual function */
 end
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
