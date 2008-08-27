@@ -183,17 +183,20 @@ def validate_lower_case(content):
 		err = "%s: %s" % (",".join(map(str,nums)),s)
 		errors.append(err)
 
-def validate_no_args(content):
+def validate_procfunc_defs(content):
 	# no () in definition
 	func_proc = re.compile("^(procedure|function)")
+	no_spaces = re.compile(".*\s+\(")
 	for i,line in content:
 		# don't even check both (), not needed
 		if func_proc.match(line) and not "(" in line:
 			errors.append("%d: %s missing (). Calls must also be explicit" % (i,repr(line)))
+		if func_proc.match(line) and no_spaces.match(line):
+			errors.append("%d: found a space before parenthesis: %s" % (i,repr(line)))
 
 def validate_code(content):
 	validate_lower_case(content)
-	validate_no_args(content)
+	validate_procfunc_defs(content)
 	# ...
 
 def validate(filename):
