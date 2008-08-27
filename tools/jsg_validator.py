@@ -186,7 +186,7 @@ def validate_lower_case(content):
 def validate_procfunc_defs(content):
 	# no () in definition
 	func_proc = re.compile("^(procedure|function)")
-	no_spaces = re.compile(".*\s+\(")
+	no_spaces = re.compile(".*\s+\(.*is")
 	for i,line in content:
 		# don't even check both (), not needed
 		if func_proc.match(line) and not "(" in line:
