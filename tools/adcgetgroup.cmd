@@ -12,8 +12,13 @@
 /*              http://www.opensource.org/licenses/bsd-license.php       */
 /*                                                                       */
 /* Description: Rexx script to get the ADC group for a specific PIC.     */
+/*              Input:   PicName                                         */
+/*              Returns: ADCgroup ADDCV0..ADC_V11, or                    */
+/*                       "-" when PIC has no ADC, or                     */
+/*                       "?" when PICname not found.                     */
 /*                                                                       */
-/* Sources:  MCC18 header file pconfig.h                                 */
+/* Sources: - MCC18 header file pconfig.h                                */
+/*          - Microchip datasheets                                       */
 /*                                                                       */
 /* Notes:                                                                */
 /*  - Used by Dev2Jal script                                             */
@@ -32,13 +37,13 @@ select
   when PicName = '12F509'     then return '-'
   when PicName = '12F510'     then return 'ADC_V0'
   when PicName = '12F519'     then return '-'
-  when PicName = '12F609'     then return 'ADC_V0'
+  when PicName = '12F609'     then return '-'
   when PicName = '12F615'     then return 'ADC_V0'
   when PicName = '12F629'     then return '-'
   when PicName = '12F635'     then return '-'
   when PicName = '12F675'     then return 'ADC_V0'
   when PicName = '12F683'     then return 'ADC_V0'
-  when PicName = '12HV609'    then return 'ADC_V0'
+  when PicName = '12HV609'    then return '-'
   when PicName = '12HV615'    then return 'ADC_V0'
   when PicName = '16F505'     then return '-'
   when PicName = '16F506'     then return 'ADC_V0'
@@ -46,7 +51,7 @@ select
   when PicName = '16F54'      then return '-'
   when PicName = '16F57'      then return '-'
   when PicName = '16F59'      then return '-'
-  when PicName = '16F610'     then return 'ADC_V0'
+  when PicName = '16F610'     then return '-'
   when PicName = '16F616'     then return 'ADC_V0'
   when PicName = '16F627'     then return '-'
   when PicName = '16F627A'    then return '-'
@@ -110,7 +115,7 @@ select
   when PicName = '16F917'     then return 'ADC_V0'
   when PicName = '16F946'     then return 'ADC_V0'
   when PicName = '16HV540'    then return '-'
-  when PicName = '16HV610'    then return 'ADC_V0'
+  when PicName = '16HV610'    then return '-'
   when PicName = '16HV616'    then return 'ADC_V0'
   when PicName = '16HV785'    then return 'ADC_V0'
   when PicName = '16LF722'    then return 'ADC_V0'
