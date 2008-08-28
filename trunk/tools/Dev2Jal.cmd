@@ -28,7 +28,7 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.44'                   /*                          */
+   ScriptVersion   = '0.0.45'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '=2.4'                     /*                          */
 /* ------------------------------------------------------------------------ */
@@ -782,8 +782,12 @@ select                                          /* exceptions first */
       end
     end
 end
-if DataRange \= '' then
-  call lineout jalfile, 'pragma  shared  'DataRange
+if DataRange \= '' then                         /* some shared RAM present */
+  if Core \= '16' then
+    call lineout jalfile, 'pragma  shared  'DataRange
+  else
+    call lineout jalfile, 'pragma  data    'DataRange ,
+                          '            -- circumvention compiler bug!'
 return DataRange                                /* range */
 
 
@@ -2123,7 +2127,7 @@ return
 /* ADC_V1   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0111                           */
 /* ADC_V2   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
 /* ADC_V3   ADCON0 = 0b0000_0000  ADCON1 = 0b1111_1111                           */
-/* ADC_V4   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           */
+/* ADC_V4   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
 /* ADC_V5   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
 /* ADC_V6   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
 /* ADC_V7   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     */
@@ -2136,7 +2140,7 @@ return
 /*          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           */
 /* ADC_V10  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           */
 /*          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           */
-/* ADC_V11  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111   (no datasheet found)    */
+/* ADC_V11  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111   (no datasheet found!)   */
 /* ----------------------------------------------------------------------------- */
 list_analog_functions: procedure expose jalfile Name. Core PicName
 call lineout jalfile, '--'
@@ -2185,8 +2189,8 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
 end
 
 ADCgroup = adcgetgroup(PicName)
-if ADCgroup = '-' then do                               /* no group found! */
-  say 'Warning:' PicName 'is unknown in ADC group table'
+if ADCgroup = '?' then do                               /* no group found! */
+  say 'Error:' PicName 'is unknown in ADC group table!'
 end
 
 if Name.ADCON0 \= '-' then do                           /* check on presence */
@@ -2203,14 +2207,13 @@ if Name.ADCON0 \= '-' then do                           /* check on presence */
     else if ADCgroup = 'ADC_V1' then
       call lineout jalfile, '  ADCON1 = 0b0000_0111         -- digital I/O'
     else if ADCgroup = 'ADC_V2'  |,
+            ADCgroup = 'ADC_V4'  |,
             ADCgroup = 'ADC_V5'  |,
             ADCgroup = 'ADC_V6'  |,
             ADCgroup = 'ADC_V11' then
       call lineout jalfile, '  ADCON1 = 0b0000_1111         -- digital I/O'
     else if ADCgroup = 'ADC_V3' then
       call lineout jalfile, '  ADCON1 = 0b1111_1111         -- digital I/O'
-    else if ADCgroup = 'ADC_V4' then
-      call lineout jalfile, '  ADCON1 = 0b0000_0000'
     else                                                /* ADC_V7,7_1,8,9,10 */
       call lineout jalfile, '  ADCON1 = 0b0000_0000'
     if Name.ADCON2 \= '-' then                          /* ADCON2 declared */
@@ -2294,7 +2297,7 @@ call lineout jalfile, '-- ---------------------------------------------------'
 call lineout jalfile, '--'
 call lineout jalfile, 'include chipdef                     -- common constants'
 call lineout jalfile, '--'
-call lineout jalfile, 'pragma  target  cpu   PIC_'Core '   -- (banks = 'Numbanks')'
+call lineout jalfile, 'pragma  target  cpu   PIC_'Core '       -- (banks = 'Numbanks')'
 call lineout jalfile, 'pragma  target  chip  'PicName
 call lineout jalfile, 'pragma  target  bank  0x'D2X(BANKSIZE,4)
 if core = 12  then do
@@ -2437,6 +2440,7 @@ call lineout listfile, '-- Released under the BSD license',
                        '(http://www.opensource.org/licenses/bsd-license.php)'
 call lineout listfile, '--'
 return
+
 
 /* --------------------------------------------------------- */
 /* procedure to extend address with mirrored addresses       */
