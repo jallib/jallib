@@ -1,4 +1,4 @@
--- Title: hardware PWM control, dedicated to register CCP1
+-- Title: hardware PWM control, dedicated to register CCP3
 -- Author: Stef Mientki, Copyright (C) 2002-2006, all rights reserved. 
 -- Adapted-by: Sebastien Lelong
 -- Compiler: >=2.4g
@@ -6,27 +6,27 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: performs PWM operations on CCP1
+-- Description: performs PWM operations on CCP3
 -- The target must support this.
 --
 -- Notes: this is a heavy refactoring of the original pwm_hardware.jal
 -- Stef's lib
 --
 
-var byte ccpr1l_shadow
-var byte ccp1con_shadow 
+var byte ccpr3l_shadow
+var byte ccp3con_shadow 
 -- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
 -- sets dutycyle in low resolution mode
--- the 2 LSbits take their value from ccp1con_shadow, by default 0
--- this means if duty1 = 0, there's no pwm, if duty1 = 255, you're closed to
+-- the 2 LSbits take their value from ccp3con_shadow, by default 0
+-- this means if duty3 = 0, there's no pwm, if duty3 = 255, you're closed to
 -- (but not at) the maximum pwm
 -- -----------------------------------------------------------------------------
-procedure pwm1_set_dutycycle(byte in duty) is
-	ccpr1l_shadow = duty
-	CCPR1L  = ccpr1l_shadow   -- reload 8 high order bits of dutycycle
-	CCP1CON = ccp1con_shadow  -- reload 2 low  order bits of dutycycle 
+procedure pwm3_set_dutycycle(byte in duty) is
+	ccpr3l_shadow = duty
+	CCPR3L  = ccpr3l_shadow   -- reload 8 high order bits of dutycycle
+	CCP3CON = ccp3con_shadow  -- reload 2 low  order bits of dutycycle 
 end procedure
 -- -----------------------------------------------------------------------------
 
@@ -36,38 +36,38 @@ end procedure
 -- sets dutycyle in high resolution mode
 -- the word passed to the procedure represents the high resolution value
 -- of the duty cycle:
--- 		* duty1h<0:1> are the 2 LSbits
---		* duty1h<2:9> are the 8 MSbits
+-- 		* duty3h<0:1> are the 2 LSbits
+--		* duty3h<2:9> are the 8 MSbits
 -- Because duty cycle is coded on 10 bits, the given value can't greater than 1024
 -- If not active yet, calling this procedure will enable PWM
 -- -----------------------------------------------------------------------------
-procedure pwm1_set_dutycycle_highres(word in duty) is
+procedure pwm3_set_dutycycle_highres(word in duty) is
 
 	-- split word into 8 MSb and 2LSb
 	var word dutyl = duty & 0b_0000_0011
 	var word dutyh = duty >> 2
 
-	ccpr1l_shadow = byte(dutyh)
-	ccp1con_shadow = (byte(dutyl) & 0b_0000_0011) << 4
+	ccpr3l_shadow = byte(dutyh)
+	ccp3con_shadow = (byte(dutyl) & 0b_0000_0011) << 4
 	
-	CCPR1L  = ccpr1l_shadow
+	CCPR3L  = ccpr3l_shadow
 	-- reload while (re)activating pwm
-	ccp1con_shadow = ccp1con_shadow | 0b_0000_1100
-	CCP1CON = ccp1con_shadow
+	ccp3con_shadow = ccp3con_shadow | 0b_0000_1100
+	CCP3CON = ccp3con_shadow
 end procedure
 -- -----------------------------------------------------------------------------
 
-procedure pwm1_on() is
+procedure pwm3_on() is
 	-- pwm mode on, while keeping 2 LSbits
-	ccp1con_shadow = ccp1con_shadow | 0b_0000_1100
-	CCP1CON = ccp1con_shadow
+	ccp3con_shadow = ccp3con_shadow | 0b_0000_1100
+	CCP3CON = ccp3con_shadow
 end procedure
 
 
-procedure pwm1_off() is
+procedure pwm3_off() is
 	-- pwm mode off, but keep 2 LSbits values
-	ccp1con_shadow = ccp1con_shadow ^ 0b_0000_1100 -- ;; Note
-	CCP1CON = ccp1con_shadow
+	ccp3con_shadow = ccp3con_shadow ^ 0b_0000_1100 -- ;; Note
+	CCP3CON = ccp3con_shadow
 end procedure
 
 -- include common/factored part of pwm
@@ -80,12 +80,12 @@ include pwm_common
 -- According to what has been computed by pwm_set_frequency(),
 -- it converts the duty percent to a value suitable for the
 -- selected pwm frequency.
-procedure pwm1_set_percent_dutycycle(byte in percent) is
+procedure pwm3_set_percent_dutycycle(byte in percent) is
 	
 	-- due to a limitation in JAL, the brackects below are VERY essential
-	var dword _duty1_1  = ((percent * 4) * _pr2_1) / 100
-	var dword _duty1_4  = ((percent * 4) * _pr2_4) / 100
-	var dword _duty1_16 = ((percent * 4) * _pr2_16) / 100
+	var dword _duty3_1  = ((percent * 4) * _pr2_1) / 100
+	var dword _duty3_4  = ((percent * 4) * _pr2_4) / 100
+	var dword _duty3_16 = ((percent * 4) * _pr2_16) / 100
 
 	var byte dutyh
 	var byte dutyl
@@ -93,22 +93,22 @@ procedure pwm1_set_percent_dutycycle(byte in percent) is
 	if _pr2_1 == 0 then
 		;;pragma error    -- pwm frequency is too high
 	elsif _pr2_1 <= 256 then
-		;;ccpr1l_shadow = byte(_duty1_1 / 4)        -- 8 high order bits of dutycycle
-		;;ccp1con_shadow = byte((_duty1_1 & 0b_0000_0011) * 16)
-		dutyh = byte(_duty1_1 / 4)        -- 8 high order bits of dutycycle
-		dutyl = byte((_duty1_1 & 0b_0000_0011) * 16)
+		;;ccpr3l_shadow = byte(_duty3_1 / 4)        -- 8 high order bits of dutycycle
+		;;ccp3con_shadow = byte((_duty3_1 & 0b_0000_0011) * 16)
+		dutyh = byte(_duty3_1 / 4)        -- 8 high order bits of dutycycle
+		dutyl = byte((_duty3_1 & 0b_0000_0011) * 16)
 	elsif _pr2_4 <= 256 then
-		;;ccpr1l_shadow = byte(_duty1_4 / 4)
-		;;ccp1con_shadow = byte((_duty1_4 & 0b_0000_0011) * 16)
-		dutyh = byte(_duty1_4 / 4)
-		dutyl = byte((_duty1_4 & 0b_0000_0011) * 16)
+		;;ccpr3l_shadow = byte(_duty3_4 / 4)
+		;;ccp3con_shadow = byte((_duty3_4 & 0b_0000_0011) * 16)
+		dutyh = byte(_duty3_4 / 4)
+		dutyl = byte((_duty3_4 & 0b_0000_0011) * 16)
 		
 	elsif _pr2_16 <= 256 then
 		-- Stef is a sioux: x * 16 <=> x << 4 !!!
-		;;ccpr1l_shadow = byte(_duty1_16 / 4)
-		;;ccp1con_shadow = byte((_duty1_16 & 0b_0000_0011) * 16)
-		dutyh = byte(_duty1_16 / 4)
-		dutyl = byte((_duty1_16 & 0b_0000_0011) * 16)
+		;;ccpr3l_shadow = byte(_duty3_16 / 4)
+		;;ccp3con_shadow = byte((_duty3_16 & 0b_0000_0011) * 16)
+		dutyh = byte(_duty3_16 / 4)
+		dutyl = byte((_duty3_16 & 0b_0000_0011) * 16)
 	else
 		;;pragma error  -- pwm frequency is too low to be realized by this routine,
 		-- use the post scaler and interrupt
@@ -117,7 +117,7 @@ procedure pwm1_set_percent_dutycycle(byte in percent) is
 	-- build a word storing duty cycle high resolution'ed
 	var word duty_tmp = dutyh << 2
 	duty_tmp = dutyh | dutyl
-	pwm1_set_dutycycle_highres(duty_tmp)
+	pwm3_set_dutycycle_highres(duty_tmp)
 
 
 end procedure
