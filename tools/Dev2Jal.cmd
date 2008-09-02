@@ -28,7 +28,7 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.45'                   /*                          */
+   ScriptVersion   = '0.0.46'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '=2.4'                     /*                          */
 /* ------------------------------------------------------------------------ */
@@ -698,12 +698,13 @@ return
 /* procedure to obtain number of Dataheet number */
 /* input:  - nothing                             */
 /* --------------------------------------------- */
-list_datasheet: procedure expose Dev. jalfile
+list_datasheet: procedure expose Dev. jalfile PicName
 do i = 1 to Dev.0
   if left(Dev.i,4) \= '# DS' then               /* not appropriate */
     iterate
   if Word(Dev.i,3) \= '' then do
-    call lineout jalfile, '-- DataSheet:' word(Dev.i,3)
+    DS = word(Dev.i,3)
+    call lineout jalfile, '-- DataSheet:' DS
     leave                                       /* 1st occurence */
   end
 end
@@ -776,8 +777,8 @@ select                                          /* exceptions first */
           DataRange = DataRange','              /* insert separator */
         val1 = strip(val1)
         val2 = strip(val2)
-        if Val2 > MaxSharedRAM then
-          MaxSharedRAM = X2D(Val2)              /* upper bound */
+        if X2D(val2) > MaxSharedRAM then        /* new high limit */
+          MaxSharedRAM = X2D(val2)              /* upper bound */
         DataRange = DataRange'0x'val1'-0x'val2  /* concatenate range */
       end
     end
@@ -785,9 +786,10 @@ end
 if DataRange \= '' then                         /* some shared RAM present */
   if Core \= '16' then
     call lineout jalfile, 'pragma  shared  'DataRange
-  else
+  else do
     call lineout jalfile, 'pragma  data    'DataRange ,
-                          '            -- circumvention compiler bug!'
+                          '            -- non-shared! (compiler issue)'
+  end
 return DataRange                                /* range */
 
 
@@ -797,7 +799,7 @@ return DataRange                                /* range */
 /* returns in MaxUnsharedRam highest unshared RAM addr. in bank0 */
 /* Note: Some PICs are handled 'exceptionally'                   */
 /* ------------------------------------------------------------- */
-list_unshared_data_range: procedure expose Lkr. jalfile MaxUnsharedRAM PicName
+list_unshared_data_range: procedure expose Lkr. jalfile MaxUnsharedRAM PicName Core
 select                                          /* exceptions first */
   when PicName = '12f629'  |,
        PicName = '12f675'  |,
@@ -844,9 +846,13 @@ select                                          /* exceptions first */
           DataRange = DataRange','              /* insert separator */
         val1 = strip(val1)
         val2 = strip(val2)
-        if MaxUnsharedRAM = 0 then              /* unassigned */
-          MaxUnSharedRAM = X2D(Val2)            /* upper bound bank0 */
-        DataRange = DataRange'0x'val1'-0x'val2  /* concatenate range */
+        if core = 16 & X2D(val2) <= X2D(FF) then /* bank0 RAM 18F */
+          nop                                   /* skip upper half bank 0 */
+        else do
+          if X2D(val2) > MaxUnsharedRAM then    /* new high limit */
+            MaxUnSharedRAM = X2D(Val2)          /* upper bound */
+          DataRange = DataRange'0x'val1'-0x'val2  /* concatenate range */
+        end
       end
     end
 end
@@ -1151,12 +1157,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
           end
           else if s.j < 8 then do                       /* part of byte */
             if s.j > 1 then do                          /* multi-bit */
-              if n.j \= reg then do                     /* not reg alias */
-                field = reg'_'n.j
-                if duplicate_name(field,reg) = 0 then do  /* unique */
-                  call lineout jalfile, 'var volatile bit*'s.j,
-                        left(field,20) 'at' reg ':' offset - s.j + 1
-                end
+              field = reg'_'n.j
+              if duplicate_name(field,reg) = 0 then do  /* unique */
+                call lineout jalfile, 'var volatile bit*'s.j,
+                      left(field,20) 'at' reg ':' offset - s.j + 1
               end
               offset = offset - s.j
             end
@@ -1509,15 +1513,15 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
     do j = 1 to 8                                       /* max 8 bits */
       if n.j \= '-' & n.j \= '' then do                 /* bit(s) in use */
         call lineout jalfile, '--'
+        field = reg'_'n.j
+        Name.field = field                              /* remember name */
         if s.j = 1 then do                              /* single bit */
-          field = reg'_'n.j
           call lineout jalfile, 'procedure' field"'put (bit in x) is"
           call lineout jalfile, '  pragma inline'
           call lineout jalfile, '  var bit _tmp_bit at' shadow ': 'offset
           call lineout jalfile, '  _tmp_bit = x'
         end
         else if s.j > 1 then do                         /* multi-bit */
-          field = reg'_'n.j
           call lineout jalfile, 'procedure' field"'put (byte in x) is"
           call lineout jalfile, '  pragma inline'
           call lineout jalfile, '  var bit*'s.j '_tmp_field at' shadow ':' offset - s.j + 1
@@ -1822,7 +1826,7 @@ do i = 1 to dev.0                               /* scan .dev file */
           ln = Dev.i
           iterate
         end
-        if pos('OSC',key) > 0      &,           /* catches ...OSC... */
+        if pos('OSC',key) > 0      &,           /* any ...OSC... */
            pos('FOSC2',key) = 0    &,           /* excl FOSC2 */
            pos('OSCS',key) = 0     &,           /* excl OSCS */
            pos('IOSCFS',key) = 0   &,           /* excl IOSCFS */
@@ -1833,6 +1837,8 @@ do i = 1 to dev.0                               /* scan .dev file */
           key = 'OSC'
         else if pos('DSWDTEN',key) > 0 then
           key = 'DSWDTEN'
+        else if pos('IOSCFS',key) > 0 then
+          key = 'IOSCFS'
         else if pos('DSWDTOSC',key) > 0 then
           key = 'DSWDTOSC'
         else if pos('DSWDTPS',key) > 0 then
@@ -1870,6 +1876,8 @@ do i = 1 to dev.0                               /* scan .dev file */
           call list_fuse_def_osc i
         else if key = 'DSWDTPS' then
           call list_fuse_def_wdtps i
+        else if key = 'IOSCFS' then
+          call list_fuse_def_ioscfs i
         else if key = 'WDTPS' then
           call list_fuse_def_wdtps i
         else if key = 'WDT' then
@@ -2052,6 +2060,33 @@ end
 return
 
 
+/* ---------------------------------------------- */
+/* Generate fuse_defs for IOSCFS (int oscs freq)  */
+/* ---------------------------------------------- */
+list_fuse_def_ioscfs: procedure expose Dev. jalfile
+do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
+  parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
+                         val1 'DESC' '=' '"' val2 '"' ')' .
+  if val1 \= '' then do
+    val1 = strip(val1)                          /* remove blanks */
+    val2 = strip(val2)
+    if pos('MHZ',val2) > 0 then do
+      if pos('8',val2) > 0 then                 /* 8 MHz */
+        val2 = 'F8MHZ'
+      else
+        val2 = 'F4MHZ'                          /* otherwise */
+    end
+    else do
+      val2 = translate(val2, '_________________',' +-:;.,<>{}[]()=/')  /* to underscore */
+      if left(val2,1) >= '0' & left(val2,1) <= '9' then
+        val2 = '_'val2                  /* prefix when numeric */
+    end
+    call lineout jalfile, '       'val2 '= 0x'val1
+  end
+end
+return
+
+
 /* ------------------------------------------- */
 /* Generate fuse_defs for brownout settings    */
 /* ------------------------------------------- */
@@ -2098,7 +2133,7 @@ do i = arg(1) + 1 while i <= dev.0  &,
       val2 = translate(val2, '_________________',' +-:;.,<>{}[]()=/')  /* to blanks */
       if left(val2,1) >= '0' & left(val2,1) <= '9' then
         val2 = '_'val2                  /* prefix when numeric */
-      end
+    end
     call lineout jalfile, '       'val2 '= 0x'val1
 
   end
@@ -2248,6 +2283,11 @@ call lineout jalfile, '  pragma inline'
 do k over analog.                               /* all present analog function */
   call lineout jalfile, '  'analog.k'_off()'    /* call individual function */
 end
+if left(PicName,3) = '10f'    |,                /* all 10Fs */
+        PicName = '12f508' | PicName = '12f509' | PicName = '12f510'  |,
+        PicName = '16f505' | PicName = '16f506' | PicName = '16f526'  ,
+  then
+    call lineout jalfile, '  OPTION_REG_T0CS = off        -- in + out'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 
@@ -2314,13 +2354,17 @@ end
 call list_code_size
 call list_data_size
 MaxUnsharedRAM = 0                              /* no unshared RAM */
-call list_unshared_data_range
+call list_unshared_data_range                   /* MaxUnsharedRam updated! */
 MaxSharedRAM = 0                                /* no shared RAM */
 x = list_shared_data_range()                    /* returns range string */
 /* - - - - - - - -  temporary? - - - - - - - - - - - - - - - - - */
 if MaxUnsharedRAM = 0  &  MaxSharedRAM > 0 then do      /* no unshared RAM */
-  say 'Warning:' PicName 'has only shared, no unshared RAM!'
-  Say '         Must be handled as exceptional chip!'
+  if Core = 16 then                             /* temporary fix for 18Fs */
+    MaxUnSharedRam = MaxSharedRam               /* with little RAM */
+  else do
+    say 'Warning:' PicName 'has only shared, no unshared RAM!'
+    Say '         Must be handled as exceptional chip!'
+  end
 end
 else if MaxSharedRAM = 0 then do                        /* no shared RAM */
   if Core \= 12                                 &,      /* known as 'OK' */
@@ -2334,10 +2378,11 @@ else if MaxSharedRAM = 0 then do                        /* no shared RAM */
      PicName \= '16f84'  & PicName \= '16f84a'  &,
      PicName \= '16f873' & PicName \= '16f873a' &,
      PicName \= '16f874' & PicName \= '16f874a' &,
-     PicName \= '16hv540'                        ,
+     PicName \= '16hv540'                       &,
+     left(PicName,2)  \= '18'                    ,    /* temporary */
   then do
     say 'Warning:' PicName 'has no shared RAM!'
-    Say '         May have to be handled as exceptional chip!'
+    say '         May have to be handled as exceptional chip!'
   end
 end
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -2356,11 +2401,18 @@ if Core = 12  | Core = 14 then do
                           sfr_mirror(MaxUnSharedRAM)'   -- (compiler)'
   end
 end
-else if Core = 16 then do                       /* 16-bits core */
+/* ------- code temporary removed due to compiler 2.4g bug
+else if Core = 16 then do
   call lineout jalfile, 'var volatile byte _pic_accum shared at',
                                  '0x'D2X(MaxSharedRAM-1)'   -- (compiler)'
   call lineout jalfile, 'var volatile byte _pic_isr_w shared at',
                                  '0x'D2X(MaxSharedRAM)'   -- (compiler)'
+*/
+else if Core = 16 then do                       /* 16-bits core */
+  call lineout jalfile, 'var volatile byte _pic_accum  at',
+                                 '0x'D2X(MaxUnSharedRAM-1)'   -- (compiler)'
+  call lineout jalfile, 'var volatile byte _pic_isr_w  at',
+                                 '0x'D2X(MaxUnSharedRAM)'   -- (compiler)'
 end
 call lineout jalfile, '--'
 return
