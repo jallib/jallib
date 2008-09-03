@@ -1,0 +1,562 @@
+-- Title: Real Time Clock with DS1302
+-- Author: Richard Zengerink,  Copyright (c) 2008, all rights reserved
+--
+-- Compiler: =2.4g
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+
+-- Description:
+-- -----------------------------------------------------------------------------
+-- Library to handle DS1302 RTC
+--
+--
+-- ALL ASSIGNMENDS MUST BE DONE BEFORE THIS INCLUDE FILE !!!!!!!!!!!!
+--
+-- Assign in your MAIN programm CE, SCLK ans IO to the hardware pins
+-- Assign in your MAIN programm CEDIR, SCLKDIR ans IODIR to the pin directions
+-- example:
+-- var bit RTC_CE     is pin_a1 -- out
+-- var bit RTC_SCLK   is pin_a2 -- out
+-- var bit RTC_IO     is pin_a3 -- in/out
+-- var volatile bit RTC_CEDir   is pin_a1_direction    ; always output
+-- var volatile bit RTC_SCLKDir is pin_a2_direction    ; always output
+-- var volatile bit RTC_IODir   is pin_a3_direction    ; bidirectional
+--
+-- Assign in your MAIN program the Trickel charge configuration
+-- example:
+-- var byte RTC_DIODE  = 1     ; RTC_DIODE = 1 or RTC_DIODE = 2
+-- var byte RTC_RESISTOR = 8  ; RTC_RESISTOR = 0 (0ohm) RTC_RESISTOR = 2 (2K),
+--                           ; RTC_RESISTOR = 4 (4K) or RTC_RESISTOR = 8 (8K)
+-- var bit RTC_TRICKEL = ON   ; RTC_TRICKEL = ON or RTC_TRICKEL = OFF (no charging)
+--
+--
+
+
+
+
+----------Place this block in your MAIN program without the "--"  -------------
+-- var bit RTC_CE     is pin_a1 -- out
+-- var bit RTC_SCLK   is pin_a2 -- out
+-- var bit RTC_IO     is pin_a3 -- in/out
+
+-- var volatile bit RTC_IODir   is pin_a3_direction    ; bidirectional
+
+-- var byte RTC_DIODE  = 1     ; RTC_DIODE = 1 or RTC_DIODE = 2
+-- var byte RTC_RESISTOR  = 8  ; RTC_RESISTOR = 0 (0ohm) RTC_RESISTOR = 2 (2K),
+                               ; RTC_RESISTOR = 4 (4K) or RTC_RESISTOR = 8 (8K)
+-- var bit RTC_TRICKEL = ON    ; RTC_TRICKEL = ON or RTC_TRICKEL = OFF (no charging)
+
+-- include ds1302_rz
+
+---------------------------------------------------------------------------
+
+
+
+
+
+--
+-- Procedures:
+--
+-- SECOND_READ reads the seconds from DS1302 (81h)and places in SECOND (TIME_DATE[0])
+-- SECOND_WRITE writes the value in SECOND (TIME_DATE[0]) to DS1302 (80h)
+-- MINUT_READ reads the minutes from DS1302 (83h) and places in MINUT (TIME_DATE[1])
+-- MINUT_WRITE writes the value in MINUT (TIME_DATE[1]) to DS1302 reg (82h)
+-- HRS_READ reads the hours from DS1302 (85h)and places in HRS (TIME_DATE[2])
+-- HRS_WRITE writes the value in HRS (TIME_DATE[2]) to DS1302 (84h)
+-- DATE_READ reads the date from DS1302 (87h) and places in DATE (TIME_DATE[3])
+-- DATE_WRITE writes the value in DATE (TIME_DATE[3]) to DS1302 reg (86h)
+-- MOUNTH_READ reads the mounth from DS1302 (89h)and places in MOUNTH (TIME_DATE[4])
+-- MOUNTH_WRITE writes the value in MOUNTH (TIME_DATE[4]) to DS1302 (88h)
+-- DAY_READ reads the day from DS1302 (8Bh) and places in DAY (TIME_DATE[5])
+-- DAY_WRITE writes the value in DAY (TIME_DATE[5]) to DS1302 reg (8Ah)
+-- YEAR_READ reads the year from DS1302 (89h)and places in YEAR (TIME_DATE[6])
+-- YEAR_WRITE writes the value in YEAR (TIME_DATE[6]) to DS1302 (88h)
+-- PROTREG_READ reads the protreg from DS1302 (8Bh) and places in PROTREG (TIME_DATE[7])
+-- PROTREG_WRITE writes the value in PROTREG (TIME_DATE[7]) to DS1302 reg (8Ah)
+--
+-- RTC_WRITE(data , reg_adress) writes value of data (DEC)in register with reg_adress
+-- RTC_READ(reg_adress , var) reads value of register with reg_adress and place in var (DEC)
+--
+-- RTC_BURST_WRITE_CLOCK writes value of SECOND to PROTREG in one time to
+--                       the DS1302 where SECOND is placed in seconds reg (80h)
+--                       and MINUT is placed in minutes reg(82h) etc. etc.
+-- RTC_BURST_READ_CLOCK  reads the value's of seconds (81h) to prot_reg (8Fh) of the DS1302
+--                       and places it in SECOND to PROTREG
+--                       where seconds (80h is placed in SECOND and
+--                       and minutes (81h) is placed in MINUT etc. etc.
+--
+--
+-- RTC_STOP stops the RTC
+-- RTC_START starts the RTC
+
+
+-- all values of data (SECOND,MINUT etc) in decimal value
+-- register adresses are in hexadecimal
+--
+--
+
+
+
+
+
+
+
+
+var byte TRICK_CHAR_REG ;trickel charge  register (90h)
+
+var byte SECOND    ;seconds (0 TO 59)
+var byte MINUT     ;minutes (0 TO 59)
+var byte HRS       ;houres  (0 TO 23)
+var byte DATE      ;day of mounth (1 to 31)
+var byte MOUNTH    ;mounth (1 to 12)
+var byte DAY       ;day of week (1 = monday 7 = sunday)
+var word YEAR      ;year (00 to 99)
+var byte PROTREG   ;protect register
+
+var volatile bit ROUT0 at TRICK_CHAR_REG :0
+var volatile bit ROUT1 at TRICK_CHAR_REG :1
+var volatile bit DS0 at TRICK_CHAR_REG :2
+var volatile bit DS1 at TRICK_CHAR_REG :3
+
+
+
+if RTC_TRICKEL then
+   TRICK_CHAR_REG = 0b1010_0000
+   If RTC_DIODE ==1 then             ;1 diode then DS1 = 0 and DS0 = 1
+      DS0 = 1
+      DS1 = 0
+   else
+      If RTC_DIODE ==2 then          ;2 diodes then DS1 = 1 and DS0 = 0
+         DS0 = 0
+         DS1 = 1
+      else
+         DS0 = 0                 ;no diode selection
+         DS1 = 0
+      end if
+   end if
+   If RTC_RESISTOR ==0 then          ;RTC_RESISTOR = 0Ohm then ROUT0 = 0 and ROUT1 = 0
+      ROUT0 = 0
+      ROUT1 = 0
+   else
+      If RTC_RESISTOR ==2 then       ;RTC_RESISTOR = 2kOhm then ROUT0 = 1 and ROUT1 = 0
+         ROUT0 = 1
+         ROUT1 = 0
+      else
+         If RTC_RESISTOR ==4 then    ;RTC_RESISTOR = 4kOhm then ROUT0 = 0 and ROUT1 = 1
+            ROUT0 = 0
+            ROUT1 = 1
+         else
+            ROUT0 = 1            ;RTC_RESISTOR = 8kOhm then ROUT0 = 1 and ROUT1 = 1
+            ROUT1 = 1
+         end if
+      end if
+   end if
+else
+   TRICK_CHAR_REG = 0b0000_0001
+end if
+
+
+
+
+procedure DEC_TO_RTC ( byte in out DATA ) is
+  var byte RTC
+  RTC = DATA
+  If RTC <= 9 Then
+    RTC = RTC
+    Else
+    If RTC <= 19 Then
+        RTC = RTC + 6
+        Else
+        If RTC <= 29 Then
+            RTC = RTC + 12
+            Else
+            If RTC <= 39 Then
+                RTC = RTC + 18
+                Else
+                If RTC <= 49 Then
+                    RTC = RTC + 24
+                    Else
+                    If RTC <= 59 Then
+                        RTC = RTC + 30
+                    End If
+                End If
+            End If
+        End If
+    End If
+End If
+ DATA = RTC
+end procedure
+
+
+procedure RTC_TO_DEC ( byte in out DATA ) is
+  var byte DEC
+  DEC = DATA
+  DEC = DEC & 0B0111_1111
+
+  If DEC <= 9 Then
+    DEC = DEC
+    Else
+    If DEC <= 25 Then
+        DEC = DEC - 6
+        Else
+        If DEC <= 41 Then
+            DEC = DEC - 12
+            Else
+            If DEC <= 57 Then
+                DEC = DEC - 18
+                Else
+                If DEC <= 73 Then
+                    DEC = DEC - 24
+                    Else
+                    If DEC <= 89 Then
+                        DEC = DEC - 30
+                    End If
+                End If
+            End If
+        End If
+    End If
+  End If
+  DATA = DEC
+end procedure
+
+
+
+
+procedure RTC_CLOCK  is
+ RTC_SCLK = high
+ delay_1us
+ RTC_SCLK = low
+ delay_1us
+end procedure
+
+
+
+
+procedure RTC_REGISTER_SEND (byte in REGISTER) is
+  for 8 loop
+      if (REGISTER & 0b0000_0001)== 1 then RTC_IO = high else RTC_IO = low end if
+      RTC_CLOCK
+      REGISTER = REGISTER >> 1  ;shift right REGISTER
+  end loop
+end procedure
+
+
+
+
+
+procedure RTC_DATA_SEND ( byte in DATA ) is
+  for 8 loop
+      if (DATA & 0b0000_0001)== 1 then RTC_IO = high else RTC_IO = low end if
+      RTC_CLOCK
+      DATA = DATA >> 1   ;shift right DATA
+  end loop
+end procedure
+
+
+
+
+
+procedure RTC_WRITE ( byte in DATA, byte in REGISTER ) is ; send data to RTC
+
+  RTC_IODir = output
+  RTC_SCLK = low
+  RTC_CE =  high
+
+  RTC_REGISTER_SEND (REGISTER)
+
+  RTC_DATA_SEND (DATA)
+  
+  RTC_CE =  LOW
+end procedure
+
+
+
+
+
+procedure RTC_READ ( byte in REGISTER , byte out DATA ) is ; recieve data from RTC
+  var bit DB at DATA : 7
+
+  RTC_IODir = output
+  RTC_SCLK = low
+  RTC_CE =  high
+
+
+  RTC_REGISTER_SEND (REGISTER)
+
+  RTC_IODir = input
+
+  DATA = 0
+
+  for 7 loop
+      DB = RTC_IO
+      DATA = DATA >> 1   ;shift right DATA
+      RTC_CLOCK
+  end loop
+      DB = RTC_IO
+
+  RTC_CE =  LOW
+  
+end procedure
+
+
+
+
+procedure RTC_BURST_WRITE_CLOCK  is ; send 8 datas to RTC
+
+  var byte DATA
+
+  RTC_IODir = output
+  RTC_SCLK = low
+  RTC_CE =  high
+
+  RTC_REGISTER_SEND (0xBE)
+
+  RTC_SCLK = low
+
+  DATA = SECOND
+  DEC_TO_RTC ( DATA )
+  RTC_DATA_SEND (DATA)
+
+  DATA = MINUT
+  DEC_TO_RTC ( DATA )
+  RTC_DATA_SEND (DATA)
+
+  DATA = HRS
+  DEC_TO_RTC ( DATA )
+  RTC_DATA_SEND (DATA)
+
+  DATA = DATE
+  DEC_TO_RTC ( DATA )
+  RTC_DATA_SEND (DATA)
+
+  DATA = MOUNTH
+  DEC_TO_RTC ( DATA )
+  RTC_DATA_SEND (DATA)
+
+  DATA = DAY
+  DEC_TO_RTC ( DATA )
+  RTC_DATA_SEND (DATA)
+
+  DATA = YEAR
+  DEC_TO_RTC ( DATA )
+  RTC_DATA_SEND (DATA)
+
+  DATA = PROTREG
+  DEC_TO_RTC ( DATA )
+  RTC_DATA_SEND (DATA)
+
+  RTC_CE =  LOW
+
+end procedure
+
+
+
+procedure   RTC_READ_DATA (byte out DATA) is
+
+  var bit DB at DATA : 7
+    for 7 loop
+      DB = RTC_IO
+      DATA = DATA >> 1   ;shift right DATA
+      RTC_CLOCK
+    end loop
+      DB = RTC_IO
+      RTC_CLOCK
+end procedure
+
+
+
+procedure RTC_BURST_READ_CLOCK  is ; READ 8 datas from RTC
+
+  var byte DATA
+
+  RTC_SCLK = low
+  RTC_IODir = output
+  RTC_CE =  high
+
+  RTC_REGISTER_SEND (0xBF)
+
+  RTC_IODir = input
+
+  RTC_SCLK = low
+
+  RTC_READ_DATA (DATA)
+  SECOND = DATA
+
+  RTC_READ_DATA (DATA)
+  MINUT = DATA
+
+  RTC_READ_DATA (DATA)
+  HRS = DATA
+
+  RTC_READ_DATA (DATA)
+  DATE = DATA
+
+  RTC_READ_DATA (DATA)
+  MOUNTH = DATA
+
+  RTC_READ_DATA (DATA)
+  DAY = DATA
+
+  RTC_READ_DATA (DATA)
+  YEAR = DATA
+
+  RTC_READ_DATA (DATA)
+  PROTREG = DATA
+
+  RTC_CE =  LOW
+
+
+  RTC_TO_DEC ( SECOND )
+  RTC_TO_DEC ( MINUT )
+  RTC_TO_DEC ( HRS )
+  RTC_TO_DEC ( DATE )
+  RTC_TO_DEC ( MOUNTH )
+  RTC_TO_DEC ( YEAR )
+
+
+
+end procedure
+
+
+
+
+procedure SECOND_READ is
+   var byte DATA
+   RTC_READ ( 0x81 , DATA )
+   RTC_TO_DEC ( DATA )
+   SECOND = DATA
+end procedure
+
+procedure MINUT_READ is
+   var byte DATA
+   RTC_READ ( 0x83 , DATA )
+   RTC_TO_DEC ( DATA )
+   MINUT = DATA
+end procedure
+
+procedure HRS_READ is
+   var byte DATA
+   RTC_READ ( 0x85 , DATA )
+   RTC_TO_DEC ( DATA )
+   HRS = DATA
+end procedure
+
+procedure DATE_READ is
+   var byte DATA
+   RTC_READ ( 0x87 , DATA )
+   RTC_TO_DEC ( DATA )
+   DATE = DATA
+end procedure
+
+procedure MOUNTH_READ is
+   var byte DATA
+   RTC_READ ( 0x89 , DATA )
+   RTC_TO_DEC ( DATA )
+   MOUNTH = DATA
+end procedure
+
+procedure DAY_READ is
+   var byte DATA
+   RTC_READ ( 0x8B , DATA )
+   RTC_TO_DEC ( DATA )
+   DAY = DATA
+end procedure
+
+procedure YEAR_READ is
+   var byte DATA
+   RTC_READ ( 0x8D , DATA )
+   RTC_TO_DEC ( DATA )
+   YEAR = DATA
+end procedure
+
+procedure PROTREG_READ is
+   var byte DATA
+   RTC_READ ( 0x8F , DATA )
+   RTC_TO_DEC ( DATA )
+   PROTREG = DATA
+end procedure
+
+
+
+procedure SECOND_WRITE is
+   var byte DATA
+   DATA = SECOND
+   DEC_TO_RTC ( DATA )
+   RTC_WRITE ( DATA , 0x80 )
+end procedure
+
+procedure MINUT_WRITE is
+   var byte DATA
+   DATA = MINUT
+   DEC_TO_RTC ( DATA )
+   RTC_WRITE ( DATA , 0x82 )
+end procedure
+
+procedure HRS_WRITE is
+   var byte DATA
+   DATA = HRS
+   DEC_TO_RTC ( DATA )
+   RTC_WRITE ( DATA , 0x84 )
+end procedure
+
+procedure DATE_WRITE is
+   var byte DATA
+   DATA = DATE
+   DEC_TO_RTC ( DATA )
+   RTC_WRITE ( DATA , 0x86 )
+end procedure
+
+procedure MOUNTH_WRITE is
+   var byte DATA
+   DATA = MOUNTH
+   DEC_TO_RTC ( DATA )
+   RTC_WRITE ( DATA , 0x88 )
+end procedure
+
+procedure DAY_WRITE is
+   var byte DATA
+   DATA = DAY
+   DEC_TO_RTC ( DATA )
+   RTC_WRITE ( DATA , 0x8A )
+end procedure
+
+procedure YEAR_WRITE is
+   var byte DATA
+   DATA = YEAR
+   DEC_TO_RTC ( DATA )
+   RTC_WRITE ( DATA , 0x8C )
+end procedure
+
+procedure PROTREG_WRITE is
+   var byte DATA
+   DATA = PROTREG
+   DEC_TO_RTC ( DATA )
+   RTC_WRITE ( DATA , 0x8E )
+end procedure
+
+
+procedure RTC_STOP is
+   SECOND_READ
+   SECOND = SECOND | 0b1000_0000
+   SECOND_WRITE
+end procedure
+
+procedure RTC_START is
+   SECOND_READ
+   SECOND = SECOND & 0b0111_1111
+   SECOND_WRITE
+end procedure
+
+
+
+
+
+procedure INIT_RTC is
+RTC_IODir   = output
+RTC_CE = LOW
+RTC_WRITE ( TRICK_CHAR_REG , 0x90 ) ;Program Trickel Charge register
+end procedure
+
+
+INIT_RTC
+
