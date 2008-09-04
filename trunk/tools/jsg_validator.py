@@ -20,6 +20,7 @@
 # Notes:
 #
 
+import sys,os
 import re
 
 errors = []
@@ -90,6 +91,7 @@ def validate_field(data,field,predicate,mandatory,multiline=False):
 		
 	# eat header, and check fields (mandatory or not) and 
 	# content (using predicate)
+	c = None
 	for i,l in data:
 		if re.match(syntax,l):
 			# got it, check field content
@@ -105,6 +107,8 @@ def validate_field(data,field,predicate,mandatory,multiline=False):
 	else:
 		if mandatory:
 			errors.append("Cannot find field %s (searched for '%s')" % (field,syntax))
+	
+	return c
 
 
 def validate_header(content):
@@ -155,6 +159,9 @@ def validate_lower_case(content):
 			# dirty search comments...
 			if c in l:
 				l = l[:l.index(c)]
+			tmp = [w.startswith(c) for n,w in enumerate(l)]
+			if True in tmp:
+				l = l[:tmp.index(True)]
 			return l
 		# first check ";" *then* "--"
 		# so things like ";;;;-- Note" are not considered
@@ -226,7 +233,6 @@ def report(filename):
 
 
 if __name__ == '__main__':
-	import sys,os
 	try:
 		filename = sys.argv[1]
 		validate(filename)
