@@ -10,30 +10,6 @@
 -- Library to handle DS1302 RTC
 --
 --
--- ALL ASSIGNMENDS MUST BE DONE BEFORE THIS INCLUDE FILE !!!!!!!!!!!!
---
--- Assign in your MAIN programm CE, SCLK ans IO to the hardware pins
--- Assign in your MAIN programm CEDIR, SCLKDIR ans IODIR to the pin directions
--- example:
--- var bit RTC_CE     is pin_a1 -- out
--- var bit RTC_SCLK   is pin_a2 -- out
--- var bit RTC_IO     is pin_a3 -- in/out
--- var volatile bit RTC_CEDir   is pin_a1_direction    ; always output
--- var volatile bit RTC_SCLKDir is pin_a2_direction    ; always output
--- var volatile bit RTC_IODir   is pin_a3_direction    ; bidirectional
---
--- Assign in your MAIN program the Trickel charge configuration
--- example:
--- var byte RTC_DIODE  = 1     ; RTC_DIODE = 1 or RTC_DIODE = 2
--- var byte RTC_RESISTOR = 8  ; RTC_RESISTOR = 0 (0ohm) RTC_RESISTOR = 2 (2K),
---                           ; RTC_RESISTOR = 4 (4K) or RTC_RESISTOR = 8 (8K)
--- var bit RTC_TRICKEL = ON   ; RTC_TRICKEL = ON or RTC_TRICKEL = OFF (no charging)
---
---
-
-
-
-
 ----------Place this block in your MAIN program without the "--"  -------------
 -- var bit RTC_CE     is pin_a1 -- out
 -- var bit RTC_SCLK   is pin_a2 -- out
@@ -49,11 +25,6 @@
 -- include ds1302_rz
 
 ---------------------------------------------------------------------------
-
-
-
-
-
 --
 -- Procedures:
 --
@@ -100,7 +71,10 @@
 
 
 
-
+-- ----------------------------------------------------------------------------
+-- variable declaration needed for this library
+--
+-- ----------------------------------------------------------------------------
 
 var byte TRICK_CHAR_REG ;trickel charge  register (90h)
 
@@ -118,7 +92,10 @@ var volatile bit ROUT1 at TRICK_CHAR_REG :1
 var volatile bit DS0 at TRICK_CHAR_REG :2
 var volatile bit DS1 at TRICK_CHAR_REG :3
 
-
+-- ----------------------------------------------------------------------------
+-- programs the trickel charge register according the parameters set in the MAIN file
+-- (this procedure is only used inside this file)
+-- ----------------------------------------------------------------------------
 
 if RTC_TRICKEL then
    TRICK_CHAR_REG = 0b1010_0000
@@ -156,7 +133,10 @@ else
 end if
 
 
-
+-- ----------------------------------------------------------------------------
+-- convert from decimal to RTC format
+-- (this procedure is only used inside this file)
+-- ----------------------------------------------------------------------------
 
 procedure DEC_TO_RTC ( byte in out DATA ) is
   var byte RTC
@@ -187,6 +167,11 @@ End If
  DATA = RTC
 end procedure
 
+
+-- ----------------------------------------------------------------------------
+-- convert from RTC format to decimal
+-- (this procedure is only used inside this file)
+-- ----------------------------------------------------------------------------
 
 procedure RTC_TO_DEC ( byte in out DATA ) is
   var byte DEC
@@ -222,6 +207,11 @@ end procedure
 
 
 
+-- ----------------------------------------------------------------------------
+-- gives a clock puls
+-- (this procedure is only used inside this file)
+-- ----------------------------------------------------------------------------
+
 procedure RTC_CLOCK  is
  RTC_SCLK = high
  delay_1us
@@ -243,6 +233,10 @@ end procedure
 
 
 
+-- ----------------------------------------------------------------------------
+-- sends data to RTC
+-- (this procedure is only used inside this file)
+-- ----------------------------------------------------------------------------
 
 procedure RTC_DATA_SEND ( byte in DATA ) is
   for 8 loop
@@ -254,7 +248,30 @@ end procedure
 
 
 
+-- ----------------------------------------------------------------------------
+-- reads data from RTC
+-- (this procedure is only used inside this file)
+-- ----------------------------------------------------------------------------
 
+procedure   RTC_READ_DATA (byte out DATA) is
+
+  var bit DB at DATA : 7
+    for 7 loop
+      DB = RTC_IO
+      DATA = DATA >> 1   ;shift right DATA
+      RTC_CLOCK
+    end loop
+      DB = RTC_IO
+      RTC_CLOCK
+end procedure
+
+
+
+
+-- ----------------------------------------------------------------------------
+-- Writes specified data (without converting) to a specified register in the
+-- RTC
+-- ----------------------------------------------------------------------------
 
 procedure RTC_WRITE ( byte in DATA, byte in REGISTER ) is ; send data to RTC
 
@@ -272,6 +289,10 @@ end procedure
 
 
 
+-- ----------------------------------------------------------------------------
+-- reads specified data from a specified register in the
+-- RTC (without converting)
+-- ----------------------------------------------------------------------------
 
 procedure RTC_READ ( byte in REGISTER , byte out DATA ) is ; recieve data from RTC
   var bit DB at DATA : 7
@@ -300,6 +321,11 @@ end procedure
 
 
 
+
+-- ----------------------------------------------------------------------------
+-- converts the 8 varables (SECOND,MINUT,..., YEAR and PROTREG) from decimal
+-- to RTC format and writes them directly to RTC
+-- ----------------------------------------------------------------------------
 
 procedure RTC_BURST_WRITE_CLOCK  is ; send 8 datas to RTC
 
@@ -350,27 +376,17 @@ procedure RTC_BURST_WRITE_CLOCK  is ; send 8 datas to RTC
 end procedure
 
 
-
-procedure   RTC_READ_DATA (byte out DATA) is
-
-  var bit DB at DATA : 7
-    for 7 loop
-      DB = RTC_IO
-      DATA = DATA >> 1   ;shift right DATA
-      RTC_CLOCK
-    end loop
-      DB = RTC_IO
-      RTC_CLOCK
-end procedure
-
-
+-- ----------------------------------------------------------------------------
+-- Reads 8 variable from RTC converts them from RTC format to decimal and
+-- put them in SECOND,MINUT,..., YEAR and PROTREG
+-- ----------------------------------------------------------------------------
 
 procedure RTC_BURST_READ_CLOCK  is ; READ 8 datas from RTC
 
   var byte DATA
 
-  RTC_SCLK = low
   RTC_IODir = output
+  RTC_SCLK = low
   RTC_CE =  high
 
   RTC_REGISTER_SEND (0xBF)
@@ -412,13 +428,13 @@ procedure RTC_BURST_READ_CLOCK  is ; READ 8 datas from RTC
   RTC_TO_DEC ( DATE )
   RTC_TO_DEC ( MOUNTH )
   RTC_TO_DEC ( YEAR )
-
-
-
 end procedure
 
 
-
+-- ----------------------------------------------------------------------------
+-- reads second value from RTC converts it from RTC format to decimal and
+-- place it in variable SECOND
+-- ----------------------------------------------------------------------------
 
 procedure SECOND_READ is
    var byte DATA
@@ -427,12 +443,26 @@ procedure SECOND_READ is
    SECOND = DATA
 end procedure
 
+
+
+-- ----------------------------------------------------------------------------
+-- reads minut value from RTC converts it from RTC format to decimal and
+-- place it in variable MINUT
+-- ----------------------------------------------------------------------------
+
 procedure MINUT_READ is
    var byte DATA
    RTC_READ ( 0x83 , DATA )
    RTC_TO_DEC ( DATA )
    MINUT = DATA
 end procedure
+
+
+
+-- ----------------------------------------------------------------------------
+-- reads hrs value from RTC converts it from RTC format to decimal and
+-- place it in variable HRS
+-- ----------------------------------------------------------------------------
 
 procedure HRS_READ is
    var byte DATA
@@ -441,12 +471,26 @@ procedure HRS_READ is
    HRS = DATA
 end procedure
 
+
+
+-- ----------------------------------------------------------------------------
+-- reads date value from RTC converts it from RTC format to decimal and
+-- place it in variable DATE
+-- ----------------------------------------------------------------------------
+
 procedure DATE_READ is
    var byte DATA
    RTC_READ ( 0x87 , DATA )
    RTC_TO_DEC ( DATA )
    DATE = DATA
 end procedure
+
+
+
+-- ----------------------------------------------------------------------------
+-- reads mounth value from RTC converts it from RTC format to decimal and
+-- place it in variable MOUNTH
+-- ----------------------------------------------------------------------------
 
 procedure MOUNTH_READ is
    var byte DATA
@@ -455,6 +499,13 @@ procedure MOUNTH_READ is
    MOUNTH = DATA
 end procedure
 
+
+
+-- ----------------------------------------------------------------------------
+-- reads day value from RTC converts it from RTC format to decimal and
+-- place it in variable DAY
+-- ----------------------------------------------------------------------------
+
 procedure DAY_READ is
    var byte DATA
    RTC_READ ( 0x8B , DATA )
@@ -462,12 +513,26 @@ procedure DAY_READ is
    DAY = DATA
 end procedure
 
+
+
+-- ----------------------------------------------------------------------------
+-- reads year value from RTC converts it from RTC format to decimal and
+-- place it in variable YEAR
+-- ----------------------------------------------------------------------------
+
 procedure YEAR_READ is
    var byte DATA
    RTC_READ ( 0x8D , DATA )
    RTC_TO_DEC ( DATA )
    YEAR = DATA
 end procedure
+
+
+
+-- ----------------------------------------------------------------------------
+-- reads protection register value from RTC converts it from RTC format to
+-- decimal and place it in variable PROTREG
+-- ----------------------------------------------------------------------------
 
 procedure PROTREG_READ is
    var byte DATA
@@ -478,12 +543,26 @@ end procedure
 
 
 
+
+-- ----------------------------------------------------------------------------
+-- converts value from variable SECOND from decimal to RTC format and
+-- writes it into the RTC second register
+-- ----------------------------------------------------------------------------
+
 procedure SECOND_WRITE is
    var byte DATA
    DATA = SECOND
    DEC_TO_RTC ( DATA )
    RTC_WRITE ( DATA , 0x80 )
 end procedure
+
+
+
+
+-- ----------------------------------------------------------------------------
+-- converts value from variable MINUT from decimal to RTC format and
+-- writes it into the RTC minut register
+-- ----------------------------------------------------------------------------
 
 procedure MINUT_WRITE is
    var byte DATA
@@ -492,12 +571,28 @@ procedure MINUT_WRITE is
    RTC_WRITE ( DATA , 0x82 )
 end procedure
 
+
+
+
+-- ----------------------------------------------------------------------------
+-- converts value from variable HRS from decimal to RTC format and
+-- writes it into the RTC hrs register
+-- ----------------------------------------------------------------------------
+
 procedure HRS_WRITE is
    var byte DATA
    DATA = HRS
    DEC_TO_RTC ( DATA )
    RTC_WRITE ( DATA , 0x84 )
 end procedure
+
+
+
+
+-- ----------------------------------------------------------------------------
+-- converts value from variable DATE from decimal to RTC format and
+-- writes it into the RTC date register
+-- ----------------------------------------------------------------------------
 
 procedure DATE_WRITE is
    var byte DATA
@@ -506,12 +601,28 @@ procedure DATE_WRITE is
    RTC_WRITE ( DATA , 0x86 )
 end procedure
 
+
+
+
+-- ----------------------------------------------------------------------------
+-- converts value from variable MOUNTH from decimal to RTC format and
+-- writes it into the RTC mounth register
+-- ----------------------------------------------------------------------------
+
 procedure MOUNTH_WRITE is
    var byte DATA
    DATA = MOUNTH
    DEC_TO_RTC ( DATA )
    RTC_WRITE ( DATA , 0x88 )
 end procedure
+
+
+
+
+-- ----------------------------------------------------------------------------
+-- converts value from variable DAY from decimal to RTC format and
+-- writes it into the RTC day register
+-- ----------------------------------------------------------------------------
 
 procedure DAY_WRITE is
    var byte DATA
@@ -520,12 +631,27 @@ procedure DAY_WRITE is
    RTC_WRITE ( DATA , 0x8A )
 end procedure
 
+
+
+
+-- ----------------------------------------------------------------------------
+-- converts value from variable YEAR from decimal to RTC format and
+-- writes it into the RTC year register
+-- ----------------------------------------------------------------------------
+
 procedure YEAR_WRITE is
    var byte DATA
    DATA = YEAR
    DEC_TO_RTC ( DATA )
    RTC_WRITE ( DATA , 0x8C )
 end procedure
+
+
+
+-- ----------------------------------------------------------------------------
+-- converts value from variable PROTREG from decimal to RTC format and
+--  writes it into the RTC protection register
+-- ----------------------------------------------------------------------------
 
 procedure PROTREG_WRITE is
    var byte DATA
@@ -535,11 +661,26 @@ procedure PROTREG_WRITE is
 end procedure
 
 
+
+
+-- ----------------------------------------------------------------------------
+-- stops the RTC
+--
+-- ----------------------------------------------------------------------------
+
 procedure RTC_STOP is
    SECOND_READ
    SECOND = SECOND | 0b1000_0000
    SECOND_WRITE
 end procedure
+
+
+
+
+-- ----------------------------------------------------------------------------
+-- starts the RTC
+--
+-- ----------------------------------------------------------------------------
 
 procedure RTC_START is
    SECOND_READ
@@ -549,7 +690,10 @@ end procedure
 
 
 
-
+-- ----------------------------------------------------------------------------
+-- initials the RTC
+-- (this procedure is only used inside this file)
+-- ----------------------------------------------------------------------------
 
 procedure INIT_RTC is
 RTC_IODir   = output
