@@ -132,6 +132,7 @@ def validate_header(content):
 
 def validate_filename(filename):
 	# must be lowercase
+	filename = os.path.basename(filename)
 	if filename.lower() != filename:
 		errors.append("Filename is not lowercase: %s" % filename)
 	# should have "jal" extention
