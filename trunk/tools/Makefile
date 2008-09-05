@@ -22,6 +22,8 @@ clean :
 	find ${SAMPLIR_DIR} -name \*.err -exec rm {} \;
 	find ${SAMPLIR_DIR} -name \*.obj -exec rm {} \;
 	find ${SAMPLIR_DIR} -name \*.asm -exec rm {} \;
+	# clean python bytecode
+	find ./ -name \*.pyc -exec rm {} \;
 		
 test :
 	# run testsuite
@@ -42,3 +44,5 @@ jsg:
 		./jsg_validator.py $$f ;\
 	done 
 
+doc:
+	./jalapi_generate.sh ../${ENV}
