@@ -10,7 +10,7 @@ export SAMPLEDIR=$ROOT/sample
 
 echo "<!-- sorted -->" > $MENU
 
-for jalfile in `find $ROOT/include -name \*.jal`
+for jalfile in `find $ROOT/include -name \*.jal | grep -v $ROOT/include/device`
 do
 	basefile=`basename $jalfile`
 	htmlfile="`echo $basefile | sed 's#\.jal$#.html#'`"
