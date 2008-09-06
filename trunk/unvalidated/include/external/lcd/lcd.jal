@@ -1,27 +1,28 @@
 -- Title: LCD library
--- Author: Stef Mientki, Copyright (c) 2006..2008, all rights reserved.
--- Adapted-by: Bert van Dam, Eur van Andel, eur@fiwihex.nl
+-- Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.
+-- Adapted-by: Eur van Andel
 -- Compiler:  >=2.4g
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Sources: pic.flappie.nl
--- 
+-- Sources:
+--
 -- Description: controls HD44780 compatible alphanumeric LCD screens
 -- screens can range from 2x8  (2 lines, 8 chars) to 4x20.
 -- 4 bit connection, uses 6 PIC pins
 --
--- Expects: two pins for handshake: RS and EN
--- a port nibble for data: data_port
+-- Expects: - 2 pins for handshake: lcd_rs and lcd_en
+--          - a port nibble for data: data_port
 --
 -- Example below, handshake pins can be on a different port, data pins can be high nibble as well
 --
--- var  bit  RS        is pin_x5       -- LCD command/data select.
--- var  bit  EN        is pin_x4       -- LCD data trigger
--- var byte data_port  is portx_low    -- LCD data
--- portx_direction     = all_output    -- LCD data is portx_low
-
+-- var  bit  LCD_RS     is pin_x5       -- LCD command/data select.
+-- var  bit  LCD_EN     is pin_x4       -- LCD data trigger
+-- var byte data_port   is portx_low    -- LCD data
+-- portx_low_direction  = all_output    -- LCD data is portx_low
+--
+-- These parameters should be specified _before_ the include of this library.
 --
 
 include delay_any_mc                -- delay procedures
@@ -40,10 +41,10 @@ include delay_any_mc                -- delay procedures
 
 procedure  lcdwrtnibble(byte in data) is
 
-  data_port = data                             -- replace low nibble
-  EN = high                                     -- trigger on
+  data_port = data                              -- replace low nibble
+  LCD_EN = high                                 -- trigger on
   asm nop                                       -- wait (> 400 ns)
-  EN = low                                      -- trigger off
+  LCD_EN = low                                  -- trigger off
 
 end procedure
 
@@ -60,25 +61,25 @@ procedure  lcdwrtchar(byte in c) is
 end procedure
 
 
-procedure lcd'put(byte in c) is
+-- procedure lcd'put(byte in c) is
 
-  lcdwrtnibble(c >> 4)                          -- write high nibble
-  lcdwrtnibble(c)                               -- write low nibble
-  delay_10us(4)                                -- > 37 æs
+--  lcdwrtnibble(c >> 4)                          -- write high nibble
+--  lcdwrtnibble(c)                               -- write low nibble
+--  delay_10us(4)                                 -- > 37 æs
 
-end procedure
+-- end procedure
 
 
 -- ------------------------------------------------------------
 -- Clear screen LCD
 -- ------------------------------------------------------------
 
-procedure  lcdclearscreen is
+procedure  lcdclearscreen() is
 
-  RS = low                                      -- control character follows
+  LCD_RS = low                                  -- control character follows
   lcdwrtchar(0b0000_0001)                       -- clear screen, cursor home
   delay_10us(150)                               -- 1.5 ms
-  RS = high                                     -- switch back to data chars
+  LCD_RS = high                                 -- switch back to data chars
 
 end procedure
 
@@ -93,9 +94,9 @@ procedure  lcdsetcursor(byte in row, byte in col)  is
   if (row > 0) then                             -- 2nd line req'd
     col = col | 0b0100_0000                     -- add offset 2nd line
   end if
-  RS = low                                      -- control character follows
+  LCD_RS = low                                  -- control character follows
   lcdwrtchar(col)                               -- new cursor position
-  RS = high                                     -- switch back to data chars
+  LCD_RS = high                                 -- switch back to data chars
 
 end procedure
 
@@ -105,14 +106,14 @@ end procedure
 -- - 2-line mode, no cursor
 -- -----------------------------------------------------
 
-procedure  lcdsetup  is
+procedure  lcdsetup()  is
 
-  RS = low                                      -- set control mode
+  LCD_RS = low                                  -- set control mode
   delay_1ms(15)                                 -- 15 ms power-up delay
   lcdwrtnibble(0b0000_0011)                     -- function set
-  delay_1ms(5)                                   -- > 4.1 milliseconds
+  delay_1ms(5)                                  -- > 4.1 milliseconds
   lcdwrtnibble(0b0000_0011)                     -- function set
-  delay_10us(110)                                -- > 100 æs
+  delay_10us(110)                               -- > 100 æs
   lcdwrtnibble(0b0000_0011)                     -- function set
   delay_10us(4)                                 -- > 37 æs
   lcdwrtnibble(0b0000_0010)                     -- to 4-bit mode
@@ -125,6 +126,8 @@ procedure  lcdsetup  is
                                                 -- incl switch to data mode
 end procedure
 
+
 -- startup code
 
-lcdsetup()                                    -- to get the LCD running 
+lcdsetup()                                    -- to get the LCD running
+
