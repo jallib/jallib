@@ -84,7 +84,7 @@ def validate_field(data,field,predicate,mandatory,multiline=False):
 			if l.strip() == '--':
 				# got end of block
 				break
-			c += l.replace("-- ","")
+			c += re.sub("^--\s","",l)
 		else:
 			errors.append("%d: cannot find end of field content %s" % (i,field))
 		return c
