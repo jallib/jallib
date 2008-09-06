@@ -19,18 +19,15 @@
 -- TODO: should this be configurable ?
 -- Transmission parameters are 8 databits, 1 stopbit, no parity, no handshake.
 --
--- --------------------------------------------------------------------
 
 
--- --------------------------------------------------------------------
+
 -- some variables made available under a general (pic-independant) name
--- --------------------------------------------------------------------
+
 var volatile bit serial_hw_data_available is PIR1_RCIF
 var volatile bit serial_hw_data_ready	 is PIR1_TXIF
--- --------------------------------------------------------------------
 
 
--- --------------------------------------------------------------------
 -- internal function, calculates and sets baudrate divider
 -- and stores it in the appropiate register.
 -- the high-speed / low-speed bit is not stored but returned as the result
@@ -38,18 +35,19 @@ var volatile bit serial_hw_data_ready	 is PIR1_TXIF
 -- Special attention is payed to the highest and lowest baudrates,
 -- a deviation of 5% is accepted in these cases
 --
--- Asynchronous baudrate settings (see also page 74/75 of DS40300B)
---
+-- Asynchronous baudrate settings (see also page 74/75 of DS40300B):
+-- {{{
 -- if TXSTA_BRGH = 0 (low speed)
 --  SPBRG = ( Fosc / ( 64 * Baudrate ) ) -1
 --
 -- if TXSTA_BRGH = 1 (high speed)
 --  SPBRG = ( Fosc / ( 16 * Baudrate ) ) -1
+-- }}}
+-- 
+-- Synchronous baudrate settings:
+--  * TXSTA_BRGH = 0 (low speed)
+--  * SPBRG = ( Fosc / ( 4 * Baudrate ) ) -1
 --
--- Synchronous baudrate settings
--- TXSTA_BRGH = 0 (low speed)
---  SPBRG = ( Fosc / ( 4 * Baudrate ) ) -1
--- --------------------------------------------------------------------
 procedure _calculate_and_set_baudrate() is
 	const max_deviation = 5  -- maximum % deviation of the realized baudrate
 
@@ -125,16 +123,13 @@ procedure _calculate_and_set_baudrate() is
 	end if
 
 end procedure
--- --------------------------------------------------------------------
 
 
--- --------------------------------------------------------------------
 -- Initializes the RS232 port, calculates baudrate registers.
 -- Normally this routine should not be called by the user program,
 -- it's called just once at the end of this unit
 -- Only after "asynch_disable_hw" it's necessary to call this routine,
 -- to enable the RS232 hardware again.
--- --------------------------------------------------------------------
 procedure serial_hw_init() is 
 	-- Calculate and Load baudrate generator
 	_calculate_and_set_baudrate()
@@ -151,53 +146,41 @@ procedure serial_hw_init() is
 	RCSTA = 0x90
 
 end procedure
--- --------------------------------------------------------------------
 
 
--- --------------------------------------------------------------------
 -- Disables USART (wether used as RS232 or SPI),
 -- so ports can be used (temporary) for other purposes.
 -- USART can be enabled again by calling serial_hw_enable()
--- --------------------------------------------------------------------
 procedure serial_hw_disable() is
 	-- wait till running transmissions are finished
 	while !TXSTA_TRMT loop end loop
 	-- Disable Serial port:
 	RCSTA_SPEN = false
 end procedure
--- --------------------------------------------------------------------
 
 
--- --------------------------------------------------------------------
 -- Enables USART (wether used as RS232 or SPI),
--- --------------------------------------------------------------------
 procedure serial_hw_enable() is
 	-- Enable Serial port
 	RCSTA_SPEN = true
 end procedure
--- --------------------------------------------------------------------
 
 
--- --------------------------------------------------------------------
 -- Asynchronuous RS232 send routine, using the TX pin
 -- Sends byte X (8 bit with no parity) to the serial port
 -- First checks (and waits if necessary) if transmit buffer is empty
 --
 -- remark: PIR1-register (containing _TXIF-flag) must be in bank0 !!
--- --------------------------------------------------------------------
 procedure serial_hw_write(byte in data) is
 	-- wait until TXREG is empty
 	while ! PIR1_TXIF loop end loop
 	-- then put new byte in TXREG (prepare for transmission)
 	TXREG = data
 end procedure
--- --------------------------------------------------------------------
 
 
--- --------------------------------------------------------------------
 -- like Serial_H_write, but then with a word as input
 -- The MSB is outputed first
--- --------------------------------------------------------------------
 procedure serial_hw_write_word(word in data) is
 	var byte DX[2] at data
 	-- can be blocked by debugging
@@ -209,13 +192,10 @@ procedure serial_hw_write_word(word in data) is
 	while ! PIR1_TXIF loop end loop
 	TXREG = DX[0]
 end procedure
--- --------------------------------------------------------------------
 
 
--- --------------------------------------------------------------------
 -- Returns true if a character was received, otherwise returns false.
 -- Overrun error flag is cleared.
--- --------------------------------------------------------------------
 function serial_hw_read(byte out data) return bit is
 	-- test if byte available, and if so,
 	-- get byte and transport to outer world
@@ -232,23 +212,25 @@ function serial_hw_read(byte out data) return bit is
   
 	return true
 end function
--- --------------------------------------------------------------------
 
--- --------------------------------------------------------------------
 -- Here Serial read and write are definied as pseudo variables
 -- so you use them as normal vars, like
---	 -- wait for character being received,
---	 -- then echo the inverted character
---	 serial_hw_data = ! serial_hw_data
+--  * wait for character being received,
+--  * then echo the inverted character
+-- {{{
+-- serial_hw_data = ! serial_hw_data
+-- }}}
 --
 -- these procedures will wait till they can perform their action
--- therefor it's better to use to following construct
---	 -- if charater received, echo the inverted character
---	 if  serial_hw_data_available then
---	   serial_hw_data = ! serial_hw_data
---	 end if
---	 -- do other things
--- --------------------------------------------------------------------
+-- therefore it's better to use to following construct
+-- {{{
+-- -- if charater received, echo the inverted character
+-- if  serial_hw_data_available then
+--     serial_hw_data = ! serial_hw_data
+-- end if
+-- -- do other things
+-- }}}
+--
 procedure serial_hw_data'put(byte in data) is
 	-- -----------------------------------------------
 	-- BUG BUG BUG BUG BUG BUG BUG BUG BUG BUG BUG BUG	  
@@ -265,14 +247,11 @@ function serial_hw_data'get() return byte is
 	while ! serial_hw_read(data) loop end loop
 	return data
 end function
--- --------------------------------------------------------------------
 
 
--- --------------------------------------------------------------------
 -- These are real raw procedures, declared as pseudo variables
 -- the user is totally responsible for testing the transmit/receive
 -- flag before using these functions
--- --------------------------------------------------------------------
 procedure serial_hw_data_raw'put(byte in data) is
 	TXREG = data
 end procedure
@@ -280,5 +259,4 @@ end procedure
 function serial_hw_data_raw'get() return byte is
 	return RCREG
 end function
--- --------------------------------------------------------------------
 
