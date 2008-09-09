@@ -23,9 +23,6 @@
 import sys,os
 import re
 
-errors = []
-warnings = []
-
 def content_not_empty(val):
 	return val.strip() != ''
 def compiler_version(val):
@@ -226,19 +223,30 @@ def report(filename):
 	for warn in warnings:
 		print "\twarning: %s" % warn
 	
-	if errors:
-		sys.exit(1)
-	if warnings:
-		sys.exit(2)
-	sys.exit(0)
+	if errors or warnings:
+		return True
 
 
 if __name__ == '__main__':
-	try:
-		filename = sys.argv[1]
-		validate(filename)
-		report(filename)
-
-	except IndexError:
+	if len(sys.argv) < 2:
 		print "Please provide a JAL file to validate"
 		sys.exit(255)
+
+	at_least_one_failed = False
+	errors = []
+	warnings = []
+
+	for filename in sys.argv[1:]:
+		validate(filename)
+		if report(filename):
+			at_least_one_failed = True
+		errors = []
+		warnings = []
+
+	if at_least_one_failed:
+		sys.exit(1)
+	else:
+		sys.exit(0)
+
+	
+
