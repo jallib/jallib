@@ -8,28 +8,41 @@
 --
 -- Sources:
 --
--- Description: Controls HD44780 compatible alphanumeric LCD screens
+-- Description: Controls HD44780 compatible alphanumeric LCD screens.
 --              Screens can range from 2x8  (2 lines, 8 chars) to 4x20.
 --              Uses 4 bit wide datapath + 2 handshake lines (total 6 PIC pins).
 --              Expects: - 2 pins for handshake: 'lcd_rs' and 'lcd_en'
 --                       - a port nibble for data: 'data_port'
 --
--- Example: - Data pins are the lower half of portA.
---          - Handshake pins are pins 4 and 5 of portA.
+-- Dependencies: delay library delay_any_mc.jal
 --
--- var  byte data_port           is  portA_low         -- LCD data
--- var  byte data_port_direction is  portA_low_direction
--- var  bit  lcd_en              is  pin_A4            -- LCD data trigger
--- var  bit  lcd_en_direction    is  pin_A4_direction
--- var  bit  lcd_rs              is  pin_A5            -- LCD command/data select
--- var  bit  lcd_rd_direction    is  pin_A5_direction
-
--- dataport_direction  =  all_output  -- make datapath output
--- lcd_en_direction    =  output      -- )
--- lcd_rs_direction    =  output      -- ) make handshake lines output
+-- Code example:
 --
--- Note: The parameters should be declared and the direction settings be executed
---       _before_ the include of this library!
+-- The application program must declare some variables (aliases):
+-- var  byte lcd_data_port           is  portA_low         -- LCD data
+-- var  byte lcd_data_port_direction is  portA_low_direction
+-- var  bit  lcd_en                  is  pin_A4            -- LCD data trigger
+-- var  bit  lcd_en_direction        is  pin_A4_direction
+-- var  bit  lcd_rs                  is  pin_A5            -- LCD cmd/data select
+-- var  bit  lcd_rd_direction        is  pin_A5_direction
+--
+--  (This is an example: The lower nibble of portA is used for data,
+--   pins 4 and 5 of portA are used for handshake, any other available dataport
+--   or handshake pins may be used, provided these are not input only).
+--
+-- and initialize the directions:
+--
+-- lcd_dataport_direction = all_output          -- make datapath output
+-- lcd_en_direction       = output              -- )
+-- lcd_rs_direction       = output              -- ) make handshake lines output
+--
+-- _before_ the include of this library!
+--
+-- Available functions for application program:
+--              lcd_init()
+--              lcd_clearscreen()
+--              lcd_setcursor(<row>,<column>)
+--              lcd_wrtchar(<byte>)
 --
 
 include delay_any_mc                -- delay procedures
@@ -46,9 +59,9 @@ include delay_any_mc                -- delay procedures
 -- in 4-bit mode only required after second nibble.
 -- -----------------------------------------------------
 
-procedure  lcdwrtnibble(byte in data) is
+procedure  _lcd_wrtnibble(byte in data) is
 
-  data_port = data                              -- replace low nibble
+  lcd_data_port = data                          -- replace low nibble
   LCD_EN = high                                 -- trigger on
   asm nop                                       -- wait (> 400 ns)
   LCD_EN = low                                  -- trigger off
@@ -59,10 +72,10 @@ end procedure
 -- Send byte to the LCD as 2 nibbles (most significant nibble first)
 -- ----------------------------------------------------------
 
-procedure  lcdwrtchar(byte in c) is
+procedure  lcd_wrtchar(byte in c) is
 
-  lcdwrtnibble(c >> 4)                          -- write high nibble
-  lcdwrtnibble(c)                               -- write low nibble
+  _lcd_wrtnibble(c >> 4)                          -- write high nibble
+  _lcd_wrtnibble(c)                               -- write low nibble
   delay_10us(4)                                 -- > 37 æs
 
 end procedure
@@ -72,10 +85,10 @@ end procedure
 -- Clear screen LCD
 -- ------------------------------------------------------------
 
-procedure  lcdclearscreen() is
+procedure  lcd_clearscreen() is
 
   LCD_RS = low                                  -- control character follows
-  lcdwrtchar(0b0000_0001)                       -- clear screen, cursor home
+  lcd_wrtchar(0b0000_0001)                      -- clear screen, cursor home
   delay_10us(150)                               -- 1.5 ms
   LCD_RS = high                                 -- switch back to data chars
 
@@ -86,14 +99,14 @@ end procedure
 -- Set cursor position
 -- ------------------------------------------------------------
 
-procedure  lcdsetcursor(byte in row, byte in col)  is
+procedure  lcd_setcursor(byte in row, byte in col)  is
 
   col = col | 0b1000_0000                       -- add offset top line
   if (row > 0) then                             -- 2nd line req'd
     col = col | 0b0100_0000                     -- add offset 2nd line
   end if
   LCD_RS = low                                  -- control character follows
-  lcdwrtchar(col)                               -- new cursor position
+  lcd_wrtchar(col)                              -- new cursor position
   LCD_RS = high                                 -- switch back to data chars
 
 end procedure
@@ -104,23 +117,23 @@ end procedure
 -- - 2-line mode, no cursor
 -- -----------------------------------------------------
 
-procedure  lcdsetup()  is
+procedure  lcd_setup()  is
 
   LCD_RS = low                                  -- set control mode
   delay_1ms(15)                                 -- 15 ms power-up delay
-  lcdwrtnibble(0b0000_0011)                     -- function set
+  _lcd_wrtnibble(0b0000_0011)                   -- function set
   delay_1ms(5)                                  -- > 4.1 milliseconds
-  lcdwrtnibble(0b0000_0011)                     -- function set
+  _lcd_wrtnibble(0b0000_0011)                   -- function set
   delay_10us(110)                               -- > 100 æs
-  lcdwrtnibble(0b0000_0011)                     -- function set
+  _lcd_wrtnibble(0b0000_0011)                   -- function set
   delay_10us(4)                                 -- > 37 æs
-  lcdwrtnibble(0b0000_0010)                     -- to 4-bit mode
+  _lcd_wrtnibble(0b0000_0010)                   -- to 4-bit mode
   delay_10us(4)                                 -- > 37 æs
-  lcdwrtchar(0b0010_1000)                       -- 4-bits, 2 lines, 5x8 font
-  lcdwrtchar(0b0001_1100)                       -- cursor move right
-  lcdwrtchar(0b0000_1100)                       -- display on, cursor,blink off
-  lcdwrtchar(0b0000_0110)                       -- cursor->right, no shift
-  lcdclearscreen                                -- clear screen
+  lcd_wrtchar(0b0010_1000)                      -- 4-bits, 2 lines, 5x8 font
+  lcd_wrtchar(0b0001_1100)                      -- cursor move right
+  lcd_wrtchar(0b0000_1100)                      -- display on, cursor,blink off
+  lcd_wrtchar(0b0000_0110)                      -- cursor->right, no shift
+  lcd_clearscreen()                             -- clear screen
                                                 -- incl switch to data mode
 end procedure
 
@@ -129,7 +142,7 @@ end procedure
 -- actually initialize LCD
 -- -----------------------------------------------------
 
-lcdsetup()                                    -- to get the LCD running
+lcd_setup()                                      -- to get the LCD running
 
 -- -----------------------------------------------------
 
