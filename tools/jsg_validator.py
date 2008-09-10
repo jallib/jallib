@@ -44,6 +44,9 @@ FIELDS = [
 		{'field':"Notes",'predicate':content_not_empty,'mandatory':False,'multiline':True},
 	]
 
+errors = []
+warnings = []
+
 def extract_header(content):
 	# reverse() to pop header lines (no such shift())
 	content.reverse()
@@ -233,8 +236,6 @@ if __name__ == '__main__':
 		sys.exit(255)
 
 	at_least_one_failed = False
-	errors = []
-	warnings = []
 
 	for filename in sys.argv[1:]:
 		validate(filename)
