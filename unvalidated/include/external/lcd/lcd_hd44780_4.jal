@@ -75,9 +75,21 @@ procedure  lcd_wrtchar(byte in c) is
 
   _lcd_wrtnibble(c >> 4)                          -- write high nibble
   _lcd_wrtnibble(c)                               -- write low nibble
-  delay_10us(4)                                 -- > 37 æs
+  delay_10us(4)                                 -- > 37 us
 
 end procedure
+
+-- Send byte to the LCD as 2 nibbles, compatible with oldskool JAL
+-- ----------------------------------------------------------
+
+procedure  hd44780'put(byte in c) is
+
+  lcdwrtnibble(c >> 4)                          -- write high nibble
+  lcdwrtnibble(c)                               -- write low nibble
+  delay_10us(4)                                 -- > 37 us
+
+end procedure
+
 
 
 -- ------------------------------------------------------------
@@ -94,7 +106,11 @@ procedure  lcd_clearscreen() is
 
 end procedure
 
-
+-- Note about cursor positions: the LCD is a 2x40 char device. So a 2x16 LCD has
+-- the second line beginning at 40. Sometimes, an 1x16 LCD is really a 2x8 LCD, 
+-- with the second line *after* the first. This would show as: "Hello Wo234     "
+-- where 234 is the counter.
+-- 
 -- ------------------------------------------------------------
 -- Set cursor position
 -- Specify row and column in base-0 notation.
@@ -111,6 +127,40 @@ procedure  lcd_setcursor(byte in row, byte in col)  is
   LCD_RS = high                                 -- switch back to data chars
 
 end procedure
+
+-- ----------------------------------------------------------
+-- Oldskool line positions
+-- ---------------------------------------------------------
+
+procedure hd44780_line0() is                  -- line 1 of max 4
+LCD_RS = low                                  -- control character follows
+  lcdwrtchar(0b1000_0000)                     -- address zero in display data RAM
+  delay_10us(150)                             -- 1.5 ms
+  LCD_RS = high
+end procedure
+
+procedure hd44780_line1() is                  -- line 2, position 40 on 4x20 display
+LCD_RS = low                                  -- 
+  lcdwrtchar(0b1010_1000)                     -- DDRAM addres = 40
+  delay_10us(150)                             -- 
+  LCD_RS = high
+end procedure
+
+procedure hd44780_line2() is                  -- line 3, position 20 on 4x20 display
+LCD_RS = low                                  -- 
+  lcdwrtchar(0b1001_0100)                     -- DDRAM address = 20
+  delay_10us(150)                             -- 
+  LCD_RS = high
+end procedure
+
+procedure hd44780_line3() is                  -- line 4, position 60 on 4x20 display 
+LCD_RS = low                                  -- 
+  lcdwrtchar(0b1101_0100)                     -- DDRAM address = 60
+  delay_10us(150)                             --
+  LCD_RS = high
+end procedure
+
+
 
 -- -----------------------------------------------------
 -- Initialize LCD
