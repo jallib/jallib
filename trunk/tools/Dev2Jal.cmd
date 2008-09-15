@@ -5,7 +5,7 @@
 /*                                                                          */
 /* Adapted-by:                                                              */
 /*                                                                          */
-/* Compiler: =2.4                                                           */
+/* Compiler: N/A                                                            */
 /*                                                                          */
 /* This file is part of jallib  http://jallib.googlecode.com                */
 /* Released under the BSD license                                           */
@@ -18,7 +18,7 @@
 /*              prevent the 'read-modify-write' problems of midrange PICs   */
 /*              and for the 18F force the use of LATx in stead of PORTx.    */
 /*              In addition some device dependent procedures are provided   */
-/*              for common operations, like 'enable-digital-io.             */
+/*              for common operations, like enable-digital-io().            */
 /*                                                                          */
 /* Sources:  MPLAB .dev and .lkr files                                      */
 /*                                                                          */
@@ -28,9 +28,9 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.47'                   /*                          */
+   ScriptVersion   = '0.0.48'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
-   CompilerVersion = '=2.4'                     /*                          */
+   CompilerVersion = '=2.4h'                    /*                          */
 /* ------------------------------------------------------------------------ */
 
 basedir  = 'x:/mplab814/'                       /* MPLAB base directory  */
@@ -362,11 +362,6 @@ do while lines(DevFile) > 0
   if length(Dev.i) \< 3 then do                 /* not empty */
     if left(word(Dev.i,1),1) \= '#' then        /* not comment */
       i = i + 1                                 /* keep this record */
-    else do                                     /* comment */
-      if left(word(Dev.i,2),2) = 'DS' |,        /* datasheet */
-         left(word(Dev.i,2),2) = 'PS' then      /* programming specs */
-        i = i + 1                               /* keep this record */
-    end
   end
 end
 Dev.0 = i - 1                                   /* # of stored records */
@@ -493,6 +488,10 @@ do i = 1 to Dev.0
   parse var ln 'NUMBANKS' '=' Value .           /* memory banks */
   if Value \= '' then do
     NumBanks = strip(Value)
+    if NumBanks > 4 then do                     /* esp. for 16F59 */
+      say 'Warning: Number of RAM banks > 4'
+      NumBanks = 4                              /* compiler limit */
+    end
     iterate
   end
   parse var ln 'MIRRORREGS' '(' '0X' low.1  '-' '0X' high.1,
@@ -669,32 +668,6 @@ end
 return
 
 
-/* --------------------------------------------- */
-/* procedure to list Datasheet number            */
-/* input:  - nothing                             */
-/* notes: - uses external script to obtain       */
-/*          datasheet number with picname        */
-/* --------------------------------------------- */
-list_datasheet: procedure expose Dev. jalfile PicName
-call lineout jalfile, '-- DataSheet:' DS_Number(PicName)
-return
-
-
-/* -------------------------------------------------------- */
-/* procedure to list Programming Specifications number      */
-/* input:  - nothing                                        */
-/* -------------------------------------------------------- */
-list_pgmspec: procedure expose Dev. jalfile
-do i = 1 to Dev.0
-  if word(Dev.i,1) = '#' & left(word(Dev.i,2),2) = 'PS' then do
-    if Word(Dev.i,3) \= '' then
-      call lineout jalfile, '-- Programming Specifications:' word(Dev.i,3)
-    leave                                       /* 1 occurence expected */
-  end
-end
-return
-
-
 /* --------------------------------------------------------------- */
 /* procedure to list shared RAM (gpr) ranges from .dev file        */
 /* input:  - nothing                                               */
@@ -751,13 +724,9 @@ select                                          /* exceptions first */
       end
     end
 end
-if DataRange \= '' then                         /* some shared RAM present */
-  if Core \= '16' then
-    call lineout jalfile, 'pragma  shared  'DataRange
-  else do
-    call lineout jalfile, 'pragma  data    'DataRange ,
-                          '            -- non-shared! (compiler issue)'
-  end
+if DataRange \= '' then do                      /* some shared RAM present */
+  call lineout jalfile, 'pragma  shared  'DataRange
+end
 return DataRange                                /* range */
 
 
@@ -775,6 +744,10 @@ select                                          /* exceptions first */
        PicName = '16f676' then do
     DataRange = '0x20-0x5F'                     /* unshared! RAM range */
     MaxUnsharedRAM = X2D(5F)                    /* upper bound */
+    end
+  when PicName = '16f59' then do
+    DataRange = '0x10-0x1F,0x30-0x3F,0x50-0x5F,0x70-0x7F' /* 4 bank limit! */
+    MaxUnsharedRAM = X2D(1F)
     end
   when PicName = '16f818' then do               /* exceptional PIC */
     DataRange = '0x20-0x3F,0xA0-0xBF'           /* unshared RAM range */
@@ -814,13 +787,9 @@ select                                          /* exceptions first */
           DataRange = DataRange','              /* insert separator */
         val1 = strip(val1)
         val2 = strip(val2)
-        if core = 16 & X2D(val2) <= X2D(FF) then /* bank0 RAM 18F */
-          nop                                   /* skip upper half bank 0 */
-        else do
-          if X2D(val2) > MaxUnsharedRAM then    /* new high limit */
-            MaxUnSharedRAM = X2D(Val2)          /* upper bound */
-          DataRange = DataRange'0x'val1'-0x'val2  /* concatenate range */
-        end
+        if X2D(val2) > MaxUnsharedRAM then      /* new high limit */
+          MaxUnSharedRAM = X2D(Val2)            /* upper bound */
+        DataRange = DataRange'0x'val1'-0x'val2  /* concatenate range */
       end
     end
 end
@@ -1288,7 +1257,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                                         pin 'shared at' reg ':' offset
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                    'at' reg ':' offset') is'
-                  call lineout jalfile, '--pragma inline  -- (temporary disabled)'
+                  call lineout jalfile, '  pragma inline'
                   call lineout jalfile, 'end procedure'
                   call lineout jalfile, '--'
                 end
@@ -1600,7 +1569,7 @@ lat  = arg(1)                                   /* LATx register */
 port = 'PORT'substr(lat,4)                      /* corresponding port */
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure' port"'put"'(byte in x) is'
-call lineout jalfile, '--pragma inline  -- (temporary disabled)'
+call lineout jalfile, '  pragma inline'
 call lineout jalfile, '  'lat '= x'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
@@ -2177,7 +2146,7 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
   call lineout jalfile, '--'
 end
 
-ADCgroup = adcgetgroup(PicName)
+ADCgroup = devicespecific('adcgroup', PicName)
 if ADCgroup = '?' then do                               /* no group found! */
   say 'Error:' PicName 'is unknown in ADC group table!'
 end
@@ -2281,8 +2250,8 @@ call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
 call list_devID
-call list_datasheet
-call list_pgmspec
+call lineout jalfile, '-- DataSheet:' devicespecific('datasheet', PicName)
+call lineout jalfile, '-- Programming Specifications:' devicespecific('pgmspec', PicName)
 call list_Vdd
 call list_Vpp
 call lineout jalfile, '--'
@@ -2312,12 +2281,8 @@ MaxSharedRAM = 0                                /* no shared RAM */
 x = list_shared_data_range()                    /* returns range string */
 /* - - - - - - - -  temporary? - - - - - - - - - - - - - - - - - */
 if MaxUnsharedRAM = 0  &  MaxSharedRAM > 0 then do      /* no unshared RAM */
-  if Core = 16 then                             /* temporary fix for 18Fs */
-    MaxUnSharedRam = MaxSharedRam               /* with little RAM */
-  else do
-    say 'Warning:' PicName 'has only shared, no unshared RAM!'
-    Say '         Must be handled as exceptional chip!'
-  end
+  say 'Warning:' PicName 'has only shared, no unshared RAM!'
+  Say '         Must be handled as exceptional chip!'
 end
 else if MaxSharedRAM = 0 then do                        /* no shared RAM */
   if Core \= 12                                 &,      /* known as 'OK' */
@@ -2331,8 +2296,7 @@ else if MaxSharedRAM = 0 then do                        /* no shared RAM */
      PicName \= '16f84'  & PicName \= '16f84a'  &,
      PicName \= '16f873' & PicName \= '16f873a' &,
      PicName \= '16f874' & PicName \= '16f874a' &,
-     PicName \= '16hv540'                       &,
-     left(PicName,2)  \= '18'                    ,    /* temporary */
+     PicName \= '16hv540'                        ,
   then do
     say 'Warning:' PicName 'has no shared RAM!'
     say '         May have to be handled as exceptional chip!'
@@ -2354,18 +2318,11 @@ if Core = 12  | Core = 14 then do
                           sfr_mirror(MaxUnSharedRAM)'   -- (compiler)'
   end
 end
-/* ------- code temporary removed due to compiler 2.4g bug
 else if Core = 16 then do
   call lineout jalfile, 'var volatile byte _pic_accum shared at',
                                  '0x'D2X(MaxSharedRAM-1)'   -- (compiler)'
   call lineout jalfile, 'var volatile byte _pic_isr_w shared at',
                                  '0x'D2X(MaxSharedRAM)'   -- (compiler)'
-*/
-else if Core = 16 then do                       /* 16-bits core */
-  call lineout jalfile, 'var volatile byte _pic_accum  at',
-                                 '0x'D2X(MaxUnSharedRAM-1)'   -- (compiler)'
-  call lineout jalfile, 'var volatile byte _pic_isr_w  at',
-                                 '0x'D2X(MaxUnSharedRAM)'   -- (compiler)'
 end
 call lineout jalfile, '--'
 return
@@ -2487,6 +2444,7 @@ end
 /* ---------------------------------------------- */
 /* script debugging                               */
 /* ---------------------------------------------- */
+
 error_catch:
 Say 'Execution error, rc' rc 'at script line' SIGL
 return rc
