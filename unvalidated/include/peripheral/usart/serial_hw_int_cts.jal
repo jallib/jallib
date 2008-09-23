@@ -1,0 +1,290 @@
+-- ===================================================
+-- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
+--
+-- Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: =2.4h
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Serial communications
+--              - receive and transmit data transfer is interrupt driven
+--              - receive and transmit data transfer uses circular buffers
+--              - automatic CTS flow control with spare free space for FiFo buffer
+--
+-- Sources:
+--
+-- Notes:
+--
+-- The RS232 interface chip may be any converter chip.
+-- A MAX202 or similar with small or no external capacitors is preferred.
+--
+-- The PIC ports use positive logic:
+-- '1' is positive voltage, '0' is ground.
+--
+-- In the RS232 standard:
+-- - Negative voltage ('mark') means OFF for control signals, and
+--   indicates 1 (one) for data signals (start-, data-, stop-bits).
+-- - Positive voltage ('space') means ON for control signals and
+--   0 (zero) for start-, data- and stop-bits.
+-- - Signal levels: 'mark' = -3V to -15V,  'space' = +3V to +15V
+--
+-- The MAX202 is not only a voltage level CONverter (between TTL and RS232)
+-- but also a signal INverter. You should be aware of the following:
+-- - The inversion of PIC data-in and data-out by the MAX202 is required
+--   to convert data-, start- and stop-bits to/from the corresponding
+--   RS232 polarity. So nothing special has to be done in the program
+--   because the USART of the PIC uses 'inverted' signal levels!
+-- - For CTS the inversion by the MAX202 is NOT desired.
+--   Therefore the program has to use inverted signalling for CTS:
+--   'FALSE' is used for ON and 'TRUE' for OFF!
+--   As a reminder for this 'inverted' logic the signal is called
+--   serial_cts_inv (e.g. serial_CTS_inv = true means CTS is false!).
+--
+-- Remember also: RxD of RS232-plug connects to TX of PIC via MAX202
+--                TxD of RS232-plug connects to RX of PIC via MAX202
+--
+-- Available procedure/function for application programs:
+--
+--  - serial_setup()
+--  - serial_send_byte(byte out <byte>)
+--  - serial_receive_byte(byte in <byte>) returns bit
+--
+--
+-- =======================================================================
+
+-- Application program must specify _before_ including this library:
+
+--  const   SERIAL_XMTBUFSIZE  = 32             -- size of transmit buffer
+--  const   SERIAL_RCVBUFSIZE  = 64             -- size of receive buffer
+--  const   SERIAL_DELTA       = 17             -- spare receive buffer space
+--
+--  const   SERIAL_BPSRATE     = 9600           -- host communications
+--                                              -- (range 9600..57600)
+--
+--  var  bit  serial_ctsinv            is pin_B4   -- incoming flow ctl
+--  var  bit  serial_ctsinv_direction  is pin_B4_direction
+
+-- Notes: - The pins above are given as example for a 16F88.
+--        - The pins for data transmit and receive are selected automatically.
+
+-- =======================================================================
+
+-- Circular buffers for communications with PC via UART:
+
+var    byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]   -- circular output buffer
+var    byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]   -- circular input buffer
+
+-- Offsets in circular buffers:
+
+var    byte  _serial_offsetxmthead               -- offset next byte from appl
+var    byte  _serial_offsetxmttail               -- offset next byte to port
+var    byte  _serial_offsetrcvhead               -- offset next byte from port
+var    byte  _serial_offsetrcvtail               -- offset next byte to appl
+
+
+-- =======================================================================
+-- - UART - serial transmit interrupt handling
+-- =======================================================================
+
+procedure  _serial_transmit_interrupt_handler() is
+
+   pragma interrupt
+
+   var  byte  x;
+
+   if ((PIR1_TXIF == TRUE) & (PIE1_TXIE == TRUE)) then  -- UART xmit interrupt
+      if (_serial_offsetxmttail != _serial_offsetxmthead) then  -- data in xmit buffer
+         x = _serial_xmtbuf[_serial_offsetxmttail]              -- next byte to xmit
+         _serial_offsetxmttail = _serial_offsetxmttail + 1      -- next position
+         if (_serial_offsetxmttail >= SERIAL_XMTBUFSIZE) then   -- beyond buffer
+            _serial_offsetxmttail = 0           -- wrap to begin
+         end if
+         if (_serial_offsetxmttail == _serial_offsetxmthead) then  -- last byte xmt'd
+            PIE1_TXIE = FALSE                   -- disable xmit interrupts
+         end if
+         TXREG = x                              -- actually xmit byte
+      end if
+   end if
+
+end procedure
+
+
+-- =======================================================================
+-- - UART - serial receive interrupt handling
+-- =======================================================================
+
+procedure  _serial_receive_interrupt_handler() is
+
+   pragma interrupt
+
+   var  byte  x;
+
+   if  (PIR1_RCIF == TRUE)  then                -- UART receive interrupt
+
+      if ((RCSTA_OERR == TRUE) | (RCSTA_FERR == TRUE)) then  -- frame/overr error
+         x = RCREG                              -- flush hardware buffer
+         while RCSTA_OERR == TRUE loop          -- overrun state
+            RCSTA_CREN = FALSE                  -- disable UART
+            RCSTA_CREN = TRUE                   -- re-enable UART
+            x = RCREG                           -- \  flush hardware buffers
+            x = RCREG                           -- /
+         end loop                               -- until no more overrun
+         _serial_offsetrcvtail = 0              -- \  flush circular buffer
+         _serial_offsetrcvhead = 0              -- /
+         serial_ctsinv = FALSE                  -- ensure CTS true
+
+      else                                      -- data without errors
+         _serial_rcvbuf[_serial_offsetrcvhead] = RCREG      -- move byte to rcv buffer
+         x = _serial_offsetrcvhead + 1          -- update offset
+         if x >= SERIAL_RCVBUFSIZE then         -- buffer overflow
+            x = 0                               -- wrap
+         end if
+         if (x != _serial_offsetrcvtail) then   -- buffer not yet full
+            _serial_offsetrcvhead = x           -- update offset
+         end if                                 -- (else discard byte,
+                                                --  CTS flow control has failed)
+         if (serial_ctsinv == FALSE) then       -- CTS is TRUE
+            if _serial_offsetrcvhead > _serial_offsetrcvtail then  -- offset difference
+               x = SERIAL_RCVBUFSIZE - _serial_offsetrcvhead + _serial_offsetrcvtail
+            else
+               x = _serial_offsetrcvtail - _serial_offsetrcvhead
+            end if
+            if (x < SERIAL_DELTA) then          -- circular buffer almost full
+               serial_ctsinv = TRUE             -- set CTS FALSE
+            end if
+         end if
+      end if
+
+   end if
+
+end procedure
+
+
+-- --------------------------------------------------------------
+--  Return byte (if any) from circular receive buffer for UART
+--
+--  input:   nothing
+--
+--  output:  received byte (if any)
+--
+--  returns: true  when byte returned
+--           false if no byte available
+--
+--  notes: - Rises CTS when receive buffer has more than <DELTA>
+--           bytes free space after delivering byte to caller.
+--
+-- -----------------------------------------------
+
+function  serial_receive_byte(byte out data) return bit is
+
+   var  byte  x                                 -- for buffer management
+
+   if (_serial_offsetrcvtail == _serial_offsetrcvhead) then  -- receive buffer empty
+      return false                              -- no data available
+   end if
+
+   data = _serial_rcvbuf[_serial_offsetrcvtail]  -- first available byte
+   _serial_offsetrcvtail = _serial_offsetrcvtail + 1
+   if (_serial_offsetrcvtail >= SERIAL_RCVBUFSIZE) then  -- buffer overflow
+      _serial_offsetrcvtail = 0                 -- wrap
+   end if
+   if (serial_ctsinv == TRUE) then              -- CTS is FALSE
+      if (_serial_offsetrcvhead > _serial_offsetrcvtail) then
+         x = SERIAL_RCVBUFSIZE - _serial_offsetrcvhead + _serial_offsetrcvtail
+      else
+         x = _serial_offsetrcvtail - _serial_offsetrcvhead  -- offset difference
+      end if
+      if (x >= SERIAL_DELTA) then               -- enough free space now
+         serial_ctsinv = FALSE                  -- make CTS TRUE
+      end if
+   end if
+
+   return true                                  -- byte available
+
+end function
+
+
+-- --------------------------------------------------------------
+--  Put a single byte in circular transmit buffer for UART
+--
+--  input:   byte to transmit
+--
+--  returns: transmitted byte
+--
+--  notes: - Initiates transmission (interrupt handler)
+--           when not currently transmitting
+--         - spin when transmit buffer full
+--           (wait for free buffer space)
+--
+-- -----------------------------------------------
+
+function  serial_send_byte(byte in data) return byte is
+
+   var  byte  new_serial_offset                 -- offset in circular buffer
+
+   if (_serial_offsetxmthead == _serial_offsetxmttail  &  -- nothing buffered
+       PIR1_TXIF == true) then                  -- and UART not busy
+      PIE1_TXIE = FALSE                         -- disable xmt interrupt
+      TXREG = data                              -- transmit byte immediately
+   else                                         -- use circular buffer
+      _serial_xmtbuf[_serial_offsetxmthead] = data  -- put byte in buffer
+      new_serial_offset = _serial_offsetxmthead + 1   -- offset next char
+      if (new_serial_offset >= SERIAL_XMTBUFSIZE) then  -- beyond buffer boundary
+         new_serial_offset = 0                  -- wrap to begin
+      end if
+      while (new_serial_offset == _serial_offsetxmttail) loop   -- buffer full!
+         -- nothing                             -- spin until something xmit'd
+      end loop
+      PIE1_TXIE = TRUE                          -- (re-)enable xmit interrupts
+      _serial_offsetxmthead = new_serial_offset  -- update offset now
+   end if
+
+   return data                                  -- transmitted byte!
+
+end function
+
+
+-- -----------------------------------------------------------------------
+-- Serial_Setup - procedure to initialize serial communications
+-- -----------------------------------------------------------------------
+
+procedure serial_setup() is
+
+   serial_ctsinv_direction = output             -- input: UART CTS->PC
+
+   _serial_offsetxmthead  = 0                   -- offset next byte from appl
+   _serial_offsetxmttail  = 0                   -- offset next byte to port
+   _serial_offsetrcvhead  = 0                   -- offset next byte from port
+   _serial_offsetrcvtail  = 0                   -- offset next byte to appl
+
+   RCSTA                  = 0b0000_0000         -- reset
+   RCSTA_SPEN             = enabled             -- serial port enable
+   RCSTA_CREN             = enabled             -- continuous receive enable
+
+   TXSTA                  = 0b0000_0000         -- reset (8 bit, asyn)
+   TXSTA_TXEN             = enabled             -- UART transmit enabled
+   TXSTA_BRGH             = true                -- high baud rate
+   SPBRG                  = (target_clock / 16 / SERIAL_BPSRATE * 10 - 5) / 10
+
+   PIE1_RCIE              = enabled             -- UART receive int. enable
+                                                -- (PIE1_TXIE dynamically)
+   INTCON_PEIE            = enabled             -- periferal
+   INTCON_GIE             = enabled             -- general
+
+   serial_ctsinv          = false               -- CTS true: accept PC data
+
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- Initialize serial communications
+-- -----------------------------------------------------------------------
+
+serial_setup()
+
+-- =======================================================================
+
