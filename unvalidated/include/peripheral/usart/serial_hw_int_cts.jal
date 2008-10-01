@@ -19,9 +19,6 @@
 --
 -- Notes:
 --
--- The RS232 interface chip may be any converter chip.
--- A MAX202 or similar with small or no external capacitors is preferred.
---
 -- The PIC ports use positive logic:
 -- '1' is positive voltage, '0' is ground.
 --
@@ -32,53 +29,81 @@
 --   0 (zero) for start-, data- and stop-bits.
 -- - Signal levels: 'mark' = -3V to -15V,  'space' = +3V to +15V
 --
--- The MAX202 is not only a voltage level CONverter (between TTL and RS232)
--- but also a signal INverter. You should be aware of the following:
--- - The inversion of PIC data-in and data-out by the MAX202 is required
+-- Between PIC and RS232 normally an interface chip is used, such as a
+-- Maxim/Dallas MAX232 or MAX202. These are not only voltage level CONverter
+-- but also signal INverter. You should be aware of the following:
+-- - The inversion of PIC data-in and data-out by the MAX2x2 is required
 --   to convert data-, start- and stop-bits to/from the corresponding
 --   RS232 polarity. So nothing special has to be done in the program
 --   because the USART of the PIC uses 'inverted' signal levels!
--- - For CTS the inversion by the MAX202 is NOT desired.
+-- - For CTS the inversion by the MAX2x2 is NOT desired.
 --   Therefore the program has to use inverted signalling for CTS:
---   'FALSE' is used for ON and 'TRUE' for OFF!
+--   'FALSE' is used for CTS ON and 'TRUE' for CTS OFF!
 --   As a reminder for this 'inverted' logic the signal is called
---   serial_cts_inv (e.g. serial_CTS_inv = true means CTS is false!).
+--   serial_cts_inv (e.g. serial_CTS_inv = TRUE means CTS is FALSE!).
 --
--- Remember also: RxD of RS232-plug connects to TX of PIC via MAX202
---                TxD of RS232-plug connects to RX of PIC via MAX202
+-- Remember also: RxD of RS232-plug connects to TX of PIC via MAX2x2
+--                TxD of RS232-plug connects to RX of PIC via MAX2x2
 --
--- Available procedure/function for application programs:
+-- This library supports:
+--     - Data format: 8 bits data, 1 start-bit, 1 stop bit
+--     - Fixed speed in the range 1200..57600, depending on the resonator
+--       frequency (see BAUD RATES tables in the datasheet with BRGH=1).
 --
---  - serial_setup()
---  - serial_send_byte(byte out <byte>)
---  - serial_receive_byte(byte in <byte>) returns bit
+-- Available procedures/functions for application programs:
 --
+--  - serial_setup()                            -- initialise communications
+--                                              -- (called automatically)
+--  - serial_send_byte(byte out <byte>)         -- send byte
+--                                              -- returns the transmitted byte
+--  - serial_receive_byte(byte in <byte>) returns bit  -- receive byte
+--                                              -- returns TRUE with data,
+--                                              -- FALSE when no data available
 --
 -- =======================================================================
-
--- Application program must specify _before_ including this library:
-
+--
+-- Application program must specify _before_ including this library
+-- (values are recommended, if possible keep SERIAL_DELTA = 17).
+--
 --  const   SERIAL_XMTBUFSIZE  = 32             -- size of transmit buffer
 --  const   SERIAL_RCVBUFSIZE  = 64             -- size of receive buffer
---  const   SERIAL_DELTA       = 17             -- spare receive buffer space
+--  const   SERIAL_DELTA       = 17             -- spare space receive buffer
 --
---  const   SERIAL_BPSRATE     = 9600           -- host communications
+--  const   SERIAL_BPSRATE     = 19200          -- host communications
 --                                              -- (range 9600..57600)
 --
---  var  bit  serial_ctsinv            is pin_B4   -- incoming flow ctl
+--  var  bit serial_overflow_discard = [ FALSE | TRUE ]
+--                                              With transmit buffer overflow:
+--                                                - TRUE: discard data
+--                                                - FALSE: wait for free space
+--                                               With receive buffer overflow
+--                                               data is always discarded
+--                                               without notification!
+--
+--
+--  var  bit  serial_ctsinv            is pin_B4    -- incoming data flow control
 --  var  bit  serial_ctsinv_direction  is pin_B4_direction
-
--- Notes: - The pins above are given as example for a 16F88.
---        - The pins for data transmit and receive are selected automatically.
-
+--
+-- Notes: - For data transmit and receive the pins TX and RX are used
+--          automatically, these have not to be assigned by the application.
+--        - The CTS pin selected above is an example!
+--        - When CTS flow control is not desired then assign both
+--          serial_ctsinv and serial_cts_inv_direction to a dummy bit,
+--          for example:
+--              var  bit  dummy_bit
+--              var  bit  serial_ctsinv            is dummy_bit1
+--              var  bit  serial_ctsinv_direction  is dummy_bit2
+--        - The serial_overflow_discard bit may be dynamically changed
+--          (depending on how important the data is for th receiving party).
+--
 -- =======================================================================
-
--- Circular buffers for communications with PC via UART:
+--
+-- Declare circular buffers for communications via UART:
 
 var    byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]   -- circular output buffer
 var    byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]   -- circular input buffer
 
--- Offsets in circular buffers:
+-- Declare offsets in circular buffers:
 
 var    byte  _serial_offsetxmthead               -- offset next byte from appl
 var    byte  _serial_offsetxmttail               -- offset next byte to port
@@ -157,6 +182,7 @@ procedure  _serial_receive_interrupt_handler() is
                serial_ctsinv = TRUE             -- set CTS FALSE
             end if
          end if
+
       end if
 
    end if
@@ -213,18 +239,20 @@ end function
 --
 --  input:   byte to transmit
 --
---  returns: transmitted byte
+--  returns: transmitted byte (or 0x00 when data discarded)
 --
---  notes: - Initiates transmission (interrupt handler)
---           when not currently transmitting
---         - spin when transmit buffer full
---           (wait for free buffer space)
+--  notes: - Activates transmit interrupt handler when data buffered
+--         - When buffer full act as indicated in 'serial_overflow_discard'
+--           * TRUE:  discard data
+--                    (and return 0x00 as data byte)
+--           * FALSE: wait for free buffer space
+--                    (returns only after data has been stored in buffer)
 --
 -- -----------------------------------------------
 
 function  serial_send_byte(byte in data) return byte is
 
-   var  byte  new_serial_offset                 -- offset in circular buffer
+   var  byte  newxmthead                        -- offset in circular buffer
 
    if (_serial_offsetxmthead == _serial_offsetxmttail  &  -- nothing buffered
        PIR1_TXIF == true) then                  -- and UART not busy
@@ -232,15 +260,23 @@ function  serial_send_byte(byte in data) return byte is
       TXREG = data                              -- transmit byte immediately
    else                                         -- use circular buffer
       _serial_xmtbuf[_serial_offsetxmthead] = data  -- put byte in buffer
-      new_serial_offset = _serial_offsetxmthead + 1   -- offset next char
-      if (new_serial_offset >= SERIAL_XMTBUFSIZE) then  -- beyond buffer boundary
-         new_serial_offset = 0                  -- wrap to begin
+      newxmthead = _serial_offsetxmthead + 1    -- offset next char
+      if (newxmthead >= SERIAL_XMTBUFSIZE) then  -- beyond buffer end
+         newxmthead = 0                         -- wrap to begin
       end if
-      while (new_serial_offset == _serial_offsetxmttail) loop   -- buffer full!
-         -- nothing                             -- spin until something xmit'd
-      end loop
+      if (newxmthead != _serial_offsetxmttail) then  -- buffer not full
+         _serial_offsetxmthead = newxmthead     -- update offset
+      else                                      -- buffer full!
+         if (serial_overflow_discard == FALSE) then  -- do not discard data!
+            while (newxmthead == _serial_offsetxmttail) loop   -- buffer full
+               -- nothing                       -- spin until something xmit'd
+            end loop
+            _serial_offsetxmthead = newxmthead  -- update offset
+         else
+            data = 0x00                         -- indicate byte discarded
+         end if
+      end if
       PIE1_TXIE = TRUE                          -- (re-)enable xmit interrupts
-      _serial_offsetxmthead = new_serial_offset  -- update offset now
    end if
 
    return data                                  -- transmitted byte!
