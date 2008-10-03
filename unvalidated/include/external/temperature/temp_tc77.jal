@@ -1,0 +1,148 @@
+-- Title: temp_TC77
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2008
+-- Compiler: =2.4h
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license  (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this library reads the TC77 temperature sensor from Microchip.
+-- The TC77 has a 12-bit plus sign temperature resolution of 0.0625°C 
+-- per Least Significant Bit (LSb). It works via the SPI protocol
+-- Specs:
+-- 1C (max.) accuracy from +25°C to +65C, 
+-- 2C (max.) accuracy from -40°C to +85C 
+-- 3C (max.) accuracy from -55°C to +125C 
+-- 2.7V to 5.5V Operating Range, Low Power: 250uA (typ.) Continuous Conversion
+-- Mode, 0.1uA (typ.) Shutdown Mode 
+-- ----------   
+-- I have several years of experience with hundreds of these sensors.
+-- They work very well: fast, good accuracy, good repeatability. 
+-- If they have an offset, it can easily be calibrated in software. 
+-- The hard part of using this sensor is gettting it watertigtht. 
+-- It is SMD, so it needs a PCB, and a cable. Dipping in resin or shrinking in
+-- glue-covered shrinktube works. 
+-- The SPI protocol is bit-banged here and can be used with any pins.
+-- Clock data in on rising edge of clock, program must pull CS low. This allows
+-- for multiple TC77s on the same 2-wire databus. Put a 100nF decoupling 
+-- capacitor close the the TC77. If you don't, you WILL get weird data. 
+-- This library assumes two pins: global bit SCK, wired to SCK of device and
+-- global bit SIO,wired to SIO of device. SCK should be output, SIO input.
+-- Writing the status_word is not supported here.
+--
+
+-- get raw temperature of TC77
+-- output in word, right justified
+procedure read_raw_tc77(word out raw) is
+   raw = 0
+   var bit a at raw : 0 = low
+
+   for 13 loop 
+      raw = raw << 1
+      SCK  = low         -- clock low
+      delay_1us
+      a = SIO
+      SCK  = high        -- clock high
+      delay_1us
+   end loop
+
+end procedure
+
+
+-- read celsius temperature of TC77
+-- output in one sbyte with zero digits, so T = +/- xxx C
+-- last bit is 1C, range is -40C ... +125C
+procedure read_celsius_sbyte_tc77(sbyte out temperature) is
+   var word raw = 0
+   var bit a         at raw : 0 = low
+   var bit raw_sign  at raw: 12 
+   var bit temp_sign at temperature: 7      -- zero if positive, one if negative
+   var word tmp
+
+   for 13 loop             -- 13 shifts, 12 bits
+      raw = raw << 1
+      SCK  = low           -- clock low
+      delay_1us
+      a = SIO
+      SCK  = high          -- clock high
+      delay_1us
+   end loop
+
+   if raw_sign then                 -- below zero C
+      asm bcf raw_sign              -- clear bit 13
+      tmp = 0b1_0000_0000_0000      -- 4096
+      tmp = tmp - raw               -- 16th degrees below zero
+      temperature = sbyte(tmp >> 4) -- now celsius, divided by 16
+      temp_sign = true
+   else
+      temperature = sbyte(raw >> 4) -- TC77 is limited to +125C    
+      temp_sign = false
+   end if
+end procedure
+
+
+-- read celsius temperature of TC77
+-- output in one sword with 2 digits, so T = xxx.xx C
+-- last bit is 0.01C , range is -40C ... +125C
+procedure read_celsius_sword_tc77(sword out temperature) is
+   var word raw = 0
+   var bit a at raw : 0 = low
+   var bit raw_sign  at raw: 12 
+   var bit temp_sign at temperature: 15      -- zero if positive, one if negative
+   var bit sign
+   var dword tmp
+
+   for 13 loop             -- 13 shifts, 12 bits
+      raw = raw << 1
+      SCK  = low         -- clock low
+      delay_1us
+      a = SIO
+      SCK  = high        -- clock high
+      delay_1us
+   end loop
+
+   if raw_sign then                    -- below zero C
+      asm bcf raw_sign                 -- clear bit 13
+      tmp = 0b1_0000_0000_0000         -- 4096
+      tmp = tmp - raw                  -- 16th degrees C below zero
+      tmp = tmp * 625                  -- celsius * 10.000
+      temperature = sword(tmp / 100)    -- celsius*100
+      temp_sign = true
+   else
+      tmp = raw                        -- 16th degrees C
+      tmp = tmp * 625                  -- celsius * 10.000
+      temperature = sword(tmp / 100)    -- celsius*100
+      temp_sign = false
+   end if
+end procedure
+
+
+-- read celsius temperature of TC77
+-- output in one sdword with 4 digits, so T = xxx.xxxx C
+-- last bit is 0.0001C , range is -40C ... +125C
+procedure read_celsius_sdword_tc77(sdword out temperature) is
+   var word raw = 0
+   var bit a at raw : 0 = low
+   var bit raw_sign  at raw: 12 
+   var bit temp_sign at temperature: 31     -- zero if positive, one if negative
+
+   for 13 loop             -- 13 shifts, 12 bits
+      raw = raw << 1
+      SCK  = low         -- clock low
+      delay_1us
+      a = SIO
+      SCK  = high        -- clock high
+      delay_1us
+   end loop
+
+   if raw_sign then                       -- below zero C
+      asm bcf raw_sign                    -- clear bit 13
+      temperature = 0b1_0000_0000_0000    -- 4096
+      temperature = temperature - raw     -- 16th degrees below zero
+      temperature = temperature * 625     -- celsius * 10.000
+      temp_sign = true
+   else
+      temperature = sdword(raw)           -- 16th degrees C
+      temperature = temperature * 625     -- celsius * 10.000
+      temp_sign = false
+   end if
+end procedure
