@@ -13,9 +13,10 @@
 /*                                                                       */
 /* Description: Rexx script to obtain device specific properties:        */
 /*              Input:   PropertName, PicName                            */
-/*              Returns: Property of specified device or                 */
-/*                       "-" when property not found or                  */
-/*                       "?" when PICname not found.                     */
+/*              Returns: Value of property of specified device or        */
+/*                       "?" with invalid property name                  */
+/*                       "!" when PICname not listed in table            */
+/*                       "-" when property of PIC is unknown/unlisted    */
 /*              Supported property names:                                */
 /*                - ADCgroup                                             */
 /*                - DataSheet                                            */
@@ -350,7 +351,7 @@ select
   when PicName = '18LF45J50'  then return 'ADC_V11'
   when PicName = '18LF46J11'  then return 'ADC_V11'
   when PicName = '18LF46J50'  then return 'ADC_V11'
-  otherwise return '-'     /* for unknown PIC */
+  otherwise return '!'     /* for unknown PIC */
 end
 
 
@@ -360,8 +361,6 @@ end
 
 DataSheet: procedure expose PicName
 
-if substr(PicName,3,2) = "LF" then        /* handle xxLFyyyy as xxFyyyy */
-  PicName = left(PicName,2)"F"substr(PicName,5)
 select
   when PicName = "10F200"     then return "41239"
   when PicName = "10F202"     then return "41239"
@@ -463,7 +462,11 @@ select
   when PicName = "18F1230"    then return "39758"
   when PicName = "18F1320"    then return "39605"
   when PicName = "18F1330"    then return "39758"
+  when PicName = "18F13K20"   then return "-"
+  when PicName = "18F13K22"   then return "-"
   when PicName = "18F13K50"   then return "41350"
+  when PicName = "18F14K20"   then return "-"
+  when PicName = "18F14K22"   then return "-"
   when PicName = "18F14K50"   then return "41350"
   when PicName = "18F2220"    then return "39599"
   when PicName = "18F2221"    then return "39689"
@@ -482,6 +485,8 @@ select
   when PicName = "18F248"     then return "41159"
   when PicName = "18F2480"    then return "39637"
   when PicName = "18F24J10"   then return "39682"
+  when PicName = "18F24J11"   then return "-"
+  when PicName = "18F24J50"   then return "-"
   when PicName = "18F24K20"   then return "41303"
   when PicName = "18F2510"    then return "39636"
   when PicName = "18F2515"    then return "39636"
@@ -496,12 +501,16 @@ select
   when PicName = "18F2580"    then return "39637"
   when PicName = "18F2585"    then return "39625"
   when PicName = "18F25J10"   then return "39682"
+  when PicName = "18F25J11"   then return "-"
+  when PicName = "18F25J50"   then return "-"
   when PicName = "18F25K20"   then return "41303"
   when PicName = "18F2610"    then return "39636"
   when PicName = "18F2620"    then return "39626"
   when PicName = "18F2680"    then return "39625"
   when PicName = "18F2682"    then return "39761"
   when PicName = "18F2685"    then return "39761"
+  when PicName = "18F26J11"   then return "-"
+  when PicName = "18F26J50"   then return "-"
   when PicName = "18F26K20"   then return "41303"
   when PicName = "18F4220"    then return "39599"
   when PicName = "18F4221"    then return "39689"
@@ -520,6 +529,8 @@ select
   when PicName = "18F448"     then return "41159"
   when PicName = "18F4480"    then return "39637"
   when PicName = "18F44J10"   then return "39682"
+  when PicName = "18F44J11"   then return "-"
+  when PicName = "18F44J50"   then return "-"
   when PicName = "18F44K20"   then return "41303"
   when PicName = "18F4510"    then return "39636"
   when PicName = "18F4515"    then return "39636"
@@ -534,26 +545,33 @@ select
   when PicName = "18F4580"    then return "39637"
   when PicName = "18F4585"    then return "39625"
   when PicName = "18F45J10"   then return "39682"
+  when PicName = "18F45J11"   then return "-"
+  when PicName = "18F45J50"   then return "-"
   when PicName = "18F45K20"   then return "41303"
   when PicName = "18F4610"    then return "39636"
   when PicName = "18F4620"    then return "39626"
   when PicName = "18F4680"    then return "39625"
   when PicName = "18F4682"    then return "39761"
   when PicName = "18F4685"    then return "39761"
+  when PicName = "18F46J11"   then return "-"
+  when PicName = "18F46J50"   then return "-"
   when PicName = "18F46K20"   then return "41303"
   when PicName = "18F6310"    then return "39635"
   when PicName = "18F6390"    then return "39629"
   when PicName = "18F6393"    then return "39896"
+  when PicName = "18F63J11"   then return "-"
   when PicName = "18F63J90"   then return "39770"
   when PicName = "18F6410"    then return "39635"
   when PicName = "18F6490"    then return "39629"
   when PicName = "18F6493"    then return "39896"
+  when PicName = "18F64J11"   then return "-"
   when PicName = "18F64J90"   then return "39770"
   when PicName = "18F6520"    then return "39609"
   when PicName = "18F6525"    then return "39612"
   when PicName = "18F6527"    then return "39646"
   when PicName = "18F6585"    then return "30491"
   when PicName = "18F65J10"   then return "39663"
+  when PicName = "18F65J11"   then return "-"
   when PicName = "18F65J15"   then return "39663"
   when PicName = "18F65J50"   then return "39775"
   when PicName = "18F65J90"   then return "39770"
@@ -571,6 +589,8 @@ select
   when PicName = "18F66J55"   then return "39775"
   when PicName = "18F66J60"   then return "39762"
   when PicName = "18F66J65"   then return "39762"
+  when PicName = "18F66J90"   then return "-"
+  when PicName = "18F66J93"   then return "-"
   when PicName = "18F6720"    then return "39609"
   when PicName = "18F6722"    then return "39646"
   when PicName = "18F6723"    then return "39646"
@@ -578,19 +598,24 @@ select
   when PicName = "18F67J11"   then return "39778"
   when PicName = "18F67J50"   then return "39775"
   when PicName = "18F67J60"   then return "39762"
+  when PicName = "18F67J90"   then return "-"
+  when PicName = "18F67J93"   then return "39609"
   when PicName = "18F8310"    then return "39635"
   when PicName = "18F8390"    then return "39629"
   when PicName = "18F8393"    then return "39896"
+  when PicName = "18F83J11"   then return "-"
   when PicName = "18F83J90"   then return "39770"
   when PicName = "18F8410"    then return "39635"
   when PicName = "18F8490"    then return "39629"
   when PicName = "18F8493"    then return "39896"
+  when PicName = "18F84J11"   then return "-"
   when PicName = "18F84J90"   then return "39770"
   when PicName = "18F8520"    then return "39609"
   when PicName = "18F8525"    then return "39612"
   when PicName = "18F8527"    then return "39646"
   when PicName = "18F8585"    then return "30491"
   when PicName = "18F85J10"   then return "39663"
+  when PicName = "18F85J11"   then return "-"
   when PicName = "18F85J15"   then return "39663"
   when PicName = "18F85J50"   then return "39775"
   when PicName = "18F85J90"   then return "39770"
@@ -600,12 +625,16 @@ select
   when PicName = "18F8627"    then return "39646"
   when PicName = "18F8628"    then return "39646"
   when PicName = "18F8680"    then return "30491"
+  when PicName = "18F86J10"   then return "-"
   when PicName = "18F86J11"   then return "39778"
+  when PicName = "18F86J15"   then return "-"
   when PicName = "18F86J16"   then return "39778"
   when PicName = "18F86J50"   then return "39775"
   when PicName = "18F86J55"   then return "39775"
   when PicName = "18F86J60"   then return "39762"
   when PicName = "18F86J65"   then return "39762"
+  when PicName = "18F86J90"   then return "-"
+  when PicName = "18F86J93"   then return "-"
   when PicName = "18F8720"    then return "39609"
   when PicName = "18F8722"    then return "39646"
   when PicName = "18F8723"    then return "39646"
@@ -613,16 +642,30 @@ select
   when PicName = "18F87J11"   then return "39778"
   when PicName = "18F87J50"   then return "39775"
   when PicName = "18F87J60"   then return "39762"
+  when PicName = "18F87J90"   then return "-"
+  when PicName = "18F86J93"   then return "-"
   when PicName = "18F96J60"   then return "39762"
   when PicName = "18F96J65"   then return "39762"
   when PicName = "18F97J60"   then return "39762"
   when PicName = "18LF13K50"  then return "41350"
   when PicName = "18LF14K50"  then return "41350"
   when PicName = "18LF24J10"  then return "39682"
+  when PicName = "18LF24J11"  then return "-"
+  when PicName = "18LF24J50"  then return "-"
   when PicName = "18LF25J10"  then return "39682"
+  when PicName = "18LF25J11"  then return "-"
+  when PicName = "18LF25J50"  then return "-"
+  when PicName = "18LF26J11"  then return "-"
+  when PicName = "18LF26J50"  then return "-"
   when PicName = "18LF44J10"  then return "39682"
+  when PicName = "18LF44J11"  then return "-"
+  when PicName = "18LF44J50"  then return "-"
   when PicName = "18LF45J10"  then return "39682"
-  otherwise return "-"
+  when PicName = "18LF45J11"  then return "-"
+  when PicName = "18LF45J50"  then return "-"
+  when PicName = "18LF46J11"  then return "-"
+  when PicName = "18LF46J50"  then return "-"
+  otherwise return "!"
 end
 
 
@@ -632,8 +675,6 @@ end
 
 PgmSpec: procedure expose PicName
 
-if substr(PicName,3,2) = "LF" then        /* handle xxLFyyyy as xxFyyyy */
-  PicName = left(PicName,2)"F"substr(PicName,5)
 select
   when PicName = "10F200"     then return "41228"
   when PicName = "10F202"     then return "41228"
@@ -938,6 +979,6 @@ select
   when PicName = "18LF45J50"  then return "39687"
   when PicName = "18LF46J11"  then return "39687"
   when PicName = "18LF46J50"  then return "39687"
-  otherwise return "-"
+  otherwise return "!"
 end
 

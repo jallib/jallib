@@ -12,7 +12,7 @@
 /*              http://www.opensource.org/licenses/bsd-license.php          */
 /*                                                                          */
 /* Description: Rexx script to create device include files for JALV2,       */
-/*              and the file Chipdef.Jal, included by each of these.        */
+/*              and the file jalv2_common.jal, included by each of these.   */
 /*              Apart from declaration of all ports and pins of the chip    */
 /*              the include files will contain shadowing procedures to      */
 /*              prevent the 'read-modify-write' problems of midrange PICs   */
@@ -28,7 +28,7 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.48'                   /*                          */
+   ScriptVersion   = '0.0.49'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '=2.4h'                    /*                          */
 /* ------------------------------------------------------------------------ */
@@ -52,7 +52,7 @@ else do
   return 1
 end
 
-chipdef = dstdir'chipdef.jal'                   /* global file */
+chipdef = dstdir'chipdef_jallib.jal'            /* common include file */
 
 if selection = '' then                          /* no selection spec'd */
   wildcard = 'PIC1*.dev'                        /* default (8bit PICs) */
@@ -340,7 +340,7 @@ return 0
 
 
 /* ==================================================================== */
-/*          End of the 3 core-specific main scripts                     */
+/*          End of the core-specific main procedures                    */
 /* ==================================================================== */
 
 
@@ -1054,8 +1054,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                                         left(pin,20) 'at' reg ':' offset
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                  'at' shadow ':' offset') is'
-                  call lineout jalfile, '  pragma inline'
-                  call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
+                  call lineout jalfile, '   pragma inline'
+                  call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
                   call lineout jalfile, 'end procedure'
                   call lineout jalfile, '--'
                 end
@@ -1067,8 +1067,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                                       left(pin,20) 'at' reg ':' offset
                 call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                  'at' shadow ':' offset') is'
-                call lineout jalfile, '  pragma inline'
-                call lineout jalfile, '  _PORTA_flush()'
+                call lineout jalfile, '   pragma inline'
+                call lineout jalfile, '   _PORTA_flush()'
                 call lineout jalfile, 'end procedure'
                 call lineout jalfile, '--'
               end
@@ -1257,7 +1257,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                                         pin 'shared at' reg ':' offset
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                    'at' reg ':' offset') is'
-                  call lineout jalfile, '  pragma inline'
+                  call lineout jalfile, '   pragma inline'
                   call lineout jalfile, 'end procedure'
                   call lineout jalfile, '--'
                 end
@@ -1317,33 +1317,33 @@ do i = 1 to Dev.0
       call lineout jalfile, 'var  byte' shadow '= 0b1111_1111         -- default all input'
       call lineout jalfile, '--'
       call lineout jalfile, 'procedure PORT'portletter"_direction'put(byte in x) is"
-      call lineout jalfile, '  pragma inline'
-      call lineout jalfile, '  'shadow '= x'
-      call lineout jalfile, '  asm movf' shadow',W'
+      call lineout jalfile, '   pragma inline'
+      call lineout jalfile, '   'shadow '= x'
+      call lineout jalfile, '   asm movf' shadow',W'
       if reg = 'TRISIO' then                            /* TRISIO */
-        call lineout jalfile, '  asm tris 6'
+        call lineout jalfile, '   asm tris 6'
       else                                              /* TRISx */
-        call lineout jalfile, '  asm tris' 5 + C2D(portletter) - C2D('A')
+        call lineout jalfile, '   asm tris' 5 + C2D(portletter) - C2D('A')
       call lineout jalfile, 'end procedure'
       call lineout jalfile, '--'
       half = 'PORT'portletter'_low_direction'
       call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-      call lineout jalfile, '  'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
-      call lineout jalfile, '  asm movf _TRIS'portletter'_shadow,W'
+      call lineout jalfile, '   'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
+      call lineout jalfile, '   asm movf _TRIS'portletter'_shadow,W'
       if reg = 'TRISIO' then                            /* TRISIO */
-        call lineout jalfile, '  asm tris 6'
+        call lineout jalfile, '   asm tris 6'
       else                                              /* TRISx */
-        call lineout jalfile, '  asm tris' 5 + C2D(portletter) - C2D('A')
+        call lineout jalfile, '   asm tris' 5 + C2D(portletter) - C2D('A')
       call lineout jalfile, 'end procedure'
       call lineout jalfile, '--'
       half = 'PORT'portletter'_high_direction'
       call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-      call lineout jalfile, '  'shadow '= ('shadow '& 0x0F) | (x << 4)'
-      call lineout jalfile, '  asm movf _TRIS'portletter'_shadow,W'
+      call lineout jalfile, '   'shadow '= ('shadow '& 0x0F) | (x << 4)'
+      call lineout jalfile, '   asm movf _TRIS'portletter'_shadow,W'
       if reg = 'TRISIO' then                            /* TRISIO */
-        call lineout jalfile, '  asm tris 6'
+        call lineout jalfile, '   asm tris 6'
       else                                              /* TRISx */
-        call lineout jalfile, '  asm tris' 5 + C2D(portletter) - C2D('A')
+        call lineout jalfile, '   asm tris' 5 + C2D(portletter) - C2D('A')
       call lineout jalfile, 'end procedure'
       call lineout jalfile, '--'
       call list_nmmr_sub_tris_12 i, reg                 /* individual TRIS bits */
@@ -1356,13 +1356,13 @@ do i = 1 to Dev.0
       call lineout jalfile, 'var  byte' shadow '= 0b1111_1111         -- default all set'
       call lineout jalfile, '--'
       call lineout jalfile, 'procedure' reg"'put(byte in x) is"
-      call lineout jalfile, '  pragma inline'
-      call lineout jalfile, '  'shadow '=' x
-      call lineout jalfile, '  asm movf' shadow',0'
+      call lineout jalfile, '   pragma inline'
+      call lineout jalfile, '   'shadow '=' x
+      call lineout jalfile, '   asm movf' shadow',0'
       if reg = 'OPTION_REG' then                        /* OPTION_REG */
-        call lineout jalfile, '  asm option'
+        call lineout jalfile, '   asm option'
       else                                              /* OPTION2 */
-        call lineout jalfile, '  asm tris 7'
+        call lineout jalfile, '   asm tris 7'
       call lineout jalfile, 'end procedure'
       call list_nmmr_sub_option_12 i, reg               /* subfields */
     end
@@ -1399,12 +1399,12 @@ do k = 0 to 3 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
         call lineout jalfile, '--'
         call lineout jalfile, 'procedure pin_'portletter||offset"_direction'put(bit in x",
                                                   'at' shadow ':' offset') is'
-        call lineout jalfile, '  pragma inline'
-        call lineout jalfile, '  asm movf _TRIS'portletter'_shadow,W'
+        call lineout jalfile, '   pragma inline'
+        call lineout jalfile, '   asm movf _TRIS'portletter'_shadow,W'
         if reg = 'TRISIO' then                          /* TRISIO */
-          call lineout jalfile, '  asm tris 6'
+          call lineout jalfile, '   asm tris 6'
         else                                            /* TRISx */
-          call lineout jalfile, '  asm tris' 5 + C2D(portletter) - C2D('A')
+          call lineout jalfile, '   asm tris' 5 + C2D(portletter) - C2D('A')
         call lineout jalfile, 'end procedure'
       end
       offset = offset - 1
@@ -1445,18 +1445,18 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
         if s.j = 1 then do                              /* single bit */
           call lineout jalfile, 'procedure' field"'put"'(bit in x',
                                                    'at' shadow ':' offset') is'
-          call lineout jalfile, '  pragma inline'
+          call lineout jalfile, '   pragma inline'
         end
         else if s.j > 1 then do                         /* multi-bit */
           call lineout jalfile, 'procedure' field"'put"'(byte in x',
                                                'at' shadow ':' offset - s.j + 1') is'
-          call lineout jalfile, '  pragma inline'
+          call lineout jalfile, '   pragma inline'
         end
-        call lineout jalfile, '  asm movf' shadow',0'
+        call lineout jalfile, '   asm movf' shadow',0'
         if reg = 'OPTION_REG' then                      /* OPTION_REG */
-          call lineout jalfile, '  asm option'
+          call lineout jalfile, '   asm option'
         else                                            /* OPTION2 */
-          call lineout jalfile, '  asm tris 7'
+          call lineout jalfile, '   asm tris 7'
         call lineout jalfile, 'end procedure'
         offset = offset - s.j
       end
@@ -1493,16 +1493,16 @@ do i = 1 to Dev.0
     call lineout jalfile, 'var          byte  ' shadow '       = 0b1111_1111'
     call lineout jalfile, '--'
     call lineout jalfile, 'procedure _'reg'_flush() is'
-    call lineout jalfile, '  pragma inline'
-    call lineout jalfile, '  WDTCON_ADSHR = TRUE        -- map register'
-    call lineout jalfile, '  'reg '=' shadow
-    call lineout jalfile, '  WDTCON_ADSHR = FALSE       -- unmap register'
+    call lineout jalfile, '   pragma inline'
+    call lineout jalfile, '   WDTCON_ADSHR = TRUE        -- map register'
+    call lineout jalfile, '   'reg '=' shadow
+    call lineout jalfile, '   WDTCON_ADSHR = FALSE       -- unmap register'
     call lineout jalfile, 'end procedure'
     call lineout jalfile, '--'
     call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
-    call lineout jalfile, '  pragma inline'
-    call lineout jalfile, '  'shadow '= x'
-    call lineout jalfile, '  _'reg'_flush()'
+    call lineout jalfile, '   pragma inline'
+    call lineout jalfile, '   'shadow '= x'
+    call lineout jalfile, '   _'reg'_flush()'
     call lineout jalfile, 'end procedure'
     call lineout jalfile, '--'
 
@@ -1526,34 +1526,34 @@ call lineout jalfile, '--'
 call lineout jalfile, 'var          byte ' shadow '       = 'reg
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure _PORT'substr(reg,5)'_flush() is'
-call lineout jalfile, '  pragma inline'
-call lineout jalfile, ' ' reg '=' shadow
+call lineout jalfile, '   pragma inline'
+call lineout jalfile, '   'reg '=' shadow
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
-call lineout jalfile, '  pragma inline'
-call lineout jalfile, '  'shadow '= x'
-call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
+call lineout jalfile, '   pragma inline'
+call lineout jalfile, '   'shadow '= x'
+call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_low'
 /* call lineout jalfile, 'var  byte' half */
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '  'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
-call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
+call lineout jalfile, '   'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
+call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '  return ('reg '& 0x0F)'
+call lineout jalfile, '   return ('reg '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_high'
 /* call lineout jalfile, 'var  byte' half */
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '  'shadow '= ('shadow '& 0x0F) | (x << 4)'
-call lineout jalfile, '  _PORT'substr(reg,5)'_flush()'
+call lineout jalfile, '   'shadow '= ('shadow '& 0x0F) | (x << 4)'
+call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '  return ('reg '>> 4)'
+call lineout jalfile, '   return ('reg '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 return
@@ -1569,24 +1569,24 @@ lat  = arg(1)                                   /* LATx register */
 port = 'PORT'substr(lat,4)                      /* corresponding port */
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure' port"'put"'(byte in x) is'
-call lineout jalfile, '  pragma inline'
-call lineout jalfile, '  'lat '= x'
+call lineout jalfile, '   pragma inline'
+call lineout jalfile, '   'lat '= x'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_low'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '  'lat '= ('lat '& 0xF0) | (x & 0x0F)'
+call lineout jalfile, '   'lat '= ('lat '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '  return ('lat '& 0x0F)'
+call lineout jalfile, '   return ('lat '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_high'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '  'lat '= ('lat '& 0x0F) | (x << 4)'
+call lineout jalfile, '   'lat '= ('lat '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '  return ('lat '>> 4)'
+call lineout jalfile, '   return ('lat '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 return
@@ -1602,18 +1602,18 @@ reg = arg(1)
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_low_direction'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '  'reg '= ('reg '& 0xF0) | (x & 0x0F)'
+call lineout jalfile, '   'reg '= ('reg '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '  return ('reg '& 0x0F)'
+call lineout jalfile, '   return ('reg '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_high_direction'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '  'reg '= ('reg '& 0x0F) | (x << 4)'
+call lineout jalfile, '   'reg '= ('reg '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '  return ('reg '>> 4)'
+call lineout jalfile, '   return ('reg '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 return
@@ -2116,18 +2116,18 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
   call lineout jalfile, '-- Change analog I/O pins into digital I/O pins.'
   call lineout jalfile, '--'
   call lineout jalfile, 'procedure analog_off() is'
-  call lineout jalfile, '  pragma inline'
+  call lineout jalfile, '   pragma inline'
   if Name.ANSEL \= '-' then do                          /* ANSEL declared */
-    call lineout jalfile, '  ANSEL  = 0b0000_0000        -- all digital'
+    call lineout jalfile, '   ANSEL  = 0b0000_0000       -- all digital'
     if Name.ANSELH \= '-' then
-      call lineout jalfile, '  ANSELH = 0b0000_0000        -- all digital'
+      call lineout jalfile, '   ANSELH = 0b0000_0000       -- all digital'
   end
   if Name.ANSEL0 \= '-' then do                         /* ANSEL0 declared */
     suffix = '0123456789'                               /* suffix numbers */
     do i = 1 to length(suffix)
       qname = 'ANSEL'substr(suffix,i,1)                 /* qualified name */
       if Name.qname \= '-' then                         /* ANSELx declared */
-        call lineout jalfile, '  'qname '= 0b0000_0000        -- all digital'
+        call lineout jalfile, '   'qname '= 0b0000_0000        -- all digital'
     end
   end
   if Name.ANSELA \= '-' then do                         /* ANSELA declared */
@@ -2135,47 +2135,47 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
     do i = 1 to length(suffix)
       qname = 'ANSEL'substr(suffix,i,1)                 /* qualified name */
       if Name.qname \= '-' then                         /* ANSELx declared */
-        call lineout jalfile, '  'qname '= 0b0000_0000        -- all digital'
+        call lineout jalfile, '   'qname '= 0b0000_0000        -- all digital'
     end
   end
   if Name.ANCON0 \= '-' then do                         /* ANCON0 declared */
-    call lineout jalfile, '  ANCON0 = 0b1111_1111        -- all digital'
-    call lineout jalfile, '  ANCON1 = 0b1111_1111        -- all digital'
+    call lineout jalfile, '   ANCON0 = 0b1111_1111        -- all digital'
+    call lineout jalfile, '   ANCON1 = 0b1111_1111        -- all digital'
   end
   call lineout jalfile, 'end procedure'
   call lineout jalfile, '--'
 end
 
 ADCgroup = devicespecific('adcgroup', PicName)
-if ADCgroup = '?' then do                               /* no group found! */
+if ADCgroup = '?' then                                  /* wrong property */
+  say 'Error: Property "ADCgroup" is unknown.'
+else if ADCgroup = '!' then                             /* PIC unlisted */
   say 'Error:' PicName 'is unknown in ADC group table!'
-end
-
 if Name.ADCON0 \= '-' then do                           /* check on presence */
   analog.ADC = 'adc'                                    /* ADC module present */
   call lineout jalfile, '-- ---------------------------------------------------'
   call lineout jalfile, '-- Disable ADC module (ADC_group' ADCgroup')'
   call lineout jalfile, '--'
   call lineout jalfile, 'procedure adc_off() is'
-  call lineout jalfile, '  pragma inline'
-  call lineout jalfile, '  ADCON0 = 0b0000_0000         -- disable ADC'
+  call lineout jalfile, '   pragma inline'
+  call lineout jalfile, '   ADCON0 = 0b0000_0000         -- disable ADC'
   if Name.ADCON1 \= '-' then do                         /* ADCON1 declared */
     if ADCgroup = 'ADC_V0' then
-      call lineout jalfile, '  ADCON1 = 0b0000_0000'
+      call lineout jalfile, '   ADCON1 = 0b0000_0000'
     else if ADCgroup = 'ADC_V1' then
-      call lineout jalfile, '  ADCON1 = 0b0000_0111         -- digital I/O'
+      call lineout jalfile, '   ADCON1 = 0b0000_0111         -- digital I/O'
     else if ADCgroup = 'ADC_V2'  |,
             ADCgroup = 'ADC_V4'  |,
             ADCgroup = 'ADC_V5'  |,
             ADCgroup = 'ADC_V6'  |,
             ADCgroup = 'ADC_V11' then
-      call lineout jalfile, '  ADCON1 = 0b0000_1111         -- digital I/O'
+      call lineout jalfile, '   ADCON1 = 0b0000_1111         -- digital I/O'
     else if ADCgroup = 'ADC_V3' then
-      call lineout jalfile, '  ADCON1 = 0b1111_1111         -- digital I/O'
+      call lineout jalfile, '   ADCON1 = 0b1111_1111         -- digital I/O'
     else                                                /* ADC_V7,7_1,8,9,10 */
-      call lineout jalfile, '  ADCON1 = 0b0000_0000'
+      call lineout jalfile, '   ADCON1 = 0b0000_0000'
     if Name.ADCON2 \= '-' then                          /* ADCON2 declared */
-      call lineout jalfile, '  ADCON2 = 0b0000_0000'    /* all groups */
+      call lineout jalfile, '   ADCON2 = 0b0000_0000'    /* all groups */
   end
   call lineout jalfile, 'end procedure'
   call lineout jalfile, '--'
@@ -2187,12 +2187,12 @@ if Name.CMCON \= '-' | Name.CMCON0 \= '-' then do       /* check on presence */
   call lineout jalfile, '-- Disable comparator module'
   call lineout jalfile, '--'
   call lineout jalfile, 'procedure comparator_off() is'
-  call lineout jalfile, '  pragma inline'
+  call lineout jalfile, '   pragma inline'
   if Name.CMCON \= '-' then do
-    call lineout jalfile, '  CMCON  = 0b0000_0111        -- disable comparators'
+    call lineout jalfile, '   CMCON  = 0b0000_0111        -- disable comparators'
   end
   else if Name.CMCON0 \= '-' then do
-    call lineout jalfile, '  CMCON0 = 0b0000_0111        -- disable comparators'
+    call lineout jalfile, '   CMCON0 = 0b0000_0111        -- disable comparators'
   end
   call lineout jalfile, 'end procedure'
   call lineout jalfile, '--'
@@ -2202,15 +2202,15 @@ call lineout jalfile, '-- ---------------------------------------------------'
 call lineout jalfile, '-- Switch analog ports to digital mode (if analog module present).'
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure enable_digital_io() is'
-call lineout jalfile, '  pragma inline'
+call lineout jalfile, '   pragma inline'
 do k over analog.                               /* all present analog function */
-  call lineout jalfile, '  'analog.k'_off()'    /* call individual function */
+  call lineout jalfile, '   'analog.k'_off()'    /* call individual function */
 end
 if left(PicName,3) = '10f' |,                   /* all 10Fs */
         PicName = '12f508' | PicName = '12f509' | PicName = '12f510'  |,
         PicName = '16f505' | PicName = '16f506' | PicName = '16f526'  ,
   then
-    call lineout jalfile, '  OPTION_REG_T0CS = OFF        -- T0CKI pin input + output'
+    call lineout jalfile, '   OPTION_REG_T0CS = OFF        -- T0CKI pin input + output'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 
@@ -2237,7 +2237,7 @@ end
 call lineout jalfile, '--                - Symbolic definitions for config bits (fuses)'
 call lineout jalfile, '--                - Some device dependent procedures for common'
 call lineout jalfile, '--                  operations, like:'
-call lineout jalfile, '--                   . enable-digital-io.'
+call lineout jalfile, '--                   . enable_digital_io()'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Sources:'
 call lineout jalfile, '--  -' DevFile
@@ -2250,16 +2250,28 @@ call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
 call list_devID
-call lineout jalfile, '-- DataSheet:' devicespecific('datasheet', PicName)
-call lineout jalfile, '-- Programming Specifications:' devicespecific('pgmspec', PicName)
+DataSheet = devicespecific('DataSheet', PicName)
+if DataSheet == '?' then                        /* wrong property */
+  say 'Error: Property "DataSheet" is unknown.'
+else if DataSheet == '!' then                   /* PIC unlisted */
+  say 'Error:' PicName 'is unknown in datasheet table!'
+else
+  call lineout jalfile, '-- DataSheet:' DataSheet
+PgmSpec = devicespecific('pgmspec', PicName)
+if PgmSpec == '?' then
+  say 'Error: Property "PgmSpec" is unknown.'
+else if PgmSpec == '!' then
+  say 'Error:' PicName 'is unlisted in programming specifications table!'
+else
+  call lineout jalfile, '-- Programming Specifications:' PgmSpec
 call list_Vdd
 call list_Vpp
 call lineout jalfile, '--'
 call lineout jalfile, '-- ---------------------------------------------------'
 call lineout jalfile, '--'
-call lineout jalfile, 'include chipdef                     -- common constants'
+call lineout jalfile, 'include chipdef_jallib                  -- common constants'
 call lineout jalfile, '--'
-call lineout jalfile, 'pragma  target  cpu   PIC_'Core '       -- (banks = 'Numbanks')'
+call lineout jalfile, 'pragma  target  cpu   PIC_'Core '           -- (banks = 'Numbanks')'
 call lineout jalfile, 'pragma  target  chip  'PicName
 call lineout jalfile, 'pragma  target  bank  0x'D2X(BANKSIZE,4)
 if core = 12  then do
@@ -2371,12 +2383,13 @@ call lineout chipdef, '--'
 call lineout chipdef, '-- =================================================================='
 call lineout chipdef, '--'
 call lineout chipdef, '-- Values assigned to const "target_chip" by'
-call lineout chipdef, '-- "pragma target chip" in device include files.'
+call lineout chipdef, '-- "pragma target chip" in device files.'
 call lineout chipdef, '-- Can be used for conditional compilation,',
                        'for example:'
 call lineout chipdef, '--    if (target_chip = PIC_16F88) then'
 call lineout chipdef, '--      ....                                  -- for 16F88 only'
 call lineout chipdef, '--    endif'
+call lineout chipdef, '-- Note: Variables declared in such a block are local!'
 call lineout chipdef, '--'
 return
 
@@ -2421,7 +2434,7 @@ return addr_list' }'                            /* complete string */
 
 
 /* --------------------------------------------- */
-/* Signal duplicates name.                       */
+/* Signal duplicates names                       */
 /* Collect all names in Name. compound var       */
 /* Return - 0 when name is unique                */
 /*        - 1 when name is dumplicate            */
@@ -2442,7 +2455,7 @@ end
 
 
 /* ---------------------------------------------- */
-/* script debugging                               */
+/* some script debugging procedures               */
 /* ---------------------------------------------- */
 
 error_catch:
