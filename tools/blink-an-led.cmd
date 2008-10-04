@@ -31,28 +31,29 @@ parse upper arg runtype selection .             /* where to store jal files */
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load Rexx utilities */
 
-JalV2 = 'k:/c/Jalv2/JalV2.exe'                      /* compiler path (eCS) */
+JalV2 = 'k:/c/Jalv2/JalV2.exe'                  /* compiler path (eCS) */
+Validator = 'k:/jallib/tools/jsg_validator.py'  /* validation script */
 
 if runtype = 'TEST' then do                     /* test mode */
-  Include = 'k:/jallib/test/'                         /* test include directory */
-  Options = '-Wno-all -s' Include                           /* compiler options */
+  Include = 'k:/jallib/test/'                   /* test include directory */
+  Options = '-Wno-all -s' Include               /* compiler options */
 end
 else do                                         /* normal mode */
   Include = 'k:/jallib/unvalidated/include/device/'   /* SVN include directory */
-  Options = '-Wno-all -a nul -s' Include                    /* no asm output */
+  Options = '-Wno-all -a nul -s' Include        /* no asm output */
+  dst = '\jallib\unvalidated\sample\by_device\' /* destination directory */
 end
 
 if selection = '' then
-  call SysFileTree Include'1*.jal', pic, 'FO'          /* list of device includes  */
+  call SysFileTree Include'1*.jal', pic, 'FO'   /* list of device includes  */
 else
-  call SysFileTree Include||selection, pic, 'FO'       /* list of device includes  */
+  call SysFileTree Include||selection'.jal', pic, 'FO'  /* list of includes  */
 
 if pic.0 < 1 then do
   say 'No appropriate device files found in directory' Include
   return 1
 end
 
-dst = '\jallib\unvalidated\sample\blink\'       /* destination directory */
 k = 0
 
 do i=1 to pic.0
@@ -60,15 +61,16 @@ do i=1 to pic.0
   parse value filespec('Name', pic.i) with PicName '.jal'
   say PicName
 
-  '@python jsg_validator.py' pic.i '>'PgmName'.pylog'
+  PgmName = 'b'PicName                          /* program name */
+  PgmFile = 'b'PicName'.jal'                    /* program filespec */
+
+  '@python' validator  pic.i '>'PgmName'.pylog'  /* validate device file */
   if rc \= 0 then do
     say 'returncode of validation include file' PicName'.jal is:' rc
     exit rc
   end
   '@erase' PgmName'.pylog'                      /* when OK, discard log */
 
-  PgmName = 'b'PicName                          /* program name */
-  PgmFile = 'b'PicName'.jal'                    /* program filespec */
   call stream  PgmFile, 'c', 'open write replace'
   call lineout PgmFile, '-- ------------------------------------------------------'
   call lineout PgmFile, '-- Title: Blink-an-LED of the Microchip PIC'PicName
@@ -143,30 +145,31 @@ do i=1 to pic.0
       end
     end
   end
-  call stream Pic.i, 'c', 'close'                       /* done with device file */
   call lineout PgmFile, '--'
   call lineout PgmFile, 'enable_digital_io()                -- disable analog I/O (if any)'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- You may want to change the selected pin:'
 
-  port.0 = 3                                                 /* ports to scan */
+  call stream pic.i, 'c', 'close'
+  port.0 = 3                                            /* ports to scan */
   port.1 = 'A'
   port.2 = 'B'
   port.3 = 'C'
   do p=1 to port.0
     do q=0 to 7
-      call SysFileSearch ' pin_'port.p||q' ', pic.i, pin.    /* search I/O pin */
-      if pin.0 > 0 then do                                   /* pin found */
-        call SysFileSearch ' pin_'port.p||q'_direction', pic.i, tris.       /* TRISx */
+      pinPQ = 'pin_'port.p||q                           /* pin name */
+      call SysFileSearch ' 'pinPQ' ', pic.i, pin.       /* search pin in device file */
+      if pin.0 > 0 then do                              /* pin found */
+        call SysFileSearch ' 'pinPQ'_direction', pic.i, tris.    /* search TRISx */
         if tris.0 > 0 then do                                /* found */
-          call lineout PgmFile, 'var bit led           is pin_'port.p||q'   -- alias'
-          call lineout PgmFile, 'var bit led_direction is pin_'port.p||q'_direction'
+          call lineout PgmFile, 'var bit led           is' pinPQ '   -- alias'
+          call lineout PgmFile, 'var bit led_direction is' pinPQ'_direction'
           call lineout PgmFile, '--'
           call lineout PgmFile, 'led_direction = output'
           leave p
         end
-        else do                                              /* no TRISx found */
-          say 'Found pin_'port.p||q', but missing pin_'port.p||q'_direction declaration'
+        else do                                         /* no TRISx found */
+          say 'Found' pinPQ', but missing' pinPQ'_direction declaration'
         end
       end
     end
@@ -177,18 +180,20 @@ do i=1 to pic.0
     iterate
   end
 
+  call stream pic.i, 'c', 'close'                       /* done with device file */
+
   call lineout PgmFile, '--'
   call lineout PgmFile, 'forever loop'
-  call lineout PgmFile, '  led = on'
-  call lineout PgmFile, '  _usec_delay(250000)'
-  call lineout PgmFile, '  led = off'
-  call lineout PgmFile, '  _usec_delay(250000)'
+  call lineout PgmFile, '   led = on'
+  call lineout PgmFile, '   _usec_delay(250000)'
+  call lineout PgmFile, '   led = off'
+  call lineout PgmFile, '   _usec_delay(250000)'
   call lineout PgmFile, 'end loop'
   call lineout PgmFile, '--'
   call stream PgmFile, 'c', 'close'
 
 
-  '@python jsg_validator.py' PgmFile '>'PgmName'.pylog'     /* validate blink program */
+  '@python' validator PgmFile '>'PgmName'.pylog'     /* validate blink program */
   if rc \= 0 then do
     say 'returncode of validation blink program' PgmFile 'is:' rc
     exit rc                                     /* terminate! */
@@ -197,8 +202,10 @@ do i=1 to pic.0
 
   '@'JalV2 Options PgmFile '>'PgmName'.log'      /* compile */
 
-  if rc \= 0 then                               /* compiler error */
+  if rc \= 0 then do                            /* compile error */
+    say 'JalV2 compile error' rc
     leave                                       /* terminate */
+  end
 
   '@erase' PgmName'.cod' PgmName'.err' PgmName'.lst' PgmName'.obj' '1>nul 2>nul'
 
@@ -211,20 +218,21 @@ do i=1 to pic.0
       end
       else do
         k = k + 1                               /* all OK */
-        '@copy'  PgmName'.jal' dst'*' '1>nul'
-        if runtype \= 'TEST' then
+        if runtype \= 'TEST' then do
+          '@copy' PgmFile dst||PicName'\*' '1>nul'
           '@erase' PgmName'.hex' PgmName'.asm' PgmName'.jal' PgmName'.log' '1>nul 2>nul'
+        end
       end
     end
     else
-      say 'Compilation of' PgmName'.jal failed:' LG.1
+      say 'Compilation of' PgmFile 'failed:' LG.1
   end
   else do
-    say 'Compilation of' PgmName'.jal failed, file' PgmName'.log' 'not found'
+    say 'Compilation of' PgmFile 'failed, file' PgmName'.log' 'not found'
   end
 
-
-  if k > 500 then exit loop     /* set (low) limit for test purposes */
+  if k > 500 then                       /* set (low) limit for test purposes */
+    exit k
 
 end
 
