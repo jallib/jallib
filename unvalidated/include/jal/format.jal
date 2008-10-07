@@ -17,6 +17,7 @@
 -- .     var sword BHL = -684
 -- .     
 -- .     -- send the signed word to the LCD display
+-- .     -- total field width 6 chars, including sign and decimal
 -- .     -- with 2 digits behind the decimal point
 -- .     format_sword_dec(LCD_char,BHL,6,2)
 -- .     
@@ -116,9 +117,9 @@ end procedure
 -- writes decimal formatted word to output device
 -- the output can be specified as a fraction
 --   n_tot = the total length (including sign and decimal point)
---   N2   = number of digits behind the point
+--   n2   = number of digits behind the point
 -- -----------------------------------------------------------------------------
-procedure format_word_dec(volatile byte out device, word in data, byte in n_tot, byte in N2) is
+procedure format_word_dec(volatile byte out device, word in data, byte in n_tot, byte in n2) is
 
    const word C10000 = 10000
    const word C1000  = 1000
@@ -133,6 +134,89 @@ procedure format_word_dec(volatile byte out device, word in data, byte in n_tot,
    if n_tot >=5 then
       digit = byte(data / C10000)
       data  = data % C10000
+      _write_digit(device, digit, n2==4)
+   end if
+
+   if n_tot >= 4 then
+      digit = byte(data / C1000)
+      data  = data % C1000
+      _write_digit(device, digit, n2==3)
+   end if
+
+   if n_tot >= 3 then
+      digit = byte(data / C100)
+      data  = data % C100
+      _write_digit(device, digit, n2==2)
+   end if
+
+   if n_tot >= 2 then
+      digit = byte(data / C10)
+      data  = data % C10
+      _write_digit(device, digit, n2==1)
+   end if
+
+   -- last digit must always be written
+   _format_digit = byte(data)
+   _write_real_digit(device)
+end procedure
+-- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted dword to output device
+-- the output can be specified as a fraction
+--   n_tot = the total length (including sign and decimal point)
+--   n2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_dword_dec(volatile byte out device, dword in data, byte in n_tot, byte in n2) is
+
+   const dword C1_000_000_000    = 1_000_000_000
+   const dword C100_000_000      = 100_000_000
+   const dword C10_000_000       = 10_000_000
+   const dword C1_000_000        = 1_000_000
+   const dword C100_000          = 100_000
+   const word  C10_000           = 10_000
+   const word  C1000             = 1000
+   const word  C100              = 100
+   const word  C10               = 10
+   var byte digit
+
+   -- start with spaces as a leader
+   _format_leader = " "
+
+   -- determine the next digit and display it
+   if n_tot >=10 then
+      digit = byte(data / C1_000_000_000)
+      data  = data % C1_000_000_000
+      _write_digit(device, digit, N2==9)
+   end if
+
+   if n_tot >=9 then
+      digit = byte(data / C100_000_000)
+      data  = data % C10_000_000
+      _write_digit(device, digit, N2==8)
+   end if
+
+   if n_tot >=8 then
+      digit = byte(data / C10_000_000)
+      data  = data % C10_000_000
+      _write_digit(device, digit, N2==7)
+   end if
+
+   if n_tot >=7 then
+      digit = byte(data / C1_000_000)
+      data  = data % C1_000_000
+      _write_digit(device, digit, N2==6)
+   end if
+
+   if n_tot >=6 then
+      digit = byte(data / C100_000)
+      data  = data % C100_000
+      _write_digit(device, digit, N2==5)
+   end if
+
+   if n_tot >=5 then
+      digit = byte(data / C10_000)
+      data  = data % C10_000
       _write_digit(device, digit, N2==4)
    end if
 
@@ -159,7 +243,6 @@ procedure format_word_dec(volatile byte out device, word in data, byte in n_tot,
    _write_real_digit(device)
 end procedure
 -- -----------------------------------------------------------------------------
-
 
 -- -----------------------------------------------------------------------------
 -- writes decimal formatted signed byte to output device
@@ -209,6 +292,27 @@ procedure format_sword_dec(volatile byte out device, sword in data, byte in n_to
 end procedure
 -- -----------------------------------------------------------------------------
 
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted signed dword to output device
+-- the output can be specified as a fraction
+--   n_tot = the total length (including sign and decimal point)
+--   n2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_sdword_dec(volatile byte out device, sdword in data, byte in n_tot, byte in n2) is
+
+   var bit sign at data:31
+
+   if sign then
+      _format_sign = "-"
+      data = -data
+   else
+      _format_sign = " "
+   end if
+
+   _format_signed = true
+   format_dword_dec(device, data, n_tot-1, N2)
+end procedure
+-- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
 -- writes hex formatted byte to output device

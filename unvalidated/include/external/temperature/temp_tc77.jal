@@ -32,7 +32,7 @@
 
 -- get raw temperature of TC77
 -- output in word, right justified
-procedure read_raw_tc77(word out raw) is
+procedure tc77_read_raw(word out raw) is
    raw = 0
    var bit a at raw : 0 = low
 
@@ -51,12 +51,12 @@ end procedure
 -- read celsius temperature of TC77
 -- output in one sbyte with zero digits, so T = +/- xxx C
 -- last bit is 1C, range is -40C ... +125C
-procedure read_celsius_sbyte_tc77(sbyte out temperature) is
-   var word raw = 0
+-- no rounding, celsius fraction is chopped
+procedure tc77_read_celsius_sbyte(sbyte out temperature) is
+   var sword raw = 0
    var bit a         at raw : 0 = low
-   var bit raw_sign  at raw: 12 
-   var bit temp_sign at temperature: 7      -- zero if positive, one if negative
-   var word tmp
+   var bit raw_sign  at raw: 12     -- zero if above 0C, 1 if below 0C
+   var sword tmp
 
    for 13 loop             -- 13 shifts, 12 bits
       raw = raw << 1
@@ -69,13 +69,10 @@ procedure read_celsius_sbyte_tc77(sbyte out temperature) is
 
    if raw_sign then                 -- below zero C
       asm bcf raw_sign              -- clear bit 13
-      tmp = 0b1_0000_0000_0000      -- 4096
-      tmp = tmp - raw               -- 16th degrees below zero
+      tmp = 0b111_0000_0000_0000 + raw -- both above zero for compiler
       temperature = sbyte(tmp >> 4) -- now celsius, divided by 16
-      temp_sign = true
    else
       temperature = sbyte(raw >> 4) -- TC77 is limited to +125C    
-      temp_sign = false
    end if
 end procedure
 
@@ -83,13 +80,13 @@ end procedure
 -- read celsius temperature of TC77
 -- output in one sword with 2 digits, so T = xxx.xx C
 -- last bit is 0.01C , range is -40C ... +125C
-procedure read_celsius_sword_tc77(sword out temperature) is
-   var word raw = 0
+-- best procedure if you want to display C in 0.1 accurate
+-- take care of rounding during printing
+procedure tc77_read_celsius_sword(sword out temperature) is
+   var sword raw = 0
    var bit a at raw : 0 = low
-   var bit raw_sign  at raw: 12 
-   var bit temp_sign at temperature: 15      -- zero if positive, one if negative
-   var bit sign
-   var dword tmp
+   var bit raw_sign  at raw: 12  -- zero if above 0C, 1 if below 0C
+   var sdword tmp
 
    for 13 loop             -- 13 shifts, 12 bits
       raw = raw << 1
@@ -102,16 +99,16 @@ procedure read_celsius_sword_tc77(sword out temperature) is
 
    if raw_sign then                    -- below zero C
       asm bcf raw_sign                 -- clear bit 13
-      tmp = 0b1_0000_0000_0000         -- 4096
-      tmp = tmp - raw                  -- 16th degrees C below zero
+      tmp = 0xFF_FF_F0_00              -- all ones, execpt for last 12
+      tmp = tmp + raw                  -- 16ths degC below zero, can't overflow
       tmp = tmp * 625                  -- celsius * 10.000
-      temperature = sword(tmp / 100)    -- celsius*100
-      temp_sign = true
+      temperature = sword(tmp / 100)   -- celsius*100
+--      temp_sign = true
    else
-      tmp = raw                        -- 16th degrees C
+      tmp = raw                        -- 16ths degrees C
       tmp = tmp * 625                  -- celsius * 10.000
-      temperature = sword(tmp / 100)    -- celsius*100
-      temp_sign = false
+      temperature = sword(tmp / 100)   -- celsius*100
+--      temp_sign = false
    end if
 end procedure
 
@@ -119,11 +116,10 @@ end procedure
 -- read celsius temperature of TC77
 -- output in one sdword with 4 digits, so T = xxx.xxxx C
 -- last bit is 0.0001C , range is -40C ... +125C
-procedure read_celsius_sdword_tc77(sdword out temperature) is
-   var word raw = 0
+procedure tc77_read_celsius_sdword(sdword out temperature) is
+   var sword raw = 0
    var bit a at raw : 0 = low
-   var bit raw_sign  at raw: 12 
-   var bit temp_sign at temperature: 31     -- zero if positive, one if negative
+   var bit raw_sign  at raw: 12  -- zero if above 0C, 1 if below 0C
 
    for 13 loop             -- 13 shifts, 12 bits
       raw = raw << 1
@@ -134,15 +130,13 @@ procedure read_celsius_sdword_tc77(sdword out temperature) is
       delay_1us
    end loop
 
-   if raw_sign then                       -- below zero C
-      asm bcf raw_sign                    -- clear bit 13
-      temperature = 0b1_0000_0000_0000    -- 4096
-      temperature = temperature - raw     -- 16th degrees below zero
-      temperature = temperature * 625     -- celsius * 10.000
-      temp_sign = true
+   if raw_sign then                    -- below zero C
+      asm bcf raw_sign                 -- clear bit 13
+      temperature = 0xFF_FF_F0_00      -- all ones, execpt for last 12
+      temperature = temperature + raw  -- 16ths degC below zero, can't overflow
+      temperature = temperature * 625  -- celsius * 10.000
    else
-      temperature = sdword(raw)           -- 16th degrees C
-      temperature = temperature * 625     -- celsius * 10.000
-      temp_sign = false
+      temperature = raw                -- 16th degrees C
+      temperature = temperature * 625  -- celsius * 10.000
    end if
 end procedure
