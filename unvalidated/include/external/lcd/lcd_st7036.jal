@@ -2,9 +2,7 @@
 -- Title: control for ST7036 based LCD
 --
 -- Author: Richard Zengerink,  Copyright (c) 2008, all rights reserved
---
 -- Adapted-by:
---
 -- Compiler: =2.4
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -26,22 +24,16 @@
 -- example type name: EA DOG-M order at WWW.CONRAD.nl  order nr:181874
 --
 
--- -------------------------------------------------------------------------
---  Start of code
--- -------------------------------------------------------------------------
---
--- -----------------------------------------------------------------------------
 -- delay's necessary for initialisation and some commands
--- -----------------------------------------------------------------------------
-const LCD_SHORT_DELAY     = 5   -- delay in 10 usec units
+-- delay in 10 usec units
+const LCD_SHORT_DELAY     = 5
+-- delay in 10 usec units
+const LCD_LONG_DELAY      = 18
 
-const LCD_LONG_DELAY      = 18 -- delay in 10 usec units
 
--- -----------------------------------------------------------------------------
 
--- -----------------------------------------------------------------------------
 -- some constants to control the lcd
--- -----------------------------------------------------------------------------
+
 const LCD_CLEAR_DISPLAY       = 0b_0000_0001
 const LCD_RETURN_HOME         = 0b_0000_0010
 
@@ -53,7 +45,6 @@ const LCD_DISPLAY_SHIFT_RIGHT = 0b_0001_1100
 const LCD_DISPLAY_SHIFT_LEFT  = 0b_0001_1000
 
 const LCD_SET_DDRAM_ADRESS   = 0b_1000_0000
--- -----------------------------------------------------------------------------
 
 
 var byte lcd_maxdigit
@@ -62,33 +53,28 @@ var byte lcd_nodigit
 var volatile byte lcd_pos = 0
 
 
--- ----------------------------------------------------------------------------
 -- generate clockpuls
 -- (this routine is only used inside this file)
--- ----------------------------------------------------------------------------
 procedure _lcd_clock()  is
-    -- generate clockpuls
-  if lcd_hardware == 4 | lcd_hardware == 8 then
-     lcd_Enable  = high   -- enable high
-     delay_10uS ( 4 )
-     lcd_Enable  = low    -- enable  high --> low = clock data
-  end if
-
-  if lcd_hardware == 1 then
-     lcd_clk = high
-     delay_10uS ( 4 )
-     lcd_clk = low
-  end if
+     -- generate clockpuls
+   if lcd_hardware == 4 | lcd_hardware == 8 then
+      lcd_enable = high   -- enable high
+      delay_10us(4)
+      lcd_enable = low    -- enable  high --> low = clock data
+   end if
+ 
+   if lcd_hardware == 1 then
+      lcd_clk = high
+      delay_10us( 4 )
+      lcd_clk = low
+   end if
 end procedure
--- ----------------------------------------------------------------------------
 
--- ----------------------------------------------------------------------------
 -- sends low nibble from value to the lcd
 -- can be used for both commands and data
 -- (requires no wait cycli inbetween upper and lower nibble)
 -- (this routine is only used inside this file)
--- ----------------------------------------------------------------------------
-procedure _lcd_write_low_nibble ( byte in value ) is
+procedure _lcd_write_low_nibble( byte in value ) is
   var bit bit0 at value : 0
   var bit bit1 at value : 1
   var bit bit2 at value : 2
@@ -100,20 +86,13 @@ procedure _lcd_write_low_nibble ( byte in value ) is
   lcd_d6 = bit2
   lcd_d7 = bit3
 
-
   -- generate clockpuls
   _lcd_clock()
 end procedure
--- ----------------------------------------------------------------------------
 
 
-
-
-
--- ----------------------------------------------------------------------------
 -- sends byte from value to register of the lcd
 -- (this procedure is only used inside this file)
--- ----------------------------------------------------------------------------
 procedure _lcd_write( byte in value ) is
    pragma inline
    lcd_rw = low                   -- select write mode
@@ -156,51 +135,35 @@ procedure _lcd_write( byte in value ) is
    end if
 
 end procedure
--- ----------------------------------------------------------------------------
 
 
--- ----------------------------------------------------------------------------
 -- sends data byte in value to lcd
---
---
--- ----------------------------------------------------------------------------
 procedure lcd_write_data( byte in value ) is
    lcd_rs = high                   -- select instruction
    _lcd_write( value )                 -- output byte
-   delay_10uS( LCD_SHORT_DELAY )      -- required delay
+   delay_10us( LCD_SHORT_DELAY )      -- required delay
 end procedure
--- ----------------------------------------------------------------------------
 
 
--- ----------------------------------------------------------------------------
 -- sends command byte in value to lcd
 -- for slow commands an extra delay should be added
 -- (this routine is only used inside this file)
--- ----------------------------------------------------------------------------
-procedure _lcd_write_Command( byte in value ) is
+procedure _lcd_write_command( byte in value ) is
    lcd_rs = low                   -- select instruction
    _lcd_write( value )                 -- output byte
-   delay_10uS(LCD_SHORT_DELAY )      -- required delay
+   delay_10us(LCD_SHORT_DELAY )      -- required delay
 end procedure
--- ----------------------------------------------------------------------------
 
 
-
--- ----------------------------------------------------------------------------
 -- sets the cursor of the lcd to the position in the shadow register
 -- (this routine is only used inside this file)
--- ----------------------------------------------------------------------------
 procedure _lcd_restore_cursor() is
-  _lcd_write_Command ( LCD_SET_DDRAM_ADRESS | lcd_pos )
+  _lcd_write_command( LCD_SET_DDRAM_ADRESS | lcd_pos )
 end procedure
--- ----------------------------------------------------------------------------
 
 
--- ----------------------------------------------------------------------------
 -- sets the cursor of the lcd on "pos" position in line "line" in the shadow register
---
--- ----------------------------------------------------------------------------
-procedure lcd_new_line_cursor_position (byte in line, byte in pos) is
+procedure lcd_new_line_cursor_position(byte in line, byte in pos) is
   pos = pos -1
   if lcd_number_of_display_lines == 1 then
      lcd_pos = pos
@@ -221,106 +184,80 @@ procedure lcd_new_line_cursor_position (byte in line, byte in pos) is
   _lcd_restore_cursor()
 end procedure
 
--- ----------------------------------------------------------------------------
 
--- ----------------------------------------------------------------------------
--- shifts the coplete display one position to the left
--- ----------------------------------------------------------------------------
-procedure lcd_shift_left (byte in value) is
+-- shifts the complete display one position to the left
+procedure lcd_shift_left(byte in value) is
   -- set lcd back to normal operation
-
   if value != 0 then
       for value loop
-          _lcd_write_Command ( LCD_DISPLAY_SHIFT_LEFT )
-          delay_10uS ( LCD_SHORT_DELAY )
+          _lcd_write_command( LCD_DISPLAY_SHIFT_LEFT )
+          delay_10us( LCD_SHORT_DELAY )
       end loop
   end if
 end procedure
--- ----------------------------------------------------------------------------
 
--- ----------------------------------------------------------------------------
+
 -- shifts the complete display one position to the right
--- ----------------------------------------------------------------------------
-procedure lcd_shift_right  (byte in value) is
+procedure lcd_shift_right(byte in value) is
   if value != 0 then
       for value loop
-          _lcd_write_Command ( LCD_DISPLAY_SHIFT_RIGHT )
-          delay_10uS ( LCD_SHORT_DELAY )
+          _lcd_write_command( LCD_DISPLAY_SHIFT_RIGHT )
+          delay_10us( LCD_SHORT_DELAY )
       end loop
   end if
 end procedure
--- ----------------------------------------------------------------------------
 
 
-
-
--- ----------------------------------------------------------------------------
 -- shifts cursor one position to the left
--- ----------------------------------------------------------------------------
-procedure lcd_cursor_shift_left (byte in value) is
+procedure lcd_cursor_shift_left(byte in value) is
   if value != 0 then
       for value loop
-          _lcd_write_Command ( LCD_CURSOR_SHIFT_L_VAL )
-          delay_10uS ( LCD_SHORT_DELAY )
+          _lcd_write_command( LCD_CURSOR_SHIFT_L_VAL )
+          delay_10us( LCD_SHORT_DELAY )
       end loop
   end if
 end procedure
--- ----------------------------------------------------------------------------
 
--- ----------------------------------------------------------------------------
+
 -- shifts cursor one position to the right
--- ----------------------------------------------------------------------------
-procedure lcd_cursor_shift_right (byte in value) is
+procedure lcd_cursor_shift_right(byte in value) is
   if value != 0 then
       for value loop
-          _lcd_write_Command ( LCD_CURSOR_SHIFT_R_VAL )
-          delay_10uS ( LCD_SHORT_DELAY )
+          _lcd_write_command( LCD_CURSOR_SHIFT_R_VAL )
+          delay_10us( LCD_SHORT_DELAY )
       end loop
   end if
 end procedure
--- ----------------------------------------------------------------------------
 
 
--- ----------------------------------------------------------------------------
 -- clears the lcd
--- ----------------------------------------------------------------------------
 procedure lcd_clear()  is
-  _lcd_write_Command ( LCD_CLEAR_DISPLAY )
-  delay_10uS ( LCD_LONG_DELAY )
+  _lcd_write_command( LCD_CLEAR_DISPLAY )
+  delay_10us( LCD_LONG_DELAY )
 end procedure
--- ----------------------------------------------------------------------------
 
 
--- ----------------------------------------------------------------------------
 -- sets or resets cursor blink and puts display on or off
--- ----------------------------------------------------------------------------
-procedure lcd_cursor_blink_display (bit in cursor,bit in blink,bit in display) is
-  var byte Register
+procedure lcd_cursor_blink_display(bit in cursor,bit in blink,bit in display) is
+  var byte register
 
-  Register = LCD_DISPLAY_ONOFF
-  if display then Register = Register + 4 end if
-  if cursor  then Register = Register + 2 end if
-  if blink   then Register = Register + 1 end if
-  _lcd_write_Command ( Register )
+  register = LCD_DISPLAY_ONOFF
+  if display then register = register + 4 end if
+  if cursor  then register = register + 2 end if
+  if blink   then register = register + 1 end if
+  _lcd_write_command( register )
 end procedure
--- ----------------------------------------------------------------------------
 
 
-
--- ----------------------------------------------------------------------------
--- cursor returns home (line 1, position 1)
--- ----------------------------------------------------------------------------
+-- cursor returns home(line 1, position 1)
 procedure lcd_home()  is
-  _lcd_write_Command ( LCD_RETURN_HOME )
-  delay_10uS ( LCD_LONG_DELAY )
+  _lcd_write_command( LCD_RETURN_HOME )
+  delay_10us( LCD_LONG_DELAY )
 end procedure
--- ----------------------------------------------------------------------------
 
 
--- ----------------------------------------------------------------------------
 -- clears the line "line" of the lcd
--- ----------------------------------------------------------------------------
-procedure lcd_clear_line  ( byte in line  ) is
+procedure lcd_clear_line( byte in line ) is
   -- set lcd-cursor at start of line
   if lcd_number_of_display_lines == 1 then    ; 1 line display
      lcd_pos = 0
@@ -336,7 +273,6 @@ procedure lcd_clear_line  ( byte in line  ) is
          lcd_write_data( " " )
      end loop
 
-
   else -- 3 lines
      if     line == 1 then lcd_pos = 0        ; 3 line display
      elsif line == 2 then lcd_pos = 0x10
@@ -349,15 +285,10 @@ procedure lcd_clear_line  ( byte in line  ) is
   end if
   _lcd_restore_cursor()    ;set cursor at begin of deleted line
 end procedure
--- ----------------------------------------------------------------------------
 
 
-
--- -----------------------------------------------------------------------------
 -- Displays a progress bar
---
--- -----------------------------------------------------------------------------
-procedure lcd_progress  (byte in line, byte in amount, byte in Pattern) is
+procedure lcd_progress(byte in line, byte in amount, byte in pattern) is
   if lcd_number_of_display_lines == 1 then    ; 1 line display
      lcd_pos = pos
   elsif lcd_number_of_display_lines == 2 then ; 2 line display
@@ -371,7 +302,7 @@ procedure lcd_progress  (byte in line, byte in amount, byte in Pattern) is
   end if
   _lcd_restore_cursor()
   for amount loop
-      lcd_write_data( Pattern )
+      lcd_write_data( pattern )
   end loop
   
   for ( lcd_number_of_display_characters - amount) loop
@@ -379,17 +310,12 @@ procedure lcd_progress  (byte in line, byte in amount, byte in Pattern) is
   end loop
 
 end procedure
--- ----------------------------------------------------------------------------
 
 
-
-
--- -----------------------------------------------------------------------------
 -- Displays a value (byte), white or without Decimal Point, on specified line
 -- and position , non leading zero ,with or without left alignment, signed
 -- or not signed.
--- -----------------------------------------------------------------------------
-procedure lcd_bvalue_dp_line_pos_left_sign ( byte in value, byte in dp, byte in line, byte in poskar, bit in left, bit in sign ) is
+procedure lcd_bvalue_dp_line_pos_left_sign( byte in value, byte in dp, byte in line, byte in poskar, bit in left, bit in sign ) is
    var byte digit0 = 0
    var byte digit1 = 0
    var byte digit2 = 0
@@ -429,40 +355,40 @@ procedure lcd_bvalue_dp_line_pos_left_sign ( byte in value, byte in dp, byte in 
    digit0 = digit0 + 48
 
    
-   lcd_new_line_cursor_position (line, poskar)
+   lcd_new_line_cursor_position(line, poskar)
    
-   var bit Decp = false
+   var bit decp = false
    var byte counter = 0
    lcd_nodigit = 0
 
          for 5 loop
 
           if negative then
-             lcd_write_data ("-")
+             lcd_write_data("-")
              negative = false
              lcd_nodigit = lcd_nodigit + 1
           end if
 
-          if dp > 2 & !Decp  then
-             lcd_write_data (".")
-             Decp = true
+          if dp > 2 & !decp  then
+             lcd_write_data(".")
+             decp = true
              lcd_nodigit = lcd_nodigit + 1
           else
              if counter == 1 then
                 if !left | digit2 != 32 then
-                   lcd_write_data (digit2)
+                   lcd_write_data(digit2)
                    lcd_nodigit = lcd_nodigit + 1
                 end if
              end if
              if counter == 2 then
                 if !left | digit1 != 32 then
-                   lcd_write_data (digit1)
+                   lcd_write_data(digit1)
                    lcd_nodigit = lcd_nodigit + 1
                 end if
              end if
              if counter == 3 then
                 if !left | digit0 != 32 then
-                   lcd_write_data (digit0)
+                   lcd_write_data(digit0)
                    lcd_nodigit = lcd_nodigit + 1
                 end if
              end if
@@ -479,23 +405,18 @@ procedure lcd_bvalue_dp_line_pos_left_sign ( byte in value, byte in dp, byte in 
           lcd_maxdigit = lcd_nodigit
        else
           while lcd_maxdigit > lcd_nodigit  loop
-                lcd_write_data (32)
+                lcd_write_data(32)
                 lcd_maxdigit = lcd_maxdigit - 1
           end loop
        end if
 
 end procedure
--- ----------------------------------------------------------------------------
 
 
-
--- -----------------------------------------------------------------------------
 -- Displays a value (word), white or without Decimal Point, on specified line
 -- and position,  non leading zero ,with or without left alignment, signed
 -- or not signed
--- -----------------------------------------------------------------------------
-
-procedure lcd_wvalue_dp_line_pos_left_sign ( word in value, byte in dp, byte in line, byte in poskar, bit in left, bit in sign ) is
+procedure lcd_wvalue_dp_line_pos_left_sign( word in value, byte in dp, byte in line, byte in poskar, bit in left, bit in sign ) is
    var byte digit0 = 0   ;l
    var byte digit1 = 0   ;10
    var byte digit2 = 0   ;100
@@ -503,134 +424,130 @@ procedure lcd_wvalue_dp_line_pos_left_sign ( word in value, byte in dp, byte in 
    var byte digit4 = 0   ;10000
    var bit negative = false
 
- if sign then
-   if value >= 32768   then
-      negative = true
-      value = 32768 - (value - 32768)
+   if sign then
+     if value >= 32768   then
+        negative = true
+        value = 32768 - (value - 32768)
+     end if
    end if
- end if
 
- while value >= 10000 loop
-      digit4 = digit4 + 1
-      value = value - 10000
- end loop
+   while value >= 10000 loop
+        digit4 = digit4 + 1
+        value = value - 10000
+   end loop
 
- while value >= 1000 loop
-      digit3 = digit3 + 1
-      value = value - 1000
- end loop
+   while value >= 1000 loop
+        digit3 = digit3 + 1
+        value = value - 1000
+   end loop
 
- while value >= 100 loop
-      digit2 = digit2 + 1
-      value = value - 100
- end loop
+   while value >= 100 loop
+        digit2 = digit2 + 1
+        value = value - 100
+   end loop
 
- while value >= 10 loop
-      digit1 = digit1 + 1
-      value = value - 10
- end loop
+   while value >= 10 loop
+        digit1 = digit1 + 1
+        value = value - 10
+   end loop
 
- digit0 = value
+   digit0 = value
 
- if digit4 == 0 & dp < 4 then
-   digit4 = 32
- else
-   digit4 = digit4 + 48
- end if
+   if digit4 == 0 & dp < 4 then
+     digit4 = 32
+   else
+     digit4 = digit4 + 48
+   end if
 
- if digit3 == 0 & digit4 == 32 & dp < 3 then
-   digit3 = 32
- else
-   digit3 = digit3 + 48
- end if
+   if digit3 == 0 & digit4 == 32 & dp < 3 then
+     digit3 = 32
+   else
+     digit3 = digit3 + 48
+   end if
 
- if digit2 == 0 & digit3 == 32 & digit4 == 32 & dp < 2 then
-   digit2 = 32
- else
-   digit2 = digit2 + 48
- end if
+   if digit2 == 0 & digit3 == 32 & digit4 == 32 & dp < 2 then
+     digit2 = 32
+   else
+     digit2 = digit2 + 48
+   end if
 
- if digit1 == 0 & digit2 == 32 & digit3 == 32 & digit4 == 32 & dp < 1 then
-   digit1 = 32
- else
-   digit1 = digit1 + 48
- end if
+   if digit1 == 0 & digit2 == 32 & digit3 == 32 & digit4 == 32 & dp < 1 then
+     digit1 = 32
+   else
+     digit1 = digit1 + 48
+   end if
 
- digit0 = digit0 + 48
+   digit0 = digit0 + 48
 
+   lcd_new_line_cursor_position(line, poskar)
 
+   var bit decp = false
+   var byte counter = 0
+   lcd_nodigit = 0
 
- lcd_new_line_cursor_position (line, poskar)
+   for 7 loop
 
- var bit Decp = false
- var byte counter = 0
- lcd_nodigit = 0
+      if negative then
+         lcd_write_data("-")
+         negative = false
+         lcd_nodigit = lcd_nodigit + 1
+      end if
 
-         for 7 loop
+      if dp > 5 & !decp  then
+         lcd_write_data(".")
+         decp = true
+         lcd_nodigit = lcd_nodigit + 1
+      else
+         if counter == 1 then
+            if !left | digit4 != 32 then
+               lcd_write_data(digit4)
+               lcd_nodigit = lcd_nodigit + 1
+            end if
+         end if
+         if counter == 2 then
+            if !left | digit3 != 32 then
+               lcd_write_data(digit3)
+               lcd_nodigit = lcd_nodigit + 1
+            end if
+         end if
+         if counter == 3 then
+            if !left | digit2 != 32 then
+              lcd_write_data(digit2)
+               lcd_nodigit = lcd_nodigit + 1
+            end if
+         end if
+         if counter == 4 then
+            if !left | digit1 != 32 then
+               lcd_write_data(digit1)
+               lcd_nodigit = lcd_nodigit + 1
+            end if
+         end if
+         if counter == 5 then
+            lcd_write_data(digit0)
+            lcd_nodigit = lcd_nodigit + 1
+         end if
+         counter = counter + 1
+      end if
 
-          if negative then
-             lcd_write_data ("-")
-             negative = false
-             lcd_nodigit = lcd_nodigit + 1
-           end if
+      if dp != 0 then
+         dp = dp + 1
+      end if
 
-          if dp > 5 & !Decp  then
-             lcd_write_data (".")
-             Decp = true
-             lcd_nodigit = lcd_nodigit + 1
-          else
-             if counter == 1 then
-                if !left | digit4 != 32 then
-                   lcd_write_data (digit4)
-                   lcd_nodigit = lcd_nodigit + 1
-                end if
-             end if
-             if counter == 2 then
-                if !left | digit3 != 32 then
-                   lcd_write_data (digit3)
-                   lcd_nodigit = lcd_nodigit + 1
-                end if
-             end if
-             if counter == 3 then
-                if !left | digit2 != 32 then
-                  lcd_write_data (digit2)
-                   lcd_nodigit = lcd_nodigit + 1
-                end if
-             end if
-             if counter == 4 then
-                if !left | digit1 != 32 then
-                   lcd_write_data (digit1)
-                   lcd_nodigit = lcd_nodigit + 1
-                end if
-             end if
-             if counter == 5 then
-                lcd_write_data (digit0)
-                lcd_nodigit = lcd_nodigit + 1
-             end if
-             counter = counter + 1
-          end if
+   end loop
 
-          if dp != 0 then
-             dp = dp + 1
-          end if
+   if lcd_nodigit > lcd_maxdigit then
+      lcd_maxdigit = lcd_nodigit
+   else
+      while lcd_maxdigit > lcd_nodigit  loop
+         lcd_write_data(32)
+         lcd_maxdigit = lcd_maxdigit - 1
+      end loop
+   end if
 
-       end loop
-       if lcd_nodigit > lcd_maxdigit then
-          lcd_maxdigit = lcd_nodigit
-       else
-          while lcd_maxdigit > lcd_nodigit  loop
-               lcd_write_data (32)
-                lcd_maxdigit = lcd_maxdigit - 1
-          end loop
-       end if
 end procedure
--- ----------------------------------------------------------------------------
 
--- -----------------------------------------------------------------------------
 -- Displays a time (byte),
--- -----------------------------------------------------------------------------
-
-procedure lcd_time ( byte in hrs, byte in minut, byte in second, byte in seperator ) is
+procedure lcd_time( byte in hrs, byte in minut, byte in second, byte in seperator ) is
    var byte hrs_digit0 = 0   ;l
    var byte hrs_digit1 = 0   ;10
    var byte minut_digit0 = 0   ;1
@@ -657,23 +574,20 @@ procedure lcd_time ( byte in hrs, byte in minut, byte in second, byte in seperat
    second_digit0 = second + 48
    second_digit1 = second_digit1 + 48
 
-   lcd_write_data (hrs_digit1  )
-   lcd_write_data (hrs_digit0)
-   lcd_write_data (seperator)
-   lcd_write_data (minut_digit1)
-   lcd_write_data (minut_digit0)
-   lcd_write_data (seperator)
-   lcd_write_data (second_digit1)
-   lcd_write_data (second_digit0)
+   lcd_write_data(hrs_digit1  )
+   lcd_write_data(hrs_digit0)
+   lcd_write_data(seperator)
+   lcd_write_data(minut_digit1)
+   lcd_write_data(minut_digit0)
+   lcd_write_data(seperator)
+   lcd_write_data(second_digit1)
+   lcd_write_data(second_digit0)
 
 end procedure
--- ----------------------------------------------------------------------------
 
--- -----------------------------------------------------------------------------
+
 -- Displays a date (byte),
--- -----------------------------------------------------------------------------
-
-procedure lcd_date ( byte in day, byte in mounth, word in year, byte in seperator, bit in day_mounth_notation ) is
+procedure lcd_date( byte in day, byte in mounth, word in year, byte in seperator, bit in day_mounth_notation ) is
    var byte day_digit0 = 0   ;l
    var byte day_digit1 = 0   ;10
    var byte mounth_digit0 = 0   ;1
@@ -698,8 +612,6 @@ procedure lcd_date ( byte in day, byte in mounth, word in year, byte in seperato
    mounth_digit0 = mounth +48
    mounth_digit1 = mounth_digit1 + 48
 
-
-
    while year >= 1000 loop
          year_digit3 = year_digit3 + 1
          year = year - 1000
@@ -719,238 +631,212 @@ procedure lcd_date ( byte in day, byte in mounth, word in year, byte in seperato
    year_digit1 = year_digit1 + 48
    year_digit0 = year + 48
 
-
    if !day_mounth_notation then
-      lcd_write_data (mounth_digit1)
-      lcd_write_data (mounth_digit0)
-      lcd_write_data (seperator)
-      lcd_write_data (day_digit1  )
-      lcd_write_data (day_digit0)
-      lcd_write_data (seperator)
+      lcd_write_data(mounth_digit1)
+      lcd_write_data(mounth_digit0)
+      lcd_write_data(seperator)
+      lcd_write_data(day_digit1  )
+      lcd_write_data(day_digit0)
+      lcd_write_data(seperator)
    else
-      lcd_write_data (day_digit1  )
-      lcd_write_data (day_digit0)
-      lcd_write_data (seperator)
-      lcd_write_data (mounth_digit1)
-      lcd_write_data (mounth_digit0)
-      lcd_write_data (seperator)
+      lcd_write_data(day_digit1  )
+      lcd_write_data(day_digit0)
+      lcd_write_data(seperator)
+      lcd_write_data(mounth_digit1)
+      lcd_write_data(mounth_digit0)
+      lcd_write_data(seperator)
    end if
 
    if year_mem > 100 then
-      lcd_write_data (year_digit3)
-      lcd_write_data (year_digit2)
+      lcd_write_data(year_digit3)
+      lcd_write_data(year_digit2)
    else
-      lcd_write_data ("'")
+      lcd_write_data("'")
    end if
 
-   lcd_write_data (year_digit1)
-   lcd_write_data (year_digit0)
+   lcd_write_data(year_digit1)
+   lcd_write_data(year_digit0)
 
 end procedure
--- ----------------------------------------------------------------------------
 
 
-
--- -----------------------------------------------------------------------------
 -- Displays a byte value in Hex,
--- -----------------------------------------------------------------------------
-procedure lcd_bvalue_hex ( byte in value) is
+procedure lcd_bvalue_hex( byte in value) is
    var byte temp
-   lcd_write_data ("0")
-   lcd_write_data ("x")
+   lcd_write_data("0")
+   lcd_write_data("x")
    temp = value >> 4
    if temp < 10 then
-      lcd_write_data (temp + 48)
+      lcd_write_data(temp + 48)
    else
-      lcd_write_data (temp + 55)
+      lcd_write_data(temp + 55)
    end if
    value = value & 0b00001111
    if value < 10 then
-      lcd_write_data (value + 48)
+      lcd_write_data(value + 48)
    else
-      lcd_write_data (value + 55)
+      lcd_write_data(value + 55)
    end if
 
 end procedure
 
--- ----------------------------------------------------------------------------
 
-
--- -----------------------------------------------------------------------------
 -- Displays a word value in Hex,
--- -----------------------------------------------------------------------------
-procedure lcd_wvalue_hex ( word in value) is
+procedure lcd_wvalue_hex( word in value) is
    var byte temp
-   lcd_write_data ("0")
-   lcd_write_data ("x")
+   lcd_write_data("0")
+   lcd_write_data("x")
    temp = value >> 12
    if temp < 10 then
-      lcd_write_data (temp + 48)
+      lcd_write_data(temp + 48)
    else
-      lcd_write_data (temp + 55)
+      lcd_write_data(temp + 55)
    end if
    temp = value >> 8
    temp = temp & 0b00001111
    if temp < 10 then
-      lcd_write_data (temp + 48)
+      lcd_write_data(temp + 48)
    else
-      lcd_write_data (temp + 55)
+      lcd_write_data(temp + 55)
    end if
    temp = value >> 4
    temp = temp & 0b00001111
    if temp < 10 then
-      lcd_write_data (temp + 48)
+      lcd_write_data(temp + 48)
    else
-      lcd_write_data (temp + 55)
+      lcd_write_data(temp + 55)
    end if
    value = value & 0b0000000000001111
    if value < 10 then
-      lcd_write_data (value + 48)
+      lcd_write_data(value + 48)
    else
-      lcd_write_data (value + 55)
+      lcd_write_data(value + 55)
    end if
 
 end procedure
 
--- ----------------------------------------------------------------------------
 
-
-
-
-
-
-
-
--- -----------------------------------------------------------------------------
 -- Initialise display
 -- (this routine is only used inside this file)
--- -----------------------------------------------------------------------------
 procedure lcd_init() is
- pragma inline
- lcd_Enable = low
-  delay_1mS ( 45 )                  --
-  lcd_rw = low                      -- select command
+   pragma inline
+   lcd_enable = low
+   delay_1ms( 45 )                  --
+   lcd_rw = low                      -- select command
 
-     if lcd_hardware == 4  then
-        _lcd_write_low_nibble( 0b_0000_0011 ) --
-        delay_1mS ( 2)                       --
-        _lcd_write_low_nibble( 0b_0000_0011 ) --
-        delay_1mS ( 2 )                      --
-        _lcd_write_low_nibble( 0b_0000_0011 ) --
-        delay_10uS( 4 )
+   if lcd_hardware == 4  then
+      _lcd_write_low_nibble( 0b_0000_0011 ) --
+      delay_1ms( 2)                       --
+      _lcd_write_low_nibble( 0b_0000_0011 ) --
+      delay_1ms( 2 )                      --
+      _lcd_write_low_nibble( 0b_0000_0011 ) --
+      delay_10us( 4 )
 
-        _lcd_write_low_nibble( 0b_0000_0010 )--
-        delay_10uS( 4 )
+      _lcd_write_low_nibble( 0b_0000_0010 )--
+      delay_10us( 4 )
 
-        if lcd_number_of_display_lines == 1 then
-           _lcd_write_low_nibble( 0b_0000_0010 )--
-           delay_10uS( 4 )
-           _lcd_write_low_nibble( 0b_0000_0001 )--
-           delay_10uS( 4 )
-           _lcd_write_low_nibble( 0b_0000_0001 )--
-           delay_10uS( 4 )
-           _lcd_write_low_nibble( 0b_0000_0100 )--
-        end if
+      if lcd_number_of_display_lines == 1 then
+         _lcd_write_low_nibble( 0b_0000_0010 )--
+         delay_10us( 4 )
+         _lcd_write_low_nibble( 0b_0000_0001 )--
+         delay_10us( 4 )
+         _lcd_write_low_nibble( 0b_0000_0001 )--
+         delay_10us( 4 )
+         _lcd_write_low_nibble( 0b_0000_0100 )--
+      end if
 
-        if lcd_number_of_display_lines == 2 then
-           _lcd_write_low_nibble( 0b_0000_0010 )--
-           delay_10uS( 4 )
-           _lcd_write_low_nibble( 0b_0000_1001 )--
-           delay_10uS( 4 )
-           _lcd_write_low_nibble( 0b_0000_0001 )--
-           delay_10uS( 4 )
-           _lcd_write_low_nibble( 0b_0000_0100 )--
-        end if
+      if lcd_number_of_display_lines == 2 then
+         _lcd_write_low_nibble( 0b_0000_0010 )--
+         delay_10us( 4 )
+         _lcd_write_low_nibble( 0b_0000_1001 )--
+         delay_10us( 4 )
+         _lcd_write_low_nibble( 0b_0000_0001 )--
+         delay_10us( 4 )
+         _lcd_write_low_nibble( 0b_0000_0100 )--
+      end if
 
-        if lcd_number_of_display_lines == 3 then
-           _lcd_write_low_nibble( 0b_0000_0010 )--
-           delay_10uS( 4 )
-           _lcd_write_low_nibble( 0b_0000_1001 )--
-           delay_10uS( 4 )
-           _lcd_write_low_nibble( 0b_0000_0001 )--
-           delay_10uS( 4 )
-           _lcd_write_low_nibble( 0b_0000_0101 )--
-        end if
+      if lcd_number_of_display_lines == 3 then
+         _lcd_write_low_nibble( 0b_0000_0010 )--
+         delay_10us( 4 )
+         _lcd_write_low_nibble( 0b_0000_1001 )--
+         delay_10us( 4 )
+         _lcd_write_low_nibble( 0b_0000_0001 )--
+         delay_10us( 4 )
+         _lcd_write_low_nibble( 0b_0000_0101 )--
+      end if
 
-       _lcd_write_low_nibble( 0b_0000_0111 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_1000 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_0101 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_1110 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_0110 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_1010 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_0000 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_1100 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_0000 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_0001 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_0000 )--
-       delay_10uS( 4 )
-       _lcd_write_low_nibble( 0b_0000_0110 )--
-       delay_1mS( 4 )
+      _lcd_write_low_nibble( 0b_0000_0111 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_1000 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_0101 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_1110 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_0110 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_1010 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_0000 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_1100 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_0000 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_0001 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_0000 )--
+      delay_10us( 4 )
+      _lcd_write_low_nibble( 0b_0000_0110 )--
+      delay_1ms( 4 )
 
-    end if
+   end if
 
+   if lcd_hardware == 1 | lcd_hardware == 8 then
+      if lcd_number_of_display_lines == 1 then
+         _lcd_write_command( 0b_0011_0000 ) -- function set lcd port
+         delay_10us( 3 )                       -- extra delay
+         _lcd_write_command( 0b_0011_0001 ) -- function set lcd port
+         delay_10us( 3 )                      -- extra delay
+         _lcd_write_command( 0b_0001_0100 ) -- BIAS
+         delay_10us( 3 )                      -- extra delay
+      end if
 
-    if lcd_hardware == 1 | lcd_hardware == 8 then
-       if lcd_number_of_display_lines == 1 then
-          _lcd_write_Command( 0b_0011_0000 ) -- function set lcd port
-          delay_10uS ( 3 )                       -- extra delay
-          _lcd_write_Command( 0b_0011_0001 ) -- function set lcd port
-          delay_10uS ( 3 )                      -- extra delay
-          _lcd_write_Command( 0b_0001_0100 ) -- BIAS
-          delay_10uS ( 3 )                      -- extra delay
+      if lcd_number_of_display_lines == 2 then
+         _lcd_write_command( 0b_0011_1000 ) -- function set lcd port
+         delay_10us( 3 )                       -- extra delay
+         _lcd_write_command( 0b_0011_1001 ) -- function set lcd port
+         delay_10us( 3 )                      -- extra delay
+         _lcd_write_command( 0b_0001_0100 ) -- BIAS
+         delay_10us( 3 )                      -- extra delay
+      end if
 
-       end if
+      if lcd_number_of_display_lines == 3 then
+         _lcd_write_command( 0b_0011_1000 ) -- function set lcd port
+         delay_10us( 3 )                       -- extra delay
+         _lcd_write_command( 0b_0011_1001 ) -- function set lcd port
+         delay_10us( 3 )                      -- extra delay
+         _lcd_write_command( 0b_0001_0101 ) -- BIAS
+         delay_10us( 3 )                      -- extra delay
+      end if
 
-       if lcd_number_of_display_lines == 2 then
-          _lcd_write_Command( 0b_0011_1000 ) -- function set lcd port
-          delay_10uS ( 3 )                       -- extra delay
-          _lcd_write_Command( 0b_0011_1001 ) -- function set lcd port
-          delay_10uS ( 3 )                      -- extra delay
-          _lcd_write_Command( 0b_0001_0100 ) -- BIAS
-          delay_10uS ( 3 )                      -- extra delay
-
-       end if
-
-       if lcd_number_of_display_lines == 3 then
-          _lcd_write_Command( 0b_0011_1000 ) -- function set lcd port
-          delay_10uS ( 3 )                       -- extra delay
-          _lcd_write_Command( 0b_0011_1001 ) -- function set lcd port
-          delay_10uS ( 3 )                      -- extra delay
-          _lcd_write_Command( 0b_0001_0101 ) -- BIAS
-          delay_10uS ( 3 )                      -- extra delay
-       end if
-
-       _lcd_write_Command( 0b_0111_0000 ) -- contrast set
-       delay_10uS( 3)                    -- extra delay
-       _lcd_write_Command( 0b_0101_1110 ) -- power/ICON/contrast control
-       delay_10uS( 3 )
-       _lcd_write_Command( 0b_0110_1010 ) -- follower control
-       delay_1mS( 210 )
-       _lcd_write_Command( 0b_0011_1000 ) -- function set lcd port
-       delay_10uS ( 3 )                      -- extra delay
-       _lcd_write_Command( 0b_0000_1100 )-- display on/off control
-  	   delay_10us( 3 )
-       _lcd_write_Command( 0b_0000_0001 )-- clear display
-  	   delay_10us( 40 )
-       _lcd_write_Command( 0b_0000_0110 )-- entry mode set, cursor moves to right
-  	   delay_10us( 40 )
-    end if
+      _lcd_write_command( 0b_0111_0000 ) -- contrast set
+      delay_10us( 3)                    -- extra delay
+      _lcd_write_command( 0b_0101_1110 ) -- power/ICON/contrast control
+      delay_10us( 3 )
+      _lcd_write_command( 0b_0110_1010 ) -- follower control
+      delay_1ms( 210 )
+      _lcd_write_command( 0b_0011_1000 ) -- function set lcd port
+      delay_10us( 3 )                      -- extra delay
+      _lcd_write_command( 0b_0000_1100 )-- display on/off control
+  	  delay_10us( 3 )
+      _lcd_write_command( 0b_0000_0001 )-- clear display
+  	  delay_10us( 40 )
+      _lcd_write_command( 0b_0000_0110 )-- entry mode set, cursor moves to right
+  	  delay_10us( 40 )
+   end if
 
 end procedure
-
-
-------------------------------------------------------------------------
-
 
 
 lcd_init()                  ; init the lcd
