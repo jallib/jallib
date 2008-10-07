@@ -23,13 +23,16 @@ enable_digital_io()                 -- no analog pins here
 
 
 -- ------------------- INCLUDE LIBRARIES --------------------------
+var bit  LCD_RS           is pin_b5      -- LCD command/data select.
+var bit  lcd_rs_direction is pin_b5_direction 
+var bit  LCD_EN           is pin_b4      -- LCD data trigger
+var bit  lcd_en_direction is pin_b4_direction 
 
-var  bit  LCD_RS           is pin_b5      -- LCD command/data select.
-var  bit  LCD_EN           is pin_b4      -- LCD data trigger
-var byte  lcd_data_port    is portb_low   -- LCD data nibble
-portb_direction            = all_output   -- LCD data is portb_low
+var byte  lcd_dataport    is portb_low   -- LCD data nibble
+var byte  lcd_dataport_direction is portb_low_direction
 include lcd_hd44780_4                     -- LCD library with 4 data lines
 include print                             -- nice formatted output 
+include format                            -- more nice formatted output
 
 var bit CS                 is pin_a0      -- chip select of TC77, active low
 CS                         = high
@@ -38,7 +41,7 @@ var bit SIO                is pin_a2      -- data in/out of TC77
 pin_a2_direction           = input        -- only used as input here
 var bit SCK                is pin_a1      -- clock of TC77
 pin_a1_direction           = output  
-include tc77                              -- TC77 library
+include temp_tc77                         -- TC77 library
 
 -- ------------------- VARIABLES --------------------------------------
 
@@ -52,29 +55,31 @@ var sdword  temperature_32              -- signed Celsius, precision 0.0001C
 lcd_clearscreen()
 
 forever loop
-   lcd_set_cursor(0,0) 
+   lcd_setcursor(0,0) 
    CS = low
-   read_raw_tc77(temperature_raw)
+   tc77_read_raw(temperature_raw)
    CS = high
    print_word_binary(lcd, temperature_raw)
    
-   lcd_set_cursor(1,0) 
+   lcd_setcursor(1,0) 
    CS = low
-   read_celsius_sbyte_tc77(temperature_8)
+   tc77_read_celsius_sbyte(temperature_8)
    CS = high
-   print_sbyte_dec(lcd, temperature_8)
+   print_sbyte_dec(lcd, temperature_8)    -- prints minus if below 0
       
-   lcd_set_cursor(0, 20)                   -- row 3, position = 1 
+   lcd_setcursor(0, 20)                   -- row 3, position = 1 
    CS = low
-   read_celsius_sword_tc77(temperature_16)
+   tc77_read_celsius_sword(temperature_16)
    CS = high
-   _print_suniversal_dec(lcd, temperature_16, 10000, 2)
+   format_sword_dec(lcd, temperature_16, 5, 2)  -- width 6: -xx.xx or xxx.xx
+   lcd =" "
 
-   lcd_set_cursor(1, 20)                   -- row 4, position = 1 
+   lcd_setcursor(1, 20)                   -- row 4, position = 1 
    CS = low
-   read_celsius_sdword_tc77(temperature_32)
+   tc77_read_celsius_sdword(temperature_32)
    CS = high
-   _print_suniversal_dec(lcd, temperature_32, 100000000, 5)
+   format_sdword_dec(lcd, temperature_32, 7, 4)  -- 8 wide: -xx.xxxx or xxx.xxxx
+   lcd = " "
    
    delay_100ms(2)                         -- for proper display viewing
    
