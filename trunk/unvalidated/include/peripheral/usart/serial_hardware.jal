@@ -25,7 +25,7 @@
 -- some variables made available under a general (pic-independant) name
 
 var volatile bit serial_hw_data_available is PIR1_RCIF
-var volatile bit serial_hw_data_ready	 is PIR1_TXIF
+var volatile bit serial_hw_data_ready is PIR1_TXIF
 
 
 -- internal function, calculates and sets baudrate divider
@@ -49,78 +49,78 @@ var volatile bit serial_hw_data_ready	 is PIR1_TXIF
 --  * SPBRG = ( Fosc / ( 4 * Baudrate ) ) -1
 --
 procedure _calculate_and_set_baudrate() is
-	const max_deviation = 5  -- maximum % deviation of the realized baudrate
+   const max_deviation = 5  -- maximum % deviation of the realized baudrate
 
-	if usart_hw_serial then
-		-- SPBRG = ( Fosc / ( 4 * Baudrate ) ) -1
-		-- first try high baudrate, will generate highest accuarcy
-		-- to get the right rounding (5 + 10*f(x)) /10
-		const usart_div =((5 + ( ( 10 * target_clock ) / ( 16 * serial_hw_baudrate ))  ) / 10 ) - 1
+   if usart_hw_serial then
+      -- SPBRG = ( Fosc / ( 4 * Baudrate ) ) -1
+      -- first try high baudrate, will generate highest accuarcy
+      -- to get the right rounding (5 + 10*f(x)) /10
+      const usart_div =((5 + ( ( 10 * target_clock ) / ( 16 * serial_hw_baudrate ))  ) / 10 ) - 1
 
-		-- special case if divider is 0,
-		-- test if deviation is not too much
-		if usart_div <= 0 then
-			if (100 * (serial_hw_baudrate - (target_clock / 16) )) / serial_hw_baudrate >= max_deviation then
-				pragma error  -- asynchronous baudrate is too high
-			end if
-		end if
+      -- special case if divider is 0,
+      -- test if deviation is not too much
+      if usart_div <= 0 then
+         if (100 * (serial_hw_baudrate - (target_clock / 16) )) / serial_hw_baudrate >= max_deviation then
+            pragma error  -- asynchronous baudrate is too high
+         end if
+      end if
 
-		-- if divider small enough,
-		-- calculate divider and set high-speed
-		if usart_div <= 255 then
-  			if usart_div >= 0 then 
-				SPBRG = usart_div 
-			else
-				SPBRG = 0
-			end if
-  			TXSTA_BRGH = true
-			-- try the low-speed mode
-		else
-  			const usart_div_low = ((((10 * target_clock) / ( 64 * serial_hw_baudrate )) + 5 ) / 10) - 1
-			-- here divider will never be 0
-			-- but special case to consider,
-			-- if baudrate is just a little too low
-			if (usart_div_low > 255) & (100 * ((target_clock / (64 * 256 )) - serial_hw_baudrate)) / serial_hw_baudrate < max_deviation then
-				SPBRG = 255
-				TXSTA_BRGH = false
-				-- now calculate divider and set high-speed / low-speed bit
-  			elsif usart_div_low <= 255 then
-				if usart_div_low >= 0 then
-					SPBRG = usart_div_low 
-				else
-					SPBRG = 0
-				end if
-				TXSTA_BRGH = false
-  			else
-				pragma error -- asynchronous baudrate is too low
-  			end if
-		end if
+      -- if divider small enough,
+      -- calculate divider and set high-speed
+      if usart_div <= 255 then
+           if usart_div >= 0 then 
+            SPBRG = usart_div 
+         else
+            SPBRG = 0
+         end if
+           TXSTA_BRGH = true
+         -- try the low-speed mode
+      else
+           const usart_div_low = ((((10 * target_clock) / ( 64 * serial_hw_baudrate )) + 5 ) / 10) - 1
+         -- here divider will never be 0
+         -- but special case to consider,
+         -- if baudrate is just a little too low
+         if (usart_div_low > 255) & (100 * ((target_clock / (64 * 256 )) - serial_hw_baudrate)) / serial_hw_baudrate < max_deviation then
+            SPBRG = 255
+            TXSTA_BRGH = false
+            -- now calculate divider and set high-speed / low-speed bit
+           elsif usart_div_low <= 255 then
+            if usart_div_low >= 0 then
+               SPBRG = usart_div_low 
+            else
+               SPBRG = 0
+            end if
+            TXSTA_BRGH = false
+           else
+            pragma error -- asynchronous baudrate is too low
+           end if
+      end if
 
-	else  -- synchronous mode
-		const usart_div_sync = ( target_clock / ( 4 * serial_hw_baudrate )) - 1
-		
-		-- special case if divider is 0 or negative
-		-- test if baudrate is a little bit too high
-		if usart_div_sync <= 0 then
-			if (100 * (serial_hw_baudrate - (target_clock / 4 ) )) / serial_hw_baudrate >= max_deviation then
-				pragma error  -- synchronous baudrate is too high
-			end if
-		end if
-		
-		-- special case to consider,
-		-- if baudrate is just a little too high
-		if (usart_div_sync > 255) & (100 * ((target_clock / (4 * 256)  ) - serial_hw_baudrate)) / serial_hw_baudrate < max_deviation then
-			SPBRG = 255
-		elsif usart_div_sync <= 255 then
-			if SPBRG >= 0 then
-				SPBRG = usart_div_sync
-			else
-				SPBRG = 0
-			end if
-		else
-			pragma error -- synchronous baudrate is too low
-		end if
-	end if
+   else  -- synchronous mode
+      const usart_div_sync = ( target_clock / ( 4 * serial_hw_baudrate )) - 1
+      
+      -- special case if divider is 0 or negative
+      -- test if baudrate is a little bit too high
+      if usart_div_sync <= 0 then
+         if (100 * (serial_hw_baudrate - (target_clock / 4 ) )) / serial_hw_baudrate >= max_deviation then
+            pragma error  -- synchronous baudrate is too high
+         end if
+      end if
+      
+      -- special case to consider,
+      -- if baudrate is just a little too high
+      if (usart_div_sync > 255) & (100 * ((target_clock / (4 * 256)  ) - serial_hw_baudrate)) / serial_hw_baudrate < max_deviation then
+         SPBRG = 255
+      elsif usart_div_sync <= 255 then
+         if SPBRG >= 0 then
+            SPBRG = usart_div_sync
+         else
+            SPBRG = 0
+         end if
+      else
+         pragma error -- synchronous baudrate is too low
+      end if
+   end if
 
 end procedure
 
@@ -131,19 +131,19 @@ end procedure
 -- Only after "asynch_disable_hw" it's necessary to call this routine,
 -- to enable the RS232 hardware again.
 procedure serial_hw_init() is 
-	-- Calculate and Load baudrate generator
-	_calculate_and_set_baudrate()
-	
-	-- disable all USART interrupts
-	PIE1_RCIE = false
-	PIE1_TXIE = false
-	
-	-- Enable transmitter : TXSTA_TXEN=1 (preserve TXSTA_BRGH)
-	TXSTA_TXEN = true
+   -- Calculate and Load baudrate generator
+   _calculate_and_set_baudrate()
+   
+   -- disable all USART interrupts
+   PIE1_RCIE = false
+   PIE1_TXIE = false
+   
+   -- Enable transmitter : TXSTA_TXEN=1 (preserve TXSTA_BRGH)
+   TXSTA_TXEN = true
 
-	-- Enable serial port : RCSTA_SPEN=1
-	-- Enable receiving   : RCSTA_CREN=1
-	RCSTA = 0x90
+   -- Enable serial port : RCSTA_SPEN=1
+   -- Enable receiving   : RCSTA_CREN=1
+   RCSTA = 0x90
 
 end procedure
 
@@ -152,17 +152,17 @@ end procedure
 -- so ports can be used (temporary) for other purposes.
 -- USART can be enabled again by calling serial_hw_enable()
 procedure serial_hw_disable() is
-	-- wait till running transmissions are finished
-	while !TXSTA_TRMT loop end loop
-	-- Disable Serial port:
-	RCSTA_SPEN = false
+   -- wait till running transmissions are finished
+   while !TXSTA_TRMT loop end loop
+   -- Disable Serial port:
+   RCSTA_SPEN = false
 end procedure
 
 
 -- Enables USART (wether used as RS232 or SPI),
 procedure serial_hw_enable() is
-	-- Enable Serial port
-	RCSTA_SPEN = true
+   -- Enable Serial port
+   RCSTA_SPEN = true
 end procedure
 
 
@@ -172,45 +172,45 @@ end procedure
 --
 -- remark: PIR1-register (containing _TXIF-flag) must be in bank0 !!
 procedure serial_hw_write(byte in data) is
-	-- wait until TXREG is empty
-	while ! PIR1_TXIF loop end loop
-	-- then put new byte in TXREG (prepare for transmission)
-	TXREG = data
+   -- wait until TXREG is empty
+   while ! PIR1_TXIF loop end loop
+   -- then put new byte in TXREG (prepare for transmission)
+   TXREG = data
 end procedure
 
 
 -- like Serial_H_write, but then with a word as input
 -- The MSB is outputed first
 procedure serial_hw_write_word(word in data) is
-	var byte DX[2] at data
-	-- can be blocked by debugging
-	while ! PIR1_TXIF loop end loop
-	TXREG = DX[1]
-	asm nop		-- this is necessary for damned good optimized compilers
-				-- loading of the TXREG doesn't immediatly set PIR1_TXIF !!!!
-	while ! PIR1_TXIF loop end loop
-	TXREG = DX[0]
+   var byte DX[2] at data
+   -- can be blocked by debugging
+   while ! PIR1_TXIF loop end loop
+   TXREG = DX[1]
+   asm nop      -- this is necessary for damned good optimized compilers
+            -- loading of the TXREG doesn't immediatly set PIR1_TXIF !!!!
+   while ! PIR1_TXIF loop end loop
+   TXREG = DX[0]
 end procedure
 
 
 -- Returns true if a character was received, otherwise returns false.
 -- Overrun error flag is cleared.
 function serial_hw_read(byte out data) return bit is
-	-- test if byte available, and if so,
-	-- get byte and transport to outer world
-	if PIR1_RCIF then
-		data = RCREG
-		PIR1_RCIF	= false 		-- eur@fiwhex.nl 12-sept-08
-	else
-		return false  ;result = false
-	end if
-	
-	if RCSTA_OERR then
-		RCSTA_CREN = false
-		RCSTA_CREN =true
-	end if
+   -- test if byte available, and if so,
+   -- get byte and transport to outer world
+   if PIR1_RCIF then
+      data = RCREG
+      PIR1_RCIF   = false       -- eur@fiwhex.nl 12-sept-08
+   else
+      return false  ;result = false
+   end if
+   
+   if RCSTA_OERR then
+      RCSTA_CREN = false
+      RCSTA_CREN =true
+   end if
   
-	return true
+   return true
 end function
 
 -- Here Serial read and write are definied as pseudo variables
@@ -232,20 +232,20 @@ end function
 -- }}}
 --
 procedure serial_hw_data'put(byte in data) is
-	-- -----------------------------------------------
-	-- BUG BUG BUG BUG BUG BUG BUG BUG BUG BUG BUG BUG	  
-	-- -----------------------------------------------
-	-- this doesn't work (always?)
-	  serial_hw_write(data)
-	-- tested by putting the next statement instead
-	;  serial_hw_write(0x33)
+   -- -----------------------------------------------
+   -- BUG BUG BUG BUG BUG BUG BUG BUG BUG BUG BUG BUG     
+   -- -----------------------------------------------
+   -- this doesn't work (always?)
+     serial_hw_write(data)
+   -- tested by putting the next statement instead
+   ;  serial_hw_write(0x33)
 end procedure
 
 
 function serial_hw_data'get() return byte is
-	var byte data
-	while ! serial_hw_read(data) loop end loop
-	return data
+   var byte data
+   while ! serial_hw_read(data) loop end loop
+   return data
 end function
 
 
@@ -253,10 +253,10 @@ end function
 -- the user is totally responsible for testing the transmit/receive
 -- flag before using these functions
 procedure serial_hw_data_raw'put(byte in data) is
-	TXREG = data
+   TXREG = data
 end procedure
 
 function serial_hw_data_raw'get() return byte is
-	return RCREG
+   return RCREG
 end function
 
