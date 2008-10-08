@@ -13,7 +13,7 @@
 -- Notes: this is a heavy refactoring of the original pwm_hardware.jal
 -- Stef's lib
 --
-
+   
 
 
 -- initializes the PWM for high resolution (10 bits) and starts the PWM 
@@ -34,20 +34,20 @@
 -- ||    16            ||     244Hz  ||     488Hz  ||    610Hz   ||    1.22kHz ||
 --
 procedure pwm_max_resolution(byte in prescaler) is
-	-- set timervalue to maximum resolution
-	PR2 = 0xFF
-	
-	-- set TMR2 prescaler and turn TMR2 on
-	if prescaler == 1 then
-		T2CON = 0b_0000_0100
-	elsif prescaler == 4  then
-		T2CON = 0b_0000_0101
-	elsif prescaler == 16 then
-		T2CON = 0b_0000_0111
-	else
-		;THIS PRAGMA IS NOT CORRECTLY HANDLED BY JAL $.59 !!
-		;pragma error  ;pwm frequency is not allowed for high resolution
-	end if
+   -- set timervalue to maximum resolution
+   PR2 = 0xFF
+   
+   -- set TMR2 prescaler and turn TMR2 on
+   if prescaler == 1 then
+      T2CON = 0b_0000_0100
+   elsif prescaler == 4  then
+      T2CON = 0b_0000_0101
+   elsif prescaler == 16 then
+      T2CON = 0b_0000_0111
+   else
+      ;THIS PRAGMA IS NOT CORRECTLY HANDLED BY JAL $.59 !!
+      ;pragma error  ;pwm frequency is not allowed for high resolution
+   end if
 end procedure
 
 
@@ -63,38 +63,38 @@ var volatile dword _pr2_16
 
 -- Initializes the PWM for accurate frequency and starts the PWM
 procedure pwm_set_frequency(dword in freq) is
-	-- compute all values
-	_pr2_1 = target_clock / ( 1 *  4 * freq )
-	_pr2_4   = target_clock / ( 4 *  4 * freq )
-	_pr2_16  = target_clock / ( 16 * 4 * freq )
-	-- calculate prescaler and divider
-	var byte pre_scaler
-	if _pr2_1 == 0 then
-		-- since now it's a byte, cannot pragma error'ing...
-		-- what should we do ?
-		;;pragma error    -- pwm frequency is too high
-		-- turn pwm off
-		pre_scaler = 0b_0000_0000
-	elsif _pr2_1 <= 256 then
-		PR2 = byte(_pr2_1) - 1                     -- load timer value (base period)
-		pre_scaler = 0b_0000_0100
-	elsif _pr2_4 <= 256 then
-		PR2 = byte(_pr2_4) - 1
-		pre_scaler = 0b_0000_0101 
-	elsif _pr2_16 <= 256 then
-		PR2 = byte(_pr2_16) - 1
-		pre_scaler = 0b_0000_0110 
-	else
-		-- again, cannot pragma error'ing...
-		;;pragma error  -- pwm frequency is too low to be realized by this routine,
-		;;-- use the post scaler and interrupt
-		pre_scaler = 0b_0000_0000
-	end if
+   -- compute all values
+   _pr2_1 = target_clock / ( 1 *  4 * freq )
+   _pr2_4   = target_clock / ( 4 *  4 * freq )
+   _pr2_16  = target_clock / ( 16 * 4 * freq )
+   -- calculate prescaler and divider
+   var byte pre_scaler
+   if _pr2_1 == 0 then
+      -- since now it's a byte, cannot pragma error'ing...
+      -- what should we do ?
+      ;;pragma error    -- pwm frequency is too high
+      -- turn pwm off
+      pre_scaler = 0b_0000_0000
+   elsif _pr2_1 <= 256 then
+      PR2 = byte(_pr2_1) - 1                     -- load timer value (base period)
+      pre_scaler = 0b_0000_0100
+   elsif _pr2_4 <= 256 then
+      PR2 = byte(_pr2_4) - 1
+      pre_scaler = 0b_0000_0101 
+   elsif _pr2_16 <= 256 then
+      PR2 = byte(_pr2_16) - 1
+      pre_scaler = 0b_0000_0110 
+   else
+      -- again, cannot pragma error'ing...
+      ;;pragma error  -- pwm frequency is too low to be realized by this routine,
+      ;;-- use the post scaler and interrupt
+      pre_scaler = 0b_0000_0000
+   end if
 
-	-- load tmr2 prescaler, and turn it on
-	-- (post-scaler is not used in PWM !!)
-	var byte t2con_tmp = T2CON & 0b_1111_1000
-	T2CON   = t2con_tmp | pre_scaler   
+   -- load tmr2 prescaler, and turn it on
+   -- (post-scaler is not used in PWM !!)
+   var byte t2con_tmp = T2CON & 0b_1111_1000
+   T2CON   = t2con_tmp | pre_scaler   
 
 end procedure
 
