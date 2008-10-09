@@ -33,7 +33,10 @@ SVN_BROWSER_ROOT = "http://code.google.com/p/jallib/source/browse"
 
 def extract_comments(i,origline,content):
 	doc = []
-	stillcomment = re.compile("^--\s")
+	# this regex is used to detect the end of comments,
+	# and remove the comment chars, but also to clean
+	# long-dash lines.
+	stillcomment = re.compile("^--\s-*")
 	for _,line in content:
 		if not stillcomment.match(line) or line.strip() == "":
 			break
@@ -53,7 +56,10 @@ def extract_doc(filename):
 	header = jsg_validator.extract_header(content)
 	dhead = {}
 	for field_dict in jsg_validator.FIELDS:
-		dhead[field_dict['field']] = jsg_validator.validate_field(header,**field_dict)
+		# Special case: when still '--' comment chars,this means new paragraph
+		c = jsg_validator.validate_field(header,**field_dict)
+		c = c and "".join(map(lambda c: re.sub("^--","\n\n",c.strip()),c.split("\n"))) or c
+		dhead[field_dict['field']] = c
 	
 	# now deals with procedure/function definitions
 	# and global variables/constant
