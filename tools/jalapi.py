@@ -58,7 +58,7 @@ def extract_doc(filename):
 	for field_dict in jsg_validator.FIELDS:
 		# Special case: when still '--' comment chars,this means new paragraph
 		c = jsg_validator.validate_field(header,**field_dict)
-		c = c and "".join(map(lambda c: re.sub("^--","\n\n",c.strip()),c.split("\n"))) or c
+		c = c and "\n".join(map(lambda c: re.sub("^--","\n\n",c),c.split("\n"))) or c
 		dhead[field_dict['field']] = c
 	
 	# now deals with procedure/function definitions
