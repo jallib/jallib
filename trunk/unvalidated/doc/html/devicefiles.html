@@ -15,6 +15,7 @@
 <body LANG="en-US" DIR="LTR">
 
 <h1>JalV2 Device Files</h1>
+<p><center>by Rob Hamerling</center>
 
 <h2>Introduction</h2>
 
@@ -22,15 +23,20 @@
 files, in particular not for some of my favorite PICmicros (e.g. 16F690,
 12F683).
 Unfortunately the output of INC2JAL for these chips caused compile-time
-errors with my programs (I understood INC2JAL is not up-to-date for JalV2).
-Having some experience with scanning MPLAB files (for my Xwisp2 program) I
-decided to write a Rexx script to generate a set of include files myself!
+errors with my programs and I was informed that INC2JAL is not up-to-date
+for JalV2.
+I realized that more people would be in the same position like me.
+Having some experience with scanning MPLAB files (for my Xwisp2 program)
+I decided to make script to generate the required include files, not only
+for the PICs for which I needed the include files, but for all PICs
+supported by the JalV2 compiler!
 
-<p> The advantages of using a script to generate files are obvious, such as:
+<p> The advantages of using a script to generate files are obvious,
+such as:
 <ul>
-<li>Creation of device files for all PICmicros available in MPLAB,
-automatically updated for new chips and corrections in new versions of
-MPLAB.
+<li>creation of device files for all PICmicros available in MPLAB
+<li>automatic update for new chips and corrections in new versions of
+MPLAB
 <li>consistent layout
 <li>consistent naming convention
 <li>no typing errors
@@ -42,54 +48,61 @@ MPLAB.
 <li>Same for libraries using this naming convention.
 </ul>
 
-<p>This document gives some design and user information about my JalV2
+<p>This document gives some design and user information about these JalV2
 device files.
-Apart from the .dev files also the .lkr of MPLab are used.
+The sources of information are the xxxx.dev files and xxxx.lkr of MPLAB,
+supplemented and corrected with information in the datasheets.
 
 <hr>
 <h1>The Overall Picture</h1>
+<p>With the design of the device files I had in mind a structure as shown
+below.
+In the meantime these files have become part of the central JalV2 library
+repository <a href="http://jallib.googlecode.com/">JalLib</a> at
+code.google.com.
+The Jallib structure is similar, but has its own standards.
 <pre>
-                      +----------+   +-----------+
-                      | device   |   |  general  |
-                      | specific |---|  include  |
-                      | include  |   |chipdef.jal|
-                      +----------+   +-----------+
+                      +----------+   +------------------+
+                      | device   |   |     general      |
+                      | specific |---|     include      |
+                      | include  |   |chipdef_jallib.jal|
+                      +----------+   +------------------+
                            |
            +---------------+---------------+-------------
            |               |               |
-     +----------+    +----------+    +----------+    +---
+     +----------+    +----------+    +----------+    +-------
      | function |    | function |    | function |    |
-     | include  |    | include  |    | include  |    | etc
-     | 'delay'  |    |  'adc'   |    |  'lcd'   |    |
-     +----------+    +----------+    +----------+    +---
+     | include  |    | include  |    | include  |    |   etc
+     |'delay_..'|    | 'adc_...'|    |'lcd_....'|    |
+     +----------+    +----------+    +----------+    +-------
 </pre>
 
 
-
-<h2>Device File</h2>
-<p>This is the base for all other include files and contains:
+<h2>Device Files</h2>
+<p>This is the base for other include files and contains:
 <ul>
-<li>An include for the general include file 'chipdef'
-<li>CPU type specification (12-, 14- or 16-bits core)
-<li>Program memory size specification
-<li>Data memory (EEPROM) location and size specification
-<li>Configuration and ID memory specification.
-<li>General Purpose Register (GPR, RAM) location range and sharing.
-<li>Special Function Register (SFR) address and mirror adresses, alias names
-and bit naming.
-<li>Procedures and functions for shadowing of I/O ports.
-<li>Symbolic name declarations for configuration bits (fuses).
-<li>Procedures to switch all ports to digital I/O.
+<li>An include statement for the common include file 'chipdef_jallib'
+<li>CPU type specification (12-, 14- or 16-bits core).
+<li>Program memory size specification.
+<li>Data memory (EEPROM) location and size specification.
+<li>Configuration (fuses) and ID memory specification.
+<li>Specification of General Purpose Register (GPR, RAM) location range and
+sharing.
+<li>Declaation of Special Function Register (SFR) address and mirror adresses,
+alias names and bit naming.
+<li>Declaration of procedures and functions for shadowing of I/O ports.
+<li>Declaration of symbolic names for configuration bits (fuses).
+<li>Procedures to switch the ports to digital I/O.
 </ul>
 
-<h2>General Include (chipdef.jal)</h2>
+<h2>Common Include File 'chipdef_jallib.jal'</h2>
 
-<p>The file 'chipdef.jal' which comes with these device files replaces the
-file with the same name which comes with the compiler distribution.
+<p>The file 'chipdef_jallib.jal' which comes with these device files
+replaces the file 'chipdef.jal' which comes with the compiler distribution.
 It is included by each of the device files and contains:
 <ul>
 <li>Constants required by the compiler.
-<li>Commonly used constants for the device files.
+<li>Commonly used constants for the device files and other libraries.
 </ul>
 
 <p>With the statement 'pragma target chip = .....' in every device file the
@@ -112,20 +125,21 @@ for different types of PICs, as the following example shows:
 <p>By changing the include statement to 16f87 (or any other) the statements
 between 'if' and 'end if' will be skipped by the compiler.
 
-<p>The list of targets in chipdef.jal makes sure that every possible target
-name and the corresponding value of target_chip is known by the compiler.
+<p>The list of targets in chipdef_jallib.jal makes sure that every possible
+target name and the corresponding value of target_chip is known by the
+compiler.
 
-<p>Note: The original chipdef.jal file of the compiler package specifies
-different and not all values for 'target_chip' and therefore it
+<p>Note: The original chipdef.jal file of the compiler package
+specifies different and not all values for 'target_chip' and therefore it
 has to be replaced when using this set of device files.
 
 
-<h2>Function Include</h2>
+<h2>Function Include Files</h2>
 
-<p>Function specific include files have to be included by the program as
-required.
+<p>Function specific include files can be included as required by the
+application program.
 In most cases these include files require some statements to couple function
-specific registers and -pins with the device.
+specific registers and pins with the device.
 See the corresponding libraries and accompanying documentation for
 instructions.
 Frequently you can find user instructions as comments in the header of
@@ -143,7 +157,7 @@ This allows writing elementary programs, such as for a blinking LED, which
 become practically device independent.
 
 <p>The device files are also the base for extensions, such as
-libraries for more complicated functions, such as displaying text on an LCD
+libraries for more complicated functions like displaying text on an LCD
 display or handling analog devices.
 
 <p>Below a simple blink-an-LED program (LED on pin 1 of Port A) for a
@@ -261,15 +275,16 @@ convention:
 
 <h2>Special Features</h2>
 <p>The device files contain a number of special procedures for the
-convenience of a JAL programmer. Most procedures are in the form of a pseudo
-variable, some are 'normal' procedures.
+convenience of a JAL programmer.
+Most procedures are in the form of a pseudo variable, some are 'normal'
+procedures.
 Pseudo variables a available for TRISA, TRISB and TRISC and corresponding
 pins for the baseline series of PICmicros.
 This means for example that
 <pre>
    pin_A2_direction = output
 </pre>
-can be used even though these PIC have no TRISA register.
+can be used even though these PICs have no TRISA register.
 
 <h2>About Port Shadowing</h2>
 
@@ -278,8 +293,9 @@ with I/O ports of PICmicro's.
 This is a problem related to its hardware design and may occur when a read
 of a port is immediately followed by writing to that port.
 With port shadowing a RAM location is used as replacement for the port.
-Reading is done from the port directly. Writing is done to the shadow
-register and then its contents flushed to the real port.
+Reading is done from the port directly.
+Writing is done to the shadow register and then its contents flushed to the
+real port.
 
 <p>With these device files shadowing is automatic, as long
 as you use the following names:
@@ -292,8 +308,9 @@ as you use the following names:
 (in which 'x' is a port-letter and 'y' a bit number).
 
 <p>If you want to use other names for pins or nibbles or the whole port you
-can specify an alias. For example when you have a red LED connected to pin 0
-of PortA, you could specify:
+can specify an alias.
+For example when you have a red LED connected to pin 0 of PortA, you could
+specify:
 <pre>
   var  bit led_red is pin_A0
 </pre>
@@ -316,9 +333,10 @@ So declaring and initialising an alias as follows:
 <pre>
   var  bit led_red is pin_A0 = off
 </pre>
-is bad practice! Initialize an alias separatedly after the declaration.
+is bad practice!
+Initialize an alias separatedly after the declaration.
 
-<h2>Naming convention for configuration bitmasks (fuses)</h2>
+<h2>Naming convention for configuration bits (fuses)</h2>
 
 <p>The configuration bits or groups of bits is such a large variety that it
 is not easy to design a naming convention which covers it all.
@@ -467,7 +485,7 @@ is equivalent with:
 <p>PICs with 16-bits core (the 18F series) have such a large variety of
 configuration bits that explicit specification is probably the best way to
 make sure all config bits are set correctly for your program.
-As an example <p> see the following list for a simple blink-a-LED program
+As an example see the following list for a simple blink-a-LED program
 with an 18F242.
 <pre>
   pragma  target fuses 0  0b0000_0000       -- (n/a)
