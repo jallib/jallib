@@ -28,7 +28,7 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.49'                   /*                          */
+   ScriptVersion   = '0.0.50'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '=2.4h'                    /*                          */
 /* ------------------------------------------------------------------------ */
@@ -614,7 +614,7 @@ do i = 1 to Dev.0
   end
 end
 if DevId == '0000' then do                      /* DevID not found */
-  if PicName = '16f627' then                    /* missing in MPLAB */
+  if PicName = '16f627' then                    /* missing in MPlab */
     Devid = '07A0'
   else if PicName = '16f628' then               /* missing in MPlab */
     Devid = '07C0'
@@ -627,9 +627,9 @@ if DevId \== '0000' then do                     /* not missing DevID */
   call lineout chipdef, left('const       PIC_'PicNameUpper,29) '= 0x_'Core'_'DevID
 end
 else do                                         /* unknown device ID */
-  DevID = right(PicName,3)                      /* rightmost 3 chars */
+  DevID = right(PicNameUpper,3)                 /* rightmost 3 chars */
   if datatype(Devid,'X') = 0 then do            /* not all hex digits */
-    DevID = right(right(PicName,2),3,'F')       /* 'F' + rightmost 2 chars */
+    DevID = right(right(PicNameUpper,2),3,'F')  /* 'F' + rightmost 2 chars */
   end
   call lineout chipdef, left('const       PIC_'PicNameUpper,29) '= 0x_'Core'_F'DevID
 end
@@ -802,16 +802,16 @@ return
 /* procedure to list Config (fuses) settings      */
 /* input:  - nothing                              */
 /* 12-bit and 14-bit core                         */
+/* uses device specific table                     */
 /* ---------------------------------------------- */
-list_fuses_words1x: procedure expose jalfile CfgAddr. Core
+list_fuses_words1x: procedure expose jalfile CfgAddr. PicName
+FusesDefault = devicespecific('FusesDefault', PicName)  /* get default */
+if FusesDefault = '!' then                             /* PIC unlisted */
+  say 'Error:' PicName 'is unknown in FusesDefault table!'
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
 if CfgAddr.0 = 1 then do
   call lineout jalfile, 'const word  _FUSE_BASE            = 0x'D2X(CfgAddr.1)
-  call charout jalfile, 'const word  _FUSES                = '
-  if Core = 12 then                             /* 12-bits code */
-    call lineout jalfile, '0xFFF'
-  else                                          /* 14-bits core */
-    call lineout jalfile, '0x3FFF'
+  call lineout jalfile, 'const word  _FUSES                = 0x'FusesDefault
 end
 else do
   call charout jalfile, 'const word  _FUSE_BASE[_FUSES_CT] = { '
@@ -823,10 +823,7 @@ else do
   call lineout jalfile, ' }'
   call charout jalfile, 'const word  _FUSES[_FUSES_CT]     = { '
   do  j = 1 to CfgAddr.0
-    if Core = 12 then                           /* 12-bits code */
-      call charout jalfile, '0xFFF'
-    else                                        /* 14-bits core */
-      call charout jalfile, '0x3FFF'
+    call charout jalfile, '0x'substr(FusesDefault,1+4*(j-1),4,'0')
     if j < CfgAddr.0 then
       call charout jalfile, ','
   end
@@ -840,22 +837,26 @@ return
 /* procedure to list Config (fuses) settings      */
 /* input:  - nothing                              */
 /* 16-bit core                                    */
+/* uses device specific table                     */
 /* ---------------------------------------------- */
-list_fuses_bytes16: procedure expose jalfile CfgAddr.
+list_fuses_bytes16: procedure expose jalfile CfgAddr. PicName
+FusesDefault = devicespecific('FusesDefault', PicName)  /* get default */
+if FusesDefault = '!' then                             /* PIC unlisted */
+  say 'Error:' PicName 'is unknown in FusesDefault table!'
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
 call charout jalfile, 'const dword _FUSE_BASE[_FUSES_CT] = { '
-do  i = 1 to CfgAddr.0
-  call charout jalfile, '0x'D2X(CfgAddr.i,6)
-  if i < CfgAddr.0 then do
+do  j = 1 to CfgAddr.0
+  call charout jalfile, '0x'D2X(CfgAddr.j,6)
+  if j < CfgAddr.0 then do
     call lineout jalfile, ','
     call charout jalfile, left('',38,' ')
   end
 end
 call lineout jalfile, ' }'
 call charout jalfile, 'const byte  _FUSES[_FUSES_CT]     = { '
-do  i = 1 to CfgAddr.0
-  call charout jalfile, '0xFF'
-  if i < CfgAddr.0 then do
+do  j = 1 to CfgAddr.0
+  call charout jalfile, '0x'substr(FusesDefault,1+2*(j-1),2,'0')
+  if j < CfgAddr.0 then do
     call lineout jalfile, ','
     call charout jalfile, left('',38,' ')
   end
@@ -2147,9 +2148,7 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
 end
 
 ADCgroup = devicespecific('adcgroup', PicName)
-if ADCgroup = '?' then                                  /* wrong property */
-  say 'Error: Property "ADCgroup" is unknown.'
-else if ADCgroup = '!' then                             /* PIC unlisted */
+if ADCgroup = '!' then                                  /* PIC unlisted */
   say 'Error:' PicName 'is unknown in ADC group table!'
 if Name.ADCON0 \= '-' then do                           /* check on presence */
   analog.ADC = 'adc'                                    /* ADC module present */
@@ -2251,16 +2250,12 @@ call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
 call list_devID
 DataSheet = devicespecific('DataSheet', PicName)
-if DataSheet == '?' then                        /* wrong property */
-  say 'Error: Property "DataSheet" is unknown.'
-else if DataSheet == '!' then                   /* PIC unlisted */
+if DataSheet == '!' then                        /* PIC unlisted */
   say 'Error:' PicName 'is unknown in datasheet table!'
 else
   call lineout jalfile, '-- DataSheet:' DataSheet
 PgmSpec = devicespecific('pgmspec', PicName)
-if PgmSpec == '?' then
-  say 'Error: Property "PgmSpec" is unknown.'
-else if PgmSpec == '!' then
+if PgmSpec == '!' then
   say 'Error:' PicName 'is unlisted in programming specifications table!'
 else
   call lineout jalfile, '-- Programming Specifications:' PgmSpec
