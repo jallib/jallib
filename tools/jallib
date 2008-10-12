@@ -34,32 +34,56 @@ import subprocess
 # COMPILE #
 #---------#
 
-def do_compile(args):
-	
-	def _explore_dir(onedir):
-		dirs = [onedir]
-		def keepit(fd):
-			if os.path.isdir(fd):
-				dirs.extend(_explore_dir(fd))
-		for fd in os.listdir(onedir):
-			if not fd.startswith("."):
-				keepit(os.path.join(onedir,fd))
-		return dirs
+def _explore_dir(onedir):
+	dirs = [onedir]
+	def keepit(fd):
+		if os.path.isdir(fd):
+			dirs.extend(_explore_dir(fd))
+	for fd in os.listdir(onedir):
+		if not fd.startswith("."):
+			keepit(os.path.join(onedir,fd))
+	return dirs
 
+
+def do_compile(args):
+
+	# If we can't parse given args, this means there're all 
+	# for the compiler. Keep them as backup
+	original_args = args
+	
 	# Only parse jallib arg, leave other for underlying cmd
-	def parse_args(args):
-		new_args = args
+	def parse_args(args,limit=0):
+		if limit:
+			args = args[:limit]
+		if not args:
+			return (),()
+		# If error, eats args from the end, until no error: seperate args for
+		# jallib and args for compiler (not that clean...)
 		try:
 			opts, args = getopt.getopt(args, ACTIONS['compile']['options'])
 			return opts,args
 		except getopt.error,e:
-			# args is replaced, now contains options with problems
-			return parse_args(list(set(new_args).difference(set(args))))
-	if not args:
+			return parse_args(args,-1)
+
+	# There's not even an argument for the compiler...
+	if not original_args:
 		print "Missing arguments to jalv2 compiler..."
 		sys.exit(255)
+	
+	# Try to extract jallib args
 	opts, args = parse_args(args)
-		
+	if not opts:
+		# If it gives nothing, this means all given args 
+		# are for the compiler. Restore original args.
+		args = original_args
+	else:
+		# there are opts for jallib, but args for jalv2 may have been 
+		# eaten in parse_args(). Need to extract them according to opts
+		jallib_args = []
+		map(lambda i: jallib_args.extend(i),opts)
+		args = list(set(original_args).difference(set(jallib_args)))
+	  
+
 	jalv2_exec = "jalv2"
 	dirs = None
 	for o,v in opts:
@@ -79,9 +103,10 @@ def do_compile(args):
 		for d in gdirs:
 			dirs = _explore_dir(d)
 	cmd = [jalv2_exec,"-s",";".join(dirs)]
+	# Complete with compiler args
 	if args:
 		cmd.extend(args)
-	###print "cmd: %s" % repr(cmd)
+	print "cmd: %s" % repr(cmd)
 	try:
 		status = subprocess.check_call(cmd,shell=False)
 	except subprocess.CalledProcessError,e:
@@ -399,7 +424,6 @@ ACTIONS = {
 if __name__ == "__main__":
 	try:
 		# First extract the action, then parse action's args
-		
 		action = sys.argv[1]
 		action_args = sys.argv[2:]
 		try:
