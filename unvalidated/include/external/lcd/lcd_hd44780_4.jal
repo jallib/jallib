@@ -20,25 +20,25 @@
 --
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 --
--- Directions for use of this library:
+-- Directions for use of this library in application programs
+-- (in this sequence):
 --
--- The application program must declare the following variables (aliases)
--- and constants _before_ the include of this library:
+-- 1. Declare the following constants:
+--       const byte LCD_ROWS     = 2              -- 1, 2 or 4 lines
+--       const byte LCD_CHARS    = 16             -- 8, 16 or 20 chars per line
+--    and variables (aliases):
+--       var   byte lcd_dataport  is  portA_low   -- 4 data pins
+--       var   bit  lcd_en        is  pin_A4      -- trigger
+--       var   bit  lcd_rs        is  pin_A5      -- cmd/data select
 --
--- const byte LCD_ROWS     = 2                   -- 2 lines
--- const byte LCD_CHARS    = 16                  -- 16 chars per line
+-- 2. Include this library.
 --
--- var   byte lcd_dataport is  portA_low         -- LCD data
--- var   bit  lcd_en       is  pin_A4            -- LCD data trigger
--- var   bit  lcd_rs       is  pin_A5            -- LCD cmd/data select
+-- 3. Set the LCD dataport and handshake pins to output:
+--       portA_low_direction = all_output
+--       pin_A4_direction    = output
+--       pin_A5_direction    = output
 --
--- Then set the dataport and handshake pin directions:
---
--- PortA_low_direction    = all_output          -- make datapath output
--- pin_A4_direction       = output              -- \
--- pin_A5_direction       = output              -- / make handshake lines output
---
--- And then include this library.
+-- 4. Call lcd_init() to initialize the lcd controller.
 --
 -- Above is an example for a 2x16 LCD.
 -- Bits 0..3 of portA are used for data, pins 4 and 5 of portA are
@@ -46,21 +46,22 @@
 -- could be used (provided these are configurable for output).
 --
 -- Available functions for application programs:
---       lcd_setup()                               (called automatically)
---       lcd_clearscreen()                         clear screen, cursor home
---       lcd_setcursor(<row>,<column>)             where to write next character
---       lcd_writechar(<byte>)                     write single character
---                                                 at cursor position and
---                                                 shift cursor position 1 right
+--
+--    lcd_init()                                initialize the LCD controller
+--    lcd_clearscreen()                         clear screen, cursor home
+--    lcd_setcursor(<row>,<column>)             where to write next character
+--    lcd_writechar(<byte>)                     write single character
+--                                              at cursor position and
+--                                              shift cursor position 1 right
 --
 -- A pseudo byte variable 'lcd' is declared as alternative for lcd_writechar(<byte>)
--- So in stead of writing: lcd_writechar(<byte>)
--- you may write:          lcd = <byte>
+-- So in stead of: lcd_writechar(<byte>)
+-- you may use:    lcd = <byte>
 -- And you may use 'lcd' as destination in other functions, like print().
 --
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+-- -----------------------------------------------------------------------------
 
-include delay_any_mc                            -- delay procedures
+include delay_any_mc                            -- standard delay procedures
 
 -- -----------------------------------------------------
 -- Write nibble (lower order 4 bits of byte) to LCD.
@@ -69,7 +70,6 @@ include delay_any_mc                            -- delay procedures
 -- When wait is required after write then caller should wait
 -- (in 4-bit mode only required after second nibble).
 -- -----------------------------------------------------
-
 procedure  _lcd_writenibble(byte in data) is
 
    lcd_dataport = data                          -- replace low nibble
@@ -84,7 +84,6 @@ end procedure
 -- and automatically set the cursor one position right.
 -- There is no check on line overflow.
 -- ----------------------------------------------------------
-
 procedure  lcd_writechar(byte in c) is
 
    _lcd_writenibble(c >> 4)                     -- write high nibble
@@ -97,7 +96,6 @@ end procedure
 -- ----------------------------------------------------------
 -- Pseudo variable 'lcd' as alternative for lcd_writechar(<byte>)
 -- ----------------------------------------------------------
-
 procedure  lcd'put(byte in c) is
    lcd_writechar(c)
 end procedure
@@ -107,7 +105,6 @@ end procedure
 -- Clear screen
 -- (and set the cursor to the upper left corner: row 0, column 0)
 -- ------------------------------------------------------------
-
 procedure  lcd_clearscreen() is
 
    lcd_rs = LOW                                 -- set to control char mode
@@ -122,24 +119,22 @@ end procedure
 -- The first line starts at offset 0, the second line at offset 64 (0x40).
 -- With 4 line devices the third and fourth line are addressed as extensions
 -- of the first and second line by adding an offset. For a 4x20 line device
--- the offset is 20, for a 4x16 line display the offset is 16 or 20
+-- the offset is 20, for a 4x16 line display the offset is 16 or 20.
 -- Declare the constant LCD_CHARS as appropriate for your screen
 -- (you may have to specify 20 even if your display has only 16 chars!).
 -- Note: Some 1x16 LCDs are implemented as 2x8 line LCDs, which means that
---       the second half of the line has to be handled as the second line.
---
+--       the second half of the line has to be handled as a second line.
 -- ------------------------------------------------------------
 -- Set cursor position
 -- Specify row and column in base-0 notation (first line is 0).
 -- ------------------------------------------------------------
-
 procedure  lcd_setcursor(byte in row, byte in col)  is
 
    col = col | 0b1000_0000                      -- set to DRAM offset top line
    case row of
       1: col = col + 0x40                       -- 2nd line of 2 or 4 line lcd
-      2: col = col        + LCD_CHARS           -- 3rd line  \ 4x16 or
-      3: col = col + 0x40 + LCD_CHARS           -- 4th line  / 4x20
+      2: col = col        + LCD_CHARS           -- 3rd line  \ with 4x16
+      3: col = col + 0x40 + LCD_CHARS           -- 4th line  /   or 4x20
    end case
    lcd_rs = LOW                                 -- set to control char mode
    lcd_writechar(col)                           -- set new cursor position
@@ -154,8 +149,7 @@ end procedure
 -- - 2-line (/ 4-line) mode
 -- - shift right, invisible cursor
 -- -----------------------------------------------------
-
-procedure  lcd_setup()  is
+procedure  lcd_init()  is
 
    lcd_rs = LOW                                 -- set to control char mode
    delay_1ms(25)                                -- power-up delay (> 15 ms)
@@ -175,12 +169,4 @@ procedure  lcd_setup()  is
                                                 -- (incl switch to data char mode)
 end procedure
 
-
--- -----------------------------------------------------
--- actually initialize the LCD
--- -----------------------------------------------------
-
-lcd_setup()                                     -- to get the LCD active
-
--- -----------------------------------------------------
 
