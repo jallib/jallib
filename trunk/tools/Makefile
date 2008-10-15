@@ -11,6 +11,7 @@
 all : clean test
 
 ENV=unvalidated
+VERSION=dev
 SAMPLIR_DIR=../${ENV}/sample
 INCLUDE_DIR=../${ENV}/include
 
@@ -24,6 +25,8 @@ clean :
 	find ${SAMPLIR_DIR} -name \*.asm -exec rm {} \;
 	# clean python bytecode
 	find ./ -name \*.pyc -exec rm {} \;
+	# clean distrib dir
+	-rm -fr distrib
 		
 test :
 	# run testsuite
@@ -46,3 +49,46 @@ jsg:
 
 doc:
 	./jalapi_generate.sh ../${ENV}
+
+
+export:
+	# prepare distrib dir
+	mkdir distrib
+	mkdir distrib/jallib-${VERSION}
+	mkdir distrib/jallib-${VERSION}/lib
+	mkdir distrib/jallib-${VERSION}/doc
+	mkdir distrib/jallib-devices-${VERSION}
+	mkdir distrib/jallib-devices-${VERSION}/lib
+	mkdir distrib/jallib-devices-${VERSION}/blink
+	# get clean source from repos
+	# (svn export gets the sources, but without any .svn dir (no svn metadata)
+	svn export http://jallib.googlecode.com/svn/trunk/${ENV} distrib/jallib-export
+	# always svn export unvalidated map, to get last devices/blink files
+	svn export http://jallib.googlecode.com/svn/trunk/unvalidated distrib/jallib-unvalidated
+	# license is common for both svn and release
+	svn export -N http://jallib.googlecode.com/svn/trunk distrib/jallib-extra
+	# get readme for the release (force because target dir already exists)
+	svn export --force http://jallib.googlecode.com/svn/trunk/tools distrib/jallib-extra
+	# flatten library files
+	find distrib/jallib-export/include -type f -exec cp {} distrib/jallib-${VERSION}/lib \;
+	find distrib/jallib-unvalidated/include/device -type f -exec cp {} distrib/jallib-devices-${VERSION}/lib \;
+	for f in `find distrib/jallib-unvalidated/sample/by_device/ -type f | grep -e 'b[[:digit:]]\{2\}[[:alpha:]]\+.*\.jal'`; \
+	do \
+		cp $$f distrib/jallib-devices-${VERSION}/blink;\
+	done
+	# doc
+	cp -r distrib/jallib-export/doc/* distrib/jallib-${VERSION}/doc
+	# license, readme, install, ...
+	cp distrib/jallib-extra/LICENSE distrib/jallib-${VERSION}/
+	cp distrib/jallib-extra/README.release distrib/jallib-${VERSION}/README
+	# TODO: readme for jallib-device
+	# keep sample map as is
+	cp -r distrib/jallib-export/sample distrib/jallib-${VERSION}/
+	echo DONE: release directory distrib/jallib-${VERSION}/
+
+release: export
+	cd distrib && tar czfv jallib-${VERSION}.tar.gz jallib-${VERSION}
+	cd distrib && tar czfv jallib-devices-${VERSION}.tar.gz jallib-devices-${VERSION}
+	cd distrib && zip -r jallib-${VERSION}.zip jallib-${VERSION}
+	cd distrib && zip -r jallib-devices-${VERSION}.zip jallib-devices-${VERSION}
+
