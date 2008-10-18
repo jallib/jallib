@@ -85,9 +85,10 @@ export:
 	cp distrib/jallib-extra/README.release distrib/jallib-${VERSION}/README
 	# 	jallib-devices
 	cp distrib/jallib-extra/LICENSE distrib/jallib-devices-${VERSION}/
-	cp distrib/jallib-extra/README.device distrib/jallib-${VERSION}/README
-	cp distrib/jallib-extra/README.blink distrib/jallib-${VERSION}/README.blink
-	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-${VERSION}/doc/html
+	cp distrib/jallib-extra/README.device distrib/jallib-devices-${VERSION}/README
+	cp distrib/jallib-extra/README.blink distrib/jallib-devices-${VERSION}/README.blink
+	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-devices-${VERSION}/doc/html
+	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-devices-${VERSION}/doc/html
 	# TODO: readme for jallib-device
 	# keep sample map as is
 	cp -r distrib/jallib-export/sample distrib/jallib-${VERSION}/
