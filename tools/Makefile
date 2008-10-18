@@ -60,6 +60,7 @@ export:
 	mkdir distrib/jallib-devices-${VERSION}
 	mkdir distrib/jallib-devices-${VERSION}/lib
 	mkdir distrib/jallib-devices-${VERSION}/blink
+	mkdir -p distrib/jallib-devices-${VERSION}/doc/html
 	# get clean source from repos
 	# (svn export gets the sources, but without any .svn dir (no svn metadata)
 	svn export http://jallib.googlecode.com/svn/trunk/${ENV} distrib/jallib-export
@@ -79,8 +80,14 @@ export:
 	# doc
 	cp -r distrib/jallib-export/doc/* distrib/jallib-${VERSION}/doc
 	# license, readme, install, ...
+	# 	jallib
 	cp distrib/jallib-extra/LICENSE distrib/jallib-${VERSION}/
 	cp distrib/jallib-extra/README.release distrib/jallib-${VERSION}/README
+	# 	jallib-devices
+	cp distrib/jallib-extra/LICENSE distrib/jallib-devices-${VERSION}/
+	cp distrib/jallib-extra/README.device distrib/jallib-${VERSION}/README
+	cp distrib/jallib-extra/README.blink distrib/jallib-${VERSION}/README.blink
+	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-${VERSION}/doc/html
 	# TODO: readme for jallib-device
 	# keep sample map as is
 	cp -r distrib/jallib-export/sample distrib/jallib-${VERSION}/
