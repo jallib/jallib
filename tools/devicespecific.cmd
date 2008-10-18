@@ -639,7 +639,7 @@ select
   when PicName = "18F87J50"   then return "39775"
   when PicName = "18F87J60"   then return "39762"
   when PicName = "18F87J90"   then return "-"
-  when PicName = "18F86J93"   then return "-"
+  when PicName = "18F87J93"   then return "-"
   when PicName = "18F96J60"   then return "39762"
   when PicName = "18F96J65"   then return "39762"
   when PicName = "18F97J60"   then return "39762"

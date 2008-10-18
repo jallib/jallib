@@ -28,7 +28,7 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.50'                   /*                          */
+   ScriptVersion   = '0.0.51'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '=2.4h'                    /*                          */
 /* ------------------------------------------------------------------------ */
@@ -953,6 +953,9 @@ do i = 1 to Dev.0
                            left('PORT'substr(reg,5)'_direction',20) 'at' reg
       call list_tris_shadow reg                 /* nibble direction */
     end
+    else if left(reg,2) = 'CM' then do          /* CM?CON? */
+      call lineout jalfile, '--  warning: comparator control register!'
+    end
 
     call list_sfr_subfields1x i, reg            /* bit fields */
 
@@ -1009,7 +1012,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
     end
     else do                                             /* subfields */
       offset = 7                                        /* MSbit first */
-      do j = 1 to 8                                     /* 8 bits */
+      do j = 1 to 8 while offset >= 0                   /* max 8 bits */
         if n.j = '-'  |  n.j = '' then do               /* bit not used */
           offset = offset - 1
         end
@@ -1213,7 +1216,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
     end
     else do                                             /* sub-div of reg */
       offset = 7                                        /* MSbit first */
-      do j = 1 to 8                                     /* 8 bits */
+      do j = 1 to 8 while offset >= 0                   /* 8 bits */
         if n.j = '-' then do                            /* bit not used */
           offset = offset - 1
         end
@@ -1395,7 +1398,7 @@ do k = 0 to 3 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
       portletter = 'A'                                  /* handle as TRISA */
     shadow = '_TRIS'portletter'_shadow'
     offset = 7                                          /* MSbit first */
-    do j = 1 to 8                                       /* 8 bits */
+    do j = 1 to 8 while offset >= 0                     /* max 8 bits */
       if n.j \= '-' then do
         call lineout jalfile, '--'
         call lineout jalfile, 'procedure pin_'portletter||offset"_direction'put(bit in x",
@@ -1438,7 +1441,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
     parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
     shadow = '_'reg'_shadow'
     offset = 7                                          /* MSbit first */
-    do j = 1 to 8                                       /* max 8 bits */
+    do j = 1 to 8 while offset >= 0                     /* max 8 bits */
       if n.j \= '-' & n.j \= '' then do                 /* bit(s) in use */
         call lineout jalfile, '--'
         field = reg'_'n.j
@@ -1459,8 +1462,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
         else                                            /* OPTION2 */
           call lineout jalfile, '   asm tris 7'
         call lineout jalfile, 'end procedure'
-        offset = offset - s.j
       end
+      offset = offset - s.j
     end
   end
   i = i + 1                                             /* next record */
@@ -1696,7 +1699,7 @@ do k = 0 to 4 while word(Dev.i, 1) \= 'SFR'     /* max 4 records */
     parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
     parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
     offset = 7                                  /* MSbit */
-    do i = 1 to 8                               /* all individual bits */
+    do i = 1 to 8 while offset >= 0             /* all individual bits */
       if n.i = '-' then do                      /* bit not present */
         offset = offset - 1                     /* skip */
       end
@@ -1751,13 +1754,14 @@ do i = 1 to dev.0                               /* scan .dev file */
           iterate
         end
         if pos('OSC',key) > 0      &,           /* any ...OSC... */
-           pos('FOSC2',key) = 0    &,           /* excl FOSC2 */
-           pos('OSCS',key) = 0     &,           /* excl OSCS */
-           pos('IOSCFS',key) = 0   &,           /* excl IOSCFS */
-           pos('LPT1OSC',key) = 0  &,           /* excl LPT1OSC */
-           pos('DSWDTOSC',key) = 0 &,           /* excl deep sleep WDT osc */
-           pos('RTCOSC',key) = 0   &,           /* excl RTC OSC */
-           pos('T1OSC',key) = 0   then          /* excl T1 OSC mux */
+           key \= 'FOSC2'          &,           /* excl FOSC2 */
+           key \= 'OSCS'           &,           /* excl OSCS */
+           key \= 'IOSCFS'         &,           /* excl IOSCFS */
+           key \= 'LPT1OSC'        &,           /* excl LPT1OSC */
+           key \= 'DSWDTOSC'       &,           /* excl deep sleep WDT osc */
+           key \= 'RTCOSC'         &,           /* excl RTC OSC */
+           key \= 'RTCSOSC'        &,           /* excl RTC OSC */
+           key \= 'T1OSCMX'            then     /* excl T1 OSC mux */
           key = 'OSC'
         else if pos('IOSCFS',key) > 0 then
           key = 'IOSCFS'
@@ -1845,7 +1849,8 @@ do i = arg(1) + 1 while i <= dev.0  &,
       osctype = 'LP'
     else if wordpos('XT',desc) > 0 then         /* crystal */
       osctype = 'XT'
-    else if wordpos('HS',desc) > 0 then         /* high speed crystal */
+    else if pos('HS',desc) > 0  &,              /* high speed */
+            left(desc,3) \= 'INT' then          /* not internal osc */
       osctype = 'HS'
     else if left(desc,3) = 'INT' then           /* internal osc */
       osctype = 'INTOSC'
@@ -1853,10 +1858,10 @@ do i = arg(1) + 1 while i <= dev.0  &,
             wordpos('EXTCLK',desc) > 0 then     /* external clock */
       osctype = 'EC'
     else if left(desc,3) = 'EXT'    |,          /* external osc */
-            wordpos('ER',desc) > 0  |,
-            wordpos('RC',desc) > 0 then
+            desc = 'ER' | wordpos('ER ',desc) > 0  |,
+            desc = 'RC' | wordpos('RC ',desc) > 0 then
       osctype = 'EXTOSC'
-    else do                                     /* fall through */
+    else do                                     /* not one of the above */
       osctype = translate(desc, '_', ' ')       /* blank -> underscore */
       if datatype(left(osctype,1)) = 'NUM' then    /* 1st char is digit */
         osctype = '_'osctype                    /* add prefix */
@@ -1864,10 +1869,9 @@ do i = arg(1) + 1 while i <= dev.0  &,
     end
 
     oscsub  = ''                                /* default no sub func */
-    if pos('PLL',desc) > 0 then                 /* PLL */
+    if osctype = 'HS'  &,                       /* only for HS */
+       pos('PLL',desc) > 0 then                 /* PLL */
       oscsub = '_PLL'
-    else if pos('USB',desc) > 0 then            /* USB */
-      oscsub = oscsub'_USB'
     if osctype = 'INTOSC' |,                    /* int osc */
        osctype = 'EXTOSC' |,                    /* ext osc */
        osctype = 'EC'     then do               /* ext clock */
@@ -1877,7 +1881,8 @@ do i = arg(1) + 1 while i <= dev.0  &,
          pos('EXTRCIO',val2) > 0    |,
          pos('EXTOSCIO',val2) > 0   then
         oscsub = '_NOCLKOUT'
-      else if pos(' CLKO',val2) > 0      |,
+      else if pos('-CLKO',val2) > 0      |,
+              pos(' CLKO',val2) > 0      |,
               pos('CLOCK OUT',val2) > 0  |,
               pos(' CLOCK',val2) > 0     then
         oscsub = '_CLKOUT'
@@ -2078,6 +2083,7 @@ return
 /* ANCON0   ANCON1                                                               */
 /* CMCON                                                                         */
 /* CMCON0  [CMCON1]                                                              */
+/* CM1CON0 [CM1CON1] [CM2CON0 CM2CON1]                                           */
 /* Between brackets optional, otherwise always together.                         */
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 /* PICs are classified in groups for ADC module settings                         */
@@ -2180,18 +2186,27 @@ if Name.ADCON0 \= '-' then do                           /* check on presence */
   call lineout jalfile, '--'
 end
 
-if Name.CMCON \= '-' | Name.CMCON0 \= '-' then do       /* check on presence */
+if Name.CMCON   \= '-' | Name.CMCON0 \= '-' |,
+   Name.CM1CON0 \= '-' | Name.CM1CON1 \= '-' then do
   analog.CMCON = 'comparator'                           /* Comparator present */
   call lineout jalfile, '-- ---------------------------------------------------'
   call lineout jalfile, '-- Disable comparator module'
   call lineout jalfile, '--'
   call lineout jalfile, 'procedure comparator_off() is'
   call lineout jalfile, '   pragma inline'
-  if Name.CMCON \= '-' then do
-    call lineout jalfile, '   CMCON  = 0b0000_0111        -- disable comparators'
+  if Name.CMCON \= '-' then
+    call lineout jalfile, '   CMCON  = 0b0000_0111        -- disable comparator'
+  else if Name.CMCON0 \= '-' then
+    call lineout jalfile, '   CMCON0 = 0b0000_0111        -- disable comparator'
+  else if Name.CM1CON0 \= '-' then do
+    call lineout jalfile, '   CM1CON0 = 0b0000_0000       -- disable comparator'
+    if Name.CM2CON0 \= '-' then
+      call lineout jalfile, '   CM2CON0 = 0b0000_0000       -- disable 2nd comparator'
   end
-  else if Name.CMCON0 \= '-' then do
-    call lineout jalfile, '   CMCON0 = 0b0000_0111        -- disable comparators'
+  else if Name.CM1CON1 \= '-' then do
+    call lineout jalfile, '   CM1CON1 = 0b0000_0000       -- disable comparator'
+    if Name.CM2CON1 \= '-' then
+      call lineout jalfile, '   CM2CON1 = 0b0000_0000       -- disable 2nd comparator'
   end
   call lineout jalfile, 'end procedure'
   call lineout jalfile, '--'
