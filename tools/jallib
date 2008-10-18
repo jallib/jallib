@@ -14,7 +14,14 @@
 # Description: this script handles common tasks when using the jallib SVN repository
 # `jallib help` for more !
 #              
-#
+# Dependencies: according to the following actions, you'll need to install the
+# following libraries (if you don't use the action, you can skip it)
+# - jalv2 executable (compile): http://www.casadeyork.com/jalv2
+# - wikify (jalapi): http://cspace.googlecode.com/svn/wiki/wikify.py
+# - Cheetah (jalapi): http://cheetahtemplate.org
+# - yaml (test): http://pyyaml.org/wiki/PyYAML
+# - pysvn (jalapi,test): http://pysvn.tigris.org/
+# 
 # Notes:
 #
 
@@ -24,6 +31,21 @@ import getopt
 import re
 
 
+#########
+# TOOLS #
+#########
+
+def get_jal_filenames(dir):
+	jalfiles = []
+	for df in os.listdir(dir):
+		if df.startswith("."):
+			continue
+		fulldf = os.path.join(dir,df)
+		if os.path.isfile(fulldf) and fulldf.endswith(".jal"):
+			jalfiles.append(df)
+		else:
+			jalfiles.extend(get_jal_filenames(fulldf))
+	return jalfiles
 
 
 ################
@@ -71,7 +93,7 @@ def do_compile(args):
 
 	# There's not even an argument for the compiler...
 	if not original_args:
-		print "Missing arguments to jalv2 compiler..."
+		print >> sys.stderr, "Missing arguments to jalv2 compiler..."
 		sys.exit(255)
 	
 	# Try to extract jallib args
@@ -88,7 +110,7 @@ def do_compile(args):
 		args = list(set(original_args).difference(set(jallib_args)))
 	  
 
-	jalv2_exec = "jalv2"
+	jalv2_exec = None
 	dirs = None
 	for o,v in opts:
 		if o == '-R':
@@ -99,13 +121,16 @@ def do_compile(args):
 		elif o == '-E':
 			jalv2_exec = v
 		else:
-			print "Wrong option %s" % o
+			print >> sys.stderr, "Wrong option %s" % o
 	# No root specified ? Try env var, else defaut to cwd
 	if not dirs:
 		v = os.environ.get('JALLIB_REPOS',os.path.curdir)
 		gdirs = v.split(":")
 		for d in gdirs:
 			dirs = _explore_dir(d)
+	# No exec specify, try env var or defaulting
+	if not jalv2_exec:
+		jalv2_exec = os.environ.get('JALLIB_JALV2','jalv2')
 	cmd = [jalv2_exec,"-s",";".join(dirs)]
 	# Complete with compiler args
 	if args:
@@ -114,7 +139,7 @@ def do_compile(args):
 	try:
 		status = subprocess.check_call(cmd,shell=False)
 	except subprocess.CalledProcessError,e:
-		print "Error while compiling file (status=%s). See previous message." % e.returncode
+		print >> sys.stderr, "Error while compiling file (status=%s). See previous message." % e.returncode
 		sys.exit(e.returncode)
 	pass
 
@@ -317,14 +342,14 @@ def validate(filename):
 
 
 def report(filename):
-	print "File: %s" % filename
-	print "%d errors found" % len(errors)
+	print >> sys.stderr, "File: %s" % filename
+	print >> sys.stderr, "%d errors found" % len(errors)
 	for err in errors:
-		print "\tERROR: %s" % err
-	print
-	print "%d warnings found" % len(warnings)
+		print >> sys.stderr, "\tERROR: %s" % err
+	print >> sys.stderr
+	print >> sys.stderr, "%d warnings found" % len(warnings)
 	for warn in warnings:
-		print "\twarning: %s" % warn
+		print >> sys.stderr, "\twarning: %s" % warn
 	
 	if errors or warnings:
 		return True
@@ -355,12 +380,203 @@ def do_validate(args):
 #------#
 
 def do_test(args):
+
+	try:
+		opts, args = getopt.getopt(args, ACTIONS['test']['options'])
+	except getopt.error,e:
+		print "args: %s" % args
+		print >> sys.stderr, "Wrong option: %s" % e.opt
+		sys.exit(255)
+	
+	do_update = False
+	do_generate = False
+	do_add = False
+	do_delete = False
+	got_html = False
+	do_html = False
+	do_print = False
+	sample_dirs = None
+	test_str = None
+	tmpl_file = None
+	html_file = None
+	pic = None
+	outfile = None
+	for o,v in opts:
+		if o == '-u':
+			do_update = True
+		elif o == '-a':
+			do_add = True
+			test_str = v
+		elif o == '-d':
+			do_delete = True
+			test_str = v
+		elif o == '-s':
+			sample_dirs = v.split(":")
+		elif o == '-f':
+			outfile = v
+		elif o == '-g':
+			do_html = True
+			tmpl_file = v
+		elif o == '-o':
+			got_html = True
+			html_file = v
+		elif o == '-p':
+			do_print = True
+			pic = v
+		else:
+			print >> sys.stderr, "Wrong option %s" % o
+	if not outfile:
+		try:
+			outfile = os.environ['JALLIB_MATRIX']
+		except KeyError:
+			print >> sys.stderr,"Please provide a file to get/store the testing matrix (-f option or JALLIB_MATRIX env. var)"
+			sys.exit(255)
+	if not sample_dirs:
+		v = os.environ.get('JALLIB_SAMPLEDIR',os.path.curdir)
+		sample_dirs = v.split(":")
+	if do_update:
+		update_testing_matrix(sample_dirs,outfile)
+	elif do_add:
+		add_update_test(test_str,outfile)
+	elif do_delete:
+		delete_test(test_str,outfile)
+	elif do_html and got_html:
+		generate_html(tmpl_file,html_file,outfile)
+	elif do_print:
+		display_test_results(pic,outfile)
+	else:
+		raise NotImplementedError("Specify -u, -g or -a option")
+
+def get_matrix(outfile):
 	# localized import: if one doesn't want to deal
 	# with test, don't force him to install yaml lib
 	import yaml
-	print "do_test, args: %s" % repr(args)
+	
+	# existing file or from scratch ?
+	if os.path.isfile(outfile):
+		matrix = yaml.load(file(outfile).read())
+	else:
+		matrix = {}
+	return matrix
+
+def save_matrix(matrix,outfile):
+	import yaml
+	fout = file(outfile,"w")
+	print >> fout, yaml.dump(matrix)
+	fout.close()
+	
+def update_testing_matrix(sample_dirs,outfile):
+
+	matrix = get_matrix(outfile)
+
+	def analyze_samples(device,fullpathdir):
+		content = os.listdir(fullpathdir)
+		for jalfile in content:
+			if jalfile.startswith(".") or not jalfile.endswith(".jal"):
+				continue
+			###print "jalfile: %s (%s)" % (jalfile,jalfile.startswith("."))
+			matrix[device]['samples'].setdefault(jalfile,{'pass' : None})
+	
+	def analyse_sampledir(dir):
+		if not "by_device" in os.listdir(dir):
+			print >> sys.stderr, "Sample dir '%s' does not contain 'by_device' map." % dir
+			sys.exit(1)
+		for devicedir in os.listdir(os.path.join(dir,'by_device')):
+			fullpath = os.path.join(dir,'by_device',devicedir)
+			if not os.path.isdir(fullpath) or devicedir.startswith("."):
+				continue
+			matrix.setdefault(devicedir,{'samples' : {}, 'tests' : {}})
+			analyze_samples(devicedir,os.path.join(dir,'by_device',devicedir))
+
+	def analyse_testdir(dir):
+		if not "test" in os.listdir(dir):
+			print >> sys.stderr, "Sample dir '%s' does not contain 'test' map." % dir
+			sys.exit(1)
+		fulldir = os.path.join(dir,"test")
+		tdirs = [os.path.join(fulldir,d) for d in os.listdir(fulldir) if not d.startswith(".") and d != "board"]
+		test_files = []
+		for tdir in tdirs:
+			test_files.extend([f for f in get_jal_filenames(tdir) if f.startswith("test_")])
+		# dispatch to devices
+		for d in matrix.keys():
+			for t in test_files:
+				matrix[d]['tests'].setdefault(t,{'pass' : None, 'board' : None})
+
+	
+	for sdir in sample_dirs:
+		analyse_sampledir(sdir)
+		# Deactivate, until we can selecttively know which
+		# is available for which PIC
+		##analyse_testdir(sdir)
+	
+	save_matrix(matrix,outfile)
 
 
+def add_update_test(test_str,outfile):
+	matrix = get_matrix(outfile)
+	# TODO: check samples actually exist
+	try:
+		pic,testfile,result = test_str.split(":")
+	except ValueError:
+		print >> sys.stderr,"Please specify the result as <pic>:<test_file>:<result> (eg. 16f88:serial_hw_echo.jal:true)"
+		sys.exit(1)
+	# normalize
+	try:
+		result = {'true':True,'false':False,'null':None}[result]
+	except KeyError,e:
+		print >> sys.stderr,"Invalid result '%s'. Specify either true, false or null" % e
+		sys.exit(1)
+	try:
+		samples = matrix[pic]['samples']
+		n = {'pass' : result}
+		if samples.has_key(testfile):
+			t = samples[testfile]
+			print "Update test '%s' for PIC %s: %s => %s" % (testfile,pic,repr(t),repr(n))
+			samples[testfile] = n
+		else:
+			print "Add new test '%s' for PIC %s: %s" % (testfile,pic,n)
+		samples[testfile] = n
+		save_matrix(matrix,outfile)
+	except KeyError,e:
+		print >> sys.stderr,"Can't find PIC %s (need to update the matrix ?)" % e
+
+def delete_test(test_str,outfile):
+	matrix = get_matrix(outfile)
+	# TODO: check samples actually exist
+	try:
+		pic,testfile = test_str.split(":")
+	except ValueError:
+		print >> sys.stderr,"Please specify the test to remove as <pic>:<test_file> (eg. 16f88:bad_test.jal)"
+		sys.exit(1)
+	try:
+		print "Unregistering test '%s' from PIC %s" % (testfile,pic)
+		del matrix[pic]['samples'][testfile]
+		save_matrix(matrix,outfile)
+	except KeyError,e:
+		print >> sys.stderr, "Unable to delete '%s' from PIC %s, cannot find '%s'" % (testfile,pic,e)
+		sys.exit(1)
+
+def generate_html(tmpl_file,html_file,outfile):
+	import Cheetah.Template
+	matrix = get_matrix(outfile)
+	tmplsrc = "".join(file(tmpl_file,"r").readlines())
+	klass = Cheetah.Template.Template.compile(tmplsrc)
+	tmpl = klass()
+	tmpl.test_results = matrix
+	fout = file(html_file,"w")
+	print >> fout, tmpl.main()
+
+def display_test_results(pic,outfile):
+	matrix = get_matrix(outfile)
+	try:
+		print "samples:"
+		for k,v in matrix[pic]['samples'].items():
+			print "    %s : %s" % (k,v['pass'])
+	except KeyError,e:
+		print >> sys.stderr, "Cant't test result for PIC %s" % e
+		sys.exit(1)
+
+	
 #############
 # HELP FUNC #
 #############
@@ -375,6 +591,7 @@ Actions:
 Use 'help' with each action for more (eg. "jallib help compile")
 
 """
+
 
 def compile_help():
 	print """
@@ -400,8 +617,11 @@ Additional options:
                                   path (cwd) as the root path.
                                   Precedence: cwd < var < option
 
-    -E path    : use this option to manually set the path to jalv2 executable. If not set, except
-                 it to be on path.
+    -E path    : use this option to manually set the path to jalv2 executable. If not set, 
+                 will search for a JALLIB_JALV2 environment variable, or default to 'jalv2'
+				 and expect it to be on path.
+
+(for convenience, jallib script's options are uppercased, whereas jalv2's are lowercased)
 
 """
 
@@ -418,19 +638,43 @@ See: http://code.google.com/p/jallib/wiki/JallibStyleGuide for more
 
 def test_help():
 	print """
-    jallib test -U -F testing_matrix.yaml [-S path/to/sample]
+    jallib test -u -f testing_matrix.yaml [-s path/to/sample] [-g template.tmpl -o page.html] [-p picname]
 
-Use this option to handle test.
+Use this option to handle the testing matrix and the test result page.
 
-    -U: update an existing testing matrix, by searching for new samples and tests.
-        This won't erase previous testing results, but will potentially add new test line
+    -u: update an existing testing matrix, by searching for new samples. Tests must be
+        manually added to the testing matrix file (because tests are not relevant to all target chips).
+        This won't erase previous testing results, but will potentially add new sample lines 
         to the testing matrix file.
 
-    -F: file storing the testing matrix results. YAML formatted
-    
-    -S: path to the sample directory. If no option is given, it will expect to define
-        as an environment variable, JALLIB_SAMPLEDIR
+    -a: add or update a test result. If the test does not exist, it's added to the matrix, else
+        results will be updated.
+        The format is target:test_file:result. For example:
+         * to register a new test which passed, for 16f88
+            -a 16f88:new_test.jal:true
+         * to register a new test which failed, for 16f877
+            -a 16f877:new_test.jal:false
+         * to register a new test, not run yet, for 16f648a
+            -a 16f648a:new_test.jal:null
 
+    -p: print current test result for a given PIC
+
+    -d: delete/unregister test. The format is: target:test_file. Ex:
+        To remove a test from 16f88 device:
+            -d 16f88:bad_test.jal
+
+    -g: generate HTML a testing matrix from tests results, and dedicated test result pages
+        for each PIC, from both samples and tests. Needs -W option.
+
+    -o: specify output HTML file. Used with -g option.
+
+    -f: file storing the testing matrix results. YAML formatted. If not specified, will look for a
+        JALLIB_MATRIX environment variable.
+    
+    -s: path to the sample directory (or multiple sample directory, ':' separated). If no option is given,
+        it will expect to define as an environment variable, JALLIB_SAMPLEDIR. If no option is given, and
+        no env. variable can be found, the current directory will be considered.
+        The sample(s) directory(ies) *must* contain a 'by_device' directory.
 
 """
 
@@ -448,7 +692,7 @@ def do_help(action_args=[]):
 ACTIONS = {
 		'compile'	: {'callback' : do_compile, 'options' : 'R:E:', 'help' : compile_help},
 		'validate'	: {'callback' : do_validate, 'options' : '', 'help' : validate_help},
-		'test'		: {'callback' : do_test, 'options' : 'S:GU', 'help' : test_help},
+		'test'		: {'callback' : do_test, 'options' : 's:uf:a:g:d:o:p:', 'help' : test_help},
 		'help'		: {'callback' : do_help, 'options' : '', 'help' : None},
 		}
 
@@ -460,7 +704,6 @@ if __name__ == "__main__":
 		action_args = sys.argv[2:]
 		try:
 			callme = ACTIONS[action]['callback']
-			callme(action_args)
 		except KeyError,e:
 			if action in ('help','--help','-h'):
 				do_help(action_args)
@@ -468,6 +711,7 @@ if __name__ == "__main__":
 			else:
 				print "Unknown action %s" % e
 				sys.exit(255)
+		callme(action_args)
 	except IndexError,e:
-		print >> sys.stderr,"Please provide an action: %s" % repr(ACTIONS.keys())
+		print >> sys.stderr, "Please provide an action: %s" % repr(ACTIONS.keys())
 		sys.exit(255)
