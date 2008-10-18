@@ -384,23 +384,27 @@ def do_test(args):
 	try:
 		opts, args = getopt.getopt(args, ACTIONS['test']['options'])
 	except getopt.error,e:
-		print "args: %s" % args
-		print >> sys.stderr, "Wrong option: %s" % e.opt
+		print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
 		sys.exit(255)
 	
 	do_update = False
 	do_generate = False
 	do_add = False
 	do_delete = False
-	got_html = False
 	do_html = False
 	do_print = False
+	do_merge = False
+	got_html = False
 	sample_dirs = None
 	test_str = None
 	tmpl_file = None
 	html_file = None
 	pic = None
 	outfile = None
+	only_passed = False
+	each_pic_tmpl = None
+	selected_pics = None
+	sub_matrix = None
 	for o,v in opts:
 		if o == '-u':
 			do_update = True
@@ -423,8 +427,17 @@ def do_test(args):
 		elif o == '-p':
 			do_print = True
 			pic = v
+		elif o == '-1':
+			only_passed = True
+		elif o == '-t':
+			each_pic_tmpl = v
+		elif o == '-n':
+			selected_pics = v.split(",")
+		elif o == '-m':
+			do_merge = True
+			sub_matrix = v
 		else:
-			print >> sys.stderr, "Wrong option %s" % o
+			print >> sys.stderr, "Don't know what to do with option %s" % o
 	if not outfile:
 		try:
 			outfile = os.environ['JALLIB_MATRIX']
@@ -435,17 +448,22 @@ def do_test(args):
 		v = os.environ.get('JALLIB_SAMPLEDIR',os.path.curdir)
 		sample_dirs = v.split(":")
 	if do_update:
-		update_testing_matrix(sample_dirs,outfile)
+		update_testing_matrix(sample_dirs,outfile,selected_pics)
 	elif do_add:
 		add_update_test(test_str,outfile)
 	elif do_delete:
 		delete_test(test_str,outfile)
-	elif do_html and got_html:
-		generate_html(tmpl_file,html_file,outfile)
+	elif do_merge:
+		merge_matrix(outfile,sub_matrix)
+	elif do_html:
+		if not got_html:
+			html_file = ".".join(tmpl_file.split(".")[:-1]) + ".html"
+		generate_html(tmpl_file,html_file,outfile,only_passed,each_pic_tmpl)
 	elif do_print:
 		display_test_results(pic,outfile)
 	else:
-		raise NotImplementedError("Specify -u, -g or -a option")
+		print >> sys.stderr, "Error while parsing arguments. 'jallib help' for more"
+		sys.exit(255)
 
 def get_matrix(outfile):
 	# localized import: if one doesn't want to deal
@@ -465,7 +483,9 @@ def save_matrix(matrix,outfile):
 	print >> fout, yaml.dump(matrix)
 	fout.close()
 	
-def update_testing_matrix(sample_dirs,outfile):
+def update_testing_matrix(sample_dirs,outfile,selected_pics=[]):
+
+	print "selected_pics %s" % selected_pics
 
 	matrix = get_matrix(outfile)
 
@@ -482,6 +502,9 @@ def update_testing_matrix(sample_dirs,outfile):
 			print >> sys.stderr, "Sample dir '%s' does not contain 'by_device' map." % dir
 			sys.exit(1)
 		for devicedir in os.listdir(os.path.join(dir,'by_device')):
+			if selected_pics and not devicedir in selected_pics:
+				# skip, not wanted by user
+				continue
 			fullpath = os.path.join(dir,'by_device',devicedir)
 			if not os.path.isdir(fullpath) or devicedir.startswith("."):
 				continue
@@ -556,12 +579,18 @@ def delete_test(test_str,outfile):
 		print >> sys.stderr, "Unable to delete '%s' from PIC %s, cannot find '%s'" % (testfile,pic,e)
 		sys.exit(1)
 
-def generate_html(tmpl_file,html_file,outfile):
+def generate_html(tmpl_file,html_file,outfile,only_passed=False,for_each_pic_tmpl=None):
 	import Cheetah.Template
 	matrix = get_matrix(outfile)
 	tmplsrc = "".join(file(tmpl_file,"r").readlines())
 	klass = Cheetah.Template.Template.compile(tmplsrc)
 	tmpl = klass()
+	if only_passed:
+		newtr = {}
+		for pic,res in matrix.items():
+			if True in [res['samples'][k]['pass'] for k in res['samples'].keys()]:
+				newtr[pic] = res
+		matrix = newtr
 	tmpl.test_results = matrix
 	fout = file(html_file,"w")
 	print >> fout, tmpl.main()
@@ -575,6 +604,12 @@ def display_test_results(pic,outfile):
 	except KeyError,e:
 		print >> sys.stderr, "Cant't test result for PIC %s" % e
 		sys.exit(1)
+
+def merge_matrix(outfile,sub_matrix):
+	main_matrix = get_matrix(outfile)
+	sub_matrix = get_matrix(sub_matrix)
+	main_matrix.update(sub_matrix)
+	save_matrix(main_matrix,outfile)
 
 	
 #############
@@ -638,7 +673,9 @@ See: http://code.google.com/p/jallib/wiki/JallibStyleGuide for more
 
 def test_help():
 	print """
-    jallib test -u -f testing_matrix.yaml [-s path/to/sample] [-g template.tmpl -o page.html] [-p picname]
+    jallib test [-u|-a|-d|-m other_matrix.yaml] [-f testing_matrix.yaml] [-s path/to/sample]
+                      [-g template.tmpl [-o page.html] [-1] [-t template.tmpl]]
+                      [-p picname] [-n pic1,pic2,...]
 
 Use this option to handle the testing matrix and the test result page.
 
@@ -657,16 +694,29 @@ Use this option to handle the testing matrix and the test result page.
          * to register a new test, not run yet, for 16f648a
             -a 16f648a:new_test.jal:null
 
-    -p: print current test result for a given PIC
-
     -d: delete/unregister test. The format is: target:test_file. Ex:
         To remove a test from 16f88 device:
             -d 16f88:bad_test.jal
 
+    -m: merge another testing matrix with the main one specified with option -f. All test results found 
+        in this other matrix will replace those found in the main matrix. This option, with -n one, allows
+        to work on a small subset of PICs, and then re-integrate the results in the main testing matrix.
+
+    -p: print current test result for a given PIC
+
+    -n: only consider the list of PICs while generating the matrix. PICs are comma separated. Ex:
+            -n 16f88,16f877,16f877a
+
     -g: generate HTML a testing matrix from tests results, and dedicated test result pages
         for each PIC, from both samples and tests. Needs -W option.
 
-    -o: specify output HTML file. Used with -g option.
+    -1: only generate testing matrix for PIC which have at least one test passed.
+	
+    -t: also generate dedidated test result pages for each PIC, using given template. The output
+        file will be named as: test_<picname>.html 
+
+    -o: specify output HTML file. Used with -g option. If omitted, will be named the same as the
+        template file, with ".html" extension
 
     -f: file storing the testing matrix results. YAML formatted. If not specified, will look for a
         JALLIB_MATRIX environment variable.
@@ -692,7 +742,7 @@ def do_help(action_args=[]):
 ACTIONS = {
 		'compile'	: {'callback' : do_compile, 'options' : 'R:E:', 'help' : compile_help},
 		'validate'	: {'callback' : do_validate, 'options' : '', 'help' : validate_help},
-		'test'		: {'callback' : do_test, 'options' : 's:uf:a:g:d:o:p:', 'help' : test_help},
+		'test'		: {'callback' : do_test, 'options' : 's:uf:a:g:d:o:p:t:1n:m:', 'help' : test_help},
 		'help'		: {'callback' : do_help, 'options' : '', 'help' : None},
 		}
 
