@@ -32,11 +32,11 @@ call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load Rexx utilities */
 
 JalV2 = 'k:/c/Jalv2/JalV2.exe'                  /* compiler path (eCS) */
-Validator = 'k:/jallib/tools/jsg_validator.py'  /* validation script */
+Validator = 'k:/jallib/tools/jallib validate'   /* validation script */
 
 if runtype = 'TEST' then do                     /* test mode */
   Include = 'k:/jallib/test/'                   /* test include directory */
-  Options = '-Wno-all -s' Include               /* compiler options */
+  Options = '-Wall -s' Include                  /* compiler options */
 end
 else do                                         /* normal mode */
   Include = 'k:/jallib/unvalidated/include/device/'   /* SVN include directory */
@@ -45,7 +45,7 @@ else do                                         /* normal mode */
 end
 
 if selection = '' then
-  call SysFileTree Include'1*.jal', pic, 'FO'   /* list of device includes  */
+  call SysFileTree Include'1*.jal', pic, 'FO'   /* list of device files  */
 else
   call SysFileTree Include||selection'.jal', pic, 'FO'  /* list of includes  */
 
@@ -64,12 +64,12 @@ do i=1 to pic.0
   PgmName = 'b'PicName                          /* program name */
   PgmFile = 'b'PicName'.jal'                    /* program filespec */
 
-  '@python' validator  pic.i '>'PgmName'.pylog'  /* validate device file */
+  '@python' validator  pic.i '1>'PgmName'.pyout'  '2>'PgmName'.pyerr'
   if rc \= 0 then do
     say 'returncode of validation include file' PicName'.jal is:' rc
     exit rc
   end
-  '@erase' PgmName'.pylog'                      /* when OK, discard log */
+  '@erase' PgmName'.py*'                      /* when OK, discard python output */
 
   call stream  PgmFile, 'c', 'open write replace'
   call lineout PgmFile, '-- ------------------------------------------------------'
@@ -124,6 +124,9 @@ do i=1 to pic.0
     if ioscfs.0 > 0 then
       call lineout PgmFile, 'pragma target IOSCFS  F4MHZ        -- select 4 MHz'
   end
+  if left(PicName,2) = '18' then
+    call lineout PgmFile, '-- Due to PLL effects the blink frequency may',
+                          'be slower or faster than 2 Hz!'
   call SysFileSearch 'pragma fuse_def WDT', pic.i, wdt.
   if wdt.0 > 0 then do
     call lineout PgmFile, 'pragma target WDT  disabled'
@@ -163,9 +166,7 @@ do i=1 to pic.0
         call SysFileSearch ' 'pinPQ'_direction', pic.i, tris.    /* search TRISx */
         if tris.0 > 0 then do                                /* found */
           call lineout PgmFile, 'var bit led           is' pinPQ '   -- alias'
-          call lineout PgmFile, 'var bit led_direction is' pinPQ'_direction'
-          call lineout PgmFile, '--'
-          call lineout PgmFile, 'led_direction = output'
+          call lineout PgmFile, pinPQ'_direction = output'
           leave p
         end
         else do                                         /* no TRISx found */
@@ -193,14 +194,14 @@ do i=1 to pic.0
   call stream PgmFile, 'c', 'close'
 
 
-  '@python' validator PgmFile '>'PgmName'.pylog'     /* validate blink program */
+  '@python' validator PgmFile '1>'PgmName'.pyout' '2>'PgmName'.pyerr'
   if rc \= 0 then do
     say 'returncode of validation blink program' PgmFile 'is:' rc
     exit rc                                     /* terminate! */
   end
-  '@erase' PgmName'.pylog'                      /* when OK, discard log */
+  '@erase' PgmName'.py*'                        /* when OK, discard log */
 
-  '@'JalV2 Options PgmFile '>'PgmName'.log'      /* compile */
+  '@'JalV2 Options PgmFile '>'PgmName'.log'     /* compile */
 
   if rc \= 0 then do                            /* compile error */
     say 'JalV2 compile error' rc
