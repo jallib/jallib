@@ -1,10 +1,7 @@
--- ===================================================
+-- ----------------------------------------------------------------------
 -- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
---
 -- Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.
---
 -- Adapted-by:
---
 -- Compiler: =2.4h
 --
 -- This file is part of jallib  (http://jallib.googlecode.com)
@@ -19,36 +16,11 @@
 --
 -- Notes:
 --
--- The PIC ports use positive logic:
--- '1' is positive voltage, '0' is ground.
---
--- In the RS232 standard:
--- - Negative voltage ('mark') means OFF for control signals, and
---   indicates 1 (one) for data signals (start-, data-, stop-bits).
--- - Positive voltage ('space') means ON for control signals and
---   0 (zero) for start-, data- and stop-bits.
--- - Signal levels: 'mark' = -3V to -15V,  'space' = +3V to +15V
---
--- Between PIC and RS232 normally an interface chip is used, such as a
--- Maxim/Dallas MAX232 or MAX202. These are not only voltage level CONverter
--- but also signal INverter. You should be aware of the following:
--- - The inversion of PIC data-in and data-out by the MAX2x2 is required
---   to convert data-, start- and stop-bits to/from the corresponding
---   RS232 polarity. So nothing special has to be done in the program
---   because the USART of the PIC uses 'inverted' signal levels!
--- - For CTS the inversion by the MAX2x2 is NOT desired.
---   Therefore the program has to use inverted signalling for CTS:
---   'FALSE' is used for CTS ON and 'TRUE' for CTS OFF!
---   As a reminder for this 'inverted' logic the signal is called
---   serial_cts_inv (e.g. serial_CTS_inv = TRUE means CTS is FALSE!).
---
--- Remember also: RxD of RS232-plug connects to TX of PIC via MAX2x2
---                TxD of RS232-plug connects to RX of PIC via MAX2x2
---
 -- This library supports:
 --     - Data format: 8 bits data, 1 start-bit, 1 stop bit
 --     - Fixed speed in the range 1200..57600, depending on the resonator
 --       frequency (see BAUD RATES tables in the datasheet with BRGH=1).
+--     - Interrupt bits TXIE, RCIE, PEIE and GIE
 --
 -- Available procedures/functions for application programs:
 --
@@ -60,66 +32,105 @@
 --                                              -- returns TRUE with data,
 --                                              -- FALSE when no data available
 --
--- =======================================================================
+-- -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 --
--- Application program must specify _before_ including this library
--- (values are recommended, if possible keep SERIAL_DELTA = 17).
+-- Directions for use of this library in application programs
+-- (in this sequence):
 --
---  const   SERIAL_XMTBUFSIZE  = 32             -- size of transmit buffer
---  const   SERIAL_RCVBUFSIZE  = 64             -- size of receive buffer
---  const   SERIAL_DELTA       = 17             -- spare space receive buffer
+-- 1. Declare the following constants:
 --
---  const   SERIAL_BPSRATE     = 19200          -- host communications
+--      const   SERIAL_XMTBUFSIZE  = 32         -- size of transmit buffer
+--      const   SERIAL_RCVBUFSIZE  = 64         -- size of receive buffer
+--      const   SERIAL_DELTA       = 17         -- spare space receive buffer
+--      (values are recommended, if possible keep SERIAL_DELTA = 17).
+--
+--      const   SERIAL_BPSRATE     = 19200      -- host communications
 --                                              -- (range 9600..57600)
+--    and variables:
 --
---  var  bit serial_overflow_discard = [ FALSE | TRUE ]
---                                              With transmit buffer overflow:
---                                                - TRUE: discard data
---                                                - FALSE: wait for free space
---                                               With receive buffer overflow
---                                               data is always discarded
---                                               without notification!
+--      var  bit serial_ctsinv  is  pin_B4      -- incoming data flow control
+--      var  bit serial_overflow_discard        -- With transmit buffer overflow:
+--                                              --   TRUE: discard data
+--                                              --   FALSE: wait for free space
+--                                              -- With receive buffer overflow
+--                                              -- data is always discarded
+--                                              -- without notification, but
+--                                              -- this is prevented with CTS.
 --
+-- 2. Include this library.
 --
---  var  bit  serial_ctsinv            is pin_B4    -- incoming data flow control
---  var  bit  serial_ctsinv_direction  is pin_B4_direction
+-- and somewhere before actually using serial communications:
+--
+-- 3. Set the chosen CTS pin to output:
+--       pin_B4_direction = OUTPUT              -- incoming data flow control
+--       serial_overflow_discard = FALSE        -- do not disard output
+--
+-- 4. Call serial_init() to initialize serial communications.
 --
 -- Notes: - For data transmit and receive the pins TX and RX are used
 --          automatically, these have not to be assigned by the application.
---        - The CTS pin selected above is an example!
---        - When CTS flow control is not desired then assign both
---          serial_ctsinv and serial_cts_inv_direction to a dummy bit,
---          for example:
---              var  bit  dummy_bit
---              var  bit  serial_ctsinv            is dummy_bit1
---              var  bit  serial_ctsinv_direction  is dummy_bit2
---        - The serial_overflow_discard bit may be dynamically changed
---          (depending on how important the data is for th receiving party).
+--        - The selection of the CTS pin above is an example, any other pin
+--          which is configurable for output can be used.
+--        - When CTS flow control is not desired then assign serial_ctsinv
+--          to a dummy bit, for example:
+--              var  bit  dummy_cts_bit
+--              var  bit  serial_ctsinv  is  dummy_cts_bit
+--        - The serial_overflow_discard flag may be dynamically changed
+--          (depending on how important the data is for the receiving party).
+--        - Do not touch the following interrupt bits: TXIE, RCIE, PEIE and GIE
 --
--- =======================================================================
+-- -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 --
--- Declare circular buffers for communications via UART:
+-- Some background information:
+--
+-- The PIC ports use positive logic: '1' is positive voltage, '0' is ground.
+--
+-- In the RS232 standard:
+-- - Negative voltage ('mark') means OFF for control signals, and
+--   indicates 1 (one) for data signals (start-, data-, stop-bits).
+-- - Positive voltage ('space') means ON for control signals and
+--   0 (zero) for start-, data- and stop-bits.
+-- - Signal levels: 'mark' = -3V to -15V,  'space' = +3V to +15V
+--
+-- Between PIC and RS232 normally an interface chip is used, such as a
+-- Maxim/Dallas MAX232 or MAX202. These are not only voltage level CONverters
+-- but also signal INverters. You should be aware of the following:
+-- - The inversion of PIC data-in and data-out by the MAX2x2 is required
+--   to convert data-, start- and stop-bits to/from the corresponding
+--   RS232 polarity. So nothing special has to be done in the program
+--   because the USART of the PIC uses 'inverted' signal levels!
+-- - For CTS the inversion by the MAX2x2 is NOT desired.
+--   Therefore the program has to use inverted signalling for CTS:
+--   'FALSE' is used for CTS ON and 'TRUE' for CTS OFF!
+--   As a reminder for this 'inverted' logic the signal is called
+--   serial_ctsinv (serial_ctsinv = TRUE means CTS is FALSE!).
+--
+-- Remember also: RxD of RS232-plug connects to TX of PIC via MAX2x2
+--                TxD of RS232-plug connects to RX of PIC via MAX2x2
+--
+-- ----------------------------------------------------------------------
+--
+-- Declaration of local circular buffers for communications via UART:
 
-var    byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]   -- circular output buffer
-var    byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]   -- circular input buffer
+var  byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]    -- circular output buffer
+var  byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]    -- circular input buffer
 
--- Declare offsets in circular buffers:
+-- Declaration of local offsets in circular buffers:
 
-var    byte  _serial_offsetxmthead               -- offset next byte from appl
-var    byte  _serial_offsetxmttail               -- offset next byte to port
-var    byte  _serial_offsetrcvhead               -- offset next byte from port
-var    byte  _serial_offsetrcvtail               -- offset next byte to appl
+var  byte  _serial_offsetxmthead                -- offset next byte from appl
+var  byte  _serial_offsetxmttail                -- offset next byte to port
+var  byte  _serial_offsetrcvhead                -- offset next byte from port
+var  byte  _serial_offsetrcvtail                -- offset next byte to appl
 
 
--- =======================================================================
--- - UART - serial transmit interrupt handling
--- =======================================================================
-
+-- ----------------------------------------------------------------------
+--  UART - serial transmit interrupt handling
+-- ----------------------------------------------------------------------
 procedure  _serial_transmit_interrupt_handler() is
 
    pragma interrupt
 
-   var  byte  x;
+   var  byte  x
 
    if ((PIR1_TXIF == TRUE) & (PIE1_TXIE == TRUE)) then  -- UART xmit interrupt
       if (_serial_offsetxmttail != _serial_offsetxmthead) then  -- data in xmit buffer
@@ -138,15 +149,14 @@ procedure  _serial_transmit_interrupt_handler() is
 end procedure
 
 
--- =======================================================================
+-- ----------------------------------------------------------------------
 -- - UART - serial receive interrupt handling
--- =======================================================================
-
+-- ----------------------------------------------------------------------
 procedure  _serial_receive_interrupt_handler() is
 
    pragma interrupt
 
-   var  byte  x;
+   var  byte  x
 
    if  (PIR1_RCIF == TRUE)  then                -- UART receive interrupt
 
@@ -190,7 +200,7 @@ procedure  _serial_receive_interrupt_handler() is
 end procedure
 
 
--- --------------------------------------------------------------
+-- ----------------------------------------------------------------------
 --  Return byte (if any) from circular receive buffer for UART
 --
 --  input:   nothing
@@ -203,8 +213,7 @@ end procedure
 --  notes: - Rises CTS when receive buffer has more than <DELTA>
 --           bytes free space after delivering byte to caller.
 --
--- -----------------------------------------------
-
+-- ----------------------------------------------------------------------
 function  serial_receive_byte(byte out data) return bit is
 
    var  byte  x                                 -- for buffer management
@@ -234,7 +243,7 @@ function  serial_receive_byte(byte out data) return bit is
 end function
 
 
--- --------------------------------------------------------------
+-- ----------------------------------------------------------------------
 --  Put a single byte in circular transmit buffer for UART
 --
 --  input:   byte to transmit
@@ -248,8 +257,7 @@ end function
 --           * FALSE: wait for free buffer space
 --                    (returns only after data has been stored in buffer)
 --
--- -----------------------------------------------
-
+-- ----------------------------------------------------------------------
 function  serial_send_byte(byte in data) return byte is
 
    var  byte  newxmthead                        -- offset in circular buffer
@@ -284,13 +292,10 @@ function  serial_send_byte(byte in data) return byte is
 end function
 
 
--- -----------------------------------------------------------------------
--- Serial_Setup - procedure to initialize serial communications
--- -----------------------------------------------------------------------
-
-procedure serial_setup() is
-
-   serial_ctsinv_direction = output             -- input: UART CTS->PC
+-- ----------------------------------------------------------------------
+-- serial_init - procedure to initialize library functionality
+-- ----------------------------------------------------------------------
+procedure serial_init() is
 
    _serial_offsetxmthead  = 0                   -- offset next byte from appl
    _serial_offsetxmttail  = 0                   -- offset next byte to port
@@ -316,11 +321,5 @@ procedure serial_setup() is
 end procedure
 
 
--- -----------------------------------------------------------------------
--- Initialize serial communications
--- -----------------------------------------------------------------------
-
-serial_setup()
-
--- =======================================================================
+-- ----------------------------------------------------------------------
 
