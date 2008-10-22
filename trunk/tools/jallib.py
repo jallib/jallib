@@ -140,9 +140,9 @@ def do_compile(args):
 	for o,v in opts:
 		if o == '-R':
 			dirs = []
-			gdirs = v.split(":")
+			gdirs = v.split(";")
 			for d in gdirs:
-				dirs = _explore_dir(d)
+				dirs.extend(_explore_dir(d))
 		elif o == '-E':
 			jalv2_exec = v
 		else:
@@ -150,7 +150,7 @@ def do_compile(args):
 	# No root specified ? Try env var, else defaut to cwd
 	if not dirs:
 		v = os.environ.get('JALLIB_REPOS',os.path.curdir)
-		gdirs = v.split(":")
+		gdirs = v.split(";")
 		for d in gdirs:
 			dirs = _explore_dir(d)
 	# No exec specify, try env var or defaulting
@@ -707,7 +707,7 @@ Additional options:
 
     -R path1[:path2[:path3]...] : use this option to specify one or more
                                   root path to jallib directories. Directory
-                                  paths are seperated using ':' char. If no
+                                  paths are seperated using ';' char. If no
                                   option is given, this script will also 
                                   look at a JALLIB_REPOS environment variable.
                                   If no variable is set, then this script 
@@ -756,8 +756,8 @@ Use this option to handle the testing matrix and the test result page.
         If pysvn module is installed, will automatically get revision
         information for given sample. Else, you'll need to specify the
         revision, using @revision format. Using the full format with 
-		revision will also bypass getting information from SVN using
-		pysvn, even if this module is installed.
+        revision will also bypass getting information from SVN using
+        pysvn, even if this module is installed.
 
         For example:
          * to register a new test which passed, for 16f88
