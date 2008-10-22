@@ -1,0 +1,89 @@
+-- Title: test humidty values from Sensirion SHTxx humidity sensor, results on 4x20 LCD
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2008, all rights reserved.
+-- Adapted-by:
+-- Compiler: =2.4h
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this sample shows how to read the humidity values using the humidity_sht.jal library.
+-- But the byte procedure with 1% RH precision and the word procedure with 0.01% RH precision are used.
+-- Humidty is read every second: doing this every 500ms or faster heats the sensor, lowers the value, 
+-- so does not give accurate readings.
+
+-- select PIC
+include 16f876a
+
+pragma target clock     20_000_000           -- 20 MHz xtal
+pragma target OSC       HS                   -- high speed
+pragma target WDT       disabled             -- no watchdog, please
+pragma target LVP       disabled             -- no low voltage programming
+
+enable_digital_io()                          -- no analog pins used in this test
+
+include delay_any_mc                         -- used by LCD lib and sht lib
+
+const byte  LCD_ROWS = 4
+const byte  LCD_CHARS = 20
+var   bit   LCD_RS           is pin_b5       -- LCD command/data select.
+var   bit   LCD_EN           is pin_b4       -- LCD data trigger
+var   byte  LCD_dataport     is portb_low    -- LCD data nibble
+portb_direction              = all_output    -- LCD data is portb_low
+include lcd_hd44780_4                        -- LCD library with 4 data lines
+lcd_init()
+
+include print                                -- nice formatted output 
+include format                               -- more nice formatting
+
+var bit sht_DATA           is pin_a3         -- data in/out of SHTxx
+var bit sht_DATA_dir    is pin_a3_direction  -- fake-I2C requires bi-dir comms
+var bit sht_SCK            is pin_a4         -- clock of SHTxx
+pin_a4_direction           = output          -- pin_a4 needs pullup on some PICs
+include humidity_sht                         -- library
+
+-- -------------- VARIABLES ------------------------------
+
+var byte hum
+var word humidity 
+var byte counter
+
+-- --------------- START PROGRAM ---------------------------
+
+lcd_clearscreen()
+lcd_setcursor(0,0) 
+const byte str1[] = "humidity test"   
+print_string(lcd, str1)                      
+delay_100ms(20)                              -- splash screen
+
+lcd_clearscreen()
+
+forever loop
+
+   if counter % 10 == 0 then                 -- every two seconds
+      read_hum_sht(hum)                      -- max every 500ms, because of self-heating
+      lcd_setcursor(0, 0)                    -- row 1, position = 1 
+      print_byte_dec(lcd, hum)
+      lcd = "%"
+      lcd = "R"
+      lcd = "H"
+      lcd = " "
+   end if
+   
+   if counter % 10 == 5 then             
+      read_hum_word_sht(humidity)      
+      lcd_setcursor(1, 0)                    -- row 2, position = 1 
+      format_word_dec(lcd, humidity, 4, 2)
+      lcd = "%"
+      lcd = "R"
+      lcd = "H"
+      lcd = " "
+   end if
+   
+   counter = counter + 1                     -- five times per second
+   lcd_setcursor(3,0)
+   print_byte_dec(lcd, counter)              -- to see that main loop runs
+   lcd = " "
+   
+   delay_100ms(2)                            -- optimal LCD display refresh rate
+   
+end loop
