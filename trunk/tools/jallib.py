@@ -30,6 +30,31 @@ import sys, os
 import getopt
 import re
 
+# Disable action when can't import deps
+try:
+	import yaml
+	has_yaml = True
+except ImportError:
+	has_yaml = False
+
+try:
+	import Cheetah.Template
+	has_cheetah = True
+except ImportError:
+	has_cheetah = False
+
+try:
+   import subprocess
+   has_subprocess = True
+except ImportError:
+   has_subprocess = False
+
+try:
+	import pysvn
+	has_pysvn = True
+except ImportError:
+	has_pysvn = False
+
 
 #########
 # TOOLS #
@@ -69,9 +94,9 @@ def _explore_dir(onedir):
 
 
 def do_compile(args):
-	# localized import: subprocess seems not working
-	# on certain OS or python installation. 
-	import subprocess
+	if not has_subprocess:
+		print >> sys.stderr, "You can't use this action, because subprocess module is not installed"
+		sys.exit(255)
 
 	# If we can't parse given args, this means there're all 
 	# for the compiler. Keep them as backup
@@ -381,6 +406,10 @@ def do_validate(args):
 
 def do_test(args):
 
+	if not has_yaml:
+		print >> sys.stderr, "You can't use this action, because yaml is not installed"
+		sys.exit(255)
+
 	try:
 		opts, args = getopt.getopt(args, ACTIONS['test']['options'])
 	except getopt.error,e:
@@ -395,7 +424,7 @@ def do_test(args):
 	do_print = False
 	do_merge = False
 	got_html = False
-	sample_dirs = None
+	sample_dir = None
 	test_str = None
 	tmpl_file = None
 	html_file = None
@@ -415,7 +444,7 @@ def do_test(args):
 			do_delete = True
 			test_str = v
 		elif o == '-s':
-			sample_dirs = v.split(":")
+			sample_dir = v
 		elif o == '-f':
 			outfile = v
 		elif o == '-g':
@@ -444,13 +473,12 @@ def do_test(args):
 		except KeyError:
 			print >> sys.stderr,"Please provide a file to get/store the testing matrix\n(-f option or JALLIB_MATRIX env. var)"
 			sys.exit(255)
-	if not sample_dirs:
-		v = os.environ.get('JALLIB_SAMPLEDIR',os.path.curdir)
-		sample_dirs = v.split(":")
+	if not sample_dir:
+		sample_dir = os.environ.get('JALLIB_SAMPLEDIR',os.path.curdir)
 	if do_update:
-		update_testing_matrix(sample_dirs,outfile,selected_pics)
+		update_testing_matrix(sample_dir,outfile,selected_pics)
 	elif do_add:
-		add_update_test(test_str,outfile)
+		add_update_test(test_str,outfile,sample_dir)
 	elif do_delete:
 		delete_test(test_str,outfile)
 	elif do_merge:
@@ -468,7 +496,6 @@ def do_test(args):
 def get_matrix(outfile):
 	# localized import: if one doesn't want to deal
 	# with test, don't force him to install yaml lib
-	import yaml
 	
 	# existing file or from scratch ?
 	if os.path.isfile(outfile):
@@ -478,14 +505,11 @@ def get_matrix(outfile):
 	return matrix
 
 def save_matrix(matrix,outfile):
-	import yaml
 	fout = file(outfile,"w")
 	print >> fout, yaml.dump(matrix)
 	fout.close()
 	
-def update_testing_matrix(sample_dirs,outfile,selected_pics=[]):
-
-	print "selected_pics %s" % selected_pics
+def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 
 	matrix = get_matrix(outfile)
 
@@ -495,7 +519,7 @@ def update_testing_matrix(sample_dirs,outfile,selected_pics=[]):
 			if jalfile.startswith(".") or not jalfile.endswith(".jal"):
 				continue
 			###print "jalfile: %s (%s)" % (jalfile,jalfile.startswith("."))
-			matrix[device]['samples'].setdefault(jalfile,{'pass' : None})
+			matrix[device]['samples'].setdefault(jalfile,{'pass' : None, 'revision' : None})
 	
 	def analyse_sampledir(dir):
 		if not "by_device" in os.listdir(dir):
@@ -523,49 +547,81 @@ def update_testing_matrix(sample_dirs,outfile,selected_pics=[]):
 		# dispatch to devices
 		for d in matrix.keys():
 			for t in test_files:
-				matrix[d]['tests'].setdefault(t,{'pass' : None, 'board' : None})
+				matrix[d]['tests'].setdefault(t,{'pass' : None, 'board' : None, 'revision' : None})
 
 	
-	for sdir in sample_dirs:
-		analyse_sampledir(sdir)
-		# Deactivate, until we can selecttively know which
-		# is available for which PIC
-		##analyse_testdir(sdir)
+	analyse_sampledir(sample_dir)
+	# Deactivate, until we can selecttively know which
+	# is available for which PIC
+	##analyse_testdir(sdir)
 	
 	save_matrix(matrix,outfile)
 
 
-def add_update_test(test_str,outfile):
+def add_update_test(test_str,outfile,sample_dir):
 	matrix = get_matrix(outfile)
-	# TODO: check samples actually exist
 	try:
 		pic,testfile,result = test_str.split(":")
 	except ValueError:
 		print >> sys.stderr,"Please specify the result as <pic>:<test_file>:<result>\n(eg. 16f88:serial_hw_echo.jal:true)"
 		sys.exit(1)
+	# extract manually passed revision (if exists)
+	revision = None
+	if "@" in result:
+		result,revision = result.split("@")
 	# normalize
 	try:
 		result = {'true':True,'false':False,'null':None}[result]
 	except KeyError,e:
 		print >> sys.stderr,"Invalid result '%s'. Specify either true, false or null" % e
 		sys.exit(1)
+
 	try:
 		samples = matrix[pic]['samples']
-		n = {'pass' : result}
-		if samples.has_key(testfile):
-			t = samples[testfile]
-			print "Update test '%s' for PIC %s: %s => %s" % (testfile,pic,repr(t),repr(n))
-			samples[testfile] = n
-		else:
-			print "Add new test '%s' for PIC %s: %s" % (testfile,pic,n)
-		samples[testfile] = n
-		save_matrix(matrix,outfile)
 	except KeyError,e:
 		print >> sys.stderr,"Can't find PIC %s (need to update the matrix ?)" % e
+		sys.exit(1)
+	
+	# check if sample exist, and under svn
+	bydevice = os.path.join(sample_dir,'by_device')
+	if not os.path.isdir(bydevice):
+		print >> sys.stderr, "'%s' is not a valid directory" % bydevice
+		sys.exit(1)
+	fullsfile = os.path.join(bydevice,pic,testfile)
+	if not os.path.isfile(fullsfile):
+		print >> sys.stderr, "File '%s' does not exist" % fullsfile
+		sys.exit(1)
+	if revision:
+		# bypass automatic info fetching
+		try:
+			revision = int(revision)
+		except TypeError,ValueError:
+			print >> sys.stderr, "Revision must be an integer, not %s" % repr(revision)
+			sys.exit(1)
+	elif has_pysvn:
+		# get svn info using pysvn 
+		try:
+			svnclient = pysvn.Client()
+			revision = svnclient.info(fullsfile)['revision'].number
+		except pysvn.ClientError,e:
+			print >> sys.stderr, "Unable to get SVN information, because: %s" % e
+			sys.exit(1)
+	else:
+		print >> sys.stderr, "You don't have pysvn installed, you need to specify the revision\n\t<pic>:<testfile>:<true|false|null>@<revision"
+		sys.exit(1)
+
+	n = {'pass' : result, 'revision' : revision}
+	if samples.has_key(testfile):
+		t = samples[testfile]
+		print "Update test '%s' for PIC %s: %s => %s" % (testfile,pic,repr(t),repr(n))
+		samples[testfile] = n
+	else:
+		print "Add new test '%s' for PIC %s: %s" % (testfile,pic,n)
+	samples[testfile] = n
+	save_matrix(matrix,outfile)
 
 def delete_test(test_str,outfile):
 	matrix = get_matrix(outfile)
-	# TODO: check samples actually exist
 	try:
 		pic,testfile = test_str.split(":")
 	except ValueError:
@@ -580,7 +636,10 @@ def delete_test(test_str,outfile):
 		sys.exit(1)
 
 def generate_html(tmpl_file,html_file,outfile,only_passed=False,for_each_pic_tmpl=None):
-	import Cheetah.Template
+	if not has_cheetah:
+		print >> sys.stderr, "You can't use this action, because cheetah module is not installed"
+		sys.exit(255)
+		
 	matrix = get_matrix(outfile)
 	tmplsrc = "".join(file(tmpl_file,"r").readlines())
 	klass = Cheetah.Template.Template.compile(tmplsrc)
@@ -618,6 +677,7 @@ def merge_matrix(outfile,sub_matrix):
 
 def generic_help():
 	print """
+jallib wrapper script (revision: $Revision$)
 Actions:
     - compile  : compile the given file, expanding one or more root
                  directories containing libraries
@@ -692,13 +752,23 @@ Use this option to handle the testing matrix and the test result page.
 
     -a: add or update a test result. If the test does not exist, it's 
         added to the matrix, else results will be updated.
-        The format is target:test_file:result. For example:
+        The format is target:test_file:result[@revision].
+        If pysvn module is installed, will automatically get revision
+        information for given sample. Else, you'll need to specify the
+        revision, using @revision format. Using the full format with 
+		revision will also bypass getting information from SVN using
+		pysvn, even if this module is installed.
+
+        For example:
          * to register a new test which passed, for 16f88
             -a 16f88:new_test.jal:true
          * to register a new test which failed, for 16f877
             -a 16f877:new_test.jal:false
          * to register a new test, not run yet, for 16f648a
             -a 16f648a:new_test.jal:null
+         * to register a new test without pysvn installed (manual),
+           assuming the test is working for revision 143
+            -a 16f628:new_test.jal:true@143
 
     -d: delete/unregister test. The format is: target:test_file. Ex:
         To remove a test from 16f88 device:
@@ -732,11 +802,10 @@ Use this option to handle the testing matrix and the test result page.
     -f: file storing the testing matrix results. YAML formatted. If not 
         specified, will look for a JALLIB_MATRIX environment variable.
     
-    -s: path to the sample directory (or multiple sample directory, 
-        ':' separated). If no option is given, it will expect to define as 
-        an environment variable, JALLIB_SAMPLEDIR. If no option is given,
-        and no env. variable can be found, the current directory will be 
-        considered. The sample(s) directory(ies) *must* contain a 
+    -s: path to the sample directory. If no option is given, it will expect 
+        to define as an environment variable, JALLIB_SAMPLEDIR. If no option
+        is given, and no env. variable can be found, the current directory 
+        will be considered. The sample(s) directory(ies) *must* contain a 
         'by_device' directory.
 
 """
