@@ -29,6 +29,8 @@ export JALLIB_ROOT=
 export JALLIB_REPOS=$JALLIB_ROOT/unvalidated/include
 # path to jallib root's samples. You may want to point to "validated" or "unvalidated"
 export JALLIB_SAMPLEDIR=$JALLIB_ROOT/unvalidated/sample
+# path to the testing matrix
+export JALLIB_MATRIX=$JALLIB_SAMPLEDIR/testing_matrix.yaml
 # path to "jalv2" executable. If not in your PATH, set an absolute path to the exec
 export JALLIB_JALV2=jalv2
 
