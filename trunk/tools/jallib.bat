@@ -27,6 +27,8 @@ rem path to jallib root's libraries. You may want to point to "validated" or "un
 set JALLIB_REPOS=%JALLIB_ROOT%\unvalidated\include
 rem path to jallib root's samples. You may want to point to "validated" or "unvalidated"
 set JALLIB_SAMPLEDIR=%JALLIB_ROOT%\unvalidated\sample
+rem path to the testing matrix
+set JALLIB_MATRIX=%JALLIB_SAMPLEDIR%\testing_matrix.yaml
 rem path to "jalv2" executable. If not in your PATH, set an absolute path to the exec
 set JALLIB_JALV2=C:\jalv2\jalv2.exe
 

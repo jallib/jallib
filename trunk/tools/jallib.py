@@ -16,11 +16,17 @@
 #              
 # Dependencies: according to the following actions, you'll need to install the
 # following libraries (if you don't use the action, you can skip it)
+# If you use the binary executables, you won't need to install them
+deps = [
+   # (lib name, used in actions, website)
+   ('wikify','jalapi','http://cspace.googlecode.com/svn/wiki/wikify.py'),
+   ('cheetah','jalapi','http://cheetahtemplate.org'),
+   ('yaml','test','http://pyyaml.org/wiki/PyYAML'),
+   ('pysvn','jalapi,test','http://pysvn.tigris.org/'),
+   ]
+# Of course, since it's about jal, you'll need jalv2 compiler installed
+# (not bundled in binary executables)
 # - jalv2 executable (compile): http://www.casadeyork.com/jalv2
-# - wikify (jalapi): http://cspace.googlecode.com/svn/wiki/wikify.py
-# - Cheetah (jalapi): http://cheetahtemplate.org
-# - yaml (test): http://pyyaml.org/wiki/PyYAML
-# - pysvn (jalapi,test): http://pysvn.tigris.org/
 # 
 # Notes:
 #
@@ -686,8 +692,19 @@ Actions:
 
 Use 'help' with each action for more (eg. "jallib help compile")
 
+http://jallib.googlecode.com 
 """
 
+def do_license(_trash):
+	print """
+http://jallib.googlecode.com 
+Released under the BSD license
+
+"jallib" binary executables are bundled with several libraries,
+please refer to them for their respective licenses:
+"""
+	for t in deps:
+		print "    - %s (%s)" % (t[0],t[2])
 
 def compile_help():
 	print """
@@ -826,6 +843,7 @@ ACTIONS = {
 		'validate'	: {'callback' : do_validate, 'options' : '', 'help' : validate_help},
 		'test'		: {'callback' : do_test, 'options' : 's:uf:a:g:d:o:p:t:1n:m:', 'help' : test_help},
 		'help'		: {'callback' : do_help, 'options' : '', 'help' : None},
+		'license'	: {'callback' : do_license, 'options' : '', 'help' : None},
 		}
 
 
