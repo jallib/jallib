@@ -68,6 +68,8 @@ except ImportError:
 
 def get_jal_filenames(dir,subdir=None):
 	jalfiles = {}
+	if os.path.isfile(dir):
+		return {dir:dir}
 	for df in os.listdir(dir):
 		if df.startswith("."):
 			continue
