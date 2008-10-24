@@ -66,16 +66,17 @@ except ImportError:
 # TOOLS #
 #########
 
-def get_jal_filenames(dir):
-	jalfiles = []
+def get_jal_filenames(dir,subdir=None):
+	jalfiles = {}
 	for df in os.listdir(dir):
 		if df.startswith("."):
 			continue
 		fulldf = os.path.join(dir,df)
+		halfdf = os.path.join(subdir and subdir or "",df)
 		if os.path.isfile(fulldf) and fulldf.endswith(".jal"):
-			jalfiles.append(df)
-		else:
-			jalfiles.extend(get_jal_filenames(fulldf))
+			jalfiles[df] = halfdf
+		elif os.path.isdir(fulldf):
+			jalfiles.update(get_jal_filenames(fulldf,subdir=os.path.join(subdir and subdir or "",df)))
 	return jalfiles
 
 
@@ -99,7 +100,7 @@ def _explore_dir(onedir):
 	return dirs
 
 
-def do_compile(args):
+def do_compile(args,exitonerror=True):
 	if not has_subprocess:
 		print >> sys.stderr, "You can't use this action, because subprocess module is not installed"
 		sys.exit(255)
@@ -169,10 +170,12 @@ def do_compile(args):
 	print "cmd: %s" % repr(cmd)
 	try:
 		status = subprocess.check_call(cmd,shell=False)
+		return status
 	except subprocess.CalledProcessError,e:
 		print >> sys.stderr, "Error while compiling file (status=%s).\nSee previous message." % e.returncode
-		sys.exit(e.returncode)
-	pass
+		exitonerror and sys.exit(e.returncode)
+		return e.returncode
+
 
 
 #----------#
@@ -524,7 +527,6 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 		for jalfile in content:
 			if jalfile.startswith(".") or not jalfile.endswith(".jal"):
 				continue
-			###print "jalfile: %s (%s)" % (jalfile,jalfile.startswith("."))
 			matrix[device]['samples'].setdefault(jalfile,{'pass' : None, 'revision' : None})
 	
 	def analyse_sampledir(dir):
@@ -545,21 +547,40 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 		if not "test" in os.listdir(dir):
 			print >> sys.stderr, "Sample dir '%s' does not contain 'test' map." % dir
 			sys.exit(1)
-		fulldir = os.path.join(dir,"test")
-		tdirs = [os.path.join(fulldir,d) for d in os.listdir(fulldir) if not d.startswith(".") and d != "board"]
-		test_files = []
-		for tdir in tdirs:
-			test_files.extend([f for f in get_jal_filenames(tdir) if f.startswith("test_")])
-		# dispatch to devices
-		for d in matrix.keys():
-			for t in test_files:
-				matrix[d]['tests'].setdefault(t,{'pass' : None, 'board' : None, 'revision' : None})
+		if not "board" in os.listdir(os.path.join(dir,"test")):
+			print >> sys.stderr, "Sample dir '%s' does not contain 'board' map." % os.path.join(dir,"test")
+			sys.exit(1)
+		# Get ALL test files
+		testdir = os.path.join(dir,"test")
+		tdirs = [(d,os.path.join(testdir,d)) for d in os.listdir(testdir) if not d.startswith(".") and d != "board"]
+		test_files = {}
+		for (subdir,tdir) in tdirs:
+			test_files.update(get_jal_filenames(tdir,subdir)) ## if f.startswith("test_")])
+		# analyse board files, so pic can be deduced
+		boarddir = os.path.join(dir,"test","board")
+		for boardfile in os.listdir(boarddir):
+			if not boardfile.endswith(".jal"):
+				continue
+			try:
+				pic = re.match("board_(.*)_.*\.jal",boardfile).groups()[0]
+				if selected_pics and not pic in selected_pics:
+					# skip it, not wanted by user
+					continue
+			except Exception,e:
+				print >> sys.stderr, "Unable to parse board filename '%s', skip it" % boardfile
+				continue
+			# now try to compile every tests with this given board
+			for test,pathtest in test_files.items():
+				status = do_compile(["-i",os.path.join(boarddir,boardfile),os.path.join(testdir,pathtest)],exitonerror=False)
+				if status == 0:
+					# dispatch to devices
+					matrix[pic]['tests'].setdefault(test,{'pass' : None, 'revision' : None})
+					print "Test '%s' registered for pic '%s'" % (test,pic)
+				else:
+					print >> sys.stderr, "Compilation failed for test '%s' with pic '%s' (status=%s)" % (test,pic,status)
 
-	
 	analyse_sampledir(sample_dir)
-	# Deactivate, until we can selecttively know which
-	# is available for which PIC
-	##analyse_testdir(sdir)
+	analyse_testdir(sample_dir)
 	
 	save_matrix(matrix,outfile)
 
@@ -583,20 +604,33 @@ def add_update_test(test_str,outfile,sample_dir):
 		sys.exit(1)
 
 	try:
-		samples = matrix[pic]['samples']
+		# dispatch by naming convention...
+		if testfile.startswith("test_"):
+			tdict = matrix[pic]['tests']
+			testdir = os.path.join(sample_dir,'test')
+			if not os.path.isdir(testdir):
+				print >> sys.stderr, "'%s' is not a valid directory" % testdir
+				sys.exit(1)
+			tfiles = get_jal_filenames(os.path.join(sample_dir,'test'))
+			if not testfile in tfiles.keys():
+				print >> sys.stderr, "Can't find test '%s'" % testfile
+				sys.exit(1)
+			fullsfile = os.path.join(testdir,tfiles[testfile])
+		else:
+			tdict = matrix[pic]['samples']
+			# check if sample exist, and under svn
+			bydevice = os.path.join(sample_dir,'by_device')
+			if not os.path.isdir(bydevice):
+				print >> sys.stderr, "'%s' is not a valid directory" % bydevice
+				sys.exit(1)
+			fullsfile = os.path.join(bydevice,pic,testfile)
+			if not os.path.isfile(fullsfile):
+				print >> sys.stderr, "Sample '%s' does not exist" % fullsfile
+				sys.exit(1)
 	except KeyError,e:
 		print >> sys.stderr,"Can't find PIC %s (need to update the matrix ?)" % e
 		sys.exit(1)
 	
-	# check if sample exist, and under svn
-	bydevice = os.path.join(sample_dir,'by_device')
-	if not os.path.isdir(bydevice):
-		print >> sys.stderr, "'%s' is not a valid directory" % bydevice
-		sys.exit(1)
-	fullsfile = os.path.join(bydevice,pic,testfile)
-	if not os.path.isfile(fullsfile):
-		print >> sys.stderr, "File '%s' does not exist" % fullsfile
-		sys.exit(1)
 	if revision:
 		# bypass automatic info fetching
 		try:
@@ -617,13 +651,13 @@ def add_update_test(test_str,outfile,sample_dir):
 		sys.exit(1)
 
 	n = {'pass' : result, 'revision' : revision}
-	if samples.has_key(testfile):
-		t = samples[testfile]
-		print "Update test '%s' for PIC %s: %s => %s" % (testfile,pic,repr(t),repr(n))
-		samples[testfile] = n
+	if tdict.has_key(testfile):
+		t = tdict[testfile]
+		print "Update '%s' result for PIC %s: %s => %s" % (testfile,pic,repr(t),repr(n))
+		tdict[testfile] = n
 	else:
-		print "Add new test '%s' for PIC %s: %s" % (testfile,pic,n)
-	samples[testfile] = n
+		print "Add new file '%s' for PIC %s: %s" % (testfile,pic,n)
+	tdict[testfile] = n
 	save_matrix(matrix,outfile)
 
 def delete_test(test_str,outfile):
@@ -634,8 +668,11 @@ def delete_test(test_str,outfile):
 		print >> sys.stderr,"Please specify the test to remove as <pic>:<test_file>\n(eg. 16f88:bad_test.jal)"
 		sys.exit(1)
 	try:
-		print "Unregistering test '%s' from PIC %s" % (testfile,pic)
-		del matrix[pic]['samples'][testfile]
+		ttype = "sample"
+		if testfile.startswith("test_"):
+			ttype = "test"
+		print "Unregistering %s '%s' from PIC %s" % (ttype,testfile,pic)
+		del matrix[pic]['%ss' % ttype][testfile]
 		save_matrix(matrix,outfile)
 	except KeyError,e:
 		print >> sys.stderr, "Unable to delete '%s' from PIC %s, cannot find '%s'" % (testfile,pic,e)
@@ -663,11 +700,12 @@ def generate_html(tmpl_file,html_file,outfile,only_passed=False,for_each_pic_tmp
 def display_test_results(pic,outfile):
 	matrix = get_matrix(outfile)
 	try:
-		print "samples:"
-		for k,v in matrix[pic]['samples'].items():
-			print "    %s : %s" % (k,v['pass'])
+		for ttype in ("samples","tests"):
+			print "%s:" % ttype
+			for k,v in matrix[pic][ttype].items():
+				print "    %s : %s" % (k,v['pass'])
 	except KeyError,e:
-		print >> sys.stderr, "Cant't test result for PIC %s" % e
+		print >> sys.stderr, "Can't test result for PIC %s" % e
 		sys.exit(1)
 
 def merge_matrix(outfile,sub_matrix):
@@ -722,7 +760,7 @@ executable must be declare in the path (PATH) by default.
 
 Additional options:
 
-    -R path1[:path2[:path3]...] : use this option to specify one or more
+    -R path1[;path2[;path3]...] : use this option to specify one or more
                                   root path to jallib directories. Directory
                                   paths are seperated using ';' char. If no
                                   option is given, this script will also 
