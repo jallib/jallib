@@ -50,16 +50,6 @@ jsg:
 doc:
 	./jalapi_generate.sh ../${ENV}
 
-check-pyinstaller:
-	# YOU MUST HAVE pyinstaller INSTALLED -- http://pyinstaller.python-hosting.com --
-	[ -e pyinstaller-1.3 ]
-
-linux-binary: check-pyinstaller
-	python pyinstaller-1.3/Configure.py
-	python pyinstaller-1.3/Makespec.py -F jallib.py
-	python pyinstaller-1.3/Build.py jallib.spec
-
-
 export:
 	# prepare distrib dir
 	mkdir distrib
