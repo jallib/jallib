@@ -1,0 +1,361 @@
+-- Title: Software RS232 library
+-- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
+-- Adapted-by: Sebastien Lelong.
+-- Compiler: >=2.4g
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: software RS232 library
+-- Library supports software RS232 send and receive procedure on any IO-pin.
+-- Both the inverted and non-inverted routines are available, 
+-- so it should fit any hardware.
+-- Baudrate can be set between 110 and 230_400 (for 20 Mhz Xtal),
+-- for lower Xtal frequencies the maximum baudrate will be equally lower.
+-- Baudrates are optimized, so even the high baudrates shouldn't be a problem
+-- (my [Stef] standard = 115_200 Baud, which has never given me any problems).
+-- Interrupts should be disabled during transmissions.
+-- Transmission parameters are 8 databits, 2 stopbits, no parity, no handshake.
+--
+-- TODO: should transmission parameters be configurable ? 
+-- (8 databits, 2 stopbits, no parity, no handshake)
+--
+
+
+procedure serial_sw_init() is
+   -- ouput/tx pin active or not according to invert
+   if serial_sw_invert then
+      serial_sw_tx_pin = high
+   else
+      serial_sw_tx_pin = low
+   end if
+end procedure
+
+
+;; Number of instructions per bit
+const _NINSTR = target_clock / (4 * serial_sw_baudrate)
+const _NINSTR2 = 5 + ( _NINSTR / 2)
+-- -----------------------------------------------------------------------------
+
+
+;; Transmit parameters
+const OL_TX  = ( _NINSTR / ( 3 * 255 )) + 1
+const _IL_TX  = ( ( _NINSTR - ( 4 * OL_TX ) ) - 16 ) / ( 3 * OL_TX )
+
+;; because some corrections have to be made, declare InnerLoop counter as var
+var byte IL_TX = _IL_TX
+
+;; for small values, the value is truncated in stead of rounded, so add 1
+if _IL_TX < 10 then
+   IL_TX = _IL_TX + 1
+end if
+
+-- -----------------------------------------------------------------------------
+-- For Xtal = 20_000_000, the following counter values are calculated (in Hex)
+--  Baud      olcnt    ilcnt     Ninstr
+--  110       3C       FB
+--  300       16       FA
+--  600       0B       FA
+--  1200      06       E5
+--  2400      03       E4
+--  4800      02       A9
+--  9600      01       A6
+--  14_400    01       6D
+--  19_200    01       50
+--  38_400    01       24
+--  57_600    01       16
+--  115_200   01       08        43
+--  230_400   01       01        22    NOT TESTED
+--
+-- Test sequence used: all possibilities
+
+
+
+-- receiving is optimized for 20 Mhz, 320_400 Baud
+--   Number of instructions = (3 * olval * Ilval) + (4 * olval) + 15
+-- 320kB  ==>  olval = ilval = 1
+-- next optimization for 20 Mhz, 115_200 Baud  olval = 1
+--   olval = 1   ==>   ilval = 8
+-- all other buadrates downto 1200 shouldnt be a problem now
+-- because of "IF-statement" this constant must be declared as a var
+
+var byte ilval
+var byte olval
+var byte ilval0
+
+if serial_sw_baudrate < 200_000 then
+   const _olval  = ( _NINSTR / ( 3 * 255 )) + 1
+   const _ilval  = ( ( _NINSTR - ( 4 * _olval ) ) - 15 ) / ( 3 * _olval )
+   const _ilval0 = ( ( _NINSTR2 - ( 4 * _olval ) ) - 5 ) / ( 3 * _olval )
+   
+   
+   ilval  = _ilval
+   olval  = _olval
+   ;due to rounding the next value can slightly below 1
+   if _ilval0 > 0 then
+      ilval0 = _ilval0
+   else
+      ilval0 = 1
+   end if
+   ilval0 = _ilval0
+   
+   -- test if baudrate valid for the chosen Xtal frequency
+   if _olval > 255 then
+      pragma error  -- baudrate too low for this Xtal
+   end if
+   if _olval == 0 then
+      pragma error  -- baudrate too high for this Xtal
+   end if
+   
+else
+   const _ilval = 1
+   const _olval = ((target_clock / (4 * serial_sw_baudrate)) - 15 ) / (4 + 3 * _ilval)
+   ilval = _ilval
+   olval = _olval
+
+end if
+
+-- For Xtal = 20_000_000, the following counter values are calculated (in Hex)
+--  Baud      olcnt    ilcnt     ILcnt0      Ninstr
+--  110       3C       FB        7C
+--  300       16       FA        7C
+--  600       0B       FA        7C
+--  1200      06       E5        72
+--  2400      03       E4        72
+--  4800      02       A9        55
+--  9600      01       A7        55
+--  14_400    01       6D        38
+--  19_200    01       50        2A
+--  38_400    01       25        14
+--  57_600    01       16        0D
+--  115_200   01       08        05          43
+--  230_400   ?        ?         ?           22    NOT TESTED
+--
+-- Test sequence used (Hex)
+--    01  02  04  08  10  20  40  80  00 FF  AA  55
+
+
+
+-- Waits untill a character is received.
+-- Interrupts will be disabled during this routine, but restored afterwards.
+-- Also here the code is doubled (inverting and non-inverting)
+-- and selection is done by a compiler-directive.
+procedure serial_sw_write(byte in data) is
+   var bit old_gie    ;status of interrupt enable on entrance
+   ;; jallib(seb): this is a way to act on tx pin
+   ;;var bit pp at serial_sw_out_port : serial_sw_out_nr
+   var bit pp is serial_sw_tx_pin
+   var bit data_bit at data : 0
+   
+   -- stop interrupts and be sure they are stopped
+   -- save old interrupt status
+   old_gie = INTCON_GIE
+   while INTCON_GIE loop
+      INTCON_GIE = false
+   end loop
+   
+   if serial_sw_invert then
+      pp = low
+      _usec_delay((1_000_000/serial_sw_baudrate)-2)
+      for 8 loop
+         -- wait a whole bittime, less some usec for other actions
+         pp = data_bit
+         data = data >> 1
+         _usec_delay((1_000_000/serial_sw_baudrate)-2)
+      end loop
+      -- add 2 stop bits
+      pp = high
+      _usec_delay((2_000_000/serial_sw_baudrate))
+      
+   else
+      -- invert the data
+      data = ! data 
+      pp = high
+      _usec_delay((1_000_000/serial_sw_baudrate)-2)
+      for 8 loop
+         -- wait a whole bittime, less some usec for other actions
+         pp = data_bit
+         data = data >> 1
+         _usec_delay((1_000_000/serial_sw_baudrate)-2)
+      end loop
+      -- add 2 stop bits
+      pp = low
+      _usec_delay((2_000_000/serial_sw_baudrate))
+   end if
+   
+   -- restore old interrupt status
+   INTCON_GIE = old_gie
+
+end procedure
+
+
+-- Waits untill a character is received.
+-- Interrupts will be disabled during this routine, but restored afterwards.
+-- Also here the code is doubled (inverting and non-inverting)
+-- and selection is done by a compiler-directive.
+procedure serial_sw_read_wait(byte out data) is
+   var bit  ie_old    ;status of interrupt enable on entrance
+   var bit ready
+   ;; jallib(seb): this is a way to act on rx pin
+   ;;var bit pp at serial_sw_in_port : serial_sw_in_nr
+   var bit pp is serial_sw_rx_pin
+   
+   -- stop interrupts and be sure they are stopped
+   -- save old interrupt status
+   ie_old = INTCON_GIE
+   while INTCON_GIE loop
+      INTCON_GIE = false
+   end loop
+   
+   if serial_sw_invert then
+      -- wait for serial line inactive
+      while !pp loop end loop 
+
+      ready = false
+      while !ready loop
+         -- wait for startbit
+         while pp loop end loop 
+         
+         -- wait half a bit time, less 5 usec for other actions
+         _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
+         
+         -- test if still startbit, otherwise restart
+         if !pp then
+            -- now fetch 8 bits
+            for 8 loop
+               -- wait a whole bittime, less 5 usec for other actions
+               _usec_delay((1_000_000/serial_sw_baudrate)-1)
+               -- shift new bit in
+               data = data >> 1
+               if pp then
+                  data = data | 0x80
+               end if 
+            end loop
+            ready = true
+         else
+            ready = false
+         end if
+      end loop
+   else  ;NOT inverted
+      -- wait for serial line inactive
+      while pp loop end loop 
+      
+      ready = false
+      while !ready loop
+         -- wait for startbit
+         while !pp loop end loop 
+         
+         -- wait half a bit time, less 5 usec for other actions
+         _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
+         
+         -- test if still startbit, otherwise restart
+         if pp then
+            -- now fetch 8 bits
+            for 8 loop
+               -- wait a whole bittime, less 5 usec for other actions
+               _usec_delay((1_000_000/serial_sw_baudrate)-1)
+               -- shift new bit in
+               data = data >> 1
+               if !pp then
+                  data = data | 0x80
+               end if 
+            end loop
+            ready = true
+         else
+            ready = false
+         end if
+      end loop
+   end if
+   
+   -- restore old interrupt status
+   INTCON_GIE = ie_old
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Here the serial_sw_write procedure is declared as a pseudo variable
+-- so you can use it in the following way:
+-- {{{
+--    serial_sw_write = 0x33
+-- }}}
+procedure serial_sw_data'put(byte in data) is
+   serial_sw_write(data)
+end procedure
+
+-- Here the serial_sw_read_wait procedure is declared as a pseudo variable
+-- so you can use it in the following way
+-- {{{
+--    Data = serial_sw_write
+-- }}}
+function serial_sw_data'get() return byte is
+   var byte data
+   serial_sw_read_wait( data )
+   return data
+end function  
+
+-- Waits untill a character is received or time out is reached.
+-- Interrupts will be disabled during this routine, but restored afterwards.
+-- Also here the code is doubled (inverting and non-inverting)
+-- and selection is done by a compiler-directive.
+function serial_sw_read(byte out data) return bit is
+   var bit ie_old    ;status of interrupt enable on entrance
+   ;; jallib(seb): this is a way to act on rx pin
+   ;;var bit pp at serial_sw_in_port : serial_sw_in_nr
+   var bit pp is serial_sw_rx_pin
+   
+   if serial_sw_invert != pp then
+      return false
+   end if
+
+   -- stop interrupts and be sure they are stopped
+   -- save old interrupt status
+   ie_old = INTCON_GIE
+   while INTCON_GIE loop
+      INTCON_GIE = false
+   end loop
+   
+   if serial_sw_invert then
+       -- wait for startbit
+      while pp loop end loop 
+      
+      -- wait half a bit time, less 5 usec for other actions
+      _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
+      
+      -- now fetch 8 bits
+      for 8 loop
+         -- wait a whole bittime, less 5 usec for other actions
+         _usec_delay((1_000_000/serial_sw_baudrate)-1)
+         -- shift new bit in
+         data = data >> 1
+         if pp then
+            data = data | 0x80
+         end if 
+      end loop
+   else  ;NOT inverted
+      -- wait for startbit
+      while !pp loop end loop 
+      
+      -- wait half a bit time, less 5 usec for other actions
+      _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
+      
+      -- now fetch 8 bits
+      for 8 loop
+         -- wait a whole bittime, less 5 usec for other actions
+         _usec_delay((1_000_000/serial_sw_baudrate)-1)
+         -- shift new bit in
+         data = data >> 1
+         if !pp then
+            data = data | 0x80
+         end if 
+      end loop
+   end if
+   
+   -- restore old interrupt status
+   INTCON_GIE = ie_old
+   
+   return true
+
+end function
+
+
