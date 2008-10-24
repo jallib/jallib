@@ -1,3 +1,4 @@
+@ echo off
 rem  Title: jallib executable for windows system
 rem  Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
 rem  Adapted-by:
@@ -22,7 +23,7 @@ rem ######################
 
 
 rem Path to the jallib root's repository (containing "tools,"unvalidated","validated" dirs)
-set JALLIB_ROOT=
+set JALLIB_ROOT=C:\Documents and Settings\Seb\Mes documents\Projects\jallib
 rem path to jallib root's libraries. You may want to point to "validated" or "unvalidated"
 set JALLIB_REPOS=%JALLIB_ROOT%\unvalidated\include
 rem path to jallib root's samples. You may want to point to "validated" or "unvalidated"
@@ -30,7 +31,7 @@ set JALLIB_SAMPLEDIR=%JALLIB_ROOT%\unvalidated\sample
 rem path to the testing matrix
 set JALLIB_MATRIX=%JALLIB_SAMPLEDIR%\testing_matrix.yaml
 rem path to "jalv2" executable. If not in your PATH, set an absolute path to the exec
-set JALLIB_JALV2=C:\jalv2\jalv2.exe
+set JALLIB_JALV2=C:\jalv24h\jalv2.exe
 
 
 
@@ -54,6 +55,6 @@ rem ###################
 rem  (advanced users)
 rem  uncomment the two last line, and comment the standalone call.
 rem # path to "python" executable, if needed
-set JALLIB_PYTHON=C:\Python25\python.exe
-%JALLIB_PYTHON% %JALLIB_ROOT%/tools/jallib.py %1 %2 %3 %4 %5 %6 %7 %8 %9
+rem set JALLIB_PYTHON=C:\Python25\python.exe
+rem %JALLIB_PYTHON% %JALLIB_ROOT%/tools/jallib.py %1 %2 %3 %4 %5 %6 %7 %8 %9
 
