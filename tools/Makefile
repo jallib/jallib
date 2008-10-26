@@ -32,9 +32,9 @@ test :
 	# run testsuite
 
 compile:
-	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
+	for f in `find ${SAMPLIR_DIR}/by_device -name \*.jal`; \
 	do \
-		jalv2 -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
+		jalv2 -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '0 errors' && true || ( echo problem with $$f && exit 255; ) \
 	done 
 
 jsg:
