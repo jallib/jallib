@@ -96,7 +96,7 @@ def get_samples_info(samples):
 	dsamples = {}
 	for sample in samples:
 		# yeah, that's a system call again, for svn...
-		# en english please so we can parse...
+		# in english please so we can parse...
 		stdin,stdout,stderr = os.popen3("LANG=C svn info %s | grep ^URL:" % sample)
 		stderr = stderr.read()
 		if stderr:
@@ -109,7 +109,9 @@ def get_samples_info(samples):
 			print >> sys.stderr, "Skip extracting SVN Repository Root for sample %s because: %s" % (sample,stderr)
 		reposroot = stdout.read().replace("Repository Root:","").strip()
 		svnbrowserurl = fullurl.replace(reposroot,SVN_BROWSER_ROOT)
-		dsamples[os.path.basename(sample)] = svnbrowserurl
+		remain, fsample = os.path.split(sample)
+		_trash, pic = os.path.split(remain) 
+		dsamples[(pic,fsample)] = svnbrowserurl
 	
 	return dsamples
 
@@ -141,6 +143,8 @@ if __name__ == '__main__':
 	except KeyError:
 		print >> sys.stderr, "Set SAMPLEDIR env. variable, so I can search for sample using %s" % filename
 		sys.exit(2)
+	# point to by_device map, to avoid test files
+	SAMPLEDIR = os.path.join(SAMPLEDIR,"by_device")
 	# yeah, that's a grep, this should be re-implemened in pure python
 	# to be used under MS win.
 	libname = re.sub("\.jal$","",os.path.basename(filename))
