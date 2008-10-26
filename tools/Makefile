@@ -56,10 +56,10 @@ export:
 	mkdir distrib/jallib-${VERSION}
 	mkdir distrib/jallib-${VERSION}/lib
 	mkdir distrib/jallib-${VERSION}/doc
-	mkdir distrib/jallib-devices-${VERSION}
-	mkdir distrib/jallib-devices-${VERSION}/lib
-	mkdir distrib/jallib-devices-${VERSION}/blink
-	mkdir -p distrib/jallib-devices-${VERSION}/doc/html
+	mkdir distrib/jallib-all_devices-${VERSION}
+	mkdir distrib/jallib-all_devices-${VERSION}/lib
+	mkdir distrib/jallib-all_devices-${VERSION}/blink
+	mkdir -p distrib/jallib-all_devices-${VERSION}/doc/html
 	# get clean source from repos
 	# (svn export gets the sources, but without any .svn dir (no svn metadata)
 	svn export http://jallib.googlecode.com/svn/trunk/${ENV} distrib/jallib-export
@@ -71,10 +71,10 @@ export:
 	svn export --force http://jallib.googlecode.com/svn/trunk/tools distrib/jallib-extra
 	# flatten library files
 	find distrib/jallib-export/include -type f -exec cp {} distrib/jallib-${VERSION}/lib \;
-	find distrib/jallib-unvalidated/include/device -type f -exec cp {} distrib/jallib-devices-${VERSION}/lib \;
+	find distrib/jallib-unvalidated/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
 	for f in `find distrib/jallib-unvalidated/sample/by_device/ -type f | grep -e 'b[[:digit:]]\{2\}[[:alpha:]]\+.*\.jal'`; \
 	do \
-		cp $$f distrib/jallib-devices-${VERSION}/blink;\
+		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
 	done
 	# doc
 	cp -r distrib/jallib-export/doc/* distrib/jallib-${VERSION}/doc
@@ -82,12 +82,12 @@ export:
 	# 	jallib
 	cp distrib/jallib-extra/LICENSE distrib/jallib-${VERSION}/
 	cp distrib/jallib-extra/README.release distrib/jallib-${VERSION}/README
-	# 	jallib-devices
-	cp distrib/jallib-extra/LICENSE distrib/jallib-devices-${VERSION}/
-	cp distrib/jallib-extra/README.device distrib/jallib-devices-${VERSION}/README
-	cp distrib/jallib-extra/README.blink distrib/jallib-devices-${VERSION}/README.blink
-	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-devices-${VERSION}/doc/html
-	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-devices-${VERSION}/doc/html
+	# 	jallib-all_devices
+	cp distrib/jallib-extra/LICENSE distrib/jallib-all_devices-${VERSION}/
+	cp distrib/jallib-extra/README.device distrib/jallib-all_devices-${VERSION}/README
+	cp distrib/jallib-extra/README.blink distrib/jallib-all_devices-${VERSION}/README.blink
+	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-all_devices-${VERSION}/doc/html
+	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-all_devices-${VERSION}/doc/html
 	# TODO: readme for jallib-device
 	# keep sample map as is
 	cp -r distrib/jallib-export/sample distrib/jallib-${VERSION}/
@@ -95,7 +95,7 @@ export:
 
 release: export
 	cd distrib && tar czfv jallib-${VERSION}.tar.gz jallib-${VERSION}
-	cd distrib && tar czfv jallib-devices-${VERSION}.tar.gz jallib-devices-${VERSION}
+	cd distrib && tar czfv jallib-all_devices-${VERSION}.tar.gz jallib-all_devices-${VERSION}
 	cd distrib && zip -r jallib-${VERSION}.zip jallib-${VERSION}
-	cd distrib && zip -r jallib-devices-${VERSION}.zip jallib-devices-${VERSION}
+	cd distrib && zip -r jallib-all_devices-${VERSION}.zip jallib-all_devices-${VERSION}
 
