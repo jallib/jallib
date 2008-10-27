@@ -10,8 +10,10 @@
 
 all : clean test
 
-ENV=unvalidated
-VERSION=dev
+# Default to validated, because branch release
+# Also hard-code version so re-generate package is easy as 1,2,3 :)
+ENV=validated
+VERSION=0.1beta
 SAMPLIR_DIR=../${ENV}/sample
 INCLUDE_DIR=../${ENV}/include
 
