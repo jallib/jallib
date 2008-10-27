@@ -1,0 +1,219 @@
+-- Title: Writes variables to output device
+-- Author: Joep Suijs, Copyright (c) 2007..2008, all rights reserved.
+-- Adapted-by: Joep Suijs
+-- Compiler: >=2.2
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Sources: 
+-- 
+-- Description: Outputs variables to output device.
+-- formats: _decimal and _hex
+-- vars:    bit, byte, sbyte, word, sword, dword, sdword
+-- --  
+-- Example:
+-- --     
+-- var sword BHL = -684
+-- --     
+-- ; print the signed word to the LCD display
+-- print_sword_dec(LCD_char, BHL)
+-- --     
+-- ; and now print the same signed word to the serial port
+-- print_sword_dec(Serial_HW_data, BHL)
+--
+-- Notes: 
+--
+
+; prototypes
+procedure _print_universal_dec(volatile byte out device, dword in data, sdword in digit_divisor, byte in digit_number)
+procedure _print_suniversal_dec(volatile byte out device, sdword in data, sdword in digit_divisor, byte in digit_number)
+procedure print_byte_binary(volatile byte out device, byte in data)
+
+const byte nibble2hex[] = "0123456789ABCDEF"   -- conversion string
+
+
+procedure print_crlf(volatile byte out device) is
+   device = 13 -- ASCII CR (cariage return)
+   device = 10 -- ASCII LF (line feed)
+end procedure
+
+procedure print_string(volatile byte out device, byte in str[]) is
+   var word len = count(str)
+   var byte i
+   
+   for len using i loop
+      device = str[i]
+   end loop
+      
+end procedure
+
+procedure print_bit_truefalse(volatile byte out device, bit in data) is
+   
+   const byte str1[] = "true"   
+   const byte str0[] = "false"   
+
+   if (data) then
+      print_string(device, str1)
+   else
+      print_string(device, str0)
+   end if
+         
+end procedure
+
+procedure print_bit_highlow(volatile byte out device, bit in data) is
+   
+   const byte str1[] = "high"   
+   const byte str0[] = "low"   
+
+   if (data) then
+      print_string(device, str1)
+   else
+      print_string(device, str0)
+   end if
+         
+end procedure
+
+procedure print_bit_10(volatile byte out device, bit in data) is
+   
+   if (data) then
+      device = "1"
+   else
+      device = "0"
+   end if
+         
+end procedure
+
+procedure print_dword_binary(volatile byte out device, dword in data) is
+   
+   print_byte_binary(device, byte(data>>24))
+   print_byte_binary(device, byte(data>>16))
+   print_byte_binary(device, byte(data>>8))
+   print_byte_binary(device, byte(data))
+   
+end procedure
+
+procedure print_word_binary(volatile byte out device, word in data) is
+   
+   print_byte_binary(device, byte(data>>8))
+   print_byte_binary(device, byte(data))
+   
+end procedure
+
+procedure print_byte_binary(volatile byte out device, byte in data) is
+   
+    for 8 loop    
+      if ((data & 0x80) != 0) then
+         device = "1"
+      else
+         device = "0"
+      end if
+      data = data * 2
+   end loop
+
+   
+end procedure
+
+procedure print_dword_hex(volatile byte out device, dword in data) is
+   
+   device = nibble2hex[0x0F & (data>>28)]
+   device = nibble2hex[0x0F & (data>>24)]
+   device = nibble2hex[0x0F & (data>>20)]
+   device = nibble2hex[0x0F & (data>>16)]
+   device = nibble2hex[0x0F & (data>>12)]
+   device = nibble2hex[0x0F & (data>>8)]
+   device = nibble2hex[0x0F & (data>>4)]
+   device = nibble2hex[0x0F & (data)]
+   
+end procedure
+
+procedure print_word_hex(volatile byte out device, word in data) is
+   
+   device = nibble2hex[0x0F & (data>>12)]
+   device = nibble2hex[0x0F & (data>>8)]
+   device = nibble2hex[0x0F & (data>>4)]
+   device = nibble2hex[0x0F & (data)]
+   
+end procedure
+
+procedure print_byte_hex(volatile byte out device, byte in data) is
+
+   device = nibble2hex[0x0F & (data>>4)]
+   device = nibble2hex[0x0F & (data)]
+   
+end procedure
+
+procedure print_sdword_dec(volatile byte out device, sdword in data) is
+
+   _print_suniversal_dec(device, data, 1000000000, 10)
+
+end procedure
+
+procedure print_sword_dec(volatile byte out device, sword in data) is
+
+   _print_suniversal_dec(device, data, 10000, 5)
+
+end procedure
+
+procedure print_sbyte_dec(volatile byte out device, sbyte in data) is
+
+   _print_suniversal_dec(device, data, 100, 3)
+      
+end procedure
+
+procedure print_dword_dec(volatile byte out device, dword in data) is
+
+   _print_universal_dec(device, data, 1000000000, 10)
+
+end procedure
+
+procedure print_word_dec(volatile byte out device, word in data) is
+
+   _print_universal_dec(device, data, 10000, 5)
+
+end procedure
+
+procedure print_byte_dec(volatile byte out device, byte in data) is
+
+   _print_universal_dec(device, data, 100, 3)
+      
+end procedure
+
+
+
+
+procedure _print_suniversal_dec(volatile byte out device, sdword in data, sdword in digit_divisor, byte in digit_number) is
+   
+   if (data < 0) then
+      data = -data
+      device = "-"      
+   end if
+
+   _print_universal_dec(device, data, digit_divisor, digit_number)
+      
+end procedure
+
+
+procedure _print_universal_dec(volatile byte out device, dword in data, sdword in digit_divisor, byte in digit_number) is
+   var byte digit
+   var bit  no_digits_printed_yet;
+   
+   if (data == 0) then
+      device = "0"      
+      return
+   end if
+
+   no_digits_printed_yet = true
+   while (digit_divisor > 0) loop
+      digit = byte ( data / digit_divisor )
+      data = data % digit_divisor
+      digit_divisor = digit_divisor / 10
+      
+      if ((digit != 0) | (no_digits_printed_yet == false)) then
+         device = digit | "0"
+         no_digits_printed_yet = false
+      end if
+      digit_number = digit_number - 1
+   end loop
+      
+end procedure

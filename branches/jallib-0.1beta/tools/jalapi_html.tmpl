@@ -1,0 +1,207 @@
+## Use to generate safe anchor
+#import md5
+
+#def wiki2html(what)
+	## Convert GC wiki to html, *BUT* keep line feed as <br> !
+	$wikifier.wikify($what).replace("\n","<br/>")
+#end def
+
+#def header
+	## Single line header: strip
+	#set title = $dhead['Title'].strip()
+	#set author = $dhead['Author'].strip()
+	#set adapted_by = $dhead['Adapted-by'].strip()
+	#set compiler = $dhead['Compiler'].strip()
+	## Multiline header
+	#set description = $dhead['Description']
+	#if $dhead.has_key('Sources') and $dhead['Sources']
+		#set sources = $dhead['Sources']
+	#else
+		#set sources = ""
+	#end if
+	#if $dhead.has_key('Notes') and $dhead['Notes']
+		#set notes = $dhead['Notes']
+	#else
+		#set notes = ""
+	#end if
+    
+    <h1>$libname</h1>
+
+    <div>
+		<font size="+1"><i>$title</i></font>
+	</div>
+
+	<br/>
+
+    <div class="narrow">
+        
+	<table>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Author</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			$author
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Adapted-by</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			$adapted_by
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Compiler</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			$compiler
+		</td>
+	</tr>
+	</table>
+
+	<br/>
+	
+	<b>Description</b>
+	<p>
+	$wiki2html($description)
+	</p>
+	<br/>
+
+	#if $sources
+	<b>Sources</b>
+	<p>
+	$wiki2html($sources)
+	</p>
+	<br/>
+	#end if
+
+	#if $notes
+	<b>Notes</b>
+	<p>
+	$wiki2html($notes)
+	</p>
+	<br/>
+	#end if
+	
+	<b>Dependencies</b>
+	<p>
+	#if $ddeps
+		<ul>
+		#for d in $ddeps.keys()
+			<li><a href="$html_linker($d)">$d</a></li>
+		#end for
+		</ul>
+	#else
+		<i>No dependency found</i>
+	</p>
+	<br/>
+	#end if
+
+#end def
+
+#def _create_anchor(s)
+	#return md5.md5(s).hexdigest()
+#end def
+
+#def _display(ltup,short)
+	<ul>
+	#for v,doc in ltup
+		<li>
+			#set anchor = $_create_anchor($v)
+			#if short
+				<b><code name="code" class="python"><a href="#$anchor">$v</a></code></b>
+			#else
+				<b><code name="code" class="python"><a name="$anchor" href="#summary">$v</a></code></b>
+				#if doc
+				<p>$wiki2html($doc)</p>
+				#else
+				<p><i>No documentation found</i></p>
+				#end if
+			#end if
+		</li>
+	#end for
+	</ul>
+#end def
+
+#def display_dict(title,ddict,short=False)
+	<h3><a name="$title">$title</a></h3>
+	#set private = [(v,doc) for v,doc in $ddict.items() if v.startswith("_")]
+	#set public = [(v,doc) for v,doc in $ddict.items() if not v.startswith("_")]
+	$_display($public,$short)
+	#if private
+	<i><small>Private</small></i>
+	$_display($private,$short)
+	<br/>
+	#end if
+#end def
+
+
+#def api
+	<h2><a name="api">API details</a></h2>
+
+	$display_dict("Global variables/contants",$dvarconst)
+	$display_dict("Procedures",$dproc)
+	$display_dict("Functions",$dfunc)
+#end def
+
+#def summary
+	<h2><a name="summary">Summary</a></h2>
+
+	$display_dict("Global variables/contants",$dvarconst,short=True)
+	$display_dict("Procedures",$dproc,short=True)
+	$display_dict("Functions",$dfunc,short=True)
+#end def
+
+#def samples
+	<h2><a name="related_samples">Related samples</a></h2>
+	#if $dsamples
+	Here are the list of samples which use this library:<br/><br/>
+	<table border=1>
+	#for (pic,file),url in sorted($dsamples.items(),lambda x,y: cmp(x[0][0],y[0][0]))
+	<tr>
+		<td><b>$pic</b></td><td><a href="$url" target="_blank">$file</a></td>
+	</tr>
+	#end for
+	</table>
+	#else
+		<i>No sample found</i>
+	#end if
+#end def
+
+
+
+#def content
+        <div id="page">
+        
+            <div id="pagecontent">
+
+			$header
+			<br/>
+			$summary
+			<br/>
+			$api
+			<br/>
+			$samples
+			<br/>
+
+            </div>
+        </div>
+
+#end def
+
+
+#def main
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html>
+    <head>
+    </head>
+    <body>
+		$content
+	</body>
+</html>
+#end def
+
+
