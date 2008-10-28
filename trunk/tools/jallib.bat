@@ -23,7 +23,7 @@ rem ######################
 
 
 rem Path to the jallib root's repository (containing "tools,"unvalidated","validated" dirs)
-set JALLIB_ROOT=C:\Documents and Settings\Seb\Mes documents\Projects\jallib
+set JALLIB_ROOT=
 rem path to jallib root's libraries. You may want to point to "validated" or "unvalidated"
 set JALLIB_REPOS=%JALLIB_ROOT%\unvalidated\include
 rem path to jallib root's samples. You may want to point to "validated" or "unvalidated"
@@ -37,7 +37,7 @@ set JALLIB_JALV2=C:\jalv24h\jalv2.exe
 
 
 rem Either:
-rem  - run the "jallib.exe" standalone executable
+rem  - run the "jallibwin.exe" standalone executable
 rem    (no dependencies, recommended)
 rem  - run the jallib.py python script 
 rem    (advanced user, you'll need to install dependencies first)
@@ -46,7 +46,7 @@ rem #############
 rem  Standalone #
 rem #############
 rem  (recommended)
-"%JALLIB_ROOT%\tools\jallib.exe" %1 %2 %3 %4 %5 %6 %7 %8 %9
+"%JALLIB_ROOT%\tools\jallibwin.exe" %1 %2 %3 %4 %5 %6 %7 %8 %9
 
 
 rem ###################
