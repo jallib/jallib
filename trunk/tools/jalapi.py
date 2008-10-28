@@ -26,7 +26,6 @@
 
 import sys, os
 import re
-import wikify
 import jsg_validator
 
 SVN_BROWSER_ROOT = "http://code.google.com/p/jallib/source/browse"
@@ -163,7 +162,6 @@ if __name__ == '__main__':
 	# generate doc
 	tmplsrc = "".join(file(tmpl_file,"r").readlines())
 	klass = Cheetah.Template.Template.compile(tmplsrc)
-	wikifier = wikify.Wikifier(wikify.GoogleCodeWikiFormat,suffix=".html")
 	tmpl = klass()
 	tmpl.dhead = dhead
 	tmpl.dproc = dproc
@@ -173,7 +171,6 @@ if __name__ == '__main__':
 	tmpl.libname = libname
 	tmpl.dsamples = dsamples
 	tmpl.html_linker = html_linker
-	tmpl.wikifier = wikifier
 
 	print tmpl.main()
 

@@ -19,7 +19,6 @@
 # If you use the binary executables, you won't need to install them
 deps = [
    # (lib name, used in actions, website)
-   ('wikify','jalapi','http://cspace.googlecode.com/svn/wiki/wikify.py'),
    ('cheetah','jalapi','http://cheetahtemplate.org'),
    ('yaml','test','http://pyyaml.org/wiki/PyYAML'),
    ('pysvn','jalapi,test','http://pysvn.tigris.org/'),
