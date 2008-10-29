@@ -15,7 +15,6 @@ VERSION=dev
 SAMPLIR_DIR=../${ENV}/sample
 INCLUDE_DIR=../${ENV}/include
 
-
 clean :
 	# clean what jal produces
 	find ${SAMPLIR_DIR} -name \*.cod -exec rm {} \;
