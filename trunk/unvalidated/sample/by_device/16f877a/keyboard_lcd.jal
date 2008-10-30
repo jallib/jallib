@@ -1,5 +1,5 @@
 -- Title: Sample showing how to use the keyboard and the lcd library
--- Author: Eru van Andel, eur@fiwihex.nl Copyright (c) 2008, all rights reserved.
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2008, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4g
 -- 
@@ -18,9 +18,8 @@
 -- 
 
 
-include 16f877a                                 -- can be any PIC, but needs 8 pins for keyboard
-                                                -- 6 pins for LCD, 1 for LED
-
+include 16f877a                                 -- can be any PIC, but should have 8 pins for keyboard
+                                                -- and 6 pins for LCD
 pragma target clock 20_000_000                  -- xtal frequency
 pragma target OSC        hs
 pragma target   LVP disabled
@@ -28,50 +27,39 @@ pragma target   WDT disabled
 
 enable_digital_io()
 
+-- ---------------------------- LIBRARIES -----------------------------
 
-var bit  LED        is pin_a0       -- LED to see proper PIC startup
-pin_a0_direction    = output        -- adding a LED is always a good idea 
+const byte  LCD_ROWS = 4
+const byte  LCD_CHARS = 20
+var   bit   LCD_RS           is pin_b5       -- LCD command/data select.
+var   bit   LCD_EN           is pin_b4       -- LCD data trigger
+var   byte  LCD_dataport     is portb_low    -- LCD data nibble
+portb_direction              = all_output    -- LCD data is portb_low
+include lcd_hd44780_4                        -- LCD library with 4 data lines
+lcd_init()
 
-var  bit  RS        is pin_b5       -- LCD command/data select.
-var  bit  EN        is pin_b4       -- LCD data trigger
-var byte data_port  is portb_low    -- LCD data
-portb_direction     = all_output    -- LCD data is portb_low
-include lcd                         -- LCD library
+include print
 
+var volatile byte keyscan  is portd_low      -- rows of keyboard
+portd_low_direction        = all_input
+var volatile byte keydrive is portd_high     -- columns of keyboard
+portd_high_direction       = all_output
+include keyboard                             -- check for schematics
 
-var volatile byte keyscan  is portd_low   -- rows of keyboard
-portd_low_direction         = all_input
-var volatile byte keydrive is portd_high  -- columns of keyboard
-portd_high_direction        = all_output
-include keyboard                          -- check for schematics
+-- -------------------------- PROGRAM START----------------------------
 
-for 4 loop
-   LED = on
-   for 10 loop   
-      delay100mus(255)
-   end loop
-   LED = off
-   for 10 loop   
-      delay100mus(255)
-   end loop
-end loop
-
-lcdwrtchar("K")  lcdwrtchar("e") lcdwrtchar("y")
-lcdwrtchar("b")  lcdwrtchar("o") lcdwrtchar("a")  lcdwrtchar("r") lcdwrtchar("d")
-lcdwrtchar(" ")
-lcdwrtchar("t")  lcdwrtchar("e") lcdwrtchar("s") lcdwrtchar("t") 
-
+lcd_clearscreen()
+lcd_setcursor(0,0) 
+const byte str1[] = "Keyboard + LCD"   
+print_string(lcd, str1)                      
 
 var byte key
 
-forever loop                       -- loop forever
-
-   lcdsetcursor(1, 0)              -- second line, first character
+forever loop                      
+   lcd_setcursor(1, 0)              -- second line
    key = getkey()
-   lcdwrthexchar(key) 
-   for 10 loop   
-      delay100mus(200)
-   end loop
+   print_byte_hex(lcd, key) 
+   delay_100ms(2)
 end loop
 
 
