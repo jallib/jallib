@@ -1,4 +1,4 @@
--- Title: Sample program to show usage of rtc_isr
+-- Title: Sample program to show usage of rtc_isr_tmr0
 -- Author: Eur van Andel, Copyright (c) 2008, all rights reserved.
 -- Adapted-by: 
 -- Compiler: >=2.4h
@@ -8,12 +8,11 @@
 --
 -- Sources:  http://www.romanblack.com/one_sec.htm, http://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
 -- 
--- Description: This program shows how to handle Real Time in a PIC, complete with setting the time
--- and storing it in EEPROM so the next startup won't produce a blinking 12:00.
--- Without battery backup nothing can never keep time, however. 
+-- Description: This program shows how to get Real Time in a PIC
 --
-
-
+-- Notes: there is no way to set the time in this program, other than before compiling
+-- for more options, including automatic initialisation and timesetting, see sample_rtc_timeset.jal
+-- 
 -- ------------------- SELECT PIC ----------------------------
 include 16f876a
 
@@ -29,37 +28,16 @@ OPTION_REG_PSA  = 1                          -- so no prescaler for TMR0 (= defa
 
 -- ------------------------ LIBRARIES ------------------------
 
-var volatile byte seconds                 -- variables used in ISR
-
--- RTC ISR constants:
---                      0x4C 0x4B 0x40  5 000 000  20 MZz xtal
---                      0x0F 0x42 0x40  1 000 000   4 MHz int osc  
---                      0x12 0x13 0xD0  1 250 000   20 MHz, prescaler = 4
-
-const hi  = 0x4C  -- 2 000 000 for 20 MHz xtal and prescaler = 4
-const mid = 0x4B
-const lo  = 0x41  -- ideally modified in timeset too
-
-var volatile byte bres_hi  = hi
-var volatile byte bres_mid = mid
-var volatile byte bres_lo  = lo
-
-
 include rtc_isr_tmr0
 
-var byte minutes        
-var byte hours 
+var byte minutes  = 30              -- seconds defined ISR lib
+var byte hours    = 12              -- arbitrary time
 
-var byte date
-var byte month
-var word year
+var byte date     = 12
+var byte month    = 10
+var word year     = 1492         -- date Columbus landed in the Carribean
 
-include now                      -- sets the time to system time + two minutes = compile and burn time   
-                                 -- should be python-generated just before compiling
-pragma eedata 250                -- to check if first boot after programming                                 
-                                 
-                                 
-
+include calendar                 -- 60/24/27..31/12 range limits
 include delay                    -- used by LCD lib
 
 const byte  LCD_ROWS = 4
@@ -73,99 +51,19 @@ lcd_init()
 
 include print                                -- nice formatted output 
 include format                               -- more nice formatting
-include pic_data_eeprom
-
-
--- ------------------------ PROCEDURES ------------------------
-
-
-procedure calendar() is      -- should be called at least once a minute
-   var byte max_date = 31
-                              -- and only if seconds > 59 
-   while seconds > 59 loop    -- if seconds < 60, nor harm is done
-      seconds = seconds - 60  
-      minutes = minutes + 1
-   end loop
-
-   if minutes > 59 then 
-      minutes = minutes - 60  -- we assume calendar is called every 3 min
-      hours = hours + 1 
-      if TMR0 < 50 then    -- so no messing with ISR 
-         data_eeprom_write(0, minutes)     -- reset first boot marker
-         data_eeprom_write(1, hours)
-      end if
-   end if
-
-   if hours > 23 then 
-      hours = 0
-      date = date + 1
-      if TMR0 < 50 then 
-         data_eeprom_write(2, date)
-      end if
-
-      if date > 26 then
-         if month < 8 then 
-            if month % 2 == 1 then  
-               max_date = 31     -- jan, mar, may, july
-            else 
-               if month == 2 then   
-                  if year % 4 == 0 then 
-                     max_date = 29  -- feb, leap year, good thru 2099 AD
-                  else  
-                     max_date = 28  -- feb, no leap year
-                  end if   
-               else
-                   max_date = 30    -- apr, june
-               end if
-            end if
-         else
-            if month % 2 == 0 then  
-               max_date = 31     -- aug, oct, dec
-            else 
-               max_date = 30     -- sept, nov
-            end if
-         end if
-      end if
-
-      if date > max_date then
-         date = 1
-         month = month + 1
-         if month == 13 then
-            month = 1
-            year = year + 1   
-            if TMR0 < 50 then
-               data_eeprom_write_word(4, year)
-            end if
-         end if
-         if TMR0 < 50 then
-            data_eeprom_write(3, month)
-         end if
-      end if
-   end if
-end procedure        -- %%%%%%%%%%%%%% CALENDAR %%%%%%%%%%%%%%%%%%%
-
-
 
 -- -------------------------- START PROGRAM -----------------
 
-if data_eeprom(0) != 250 then       -- not first boot after programming
-   seconds = 0                      -- time isn't accurate anyway
-   data_eeprom_read(0, minutes)     -- get old time from eeprom
-   data_eeprom_read(1, hours)
-   data_eeprom_read(2, date)
-   data_eeprom_read(3, month)
-   data_eeprom_read_word(4, year)
-end if                              -- if 250, now.jal is used for setting clock
-
 INTCON_TMR0IE = on                  -- if your PIC freezes, move these lines
-INTCON_GIE = on                     -- to see if the ISR is messed up
+INTCON_GIE = on                     -- to see if the ISR causes trouble
 
 
 lcd_clearscreen()
-lcd_setcursor(0,0) 
-const byte str1[] = "Time RTC sample"   
-print_string(lcd, str1)                      
-for 10 loop
+forever loop
+   lcd_setcursor(0,0) 
+   const byte str1[] = "Time RTC sample"   
+   print_string(lcd, str1)                      
+
    lcd_setcursor(1,0) 
    print_byte_dec(lcd, date)
    lcd = "-"
@@ -177,21 +75,32 @@ for 10 loop
       calendar()
    end if
    format_time_hms(lcd, hours, minutes, seconds)
-   delay_100ms(5)                              -- 5s splash screen
+   
+   lcd_setcursor(2,0)                        -- line 3
+   if seconds % 16 == 0 then
+      lcd = "*"
+   else 
+      lcd = " "
+   end if
+   if seconds % 8 == 0 then
+      lcd = "*"
+   else 
+      lcd = " "
+   end if
+   if seconds % 4 == 0 then
+      lcd = "*"
+   else 
+      lcd = " "
+   end if
+   if seconds % 2 == 0 then
+      lcd = "*"
+   else 
+      lcd = " "
+   end if
+   
+   delay_100ms(2)                              -- for proper LCD viewing
 end loop
 
-lcd_clearscreen()
-forever loop
-   lcd_setcursor(0,0) 
-   const byte str2[] = "The time is:"
-   print_string(lcd, str2)                      
-   if seconds > 59 then 
-      calendar()
-   end if
-   format_time_hms(lcd, hours, minutes, seconds)
-   delay_100ms(2)                            -- for proper LCD viewing
-   
-end loop
 
 
 
