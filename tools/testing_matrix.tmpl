@@ -1,0 +1,116 @@
+
+#def header
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html>
+	 <head>
+	 </head>
+	 <body>
+#end def
+
+#def get_meter_label(meter)
+	#silent print "met:er %s" % repr(meter)
+	#if meter < 0
+		#return "not supported"
+	#elif meter == 0
+		#return "not tested"
+	#elif meter <= 10
+		#return "poor"
+	#elif meter <= 30
+		#return "risky"
+	#elif meter <= 50
+		#return "average"
+	#elif meter <= 60
+		#return "nice"
+	#elif meter <= 70
+		#return "good"
+	#elif meter <= 80
+		#return "very good"
+	#elif meter <= 90
+		#return "awesome"
+	#elif meter <= 100
+		#return "oh my..."
+	#else
+		#return "can't be serious"
+	#end if
+#end def
+
+#def sample_stat(data)
+	#set true = false = none = 0
+	#for what in ('samples','tests')
+		#silent true += len([s for s in data[what] if data[what][s]['pass'] == True])
+		#silent false += len([s for s in data[what] if data[what][s]['pass'] == False])
+		#silent none += len([s for s in data[what] if data[what][s]['pass'] == None])
+	#end for
+	#return (true,false,none)
+#end def
+
+#def compute_meter(data)
+	#silent print "data: %s" % data
+	#set sample_num = len(data['samples']) + len(data['tests'])
+	#if sample_num == 0
+		#return 0.0
+	#end if
+	#set true,false,none = $sample_stat(data)
+	#silent print "true_samples: %s, false_samples: %s, none_samples: %s --- %s sample_num" % (true,false,none,sample_num)
+	#set note = ((float(true) - float(false)) / float(sample_num)) * 100.0
+	#silent print "note: %s" % note
+	#return note
+#end def
+
+#def matrix
+	
+	<table border=1 width="100%" cellpadding=5>
+	<tr>
+		<th>PIC</th>
+		<th>Testing meter</th>
+		<th>Libraries</th>
+	</tr>
+
+	#for pic,data in sorted($test_results.items(),lambda x,y: cmp(x[0],y[0]))
+	<tr>
+		<td align="center" width="10%"><a href="test_${pic}.html">$pic</a></td>
+		#silent print "PIC: %s" % pic
+		#silent print "true: %s" % data['libs'][True]
+		#silent print "false: %s" % data['libs'][False]
+		#silent print "none: %s" % data['libs'][None]
+		#set note = int($compute_meter($data))
+		#set label = $get_meter_label($note)
+		#set true,false,none = $sample_stat($data)
+		#set sample_num = sum([true,false,none])
+		#silent print "..."
+		<td align="center" width="15%" nowrap="true">
+			<div style="font-size: 10px;">$label</div>
+			<img alt="$note% / $label" src="http://chart.apis.google.com/chart?cht=bhs&amp;chs=200x20&amp;chd=t:$note%7C100&amp;chco=4d89f9,c6d9fd&amp;chbh=15"/>
+		</td>
+		## precedence: true libs > none libs > false libs
+		#set true_libs = set(data['libs'][True])
+		#set none_libs = set(data['libs'][None]).difference(true_libs)
+		#set false_libs = set(data['libs'][False]).difference(none_libs).difference(true_libs)
+		<td>
+			#set strtrue = ", ".join(sorted(true_libs))
+			#set strnone = ", ".join(sorted(none_libs))
+			#set strfalse = ", ".join(sorted(false_libs))
+			<table width="100%">
+			<tr><td width="10%"><i>success</i></td><td><span style="color: green;">$strtrue</span></td></tr>
+			<tr><td width="10%"><i>untested</i></td><td><span style="color:blue;">$strnone</span></td></tr>
+			<tr><td width="10%"><i>failed</i></td><td><span style="color: red;">$strfalse</span></td></tr>
+			</table>
+			<div style="font-size: 12px;">
+				<i>number of tests: </i>$sample_num&nbsp;&nbsp;<i>pass: </i>$true&nbsp;&nbsp;<i>fail: </i>$false&nbsp;&nbsp;<i>unknown: </i>$none
+			</div>
+		</td>
+	</tr>
+	#end for
+	
+#end def
+
+#def footer
+	</body>
+</html>
+#end def
+
+#def main
+   $header
+   $matrix
+   $footer
+#end def

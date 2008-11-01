@@ -80,6 +80,32 @@ def get_jal_filenames(dir,subdir=None):
 			jalfiles.update(get_jal_filenames(fulldf,subdir=os.path.join(subdir and subdir or "",df)))
 	return jalfiles
 
+def get_full_sample_path(sample_dir,pic="",sample=""):
+	return os.path.join(sample_dir,"by_device",pic,sample)
+
+
+# cache found files
+explored_tests = None
+def get_full_test_path(sample_dir,test=""):
+	global explored_tests
+	testdir = os.path.join(sample_dir,"test")
+	if not test:
+		return testdir
+	else:
+		if not explored_tests:
+			# exclude board
+			tdirs = [(d,os.path.join(testdir,d)) for d in os.listdir(testdir) if not d.startswith(".") and d != "board"]
+			# search for test file...
+			test_files = {}
+			for (subdir,tdir) in tdirs:
+				test_files.update(get_jal_filenames(tdir,subdir)) ## if f.startswith("test_")])
+			explored_tests = test_files
+
+		return os.path.join(testdir,explored_tests[test])
+
+def get_full_board_path(sample_dir,board=""):
+	return os.path.join(sample_dir,"test","board",board)
+	
 
 ################
 # MAIN TARGETS #
@@ -128,7 +154,7 @@ def do_compile(args,exitonerror=True):
 	if not original_args:
 		print >> sys.stderr, "Missing arguments to jalv2 compiler..."
 		sys.exit(255)
-	
+
 	# Try to extract jallib args
 	opts, args = parse_args(args)
 	if not opts:
@@ -168,7 +194,6 @@ def do_compile(args,exitonerror=True):
 	# Complete with compiler args
 	if args:
 		cmd.extend(args)
-	print "cmd: %s" % repr(cmd)
 	try:
 		status = subprocess.check_call(cmd,shell=False)
 		return status
@@ -496,7 +521,7 @@ def do_test(args):
 	elif do_html:
 		if not got_html:
 			html_file = ".".join(tmpl_file.split(".")[:-1]) + ".html"
-		generate_html(tmpl_file,html_file,outfile,only_passed,each_pic_tmpl)
+		generate_html(tmpl_file,html_file,outfile,sample_dir,only_passed,each_pic_tmpl)
 	elif do_print:
 		display_test_results(pic,outfile)
 	else:
@@ -534,15 +559,15 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 		if not "by_device" in os.listdir(dir):
 			print >> sys.stderr, "Sample dir '%s' does not contain 'by_device' map." % dir
 			sys.exit(1)
-		for devicedir in os.listdir(os.path.join(dir,'by_device')):
+		for devicedir in os.listdir(get_full_sample_path(dir)):
 			if selected_pics and not devicedir in selected_pics:
 				# skip, not wanted by user
 				continue
-			fullpath = os.path.join(dir,'by_device',devicedir)
+			fullpath = get_full_sample_path(dir,devicedir)
 			if not os.path.isdir(fullpath) or devicedir.startswith("."):
 				continue
 			matrix.setdefault(devicedir,{'samples' : {}, 'tests' : {}})
-			analyze_samples(devicedir,os.path.join(dir,'by_device',devicedir))
+			analyze_samples(devicedir,fullpath)
 
 	def analyse_testdir(dir):
 		if not "test" in os.listdir(dir):
@@ -552,13 +577,13 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 			print >> sys.stderr, "Sample dir '%s' does not contain 'board' map." % os.path.join(dir,"test")
 			sys.exit(1)
 		# Get ALL test files
-		testdir = os.path.join(dir,"test")
+		testdir = get_full_test_path(dir)
 		tdirs = [(d,os.path.join(testdir,d)) for d in os.listdir(testdir) if not d.startswith(".") and d != "board"]
 		test_files = {}
 		for (subdir,tdir) in tdirs:
 			test_files.update(get_jal_filenames(tdir,subdir)) ## if f.startswith("test_")])
 		# analyse board files, so pic can be deduced
-		boarddir = os.path.join(dir,"test","board")
+		boarddir = get_full_board_path(dir)
 		for boardfile in os.listdir(boarddir):
 			if not boardfile.endswith(".jal"):
 				continue
@@ -572,7 +597,7 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 				continue
 			# now try to compile every tests with this given board
 			for test,pathtest in test_files.items():
-				status = do_compile(["-i",os.path.join(boarddir,boardfile),os.path.join(testdir,pathtest)],exitonerror=False)
+				status = do_compile(["-i",get_full_board_path(dir,boardfile),os.path.join(testdir,pathtest)],exitonerror=False)
 				if status == 0:
 					# dispatch to devices
 					matrix[pic]['tests'].setdefault(test,{'pass' : None, 'revision' : None})
@@ -612,7 +637,7 @@ def add_update_test(test_str,outfile,sample_dir):
 			if not os.path.isdir(testdir):
 				print >> sys.stderr, "'%s' is not a valid directory" % testdir
 				sys.exit(1)
-			tfiles = get_jal_filenames(os.path.join(sample_dir,'test'))
+			tfiles = get_jal_filenames(get_full_test_path(sample_dir))
 			if not testfile in tfiles.keys():
 				print >> sys.stderr, "Can't find test '%s'" % testfile
 				sys.exit(1)
@@ -620,7 +645,7 @@ def add_update_test(test_str,outfile,sample_dir):
 		else:
 			tdict = matrix[pic]['samples']
 			# check if sample exist, and under svn
-			bydevice = os.path.join(sample_dir,'by_device')
+			bydevice = get_full_sample_path(sample_dir)
 			if not os.path.isdir(bydevice):
 				print >> sys.stderr, "'%s' is not a valid directory" % bydevice
 				sys.exit(1)
@@ -679,7 +704,12 @@ def delete_test(test_str,outfile):
 		print >> sys.stderr, "Unable to delete '%s' from PIC %s, cannot find '%s'" % (testfile,pic,e)
 		sys.exit(1)
 
-def generate_html(tmpl_file,html_file,outfile,only_passed=False,for_each_pic_tmpl=None):
+def find_includes(jalfile):
+	content = file(jalfile).read()
+	return re.findall("^\s*include\s+(\w+)\s*",content,re.MULTILINE)
+
+
+def generate_html(tmpl_file,html_file,outfile,sample_dir,only_passed=False,for_each_pic_tmpl=None):
 	if not has_cheetah:
 		print >> sys.stderr, "You can't use this action, because cheetah module is not installed"
 		sys.exit(255)
@@ -688,12 +718,31 @@ def generate_html(tmpl_file,html_file,outfile,only_passed=False,for_each_pic_tmp
 	tmplsrc = "".join(file(tmpl_file,"r").readlines())
 	klass = Cheetah.Template.Template.compile(tmplsrc)
 	tmpl = klass()
-	if only_passed:
+
+	# TODO
+	for pic,res in matrix.items():
 		newtr = {}
-		for pic,res in matrix.items():
-			if True in [res['samples'][k]['pass'] for k in res['samples'].keys()]:
-				newtr[pic] = res
-		matrix = newtr
+		libs = {True : [], False : [], None: []}
+		# build libds list for all samples attached to this PIC
+		# and also a list of libs for each samples
+		# (both used for main matrix and dedicated test page)
+		for sample,info in res['samples'].items() + res['tests'].items():
+			if sample.startswith("test_"):
+				found_libs = find_includes(get_full_test_path(sample_dir,sample))
+			else:
+				found_libs = find_includes(get_full_sample_path(sample_dir,pic,sample))
+			# normalize
+			found_libs = map(lambda x: x.lower(),found_libs)
+			info['libs'] = found_libs
+			libs[info['pass']].extend(found_libs)
+		# unique
+		for k in libs.keys():
+			libs[k] = list(set(libs[k]))
+		if only_passed and len(libs[True]) == 0:
+			continue
+		else:
+			matrix[pic]['libs'] = libs
+
 	tmpl.test_results = matrix
 	fout = file(html_file,"w")
 	print >> fout, tmpl.main()
