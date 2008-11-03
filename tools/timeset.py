@@ -19,13 +19,18 @@ from time import strftime, localtime, sleep
 if __name__ == "__main__":
 
    jal = open('now.jal','w')
-   
+   jal.write('-- Title: Now, initialises time and date in a PIC with an RTC\n')
+   jal.write('-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2008, all rights reserved.\n')
+   jal.write('-- Adapted-by: \n')
+   jal.write('-- Compiler: >=2.4h\n')
    jal.write('-- \n')
-   jal.write('-- file:      now.jal, Python generated\n')
-   jal.write('-- author:    Eur van Andel, eur@fiwihex.nl\n')
-   jal.write('-- purpose:   to set RTC in JAL, time is set to now + 1 minute\n')
+   jal.write('-- This file is part of jallib (http://jallib.googlecode.com)\n')
+   jal.write('-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)\n')
    jal.write('-- \n')
-   jal.write('\n')
+   jal.write('-- Description: This library sets the time to the system time + 1 minute,\n')
+   jal.write('-- typically the time it takes to compile and program the PIC.\n')
+   jal.write('-- This library should be generated just before compiling by executing timeset.py\n')
+   jal.write('-- \n')
 
    date    = localtime()[2]
    month   = localtime()[1]
