@@ -3,8 +3,7 @@
 -- Compiler: =2.4h
 -- 
 -- This file is part of jallib (http://jallib.googlecode.com)
--- Released under the BSD license
--- (http://www.opensource.org/licenses/bsd-license.php)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Sources: http://www.sensirion.com/en/01_humidity_sensors/00_humidity_sensors.htm
 --
@@ -32,14 +31,14 @@
 -- Declarations: 
 -- var bit SHT_SCK         -- output pin, clock signal to sensor
 -- var bit SHT_DATA        -- data pin, data flows in both directions
--- var bit SHT_DATA_dir    -- direction of data pin
+-- var bit SHT_DATA_DIR    -- direction of data pin
 --
 -- Still to do: Temperature calculations in different precisions
 -- switching heating on/off
 
 -- send start
-procedure SHT_start is
-   SHT_DATA_dir = output
+procedure sht_start() is
+   SHT_DATA_DIR = output
    SHT_DATA = high 
    delay_1us()
    SHT_SCK = high    -- \
@@ -57,9 +56,9 @@ end procedure
 
 
 -- send one byte to the SHT
-procedure SHT_put_data(byte in x) is
+procedure sht_put_data(byte in x) is
    var bit b at x: 7
-   SHT_DATA_dir = output
+   SHT_DATA_DIR = output
    for 8 loop
       SHT_DATA = b
       SHT_SCK = high
@@ -71,9 +70,9 @@ procedure SHT_put_data(byte in x) is
 end procedure 
 
 -- receive one byte from the SHT
-procedure SHT_get_data(byte out x) is
+procedure sht_get_data(byte out x) is
    var bit b at x: 0
-   SHT_DATA_dir = input
+   SHT_DATA_DIR = input
    for 8 loop
       x = x << 1           -- 8 bits, but only 7 shifts
       b = SHT_DATA 
@@ -85,21 +84,21 @@ procedure SHT_get_data(byte out x) is
 end procedure 
 
 -- pretend to wait for ACK
-procedure SHT_wait_ack is
-   SHT_DATA_dir = input
+procedure sht_wait_ack() is
+   SHT_DATA_DIR = input
    SHT_SCK = high 
 -- if !data then loop         -- don't touch this. if no reply
 -- end loop                   -- routine could become stuck here
    delay_1us()
    SHT_SCK = low
    delay_1us()
-   SHT_DATA_dir = output
+   SHT_DATA_DIR = output
    SHT_DATA = high
 end procedure
 
 -- send ACK
-procedure SHT_put_ack is
-   SHT_DATA_dir = output
+procedure sht_put_ack() is
+   SHT_DATA_DIR = output
    SHT_DATA  = low
    delay_1us()
    SHT_SCK = high 
@@ -109,14 +108,14 @@ procedure SHT_put_ack is
 end procedure
 
 -- reset SHT
-procedure SHT_reset is
-   SHT_start
-   SHT_put_data(0b000_11110)   -- soft reset of SHT
-   SHT_wait_ack
+procedure sht_reset() is
+   sht_start()
+   sht_put_data(0b000_11110)   -- soft reset of SHT
+   sht_wait_ack
 end procedure
 
--- reset SHT interface, must be followed with SHT_start and command
-procedure SHT_conn_reset is
+-- reset SHT interface, must be followed with sht_start and command
+procedure sht_conn_reset() is
    SHT_DATA = high   
    for 9 loop
       SHT_SCK = high
@@ -133,24 +132,24 @@ end procedure
 -- we will wait 300 ms
 -- SHT may only be switched on for 10% of the time because of self-heating
 -- so this measurement can only happen every two seconds!
-procedure read_raw_temp_SHT(byte out MSB, byte out LSB, byte out CRC) is
+procedure read_raw_temp_sht(byte out MSB, byte out LSB, byte out CRC) is
    var byte counter = 32
-   SHT_start
-   SHT_put_data(0b000_00011)   -- start temperature measurement
-   SHT_wait_ack
-   SHT_DATA_dir = input
+   sht_start()
+   sht_put_data(0b000_00011)   -- start temperature measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
 
    while (SHT_DATA == high)  & (counter > 1) loop  
       delay_1ms(10)
       counter = counter - 1
    end loop
 
-   SHT_get_data( MSB )      -- read SHT_DATA
-   SHT_put_ack
-   SHT_get_data( LSB )      -- read SHT_DATA
-   SHT_put_ack
-   SHT_get_data( CRC )      -- read SHT_DATA
-   SHT_DATA_dir = output
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
    SHT_DATA = high         -- no ack, end transmission
    delay_1us()
    SHT_SCK = high
@@ -165,24 +164,24 @@ end procedure
 -- we will wait 70 ms
 -- SHT may only be switched on for 10% of the time because of self-heating
 -- so this measurement can only happen every 500ms
-procedure read_raw_hum_SHT(byte out MSB, byte out LSB, byte out CRC) is
+procedure read_raw_hum_sht(byte out MSB, byte out LSB, byte out CRC) is
    var byte counter = 8
-   SHT_start
-   SHT_put_data(0b000_00101)   -- start humidity measurement
-   SHT_wait_ack
-   SHT_DATA_dir = input
+   sht_start()
+   sht_put_data(0b000_00101)   -- start humidity measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
 
    while ((SHT_DATA == high)  & (counter > 1)) loop  
       delay_1ms(10)
       counter = counter - 1
    end loop
 
-   SHT_get_data( MSB )      -- read SHT_DATA
-   SHT_put_ack
-   SHT_get_data( LSB )      -- read SHT_DATA
-   SHT_put_ack
-   SHT_get_data( CRC )      -- read SHT_DATA
-   SHT_DATA_dir = output
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
    SHT_DATA = high         -- no ack, end transmission
    delay_1us()
    SHT_SCK = high
@@ -198,22 +197,22 @@ procedure read_hum_sht(byte out hum) is
    var byte MSB, LSB, CRC
    var dword tmp 
    var byte counter = 8
-   SHT_start
-   SHT_put_data(0b000_00101)   -- start humidity measurement
-   SHT_wait_ack
-   SHT_DATA_dir = input
+   sht_start()
+   sht_put_data(0b000_00101)   -- start humidity measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
 
    while ((SHT_DATA == high)  & (counter > 1)) loop  
       delay_1ms(10)
       counter = counter - 1
    end loop
 
-   SHT_get_data( MSB )      -- read SHT_DATA
-   SHT_put_ack
-   SHT_get_data( LSB )      -- read SHT_DATA
-   SHT_put_ack
-   SHT_get_data( CRC )      -- read SHT_DATA
-   SHT_DATA_dir = output
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
    SHT_DATA = high         -- no ack, end transmission
    delay_1us()
    SHT_SCK = high
@@ -230,26 +229,26 @@ end procedure
 -- read humidity from SHT, result in word precision 0.01%RH
 -- SHT may only be switched on for 10% of the time because of self-heating
 -- so this measurement can only happen every 500ms
-procedure read_hum_word_SHT(word out hum) is
+procedure read_hum_word_sht(word out hum) is
    var byte MSB, LSB, CRC
    var dword tmp 
    var byte counter = 8
-   SHT_start
-   SHT_put_data(0b000_00101)   -- start humidity measurement
-   SHT_wait_ack
-   SHT_DATA_dir = input
+   sht_start()
+   sht_put_data(0b000_00101)   -- start humidity measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
 
    while ((SHT_DATA == high)  & (counter > 1)) loop  
       delay_1ms(10)
       counter = counter - 1
    end loop
 
-   SHT_get_data( MSB )      -- read SHT_DATA
-   SHT_put_ack
-   SHT_get_data( LSB )      -- read SHT_DATA
-   SHT_put_ack
-   SHT_get_data( CRC )      -- read SHT_DATA
-   SHT_DATA_dir = output
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
    SHT_DATA = high         -- no ack, end transmission
    delay_1us()
    SHT_SCK = high
