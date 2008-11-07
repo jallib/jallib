@@ -28,12 +28,12 @@
 /*  - The script contains some test and debugging code.                     */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.51'                   /*                          */
+   ScriptVersion   = '0.0.52'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '=2.4h'                    /*                          */
 /* ------------------------------------------------------------------------ */
 
-basedir  = 'x:/mplab814/'                       /* MPLAB base directory  */
+basedir  = 'x:/mplab815/'                       /* MPLAB base directory  */
 devdir   = basedir'mplab_ide/device/'           /* dir with .dev files   */
 lkrdir   = basedir'mpasm_suite/lkr/'            /* dir with .lkr files   */
 
@@ -168,7 +168,7 @@ end
 call load_config_info                           /* collect cfg info + core */
 
 if Core \= 12 then do                           /* wrong core */
-  say 'Script error: Wrong script for!' PicName
+  say 'Script error: Wrong script for' PicName
   return 1                                      /* done */
 end
 
@@ -234,7 +234,7 @@ if Core = 12 then do                            /* 12-bits core */
 end
 
 if Core \= 14 then do                           /* wrong core */
-  say 'Script error: Wrong script for this device!'
+  say 'Script error: Wrong script for' PicName
   return 1                                      /* done */
 end
 
@@ -609,7 +609,9 @@ DevID = '0000'                                  /* default (not found) */
 do i = 1 to Dev.0
   parse var Dev.i 'DEVID' val0 'IDMASK' '=' Val1 'ID' '=' '0X' val2 ')' .
   if val2 \= '' then do
+    RevMask = right(strip(Val1),4,'0')          /* 4 hex chars */
     DevID = right(strip(Val2),4,'0')            /* 4 hex chars */
+    DevID = C2X(bitand(X2C(DevID),X2C(RevMask)))  /* reset revision bits */
     leave                                       /* 1 occurence expected */
   end
 end
@@ -806,8 +808,6 @@ return
 /* ---------------------------------------------- */
 list_fuses_words1x: procedure expose jalfile CfgAddr. PicName
 FusesDefault = devicespecific('FusesDefault', PicName)  /* get default */
-if FusesDefault = '!' then                             /* PIC unlisted */
-  say 'Error:' PicName 'is unknown in FusesDefault table!'
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
 if CfgAddr.0 = 1 then do
   call lineout jalfile, 'const word  _FUSE_BASE            = 0x'D2X(CfgAddr.1)
@@ -841,8 +841,6 @@ return
 /* ---------------------------------------------- */
 list_fuses_bytes16: procedure expose jalfile CfgAddr. PicName
 FusesDefault = devicespecific('FusesDefault', PicName)  /* get default */
-if FusesDefault = '!' then                             /* PIC unlisted */
-  say 'Error:' PicName 'is unknown in FusesDefault table!'
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
 call charout jalfile, 'const dword _FUSE_BASE[_FUSES_CT] = { '
 do  j = 1 to CfgAddr.0
@@ -943,7 +941,7 @@ do i = 1 to Dev.0
       call lineout jalfile, 'var volatile byte ' left('PORTA',20) 'at' reg
       call list_port1x_shadow 'PORTA'
     end
-    else if reg = 'TRISIO' then do              /* tris */
+    else if reg = 'TRISIO' then do              /* low pincount PIC */
       call lineout jalfile, 'var volatile byte ' left('TRISA',20) 'at' reg
       call lineout jalfile, 'var volatile byte ' left('PORTA_direction',20) 'at' reg
       call list_tris_shadow 'TRISA'             /* nibble direction */
@@ -952,9 +950,6 @@ do i = 1 to Dev.0
       call lineout jalfile, 'var volatile byte ',
                            left('PORT'substr(reg,5)'_direction',20) 'at' reg
       call list_tris_shadow reg                 /* nibble direction */
-    end
-    else if left(reg,2) = 'CM' then do          /* CM?CON? */
-      call lineout jalfile, '--  warning: comparator control register!'
     end
 
     call list_sfr_subfields1x i, reg            /* bit fields */
@@ -2154,8 +2149,6 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
 end
 
 ADCgroup = devicespecific('adcgroup', PicName)
-if ADCgroup = '!' then                                  /* PIC unlisted */
-  say 'Error:' PicName 'is unknown in ADC group table!'
 if Name.ADCON0 \= '-' then do                           /* check on presence */
   analog.ADC = 'adc'                                    /* ADC module present */
   call lineout jalfile, '-- ---------------------------------------------------'
@@ -2265,15 +2258,9 @@ call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
 call list_devID
 DataSheet = devicespecific('DataSheet', PicName)
-if DataSheet == '!' then                        /* PIC unlisted */
-  say 'Error:' PicName 'is unknown in datasheet table!'
-else
-  call lineout jalfile, '-- DataSheet:' DataSheet
+call lineout jalfile, '-- DataSheet:' DataSheet
 PgmSpec = devicespecific('pgmspec', PicName)
-if PgmSpec == '!' then
-  say 'Error:' PicName 'is unlisted in programming specifications table!'
-else
-  call lineout jalfile, '-- Programming Specifications:' PgmSpec
+call lineout jalfile, '-- Programming Specifications:' PgmSpec
 call list_Vdd
 call list_Vpp
 call lineout jalfile, '--'
