@@ -32,7 +32,7 @@ call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load Rexx utilities */
 
 JalV2 = 'k:/c/Jalv2/JalV2.exe'                  /* compiler path (eCS) */
-Validator = 'k:/jallib/tools/jallib validate'   /* validation script */
+Validator = 'k:/jallib/tools/jallib.py validate'   /* validation script */
 
 if runtype = 'TEST' then do                     /* test mode */
   Include = 'k:/jallib/test/'                   /* test include directory */
@@ -61,8 +61,8 @@ do i=1 to pic.0
   parse value filespec('Name', pic.i) with PicName '.jal'
   say PicName
 
-  PgmName = 'b'PicName                          /* program name */
-  PgmFile = 'b'PicName'.jal'                    /* program filespec */
+  PgmName = 'blink_'PicName                     /* program name */
+  PgmFile = 'blink_'PicName'.jal'               /* program filespec */
 
   '@python' validator  pic.i '1>'PgmName'.pyout'  '2>'PgmName'.pyerr'
   if rc \= 0 then do
@@ -97,6 +97,10 @@ do i=1 to pic.0
   call lineout PgmFile, '--'
   call lineout PgmFile, 'include' PicName '                   -- target PICmicro'
   call lineout PgmFile, '--'
+  if left(PicName,5) = '16f88'  |  left(Picname,3) = '18f' then do
+    call lineout PgmFile, 'pragma bootloader long_start       -- support bootloader'
+    call lineout PgmFile, '--'
+  end
   call SysFileSearch 'pragma fuse_def OSC', pic.i, osc.
   if osc.0 > 0 then do                                  /* oscillator pragma present */
     call SysFileSearch 'HS =', pic.i, osc.
@@ -125,7 +129,7 @@ do i=1 to pic.0
       call lineout PgmFile, 'pragma target IOSCFS  F4MHZ        -- select 4 MHz'
   end
   if left(PicName,2) = '18' then
-    call lineout PgmFile, '-- Due to PLL effects the blink frequency may',
+    call lineout PgmFile, '-- Due to default Cnfig bits settings the blink frequency may',
                           'be slower or faster than 2 Hz!'
   call SysFileSearch 'pragma fuse_def WDT', pic.i, wdt.
   if wdt.0 > 0 then do
@@ -220,7 +224,11 @@ do i=1 to pic.0
       else do
         k = k + 1                               /* all OK */
         if runtype \= 'TEST' then do
-          '@copy' PgmFile dst||PicName'\*' '1>nul'
+          '@xcopy' PgmFile dst||PicName'\*' '/S 1>nul'
+          if rc \= 0 then do
+            say 'Copy of' PgmFile 'to' dst||PicName 'failed'
+            return rc
+          end
           '@erase' PgmName'.hex' PgmName'.asm' PgmName'.jal' PgmName'.log' '1>nul 2>nul'
         end
       end
