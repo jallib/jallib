@@ -1,65 +1,67 @@
 -- Title: reading/writing of PIC's data EEPROM
 -- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
--- Adapted-by: Sebastien Lelong.
+-- Adapted-by: Sebastien Lelong, Rob Hamerling.
 -- Compiler: >=2.4g
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: this library can write/read 8-bits data to/from data-eeprom
+-- Description: Write/read 8-bits data to/from data-eeprom
 --
---
+-- Notes: Limited to the first 256 bytes of EEPROM memory
 
 
--- Reads a byte from data eeprom at given address
--- Result is stored in the passed in argument
-procedure data_eeprom_read( byte in address, byte out data ) is
+-- Read byte from data eeprom at given address
+-- Result is stored in the passed in-argument
+procedure data_eeprom_read(byte in address, byte out data) is
    EEADR = address
-   if defined(EECON1_EEPGD) == true then
-      EECON1_EEPGD = false                  ; select data EEprom
+   if defined(EECON1_EEPGD) == TRUE then
+      EECON1_EEPGD = FALSE                      -- select data memory
+      if defined(EECON1_CFGS) == TRUE then
+        EECON1_CFGS = FALSE                     -- select data memory
+      end if
+      if defined(EEADRH) == TRUE then
+        EEADRH = 0;                             -- reset high address
+      end if
    end if
-   EECON1_RD = true
+   EECON1_RD = TRUE
    data = EEDATA
 end procedure
 
--- Reads a word from data eeprom at given address
--- Result is stored in the passed in argument
-procedure data_eeprom_read_word( byte in address, word out data ) is
+-- Read word from data eeprom at given address
+-- Result is stored in the passed in-argument
+procedure data_eeprom_read_word(byte in address, word out data) is
    var byte temp[2] at data
-   data_eeprom_read(address,temp[0])
-   data_eeprom_read(address+1,temp[1])
+   data_eeprom_read(address, temp[0])
+   data_eeprom_read(address+1, temp[1])
 end procedure
 
--- Reads a dword from data eeprom at given address
--- Result is stored in the passed in argument
-procedure data_eeprom_read_dword( byte in address, dword out data ) is
+-- Read a dword from data eeprom at given address
+-- Result is stored in the passed in-argument
+procedure data_eeprom_read_dword(byte in address, dword out data) is
    var byte temp[4] at data
-   data_eeprom_read(address,temp[0])
-   data_eeprom_read(address+1,temp[1])
-   data_eeprom_read(address+2,temp[2])
-   data_eeprom_read(address+3,temp[3])
+   data_eeprom_read(address, temp[0])
+   data_eeprom_read(address+1, temp[1])
+   data_eeprom_read(address+2, temp[2])
+   data_eeprom_read(address+3, temp[3])
 end procedure
 
 
-
--- Reads a byte from data eeprom at given address
--- and return the result
+-- Read byte from data eeprom at given address and return result
 function data_eeprom(byte in address) return byte is
    var byte data
    data_eeprom_read(address,data)
    return data
 end function
 
--- Reads a word from data eeprom at given address
--- and return the result
+-- Read word from data eeprom at given address and return result
 function data_eeprom_word(byte in address) return word is
    var word data
    data_eeprom_read_word(address,data)
    return data
 end function
 
--- Reads a dword from data eeprom at given address
--- and return the result
+-- Read dword from data eeprom at given address and return result
 function data_eeprom_dword(byte in address) return dword is
    var dword data
    data_eeprom_read_dword(address,data)
@@ -67,50 +69,56 @@ function data_eeprom_dword(byte in address) return dword is
 end function
 
 
--- Writes a byte to data eeprom at given address
--- Waits untill finished
+-- Write byte to data eeprom at given address
+-- Wait until finished
 procedure data_eeprom_write(byte in address, byte in data) is
 
-   var bit gie_old
-   
-   EEADR = address
-   EEDATA = data 
-   
-   if defined(EECON1_EEPGD) == true then 
-      EECON1_EEPGD = false               ; select data EEprom
+   var bit gie_old                              -- GIE state
+
+   EEADR  = address
+   EEDATA = data
+
+   if defined(EECON1_EEPGD) == TRUE then
+      EECON1_EEPGD = FALSE                      -- select data memory
+      if defined(EECON1_CFGS) == TRUE then
+        EECON1_CFGS = FALSE                     -- select data memory
+      end if
+      if defined(EEADRH) == TRUE then           -- large data memory
+        EEADRH = 0;                             -- reset high address
+      end if
    end if
-   
+
    gie_old = INTCON_GIE
-   EECON1_WREN = true
-   INTCON_GIE = false
+   EECON1_WREN = TRUE
+   INTCON_GIE = FALSE
 
    -- requred sequence (see datasheet)
-   EECON2 = 0x55
-   EECON2 = 0xAA
-   EECON1_WR = true   -- start write operation
-                   
-   INTCON_GIE = gie_old         ; restore interrupt status
-   EECON1_WREN = false          ; disable further writing
-   
-   while EECON1_WR loop end loop
+   EECON2    = 0x55
+   EECON2    = 0xAA
+   EECON1_WR = TRUE                             -- start write operation
+
+   INTCON_GIE = gie_old                         -- restore interrupt status
+   EECON1_WREN = FALSE                          -- disable further writing
+
+   while EECON1_WR loop
+     -- spin until write completed
+   end loop
 
 end procedure
 
--- Writes a word to data eeprom at given address
--- (based on procedure `data_eeprom_write`)
+-- Write word to data eeprom at given address
 procedure data_eeprom_write_word(byte in address, word in data) is
    var byte temp[2] at data
-   data_eeprom_write(address,temp[0])
-   data_eeprom_write(address+1,temp[1])
+   data_eeprom_write(address, temp[0])
+   data_eeprom_write(address+1, temp[1])
 end procedure
 
--- Writes a dword to data eeprom at given address
--- (based on procedure `data_eeprom_write`)
+-- Write dword to data eeprom at given address
 procedure data_eeprom_write_dword(byte in address, dword in data) is
    var byte temp[4] at data
-   data_eeprom_write(address,temp[0])
-   data_eeprom_write(address+1,temp[1])
-   data_eeprom_write(address+2,temp[2])
-   data_eeprom_write(address+3,temp[3])
+   data_eeprom_write(address, temp[0])
+   data_eeprom_write(address+1, temp[1])
+   data_eeprom_write(address+2, temp[2])
+   data_eeprom_write(address+3, temp[3])
 end procedure
 
