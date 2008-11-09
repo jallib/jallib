@@ -6,7 +6,8 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: Write/read 8-bits data to/from data-eeprom
+-- Description:
+-- Write/read 8-bits data to/from data-eeprom
 --
 -- Notes: Limited to the first 256 bytes of EEPROM memory
 
@@ -16,13 +17,13 @@
 procedure data_eeprom_read(byte in address, byte out data) is
    EEADR = address
    if defined(EECON1_EEPGD) == TRUE then
-      EECON1_EEPGD = FALSE                      -- select data memory
-      if defined(EECON1_CFGS) == TRUE then
-        EECON1_CFGS = FALSE                     -- select data memory
-      end if
-      if defined(EEADRH) == TRUE then
-        EEADRH = 0;                             -- reset high address
-      end if
+      EECON1_EEPGD = FALSE                      -- deselect pgm memory
+   end if
+   if defined(EECON1_CFGS) == TRUE then
+      EECON1_CFGS = FALSE                       -- deselect cfg memory
+   end if
+   if defined(EEADRH) == TRUE then              -- large memory
+      EEADRH = 0                                -- reset high address
    end if
    EECON1_RD = TRUE
    data = EEDATA
@@ -50,21 +51,21 @@ end procedure
 -- Read byte from data eeprom at given address and return result
 function data_eeprom(byte in address) return byte is
    var byte data
-   data_eeprom_read(address,data)
+   data_eeprom_read(address, data)
    return data
 end function
 
 -- Read word from data eeprom at given address and return result
 function data_eeprom_word(byte in address) return word is
    var word data
-   data_eeprom_read_word(address,data)
+   data_eeprom_read_word(address, data)
    return data
 end function
 
 -- Read dword from data eeprom at given address and return result
 function data_eeprom_dword(byte in address) return dword is
    var dword data
-   data_eeprom_read_dword(address,data)
+   data_eeprom_read_dword(address, data)
    return data
 end function
 
@@ -75,17 +76,21 @@ procedure data_eeprom_write(byte in address, byte in data) is
 
    var bit gie_old                              -- GIE state
 
+   while EECON1_WR loop                         -- allow any previous
+     -- spin until write completed              -- write to complete
+   end loop                                     -- before this write
+
    EEADR  = address
    EEDATA = data
 
    if defined(EECON1_EEPGD) == TRUE then
-      EECON1_EEPGD = FALSE                      -- select data memory
-      if defined(EECON1_CFGS) == TRUE then
-        EECON1_CFGS = FALSE                     -- select data memory
-      end if
-      if defined(EEADRH) == TRUE then           -- large data memory
-        EEADRH = 0;                             -- reset high address
-      end if
+      EECON1_EEPGD = FALSE                      -- deselect pgm memory
+   end if
+   if defined(EECON1_CFGS) == TRUE then
+      EECON1_CFGS = FALSE                       -- deselect cfg memory
+   end if
+   if defined(EEADRH) == TRUE then              -- large memory
+      EEADRH = 0                                -- reset high address
    end if
 
    gie_old = INTCON_GIE
@@ -99,10 +104,6 @@ procedure data_eeprom_write(byte in address, byte in data) is
 
    INTCON_GIE = gie_old                         -- restore interrupt status
    EECON1_WREN = FALSE                          -- disable further writing
-
-   while EECON1_WR loop
-     -- spin until write completed
-   end loop
 
 end procedure
 
