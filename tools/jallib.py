@@ -271,7 +271,7 @@ def validate_field(data,field,predicate,mandatory,multiline=False):
 				break
 			c += re.sub("^--\s","",l)
 		else:
-			errors.append("%d: cannot find end of field content %s" % (i,field))
+			errors.append("Cannot find end of field content %s" % field)
 		return c
 		
 	# eat header, and check fields (mandatory or not) and 
