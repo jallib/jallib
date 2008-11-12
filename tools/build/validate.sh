@@ -15,6 +15,7 @@ at_least_one_failed=0
 counter=0
 
 echo "" > /tmp/validate.out
+echo "" > /tmp/validate.failed
 
 for jalfile in `echo $jalsamples $jallibs`
 do
@@ -26,6 +27,7 @@ do
 		cat /tmp/tmpval.out >> /tmp/validate.out
 		echo -- -- -- >> /tmp/validate.out
 		echo >> /tmp/validate.out
+		echo `basename $jalfile` >> /tmp/validate.failed
 		at_least_one_failed=1
 		counter=`expr $counter + 1`		
 	fi
@@ -36,7 +38,11 @@ then
 	echo "All files validated :)"
 else
 	echo "$counter files can't be validated..."
+	echo List:
+	cat /tmp/validate.failed
 	echo
+	echo
+	echo Details:
 	cat /tmp/validate.out
 	echo
 fi
