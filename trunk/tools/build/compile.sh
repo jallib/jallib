@@ -13,6 +13,7 @@ at_least_one_failed=0
 counter=0
 
 echo "" > /tmp/compile.out
+echo "" > /tmp/compile.failed
 
 for sample in $jalsamples
 do
@@ -23,6 +24,7 @@ do
 		echo -- jalv2 output -- >> /tmp/compile.out
 		cat /tmp/tmpcomp.out >> /tmp/compile.out
 		echo -- -- -- >> /tmp/compile.out
+		echo `basename $sample` >> /tmp/compile.failed
 		at_least_one_failed=1
 		counter=`expr $counter + 1`
 	fi
@@ -33,7 +35,11 @@ then
 	echo "All samples compile :)"
 else
 	echo "$counter samples can't be compiled..."
+	echo List:
+	cat /tmp/compile.failed
 	echo
+	echo
+	echo Details:
 	cat /tmp/compile.out
 	echo
 fi
