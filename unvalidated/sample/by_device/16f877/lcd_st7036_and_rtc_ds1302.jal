@@ -31,22 +31,28 @@
 
 
 -------------  INCLUDE files ----------------------------------------
-pragma target clock       20_000_000 ;
+;pragma target clock       20_000_000 ;
 include 16f877
 
 
 ---initial config  (addr 2007h) for config PIC-chip page 120 --------
 
 
+pragma target clock 20_000_000                  -- xtal frequency
+pragma target OSC        hs
+pragma target   LVP disabled
+pragma target   WDT disabled
 
-pragma target osc         hs    ;(lp,xt,hs,zie 16f887_inc_all.jal)
-pragma target watchdog    off   ;(on,off)
-pragma target LVP         off   ;low voltage ICSP (on,off)
-pragma target BOR         off   ;Burn Out Reset  (on,off)
-pragma target protection  off   ;Flash Prog mem code Protection  (off,half,all)
-pragma target CPD         off   ;Data EEprom mem code Protection (on,off)
-pragma target powerup     off   ;power up delay (72mS after power up)(on,off)
-pragma target DEBUG       off   ;In-Circuit Debugger mode (on,off)
+include delay
+
+;pragma target osc         hs    ;(lp,xt,hs,zie 16f887_inc_all.jal)
+;pragma target wdt         off   ;(on,off)
+;pragma target LVP         off   ;low voltage ICSP (on,off)
+;pragma target BOR         off   ;Burn Out Reset  (on,off)
+;pragma target protection  off   ;Flash Prog mem code Protection  (off,half,all)
+;pragma target CPD         off   ;Data EEprom mem code Protection (on,off)
+;pragma target powerup     off   ;power up delay (72mS after power up)(on,off)
+;pragma target DEBUG       off   ;In-Circuit Debugger mode (on,off)
 
 
 ------------- DEFINES -----------------------------------------------
@@ -77,7 +83,7 @@ pin_c6_direction = output  ; RS232
 pin_c7_direction = input   ; RS232
 
 --d poort
-port_d_direction = all_input  ; poort D input alarmen
+portd_direction = all_input  ; poort D input alarmen
 
 
 
@@ -90,12 +96,12 @@ pin_e2_direction = input
 
 
 
-serial_hw_enable      ; zet hardware voor uart aan
+;serial_hw_enable()    ; zet hardware voor uart aan
 
-gie = 1               ;general interupt enabled
-peie = 1              ;peripheral interupt enabled
-t0ie = 0              ;timer 0 interupt disabled
-tmr1ie = 0            ;timer 1 interupt disabled
+INTCON_gie = 1               ;general interupt enabled
+INTCON_peie = 1              ;peripheral interupt enabled
+INTCON_t0ie = 0              ;timer 0 interupt disabled
+PIE1_tmr1ie = 0            ;timer 1 interupt disabled
 ------------- OPTION register met timer0  -------------------------------
 option_reg = 0b0000_0111
 ;NOT_RBPU at OPTION_REG : 7 = 0   0 = weak pull-up on port B
@@ -123,6 +129,10 @@ option_reg = 0b0000_0111
 ;252,55859375 - 252 = 0,55859375 x 256 = 143   TMR1L = 143
 
 
+-- hack for this program only.
+procedure delay_1s(byte in param) is
+   delay_100ms(param * 10)
+end procedure
 -------------------------------------------------------------------------
 ---------------------------- lcd Variables ------------------------------
 -------------------------------------------------------------------------
@@ -156,7 +166,7 @@ option_reg = 0b0000_0111
  const lcd_number_of_display_characters = 16
 
 
- include lcd_st7036_rz
+ include lcd_st7036
 
 -------------------------------------------------------------------------
 -------------------------------------------------------------------------
@@ -176,7 +186,7 @@ option_reg = 0b0000_0111
                            ; RESISTOR = 4 (4K) or RESISTOR = 8 (8K)
  var bit rtc_trickel = on   ; TRICKEL = ON or TRICKEL = OFF (no charging)
 
- include ds1302_rz
+ include rtc_ds1302
 
 -------------------------------------------------------------------------
 -------------------------------------------------------------------------
@@ -281,7 +291,7 @@ end procedure
       while value < 255  loop
             lcd_bvalue_dp_line_pos_left_sign ( value, 0, 1, 5, true, false)
              value = value + 1
-             delay_5ms(10)
+             delay_1ms(50)
             lcd_progress  (2, (value/17)+1 , 0xdb)
       end loop
       lcd_bvalue_dp_line_pos_left_sign ( value, 0, 1, 5, true, false)
@@ -349,7 +359,7 @@ end procedure
         lcd_new_line_cursor_position (1, 7)
         lcd_bvalue_hex (value1)
         value1 = value1 + 1
-        delay_5ms(10)
+        delay_1ms(50)
   end loop
 
   wvalue = 0
@@ -362,7 +372,7 @@ end procedure
         lcd_new_line_cursor_position (2, 9)
         lcd_wvalue_hex (wvalue)
         wvalue = wvalue + 1
-        delay_5ms(1)
+        delay_1ms(5)
   end loop
 
 
@@ -385,7 +395,7 @@ end procedure
            rtc_to_dec (year)
            lcd_new_line_cursor_position (2, 3)
            lcd_date ( day, mounth, 2000 + year, "-", true )
-           delay_5ms(20)
+           delay_1ms(100)
    end loop
 
 
