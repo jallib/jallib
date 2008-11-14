@@ -72,7 +72,7 @@ export:
 	# flatten library files
 	find distrib/jallib-export/include -type f -exec cp {} distrib/jallib-${VERSION}/lib \;
 	find distrib/jallib-unvalidated/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
-	for f in `find distrib/jallib-unvalidated/sample/by_device/ -type f | grep -e 'b[[:digit:]]\{2\}[[:alpha:]]\+.*\.jal'`; \
+	for f in `find distrib/jallib-unvalidated/sample/by_device/ -type f | grep -e 'blink_[[:digit:]]\{2\}[[:alpha:]]\+.*\.jal'`; \
 	do \
 		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
 	done
