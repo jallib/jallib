@@ -215,6 +215,7 @@ def compiler_version(val):
 
 JALLIB = """^-- This file is part of jallib\s+\(http://jallib.googlecode.com\)"""
 LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
+LICENSE2 = """^-- Released under the ZLIB license\s+\(http://www.opensource.org/licenses/zlib-license.html\)"""
 
 # exceptions while checking case
 ALLOWED_MIXED_CASE = """.*(pin|port|tris|option|ancon).*"""
@@ -306,11 +307,11 @@ def validate_header(content):
 		if re.match(JALLIB,line):
 			jallib = True
 			if license: break
-		if re.match(LICENSE,line):
+		if re.match(LICENSE,line) or re.match(LICENSE2,line):
 			license = True
 			if jallib: break
 	not jallib and errors.append("Cannot find references to jallib (should have: %s)" % repr(JALLIB))
-	not license and errors.append("Cannot find references to license (should have: %s)" % repr(LICENSE))
+	not license and errors.append("Cannot find references to license")
 	for field_dict in FIELDS:
 		validate_field(header,**field_dict)
 
