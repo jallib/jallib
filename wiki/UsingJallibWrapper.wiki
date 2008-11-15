@@ -90,6 +90,83 @@ These scripts can handle both the binary or the I-have-installed-all-dependencie
 
 == Compiling == 
 
+`jallib help compile` will give you details about compiling files with jallib. Basically, once the script is configured, you just have to:
+
+{{{
+jallib compile file.jal
+}}}
+
+Note: jallib wrapper honors error code status, so if jalv2 compiler returns a code status 1, then the wrapper will do the same.
+
 == Validating ==
 
+`jallib help validate` will give you details about validating files, and checking how compliant they are according to the JallibStyleGuide. Basically:
+
+{{{
+jallib validate file.jal [file2.jal ...]
+}}}
+
+You can validate multiple files at a time. If all are compliant, it return 0, else if at least has failed, it returns a non-zero code status.
+
 == Testing ==
+
+`jallib help test` for more... This is probably where you can do the most with jallib wrapper. The `test` action is here to help handling test results, for each PIC. The wrapper is able to:
+
+=== Generating or updating a testing matrix (YAML file)=== 
+
+By exploring the sample map and trying to compile tests with board files, to guess which tests are valid for a given PIC. Quite a nice feature :)
+
+{{{
+# if JALLIB_MATRIX env var exists, just do
+jallib test -u
+# or you can specify a file
+jallib test -u -f mymatrix.yaml
+}}}
+
+
+=== Working with a PIC subset (small matrix) === 
+
+Because the matrix can be quite big, and because you won't work with all the PIC in the matrix (except Rob who has 250 PICs), you can create a small matrix, dedicated your favorite PIC
+
+{{{
+# you have 16f88, 16f877 and 16f877a target chip, so...
+jallib test -u -f mysmallmatrix.yaml -n 16f88,16f877,16f877a
+}}}
+
+You now have a small matrix, for these PICs only. But remember: only the big fat one have authority. That is, the huge matrix is the only one which is under SVN, is the only which will be considered while generating html files, for instance. So, what to do now ? Merge your small matrix with the big one:
+
+{{{
+# if configured, with env vars
+jallib test -m mymatrix.yaml
+# or, specifying the big matrix file
+jallib test -g bigfatmatrix.yaml -m mymatrix.yaml
+}}}
+
+Then, you can commit the big matrix file, so everybody knows you've tested things. This feature also allows testers, without svn access, to send their results to the list, then we, developers, integrate results to the main matrix
+
+=== Registering test results ===
+
+Easy...
+
+{{{
+# this test is a success 
+jallib test -a 16f88:new_test.jal:true
+# this one failed
+jallib test -a 16f877:new_test.jal:false
+}}}
+
+The SVN file revision is important, because it shows where you tested things in the repository. With it, you can precisely track how things are tested, with an history. Fortunately, if you have `pysvn` dependency installed, the wrapper will check extract this information for you, so you don't have to deal with it. If `pysvn` is not installed, you can specify it (and also force it, that is by-passing pysvn):
+
+{{{
+jallib test -a 16f628:new_test.jal:true@143
+}}}
+
+At any time, you can print the results:
+
+{{{
+jallib test -p 16f88
+}}}
+
+=== Generating test report (HTML files) ===
+
+Still W.I.P
