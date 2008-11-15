@@ -40,11 +40,11 @@ compile:
 jsg:
 	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
 	do \
-		./jsg_validator.py $$f ;\
+		./jallib.py validate $$f ;\
 	done 
 	for f in `find ${INCLUDE_DIR} -name \*.jal`; \
 	do \
-		./jsg_validator.py $$f ;\
+		./jallib.py validate $$f ;\
 	done 
 
 doc:
