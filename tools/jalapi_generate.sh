@@ -45,6 +45,7 @@ echo "<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.
 	<body>
 " > $MENU
 # manually include device files doc, as it's not generated from a lib
+echo "<a href='http://jallib.googlecode.com' target='_parent'><i>back to jallib</i></a><br/><br/>" >> $MENU
 echo "<a href='devicefiles.html' target='lib_desc'>device files</a><br/>" >> $MENU
 cat $MENU.tmp >> $MENU
 rm $MENU.tmp
