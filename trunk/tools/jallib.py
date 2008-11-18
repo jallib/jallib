@@ -34,6 +34,7 @@ deps = [
 import sys, os
 import getopt
 import re
+import datetime, time
 
 # Disable action when can't import deps
 try:
@@ -765,6 +766,83 @@ def merge_matrix(outfile,sub_matrix):
 	main_matrix.update(sub_matrix)
 	save_matrix(main_matrix,outfile)
 
+
+##########
+# SAMPLE #
+##########
+
+def parse_board(boardcontent):
+	current_section = None
+	sections = {}
+	for l in boardcontent:
+		if "@jallib" in l:
+			current_section = l.split()[-1]
+			sections[current_section] = []
+		if current_section:
+			sections[current_section] += l
+	return {'sections' : sections}
+	
+
+def merge_board_testfile(boardcontent,testcontent):
+	board = parse_board(boardcontent)
+	# replace sections in testcontent
+	testcontent = "".join(testcontent)
+	toreplace = [m for m in re.finditer("((--)+)|(;+)\s*@jallib use (.*)",testcontent,re.MULTILINE) if m.groups()[-1]]
+	newcontent = ""
+	start = 0
+	for m in toreplace:
+		newcontent += testcontent[start:m.start() - 1]
+		new = "".join(board['sections'][m.groups()[-1].strip()])
+		start = m.end() + 1
+		newcontent += new
+	newcontent += testcontent[start:]
+	return newcontent
+
+
+def do_sample(args=[]):
+	try:
+		opts, args = getopt.getopt(args, ACTIONS['sample']['options'])
+	except getopt.error,e:
+		print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+		sys.exit(255)
+	
+	boardfile = None
+	testfile = None
+	outfile = None
+	for o,v in opts:
+		if o == '-b':
+			boardfile = v
+		elif o == '-t':
+			testfile = v
+		elif o == '-o':
+			outfile = v
+	if boardfile and testfile:
+		board = map(lambda x: x.replace("\r\n",os.linesep),file(boardfile).readlines())
+		test = map(lambda x: x.replace("\r\n",os.linesep),file(testfile).readlines())
+		# keep test's headers, but enrich them with info about how files were merged
+		# headers need index
+		# extract_header will change content in place, ie. will remove
+		# header from test content. 
+		test = [t for t in enumerate(test)]
+		header = extract_header(test)
+		header = "".join([h for i,h in header])
+		header += """--
+-- This file has been generated on %s, from:
+--    * board: %s
+--    * test : %s
+--
+""" % (time.strftime("%c",datetime.datetime.now().timetuple()),os.path.basename(boardfile),os.path.basename(testfile))
+		# back to content without index
+		test = [l for i,l in test]
+		merged = merge_board_testfile(board,test)
+		fout = file(outfile,"w")
+		print >> fout, header
+		print >> fout, merged
+		fout.close()
+	else:
+		print >> sys.stderr, "Provide a board and a test file"
+		sys.exit(255)
+
 	
 #############
 # HELP FUNC #
@@ -933,6 +1011,7 @@ ACTIONS = {
 		'test'		: {'callback' : do_test, 'options' : 's:uf:a:g:d:o:p:t:1n:m:', 'help' : test_help},
 		'help'		: {'callback' : do_help, 'options' : '', 'help' : None},
 		'license'	: {'callback' : do_license, 'options' : '', 'help' : None},
+		'sample'	: {'callback' : do_sample, 'options' : 'b:t:o:', 'help' : None},
 		}
 
 
