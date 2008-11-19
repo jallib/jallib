@@ -50,6 +50,9 @@ jsg:
 doc:
 	./jalapi_generate.sh ../${ENV}
 
+matrix:
+	./jallib_matrix_generate.sh ../${ENV}
+
 export:
 	# prepare distrib dir
 	mkdir distrib
