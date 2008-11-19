@@ -454,6 +454,7 @@ def do_test(args):
 		sys.exit(255)
 	
 	do_update = False
+	do_prune = False
 	do_generate = False
 	do_add = False
 	do_delete = False
@@ -464,16 +465,19 @@ def do_test(args):
 	sample_dir = None
 	test_str = None
 	tmpl_file = None
+	tmpl_file_pic = None
 	html_file = None
 	pic = None
 	outfile = None
-	only_passed = False
+	only_tested = False
 	each_pic_tmpl = None
 	selected_pics = None
 	sub_matrix = None
 	for o,v in opts:
 		if o == '-u':
 			do_update = True
+		elif o == '-e':
+			do_prune = True
 		elif o == '-a':
 			do_add = True
 			test_str = v
@@ -484,9 +488,12 @@ def do_test(args):
 			sample_dir = v
 		elif o == '-f':
 			outfile = v
-		elif o == '-g':
+		elif o == '-G':
 			do_html = True
 			tmpl_file = v
+		elif o == '-g':
+			do_html = True
+			tmpl_file_pic = v
 		elif o == '-o':
 			got_html = True
 			html_file = v
@@ -494,7 +501,7 @@ def do_test(args):
 			do_print = True
 			pic = v
 		elif o == '-1':
-			only_passed = True
+			only_tested = True
 		elif o == '-t':
 			each_pic_tmpl = v
 		elif o == '-n':
@@ -514,6 +521,8 @@ def do_test(args):
 		sample_dir = os.environ.get('JALLIB_SAMPLEDIR',os.path.curdir)
 	if do_update:
 		update_testing_matrix(sample_dir,outfile,selected_pics)
+	elif do_prune:
+		prune_testing_matrix(sample_dir,outfile,selected_pics)
 	elif do_add:
 		add_update_test(test_str,outfile,sample_dir)
 	elif do_delete:
@@ -523,7 +532,7 @@ def do_test(args):
 	elif do_html:
 		if not got_html:
 			html_file = ".".join(tmpl_file.split(".")[:-1]) + ".html"
-		generate_html(tmpl_file,html_file,outfile,sample_dir,only_passed,each_pic_tmpl)
+		generate_html(tmpl_file,tmpl_file_pic,html_file,outfile,sample_dir,only_tested,each_pic_tmpl)
 	elif do_print:
 		display_test_results(pic,outfile)
 	else:
@@ -556,7 +565,7 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 			if jalfile.startswith(".") or not jalfile.endswith(".jal"):
 				continue
 			matrix[device]['samples'].setdefault(jalfile,{'pass' : None, 'revision' : None})
-	
+
 	def analyse_sampledir(dir):
 		if not "by_device" in os.listdir(dir):
 			print >> sys.stderr, "Sample dir '%s' does not contain 'by_device' map." % dir
@@ -607,9 +616,26 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 				else:
 					print >> sys.stderr, "Compilation failed for test '%s' with pic '%s' (status=%s)" % (test,pic,status)
 
+
 	analyse_sampledir(sample_dir)
 	analyse_testdir(sample_dir)
 	
+	save_matrix(matrix,outfile)
+
+def prune_testing_matrix(sample_dir,outfile,selected_pics=[]):
+	if not "by_device" in os.listdir(sample_dir):
+		print >> sys.stderr, "Sample dir '%s' does not contain 'by_device' map." % bydevicedir
+		sys.exit(1)
+	bydevicedir = os.path.join(sample_dir,"by_device")
+
+	matrix = get_matrix(outfile)
+	pics = selected_pics and selected_pics or matrix.keys()
+	for pic in pics:
+		for s in matrix[pic]['samples'].keys():
+			if not os.path.isfile(os.path.join(bydevicedir,pic,s)):
+				print "PIC: %s, sample '%s' doesn't exist, removing from the matrix..." % (pic,s)
+				del matrix[pic]['samples'][s]
+
 	save_matrix(matrix,outfile)
 
 
@@ -706,24 +732,62 @@ def delete_test(test_str,outfile):
 		print >> sys.stderr, "Unable to delete '%s' from PIC %s, cannot find '%s'" % (testfile,pic,e)
 		sys.exit(1)
 
+def get_meter_label(meter):
+	if meter < 0:
+		return "not supported"
+	elif meter == 0:
+	   return "not tested"
+	elif meter <= 10:
+	   return "poor"
+	elif meter <= 30:
+	   return "risky"
+	elif meter <= 50:
+	   return "average"
+	elif meter <= 60:
+	   return "nice"
+	elif meter <= 70:
+	   return "good"
+	elif meter <= 80:
+	   return "very good"
+	elif meter <= 90:
+	   return "awesome"
+	elif meter <= 100:
+	   return "oh my..."
+	else:
+	   return "can't be serious"
+
+def sample_stat(data):
+	true = false = none = 0
+	for what in ('samples','tests'):
+		true += len([s for s in data[what] if data[what][s]['pass'] == True])
+		false += len([s for s in data[what] if data[what][s]['pass'] == False])
+		none += len([s for s in data[what] if data[what][s]['pass'] == None])
+	return (true,false,none)
+
+def compute_meter(data):
+	sample_num = len(data['samples']) + len(data['tests'])
+	if sample_num == 0:
+	   return 0.0
+	true,false,none = sample_stat(data)
+	print "true_samples: %s, false_samples: %s, none_samples: %s --- %s sample_num" % (true,false,none,sample_num)
+	note = ((float(true) - float(false)) / float(sample_num)) * 100.0
+	return note
+
+
 def find_includes(jalfile):
 	content = file(jalfile).read()
 	return re.findall("^\s*include\s+(\w+)\s*",content,re.MULTILINE)
 
 
-def generate_html(tmpl_file,html_file,outfile,sample_dir,only_passed=False,for_each_pic_tmpl=None):
+def generate_html(tmpl_file,tmpl_file_pic,html_file,outfile,sample_dir,only_tested=False,for_each_pic_tmpl=None):
 	if not has_cheetah:
 		print >> sys.stderr, "You can't use this action, because cheetah module is not installed"
 		sys.exit(255)
 		
 	matrix = get_matrix(outfile)
-	tmplsrc = "".join(file(tmpl_file,"r").readlines())
-	klass = Cheetah.Template.Template.compile(tmplsrc)
-	tmpl = klass()
-
 	# TODO
+	newtr = {}
 	for pic,res in matrix.items():
-		newtr = {}
 		libs = {True : [], False : [], None: []}
 		# build libds list for all samples attached to this PIC
 		# and also a list of libs for each samples
@@ -740,14 +804,40 @@ def generate_html(tmpl_file,html_file,outfile,sample_dir,only_passed=False,for_e
 		# unique
 		for k in libs.keys():
 			libs[k] = list(set(libs[k]))
-		if only_passed and len(libs[True]) == 0:
+		if only_tested and len(libs[True]) == 0 and len(libs[False]) == 0:
 			continue
 		else:
-			matrix[pic]['libs'] = libs
+			newtr[pic] = res
+			newtr[pic]['libs'] = libs
 
-	tmpl.test_results = matrix
+	# generate global matrix
+	tmplsrc = "".join(file(tmpl_file,"r").readlines())
+	klass = Cheetah.Template.Template.compile(tmplsrc)
+	tmpl = klass()
+	tmpl.test_results = newtr
+	tmpl.sample_stat = sample_stat
+	tmpl.compute_meter = compute_meter
+	tmpl.get_meter_label = get_meter_label
 	fout = file(html_file,"w")
 	print >> fout, tmpl.main()
+
+	# then dedicated page
+	if tmpl_file_pic:
+		outdir = os.path.dirname(html_file)
+		tmplsrc = "".join(file(tmpl_file_pic,"r").readlines())
+		klass = Cheetah.Template.Template.compile(tmplsrc)
+		tmpl2 = klass()
+		for pic,res in newtr.items():
+			tmpl2.sample_stat = sample_stat
+			tmpl2.compute_meter = compute_meter
+			tmpl2.get_meter_label = get_meter_label
+			tmpl2.data = res
+			print "res: %s" % res
+			tmpl2.picname = pic
+			fout = file(os.path.join(outdir,"test_%s.html" % pic),"w")
+			print >> fout, tmpl2.main()
+		
+		
 
 def display_test_results(pic,outfile):
 	matrix = get_matrix(outfile)
@@ -933,6 +1023,11 @@ Use this option to handle the testing matrix and the test result page.
         tests are not relevant to all target chips). This won't erase 
         previous testing results, but will potentially add new sample 
         lines to the testing matrix file.
+	
+	-e: erase samples which are declared in the matrix, but don't exist
+		anymore on the filesystem/repository. Ex: when samples are renamed
+		the matrix needs to be updated (-u) to include renamed samples,
+		then it needs to be pruned (-e) to remove old samples.
 
     -a: add or update a test result. If the test does not exist, it's 
         added to the matrix, else results will be updated.
@@ -970,18 +1065,22 @@ Use this option to handle the testing matrix and the test result page.
         are comma separated. Ex:
             -n 16f88,16f877,16f877a
 
-    -g: generate HTML a testing matrix from tests results, and dedicated 
+    -G: generate HTML a testing matrix from tests results, and dedicated 
         test result pages for each PIC, from both samples and tests.
 
+    -g: generate all dedicated test results page for each PIC
+
     -1: only generate testing matrix for PIC which have at least one test
-        passed.
+        executed, whether passed or failed.
     
     -t: also generate dedidated test result pages for each PIC, using given
         template. The output file will be named as: test_<picname>.html 
         (not implemented yet)
 
-    -o: specify output HTML file. Used with -g option. If omitted, will be 
+    -o: specify output HTML file. Used with -G option. If omitted, will be 
         named the same as the template file, with ".html" extension
+        If -g is also specified, then param's dirname will be used to produre html
+        files for each PICs.
 
     -f: file storing the testing matrix results. YAML formatted. If not 
         specified, will look for a JALLIB_MATRIX environment variable.
@@ -1008,7 +1107,7 @@ def do_help(action_args=[]):
 ACTIONS = {
 		'compile'	: {'callback' : do_compile, 'options' : 'R:E:', 'help' : compile_help},
 		'validate'	: {'callback' : do_validate, 'options' : '', 'help' : validate_help},
-		'test'		: {'callback' : do_test, 'options' : 's:uf:a:g:d:o:p:t:1n:m:', 'help' : test_help},
+		'test'		: {'callback' : do_test, 'options' : 's:uef:a:G:g:d:o:p:t:1n:m:', 'help' : test_help},
 		'help'		: {'callback' : do_help, 'options' : '', 'help' : None},
 		'license'	: {'callback' : do_license, 'options' : '', 'help' : None},
 		'sample'	: {'callback' : do_sample, 'options' : 'b:t:o:', 'help' : None},
