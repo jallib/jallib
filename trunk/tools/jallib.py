@@ -933,6 +933,97 @@ def do_sample(args=[]):
 		print >> sys.stderr, "Provide a board and a test file"
 		sys.exit(255)
 
+
+#################
+# REINDENT FUNC #
+#################
+
+POSTINC = ["assembler","block","case","while","for","forever","then","function","procedure"]
+INLINEKW = ["assembler","block","case","function","procedure","if"]
+PROTO = ["procedure","function"]
+PREDEC = ["end"]
+PREINCPOST = ["else","elsif"]
+INDENTCHARS = 3 * " "
+
+def reindent_file(filename):
+	data = file(filename).read()
+	lines = re.split("\n|\r\n",data)
+
+	level = 0
+	content = []
+	for l in lines:
+		# This exception is known as Joep's exception :)
+		if l.startswith(";"):
+			content.append(l)
+			continue
+		# check if comments
+		try:
+			code,comchars,comment = re.match("(.*?)(-{2}|;)(.*)",l).groups()
+		except AttributeError,e:
+			# no comments, normalize
+			code = l
+			comchars = comment = ""
+		
+		# remove strings between " and ', to focus only on jal keywords
+		onlyjalkw = re.sub("[\"|'].*[\"|']","",code)
+		fields = onlyjalkw.strip().split()
+	
+		do_postinc = do_preincpost = do_predec = False
+		if set(fields).intersection(set(POSTINC)):
+			do_postinc = True
+		if set(fields).intersection(set(PREINCPOST)):
+			do_preincpost = True
+		if set(fields).intersection(set(PREDEC)):
+			do_predec = True
+	
+		# search for inline code
+		reg = "|".join(INLINEKW+ ["loop"])
+		found = re.findall(reg,onlyjalkw)
+		if len(set(found)) != len(found):
+			# inline code because duplicated kw, do nothing
+			do_postinc = do_preincpost = do_predec = False
+		# don't indent prototypes
+		if not do_predec and set(fields).intersection(set(PROTO)) and not "is" in fields:
+			do_postinc = do_preincpost = do_predec = False
+	
+		# "while ... loop end loop" : post increment (while) + pre decrement (end) => do nothing
+		# but "end procedure" : post increment (procedure) + pre decrement (end) => decrement
+		# hypothese: only loop are written inline...
+		# FIX: could also count occurences
+		if do_postinc and do_predec:
+			do_postinc = False
+		if do_postinc and do_preincpost:
+			do_postinc = False
+	
+		# unindent code to apply new
+		code = re.sub("^\s*","",code)
+		if do_postinc:
+			content.append(INDENTCHARS * level + code + comchars + comment)
+			level += 1
+			continue
+		if do_predec:
+			level -= 1
+			content.append(INDENTCHARS * level + code + comchars + comment)
+			continue
+		if do_preincpost:
+			level -= 1
+			content.append(INDENTCHARS * level + code + comchars + comment)
+			level += 1
+			continue
+			
+		content.append(INDENTCHARS * level + code + comchars + comment)
+		if level < 0:
+			raise Exception("Adjusting indent level gives negative one. Please report bug !")
+	
+	assert level == 0, "Reached the end of file, but indent level is not null (it should)"
+	# ok, now we can save the content back to the file
+	fout = file(filename,"w")
+	print >> fout, "\n".join(content)
+	fout.close()
+
+def do_reindent(args):
+	for filename in args:
+		reindent_file(filename)
 	
 #############
 # HELP FUNC #
@@ -1093,6 +1184,14 @@ Use this option to handle the testing matrix and the test result page.
 
 """
 
+def reindent_help():
+	print """
+    jallib reindent file.jal [anotherfile.jal ...]
+
+Reindent the given jal file, and save it back to the same file.
+
+"""
+
 def do_help(action_args=[]):
 	action = None
 	if action_args:
@@ -1108,9 +1207,10 @@ ACTIONS = {
 		'compile'	: {'callback' : do_compile, 'options' : 'R:E:', 'help' : compile_help},
 		'validate'	: {'callback' : do_validate, 'options' : '', 'help' : validate_help},
 		'test'		: {'callback' : do_test, 'options' : 's:uef:a:G:g:d:o:p:t:1n:m:', 'help' : test_help},
+		'sample'	: {'callback' : do_sample, 'options' : 'b:t:o:', 'help' : None},
+		'reindent'	: {'callback' : do_reindent, 'options' : 'f:o:', 'help' : reindent_help},
 		'help'		: {'callback' : do_help, 'options' : '', 'help' : None},
 		'license'	: {'callback' : do_license, 'options' : '', 'help' : None},
-		'sample'	: {'callback' : do_sample, 'options' : 'b:t:o:', 'help' : None},
 		}
 
 
