@@ -97,10 +97,6 @@ do i=1 to pic.0
   call lineout PgmFile, '--'
   call lineout PgmFile, 'include' PicName '                   -- target PICmicro'
   call lineout PgmFile, '--'
-  if left(PicName,5) = '16f88'  |  left(Picname,3) = '18f' then do
-    call lineout PgmFile, 'pragma bootloader long_start       -- support bootloader'
-    call lineout PgmFile, '--'
-  end
   call SysFileSearch 'pragma fuse_def OSC', pic.i, osc.
   if osc.0 > 0 then do                                  /* oscillator pragma present */
     call SysFileSearch 'HS =', pic.i, osc.
@@ -129,7 +125,7 @@ do i=1 to pic.0
       call lineout PgmFile, 'pragma target IOSCFS  F4MHZ        -- select 4 MHz'
   end
   if left(PicName,2) = '18' then
-    call lineout PgmFile, '-- Due to default Cnfig bits settings the blink frequency may',
+    call lineout PgmFile, '-- Note: config bits settings may cause the blink frequency',
                           'be slower or faster than 2 Hz!'
   call SysFileSearch 'pragma fuse_def WDT', pic.i, wdt.
   if wdt.0 > 0 then do
