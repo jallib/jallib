@@ -11,24 +11,24 @@
 /* Released under the BSD license                                           */
 /*              http://www.opensource.org/licenses/bsd-license.php          */
 /*                                                                          */
-/* Description: Rexx script to create device include files for JALV2,       */
-/*              and the file jalv2_common.jal, included by each of these.   */
-/*              Apart from declaration of all ports and pins of the chip    */
-/*              the include files will contain shadowing procedures to      */
-/*              prevent the 'read-modify-write' problems of midrange PICs   */
-/*              and for the 18F force the use of LATx in stead of PORTx.    */
-/*              In addition some device dependent procedures are provided   */
-/*              for common operations, like enable-digital-io().            */
+/* Description:                                                             */
+/*   Rexx script to create device include files for JALV2,                  */
+/*   and the file jalv2_common.jal, included by each of these.              */
+/*   Apart from declaration of all ports and pins of the chip               */
+/*   the include files will contain shadowing procedures to                 */
+/*   prevent the 'read-modify-write' problems of midrange PICs              */
+/*   and for the 18F force the use of LATx in stead of PORTx.               */
+/*   In addition some device dependent procedures are provided              */
+/*   for common operations, like enable-digital-io().                       */
 /*                                                                          */
 /* Sources:  MPLAB .dev and .lkr files                                      */
 /*                                                                          */
 /* Notes:                                                                   */
-/*  - Written in 'Classic Rexx' style, but requires 'Object Rexx' to run.   */
-/*  - Summary of internal changes is kept in 'changes.txt' (not published). */
-/*  - The script contains some test and debugging code.                     */
+/*   - Summary of internal changes is kept in 'changes.txt' (not published) */
+/*   - The script contains some test and debugging code.                    */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.52'                   /*                          */
+   ScriptVersion   = '0.0.53'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '=2.4h'                    /*                          */
 /* ------------------------------------------------------------------------ */
@@ -77,7 +77,9 @@ end
 signal on syntax name syntax_catch              /* catch syntax error */
 signal on error  name error_catch               /* catch execution errors */
 
-rx = stream(chipdef, 'c', 'open write replace')  /* create new common file */
+if stream(chipdef, 'c', 'query exists') \= '' then   /* old file */
+  '@erase' translate(chipdef,'\','/')           /* delete */
+rx = stream(chipdef, 'c', 'open write')         /* create common file */
 if rx \= 'READY:' then do
   Say 'Error: Could not create common include file' chipdef', result:' rx
   return 1
@@ -96,8 +98,7 @@ do i=1 to dir.0                                 /* whole list of .dev files */
   CfgAddr.    = ''                              /* )          */
   IDAddr.     = ''                              /* ) decimal! */
 
-  parse lower var dir.i dir.i                   /* LOWER case !!!!*/
-  parse value filespec('Name', dir.i) with 'pic' PicName '.dev'
+  parse value filespec('Name', tolower(dir.i)) with 'pic' PicName '.dev'
   if PicName = '' then do
     Say 'Error: Could not derive PIC name from filespec: "'dir.i'"'
     iterate                                     /* next entry */
@@ -113,7 +114,7 @@ do i=1 to dir.0                                 /* whole list of .dev files */
 
   else if left(PicName,3) = '12f'  |,
           left(PicName,4) = '12hv' |,
-          left(PicName,3) = '16f'  |,
+         (left(PicName,3) = '16f'  &  left(PicName,5) \= '16f19') |,
           left(PicName,4) = '16hv' |,
           left(PicName,4) = '16lf' then do      /* 14- (or 12)-bits core */
     rx = dev2Jal14(dir.i, lkrdir)
@@ -130,15 +131,11 @@ do i=1 to dir.0                                 /* whole list of .dev files */
 
 end
 
-if test = 'PROD' then do
-  'del 16f1937.jal'                             /* do not distribute */
-end
-
 call lineout chipdef, '--'
-call stream  chipdef, 'c', 'close'             /* release file */
+call stream  chipdef, 'c', 'close'              /* done */
 
-say 'PIC device include files for JALV2 created:',
-  listcount 'of' dir.0 '.dev files'
+say 'PIC device files for JALV2 created for' listcount,
+    'flash PICs out of' dir.0 '.dev files'
 return 0
 
 
@@ -186,9 +183,10 @@ end
 call load_sfr1x                                 /* load sfr + mirror info */
 call load_IDAddr                                /* load ID addresses */
 
-parse lower var PicName jalfile                 /* filename lower case */
-jalfile = dstdir||Jalfile'.jal'                 /* pathspec of .jal file */
-if stream(jalfile, 'c', 'open write replace') \= 'READY:' then do
+jalfile = dstdir||tolower(PicName)'.jal'        /* pathspec of .jal file */
+if stream(jalfile, 'c', 'query exists') \= '' then    /* old file */
+  '@erase' translate(jalfile,'\','/')           /* delete */
+if stream(jalfile, 'c', 'open write') \= 'READY:' then do
   Say 'Error: Could not create include file' jalfile
   return 1
 end
@@ -234,7 +232,7 @@ if Core = 12 then do                            /* 12-bits core */
 end
 
 if Core \= 14 then do                           /* wrong core */
-  say 'Script error: Wrong script for' PicName
+  say 'Script error: Wrong script for' PicName '(core='Core') not 14'
   return 1                                      /* done */
 end
 
@@ -252,10 +250,11 @@ end
 call load_sfr1x                                 /* load sfr + mirror info */
 call load_IDAddr                                /* load ID addresses */
 
-parse lower var PicName jalfile                 /* filename lower case */
-jalfile = dstdir||Jalfile'.jal'                 /* .jal file */
-if stream(jalfile, 'c', 'open write replace') \= 'READY:' then do
-  Say 'Error: Could not create include file' jalfile
+jalfile = dstdir||tolower(PicName)'.jal'        /* .jal file */
+if stream(jalfile, 'c', 'query exists') \= '' then   /* old file */
+  '@erase' translate(jalfile,'\','/')           /* delete */
+if stream(jalfile, 'c', 'open write') \= 'READY:' then do
+  Say 'Error: Could not create device file' jalfile
   return 1
 end
 
@@ -321,9 +320,10 @@ end
 call load_sfr16                                 /* load sfr */
 call load_IDAddr                                /* load ID addresses */
 
-parse lower var PicName jalfile                 /* filename lower case */
-jalfile = dstdir||Jalfile'.jal'                 /* .jal file */
-if stream(jalfile, 'c', 'open write replace') \= 'READY:' then do
+jalfile = dstdir||tolower(PicName)'.jal'        /* .jal file */
+if stream(jalfile, 'c', 'query exists') \= '' then   /* old file */
+  '@erase' translate(jalfile,'\','/')           /* delete */
+if stream(jalfile, 'c', 'open write') \= 'READY:' then do
   Say 'Error: Could not create include file' jalfile
   return 1
 end
@@ -422,7 +422,7 @@ do i = 1 to Dev.0
   if Val1 \= '' then do
     if Val1 = 'FFF' then                        /* 12-bits core */
       Core = 12
-    else if Val1 = '2007' then                  /* 14-bits core */
+    else if Val1 = '2007' | Val1 = '8007' then  /* 14-bits core */
       Core = 14
     else                                        /* presumably 16-bits core */
       Core = 16
@@ -570,15 +570,16 @@ return 0
 /* input:  - nothing                                   */
 /* --------------------------------------------------- */
 list_code_size: procedure expose Dev. jalfile
+CodeSize = 0
 do i = 1 to Dev.0
   parse var Dev.i 'PGMMEM' '(' 'REGION' '=' Value ')' .
   if Value \= '' then do
     parse var Value '0X' val1 '-' '0X' val2 .
     CodeSize = X2D(strip(Val2)) - X2D(strip(val1)) + 1
-    call lineout jalfile, 'pragma  code    'CodeSize
-    leave                                       /* 1 occurence expected */
+ /* leave  */                                   /* 1 occurence expected */
   end
 end
+call lineout jalfile, 'pragma  code    'CodeSize
 return
 
 
@@ -683,7 +684,7 @@ select                                          /* exceptions first */
        PicName = '12f675'  |,
        PicName = '16f630'  |,
        PicName = '16f676' then do
-    DataRange = ''                              /* shared _RAM only .. */
+    DataRange = ''                              /* have shared RAM only .. */
     MaxSharedRAM = 0
     end                                         /* .. declared as non shared */
   when PicName = '16f818' then do               /* exceptional PIC */
@@ -957,7 +958,7 @@ do i = 1 to Dev.0
     if reg = 'PCL' |,
        reg = 'FSR' |,
        reg = 'PCLATH' then do
-      parse lower var reg reg                   /* to lower case */
+      reg = tolower(reg)                        /* to lower case */
       call lineout jalfile, 'var volatile byte ' left('_'reg,20) 'at' addr,
                             '     -- (compiler)'
     end
@@ -1159,7 +1160,7 @@ do i = 1 to Dev.0
         reg = 'PCLATU' |,
         reg = 'TABLAT' |,
         reg = 'TBLPTR'    then do
-      parse lower var reg reg                   /* to lower case */
+      reg = tolower(reg)                        /* to lower case */
       call lineout jalfile, 'var volatile' field left('_'reg,20),
                             'shared at 0x'addr '     -- (compiler)'
     end
@@ -1645,7 +1646,7 @@ do k = 0 to 4 while word(Dev.i, 1) \= 'SFR'     /* max 4 records */
       end
       else if datatype(s.i) = 'NUM' then do     /* field size */
         if s.i = 1 then do                      /* single bit */
-          parse lower var n.i n.i               /* to lower case */
+          n.i = tolower(n.i)                    /* to lower case */
           if n.i = 'nto' then do
             call lineout jalfile, 'const        byte ',
                     left('_not_to',20) '= ' offset '     -- (compiler)'
@@ -1699,10 +1700,10 @@ do k = 0 to 4 while word(Dev.i, 1) \= 'SFR'     /* max 4 records */
         offset = offset - 1                     /* skip */
       end
       else if datatype(s.i) = 'NUM' then do     /* field size */
-        parse lower var n.i n.i                 /* to lowercase */
+        n.i = tolower(n.i)                      /* to lowercase */
         call lineout jalfile, 'const        byte  ',
                     left('_'n.i,20) '= ' offset '     -- (compiler)'
-        offset = offset - 1                   /* next bit */
+        offset = offset - 1                     /* next bit */
       end
     end
   end
@@ -2210,9 +2211,14 @@ call lineout jalfile, '-- Switch analog ports to digital mode (if analog module 
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure enable_digital_io() is'
 call lineout jalfile, '   pragma inline'
-do k over analog.                               /* all present analog function */
-  call lineout jalfile, '   'analog.k'_off()'    /* call individual function */
-end
+
+if analog.ANSEL \= '-' then
+  call lineout jalfile, '   analog_off()'
+if analog.ADC \= '-' then
+  call lineout jalfile, '   adc_off()'
+if analog.CMCON \= '-' then
+  call lineout jalfile, '   comparator_off()'
+
 if left(PicName,3) = '10f' |,                   /* all 10Fs */
         PicName = '12f508' | PicName = '12f509' | PicName = '12f510'  |,
         PicName = '16f505' | PicName = '16f506' | PicName = '16f526'  ,
@@ -2231,20 +2237,21 @@ list_head:
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '-- Title: JalV2 device include file for pic'PicName
 call list_copyright_etc jalfile
-call lineout jalfile, '-- Description:' 'Device include file for pic'PicName', containing:'
-call lineout jalfile, '--                - Declaration of ports and pins of the chip.'
+call lineout jalfile, '-- Description:'
+call lineout Jalfile, '--    Device include file for pic'PicName', containing:'
+call lineout jalfile, '--    - Declaration of ports and pins of the chip.'
 if core \= 16 then do                           /* for the baseline and midrange */
-  call lineout jalfile, '--                - Procedures for shadowing of ports and pins'
-  call lineout jalfile, '--                  to circumvent the read-modify-write problem.'
+  call lineout jalfile, '--    - Procedures for shadowing of ports and pins'
+  call lineout jalfile, '--      to circumvent the read-modify-write problem.'
 end
 else do                                         /* for the 18F series */
-  call lineout jalfile, '--                - Procedures to force the use of the LATx register'
-  call lineout jalfile, '--                  when PORTx is addressed.'
+  call lineout jalfile, '--    - Procedures to force the use of the LATx register'
+  call lineout jalfile, '--      when PORTx is addressed.'
 end
-call lineout jalfile, '--                - Symbolic definitions for config bits (fuses)'
-call lineout jalfile, '--                - Some device dependent procedures for common'
-call lineout jalfile, '--                  operations, like:'
-call lineout jalfile, '--                   . enable_digital_io()'
+call lineout jalfile, '--    - Symbolic definitions for config bits (fuses)'
+call lineout jalfile, '--    - Some device dependent procedures for common'
+call lineout jalfile, '--      operations, like:'
+call lineout jalfile, '--      . enable_digital_io()'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Sources:'
 call lineout jalfile, '--  -' DevFile
@@ -2347,11 +2354,12 @@ call lineout chipdef, '-- Title: Common JalV2 compiler include file'
 call list_copyright_etc chipdef
 call lineout chipdef, '-- Sources:'
 call lineout chipdef, '--'
-call lineout chipdef, '-- Description: Common JalV2 compiler include file'
+call lineout chipdef, '-- Description:'
+call lineout chipdef, '--    Common JalV2 compiler include file'
 call lineout chipdef, '--'
 call lineout chipdef, '-- Notes:'
-call lineout chipdef, '--  - Created with Dev2Jal Rexx script version' ScriptVersion
-call lineout chipdef, '--  - File creation date/time:' date('N') time('N')'.'
+call lineout chipdef, '--    - Created with Dev2Jal Rexx script version' ScriptVersion
+call lineout chipdef, '--    - File creation date/time:' date('N') time('N')'.'
 call lineout chipdef, '--'
 call lineout chipdef, '-- ---------------------------------------------------'
 call lineout chipdef, 'const       PIC_12            = 1'
@@ -2408,8 +2416,8 @@ call lineout listfile, '-- Compiler:' CompilerVersion
 call lineout listfile, '--'
 call lineout listfile, '-- This file is part of jallib',
                        ' (http://jallib.googlecode.com)'
-call lineout listfile, '-- Released under the BSD license',
-                       '(http://www.opensource.org/licenses/bsd-license.php)'
+call lineout listfile, '-- Released under the ZLIB license',
+                       '(http://www.opensource.org/licenses/zlib-license.html)'
 call lineout listfile, '--'
 return
 
@@ -2449,6 +2457,13 @@ if reg \= newname then do                       /* not alias of register */
   Say 'Duplicate name:' newname 'in' reg'. First occurence:' Name.newname
   return 1                                      /* duplicate */
 end
+
+
+/* ---------------------------------------------- */
+/* translate string to lower case                 */
+/* ---------------------------------------------- */
+tolower:
+return translate(arg(1), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
 
 
 /* ---------------------------------------------- */
