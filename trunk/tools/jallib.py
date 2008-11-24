@@ -947,7 +947,10 @@ INDENTCHARS = 3 * " "
 
 def reindent_file(filename):
 	data = file(filename).read()
-	lines = re.split("\n|\r\n",data)
+	# dont keep last one, because since it's ended with a \n,
+	# it will appear as an element in lines, resulting in a 
+	# new line at the end of file. Is this true ?...
+	lines = re.split("\n|\r\n",data)[:-1]
 
 	level = 0
 	content = []
