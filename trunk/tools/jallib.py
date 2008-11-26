@@ -969,7 +969,7 @@ def reindent_file(filename):
 		
 		# remove strings between " and ', to focus only on jal keywords
 		onlyjalkw = re.sub("[\"|'].*[\"|']","",code)
-		fields = onlyjalkw.strip().split()
+		fields = map(lambda x: x.lower(),onlyjalkw.strip().split())
 	
 		do_postinc = do_preincpost = do_predec = False
 		if set(fields).intersection(set(POSTINC)):
