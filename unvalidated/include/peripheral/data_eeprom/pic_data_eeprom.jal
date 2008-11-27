@@ -7,7 +7,7 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description:
--- Read from or write to EEPROM byte, word or double word.
+-- Read from or write to EEPROM/data a byte, word or double word.
 -- Available procedures:
 --   * data_eeprom_read(<offset>,<byte>)
 --   * data_eeprom_write(<offset>,<byte>)
@@ -19,11 +19,13 @@
 --   * <byte> = data_eeprom(<offset>)
 --   * <word> = data_eeprom_word(<offset>)
 --   * <dword> = data_eeprom_dword(<offset>)
+-- In all cases <offset> is a position relative to the beginning of
+-- EEPROM/data memory, thus starts at 0.
 -- Examples of use:
---   * Read a byte of EEPROM at offset 7 into byte x:
+--   * Read a byte of EEPROM at offset 7 into x:
 --         var byte x
 --         data_eeprom_read(7, x)
---   * Read a word from EEPROM at offset 4 into word y:
+--   * Read a word from EEPROM at offset 4 into y:
 --         var word y
 --         y = data_eeprom_word(4)
 --   * Write a byte to EEPROM at offset 18:
@@ -31,13 +33,15 @@
 --
 -- Notes:
 -- - Write-protect bits in configuration memory may prohibit writing.
--- - Writing to locations outside the available memory may have
+-- - Writing to locations outside the available memory range may have
 --   unexpected effects!
 -- - Summary of changes
 --   + Changed byte-offset to word-offset for larger EEPROMs with 18Fs
---   + Offset and flags settings for read and write in separate procedure
+--   + Offset and flags settings for read and write in separate procedure.
 --   + Moved check for write completed ahead of read and write, for
---     better performance (ahead of read needed for read back of same byte).
+--     performance (ahead of read needed for read back of same offset).
+--   + added 'pragma inline' to several procedures
+--   + some other code optimizations
 --
 --
 -- ------------------------------------------------------------------------
@@ -130,9 +134,9 @@ end function
 -- ------------------------------------------------------------------------
 procedure data_eeprom_read_word(word in offset, word out data) is
 
-   var byte tempdata[2] at data
-   data_eeprom_read(offset+0, tempdata[0])
-   data_eeprom_read(offset+1, tempdata[1])
+   var byte tempbyte[2] at data
+   data_eeprom_read(offset+0, tempbyte[0])
+   data_eeprom_read(offset+1, tempbyte[1])
 
 end procedure
 
@@ -155,9 +159,9 @@ end function
 -- ------------------------------------------------------------------------
 procedure data_eeprom_write_word(word in offset, word in data) is
 
-   var byte tempdata[2] at data                 -- type cast
-   data_eeprom_write(offset+0, tempdata[0])
-   data_eeprom_write(offset+1, tempdata[1])
+   var byte tempbyte[2] at data                 -- type cast
+   data_eeprom_write(offset+0, tempbyte[0])
+   data_eeprom_write(offset+1, tempbyte[1])
 
 end procedure
 
@@ -168,11 +172,10 @@ end procedure
 -- ------------------------------------------------------------------------
 procedure data_eeprom_read_dword(word in offset, dword out data) is
 
-   var byte tempdata[4] at data
-   data_eeprom_read(offset+0, tempdata[0])
-   data_eeprom_read(offset+1, tempdata[1])
-   data_eeprom_read(offset+2, tempdata[2])
-   data_eeprom_read(offset+3, tempdata[3])
+   pragma inline
+   var word tempword[2] at data
+   data_eeprom_read(offset+0, tempword[0])
+   data_eeprom_read(offset+2, tempword[1])
 
 end procedure
 
@@ -193,11 +196,10 @@ end function
 -- ------------------------------------------------------------------------
 procedure data_eeprom_write_dword(word in offset, dword in data) is
 
-   var byte tempdata[4] at data
-   data_eeprom_write(offset+0, tempdata[0])
-   data_eeprom_write(offset+1, tempdata[1])
-   data_eeprom_write(offset+2, tempdata[2])
-   data_eeprom_write(offset+3, tempdata[3])
+   pragma inline
+   var word tempword[2] at data
+   data_eeprom_write_word(offset+0, tempword[0])
+   data_eeprom_write_word(offset+2, tempword[1])
 
 end procedure
 
