@@ -42,6 +42,8 @@
 --     performance (ahead of read needed for read back of same offset).
 --   + added 'pragma inline' to several procedures
 --   + some other code optimizations
+--   + added support for PICs with deviating register names, like 'EEDAT'
+--     or EEDATL in stead of 'EEDATA' and EEADRL in stead of EEADR.
 --
 --
 -- ------------------------------------------------------------------------
@@ -57,7 +59,12 @@ procedure _prepare_eeprom_access(word in offset) is
      -- spin as long as any previous write is not completed
    end loop                                     -- before this write
 
-   EEADR = tempoffset[0]                        -- low order byte of offset
+   if (defined(EEADR) == TRUE) then
+      EEADR = tempoffset[0]                     -- low order byte of offset
+   elsif (defined(EEADRL) == TRUE) then
+      EEADRL = tempoffset[0]                    -- low order byte of offset
+   end if
+
    if (defined(EEADRH) == TRUE) then            -- PIC with large EEPROM
       EEADRH = tempoffset[1]                    -- high order byte of offset
    end if
@@ -83,7 +90,13 @@ procedure  data_eeprom_read(word in offset, byte out data) is
 
    EECON1_RD = TRUE                             -- initiate read operation
 
-   data = EEDATA                                -- obtain byte
+   if (defined(EEDATA) == TRUE) then
+      data = EEDATA                             -- obtain byte
+   elsif (defined(EEDAT) == TRUE) then
+      data = EEDAT                              -- obtain byte
+   elsif (defined(EEDATL) == TRUE) then
+      data = EEDATL                             -- obtain byte
+   end if
 
 end procedure
 
@@ -97,7 +110,13 @@ procedure data_eeprom_write(word in offset, byte in data) is
 
    _prepare_eeprom_access(offset)               -- make ready for write
 
-   EEDATA = data                                -- byte to write
+   if (defined(EEDATA) == TRUE) then
+      EEDATA = data                             -- store byte
+   elsif (defined(EEDAT) == TRUE) then
+      EEDAT = data                              -- store byte
+   elsif (defined(EEDATL) == TRUE) then
+      EEDATL = data                             -- store byte
+   end if
 
    EECON1_WREN = TRUE                           -- write enable
 
