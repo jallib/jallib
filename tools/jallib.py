@@ -832,7 +832,6 @@ def generate_html(tmpl_file,tmpl_file_pic,html_file,outfile,sample_dir,only_test
 			tmpl2.compute_meter = compute_meter
 			tmpl2.get_meter_label = get_meter_label
 			tmpl2.data = res
-			print "res: %s" % res
 			tmpl2.picname = pic
 			fout = file(os.path.join(outdir,"test_%s.html" % pic),"w")
 			print >> fout, tmpl2.main()
@@ -869,25 +868,32 @@ def parse_board(boardcontent):
 			current_section = l.split()[-1]
 			sections[current_section] = []
 		if current_section:
-			sections[current_section] += l
+			sections[current_section].append(l)
 	return {'sections' : sections}
 	
 
 def merge_board_testfile(boardcontent,testcontent):
 	board = parse_board(boardcontent)
 	# replace sections in testcontent
-	testcontent = "".join(testcontent)
+	testcontent = os.linesep.join(testcontent)
 	toreplace = [m for m in re.finditer("((--)+)|(;+)\s*@jallib use (.*)",testcontent,re.MULTILINE) if m.groups()[-1]]
 	newcontent = ""
 	start = 0
 	for m in toreplace:
 		newcontent += testcontent[start:m.start() - 1]
-		new = "".join(board['sections'][m.groups()[-1].strip()])
+		new = os.linesep.join(board['sections'][m.groups()[-1].strip()])
 		start = m.end() + 1
 		newcontent += new
 	newcontent += testcontent[start:]
 	return newcontent
 
+def normalize_linefeed(content):
+	# use single char
+	content = content.replace("\r\n","\n")
+	# split and join using OS settings
+	lines = re.split("[\n|\r]",content,re.MULTILINE)
+	content = "\n".join(lines)
+	return content
 
 def do_sample(args=[]):
 	try:
@@ -906,22 +912,24 @@ def do_sample(args=[]):
 			testfile = v
 		elif o == '-o':
 			outfile = v
-	if boardfile and testfile:
-		board = map(lambda x: x.replace("\r\n",os.linesep),file(boardfile).readlines())
-		test = map(lambda x: x.replace("\r\n",os.linesep),file(testfile).readlines())
+	if boardfile and testfile and outfile:
+		# try to find which linefeed is used
+		board = normalize_linefeed(file(boardfile).read()).splitlines()
+		##board = map(lambda x: x.replace("\r\n",os.linesep),file(boardfile).readlines())
+		test = normalize_linefeed(file(testfile).read()).splitlines()
+		##test = map(lambda x: x.replace("\r\n",os.linesep),file(testfile).readlines())
 		# keep test's headers, but enrich them with info about how files were merged
-		# headers need index
+		# headers need index (enumerate() on content)
 		# extract_header will change content in place, ie. will remove
 		# header from test content. 
 		test = [t for t in enumerate(test)]
 		header = extract_header(test)
-		header = "".join([h for i,h in header])
-		header += """--
--- This file has been generated on %s, from:
---    * board: %s
---    * test : %s
---
-""" % (time.strftime("%c",datetime.datetime.now().timetuple()),os.path.basename(boardfile),os.path.basename(testfile))
+		header = os.linesep.join([h for i,h in header])
+		header += os.linesep.join(["--",
+		                     "-- This file has been generated on %s, from:" % time.strftime("%c",datetime.datetime.now().timetuple()),
+		                     "--    * board: %s" % os.path.basename(boardfile),
+		                     "--    * test : %s" % os.path.basename(testfile),
+		                     "--"])
 		# back to content without index
 		test = [l for i,l in test]
 		merged = merge_board_testfile(board,test)
@@ -930,7 +938,7 @@ def do_sample(args=[]):
 		print >> fout, merged
 		fout.close()
 	else:
-		print >> sys.stderr, "Provide a board and a test file"
+		print >> sys.stderr, "Provide a board, a test file and an output file"
 		sys.exit(255)
 
 
