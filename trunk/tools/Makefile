@@ -83,10 +83,12 @@ export:
 	cp -r distrib/jallib-export/doc/* distrib/jallib-${VERSION}/doc
 	# license, readme, install, ...
 	# 	jallib
-	cp distrib/jallib-extra/LICENSE distrib/jallib-${VERSION}/
+	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-${VERSION}/
+	cp distrib/jallib-extra/LICENSE.zlib distrib/jallib-${VERSION}/
 	cp distrib/jallib-extra/README.release distrib/jallib-${VERSION}/README
 	# 	jallib-all_devices
-	cp distrib/jallib-extra/LICENSE distrib/jallib-all_devices-${VERSION}/
+	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-all_devices-${VERSION}/
+	cp distrib/jallib-extra/LICENSE.zlib distrib/jallib-all_devices-${VERSION}/
 	cp distrib/jallib-extra/README.device distrib/jallib-all_devices-${VERSION}/README
 	cp distrib/jallib-extra/README.blink distrib/jallib-all_devices-${VERSION}/README.blink
 	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-all_devices-${VERSION}/doc/html
