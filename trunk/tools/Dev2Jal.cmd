@@ -28,25 +28,24 @@
 /*   - The script contains some test and debugging code.                    */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.53'                   /*                          */
+   ScriptVersion   = '0.0.54'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
-   CompilerVersion = '=2.4h'                    /*                          */
+   CompilerVersion = '=2.4i'                    /*                          */
 /* ------------------------------------------------------------------------ */
 
-basedir  = 'x:/mplab815/'                       /* MPLAB base directory  */
-devdir   = basedir'mplab_ide/device/'           /* dir with .dev files   */
-lkrdir   = basedir'mpasm_suite/lkr/'            /* dir with .lkr files   */
+mplabdir = 'x:/mplab815/'                       /* MPLAB base directory     */
+devdir   = mplabdir'mplab_ide/device/'          /* dir with .dev files      */
+lkrdir   = mplabdir'mpasm_suite/lkr/'           /* dir with .lkr files      */
+dstdir   = '/jallib/unvalidated/include/device/'  /* default destination    */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
 say 'Creating JALV2 include files for PIC specifications ...'
 
 parse upper arg destination selection .         /* commandline arguments */
-if destination = 'PROD' then do                 /* production run */
-  dstdir = '/jallib/unvalidated/include/device/'  /* production base */
-end
-else if destination = 'TEST' then do            /* test run */
-  dstdir = '/jallib/test/'                      /* test base */
-end
+if destination = 'PROD' then                    /* production run */
+  nop                                           /* use default destination */
+else if destination = 'TEST' then               /* test run */
+  dstdir = '/jallib/test/'                      /* alternate destination */
 else do
   say 'Error: Required parameter missing: "prod" or "test"'
   return 1
@@ -55,14 +54,12 @@ end
 chipdef = dstdir'chipdef_jallib.jal'            /* common include file */
 
 if selection = '' then                          /* no selection spec'd */
-  wildcard = 'PIC1*.dev'                        /* default (8bit PICs) */
-else do                                         /* selection specified */
-  if destination = 'TEST' then                  /* check for 'test' */
-    wildcard = 'PIC'selection'.dev'             /* accept user selection */
-  else do
-    say 'Selection not allowed for production run!'
-    return 1                                    /* exit */
-  end
+  wildcard = 'pic1*.dev'                        /* default (8bit PICs) */
+else if destination = 'TEST' then               /* TEST run */
+  wildcard = 'PIC'selection'.dev'               /* accept user selection */
+else do                                         /* PROD run with selection */
+  say 'Selection not allowed for production run!'
+  return 1                                      /* exit */
 end
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
@@ -70,24 +67,23 @@ call SysLoadFuncs                               /* load Rexx utilities   */
 
 call SysFileTree devdir||wildcard, dir, 'FO'    /* get list of filespecs */
 if dir.0 < 1 then do
-  say 'No appropriate device files found in directory' devdir
+  say 'No appropriate .dev files found in directory' devdir
   return 1
 end
 
-signal on syntax name syntax_catch              /* catch syntax error */
-signal on error  name error_catch               /* catch execution errors */
+signal on syntax name catch_syntax              /* catch syntax error */
+signal on error  name catch_error               /* catch execution errors */
 
-if stream(chipdef, 'c', 'query exists') \= '' then   /* old file */
-  '@erase' translate(chipdef,'\','/')           /* delete */
-rx = stream(chipdef, 'c', 'open write')         /* create common file */
-if rx \= 'READY:' then do
-  Say 'Error: Could not create common include file' chipdef', result:' rx
+if stream(chipdef, 'c', 'query exists') \= '' then   /* old file present */
+  '@erase' translate(chipdef,'\','/')           /* delete it */
+if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* create common file */
+  Say 'Error: Could not create common include file' chipdef
   return 1
 end
 
-call list_chip_const                            /* header of common file */
+call list_chip_const                            /* create header of common file */
 
-ListCount = 0                                   /* # created .jal files */
+ListCount = 0                                   /* # created device files */
 
 do i=1 to dir.0                                 /* whole list of .dev files */
                                                 /* init for each new PIC */
@@ -98,36 +94,55 @@ do i=1 to dir.0                                 /* whole list of .dev files */
   CfgAddr.    = ''                              /* )          */
   IDAddr.     = ''                              /* ) decimal! */
 
-  parse value filespec('Name', tolower(dir.i)) with 'pic' PicName '.dev'
+  DevFile = tolower(translate(dir.i,'/','\'))   /* lower case + forward slashes */
+  parse value filespec('Name', DevFile) with 'pic' PicName '.dev'
   if PicName = '' then do
-    Say 'Error: Could not derive PIC name from filespec: "'dir.i'"'
+    Say 'Error: Could not derive PIC name from filespec: "'DevFile'"'
     iterate                                     /* next entry */
   end
 
-/* ------- select appropriate main processing procedure -------- */
+  if substr(PicName,3,1) \= 'f'  &,             /* select flash PICs */
+     substr(PicName,3,2) \= 'lf' &,
+     substr(PicName,3,2) \= 'hv' then
+    iterate                                     /* skip non-flash PICs */
 
-  rx = 1                                        /* assume not processed */
+  if substr(PicName,3,3) = 'f19' then           /* exclude extended 14-bit core */
+    iterate                                     /* skip unsupported PICs */
 
-  if left(PicName,3) = '10f' then do            /* 12-bit core */
-    rx = dev2Jal12(dir.i, lkrdir)
+  say PicName                                   /* progress signal */
+
+  if file_read_dev() = 0 then                   /* read .dev file */
+    iterate                                     /* zero records */
+
+  if file_read_lkr() = 0 then                   /* read .lkr file */
+    iterate                                     /* zero records */
+
+  jalfile = dstdir||PicName'.jal'               /* .jal file */
+  if stream(jalfile, 'c', 'query exists') \= '' then   /* old file */
+    '@erase' translate(jalfile,'\','/')         /* delete */
+  if stream(jalfile, 'c', 'open write') \= 'READY:' then do
+    Say 'Error: Could not create device file' jalfile
+    iterate
   end
 
-  else if left(PicName,3) = '12f'  |,
-          left(PicName,4) = '12hv' |,
-         (left(PicName,3) = '16f'  &  left(PicName,5) \= '16f19') |,
-          left(PicName,4) = '16hv' |,
-          left(PicName,4) = '16lf' then do      /* 14- (or 12)-bits core */
-    rx = dev2Jal14(dir.i, lkrdir)
+  call load_config_info                         /* collect cfg info + core */
+  select                                        /* select core specific formatting */
+    when core = 12 then                         /* baseline */
+      rx = dev2Jal12()
+    when core = 14 then                         /* midrange */
+      rx = dev2Jal14()
+    when core = 16 then                         /* 18Fs */
+      rx = dev2Jal16()
+  otherwise                                     /* other core */
+    say 'Unsupported core:' Core                /* report detected Core */
+    rx = 1                                      /* fault */
   end
 
-  else if left(PicName,3) = '18f'  |,
-          left(PicName,4) = '18lf' then do      /* 16 bit core */
-    rx = dev2Jal16(dir.i, lkrdir)
-  end
-
-  if rx = 0 then do                             /* success */
-    ListCount = ListCount + 1;                  /* count */
-  end
+  call stream jalfile, 'c', 'close'             /* done! */
+  if rx = 0 then                                /* success */
+    ListCount = ListCount + 1;
+  else                                          /* failed */
+    say 'Failed to build device file for' PicName
 
 end
 
@@ -140,56 +155,22 @@ return 0
 
 
 /* ==================================================================== */
-/*                 1 2 - B I T S   C O R E                              */
+/*                      1 2 - B I T S   C O R E                         */
 /* ==================================================================== */
 dev2jal12: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
-                            PicName DstDir,
-                            Dev. Lkr. Ram. Name. ,
-                            CfgAddr. IDAddr. ChipDef
+                            Core PicName JalFile ChipDef DevFile LkrFile,
+                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr.
 
-MAXRAM     = 128                                /* range 0..127 */
+MAXRAM     = 128                                /* range 0..0x7F */
 BANKSIZE   = 32                                 /* 0x0020 */
 PAGESIZE   = 512                                /* 0x0200 */
 DataStart  = '0x400'                            /* default for 12-bit core */
-Core       = 12                                 /* 12 bits */
 NumBanks   = 1                                  /* default */
 StackDepth = 2                                  /* default */
 
-DevFile = arg(1)                                /* .dev file */
-call File_read_dev                              /* read devfile */
-if Dev.0 = 0 then do                            /* zero records */
-  Say 'Error: file' DevFile 'not found'
-  return 1                                      /* problem */
-end
-
-call load_config_info                           /* collect cfg info + core */
-
-if Core \= 12 then do                           /* wrong core */
-  say 'Script error: Wrong script for' PicName
-  return 1                                      /* done */
-end
-
-say PicName                                     /* progress signal */
-
 call load_stackdepth                            /* check stack depth */
-
-LkrFile = arg(2)||PicName'_g.lkr'               /* generic .lkr file */
-call File_read_lkr                              /* read .lkr file */
-if Lkr.0 = 0 then do                            /* zero records */
-  Say 'Error: no .lkr file found'
-  return 1
-end
-
 call load_sfr1x                                 /* load sfr + mirror info */
 call load_IDAddr                                /* load ID addresses */
-
-jalfile = dstdir||tolower(PicName)'.jal'        /* pathspec of .jal file */
-if stream(jalfile, 'c', 'query exists') \= '' then    /* old file */
-  '@erase' translate(jalfile,'\','/')           /* delete */
-if stream(jalfile, 'c', 'open write') \= 'READY:' then do
-  Say 'Error: Could not create include file' jalfile
-  return 1
-end
 
 call list_head                                  /* header */
 call list_fuses_words1x                         /* config memory */
@@ -198,65 +179,26 @@ call list_sfr1x                                 /* special function registers */
 call list_nmmr12                                /* non memory mapped regs */
 call list_analog_functions                      /* register info */
 call list_fuses_bits                            /* fuses details */
-call stream jalfile, 'c', 'close'               /* done! */
 return 0
 
 
 /* ==================================================================== */
-/*                       1 4 - B I T S   C O R E                        */
+/*                      1 4 - B I T S   C O R E                         */
 /* ==================================================================== */
 dev2jal14: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
-                            PicName DstDir,
-                            Dev. Lkr. Ram. Name. ,
-                            CfgAddr. IDAddr. ChipDef
+                            Core PicName JalFile ChipDef DevFile LkrFile,
+                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr.
 
-MAXRAM     = 512                                /* range 0..511 */
+MAXRAM     = 512                                /* range 0..0x1FF */
 BANKSIZE   = 128                                /* 0x0080 */
 PAGESIZE   = 2048                               /* 0x0800 */
 DataStart  = '0x2100'                           /* default for 14-bit core */
-Core       = 14                                 /* 14 bits */
 NumBanks   = 1                                  /* default */
 StackDepth = 8                                  /* default */
 
-DevFile = arg(1)                                /* .dev file */
-call File_read_dev                              /* read devfile */
-if Dev.0 = 0 then do                            /* zero records */
-  Say 'Error: file' DevFile 'not found'
-  return 1                                      /* problem */
-end
-
-call load_config_info                           /* collect cfg info + core */
-if Core = 12 then do                            /* 12-bits core */
-  rx = Dev2Jal12(arg(1),arg(2))                 /* try other procedure */
-  return rx                                     /* done */
-end
-
-if Core \= 14 then do                           /* wrong core */
-  say 'Script error: Wrong script for' PicName '(core='Core') not 14'
-  return 1                                      /* done */
-end
-
-say PicName                                     /* progress signal */
-
 call load_stackdepth                            /* check stack depth */
-
-LkrFile = arg(2)||PicName'_g.lkr'               /* generic .lkr file */
-call File_read_lkr                              /* read .lkr file */
-if Lkr.0 = 0 then do                            /* zero records */
-  Say 'Error: no .lkr file found'
-  return 1
-end
-
 call load_sfr1x                                 /* load sfr + mirror info */
 call load_IDAddr                                /* load ID addresses */
-
-jalfile = dstdir||tolower(PicName)'.jal'        /* .jal file */
-if stream(jalfile, 'c', 'query exists') \= '' then   /* old file */
-  '@erase' translate(jalfile,'\','/')           /* delete */
-if stream(jalfile, 'c', 'open write') \= 'READY:' then do
-  Say 'Error: Could not create device file' jalfile
-  return 1
-end
 
 call list_head                                  /* header */
 call list_fuses_words1x                         /* config memory */
@@ -265,7 +207,6 @@ call list_sfr1x                                 /* register info */
                                                 /* No NMMRs with core_14! */
 call list_analog_functions                      /* register info */
 call list_fuses_bits                            /* fuses details */
-call stream jalfile, 'c', 'close'               /* done! */
 return 0
 
 
@@ -273,60 +214,17 @@ return 0
 /*                      1 6 - B I T S   C O R E                         */
 /* ==================================================================== */
 dev2jal16: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
-                            PicName DstDir,
-                            Dev. Lkr. Ram. Name. ,
-                            CfgAddr. IDAddr. ChipDef
+                            Core PicName JalFile ChipDef DevFile LkrFile,
+                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr.
 
-MAXRAM     = 4096                               /* 0x1000 */
+MAXRAM     = 4096                               /* range 0..0x0xFFF */
 BANKSIZE   = 256                                /* 0x0100 */
 DataStart  = '0xF00000'                         /* default for 16-bit core */
-Core       = 16                                 /* 16 bits */
 NumBanks   = 1                                  /* default */
 StackDepth = 31                                 /* default */
 
-DevFile = arg(1)                                /* .dev file */
-call File_read_dev                              /* read devfile */
-if Dev.0 = 0 then do                            /* zero records */
-  Say 'Error: file' DevFile 'not found'
-  return 1                                      /* problem */
-end
-
-call load_config_info                           /* collect cfg info */
-
-if Core \= 16 then do                           /* wrong core */
-  say 'Script error: Wrong script for!' PicName
-  return 1                                      /* done */
-end
-
-say PicName                                     /* progress signal */
-
-LkrFile = arg(2)||PicName'_g.lkr'               /* generic .lkr file */
-call File_read_lkr                              /* read .lkr file */
-if Lkr.0 = 0 then do                            /* zero records */
-  if pos('lf',PicName) > 0 then do              /* low voltage type */
-    LkrFile = arg(2)||left(PicName,2)||substr(PicName,4)'_g.lkr'
-    call File_read_lkr                          /* try 18Fxxxx.lkr */
-    if Lkr.0 = 0 then do                        /* zero records */
-      LkrFile = arg(2)||left(PicName,3)||substr(PicName,5)'_g.lkr'
-      call File_read_lkr                        /* try 18Lxxxx.lkr */
-    end
-  end
-  if Lkr.0 = 0 then do                          /* still zero rcds */
-    Say 'Error: no .lkr file found'
-    return 1
-  end
-end
-
 call load_sfr16                                 /* load sfr */
 call load_IDAddr                                /* load ID addresses */
-
-jalfile = dstdir||tolower(PicName)'.jal'        /* .jal file */
-if stream(jalfile, 'c', 'query exists') \= '' then   /* old file */
-  '@erase' translate(jalfile,'\','/')           /* delete */
-if stream(jalfile, 'c', 'open write') \= 'READY:' then do
-  Say 'Error: Could not create include file' jalfile
-  return 1
-end
 
 call list_head                                  /* header */
 call list_fuses_bytes16                         /* config memory */
@@ -335,7 +233,6 @@ call list_sfr16                                 /* register info */
 call list_nmmr16                                /* selected non memory mapped regs */
 call list_analog_functions                      /* register info */
 call list_fuses_bits                            /* fuses details */
-call stream jalfile, 'c', 'close'               /* done! */
 return 0
 
 
@@ -344,71 +241,82 @@ return 0
 /* ==================================================================== */
 
 
-/* ---------------------------------- */
-/* Read .dev file into stem variable  */
-/* input: - DevFile                   */
-/*        - Dev.                      */
-/*                                    */
-/* Collect only relevant lines!       */
-/* ---------------------------------- */
-File_read_dev: procedure expose DevFile Dev.
-DevFile = translate(DevFile, '/', '\')          /* enforce forward slashes */
+/* ------------------------------------------- */
+/* Read .dev file contents into stem variable  */
+/* input:                                      */
+/*                                             */
+/* Collect only relevant lines!                */
+/* ------------------------------------------- */
+file_read_dev: procedure expose DevFile Dev.
 Dev.0 = 0                                       /* no records read yet */
-if stream(DevFile, 'c', 'open read') \= 'READY:' then
-  return
-i = 1                                           /* first record */
-do while lines(DevFile) > 0
-  parse upper value linein(DevFile) with Dev.i  /* store line in upper case */
-  if length(Dev.i) \< 3 then do                 /* not empty */
-    if left(word(Dev.i,1),1) \= '#' then        /* not comment */
-      i = i + 1                                 /* keep this record */
+if stream(DevFile, 'c', 'open read') = 'READY:' then do
+  i = 1                                         /* first record */
+  do while lines(DevFile) > 0
+    parse upper value linein(DevFile) with Dev.i  /* store line in upper case */
+    if length(Dev.i) \< 3 then do               /* not empty */
+      if left(word(Dev.i,1),1) \= '#' then      /* not comment */
+        i = i + 1                               /* keep this record */
+    end
+  end
+  call stream DevFile, 'c', 'close'             /* done */
+  Dev.0 = i - 1                                 /* # of stored records */
+end
+if Dev.0 = 0 then
+  Say 'Error: .dev file' DevFile 'not found!'
+return Dev.0
+
+
+/* ------------------------------------------- */
+/* Read .lkr file contents into stem variable  */
+/* input: - PicName                            */
+/*                                             */
+/* Collect only relevant lines!                */
+/* ------------------------------------------- */
+file_read_lkr: procedure expose PicName LkrDir LkrFile Lkr.
+LkrFile = LkrDir||PicName'_g.lkr'               /* build filespec */
+if stream(LkrFile, 'c', 'query exists') = '' then do     /* not found */
+  if pos('lf',PicName) > 0 then do              /* low voltage PIC */
+    LkrFile = LkrDir||left(PicName,3)||substr(PicName,5)'_g.lkr'
+    if stream(LkrFile,'c','query exists') = '' then do
+      LkrFile = LkrDir||left(PicName,2)||substr(PicName,4)'_g.lkr'
+      if stream(LkrFile,'c','query exists') = '' then
+        nop                                     /* LF alternatives failed */
+    end
   end
 end
-Dev.0 = i - 1                                   /* # of stored records */
-call stream DevFile, 'c', 'close'               /* done */
-return
-
-
-/* ---------------------------------- */
-/* Read .lkr file into stem variable  */
-/* input: - LkrFile                   */
-/*        - Lkr.                      */
-/*                                    */
-/* Collect only relevant lines!       */
-/* ---------------------------------- */
-File_read_lkr: procedure expose LkrFile Lkr.
-LkrFile = translate(LkrFile, '/', '\')          /* enforce forward slashes */
 Lkr.0 = 0                                       /* no records read */
-if stream(LkrFile, 'c', 'open read') \= 'READY:' then
-  return
-i = 1                                           /* first record */
-do while lines(LkrFile) > 0                     /* whole file */
-  parse upper value linein(LkrFile) with Lkr.i  /* store line in upper case */
-  if length(Lkr.i) \> 2           |,            /* empty */
-     left(word(Lkr.i,1),2) = '//' |,            /* .lkr comment */
-     word(Lkr.i,1) = '#FI'        |,            /* end if */
-     word(Lkr.i,1) = '#DEFINE'    |,            /* const definition */
-     word(Lkr.i,1) = 'LIBPATH' then             /* Library path */
-    iterate                                     /* skip these lines */
-  if word(Lkr.i,1) = '#IFDEF' then do           /* conditional part */
-    if left(word(Lkr.i,2),6) = '_DEBUG'  |,     /* debugging */
-       left(word(Lkr.i,2),6) = '_EXTEN' then do /* extended mode */
-      do while lines(LkrFile) > 0               /* skip lines */
-        parse upper value linein(LkrFile) with ln  /* read line */
-        if word(ln,1) = '#ELSE' |,              /* other than debugging */
-           word(ln,1) = '#FI' then do           /* end conditional part */
-          leave                                 /* resume normal */
+if stream(LkrFile, 'c', 'open read') = 'READY:' then do
+  i = 1                                         /* first record */
+  do while lines(LkrFile) > 0                   /* whole file */
+    parse upper value linein(LkrFile) with Lkr.i  /* store line in upper case */
+    if length(Lkr.i) \> 2           |,          /* empty */
+       left(word(Lkr.i,1),2) = '//' |,          /* .lkr comment */
+       word(Lkr.i,1) = '#FI'        |,          /* end if */
+       word(Lkr.i,1) = '#DEFINE'    |,          /* const definition */
+       word(Lkr.i,1) = 'LIBPATH' then           /* Library path */
+      iterate                                   /* skip these lines */
+    if word(Lkr.i,1) = '#IFDEF' then do         /* conditional part */
+      if left(word(Lkr.i,2),6) = '_DEBUG'  |,   /* debugging */
+         left(word(Lkr.i,2),6) = '_EXTEN' then do /* extended mode */
+        do while lines(LkrFile) > 0             /* skip lines */
+          parse upper value linein(LkrFile) with ln  /* read line */
+          if word(ln,1) = '#ELSE' |,            /* other than debugging */
+             word(ln,1) = '#FI' then do         /* end conditional part */
+            leave                               /* resume normal */
+          end
         end
       end
     end
+    else do                                     /* not skipped */
+      i = i + 1                                 /* keep this record */
+    end
   end
-  else do                                       /* not skipped */
-    i = i + 1                                   /* keep this record */
-  end
+  call stream LkrFile, 'c', 'close'             /* done */
+  Lkr.0 = i - 1                                 /* # non-comment records */
 end
-Lkr.0 = i - 1                                   /* # non-comment records */
-call stream LkrFile, 'c', 'close'               /* done */
-return
+if Lkr.0 = 0 then
+  Say 'Error: .lkr file' LkrFile 'not found!'
+return Lkr.0                                    /* number of records */
 
 
 /* ---------------------------------------------- */
@@ -420,15 +328,17 @@ CfgAddr.0 = 0                                   /* empty */
 do i = 1 to Dev.0
   parse var Dev.i 'CFGMEM' '(' 'REGION' '=' '0X' Val1 '-' '0X' Val2 ')' .
   if Val1 \= '' then do
-    if Val1 = 'FFF' then                        /* 12-bits core */
+    Val1 = X2D(Val1)                            /* take decimal value */
+    Val2 = X2D(Val2)
+    if Val1 = X2D('FFF') then                   /* 12-bits core */
       Core = 12
-    else if Val1 = '2007' | Val1 = '8007' then  /* 14-bits core */
+    else if Val1 = X2D('2007') | Val1 = X2D('8007') then  /* 14-bits core */
       Core = 14
     else                                        /* presumably 16-bits core */
       Core = 16
-    CfgAddr.0 = X2D(val2) - X2D(val1) + 1       /* number of config bytes */
+    CfgAddr.0 = Val2 - Val1 + 1                 /* number of config bytes */
     do j = 1 to CfgAddr.0                       /* all config bytes */
-      CfgAddr.j = X2D(val1) + j - 1             /* address */
+      CfgAddr.j = Val1 + j - 1                  /* address */
     end
     leave                                       /* 1 occurence expected */
   end
@@ -680,52 +590,52 @@ return
 /* --------------------------------------------------------------- */
 list_shared_data_range: procedure expose Lkr. jalfile Core MaxSharedRAM PicName
 select                                          /* exceptions first */
-  when PicName = '12f629'  |,
+  when PicName = '12f629'  |,                   /* have only shared RAM */
        PicName = '12f675'  |,
        PicName = '16f630'  |,
        PicName = '16f676' then do
-    DataRange = ''                              /* have shared RAM only .. */
-    MaxSharedRAM = 0
+    DataRange = '0x5E-0x5F'                     /* some shared, rest unshared */
+    MaxSharedRAM = X2D(5F)
     end                                         /* .. declared as non shared */
-  when PicName = '16f818' then do               /* exceptional PIC */
+  when PicName = '16f818' then do
     DataRange = '0x40-0x7F'                     /* shared data range */
     MaxSharedRAM = X2D(7F)                      /* upper bound */
     end
-  when PicName = '16f819'  |,
+  when PicName = '16f819'  |,                   /* */
        PicName = '16f870'  |,
        PicName = '16f871'  |,
        PicName = '16f872' then do
     DataRange = '0x70-0x7F'
     MaxSharedRAM = X2D(7F)
     end
-  when PicName = '16f873'  |,
+  when PicName = '16f873'  |,                   /* have no shared RAM */
        PicName = '16f873a' |,
        PicName = '16f874'  |,
        PicName = '16f874a' then do
     DataRange = ''                              /* no shared RAM */
     MaxSharedRAM = 0
     end
-  otherwise                                     /* scan .lkr file */
-    DataRange = ''                              /* set defaults */
-    MaxSharedRAM = 0
-    do i = 1 to Lkr.0
-      ln = Lkr.i
-      if pos('PROTECTED', ln) > 0 then          /* skip protected mem */
-        iterate
-      if Core = 12 | Core = 14 then
-        parse var ln 'SHAREBANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
-      else
-        parse var Lkr.i 'ACCESSBANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
-      if val1 \= '' then do
-        if DataRange \= '' then                 /* not first range */
-          DataRange = DataRange','              /* insert separator */
-        val1 = strip(val1)
-        val2 = strip(val2)
-        if X2D(val2) > MaxSharedRAM then        /* new high limit */
-          MaxSharedRAM = X2D(val2)              /* upper bound */
-        DataRange = DataRange'0x'val1'-0x'val2  /* concatenate range */
-      end
+otherwise                                       /* scan .lkr file */
+  DataRange = ''                                /* set defaults */
+  MaxSharedRAM = 0
+  do i = 1 to Lkr.0
+    ln = Lkr.i
+    if pos('PROTECTED', ln) > 0 then            /* skip protected mem */
+      iterate
+    if Core = 12 | Core = 14 then
+      parse var ln 'SHAREBANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
+    else
+      parse var Lkr.i 'ACCESSBANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
+    if val1 \= '' then do
+      if DataRange \= '' then                   /* not first range */
+        DataRange = DataRange','                /* insert separator */
+      val1 = strip(val1)
+      val2 = strip(val2)
+      if X2D(val2) > MaxSharedRAM then          /* new high limit */
+        MaxSharedRAM = X2D(val2)                /* upper bound */
+      DataRange = DataRange'0x'val1'-0x'val2    /* concatenate range */
     end
+  end
 end
 if DataRange \= '' then do                      /* some shared RAM present */
   call lineout jalfile, 'pragma  shared  'DataRange
@@ -741,60 +651,60 @@ return DataRange                                /* range */
 /* ------------------------------------------------------------- */
 list_unshared_data_range: procedure expose Lkr. jalfile MaxUnsharedRAM PicName Core
 select                                          /* exceptions first */
-  when PicName = '12f629'  |,
+  when PicName = '12f629'  |,                   /* have only shared RAM */
        PicName = '12f675'  |,
        PicName = '16f630'  |,
        PicName = '16f676' then do
-    DataRange = '0x20-0x5F'                     /* unshared! RAM range */
-    MaxUnsharedRAM = X2D(5F)                    /* upper bound */
+    DataRange = '0x20-0x5D'                     /* most unshared, some shared */
+    MaxUnsharedRAM = X2D(5D)                    /* bank 0 */
     end
   when PicName = '16f59' then do
     DataRange = '0x10-0x1F,0x30-0x3F,0x50-0x5F,0x70-0x7F' /* 4 bank limit! */
-    MaxUnsharedRAM = X2D(1F)
+    MaxUnsharedRAM = X2D(1F)                    /* bank 0 */
     end
-  when PicName = '16f818' then do               /* exceptional PIC */
+  when PicName = '16f818' then do
     DataRange = '0x20-0x3F,0xA0-0xBF'           /* unshared RAM range */
     MaxUnsharedRAM = X2D(3F)                    /* upper bound */
     end
   when PicName = '16f819' then do
     DataRange = '0x20-0x6F,0xA0-0xEF,0x120-0x16F'
-    MaxUnsharedRAM = X2D(6F)
+    MaxUnsharedRAM = X2D(6F)                    /* bank 0 */
     end
   when PicName = '16f870'  |,
        PicName = '16f871'  |,
        PicName = '16f872'  then do
     DataRange = '0x20-0x6F,0xA0-0xBF'
-    MaxUnsharedRAM = X2D(6F)
+    MaxUnsharedRAM = X2D(6F)                    /* bank 0 */
     end
   when PicName = '16f873'  |,
        PicName = '16f873a' |,
        PicName = '16f874'  |,
        PicName = '16f874a' then do
     DataRange = '0x20-0x7F,0xA0-0xFF'
-    MaxUnsharedRAM = X2D(7F)
+    MaxUnsharedRAM = X2D(7F)                    /* bank 0 */
     end
-  otherwise                                     /* scan .lkr file */
-    DataRange = ''                              /* set defaults  */
-    MaxUnsharedRAM = 0
-    do i = 1 to Lkr.0
-      ln = Lkr.i
-      if pos('PROTECTED', ln) > 0 then          /* skip protected mem */
-        iterate
-      parse var ln 'DATABANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
-      if val1 \= '' & val2 \= '' then do        /* both found */
-        if Length(DataRange) > 50 then do       /* long string */
-          call lineout jalfile, 'pragma  data    'DataRange   /* 'flush' */
-          DataRange = ''                        /* reset */
-        end
-        if DataRange \= '' then                 /* not first range */
-          DataRange = DataRange','              /* insert separator */
-        val1 = strip(val1)
-        val2 = strip(val2)
-        if X2D(val2) > MaxUnsharedRAM then      /* new high limit */
-          MaxUnSharedRAM = X2D(Val2)            /* upper bound */
-        DataRange = DataRange'0x'val1'-0x'val2  /* concatenate range */
+otherwise                                       /* scan .lkr file */
+  DataRange = ''                                /* default  */
+  MaxUnsharedRAM = 0
+  do i = 1 to Lkr.0
+    ln = Lkr.i
+    if pos('PROTECTED', ln) > 0 then            /* skip protected mem */
+      iterate
+    parse var ln 'DATABANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
+    if val1 \= '' & val2 \= '' then do          /* both found */
+      if Length(DataRange) > 50 then do         /* long string */
+        call lineout jalfile, 'pragma  data    'DataRange   /* 'flush' */
+        DataRange = ''                          /* reset */
       end
+      if DataRange \= '' then                   /* not first range */
+        DataRange = DataRange','                /* insert separator */
+      val1 = strip(val1)
+      val2 = strip(val2)
+      if X2D(val2) > MaxUnsharedRAM then        /* new high limit */
+        MaxUnSharedRAM = X2D(Val2)              /* bank 0 */
+      DataRange = DataRange'0x'val1'-0x'val2    /* concatenate range */
     end
+  end
 end
 if DataRange \= '' then
   call lineout jalfile, 'pragma  data    'DataRange
@@ -2259,7 +2169,7 @@ call lineout jalfile, '--  -' LkrFile
 call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
 call lineout jalfile, '--  - Created with Dev2Jal Rexx script version' ScriptVersion
-call lineout jalfile, '--  - File creation date/time:' date('N') time('N')'.'
+call lineout jalfile, '--  - File creation date/time:' date('N') left(time('N'),5)
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
@@ -2298,7 +2208,7 @@ x = list_shared_data_range()                    /* returns range string */
 /* - - - - - - - -  temporary? - - - - - - - - - - - - - - - - - */
 if MaxUnsharedRAM = 0  &  MaxSharedRAM > 0 then do      /* no unshared RAM */
   say 'Warning:' PicName 'has only shared, no unshared RAM!'
-  Say '         Must be handled as exceptional chip!'
+  say '         Must be handled as exceptional chip!'
 end
 else if MaxSharedRAM = 0 then do                        /* no shared RAM */
   if Core \= 12                                 &,      /* known as 'OK' */
@@ -2359,7 +2269,7 @@ call lineout chipdef, '--    Common JalV2 compiler include file'
 call lineout chipdef, '--'
 call lineout chipdef, '-- Notes:'
 call lineout chipdef, '--    - Created with Dev2Jal Rexx script version' ScriptVersion
-call lineout chipdef, '--    - File creation date/time:' date('N') time('N')'.'
+call lineout chipdef, '--    - File creation date/time:' date('N') left(time('N'),5)
 call lineout chipdef, '--'
 call lineout chipdef, '-- ---------------------------------------------------'
 call lineout chipdef, 'const       PIC_12            = 1'
@@ -2470,11 +2380,11 @@ return translate(arg(1), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWX
 /* some script debugging procedures               */
 /* ---------------------------------------------- */
 
-error_catch:
+catch_error:
 Say 'Execution error, rc' rc 'at script line' SIGL
 return rc
 
-syntax_catch:
+catch_syntax:
 if rc = 4 then                                  /* interrupted */
   exit
 Say 'Syntax error, rc' rc 'at script line' SIGL

@@ -1,43 +1,42 @@
-/* --------------------------------------------------------------------- */
-/* Title: DeviceSpecific.cmd - Rexx scripts to obtain device specific info*/
-/*                                                                       */
-/* Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved. */
-/*                                                                       */
-/* Adapted-by:                                                           */
-/*                                                                       */
-/* Compiler: N/A                                                         */
-/*                                                                       */
-/* This file is part of jallib  http://jallib.googlecode.com             */
-/* Released under the BSD license                                        */
-/*              http://www.opensource.org/licenses/bsd-license.php       */
-/*                                                                       */
-/* Description: Rexx script to obtain device specific properties:        */
-/*              Input:   PropertName, PicName                            */
-/*              Returns: Value of property of specified device or        */
-/*                       "-" with any error                              */
-/*              Supported property names:                                */
-/*                - ADCgroup                                             */
-/*                - DataSheet                                            */
-/*                - PgmSpec                                              */
-/*                - FusesDefault                                         */
-/*                                                                       */
-/* Sources: Microchip datasheets                                         */
-/*                                                                       */
-/* Notes:                                                                */
-/*  - Used by Dev2Jal script                                             */
-/*  - Originally created with scripts, to be maintained manually!        */
-/*                                                                       */
-/* --------------------------------------------------------------------- */
-parse upper arg Property, PicName .     /* expect property and PicName */
+/* ----------------------------------------------------------------------- */
+/* Title: DeviceSpecific.cmd - Rexx script for device specific pproperties */
+/*                                                                         */
+/* Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.   */
+/*                                                                         */
+/* Adapted-by:                                                             */
+/*                                                                         */
+/* Compiler: N/A                                                           */
+/*                                                                         */
+/* This file is part of jallib  http://jallib.googlecode.com               */
+/* Released under the BSD license                                          */
+/*              http://www.opensource.org/licenses/bsd-license.php         */
+/*                                                                         */
+/* Description: Rexx script to obtain device specific properties:          */
+/*              Input:   PropertName, PicName                              */
+/*              Returns: Value of property of specified device or          */
+/*                       "-" with any error                                */
+/*              Supported property names:                                  */
+/*                - ADCgroup                                               */
+/*                - DataSheet                                              */
+/*                - PgmSpec                                                */
+/*                - FusesDefault                                           */
+/*                                                                         */
+/* Sources: Microchip datasheets                                           */
+/*                                                                         */
+/* Notes:                                                                  */
+/*  - Used by Dev2Jal script                                               */
+/*  - Originally created with scripts, to be maintained manually!          */
+/*                                                                         */
+/* ----------------------------------------------------------------------- */
+parse upper arg Property, PicName .     /* expect property and PicName     */
 select
   when Property = 'ADCGROUP'     then call ADCGroup
   when Property = 'DATASHEET'    then call DataSheet
   when Property = 'PGMSPEC'      then call PgmSpec
   when Property = 'FUSESDEFAULT' then call FusesDefault
-  otherwise do
-    Say "The name" Property "is an undefined property in 'devicespecific.cmd!'"
-    return '-'
-  end
+otherwise
+  Say "The name" Property "is an undefined property in 'devicespecific.cmd!'"
+  return '-'
 end
 return result                           /* return string */
 
@@ -352,10 +351,9 @@ select
   when PicName = '18LF45J50'  then return 'ADC_V11'
   when PicName = '18LF46J11'  then return 'ADC_V11'
   when PicName = '18LF46J50'  then return 'ADC_V11'
-  otherwise do
-    say 'Error:' PicName 'is unlisted in ADC group table!'
-    return '-'     /* for unknown PIC */
-  end
+otherwise
+  say 'Error:' PicName 'is unlisted in ADC-group table!'
+  return '-'
 end
 
 
@@ -669,10 +667,9 @@ select
   when PicName = '18LF45J50'  then return '-'
   when PicName = '18LF46J11'  then return '-'
   when PicName = '18LF46J50'  then return '-'
-  otherwise do
-    say 'Error:' PicName 'is unlisted in datasheet table!'
-    return '-'
-  end
+otherwise
+  say 'Error:' PicName 'is unlisted in Datasheet table!'
+  return '-'
 end
 
 
@@ -907,7 +904,7 @@ select
   when PicName = '18F66J50'   then return '39644'
   when PicName = '18F66J55'   then return '39644'
   when PicName = '18F66J60'   then return '39688'
-  when PicName = '18F66J65'   then return '39644'
+  when PicName = '18F66J65'   then return '39688'
   when PicName = '18F66J90'   then return '39644'
   when PicName = '18F66J93'   then return '-'
   when PicName = '18F6720'    then return '39583'
@@ -986,10 +983,9 @@ select
   when PicName = '18LF45J50'  then return '39687'
   when PicName = '18LF46J11'  then return '39687'
   when PicName = '18LF46J50'  then return '39687'
-  otherwise do
-    say 'Error:' PicName 'is unlisted in programming specifications table!'
-    return '-'
-  end
+otherwise do
+  say 'Error:' PicName 'is unlisted in Programming Specifications table!'
+  return '-'
 end
 
 /* ----------------------------------------- */
@@ -1298,9 +1294,8 @@ select
   when PicName = '18LF45J50'  then return 'E1F4CFFFFFF1F000'
   when PicName = '18LF46J11'  then return 'E1F4DFFFFFF9FFF1'
   when PicName = '18LF46J50'  then return 'EFF7DFFFFFF9FFF1'
-  otherwise do
-    say 'Error:' PicName 'is unlisted in FusesDefault table!'
-    return ''                           /* return empty string */
-  end
+otherwise do
+  say 'Error:' PicName 'is unlisted in FusesDefault table!'
+  return ''                           /* return empty string */
 end
 
