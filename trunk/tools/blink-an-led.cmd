@@ -21,7 +21,7 @@
 /* Sources:                                                                 */
 /*                                                                          */
 /* Notes:                                                                   */
-/*  - Written in Classic Rexx style, but requires Object Rexx to run.       */
+/*  - Uses Classic Rexx.                                                    */
 /*  - There is no summary of changes maintained for this script.            */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
@@ -32,7 +32,7 @@ call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load Rexx utilities */
 
 JalV2 = 'k:/c/Jalv2/JalV2.exe'                  /* compiler path (eCS) */
-Validator = 'k:/jallib/tools/jallib.py validate'   /* validation script */
+Validator = 'k:/jallib/tools/jallib.py validate'   /* validation command */
 
 if runtype = 'TEST' then do                     /* test mode */
   Include = 'k:/jallib/test/'                   /* test include directory */
@@ -71,7 +71,9 @@ do i=1 to pic.0
   end
   '@erase' PgmName'.py*'                      /* when OK, discard python output */
 
-  call stream  PgmFile, 'c', 'open write replace'
+  if stream(PgmFile, 'c', 'query exists') \= '' then
+    '@erase' PgmFile
+  call stream  PgmFile, 'c', 'open write'
   call lineout PgmFile, '-- ------------------------------------------------------'
   call lineout PgmFile, '-- Title: Blink-an-LED of the Microchip PIC'PicName
   call lineout PgmFile, '--'
@@ -86,7 +88,8 @@ do i=1 to pic.0
   call lineout PgmFile, '-- Released under the BSD license',
                          '(http://www.opensource.org/licenses/bsd-license.php)'
   call lineout PgmFile, '--'
-  call lineout PgmFile, '-- Description: Sample blink-an-LED program for Microchip PIC'PicName
+  call lineout PgmFile, '-- Description:'
+  call lineout PgmFile, '-- Sample blink-an-LED program for Microchip PIC'PicName'.'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Sources:'
   call lineout PgmFile, '--'
@@ -103,12 +106,14 @@ do i=1 to pic.0
     if  osc.0 > 0 then do                               /* HS mode supported */
       call lineout PgmFile, '-- This program assumes a 20 MHz resonator or crystal'
       call lineout PgmFile, '-- is connected to pins OSC1 and OSC2.'
+      if left(PicName,2) = '18' then
+        call lineout PgmFile, '-- Configuration bits may cause a different frequency!'
       call lineout PgmFile, 'pragma target OSC HS               -- HS crystal or resonator'
       call lineout PgmFile, 'pragma target clock 20_000_000     -- oscillator frequency'
     end
     else do                                             /* assume internal oscillator */
       call lineout PgmFile, '-- This program assumes the internal oscillator'
-      call lineout PgmFile, '-- is used with a frequency of 4 MHz.'
+      call lineout PgmFile, '-- is running at a frequency of 4 MHz.'
       call lineout PgmFile, 'pragma target OSC INTOSC_NOCLKOUT  -- internal oscillator'
       call lineout PgmFile, 'pragma target clock 4_000_000      -- oscillator frequency'
       call SysFileSearch ' IOSCFS ', pic.i, ioscfs.
@@ -118,15 +123,13 @@ do i=1 to pic.0
   end
   else do
     call lineout PgmFile, '-- This program assumes the internal oscillator'
-    call lineout PgmFile, '-- is used with a frequency of 4 MHz.'
+    call lineout PgmFile, '-- is running at a frequency of 4 MHz.'
     call lineout PgmFile, 'pragma target clock 4_000_000      -- oscillator frequency'
     call SysFileSearch ' IOSCFS ', pic.i, ioscfs.
     if ioscfs.0 > 0 then
       call lineout PgmFile, 'pragma target IOSCFS  F4MHZ        -- select 4 MHz'
   end
-  if left(PicName,2) = '18' then
-    call lineout PgmFile, '-- Note: config bits settings may cause the blink frequency',
-                          'be slower or faster than 2 Hz!'
+  call lineout PgmFile, '--'
   call SysFileSearch 'pragma fuse_def WDT', pic.i, wdt.
   if wdt.0 > 0 then do
     call lineout PgmFile, 'pragma target WDT  disabled'
@@ -137,7 +140,10 @@ do i=1 to pic.0
   end
   call SysFileSearch 'pragma fuse_def MCLR', pic.i, mclr., 'N'
   if mclr.0 > 0 then do
-    ln = linein(pic.i, word(mclr.1,1) + 1)              /* line after fuse_def */
+    do  word(mclr.1,1)                                  /* skip lines */
+      call linein pic.i
+    end
+    ln = linein(pic.i)                                  /* line after fuse_def */
     if pos('EXTERNAL',ln) > 0 then do                   /* MCLR external */
       call lineout PgmFile, 'pragma target MCLR external'
     end
@@ -148,6 +154,7 @@ do i=1 to pic.0
       end
     end
   end
+  call stream Pic.i, 'c', 'close'                       /* done for now */
   call lineout PgmFile, '--'
   call lineout PgmFile, 'enable_digital_io()                -- disable analog I/O (if any)'
   call lineout PgmFile, '--'
