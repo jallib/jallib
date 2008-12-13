@@ -196,6 +196,7 @@ def do_compile(args,exitonerror=True):
 	if args:
 		cmd.extend(args)
 	try:
+		print "cmd: %s" % cmd
 		status = subprocess.check_call(cmd,shell=False)
 		return status
 	except subprocess.CalledProcessError,e:
@@ -895,6 +896,78 @@ def normalize_linefeed(content):
 	content = "\n".join(lines)
 	return content
 
+def generate_one_sample(boardfile,testfile,outfile):
+	# try to find which linefeed is used
+	board = normalize_linefeed(file(boardfile).read()).splitlines()
+	##board = map(lambda x: x.replace("\r\n",os.linesep),file(boardfile).readlines())
+	test = normalize_linefeed(file(testfile).read()).splitlines()
+	##test = map(lambda x: x.replace("\r\n",os.linesep),file(testfile).readlines())
+	# keep test's headers, but enrich them with info about how files were merged
+	# headers need index (enumerate() on content)
+	# extract_header will change content in place, ie. will remove
+	# header from test content. 
+	test = [t for t in enumerate(test)]
+	header = extract_header(test)
+	header = os.linesep.join([h for i,h in header])
+	header += os.linesep.join(["--",
+	                     "-- This file has been generated on %s, from:" % time.strftime("%c",datetime.datetime.now().timetuple()),
+	                     "--    * board: %s" % os.path.basename(boardfile),
+	                     "--    * test : %s" % os.path.basename(testfile),
+	                     "--"])
+	# back to content without index
+	test = [l for i,l in test]
+	merged = merge_board_testfile(board,test)
+	fout = file(outfile,"w")
+	print >> fout, header
+	print >> fout, merged
+	fout.close()
+
+	# compile it !
+	status = do_compile([outfile],exitonerror=False)
+	if status == 0:
+		print "Sucesfully generated sample '%s' from board '%s' and test '%s'" % (outfile,boardfile,testfile)
+	else:
+		# delete the file !
+		os.unlink(outfile)
+		raise Exception("Can't compile sample '%s' generated from '%s' and test '%s'" % (outfile,boardfile,testfile))
+		
+
+def find_board_files(boarddir):
+	return [os.path.join(boarddir,f) for f in os.listdir(boarddir) if not f.startswith(".") and f.startswith("board_") and f.endswith(".jal")]
+
+def find_test_files(testdir):
+	# testdir contains "board" dir, to be excluded
+	testfiles = []
+	for d in [d for d in os.listdir(testdir) if d != "board" and not d.startswith(".")]:
+		d = os.path.join(testdir,d)
+		testfiles.extend([os.path.join(d,v) for v in get_jal_filenames(d).values()])
+	return testfiles
+
+def generate_all_samples(path_to_sample):
+	print "generate_all_samples"
+	testpath = get_full_test_path(path_to_sample)
+	boardpath = get_full_board_path(path_to_sample)
+	samplepath = get_full_sample_path(path_to_sample)
+
+	fullboarfiles = find_board_files(boardpath)
+	fulltestfiles = find_test_files(testpath)
+	print "fullboarfiles: %s" % repr(fullboarfiles)
+	print "fulltestfiles: %s" % repr(fulltestfiles)
+
+	for board in fullboarfiles:
+		picname = os.path.basename(board).split("_")[1]	# naming convention
+		sampledir = get_full_sample_path(path_to_sample,picname)
+		
+		for test in fulltestfiles:
+			samplename = "sample_" + os.path.basename(test)[5:]	# remove "test_", naming convention
+			fullsamplepath = get_full_sample_path(path_to_sample,picname,samplename)
+			try:
+			   generate_one_sample(board,test,fullsamplepath)
+			except Exception,e:
+			   print sys.stderr,"Invalid board/test combination: %s" % e
+			   continue
+
+
 def do_sample(args=[]):
 	try:
 		opts, args = getopt.getopt(args, ACTIONS['sample']['options'])
@@ -905,6 +978,8 @@ def do_sample(args=[]):
 	boardfile = None
 	testfile = None
 	outfile = None
+	automatic = None
+	path_to_sample = None
 	for o,v in opts:
 		if o == '-b':
 			boardfile = v
@@ -912,31 +987,13 @@ def do_sample(args=[]):
 			testfile = v
 		elif o == '-o':
 			outfile = v
-	if boardfile and testfile and outfile:
-		# try to find which linefeed is used
-		board = normalize_linefeed(file(boardfile).read()).splitlines()
-		##board = map(lambda x: x.replace("\r\n",os.linesep),file(boardfile).readlines())
-		test = normalize_linefeed(file(testfile).read()).splitlines()
-		##test = map(lambda x: x.replace("\r\n",os.linesep),file(testfile).readlines())
-		# keep test's headers, but enrich them with info about how files were merged
-		# headers need index (enumerate() on content)
-		# extract_header will change content in place, ie. will remove
-		# header from test content. 
-		test = [t for t in enumerate(test)]
-		header = extract_header(test)
-		header = os.linesep.join([h for i,h in header])
-		header += os.linesep.join(["--",
-		                     "-- This file has been generated on %s, from:" % time.strftime("%c",datetime.datetime.now().timetuple()),
-		                     "--    * board: %s" % os.path.basename(boardfile),
-		                     "--    * test : %s" % os.path.basename(testfile),
-		                     "--"])
-		# back to content without index
-		test = [l for i,l in test]
-		merged = merge_board_testfile(board,test)
-		fout = file(outfile,"w")
-		print >> fout, header
-		print >> fout, merged
-		fout.close()
+		elif o == '-a':
+			automatic = True
+			path_to_sample = v
+	if automatic and path_to_sample:
+		generate_all_samples(path_to_sample)
+	elif boardfile and testfile and outfile:
+		generate_one_sample(boardfile,testfile,outfile)
 	else:
 		print >> sys.stderr, "Provide a board, a test file and an output file"
 		sys.exit(255)
@@ -1125,11 +1182,11 @@ Use this option to handle the testing matrix and the test result page.
         tests are not relevant to all target chips). This won't erase 
         previous testing results, but will potentially add new sample 
         lines to the testing matrix file.
-	
-	-e: erase samples which are declared in the matrix, but don't exist
-		anymore on the filesystem/repository. Ex: when samples are renamed
-		the matrix needs to be updated (-u) to include renamed samples,
-		then it needs to be pruned (-e) to remove old samples.
+    
+    -e: erase samples which are declared in the matrix, but don't exist
+        anymore on the filesystem/repository. Ex: when samples are renamed
+        the matrix needs to be updated (-u) to include renamed samples,
+        then it needs to be pruned (-e) to remove old samples.
 
     -a: add or update a test result. If the test does not exist, it's 
         added to the matrix, else results will be updated.
@@ -1203,6 +1260,26 @@ Reindent the given jal file, and save it back to the same file.
 
 """
 
+
+def sample_help():
+   print """
+   jallib sample [-a path/to/sample | -b boardfile -t testfile -o output]
+
+Generate samples from board files and test files. In order to do this,
+the board and test files are annotated with special "@jallib" tags.
+
+Use "-a" to generate all potential samples, or use -b, -t and -o options 
+to selectively generate a sample.
+
+    -a: analyse available board and test files, try to combine them,
+        try to compile them. If it's a success, write the generated sample
+        on the correct "by_device" location.
+    -b: specify a board file
+    -t: specify a test file
+    -o: specify the output sample filename
+
+"""
+
 def do_help(action_args=[]):
 	action = None
 	if action_args:
@@ -1218,7 +1295,7 @@ ACTIONS = {
 		'compile'	: {'callback' : do_compile, 'options' : 'R:E:', 'help' : compile_help},
 		'validate'	: {'callback' : do_validate, 'options' : '', 'help' : validate_help},
 		'test'		: {'callback' : do_test, 'options' : 's:uef:a:G:g:d:o:p:t:1n:m:', 'help' : test_help},
-		'sample'	: {'callback' : do_sample, 'options' : 'b:t:o:', 'help' : None},
+		'sample'	: {'callback' : do_sample, 'options' : 'a:b:t:o:', 'help' : sample_help},
 		'reindent'	: {'callback' : do_reindent, 'options' : 'f:o:', 'help' : reindent_help},
 		'help'		: {'callback' : do_help, 'options' : '', 'help' : None},
 		'license'	: {'callback' : do_license, 'options' : '', 'help' : None},
