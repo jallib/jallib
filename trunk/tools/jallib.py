@@ -964,7 +964,7 @@ def generate_all_samples(path_to_sample):
 			try:
 			   generate_one_sample(board,test,fullsamplepath)
 			except Exception,e:
-			   print sys.stderr,"Invalid board/test combination: %s" % e
+			   print >> sys.stderr,"Invalid board/test combination: %s" % e
 			   continue
 
 
