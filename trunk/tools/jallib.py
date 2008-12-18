@@ -896,6 +896,7 @@ def normalize_linefeed(content):
 	content = "\n".join(lines)
 	return content
 
+
 def generate_one_sample(boardfile,testfile,outfile):
 	# try to find which linefeed is used
 	board = normalize_linefeed(file(boardfile).read()).splitlines()
@@ -943,29 +944,38 @@ def find_test_files(testdir):
 		testfiles.extend([os.path.join(d,v) for v in get_jal_filenames(d).values()])
 	return testfiles
 
-def generate_all_samples(path_to_sample):
-	print "generate_all_samples"
+def preferred_board(board):
+	data = file(board).read()
+	# well, should not consider comment but... should not occur, right ? :)
+	return "@jallib preferred" in data
+
+def generate_samples_for_board(path_to_sample,board):
 	testpath = get_full_test_path(path_to_sample)
-	boardpath = get_full_board_path(path_to_sample)
 	samplepath = get_full_sample_path(path_to_sample)
-
-	fullboarfiles = find_board_files(boardpath)
 	fulltestfiles = find_test_files(testpath)
-	print "fullboarfiles: %s" % repr(fullboarfiles)
-	print "fulltestfiles: %s" % repr(fulltestfiles)
 
+	picname = os.path.basename(board).split("_")[1]	# naming convention
+	sampledir = get_full_sample_path(path_to_sample,picname)
+	# in automated mode, only board files with "@jallib preferred" are kept.
+	# this is because there can be multiple boards for a given PIC, but only
+	# ony being used to auto-generate samples
+	for test in fulltestfiles:
+		samplename = "sample_" + os.path.basename(test)[5:]	# remove "test_", naming convention
+		fullsamplepath = get_full_sample_path(path_to_sample,picname,samplename)
+		try:
+		   generate_one_sample(board,test,fullsamplepath)
+		except Exception,e:
+		   print >> sys.stderr,"Invalid board/test combination: %s" % e
+		   continue
+
+def generate_all_samples(path_to_sample):
+	boardpath = get_full_board_path(path_to_sample)
+	fullboarfiles = find_board_files(boardpath)
 	for board in fullboarfiles:
-		picname = os.path.basename(board).split("_")[1]	# naming convention
-		sampledir = get_full_sample_path(path_to_sample,picname)
-		
-		for test in fulltestfiles:
-			samplename = "sample_" + os.path.basename(test)[5:]	# remove "test_", naming convention
-			fullsamplepath = get_full_sample_path(path_to_sample,picname,samplename)
-			try:
-			   generate_one_sample(board,test,fullsamplepath)
-			except Exception,e:
-			   print >> sys.stderr,"Invalid board/test combination: %s" % e
-			   continue
+		if not preferred_board(board):
+			print >> sys.stderr,"board %s is not 'preferred', skip it" % board
+			continue
+		generate_samples_for_board(path_to_sample,board)
 
 
 def do_sample(args=[]):
@@ -990,6 +1000,8 @@ def do_sample(args=[]):
 		elif o == '-a':
 			automatic = True
 			path_to_sample = v
+	if automatic and path_to_sample and boardfile:
+		generate_samples_for_board(path_to_sample,boardfile)
 	if automatic and path_to_sample:
 		generate_all_samples(path_to_sample)
 	elif boardfile and testfile and outfile:
