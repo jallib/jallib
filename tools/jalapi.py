@@ -26,7 +26,7 @@
 
 import sys, os
 import re
-import jsg_validator
+import jallib
 
 SVN_BROWSER_ROOT = "http://code.google.com/p/jallib/source/browse"
 
@@ -52,11 +52,11 @@ def extract_doc(filename):
 	# deals with header
 	# jsg wants line number...
 	content = [(i + 1,l) for i,l in enumerate(open(filename,"r").readlines())]
-	header = jsg_validator.extract_header(content)
+	header = jallib.extract_header(content)
 	dhead = {}
-	for field_dict in jsg_validator.FIELDS:
+	for field_dict in jallib.FIELDS:
 		# Special case: when still '--' comment chars,this means new paragraph
-		c = jsg_validator.validate_field(header,**field_dict)
+		c = jallib.validate_field(header,**field_dict)
 		c = c and "\n".join(map(lambda c: re.sub("^--","\n\n",c),c.split("\n"))) or c
 		dhead[field_dict['field']] = c
 	
@@ -129,8 +129,8 @@ if __name__ == '__main__':
 		sys.exit(255)
 
 	# first validate it !
-	jsg_validator.validate(filename)
-	if jsg_validator.errors:
+	jallib.validate(filename)
+	if jallib.errors:
 		print >> sys.stderr, "%s does not pass JSG, cannot generate API documentation" % filename
 		sys.exit(1)
 
