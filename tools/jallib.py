@@ -1280,13 +1280,15 @@ def sample_help():
 Generate samples from board files and test files. In order to do this,
 the board and test files are annotated with special "@jallib" tags.
 
-Use "-a" to generate all potential samples, or use -b, -t and -o options 
-to selectively generate a sample.
+You can either generate all potential samples from all board and all test
+files (using -a option), or generate all potential samples for a given
+board (using -a and -b options), and specifically generate one sample,
+from one board file and one test file (using -b, -t and -o options).
 
     -a: analyse available board and test files, try to combine them,
         try to compile them. If it's a success, write the generated sample
         on the correct "by_device" location.
-    -b: specify a board file
+    -b: specify a board file. Can be used in combination with -a option
     -t: specify a test file
     -o: specify the output sample filename
 
