@@ -58,29 +58,59 @@ export:
 	mkdir distrib
 	mkdir distrib/jallib-${VERSION}
 	mkdir distrib/jallib-${VERSION}/lib
-	mkdir distrib/jallib-${VERSION}/doc
+	mkdir -p distrib/jallib-${VERSION}/doc/html
 	mkdir distrib/jallib-all_devices-${VERSION}
 	mkdir distrib/jallib-all_devices-${VERSION}/lib
 	mkdir distrib/jallib-all_devices-${VERSION}/blink
 	mkdir -p distrib/jallib-all_devices-${VERSION}/doc/html
 	# get clean source from repos
 	# (svn export gets the sources, but without any .svn dir (no svn metadata)
-	svn export http://jallib.googlecode.com/svn/trunk/${ENV} distrib/jallib-export
-	# always svn export unvalidated map, to get last devices/blink files
-	svn export http://jallib.googlecode.com/svn/trunk/unvalidated distrib/jallib-unvalidated
+	svn export http://jallib.googlecode.com/svn/trunk/unvalidated distrib/jallib-export
 	# license is common for both svn and release
 	svn export -N http://jallib.googlecode.com/svn/trunk distrib/jallib-extra
 	# get readme for the release (force because target dir already exists)
 	svn export --force http://jallib.googlecode.com/svn/trunk/tools distrib/jallib-extra
+
+dispatch:
 	# flatten library files
-	find distrib/jallib-export/include -type f -exec cp {} distrib/jallib-${VERSION}/lib \;
-	find distrib/jallib-unvalidated/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
-	for f in `find distrib/jallib-unvalidated/sample/by_device/ -type f | grep -e 'blink_[[:digit:]]\{2\}[[:alpha:]]\+.*\.jal'`; \
+	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/`; do cp ../jallib-export/$$f lib; done
+	# keep sample structure, but only for those in TORELEASE
+	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/`; do mkdir -p `dirname $$f` ; done                                                                 
+	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/`; do cp ../jallib-export/$$f `dirname $$f`; done
+	# for all_devices package, keep everything...
+	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
+	for f in `find distrib/jallib-export/sample/by_device/ -type f | grep -e 'blink_[[:digit:]]\{2\}[[:alpha:]]\+.*\.jal'`; \
 	do \
 		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
 	done
 	# doc
-	cp -r distrib/jallib-export/doc/* distrib/jallib-${VERSION}/doc
+	for f in `cat distrib/jallib-export/TORELEASE | grep ^include | grep -v include.device` ; \
+	do \
+		libfile=`basename $$f`; \
+		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
+		python jalapi.py jalapi_html.tmpl distrib/jallib-${VERSION}/lib/$$libfile -l > distrib/jallib-${VERSION}/doc/html/$$htmlfile ; \
+	done
+	# doc menu...
+	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
+	# manually include device files doc, as it's not generated from a lib
+	echo "<a href='http://jallib.googlecode.com' target='_parent'><i>back to jallib</i></a><br/><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
+	echo "<a href='devicefiles.html' target='lib_desc'>device files</a><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
+	# generate html from lib included in the release, and specifcy to create local links to samples (-l option)
+	for htmlfile in `ls distrib/jallib-${VERSION}/doc/html/*.html | egrep -v menu\.html\|welcome\.html\|index\.html\|devicefiles\.html | sort  `; \
+	do \
+		htmlfile=`basename $$htmlfile`; \
+		libname=`echo $$htmlfile | sed "s#\.html##"`; \
+		echo "<a href='$$htmlfile' target='lib_desc'>$$libname</a><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html; \
+	done
+	echo "</body></html>" >> distrib/jallib-${VERSION}/doc/html/menu.html
+	cp distrib/jallib-export/doc/html/welcome.html distrib/jallib-${VERSION}/doc/html/
+	cp distrib/jallib-export/doc/html/index.html distrib/jallib-${VERSION}/doc/html/
+	# doc for all_devices
+	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-${VERSION}/doc/html
+	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-${VERSION}/doc/html
+		
+	
+	##cp -r distrib/jallib-export/doc/* distrib/jallib-${VERSION}/doc
 	# license, readme, install, ...
 	# 	jallib
 	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-${VERSION}/
@@ -93,12 +123,9 @@ export:
 	cp distrib/jallib-extra/README.blink distrib/jallib-all_devices-${VERSION}/README.blink
 	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-all_devices-${VERSION}/doc/html
 	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-all_devices-${VERSION}/doc/html
-	# TODO: readme for jallib-device
-	# keep sample map as is
-	cp -r distrib/jallib-export/sample distrib/jallib-${VERSION}/
 	echo DONE: release directory distrib/jallib-${VERSION}/
 
-release: export
+release: export dispatch
 	cd distrib && tar czfv jallib-${VERSION}.tar.gz jallib-${VERSION}
 	cd distrib && tar czfv jallib-all_devices-${VERSION}.tar.gz jallib-all_devices-${VERSION}
 	cd distrib && zip -r jallib-${VERSION}.zip jallib-${VERSION}
