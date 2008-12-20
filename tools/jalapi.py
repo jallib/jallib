@@ -91,26 +91,31 @@ def extract_doc(filename):
 				
 	return (dhead,dproc,dfunc,dvarconst,ddeps)
 
-def get_samples_info(samples):
+def get_samples_info(samples,local=False):
 	dsamples = {}
 	for sample in samples:
-		# yeah, that's a system call again, for svn...
-		# in english please so we can parse...
-		stdin,stdout,stderr = os.popen3("LANG=C svn info %s | grep ^URL:" % sample)
-		stderr = stderr.read()
-		if stderr:
-			print >> sys.stderr, "Skip extracting SVN URL for sample %s because: %s" % (sample,stderr)
-			continue
-		fullurl = stdout.read().replace("URL:","").strip()
-		stdin,stdout,stderr = os.popen3("LANG=C svn info %s | grep ^Repository\ Root:" % sample)
-		stderr = stderr.read()
-		if stderr:
-			print >> sys.stderr, "Skip extracting SVN Repository Root for sample %s because: %s" % (sample,stderr)
-		reposroot = stdout.read().replace("Repository Root:","").strip()
-		svnbrowserurl = fullurl.replace(reposroot,SVN_BROWSER_ROOT)
-		remain, fsample = os.path.split(sample)
-		_trash, pic = os.path.split(remain) 
-		dsamples[(pic,fsample)] = svnbrowserurl
+		if not local:
+			# yeah, that's a system call again, for svn...
+			# in english please so we can parse...
+			stdin,stdout,stderr = os.popen3("LANG=C svn info %s | grep ^URL:" % sample)
+			stderr = stderr.read()
+			if stderr:
+				print >> sys.stderr, "Skip extracting SVN URL for sample %s because: %s" % (sample,stderr)
+				continue
+			fullurl = stdout.read().replace("URL:","").strip()
+			stdin,stdout,stderr = os.popen3("LANG=C svn info %s | grep ^Repository\ Root:" % sample)
+			stderr = stderr.read()
+			if stderr:
+				print >> sys.stderr, "Skip extracting SVN Repository Root for sample %s because: %s" % (sample,stderr)
+			reposroot = stdout.read().replace("Repository Root:","").strip()
+			svnbrowserurl = fullurl.replace(reposroot,SVN_BROWSER_ROOT)
+			remain, fsample = os.path.split(sample)
+			_trash, pic = os.path.split(remain) 
+			dsamples[(pic,fsample)] = svnbrowserurl
+		else:
+			remain, fsample = os.path.split(sample)
+			_trash, pic = os.path.split(remain)
+			dsamples[(pic,fsample)] = None
 	
 	return dsamples
 
@@ -127,6 +132,17 @@ if __name__ == '__main__':
 	except IndexError:
 		print >> sys.stderr, "Please provide a template and jal library file"
 		sys.exit(255)
+
+	# Issue 40: generate local links to samples
+	# instead links to SVN repository on GC
+	localsamples = False
+	sampledir = None
+	if "-l" in sys.argv:
+		localsamples = True
+		# if local, then sample dir must be on the same dir
+		# as the lib dir passed as arg (ok, this is very very ugly...)
+		# (this is to check if sample actually exists, when releasing)
+		sampledir = os.path.join(os.path.split(os.path.split(filename)[0])[0],'sample')
 
 	# first validate it !
 	jallib.validate(filename)
@@ -155,7 +171,7 @@ if __name__ == '__main__':
 		sys.exit(3)
 	print >> sys.stderr, "Samples using %s:\n%s" % (filename,stdout)
 	sample_files = stdout.split()
-	dsamples = get_samples_info(sample_files)
+	dsamples = get_samples_info(sample_files,local=localsamples)
 
 	# extract doc
 	dhead,dproc,dfunc,dvarconst,ddeps = extract_doc(filename)
@@ -163,6 +179,8 @@ if __name__ == '__main__':
 	tmplsrc = "".join(file(tmpl_file,"r").readlines())
 	klass = Cheetah.Template.Template.compile(tmplsrc)
 	tmpl = klass()
+	tmpl.localsamples = localsamples
+	tmpl.sampledir = sampledir
 	tmpl.dhead = dhead
 	tmpl.dproc = dproc
 	tmpl.dfunc = dfunc
