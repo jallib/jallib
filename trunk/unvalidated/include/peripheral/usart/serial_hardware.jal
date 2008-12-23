@@ -67,13 +67,24 @@ procedure _calculate_and_set_baudrate() is
 
       -- if divider small enough,
       -- calculate divider and set high-speed
+      const real_baud = target_clock / 16 / (usart_div + 1)
       if usart_div <= 255 then
-           if usart_div >= 0 then 
+         if (real_baud > serial_hw_baudrate) then 
+            if (100 * (real_baud - serial_hw_baudrate) / serial_hw_baudrate >= max_deviation) then
+               pragma error  -- asynchronous baudrate deviation is too large
+            end if
+         else
+            if (100 * (serial_hw_baudrate - real_baud) / serial_hw_baudrate >= max_deviation) then
+               pragma error  -- asynchronous baudrate deviation is too large 
+            end if
+         end if
+
+         if usart_div >= 0 then 
             SPBRG = usart_div 
          else
             SPBRG = 0
          end if
-           TXSTA_BRGH = true
+         TXSTA_BRGH = true
          -- try the low-speed mode
       else
            const usart_div_low = ((((10 * target_clock) / ( 64 * serial_hw_baudrate )) + 5 ) / 10) - 1
