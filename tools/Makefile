@@ -58,9 +58,11 @@ export:
 	mkdir distrib
 	mkdir distrib/jallib-${VERSION}
 	mkdir distrib/jallib-${VERSION}/lib
+	mkdir distrib/jallib-${VERSION}/compiler
 	mkdir -p distrib/jallib-${VERSION}/doc/html
 	mkdir distrib/jallib-all_devices-${VERSION}
 	mkdir distrib/jallib-all_devices-${VERSION}/lib
+	mkdir distrib/jallib-all_devices-${VERSION}/compiler
 	mkdir distrib/jallib-all_devices-${VERSION}/blink
 	mkdir -p distrib/jallib-all_devices-${VERSION}/doc/html
 	# get clean source from repos
@@ -73,10 +75,10 @@ export:
 
 dispatch:
 	# flatten library files
-	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/`; do cp ../jallib-export/$$f lib; done
+	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f lib; done
 	# keep sample structure, but only for those in TORELEASE
-	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/`; do mkdir -p `dirname $$f` ; done                                                                 
-	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/`; do cp ../jallib-export/$$f `dirname $$f`; done
+	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do mkdir -p `dirname $$f` ; done                                                                 
+	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f `dirname $$f`; done
 	# for all_devices package, keep everything...
 	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
 	for f in `find distrib/jallib-export/sample/by_device/ -type f | grep -e 'blink_[[:digit:]]\{2\}[[:alpha:]]\+.*\.jal'`; \
@@ -84,11 +86,11 @@ dispatch:
 		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
 	done
 	# doc
-	for f in `cat distrib/jallib-export/TORELEASE | grep ^include | grep -v include.device` ; \
+	for f in `cat distrib/jallib-export/TORELEASE | grep ^include | grep -v include.device | sed 's#\r##g'` ; \
 	do \
 		libfile=`basename $$f`; \
 		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
-		python jalapi.py jalapi_html.tmpl distrib/jallib-${VERSION}/lib/$$libfile -l > distrib/jallib-${VERSION}/doc/html/$$htmlfile ; \
+		SAMPLEDIR=distrib/jallib-${VERSION}/sample python jalapi.py jalapi_html.tmpl distrib/jallib-${VERSION}/lib/$$libfile -l > distrib/jallib-${VERSION}/doc/html/$$htmlfile ; \
 	done
 	# doc menu...
 	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
@@ -108,9 +110,6 @@ dispatch:
 	# doc for all_devices
 	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-${VERSION}/doc/html
 	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-${VERSION}/doc/html
-		
-	
-	##cp -r distrib/jallib-export/doc/* distrib/jallib-${VERSION}/doc
 	# license, readme, install, ...
 	# 	jallib
 	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-${VERSION}/
@@ -123,6 +122,9 @@ dispatch:
 	cp distrib/jallib-extra/README.blink distrib/jallib-all_devices-${VERSION}/README.blink
 	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-all_devices-${VERSION}/doc/html
 	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-all_devices-${VERSION}/doc/html
+	# now include compiler binaries
+	cp distrib/jallib-export/compiler/* distrib/jallib-${VERSION}/compiler/
+	cp distrib/jallib-export/compiler/* distrib/jallib-all_devices-${VERSION}/compiler/
 	echo DONE: release directory distrib/jallib-${VERSION}/
 
 release: export dispatch
