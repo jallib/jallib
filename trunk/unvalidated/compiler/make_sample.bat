@@ -9,3 +9,4 @@ jalv2.exe -long-start -s ..\lib %sample%
 echo.
 echo.
 echo Look for the output files in the sample directory.
+pause
