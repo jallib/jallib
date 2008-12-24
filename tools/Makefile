@@ -122,14 +122,23 @@ dispatch:
 	cp distrib/jallib-extra/README.blink distrib/jallib-all_devices-${VERSION}/README.blink
 	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-all_devices-${VERSION}/doc/html
 	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-all_devices-${VERSION}/doc/html
-	# now include compiler binaries
-	cp distrib/jallib-export/compiler/* distrib/jallib-${VERSION}/compiler/
-	cp distrib/jallib-export/compiler/* distrib/jallib-all_devices-${VERSION}/compiler/
-	echo DONE: release directory distrib/jallib-${VERSION}/
+	echo DONE: release directory distrib/jallib-${VERSION}/ and distrib/jallib-all_devices-${VERSION}/
 
-release: export dispatch
+pack:
+	# now include compiler binaries
+	# guess compiler version
+	##compiler=`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`
+	mkdir -p distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
+	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
+	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
+	echo DONE: jallib pack ready
+
+release: export dispatch pack
 	cd distrib && tar czfv jallib-${VERSION}.tar.gz jallib-${VERSION}
 	cd distrib && tar czfv jallib-all_devices-${VERSION}.tar.gz jallib-all_devices-${VERSION}
-	cd distrib && zip -r jallib-${VERSION}.zip jallib-${VERSION}
-	cd distrib && zip -r jallib-all_devices-${VERSION}.zip jallib-all_devices-${VERSION}
+	cd distrib && tar czfv jallib-pack-`jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}.tar.gz jallib-pack-`jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
+	# ZIPs don't contain a base directory
+	cd distrib/jallib-${VERSION} && zip -r jallib-${VERSION}.zip . && mv jallib-${VERSION}.zip ..
+	cd distrib/jallib-all_devices-${VERSION} && zip -r jallib-all_devices-${VERSION}.zip . && mv jallib-all_devices-${VERSION}.zip ..
+	cd distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION} && zip -r jallib-pack-`../jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}.zip . && mv jallib-pack-`../jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}.zip ..
 
