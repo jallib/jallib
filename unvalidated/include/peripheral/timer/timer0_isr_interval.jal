@@ -11,11 +11,20 @@
 -- TODO:
 --
 
-var word isr_counter
-var word prev_isr_counter
+var word internal_isr_counter
 
 var word isr_countdown[DELAY_SLOTS]
 var byte timer0_load
+
+function isr_counter return word is
+   var word temp
+   
+	INTCON_T0IE = off
+	temp = internal_isr_counter
+	INTCON_T0IE = on
+
+   return temp
+end function
 
 procedure set_delay(byte in slot, word in ticks) is
    
@@ -91,6 +100,11 @@ procedure timer0_isr_init() is
 	INTCON_GIE  = on    ; enable global interrupts
 	INTCON_PEIE = on
 	
+	var byte i
+	for DELAY_SLOTS using i loop
+      isr_countdown[i] = 0
+   end loop
+
 
 end procedure
 
@@ -101,7 +115,7 @@ pragma interrupt
    	tmr0 = timer0_load
 
       -- counters
-      isr_counter = isr_counter + 1      
+      internal_isr_counter = internal_isr_counter + 1      
       
       var byte index      
       for DELAY_SLOTS using index loop
