@@ -28,9 +28,9 @@
 /*   - The script contains some test and debugging code.                    */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.54'                   /*                          */
+   ScriptVersion   = '0.0.55'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
-   CompilerVersion = '=2.4i'                    /*                          */
+   CompilerVersion = '>=2.4i'                   /*                          */
 /* ------------------------------------------------------------------------ */
 
 mplabdir = 'x:/mplab815/'                       /* MPLAB base directory     */
@@ -74,18 +74,18 @@ end
 signal on syntax name catch_syntax              /* catch syntax error */
 signal on error  name catch_error               /* catch execution errors */
 
-if stream(chipdef, 'c', 'query exists') \= '' then   /* old file present */
+if stream(chipdef, 'c', 'query exists') \= '' then   /* old chipdef file present */
   '@erase' translate(chipdef,'\','/')           /* delete it */
-if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* create common file */
+if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* new chipdef file */
   Say 'Error: Could not create common include file' chipdef
   return 1
 end
 
-call list_chip_const                            /* create header of common file */
+call list_chip_const                            /* make header of chipdef file */
 
 ListCount = 0                                   /* # created device files */
 
-do i=1 to dir.0                                 /* whole list of .dev files */
+do i=1 to dir.0                                 /* all relevant .dev files */
                                                 /* init for each new PIC */
   Dev.        = ''                              /* .dev file contents    */
   Lkr.        = ''                              /* .lkr file contents    */
@@ -101,10 +101,10 @@ do i=1 to dir.0                                 /* whole list of .dev files */
     iterate                                     /* next entry */
   end
 
-  if substr(PicName,3,1) \= 'f'  &,             /* select flash PICs */
-     substr(PicName,3,2) \= 'lf' &,
-     substr(PicName,3,2) \= 'hv' then
-    iterate                                     /* skip non-flash PICs */
+  if substr(PicName,3,1) \= 'f'  &,             /* not flash PICs */
+     substr(PicName,3,2) \= 'lf' &,             /* not low power flash PIs */
+     substr(PicName,3,2) \= 'hv' then           /* not high voltage flash PICs */
+    iterate                                     /* skip all these */
 
   if substr(PicName,3,3) = 'f19' then           /* exclude extended 14-bit core */
     iterate                                     /* skip unsupported PICs */
@@ -249,20 +249,20 @@ return 0
 /* ------------------------------------------- */
 file_read_dev: procedure expose DevFile Dev.
 Dev.0 = 0                                       /* no records read yet */
-if stream(DevFile, 'c', 'open read') = 'READY:' then do
-  i = 1                                         /* first record */
-  do while lines(DevFile) > 0
-    parse upper value linein(DevFile) with Dev.i  /* store line in upper case */
-    if length(Dev.i) \< 3 then do               /* not empty */
-      if left(word(Dev.i,1),1) \= '#' then      /* not comment */
-        i = i + 1                               /* keep this record */
-    end
-  end
-  call stream DevFile, 'c', 'close'             /* done */
-  Dev.0 = i - 1                                 /* # of stored records */
+if stream(DevFile, 'c', 'open read') \= 'READY:' then do
+  Say 'Error: .dev file' DevFile 'could not be opened!'
+  return 0                                      /* zero records */
 end
-if Dev.0 = 0 then
-  Say 'Error: .dev file' DevFile 'not found!'
+i = 1                                           /* first record */
+do while lines(DevFile) > 0                     /* read whole file */
+  parse upper value linein(DevFile) with Dev.i  /* store line in upper case */
+  if length(Dev.i) \< 3 then do                 /* not an 'empty' record */
+    if left(word(Dev.i,1),1) \= '#' then        /* not comment */
+      i = i + 1                                 /* keep this record */
+  end
+end
+call stream DevFile, 'c', 'close'               /* done */
+Dev.0 = i - 1                                   /* # of stored records */
 return Dev.0
 
 
@@ -285,37 +285,37 @@ if stream(LkrFile, 'c', 'query exists') = '' then do     /* not found */
   end
 end
 Lkr.0 = 0                                       /* no records read */
-if stream(LkrFile, 'c', 'open read') = 'READY:' then do
-  i = 1                                         /* first record */
-  do while lines(LkrFile) > 0                   /* whole file */
-    parse upper value linein(LkrFile) with Lkr.i  /* store line in upper case */
-    if length(Lkr.i) \> 2           |,          /* empty */
-       left(word(Lkr.i,1),2) = '//' |,          /* .lkr comment */
-       word(Lkr.i,1) = '#FI'        |,          /* end if */
-       word(Lkr.i,1) = '#DEFINE'    |,          /* const definition */
-       word(Lkr.i,1) = 'LIBPATH' then           /* Library path */
-      iterate                                   /* skip these lines */
-    if word(Lkr.i,1) = '#IFDEF' then do         /* conditional part */
-      if left(word(Lkr.i,2),6) = '_DEBUG'  |,   /* debugging */
-         left(word(Lkr.i,2),6) = '_EXTEN' then do /* extended mode */
-        do while lines(LkrFile) > 0             /* skip lines */
-          parse upper value linein(LkrFile) with ln  /* read line */
-          if word(ln,1) = '#ELSE' |,            /* other than debugging */
-             word(ln,1) = '#FI' then do         /* end conditional part */
-            leave                               /* resume normal */
-          end
+if stream(LkrFile, 'c', 'open read') \= 'READY:' then do
+  Say 'Error: .lkr file' LkrFile 'could not be opened!'
+  return 0                                      /* zero records */
+end
+i = 1                                           /* first record */
+do while lines(LkrFile) > 0                     /* whole file */
+  parse upper value linein(LkrFile) with Lkr.i  /* store line in upper case */
+  if length(Lkr.i) \> 2           |,            /* empty */
+     left(word(Lkr.i,1),2) = '//' |,            /* .lkr comment */
+     word(Lkr.i,1) = '#FI'        |,            /* end if */
+     word(Lkr.i,1) = '#DEFINE'    |,            /* const definition */
+     word(Lkr.i,1) = 'LIBPATH' then             /* Library path */
+    iterate                                     /* skip these lines */
+  if word(Lkr.i,1) = '#IFDEF' then do           /* conditional part */
+    if left(word(Lkr.i,2),6) = '_DEBUG'  |,     /* debugging */
+       left(word(Lkr.i,2),6) = '_EXTEN' then do /* extended mode */
+      do while lines(LkrFile) > 0               /* skip lines */
+        parse upper value linein(LkrFile) with ln  /* read line */
+        if word(ln,1) = '#ELSE' |,              /* other than debugging */
+           word(ln,1) = '#FI' then do           /* end conditional part */
+          leave                                 /* resume normal */
         end
       end
     end
-    else do                                     /* not skipped */
-      i = i + 1                                 /* keep this record */
-    end
   end
-  call stream LkrFile, 'c', 'close'             /* done */
-  Lkr.0 = i - 1                                 /* # non-comment records */
+  else do                                       /* not skipped */
+    i = i + 1                                   /* keep this record */
+  end
 end
-if Lkr.0 = 0 then
-  Say 'Error: .lkr file' LkrFile 'not found!'
+call stream LkrFile, 'c', 'close'               /* done */
+Lkr.0 = i - 1                                   /* # non-comment records */
 return Lkr.0                                    /* number of records */
 
 
@@ -2304,7 +2304,7 @@ call lineout chipdef, '-- Can be used for conditional compilation,',
 call lineout chipdef, '--    if (target_chip = PIC_16F88) then'
 call lineout chipdef, '--      ....                                  -- for 16F88 only'
 call lineout chipdef, '--    endif'
-call lineout chipdef, '-- Note: Variables declared in such a block are local!'
+/* call lineout chipdef, '-- Note: Variables declared in such a block are local!' */
 call lineout chipdef, '--'
 return
 
