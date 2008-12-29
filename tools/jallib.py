@@ -128,7 +128,7 @@ def _explore_dir(onedir):
 	return dirs
 
 
-def do_compile(args,exitonerror=True):
+def do_compile(args,exitonerror=True,clean=False):
 	if not has_subprocess:
 		print >> sys.stderr, "You can't use this action, because subprocess module is not installed"
 		sys.exit(255)
@@ -198,6 +198,24 @@ def do_compile(args,exitonerror=True):
 	try:
 		print "cmd: %s" % cmd
 		status = subprocess.check_call(cmd,shell=False)
+		if clean:
+			# assume srcfile is last arg (it not, can't clean)
+			srcfile = cmd[-1]
+			if not srcfile.endswith(".jal"):
+				print >> sys.stderr, "Can't clean, because can't know which file is the source file"
+				return status
+			outdir = os.path.dirname(srcfile)
+			outfile = os.path.basename(srcfile)
+			noext = outfile[:-4]
+			print "noext: %s" % noext
+			for f in os.listdir(outdir):
+				# luckily all product files have 3-letters extension
+				if f[:-4] == noext and f[-4:] in [".asm",".hex",".err",".cod",".obj",".lst"]:
+					toclean = os.path.join(outdir,f)
+					print >> sys.stderr, "Cleaning %s" % toclean
+					os.unlink(toclean)
+
+			
 		return status
 	except subprocess.CalledProcessError,e:
 		print >> sys.stderr, "Error while compiling file (status=%s).\nSee previous message." % e.returncode
@@ -609,7 +627,7 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 				continue
 			# now try to compile every tests with this given board
 			for test,pathtest in test_files.items():
-				status = do_compile(["-i",get_full_board_path(dir,boardfile),os.path.join(testdir,pathtest)],exitonerror=False)
+				status = do_compile(["-i",get_full_board_path(dir,boardfile),os.path.join(testdir,pathtest)],exitonerror=False,clean=True)
 				if status == 0:
 					# dispatch to devices
 					matrix[pic]['tests'].setdefault(test,{'pass' : None, 'revision' : None})
@@ -924,7 +942,7 @@ def generate_one_sample(boardfile,testfile,outfile):
 	fout.close()
 
 	# compile it !
-	status = do_compile([outfile],exitonerror=False)
+	status = do_compile([outfile],exitonerror=False,clean=True)
 	if status == 0:
 		print "Sucesfully generated sample '%s' from board '%s' and test '%s'" % (outfile,boardfile,testfile)
 	else:
@@ -960,7 +978,7 @@ def generate_samples_for_board(path_to_sample,board):
 	# this is because there can be multiple boards for a given PIC, but only
 	# ony being used to auto-generate samples
 	for test in fulltestfiles:
-		samplename = "sample_" + os.path.basename(test)[5:]	# remove "test_", naming convention
+		samplename = picname + "_" + os.path.basename(test)[5:]	# remove "test_", naming convention
 		fullsamplepath = get_full_sample_path(path_to_sample,picname,samplename)
 		try:
 		   generate_one_sample(board,test,fullsamplepath)
