@@ -1,37 +1,38 @@
-/* ------------------------------------------------------------------------ */
-/* Title: blink-an-led.cmd - Create and compile blink-an-LED samples.       */
-/*                                                                          */
-/* Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.    */
-/*                                                                          */
-/* Adapted-by:                                                              */
-/*                                                                          */
-/* Compiler: =2.4                                                           */
-/*                                                                          */
-/* This file is part of jallib  http://jallib.googlecode.com                */
-/* Released under the BSD license                                           */
-/*                http://www.opensource.org/licenses/bsd-license.php        */
-/*                                                                          */
-/* Description: Rexx script to create a blink-an-LED JAL program in the     */
-/*              in the current default directory for every PIC.             */
-/*              The created program is submitted to the compiler and the    */
-/*              console log is checked for errors and warnings.             */
-/*              When both are 0 the source is copied to the SVN directory   */
-/*              and all compiler but the compiler console log is deleted.   */
-/*                                                                          */
-/* Sources:                                                                 */
-/*                                                                          */
-/* Notes:                                                                   */
-/*  - Uses Classic Rexx.                                                    */
-/*  - There is no summary of changes maintained for this script.            */
-/*                                                                          */
-/* ------------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------ *
+ * Title: blink-an-led.cmd - Create and compile blink-an-LED samples.       *
+ *                                                                          *
+ * Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.    *
+ *                                                                          *
+ * Adapted-by:                                                              *
+ *                                                                          *
+ * Compiler: >=2.4                                                          *
+ *                                                                          *
+ * This file is part of jallib  http://jallib.googlecode.com                *
+ * Released under the BSD license                                           *
+ *                http://www.opensource.org/licenses/bsd-license.php        *
+ *                                                                          *
+ * Description: Rexx script to create a blink-an-LED JAL program in the     *
+ *              in the current default directory for every PIC.             *
+ *              The created program is validated (JSG) and submitted to     *
+ *              the compiler. The console log is checked for errors and     *
+ *              warnings. When both are 0 the source is copied to the SVN   *
+ *              directory                                                   *
+ *              and all compiler but the compiler console log is deleted.   *
+ *                                                                          *
+ * Sources:                                                                 *
+ *                                                                          *
+ * Notes:                                                                   *
+ *  - Uses Classic Rexx.                                                    *
+ *  - There is no summary of changes maintained for this script.            *
+ *                                                                          *
+ * ------------------------------------------------------------------------ */
 
 parse upper arg runtype selection .             /* where to store jal files */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load Rexx utilities */
 
-JalV2 = 'k:/c/Jalv2/JalV2.exe'                  /* compiler path (eCS) */
+JalV2 = 'k:/c/Jalv2/JalV2.exe'                  /* compiler */
 Validator = 'k:/jallib/tools/jallib.py validate'   /* validation command */
 
 if runtype = 'TEST' then do                     /* test mode */
@@ -61,8 +62,8 @@ do i=1 to pic.0
   parse value filespec('Name', pic.i) with PicName '.jal'
   say PicName
 
-  PgmName = 'blink_'PicName                     /* program name */
-  PgmFile = 'blink_'PicName'.jal'               /* program filespec */
+  PgmName = PicName'_blink'                     /* program name */
+  PgmFile = PgmName'.jal'                       /* program filespec */
 
   '@python' validator  pic.i '1>'PgmName'.pyout'  '2>'PgmName'.pyerr'
   if rc \= 0 then do
@@ -81,7 +82,7 @@ do i=1 to pic.0
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Adapted-by:'
   call lineout PgmFile, '--'
-  call lineout PgmFile, '-- Compiler: =2.4'
+  call lineout PgmFile, '-- Compiler: >=2.4h'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- This file is part of jallib',
                          ' (http://jallib.googlecode.com)'
