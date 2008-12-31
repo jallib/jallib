@@ -125,6 +125,9 @@ dispatch:
 	cp distrib/jallib-extra/README.blink distrib/jallib-all_devices-${VERSION}/README.blink
 	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-all_devices-${VERSION}/doc/html
 	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-all_devices-${VERSION}/doc/html
+	# include CHANGELOG
+	cp distrib/jallib-export/CHANGELOG distrib/jallib-${VERSION}/
+	cp distrib/jallib-export/CHANGELOG distrib/jallib-all_devices-${VERSION}/
 	echo DONE: release directory distrib/jallib-${VERSION}/ and distrib/jallib-all_devices-${VERSION}/
 
 pack:
@@ -134,6 +137,8 @@ pack:
 	mkdir -p distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
 	# generate VERSION file (jallib version)
 	echo ${VERSION} > distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/VERSION
+	# include CHANGELOG
+	cp distrib/jallib-export/CHANGELOG distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/
 	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
 	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
 	echo DONE: jallib pack ready
