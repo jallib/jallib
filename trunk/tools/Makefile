@@ -65,6 +65,9 @@ export:
 	mkdir distrib/jallib-all_devices-${VERSION}/compiler
 	mkdir distrib/jallib-all_devices-${VERSION}/blink
 	mkdir -p distrib/jallib-all_devices-${VERSION}/doc/html
+	# generate VERSION file for each
+	echo ${VERSION} > distrib/jallib-${VERSION}/VERSION
+	echo ${VERSION} > distrib/jallib-all_devices-${VERSION}/VERSION
 	# get clean source from repos
 	# (svn export gets the sources, but without any .svn dir (no svn metadata)
 	svn export http://jallib.googlecode.com/svn/trunk/unvalidated distrib/jallib-export
@@ -129,6 +132,8 @@ pack:
 	# guess compiler version
 	##compiler=`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`
 	mkdir -p distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
+	# generate VERSION file (jallib version)
+	echo ${VERSION} > distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/VERSION
 	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
 	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
 	echo DONE: jallib pack ready
