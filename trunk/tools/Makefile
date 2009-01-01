@@ -58,11 +58,9 @@ export:
 	mkdir distrib
 	mkdir distrib/jallib-${VERSION}
 	mkdir distrib/jallib-${VERSION}/lib
-	mkdir distrib/jallib-${VERSION}/compiler
 	mkdir -p distrib/jallib-${VERSION}/doc/html
 	mkdir distrib/jallib-all_devices-${VERSION}
 	mkdir distrib/jallib-all_devices-${VERSION}/lib
-	mkdir distrib/jallib-all_devices-${VERSION}/compiler
 	mkdir distrib/jallib-all_devices-${VERSION}/blink
 	mkdir -p distrib/jallib-all_devices-${VERSION}/doc/html
 	# generate VERSION file for each
@@ -80,11 +78,12 @@ dispatch:
 	# flatten library files
 	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f lib; done
 	# keep sample structure, but only for those in TORELEASE
-	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do mkdir -p `dirname $$f` ; done                                                                 
-	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f `dirname $$f`; done
+	###cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do mkdir -p `dirname $$f` ; done                                                                 
+	cd  distrib/jallib-${VERSION} && mkdir sample
+	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f sample/; done
 	# for all_devices package, keep everything...
 	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
-	for f in `find distrib/jallib-export/sample/by_device/ -type f | grep -e 'blink_[[:digit:]]\{2\}[[:alpha:]]\+.*\.jal'`; \
+	for f in `find distrib/jallib-export/sample/by_device/ -type f | grep -e '[[:digit:]]\{2\}[[:alpha:]]\+.*_blink\.jal'`; \
 	do \
 		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
 	done
@@ -118,6 +117,7 @@ dispatch:
 	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-${VERSION}/
 	cp distrib/jallib-extra/LICENSE.zlib distrib/jallib-${VERSION}/
 	cp distrib/jallib-extra/README.release distrib/jallib-${VERSION}/README
+	cp distrib/jallib-extra/README.blink distrib/jallib-${VERSION}/README.blink
 	# 	jallib-all_devices
 	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-all_devices-${VERSION}/
 	cp distrib/jallib-extra/LICENSE.zlib distrib/jallib-all_devices-${VERSION}/
