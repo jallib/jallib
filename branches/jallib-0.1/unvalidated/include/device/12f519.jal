@@ -1,0 +1,331 @@
+-- ===================================================
+-- Title: JalV2 device include file for pic12f519
+--
+-- Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: >=2.4i
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+--    Device include file for pic12f519, containing:
+--    - Declaration of ports and pins of the chip.
+--    - Procedures for shadowing of ports and pins
+--      to circumvent the read-modify-write problem.
+--    - Symbolic definitions for config bits (fuses)
+--    - Some device dependent procedures for common
+--      operations, like:
+--      . enable_digital_io()
+--
+-- Sources:
+--  - x:/mplab815/mplab_ide/device/pic12f519.dev
+--  - x:/mplab815/mpasm_suite/lkr/12f519_g.lkr
+--
+-- Notes:
+--  - Created with Dev2Jal Rexx script version 0.0.55
+--  - File creation date/time: 29 Dec 2008 19:48
+--
+-- ===================================================
+--
+-- DataSheet: 41319
+-- Programming Specifications: 41316
+-- Vdd Range: 2.000-5.500 Nominal: 5.000
+-- Vpp Range: 10.000-12.000 Default: 11.000
+--
+-- ---------------------------------------------------
+--
+include chipdef_jallib                  -- common constants
+--
+pragma  target  cpu   PIC_12            -- (banks = 2)
+pragma  target  chip  12f519
+pragma  target  bank  0x0020
+pragma  target  page  0x0200
+pragma  stack   2
+pragma  code    1024
+pragma  data    0x10-0x1F,0x30-0x3F
+pragma  shared  0x07-0x0F
+--
+var volatile byte _pic_accum shared at { 0xE,0x2E }   -- (compiler)
+var volatile byte _pic_isr_w shared at { 0xF,0x2F }   -- (compiler)
+--
+const word  _FUSES_CT             = 1
+const word  _FUSE_BASE            = 0xFFF
+const word  _FUSES                = 0x0FFF
+--
+const word  _ID_CT                = 4
+const word  _ID_BASE[_ID_CT]      = { 0x0440,0x0441,0x0442,0x0443 }
+const word  _ID[_ID_CT]           = { 0x0000,0x0000,0x0000,0x0000 }
+--
+-- ------------------------------------------------
+var volatile byte  INDF                 at { 0x0,0x20 }
+var volatile byte  _ind                 at { 0x0,0x20 }      -- (compiler)
+-- ------------------------------------------------
+var volatile byte  TMR0                 at { 0x1 }
+-- ------------------------------------------------
+var volatile byte  PCL                  at { 0x2,0x22 }
+var volatile byte  _pcl                 at { 0x2,0x22 }      -- (compiler)
+-- ------------------------------------------------
+var volatile byte  STATUS               at { 0x3,0x23 }
+var volatile bit   STATUS_RBWUF         at STATUS : 7
+var volatile bit   STATUS_PA0           at STATUS : 5
+var volatile bit   STATUS_NTO           at STATUS : 4
+var volatile bit   STATUS_NPD           at STATUS : 3
+var volatile bit   STATUS_Z             at STATUS : 2
+var volatile bit   STATUS_DC            at STATUS : 1
+var volatile bit   STATUS_C             at STATUS : 0
+var volatile byte  _status              at { 0x3,0x23 }      -- (compiler)
+const        byte  _rbwuf               =  7      -- (compiler)
+const        byte  _pa0                 =  5      -- (compiler)
+const        byte  _not_to              =  4      -- (compiler)
+const        byte  _not_pd              =  3      -- (compiler)
+const        byte  _z                   =  2      -- (compiler)
+const        byte  _dc                  =  1      -- (compiler)
+const        byte  _c                   =  0      -- (compiler)
+-- ------------------------------------------------
+var volatile byte  FSR                  at { 0x4,0x24 }
+var volatile byte  _fsr                 at { 0x4,0x24 }      -- (compiler)
+-- ------------------------------------------------
+var volatile byte  OSCCAL               at { 0x5 }
+var volatile bit*7 OSCCAL_CAL           at OSCCAL : 1
+-- ------------------------------------------------
+var volatile byte  PORTB                at { 0x6 }
+--
+var          byte  _PORTB_shadow        = PORTB
+--
+procedure _PORTB_flush() is
+   pragma inline
+   PORTB = _PORTB_shadow
+end procedure
+--
+procedure PORTB'put(byte in x) is
+   pragma inline
+   _PORTB_shadow = x
+   _PORTB_flush()
+end procedure
+--
+procedure PORTB_low'put(byte in x) is
+   _PORTB_shadow = (_PORTB_shadow & 0xF0) | (x & 0x0F)
+   _PORTB_flush()
+end procedure
+function PORTB_low'get() return byte is
+   return (PORTB & 0x0F)
+end function
+--
+procedure PORTB_high'put(byte in x) is
+   _PORTB_shadow = (_PORTB_shadow & 0x0F) | (x << 4)
+   _PORTB_flush()
+end procedure
+function PORTB_high'get() return byte is
+   return (PORTB >> 4)
+end function
+--
+var volatile bit   PORTB_RB5            at PORTB : 5
+var volatile bit   pin_B5               at PORTB : 5
+procedure pin_B5'put(bit in x at _PORTB_shadow : 5) is
+   pragma inline
+   _PORTB_flush()
+end procedure
+--
+var volatile bit   PORTB_RB4            at PORTB : 4
+var volatile bit   pin_B4               at PORTB : 4
+procedure pin_B4'put(bit in x at _PORTB_shadow : 4) is
+   pragma inline
+   _PORTB_flush()
+end procedure
+--
+var volatile bit   PORTB_RB3            at PORTB : 3
+var volatile bit   pin_B3               at PORTB : 3
+procedure pin_B3'put(bit in x at _PORTB_shadow : 3) is
+   pragma inline
+   _PORTB_flush()
+end procedure
+--
+var volatile bit   PORTB_RB2            at PORTB : 2
+var volatile bit   pin_B2               at PORTB : 2
+procedure pin_B2'put(bit in x at _PORTB_shadow : 2) is
+   pragma inline
+   _PORTB_flush()
+end procedure
+--
+var volatile bit   PORTB_RB1            at PORTB : 1
+var volatile bit   pin_B1               at PORTB : 1
+procedure pin_B1'put(bit in x at _PORTB_shadow : 1) is
+   pragma inline
+   _PORTB_flush()
+end procedure
+--
+var volatile bit   PORTB_RB0            at PORTB : 0
+var volatile bit   pin_B0               at PORTB : 0
+procedure pin_B0'put(bit in x at _PORTB_shadow : 0) is
+   pragma inline
+   _PORTB_flush()
+end procedure
+--
+-- ------------------------------------------------
+var volatile byte  EECON                at { 0x21 }
+var volatile bit   EECON_FREE           at EECON : 4
+var volatile bit   EECON_WRERR          at EECON : 3
+var volatile bit   EECON_WREN           at EECON : 2
+var volatile bit   EECON_WR             at EECON : 1
+var volatile bit   EECON_RD             at EECON : 0
+-- ------------------------------------------------
+var volatile byte  EEDATA               at { 0x25 }
+-- ------------------------------------------------
+var volatile byte  EEADR                at { 0x26 }
+--
+--
+-- ------------------------------------------------
+var  byte _TRISB_shadow = 0b1111_1111         -- default all input
+--
+procedure PORTB_direction'put(byte in x) is
+   pragma inline
+   _TRISB_shadow = x
+   asm movf _TRISB_shadow,W
+   asm tris 6
+end procedure
+--
+procedure PORTB_low_direction'put(byte in x) is
+   _TRISB_shadow = (_TRISB_shadow & 0xF0) | (x & 0x0F)
+   asm movf _TRISB_shadow,W
+   asm tris 6
+end procedure
+--
+procedure PORTB_high_direction'put(byte in x) is
+   _TRISB_shadow = (_TRISB_shadow & 0x0F) | (x << 4)
+   asm movf _TRISB_shadow,W
+   asm tris 6
+end procedure
+--
+--
+procedure pin_B5_direction'put(bit in x at _TRISB_shadow : 5) is
+   pragma inline
+   asm movf _TRISB_shadow,W
+   asm tris 6
+end procedure
+--
+procedure pin_B4_direction'put(bit in x at _TRISB_shadow : 4) is
+   pragma inline
+   asm movf _TRISB_shadow,W
+   asm tris 6
+end procedure
+--
+procedure pin_B3_direction'put(bit in x at _TRISB_shadow : 3) is
+   pragma inline
+   asm movf _TRISB_shadow,W
+   asm tris 6
+end procedure
+--
+procedure pin_B2_direction'put(bit in x at _TRISB_shadow : 2) is
+   pragma inline
+   asm movf _TRISB_shadow,W
+   asm tris 6
+end procedure
+--
+procedure pin_B1_direction'put(bit in x at _TRISB_shadow : 1) is
+   pragma inline
+   asm movf _TRISB_shadow,W
+   asm tris 6
+end procedure
+--
+procedure pin_B0_direction'put(bit in x at _TRISB_shadow : 0) is
+   pragma inline
+   asm movf _TRISB_shadow,W
+   asm tris 6
+end procedure
+--
+-- ------------------------------------------------
+var  byte _OPTION_REG_shadow = 0b1111_1111         -- default all set
+--
+procedure OPTION_REG'put(byte in x) is
+   pragma inline
+   _OPTION_REG_shadow = X
+   asm movf _OPTION_REG_shadow,0
+   asm option
+end procedure
+--
+procedure OPTION_REG_NRBWU'put(bit in x at _OPTION_REG_shadow : 7) is
+   pragma inline
+   asm movf _OPTION_REG_shadow,0
+   asm option
+end procedure
+--
+procedure OPTION_REG_NRBPU'put(bit in x at _OPTION_REG_shadow : 6) is
+   pragma inline
+   asm movf _OPTION_REG_shadow,0
+   asm option
+end procedure
+--
+procedure OPTION_REG_T0CS'put(bit in x at _OPTION_REG_shadow : 5) is
+   pragma inline
+   asm movf _OPTION_REG_shadow,0
+   asm option
+end procedure
+--
+procedure OPTION_REG_T0SE'put(bit in x at _OPTION_REG_shadow : 4) is
+   pragma inline
+   asm movf _OPTION_REG_shadow,0
+   asm option
+end procedure
+--
+procedure OPTION_REG_PSA'put(bit in x at _OPTION_REG_shadow : 3) is
+   pragma inline
+   asm movf _OPTION_REG_shadow,0
+   asm option
+end procedure
+--
+procedure OPTION_REG_PS'put(byte in x at _OPTION_REG_shadow : 0) is
+   pragma inline
+   asm movf _OPTION_REG_shadow,0
+   asm option
+end procedure
+--
+--
+-- ===================================================
+--
+-- Special device dependent procedures
+--
+-- ---------------------------------------------------
+-- Switch analog ports to digital mode (if analog module present).
+--
+procedure enable_digital_io() is
+   pragma inline
+end procedure
+--
+--
+-- ==================================================
+--
+-- Symbolic Fuse definitions
+-- -------------------------
+--
+-- addr 0xFFF
+--
+pragma fuse_def OSC 0x3 {
+       LP = 0x0
+       XT = 0x1
+       INTOSC_NOCLKOUT = 0x2
+       EXTOSC_NOCLKOUT = 0x3
+       }
+pragma fuse_def WDT 0x4 {
+       ENABLED = 0x4
+       DISABLED = 0x0
+       }
+pragma fuse_def CP 0x8 {
+       DISABLED = 0x8
+       ENABLED = 0x0
+       }
+pragma fuse_def MCLR 0x10 {
+       EXTERNAL = 0x10
+       INTERNAL = 0x0
+       }
+pragma fuse_def IOSCFS 0x20 {
+       F8MHZ = 0x20
+       F4MHZ = 0x0
+       }
+pragma fuse_def CPSW 0x40 {
+       DISABLED = 0x40
+       ENABLED = 0x0
+       }
+--

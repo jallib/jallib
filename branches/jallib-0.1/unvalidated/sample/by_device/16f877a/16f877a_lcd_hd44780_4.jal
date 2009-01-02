@@ -1,0 +1,103 @@
+-- ------------------------------------------------------
+-- Title: Test program for lcd_hd44780_4.jal
+-- Author: Eur Van Andel, Copyright (c) 2008, all rights reserved.
+-- Adapted-by: Rob Hamerling, Joep Suijs
+-- Compiler: >=2.4g
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- This sample shows how to setup an LCD and writes
+-- "Hello World" to the first line, using a string and the print library.
+-- Line 3 and line 4 are used as well, but will work properly only on a 4x20 LCD.
+-- A counter is printed to show the running forever loop.
+-- --
+-- This file defines a test for JALLIB testing, using a test-board
+--  defined by a BOARD file .
+--
+-- Sources:
+--
+-- Notes: 
+-- setup: an hd44780 compatible display, used in 4-bit mode.
+-- 
+-- ----------------------------------------------------------------------------
+-- This file has been generated on Mon Dec 29 18:26:05 2008, from:
+--    * board: board_16f877a_dwarf.jal
+--    * test : test_lcd_hd44780_4.jal
+--
+;@jallib section chipdef
+-- chip setup
+include 16f877a
+
+pragma target clock 20_000_000                  -- xtal frequency
+pragma target OSC        hs
+pragma target   LVP disabled
+pragma target   WDT disabled
+;@jallib section lcd_hd44780_4
+-- LCD IO definition
+var bit lcd_rs           is pin_b5              -- LCD command/data select.
+var bit lcd_rs_direction is pin_b5_direction
+var bit lcd_en           is pin_b4              -- LCD data trigger
+var bit lcd_en_direction is pin_b4_direction
+
+var byte lcd_dataport is portb_low              -- LCD data  port
+var byte lcd_dataport_direction is portb_low_direction
+const byte LCD_ROWS     = 2                     -- 2 lines
+const byte LCD_CHARS    = 16                    -- 16 chars per line
+;@jallib section led
+-- LED IO definition
+var bit led             is pin_a0
+var bit led_direction   is pin_a0_direction
+var bit led2            is pin_a1
+var bit led2_direction  is pin_a1_direction
+
+enable_digital_io()
+
+led_direction = output
+
+
+lcd_rs_direction = output
+lcd_en_direction = output
+lcd_dataport_direction = output
+
+include lcd_hd44780_4                   -- LCD library with 4 data lines
+include print                           -- formatted output library
+
+for 4 loop                              -- blink LED 4 times to indicate startup
+   LED = on
+   delay_100ms(2)
+   LED = off
+   delay_100ms(2)
+end loop
+
+const byte str1[] = "Hello world!"      -- define strings
+const byte str2[] = "third line"
+const byte str3[] = "fourth line"
+
+lcd_init()                              -- initialize LCD
+
+print_string(lcd, str1)                 -- show hello world!
+lcd_setcursor(2,0)                      -- to 3rd line
+print_string(lcd, str2)
+lcd_setcursor(3,0)                      -- to 4th line
+print_string(lcd, str3)
+
+var byte counter = 0
+
+forever loop                            -- loop forever
+
+   counter = counter + 1                -- update counter
+   lcd_setcursor(1,0)                   -- second line
+   print_byte_hex(lcd, counter)         -- output in hex format
+   delay_100ms(3)                       -- wait a little
+
+   if counter == 255 then               -- counter wrap
+      lcd_setcursor(1,1)                -- 2nd line, 2nd char
+      lcd = " "                         -- clear 2nd char
+      lcd = " "                         -- clear 3rd char
+   end if
+
+end loop
+
+

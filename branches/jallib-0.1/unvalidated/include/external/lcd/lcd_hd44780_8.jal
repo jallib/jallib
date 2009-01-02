@@ -1,0 +1,158 @@
+-- -----------------------------------------------------------------------------
+-- Title: LCD library for HD44780 compatible LCDs, with 8 bits wide datatransfer
+-- Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.
+-- Adapted-by:
+-- Compiler:  >=2.4i
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description:
+--    Simple interface for HD44780 compatible alphanumeric LCD screens.
+--    Screens can range from 2x8  (2 lines, 8 chars) to 4x20.
+--    Uses 8 bit wide datapath + 2 handshake lines (total 10 PIC pins).
+--    No support for shift and characterset manipulations.
+--    Expects: - 2 pins for handshake: 'lcd_rs' and 'lcd_en'
+--             - 1 complete port for data: 'lcd_dataport'
+--
+-- Dependencies: delay.jal
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+--
+-- Directions for use of this library in application programs
+-- (in this sequence):
+--
+-- 1. Declare the following constants:
+--       const byte LCD_ROWS     = 2              -- 1, 2 or 4 lines
+--       const byte LCD_CHARS    = 16             -- 8, 16 or 20 chars per line
+--    and variables (aliases):
+--       var   byte lcd_dataport  is  portF       -- 8 data pins
+--       var   bit  lcd_en        is  pin_A3      -- trigger
+--       var   bit  lcd_rs        is  pin_A2      -- cmd/data select
+--
+-- 2. Include this library.
+--
+-- and somewhere before actually using the lcd:
+--
+-- 3. Set the chosen LCD dataport and handshake pins to output:
+--       portF_direction     = all_output
+--       pin_A2_direction    = output
+--       pin_A3_direction    = output
+--
+-- 4. Call lcd_init() to initialize the lcd controller.
+--
+-- Above is an example for a 2x16 LCD:
+--   portA is used for data, pins 6 and 7 of portB are used for
+--   handshake. Any other available port and handshake pins
+--   could be used (provided these are configurable for output).
+--
+-- Available functions for application programs:
+--
+--    lcd_init()                                initialize the LCD controller
+--    lcd_clearscreen()                         clear screen, cursor home
+--    lcd_setcursor(<row>,<column>)             where to write next character
+--    lcd_writechar(<byte>)                     write single character
+--                                              at cursor position and
+--                                              shift display position 1 right
+--
+-- A pseudo byte variable 'lcd' is declared as alternative for lcd_writechar(<byte>)
+-- So in stead of: lcd_writechar(<byte>)
+-- you may use:    lcd = <byte>
+-- And you may also use 'lcd' as destination in functions of other
+-- libraries, like print().
+--
+-- -----------------------------------------------------------------------------
+
+include delay                            -- standard delay procedures
+
+-- -----------------------------------------------------
+-- Write character to LCD.
+-- lcd_rs is not touched: function can be used for commands and data.
+-- -----------------------------------------------------
+procedure  lcd_writechar(byte in data) is
+
+   lcd_dataport = data                          -- replace low nibble
+   lcd_en = HIGH                                -- trigger on
+   asm nop                                      -- delay (> 400 ns)
+   lcd_en = LOW                                 -- trigger off
+   delay_10us(4)                                -- > 37 us
+
+end procedure
+
+-- ----------------------------------------------------------
+-- Pseudo variable 'lcd' as alternative for lcd_writechar(<byte>)
+-- ----------------------------------------------------------
+procedure  lcd'put(byte in c) is
+   lcd_writechar(c)
+end procedure
+
+
+-- ------------------------------------------------------------
+-- Clear screen
+-- (and set the cursor to the upper left corner: row 0, column 0)
+-- ------------------------------------------------------------
+procedure  lcd_clearscreen() is
+
+   lcd_rs = LOW                                 -- set to control char mode
+   lcd_writechar(0b0000_0001)                   -- clear screen, cursor home
+   delay_1ms(2)                                 -- > 1.5 ms
+   lcd_rs = HIGH                                -- set to data char mode
+
+end procedure
+
+
+-- About cursor positions: the LCDs are internally 2x40 char devices.
+-- The first line starts at offset 0, the second line at offset 64 (0x40).
+-- With 4 line devices the third and fourth line are addressed as extensions
+-- of the first and second line by adding an offset. For a 4x20 line device
+-- the offset is 20, for a 4x16 line display the offset is 16 or 20.
+-- Declare the constant LCD_CHARS as appropriate for your screen
+-- (you may have to specify 20 even if your display has only 16 chars!).
+-- Note: Some 1x16 LCDs are implemented as 2x8 line LCDs, which means that
+--       the second half of the line has to be handled as a second line.
+-- ------------------------------------------------------------
+-- Set cursor position
+-- Specify row and column in base-0 notation (first line is 0).
+-- ------------------------------------------------------------
+procedure  lcd_setcursor(byte in row, byte in col)  is
+
+   col = col | 0b1000_0000                      -- set to DRAM offset top line
+   case row of
+      1: col = col + 0x40                       -- 2nd line of 2 or 4 line lcd
+      2: col = col        + LCD_CHARS           -- 3rd line  \ with 4x16
+      3: col = col + 0x40 + LCD_CHARS           -- 4th line  /   or 4x20
+   end case
+   lcd_rs = LOW                                 -- set to control char mode
+   lcd_writechar(col)                           -- set new cursor position
+   lcd_rs = HIGH                                -- set to data char mode
+
+end procedure
+
+
+-- -----------------------------------------------------
+-- Initialize LCD
+--  * for 4-bit data mode
+--  * 2-line (/ 4-line) mode
+--  * shift right, invisible cursor
+-- -----------------------------------------------------
+procedure  lcd_init()  is
+
+   lcd_rs = LOW                                 -- set to control char mode
+   delay_1ms(25)                                -- power-up delay (> 15 ms)
+   lcd_writechar(0b0011_0000)                   -- function set (8-bits interface)
+   delay_1ms(5)                                 -- wait (> 4.1 ms)
+   lcd_writechar(0b0011_0000)                   -- function set (8-bits interface)
+   delay_10us(15)                               -- wait (> 100 us)
+   lcd_writechar(0b0011_0000)                   -- function set (8-bits interface)
+   delay_10us(15)                               -- wait (> 100 us)
+   lcd_writechar(0b0011_1000)                   -- 8 bits, 2 lines, 5x8 font
+   lcd_writechar(0b0001_1100)                   -- display shift right
+   lcd_writechar(0b0000_1100)                   -- display on, cursor,blink off
+   lcd_writechar(0b0000_0110)                   -- cursor->right, no shift
+   lcd_clearscreen()                            -- clear screen
+                                                -- (incl switch to data char mode)
+end procedure
+
+
