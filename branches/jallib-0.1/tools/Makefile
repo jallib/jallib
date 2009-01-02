@@ -11,7 +11,7 @@
 all : clean test
 
 ENV=unvalidated
-VERSION=dev
+VERSION=0.1
 SAMPLIR_DIR=../${ENV}/sample
 INCLUDE_DIR=../${ENV}/include
 
