@@ -1020,7 +1020,7 @@ def do_sample(args=[]):
 			path_to_sample = v
 	if automatic and path_to_sample and boardfile:
 		generate_samples_for_board(path_to_sample,boardfile)
-	if automatic and path_to_sample:
+	elif automatic and path_to_sample:
 		generate_all_samples(path_to_sample)
 	elif boardfile and testfile and outfile:
 		generate_one_sample(boardfile,testfile,outfile)
