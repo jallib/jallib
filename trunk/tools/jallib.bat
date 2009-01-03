@@ -1,7 +1,7 @@
 @ echo off
 rem  Title: jallib executable for windows system
 rem  Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
-rem  Adapted-by:
+rem  Adapted-by: Joep Suijs
 rem  Compiler:
 rem
 rem  This file is part of jallib (http://jallib.googlecode.com)
@@ -22,16 +22,16 @@ rem ENVIRONMENT VARIABLES #
 rem ######################
 
 
-rem Path to the jallib root's repository (containing "tools,"unvalidated","validated" dirs)
+rem Path to the jallib root's repository (containing "tools,"compiler","include" dirs)
 set JALLIB_ROOT=
-rem path to jallib root's libraries. You may want to point to "validated" or "unvalidated"
-set JALLIB_REPOS=%JALLIB_ROOT%\unvalidated\include
-rem path to jallib root's samples. You may want to point to "validated" or "unvalidated"
-set JALLIB_SAMPLEDIR=%JALLIB_ROOT%\unvalidated\sample
+rem path to jallib root's libraries.
+set JALLIB_REPOS=%JALLIB_ROOT%\include
+rem path to jallib root's samples.
+set JALLIB_SAMPLEDIR=%JALLIB_ROOT%\sample
 rem path to the testing matrix
 set JALLIB_MATRIX=%JALLIB_SAMPLEDIR%\testing_matrix.yaml
 rem path to "jalv2" executable. If not in your PATH, set an absolute path to the exec
-set JALLIB_JALV2=C:\jalv24h\jalv2.exe
+set JALLIB_JALV2=%JALLIB_ROOT%\compiler\jalv2.exe
 
 
 
