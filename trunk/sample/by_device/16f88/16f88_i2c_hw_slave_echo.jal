@@ -1,0 +1,131 @@
+-- Title: Test program for i2c hardware slave, stateful implementation
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by: 
+-- Compiler: >=2.4i
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this sample shows how to implements an i2c hardware slave,
+-- based in i2c_hw_slave_isr.jal library. Basically, this i2c slave waits for
+-- a byte, and when required, it sends byte + 1 (send "a", you'll get a "b")
+-- --
+-- This sample is aimed to be used with *_i2c_hw_master_echo.jal samples,
+-- which is the master part.
+--
+----
+-- This file has been generated on Sat Jan  3 21:14:09 2009, from:
+--    * board: board_16f88_sl.jal
+--    * test : test_i2c_hw_slave_echo.jal
+--
+;@jallib section chipdef
+-- chip setup
+include 16f88
+
+;-- 
+-- We'll use internal oscillator. It work @ 8MHz
+pragma target clock		8_000_000
+pragma target OSC		INTOSC_NOCLKOUT
+-- Specify no postscaler, ie. really runs @8MHz
+OSCCON_IRCF = 0b_111
+pragma target WDT		   disabled       -- no watchdog
+pragma target LVP		   disabled       -- no low-voltage programming
+pragma target CCP1MUX	   RB0            -- ccp1 pin on B0
+pragma        bootloader   long_start     -- for TinyBootloader
+
+
+const usart_hw_serial = true	-- true = RS232, false = SPI;@jallib section serial
+const serial_hw_baudrate = 57_600
+include serial_hardware
+serial_hw_init()
+-- tell the world we're ready
+serial_hw_write("!")
+
+include delay
+;@jallib section i2c
+-- I2C io definition
+var volatile bit i2c_scl            is pin_b4
+var volatile bit i2c_scl_direction  is pin_b4_direction
+var volatile bit i2c_sda            is pin_b1
+var volatile bit i2c_sda_direction  is pin_b1_direction
+include i2c_hw_slave
+-- this will be the slave address. It looks like:
+--	  0b_0101_1100
+-- => 0b_0101_110   : 7-bits address
+-- =>            0  : 8th bit is to specify read or write operation. 
+--                    Value can be anything, it does not matter while init
+const byte SLAVE_ADDRESS = 0x5C
+i2c_hw_slave_init(SLAVE_ADDRESS,false)	-- no START/STOP interrupts
+
+-- will store what to send back to master
+-- so if we get "a", we need to store "a" + 1
+var byte data
+
+
+-- Before including i2c_hw_slave_isr library, several callbacks
+-- must be defined (callbacks are procedure which supposed to be defined
+-- and be called on appriopriate time)
+
+-- Since all those callbacks are called once per state (no other calls
+-- in the program), it is suggested to use "pragma inline", to save
+-- stack usage
+
+-- this callback is used when master wants to talk to us
+-- and our i2c address has been recognized
+procedure i2c_hw_slave_on_master_talks(byte in _trash) is
+	pragma inline
+	-- _trash is read from master, but it's a dummy data
+	-- usually (always ?) ignored
+end procedure
+
+
+-- This callback is used when master sends a data byte
+procedure i2c_hw_slave_on_master_writes(byte in rcv) is
+	pragma inline
+	-- ultimate data processing... :)
+	data = rcv + 1
+end procedure
+
+
+-- this callback is used when master wants to read something
+-- from us. It should use i2c_hw_slave_write() to send something
+procedure i2c_hw_slave_on_master_reads() is
+	pragma inline
+	i2c_hw_slave_write_i2c(data)
+end procedure
+
+
+-- this callback is used when master, after having read something,
+-- still wants to read and get data from us.
+procedure i2c_hw_slave_on_master_stillreads() is
+	pragma inline
+	i2c_hw_slave_write_i2c(data)
+	-- note: this shouldn't occur in our i2c echo example
+end procedure
+
+
+-- this callback is used when master does not want to talk
+-- with us anymore... This is an appropriate place to reset
+-- data for instance
+procedure i2c_hw_slave_on_master_hangsup() is
+	pragma inline
+	data = 0
+end procedure
+
+
+-- this callback is used when something wrong happened 
+-- during communication between master and us
+procedure i2c_hw_slave_on_error() is
+	pragma inline
+	-- Just log current status
+	serial_hw_write("E")
+	serial_hw_write(SSPSTAT)
+end procedure
+
+-- callbacks are defined, now include ISR
+include i2c_hw_slave_isr
+
+
+forever loop
+	-- just loop until interrupt is raised
+end loop
