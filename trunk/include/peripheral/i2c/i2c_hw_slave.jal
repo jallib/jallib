@@ -1,0 +1,77 @@
+-- Title: i2c_hardware slave procedures
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by: 
+-- Compiler: >=2.4i
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Common and useful functions and procedure to implement an I2C slave
+-- --
+-- /!\ i2c pins (SDA and SCL) must have been configured as input
+-- *before* including this file
+--
+
+
+-- setup an i2c slave, with low address (not high addresses coded with 10-bits)
+--   - the passed address must be 8-bits long: it's a 7-bits address + the 8th R/W bit
+--   - the start_stop_int argument can be set to true to generate START/STOP interrupts
+--     it's usually not necessary, and be useful to implement a master, or more importantly,
+--     can be used to debug an i2c bus (hardware bus check)
+procedure i2c_hw_slave_init(byte in height_bits_icaddress, bit in start_stop_int) is
+	-- For testing purpose (checking if slave is responding to START/STOP signals)
+	-- you may want to activate 7bits address with interrupts (see spec)
+	if start_stop_int
+	then
+		SSPCON1 = 0b_0011_1110	-- slave 7bit address, start/stop interrupt
+	else
+		SSPCON1 = 0b_0011_0110	-- slave 7bit address
+	end if
+	
+	-- I2C slave hardware
+	-- last 8th bits is for read/write setting.
+	-- I think it can be either 0 or 1, PIC does the job
+	SSPADD = height_bits_icaddress
+	
+	-- init SSPSTAT
+	SSPSTAT_BF = false
+	SSPCON1_WCOL = false
+	SSPCON1_SSPOV = false
+	PIR1_SSPIF = false
+	-- enable interrupts
+	PIE1_SSPIE = true
+	INTCON_GIE = true
+	INTCON_PEIE = true
+	
+end procedure	
+
+
+-- read a byte from i2c buffer and returns it
+function i2c_hw_slave_read_i2c() return byte is
+    var byte tmpbuf
+	tmpbuf = SSPBUF
+	return tmpbuf
+end function
+
+
+-- write a byte to i2c bus
+procedure i2c_hw_slave_write_i2c(byte in what) is
+	-- wait 'til buffer is empty
+	while SSPSTAT_BF loop end loop
+	var bit dosend = true
+	while dosend
+	loop
+		SSPCON1_WCOL = false
+		-- try to write into buffer, checking collision
+		SSPBUF = what
+		if ! SSPCON1_WCOL
+		then
+			-- ok, done
+			dosend = false
+		end if
+		-- else continue trying
+	end loop
+    SSPCON1_CKP = 1
+end procedure
+
+

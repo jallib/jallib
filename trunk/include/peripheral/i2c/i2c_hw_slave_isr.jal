@@ -1,0 +1,160 @@
+-- Title: i2c hardware slave ISR
+-- Author: Sebastien Lelong, Joep Suijs, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4i
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides an ISR to implement 
+-- a stateful i2c hardware slave. This is a jalv2 implementation of
+-- Microchip Application Note AN734.
+-- --
+-- According to AN734, there are 5 possible i2c states. During ISR, each
+-- of this states are detected. This ISR provides a standard skeleton to implement
+-- an i2c hardware slaves, while client code must implement several callbacks
+-- the ISR is expecting to call while processing states.
+-- --
+-- Here there are:
+--  - procedure i2c_hw_slave_on_master_talks(byte in _trash):
+--       called when i2c address matches (master starts a talk)
+--          => called in state 1
+--  - procedure i2c_hw_slave_on_master_writes(byte in rcv):
+--       called when master is writing a byte. Slave is thus
+--       receiving this byte. This callback takes this bytes as
+--       argument
+--          => called in state 2
+--  - procedure i2c_hw_slave_on_master_reads():
+--       called when master wants to read a byte from slave. Thus,
+--       slave should send a byte (for instance, using i2c_hw_slave_write_i2c
+--       from i2c_hw_slave.jal library)
+--          => called in state 3
+--  - procedure i2c_hw_slave_on_master_stillreads():
+--       called when master still wants to read a byte from slave. That is,
+--       master required to read (state 3) and now still want to read a byte
+--          => called in state 4
+--  - procedure i2c_hw_slave_on_master_hangsup():
+--       called when master does not want to talk to slave anymore
+--       usually a good place to reset data or slave's logic
+--          => called in state 5
+--  - procedure i2c_hw_slave_on_error():
+--       called when something wrong happens. You can do what you want in
+--       this case, like resetting the PIC, log some information using usart, ...
+--          => called any cases other than states 1, 2, 3, 4 or 5
+--
+--
+-- Sources:
+--   - AN734: 
+-- 
+
+
+include i2c_hw_slave
+
+
+-- state 1: write operation, last byte is address, buffer full
+-- byte is an address, it we get here, we just know master
+-- wants to talk to us...
+-- and we also know address is recognized (BF is set, see spec)
+-- anyway, we must read buffer to reset BF bit
+--
+--     => call i2c_hw_slave_on_master_talks(byte)
+procedure i2c_hw_slave_proceed_state_1() is
+	pragma inline
+	var byte _trash = i2c_hw_slave_read_i2c()
+	i2c_hw_slave_on_master_talks(_trash)
+end procedure
+
+-- state 2: write operation, last byte is data, buffer full
+-- master wants to write, it sends a byte
+--
+--     => call i2c_hw_slave_on_master_writes(byte)
+procedure i2c_hw_slave_proceed_state_2() is
+	pragma inline
+	var byte rcv = i2c_hw_slave_read_i2c()
+	i2c_hw_slave_on_master_writes(rcv)
+end procedure
+
+
+-- state 3: read operation, last byte is address, buffer empty
+-- master wants to get a value from us
+--
+--     => call i2c_hw_slave_on_master_reads()
+procedure i2c_hw_slave_proceed_state_3() is
+	pragma inline
+	i2c_hw_slave_on_master_reads()
+end procedure
+
+
+-- state 4: read operation, last byte is data, buffer empty
+-- master still wants to get a value from us
+--
+--     => call i2c_hw_slave_on_master_stillreads()
+procedure i2c_hw_slave_proceed_state_4() is
+	pragma inline
+	i2c_hw_slave_on_master_stillreads()
+end procedure
+
+
+-- state 5: nack
+-- master doesn't want to talk with us anymore
+--
+--     => call i2c_hw_slave_on_master_hangsup()
+procedure i2c_hw_slave_proceed_state_5() is
+	pragma inline
+    -- AN734 does not talk about setting CKP, whereas spec says
+    -- it must be set. Some people say it can be error prone.
+    SSPCON1_CKP = 1
+	i2c_hw_slave_on_master_hangsup()
+end procedure
+
+
+-- state not recognized... Error !
+--
+--     => call i2c_hw_slave_on_error()
+procedure i2c_hw_slave_proceed_error() is
+	pragma inline
+	-- something went wrong, that is, XOR operations did not match
+	-- SSPSTAT bits
+	i2c_hw_slave_on_error()
+end procedure
+
+
+-- i2c ISR handler. Detects states a call appropriate procedures
+procedure i2c_hw_slave_isr_handler() is
+	pragma interrupt
+	if ! PIR1_SSPIF then
+		return
+	end if
+
+	PIR1_SSPIF = false
+    var byte tmpstat
+	tmpstat = SSPSTAT
+	-- mask out unimportant bit
+	tmpstat = tmpstat & 0b_0010_1101
+	-- check state 1: write operation, last byte is address, buffer full
+	if (tmpstat ^ 0b_0000_1001) == false
+	then
+		i2c_hw_slave_proceed_state_1()
+	-- check state 2: write operation, last byte is data, buffer full
+	elsif (tmpstat ^ 0b_0010_1001) == false
+	then
+		i2c_hw_slave_proceed_state_2()
+	-- check state 3: read operation, last byte is address, buffer empty
+	elsif (tmpstat ^ 0b_0000_1100) == false
+	then
+		i2c_hw_slave_proceed_state_3()
+	-- check state 4: read operation, last byte is data, buffer empty
+	elsif (tmpstat ^ 0b_00101100) == false
+	then
+		i2c_hw_slave_proceed_state_4()
+	-- check state 5: nack
+	elsif (tmpstat ^ 0b_0010_1000) == false
+	then
+		i2c_hw_slave_proceed_state_5()
+	-- check only got a start signal (when using interrupts)
+	else
+		i2c_hw_slave_proceed_error()
+	end if
+
+end procedure
+
