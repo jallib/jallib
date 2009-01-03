@@ -10,10 +10,9 @@
 
 all : clean test
 
-ENV=unvalidated
 VERSION=dev
-SAMPLIR_DIR=../${ENV}/sample
-INCLUDE_DIR=../${ENV}/include
+SAMPLIR_DIR=../sample
+INCLUDE_DIR=../include
 
 clean :
 	# clean what jal produces
@@ -48,10 +47,10 @@ jsg:
 	done 
 
 doc:
-	./jalapi_generate.sh ../${ENV}
+	./jalapi_generate.sh ../
 
 matrix:
-	./jallib_matrix_generate.sh ../${ENV}
+	./jallib_matrix_generate.sh ../
 
 export:
 	# prepare distrib dir
