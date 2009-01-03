@@ -915,7 +915,7 @@ def normalize_linefeed(content):
 	return content
 
 
-def generate_one_sample(boardfile,testfile,outfile):
+def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
 	# try to find which linefeed is used
 	board = normalize_linefeed(file(boardfile).read()).splitlines()
 	##board = map(lambda x: x.replace("\r\n",os.linesep),file(boardfile).readlines())
@@ -945,7 +945,7 @@ def generate_one_sample(boardfile,testfile,outfile):
 	status = do_compile([outfile],exitonerror=False,clean=True)
 	if status == 0:
 		print "Sucesfully generated sample '%s' from board '%s' and test '%s'" % (outfile,boardfile,testfile)
-	else:
+	elif deleteiffailed:
 		# delete the file !
 		os.unlink(outfile)
 		raise Exception("Can't compile sample '%s' generated from '%s' and test '%s'" % (outfile,boardfile,testfile))
@@ -1023,7 +1023,8 @@ def do_sample(args=[]):
 	elif automatic and path_to_sample:
 		generate_all_samples(path_to_sample)
 	elif boardfile and testfile and outfile:
-		generate_one_sample(boardfile,testfile,outfile)
+		# don't delete sample if compilation fails: user knows what he's doing
+		generate_one_sample(boardfile,testfile,outfile,deleteiffailed=False)
 	else:
 		print >> sys.stderr, "Provide a board, a test file and an output file"
 		sys.exit(255)
