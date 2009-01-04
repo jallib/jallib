@@ -967,33 +967,34 @@ def preferred_board(board):
 	# well, should not consider comment but... should not occur, right ? :)
 	return "@jallib preferred" in data
 
-def generate_samples_for_board(path_to_sample,board):
+def generate_samples_for_board(path_to_sample,board,outdir=None):
+	if outdir:
+		assert os.path.isdir(outdir), "%s must be a directory when auto-generate samples (this is where samples will be stored)" % outdir
 	testpath = get_full_test_path(path_to_sample)
 	samplepath = get_full_sample_path(path_to_sample)
 	fulltestfiles = find_test_files(testpath)
 
 	picname = os.path.basename(board).split("_")[1]	# naming convention
-	sampledir = get_full_sample_path(path_to_sample,picname)
 	# in automated mode, only board files with "@jallib preferred" are kept.
 	# this is because there can be multiple boards for a given PIC, but only
 	# ony being used to auto-generate samples
 	for test in fulltestfiles:
 		samplename = picname + "_" + os.path.basename(test)[5:]	# remove "test_", naming convention
-		fullsamplepath = get_full_sample_path(path_to_sample,picname,samplename)
+		fullsamplepath = outdir and os.path.join(outdir,samplename) or get_full_sample_path(path_to_sample,picname,samplename)
 		try:
 		   generate_one_sample(board,test,fullsamplepath)
 		except Exception,e:
 		   print >> sys.stderr,"Invalid board/test combination: %s" % e
 		   continue
 
-def generate_all_samples(path_to_sample):
+def generate_all_samples(path_to_sample,outdir=None):
 	boardpath = get_full_board_path(path_to_sample)
 	fullboarfiles = find_board_files(boardpath)
 	for board in fullboarfiles:
 		if not preferred_board(board):
 			print >> sys.stderr,"board %s is not 'preferred', skip it" % board
 			continue
-		generate_samples_for_board(path_to_sample,board)
+		generate_samples_for_board(path_to_sample,board,outdir)
 
 
 def do_sample(args=[]):
@@ -1019,9 +1020,9 @@ def do_sample(args=[]):
 			automatic = True
 			path_to_sample = v
 	if automatic and path_to_sample and boardfile:
-		generate_samples_for_board(path_to_sample,boardfile)
+		generate_samples_for_board(path_to_sample,boardfile,outdir=outfile)
 	elif automatic and path_to_sample:
-		generate_all_samples(path_to_sample)
+		generate_all_samples(path_to_sample,outdir=outfile)
 	elif boardfile and testfile and outfile:
 		# don't delete sample if compilation fails: user knows what he's doing
 		generate_one_sample(boardfile,testfile,outfile,deleteiffailed=False)
@@ -1306,10 +1307,16 @@ from one board file and one test file (using -b, -t and -o options).
 
     -a: analyse available board and test files, try to combine them,
         try to compile them. If it's a success, write the generated sample
-        on the correct "by_device" location.
-    -b: specify a board file. Can be used in combination with -a option
+        on the correct "by_device" location, or in the directory specified
+        by -o option
+    -b: specify a board file. Can be used in combination with -a option.
+        if -o is also specified, then this is considered as the output
+        directory where generated samples will be stored. Without -o, 
+        samples will be stored in appropriate directory
+        (sample/by_device/<picname>/...)
     -t: specify a test file
-    -o: specify the output sample filename
+    -o: specify the output sample filename, or the output directory
+        when used in combination with -a option
 
 """
 
