@@ -2,8 +2,8 @@
 
 export JALLIB_ROOT=`pwd`	# correct when set by buildbot
 ###export JALLIB_ROOT=`pwd`/../..	# run manually here
-export JALLIB_REPOS=$JALLIB_ROOT/$JALLIB_ENV/include
-export JALLIB_SAMPLEDIR=$JALLIB_ROOT/$JALLIB_ENV/sample
+export JALLIB_REPOS=$JALLIB_ROOT/include
+export JALLIB_SAMPLEDIR=$JALLIB_ROOT/sample
 
 jalsamples=`find $JALLIB_SAMPLEDIR/by_device -name \*.jal -type f`
 jallibs=`find $JALLIB_REPOS -name \*.jal -type f`
@@ -49,9 +49,8 @@ fi
 
 echo "Environment config"
 echo JALLIB_ROOT=$JALLIB_ROOT
-echo JALLIB_ENV=$JALLIB_ENV
-echo JALLIB_REPOS=$JALLIB_ROOT/$JALLIB_ENV/include
-echo JALLIB_SAMPLEDIR=$JALLIB_ROOT/$JALLIB_ENV/sample
+echo JALLIB_REPOS=$JALLIB_ROOT/include
+echo JALLIB_SAMPLEDIR=$JALLIB_ROOT/sample
 echo JALLIB_JALV2=$JALLIB_JALV2
 echo JALLIB_PYTHON=$JALLIB_PYTHON
 
