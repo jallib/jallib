@@ -968,6 +968,9 @@ def preferred_board(board):
 	# well, should not consider comment but... should not occur, right ? :)
 	return "@jallib preferred" in data
 
+def is_test_autoable(test):
+	return not "@jallib skip-auto" in file(test).read()
+
 def generate_samples_for_board(path_to_sample,board,outdir=None):
 	if outdir:
 		assert os.path.isdir(outdir), "%s must be a directory when auto-generate samples (this is where samples will be stored)" % outdir
@@ -980,6 +983,9 @@ def generate_samples_for_board(path_to_sample,board,outdir=None):
 	# this is because there can be multiple boards for a given PIC, but only
 	# ony being used to auto-generate samples
 	for test in fulltestfiles:
+		if not is_test_autoable(test):
+			print >> sys.stderr, "Skip test '%s' because tagged 'skip-auto'" % test
+			continue
 		samplename = picname + "_" + os.path.basename(test)[5:]	# remove "test_", naming convention
 		fullsamplepath = outdir and os.path.join(outdir,samplename) or get_full_sample_path(path_to_sample,picname,samplename)
 		try:
