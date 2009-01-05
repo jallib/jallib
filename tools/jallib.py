@@ -204,10 +204,9 @@ def do_compile(args,exitonerror=True,clean=False):
 			if not srcfile.endswith(".jal"):
 				print >> sys.stderr, "Can't clean, because can't know which file is the source file"
 				return status
-			outdir = os.path.dirname(srcfile)
+			outdir = os.path.dirname(srcfile) or os.path.curdir
 			outfile = os.path.basename(srcfile)
 			noext = outfile[:-4]
-			print "noext: %s" % noext
 			for f in os.listdir(outdir):
 				# luckily all product files have 3-letters extension
 				if f[:-4] == noext and f[-4:] in [".asm",".hex",".err",".cod",".obj",".lst"]:
@@ -928,11 +927,13 @@ def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
 	test = [t for t in enumerate(test)]
 	header = extract_header(test)
 	header = os.linesep.join([h for i,h in header])
-	header += os.linesep.join(["--",
+	header += os.linesep.join([
+						 os.linesep + "--",
 	                     "-- This file has been generated on %s, from:" % time.strftime("%c",datetime.datetime.now().timetuple()),
 	                     "--    * board: %s" % os.path.basename(boardfile),
 	                     "--    * test : %s" % os.path.basename(testfile),
-	                     "--"])
+	                     "--",
+						 os.linesep])
 	# back to content without index
 	test = [l for i,l in test]
 	merged = merge_board_testfile(board,test)
