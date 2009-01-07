@@ -57,6 +57,11 @@
 
 include delay
 
+-- sanity check
+if adc_hardware_high_resolution & ! defined(ADRESH) then
+   pragma error	  -- This pic does not seem to handle 10-bits ADC
+end if
+
 -- local variables
 
 var volatile byte _adcon0_shadow = 0
@@ -74,8 +79,17 @@ procedure _adc_read_low_res(byte in adc_chan, byte out adc_byte) is
    delay_10us(_adc_acquisition_time)  -- wait acquisition time
    ADCON0_GO = true                          -- start conversion
    while ADCON0_GO loop end loop             -- wait till conversion finished
-   adc_byte = ADRESH                  -- read high byte 
-                                     --   (low resolution is left justified !!
+   -- 2 cases:
+   --   - PIC has 10-bits ADC: since low resoltion if left
+   --     justified, need to read ADRESH
+   --   - PIC has only a 8-bits ADC: don't bother consider
+   --     justification, there's only one ADC register
+   if defined(ADRESH) == true then
+	  adc_byte = ADRESH                  -- read high byte 
+		                                 --   (low resolution is left justified !!
+   else
+	  adc_byte = ADRES
+   end if
    if target_clock <= (5_000_000 / 16)  then                            
       delay_10us(1)                    -- to satisfy 2*Tad for next conversion
    end if
@@ -124,7 +138,7 @@ function adc_read_low_res(byte in adc_chan) return byte is
    if ! adc_hardware_high_resolution then
       _adc_read_low_res(adc_chan,adc_value)
    else
-      _adc_read_low_res (adc_chan,adc_hbyte)
+      _adc_read_low_res(adc_chan,adc_hbyte)
       adc_value = ADRESL
       -- shift the 2 highest order bits form high byte to low byte
       asm  rrf   adc_hbyte,f
