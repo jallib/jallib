@@ -16,27 +16,27 @@
 -- the ISR is expecting to call while processing states.
 -- --
 -- Here there are:
---  - procedure i2c_hw_slave_on_master_talks(byte in _trash):
+--  - procedure i2c_hw_slave_on_state_1(byte in _trash):
 --       called when i2c address matches (master starts a talk)
---          => called in state 1
---  - procedure i2c_hw_slave_on_master_writes(byte in rcv):
+-- --
+--  - procedure i2c_hw_slave_on_state_2(byte in rcv):
 --       called when master is writing a byte. Slave is thus
 --       receiving this byte. This callback takes this bytes as
 --       argument
---          => called in state 2
---  - procedure i2c_hw_slave_on_master_reads():
+-- --
+--  - procedure i2c_hw_slave_on_state_3():
 --       called when master wants to read a byte from slave. Thus,
 --       slave should send a byte (for instance, using i2c_hw_slave_write_i2c
 --       from i2c_hw_slave.jal library)
---          => called in state 3
---  - procedure i2c_hw_slave_on_master_stillreads():
+-- --
+--  - procedure i2c_hw_slave_on_state_4():
 --       called when master still wants to read a byte from slave. That is,
 --       master required to read (state 3) and now still want to read a byte
---          => called in state 4
---  - procedure i2c_hw_slave_on_master_hangsup():
+-- --
+--  - procedure i2c_hw_slave_on_state_5():
 --       called when master does not want to talk to slave anymore
 --       usually a good place to reset data or slave's logic
---          => called in state 5
+-- --
 --  - procedure i2c_hw_slave_on_error():
 --       called when something wrong happens. You can do what you want in
 --       this case, like resetting the PIC, log some information using usart, ...
@@ -48,63 +48,63 @@
 -- 
 
 
-include i2c_hw_slave
-
 
 -- state 1: write operation, last byte is address, buffer full
 -- byte is an address, it we get here, we just know master
--- wants to talk to us...
+-- wants to talk to us, in a new write operation...
 -- and we also know address is recognized (BF is set, see spec)
 -- anyway, we must read buffer to reset BF bit
+-- (buffer actually contains previously detected address, that's
+-- why it's usually ignored)
 --
---     => call i2c_hw_slave_on_master_talks(byte)
+--     => call i2c_hw_slave_on_state_1(byte)
 procedure i2c_hw_slave_proceed_state_1() is
 	pragma inline
 	var byte _trash = i2c_hw_slave_read_i2c()
-	i2c_hw_slave_on_master_talks(_trash)
+	i2c_hw_slave_on_state_1(_trash)
 end procedure
 
 -- state 2: write operation, last byte is data, buffer full
 -- master wants to write, it sends a byte
 --
---     => call i2c_hw_slave_on_master_writes(byte)
+--     => call i2c_hw_slave_on_state_2(byte)
 procedure i2c_hw_slave_proceed_state_2() is
 	pragma inline
 	var byte rcv = i2c_hw_slave_read_i2c()
-	i2c_hw_slave_on_master_writes(rcv)
+	i2c_hw_slave_on_state_2(rcv)
 end procedure
 
 
 -- state 3: read operation, last byte is address, buffer empty
 -- master wants to get a value from us
 --
---     => call i2c_hw_slave_on_master_reads()
+--     => call i2c_hw_slave_on_state_3()
 procedure i2c_hw_slave_proceed_state_3() is
 	pragma inline
-	i2c_hw_slave_on_master_reads()
+	i2c_hw_slave_on_state_3()
 end procedure
 
 
 -- state 4: read operation, last byte is data, buffer empty
 -- master still wants to get a value from us
 --
---     => call i2c_hw_slave_on_master_stillreads()
+--     => call i2c_hw_slave_on_state_4()
 procedure i2c_hw_slave_proceed_state_4() is
 	pragma inline
-	i2c_hw_slave_on_master_stillreads()
+	i2c_hw_slave_on_state_4()
 end procedure
 
 
 -- state 5: nack
 -- master doesn't want to talk with us anymore
 --
---     => call i2c_hw_slave_on_master_hangsup()
+--     => call i2c_hw_slave_on_state_5()
 procedure i2c_hw_slave_proceed_state_5() is
 	pragma inline
     -- AN734 does not talk about setting CKP, whereas spec says
     -- it must be set. Some people say it can be error prone.
     SSPCON1_CKP = 1
-	i2c_hw_slave_on_master_hangsup()
+	i2c_hw_slave_on_state_5()
 end procedure
 
 
