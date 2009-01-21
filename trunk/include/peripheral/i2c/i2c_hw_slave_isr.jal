@@ -49,112 +49,78 @@
 
 
 
--- state 1: write operation, last byte is address, buffer full
--- byte is an address, it we get here, we just know master
--- wants to talk to us, in a new write operation...
--- and we also know address is recognized (BF is set, see spec)
--- anyway, we must read buffer to reset BF bit
--- (buffer actually contains previously detected address, that's
--- why it's usually ignored)
---
---     => call i2c_hw_slave_on_state_1(byte)
-procedure i2c_hw_slave_proceed_state_1() is
-	pragma inline
-	var byte _trash = i2c_hw_slave_read_i2c()
-	i2c_hw_slave_on_state_1(_trash)
-end procedure
 
--- state 2: write operation, last byte is data, buffer full
--- master wants to write, it sends a byte
---
---     => call i2c_hw_slave_on_state_2(byte)
-procedure i2c_hw_slave_proceed_state_2() is
-	pragma inline
-	var byte rcv = i2c_hw_slave_read_i2c()
-	i2c_hw_slave_on_state_2(rcv)
-end procedure
-
-
--- state 3: read operation, last byte is address, buffer empty
--- master wants to get a value from us
---
---     => call i2c_hw_slave_on_state_3()
-procedure i2c_hw_slave_proceed_state_3() is
-	pragma inline
-	i2c_hw_slave_on_state_3()
-end procedure
-
-
--- state 4: read operation, last byte is data, buffer empty
--- master still wants to get a value from us
---
---     => call i2c_hw_slave_on_state_4()
-procedure i2c_hw_slave_proceed_state_4() is
-	pragma inline
-	i2c_hw_slave_on_state_4()
-end procedure
-
-
--- state 5: nack
--- master doesn't want to talk with us anymore
---
---     => call i2c_hw_slave_on_state_5()
-procedure i2c_hw_slave_proceed_state_5() is
-	pragma inline
-    -- AN734 does not talk about setting CKP, whereas spec says
-    -- it must be set. Some people say it can be error prone.
-    SSPCON1_CKP = 1
-	i2c_hw_slave_on_state_5()
-end procedure
-
-
--- state not recognized... Error !
---
---     => call i2c_hw_slave_on_error()
-procedure i2c_hw_slave_proceed_error() is
-	pragma inline
-	-- something went wrong, that is, XOR operations did not match
-	-- SSPSTAT bits
-	i2c_hw_slave_on_error()
-end procedure
 
 
 -- i2c ISR handler. Detects states a call appropriate procedures
 procedure i2c_hw_slave_isr_handler() is
-	pragma interrupt
-	if ! PIR1_SSPIF then
-		return
-	end if
+   pragma interrupt
+   if ! PIR1_SSPIF then
+      return
+   end if
 
-	PIR1_SSPIF = false
+   PIR1_SSPIF = false
     var byte tmpstat
-	tmpstat = SSPSTAT
-	-- mask out unimportant bit
-	tmpstat = tmpstat & 0b_0010_1101
-	-- check state 1: write operation, last byte is address, buffer full
-	if (tmpstat ^ 0b_0000_1001) == false
-	then
-		i2c_hw_slave_proceed_state_1()
-	-- check state 2: write operation, last byte is data, buffer full
-	elsif (tmpstat ^ 0b_0010_1001) == false
-	then
-		i2c_hw_slave_proceed_state_2()
-	-- check state 3: read operation, last byte is address, buffer empty
-	elsif (tmpstat ^ 0b_0000_1100) == false
-	then
-		i2c_hw_slave_proceed_state_3()
-	-- check state 4: read operation, last byte is data, buffer empty
-	elsif (tmpstat ^ 0b_00101100) == false
-	then
-		i2c_hw_slave_proceed_state_4()
-	-- check state 5: nack
-	elsif (tmpstat ^ 0b_0010_1000) == false
-	then
-		i2c_hw_slave_proceed_state_5()
-	-- check only got a start signal (when using interrupts)
-	else
-		i2c_hw_slave_proceed_error()
-	end if
+   tmpstat = SSPSTAT
+   -- mask out unimportant bit
+   tmpstat = tmpstat & 0b_0010_1101
+
+   -- state 1: write operation, last byte is address, buffer full
+   -- byte is an address, it we get here, we just know master
+   -- wants to talk to us, in a new write operation...
+   -- and we also know address is recognized (BF is set, see spec)
+   -- anyway, we must read buffer to reset BF bit
+   -- (buffer actually contains previously detected address, that's
+   -- why it's usually ignored)
+   -- 
+   --     => call i2c_hw_slave_on_state_1(byte)
+   if (tmpstat ^ 0b_0000_1001) == false
+   then
+       var byte _trash = i2c_hw_slave_read_i2c()
+       i2c_hw_slave_on_state_1(_trash)
+
+   -- state 2: write operation, last byte is data, buffer full
+   -- master wants to write, it sends a byte
+   --
+   --     => call i2c_hw_slave_on_state_2(byte)
+   elsif (tmpstat ^ 0b_0010_1001) == false
+   then
+	  var byte rcv = i2c_hw_slave_read_i2c()
+	  i2c_hw_slave_on_state_2(rcv)
+
+   -- state 3: read operation, last byte is address, buffer empty
+   -- master wants to get a value from us
+   --
+   --     => call i2c_hw_slave_on_state_3()
+   elsif (tmpstat ^ 0b_0000_1100) == false
+   then
+	  i2c_hw_slave_on_state_3()
+
+   -- state 4: read operation, last byte is data, buffer empty
+   -- master still wants to get a value from us
+   --
+   --     => call i2c_hw_slave_on_state_4()
+   elsif (tmpstat ^ 0b_00101100) == false
+   then
+	  i2c_hw_slave_on_state_4()
+
+   -- state 5: nack
+   -- master doesn't want to talk with us anymore
+   --
+   --     => call i2c_hw_slave_on_state_5()
+   elsif (tmpstat ^ 0b_0010_1000) == false
+   then
+	  -- AN734 does not talk about setting CKP, whereas spec says
+      -- it must be set. Some people say it can be error prone.
+      SSPCON1_CKP = 1
+	  i2c_hw_slave_on_state_5()
+
+   -- state not recognized... Error !
+   else
+	  -- something went wrong, that is, XOR operations did not match
+	  -- SSPSTAT bits
+	  i2c_hw_slave_on_error()
+   end if
 
 end procedure
 
