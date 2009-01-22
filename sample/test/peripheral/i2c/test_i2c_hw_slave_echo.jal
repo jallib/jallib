@@ -17,21 +17,17 @@
 
 ;@jallib use chipdef
 
-const usart_hw_serial = true	-- true = RS232, false = SPI
-;@jallib use serial
-include serial_hardware
-serial_hw_init()
--- tell the world we're ready
-serial_hw_write("!")
+;@jallib use led
+led_direction = output
 
 include i2c_hw_slave
 -- this will be the slave address. It looks like:
---	  0b_0101_1100
+--     0b_0101_1100
 -- => 0b_0101_110   : 7-bits address
 -- =>            0  : 8th bit is to specify read or write operation. 
 --                    Value can be anything, it does not matter while init
 const byte SLAVE_ADDRESS = 0x5C
-i2c_hw_slave_init(SLAVE_ADDRESS,false)	-- no START/STOP interrupts
+i2c_hw_slave_init(SLAVE_ADDRESS,false)   -- no START/STOP interrupts
 
 -- will store what to send back to master
 -- so if we get "a", we need to store "a" + 1
@@ -46,37 +42,52 @@ var byte data
 -- in the program), it is suggested to use "pragma inline", to save
 -- stack usage
 
+
+-- this callback is used when something wrong happened 
+-- during communication between master and us
+procedure i2c_hw_slave_on_error() is
+   pragma inline
+   -- Just tell user user something's got wrong
+   forever loop
+	  led = on
+	  _usec_delay(200000)
+	  led = off
+	  _usec_delay(200000)
+   end loop
+end procedure
+
+
 -- this callback is used when master wants to talk to us
 -- and our i2c address has been recognized
 procedure i2c_hw_slave_on_state_1(byte in _trash) is
-	pragma inline
-	-- _trash is read from master, but it's a dummy data
-	-- usually (always ?) ignored
+   pragma inline
+   -- _trash is read from master, but it's a dummy data
+   -- usually (always ?) ignored
 end procedure
 
 
 -- This callback is used when master sends a data byte
 procedure i2c_hw_slave_on_state_2(byte in rcv) is
-	pragma inline
-	-- ultimate data processing... :)
-	data = rcv + 1
+   pragma inline
+   -- ultimate data processing... :)
+   data = rcv + 1
 end procedure
 
 
 -- this callback is used when master wants to read something
 -- from us. It should use i2c_hw_slave_write() to send something
 procedure i2c_hw_slave_on_state_3() is
-	pragma inline
-	i2c_hw_slave_write_i2c(data)
+   pragma inline
+   i2c_hw_slave_write_i2c(data)
 end procedure
 
 
 -- this callback is used when master, after having read something,
 -- still wants to read and get data from us.
 procedure i2c_hw_slave_on_state_4() is
-	pragma inline
-	i2c_hw_slave_write_i2c(data)
-	-- note: this shouldn't occur in our i2c echo example
+   pragma inline
+   -- This shouldn't occur in our i2c echo example
+   i2c_hw_slave_on_error()
 end procedure
 
 
@@ -84,26 +95,15 @@ end procedure
 -- with us anymore... This is an appropriate place to reset
 -- data for instance
 procedure i2c_hw_slave_on_state_5() is
-	pragma inline
-	data = 0
+   pragma inline
+   data = 0
 end procedure
 
-
--- this callback is used when something wrong happened 
--- during communication between master and us
-procedure i2c_hw_slave_on_error() is
-	pragma inline
-	-- Just log current status
-	serial_hw_write("E")
-	serial_hw_write(SSPSTAT)
-end procedure
 
 -- callbacks are defined, now include ISR
 include i2c_hw_slave_isr
 
-;@jallib use led
 -- blink a little to tell the world we're up
-led_direction = output
 for 4 loop
    led = on
    _usec_delay(100000)
