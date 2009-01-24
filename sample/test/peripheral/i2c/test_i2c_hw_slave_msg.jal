@@ -1,0 +1,76 @@
+-- Title: Test program for i2c hardware slave, message interface implementation
+-- Author: Joep Suijs, Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by: 
+-- Compiler: >=2.4i
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this sample shows how to implements an i2c hardware slave,
+-- using the message interface lib. Basically, this i2c slave waits for
+-- a full message to arrive and then calls a user routine to process the message and
+-- (optional) prepare a response.
+--
+
+
+;@jallib use chipdef
+
+;@jallib use led
+led_direction = output
+
+
+procedure i2c_process_message(byte in byte_count);
+
+const byte I2C_BUFFER_SIZE = 40
+include i2c_hw_slave_msg
+
+
+-- this will be the slave address. It looks like:
+--     0b_0101_1100
+-- => 0b_0101_110   : 7-bits address
+-- =>            0  : 8th bit is to specify read or write operation. 
+--                    Value can be anything, it does not matter while init
+const byte SLAVE_ADDRESS = 0x5C
+i2c_hw_slave_init(SLAVE_ADDRESS,false)   -- no START/STOP interrupts
+
+
+
+
+procedure i2c_process_message(byte in byte_count) is
+   -- ---------------------
+   -- User code starts here
+   -- ---------------------
+   -- This code is called every time the PIC received a serie of bytes.
+   -- It takes care of execution of the user code exactly once.
+   if (i2c_buffer[0] == 0x80) then     
+   
+      if (byte_count == 1) then
+   
+         -- cmd 0x80 - request version and status
+         i2c_buffer[0]   = 0x3C         -- application code
+         i2c_buffer[1]   = 0x01         -- version
+         i2c_buffer[2]   = i2c_status   -- status
+   
+         i2c_status = 0          -- succes
+      else 
+         i2c_status = 1          -- invalid write length
+      end if
+   
+   elsif (i2c_buffer[0] == 0x90) then   
+      if (byte_count == 2) then
+         -- cmd 00x90 - set servo & request sensor data
+--//            I2cBeep  = i2c_buffer[1]
+      elsif (byte_count == 1) then
+--//         i2c_buffer[0] = I2cOdoCounter1
+--//         i2c_buffer[1] = I2cOdoCounter2 
+      else 
+         i2c_status = 1          -- invalid write length
+      end if
+      
+   else 
+      i2c_status = 2             -- unknown command
+   end if
+
+end procedure
+
+

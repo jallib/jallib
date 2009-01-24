@@ -1,0 +1,127 @@
+-- Title: i2c hardware slave Message Interface
+-- Author: Sebastien Lelong, Joep Suijs, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4i
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides an message interface to i2c hardware slave. 
+-- It relies on the jalv2 implementation of Microchip Application Note AN734.
+--
+-- Sources:
+--   - AN734: http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1824&appnote=en011798
+-- 
+
+
+-- map sspcon1 to sspcon
+var volatile byte  SSPCON1              is SSPCON
+var volatile bit   SSPCON1_WCOL         at SSPCON1 : 7
+var volatile bit   SSPCON1_SSPOV        at SSPCON1 : 6
+var volatile bit   SSPCON1_SSPEN        at SSPCON1 : 5
+var volatile bit   SSPCON1_CKP          at SSPCON1 : 4
+var volatile bit*4 SSPCON1_SSPM         at SSPCON1 : 0
+
+include i2c_hw_slave
+
+-- vars
+var byte i2c_index         -- i2c index (pointer)
+var byte i2c_datapresent   -- datapresent flag
+var byte i2c_status        -- status (of last user command)
+var byte i2c_buffer[I2C_BUFFER_SIZE]
+
+
+procedure i2c_call_process_message() is
+   pragma inline
+   
+   -- let user process buffer
+   if (i2c_datapresent == 1) then
+      var byte temp = i2c_index;
+      i2c_index = 0;
+      i2c_process_message(temp)
+      i2c_index = 0
+      i2c_datapresent = 0
+   end if
+   
+end procedure
+
+-- this callback is used when something wrong happened 
+-- during communication between master and us
+procedure i2c_hw_slave_on_error() is
+   pragma inline
+   -- Just tell user user something's got wrong
+   forever loop
+	  led = on
+	  _usec_delay(200000)
+	  led = off
+	  _usec_delay(200000)
+   end loop
+end procedure
+
+
+-- this callback is used when master wants to talk to us
+-- and our i2c address has been recognized
+procedure i2c_hw_slave_on_state_1(byte in _trash) is
+   pragma inline
+   i2c_index = 0   -- set pointer to buffer start
+end procedure
+
+
+-- This callback is used when master sends a data byte
+procedure i2c_hw_slave_on_state_2(byte in rcv) is
+   pragma inline
+
+   i2c_datapresent   = 1      -- Indicate we received data
+   -- prepare pointers
+   i2c_buffer[i2c_index] = rcv  
+
+   if (i2c_index < I2C_BUFFER_SIZE) then
+      i2c_index = i2c_index + 1   -- point to next position
+   end if
+end procedure
+
+
+-- this callback is used when master wants to read something
+-- from us. It should use i2c_hw_slave_write() to send something
+procedure i2c_hw_slave_on_state_3() is
+   pragma inline
+
+   -- let user process buffer
+   i2c_call_process_message()
+
+   -- send first byte to master
+   i2c_index = 0                          -- set pointer to buffer start
+   i2c_hw_slave_write_i2c(i2c_buffer[0])   -- send data 
+   i2c_index = 1                          -- point to next position
+   
+end procedure
+
+
+-- this callback is used when master, after having read something,
+-- still wants to read and get data from us.
+procedure i2c_hw_slave_on_state_4() is
+   pragma inline
+
+   -- let user process buffer
+   i2c_call_process_message()
+
+   -- This shouldn't occur in our i2c echo example
+   i2c_hw_slave_write_i2c(i2c_buffer[i2c_index])    -- send data 
+   i2c_index = i2c_index + 1                    -- point to next position
+
+
+end procedure
+
+
+-- this callback is used when master does not want to talk
+-- with us anymore... This is an appropriate place to reset
+-- data for instance
+procedure i2c_hw_slave_on_state_5() is
+   pragma inline
+   -- data = 0
+end procedure
+
+
+-- callbacks are defined, now include ISR
+include i2c_hw_slave_isr
+
