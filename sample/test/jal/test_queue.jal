@@ -43,14 +43,14 @@ var volatile byte test_mode
 -- to behave accordingly. If you are not sure you need this, you
 -- probably don't!
 -- -----------------------------------------------------------------------
-procedure xxxx_serial_receive_wedge(byte in char) is          
+procedure serial_receive_wedge(byte in char) is          
    pragma inline
    
    var byte dummy
    var bit ret   
    
    
-   if (char == " ") then                   
+   if (char == "*") then                   
       -- when a space is received in the ISR
       LED = ! LED ; high
       
@@ -80,35 +80,13 @@ include serial_hw_int_cts
 ;include serial_hardware
 serial_hw_init()
 
-_calculate_and_set_baudrate()
 
 include print
 
-;; blocking put
-;; 1 main stopt queue vol, als blocked dan op terminal cmd geven om 1
-;; char uit queue te lezen (heft blocking op)
-;; 
-;; non-blocking put
-;; 2 main stopt probeert char non-blocking aan te bieden via terminal 1 char uit de queue wordt gehaald.
-;; 
-;; blocking get
-;; 3 main gaat queue uitlezen totdat deze leeg is en hangt dan. terminal stop er 1 extra char in
-;; 
-;; non-blocking get
-;; 4 main gaat laatste char uit queue lezen, terminal stopt 1 char extra in.
-;;                        
-;;                        
-;;                        
-;; 5 put/get sequence duurtest:
-;; 10 X
-;;   put 5x (oplopend getal)
-;;   get 5x (print getal)
-;;   
-;; 
 
 
-;;   const byte str1[] = " - Test queue\r\n"   -- define a string
-;;   print_string(serial_hw_data, str1)                 -- output string
+const byte str1[] = " - Test queue\r\n"   -- define a string
+print_string(serial_hw_data, str1)                 -- output string
 
 
  
@@ -130,82 +108,90 @@ var byte char, i
             
          end block
    
-;;         "1" : block
-;;            test_mode = char - "0"
-;;            const byte str11[] = "\r\n1 - put 5 chars in queue (blocking), use * to remove them\r\n" 
-;;            print_string(serial_hw_data, str11)      
-;;            for 5 using i loop
-;;               queue01 = i
-;;               serial_hw_data = "0" | i
-;;            end loop
-;;         end block
-;;   
+         "1" : block
+            test_mode = char - "0"
+            const byte str11[] = "\r\n1 - put 5 chars in queue (blocking), use * to remove them\r\n" 
+            print_string(serial_hw_data, str11)      
+            for 5 using i loop
+               queue01 = i
+               serial_hw_data = "0" | i
+            end loop
+         end block
+
+
+;; note: due to compiler bug, we can't use non-blocking interface at both main and isr level   
 ;;         "2" : block
 ;;            test_mode = char - "0"
 ;;            const byte str11[] = "\r\n2 - try to put 5 chars in queue (non-blocking), use * to remove them\r\n" 
 ;;            print_string(serial_hw_data, str11)      
 ;;
 ;;            for 5 using i loop
-;;
-;;               serial_hw_data = "+"
-;;               print_byte_dec(serial_hw_data, queue01_in_pointer)
-;;               serial_hw_data = " "
-;;               print_byte_dec(serial_hw_data, queue01_out_pointer)
-;;               print_crlf(serial_hw_data)
-;;
 ;;               serial_hw_data = "0" | i
 ;;               if (queue01_nb_put(i) == true) then
 ;;                  serial_hw_data = "s" -- succes
 ;;               else 
 ;;                  serial_hw_data = "f" -- fail
 ;;               end if         
-;;               
-;;            end loop                   
+;;            end loop              
+;;         end block
+   
+         "3" : block
+            test_mode = char - "0"
+            const byte str11[] = "\r\n1 - get 5 chars from queue (blocking), use * to add them\r\n" 
+            print_string(serial_hw_data, str11)      
+            for 5 loop
+               i = queue01
+               serial_hw_data = "0" | i
+            end loop
+         end block
+
+;; note: due to compiler bug, we can't use non-blocking interface at both main and isr level      
+;;         "4" : block
+;;            test_mode = char - "0"
+;;            const byte str11[] = "\r\n1 - get 5 chars from queue (non-blocking), use * to add them\r\n" 
+;;            print_string(serial_hw_data, str11)      
 ;;
+;;            for 5 loop
+;;               if (queue01_nb_get(i) == true) then  -- get byte
+;;                  serial_hw_data = "s" -- succes
+;;               else 
+;;                  serial_hw_data = "f" -- fail
+;;               end if                        
+;;               serial_hw_data = "0" | i             -- print byte
+;;            end loop              
+;;         end block
+
+;; note: due to compiler bug, we can't use non-blocking interface at both main and isr level   
+;;         "8" : block
+;;            test_mode = char - "0"
+;;            const byte str11[] = "put "
+;;            print_string(serial_hw_data, str11)      
+;;
+;;            var bit ret = queue01_nb_put(99)  
+;;            print_bit_truefalse(serial_hw_data, ret)
+;;
+;;            serial_hw_data = "+"
 ;;            print_byte_dec(serial_hw_data, queue01_in_pointer)
 ;;            serial_hw_data = " "
 ;;            print_byte_dec(serial_hw_data, queue01_out_pointer)
 ;;            print_crlf(serial_hw_data)
 ;;
 ;;         end block
-;;   
-;;         "3" : block
+;;
+;; note: due to compiler bug, we can't use non-blocking interface at both main and isr level   
+;;         "9" : block
 ;;            test_mode = char - "0"
+;;            const byte str11[] = "get "
+;;            print_string(serial_hw_data, str11)      
+;;            var bit ret = queue01_nb_get(i)  
+;;            print_bit_truefalse(serial_hw_data, ret)
+;;            serial_hw_data = "+"
+;;            print_byte_dec(serial_hw_data, queue01_in_pointer)
+;;            serial_hw_data = " "
+;;            print_byte_dec(serial_hw_data, queue01_out_pointer)
+;;            print_crlf(serial_hw_data)
+;;
 ;;         end block
-   
-         "4" : block
-            test_mode = char - "0"
-         end block
-
-         "8" : block
-            test_mode = char - "0"
-            const byte str11[] = "put "
-            print_string(serial_hw_data, str11)      
-
-            var bit ret = queue01_nb_put(99)  
-            print_bit_truefalse(serial_hw_data, ret)
-
-            serial_hw_data = "+"
-            print_byte_dec(serial_hw_data, queue01_in_pointer)
-            serial_hw_data = " "
-            print_byte_dec(serial_hw_data, queue01_out_pointer)
-            print_crlf(serial_hw_data)
-
-         end block
-
-         "9" : block
-            test_mode = char - "0"
-            const byte str11[] = "get "
-            print_string(serial_hw_data, str11)      
-            var bit ret = queue01_nb_get(i)  
-            print_bit_truefalse(serial_hw_data, ret)
-            serial_hw_data = "+"
-            print_byte_dec(serial_hw_data, queue01_in_pointer)
-            serial_hw_data = " "
-            print_byte_dec(serial_hw_data, queue01_out_pointer)
-            print_crlf(serial_hw_data)
-
-         end block
       
       end case
    end loop     

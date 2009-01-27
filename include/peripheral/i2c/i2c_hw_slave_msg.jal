@@ -8,6 +8,17 @@
 --
 -- Description: this library provides an message interface to i2c hardware slave. 
 -- It relies on the jalv2 implementation of Microchip Application Note AN734.
+-- --                                        
+-- The user needs to supply a procedure to process the received message. 
+-- Basically, this i2c slave waits for a full message to arrive. Then it calls 
+-- the user procedure to process the message and (optional) prepare a response.
+-- Subsequently, this lib will pass the response data over to the master, if 
+-- it wants to have them.
+-- See corresponding sample for more details.
+-- --
+-- Limitation: The master needs to read at least one byte after writing a sequence to
+-- the slave to trigger proper message processing. See the LED on/off examples for
+-- more details.
 --
 -- Sources:
 --   - AN734: http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1824&appnote=en011798
@@ -64,7 +75,10 @@ end procedure
 -- and our i2c address has been recognized
 procedure i2c_hw_slave_on_state_1(byte in _trash) is
    pragma inline
-   i2c_index = 0   -- set pointer to buffer start
+
+   -- let user process buffer (there should not be one if the proper procedure is executed)
+   i2c_call_process_message()
+
 end procedure
 
 
@@ -79,6 +93,7 @@ procedure i2c_hw_slave_on_state_2(byte in rcv) is
    if (i2c_index < I2C_BUFFER_SIZE) then
       i2c_index = i2c_index + 1   -- point to next position
    end if
+
 end procedure
 
 
@@ -94,7 +109,7 @@ procedure i2c_hw_slave_on_state_3() is
    i2c_index = 0                          -- set pointer to buffer start
    i2c_hw_slave_write_i2c(i2c_buffer[0])   -- send data 
    i2c_index = 1                          -- point to next position
-   
+      
 end procedure
 
 
@@ -110,9 +125,7 @@ procedure i2c_hw_slave_on_state_4() is
    i2c_hw_slave_write_i2c(i2c_buffer[i2c_index])    -- send data 
    i2c_index = i2c_index + 1                    -- point to next position
 
-
 end procedure
-
 
 -- this callback is used when master does not want to talk
 -- with us anymore... This is an appropriate place to reset
@@ -121,7 +134,6 @@ procedure i2c_hw_slave_on_state_5() is
    pragma inline
    -- data = 0
 end procedure
-
 
 -- callbacks are defined, now include ISR
 include i2c_hw_slave_isr
