@@ -10,7 +10,22 @@
 -- using the message interface lib. Basically, this i2c slave waits for
 -- a full message to arrive and then calls a user routine to process the message and
 -- (optional) prepare a response.
---
+-- --
+-- Limitation: The master needs to read at least one byte after writing a sequence to
+-- the slave to trigger proper message processing. See the LED on/off examples for
+-- more details.
+-- --
+-- Conventions:
+-- S = create (re)start state
+-- P = create stop state
+-- E4W = master writes 0x4E
+-- R   = master reads and ACKs
+-- N   = master reads and NACKs
+-- --
+-- s5Cw80ws5Dwrnp - reads application code and version (0x31 0x01)
+-- s5Cw90w00ws5Dwnp    - LED off
+-- s5Cw90wFFws5Dwnp    - LED on 
+-- --
 
 
 ;@jallib use chipdef
@@ -18,12 +33,25 @@
 ;@jallib use led
 led_direction = output
 
+-- setup serial (see echo.jal for more details)
+;@jallib use serial
+include serial_hardware
+serial_hw_init()
+
+include print
+
+const byte str1[] = "Test i2c hardware slave - msg interface.\r\n"   -- define a string
+print_string(serial_hw_data, str1)                 -- output string
+
+include queue01
+queue01_clear()
 
 
-
+-- ---------------
+-- setup i2c slave 
+-- ---------------
 const byte I2C_BUFFER_SIZE = 40
 include i2c_hw_slave_msg
-
 
 -- this will be the slave address. It looks like:
 --     0b_0101_1100
@@ -35,30 +63,39 @@ i2c_hw_slave_init(SLAVE_ADDRESS,false)   -- no START/STOP interrupts
 
 
 
-
+-- --------------------------------------------------------------------
+-- i2c_process_message - User code for i2c slave
+-- --------------------------------------------------------------------
+-- This code is called from the ISR, every time the i2c slave module 
+-- received a serie of bytes.
+-- The ISR logic assures this procedure is called exactly once for 
+-- each messagae.       
+-- --------------------------------------------------------------------
 procedure i2c_process_message(byte in byte_count) is
-   -- ---------------------
-   -- User code starts here
-   -- ---------------------
-   -- This code is called every time the PIC received a serie of bytes.
-   -- It takes care of execution of the user code exactly once.
    if (i2c_buffer[0] == 0x80) then     
    
       if (byte_count == 1) then
-   
          -- cmd 0x80 - request version
          i2c_buffer[0]   = 0x3C         -- application code
          i2c_buffer[1]   = 0x01         -- version
-   
       end if
    
-   elsif (i2c_buffer[0] == 0x90) then   
+   elsif (i2c_buffer[0] == 0x90) then             
+      
       if (byte_count == 2) then
-         -- cmd 00x90 - set servo & request sensor data
---            I2cBeep  = i2c_buffer[1]
+         -- cmd 0x90 - turn LED off or on
+         if (i2c_buffer[1] == 0) then
+            LED = off
+         else
+            LED = on
+         end if
       elsif (byte_count == 1) then
---         i2c_buffer[0] = I2cOdoCounter1
---         i2c_buffer[1] = I2cOdoCounter2 
+         -- cmd 0x90 without params: request for led status
+         if (LED) then
+            i2c_buffer[0] = 0xFF
+         else
+            i2c_buffer[0] = 0x00
+         end if               
       end if
       
    end if
@@ -77,5 +114,8 @@ for 4 loop
 end loop
 
 -- just loop until interrupt is raised
-forever loop
+forever loop        
+   
+   -- dump data from isr to serial port
+   serial_hw_data = queue01
 end loop
