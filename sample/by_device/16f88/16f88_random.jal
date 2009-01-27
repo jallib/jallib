@@ -1,5 +1,5 @@
 -- ------------------------------------------------------
--- Title: Test program for serial_hardware.jal
+-- Title: Test program for random.jal
 --
 -- Author: Joep Suijs, Copyright (c) 2008..2008, all rights reserved.
 --
@@ -10,21 +10,18 @@
 -- This file is part of jallib  (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: Test program for serial hardware lib
--- --
--- This file defines a test for JALLIB testing, using a test-board
---  defined by a BOARD file .
+-- Description: Test program
 --
 -- Sources:
 --
--- Notes: 
---    setup: a serial connection to a terminal
+-- Notes: as output, this sample produces characters on a serial link. First 
+--        run serial tests to make sure serial comms works okay.
 --
 -- ------------------------------------------------------
 --
--- This file has been generated on 01/27/09 23:07:48, from:
+-- This file has been generated on 01/27/09 23:07:47, from:
 --    * board: board_16f88_js.jal
---    * test : test_serial_hardware.jal
+--    * test : test_random.jal
 --
 
 
@@ -56,47 +53,51 @@ var bit led             is pin_b3
 var bit led_direction   is pin_b3_direction
 var bit led2            is pin_b1
 var bit led2_direction  is pin_b1_direction
+led_direction = output
 
 include delay
 
 -- set all IO as digital
 enable_digital_io()
 
--- ok, now setup serial;@jallib section serial
+
+-- setup serial (see echo.jal for more details);@jallib section serial
 const serial_hw_baudrate = 115_200
 include serial_hardware
 serial_hw_init()
 
-include print                       -- output library
+include print
 
-led_direction = output
-for 4 loop
-   LED = on
-   delay_100ms(3)
-   LED = off
-   delay_100ms(3)
+-- RANDOM --
+-- The random provides a decent random function.
+-- If you don't need proper random and need to save on memory
+-- or cpu cycles, you could uncomment the line below. It will
+-- save you 4 bytes of ram and about 80 bytes of program memory.
+-- But: the random output will be of a much less quality!
+;const random_downgrade = 1   -- if this constant exists (even with value 0), 
+                              -- the random functions are downgraded
+
+-- include random lib
+include random
+
+var word tmp_word
+ 
+forever loop
+   delay_100ms( 5 )
+   LED = high
+   delay_100ms( 5 )
+   LED = low
+
+   for 100 loop     
+      -- print 100 random words
+      tmp_word = random_word()  -- get 16-bit random number
+      print_word_dec(serial_hw_data, tmp_word)   
+   end loop
+      
+   print_crlf(serial_hw_data)                      -- empty line
+   print_byte_dec(serial_hw_data, random_byte())   -- get 8-bit random number and output it.
+   print_crlf(serial_hw_data)          
+   
 end loop
 
-
-
-const byte str1[] = "Hello serial world"   -- define a string
-print_string(serial_hw_data, str1)  -- output string to serial
-
--- inform user PIC is ready !
-serial_hw_write("!")
-
--- let's build our loop
-var byte char	-- will store received char
-var word counter = 10
-forever loop
-	if serial_hw_read(char)	then
-		serial_hw_write(char)	-- that's the echo...
-	end if
-	
-	counter = counter - 1;
-	if (counter == 0) then
-	   counter = 50000
-      serial_hw_data = "."	   
-      LED = ! LED
-   end if
-end loop
+
