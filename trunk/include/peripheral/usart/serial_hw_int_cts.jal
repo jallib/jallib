@@ -37,25 +37,29 @@
 -- Directions for use of this library in application programs
 -- (in this sequence):
 --
--- 1. Declare the following constants:
+-- 1. Declare the following constant:
 --
---      const   SERIAL_XMTBUFSIZE  = 32         -- size of transmit buffer
---      const   SERIAL_RCVBUFSIZE  = 64         -- size of receive buffer
---      const   SERIAL_DELTA       = 17         -- spare space receive buffer
---      (values are recommended, if possible keep SERIAL_DELTA = 17).
---
---      const   SERIAL_BPSRATE     = 19200      -- host communications
+--      const   serial_hw_baudrate = 19200      -- host communications
 --                                              -- (range 9600..57600)
 --    and variables:
 --
 --      var  bit serial_ctsinv  is  pin_B4      -- incoming data flow control
 --      var  bit serial_overflow_discard        -- With transmit buffer overflow:
---                                              --   TRUE: discard data
---                                              --   FALSE: wait for free space
+--                                              --   TRUE: discard data (non-blocking)
+--                                              --   FALSE: wait for free space (blocking)
 --                                              -- With receive buffer overflow
 --                                              -- data is always discarded
 --                                              -- without notification, but
 --                                              -- this is prevented with CTS.
+--
+--    and optional, you could define one or more of the constants below. 
+--    You should do so if you want different value's then the ones shown.
+--    If any of these constants is not defined, the value shown is used:
+--
+--      const   SERIAL_XMTBUFSIZE  = 32         -- size of transmit buffer
+--      const   SERIAL_RCVBUFSIZE  = 64         -- size of receive buffer
+--      const   SERIAL_DELTA       = 17         -- spare space receive buffer
+--      (if possible keep SERIAL_DELTA = 17).
 --
 -- 2. Include this library.
 --
@@ -109,7 +113,33 @@
 --                TxD of RS232-plug connects to RX of PIC via MAX2x2
 --
 -- ----------------------------------------------------------------------
+
 --
+-- setup defaults if no value is specified
+--
+if (defined(SERIAL_XMTBUFSIZE) == false) then
+   const   SERIAL_XMTBUFSIZE  = 32         -- default size of transmit buffer
+end if
+
+if (defined(SERIAL_RCVBUFSIZE) == false) then
+   const   SERIAL_RCVBUFSIZE  = 64         -- default size of receive buffer
+end if
+
+if (defined(SERIAL_DELTA) == false) then
+   const   SERIAL_DELTA       = 17         -- default spare space receive buffer
+end if
+
+if (defined(serial_hw_baudrate) == false) then  
+   if (defined(SERIAL_BPSRATE) == true) then
+      -- depricated; for compatibility only
+      const serial_hw_baudrate = SERIAL_BPSRATE 
+   else
+      pragma error -- no baudrate defined
+   end if
+end if
+
+include usart_common
+
 -- Declaration of local circular buffers for communications via UART:
 
 var  byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]    -- circular output buffer
@@ -214,7 +244,7 @@ end procedure
 --           bytes free space after delivering byte to caller.
 --
 -- ----------------------------------------------------------------------
-function  serial_receive_byte(byte out data) return bit is
+function serial_hw_read(byte out data) return bit is
 
    var  byte  x                                 -- for buffer management
 
@@ -242,6 +272,13 @@ function  serial_receive_byte(byte out data) return bit is
 
 end function
 
+function  serial_receive_byte(byte out data) return bit is
+   -- depricated function, for compatibility only
+   return serial_hw_read(data)
+end function
+
+var bit serial_send_succes -- serial_send_succes is introduced to create the same interface as
+                           -- serial_hardware while keeping the current interface.
 
 -- ----------------------------------------------------------------------
 --  Put a single byte in circular transmit buffer for UART
@@ -262,6 +299,8 @@ function  serial_send_byte(byte in data) return byte is
 
    var  byte  newxmthead                        -- offset in circular buffer
 
+   serial_send_succes = true                    -- indicate byte sent 
+ 
    if (_serial_offsetxmthead == _serial_offsetxmttail  &  -- nothing buffered
        PIR1_TXIF == true) then                  -- and UART not busy
       PIE1_TXIE = FALSE                         -- disable xmt interrupt
@@ -280,7 +319,8 @@ function  serial_send_byte(byte in data) return byte is
                -- nothing                       -- spin until something xmit'd
             end loop
             _serial_offsetxmthead = newxmthead  -- update offset
-         else
+         else                                                        
+            serial_send_succes = false          -- indicate byte discarded
             data = 0x00                         -- indicate byte discarded
          end if
       end if
@@ -295,7 +335,7 @@ end function
 -- ----------------------------------------------------------------------
 -- serial_init - procedure to initialize library functionality
 -- ----------------------------------------------------------------------
-procedure serial_init() is
+procedure serial_hw_init() is
 
    _serial_offsetxmthead  = 0                   -- offset next byte from appl
    _serial_offsetxmttail  = 0                   -- offset next byte to port
@@ -308,9 +348,10 @@ procedure serial_init() is
 
    TXSTA                  = 0b0000_0000         -- reset (8 bit, asyn)
    TXSTA_TXEN             = enabled             -- UART transmit enabled
-   TXSTA_BRGH             = true                -- high baud rate
-   SPBRG                  = (target_clock / 16 / SERIAL_BPSRATE * 10 - 5) / 10
-
+--   TXSTA_BRGH             = true                -- high baud rate
+--   SPBRG                  = (target_clock / 16 / serial_hw_baudrate * 10 - 5) / 10
+   _calculate_and_set_baudrate()                -- set baudrate
+   
    PIE1_RCIE              = enabled             -- UART receive int. enable
                                                 -- (PIE1_TXIE dynamically)
    INTCON_PEIE            = enabled             -- periferal
@@ -320,6 +361,32 @@ procedure serial_init() is
 
 end procedure
 
+procedure serial_init() is
+   -- depricated function, for compatibility only
+   serial_hw_init()
+end procedure
+
+
 
 -- ----------------------------------------------------------------------
+-- serial_hardware compatible interface                                  
+-- ----------------------------------------------------------------------
+procedure serial_hw_data'put(byte in data) is
+   var byte dummy
+   
+   serial_send_succes = false
+   while (serial_send_succes == false) loop
+      dummy = serial_send_byte(data)
+   end loop
+      
+end procedure
+
+
+function serial_hw_data'get() return byte is
+   var byte data
+   while ! serial_hw_read(data) loop end loop
+   return data
+end function
+
+
 
