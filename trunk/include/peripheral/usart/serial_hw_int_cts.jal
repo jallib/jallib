@@ -204,6 +204,18 @@ procedure  _serial_receive_interrupt_handler() is
 
       else                                      -- data without errors
          _serial_rcvbuf[_serial_offsetrcvhead] = RCREG      -- move byte to rcv buffer
+                                                        
+         if (defined(serial_receive_wedge) == true) then
+            -- receive wedge - a user program can define this procedure.
+            --    procedure serial_receive_wedge(byte in char)
+            -- If this procedure exisits, it will be called from the
+            -- isr for each received char. 
+            -- CAUTION: the wedge is part of the ISR and should be designed
+            -- to behave accordingly. If you are not sure you need this, you
+            -- probably don't!
+            serial_receive_wedge(_serial_rcvbuf[_serial_offsetrcvhead])
+         end if
+         
          x = _serial_offsetrcvhead + 1          -- update offset
          if x >= SERIAL_RCVBUFSIZE then         -- buffer overflow
             x = 0                               -- wrap
@@ -389,4 +401,12 @@ function serial_hw_data'get() return byte is
 end function
 
 
-
+procedure serial_hw_write(byte in data) is
+   var byte dummy
+   
+   serial_send_succes = false
+   while (serial_send_succes == false) loop
+      dummy = serial_send_byte(data)
+   end loop
+   
+end procedure
