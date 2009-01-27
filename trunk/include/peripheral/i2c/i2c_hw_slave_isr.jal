@@ -59,8 +59,6 @@ procedure i2c_hw_slave_isr_handler() is
       return
    end if
 
-   queue01_nb_put("*")
-   
    PIR1_SSPIF = false
     var byte tmpstat
    tmpstat = SSPSTAT
@@ -80,7 +78,6 @@ procedure i2c_hw_slave_isr_handler() is
    then
        var byte _trash = i2c_hw_slave_read_i2c()
        i2c_hw_slave_on_state_1(_trash)
-   queue01_nb_put("1")
 
    -- state 2: write operation, last byte is data, buffer full
    -- master wants to write, it sends a byte
@@ -90,7 +87,6 @@ procedure i2c_hw_slave_isr_handler() is
    then
 	  var byte rcv = i2c_hw_slave_read_i2c()
 	  i2c_hw_slave_on_state_2(rcv)
-   queue01_nb_put("2")
 
    -- state 3: read operation, last byte is address, buffer empty
    -- master wants to get a value from us
@@ -99,7 +95,6 @@ procedure i2c_hw_slave_isr_handler() is
    elsif (tmpstat ^ 0b_0000_1100) == false
    then
 	  i2c_hw_slave_on_state_3()
-   queue01_nb_put("3")
 
    -- state 4: read operation, last byte is data, buffer empty
    -- master still wants to get a value from us
@@ -108,7 +103,6 @@ procedure i2c_hw_slave_isr_handler() is
    elsif (tmpstat ^ 0b_00101100) == false
    then
 	  i2c_hw_slave_on_state_4()
-   queue01_nb_put("4")
 
    -- state 5: nack
    -- master doesn't want to talk with us anymore
@@ -120,15 +114,12 @@ procedure i2c_hw_slave_isr_handler() is
       -- it must be set. Some people say it can be error prone.
       SSPCON1_CKP = 1
 	  i2c_hw_slave_on_state_5()
-   queue01_nb_put("5")
 
    -- state not recognized... Error !
    else
 	  -- something went wrong, that is, XOR operations did not match
 	  -- SSPSTAT bits
 	  i2c_hw_slave_on_error()
-	     queue01_nb_put("6")
-
    end if
 
 end procedure
