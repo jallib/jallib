@@ -16,9 +16,6 @@
 -- it wants to have them.
 -- See corresponding sample for more details.
 -- --
--- Limitation: The master needs to read at least one byte after writing a sequence to
--- the slave to trigger proper message processing. See the LED on/off examples for
--- more details.
 --
 -- Sources:
 --   - AN734: http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1824&appnote=en011798
@@ -38,6 +35,7 @@ end if
 -- prototype
 procedure i2c_process_message(byte in byte_count)
 
+const i2c_enable_start_stop_interrupts = 1
 include i2c_hw_slave
 
 -- vars
@@ -64,15 +62,37 @@ end procedure
 procedure i2c_hw_slave_on_error() is
    pragma inline
    -- Just tell user user something's got wrong
-   forever loop
-	  led = on
-	  _usec_delay(200000)
-	  led = off
-	  _usec_delay(200000)
-   end loop
+;   forever loop
+;	  led = on
+;	  _usec_delay(200000)
+;	  led = off
+;	  _usec_delay(200000)
+;   end loop   
+
+   queue01 = "#" 
+   queue01 = "E" 
+
 end procedure
 
+procedure i2c_hw_slave_on_start() is
+   pragma inline
 
+   queue01 = "#" 
+   queue01 = "S" 
+                                  
+end procedure
+
+procedure i2c_hw_slave_on_stop() is
+   pragma inline
+
+   -- let user process buffer
+   i2c_call_process_message()
+
+   queue01 = "#" 
+   queue01 = "P" 
+                                  
+end procedure
+                                
 -- this callback is used when master wants to talk to us
 -- and our i2c address has been recognized
 procedure i2c_hw_slave_on_state_1(byte in _trash) is
@@ -80,6 +100,9 @@ procedure i2c_hw_slave_on_state_1(byte in _trash) is
 
    -- let user process buffer (there should not be one if the proper procedure is executed)
    i2c_call_process_message()
+
+   queue01 = "#" 
+   queue01 = "1" 
 
 end procedure
 
@@ -96,6 +119,9 @@ procedure i2c_hw_slave_on_state_2(byte in rcv) is
       i2c_index = i2c_index + 1   -- point to next position
    end if
 
+   queue01 = "#" 
+   queue01 = "2" 
+
 end procedure
 
 
@@ -111,6 +137,9 @@ procedure i2c_hw_slave_on_state_3() is
    i2c_index = 0                          -- set pointer to buffer start
    i2c_hw_slave_write_i2c(i2c_buffer[0])   -- send data 
    i2c_index = 1                          -- point to next position
+
+   queue01 = "#" 
+   queue01 = "3" 
       
 end procedure
 
@@ -127,6 +156,9 @@ procedure i2c_hw_slave_on_state_4() is
    i2c_hw_slave_write_i2c(i2c_buffer[i2c_index])    -- send data 
    i2c_index = i2c_index + 1                    -- point to next position
 
+   queue01 = "#" 
+   queue01 = "4" 
+
 end procedure
 
 -- this callback is used when master does not want to talk
@@ -134,7 +166,11 @@ end procedure
 -- data for instance
 procedure i2c_hw_slave_on_state_5() is
    pragma inline
-   -- data = 0
+   -- data = 0 
+   
+   queue01 = "#" 
+   queue01 = "5" 
+   
 end procedure
 
 -- callbacks are defined, now include ISR
