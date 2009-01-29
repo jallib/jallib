@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------- */
 /* Title: DeviceSpecific.cmd - Rexx script for device specific pproperties */
 /*                                                                         */
-/* Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.   */
+/* Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.   */
 /*                                                                         */
 /* Adapted-by:                                                             */
 /*                                                                         */
@@ -157,6 +157,7 @@ select
   when PicName = '18F2320'    then return 'ADC_V5'
   when PicName = '18F2321'    then return 'ADC_V5'
   when PicName = '18F2331'    then return 'ADC_V7_1'
+  when PicName = '18F23K20'   then return 'ADC_V8'
   when PicName = '18F2410'    then return 'ADC_V5'
   when PicName = '18F242'     then return 'ADC_V1'
   when PicName = '18F2420'    then return 'ADC_V5'
@@ -201,6 +202,7 @@ select
   when PicName = '18F4320'    then return 'ADC_V5'
   when PicName = '18F4321'    then return 'ADC_V5'
   when PicName = '18F4331'    then return 'ADC_V7'
+  when PicName = '18F43K20'   then return 'ADC_V8'
   when PicName = '18F4410'    then return 'ADC_V5'
   when PicName = '18F442'     then return 'ADC_V1'
   when PicName = '18F4420'    then return 'ADC_V5'
@@ -485,6 +487,7 @@ select
   when PicName = '18F2320'    then return '39599'
   when PicName = '18F2321'    then return '39689'
   when PicName = '18F2331'    then return '39616'
+  when PicName = '18F23K20'   then return '41303'
   when PicName = '18F2410'    then return '39636'
   when PicName = '18F242'     then return '39564'
   when PicName = '18F2420'    then return '39631'
@@ -529,6 +532,7 @@ select
   when PicName = '18F4320'    then return '39599'
   when PicName = '18F4321'    then return '39689'
   when PicName = '18F4331'    then return '39616'
+  when PicName = '18F43K20'   then return '41303'
   when PicName = '18F4410'    then return '39636'
   when PicName = '18F442'     then return '39564'
   when PicName = '18F4420'    then return '39631'
@@ -813,6 +817,7 @@ select
   when PicName = '18F2320'    then return '39583'
   when PicName = '18F2321'    then return '39622'
   when PicName = '18F2331'    then return '30500'
+  when PicName = '18F23K20'   then return '41297'
   when PicName = '18F2410'    then return '39622'
   when PicName = '18F242'     then return '39576'
   when PicName = '18F2420'    then return '39622'
@@ -857,6 +862,7 @@ select
   when PicName = '18F4320'    then return '39583'
   when PicName = '18F4321'    then return '39622'
   when PicName = '18F4331'    then return '30500'
+  when PicName = '18F43K20'   then return '41297'
   when PicName = '18F4410'    then return '39622'
   when PicName = '18F442'     then return '39576'
   when PicName = '18F4420'    then return '39622'
@@ -1128,6 +1134,7 @@ select
   when PicName = '18F2320'    then return '00CF0F1F008385000FC00FE00F40'
   when PicName = '18F2321'    then return '00CF1F1F0087FD0003C003E00340'
   when PicName = '18F2331'    then return '00CF0F3F3C9D85000FC00FE00F40'
+  when PicName = '18F23K20'   then return '00CF1F1F008FC50003C003E00340'
   when PicName = '18F2410'    then return '00CF1F1F0087C5000FC00FE00F40'
   when PicName = '18F242'     then return '00270F0F000185000FC00FE00F40'
   when PicName = '18F2420'    then return '00CF1F1F0087C50003C003E00340'
@@ -1172,6 +1179,7 @@ select
   when PicName = '18F4320'    then return '00CF0F1F008385000FC00FE00F40'
   when PicName = '18F4321'    then return '00CF1F1F0087FD0003C003E00340'
   when PicName = '18F4331'    then return '00CF0F3F3C9D85000FC00FE00F40'
+  when PicName = '18F43K20'   then return '00CF1F1F008FC50003C003E00340'
   when PicName = '18F4410'    then return '00CF1F1F0087C5000FC00FE00F40'
   when PicName = '18F442'     then return '00270F0F000185000FC00FE00F40'
   when PicName = '18F4420'    then return '00CF1F1F0087C50003C003E00340'

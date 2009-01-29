@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ */
 /* Title: Dev2Jal.cmd - Create JalV2 device include files for flash PICs    */
 /*                                                                          */
-/* Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.    */
+/* Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.    */
 /*                                                                          */
 /* Adapted-by:                                                              */
 /*                                                                          */
@@ -13,7 +13,7 @@
 /*                                                                          */
 /* Description:                                                             */
 /*   Rexx script to create device include files for JALV2,                  */
-/*   and the file jalv2_common.jal, included by each of these.              */
+/*   and the file chipdef_jallib.jal, included by each of these.            */
 /*   Apart from declaration of all ports and pins of the chip               */
 /*   the include files will contain shadowing procedures to                 */
 /*   prevent the 'read-modify-write' problems of midrange PICs              */
@@ -28,15 +28,15 @@
 /*   - The script contains some test and debugging code.                    */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.55'                   /*                          */
+   ScriptVersion   = '0.0.56'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4i'                   /*                          */
 /* ------------------------------------------------------------------------ */
 
-mplabdir = 'x:/mplab815/'                       /* MPLAB base directory     */
+mplabdir = 'k:/mplab820/'                       /* MPLAB base directory     */
 devdir   = mplabdir'mplab_ide/device/'          /* dir with .dev files      */
 lkrdir   = mplabdir'mpasm_suite/lkr/'           /* dir with .lkr files      */
-dstdir   = '/jallib/unvalidated/include/device/'  /* default destination    */
+dstdir   = '/jallib/include/device/'            /* default destination    */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
 say 'Creating JALV2 include files for PIC specifications ...'
@@ -54,7 +54,7 @@ end
 chipdef = dstdir'chipdef_jallib.jal'            /* common include file */
 
 if selection = '' then                          /* no selection spec'd */
-  wildcard = 'pic1*.dev'                        /* default (8bit PICs) */
+  wildcard = 'pic1*.dev'                        /* default (8 bit PICs) */
 else if destination = 'TEST' then               /* TEST run */
   wildcard = 'PIC'selection'.dev'               /* accept user selection */
 else do                                         /* PROD run with selection */
@@ -101,13 +101,16 @@ do i=1 to dir.0                                 /* all relevant .dev files */
     iterate                                     /* next entry */
   end
 
-  if substr(PicName,3,1) \= 'f'  &,             /* not flash PICs */
-     substr(PicName,3,2) \= 'lf' &,             /* not low power flash PIs */
-     substr(PicName,3,2) \= 'hv' then           /* not high voltage flash PICs */
-    iterate                                     /* skip all these */
+  if substr(PicName,3,1) \= 'f'  &,             /* not flash PIC */
+     substr(PicName,3,2) \= 'lf' &,             /* not low power flash PIC */
+     substr(PicName,3,2) \= 'hv' then           /* not high voltage flash PIC */
+    iterate                                     /* skip */
 
-  if substr(PicName,3,3) = 'f19' then           /* exclude extended 14-bit core */
-    iterate                                     /* skip unsupported PICs */
+  if pos('f18', PicName) > 0  |,                /* exclude extended 14-bit core */
+     pos('f19', PicName) > 0 then do
+    say PicName "skipped: not supported by JalV2"
+    iterate                                     /* skip */
+  end
 
   say PicName                                   /* progress signal */
 
@@ -138,11 +141,11 @@ do i=1 to dir.0                                 /* all relevant .dev files */
     rx = 1                                      /* fault */
   end
 
-  call stream jalfile, 'c', 'close'             /* done! */
-  if rx = 0 then                                /* success */
+  call stream jalfile, 'c', 'close'             /* done */
+  if rx = 0 then                                /* device file created */
     ListCount = ListCount + 1;
   else                                          /* failed */
-    say 'Failed to build device file for' PicName
+    say 'Failed to build device file for' PicName
 
 end
 
@@ -479,17 +482,20 @@ return 0
 /* procedure to list code memory size from .dev file   */
 /* input:  - nothing                                   */
 /* --------------------------------------------------- */
-list_code_size: procedure expose Dev. jalfile
+list_code_size: procedure expose Dev. jalfile core
 CodeSize = 0
 do i = 1 to Dev.0
+  if word(Dev.i,1) \= 'PGMMEM' then         /* exclude 'EXTPGMMEM' ! */
+    iterate
   parse var Dev.i 'PGMMEM' '(' 'REGION' '=' Value ')' .
   if Value \= '' then do
     parse var Value '0X' val1 '-' '0X' val2 .
     CodeSize = X2D(strip(Val2)) - X2D(strip(val1)) + 1
- /* leave  */                                   /* 1 occurence expected */
+    if core == 16 then                      /* for 18Fs */
+      CodeSize = CodeSize / 2               /* make it words */
   end
 end
-call lineout jalfile, 'pragma  code    'CodeSize
+call lineout jalfile, 'pragma  code    'CodeSize'                    -- (words)'
 return
 
 
@@ -499,6 +505,8 @@ return
 /* ---------------------------------------------------------- */
 list_data_size: procedure expose Dev. jalfile DataStart
 do i = 1 to Dev.0
+  if word(Dev.i,1) \= 'EEDATA' then
+    iterate
   parse var Dev.i 'EEDATA' 'REGION' '=' Value ')' .
   if Value \= '' then do
     parse var Value '0X' val1 '-' '0X' val2 .
@@ -832,6 +840,9 @@ do i = 1 to Dev.0
   parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 .
   if val1 \= '' then do
     reg = strip(val1)                           /* register name */
+    if reg = 'SSPCON1' |,                       /* to be renamed */
+       reg = 'SSPCON0' then
+      reg = 'SSPCON'                            /* normalized name */
     Name.reg = reg                              /* add to collection of names */
     addr = X2D(strip(val2))                     /* decimal */
     Ram.addr = addr                             /* mark address in use */
@@ -858,6 +869,12 @@ do i = 1 to Dev.0
       call list_tris_shadow 'TRISA'             /* nibble direction */
     end
     else if left(reg,4) = 'TRIS' then do        /* TRISx */
+      call lineout jalfile, 'var volatile byte ',
+                           left('PORT'substr(reg,5)'_direction',20) 'at' reg
+      call list_tris_shadow reg                 /* nibble direction */
+    end
+    else if reg = 'SSPCON1' then do             /* SSPCON1 */
+      reg = 'SSPCON'
       call lineout jalfile, 'var volatile byte ',
                            left('PORT'substr(reg,5)'_direction',20) 'at' reg
       call list_tris_shadow reg                 /* nibble direction */
@@ -1035,6 +1052,8 @@ do i = 1 to Dev.0
   parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 .
   if val1 \= '' then do
     reg = strip(val1)                           /* register name */
+    if left(reg,3) = 'SSP' then                 /* MSSP register */
+      reg = normalize_ssp16(reg)                /* possibly to be renamed */
     Name.reg = reg                              /* remember name */
     addr = strip(val2)
     k = X2D(addr)                               /* address decimal */
@@ -1085,6 +1104,37 @@ do i = 1 to Dev.0
 end
 return 0
 
+
+/* -------------------------------------------------------- */
+/* procedure to normalize MSSP resgiter names               */
+/* input: - register name                                   */
+/* 16-bit core                                              */
+/* -------------------------------------------------------  */
+normalize_ssp16:
+if left(reg,3) \= 'SSP' then                    /* only for SSP registers */
+  return reg
+select
+  when reg = 'SSPADD' then
+    reg = 'SSP1ADD'
+  when reg = 'SSP1CON1' |,
+       reg = 'SSPCON1'  |,
+       reg = 'SSPCON'   then
+    reg = 'SSP1CON'
+  when reg = 'SSPCON2'  then
+    reg = 'SSP1CON2'
+  when reg = 'SSPMSK'   |,
+       reg = 'SSPMASK'  then
+    reg = 'SSP1MSK'
+  when reg = 'SSPSTAT'  then
+    reg = 'SSP1STAT'
+  when reg = 'SSPBUF'   then
+    reg = 'SSP1BUF'
+  when reg = 'SSP2CON1' then                    /* second MSSP modle */
+    reg = 'SSP2CON'
+  otherwise
+    nop
+end
+return  reg                                     /* return normalized name */
 
 /* --------------------------------------- */
 /* Formatting of special function register */
@@ -1707,23 +1757,23 @@ do i = 1 to dev.0                               /* scan .dev file */
                                 '0x'strip(val2) '{'
         end
         if key = 'OSC' then
-          call list_fuse_def_osc i
+          call list_fuse_def_osc i, key
         else if key = 'DSWDTPS' then
-          call list_fuse_def_wdtps i
+          call list_fuse_def_wdtps i, key
         else if key = 'IOSCFS' then
-          call list_fuse_def_ioscfs i
+          call list_fuse_def_ioscfs i, key
         else if key = 'WDTPS' then
-          call list_fuse_def_wdtps i
+          call list_fuse_def_wdtps i, key
         else if key = 'WDT' then
-          call list_fuse_def_wdt i
+          call list_fuse_def_wdt i, key
         else if key = 'VOLTAGE' then
-          call list_fuse_def_voltage i
+          call list_fuse_def_voltage i, key
         else if key = 'BROWNOUT' then
-          call list_fuse_def_brownout i
+          call list_fuse_def_brownout i, key
         else if key = 'MCLR' then
-          call list_fuse_def_mclr i
+          call list_fuse_def_mclr i, key
         else
-          call list_fuse_def_other i
+          call list_fuse_def_other i, key
         call lineout jalfile, '       }'
       end
       i = i + 1
@@ -1836,20 +1886,28 @@ return
 /* Generate fuse_defs for watchdog settings    */
 /* ------------------------------------------- */
 list_fuse_def_wdt: procedure expose Dev. jalfile
+flag_enabled = 0                                /* for checking of pair */
+flag_disabled = 0
 do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
                          val1 'DESC' '=' '"' val2 '"' ')' .
   if val1 \= '' then do
     val1 = strip(val1)                  /* remove blanks */
-    if val2 = 'ON' | pos('ENABLE', val2) > 0  then      /* replace */
+    if val2 = 'ON' | pos('ENABLE', val2) > 0  then do   /* replace */
       val2 = 'ENABLED'
-    else if val2 = 'OFF' | pos('DISABLE',val2) > 0 then   /* replace */
+      flag_enabled = 1
+    end
+    else if val2 = 'OFF' | pos('DISABLE',val2) > 0 then do   /* replace */
       val2 = 'DISABLED'
+      flag_disabled = 1
+    end
     else
       val2 = translate(val2, '_________________',' +-:;.,<>{}[]()=/')  /* undersc. */
     call lineout jalfile, '       'val2 '= 0x'val1
   end
 end
+if flag_enabled \= flag_disabled then               /* impaired */
+  say 'Warning: enable/disable impairment fuse_def' arg(2)
 return
 
 
@@ -1869,9 +1927,9 @@ do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
        pos('AS MCLR',val2) > 0      |,
        val2 = 'MCLR'                |,
        val2 = 'ENABLED'  then
-      Val2 = 'EXTERNAL'
+      val2 = 'EXTERNAL'
     else
-      Val2 = 'INTERNAL'
+      val2 = 'INTERNAL'
     call lineout jalfile, '       'val2 '= 0x'val1
   end
 end
@@ -1926,6 +1984,8 @@ return
 /* Generate fuse_defs for brownout settings    */
 /* ------------------------------------------- */
 list_fuse_def_brownout: procedure expose Dev. jalfile
+flag_enabled = 0                                /* for checking of pair */
+flag_disabled = 0
 do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
                          val1 'DESC' '=' '"' val2 '"' ')' .
@@ -1934,15 +1994,21 @@ do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
     if pos('SLEEP',val2) > 0  &  pos('DEEP SLEEP',val2) = 0 then
       Val2 = 'RUNONLY'
     else if pos('ENABLE',val2) \= 0  |,
-            val2 = 'ON' then
+            val2 = 'ON' then do
       val2 = 'ENABLED'
+      flag_enabled = 1
+    end
     else if pos('CONTROL',val2) \= 0 then
       Val2 = 'CONTROL'
-    else
+    else do
       Val2 = 'DISABLED'
+      flag_disabled = 1
+    end
     call lineout jalfile, '       'val2 '= 0x'val1
   end
 end
+if flag_enabled \= flag_disabled then               /* impaired */
+  say 'Warning: enable/disable impairment fuse_def' arg(2)
 return
 
 
@@ -1950,16 +2016,23 @@ return
 /* Generate fuse_defs for 'other' settings     */
 /* ------------------------------------------- */
 list_fuse_def_other: procedure expose Dev. jalfile
+flag_enabled = 0                                /* for checking of pair */
+flag_disabled = 0
 do i = arg(1) + 1 while i <= dev.0  &,
        (word(dev.i,1) = 'SETTING' | word(dev.i,1) = 'CHECKSUM')
   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
                          val1 'DESC' '=' '"' val2 '"' ')' .
   if val1 \= '' then do
     val1 = strip(val1)                          /* remove blanks */
-    if val2 = 'ON' then                         /* replace */
+    val2 = strip(val2)
+    if left(val2,6) = 'ENABLE' | val2 = 'ON' | val2 = 'ALL' then do
       val2 = 'ENABLED'
-    else if val2 = 'OFF' then                   /* replace */
+      flag_enabled = 1
+    end
+    else if left(val2,7) = 'DISABLE' | val2 = 'OFF' then do
       val2 = 'DISABLED'
+      flag_disabled = 1
+    end
     else if pos('ANALOG',val2) > 0 then
       val2 = 'ANALOG'
     else if pos('DIGITAL',val2) > 0 then
@@ -1973,6 +2046,8 @@ do i = arg(1) + 1 while i <= dev.0  &,
 
   end
 end
+if flag_enabled \= flag_disabled then               /* impaired */
+  say 'Warning: enable/disable impairment fuse_def' arg(2)
 return
 
 
@@ -2164,8 +2239,8 @@ call lineout jalfile, '--      operations, like:'
 call lineout jalfile, '--      . enable_digital_io()'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Sources:'
-call lineout jalfile, '--  -' DevFile
-call lineout jalfile, '--  -' LkrFile
+call lineout jalfile, '--  - x'substr(DevFile,2)         /* always derive 'x' */
+call lineout jalfile, '--  - x'substr(LkrFile,2)
 call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
 call lineout jalfile, '--  - Created with Dev2Jal Rexx script version' ScriptVersion
@@ -2207,7 +2282,7 @@ MaxSharedRAM = 0                                /* no shared RAM */
 x = list_shared_data_range()                    /* returns range string */
 /* - - - - - - - -  temporary? - - - - - - - - - - - - - - - - - */
 if MaxUnsharedRAM = 0  &  MaxSharedRAM > 0 then do      /* no unshared RAM */
-  say 'Warning:' PicName 'has only shared, no unshared RAM!'
+  say 'Warning:' PicName 'has only shared, no unshared RAM!'
   say '         Must be handled as exceptional chip!'
 end
 else if MaxSharedRAM = 0 then do                        /* no shared RAM */
@@ -2224,7 +2299,7 @@ else if MaxSharedRAM = 0 then do                        /* no shared RAM */
      PicName \= '16f874' & PicName \= '16f874a' &,
      PicName \= '16hv540'                        ,
   then do
-    say 'Warning:' PicName 'has no shared RAM!'
+    say 'Warning:' PicName 'has no shared RAM!'
     say '         May have to be handled as exceptional chip!'
   end
 end
@@ -2317,7 +2392,7 @@ return
 list_copyright_etc:
 listfile = arg(1)                               /* destination filespec */
 call lineout listfile, '--'
-call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2008,',
+call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2009,',
                        'all rights reserved.'
 call lineout listfile, '--'
 call lineout listfile, '-- Adapted-by:'
