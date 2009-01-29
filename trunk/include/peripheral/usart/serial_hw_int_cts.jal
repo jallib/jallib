@@ -1,7 +1,7 @@
 -- ----------------------------------------------------------------------
 -- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
 -- Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.
--- Adapted-by:
+-- Adapted-by: Joep Suijs
 -- Compiler: =2.4h
 --
 -- This file is part of jallib  (http://jallib.googlecode.com)
@@ -30,8 +30,14 @@
 --                                              -- returns the transmitted byte
 --  - serial_receive_byte(byte in <byte>) returns bit  -- receive byte
 --                                              -- returns TRUE with data,
---                                              -- FALSE when no data available
---
+--                                              -- FALSE when no data available    
+--  - serial_hw_read(byte out <byte>) return bit  -- receive byte
+--                                              -- returns TRUE with data,
+--                                              -- FALSE when no data available   
+--  - serial_hw_write(byte in <byte>)           -- send byte (wait if queue full)
+-- --                                             
+--  - serial_hw_data = <byte>                   -- send byte, wait if queue full
+--  - <byte> = serial_hw_data                   -- receive byte, wait if queue empty
 -- -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 --
 -- Directions for use of this library in application programs
@@ -152,6 +158,11 @@ var  byte  _serial_offsetxmttail                -- offset next byte to port
 var  byte  _serial_offsetrcvhead                -- offset next byte from port
 var  byte  _serial_offsetrcvtail                -- offset next byte to appl
 
+-- Declaration of internal flag
+var bit serial_send_success   -- serial_send_success is used internally to
+                              -- pass information from serial_send_byte to 
+                              -- serial_hw_write and serial_hw_data'put
+                              -- without breaking the serial_send_byte API.
 
 -- ----------------------------------------------------------------------
 --  UART - serial transmit interrupt handling
@@ -289,8 +300,6 @@ function  serial_receive_byte(byte out data) return bit is
    return serial_hw_read(data)
 end function
 
-var bit serial_send_succes -- serial_send_succes is introduced to create the same interface as
-                           -- serial_hardware while keeping the current interface.
 
 -- ----------------------------------------------------------------------
 --  Put a single byte in circular transmit buffer for UART
@@ -311,7 +320,7 @@ function  serial_send_byte(byte in data) return byte is
 
    var  byte  newxmthead                        -- offset in circular buffer
 
-   serial_send_succes = true                    -- indicate byte sent 
+   serial_send_success = true                   -- indicate byte sent 
  
    if (_serial_offsetxmthead == _serial_offsetxmttail  &  -- nothing buffered
        PIR1_TXIF == true) then                  -- and UART not busy
@@ -332,7 +341,7 @@ function  serial_send_byte(byte in data) return byte is
             end loop
             _serial_offsetxmthead = newxmthead  -- update offset
          else                                                        
-            serial_send_succes = false          -- indicate byte discarded
+            serial_send_success = false         -- indicate byte discarded
             data = 0x00                         -- indicate byte discarded
          end if
       end if
@@ -386,8 +395,8 @@ end procedure
 procedure serial_hw_data'put(byte in data) is
    var byte dummy
    
-   serial_send_succes = false
-   while (serial_send_succes == false) loop
+   serial_send_success = false
+   while (serial_send_success == false) loop
       dummy = serial_send_byte(data)
    end loop
       
@@ -404,8 +413,8 @@ end function
 procedure serial_hw_write(byte in data) is
    var byte dummy
    
-   serial_send_succes = false
-   while (serial_send_succes == false) loop
+   serial_send_success = false
+   while (serial_send_success == false) loop
       dummy = serial_send_byte(data)
    end loop
    
