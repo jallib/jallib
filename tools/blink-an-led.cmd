@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
  * Title: blink-an-led.cmd - Create and compile blink-an-LED samples.       *
  *                                                                          *
- * Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.    *
+ * Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.    *
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
@@ -40,9 +40,9 @@ if runtype = 'TEST' then do                     /* test mode */
   Options = '-Wall -s' Include                  /* compiler options */
 end
 else do                                         /* normal mode */
-  Include = 'k:/jallib/unvalidated/include/device/'   /* SVN include directory */
+  Include = 'k:/jallib/include/device/'         /* SVN include directory */
   Options = '-Wno-all -a nul -s' Include        /* no asm output */
-  dst = '\jallib\unvalidated\sample\by_device\' /* destination directory */
+  dst = '\jallib\sample\by_device\'             /* destination directory */
 end
 
 if selection = '' then
@@ -78,7 +78,7 @@ do i=1 to pic.0
   call lineout PgmFile, '-- ------------------------------------------------------'
   call lineout PgmFile, '-- Title: Blink-an-LED of the Microchip PIC'PicName
   call lineout PgmFile, '--'
-  call lineout PgmFile, '-- Author: Rob Hamerling, Copyright (c) 2008..2008, all rights reserved.'
+  call lineout PgmFile, '-- Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Adapted-by:'
   call lineout PgmFile, '--'
@@ -172,7 +172,7 @@ do i=1 to pic.0
       call SysFileSearch ' 'pinPQ' ', pic.i, pin.       /* search pin in device file */
       if pin.0 > 0 then do                              /* pin found */
         call SysFileSearch ' 'pinPQ'_direction', pic.i, tris.    /* search TRISx */
-        if tris.0 > 0 then do                                /* found */
+        if tris.0 > 0 then do                           /* found */
           call lineout PgmFile, 'var bit led           is' pinPQ '   -- alias'
           call lineout PgmFile, pinPQ'_direction = output'
           leave p
