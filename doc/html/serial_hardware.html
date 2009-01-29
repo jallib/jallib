@@ -51,13 +51,11 @@
 	<p>
 		<pre>USART hardware control.
 Routines for sending and receiving through the PIC-usart,
-both RS232 and SPI are supported (for SPI see spi_hardware.jal)
+both asynchrone and synchrone are supported.
 Baudrate can simply be set through a human constant,
 because the baudrate depending registers are calculated by this unit.
 Baudrate is calculated, starting at the high baudrate flag,
 which will ensure the highest possible accuracy.
-SPI routines are setup for more SPI-devices,
-in which case CS should be controled outside this unit.
 </pre>
 
 	</p>
@@ -67,9 +65,9 @@ in which case CS should be controled outside this unit.
 	
 	<b>Dependencies</b>
 	<p>
-		<i>No dependency found</i>
-	</p>
-	<br/>
+		<ul>
+			<li><a href="usart_common.html">usart_common</a></li>
+		</ul>
 
 
 			<br/>
@@ -113,14 +111,6 @@ in which case CS should be controled outside this unit.
 		</li>
 	</ul>
 
-	<i><small>Private</small></i>
-		<ul>
-		<li>
-				<b><code name="code" class="python"><a href="#fbc4399fa154b563eb2ae292bb279477">_calculate_and_set_baudrate()</a></code></b>
-		</li>
-	</ul>
-
-	<br/>
 
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>
@@ -135,6 +125,14 @@ in which case CS should be controled outside this unit.
 		</li>
 	</ul>
 
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#5c228a9dfc00e652d9bfcb0e66f488e2">_serial_hw_read(byte out data) return bit</a></code></b>
+		</li>
+	</ul>
+
+	<br/>
 
 
 			<br/>
@@ -145,7 +143,9 @@ in which case CS should be controled outside this unit.
 		<li>
 				<b><code name="code" class="python"><a name="e80cbd56e0db4e631e79e3a6e308cc49" href="#summary">var volatile bit serial_hw_data_available is PIR1_RCIF
 </a></code></b>
-				<p><i>No documentation found</i></p>
+				<p>	<pre>some variables made available under a general (pic-independant) name
+</pre>
+</p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="eb6c35235eaf81d6929b69ba86d2a9b5" href="#summary">var volatile bit serial_hw_data_ready is PIR1_TXIF
@@ -182,7 +182,7 @@ end if
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="c226cf7c88d829d242f6fa20db05aaa1" href="#summary">serial_hw_init()</a></code></b>
-				<p>	<pre>Initializes the RS232 port, calculates baudrate registers.
+				<p>	<pre>Initializes the serial port, calculates baudrate registers.
 </pre>
 </p>
 		</li>
@@ -195,11 +195,13 @@ The MSB is outputed first
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="8bd2c619e16d85ae1bee277645842959" href="#summary">serial_hw_write(byte in data)</a></code></b>
-				<p>	<pre>Asynchronuous RS232 send routine, using the TX pin
+				<p>	<pre>
+serial_hw_write - write char to serial port, blocking
+
+Asynchronuous serial send routine, using the TX pin
 Sends byte X (8 bit with no parity) to the serial port
 First checks (and waits if necessary) if transmit buffer is empty
 
-remark: PIR1-register (containing _TXIF-flag) must be in bank0 !!
 </pre>
 </p>
 		</li>
@@ -213,57 +215,30 @@ flag before using these functions
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="264dd60fd05fd46f4277464c644c0a93" href="#summary">serial_hw_enable()</a></code></b>
-				<p>	<pre>Enables USART (wether used as RS232 or SPI),
+				<p>	<pre>Enables USART
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="413f90937204bbfdb18553c6b6cd64e8" href="#summary">serial_hw_disable()</a></code></b>
-				<p>	<pre>Disables USART (wether used as RS232 or SPI),
-so ports can be used (temporary) for other purposes.
+				<p>	<pre>Disables USART so ports can be used (temporary) for other purposes.
 USART can be enabled again by calling serial_hw_enable()
 </pre>
 </p>
 		</li>
 	</ul>
 
-	<i><small>Private</small></i>
-		<ul>
-		<li>
-				<b><code name="code" class="python"><a name="fbc4399fa154b563eb2ae292bb279477" href="#summary">_calculate_and_set_baudrate()</a></code></b>
-				<p>	<pre>internal function, calculates and sets baudrate divider
-and stores it in the appropiate register.
-the high-speed / low-speed bit is not stored but returned as the result
-
-Special attention is payed to the highest and lowest baudrates,
-a deviation of 5% is accepted in these cases
-
-Asynchronous baudrate settings (see also page 74/75 of DS40300B):
-{{{
-if TXSTA_BRGH = 0 (low speed)
- SPBRG = ( Fosc / ( 64 * Baudrate ) ) -1
-
-if TXSTA_BRGH = 1 (high speed)
- SPBRG = ( Fosc / ( 16 * Baudrate ) ) -1
-}}}
-
-Synchronous baudrate settings:
- * TXSTA_BRGH = 0 (low speed)
- * SPBRG = ( Fosc / ( 4 * Baudrate ) ) -1
-
-</pre>
-</p>
-		</li>
-	</ul>
-
-	<br/>
 
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>
 		<li>
 				<b><code name="code" class="python"><a name="d634974eb95dab7b188c1f605747583a" href="#summary">serial_hw_read(byte out data) return bit</a></code></b>
-				<p>	<pre>Returns true if a character was received, otherwise returns false.
+				<p>	<pre>
+serial_hw_read - read char if available (non-blocking)
+   
+Returns true if a character was received, otherwise returns false.
 Overrun error flag is cleared.
+
 </pre>
 </p>
 		</li>
@@ -277,6 +252,23 @@ Overrun error flag is cleared.
 		</li>
 	</ul>
 
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="5c228a9dfc00e652d9bfcb0e66f488e2" href="#summary">_serial_hw_read(byte out data) return bit</a></code></b>
+				<p>	<pre>
+_serial_hw_read - internal use only!
+
+(using this inline function for serial_hw_data'get saves a stack level)
+Returns true if a character was received, otherwise returns false.
+Overrun error flag is cleared.
+
+</pre>
+</p>
+		</li>
+	</ul>
+
+	<br/>
 
 
 			<br/>
@@ -290,16 +282,37 @@ Overrun error flag is cleared.
 			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f648a/16f648a_serial_print.jal" target="_blank">16f648a_serial_print.jal</a></td>
 			</tr>
 			<tr>
+			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f648a/16f648a_i2c_sw_master_echo.jal" target="_blank">16f648a_i2c_sw_master_echo.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f648a/16f648a_random.jal" target="_blank">16f648a_random.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f648a/16f648a_i2c_sw_l1.jal" target="_blank">16f648a_i2c_sw_l1.jal</a></td>
 			</tr>
 			<tr>
+			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f648a/16f648a_serial_format.jal" target="_blank">16f648a_serial_format.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f77</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f77/16f77_adc_lowres.jal" target="_blank">16f77_adc_lowres.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>16f876a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f876a/16f876a_t6603.jal" target="_blank">16f876a_t6603.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f877a/16f877a_i2c_hw_l0.jal" target="_blank">16f877a_i2c_hw_l0.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f877a/16f877a_random.jal" target="_blank">16f877a_random.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f877a/16f877a_i2c_sw_l1.jal" target="_blank">16f877a_i2c_sw_l1.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f877a/16f877a_co2_t6603.jal" target="_blank">16f877a_co2_t6603.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f877a/16f877a_i2c_hw_slave_msg.jal" target="_blank">16f877a_i2c_hw_slave_msg.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f877a/16f877a_serial_hardware.jal" target="_blank">16f877a_serial_hardware.jal</a></td>
@@ -314,13 +327,22 @@ Overrun error flag is cleared.
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f877a/16f877a_print_serial_numbers.jal" target="_blank">16f877a_print_serial_numbers.jal</a></td>
 			</tr>
 			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f877a/16f877a_i2c_sw_master_echo.jal" target="_blank">16f877a_i2c_sw_master_echo.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f877a/16f877a_serial_print.jal" target="_blank">16f877a_serial_print.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_delay_basic.jal" target="_blank">16f88_delay_basic.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_serial_print.jal" target="_blank">16f88_serial_print.jal</a></td>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_serial_hardware.jal" target="_blank">16f88_serial_hardware.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_serial_hw_echo.jal" target="_blank">16f88_serial_hw_echo.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_print_serial_numbers.jal" target="_blank">16f88_print_serial_numbers.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_i2c_sw_l1.jal" target="_blank">16f88_i2c_sw_l1.jal</a></td>
@@ -329,25 +351,22 @@ Overrun error flag is cleared.
 			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_remember_me.jal" target="_blank">16f88_remember_me.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_serial_hw_echo.jal" target="_blank">16f88_serial_hw_echo.jal</a></td>
-			</tr>
-			<tr>
 			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_adc_lowres.jal" target="_blank">16f88_adc_lowres.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_i2c_sw_master_echo.jal" target="_blank">16f88_i2c_sw_master_echo.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_print_serial_numbers.jal" target="_blank">16f88_print_serial_numbers.jal</a></td>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_random.jal" target="_blank">16f88_random.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_serial_format.jal" target="_blank">16f88_serial_format.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_serial_hardware.jal" target="_blank">16f88_serial_hardware.jal</a></td>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_i2c_hw_slave_msg.jal" target="_blank">16f88_i2c_hw_slave_msg.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_i2c_hw_slave_echo.jal" target="_blank">16f88_i2c_hw_slave_echo.jal</a></td>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/by_device/16f88/16f88_serial_print.jal" target="_blank">16f88_serial_print.jal</a></td>
 			</tr>
 	</table>
 
