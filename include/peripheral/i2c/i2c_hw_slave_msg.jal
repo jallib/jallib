@@ -24,25 +24,30 @@
 -- prototype
 procedure i2c_process_message(byte in byte_count)
 
-const i2c_enable_start_stop_interrupts = 1
+const bit i2c_enable_start_stop_interrupts = true
 include i2c_hw_slave
 
 -- vars
 var byte i2c_index         -- i2c index (pointer)
-var byte i2c_datapresent   -- datapresent flag
+var bit  i2c_datapresent   -- datapresent flag
 var byte i2c_buffer[I2C_BUFFER_SIZE]
 
 procedure i2c_call_process_message() is
    pragma inline
    
    -- let user process buffer
-   if (i2c_datapresent == 1) then
-      var byte temp = i2c_index;
-      i2c_index = 0;
-      i2c_process_message(temp)
-      i2c_index = 0
-      i2c_datapresent = 0
+   if (i2c_datapresent == true) then
+
+      if(defined(i2c_debug) == true) then
+         queue01_nb = "@" 
+      end if
+
+      i2c_process_message(i2c_index)      
+      i2c_datapresent = false
+
    end if
+
+  i2c_index = 0
    
 end procedure
 
@@ -51,34 +56,34 @@ end procedure
 procedure i2c_hw_slave_on_error() is
    pragma inline
    -- Just tell user user something's got wrong
-;   forever loop
-;	  led = on
-;	  _usec_delay(200000)
-;	  led = off
-;	  _usec_delay(200000)
-;   end loop   
 
-;   queue01_nb = "#" 
-;   queue01_nb = "E" 
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "E" 
+   end if
 
 end procedure
 
 procedure i2c_hw_slave_on_start() is
    pragma inline
 
-;   queue01_nb = "#" 
-;   queue01_nb = "S" 
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "S" 
+   end if
                                   
 end procedure
 
 procedure i2c_hw_slave_on_stop() is
    pragma inline
 
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "P" 
+   end if
+
    -- let user process buffer
    i2c_call_process_message()
-
-;   queue01_nb = "#" 
-;   queue01_nb = "P" 
                                   
 end procedure
                                 
@@ -87,12 +92,14 @@ end procedure
 procedure i2c_hw_slave_on_state_1(byte in _trash) is
    pragma inline
 
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "1" 
+   end if 
+
    -- let user process buffer (there should not be one if the proper procedure is executed)
    i2c_call_process_message()
-
-;   queue01_nb = "#" 
-;   queue01_nb = "1" 
-
+   
 end procedure
 
 
@@ -100,16 +107,19 @@ end procedure
 procedure i2c_hw_slave_on_state_2(byte in rcv) is
    pragma inline
 
-   i2c_datapresent   = 1      -- Indicate we received data
-   -- prepare pointers
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "2" 
+   end if
+
+   i2c_datapresent   = true      -- Indicate we received data
+
+   -- store data
    i2c_buffer[i2c_index] = rcv  
 
    if (i2c_index < I2C_BUFFER_SIZE) then
       i2c_index = i2c_index + 1   -- point to next position
    end if
-
-;   queue01_nb = "#" 
-;   queue01_nb = "2" 
 
 end procedure
 
@@ -119,17 +129,18 @@ end procedure
 procedure i2c_hw_slave_on_state_3() is
    pragma inline
 
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "3" 
+   end if
+      
    -- let user process buffer
    i2c_call_process_message()
 
    -- send first byte to master
-   i2c_index = 0                          -- set pointer to buffer start
-   i2c_hw_slave_write_i2c(i2c_buffer[0])   -- send data 
+   i2c_hw_slave_write_i2c(i2c_buffer[0])  -- send first databyte
    i2c_index = 1                          -- point to next position
 
-;   queue01_nb = "#" 
-;   queue01_nb = "3" 
-      
 end procedure
 
 
@@ -138,15 +149,18 @@ end procedure
 procedure i2c_hw_slave_on_state_4() is
    pragma inline
 
-   -- let user process buffer
-   i2c_call_process_message()
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "4" 
+   end if
 
    -- This shouldn't occur in our i2c echo example
    i2c_hw_slave_write_i2c(i2c_buffer[i2c_index])    -- send data 
-   i2c_index = i2c_index + 1                    -- point to next position
 
-;   queue01_nb = "#" 
-;   queue01_nb = "4" 
+   if (i2c_index < I2C_BUFFER_SIZE) then
+      i2c_index = i2c_index + 1   -- point to next position
+   end if
+
 
 end procedure
 
@@ -156,9 +170,11 @@ end procedure
 procedure i2c_hw_slave_on_state_5() is
    pragma inline
    -- data = 0 
-   
-;   queue01_nb = "#" 
-;   queue01_nb = "5" 
+
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "5" 
+   end if
    
 end procedure
 
