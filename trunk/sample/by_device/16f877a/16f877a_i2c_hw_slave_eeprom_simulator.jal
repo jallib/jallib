@@ -7,25 +7,17 @@
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description: this sample shows how to implements an i2c hardware slave,
--- using the message interface lib. Basically, this i2c slave waits for
--- a full message to arrive and then calls a user routine to process the message and
--- (optional) prepare a response.
+-- using the message interface lib. It has the same interface* as an 24lc256 i2c eeprom
+-- and supports 32 bytes of memory. This means it can be used with the i2c master 
+-- samples: i2c_sw_l1 and i2c_hw_l1.
 -- --
--- Conventions:
--- S = create (re)start state
--- P = create stop state
--- E4W = master writes 0x4E
--- R   = master reads and ACKs
--- N   = master reads and NACKs
--- --
--- s5Cw80ws5Dwrnp - reads application code and version (0x31 0x01)
--- s5Cw90w00wp    - LED off
--- s5Cw90wFFwp    - LED on 
--- --
+-- (* the slave does behave similar as far as the test is concerned. It does however 
+-- store the data in ram and the memory pointer behaves different, so read without 
+-- previous setting the desired address gives unpredictable results.)
 --
--- This file has been generated on 01/31/09 19:31:34, from:
+-- This file has been generated on 01/31/09 19:31:33, from:
 --    * board: board_16f877a_dwarf.jal
---    * test : test_i2c_hw_slave_msg.jal
+--    * test : test_i2c_hw_slave_eeprom_simulator.jal
 --
 
 
@@ -52,8 +44,16 @@ serial_hw_init()
 
 include print
 
-const byte str1[] = "Test i2c hardware slave - msg interface.\r\n"   -- define a string
+const byte str1[] = "Test i2c hardware slave - msg interface Eeprom sim interface.\r\n"   -- define a string
 print_string(serial_hw_data, str1)                 -- output string
+
+-- for debug only!
+-- const bit i2c_debug = true -- value does not care, the existence of the const enables debug
+if(defined(i2c_debug) == true) then
+   const byte  queue01_size = 80
+   include queue01
+   queue01_clear()
+end if
                              
 -- ---------------
 -- setup i2c slave 
@@ -66,10 +66,13 @@ include i2c_hw_slave_msg
 -- => 0b_0101_110   : 7-bits address
 -- =>            0  : 8th bit is to specify read or write operation. 
 --                    Value can be anything, it does not matter while init
-const byte SLAVE_ADDRESS = 0x5C
+const byte SLAVE_ADDRESS = 0xA0
 i2c_hw_slave_init(SLAVE_ADDRESS) 
 
 
+-- simulated memory 
+var volatile byte memory[32];
+var volatile word address_pointer = 0;
 
 -- --------------------------------------------------------------------
 -- i2c_process_message - User code for i2c slave
@@ -80,37 +83,35 @@ i2c_hw_slave_init(SLAVE_ADDRESS)
 -- each messagae.       
 -- --------------------------------------------------------------------
 procedure i2c_process_message(byte in byte_count) is
-   if (i2c_buffer[0] == 0x80) then     
+   var byte i
    
-      if (byte_count == 1) then
-         -- cmd 0x80 - request version
-         i2c_buffer[0]   = 0x3C         -- application code
-         i2c_buffer[1]   = 0x01         -- version
+   if (byte_count >= 2) then
+      -- this should always be the case - we want at least a 2-byte address.
+      address_pointer = word(i2c_buffer[0]) * 256 + word(i2c_buffer[1])
+                  
+      if (byte_count > 2) then
+         -- there are bytes to store
+         i = 2
+         for (byte_count - 2) loop
+
+            if(defined(i2c_debug) == true) then
+               queue01_nb = "&" 
+               print_byte_hex(queue01_nb, i2c_buffer[i])
+            end if
+
+            memory[(address_pointer & 0x1F)] = i2c_buffer[i]
+            i = i + 1
+            address_pointer = address_pointer + 1
+         end loop
       end if
-   
-   elsif (i2c_buffer[0] == 0x90) then             
-      
-      if (byte_count == 2) then
-         -- cmd 0x90 - turn LED off or on
-         if (i2c_buffer[1] == 0) then
-            LED = off
-         else
-            LED = on
-         end if
-      elsif (byte_count == 1) then
-         -- cmd 0x90 without params: request for led status
-         if (LED) then
-            i2c_buffer[0] = 0xFF
-         else
-            i2c_buffer[0] = 0x00
-         end if               
-      end if
-      
+
+      -- now prepare buffer in case the master wants to read back
+      for 32 using i loop 
+         i2c_buffer[i] = memory[((address_pointer + i)& 0x1F)] 
+      end loop      
    end if
-
+   
 end procedure
-
-
 
 
 -- blink a little to tell the world we're up
@@ -121,7 +122,24 @@ for 4 loop
    _usec_delay(100000)
 end loop
 
+var byte ch
+
 -- just loop until interrupt is raised
 forever loop        
+   
+   if(defined(i2c_debug) == true) then
+      -- dump data from isr to serial port
+      ch = queue01_nb
+      if (ch != 0) then serial_hw_data = ch end if
+   end if
+
+   if (serial_hw_read(ch) == true) then
+      serial_hw_data = "!"
+      for 32 using ch loop
+         print_byte_hex(serial_hw_data, memory[ch])
+         serial_hw_data = " "
+      end loop
+      print_crlf(serial_hw_data)
+   end if
    
 end loop
