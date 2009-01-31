@@ -67,7 +67,7 @@ export:
 	echo ${VERSION} > distrib/jallib-all_devices-${VERSION}/VERSION
 	# get clean source from repos
 	# (svn export gets the sources, but without any .svn dir (no svn metadata)
-	svn export http://jallib.googlecode.com/svn/trunk/unvalidated distrib/jallib-export
+	svn export http://jallib.googlecode.com/svn/trunk distrib/jallib-export
 	# license is common for both svn and release
 	svn export -N http://jallib.googlecode.com/svn/trunk distrib/jallib-extra
 	# get readme for the release (force because target dir already exists)
