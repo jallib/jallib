@@ -10,7 +10,7 @@
 
 all : clean test
 
-VERSION=dev
+VERSION=0.2.0
 SAMPLIR_DIR=../sample
 INCLUDE_DIR=../include
 
