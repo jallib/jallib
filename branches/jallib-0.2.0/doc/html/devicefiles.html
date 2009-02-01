@@ -1,0 +1,589 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+  <title>Device File Users Guide</title>
+  <meta http-equiv="content-type" content="text/html; charset=US-ASCII">
+  <meta name="author" content="Rob Hamerling">
+  <meta name="description" content="Device File Users Guide">
+  <meta name="copyright" content="Copyright (c) Rob Hamerling 2008..2009, All rights reserved">
+  <meta name="project" content="This file is part of jallib  http://jallib.googlecode.com">
+  <meta name="license" content="Released under the BSD license"
+                             "http://www.opensource.org/licenses/bsd-license.php">
+  <meta name="compiler" content="2.4">
+  <link rel="stylesheet" href="jallib.css" type="text/css">
+</head>
+<body LANG="en-US" DIR="LTR">
+
+<h1>JalV2 Device Files</h1>
+<p><center>by Rob Hamerling</center>
+
+<h2>Introduction</h2>
+
+<p>When I started with JAL it struck me that there were so few JALV2 include
+files, in particular not for some of my favorite PICmicros (e.g. 16F690,
+12F683).
+Unfortunately the output of INC2JAL for these chips caused compile-time
+errors with my programs and I was informed that INC2JAL is not up-to-date
+for JalV2.
+I realized that more people would be in the same position like me.
+Having some experience with scanning MPLAB files (for my Xwisp2 program)
+I decided to make script to generate the required include files, not only
+for the PICs for which I needed the include files, but for all PICs
+supported by the JalV2 compiler!
+
+<p> The advantages of using a script to generate files are obvious,
+such as:
+<ul>
+<li>creation of device files for all PICmicros available in MPLAB
+<li>automatic update for new chips and corrections in new versions of
+MPLAB
+<li>consistent layout
+<li>consistent naming convention
+<li>no typing errors
+</ul>
+
+<p>The advantages of a standard naming convention are also obvious:
+<ul>
+<li>Easy migration of a program from one target PICmicro to another.
+<li>Same for libraries using this naming convention.
+</ul>
+
+<p>This document gives some design and user information about these JalV2
+device files.
+The sources of information are the xxxx.dev files and xxxx.lkr of MPLAB,
+supplemented and corrected with information in the datasheets.
+
+<hr>
+<h1>The Overall Picture</h1>
+<p>With the design of the device files I had in mind a structure as shown
+below.
+In the meantime these files have become part of the central JalV2 library
+repository <a href="http://jallib.googlecode.com/">JalLib</a> at
+code.google.com.
+The Jallib structure is similar, but has its own standards.
+<pre>
+                      +----------+   +------------------+
+                      | device   |   |     general      |
+                      | specific |---|     include      |
+                      | include  |   |chipdef_jallib.jal|
+                      +----------+   +------------------+
+                           |
+           +---------------+---------------+-------------
+           |               |               |
+     +----------+    +----------+    +----------+    +-------
+     | function |    | function |    | function |    |
+     | include  |    | include  |    | include  |    |   etc
+     |'delay_..'|    | 'adc_...'|    |'lcd_....'|    |
+     +----------+    +----------+    +----------+    +-------
+</pre>
+
+
+<h2>Device Files</h2>
+
+<p>This is the base for other include files and contains:
+<ul>
+<li>An include statement for the common include file 'chipdef_jallib'
+<li>CPU type specification (12-, 14- or 16-bits core).
+<li>Program memory size specification.
+<li>Data memory (EEPROM) location and size specification.
+<li>Configuration (fuses) and ID memory specification.
+<li>Specification of General Purpose Register (GPR, RAM) location range and
+sharing.
+<li>Declaation of Special Function Register (SFR) address and mirror adresses,
+alias names and bit naming.
+<li>Declaration of procedures and functions for shadowing of I/O ports.
+<li>Declaration of symbolic names for configuration bits (fuses).
+<li>Procedures to switch the ports to digital I/O.
+</ul>
+
+<h2>Common Include File 'chipdef_jallib.jal'</h2>
+
+<p>The file 'chipdef_jallib.jal' which comes with these device files
+replaces the file 'chipdef.jal' which comes with the compiler distribution.
+It is included by each of the device files and contains:
+<ul>
+<li>Constants required by the compiler.
+<li>Commonly used constants for the device files and other libraries.
+</ul>
+
+<p>With the statement 'pragma target chip = .....' in every device file the
+compiler assigns a value to the variable 'target_chip'.
+The program may reference this variable with a symbolic name.
+This symbolic name consists of 'pic_' followed by the type of the PIC,
+which makes it possible to use the same source file to generate a hex file
+for different types of PICs, as the following example shows:
+
+<pre>
+    include 16f88
+
+    if (target_chip == PIC_16F88) then          -- (not for 16f87)
+
+      ....                                      -- 16F88 unique code
+
+    end if
+</pre>
+
+<p>By changing the include statement to 16f87 (or any other) the statements
+between 'if' and 'end if' will be skipped by the compiler.
+
+<p>The list of targets in chipdef_jallib.jal makes sure that every possible
+target name and the corresponding value of target_chip is known by the
+compiler.
+
+<p>Note: The original chipdef.jal file of the compiler package
+specifies different and not all values for 'target_chip' and therefore it
+has to be replaced when using this set of device files.
+
+
+<h2>Function Include Files</h2>
+
+<p>Function specific include files can be included as required by the
+application program.
+In most cases these include files require some statements to couple function
+specific registers and pins with the device.
+See the corresponding libraries and accompanying documentation for
+instructions.
+Frequently you can find user instructions as comments in the header of
+include files and just before the procedures and functions in these files.
+
+
+
+<hr>
+
+<h1>User Information</h1>
+
+<h2>Sample program</h2>
+
+<p>The device files define static device (PICmicro) specific matter.
+This allows writing elementary programs, such as for a blinking LED, which
+become practically device independent.
+
+<p>The device files are also the base for extensions, such as
+libraries for more complicated functions like displaying text on an LCD
+display or handling analog devices.
+
+<p>Below a simple blink-an-LED program (LED on pin 1 of Port A) for a
+PIC16F886 using a 20 MHz resonator. In addition to the device-specific
+information obtained from the include file '16f886.jal' some run-time
+iformation is needed, like the speed and type of the oscillator and some
+other 'environmental' variables. No extra function libraries are required.
+
+<pre>
+-- ------ Blink-an-LED on pin A1 of a PIC16F886 --------
+
+  include 16f886                        -- target is a PIC16F886
+                                        -- Notes: - The extension .jal is
+                                        --          added by the compiler!
+                                        --        - No other includes needed.
+
+  pragma target clock 20_000_000        -- oscillator frequency (in Hz)
+                                        -- required for delays
+
+  pragma target OSC         HS          -- high speed external oscillator
+  pragma target WDT         Disabled    -- watchdog off
+  pragma target MCLR        External    -- external chip reset
+  pragma target LVP         Disabled    -- no low voltage programming
+
+  enable_digital_io()                   -- disable analog module(s)
+
+  var volatile bit led           is pin_A1     -- define alias for pin_A1
+  var volatile bit led_direction is pin_A1_direction
+
+  led_direction = output                -- make LED-pin output
+  forever loop                          -- endless loop
+    led = on                            -- there is light!
+    _usec_delay(250000)                 -- spin 1/4 seconds
+    led = off                           -- flip (on-&gt;off,off-&gt;on)
+    _usec_delay(250000)                 -- spin 1/4 seconds
+  end loop
+
+</pre>
+
+<p>When loaded in a 16F886 with 20 MHz resonator or crystal an LED connected
+(with series resistor!) to pin 3 (RA1) should blink twice a second.
+
+<h2>Naming conventions for Ports and Pins</h2>
+
+<p>Unfortunately MPLAB of Microchip is not particularly consistent in its
+choice of names!
+The datasheets and various informational files in MPLAB not infrequently use
+different names for the same entity!
+Since application programmers are supposed to read the datasheets, the most
+obvious would be to use the datasheet names, but these are not part of MPLAB
+and would have to be downloaded separately.
+And these PDF files are not so easily processed with a script.
+So the chosen names are possibly not to what you may be familiar with.
+
+<p>For all registers of the chip a name is defined and where appropriate
+also the individual bits or groups of bis are declared.
+Also some popular aliases for registers are defined, for example: TMR0IF and
+T0IF, TMR0IE and T0IE, etc.
+
+<p>For all ports and port pins a device independent alias is defined and a
+similar direction definition, as the following examples show:
+
+<h3>PORTA and TRISA</h3>
+<pre>
+  var  volatile  byte  PORTA  at  &lt;addr&gt;
+  var            byte  PORTA_low                 -- low order nibble
+  var            byte  PORTA_high                -- high order nibble
+  var  volatile  bit   pin_A0  at  PORTA : 0
+  var  volatile  byte  TRISA  at  &lt;addr&gt;
+  var  volatile  byte  PORTA_direction at TRISA
+  var  volatile  bit   pin_A0_direction at TRISA : 0
+</pre>
+<p>etc. (for all other existing pins and ports)
+
+<h3>GPIO and TRISIO (with the smaller chips)</h3>
+<pre>
+  var  volatile  byte  GPIO   at  &lt;addr&gt;
+  var  volatile  byte  PORTA  at  GPIO
+  var            byte  PORTA_low                -- low order nibble
+  var            byte  PORTA_high               -- high order nibble
+  var  volatile  bit   pin_A0  at  GPIO : 0
+  var  volatile  byte  TRISIO  at &lt;addr&gt;
+  var  volatile  byte  TRISA  at  TRISIO
+  var  volatile  byte  PORTA_direction at TRISIO
+  var  volatile  bit   pin_A0_direction at TRISIO : 0
+</pre>
+<p>etc. (for all other existing pins)
+
+<p>Also some procedures and functions are defined to read and set the lower
+and upper nibbles of ports and their direction:
+<pre>
+  PORTx_low             - bits 0..3
+  PORTx_high            - bits 4..7
+  PORTx_low_direction
+  PORTx_high_direction
+</pre>
+
+<p>Notes:
+<ol>
+<li>When you have used Jal before you may notice some differences in naming
+convention:
+  <ul>
+  <li>PORTA is used consistently, while previously PORT_A was a
+      popular naming convention especially for PORT_A_low/high,
+      PORT_A_direction, etc.
+      For individual pins the convention 'pin_Ax' is maintained.
+  <li>Subfields of registers have the registername as prefix, like
+      <br>var volatile bit  INTCON_GIE  at INTCON : 7
+  </ul>
+<li>See the extra alias declarations for the GPIO and TRISIO registers
+    and their bits. Programs and function libraries can access the
+    GPIO bits with PORTA and pin_Ay names, making it possible to
+    use libraries across a large collection of PICmicros.
+</ol>
+
+<h3>MSSP modules</h3>
+<p>Names of registers of MSSP modules have been normalized as follows:
+<p>
+<ul>
+<li>MSSP module of midrange PICs
+<pre>
+       SSPADD
+       SSPBUF
+       SSPCON   - first or only control register
+       SSPCON2  - second control register (if present)
+       SSPSTAT
+</pre>
+<li>First or only MSSP module of 18F family:
+<pre>
+       SSP1ADD
+       SSP1BUF
+       SSP1CON  - first or only control register
+       SSP1CON2 - second control register (if present)
+       SSP1MASK
+       SSP1STAT
+</pre>
+<li>Second MSSP module of 18F family
+<pre>
+       SSP2ADD
+       SSP2BUF
+       SSP2CON  - control register second module
+       SSP2CON2 - second control register (if present)
+       SSP2STAT
+</pre>
+</ul>
+
+<h2>Special Features</h2>
+
+<p>The device files contain a number of special procedures for the
+convenience of a JAL programmer.
+Most procedures are in the form of a pseudo variable, some are 'normal'
+procedures.
+Pseudo variables a available for TRISA, TRISB and TRISC and corresponding
+pins for the baseline series of PICmicros.
+This means for example that
+<pre>
+   pin_A2_direction = output
+</pre>
+can be used even though these PICs have no TRISA register.
+
+<h2>About Port Shadowing</h2>
+
+<p>Port shadowing is a technique to prevent the Read-Modify-Write problem
+with I/O ports of PICmicro's.
+This is a problem related to its hardware design and may occur when a read
+of a port is immediately followed by writing to that port.
+With port shadowing a RAM location is used as replacement for the port.
+Reading is done from the port directly.
+Writing is done to the shadow register and then its contents flushed to the
+real port.
+
+<p>With these device files shadowing is automatic, as long
+as you use the following names:
+<pre>
+  PORTx          - all bits of port x
+  PORTx_low      - low order nibble of port x (bits 3..0)
+  PORTx_high     - high order nibble of port x (bits 7..4)
+  pin_xy         - single bit 'y' of port 'x'
+</pre>
+(in which 'x' is a port-letter and 'y' a bit number).
+
+<p>If you want to use other names for pins or nibbles or the whole port you
+can specify an alias.
+For example when you have a red LED connected to pin 0 of PortA, you could
+specify:
+<pre>
+  var  bit led_red is pin_A0
+</pre>
+and use 'led_red = on' or 'led_red = off' in your program.
+
+<p>You should avoid direct pin and I/O port manipulation, because it will be
+overruled by the automatic shadowing mechanism. For example do not specify:
+<pre>
+  var bit led_red at portA : 0
+</pre>
+
+With this specification a 'led-red = on' will have the desired result, but
+it will not update the shadow register.
+Any next operation which uses the shadowing mechanism will override the
+previous direct control operation.
+
+<p>Shadowing is also bypassed when you initialise the alias with the
+declaration.
+So declaring and initialising an alias as follows:
+<pre>
+  var  bit led_red is pin_A0 = off
+</pre>
+is bad practice!
+Initialize an alias separatedly after the declaration.
+
+<h2>Naming convention for configuration bits (fuses)</h2>
+
+<p>The configuration bits or groups of bits is such a large variety that it
+is almost impossible to obtain a naming convention which covers it all.
+<ul>
+<li>For all implemented configuration bits an option name and two or more
+tags are defined, but the chosen names may not always be intuitive or
+convenient.
+Some are very long!
+<li>When the compiler stalls over a fuse-def line a correction should
+be applied.
+If you encounter such occasion please reports such cases in the Jallib group
+at Google Groups or Jallist at Yahoo! groups.
+<li>For the most popular configuration bits a 'standard' option name is
+defined, along with a 'standard' tag, see the list below.
+</ul>
+
+<p>Only for the oscillator specification the MPLAB information files contain
+more than 140 different descriptions!
+Because of synonyms this number could be normalized to a much smaller
+number!
+The first part is the oscillator type, the [optional] second part indicates
+a related subfunction.
+For example it may indicate if the OSC2 pin is CLKOUT or I/O, or if PLL is
+active for the 18F series.
+Descriptions in MPLAB which do not fit in the normalization scheme are copied
+almost literally.
+
+<h3>Fuse_Def OSC  (oscillator)</h3>
+<pre>
+      LP              - Low Power crystal on OSC1,OSC2
+      XT              - Crystal or Resonator on OSC1,OSC2
+      HS              - High Speed Crystal or Resonator on OSC1,OSC2
+      HS_PLL          - as HS, PLL active
+      EC_CLKOUT       - External Clock (TTL) signal on OSC1, OSC2 is ClockOut
+      EC_NOCLKOUT     - External Clock (TTL) signal on OSC1, OSC2 is I/O
+      EC_PLL          - as EC, PLL active
+      RC_CLKOUT       - RC oscillator on OSC1, OSC2 is ClockOut
+      RC_NOCLKOUT     - RC oscillator on OSC1, OSC2 is I/O
+      EXTOSC_CLKOUT   - External oscillator on OSC1, ClockOut on OSC2
+      EXTOSC_NOCLKOUT - External oscillator on OSC1, OSC2 is I/O
+      INTOSC_CLKOUT   - Internal oscillator, OSC1 is I/O, ClockOut on OSC2
+      INTOSC_NOCLKOUT - Internal oscillator, OSC1 and OSC2 are I/O
+      (other keywords may be used as well)
+</pre>
+
+<h3>Fuse_Def WDT  (watchdog)</h3>
+<pre>
+      ENABLED          - Watchdog enabled
+      DISABLED         - Watchdog disabled
+</pre>
+
+<h3>Fuse_Def WDTPS  (Watchdog postscaler)</h3>
+<pre>
+      P32768           -  1 : 32,768
+      P16384           -  1 : 16,384
+      P...             -  1 : ...
+      P..              -  1 : ..
+      P2               -  1 : 2
+      P1               -  1 : 1
+</pre>
+
+<h3>Fuse_Def MCLR  (reset)</h3>
+<pre>
+      EXTERNAL         - /MCLR pin enabled
+      INTERNAL         - /MCLR pin is digital I/O
+</pre>
+
+<h3>Fuse_Def PWRTE  (power reset timeout)</h3>
+<pre>
+      ENABLED          - Power up timer enabled
+      DISABLED         - Power Up timer disabled
+</pre>
+
+<h3>Fuse_Def BROWNOUT  (Brown Out detect)</h3>
+<pre>
+      ENABLED          - BOD enabled, SBOREN disabled
+      RUNONLY          - BOD enabled in run, disabled in sleep
+      CONTROL          - SBOREN controls BOR function
+      DISABLED         - BOD and SBOREN disabled
+</pre>
+
+<h3>Fuse_Def VOLTAGE  (Brown Out voltage)</h3>
+<pre>
+      V20              - 2.0 Volt
+      V27              - 2.7 Volt
+      V42              - 4.0 Volt
+      V45              - 4.5 Volt
+      ...  etc (whatever voltages are applicable)
+</pre>
+
+<h3>Fuse_Def LVP  (Low Voltage Programming)</h3>
+<pre>
+      ENABLED          - LVP on, enabled
+      DISABLED         - LVP off, disabled
+</pre>
+
+<h3>Fuse_Def CP  (Code Protection)</h3>
+<pre>
+      ENABLED          - Code protection on, enabled
+      DISABLED         - Code Protection off, disabled
+</pre>
+
+<h3>Fuse_Def CPD  (EEPROM Data Protection)</h3>
+<pre>
+      ENABLED          - Data Protection on, enabled
+      DISABLED         - Data Protection off, disabled
+</pre>
+
+<h3>Fuse_Def IOSCFS  (Internal Oscillator Frequency Select)</h3>
+<pre>
+      F4MHZ            - 4 MHz
+      F8MHZ            - 8 MHz
+</pre>
+
+<p><b>Notes:</b>
+<ol>
+<li>In addition to these 'standard' fuse_defs above there may be others,
+depending on the features of the specific PICmicro.
+Please read the device file to see which fuse-defs are available for your
+target PICmicro.
+<li>The terms 'Enabled' and 'Disabled' may need to be specified where
+usually 'On' and 'Off' are used.
+</ol>
+
+<p>When a fuse_def statement causes compile-time error messages you may
+simply delete it and specify the fuse-word(s) or -byte(s) explicitly with
+bit patterns in stead of using fuse option pragma statements.
+For example for the PIC16F690 the following group of statements:
+<pre>
+   pragma target OSC       HS
+   pragma target WDT       Disabled
+   pragma target PWRTE     Enabled
+   pragma target MCLR      External
+   pragma target CP        Disabled
+   pragma target CPD       Disabled
+   pragma target BROWNOUT  Enabled
+   pragma target IESO      Disabled
+   pragma target FCMEN     Disabled
+</pre>
+is equivalent with:
+<pre>
+   pragma target fuses   0b11_0011_1110_0010
+</pre>
+
+<p>PICs with 16-bits core (the 18F series) have such a large variety of
+configuration bits that explicit specification is probably the best way to
+make sure all configuration bits are set correctly for your program.
+As an example see the following list for a simple blink-a-LED program
+with an 18F242.
+<pre>
+  pragma  target fuses 0  0b0000_0000       -- (n/a)
+  pragma  target fuses 1  0b0010_0010       -- not switchable, HS osc, no PLL
+  pragma  target fuses 2  0b0000_0001       -- BOR disabled, PWTR disabled
+  pragma  target fuses 3  0b0000_0000       -- watchdog disabled
+  pragma  target fuses 4  0b0000_0000       -- (n/a)
+  pragma  target fuses 5  0b0000_0001       -- CCP2 on RC1
+  pragma  target fuses 6  0b1000_0001       -- no bg debug, no LVP, STVREN
+  pragma  target fuses 7  0b0000_0000       -- (n/a)
+  pragma  target fuses 8  0b0000_1111       -- no code protection
+  pragma  target fuses 9  0b1100_0000       -- no data protection
+  pragma  target fuses 10 0b0000_1111       -- no code write protection
+  pragma  target fuses 11 0b1110_0000       -- no other write protection
+  pragma  target fuses 12 0b0000_1111       -- no table read protection
+  pragma  target fuses 13 0b0100_0000       -- no boot block write protect
+</pre>
+
+<p>Notes:
+<ol>
+<li>All pragma statements must be specified after the include statement of
+the device file.
+<li>When a PIC has multiple configuration words or bytes the index value
+of the word or byte must be specified before the value.
+<li>The device file contains a fuses specification for the compiler:
+how many words/bytes and their corresponding memory addresses.
+</ol>
+
+<p>The meaning of configuration bits can in most cases be found in the
+DataSheet of the specific chip, in the section 'Special Features of the
+CPU'.
+This info can certainly be found in the Programming Specifications of the chip.
+For your convenience the MicroChip document numbers are mentioned in the
+heading of the device files.
+
+<hr>
+
+<h2>Miscellaneous</h2>
+
+<p>These device files are part of the central JalV2 repository 'Jallib'
+(http://jallib.googlecode.com).
+Other libraries of Jallib have been or are being converted to use the names
+in these device files.
+You are strongly recommended to use only this combination of include files.
+Using these device files in combination with other libraries may cause
+problems, especially with libraries for the old (pre JalV2) compiler.
+
+<ul>
+
+<li>Bank switching functions are not needed with JalV2 and do not appear in
+the device files.
+This may cause compile-time errors when using programs or libraries which
+still use these procedures.
+You must remove these bank switching functions from your programs and
+libraries!
+
+<li>The device specific include files are generated from the MPLAB .dev and
+.lkr files.
+This may cause confusion or even conflicts because the register and bit
+names are not always identical to those in the datasheets!
+Apart from that MPLAB is not errorfree, consequently include files generated
+from this source are not guaranteed errorfree too!
+
+<li>The naming convention of ports and subfields maybe different, you may
+have to convert the other libraries.
+
+</body>
+</html>
