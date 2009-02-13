@@ -1016,7 +1016,9 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
           else if s.j < 8 then do                       /* sub field */
             field = reg'_'n.j
             if field = 'OSCCON_IOSCF' then              /* wrong name */
-              field = 'OSCCON_ICRF'                     /* datasheet name */
+              field = 'OSCCON_IRCF'                     /* datasheet name */
+            else if field = 'OSCCON_IRFC' then          /* wrong name */
+              field = 'OSCCON_IRCF'                     /* datasheet name */
             if duplicate_name(field,reg) = 0 then do    /* unique */
               call lineout jalfile, 'var volatile bit*'s.j,
                     left(field,20) 'at' reg ':' offset - s.j + 1
