@@ -28,7 +28,7 @@
 /*   - The script contains some test and debugging code.                    */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.56'                   /*                          */
+   ScriptVersion   = '0.0.57'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4i'                   /*                          */
 /* ------------------------------------------------------------------------ */
@@ -36,7 +36,7 @@
 mplabdir = 'k:/mplab820/'                       /* MPLAB base directory     */
 devdir   = mplabdir'mplab_ide/device/'          /* dir with .dev files      */
 lkrdir   = mplabdir'mpasm_suite/lkr/'           /* dir with .lkr files      */
-dstdir   = '/jallib/include/device/'            /* default destination    */
+dstdir   = '/jallib/include/device/'            /* default destination      */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
 say 'Creating JALV2 include files for PIC specifications ...'
@@ -1013,15 +1013,15 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
             end
             offset = offset - 1                         /* next bit */
           end
-          else if s.j < 8 then do                       /* part of byte */
-            if s.j > 1 then do                          /* multi-bit */
-              field = reg'_'n.j
-              if duplicate_name(field,reg) = 0 then do  /* unique */
-                call lineout jalfile, 'var volatile bit*'s.j,
-                      left(field,20) 'at' reg ':' offset - s.j + 1
-              end
-              offset = offset - s.j
+          else if s.j < 8 then do                       /* sub field */
+            field = reg'_'n.j
+            if field = 'OSCCON_IOSCF' then              /* wrong name */
+              field = 'OSCCON_ICRF'                     /* datasheet name */
+            if duplicate_name(field,reg) = 0 then do    /* unique */
+              call lineout jalfile, 'var volatile bit*'s.j,
+                    left(field,20) 'at' reg ':' offset - s.j + 1
             end
+            offset = offset - s.j
           end
           else if s.j > 8 then do                       /* multi-byte */
             field = reg'_'n.j
