@@ -172,7 +172,7 @@ var volatile byte lcd_pos = 0
 
 
 procedure lcd_writechar(byte in data) is
-   pragma inline
+;   pragma inline
    _lcd_write_data(data)
 end procedure
 
@@ -199,10 +199,10 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure lcd_new_line_cursor_position(byte in line, byte in pos) is
   pos = pos -1
-  if lcd_number_of_display_lines == 1 then
+  if LCD_ROWS == 1 then
     lcd_pos = pos
 
-  elsif lcd_number_of_display_lines == 2 then
+  elsif LCD_ROWS == 2 then
     if line == 1 then
        lcd_pos = pos
     else
@@ -231,7 +231,6 @@ procedure lcd_shift_left(byte in nr) is
   if nr != 0 then
       for nr loop
           _lcd_write_command( lcd_display_shift_left )
-          delay_10us( lcd_short_delay )
       end loop
   end if
 end procedure
@@ -244,7 +243,6 @@ procedure lcd_shift_right(byte in nr) is
   if nr != 0 then
       for nr loop
           _lcd_write_command( lcd_display_shift_right )
-          delay_10us( lcd_short_delay )
       end loop
   end if
 end procedure
@@ -257,7 +255,6 @@ procedure lcd_cursor_shift_left(byte in nr) is
   if nr != 0 then
       for nr loop
           _lcd_write_command( lcd_cursor_shift_l_val )
-          delay_10us( lcd_short_delay )
       end loop
   end if
 end procedure
@@ -270,7 +267,6 @@ procedure lcd_cursor_shift_right(byte in nr) is
   if nr != 0 then
       for nr loop
           _lcd_write_command( lcd_cursor_shift_r_val )
-          delay_10us( lcd_short_delay )
       end loop
   end if
 end procedure
@@ -281,7 +277,7 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure lcd_clearscreen()  is
          _lcd_write_command( lcd_clear_display )
-         delay_10us( lcd_long_delay )
+         delay_10us( 180 )
 end procedure
 -- ----------------------------------------------------------------------------
 
@@ -306,7 +302,7 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure lcd_home()  is
          _lcd_write_command( lcd_return_home )
-         delay_10us( lcd_long_delay )
+         delay_10us( 180 )
 end procedure
 -- ----------------------------------------------------------------------------
 
@@ -323,7 +319,7 @@ procedure lcd_clear_line( byte in line  ) is
 
   -- now fill line with spaces
   for 39 loop
-    lcd_writechar( " " )
+    lcd = " "
   end loop
 
   -- set LCD back to normal operation
@@ -339,10 +335,10 @@ end procedure
 -- -----------------------------------------------------------------------------
 procedure lcd_progress(byte in line, byte in amount, byte in pattern) is
 
-  if lcd_number_of_display_lines == 1 then
+  if LCD_ROWS == 1 then
     lcd_pos = pos
 
-  elsif lcd_number_of_display_lines == 2 then
+  elsif LCD_ROWS == 2 then
     if line == 1 then
        lcd_pos = 0
     else
@@ -359,15 +355,40 @@ procedure lcd_progress(byte in line, byte in amount, byte in pattern) is
   lcd_restore_cursor
 
   for amount loop
-      lcd_writechar( pattern )
+      lcd = pattern
   end loop
   
-  for ( lcd_number_of_display_characters - amount) loop
-        lcd_writechar( " " )
+  for ( LCD_CHARS - amount) loop
+        lcd = " "
   end loop
 
 end procedure
 -- ----------------------------------------------------------------------------
+
+-- About cursor positions: the LCDs are internally 2x40 char devices.
+-- The first line starts at offset 0, the second line at offset 64 (0x40).
+-- With 4 line devices the third and fourth line are addressed as extensions
+-- of the first and second line by adding an offset. For a 4x20 line device
+-- the offset is 20, for a 4x16 line display the offset is 16 or 20.
+-- Declare the constant LCD_CHARS as appropriate for your screen
+-- (you may have to specify 20 even if your display has only 16 chars!).
+-- Note: Some 1x16 LCDs are implemented as 2x8 line LCDs, which means that
+--       the second half of the line has to be handled as a second line.
+-- ------------------------------------------------------------
+-- Set cursor position
+-- Specify row and column in base-0 notation (first line is 0).
+-- ------------------------------------------------------------
+procedure  lcd_setcursor(byte in row, byte in col)  is
+
+   col = col | 0b1000_0000                      -- set to DRAM offset top line
+   case row of
+      1: col = col + 0x40                       -- 2nd line of 2 or 4 line lcd
+      2: col = col        + LCD_CHARS           -- 3rd line  \ with 4x16
+      3: col = col + 0x40 + LCD_CHARS           -- 4th line  /   or 4x20
+   end case
+   _lcd_write_command(col)                      -- set new cursor position
+
+end procedure
 
 
 -- -----------------------------------------------------------------------------
@@ -375,14 +396,11 @@ end procedure
 -- -----------------------------------------------------------------------------
 procedure _hd44780_init() is
 
-   _lcd_write_command( 0b_0011_1000 )
-   _lcd_write_command( 0b_0001_1100 )
-   _lcd_write_command( 0b_0000_1100 )
-   _lcd_write_command( 0b_0000_0110 )
-   _lcd_write_command( 0b_0000_0110 )
-
-   delay_1ms( 10 )
-   lcd_clearscreen()
-   lcd_home()
-    
+   
+   _lcd_write_command(0b0010_1000)              -- 4-bits, 2 lines, 5x8 font
+   _lcd_write_command(0b0001_1100)              -- cursor move right
+   _lcd_write_command(0b0000_1100)              -- display on, cursor,blink off
+   _lcd_write_command(0b0000_0110)              -- cursor->right, no shift
+   lcd_clearscreen()                            -- clear screen
+                                                -- (incl switch to data char mode)
 end procedure
