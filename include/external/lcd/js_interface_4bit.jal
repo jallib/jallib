@@ -1,0 +1,171 @@
+-- ------------------------------------------------------
+-- Title: LCD refactoring
+--
+-- Author: Richard Zengerink, Copyright (c) 2008..2008, all rights reserved.
+--
+-- Adapted-by: Joep Suijs (refactoring)
+--
+-- Compiler: =2.4
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: LCD refactoring
+--
+-- Sources:
+--
+-- Notes:
+--
+--
+-- ------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- delay's necessary for initialisation and some commands
+-- -----------------------------------------------------------------------------
+const lcd_short_delay     = 5   -- delay in 10 usec units
+
+const lcd_long_delay      = 180 -- delay in 10 usec units
+
+-- ----------------------------------------------------------------------------
+-- generate clockpuls
+-- (this routine is only used inside this file)
+-- ----------------------------------------------------------------------------
+procedure __lcd_clock()  is
+    -- generate clockpuls
+  lcd_enable  = high   -- enable high
+  delay_10us(4)
+  lcd_enable  = low    -- enable  high --> low = clock data
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- sends low nibble from value to the LCD
+-- can be used for both commands and data
+-- (requires no wait cycli inbetween upper and lower nibble)
+-- (this routine is only used inside this file)
+-- ----------------------------------------------------------------------------
+procedure __lcd_write_low_nibble( byte in value ) is
+  var bit bit0 at value : 0
+  var bit bit1 at value : 1
+  var bit bit2 at value : 2
+  var bit bit3 at value : 3
+
+  -- setup databits
+  lcd_d4 = bit0
+  lcd_d5 = bit1
+  lcd_d6 = bit2
+  lcd_d7 = bit3
+
+
+  -- generate clockpuls
+  __lcd_clock
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- ----------------------------------------------------------------------------
+-- sends byte from value to register of the LCD
+-- (this procedure is only used inside this file)
+--
+-- ----------------------------------------------------------------------------
+procedure __lcd_write( byte in value ) is
+
+   pragma inline
+
+
+   lcd_rw = low                   -- select write mode
+
+   if lcd_hardware_4line then
+      __lcd_write_low_nibble( value >> 4 ) -- output high nibble
+      __lcd_write_low_nibble( value )      -- output low nibble
+
+   else
+       var bit bit0 at value : 0
+       var bit bit1 at value : 1
+       var bit bit2 at value : 2
+       var bit bit3 at value : 3
+       var bit bit4 at value : 4
+       var bit bit5 at value : 5
+       var bit bit6 at value : 6
+       var bit bit7 at value : 7
+
+        -- setup databits
+       lcd_d0 = bit0
+       lcd_d1 = bit1
+       lcd_d2 = bit2
+       lcd_d3 = bit3
+       lcd_d4 = bit4
+       lcd_d5 = bit5
+       lcd_d6 = bit6
+       lcd_d7 = bit7
+
+       lcd_clock
+   end if
+
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- ----------------------------------------------------------------------------
+-- sends data byte in value to LCD
+-- for slow commands an extra delay should be added
+--
+-- ----------------------------------------------------------------------------
+procedure _lcd_write_data( byte in value ) is
+   lcd_rs = high                   -- select instruction
+   __lcd_write( value )                 -- output byte
+   delay_10us( lcd_short_delay )      -- required delay
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- ----------------------------------------------------------------------------
+-- sends command byte in value to LCD
+-- for slow commands an extra delay should be added
+--
+-- ----------------------------------------------------------------------------
+procedure _lcd_write_command( byte in value ) is
+   lcd_rs = low                   -- select instruction
+   __lcd_write( value )                 -- output byte
+   delay_10us( lcd_short_delay )      -- required delay
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- now we defined the interface, add the API
+include js_hd44780_common
+
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure lcd_init() is            
+   
+   -- first, init the interface
+    lcd_enable = low
+    lcd_rw = low
+    delay_1ms ( 25 )
+    if lcd_hardware_4line then
+       __lcd_write_low_nibble( 0b_0000_0011 )
+       delay_1ms ( 6 )
+       __lcd_write_low_nibble( 0b_0000_0011 )
+       delay_10us ( 11 )
+       __lcd_write_low_nibble( 0b_0000_0011 )
+       delay_10us( 5 )
+
+       __lcd_write_low_nibble( 0b_0000_0010 )
+       delay_10us( 5 )
+    else
+       _lcd_write_command( 0b_0011_0000 )
+       delay_1ms ( 6 )
+       _lcd_write_command( 0b_0011_0000 )
+       delay_10us ( 11 )
+       _lcd_write_command( 0b_0011_0000 )
+       delay_10us( 11 )
+       
+    end if        
+    
+    -- init the API
+    _hd44780_init()
+end procedure

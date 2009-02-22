@@ -1,0 +1,388 @@
+-- ------------------------------------------------------
+-- Title: common for HD44780 based LCD
+--
+-- Author: Richard Zengerink, Copyright (c) 2008..2008, all rights reserved.
+--
+-- Adapted-by: Joep Suijs
+--
+-- Compiler: =2.4
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Common API for HD44780 based LCD 
+--
+-- Sources:
+--
+-- Notes:
+--
+--
+-- ------------------------------------------------------
+
+--
+-- ------------- place this below, in your MAIN file and add to    ---------
+-- ------------- the pins which are not used the variable:         ---------
+-- ------------- "not_connected" and change the other pins         ---------
+-- ------------- according to your hardware.                       ---------
+-- ------------- (now selected as 4 line)                          ---------
+-- ------------- also remove the "--"                              ---------
+
+-- var bit not_connected
+
+-- var volatile bit lcd_rs is pin_e0   -- data/command select
+-- var volatile bit lcd_rw is pin_e1   -- read/write select
+-- var volatile bit lcd_enable  is pin_e2   -- clock the data
+
+-- var volatile bit lcd_d0 is not_connected
+-- var volatile bit lcd_d1 is not_connected
+-- var volatile bit lcd_d2 is not_connected
+-- var volatile bit lcd_d3 is not_connected
+-- var volatile bit lcd_d4 is pin_d4
+-- var volatile bit lcd_d5 is pin_d5
+-- var volatile bit lcd_d6 is pin_d6
+-- var volatile bit lcd_d7 is pin_d7
+
+
+-- const lcd_hardware_4line = true    ;true = 4 data line, false = 8 data line
+-- const lcd_number_of_display_lines      = 2    ; 1 = 1 line 2 = 2 line 4 = 4 line
+-- const lcd_number_of_display_characters = 16   ; number of digits per line
+
+-- include lcd_hd44780_rz
+
+-- --------------------------------------------------------------------------
+-- --------------------------------------------------------------------------
+
+-- -------------------------------------------------------------------------
+--  procedures which can be used in your Main file
+-- -------------------------------------------------------------------------
+--
+-- * lcd_write_data( byte in value ):
+--   writes(byte) data to lcd
+--   example: lcd_write_data( "E" )  or lcd_write_data( 69 )
+--        ---------------
+-- * lcd_new_line_cursor_position(byte in line, byte in pos):
+--   places the cursor on position (pos) in line (line)
+--   example: lcd_new_line_cursor_position (1, 8)
+--         --------------
+-- * lcd_shift_left(byte in value):
+--   shifts the display [value] times to the left without changing DDRAM data.
+--   example: lcd_shift_left(4)
+--   or       lcd_shift_left(variable)
+--
+-- * lcd_shift_right(byte in value):
+--   shifts the display [value] times to the right without changing DDRAM data.
+--   example: lcd_shift_right(12)
+--   or       lcd_shift_right(variable)
+--
+-- * lcd_cursor_shift_left(byte in value):
+--   shifts the cursor [value] times to the left without changing display
+--   contents and DDRAM data.
+--   example: lcd_cursor_shift_left(8)
+--   or       lcd_cursor_shift_left(variable)
+--
+-- * lcd_cursor_shift_right(byte in value):
+--   shifts the cursor [value] times to the right without changing display
+--   contents and DDRAM data.
+--   example: lcd_cursor_shift_right(3)
+--   or       lcd_cursor_shift_right(variable)
+--
+-- * lcd_clear:
+--   Write "20H" to DDRAM. and set
+--   DDRAM address to "00H" from AC
+--
+-- * lcd_home:
+--   Set DDRAM address to "00H" from
+--   AC and return cursor to its original
+--   position if shifted. The contents of
+--   DDRAM are not changed.
+--
+-- * lcd_cursor_blink_display(bit in cursor,bit in blink,bit in display):
+--   sets the cursor on/off, let the cursor blink or not(if the cursor is on),
+--   and puts the display on/off
+--   example: lcd_cursor_blink_display(on,off,on)
+--
+-- * lcd_clear_line ( byte in line  )
+--   clears the line [line] of the lcd including DDRAM data of that line
+--   example: lcd_clear_line(1)
+--
+-- * lcd_progress(byte in line, byte in amount)
+--   create a progress bar on line [line] with a lenght of [amout]
+--   example: lcd_progress(2,12)
+--
+--
+-- * lcd_bvalue_dp_line_pos_left_sign( byte in value, byte in dp, byte in line, byte in poskar, bit in left, bit in sign )
+--   displays a byte value with decimal point on position [dp] on line [line] on position [pos] left alignment true/false,
+--   signed value true/false
+--   byte value = 0 to 255 as value or as variable, dp = 0 means 100 dp = 1 means 10.0 dp = 2 means 1.00 and dp > than 3 means 0.100
+--
+--
+--   example1: lcd_bvalue_dp_line_pos_left_sign(25,0,1,5,true,false)
+--   result on line 1 on position 5 you get 25
+--
+--   example2: lcd_bvalue_dp_line_pos_left_sign(25,0,1,5,false,false)
+--   result on line 1 on position 5 you get [space]25 (25 starts at position 6)
+--
+--   example3: lcd_bvalue_dp_line_pos_left_sign(225,0,2,1,true,true)
+--   result on line 2 on position 1 you get -31
+--
+--   example4: lcd_bvalue_dp_line_pos_left_sign(225,0,2,1,true,false)
+--   result on line 2 on position 1 you get 225
+--
+--
+-- * lcd_wvalue_dp_line_pos_left_sign( word in value, byte in dp, byte in line, byte in poskar, bit in left, bit in sign )
+--
+--
+--
+-- * lcd_time( byte in hrs, byte in minut, byte in second, byte in seperator )
+--
+--
+--
+-- * lcd_date( byte in day, byte in mounth, word in year, byte in seperator, bit in day_mounth_notation )
+--
+--
+-- * lcd_bvalue_hex( byte in value)
+--
+--
+-- * lcd_wvalue_hex( word in value)
+--
+--
+--
+-- * lcd_bvalue_bin( byte in value)
+--
+--
+--
+--
+
+-- -----------------------------------------------------------------------------
+-- some constants to control the lcd
+-- -----------------------------------------------------------------------------
+const lcd_clear_display       = 0b_0000_0001
+const lcd_return_home         = 0b_0000_0010
+const lcd_display_onoff       = 0b_0000_1000
+const lcd_cursor_shift_r_val  = 0b_0001_0100
+const lcd_cursor_shift_l_val  = 0b_0001_0000
+const lcd_display_shift_right = 0b_0001_1100
+const lcd_display_shift_left  = 0b_0001_1000
+
+const lcd_set_ddram_address   = 0b_1000_0000
+-- -----------------------------------------------------------------------------
+
+var volatile byte lcd_pos = 0
+
+
+
+procedure lcd_writechar(byte in data) is
+   pragma inline
+   _lcd_write_data(data)
+end procedure
+
+procedure lcd'put(byte in data) is
+   pragma inline
+   _lcd_write_data(data)
+end procedure
+   
+   
+-- ----------------------------------------------------------------------------
+-- sets the cursor of the LCD to the position in the shadow register
+-- (this routine is only used inside this file)
+-- ----------------------------------------------------------------------------
+procedure lcd_restore_cursor() is
+  -- set LCD back to normal operation
+  _lcd_write_command( lcd_set_ddram_address | lcd_pos )
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- ----------------------------------------------------------------------------
+-- sets the cursor of the LCD on "pos" position in line "line" in the shadow register
+--
+-- ----------------------------------------------------------------------------
+procedure lcd_new_line_cursor_position(byte in line, byte in pos) is
+  pos = pos -1
+  if lcd_number_of_display_lines == 1 then
+    lcd_pos = pos
+
+  elsif lcd_number_of_display_lines == 2 then
+    if line == 1 then
+       lcd_pos = pos
+    else
+       lcd_pos = pos + 0x40
+    end if
+  else -- 4 lines
+    if    line == 1 then lcd_pos = pos
+    elsif line == 2 then lcd_pos = pos + 0x40
+    elsif line == 3 then lcd_pos = pos + 0x14
+    else  line == 4 then lcd_pos = pos + 0x54
+    end if
+  end if
+
+  lcd_restore_cursor
+
+end procedure
+
+
+
+-- ----------------------------------------------------------------------------
+-- shifts the coplete display one position to the left
+-- ----------------------------------------------------------------------------
+procedure lcd_shift_left(byte in nr) is
+  -- set LCD back to normal operation
+
+  if nr != 0 then
+      for nr loop
+          _lcd_write_command( lcd_display_shift_left )
+          delay_10us( lcd_short_delay )
+      end loop
+  end if
+end procedure
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- shifts the complete display one position to the right
+-- ----------------------------------------------------------------------------
+procedure lcd_shift_right(byte in nr) is
+  if nr != 0 then
+      for nr loop
+          _lcd_write_command( lcd_display_shift_right )
+          delay_10us( lcd_short_delay )
+      end loop
+  end if
+end procedure
+-- ----------------------------------------------------------------------------
+
+ -- ----------------------------------------------------------------------------
+-- shifts cursor one position to the left
+-- ----------------------------------------------------------------------------
+procedure lcd_cursor_shift_left(byte in nr) is
+  if nr != 0 then
+      for nr loop
+          _lcd_write_command( lcd_cursor_shift_l_val )
+          delay_10us( lcd_short_delay )
+      end loop
+  end if
+end procedure
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- shifts cursor one position to the right
+-- ----------------------------------------------------------------------------
+procedure lcd_cursor_shift_right(byte in nr) is
+  if nr != 0 then
+      for nr loop
+          _lcd_write_command( lcd_cursor_shift_r_val )
+          delay_10us( lcd_short_delay )
+      end loop
+  end if
+end procedure
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- clears the LCD
+-- ----------------------------------------------------------------------------
+procedure lcd_clearscreen()  is
+         _lcd_write_command( lcd_clear_display )
+         delay_10us( lcd_long_delay )
+end procedure
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- sets or resets cursor blink and puts display on or off
+-- ----------------------------------------------------------------------------
+procedure lcd_cursor_blink_display(bit in cursor,bit in blink,bit in display) is
+  var byte reg
+
+  reg = lcd_display_onoff
+  if display then reg = reg + 4 end if
+  if cursor  then reg = reg + 2 end if
+  if blink   then reg = reg + 1 end if
+  _lcd_write_command( reg )
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+
+-- ----------------------------------------------------------------------------
+-- cursor returns home(line 1, position 1)
+-- ----------------------------------------------------------------------------
+procedure lcd_home()  is
+         _lcd_write_command( lcd_return_home )
+         delay_10us( lcd_long_delay )
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- ----------------------------------------------------------------------------
+-- clears the line "line" of the LCD
+-- ----------------------------------------------------------------------------
+procedure lcd_clear_line( byte in line  ) is
+  -- set LCD-cursor at start of line
+  if line == 1 then lcd_pos = 0 end if
+  if line == 2 then lcd_pos = 40 end if
+
+  lcd_restore_cursor
+
+  -- now fill line with spaces
+  for 39 loop
+    lcd_writechar( " " )
+  end loop
+
+  -- set LCD back to normal operation
+  lcd_restore_cursor
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+
+-- -----------------------------------------------------------------------------
+-- Displays a progress bar
+--
+-- -----------------------------------------------------------------------------
+procedure lcd_progress(byte in line, byte in amount, byte in pattern) is
+
+  if lcd_number_of_display_lines == 1 then
+    lcd_pos = pos
+
+  elsif lcd_number_of_display_lines == 2 then
+    if line == 1 then
+       lcd_pos = 0
+    else
+       lcd_pos = 0x40
+    end if
+  else -- 4 lines
+    if    line == 1 then lcd_pos = 0
+    elsif line == 2 then lcd_pos = 0x40
+    elsif line == 3 then lcd_pos = 0x14
+    else  line == 4 then lcd_pos = 0x54
+    end if
+  end if
+
+  lcd_restore_cursor
+
+  for amount loop
+      lcd_writechar( pattern )
+  end loop
+  
+  for ( lcd_number_of_display_characters - amount) loop
+        lcd_writechar( " " )
+  end loop
+
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- Initialise display
+-- -----------------------------------------------------------------------------
+procedure _hd44780_init() is
+
+   _lcd_write_command( 0b_0011_1000 )
+   _lcd_write_command( 0b_0001_1100 )
+   _lcd_write_command( 0b_0000_1100 )
+   _lcd_write_command( 0b_0000_0110 )
+   _lcd_write_command( 0b_0000_0110 )
+
+   delay_1ms( 10 )
+   lcd_clearscreen()
+   lcd_home()
+    
+end procedure
