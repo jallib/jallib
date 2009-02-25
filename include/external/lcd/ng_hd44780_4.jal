@@ -10,12 +10,16 @@
 -- Sources:
 --
 -- Description:
---    Simple interface for HD44780 compatible alphanumeric LCD screens.
---    Screens can range from 2x8  (2 lines, 8 chars) to 4x20.
---    Uses 4 bit wide datapath + 2 handshake lines (total 6 PIC pins).
+--    Nibble interface for HD44780 compatible alphanumeric LCD screens.
+--
 --    Expects: - 2 pins for handshake: 'lcd_rs' and 'lcd_en'
 --             - 1 port nibble for data: 'lcd_dataport'
---    *
+--    or
+--             - 2 pins for handshake: 'lcd_rs' and 'lcd_en'
+--             - 4 lines for data: 'lcd_d4' .. 'lcd_d7'
+--    note:    a 'port nibble' - the lower or higher 4 bits of a port - give
+--             faster and more compact code then random selected data lines.
+--  --
 --    Directions for use of this library in application programs
 --    (in this sequence):
 --    1. Declare the following constants:
@@ -25,59 +29,33 @@
 --          var   byte lcd_dataport  is  portA_low   -- 4 data pins
 --          var   bit  lcd_en        is  pin_A4      -- trigger
 --          var   bit  lcd_rs        is  pin_A5      -- cmd/data select
---
---
--- ------------- place this below, in your MAIN file and add to    ---------
--- ------------- the pins which are not used the variable:         ---------
--- ------------- "not_connected" and change the other pins         ---------
--- ------------- according to your hardware.                       ---------
--- ------------- also remove the "--"                              ---------
---
--- var volatile bit lcd_rs is pin_e0   -- data/command select
--- var volatile bit lcd_rw is pin_e1   -- read/write select
--- var volatile bit lcd_en is pin_e2   -- clock the data
---
--- var volatile bit lcd_d4 is pin_d4
--- var volatile bit lcd_d5 is pin_d5
--- var volatile bit lcd_d6 is pin_d6
--- var volatile bit lcd_d7 is pin_d7
---
---
--- include lcd_hd44780_rz
---
--- --------------------------------------------------------------------------
--- --------------------------------------------------------------------------
---
---
+--       or 
+--          var   bit  lcd_d4 is     is  pin_A3      -- databit d4 pin
+--          var   bit  lcd_d5 is     is  pin_A1      -- databit d5 pin
+--          var   bit  lcd_d6 is     is  pin_C0      -- databit d6 pin
+--          var   bit  lcd_d7 is     is  pin_C2      -- databit d7 pin
+--          var   bit  lcd_en        is  pin_A4      -- trigger 
+--          var   bit  lcd_rs        is  pin_A5      -- cmd/data select
+-- --
 --    2. Include this library.
+-- --
 --    and somewhere before actually using the lcd:
 --    3. Set the chosen LCD dataport and handshake pins to output:
 --          portA_low_direction = all_output
 --          pin_A4_direction    = output
 --          pin_A5_direction    = output
+--    or
+--          pin_A3_direction    = output -- set data pin as output
+--          pin_A1_direction    = output -- set data pin as output
+--          pin_C0_direction    = output -- set data pin as output
+--          pin_C2_direction    = output -- set data pin as output
+--          pin_A4_direction    = output -- set control pin as output
+--          pin_A5_direction    = output -- set control pin as output
+-- --
 --    4. Call lcd_init() to initialize the lcd controller.
 --    Above is an example for a 2x16 LCD:
---      Bits 0..3 of portA are used for data, pins 4 and 5 of portA are
---      used for handshake. Any other available nibble and handshake pins
---      could be used (provided these are configurable for output).
---    *
---
--- ;; ;; JS: check where we put this info - actually, this file is only the
--- ;; ;; driver and
--- ;;   Available functions for application programs:
--- ;;     lcd_init()                             initialize the LCD controller
--- ;;     lcd_clearscreen()                      clear screen, cursor home
--- ;;     lcd_setcursor(<row>,<column>)          where to write next character
--- ;;     lcd_writechar(<byte>)                  write single character
--- ;;                                            at cursor position and
--- ;;                                            shift cursor position 1 right
--- ;;   *
--- ;;   A pseudo byte variable 'lcd' is declared as alternative for lcd_writechar(<byte>)
--- ;;   So in stead of: lcd_writechar(<byte>)
--- ;;   you may use:    lcd = <byte>
--- ;;   And you may also use 'lcd' as destination in functions of other
--- ;;   libraries, like print().
---
+-- --
+--    See hd_44780_common for the LCD API.
 --
 -- Dependencies: delay.jal
 --
@@ -173,11 +151,11 @@ procedure lcd_init() is
    __lcd_write_nibble(0b0000_0011)              -- function set
    delay_1ms(5)                                 -- > 4.1 milliseconds
    __lcd_write_nibble(0b0000_0011)              -- function set
-   delay_10us(10)                               -- > 100 æs
+   delay_10us(10)                               -- > 100 us
    __lcd_write_nibble(0b0000_0011)              -- function set
-   delay_10us(4)                                -- > 37 æs
+   delay_10us(4)                                -- > 37 us
    __lcd_write_nibble(0b0000_0010)              -- to 4-bit mode
-   delay_10us(4)                                -- > 37 æs
+   delay_10us(4)                                -- > 37 us
 
     -- init the API
     _hd44780_init()
