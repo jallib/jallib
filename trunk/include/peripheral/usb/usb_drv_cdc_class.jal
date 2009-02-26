@@ -1,0 +1,459 @@
+-- Title: USB Communication Device Class driver
+-- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
+-- Adapted-by: -
+-- Compiler: >=2.4i
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- 
+-- Description: USB Cummunication Device code
+-- --
+-- 
+-- Sources: http://www.usb.org for USB specifications
+-- 
+-- Notes: not sure about the compiler version
+--
+-- ------------------------------------------------------
+-- ------------------------------------------------------
+--
+--
+
+if defined( USB_CDC_DEBUG ) == false then
+	const bit USB_CDC_DEBUG = false
+end if
+
+const byte USB_REQ_SEND_ENCAPSULATED_COMMAND	= 0x00
+const byte USB_REQ_GET_ENCAPSULATED_RESPONSE = 0x01
+const byte USB_REQ_SET_COMM_FEATURE = 0x02
+const byte USB_REQ_CLEAR_COMM_FEATURE = 0x04
+const byte USB_REQ_SET_LINE_CODING = 0x20
+const byte USB_REQ_GET_LINE_CODING = 0x21
+const byte USB_REQ_SET_CONTROL_LINE_STATE = 0x22
+const byte USB_REQ_SEND_BREAK = 0x23
+
+
+-- Line coding struction that defines what (should) happen if we were actually
+-- USB to RS232 converter
+const word cdc_line_coding_loc = 0x04F0;
+var byte cdc_line_coding[7] at cdc_line_coding_loc
+var dword cdc_line_coding_dte_rate at cdc_line_coding_loc + 0
+var byte cdc_line_coding_stop_bits at cdc_line_coding_loc + 4 -- 0=1 stop bit, 1=1.5 stop bits, 2=2 stop bits
+var byte cdc_line_coding_parity at cdc_line_coding_loc + 5 -- 0=None, 1=Odd, 2=Even, 3=Mark, 4=Space
+var byte cdc_line_coding_data_bits at cdc_line_coding_loc + 6 -- 5,6,7,8 or 16 bits
+
+var byte cdc_line_status = 0x00
+var bit last_packet_is_full = false
+
+-- Transmit fifo
+var byte cdc_tx_buffer[USB_CDC_TX_BUFFER_SIZE] at  USB_EP3_IN_ADDR
+var byte cdc_tx_wr=0
+var byte cdc_tx_rd=0
+
+
+-- Receive fifo
+var byte cdc_rx_buffer[USB_CDC_RX_BUFFER_SIZE] at  0x600
+var byte cdc_rx_wr = 0
+var byte cdc_rx_rd = 0
+
+
+
+procedure usb_handle_class_request_callback() is
+    
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+    
+    case (req01) of
+		USB_REQ_SET_LINE_CODING:
+		block
+			-- we now expect the line coding to arrive in the data stage
+			
+			if USB_CDC_DEBUG then
+				const byte str[] = "SET_LINE "
+				serial_print_str(str)
+			end if
+			usb_control_mode = USB_CM_CTRL_WRITE_DATA_STAGE_CLASS
+		end block
+		USB_REQ_GET_LINE_CODING:
+		block
+			if USB_CDC_DEBUG then
+				const byte str[] = "GET_LINE len="
+				serial_print_str(str)
+				serial_print_int(len & 0xFF)
+				serial_putc(" ")
+			end if
+
+			--control_mode = USB_CM_CTRL_READ_DATA_STAGE_CLASS
+			usb_control_mode = USB_CM_CTRL_READ_DATA_STAGE_CLASS
+
+			--  need to prime ep0 IN with some funky data here
+			usb_send_data( 0, cdc_line_coding, 7, 1 )
+
+			-- actually we know this will be the last packet, so go straight to waiting for the status ack
+			usb_control_mode = USB_CM_CTRL_READ_AWAITING_STATUS
+
+		end block
+		USB_REQ_SET_CONTROL_LINE_STATE:
+		block
+			if USB_CDC_DEBUG then
+				const byte str[] = "scls=" --dtr = bit 0, rts = bit 1
+				serial_print_str(str)
+				serial_print_int_hex(val)
+			end if
+			-- no data, so just ack the status
+			usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
+			usb_send_status_ack()
+			cdc_line_status = valbt[0]
+			
+			-- Could put a callback here for your own code when DTR or RTS change
+		end block
+		otherwise
+		block
+			if USB_CDC_DEBUG then
+				const byte str[] = "UNKNOWN REQUEST= "
+				serial_print_str(str)
+				serial_print_int(usb_sdp_request)
+			end if
+		end block
+	end case
+end procedure
+
+procedure usb_handle_class_ctrl_write_callback() is
+   
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+     
+    case (req01) of
+		USB_REQ_SET_LINE_CODING:
+		block
+			var byte idx
+			var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR
+			
+			for count( cdc_line_coding ) loop
+				cdc_line_coding[ idx ] = bd0_out_buffer[idx]
+			end loop
+			
+			if USB_CDC_DEBUG then
+				const byte str[] = " st="
+				const byte str1[] = " p="
+				const byte str2[] = " db="
+				
+				serial_print_int_hex(cdc_line_coding[0])
+				serial_print_int_hex(cdc_line_coding[1])
+				serial_print_int_hex(cdc_line_coding[2])
+				serial_print_int_hex(cdc_line_coding[3])
+				serial_print_str(str)
+				serial_print_int(cdc_line_coding_stop_bits)
+				serial_print_str(str1)
+				serial_print_int(cdc_line_coding_parity)
+				serial_print_str(str2)
+				serial_print_int(cdc_line_coding_data_bits)
+			end if
+			
+			usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
+			usb_send_status_ack()
+			
+		end block
+
+		otherwise
+		block
+			if USB_CDC_DEBUG then
+				const byte str[] = " ??ctrl write cb req="
+				serial_print_str(str)
+				serial_print_int_hex(usb_sdp_request)
+				serial_putc(" ")
+			end if
+		end block
+	end case
+end procedure
+
+
+procedure usb_handle_class_ctrl_read_callback() is
+
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+
+    case (req01) of
+		USB_REQ_GET_LINE_CODING:
+		block
+			-- we know we've already sent everything, so now wait for status
+			usb_control_mode = USB_CM_CTRL_READ_AWAITING_STATUS
+		end block
+		otherwise
+		block
+			if USB_CDC_DEBUG then
+				const byte str[] = " cl read ?? "
+				serial_print_str(str)
+				serial_print_int(usb_sdp_request)
+			end if
+		end block
+	end case
+end procedure
+
+procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+    var byte cdc_rx_next
+    if USB_CDC_DEBUG then
+        const byte str[] = " EP data out: "
+        const byte str1[] = " bytes "
+        serial_print_str(str)
+        serial_print_int(byte_count)
+        serial_print_str(str1)
+    end if
+    
+    -- We have some data!
+    if (end_point == USB_CDC_DATA_ENDPOINT) then
+        -- it's the data end point
+        var byte count
+        
+		var byte src_ptr[2] AT buffer_addr
+
+		FSR0L = src_ptr[0]
+		FSR0H = src_ptr[1]
+			
+        for byte_count using count loop
+            
+            cdc_rx_next = cdc_rx_wr + 1	-- get next buffer position
+            if (cdc_rx_next == USB_CDC_RX_BUFFER_SIZE) then
+                -- if we're at the end
+                cdc_rx_next = 0	-- then wrap to the beginning
+            end if
+            if (cdc_rx_next != cdc_rx_rd) then
+                -- if space in the fifo
+				var byte ch = POSTINC0
+
+				if USB_CDC_DEBUG then
+					serial_putc("$")
+					serial_print_int(cdc_rx_wr)
+					serial_putc("$")
+					serial_print_int(ch)
+					serial_newline()
+				end if
+				
+                cdc_rx_buffer[cdc_rx_wr] = ch 
+                cdc_rx_wr = cdc_rx_next  -- and move pointer along
+            else
+                -- else... just ignore it, we've lost a byte, no room in the fifo
+            end if 
+        end loop
+    else
+        if USB_CDC_DEBUG then
+            const byte str[] = "data for ep "
+            serial_print_str(str)
+            serial_print_int(end_point)
+        end if
+    end if
+end procedure
+
+
+
+procedure usb_cdc_handle_tx() is
+
+	var word cdc_tx_addr
+	
+	var volatile byte cdc_out_stat is usb_bd3out_stat
+	var volatile byte cdc_out_cnt is usb_bd3out_cnt
+	var volatile word cdc_out_addr is usb_bd3out_addr
+	var volatile byte cdc_out_addrl is usb_bd3out_addrl
+	var volatile byte cdc_out_addrh is usb_bd3out_addrh
+
+	var volatile byte cdc_in_stat is usb_bd3in_stat
+	var volatile byte cdc_in_cnt is usb_bd3in_cnt
+	var volatile word cdc_in_addr is usb_bd3in_addr
+	var volatile byte cdc_in_addrl is usb_bd3in_addrl
+	var volatile byte cdc_in_addrh is usb_bd3in_addrh
+
+	if ( ( cdc_in_stat & (1<<USB_BDSTATUS_UOWN) ) != 0 ) then
+		-- if there's already something in play
+		return	-- give up
+	end if
+
+
+
+	-- anything in the fifo?
+    if ( cdc_tx_wr == cdc_tx_rd ) then
+		-- and we don't have to send an empty packet
+		if ( !last_packet_is_full ) then
+			-- nothing to do, so return
+			return
+		end if
+    end if
+
+	var byte bytes_to_send 
+	
+	if ( cdc_tx_wr >= cdc_tx_rd ) then
+		bytes_to_send = cdc_tx_wr - cdc_tx_rd
+	else
+		-- to keep it simple, don't support splitted buffers
+		-- so we don't have to copy the bytes into another array
+		bytes_to_send = USB_CDC_TX_BUFFER_SIZE - cdc_tx_rd
+	end if
+
+	-- clip to maximum EP transfer size
+	if ( bytes_to_send  > CDC_BULK_IN_EP_SIZE ) then
+		bytes_to_send  = CDC_BULK_IN_EP_SIZE
+	end if
+    
+	if USB_CDC_DEBUG then
+		const byte str[] = "send="
+		serial_putc(">")
+		serial_print_str(str)
+		serial_print_int(bytes_to_send)
+		serial_putc(" ")
+		serial_print_int(cdc_tx_rd)
+		serial_putc(">")
+		serial_print_int(cdc_tx_wr)
+		serial_putc("#")
+	end if
+		
+
+	cdc_tx_addr =  USB_EP3_IN_ADDR + cdc_tx_rd
+	cdc_in_addr = cdc_tx_addr
+
+	if USB_CDC_DEBUG then
+		serial_print_int( cdc_in_addrh )
+		serial_print_int( cdc_in_addrl )
+		serial_putc("#")
+		serial_print_int( cdc_in_stat )
+		serial_putc("#")
+	end if
+	
+	cdc_in_cnt = bytes_to_send
+
+	
+	var volatile bit dts_bit at cdc_in_stat : USB_BDSTATUS_DTS
+	if ( dts_bit  ) then
+		if USB_CDC_DEBUG then
+			serial_print_int( 0b_1000_1000 )
+		end if	
+		cdc_in_stat = 0b_1000_1000
+	else
+		if USB_CDC_DEBUG then
+			serial_print_int( 0b_1100_1000 )
+		end if	
+		cdc_in_stat = 0b_1100_1000
+	end if
+
+	-- advance read pointer
+	cdc_tx_rd = cdc_tx_rd + bytes_to_send
+
+	if (cdc_tx_rd > ( USB_CDC_TX_BUFFER_SIZE - 1 ))  then
+		cdc_tx_rd = 0
+	end if
+
+	-- Mark if we got a full packet (8 bytes),
+	last_packet_is_full = ( bytes_to_send == 8 )
+	
+end procedure
+
+
+procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+    
+    if USB_CDC_DEBUG then
+        const byte str[] = " EP data in: "
+        const byte str1[] = " bytes "
+        serial_print_str(str)
+        serial_print_int(byte_count & 0xFF)
+        serial_print_str(str1)
+    end if
+    
+    -- data has been sent, so do we need to send more?
+    if (end_point == USB_CDC_DATA_ENDPOINT) then
+        -- it's the data end point
+        usb_cdc_handle_tx()
+    end if
+end procedure
+
+
+
+procedure usb_cdc_putc(byte in c) is
+
+    var byte cdc_tx_next
+
+    cdc_tx_next = cdc_tx_wr + 1	-- get next buffer position
+    if (cdc_tx_next == USB_CDC_TX_BUFFER_SIZE) then
+		-- if we're at the end
+		cdc_tx_next = 0	-- wrap to the beginning
+    end if
+
+    while (cdc_tx_next == cdc_tx_rd) loop
+		-- call tx handler to free fifo
+		usb_cdc_handle_tx()
+    end loop
+    
+    -- put it in
+	cdc_tx_buffer[ cdc_tx_wr] = c 
+	
+	-- move pointer along
+    cdc_tx_wr = cdc_tx_next  
+end procedure
+    
+function usb_cdc_getc() return byte is
+    var byte cdc_rx_char, cdc_rx_next
+        
+    -- block, but keep servicing the USB library    
+--	while(cdc_rx_wr == cdc_rx_rd) loop
+--	    usb_handle_isr()
+
+        -- wait until there is something received
+ --   end loop
+
+       
+    -- get character from the front of the buffer   
+    cdc_rx_char = cdc_rx_buffer[ cdc_rx_rd ]	
+
+	if USB_CDC_DEBUG then
+		serial_putc("<")
+		serial_print_int(cdc_rx_rd)
+		serial_putc("<")
+		serial_print_int(cdc_rx_char)
+		serial_newline()
+	end if
+    
+    -- move read pointer to next position in fifo
+    cdc_rx_rd = cdc_rx_rd + 1
+
+
+    
+    if (cdc_rx_rd == USB_CDC_RX_BUFFER_SIZE) then
+        -- if we're at the end
+        cdc_rx_rd = 0	-- then wrap to the beginning
+    end if
+       
+    -- return the result we first thought of   
+    return cdc_rx_char	
+end function
+    
+
+
+function usb_cdc_rx_avail() return bit is
+    return cdc_rx_rd != cdc_rx_wr
+end function
+
+function usb_cdc_tx_empty() return byte is
+    return cdc_tx_rd == cdc_tx_wr
+end function
+
+
+procedure usb_sof_callback() is
+    -- we don't care about the frame number, we only care if there's something to send...
+    usb_cdc_handle_tx()	-- start transmission
+end procedure
+
+
+procedure usb_cdc_setup() is
+    cdc_line_coding_dte_rate = 0x0001C200  -- data rate in bits per second , set to 115200
+    cdc_line_coding_stop_bits = 0	-- = 1 stop bit
+    cdc_line_coding_data_bits = 8	-- = 8 data bits
+    cdc_line_coding_parity = 0		-- = No parity
+end procedure
+
+function usb_cdc_line_status() return byte is 
+	pragma inline
+	return cdc_line_status
+end function
+
+
+usb_cdc_setup()
+
