@@ -1,0 +1,215 @@
+-- ------------------------------------------------------
+-- Title: Extended test of LCD_HD44780 (4 line interface)
+--
+-- Author: Richard Zengerink, Copyright (c) 2008..2008, all rights reserved.
+--
+-- Adapted-by: Joep Suijs
+--
+-- Compiler: =2.4
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Extended testing of LCD_HD44780 lib
+--
+-- Sources:
+--
+-- Notes:
+--
+--
+-- ------------------------------------------------------
+--
+
+
+enable_digital_io() -- disable analog I/O (if any)
+
+------------- OPTION register met timer0  -------------------------------
+OPTION_REG = 0B0000_0111
+;NOT_RBPU at OPTION_REG : 7 = 0   0 = weak pull-up on port B
+;intedg   at OPTION_REG : 6 = 0   1 = opgaande flank interupt op RB0
+;T0CS     at OPTION_REG : 5 = 0   internal instruction cycle clock
+;T0SE     at OPTION_REG : 4 = 0   nvt ivm setting T0CS
+;PSA      at OPTION_REG : 3 = 0   prescaler voor timer 0
+;PS2      at OPTION_REG : 2 = 1   prescaler op 256 (20Mhz/4/128) = 39062,5HZ
+;PS1      at OPTION_REG : 1 = 1   1/(39062,5/39)TMR0 = 39 >> ~1mS = tijd van
+;PS0      at OPTION_REG : 0 = 1   timer0
+
+ --------- timer1-----------
+ T1CON = 0B0011_0100
+;not used   at T1CON : 7  = 0
+;T1RUN      at T1CON : 6  = 0     ;wordt geset als interne clock op T1 loopt
+;T1CKPS1    at T1CON : 5  = 1     ; samen met T1CKPSO prescaler
+;T1CKPS0    at T1CON : 4  = 1     ;
+;T1OSCEN    at T1CON : 3  = 0     ;1 = osc is enabled 0 = osc is shut off
+;T1INSYNC   at T1CON : 2  = 1     ;1 = do not sync ext. clk  0 = sync ext.clk
+;TMR1CS     at T1CON : 1  = 0     ;1 = ext. clock 0 = int. clock (Fosc/4)
+;TMR1ON     at T1CON : 0  = 0     ;1 = enables timer1 0 =  disables timer 1
+;
+;in is Foc/4 = 5000000/prescaler = 5000000/8 =  635000 / 625 = 1mS
+;625 = 65280 - 64655  64655/256= 252,55859375  TMR1H = 252
+;252,55859375 - 252 = 0,55859375 x 256 = 143   TMR1L = 143
+
+ 
+; include lcd_hd44780_rz
+include print
+include ng_hd44780_4
+include js_replace
+ 
+lcd_init()                  ; init the lcd
+ 
+--------------------------------------------------------------------------
+------------- MAIN program -----------------------------------------------
+--------------------------------------------------------------------------
+
+
+
+
+   var byte data
+   var word wvalue = 0
+   var byte value = 0
+   var byte value1 = 0
+   var byte test = 0
+   var byte HRS = 12
+   var byte MIN = 55
+   var byte SEC = 40
+   var byte YEAR = 09
+   var word YEARW = 2009
+   var byte MOUNTH = 03
+   var byte DAY = 23
+
+   const byte teststring[] = "test display"
+
+      lcd_new_line_cursor_position (1, 1)
+      lcd_clearscreen()
+      lcd_home()
+
+     
+      lcd_writechar("T")
+      lcd_writechar("e")
+      lcd_writechar("s")
+      lcd_writechar("t")
+      delay_100ms (10)
+
+
+forever loop
+
+      SEC = 40
+      lcd_new_line_cursor_position (2, 1)
+
+      print_string(lcd, teststring)
+      
+      delay_100ms (10)
+      lcd_shift_right (6)
+      delay_100ms (10)
+      lcd_shift_left (4)
+      delay_100ms (10)
+      lcd_cursor_blink_display (on,on,on)
+      delay_100ms (10)
+      lcd_cursor_shift_left (4)
+      delay_100ms (10)
+      lcd_cursor_shift_right (6)
+      delay_100ms (10)
+      lcd_clear_line  ( 2 )
+      delay_100ms (10)
+      lcd_home()
+      delay_100ms (10)
+      lcd_clearscreen()
+
+      lcd_cursor_blink_display (off,off,on)
+      lcd_clear_line  (2)
+      value = 0
+      while value < 255  loop
+            lcd_bvalue_dp_line_pos_left_sign ( value, 0, 1, 5, true, false)
+            value = value + 1
+            delay_1ms(50)
+            lcd_progress  (2, (value/17)+1, 0xFF)
+      end loop
+      lcd_bvalue_dp_line_pos_left_sign ( value, 0, 1, 5, true, false)
+      delay_100ms (20)
+      lcd_clearscreen()
+
+      lcd_bvalue_dp_line_pos_left_sign ( 200, 0, 1, 1, true, false)
+      delay_100ms (10)
+      lcd_bvalue_dp_line_pos_left_sign ( 5, 0, 1, 5, true, false)
+      delay_100ms (10)
+      lcd_bvalue_dp_line_pos_left_sign ( 7, 0, 1, 9, false, false)
+      delay_100ms (10)
+      lcd_bvalue_dp_line_pos_left_sign ( 112, 1, 1, 13, false, false)
+      delay_100ms (10)
+
+      lcd_clear_line  (2)
+
+      lcd_writechar("V")
+      lcd_writechar("a")
+      lcd_writechar("l")
+
+      lcd_new_line_cursor_position (2, 5)  ;
+
+      lcd_writechar ("=")
+
+
+      lcd_clear_line  (1)
+
+      value1 = 0
+      wvalue = 5000
+
+      while wvalue != 0  loop
+            lcd_wvalue_dp_line_pos_left_sign ( wvalue, 2, 2, 7, true, false)
+            wvalue = wvalue - 1
+            delay_1ms(3)
+       end loop
+            lcd_wvalue_dp_line_pos_left_sign ( wvalue, 2, 2, 7, true, false)
+      delay_100ms (20)
+
+      lcd_clearscreen()
+      lcd_new_line_cursor_position (1, 5)
+      lcd_date ( DAY, MOUNTH, YEAR, "-", true )
+
+      while SEC< 60 loop
+            lcd_new_line_cursor_position (2, 5)
+            lcd_time ( HRS, MIN, SEC, ":" )
+            SEC = SEC + 1
+            delay_100ms (10)
+      end loop
+      lcd_new_line_cursor_position (1, 5)
+      lcd_date ( DAY, MOUNTH, YEARW, "/", false )
+      delay_100ms (30)
+
+      lcd_clearscreen()
+
+      value1 = 0
+      lcd_new_line_cursor_position (1, 5)
+      lcd_writechar("=")
+      while value1 < 255  loop
+            lcd_bvalue_dp_line_pos_left_sign ( value1, 0, 1, 1, false, false)
+            lcd_new_line_cursor_position (1, 7)
+;            lcd_bvalue_hex (value1)
+            print_prefix = true;
+            print_byte_hex(lcd, value1);
+
+
+            value1 = value1 + 1
+            delay_1ms(250)
+      end loop
+
+      wvalue = 0
+      lcd_new_line_cursor_position (2, 7)
+      lcd_writechar("=")
+
+
+      while wvalue < 2000  loop
+            lcd_wvalue_dp_line_pos_left_sign ( wvalue, 0, 2, 1, false, false)
+            lcd_new_line_cursor_position (2, 9)
+;            lcd_wvalue_hex (wvalue)
+            print_prefix = true;
+            print_byte_hex(lcd, wvalue);
+
+            wvalue = wvalue + 1
+            delay_1ms(5)
+      end loop
+
+      lcd_clearscreen()
+
+ end loop
+
+
