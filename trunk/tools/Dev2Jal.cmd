@@ -28,7 +28,7 @@
 /*   - The script contains some test and debugging code.                    */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.57'                   /*                          */
+   ScriptVersion   = '0.0.59'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4i'                   /*                          */
 /* ------------------------------------------------------------------------ */
@@ -1409,8 +1409,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                                                    'at' shadow ':' offset') is'
           call lineout jalfile, '   pragma inline'
         end
-        else if s.j > 1 then do                         /* multi-bit */
-          call lineout jalfile, 'procedure' field"'put"'(byte in x',
+        else if s.j > 1  &  s.j < 8  then do            /* multi-bit */
+          call lineout jalfile, 'procedure' field"'put"'(bit*'s.j 'in x',
                                                'at' shadow ':' offset - s.j + 1') is'
           call lineout jalfile, '   pragma inline'
         end
@@ -2427,7 +2427,7 @@ return addr_list' }'                            /* complete string */
 
 /* --------------------------------------------- */
 /* Signal duplicates names                       */
-/* Collect all names in Name. compound var       */
+/* Collect all names in Name. compound variable  */
 /* Return - 0 when name is unique                */
 /*        - 1 when name is dumplicate            */
 /* --------------------------------------------- */
