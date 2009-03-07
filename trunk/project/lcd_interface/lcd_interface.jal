@@ -1,0 +1,63 @@
+-- -----------------------------------------------------------------------------
+-- Title: LCD interface - interfaces to an HD44780 compatible LCDs
+-- Author: Joep Suijs, Copyright (c) 2008..2009, all rights reserved.
+-- Adapted-by: 
+-- Compiler:  >=2.4g
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description:
+--    This is an application that provides alternative interfaces to an HD44780 
+--    compatible LCD. Unlike other interfaces (like 'LCD Serial Backpack' and K107),
+--    this app is not aware of the HD44780 command set. 
+--    The corresponding jallib libraries are given transparent access to the LCD in
+--    4-bit mode so all current and future jallib HD44780 functionality is supported.
+-- -- 
+--    Currently, only serial comms is supported (57600,8,1)
+--    todo:
+--       - i2c slave interface
+--       - backlight support
+-- -----------------------------------------------------------------------------
+-- lcd_app.jal
+
+include board_16f88_sl
+
+;@jallib use chipdef
+;@jallib use lcd_hd44780_4
+;@jallib use led
+
+enable_digital_io()
+
+;led_direction = output
+
+
+lcd_rs_direction        = output
+lcd_en_direction        = output
+lcd_dataport_direction  = output
+
+include serial_hardware
+serial_hw_init()
+
+include lcd_hd44780_4
+             
+-- define input byte & bitfiels             
+var volatile byte inchar
+var volatile bit   cmdfield         at inchar : 5
+var volatile bit*5 datafield        at inchar : 0
+
+forever loop
+   
+   if (serial_hw_read(inchar) == true) then
+      if (cmdfield == 0) then
+         -- write to display
+         lcd_rs = ((inchar & 0x10) != 0)    -- set rs if bit5 is set.
+         __lcd_write_nibble(datafield)
+      elsif (cmdfield == 1) then
+         -- 5 bit pwm value in datafield
+      end if
+   end if   
+   
+end loop
