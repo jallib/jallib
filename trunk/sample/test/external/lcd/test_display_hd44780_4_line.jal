@@ -30,6 +30,12 @@ enable_digital_io() -- disable analog I/O (if any)
 ;@jallib use lcd_hd44780_4
 ;@jallib use led
 
+-- ----------------------------------------------------------------------------
+-- optionally include this file to gain access to the tc_var* variables
+-- ----------------------------------------------------------------------------
+include serial_tc_header
+
+
 -- setup libs, io etc
 lcd_rs_direction        = output
 lcd_en_direction        = output
@@ -74,6 +80,17 @@ lcd_init()                              -- initialize LCD
 -- (testname string constants are optional)
 -- -----------------------------------------------------------------------------
 
+-- test support function             
+var byte testchar = "a"
+procedure increment_testchar() is
+   testchar = testchar + 1;
+   if (testchar > "z") then 
+      testchar = "a" 
+   end if
+end procedure
+-- test support function end
+
+
 
 const byte testname_a[] = "clear screen"
 procedure unit_test_a() is                
@@ -82,7 +99,7 @@ end procedure
 
 const byte testname_b[] = "home"
 procedure unit_test_b() is                
-   lcd_clear_screen()   
+   lcd_home()   
 end procedure
 
 const byte testname_c[] = "set cursor position to 0,0 (start line 0)"
@@ -105,43 +122,50 @@ procedure unit_test_f() is
    lcd_cursor_position(3,0)   
 end procedure
 
-const byte testname_g[] = "set cursor position to 0,5"
+const byte testname_g[] = "set cursor position to tc_var0, tc_var1"
 procedure unit_test_g() is                
-   lcd_cursor_position(0,5)   
+   lcd_cursor_position(tc_var0, tc_var1)   
 end procedure
 
-const byte testname_h[] = "print 'abcd' to cursor pos with lcd_write_char"
+const byte testname_h[] = "print 4 incremening chars to cursor pos with lcd_write_char"
 procedure unit_test_h() is                
-   lcd_write_char("a")
-   lcd_write_char("b")
-   lcd_write_char("c")
-   lcd_write_char("d")
+   for 4 loop
+      lcd_write_char(testchar)
+      increment_testchar()
+   end loop
 end procedure
 
-const byte testname_i[] = "print 'abcd' to cursor pos with lcd'put"
+const byte testname_i[] = "print 4 incremening chars to cursor pos with lcd'put"
 procedure unit_test_i() is                
-   lcd = "a"
-   lcd = "b"
-   lcd = "c"
-   lcd = "d"
+   for 4 loop
+      lcd = testchar
+      increment_testchar()
+   end loop
 end procedure
 
+-- this test shows a incrementing counter on the first line
+-- and a progress bar on the second line.
 const byte testname_p[] = "progress bar"
 procedure unit_test_p() is           
    const byte bar_divider = (255 / (LCD_CHARS-1))
 
-   lcd_cursor_blink_display (off,off,on)
+   const byte tc_p[] = "progress      "
+   lcd_cursor_position(0,0)  
+   print_string(lcd, tc_p);
+   
+   lcd_cursor_blink_display (off,off,on) -- cursor off (blink off, display on)
    lcd_clear_line(1)
-   value = 0
-   while value < 255  loop
-;         lcd_bvalue_dp_line_pos_left_sign ( value, 0, 1, 5, true, false)
-      value = value + 1
-      delay_1ms(50)
-      lcd_progress(1, value/ bar_divider +1, 0xFF)
+   for 256 using value loop
+      -- print var
+      lcd_cursor_position(0,9)  
+      print_byte_dec(lcd, value)
+      
+      -- print coressponding progress bar
+      lcd_progress(1, value / bar_divider +1, 0xFF)
+      
+      -- wait & increment
+      delay_1ms(20)
    end loop
-;      lcd_bvalue_dp_line_pos_left_sign ( value, 0, 1, 5, true, false)
-   delay_100ms (20)
-   lcd_clear_screen()
 end procedure
 
 
