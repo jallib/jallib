@@ -2,6 +2,7 @@ JalV2 readme
 ============
 
 Please see jaldiff.txt for important information about differences.
+OS/2 Makefiles are available at <http://www.robh.nl/picsoft.php#jalv2>
 
 Included in this archive:
 
@@ -14,7 +15,42 @@ chipdef/*   : chip definition files
 
 History
 =======
-2.4h  -- ?? Sept 2008
+2.4j  -- 12 Mar 2009
+         * B00052: Allow any characters in an include filename except
+           ';' and '--'. Also, the filename may neither begin
+           nor end with a space.
+         * B00053: Added _warn, _error, and _debug (Thanks Sebastien!)  
+         * B00054: Fixed `pragma error' to display any text on the line after
+           the pragma
+         * B00050: If `-loader18' was used, the code wouldn't skip over
+           any preamble.
+         * B00051: `const blah = 0x400; var word x at blah' failed miserably
+         * passing an array element into an inline procedure failed
+           (always only passed the first element of the array)
+         * B00056: added 'tblrd' and 'tblwr' to inline assembly  
+         * fixed comparing signed constants
+         * in some instances assigning a negative number to a signed variable
+           that can clearly contain it resulted in signed/unsigned mismatch
+         * Removed OS/2 Makefiles (see above)
+         * Issue warning when multi-byte string is used in an expression
+           (x = "abc" * 2 --> only 'a' is used)
+         * *Always* set the 2nd high bit when passing constant arrays  
+
+2.4i  -- 01 Dec 2008
+         * Adding suffix to displayed version (2.4i)
+         * Inline function return wasn't being handled correctly
+         * Inline function parameters that are not used directly
+           (only used via another variable placed `at' the parameter)
+           weren't working correctly.
+         * Compiler directives (``if cexpr...'') incorrectly opened
+           a new block
+         * Passing an array element into an inlined function
+           doesn't work (drops the array index)
+         * Occasionally the compiler would spit out a bunch
+           of nuisance messages due to some orphaned list elements
+         * Fixed documentation (target_clock, not _target_clock)
+
+2.4h  -- 15 Sept 2008
          * fixed all warnings with '-W -Wall'
          * added makefiles from Rob
          * added `pragma speed' and `pragma size'
