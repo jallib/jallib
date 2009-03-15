@@ -227,10 +227,9 @@ also the individual bits or groups of bis are declared.
 Also some popular aliases for registers are defined, for example: TMR0IF and
 T0IF, TMR0IE and T0IE, etc.
 
+<h3>PORTx and TRISx</h3>
 <p>For all ports and port pins a device independent alias is defined and a
 similar direction definition, as the following examples show:
-
-<h3>PORTA and TRISA</h3>
 <pre>
   var  volatile  byte  PORTA  at  &lt;addr&gt;
   var            byte  PORTA_low                 -- low order nibble
@@ -243,6 +242,9 @@ similar direction definition, as the following examples show:
 <p>etc. (for all other existing pins and ports)
 
 <h3>GPIO and TRISIO (with the smaller chips)</h3>
+<p>Although the smaller PICs have no 'official' PORTA and TRISA registers,
+the device files contain aliases for these.
+So even with the smaller PICs you can use the names PORTA, pin_A0, etc.
 <pre>
   var  volatile  byte  GPIO   at  &lt;addr&gt;
   var  volatile  byte  PORTA  at  GPIO
@@ -256,37 +258,46 @@ similar direction definition, as the following examples show:
 </pre>
 <p>etc. (for all other existing pins)
 
-<p>Also some procedures and functions are defined to read and set the lower
-and upper nibbles of ports and their direction:
+<h3>Non-memory-mapped registers</h3>
+<p>Some PICs, especially in the baseline series, are missing some memory
+mapped registers.
+For example the 12-bit core (10Fs, 12F5x, etc) have no memory mapped
+TRISx registers, in stead these PICs have TRISx instructions to set
+the direction of ports or pins.
+This would make it impossible for application programs or function
+libraries to use statements like:
+<pre>
+  PORTA_direction = all_output
+</pre>
+<p>For this reason the device files contain pseudo variables which mimic
+the existence of memory mapped registers.
+This makes it possible to use statement like the one above.
+<p>For example: even though a 16F59 has no addressable TRISC register,
+you can still use
+<pre>
+  pin_C5_direction = output
+</pre>
+<p>
+
+<h3>Nibbles</h3>
+<p>Since frequently the upper and lower 4 bits ('nibble') of a port are
+used as a unit, some procedures and functions are defined to use port
+nibbles as a regular variable and set pin directions by 4:
 <pre>
   PORTx_low             - bits 0..3
   PORTx_high            - bits 4..7
   PORTx_low_direction
   PORTx_high_direction
 </pre>
+<p>This makes it possible to use statements like:
+<pre>
+   PORTA_low_direction = all_output
+   PORTA_low = "7"                   -- upper nibble remains unchanged
+</pre>
+<p>Several Jallib function libraries use this facility.
 
-<p>Notes:
-<ol>
-<li>When you have used Jal before with other device files or libraries
-  you may notice some differences in naming convention:
-  <ul>
-  <li>PORTA is used consistently, while previously PORT_A was a
-      popular naming convention especially for PORT_A_low/high,
-      PORT_A_direction, etc.
-      For individual pins the convention 'pin_Ax' is maintained.
-  <li>Subfields of registers have the registername as prefix, like
-      <br>var volatile bit  INTCON_GIE  at INTCON : 7
-  </ul>
-<li>See the extra alias declarations for the GPIO and TRISIO registers
-    and their bits.
-    Programs and function libraries can access the GPIO bits with PORTA
-    and pin_Ay names, making it possible to use libraries across a large
-    collection of PICmicros.
-</ol>
-
-<h3>MSSP modules</h3>
+<h3>Names of MSSP modules</h3>
 <p>Names of registers of MSSP modules have been normalized as follows:
-<p>
 <ul>
 <li>MSSP module of midrange PICs
 <pre>
@@ -315,19 +326,19 @@ and upper nibbles of ports and their direction:
 </pre>
 </ul>
 
-<h2>Special Features</h2>
-
-<p>The device files contain a number of special procedures for the
-convenience of the JAL programmer.
-Most procedures are in the form of a pseudo variable, some are 'normal'
-procedures.
-Pseudo variables a available for TRISA, TRISB and TRISC and corresponding
-pins for the baseline series of PICmicros.
-This means for example that
-<pre>
-   pin_A2_direction = output
-</pre>
-can be used even though these PICs have no TRISA register.
+<h3>Miscellaneous remarks about names</h3>
+<p>When you have used Jal before with other device files or libraries
+you may notice some differences in the naming convention:
+<ul>
+<li>PORTA is used consistently, while previously PORT_A was a
+    popular naming convention especially for PORT_A_low/high,
+    PORT_A_direction, etc.
+    For individual pins the convention 'pin_Ax' is used.
+<li>Subfields of registers have the registername as prefix, like
+    <br>var volatile bit  INTCON_GIE  at INTCON : 7
+<li>When you hit compile errors related to undefined names, scan the
+    device files to search for 'our' name of the register or port.
+</ul>
 
 <h2>About Port Shadowing</h2>
 
