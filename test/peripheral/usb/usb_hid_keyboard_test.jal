@@ -1,0 +1,403 @@
+-- Title: USB HID keyboard device demo
+-- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
+-- Adapted-by: -
+-- Compiler: >=2.4j
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- 
+-- Description: This application emulates a keyboard USB human interface device
+-- (HID), once the USB device has been conifgured and the USB HID device is recognized by
+-- the host operating systems, it will generate keyboard chars if pin RB5 is low
+-- 
+-- 
+-- Sources: http://www.usb.org for USB specifications
+-- 
+-- Notes: compiled with following flags
+--	-loader18 -no-fuse 
+--	use -no-variable-reuse when debugging flags are
+--  set due to a compiler issue
+--
+-- ------------------------------------------------------
+-- ------------------------------------------------------
+--
+--
+
+
+
+-- note, include order is important
+include usb_board
+const bit USB_DEBUG = false
+const bit USB_DEBUG_HIGH = false
+
+const bit USB_HID_DEBUG = false
+const bit USB_HID_DEBUG_HIGH = false
+const byte USB_HID_ENDPOINT = 0x01
+
+include usb_defs
+include usb_hid_keyboard_config
+include usb_drv_core
+
+
+var volatile bit usb_hid_can_tx = true
+
+const byte USB_HID_REQ_HID 			= 0x21
+const byte USB_HID_REQ_REPORT 		= 0x22
+const byte USB_HID_REQ_PHYSDISCR	= 0x23
+
+const byte USB_HCR_GET_REPORT		= 0x01
+const byte USB_HCR_GET_IDLE			= 0x02
+const byte USB_HCR_GET_PROTOCOL		= 0x03
+const byte USB_HCR_SET_REPORT		= 0x09
+const byte USB_HCR_SET_IDLE			= 0x0A
+const byte USB_HCR_SET_PROTOCOL		= 0x0B
+
+procedure usb_handle_class_request_callback() is
+    
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+
+
+
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " HID CL CALLBACK REQ: "
+        const byte str1[] = " bytes "
+        serial_print_str(str)
+        serial_print_hex(len & 0xFF)
+        serial_print_str(str1)
+        serial_print_hex(val >> 8 )
+        serial_print_hex(val & 0xFF)
+        serial_putc( " " )
+        serial_print_hex(req01 )
+    end if
+        
+	case (req01) of
+
+
+		USB_HCR_GET_REPORT:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "GET_REPORT "
+				serial_print_str(str)
+			end if
+		end block
+		
+		USB_HCR_GET_IDLE:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "GET_IDLE "
+				serial_print_str(str)
+			end if
+		end block
+
+		USB_HCR_GET_PROTOCOL:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "GET_PROTOCOL "
+				serial_print_str(str)
+			end if
+		end block
+		
+		USB_HCR_SET_REPORT:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_REPORT "
+				serial_print_str(str)
+				
+				if ( len > 0 ) then
+					usb_control_mode = USB_CM_CTRL_WRITE_DATA_STAGE_CLASS
+				end if
+			end if
+		end block
+		
+		USB_HCR_SET_IDLE:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_IDLE "
+				serial_print_str(str)
+			end if
+		end block
+
+		USB_HCR_SET_PROTOCOL:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_PROTOCOL "
+				serial_print_str(str)
+			end if
+		end block
+		
+		otherwise
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "UNKNOWN CL REQUEST "
+				serial_print_str(str)
+			end if
+		end block
+	end case
+	
+end procedure
+
+var byte usb_kbd_report[8]
+
+procedure usb_handle_class_ctrl_write_callback() is
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+
+
+
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " HID CL CALLBACK WR: "
+        serial_print_hex(req01 )
+    end if
+    
+	case (req01) of
+		USB_HCR_SET_REPORT:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_REPORT "
+				serial_print_str(str)
+				
+				
+				var byte idx
+				var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR
+				
+				for count( usb_kbd_report ) loop
+					serial_print_hex( bd0_out_buffer[idx] )
+					usb_kbd_report[ idx ] = bd0_out_buffer[idx]
+				end loop
+							
+				usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
+				usb_send_status_ack()
+				
+			end if
+		end block
+
+		otherwise
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "UNKNOWN CL REQUEST "
+				serial_print_str(str)
+			end if
+		end block
+
+	end case
+    
+end procedure
+
+procedure usb_handle_class_ctrl_read_callback() is
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+
+
+
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " HID CL CALLBACK RD: "
+        const byte str1[] = " bytes "
+        serial_print_str(str)
+        serial_print_hex(len & 0xFF)
+        serial_print_str(str1)
+        serial_print_hex(val >> 8 )
+        serial_print_hex(val & 0xFF)
+        serial_putc( " " )
+        serial_print_hex(req01 )
+    end if
+end procedure
+
+
+procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+    
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " EP data in: "
+        const byte str1[] = " bytes "
+        serial_print_str(str)
+        serial_print_hex(byte_count & 0xFF)
+        serial_print_str(str1)
+    end if
+    
+    -- data has been sent, so do we need to send more?
+    if (end_point == USB_HID_ENDPOINT) then
+        -- it's the data end point
+        usb_hid_can_tx = true
+    end if
+end procedure
+
+procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+    var byte cdc_rx_next
+    if USB_HID_DEBUG then
+        const byte str[] = " EP data out: "
+        const byte str1[] = " bytes "
+        serial_print_str(str)
+        serial_print_hex(byte_count)
+        serial_print_str(str1)
+    end if
+    
+    -- We have some data!
+    if (end_point == USB_HID_ENDPOINT) then
+	end if
+end procedure
+
+
+include usb_drv
+
+
+
+
+TRISD = 0b0000_0000
+
+-- constants
+const  byte str_welcome[] = "JAL USB Keyboard HID demo version 0.02\nplease wait (takes ~20 seconds) before the device is fully configured"
+
+-- variables
+var word i = 0
+var bit usb_initialized = false
+
+-- 0 Modifier byte
+--		bit
+--		0 LEFT CTRL
+--		1 LEFT SHIFT
+--		2 LEFT ALT
+--		3 LEFT GUI
+--		4 RIGHT CTRL
+--		5 RIGHT SHIFT
+--		6 RIGHT ALT
+--		7 RIGHT GUI
+-- 1 reserved
+-- 2 keycode array (0)
+-- 3 keycode array (1)
+-- 4 keycode array (2)
+-- 5 keycode array (3)
+-- 6 keycode array (4)
+-- 7 keycode array (5)
+var byte hid_report_in[8]
+
+var word ticks100us = 0
+var bit enable_keyboard = false
+
+
+procedure usb_tasks() is    
+    -- Servicing Hardware
+    -- use polling method
+    usb_handle_isr()
+end procedure
+
+procedure usb_hid_tx_report( byte in hid_report_in[], byte in cnt ) is
+	
+	while ( usb_hid_can_tx == false ) loop
+		usb_tasks()
+	end loop
+	usb_hid_can_tx = false
+	usb_send_data(USB_HID_ENDPOINT, hid_report_in, cnt , low )
+end procedure
+
+-- interrupts? No thanks
+while INTCON_GIE loop
+    INTCON_GIE = false
+end loop
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == high then
+	-- put info on RS-232 serial line
+	serial_newline()
+	serial_newline()
+
+	serial_print_str( str_welcome )
+	serial_newline()
+end if
+
+-- setup the USB device
+usb_setup()
+
+delay_1ms(10)
+
+-- enable USB device
+usb_enable_module()
+
+pin_b5_direction = input
+
+
+var byte keyValue = 4
+var bit sw3 at PORTB_RB5
+var bit latched_sw3 = sw3
+
+var bit sendKeystroke = false 
+
+-- disable analog unit, all ports set to digital
+enable_digital_io()
+
+-- main loop
+forever loop
+	-- poll the usb ISR function on a regular base, in order to 
+	-- serve the USB requests
+	usb_tasks()
+	
+    -- check if USB device has been configured by the HOST
+    if usb_is_configured()  then
+
+		-- note user via serial line that USB has been configured
+		if usb_initialized == false then
+			usb_initialized = true
+			
+			if defined( HAS_SERIAL_DEBUG_PORT ) == true then			
+				const  byte str[] = "USB device has been configured by the HOST!"
+				serial_print_str( str )
+				serial_newline()
+
+				-- now keyboard chars can be send to the host
+				enable_keyboard = true
+			end if
+		end if
+    end if
+
+	-- prepare the HID buffer
+	hid_report_in[0] = 0
+	hid_report_in[1] = 0
+	hid_report_in[2] = 0
+	hid_report_in[3] = 0
+	hid_report_in[4] = 0
+	hid_report_in[5] = 0
+	hid_report_in[6] = 0
+	hid_report_in[7] = 0
+	
+	if ( sw3 != latched_sw3 ) then
+
+		latched_sw3 = sw3
+			
+		if ( sw3 == low )then
+			hid_report_in[2] = keyValue
+			keyValue = keyValue + 1
+			if ( keyValue == 40 ) then
+				keyValue = 4
+			end if
+		else
+			hid_report_in[2] = 0
+		end if
+		
+		-- Send the 8 byte packet over USB to the host.
+		if enable_keyboard then
+			usb_hid_tx_report( hid_report_in, count( hid_report_in ) )
+		end if
+
+		-- debounce
+		delay_1ms(50)
+		
+	end if
+
+
+    
+	if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
+		if PIR1_RCIF then
+			var byte tmpB = portb 
+			serial_putc( RCREG )
+			serial_print_hex( tmpB )			
+		end if
+	end if	
+    
+end loop

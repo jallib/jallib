@@ -49,8 +49,8 @@ procedure _usb_copy_ram_to_ram( WORD in dst, byte in data[], byte in num_bytes )
 --	const byte str[] = " _usb_cp_carray_to_ram DST:" 
 --	serial_newline()
 --	serial_print_Str( str )
---	serial_print_int(dst_ptr[1])
---	serial_print_int(dst_ptr[0])
+--	serial_print_hex(dst_ptr[1])
+--	serial_print_hex(dst_ptr[0])
 --	serial_putc( ">" )
 
 	FSR1L = dst_ptr[0]
@@ -58,7 +58,7 @@ procedure _usb_copy_ram_to_ram( WORD in dst, byte in data[], byte in num_bytes )
 
 	for num_bytes using index loop
 		var byte value = data[index]
---		serial_print_int(value)
+--		serial_print_hex(value)
 		POSTINC1 = value
 	end loop
 end procedure
@@ -69,7 +69,7 @@ procedure usb_send_data_chunk() is
 	var volatile bit own_bit at usb_bd0in_stat : USB_BDSTATUS_UOWN 
 	
 	if ( own_bit ) then
-		if USB_DEBUG then
+		if USB_DEBUG > 0  then
 			const byte str[] = " !don't own it! " 
 			serial_print_str(str);
 		end if
@@ -77,10 +77,10 @@ procedure usb_send_data_chunk() is
 		var byte byte_cnt
 
 		if ( usb_delivery_bytes_to_send > usb_delivery_bytes_max_send ) then
-			if USB_DEBUG then
+			if USB_DEBUG > 0  then
 
 				serial_putc( "*" )
-				serial_print_int( usb_delivery_bytes_max_send )
+				serial_print_hex( usb_delivery_bytes_max_send )
 			end if
 			usb_delivery_bytes_to_send = usb_delivery_bytes_max_send
 		end if
@@ -92,17 +92,17 @@ procedure usb_send_data_chunk() is
 		end if
 
 	
-		if USB_DEBUG then
+		if USB_DEBUG > 0  then
 			var byte idx
 			
 			serial_newline()
-			--serial_print_int( usb_delivery_bytes_max_send )
+			--serial_print_hex( usb_delivery_bytes_max_send )
 			--serial_putc( "~" )
-			serial_print_int( byte_cnt )
+			serial_print_hex( byte_cnt )
 			serial_putc( ">" )
 			for byte_cnt using idx loop
 				var byte w_val = usb_delivery_buffer[ idx + usb_delivery_bytes_sent ]
-				serial_print_int( w_val )
+				serial_print_hex( w_val )
 			end loop
 		end if
 		
@@ -121,13 +121,13 @@ procedure usb_send_data_chunk() is
 
 		var volatile bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
 		if ( dts_bit  ) then
-			if USB_DEBUG then
-				serial_print_int( 0b_1000_1000 )
+			if USB_DEBUG > 0  then
+				serial_print_hex( 0b_1000_1000 )
 			end if	
 			usb_bd0in_stat = 0b_1000_1000
 		else
-			if USB_DEBUG then
-				serial_print_int( 0b_1100_1000 )
+			if USB_DEBUG > 0  then
+				serial_print_hex( 0b_1100_1000 )
 			end if	
 			usb_bd0in_stat = 0b_1100_1000
 		end if
@@ -136,7 +136,7 @@ procedure usb_send_data_chunk() is
 
 		if ( usb_delivery_bytes_sent == usb_delivery_bytes_to_send )  then
 			usb_control_mode = USB_CM_CTRL_READ_AWAITING_STATUS -- we're done with data stage
-			if USB_DEBUG then
+			if USB_DEBUG > 0  then
 				serial_putc( "@" )
 			end if
 		end if
@@ -190,20 +190,20 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 	
 	var byte idx;
 
-	if USB_DEBUG then
+	if USB_DEBUG_HIGH > 0 then
 		serial_newline()
 		serial_putc("~")
 	end if
 		
 	for byte_cnt using idx  loop
 		usb_delivery_buffer[idx] = data[idx]
-		if USB_DEBUG then
-			serial_print_int( usb_delivery_buffer[idx] )
+		if USB_DEBUG_HIGH > 0 then
+			serial_print_hex( usb_delivery_buffer[idx] )
 		end if
 	end loop
 
 
-	if USB_DEBUG then
+	if USB_DEBUG_HIGH > 0 then
 		serial_putc("~")
 	end if
 	
@@ -219,20 +219,20 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 				dts_bit = low
 			end if
 			
-	if USB_DEBUG then
+	if USB_DEBUG > 0  then
 		serial_newline()
 		serial_putc("i")
-		serial_print_int( usb_bd0in_stat )
+		serial_print_hex( usb_bd0in_stat )
 	end if
 			
 			if ( dts_bit  ) then
-				if USB_DEBUG then
-					serial_print_int( 0b_1000_1000)	
+				if USB_DEBUG > 0  then
+					serial_print_hex( 0b_1000_1000)	
 				end if	
 				usb_bd0in_stat = 0b_1000_1000
 			else
-				if USB_DEBUG then
-					serial_print_int( 0b_1100_1000)	
+				if USB_DEBUG > 0  then
+					serial_print_hex( 0b_1100_1000)	
 				end if	
 				usb_bd0in_stat = 0b_1100_1000
 			end if		
@@ -283,7 +283,7 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 		end block
 		otherwise
 		block		
-			if USB_DEBUG then
+			if USB_DEBUG > 0  then
 				serial_newline()
 				const byte str[] = " ENDPOINT NOT SUPPORTED YET! " 
 				serial_print_str(str);
@@ -297,8 +297,8 @@ end procedure
 
 procedure usb_configure_endpoints() is
 	
-	if USB_DEBUG then
-		const byte str[] = "Config eps "
+	if USB_DEBUG > 0  then
+		const byte str[] = " Config eps "
 		serial_print_str(str)
 	end if	
 	
@@ -401,11 +401,11 @@ end procedure
 procedure usb_stall_ep0() is
 	-- set BSTALL bit and UOWN bit (SIE will own the buffer)
 
-	if USB_DEBUG then
+	if USB_DEBUG > 0  then
 		serial_newline()
 		serial_putc("o")
-		serial_print_int( usb_bd0out_stat )
-		serial_print_int( usb_bd0out_stat | 0b_1000_0100)	
+		serial_print_hex( usb_bd0out_stat )
+		serial_print_hex( usb_bd0out_stat | 0b_1000_0100)	
 	end if
 
 	-- AF REMOVE usb_bd0in_stat = usb_bd0in_stat | 0b_1000_0100
@@ -425,21 +425,21 @@ procedure usb_prime_ep0_out() is
 		new_value = 0b_1100_1000	
 	end if
 	
-	if USB_DEBUG then
+	if USB_DEBUG > 0  then
 		serial_newline()
 		serial_putc("o")
-		serial_print_int( usb_bd0out_stat )
-		serial_print_int(new_value)	
+		serial_print_hex( usb_bd0out_stat )
+		serial_print_hex(new_value)	
 	end if
 
 	-- AF CHECK THIS STUFF TODO
 	if ( usb_control_mode == USB_CM_CTRL_READ_DATA_STAGE ) then
 
-		if USB_DEBUG then
+		if USB_DEBUG > 0  then
 			serial_newline()
 			serial_putc("i")
-			serial_print_int( usb_bd0in_stat )
-			serial_print_int(0)	
+			serial_print_hex( usb_bd0in_stat )
+			serial_print_hex(0)	
 		end if
 		usb_bd0in_stat = 0x00
 	end if
