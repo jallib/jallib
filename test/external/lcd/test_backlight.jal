@@ -1,0 +1,108 @@
+-- ------------------------------------------------------
+-- Title: Test program for lcd_backlight test (extended test)
+--
+-- Author: Joep Suijs, Copyright (c) 2008..2008, all rights reserved.
+--
+-- Adapted-by: 
+--
+-- Compiler: >=2.4g
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Testing lcd_hd44780_4 and lcd_hd44780_common
+-- This is to test all hd44780_common features. See test_lcd_*
+-- for a basic display test.
+-- --
+-- This file defines a test for JALLIB testing, using a test-board
+--  defined by a BOARD file .
+--
+-- Sources:
+--
+-- Notes: 
+-- setup: an hd44780 compatible display, used in 4-bit mode.
+--
+-- ------------------------------------------------------
+
+enable_digital_io() -- disable analog I/O (if any)
+
+;@jallib use chipdef
+;@jallib use lcd_hd44780_4
+;@jallib use led
+
+-- ----------------------------------------------------------------------------
+-- optionally include this file to gain access to the tc_var* variables
+-- ----------------------------------------------------------------------------
+include serial_tc_header
+
+-- setup libs, io etc
+lcd_rs_direction        = output
+lcd_en_direction        = output
+lcd_dataport_direction  = output
+
+include print
+include lcd_hd44780_4
+include delay 
+lcd_init()                              -- initialize LCD
+
+var byte value = 0
+
+lcd_clear_screen()
+lcd_home()
+
+const byte teststring[] = "Serial TC ready."
+print_string(lcd, teststring)
+
+const byte lcd_backlight_pwm = 6
+
+-- setup for digital backlight control                     
+var volatile bit lcd_bl is pin_b0
+pin_b0_direction = output      
+;const bit lcd_bl_inverted = true
+include lcd_backlight
+
+
+
+-- -----------------------------------------------------------------------------
+-- Define all unit tests required
+-- (testname string constants are optional)
+-- -----------------------------------------------------------------------------
+
+-- test support function             
+var byte testchar = "a"
+procedure increment_testchar() is
+   testchar = testchar + 1;
+   if (testchar > "z") then 
+      testchar = "a" 
+   end if
+end procedure
+-- test support function end
+
+const byte testname_a[] = "backlight on"
+procedure unit_test_a() is                
+   lcd_backlight(on)   
+end procedure
+
+const byte testname_b[] = "backlight off"
+procedure unit_test_b() is                
+   lcd_backlight(off)   
+end procedure
+
+const byte testname_c[] = "backlight 50%"
+procedure unit_test_c() is                
+   lcd_backlight_variable(128)   
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+-- include testconsole after definition of unit tests
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+include serial_testconsole
+testconsole_init()      
+
+tc_var2 = 1 -- default (used for left/right shift)   
+
+testconsole()  -- contains forever loop
+
+
