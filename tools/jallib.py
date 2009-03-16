@@ -82,14 +82,14 @@ def get_jal_filenames(dir,subdir=None):
 	return jalfiles
 
 def get_full_sample_path(sample_dir,pic="",sample=""):
-	return os.path.join(sample_dir,"by_device",pic,sample)
+	return os.path.join(sample_dir,sample)
 
 
 # cache found files
 explored_tests = None
 def get_full_test_path(sample_dir,test=""):
 	global explored_tests
-	testdir = os.path.join(sample_dir,"test")
+	testdir = os.path.join(sample_dir,"..","test")
 	if not test:
 		return testdir
 	else:
@@ -105,7 +105,7 @@ def get_full_test_path(sample_dir,test=""):
 		return os.path.join(testdir,explored_tests[test])
 
 def get_full_board_path(sample_dir,board=""):
-	return os.path.join(sample_dir,"test","board",board)
+	return os.path.join(sample_dir,"..","test","board",board)
 	
 
 ################
@@ -585,9 +585,6 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 			matrix[device]['samples'].setdefault(jalfile,{'pass' : None, 'revision' : None})
 
 	def analyse_sampledir(dir):
-		if not "by_device" in os.listdir(dir):
-			print >> sys.stderr, "Sample dir '%s' does not contain 'by_device' map." % dir
-			sys.exit(1)
 		for devicedir in os.listdir(get_full_sample_path(dir)):
 			if selected_pics and not devicedir in selected_pics:
 				# skip, not wanted by user
@@ -641,16 +638,11 @@ def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
 	save_matrix(matrix,outfile)
 
 def prune_testing_matrix(sample_dir,outfile,selected_pics=[]):
-	if not "by_device" in os.listdir(sample_dir):
-		print >> sys.stderr, "Sample dir '%s' does not contain 'by_device' map." % bydevicedir
-		sys.exit(1)
-	bydevicedir = os.path.join(sample_dir,"by_device")
-
 	matrix = get_matrix(outfile)
 	pics = selected_pics and selected_pics or matrix.keys()
 	for pic in pics:
 		for s in matrix[pic]['samples'].keys():
-			if not os.path.isfile(os.path.join(bydevicedir,pic,s)):
+			if not os.path.isfile(os.path.join(sample_dir,s)):
 				print "PIC: %s, sample '%s' doesn't exist, removing from the matrix..." % (pic,s)
 				del matrix[pic]['samples'][s]
 
@@ -1286,8 +1278,7 @@ Use this option to handle the testing matrix and the test result page.
     -s: path to the sample directory. If no option is given, it will expect 
         to define as an environment variable, JALLIB_SAMPLEDIR. If no option
         is given, and no env. variable can be found, the current directory 
-        will be considered. The sample(s) directory(ies) *must* contain a 
-        'by_device' directory.
+        will be considered.
 
 """
 
@@ -1314,13 +1305,11 @@ from one board file and one test file (using -b, -t and -o options).
 
     -a: analyse available board and test files, try to combine them,
         try to compile them. If it's a success, write the generated sample
-        on the correct "by_device" location, or in the directory specified
-        by -o option
+        on "sample" map, or in the directory specified by -o option
     -b: specify a board file. Can be used in combination with -a option.
         if -o is also specified, then this is considered as the output
         directory where generated samples will be stored. Without -o, 
-        samples will be stored in appropriate directory
-        (sample/by_device/<picname>/...)
+        samples will be stored in "sample" map
     -t: specify a test file
     -o: specify the output sample filename, or the output directory
         when used in combination with -a option
