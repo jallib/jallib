@@ -5,7 +5,7 @@ export JALLIB_ROOT=`pwd`	# correct when set by buildbot
 export JALLIB_REPOS=$JALLIB_ROOT/include
 export JALLIB_SAMPLEDIR=$JALLIB_ROOT/sample
 
-jalsamples=`find $JALLIB_SAMPLEDIR/by_device -name \*.jal -type f`
+jalsamples=`find $JALLIB_SAMPLEDIR -name \*.jal -type f`
 jallibs=`find $JALLIB_REPOS -name \*.jal -type f`
 
 echo `echo $jalsamples | sed "s#\.jal #.jal\n#g" | wc -l` samples to validate...
