@@ -66,7 +66,7 @@ except ImportError:
 # TOOLS #
 #########
 
-def get_jal_filenames(dir,subdir=None):
+def get_jal_filenames(dir,subdir=None,predicate=lambda x: True):
 	jalfiles = {}
 	if os.path.isfile(dir):
 		return {dir:dir}
@@ -75,10 +75,10 @@ def get_jal_filenames(dir,subdir=None):
 			continue
 		fulldf = os.path.join(dir,df)
 		halfdf = os.path.join(subdir and subdir or "",df)
-		if os.path.isfile(fulldf) and fulldf.endswith(".jal"):
+		if os.path.isfile(fulldf) and fulldf.endswith(".jal") and predicate(df):
 			jalfiles[df] = halfdf
 		elif os.path.isdir(fulldf):
-			jalfiles.update(get_jal_filenames(fulldf,subdir=os.path.join(subdir and subdir or "",df)))
+			jalfiles.update(get_jal_filenames(fulldf,subdir=os.path.join(subdir and subdir or "",df),predicate=predicate))
 	return jalfiles
 
 def get_full_sample_path(sample_dir,pic="",sample=""):
@@ -952,7 +952,7 @@ def find_test_files(testdir):
 	testfiles = []
 	for d in [d for d in os.listdir(testdir) if d != "board" and not d.startswith(".")]:
 		d = os.path.join(testdir,d)
-		testfiles.extend([os.path.join(d,v) for v in get_jal_filenames(d).values()])
+		testfiles.extend([os.path.join(d,v) for v in get_jal_filenames(d,predicate=lambda x: x.startswith("test_")).values()])
 	return testfiles
 
 def preferred_board(board):
