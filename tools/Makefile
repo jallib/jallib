@@ -31,9 +31,9 @@ test :
 	# run testsuite
 
 compile:
-	for f in `find ${SAMPLIR_DIR}/by_device -name \*.jal`; \
+	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
 	do \
-		jalv2 -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '0 errors' && true || ( echo problem with $$f && exit 255; ) \
+		../compiler/jalv2 -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '0 errors' && true || ( echo problem with $$f && exit 255; ) \
 	done 
 
 jsg:
@@ -82,7 +82,7 @@ dispatch:
 	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f sample/; done
 	# for all_devices package, keep everything...
 	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
-	for f in `find distrib/jallib-export/sample/by_device/ -type f | grep -e '[[:digit:]]\{2\}[[:alpha:]]\+.*_blink\.jal'`; \
+	for f in `find distrib/jallib-export/sample -type f | grep -e '[[:digit:]]\{2\}[[:alpha:]]\+.*_blink\.jal'`; \
 	do \
 		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
 	done
