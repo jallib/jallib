@@ -33,19 +33,19 @@
    CompilerVersion = '>=2.4i'                   /*                          */
 /* ------------------------------------------------------------------------ */
 
-mplabdir = 'k:/mplab820/'                       /* MPLAB base directory     */
+mplabdir = '/mplab820/'                         /* MPLAB base directory     */
 devdir   = mplabdir'mplab_ide/device/'          /* dir with .dev files      */
 lkrdir   = mplabdir'mpasm_suite/lkr/'           /* dir with .lkr files      */
 dstdir   = '/jallib/include/device/'            /* default destination      */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
-say 'Creating JALV2 include files for PIC specifications ...'
+say 'Creating JALV2 device files ...'
 
 parse upper arg destination selection .         /* commandline arguments */
 if destination = 'PROD' then                    /* production run */
   nop                                           /* use default destination */
 else if destination = 'TEST' then               /* test run */
-  dstdir = '/jallib/test/'                      /* alternate destination */
+  dstdir = 'test/'                              /* destination for testing */
 else do
   say 'Error: Required parameter missing: "prod" or "test"'
   return 1
@@ -979,6 +979,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   pin = 'pin_'||substr(n.j,2)
                   call lineout jalfile, 'var volatile bit  ',
                                         left(pin,20) 'at' reg ':' offset
+                  call lineout jalfile, '--'
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                  'at' shadow ':' offset') is'
                   call lineout jalfile, '   pragma inline'
@@ -992,6 +993,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                 pin = 'pin_A'right(n.j,1)
                 call lineout jalfile, 'var volatile bit  ',
                                       left(pin,20) 'at' reg ':' offset
+                call lineout jalfile, '--'
                 call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                  'at' shadow ':' offset') is'
                 call lineout jalfile, '   pragma inline'
@@ -1073,7 +1075,7 @@ do i = 1 to Dev.0
 
     if left(reg,3) = 'LAT' then do              /* LATx register */
       call list_port16_shadow reg               /* force use of LATx */
-                                                /* when accessing PORTx */
+                                                /* for output to PORTx */
     end
     else if left(reg,4) = 'TRIS' then do        /* TRISx */
       call lineout jalfile, 'var volatile byte  ',
@@ -1213,10 +1215,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
               end
               else if left(reg,3) = 'LAT' then do       /* LATx register */
                 if left(n.j,3) = 'LAT'   &,
-                    substr(n.j,4,1) = right(reg,1) then do  /* prob. I/O pin */
+                    substr(n.j,4,1) = right(reg,1) then do     /* I/O pin */
                   pin = 'pin_'||substr(n.j,4)
-                  call lineout jalfile, 'var volatile bit',
-                                        pin 'shared at' reg ':' offset
+                  call lineout jalfile, 'var volatile bit   ',
+                           left(pin,20) 'shared at PORT'substr(reg,4) ':' offset
+                  call lineout jalfile, '--'
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                    'at' reg ':' offset') is'
                   call lineout jalfile, '   pragma inline'
@@ -1537,18 +1540,18 @@ call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_low'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '   'lat '= ('lat '& 0xF0) | (x & 0x0F)'
+call lineout jalfile, '   'lat '= ('port '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '   return ('lat '& 0x0F)'
+call lineout jalfile, '   return ('port '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_high'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '   'lat '= ('lat '& 0x0F) | (x << 4)'
+call lineout jalfile, '   'lat '= ('port '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '   return ('lat '>> 4)'
+call lineout jalfile, '   return ('port '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 return
