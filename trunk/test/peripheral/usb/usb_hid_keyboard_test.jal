@@ -23,19 +23,219 @@
 --
 --
 
-
-
 -- note, include order is important
 include usb_board
+
 const bit USB_DEBUG = false
 const bit USB_DEBUG_HIGH = false
-
 const bit USB_HID_DEBUG = false
 const bit USB_HID_DEBUG_HIGH = false
 const byte USB_HID_ENDPOINT = 0x01
 
 include usb_defs
-include usb_hid_keyboard_config
+
+const bit USB_EP0 = 1
+const byte USB_EP0_OUT_SIZE = 8
+const word USB_EP0_OUT_ADDR = 0x0500
+const byte USB_EP0_IN_SIZE  = USB_EP0_OUT_SIZE
+const word USB_EP0_IN_ADDR  = 0x0508
+
+const bit USB_EP1 = 1
+const byte USB_EP1_OUT_SIZE = 8
+const word USB_EP1_OUT_ADDR = 0x0510
+const byte USB_EP1_IN_SIZE  = 8
+const word USB_EP1_IN_ADDR  = 0x0518
+var volatile byte  usb_ep1in_buf[ 8 ]
+
+const bit USB_EP2 = 0
+const byte USB_EP2_OUT_SIZE = 8
+const word USB_EP2_OUT_ADDR = 0x0520
+const byte USB_EP2_IN_SIZE  = 8
+const word USB_EP2_IN_ADDR  = 0x0528
+
+const bit USB_EP3 = 0
+const byte USB_EP3_OUT_SIZE = 8
+const word USB_EP3_OUT_ADDR = 0x0600
+const byte USB_EP3_IN_SIZE = 8
+const word USB_EP3_IN_ADDR  = 0x0680
+
+const bit USB_CALLBACK_ON_CLASS_CTRL 		= true
+const bit USB_CALLBACK_ON_DEVICE_CONFIGURED = false
+const bit USB_CALLBACK_ON_VENDOR_CTRL 		= false
+const bit USB_EP_DATA_CALLBACK 				= true
+const bit USB_CALLBACK_ON_SOF 				= false
+
+const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
+	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
+	USB_DT_DEVICE, 	-- DEVICE 01h
+	0x00,
+	0x02,		-- usb version 2.00
+	0x00,		-- class
+	0x00,		-- subclass
+	0x00,		-- protocol
+	USB_EP0_OUT_SIZE,		-- max packet size for end point 0
+	0xd8,
+	0x04,		-- Microchip's vendor
+	0x55,
+	0x00,		-- Microchip keyboard demo
+	0x01,
+	0x00, 	     -- version 1.0 of the product
+	0x01,		-- string 1 for manufacturer
+	0x02,		-- string 2 for product
+	0x00,		-- string 3 for serial number
+	0x01		-- number of configurations
+}
+
+
+const byte USB_HID_REPORT1[]=
+{
+	0x05, 0x01,                    -- USAGE_PAGE (Generic Desktop)
+    0x09, 0x06,                    -- USAGE (Keyboard)
+    0xa1, 0x01,                    -- COLLECTION (Application)
+    0x05, 0x07,                    -- USAGE_PAGE (Keyboard)
+    0x19, 0xe0,                    -- USAGE_MINIMUM (Keyboard LeftControl)
+    0x29, 0xe7,                    -- USAGE_MAXIMUM (Keyboard Right GUI)
+    0x15, 0x00,                    -- LOGICAL_MINIMUM (0)
+    0x25, 0x01,                    -- LOGICAL_MAXIMUM (1)
+    0x75, 0x01,                    -- REPORT_SIZE (1)
+    0x95, 0x08,                    -- REPORT_COUNT (8)
+    0x81, 0x02,                    -- INPUT (Data,Var,Abs)
+    0x95, 0x01,                    -- REPORT_COUNT (1)
+    0x75, 0x08,                    -- REPORT_SIZE (8)
+    0x81, 0x03,                    -- INPUT (Cnst,Var,Abs)
+    0x95, 0x05,                    -- REPORT_COUNT (5)
+    0x75, 0x01,                    -- REPORT_SIZE (1)
+    0x05, 0x08,                    -- USAGE_PAGE (LEDs)
+    0x19, 0x01,                    -- USAGE_MINIMUM (Num Lock)
+    0x29, 0x05,                    -- USAGE_MAXIMUM (Kana)
+    0x91, 0x02,                    -- OUTPUT (Data,Var,Abs)
+    0x95, 0x01,                    -- REPORT_COUNT (1)
+    0x75, 0x03,                    -- REPORT_SIZE (3)
+    0x91, 0x03,                    -- OUTPUT (Cnst,Var,Abs)
+    0x95, 0x06,                    -- REPORT_COUNT (6)
+    0x75, 0x08,                    -- REPORT_SIZE (8)
+    0x15, 0x00,                    -- LOGICAL_MINIMUM (0)
+    0x25, 0x65,                    -- LOGICAL_MAXIMUM (101)
+    0x05, 0x07,                    -- USAGE_PAGE (Keyboard)
+    0x19, 0x00,                    -- USAGE_MINIMUM (Reserved (no event indicated))
+    0x29, 0x65,                    -- USAGE_MAXIMUM (Keyboard Application)
+    0x81, 0x00,                    -- INPUT (Data,Ary,Abs)
+    0xc0  
+}
+const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x09 + 0x07
+
+const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
+{	
+	-- configuration descriptor - - - - - - - - - - 
+	0x09,	-- length,
+	USB_DT_CONFIGURATION,	-- descriptor_type
+
+	USB_CONFIGURATION_DESCRIPTOR_SIZE,
+	0x00,	-- total_length;
+	
+	0x01,	-- num_interfaces,
+	0x01,	-- configuration_value,
+	0x00,	-- configuration_string_id,
+	0b10000000, -- attributes (bus powered, no remote wake up)
+	100,	-- max_power; (200ma)
+
+	-- interface descriptor - - - - - - - - - - - -
+	0x09,						-- length,
+	USB_DT_INTERFACE,			-- descriptor_type,
+	0x00,						-- interface_number, (starts at zero)
+	0x00,						-- alternate_setting, (no alternatives)
+	0x01,						-- num_endpoints,
+	USB_HID_INTF,				-- interface_class, (HID)
+	USB_BOOT_INTF_SUBCLASS,		-- interface_subclass, (boot)
+	USB_HID_PROTOCOL_KEYBOARD,	-- interface_protocol, (keyboard)
+	0x00,	-- interface_string_id;
+	
+	-- hid descriptor - - - - - - - - - - - - - - -
+	0x09,				-- length,
+	USB_DT_HID,			-- descriptor_type;
+	0x11,
+	0x01,				-- hid_spec in BCD (1.11)
+	0x00,				-- country_code, (0=not country specific)
+	0x01,				-- num_class_descriptors, (1)
+	USB_DT_HID_REPORT,	-- class_descriptor_type; (0x22 = report)
+	(count( USB_HID_REPORT1 ) & 0xFF ),
+	(count( USB_HID_REPORT1 ) >> 8 ),
+	
+	0x07,				-- length,
+	USB_DT_ENDPOINT,	-- descriptor_type,
+	0b10000001,			-- endpoint_address, (Endpoint 1, IN)
+	USB_EPT_INT,		-- attributes; (Interrupt)
+	USB_EP1_IN_SIZE,				
+	0x00,				-- max_packet_size
+	0x01				-- interval (1ms)
+}
+
+const byte USB_STRING0[] = 
+{
+	0x04,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	0x09,	-- wLANGID[0] (low byte)
+	0x04	-- wLANGID[0] (high byte)
+}
+
+const byte USB_STRING1[0x36] = 
+{
+	0x36,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	"M", 0x00, 
+	"i", 0x00, 
+	"c", 0x00, 
+	"r", 0x00, 
+	"o", 0x00, 
+	"c", 0x00, 
+	"h", 0x00, 
+	"i", 0x00, 
+	"p", 0x00, 
+	" ", 0x00,
+	"T", 0x00, 
+	"e", 0x00, 
+	"c", 0x00, 
+	"h", 0x00, 
+	"n", 0x00, 
+	"o", 0x00, 
+	"l", 0x00, 
+	"o", 0x00, 
+	"g", 0x00, 
+	"y", 0x00, 
+	",", 0x00, 
+	" ", 0x00,
+	"I", 0x00, 
+	"n", 0x00, 
+	"c", 0x00, 
+	".", 0x00
+}
+
+const byte USB_STRING2[42] = 
+{
+	42,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	"J", 0x00, 
+	"A", 0x00, 
+	"L", 0x00, 
+	" ", 0x00, 
+	"H", 0x00, 
+	"I", 0x00, 
+	"D", 0x00, 
+	" ", 0x00, 
+	"K", 0x00, 
+	"e", 0x00,
+	"b", 0x00, 
+	"o", 0x00, 
+	"a", 0x00, 
+	"r", 0x00, 
+	" ", 0x00, 
+	" ", 0x00, 
+	"D", 0x00, 
+	"e", 0x00, 
+	"m", 0x00, 
+	"o", 0x00
+}
+
 include usb_drv_core
 
 
@@ -65,13 +265,13 @@ procedure usb_handle_class_request_callback() is
     if USB_HID_DEBUG_HIGH then
         const byte str[] = " HID CL CALLBACK REQ: "
         const byte str1[] = " bytes "
-        serial_print_str(str)
-        serial_print_hex(len & 0xFF)
-        serial_print_str(str1)
-        serial_print_hex(val >> 8 )
-        serial_print_hex(val & 0xFF)
-        serial_putc( " " )
-        serial_print_hex(req01 )
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,len & 0xFF)
+        print_byte_hex(serial_hw_data,str1)
+        print_byte_hex(serial_hw_data,val >> 8 )
+        print_byte_hex(serial_hw_data,val & 0xFF)
+        serial_hw_write( " " )
+        print_byte_hex(serial_hw_data,req01 )
     end if
         
 	case (req01) of
@@ -81,7 +281,7 @@ procedure usb_handle_class_request_callback() is
 		block
 			if USB_HID_DEBUG then
 				const byte str[] = "GET_REPORT "
-				serial_print_str(str)
+				print_byte_hex(serial_hw_data,str)
 			end if
 		end block
 		
@@ -89,7 +289,7 @@ procedure usb_handle_class_request_callback() is
 		block
 			if USB_HID_DEBUG then
 				const byte str[] = "GET_IDLE "
-				serial_print_str(str)
+				print_byte_hex(serial_hw_data,str)
 			end if
 		end block
 
@@ -97,7 +297,7 @@ procedure usb_handle_class_request_callback() is
 		block
 			if USB_HID_DEBUG then
 				const byte str[] = "GET_PROTOCOL "
-				serial_print_str(str)
+				print_byte_hex(serial_hw_data,str)
 			end if
 		end block
 		
@@ -105,7 +305,7 @@ procedure usb_handle_class_request_callback() is
 		block
 			if USB_HID_DEBUG then
 				const byte str[] = "SET_REPORT "
-				serial_print_str(str)
+				print_byte_hex(serial_hw_data,str)
 				
 				if ( len > 0 ) then
 					usb_control_mode = USB_CM_CTRL_WRITE_DATA_STAGE_CLASS
@@ -117,7 +317,7 @@ procedure usb_handle_class_request_callback() is
 		block
 			if USB_HID_DEBUG then
 				const byte str[] = "SET_IDLE "
-				serial_print_str(str)
+				print_byte_hex(serial_hw_data,str)
 			end if
 		end block
 
@@ -125,7 +325,7 @@ procedure usb_handle_class_request_callback() is
 		block
 			if USB_HID_DEBUG then
 				const byte str[] = "SET_PROTOCOL "
-				serial_print_str(str)
+				print_byte_hex(serial_hw_data,str)
 			end if
 		end block
 		
@@ -133,7 +333,7 @@ procedure usb_handle_class_request_callback() is
 		block
 			if USB_HID_DEBUG then
 				const byte str[] = "UNKNOWN CL REQUEST "
-				serial_print_str(str)
+				print_byte_hex(serial_hw_data,str)
 			end if
 		end block
 	end case
@@ -153,7 +353,7 @@ procedure usb_handle_class_ctrl_write_callback() is
 
     if USB_HID_DEBUG_HIGH then
         const byte str[] = " HID CL CALLBACK WR: "
-        serial_print_hex(req01 )
+        print_byte_hex(serial_hw_data,req01 )
     end if
     
 	case (req01) of
@@ -161,14 +361,14 @@ procedure usb_handle_class_ctrl_write_callback() is
 		block
 			if USB_HID_DEBUG then
 				const byte str[] = "SET_REPORT "
-				serial_print_str(str)
+				print_byte_hex(serial_hw_data,str)
 				
 				
 				var byte idx
 				var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR
 				
 				for count( usb_kbd_report ) loop
-					serial_print_hex( bd0_out_buffer[idx] )
+					print_byte_hex(serial_hw_data, bd0_out_buffer[idx] )
 					usb_kbd_report[ idx ] = bd0_out_buffer[idx]
 				end loop
 							
@@ -182,7 +382,7 @@ procedure usb_handle_class_ctrl_write_callback() is
 		block
 			if USB_HID_DEBUG then
 				const byte str[] = "UNKNOWN CL REQUEST "
-				serial_print_str(str)
+				print_byte_hex(serial_hw_data,str)
 			end if
 		end block
 
@@ -197,18 +397,16 @@ procedure usb_handle_class_ctrl_read_callback() is
     var word val = usb_sdp_value
     var byte valbt[2] at usb_sdp_value
 
-
-
     if USB_HID_DEBUG_HIGH then
         const byte str[] = " HID CL CALLBACK RD: "
         const byte str1[] = " bytes "
-        serial_print_str(str)
-        serial_print_hex(len & 0xFF)
-        serial_print_str(str1)
-        serial_print_hex(val >> 8 )
-        serial_print_hex(val & 0xFF)
-        serial_putc( " " )
-        serial_print_hex(req01 )
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,len & 0xFF)
+        print_byte_hex(serial_hw_data,str1)
+        print_byte_hex(serial_hw_data,val >> 8 )
+        print_byte_hex(serial_hw_data,val & 0xFF)
+        serial_hw_write( " " )
+        print_byte_hex(serial_hw_data,req01 )
     end if
 end procedure
 
@@ -218,9 +416,9 @@ procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word i
     if USB_HID_DEBUG_HIGH then
         const byte str[] = " EP data in: "
         const byte str1[] = " bytes "
-        serial_print_str(str)
-        serial_print_hex(byte_count & 0xFF)
-        serial_print_str(str1)
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,byte_count & 0xFF)
+        print_byte_hex(serial_hw_data,str1)
     end if
     
     -- data has been sent, so do we need to send more?
@@ -235,9 +433,9 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word 
     if USB_HID_DEBUG then
         const byte str[] = " EP data out: "
         const byte str1[] = " bytes "
-        serial_print_str(str)
-        serial_print_hex(byte_count)
-        serial_print_str(str1)
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,byte_count)
+        print_byte_hex(serial_hw_data,str1)
     end if
     
     -- We have some data!
@@ -308,7 +506,7 @@ if defined( HAS_SERIAL_DEBUG_PORT ) == high then
 	serial_newline()
 	serial_newline()
 
-	serial_print_str( str_welcome )
+	print_string(serial_hw_data, str_welcome )
 	serial_newline()
 end if
 
@@ -324,7 +522,8 @@ pin_b5_direction = input
 
 
 var byte keyValue = 4
-var bit sw3 at PORTB_RB5
+var bit sw3 is pin_b5
+
 var bit latched_sw3 = sw3
 
 var bit sendKeystroke = false 
@@ -347,7 +546,7 @@ forever loop
 			
 			if defined( HAS_SERIAL_DEBUG_PORT ) == true then			
 				const  byte str[] = "USB device has been configured by the HOST!"
-				serial_print_str( str )
+				print_string(serial_hw_data, str )
 				serial_newline()
 
 				-- now keyboard chars can be send to the host
@@ -390,13 +589,11 @@ forever loop
 		
 	end if
 
-
-    
 	if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
 		if PIR1_RCIF then
 			var byte tmpB = portb 
-			serial_putc( RCREG )
-			serial_print_hex( tmpB )			
+			serial_hw_write( RCREG )
+			print_byte_hex(serial_hw_data, tmpB )			
 		end if
 	end if	
     
