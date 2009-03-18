@@ -1317,14 +1317,14 @@ def reindent_help():
 
 Reindent the given jal file, and save it back to the same file.
 Optionally can pass a indent rule (by default, if not specified, 3-spaces
-indented will occur). The form is:
+indentation will occur). The form is:
 
     <number>-<char>
 
-with special for space and tab chars for convenience. Examples:
+with special cases for space and tab chars (for convenience). Examples:
 
  - indented with 3 spaces: "-c 3-spaces" (or "-c 3-space", no plural)
- - indented with 1 : "-c 1-tab"
+ - indented with 1 tab: "-c 1-tab"
  - remove indentation: "-c 0-space"
  - indent with "XXXX" (hey contrived example !): "-c 4-X"
 
