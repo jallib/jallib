@@ -19,9 +19,9 @@
 # If you use the binary executables, you won't need to install them
 deps = [
    # (lib name, used in actions, website)
-   ('cheetah','jalapi','http://cheetahtemplate.org'),
-   ('yaml','test','http://pyyaml.org/wiki/PyYAML'),
-   ('pysvn','jalapi,test','http://pysvn.tigris.org/'),
+   ###('cheetah','jalapi','http://cheetahtemplate.org'),
+   ###('yaml','test','http://pyyaml.org/wiki/PyYAML'),
+   ###('pysvn','jalapi,test','http://pysvn.tigris.org/'),
    ]
 # Of course, since it's about jal, you'll need jalv2 compiler installed
 # (not bundled in binary executables)
@@ -107,6 +107,11 @@ def get_full_test_path(sample_dir,test=""):
 def get_full_board_path(sample_dir,board=""):
 	return os.path.join(sample_dir,"..","test","board",board)
 	
+
+def find_includes(jalfile):
+	content = file(jalfile).read()
+	return re.findall("^\s*include\s+(\w+)\s*",content,re.MULTILINE)
+
 
 ################
 # MAIN TARGETS #
@@ -455,415 +460,410 @@ def do_validate(args):
 		sys.exit(0)
 
 
-#------#
-# TEST #
-#------#
-
-def do_test(args):
-
-	if not has_yaml:
-		print >> sys.stderr, "You can't use this action, because yaml is not installed"
-		sys.exit(255)
-
-	try:
-		opts, args = getopt.getopt(args, ACTIONS['test']['options'])
-	except getopt.error,e:
-		print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
-		sys.exit(255)
-	
-	do_update = False
-	do_prune = False
-	do_generate = False
-	do_add = False
-	do_delete = False
-	do_html = False
-	do_print = False
-	do_merge = False
-	got_html = False
-	sample_dir = None
-	test_str = None
-	tmpl_file = None
-	tmpl_file_pic = None
-	html_file = None
-	pic = None
-	outfile = None
-	only_tested = False
-	each_pic_tmpl = None
-	selected_pics = None
-	sub_matrix = None
-	for o,v in opts:
-		if o == '-u':
-			do_update = True
-		elif o == '-e':
-			do_prune = True
-		elif o == '-a':
-			do_add = True
-			test_str = v
-		elif o == '-d':
-			do_delete = True
-			test_str = v
-		elif o == '-s':
-			sample_dir = v
-		elif o == '-f':
-			outfile = v
-		elif o == '-G':
-			do_html = True
-			tmpl_file = v
-		elif o == '-g':
-			do_html = True
-			tmpl_file_pic = v
-		elif o == '-o':
-			got_html = True
-			html_file = v
-		elif o == '-p':
-			do_print = True
-			pic = v
-		elif o == '-1':
-			only_tested = True
-		elif o == '-t':
-			each_pic_tmpl = v
-		elif o == '-n':
-			selected_pics = v.split(",")
-		elif o == '-m':
-			do_merge = True
-			sub_matrix = v
-		else:
-			print >> sys.stderr, "Don't know what to do with option %s" % o
-	if not outfile:
-		try:
-			outfile = os.environ['JALLIB_MATRIX']
-		except KeyError:
-			print >> sys.stderr,"Please provide a file to get/store the testing matrix\n(-f option or JALLIB_MATRIX env. var)"
-			sys.exit(255)
-	if not sample_dir:
-		sample_dir = os.environ.get('JALLIB_SAMPLEDIR',os.path.curdir)
-	if do_update:
-		update_testing_matrix(sample_dir,outfile,selected_pics)
-	elif do_prune:
-		prune_testing_matrix(sample_dir,outfile,selected_pics)
-	elif do_add:
-		add_update_test(test_str,outfile,sample_dir)
-	elif do_delete:
-		delete_test(test_str,outfile)
-	elif do_merge:
-		merge_matrix(outfile,sub_matrix)
-	elif do_html:
-		if not got_html:
-			html_file = ".".join(tmpl_file.split(".")[:-1]) + ".html"
-		generate_html(tmpl_file,tmpl_file_pic,html_file,outfile,sample_dir,only_tested,each_pic_tmpl)
-	elif do_print:
-		display_test_results(pic,outfile)
-	else:
-		print >> sys.stderr, "Error while parsing arguments. 'jallib help' for more"
-		sys.exit(255)
-
-def get_matrix(outfile):
-	# localized import: if one doesn't want to deal
-	# with test, don't force him to install yaml lib
-	
-	# existing file or from scratch ?
-	if os.path.isfile(outfile):
-		matrix = yaml.load(file(outfile).read())
-	else:
-		matrix = {}
-	return matrix
-
-def save_matrix(matrix,outfile):
-	fout = file(outfile,"w")
-	print >> fout, yaml.dump(matrix)
-	fout.close()
-	
-def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
-
-	matrix = get_matrix(outfile)
-
-	def analyze_samples(device,fullpathdir):
-		content = os.listdir(fullpathdir)
-		for jalfile in content:
-			if jalfile.startswith(".") or not jalfile.endswith(".jal"):
-				continue
-			matrix[device]['samples'].setdefault(jalfile,{'pass' : None, 'revision' : None})
-
-	def analyse_sampledir(dir):
-		for devicedir in os.listdir(get_full_sample_path(dir)):
-			if selected_pics and not devicedir in selected_pics:
-				# skip, not wanted by user
-				continue
-			fullpath = get_full_sample_path(dir,devicedir)
-			if not os.path.isdir(fullpath) or devicedir.startswith("."):
-				continue
-			matrix.setdefault(devicedir,{'samples' : {}, 'tests' : {}})
-			analyze_samples(devicedir,fullpath)
-
-	def analyse_testdir(dir):
-		if not "test" in os.listdir(dir):
-			print >> sys.stderr, "Sample dir '%s' does not contain 'test' map." % dir
-			sys.exit(1)
-		if not "board" in os.listdir(os.path.join(dir,"test")):
-			print >> sys.stderr, "Sample dir '%s' does not contain 'board' map." % os.path.join(dir,"test")
-			sys.exit(1)
-		# Get ALL test files
-		testdir = get_full_test_path(dir)
-		tdirs = [(d,os.path.join(testdir,d)) for d in os.listdir(testdir) if not d.startswith(".") and d != "board"]
-		test_files = {}
-		for (subdir,tdir) in tdirs:
-			test_files.update(get_jal_filenames(tdir,subdir)) ## if f.startswith("test_")])
-		# analyse board files, so pic can be deduced
-		boarddir = get_full_board_path(dir)
-		for boardfile in os.listdir(boarddir):
-			if not boardfile.endswith(".jal"):
-				continue
-			try:
-				pic = re.match("board_(.*)_.*\.jal",boardfile).groups()[0]
-				if selected_pics and not pic in selected_pics:
-					# skip it, not wanted by user
-					continue
-			except Exception,e:
-				print >> sys.stderr, "Unable to parse board filename '%s', skip it" % boardfile
-				continue
-			# now try to compile every tests with this given board
-			for test,pathtest in test_files.items():
-				status = do_compile(["-i",get_full_board_path(dir,boardfile),os.path.join(testdir,pathtest)],exitonerror=False,clean=True)
-				if status == 0:
-					# dispatch to devices
-					matrix[pic]['tests'].setdefault(test,{'pass' : None, 'revision' : None})
-					print "Test '%s' registered for pic '%s'" % (test,pic)
-				else:
-					print >> sys.stderr, "Compilation failed for test '%s' with pic '%s' (status=%s)" % (test,pic,status)
-
-
-	analyse_sampledir(sample_dir)
-	analyse_testdir(sample_dir)
-	
-	save_matrix(matrix,outfile)
-
-def prune_testing_matrix(sample_dir,outfile,selected_pics=[]):
-	matrix = get_matrix(outfile)
-	pics = selected_pics and selected_pics or matrix.keys()
-	for pic in pics:
-		for s in matrix[pic]['samples'].keys():
-			if not os.path.isfile(os.path.join(sample_dir,s)):
-				print "PIC: %s, sample '%s' doesn't exist, removing from the matrix..." % (pic,s)
-				del matrix[pic]['samples'][s]
-
-	save_matrix(matrix,outfile)
-
-
-def add_update_test(test_str,outfile,sample_dir):
-	matrix = get_matrix(outfile)
-	try:
-		pic,testfile,result = test_str.split(":")
-	except ValueError:
-		print >> sys.stderr,"Please specify the result as <pic>:<test_file>:<result>\n(eg. 16f88:serial_hw_echo.jal:true)"
-		sys.exit(1)
-	# extract manually passed revision (if exists)
-	revision = None
-	if "@" in result:
-		result,revision = result.split("@")
-	# normalize
-	try:
-		result = {'true':True,'false':False,'null':None}[result]
-	except KeyError,e:
-		print >> sys.stderr,"Invalid result '%s'. Specify either true, false or null" % e
-		sys.exit(1)
-
-	try:
-		# dispatch by naming convention...
-		if testfile.startswith("test_"):
-			tdict = matrix[pic]['tests']
-			testdir = os.path.join(sample_dir,'test')
-			if not os.path.isdir(testdir):
-				print >> sys.stderr, "'%s' is not a valid directory" % testdir
-				sys.exit(1)
-			tfiles = get_jal_filenames(get_full_test_path(sample_dir))
-			if not testfile in tfiles.keys():
-				print >> sys.stderr, "Can't find test '%s'" % testfile
-				sys.exit(1)
-			fullsfile = os.path.join(testdir,tfiles[testfile])
-		else:
-			tdict = matrix[pic]['samples']
-			# check if sample exist, and under svn
-			bydevice = get_full_sample_path(sample_dir)
-			if not os.path.isdir(bydevice):
-				print >> sys.stderr, "'%s' is not a valid directory" % bydevice
-				sys.exit(1)
-			fullsfile = os.path.join(bydevice,pic,testfile)
-			if not os.path.isfile(fullsfile):
-				print >> sys.stderr, "Sample '%s' does not exist" % fullsfile
-				sys.exit(1)
-	except KeyError,e:
-		print >> sys.stderr,"Can't find PIC %s (need to update the matrix ?)" % e
-		sys.exit(1)
-	
-	if revision:
-		# bypass automatic info fetching
-		try:
-			revision = int(revision)
-		except TypeError,ValueError:
-			print >> sys.stderr, "Revision must be an integer, not %s" % repr(revision)
-			sys.exit(1)
-	elif has_pysvn:
-		# get svn info using pysvn 
-		try:
-			svnclient = pysvn.Client()
-			revision = svnclient.info(fullsfile)['revision'].number
-		except pysvn.ClientError,e:
-			print >> sys.stderr, "Unable to get SVN information, because: %s" % e
-			sys.exit(1)
-	else:
-		print >> sys.stderr, "You don't have pysvn installed, you need to specify the revision\n\t<pic>:<testfile>:<true|false|null>@<revision"
-		sys.exit(1)
-
-	n = {'pass' : result, 'revision' : revision}
-	if tdict.has_key(testfile):
-		t = tdict[testfile]
-		print "Update '%s' result for PIC %s: %s => %s" % (testfile,pic,repr(t),repr(n))
-		tdict[testfile] = n
-	else:
-		print "Add new file '%s' for PIC %s: %s" % (testfile,pic,n)
-	tdict[testfile] = n
-	save_matrix(matrix,outfile)
-
-def delete_test(test_str,outfile):
-	matrix = get_matrix(outfile)
-	try:
-		pic,testfile = test_str.split(":")
-	except ValueError:
-		print >> sys.stderr,"Please specify the test to remove as <pic>:<test_file>\n(eg. 16f88:bad_test.jal)"
-		sys.exit(1)
-	try:
-		ttype = "sample"
-		if testfile.startswith("test_"):
-			ttype = "test"
-		print "Unregistering %s '%s' from PIC %s" % (ttype,testfile,pic)
-		del matrix[pic]['%ss' % ttype][testfile]
-		save_matrix(matrix,outfile)
-	except KeyError,e:
-		print >> sys.stderr, "Unable to delete '%s' from PIC %s, cannot find '%s'" % (testfile,pic,e)
-		sys.exit(1)
-
-def get_meter_label(meter):
-	if meter < 0:
-		return "not supported"
-	elif meter == 0:
-	   return "not tested"
-	elif meter <= 10:
-	   return "poor"
-	elif meter <= 30:
-	   return "risky"
-	elif meter <= 50:
-	   return "average"
-	elif meter <= 60:
-	   return "nice"
-	elif meter <= 70:
-	   return "good"
-	elif meter <= 80:
-	   return "very good"
-	elif meter <= 90:
-	   return "awesome"
-	elif meter <= 100:
-	   return "oh my..."
-	else:
-	   return "can't be serious"
-
-def sample_stat(data):
-	true = false = none = 0
-	for what in ('samples','tests'):
-		true += len([s for s in data[what] if data[what][s]['pass'] == True])
-		false += len([s for s in data[what] if data[what][s]['pass'] == False])
-		none += len([s for s in data[what] if data[what][s]['pass'] == None])
-	return (true,false,none)
-
-def compute_meter(data):
-	sample_num = len(data['samples']) + len(data['tests'])
-	if sample_num == 0:
-	   return 0.0
-	true,false,none = sample_stat(data)
-	print "true_samples: %s, false_samples: %s, none_samples: %s --- %s sample_num" % (true,false,none,sample_num)
-	note = ((float(true) - float(false)) / float(sample_num)) * 100.0
-	return note
-
-
-def find_includes(jalfile):
-	content = file(jalfile).read()
-	return re.findall("^\s*include\s+(\w+)\s*",content,re.MULTILINE)
-
-
-def generate_html(tmpl_file,tmpl_file_pic,html_file,outfile,sample_dir,only_tested=False,for_each_pic_tmpl=None):
-	if not has_cheetah:
-		print >> sys.stderr, "You can't use this action, because cheetah module is not installed"
-		sys.exit(255)
-		
-	matrix = get_matrix(outfile)
-	# TODO
-	newtr = {}
-	for pic,res in matrix.items():
-		libs = {True : [], False : [], None: []}
-		# build libds list for all samples attached to this PIC
-		# and also a list of libs for each samples
-		# (both used for main matrix and dedicated test page)
-		for sample,info in res['samples'].items() + res['tests'].items():
-			if sample.startswith("test_"):
-				found_libs = find_includes(get_full_test_path(sample_dir,sample))
-			else:
-				found_libs = find_includes(get_full_sample_path(sample_dir,pic,sample))
-			# normalize
-			found_libs = map(lambda x: x.lower(),found_libs)
-			info['libs'] = found_libs
-			libs[info['pass']].extend(found_libs)
-		# unique
-		for k in libs.keys():
-			libs[k] = list(set(libs[k]))
-		if only_tested and len(libs[True]) == 0 and len(libs[False]) == 0:
-			continue
-		else:
-			newtr[pic] = res
-			newtr[pic]['libs'] = libs
-
-	# generate global matrix
-	tmplsrc = "".join(file(tmpl_file,"r").readlines())
-	klass = Cheetah.Template.Template.compile(tmplsrc)
-	tmpl = klass()
-	tmpl.test_results = newtr
-	tmpl.sample_stat = sample_stat
-	tmpl.compute_meter = compute_meter
-	tmpl.get_meter_label = get_meter_label
-	fout = file(html_file,"w")
-	print >> fout, tmpl.main()
-
-	# then dedicated page
-	if tmpl_file_pic:
-		outdir = os.path.dirname(html_file)
-		tmplsrc = "".join(file(tmpl_file_pic,"r").readlines())
-		klass = Cheetah.Template.Template.compile(tmplsrc)
-		tmpl2 = klass()
-		for pic,res in newtr.items():
-			tmpl2.sample_stat = sample_stat
-			tmpl2.compute_meter = compute_meter
-			tmpl2.get_meter_label = get_meter_label
-			tmpl2.data = res
-			tmpl2.picname = pic
-			fout = file(os.path.join(outdir,"test_%s.html" % pic),"w")
-			print >> fout, tmpl2.main()
-		
-		
-
-def display_test_results(pic,outfile):
-	matrix = get_matrix(outfile)
-	try:
-		for ttype in ("samples","tests"):
-			print "%s:" % ttype
-			for k,v in matrix[pic][ttype].items():
-				print "    %s : %s" % (k,v['pass'])
-	except KeyError,e:
-		print >> sys.stderr, "Can't test result for PIC %s" % e
-		sys.exit(1)
-
-def merge_matrix(outfile,sub_matrix):
-	main_matrix = get_matrix(outfile)
-	sub_matrix = get_matrix(sub_matrix)
-	main_matrix.update(sub_matrix)
-	save_matrix(main_matrix,outfile)
+### #------#
+### # TEST #
+### #------#
+### 
+### def do_test(args):
+### 
+### 	if not has_yaml:
+### 		print >> sys.stderr, "You can't use this action, because yaml is not installed"
+### 		sys.exit(255)
+### 
+### 	try:
+### 		opts, args = getopt.getopt(args, ACTIONS['test']['options'])
+### 	except getopt.error,e:
+### 		print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+### 		sys.exit(255)
+### 	
+### 	do_update = False
+### 	do_prune = False
+### 	do_generate = False
+### 	do_add = False
+### 	do_delete = False
+### 	do_html = False
+### 	do_print = False
+### 	do_merge = False
+### 	got_html = False
+### 	sample_dir = None
+### 	test_str = None
+### 	tmpl_file = None
+### 	tmpl_file_pic = None
+### 	html_file = None
+### 	pic = None
+### 	outfile = None
+### 	only_tested = False
+### 	each_pic_tmpl = None
+### 	selected_pics = None
+### 	sub_matrix = None
+### 	for o,v in opts:
+### 		if o == '-u':
+### 			do_update = True
+### 		elif o == '-e':
+### 			do_prune = True
+### 		elif o == '-a':
+### 			do_add = True
+### 			test_str = v
+### 		elif o == '-d':
+### 			do_delete = True
+### 			test_str = v
+### 		elif o == '-s':
+### 			sample_dir = v
+### 		elif o == '-f':
+### 			outfile = v
+### 		elif o == '-G':
+### 			do_html = True
+### 			tmpl_file = v
+### 		elif o == '-g':
+### 			do_html = True
+### 			tmpl_file_pic = v
+### 		elif o == '-o':
+### 			got_html = True
+### 			html_file = v
+### 		elif o == '-p':
+### 			do_print = True
+### 			pic = v
+### 		elif o == '-1':
+### 			only_tested = True
+### 		elif o == '-t':
+### 			each_pic_tmpl = v
+### 		elif o == '-n':
+### 			selected_pics = v.split(",")
+### 		elif o == '-m':
+### 			do_merge = True
+### 			sub_matrix = v
+### 		else:
+### 			print >> sys.stderr, "Don't know what to do with option %s" % o
+### 	if not outfile:
+### 		try:
+### 			outfile = os.environ['JALLIB_MATRIX']
+### 		except KeyError:
+### 			print >> sys.stderr,"Please provide a file to get/store the testing matrix\n(-f option or JALLIB_MATRIX env. var)"
+### 			sys.exit(255)
+### 	if not sample_dir:
+### 		sample_dir = os.environ.get('JALLIB_SAMPLEDIR',os.path.curdir)
+### 	if do_update:
+### 		update_testing_matrix(sample_dir,outfile,selected_pics)
+### 	elif do_prune:
+### 		prune_testing_matrix(sample_dir,outfile,selected_pics)
+### 	elif do_add:
+### 		add_update_test(test_str,outfile,sample_dir)
+### 	elif do_delete:
+### 		delete_test(test_str,outfile)
+### 	elif do_merge:
+### 		merge_matrix(outfile,sub_matrix)
+### 	elif do_html:
+### 		if not got_html:
+### 			html_file = ".".join(tmpl_file.split(".")[:-1]) + ".html"
+### 		generate_html(tmpl_file,tmpl_file_pic,html_file,outfile,sample_dir,only_tested,each_pic_tmpl)
+### 	elif do_print:
+### 		display_test_results(pic,outfile)
+### 	else:
+### 		print >> sys.stderr, "Error while parsing arguments. 'jallib help' for more"
+### 		sys.exit(255)
+### 
+### def get_matrix(outfile):
+### 	# localized import: if one doesn't want to deal
+### 	# with test, don't force him to install yaml lib
+### 	
+### 	# existing file or from scratch ?
+### 	if os.path.isfile(outfile):
+### 		matrix = yaml.load(file(outfile).read())
+### 	else:
+### 		matrix = {}
+### 	return matrix
+### 
+### def save_matrix(matrix,outfile):
+### 	fout = file(outfile,"w")
+### 	print >> fout, yaml.dump(matrix)
+### 	fout.close()
+### 	
+### def update_testing_matrix(sample_dir,outfile,selected_pics=[]):
+### 
+### 	matrix = get_matrix(outfile)
+### 
+### 	def analyze_samples(device,fullpathdir):
+### 		content = os.listdir(fullpathdir)
+### 		for jalfile in content:
+### 			if jalfile.startswith(".") or not jalfile.endswith(".jal"):
+### 				continue
+### 			matrix[device]['samples'].setdefault(jalfile,{'pass' : None, 'revision' : None})
+### 
+### 	def analyse_sampledir(dir):
+### 		for devicedir in os.listdir(get_full_sample_path(dir)):
+### 			if selected_pics and not devicedir in selected_pics:
+### 				# skip, not wanted by user
+### 				continue
+### 			fullpath = get_full_sample_path(dir,devicedir)
+### 			if not os.path.isdir(fullpath) or devicedir.startswith("."):
+### 				continue
+### 			matrix.setdefault(devicedir,{'samples' : {}, 'tests' : {}})
+### 			analyze_samples(devicedir,fullpath)
+### 
+### 	def analyse_testdir(dir):
+### 		if not "test" in os.listdir(dir):
+### 			print >> sys.stderr, "Sample dir '%s' does not contain 'test' map." % dir
+### 			sys.exit(1)
+### 		if not "board" in os.listdir(os.path.join(dir,"test")):
+### 			print >> sys.stderr, "Sample dir '%s' does not contain 'board' map." % os.path.join(dir,"test")
+### 			sys.exit(1)
+### 		# Get ALL test files
+### 		testdir = get_full_test_path(dir)
+### 		tdirs = [(d,os.path.join(testdir,d)) for d in os.listdir(testdir) if not d.startswith(".") and d != "board"]
+### 		test_files = {}
+### 		for (subdir,tdir) in tdirs:
+### 			test_files.update(get_jal_filenames(tdir,subdir)) ## if f.startswith("test_")])
+### 		# analyse board files, so pic can be deduced
+### 		boarddir = get_full_board_path(dir)
+### 		for boardfile in os.listdir(boarddir):
+### 			if not boardfile.endswith(".jal"):
+### 				continue
+### 			try:
+### 				pic = re.match("board_(.*)_.*\.jal",boardfile).groups()[0]
+### 				if selected_pics and not pic in selected_pics:
+### 					# skip it, not wanted by user
+### 					continue
+### 			except Exception,e:
+### 				print >> sys.stderr, "Unable to parse board filename '%s', skip it" % boardfile
+### 				continue
+### 			# now try to compile every tests with this given board
+### 			for test,pathtest in test_files.items():
+### 				status = do_compile(["-i",get_full_board_path(dir,boardfile),os.path.join(testdir,pathtest)],exitonerror=False,clean=True)
+### 				if status == 0:
+### 					# dispatch to devices
+### 					matrix[pic]['tests'].setdefault(test,{'pass' : None, 'revision' : None})
+### 					print "Test '%s' registered for pic '%s'" % (test,pic)
+### 				else:
+### 					print >> sys.stderr, "Compilation failed for test '%s' with pic '%s' (status=%s)" % (test,pic,status)
+### 
+### 
+### 	analyse_sampledir(sample_dir)
+### 	analyse_testdir(sample_dir)
+### 	
+### 	save_matrix(matrix,outfile)
+### 
+### def prune_testing_matrix(sample_dir,outfile,selected_pics=[]):
+### 	matrix = get_matrix(outfile)
+### 	pics = selected_pics and selected_pics or matrix.keys()
+### 	for pic in pics:
+### 		for s in matrix[pic]['samples'].keys():
+### 			if not os.path.isfile(os.path.join(sample_dir,s)):
+### 				print "PIC: %s, sample '%s' doesn't exist, removing from the matrix..." % (pic,s)
+### 				del matrix[pic]['samples'][s]
+### 
+### 	save_matrix(matrix,outfile)
+### 
+### 
+### def add_update_test(test_str,outfile,sample_dir):
+### 	matrix = get_matrix(outfile)
+### 	try:
+### 		pic,testfile,result = test_str.split(":")
+### 	except ValueError:
+### 		print >> sys.stderr,"Please specify the result as <pic>:<test_file>:<result>\n(eg. 16f88:serial_hw_echo.jal:true)"
+### 		sys.exit(1)
+### 	# extract manually passed revision (if exists)
+### 	revision = None
+### 	if "@" in result:
+### 		result,revision = result.split("@")
+### 	# normalize
+### 	try:
+### 		result = {'true':True,'false':False,'null':None}[result]
+### 	except KeyError,e:
+### 		print >> sys.stderr,"Invalid result '%s'. Specify either true, false or null" % e
+### 		sys.exit(1)
+### 
+### 	try:
+### 		# dispatch by naming convention...
+### 		if testfile.startswith("test_"):
+### 			tdict = matrix[pic]['tests']
+### 			testdir = os.path.join(sample_dir,'test')
+### 			if not os.path.isdir(testdir):
+### 				print >> sys.stderr, "'%s' is not a valid directory" % testdir
+### 				sys.exit(1)
+### 			tfiles = get_jal_filenames(get_full_test_path(sample_dir))
+### 			if not testfile in tfiles.keys():
+### 				print >> sys.stderr, "Can't find test '%s'" % testfile
+### 				sys.exit(1)
+### 			fullsfile = os.path.join(testdir,tfiles[testfile])
+### 		else:
+### 			tdict = matrix[pic]['samples']
+### 			# check if sample exist, and under svn
+### 			bydevice = get_full_sample_path(sample_dir)
+### 			if not os.path.isdir(bydevice):
+### 				print >> sys.stderr, "'%s' is not a valid directory" % bydevice
+### 				sys.exit(1)
+### 			fullsfile = os.path.join(bydevice,pic,testfile)
+### 			if not os.path.isfile(fullsfile):
+### 				print >> sys.stderr, "Sample '%s' does not exist" % fullsfile
+### 				sys.exit(1)
+### 	except KeyError,e:
+### 		print >> sys.stderr,"Can't find PIC %s (need to update the matrix ?)" % e
+### 		sys.exit(1)
+### 	
+### 	if revision:
+### 		# bypass automatic info fetching
+### 		try:
+### 			revision = int(revision)
+### 		except TypeError,ValueError:
+### 			print >> sys.stderr, "Revision must be an integer, not %s" % repr(revision)
+### 			sys.exit(1)
+### 	elif has_pysvn:
+### 		# get svn info using pysvn 
+### 		try:
+### 			svnclient = pysvn.Client()
+### 			revision = svnclient.info(fullsfile)['revision'].number
+### 		except pysvn.ClientError,e:
+### 			print >> sys.stderr, "Unable to get SVN information, because: %s" % e
+### 			sys.exit(1)
+### 	else:
+### 		print >> sys.stderr, "You don't have pysvn installed, you need to specify the revision\n\t<pic>:<testfile>:<true|false|null>@<revision"
+### 		sys.exit(1)
+### 
+### 	n = {'pass' : result, 'revision' : revision}
+### 	if tdict.has_key(testfile):
+### 		t = tdict[testfile]
+### 		print "Update '%s' result for PIC %s: %s => %s" % (testfile,pic,repr(t),repr(n))
+### 		tdict[testfile] = n
+### 	else:
+### 		print "Add new file '%s' for PIC %s: %s" % (testfile,pic,n)
+### 	tdict[testfile] = n
+### 	save_matrix(matrix,outfile)
+### 
+### def delete_test(test_str,outfile):
+### 	matrix = get_matrix(outfile)
+### 	try:
+### 		pic,testfile = test_str.split(":")
+### 	except ValueError:
+### 		print >> sys.stderr,"Please specify the test to remove as <pic>:<test_file>\n(eg. 16f88:bad_test.jal)"
+### 		sys.exit(1)
+### 	try:
+### 		ttype = "sample"
+### 		if testfile.startswith("test_"):
+### 			ttype = "test"
+### 		print "Unregistering %s '%s' from PIC %s" % (ttype,testfile,pic)
+### 		del matrix[pic]['%ss' % ttype][testfile]
+### 		save_matrix(matrix,outfile)
+### 	except KeyError,e:
+### 		print >> sys.stderr, "Unable to delete '%s' from PIC %s, cannot find '%s'" % (testfile,pic,e)
+### 		sys.exit(1)
+### 
+### def get_meter_label(meter):
+### 	if meter < 0:
+### 		return "not supported"
+### 	elif meter == 0:
+### 	   return "not tested"
+### 	elif meter <= 10:
+### 	   return "poor"
+### 	elif meter <= 30:
+### 	   return "risky"
+### 	elif meter <= 50:
+### 	   return "average"
+### 	elif meter <= 60:
+### 	   return "nice"
+### 	elif meter <= 70:
+### 	   return "good"
+### 	elif meter <= 80:
+### 	   return "very good"
+### 	elif meter <= 90:
+### 	   return "awesome"
+### 	elif meter <= 100:
+### 	   return "oh my..."
+### 	else:
+### 	   return "can't be serious"
+### 
+### def sample_stat(data):
+### 	true = false = none = 0
+### 	for what in ('samples','tests'):
+### 		true += len([s for s in data[what] if data[what][s]['pass'] == True])
+### 		false += len([s for s in data[what] if data[what][s]['pass'] == False])
+### 		none += len([s for s in data[what] if data[what][s]['pass'] == None])
+### 	return (true,false,none)
+### 
+### def compute_meter(data):
+### 	sample_num = len(data['samples']) + len(data['tests'])
+### 	if sample_num == 0:
+### 	   return 0.0
+### 	true,false,none = sample_stat(data)
+### 	print "true_samples: %s, false_samples: %s, none_samples: %s --- %s sample_num" % (true,false,none,sample_num)
+### 	note = ((float(true) - float(false)) / float(sample_num)) * 100.0
+### 	return note
+### 
+### 
+### def generate_html(tmpl_file,tmpl_file_pic,html_file,outfile,sample_dir,only_tested=False,for_each_pic_tmpl=None):
+### 	if not has_cheetah:
+### 		print >> sys.stderr, "You can't use this action, because cheetah module is not installed"
+### 		sys.exit(255)
+### 		
+### 	matrix = get_matrix(outfile)
+### 	# TODO
+### 	newtr = {}
+### 	for pic,res in matrix.items():
+### 		libs = {True : [], False : [], None: []}
+### 		# build libds list for all samples attached to this PIC
+### 		# and also a list of libs for each samples
+### 		# (both used for main matrix and dedicated test page)
+### 		for sample,info in res['samples'].items() + res['tests'].items():
+### 			if sample.startswith("test_"):
+### 				found_libs = find_includes(get_full_test_path(sample_dir,sample))
+### 			else:
+### 				found_libs = find_includes(get_full_sample_path(sample_dir,pic,sample))
+### 			# normalize
+### 			found_libs = map(lambda x: x.lower(),found_libs)
+### 			info['libs'] = found_libs
+### 			libs[info['pass']].extend(found_libs)
+### 		# unique
+### 		for k in libs.keys():
+### 			libs[k] = list(set(libs[k]))
+### 		if only_tested and len(libs[True]) == 0 and len(libs[False]) == 0:
+### 			continue
+### 		else:
+### 			newtr[pic] = res
+### 			newtr[pic]['libs'] = libs
+### 
+### 	# generate global matrix
+### 	tmplsrc = "".join(file(tmpl_file,"r").readlines())
+### 	klass = Cheetah.Template.Template.compile(tmplsrc)
+### 	tmpl = klass()
+### 	tmpl.test_results = newtr
+### 	tmpl.sample_stat = sample_stat
+### 	tmpl.compute_meter = compute_meter
+### 	tmpl.get_meter_label = get_meter_label
+### 	fout = file(html_file,"w")
+### 	print >> fout, tmpl.main()
+### 
+### 	# then dedicated page
+### 	if tmpl_file_pic:
+### 		outdir = os.path.dirname(html_file)
+### 		tmplsrc = "".join(file(tmpl_file_pic,"r").readlines())
+### 		klass = Cheetah.Template.Template.compile(tmplsrc)
+### 		tmpl2 = klass()
+### 		for pic,res in newtr.items():
+### 			tmpl2.sample_stat = sample_stat
+### 			tmpl2.compute_meter = compute_meter
+### 			tmpl2.get_meter_label = get_meter_label
+### 			tmpl2.data = res
+### 			tmpl2.picname = pic
+### 			fout = file(os.path.join(outdir,"test_%s.html" % pic),"w")
+### 			print >> fout, tmpl2.main()
+### 		
+### 		
+### 
+### def display_test_results(pic,outfile):
+### 	matrix = get_matrix(outfile)
+### 	try:
+### 		for ttype in ("samples","tests"):
+### 			print "%s:" % ttype
+### 			for k,v in matrix[pic][ttype].items():
+### 				print "    %s : %s" % (k,v['pass'])
+### 	except KeyError,e:
+### 		print >> sys.stderr, "Can't test result for PIC %s" % e
+### 		sys.exit(1)
+### 
+### def merge_matrix(outfile,sub_matrix):
+### 	main_matrix = get_matrix(outfile)
+### 	sub_matrix = get_matrix(sub_matrix)
+### 	main_matrix.update(sub_matrix)
+### 	save_matrix(main_matrix,outfile)
 
 
 ##########
@@ -1039,9 +1039,12 @@ INLINEKW = ["assembler","block","case","function","procedure","if"]
 PROTO = ["procedure","function"]
 PREDEC = ["end"]
 PREINCPOST = ["else","elsif"]
-INDENTCHARS = 3 * " "
 
-def reindent_file(filename):
+def reindent_file(filename,withchar,howmany):
+	'''
+	Default jallib standard is 3-spaces indentation
+	'''
+	indentchars = howmany * withchar
 	data = file(filename).read()
 	# dont keep last one, because since it's ended with a \n,
 	# it will appear as an element in lines, resulting in a 
@@ -1097,20 +1100,20 @@ def reindent_file(filename):
 		# unindent code to apply new
 		code = re.sub("^\s*","",code)
 		if do_postinc:
-			content.append(INDENTCHARS * level + code + comchars + comment)
+			content.append(indentchars * level + code + comchars + comment)
 			level += 1
 			continue
 		if do_predec:
 			level -= 1
-			content.append(INDENTCHARS * level + code + comchars + comment)
+			content.append(indentchars * level + code + comchars + comment)
 			continue
 		if do_preincpost:
 			level -= 1
-			content.append(INDENTCHARS * level + code + comchars + comment)
+			content.append(indentchars * level + code + comchars + comment)
 			level += 1
 			continue
 			
-		content.append(INDENTCHARS * level + code + comchars + comment)
+		content.append(indentchars * level + code + comchars + comment)
 		if level < 0:
 			raise Exception("Adjusting indent level gives negative one. Please report bug !")
 	
@@ -1121,8 +1124,31 @@ def reindent_file(filename):
 	fout.close()
 
 def do_reindent(args):
+	try:
+		opts, args = getopt.getopt(args, ACTIONS['reindent']['options'])
+	except getopt.error,e:
+		print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+		sys.exit(255)
+	
+	# default jallib standard
+	withchar = " "
+	howmany = 3
+	try:
+		for o,v in opts:
+			if o == "-c":
+				i,s = v.split("-")
+				howmany = int(i)
+				if "tab" in s:
+					withchar = "\t"
+				elif "space" in s:
+					withchar = " "
+				else:
+					withchar = s
+	except Exception,e:
+		print >> sys.stderr, "Can't understand %s (error: %s)" % (repr(v),e)
+
 	for filename in args:
-		reindent_file(filename)
+		reindent_file(filename,withchar,howmany)
 	
 #############
 # HELP FUNC #
@@ -1147,11 +1173,14 @@ def do_license(_trash):
 http://jallib.googlecode.com 
 Released under the BSD license
 
+"""
+	if deps:
+		print """
 "jallib" binary executables are bundled with several libraries,
 please refer to them for their respective licenses:
 """
-	for t in deps:
-		print "    - %s (%s)" % (t[0],t[2])
+		for t in deps:
+			print "    - %s (%s)" % (t[0],t[2])
 
 def compile_help():
 	print """
@@ -1199,94 +1228,105 @@ while validating a file, please manually have a look to it too !
 See: http://code.google.com/p/jallib/wiki/JallibStyleGuide for more
 """
 
-def test_help():
-	print """
-    jallib test [-u|-a|-d|-m other_matrix.yaml] [-f testing_matrix.yaml]
-                [-s path/to/sample] [-p picname] [-n pic1,pic2,...]
-                [-g template.tmpl [-o page.html] [-1] [-t template.tmpl]]
-                      
-
-Use this option to handle the testing matrix and the test result page.
-
-    -u: update an existing testing matrix, by searching for new samples.
-        Tests must be manually added to the testing matrix file (because 
-        tests are not relevant to all target chips). This won't erase 
-        previous testing results, but will potentially add new sample 
-        lines to the testing matrix file.
-    
-    -e: erase samples which are declared in the matrix, but don't exist
-        anymore on the filesystem/repository. Ex: when samples are renamed
-        the matrix needs to be updated (-u) to include renamed samples,
-        then it needs to be pruned (-e) to remove old samples.
-
-    -a: add or update a test result. If the test does not exist, it's 
-        added to the matrix, else results will be updated.
-        The format is target:test_file:result[@revision].
-        If pysvn module is installed, will automatically get revision
-        information for given sample. Else, you'll need to specify the
-        revision, using @revision format. Using the full format with 
-        revision will also bypass getting information from SVN using
-        pysvn, even if this module is installed.
-
-        For example:
-         * to register a new test which passed, for 16f88
-            -a 16f88:new_test.jal:true
-         * to register a new test which failed, for 16f877
-            -a 16f877:new_test.jal:false
-         * to register a new test, not run yet, for 16f648a
-            -a 16f648a:new_test.jal:null
-         * to register a new test without pysvn installed (manual),
-           assuming the test is working for revision 143
-            -a 16f628:new_test.jal:true@143
-
-    -d: delete/unregister test. The format is: target:test_file. Ex:
-        To remove a test from 16f88 device:
-            -d 16f88:bad_test.jal
-
-    -m: merge another testing matrix with the main one specified with 
-        option -f. All test results found in this other matrix will 
-        replace those found in the main matrix. This option, with -n one,
-        allows to work on a small subset of PICs, and then re-integrate 
-        the results in the main testing matrix.
-
-    -p: print current test result for a given PIC
-
-    -n: only consider the list of PICs while generating the matrix. PICs 
-        are comma separated. Ex:
-            -n 16f88,16f877,16f877a
-
-    -G: generate HTML a testing matrix from tests results, and dedicated 
-        test result pages for each PIC, from both samples and tests.
-
-    -g: generate all dedicated test results page for each PIC
-
-    -1: only generate testing matrix for PIC which have at least one test
-        executed, whether passed or failed.
-    
-    -t: also generate dedidated test result pages for each PIC, using given
-        template. The output file will be named as: test_<picname>.html 
-        (not implemented yet)
-
-    -o: specify output HTML file. Used with -G option. If omitted, will be 
-        named the same as the template file, with ".html" extension
-        If -g is also specified, then param's dirname will be used to produre html
-        files for each PICs.
-
-    -f: file storing the testing matrix results. YAML formatted. If not 
-        specified, will look for a JALLIB_MATRIX environment variable.
-    
-    -s: path to the sample directory. If no option is given, it will expect 
-        to define as an environment variable, JALLIB_SAMPLEDIR. If no option
-        is given, and no env. variable can be found, the current directory 
-        will be considered.
-
-"""
+### def test_help():
+### 	print """
+###     jallib test [-u|-a|-d|-m other_matrix.yaml] [-f testing_matrix.yaml]
+###                 [-s path/to/sample] [-p picname] [-n pic1,pic2,...]
+###                 [-g template.tmpl [-o page.html] [-1] [-t template.tmpl]]
+###                       
+### 
+### Use this option to handle the testing matrix and the test result page.
+### 
+###     -u: update an existing testing matrix, by searching for new samples.
+###         Tests must be manually added to the testing matrix file (because 
+###         tests are not relevant to all target chips). This won't erase 
+###         previous testing results, but will potentially add new sample 
+###         lines to the testing matrix file.
+###     
+###     -e: erase samples which are declared in the matrix, but don't exist
+###         anymore on the filesystem/repository. Ex: when samples are renamed
+###         the matrix needs to be updated (-u) to include renamed samples,
+###         then it needs to be pruned (-e) to remove old samples.
+### 
+###     -a: add or update a test result. If the test does not exist, it's 
+###         added to the matrix, else results will be updated.
+###         The format is target:test_file:result[@revision].
+###         If pysvn module is installed, will automatically get revision
+###         information for given sample. Else, you'll need to specify the
+###         revision, using @revision format. Using the full format with 
+###         revision will also bypass getting information from SVN using
+###         pysvn, even if this module is installed.
+### 
+###         For example:
+###          * to register a new test which passed, for 16f88
+###             -a 16f88:new_test.jal:true
+###          * to register a new test which failed, for 16f877
+###             -a 16f877:new_test.jal:false
+###          * to register a new test, not run yet, for 16f648a
+###             -a 16f648a:new_test.jal:null
+###          * to register a new test without pysvn installed (manual),
+###            assuming the test is working for revision 143
+###             -a 16f628:new_test.jal:true@143
+### 
+###     -d: delete/unregister test. The format is: target:test_file. Ex:
+###         To remove a test from 16f88 device:
+###             -d 16f88:bad_test.jal
+### 
+###     -m: merge another testing matrix with the main one specified with 
+###         option -f. All test results found in this other matrix will 
+###         replace those found in the main matrix. This option, with -n one,
+###         allows to work on a small subset of PICs, and then re-integrate 
+###         the results in the main testing matrix.
+### 
+###     -p: print current test result for a given PIC
+### 
+###     -n: only consider the list of PICs while generating the matrix. PICs 
+###         are comma separated. Ex:
+###             -n 16f88,16f877,16f877a
+### 
+###     -G: generate HTML a testing matrix from tests results, and dedicated 
+###         test result pages for each PIC, from both samples and tests.
+### 
+###     -g: generate all dedicated test results page for each PIC
+### 
+###     -1: only generate testing matrix for PIC which have at least one test
+###         executed, whether passed or failed.
+###     
+###     -t: also generate dedidated test result pages for each PIC, using given
+###         template. The output file will be named as: test_<picname>.html 
+###         (not implemented yet)
+### 
+###     -o: specify output HTML file. Used with -G option. If omitted, will be 
+###         named the same as the template file, with ".html" extension
+###         If -g is also specified, then param's dirname will be used to produre html
+###         files for each PICs.
+### 
+###     -f: file storing the testing matrix results. YAML formatted. If not 
+###         specified, will look for a JALLIB_MATRIX environment variable.
+###     
+###     -s: path to the sample directory. If no option is given, it will expect 
+###         to define as an environment variable, JALLIB_SAMPLEDIR. If no option
+###         is given, and no env. variable can be found, the current directory 
+###         will be considered.
+### 
+### """
 
 def reindent_help():
 	print """
-    jallib reindent file.jal [anotherfile.jal ...]
+    jallib reindent [-c <indent-rule>] file.jal [anotherfile.jal ...]
 
 Reindent the given jal file, and save it back to the same file.
+Optionally can pass a indent rule (by default, if not specified, 3-spaces
+indented will occur). The form is:
+
+    <number>-<char>
+
+with special for space and tab chars for convenience. Examples:
+
+ - indented with 3 spaces: "-c 3-spaces" (or "-c 3-space", no plural)
+ - indented with 1 : "-c 1-tab"
+ - remove indentation: "-c 0-space"
+ - indent with "XXXX" (hey contrived example !): "-c 4-X"
 
 """
 
@@ -1330,9 +1370,9 @@ def do_help(action_args=[]):
 ACTIONS = {
 		'compile'	: {'callback' : do_compile, 'options' : 'R:E:', 'help' : compile_help},
 		'validate'	: {'callback' : do_validate, 'options' : '', 'help' : validate_help},
-		'test'		: {'callback' : do_test, 'options' : 's:uef:a:G:g:d:o:p:t:1n:m:', 'help' : test_help},
+		###'test'		: {'callback' : do_test, 'options' : 's:uef:a:G:g:d:o:p:t:1n:m:', 'help' : test_help},
 		'sample'	: {'callback' : do_sample, 'options' : 'a:b:t:o:', 'help' : sample_help},
-		'reindent'	: {'callback' : do_reindent, 'options' : 'f:o:', 'help' : reindent_help},
+		'reindent'	: {'callback' : do_reindent, 'options' : 'c:', 'help' : reindent_help},
 		'help'		: {'callback' : do_help, 'options' : '', 'help' : None},
 		'license'	: {'callback' : do_license, 'options' : '', 'help' : None},
 		}
