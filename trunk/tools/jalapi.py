@@ -158,11 +158,6 @@ if __name__ == '__main__':
 	except KeyError:
 		print >> sys.stderr, "Set SAMPLEDIR env. variable, so I can search for sample using %s" % filename
 		sys.exit(2)
-	# point to by_device map, to avoid test files
-	# if local, this means samples are flatten in "sample" dir
-	# no more tree structure
-	if not localsamples:
-	  SAMPLEDIR = os.path.join(SAMPLEDIR,"by_device")
 	# yeah, that's a grep, this should be re-implemened in pure python
 	# to be used under MS win.
 	libname = re.sub("\.jal$","",os.path.basename(filename))
@@ -175,6 +170,7 @@ if __name__ == '__main__':
 	print >> sys.stderr, "Samples using %s:\n%s" % (filename,stdout)
 	sample_files = stdout.split()
 	dsamples = get_samples_info(sample_files,local=localsamples)
+	print "dsamples: %s" % dsamples
 
 	# extract doc
 	dhead,dproc,dfunc,dvarconst,ddeps = extract_doc(filename)
