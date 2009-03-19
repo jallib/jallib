@@ -6,7 +6,7 @@ HTMLDOCDIR="$DOCDIR/html"
 
 MENU=$HTMLDOCDIR/menu.html
 
-export SAMPLEDIR=$ROOT/sample
+export JALLIB_SAMPLEDIR=$ROOT/sample
 
 echo "<!-- sorted -->" > $MENU
 
@@ -16,7 +16,7 @@ do
 	htmlfile="`echo $basefile | sed 's#\.jal$#.html#'`"
 	libname=`echo $basefile | sed 's#\.jal$##'`
 	echo -n "Generating doc for $basefile... "
-	python jalapi.py jalapi_html.tmpl $jalfile > $HTMLDOCDIR/$htmlfile
+	python jallib.py jalapi -t jalapi_html.tmpl -o $HTMLDOCDIR/$htmlfile $jalfile
 	status=$?
 	if [ "X$status" = "X0" ]
 	then

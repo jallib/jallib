@@ -28,8 +28,6 @@ rem path to jallib root's libraries.
 set JALLIB_REPOS=%JALLIB_ROOT%\include
 rem path to jallib root's samples.
 set JALLIB_SAMPLEDIR=%JALLIB_ROOT%\sample
-rem path to the testing matrix
-set JALLIB_MATRIX=%JALLIB_SAMPLEDIR%\testing_matrix.yaml
 rem path to "jalv2" executable. If not in your PATH, set an absolute path to the exec
 set JALLIB_JALV2=%JALLIB_ROOT%\compiler\jalv2.exe
 

@@ -91,7 +91,7 @@ dispatch:
 	do \
 		libfile=`basename $$f`; \
 		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
-		SAMPLEDIR=distrib/jallib-${VERSION}/sample python jalapi.py jalapi_html.tmpl distrib/jallib-${VERSION}/lib/$$libfile -l > distrib/jallib-${VERSION}/doc/html/$$htmlfile ; \
+		python jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile
 	done
 	# doc menu...
 	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
