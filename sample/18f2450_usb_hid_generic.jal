@@ -1,0 +1,677 @@
+-- Title: USB HID generic device demo
+-- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
+-- Adapted-by: -
+-- Compiler: >=2.4i
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- 
+-- Description: This application emulates a mouse pointing USB human interface device
+-- (HID), once the USB device has been conifgured and the USB HID is recognized by
+-- the host operating systems, it will move around the mouse pointer
+-- --
+-- 
+-- Sources: http://www.usb.org for USB specifications
+-- 
+-- Notes: compiled with following flags
+--	-loader18 -no-fuse -no-variable-reuse
+--	-no-variable-reuse must be used 
+--  due to a compiler issue
+--
+-- ------------------------------------------------------
+-- ------------------------------------------------------
+--
+--
+-- compiled with following flags: -loader18 -no-fuse -no-variable-reuse
+--
+-- This file has been generated on 03/24/09 20:40:06, from:
+--    * board: board_18f2450_af.jal
+--    * test : test_usb_hid_generic.jal
+--
+
+
+;@jallib section chipdef
+-- chip setup
+include 18f2450
+
+-- even though the external crystal is 20 MHz, the configuration is such that
+-- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
+-- target frequency to 48 MHz
+pragma target clock       48_000_000
+
+
+-- fuses
+pragma target PLLDIV		DIVIDE_BY_5__20MHZ_INPUT_
+pragma target CPUDIV		_OSC1_OSC2_SRC___1__96MHZ_PLL_SRC___2_
+pragma target USBPLL		CLOCK_SRC_FROM_96MHZ_PLL_2
+pragma target OSC			HS_PLL
+pragma target FCMEN			DISABLED
+pragma target IESO			DISABLED
+pragma target PWRTE			DISABLED	-- power up timer
+pragma target VREGEN		ENABLED		-- USB voltage regulator
+pragma target VOLTAGE		V20			-- brown out voltage
+pragma target BROWNOUT		DISABLED	-- no brownout detection
+pragma target WDTPS			P32768		-- watch dog saler setting
+pragma target WDT			DISABLED    -- no watchdog
+pragma target PBADEN		DIGITAL		-- digital input port<0..4>
+pragma target LPT1OSC		DISABLED	-- low power timer 1
+-- pragma target MCLR			EXTERNAL	-- master reset on RE3
+pragma target MCLR			INTERNAL	-- no master reset 
+pragma target STVR			DISABLED    -- reset on stack over/under flow
+pragma target LVP			DISABLED    -- no low-voltage programming
+pragma target ENICPORT		DISABLED	-- In circuit debugger
+pragma target XINST			ENABLED		-- extended instruction set
+pragma target BACKBUG		DISABLED	-- background debugging
+pragma target CP_0			DISABLED	-- code block 0 not protected
+pragma target CP_1			DISABLED	-- code block 1 not protected
+pragma target CPB			DISABLED	-- bootblock code not write protected
+pragma target WRT_0			DISABLED	-- table writeblock 0 not protected
+pragma target WRT_1			DISABLED	-- table write block 1 not protected
+pragma target WRTB			DISABLED	-- bootblock not write protected
+pragma target WRTC			DISABLED	-- config not write protected
+pragma target EBTR_0		DISABLED	-- table read block 0 not protected
+pragma target EBTR_1		DISABLED	-- table read block 1 not protected
+pragma target EBTRB 		DISABLED	-- boot block not protected
+
+
+include delay
+
+;@jallib section serial
+
+-- whether or not using the serial port
+const HAS_SERIAL_DEBUG_PORT = 1
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == true then
+
+	const serial_hw_baudrate = 115_200
+	
+	include serial_hardware
+	include format
+	include print
+	
+	-- intialze serial device
+	serial_hw_init()
+
+	procedure serial_print_spc() is 
+		serial_hw_write( " " )
+	end procedure
+
+	procedure serial_newline() is
+		serial_hw_write( 10 )
+		-- serial_hw_write( 13 )
+	end procedure
+end if
+
+
+
+const bit USB_DEBUG = false
+const bit USB_DEBUG_HIGH = false
+
+const bit USB_HID_DEBUG = false
+const bit USB_HID_DEBUG_HIGH = false
+const byte USB_HID_ENDPOINT = 0x01
+
+include usb_defs
+
+const word USB_EP_BASE_ADDRESS = 0x0420
+
+const bit USB_EP0 = 1
+const byte USB_EP0_OUT_SIZE = 8
+const word USB_EP0_OUT_ADDR = USB_EP_BASE_ADDRESS
+const byte USB_EP0_IN_SIZE  = USB_EP0_OUT_SIZE
+const word USB_EP0_IN_ADDR  = USB_EP_BASE_ADDRESS + USB_EP0_OUT_SIZE
+
+const bit USB_EP1 = 1
+const byte USB_EP1_OUT_SIZE = 8
+const word USB_EP1_OUT_ADDR = USB_EP_BASE_ADDRESS + USB_EP0_OUT_SIZE  + USB_EP0_IN_SIZE
+const byte USB_EP1_IN_SIZE  = USB_EP1_OUT_SIZE
+const word USB_EP1_IN_ADDR  = USB_EP_BASE_ADDRESS + USB_EP0_OUT_SIZE  + USB_EP0_IN_SIZE + USB_EP1_OUT_SIZE
+var volatile byte  usb_ep1in_buf[ 8 ]
+
+const bit USB_EP2 = 0
+const byte USB_EP2_OUT_SIZE = 8
+const word USB_EP2_OUT_ADDR = 0x0000
+const byte USB_EP2_IN_SIZE  = 8
+const word USB_EP2_IN_ADDR  = 0x0000
+
+const bit USB_EP3 = 0
+const byte USB_EP3_OUT_SIZE = 8
+const word USB_EP3_OUT_ADDR = 0x0000
+const byte USB_EP3_IN_SIZE = 8
+const word USB_EP3_IN_ADDR  = 0x0000
+
+
+const byte HID_OUT_REPORT_SIZE = 8
+
+const bit USB_CALLBACK_ON_CLASS_CTRL 		= false
+const bit USB_CALLBACK_ON_DEVICE_CONFIGURED = false
+const bit USB_CALLBACK_ON_VENDOR_CTRL 		= false
+const bit USB_EP_DATA_CALLBACK 				= true
+const bit USB_CALLBACK_ON_SOF 				= false
+
+
+const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
+	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
+	USB_DT_DEVICE, 	-- DEVICE 01h
+	0x00,
+	0x02,		-- usb version 2.00
+	0x00,		-- class
+	0x00,		-- subclass
+	0x00,		-- protocol
+	0x08,		-- max packet size for end point 0
+	0x25,
+	0x09,		-- Vendor ID
+	0x01,
+	0x70,		-- Product ID
+	0x01,
+	0x00, 	    -- version 0.1 of the product
+	0x01,		-- string 1 for manufacturer
+	0x02,		-- string 2 for product
+	0x00,		-- string 3 for serial number
+	0x01		-- number of configurations
+}	
+
+
+const byte USB_HID_REPORT1[]=
+{
+
+	0x06, 0xA0, 0xFF,			-- Usage page (vendor defined) 
+	0x09, 0x01,					-- Usage ID (vendor defined)
+	0xA1, 0x01,					-- Collection (application)
+
+	-- The Input report
+	0x09, 0x03,     			-- Usage ID - vendor defined
+	0x15, 0x00,     			-- Logical Minimum (0)
+	0x26, 0xFF, 0x00,   		-- Logical Maximum (255)
+	0x75, 0x08,     			-- Report Size (8 bits)
+	0x95, HID_OUT_REPORT_SIZE, 	-- Report Count	(8 fields)				
+	0x81, 0x02,     			-- Input (Data, Variable, Absolute)  
+
+	-- The Output report
+	0x09, 0x04,     			-- Usage ID - vendor defined
+	0x15, 0x00,     			-- Logical Minimum (0)
+	0x26, 0xFF, 0x00,   		-- Logical Maximum (255)
+	0x75, 0x08,     			-- Report Size (8 bits)
+	0x95, HID_OUT_REPORT_SIZE,  -- Report Count (8 fields)
+	0x91, 0x02,      			-- Output (Data, Variable, Absolute)  
+
+	-- The Feature report
+	0x09, 0x05,     			-- Usage ID - vendor defined
+	0x15, 0x00,     			-- Logical Minimum (0)
+	0x26, 0xFF, 0x00,   		-- Logical Maximum (255)
+	0x75, 0x08,					-- Report Size (8 bits)
+	0x95, HID_OUT_REPORT_SIZE, 	-- Report Count	(8 fields)				
+	0xB1, 0x02,     			-- Feature (Data, Variable, Absolute)  
+
+	0xC0						-- end collection
+}
+
+const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x09 + 0x07 + 0x07
+
+const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
+{	
+	-- configuration descriptor - - - - - - - - - - 
+	0x09,	-- length,
+	USB_DT_CONFIGURATION,	-- descriptor_type
+
+	USB_CONFIGURATION_DESCRIPTOR_SIZE,
+	0x00,	-- total_length;
+	
+	0x01,	-- num_interfaces,
+	0x01,	-- configuration_value,
+	0x00,	-- configuration_string_id,
+	0b10000000, -- attributes (bus powered, no remote wake up)
+	100,	-- max_power; (200ma)
+
+	-- interface descriptor - - - - - - - - - - - -
+	0x09,	-- length,
+	USB_DT_INTERFACE,	-- descriptor_type,
+	0x00,	-- interface_number, (starts at zero)
+	0x00,	-- alternate_setting, (no alternatives)
+	0x02,	-- num_endpoints,
+	USB_HID_INTF,	-- interface_class, (HID)
+	0x00,	-- interface_subclass
+	0x00,	-- interface_protocol
+	0x00,	-- interface_string_id;
+	
+	-- hid descriptor - - - - - - - - - - - - - - -
+	0x09,				-- length,
+	USB_DT_HID,			-- descriptor_type;
+	0x11,
+	0x01,				-- hid_spec in BCD (1.11)
+	0x00,				-- country_code, (0=not country specific)
+	0x01,				-- num_class_descriptors, (1)
+	USB_DT_HID_REPORT,	-- class_descriptor_type; (0x22 = report)
+	(count( USB_HID_REPORT1 ) & 0xFF ),
+	(count( USB_HID_REPORT1 ) >> 8 ),
+	
+	0x07,				-- length,
+	USB_DT_ENDPOINT,	-- descriptor_type,
+	0b10000001,			-- endpoint_address, (Endpoint 1, IN)
+	USB_EPT_INT,			-- attributes; (Interrupt)
+	USB_EP1_IN_SIZE,				
+	0x00,				-- max_packet_size
+	0x01,				-- interval (1ms)
+
+	0x07,				-- length,
+	USB_DT_ENDPOINT,	-- descriptor_type,
+	0b00000001,			-- endpoint_address, (Endpoint 1, OUT)
+	USB_EPT_INT,		-- attributes; (Interrupt)
+	USB_EP1_OUT_SIZE,				
+	0x00,				-- max_packet_size
+	0x01				-- interval (1ms)
+}
+
+const byte USB_STRING0[] = 
+{
+	0x04,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	0x09,	-- wLANGID[0] (low byte)
+	0x04	-- wLANGID[0] (high byte)
+}
+
+const byte USB_STRING1[18] = 
+{
+	18,				-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	"J", 0x00, 
+	"A", 0x00, 
+	"L", 0x00, 
+	" ", 0x00, 
+	"L", 0x00, 
+	"I", 0x00, 
+	"B", 0x00, 
+	".", 0x00
+}
+
+const byte USB_STRING2[42] = 
+{
+	42,				-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	"J", 0x00, 
+	"A", 0x00, 
+	"L", 0x00, 
+	" ", 0x00, 
+	"G", 0x00, 
+	"e", 0x00, 
+	"n", 0x00, 
+	"e", 0x00, 
+	"r", 0x00, 
+	"i", 0x00,
+	"c", 0x00,
+	" ", 0x00, 
+	"H", 0x00, 
+	"I", 0x00, 
+	"D", 0x00, 
+	" ", 0x00, 
+	"D", 0x00, 
+	"e", 0x00, 
+	"m", 0x00, 
+	"o", 0x00
+}
+
+
+include usb_drv_core
+
+
+-------------------------------- ADC STUFF -------------------------------------
+const no_ADC = 0x06
+const ADC_hardware_Nchan      = 1         ;number of selected channels
+const ADC_hardware_NVref      = 0         ;number of external references
+const ADC_hardware_Rsource    = 10_000    ;maximum source resistance
+const ADC_hardware_high_resolution = true ;true = high resolution = 10 bits
+
+-- get the library, after defining the constants
+include adc_hardware
+
+-- initialize the AD converter according to the above parameters
+-- LEFT JUSTIFIED, 16 TAD, FOSC / 64 
+ADCON2 = 0b_10_000_110
+adc_init()
+adc_on()
+
+-- -----------------------------------------------------------------------------
+
+-- timer 0 offset value
+const byte InitTMR0 = 106
+
+------------------------------------------------------------
+-- TIMER 0 configuration
+------------------------------------------------------------
+-- Objection is to get a 0.1 millisecond delay
+-- fclk = 48 Mhz => timer clk = fclk / 4 = 12 Mhz
+-- required clock rate: 0.1 ms => 1 Khz
+-- timer 0 should divide by => 12 Mhz / 1 KHz = 12000
+-- set pre-scaler to 1:8 and count to 150
+--
+-- InitTMR0 = ( 256 - 150 ) = 106
+-- TMR0_delay=(256-InitTMR0)*4*prescaler/Fosc
+-- TMR0_delay=(256-6)*4*4/20_000_000= 0.1 msec.
+--
+-- Init TMR0, free run mode,
+------------------------------------------------------------
+
+-- set timer 0, 8 bit mode, timer enabled
+T0CON = 0b_11000_010
+
+-- weak pull up enabled on port b
+INTCON2_NRBPU = 0
+
+var word num_timer_ints = 0
+
+
+var volatile bit usb_hid_can_tx = true
+
+const byte USB_HID_REQ_HID 			= 0x21
+const byte USB_HID_REQ_REPORT 		= 0x22
+const byte USB_HID_REQ_PHYSDISCR	= 0x23
+
+const byte USB_HCR_GET_REPORT		= 0x01
+const byte USB_HCR_GET_IDLE			= 0x02
+const byte USB_HCR_GET_PROTOCOL		= 0x03
+const byte USB_HCR_SET_REPORT		= 0x09
+const byte USB_HCR_SET_IDLE			= 0x0A
+const byte USB_HCR_SET_PROTOCOL		= 0x0B
+
+
+
+var byte hid_tx_buffer[ HID_OUT_REPORT_SIZE ]
+var bit sendTx = false
+
+var bit adc_enabled = false
+
+
+-- TMR0 interrupt service routine
+procedure TMR0_ISR is
+    pragma interrupt
+
+	-- currently JAL does not save the FSR within the interrupt routine
+	-- therefore we save it ourselfs, since it is used in the AddToFifo 
+	-- function
+	var byte s_fsr0L = FSR0L
+	var byte s_fsr0H = FSR0H
+	var byte s_fsr1L = FSR1L
+	var byte s_fsr1H = FSR1H
+
+    if REG_T0IF then
+        num_timer_ints = num_timer_ints + 1
+
+        if ( num_timer_ints == 100 ) then
+			-- send ADC event
+			hid_tx_buffer[ 0 ] = 0x10
+			hid_tx_buffer[ 1 ] = PORTA
+			
+			sendTx = true        
+		end if
+        
+        if ( num_timer_ints == 200 ) then
+			-- send ADC event
+			hid_tx_buffer[ 0 ] = 0x11
+			hid_tx_buffer[ 1 ] = PORTB
+			
+			sendTx = true        
+		end if
+
+        if ( num_timer_ints == 300 ) then
+			-- send ADC event
+			hid_tx_buffer[ 0 ] = 0x12
+			hid_tx_buffer[ 1 ] = PORTC
+			
+			sendTx = true        
+		end if
+
+        if ( num_timer_ints == 400 ) then
+			-- send ADC event
+			hid_tx_buffer[ 0 ] = 0x13
+			
+			sendTx = true        
+		end if
+		
+        -- only send value every 100 ms second
+        if ( num_timer_ints == 1000 ) then
+        
+        
+			num_timer_ints = 0
+			
+			if adc_enabled then
+				var byte adc_hbyte
+				var byte adc_lbyte
+				
+				adc_read_bytes( 0 , adc_hbyte, adc_lbyte)
+				
+				-- send ADC event
+				hid_tx_buffer[ 0 ] = 0x02
+				hid_tx_buffer[ 1 ] = adc_hbyte
+				hid_tx_buffer[ 2 ] = adc_lbyte
+				
+				sendTx = true        
+			
+			end if
+        end if
+        -- Do timer offset InitTMR0
+        TMR0 = TMR0 + InitTMR0
+
+        -- Clear timer 0 interrupt flag
+        REG_T0IF = low
+    end if
+    
+    -- restore FSR register
+	FSR0L = s_fsr0L
+	FSR0H = s_fsr0H
+	FSR1L = s_fsr1L
+	FSR1H = s_fsr1H
+    
+end procedure
+
+
+procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+    
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " EP data in: "
+        const byte str1[] = " bytes "
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,byte_count & 0xFF)
+        print_byte_hex(serial_hw_data,str1)
+    end if
+    
+    -- data has been sent, so do we need to send more?
+    if (end_point == USB_HID_ENDPOINT) then
+        -- it's the data end point
+        usb_hid_can_tx = true
+               
+    end if
+end procedure
+
+procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+    var byte cdc_rx_next
+
+    if USB_HID_DEBUG then
+        const byte str[] = " EP data out: "
+        const byte str1[] = " bytes "
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,byte_count)
+		serial_hw_write( " " )
+        print_byte_hex(serial_hw_data, end_point )
+        print_byte_hex(serial_hw_data,str1)
+    end if
+    
+    -- We have some data!
+    if (end_point == USB_HID_ENDPOINT) then
+		var byte src_ptr[2] AT buffer_addr
+
+		FSR1L = src_ptr[0]
+		FSR1H = src_ptr[1]
+
+		if USB_HID_DEBUG then
+			serial_newline()
+		end if
+		
+		var byte index
+		var byte cmd
+		for byte_count using index loop
+			var byte value
+			value = POSTINC1
+			if index  == 0 then
+				cmd = value
+				hid_tx_buffer[ 0 ] = value
+			end if
+			if index  == 1 then
+				hid_tx_buffer[ 1 ] = value
+			end if
+			
+			if USB_HID_DEBUG then
+				print_byte_hex(serial_hw_data,value)
+				serial_hw_write( " " )
+			end if
+		end loop
+		
+	
+		sendTx = true
+		
+		case cmd of
+			0x01:
+			block
+				-- enable interrupts (timer 0 )
+				INTCON_TMR0IE = high
+				INTCON_GIE = high
+			end block
+			
+			0x02:
+			block
+				-- enable interrupts (timer 0 )
+				INTCON_TMR0IE = low
+				INTCON_GIE = low
+			end block
+
+			0x03:
+			block
+				if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
+				end if
+			end block
+
+			0x04:
+			block
+				adc_enabled = true
+			end block
+
+			0x05:
+			block
+				adc_enabled = false
+			end block
+			
+
+			otherwise
+			block
+			
+			end block
+		end case
+	end if
+end procedure
+
+
+include usb_drv
+
+
+
+
+-- set port A and B to inputs
+PORTA_direction  = 0b_1111_1111
+PORTB_direction  = 0b_1111_1111
+
+
+
+
+
+-- constants
+const  byte str_welcome[] = "JAL USB Generic HID demo version 0.10\nplease wait (takes ~10 seconds) before the device is fully configured"
+
+-- variables
+var word i = 0
+var bit usb_initialized = false
+
+var byte hid_report_in[8]
+
+var word ticks100us = 0
+var bit enable_keyboard = false
+
+
+procedure usb_tasks() is    
+    -- Servicing Hardware
+    -- use polling method
+    usb_handle_isr()
+    if ( sendTx ) then
+		usb_send_data(USB_HID_ENDPOINT, hid_tx_buffer, count( hid_tx_buffer ), low )
+		sendTx = false
+    end if
+
+end procedure
+
+procedure usb_hid_tx_report( byte in hid_report_in[], byte in cnt ) is
+	
+	while ( usb_hid_can_tx == false ) loop
+		usb_tasks()
+	end loop
+	usb_hid_can_tx = false
+	usb_send_data(USB_HID_ENDPOINT, hid_report_in, cnt , low )
+end procedure
+
+-- interrupts? No thanks
+while INTCON_GIE loop
+    INTCON_GIE = false
+end loop
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == high then
+	-- put info on RS-232 serial line
+	serial_newline()
+	serial_newline()
+
+	print_string(serial_hw_data, str_welcome )
+	serial_newline()
+end if
+
+-- setup the USB device
+usb_setup()
+
+-- enable USB device
+usb_enable_module()
+
+-- enable digital inputs on port B
+-- enable_digital_io()
+ADCON1 = 0x0E
+
+pin_b5_direction = input
+
+-- main loop
+forever loop
+	-- poll the usb ISR function on a regular base, in order to 
+	-- serve the USB requests
+	usb_tasks()
+	
+    -- check if USB device has been configured by the HOST
+    if usb_is_configured()  then
+
+		-- note user via serial line that USB has been configured
+		if usb_initialized == false then
+			usb_initialized = true
+			
+			if defined( HAS_SERIAL_DEBUG_PORT ) == true then			
+				const  byte str[] = "USB device has been configured by the HOST!"
+				print_string(serial_hw_data, str )
+				serial_newline()
+
+				-- now keyboard chars can be send to the host
+				enable_keyboard = true
+			end if
+		end if
+    end if
+
+    
+	if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
+		if PIR1_RCIF then
+			var byte tmpB = portb 
+			serial_hw_write( RCREG )
+			print_byte_hex(serial_hw_data, tmpB )			
+		end if
+	end if	
+    
+end loop
