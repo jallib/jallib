@@ -532,7 +532,7 @@ def find_test_files(testdir):
 	testfiles = []
 	for d in [d for d in os.listdir(testdir) if d != "board" and not d.startswith(".")]:
 		d = os.path.join(testdir,d)
-		testfiles.extend([os.path.join(d,v) for v in get_jal_filenames(d,predicate=lambda x: x.startswith("test_")).values()])
+		testfiles.extend([os.path.join(d,v) for v in get_jal_filenames(d,predicate=lambda _,x: x.startswith("test_")).values()])
 	return testfiles
 
 def preferred_board(board):
@@ -798,7 +798,7 @@ def do_jalapi(args):
 		for f,path in sorted(dfiles.items(),cmp=lambda x,y: cmp(x[0],y[0])):
 			files.append(os.path.join(w,path))
 	else:
-		files = w
+		files = [w]
 	
 	jalinfos = []
 	for jalfile in files:
