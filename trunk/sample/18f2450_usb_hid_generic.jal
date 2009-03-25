@@ -24,7 +24,7 @@
 --
 -- compiled with following flags: -loader18 -no-fuse -no-variable-reuse
 --
--- This file has been generated on 03/24/09 20:40:06, from:
+-- This file has been generated on 03/25/09 10:21:19, from:
 --    * board: board_18f2450_af.jal
 --    * test : test_usb_hid_generic.jal
 --
@@ -315,11 +315,11 @@ include usb_drv_core
 
 
 -------------------------------- ADC STUFF -------------------------------------
-const no_ADC = 0x06
-const ADC_hardware_Nchan      = 1         ;number of selected channels
-const ADC_hardware_NVref      = 0         ;number of external references
-const ADC_hardware_Rsource    = 10_000    ;maximum source resistance
-const ADC_hardware_high_resolution = true ;true = high resolution = 10 bits
+const no_adc = 0x06
+const ADC_HARDWARE_NCHAN     = 1
+const ADC_HARDWARE_NVREF     = 0         ;number of external references
+const ADC_HARDWARE_RSOURCE   = 10_000    ;maximum source resistance
+const ADC_HARDWARE_HIGH_RESOLUTION = true ;true = high resolution = 10 bits
 
 -- get the library, after defining the constants
 include adc_hardware
@@ -333,7 +333,7 @@ adc_on()
 -- -----------------------------------------------------------------------------
 
 -- timer 0 offset value
-const byte InitTMR0 = 106
+const byte TMR0_OFFSET = 106
 
 ------------------------------------------------------------
 -- TIMER 0 configuration
@@ -344,8 +344,8 @@ const byte InitTMR0 = 106
 -- timer 0 should divide by => 12 Mhz / 1 KHz = 12000
 -- set pre-scaler to 1:8 and count to 150
 --
--- InitTMR0 = ( 256 - 150 ) = 106
--- TMR0_delay=(256-InitTMR0)*4*prescaler/Fosc
+-- TMR0_OFFSET = ( 256 - 150 ) = 106
+-- TMR0_delay=(256-TMR0_OFFSET)*4*prescaler/Fosc
 -- TMR0_delay=(256-6)*4*4/20_000_000= 0.1 msec.
 --
 -- Init TMR0, free run mode,
@@ -376,22 +376,22 @@ const byte USB_HCR_SET_PROTOCOL		= 0x0B
 
 
 var byte hid_tx_buffer[ HID_OUT_REPORT_SIZE ]
-var bit sendTx = false
+var bit send_tx = false
 
 var bit adc_enabled = false
 
 
 -- TMR0 interrupt service routine
-procedure TMR0_ISR is
+procedure timer_0_isr() is
     pragma interrupt
 
 	-- currently JAL does not save the FSR within the interrupt routine
 	-- therefore we save it ourselfs, since it is used in the AddToFifo 
 	-- function
-	var byte s_fsr0L = FSR0L
-	var byte s_fsr0H = FSR0H
-	var byte s_fsr1L = FSR1L
-	var byte s_fsr1H = FSR1H
+	var byte s_fsr0l = FSR0L
+	var byte s_fsr0h = FSR0H
+	var byte s_fsr1l = FSR1L
+	var byte s_fsr1h = FSR1H
 
     if REG_T0IF then
         num_timer_ints = num_timer_ints + 1
@@ -401,7 +401,7 @@ procedure TMR0_ISR is
 			hid_tx_buffer[ 0 ] = 0x10
 			hid_tx_buffer[ 1 ] = PORTA
 			
-			sendTx = true        
+			send_tx = true        
 		end if
         
         if ( num_timer_ints == 200 ) then
@@ -409,7 +409,7 @@ procedure TMR0_ISR is
 			hid_tx_buffer[ 0 ] = 0x11
 			hid_tx_buffer[ 1 ] = PORTB
 			
-			sendTx = true        
+			send_tx = true        
 		end if
 
         if ( num_timer_ints == 300 ) then
@@ -417,14 +417,14 @@ procedure TMR0_ISR is
 			hid_tx_buffer[ 0 ] = 0x12
 			hid_tx_buffer[ 1 ] = PORTC
 			
-			sendTx = true        
+			send_tx = true        
 		end if
 
         if ( num_timer_ints == 400 ) then
 			-- send ADC event
 			hid_tx_buffer[ 0 ] = 0x13
 			
-			sendTx = true        
+			send_tx = true        
 		end if
 		
         -- only send value every 100 ms second
@@ -444,22 +444,22 @@ procedure TMR0_ISR is
 				hid_tx_buffer[ 1 ] = adc_hbyte
 				hid_tx_buffer[ 2 ] = adc_lbyte
 				
-				sendTx = true        
+				send_tx = true        
 			
 			end if
         end if
-        -- Do timer offset InitTMR0
-        TMR0 = TMR0 + InitTMR0
+        -- Do timer offset TMR0_OFFSET
+        TMR0 = TMR0 + TMR0_OFFSET
 
         -- Clear timer 0 interrupt flag
         REG_T0IF = low
     end if
     
     -- restore FSR register
-	FSR0L = s_fsr0L
-	FSR0H = s_fsr0H
-	FSR1L = s_fsr1L
-	FSR1H = s_fsr1H
+	FSR0L = s_fsr0l
+	FSR0H = s_fsr0h
+	FSR1L = s_fsr1l
+	FSR1H = s_fsr1h
     
 end procedure
 
@@ -526,7 +526,7 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word 
 		end loop
 		
 	
-		sendTx = true
+		send_tx = true
 		
 		case cmd of
 			0x01:
@@ -599,9 +599,9 @@ procedure usb_tasks() is
     -- Servicing Hardware
     -- use polling method
     usb_handle_isr()
-    if ( sendTx ) then
+    if ( send_tx ) then
 		usb_send_data(USB_HID_ENDPOINT, hid_tx_buffer, count( hid_tx_buffer ), low )
-		sendTx = false
+		send_tx = false
     end if
 
 end procedure
@@ -668,9 +668,6 @@ forever loop
     
 	if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
 		if PIR1_RCIF then
-			var byte tmpB = portb 
-			serial_hw_write( RCREG )
-			print_byte_hex(serial_hw_data, tmpB )			
 		end if
 	end if	
     
