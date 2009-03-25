@@ -28,7 +28,7 @@
 /*   - The script contains some test and debugging code.                    */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.59'                   /*                          */
+   ScriptVersion   = '0.0.61'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4i'                   /*                          */
 /* ------------------------------------------------------------------------ */
@@ -103,8 +103,9 @@ do i=1 to dir.0                                 /* all relevant .dev files */
 
   if substr(PicName,3,1) \= 'f'  &,             /* not flash PIC */
      substr(PicName,3,2) \= 'lf' &,             /* not low power flash PIC */
-     substr(PicName,3,2) \= 'hv' then           /* not high voltage flash PIC */
+     substr(PicName,3,2) \= 'hv' then do        /* not high voltage flash PIC */
     iterate                                     /* skip */
+  end
 
   if pos('f18', PicName) > 0  |,                /* exclude extended 14-bit core */
      pos('f19', PicName) > 0 then do
@@ -167,7 +168,7 @@ dev2jal12: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
 MAXRAM     = 128                                /* range 0..0x7F */
 BANKSIZE   = 32                                 /* 0x0020 */
 PAGESIZE   = 512                                /* 0x0200 */
-DataStart  = '0x400'                            /* default for 12-bit core */
+DataStart  = '0x400'                            /* default */
 NumBanks   = 1                                  /* default */
 StackDepth = 2                                  /* default */
 
@@ -195,7 +196,7 @@ dev2jal14: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
 MAXRAM     = 512                                /* range 0..0x1FF */
 BANKSIZE   = 128                                /* 0x0080 */
 PAGESIZE   = 2048                               /* 0x0800 */
-DataStart  = '0x2100'                           /* default for 14-bit core */
+DataStart  = '0x2100'                           /* default */
 NumBanks   = 1                                  /* default */
 StackDepth = 8                                  /* default */
 
@@ -222,7 +223,7 @@ dev2jal16: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
 
 MAXRAM     = 4096                               /* range 0..0x0xFFF */
 BANKSIZE   = 256                                /* 0x0100 */
-DataStart  = '0xF00000'                         /* default for 16-bit core */
+DataStart  = '0xF00000'                         /* default */
 NumBanks   = 1                                  /* default */
 StackDepth = 31                                 /* default */
 
@@ -866,18 +867,12 @@ do i = 1 to Dev.0
     else if reg = 'TRISIO' then do              /* low pincount PIC */
       call lineout jalfile, 'var volatile byte ' left('TRISA',20) 'at' reg
       call lineout jalfile, 'var volatile byte ' left('PORTA_direction',20) 'at' reg
-      call list_tris_shadow 'TRISA'             /* nibble direction */
+      call list_tris_nibbles 'TRISA'             /* nibble direction */
     end
     else if left(reg,4) = 'TRIS' then do        /* TRISx */
       call lineout jalfile, 'var volatile byte ',
                            left('PORT'substr(reg,5)'_direction',20) 'at' reg
-      call list_tris_shadow reg                 /* nibble direction */
-    end
-    else if reg = 'SSPCON1' then do             /* SSPCON1 */
-      reg = 'SSPCON'
-      call lineout jalfile, 'var volatile byte ',
-                           left('PORT'substr(reg,5)'_direction',20) 'at' reg
-      call list_tris_shadow reg                 /* nibble direction */
+      call list_tris_nibbles reg                 /* nibble direction */
     end
 
     call list_sfr_subfields1x i, reg            /* bit fields */
@@ -968,10 +963,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                 if left(n.j,2) = 'T0' then
                   call lineout jalfile, 'var volatile bit  ',
                            left(reg'_TMR0'||substr(n.j,3),20) 'at' reg ':' offset
-                else if left(n.j,4) = 'TMR0' then
+           /*   else if left(n.j,4) = 'TMR0' then
                   call lineout jalfile, 'var volatile bit  ',
                            left(reg'_T0'||substr(n.j,5),20) 'at' reg ':' offset
-              end
+           */   end
               else if left(reg,4) = 'PORT' then do
                 if left(n.j,1) = 'R'  &,
                     substr(n.j,2,1) = right(reg,1) then do  /* prob. I/O pin */
@@ -1080,7 +1075,7 @@ do i = 1 to Dev.0
     else if left(reg,4) = 'TRIS' then do        /* TRISx */
       call lineout jalfile, 'var volatile byte  ',
              left('PORT'substr(reg,5)'_direction',20) 'shared at' reg
-      call list_tris_shadow reg                 /* nibble directions */
+      call list_tris_nibbles reg                 /* nibble directions */
     end
 
     call list_sfr_subfields16 i, reg            /* bit fields */
@@ -1209,10 +1204,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                 if left(n.j,2) = 'T0' then
                   call lineout jalfile, 'var volatile bit   ',
                            left(reg'_TMR0'||substr(n.j,3),20) 'shared at' reg ':' offset
-                else if left(n.j,4) = 'TMR0' then
+          /*    else if left(n.j,4) = 'TMR0' then
                   call lineout jalfile, 'var volatile bit   ',
-                           left(reg_'T0'||substr(n.j,5),20) 'shared at' reg ':' offset
-              end
+                           left(reg'_T0'||substr(n.j,5),20) 'shared at' reg ':' offset
+          */  end
               else if left(reg,3) = 'LAT' then do       /* LATx register */
                 if left(n.j,3) = 'LAT'   &,
                     substr(n.j,4,1) = right(reg,1) then do     /* I/O pin */
@@ -1285,7 +1280,7 @@ do i = 1 to Dev.0
       call lineout jalfile, '   pragma inline'
       call lineout jalfile, '   'shadow '= x'
       call lineout jalfile, '   asm movf' shadow',W'
-      if reg = 'TRISIO' then                            /* TRISIO */
+      if reg = 'TRISIO' then                            /* TRISIO (small PIC) */
         call lineout jalfile, '   asm tris 6'
       else                                              /* TRISx */
         call lineout jalfile, '   asm tris' 5 + C2D(portletter) - C2D('A')
@@ -1295,7 +1290,7 @@ do i = 1 to Dev.0
       call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
       call lineout jalfile, '   'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
       call lineout jalfile, '   asm movf _TRIS'portletter'_shadow,W'
-      if reg = 'TRISIO' then                            /* TRISIO */
+      if reg = 'TRISIO' then                            /* TRISIO (small PICs) */
         call lineout jalfile, '   asm tris 6'
       else                                              /* TRISx */
         call lineout jalfile, '   asm tris' 5 + C2D(portletter) - C2D('A')
@@ -1305,7 +1300,7 @@ do i = 1 to Dev.0
       call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
       call lineout jalfile, '   'shadow '= ('shadow '& 0x0F) | (x << 4)'
       call lineout jalfile, '   asm movf _TRIS'portletter'_shadow,W'
-      if reg = 'TRISIO' then                            /* TRISIO */
+      if reg = 'TRISIO' then                            /* TRISIO (small PICs) */
         call lineout jalfile, '   asm tris 6'
       else                                              /* TRISx */
         call lineout jalfile, '   asm tris' 5 + C2D(portletter) - C2D('A')
@@ -1332,7 +1327,6 @@ do i = 1 to Dev.0
       call list_nmmr_sub_option_12 i, reg               /* subfields */
     end
 
-    call lineout jalfile, '--'
   end
 end
 return 0
@@ -1361,7 +1355,6 @@ do k = 0 to 3 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
     offset = 7                                          /* MSbit first */
     do j = 1 to 8 while offset >= 0                     /* max 8 bits */
       if n.j \= '-' then do
-        call lineout jalfile, '--'
         call lineout jalfile, 'procedure pin_'portletter||offset"_direction'put(bit in x",
                                                   'at' shadow ':' offset') is'
         call lineout jalfile, '   pragma inline'
@@ -1371,6 +1364,7 @@ do k = 0 to 3 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
         else                                            /* TRISx */
           call lineout jalfile, '   asm tris' 5 + C2D(portletter) - C2D('A')
         call lineout jalfile, 'end procedure'
+        call lineout jalfile, '--'
       end
       offset = offset - 1
     end
@@ -1494,7 +1488,6 @@ call lineout jalfile, 'procedure _PORT'substr(reg,5)'_flush() is'
 call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'reg '=' shadow
 call lineout jalfile, 'end procedure'
-call lineout jalfile, '--'
 call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
 call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'shadow '= x'
@@ -1562,7 +1555,7 @@ return
 /* for lower- and upper-nibbles only              */
 /* input:  - TRIS register                        */
 /* ---------------------------------------------- */
-list_tris_shadow: procedure expose jalfile
+list_tris_nibbles: procedure expose jalfile
 reg = arg(1)
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_low_direction'
@@ -2210,12 +2203,11 @@ if analog.CMCON \= '-' then
   call lineout jalfile, '   comparator_off()'
 
 if left(PicName,3) = '10f' |,                   /* all 10Fs */
-        PicName = '12f508' | PicName = '12f509' | PicName = '12f510'  |,
-        PicName = '16f505' | PicName = '16f506' | PicName = '16f526'  ,
+   PicName = '12f508' | PicName = '12f509' | PicName = '12f510'  |,
+   PicName = '16f505' | PicName = '16f506' | PicName = '16f526'  ,
   then
     call lineout jalfile, '   OPTION_REG_T0CS = OFF        -- T0CKI pin input + output'
 call lineout jalfile, 'end procedure'
-call lineout jalfile, '--'
 
 return
 
@@ -2268,17 +2260,9 @@ call lineout jalfile, '--'
 call lineout jalfile, 'pragma  target  cpu   PIC_'Core '           -- (banks = 'Numbanks')'
 call lineout jalfile, 'pragma  target  chip  'PicName
 call lineout jalfile, 'pragma  target  bank  0x'D2X(BANKSIZE,4)
-if core = 12  then do
+if core = 12 | core = 14 then
   call lineout jalfile, 'pragma  target  page  0x'D2X(PAGESIZE,4)
-  call lineout jalfile, 'pragma  stack   'StackDepth
-end
-else if core = 14  then do
-  call lineout jalfile, 'pragma  target  page  0x'D2X(PAGESIZE,4)
-  call lineout jalfile, 'pragma  stack   'StackDepth
-end
-else if Core = 16  then do
-  call lineout jalfile, 'pragma  stack   'StackDepth
-end
+call lineout jalfile, 'pragma  stack   'StackDepth
 call list_code_size
 call list_data_size
 MaxUnsharedRAM = 0                              /* no unshared RAM */
@@ -2379,8 +2363,7 @@ call lineout chipdef, '-- ======================================================
 call lineout chipdef, '--'
 call lineout chipdef, '-- Values assigned to const "target_chip" by'
 call lineout chipdef, '-- "pragma target chip" in device files.'
-call lineout chipdef, '-- Can be used for conditional compilation,',
-                       'for example:'
+call lineout chipdef, '-- Can be used for conditional compilation, for example:'
 call lineout chipdef, '--    if (target_chip = PIC_16F88) then'
 call lineout chipdef, '--      ....                                  -- for 16F88 only'
 call lineout chipdef, '--    endif'
