@@ -28,7 +28,7 @@
 /*   - The script contains some test and debugging code.                    */
 /*                                                                          */
 /* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.61'                   /*                          */
+   ScriptVersion   = '0.0.60'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4i'                   /*                          */
 /* ------------------------------------------------------------------------ */
