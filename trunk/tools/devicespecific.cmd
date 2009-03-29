@@ -1,33 +1,33 @@
-/* ----------------------------------------------------------------------- */
-/* Title: DeviceSpecific.cmd - Rexx script for device specific pproperties */
-/*                                                                         */
-/* Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.   */
-/*                                                                         */
-/* Adapted-by:                                                             */
-/*                                                                         */
-/* Compiler: N/A                                                           */
-/*                                                                         */
-/* This file is part of jallib  http://jallib.googlecode.com               */
-/* Released under the BSD license                                          */
-/*              http://www.opensource.org/licenses/bsd-license.php         */
-/*                                                                         */
-/* Description: Rexx script to obtain device specific properties:          */
-/*              Input:   PropertName, PicName                              */
-/*              Returns: Value of property of specified device or          */
-/*                       "-" with any error                                */
-/*              Supported property names:                                  */
-/*                - ADCgroup                                               */
-/*                - DataSheet                                              */
-/*                - PgmSpec                                                */
-/*                - FusesDefault                                           */
-/*                                                                         */
-/* Sources: Microchip datasheets                                           */
-/*                                                                         */
-/* Notes:                                                                  */
-/*  - Used by Dev2Jal script                                               */
-/*  - Originally created with scripts, to be maintained manually!          */
-/*                                                                         */
-/* ----------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------- *
+ * Title: DeviceSpecific.cmd - Rexx script for device specific pproperties *
+ *                                                                         *
+ * Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.   *
+ *                                                                         *
+ * Adapted-by:                                                             *
+ *                                                                         *
+ * Compiler: N/A                                                           *
+ *                                                                         *
+ * This file is part of jallib  http://jallib.googlecode.com               *
+ * Released under the BSD license                                          *
+ *              http://www.opensource.org/licenses/bsd-license.php         *
+ *                                                                         *
+ * Description: Rexx script to obtain device specific properties:          *
+ *              Input:   PropertName, PicName                              *
+ *              Returns: Value of property of specified device or          *
+ *                       "-" with any error                                *
+ *              Supported property names:                                  *
+ *                - ADCgroup                                               *
+ *                - DataSheet                                              *
+ *                - PgmSpec                                                *
+ *                - FusesDefault                                           *
+ *                                                                         *
+ * Sources: Microchip datasheets                                           *
+ *                                                                         *
+ * Notes:                                                                  *
+ *  - Used by Dev2Jal script                                               *
+ *  - Originally created with scripts, to be maintained manually!          *
+ *                                                                         *
+ * ----------------------------------------------------------------------- */
 parse upper arg Property, PicName .     /* expect property and PicName     */
 select
   when Property = 'ADCGROUP'     then call ADCGroup

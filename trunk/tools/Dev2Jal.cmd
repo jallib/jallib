@@ -1,39 +1,39 @@
-/* ------------------------------------------------------------------------ */
-/* Title: Dev2Jal.cmd - Create JalV2 device include files for flash PICs    */
-/*                                                                          */
-/* Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.    */
-/*                                                                          */
-/* Adapted-by:                                                              */
-/*                                                                          */
-/* Compiler: N/A                                                            */
-/*                                                                          */
-/* This file is part of jallib  http://jallib.googlecode.com                */
-/* Released under the BSD license                                           */
-/*              http://www.opensource.org/licenses/bsd-license.php          */
-/*                                                                          */
-/* Description:                                                             */
-/*   Rexx script to create device include files for JALV2,                  */
-/*   and the file chipdef_jallib.jal, included by each of these.            */
-/*   Apart from declaration of all ports and pins of the chip               */
-/*   the include files will contain shadowing procedures to                 */
-/*   prevent the 'read-modify-write' problems of midrange PICs              */
-/*   and for the 18F force the use of LATx in stead of PORTx.               */
-/*   In addition some device dependent procedures are provided              */
-/*   for common operations, like enable-digital-io().                       */
-/*                                                                          */
-/* Sources:  MPLAB .dev and .lkr files                                      */
-/*                                                                          */
-/* Notes:                                                                   */
-/*   - Summary of internal changes is kept in 'changes.txt' (not published) */
-/*   - The script contains some test and debugging code.                    */
-/*                                                                          */
-/* ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.60'                   /*                          */
+/* ------------------------------------------------------------------------ *
+ * Title: Dev2Jal.cmd - Create JalV2 device include files for flash PICs    *
+ *                                                                          *
+ * Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.    *
+ *                                                                          *
+ * Adapted-by:                                                              *
+ *                                                                          *
+ * Compiler: N/A                                                            *
+ *                                                                          *
+ * This file is part of jallib  http://jallib.googlecode.com                *
+ * Released under the BSD license                                           *
+ *              http://www.opensource.org/licenses/bsd-license.php          *
+ *                                                                          *
+ * Description:                                                             *
+ *   Rexx script to create device include files for JALV2,                  *
+ *   and the file chipdef_jallib.jal, included by each of these.            *
+ *   Apart from declaration of all ports and pins of the chip               *
+ *   the include files will contain shadowing procedures to                 *
+ *   prevent the 'read-modify-write' problems of midrange PICs              *
+ *   and for the 18F force the use of LATx in stead of PORTx.               *
+ *   In addition some device dependent procedures are provided              *
+ *   for common operations, like enable-digital-io().                       *
+ *                                                                          *
+ * Sources:  MPLAB .dev and .lkr files                                      *
+ *                                                                          *
+ * Notes:                                                                   *
+ *   - Summary of internal changes is kept in 'changes.txt' (not published) *
+ *   - The script contains some test and debugging code.                    *
+ *                                                                          *
+ * ------------------------------------------------------------------------ */
+   ScriptVersion   = '0.0.61'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
-   CompilerVersion = '>=2.4i'                   /*                          */
+   CompilerVersion = '>=2.4j'                   /*                          */
 /* ------------------------------------------------------------------------ */
 
-mplabdir = '/mplab820/'                         /* MPLAB base directory     */
+mplabdir = '/mplab830/'                         /* MPLAB base directory     */
 devdir   = mplabdir'mplab_ide/device/'          /* dir with .dev files      */
 lkrdir   = mplabdir'mpasm_suite/lkr/'           /* dir with .lkr files      */
 dstdir   = '/jallib/include/device/'            /* default destination      */
@@ -1739,8 +1739,12 @@ do i = 1 to dev.0                               /* scan .dev file */
           key = 'BROWNOUT'
         else if pos('MCLR',key) > 0 then
           key = 'MCLR'
-        else if pos('PUT',key) > 0 then
+        else if pos('PUT',key) > 0 |,
+                pos('PWRTE',key) > 0 then
           key = 'PWRTE'
+        else if pos('WRT ',key) > 0  |,
+                pos('WRT_ENABLE',key) > 0 then
+          key = 'WRT'
         if Core = 12  |  core = 14 then do
           if CfgAddr.0 > 1 then                 /* multi fuse bytes/words */
             call lineout jalfile, 'pragma fuse_def',
@@ -1768,8 +1772,10 @@ do i = 1 to dev.0                               /* scan .dev file */
           call list_fuse_def_voltage i, key
         else if key = 'BROWNOUT' then
           call list_fuse_def_brownout i, key
-        else if key = 'MCLR' then
+        else if key = 'MCLR' then               /* /MCLR functions */
           call list_fuse_def_mclr i, key
+        else if key = 'WRT' then                /* flash protect */
+          call list_fuse_def_wrt i, key
         else
           call list_fuse_def_other i, key
         call lineout jalfile, '       }'
@@ -1928,6 +1934,42 @@ do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
       val2 = 'EXTERNAL'
     else
       val2 = 'INTERNAL'
+    call lineout jalfile, '       'val2 '= 0x'val1
+  end
+end
+return
+
+
+/* ------------------------------------------- */
+/* Generate fuse_defs for WRT settings         */
+/* ------------------------------------------- */
+list_fuse_def_wrt: procedure expose Dev. jalfile
+do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
+  parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
+                         val1 'DESC' '=' '"' val2 '"' ')' .
+  if val1 \= '' then do
+    val1 = strip(val1)
+    val2 = strip(val2)
+    if pos('DISABLED',val2) > 0 |,              /* unprotected */
+       pos('OFF',val2) > 0 then
+      val2 = 'NO_PROTECTION'
+    if pos('ENABLED',val2) > 0 then             /* protected */
+      val2 = 'ALL_PROTECTED'
+    else if left(Val2,1) = '0' then do          /* memory range */
+      parse var Val2 '0X'aa '-' '0X'zz .
+      if zz = '' then do
+        parse var Val2 aa'H' 'TO' zz'H' .
+        if zz = '' then do
+          parse var Val2 aa 'TO' zz .
+          if zz = '' then do
+            parse var Val2 aa '-' zz .
+          end
+        end
+      end
+      val2 = 'R'right(strip(aa),4,'0')'_'right(strip(zz),4,'0')
+    end
+    else
+      val2 = translate(val2, '_________________',' +-:;.,<>{}[]()=/')
     call lineout jalfile, '       'val2 '= 0x'val1
   end
 end
