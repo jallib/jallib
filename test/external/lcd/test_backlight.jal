@@ -1,5 +1,5 @@
 -- ------------------------------------------------------
--- Title: Test program for lcd_backlight test (extended test)
+-- Title: Test program for lcd_backlight test (basic test)
 --
 -- Author: Joep Suijs, Copyright (c) 2008..2008, all rights reserved.
 --
@@ -10,9 +10,7 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: Testing lcd_hd44780_4 and lcd_hd44780_common
--- This is to test all hd44780_common features. See test_lcd_*
--- for a basic display test.
+-- Description: Testing lcd_backlight 
 -- --
 -- This file defines a test for JALLIB testing, using a test-board
 --  defined by a BOARD file .
@@ -20,7 +18,7 @@
 -- Sources:
 --
 -- Notes: 
--- setup: an hd44780 compatible display, used in 4-bit mode.
+-- setup:   A hd44780 compatible display, used in 4-bit mode with backlight
 --
 -- ------------------------------------------------------
 
@@ -29,11 +27,6 @@ enable_digital_io() -- disable analog I/O (if any)
 ;@jallib use chipdef
 ;@jallib use lcd_hd44780_4
 ;@jallib use led
-
--- ----------------------------------------------------------------------------
--- optionally include this file to gain access to the tc_var* variables
--- ----------------------------------------------------------------------------
-include serial_tc_header
 
 -- setup libs, io etc
 lcd_rs_direction        = output
@@ -45,64 +38,47 @@ include lcd_hd44780_4
 include delay 
 lcd_init()                              -- initialize LCD
 
-var byte value = 0
-
 lcd_clear_screen()
 lcd_home()
 
-const byte teststring[] = "Serial TC ready."
+const byte teststring[] = "Backlight test."
 print_string(lcd, teststring)
+   
+const byte lcd_backlight_pwm = 1 -- by selecting the pwm pin, lcd_backlight_variable() is enabled.
+lcd_bl_direction = output      
+;const bit lcd_bl_inverted = true   -- define this when pin low turns backlight on
 
-const byte lcd_backlight_pwm = 6
-
--- setup for digital backlight control                     
-var volatile bit lcd_bl is pin_b0
-pin_b0_direction = output      
-;const bit lcd_bl_inverted = true
+-- include & init backlight lib
 include lcd_backlight
+pwm_backlight_init()
 
-
-
--- -----------------------------------------------------------------------------
--- Define all unit tests required
--- (testname string constants are optional)
--- -----------------------------------------------------------------------------
-
--- test support function             
-var byte testchar = "a"
-procedure increment_testchar() is
-   testchar = testchar + 1;
-   if (testchar > "z") then 
-      testchar = "a" 
-   end if
-end procedure
--- test support function end
-
-const byte testname_a[] = "backlight on"
-procedure unit_test_a() is                
-   lcd_backlight(on)   
-end procedure
-
-const byte testname_b[] = "backlight off"
-procedure unit_test_b() is                
+var byte i
+forever loop
+                                  
+   -- set backlight off for two seconds
    lcd_backlight(off)   
-end procedure
+   delay_100ms(20)
 
-const byte testname_c[] = "backlight 50%"
-procedure unit_test_c() is                
-   lcd_backlight_variable(128)   
-end procedure
+   -- set backlight on for two seconds                                     
+   lcd_backlight(on)   
+   delay_100ms(20)
+   
+   if(defined(lcd_backlight_pwm) == true) then        
+      
+      -- we have variable backlight!
+      
+      -- first increase intensity 
+      for 255 using i loop      
+         lcd_backlight_variable(i)   
+         delay_1ms(10)
+      end loop
 
--- -----------------------------------------------------------------------------
--- -----------------------------------------------------------------------------
--- include testconsole after definition of unit tests
--- -----------------------------------------------------------------------------
--- -----------------------------------------------------------------------------
-include serial_testconsole
-testconsole_init()      
-
-tc_var2 = 1 -- default (used for left/right shift)   
-
-testconsole()  -- contains forever loop
-
-
+      -- and decrease intensity 
+      for 255 using i loop      
+         lcd_backlight_variable(255-i)   
+         delay_1ms(10)
+      end loop
+      
+   end if                                      
+   
+end loop
