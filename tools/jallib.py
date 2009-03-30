@@ -944,8 +944,8 @@ Actions:
                  directories containing libraries
     - validate : validate the given file, according to Jallib Style Guide (JSG)
     - test     : handle testing matrix and test results.
-	- jalapi   : generate HTML documentation from jal files
-	- license  : display license
+    - jalapi   : generate HTML documentation from jal files
+    - license  : display license
 
 Use 'help' with each action for more (eg. "jallib help compile")
 
@@ -1034,7 +1034,7 @@ with special cases for space and tab chars (for convenience). Examples:
 def jalapi_help():
 	print """
     jallib jalapi [-l|-s] [-d path/to/sample] -t template.tmpl
-	              -o output_file.html one_file.jal|one_dir
+                  -o output_file.html one_file.jal|one_dir
 
 Takes a jal library file as *last* argument and parse/extract JSG headers 
 and procedure/function comments to generate an HTML page (jal file must be
