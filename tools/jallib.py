@@ -943,7 +943,8 @@ Actions:
     - compile  : compile the given file, expanding one or more root
                  directories containing libraries
     - validate : validate the given file, according to Jallib Style Guide (JSG)
-    - test     : handle testing matrix and test results.
+    - sample   : generate samples from board and test files
+    - reindent : re-indent jal code 
     - jalapi   : generate HTML documentation from jal files
     - license  : display license
 
