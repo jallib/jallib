@@ -14,12 +14,12 @@
 --    compatible LCD. Unlike other interfaces (like 'LCD Serial Backpack' and K107),
 --    this app is not aware of the HD44780 command set. 
 --    The corresponding jallib libraries are given transparent access to the LCD in
---    4-bit mode so all current and future jallib HD44780 functionality is supported.
+--    4-bit mode so all current and future jallib HD44780 functionality is supported. 
+--    In addition to this, variable backlight control is supported.
 -- -- 
 --    Currently, only serial comms is supported (57600,8,1)
 --    todo:
 --       - i2c slave interface
---       - backlight support
 -- -----------------------------------------------------------------------------
 -- lcd_app.jal
 
@@ -27,12 +27,9 @@ include board_16f88_sl
 
 ;@jallib use chipdef
 ;@jallib use lcd_hd44780_4
-;@jallib use led
+;@jallib use serial
 
 enable_digital_io()
-
-;led_direction = output
-
 
 lcd_rs_direction        = output
 lcd_en_direction        = output
@@ -48,12 +45,12 @@ var volatile byte inchar
 var volatile bit   cmdfield         at inchar : 5
 var volatile bit*5 datafield        at inchar : 0
 
-; setup pwm for backlight
+; setup pwm for backlight      
+include pwm_hardware
 pin_ccp1_direction = output
 pwm_max_resolution(1)
 pwm1_on()                
 pwm1_set_dutycycle(0)   -- backlight off
-
 
 forever loop
    
@@ -64,7 +61,7 @@ forever loop
          __lcd_write_nibble(datafield)
       elsif (cmdfield == 1) then
          -- 5 bit pwm value in datafield
-          pwm1_set_dutycycle(datafield * 8)
+          pwm1_set_dutycycle((datafield * 8) + (datafield / 4))
       end if
    end if   
    
