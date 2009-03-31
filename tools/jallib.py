@@ -824,7 +824,7 @@ def jalapi_extract_samples(jalfile,sampledir,svnbaseurl,locallinks):
 	# search samples using this file
 	libname = re.sub("\.jal$","",os.path.basename(jalfile))
 	def use_lib(dir,sample):
-		return libname in find_includes(os.path.join(sampledir,sample))
+		return libname in find_includes(os.path.join(sampledir,dir,sample))
 	samples = get_jal_filenames(sampledir,predicate=use_lib).values()
 	dsamples = {}
 
