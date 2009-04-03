@@ -470,9 +470,11 @@ def merge_board_testfile(boardcontent,testcontent):
 	newcontent = ""
 	start = 0
 	for m in toreplace:
-		newcontent += testcontent[start:m.start() - 1]
+		# when eating line sep char (to keep layout),
+		# remember some OS needs 2 chars !
+		newcontent += testcontent[start:m.start() - len(os.linesep)]
 		new = os.linesep.join(board['sections'][m.groups()[-1].strip()])
-		start = m.end() + 1
+		start = m.end() + 1	# next char
 		newcontent += new
 	newcontent += testcontent[start:]
 	return newcontent
@@ -488,10 +490,8 @@ def normalize_linefeed(content):
 
 def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
 	# try to find which linefeed is used
-	board = normalize_linefeed(file(boardfile).read()).splitlines()
-	##board = map(lambda x: x.replace("\r\n",os.linesep),file(boardfile).readlines())
-	test = normalize_linefeed(file(testfile).read()).splitlines()
-	##test = map(lambda x: x.replace("\r\n",os.linesep),file(testfile).readlines())
+	board = file(boardfile).read().splitlines()
+	test = file(testfile).read().splitlines()
 	# keep test's headers, but enrich them with info about how files were merged
 	# headers need index (enumerate() on content)
 	# extract_header will change content in place, ie. will remove
