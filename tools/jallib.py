@@ -470,10 +470,11 @@ def merge_board_testfile(boardcontent,testcontent):
 	newcontent = ""
 	start = 0
 	for m in toreplace:
+		sectionname = m.groups()[-1].strip()
 		# when eating line sep char (to keep layout),
 		# remember some OS needs 2 chars !
 		newcontent += testcontent[start:m.start() - len(os.linesep)]
-		new = os.linesep.join(board['sections'][m.groups()[-1].strip()])
+		new = os.linesep.join(board['sections'][sectionname])
 		start = m.end() + 1	# next char
 		newcontent += new
 	newcontent += testcontent[start:]
@@ -510,8 +511,8 @@ def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
 	test = [l for i,l in test]
 	merged = merge_board_testfile(board,test)
 	fout = file(outfile,"w")
-	print >> fout, header
-	print >> fout, merged
+	fout.write(header)
+	fout.write(merged)
 	fout.close()
 
 	# compile it !
@@ -700,7 +701,7 @@ def reindent_file(filename,withchar,howmany):
 	assert level == 0, "Reached the end of file, but indent level is not null (it should)"
 	# ok, now we can save the content back to the file
 	fout = file(filename,"w")
-	print >> fout, "\n".join(content)
+	print >> fout, os.linesep.join(content)
 	fout.close()
 
 def do_reindent(args):
