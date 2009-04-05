@@ -510,7 +510,8 @@ def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
 	# back to content without index
 	test = [l for i,l in test]
 	merged = merge_board_testfile(board,test)
-	fout = file(outfile,"w")
+	# wb: write binary format, no ASCII/chars interpretation
+	fout = file(outfile,"wb")
 	fout.write(header)
 	fout.write(merged)
 	fout.close()
