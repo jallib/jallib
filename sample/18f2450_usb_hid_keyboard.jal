@@ -1,671 +1,670 @@
--- Title: USB HID keyboard device demo
--- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
--- Adapted-by: -
--- Compiler: >=2.4j
--- 
--- This file is part of jallib (http://jallib.googlecode.com)
--- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
--- 
--- Description: This application emulates a keyboard USB human interface device
--- (HID), once the USB device has been conifgured and the USB HID device is recognized by
--- the host operating systems, it will generate keyboard chars if pin RB5 is low
--- 
--- 
--- Sources: http://www.usb.org for USB specifications
--- 
--- Notes: compiled with following flags
---	-loader18 -no-fuse 
---	use -no-variable-reuse when debugging flags are
---  set due to a compiler issue
---
--- ------------------------------------------------------
--- ------------------------------------------------------
---
---
---
--- This file has been generated on 03/25/09 10:21:23, from:
---    * board: board_18f2450_af.jal
---    * test : test_usb_hid_keyboard.jal
---
-
+-- Title: USB HID keyboard device demo
+-- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
+-- Adapted-by: -
+-- Compiler: >=2.4j
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- 
+-- Description: This application emulates a keyboard USB human interface device
+-- (HID), once the USB device has been conifgured and the USB HID device is recognized by
+-- the host operating systems, it will generate keyboard chars if pin RB5 is low
+-- 
+-- 
+-- Sources: http://www.usb.org for USB specifications
+-- 
+-- Notes: compiled with following flags
+--	-loader18 -no-fuse 
+--	use -no-variable-reuse when debugging flags are
+--  set due to a compiler issue
+--
+-- ------------------------------------------------------
+-- ------------------------------------------------------
+--
+--
+--
+-- This file has been generated on 04/06/09 23:43:05, from:
+--    * board: board_18f2450_af.jal
+--    * test : test_usb_hid_keyboard.jal
+--
 
-;@jallib section chipdef
--- chip setup
-include 18f2450
-
--- even though the external crystal is 20 MHz, the configuration is such that
--- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
--- target frequency to 48 MHz
-pragma target clock       48_000_000
-
-
--- fuses
-pragma target PLLDIV		DIVIDE_BY_5__20MHZ_INPUT_
-pragma target CPUDIV		_OSC1_OSC2_SRC___1__96MHZ_PLL_SRC___2_
-pragma target USBPLL		CLOCK_SRC_FROM_96MHZ_PLL_2
-pragma target OSC			HS_PLL
-pragma target FCMEN			DISABLED
-pragma target IESO			DISABLED
-pragma target PWRTE			DISABLED	-- power up timer
-pragma target VREGEN		ENABLED		-- USB voltage regulator
-pragma target VOLTAGE		V20			-- brown out voltage
-pragma target BROWNOUT		DISABLED	-- no brownout detection
-pragma target WDTPS			P32768		-- watch dog saler setting
-pragma target WDT			DISABLED    -- no watchdog
-pragma target PBADEN		DIGITAL		-- digital input port<0..4>
-pragma target LPT1OSC		DISABLED	-- low power timer 1
--- pragma target MCLR			EXTERNAL	-- master reset on RE3
-pragma target MCLR			INTERNAL	-- no master reset 
-pragma target STVR			DISABLED    -- reset on stack over/under flow
-pragma target LVP			DISABLED    -- no low-voltage programming
-pragma target ENICPORT		DISABLED	-- In circuit debugger
-pragma target XINST			ENABLED		-- extended instruction set
-pragma target BACKBUG		DISABLED	-- background debugging
-pragma target CP_0			DISABLED	-- code block 0 not protected
-pragma target CP_1			DISABLED	-- code block 1 not protected
-pragma target CPB			DISABLED	-- bootblock code not write protected
-pragma target WRT_0			DISABLED	-- table writeblock 0 not protected
-pragma target WRT_1			DISABLED	-- table write block 1 not protected
-pragma target WRTB			DISABLED	-- bootblock not write protected
-pragma target WRTC			DISABLED	-- config not write protected
-pragma target EBTR_0		DISABLED	-- table read block 0 not protected
-pragma target EBTR_1		DISABLED	-- table read block 1 not protected
-pragma target EBTRB 		DISABLED	-- boot block not protected
-
-
-include delay
-
-;@jallib section serial
-
-
--- whether or not using the serial port
-const HAS_SERIAL_DEBUG_PORT = 1
-
-if defined( HAS_SERIAL_DEBUG_PORT ) == true then
-
-	const serial_hw_baudrate = 115_200
-	
-	include serial_hardware
-	include format
-	include print
-	
-	-- intialze serial device
-	serial_hw_init()
-
-	procedure serial_print_spc() is 
-		serial_hw_write( " " )
-	end procedure
-
-	procedure serial_newline() is
-		serial_hw_write( 10 )
-		-- serial_hw_write( 13 )
-	end procedure
-end if
-
-
-
-const bit USB_DEBUG = false
-const bit USB_DEBUG_HIGH = false
-const bit USB_HID_DEBUG = false
-const bit USB_HID_DEBUG_HIGH = false
-const byte USB_HID_ENDPOINT = 0x01
-
-include usb_defs
-
-const bit USB_EP0 = 1
-const byte USB_EP0_OUT_SIZE = 8
-const word USB_EP0_OUT_ADDR = 0x0420
-const byte USB_EP0_IN_SIZE  = USB_EP0_OUT_SIZE
-const word USB_EP0_IN_ADDR  = 0x0428
-
-const bit USB_EP1 = 1
-const byte USB_EP1_OUT_SIZE = 8
-const word USB_EP1_OUT_ADDR = 0x0430
-const byte USB_EP1_IN_SIZE  = 8
-const word USB_EP1_IN_ADDR  = 0x0438
-var volatile byte  usb_ep1in_buf[ 8 ]
-
-const bit USB_EP2 = 0
-const byte USB_EP2_OUT_SIZE = 8
-const word USB_EP2_OUT_ADDR = 0x0000
-const byte USB_EP2_IN_SIZE  = 8
-const word USB_EP2_IN_ADDR  = 0x0000
-
-const bit USB_EP3 = 0
-const byte USB_EP3_OUT_SIZE = 8
-const word USB_EP3_OUT_ADDR = 0x0000
-const byte USB_EP3_IN_SIZE = 8
-const word USB_EP3_IN_ADDR  = 0x0000
-
-const bit USB_CALLBACK_ON_CLASS_CTRL 		= true
-const bit USB_CALLBACK_ON_DEVICE_CONFIGURED = false
-const bit USB_CALLBACK_ON_VENDOR_CTRL 		= false
-const bit USB_EP_DATA_CALLBACK 				= true
-const bit USB_CALLBACK_ON_SOF 				= false
-
-const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
-	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
-	USB_DT_DEVICE, 	-- DEVICE 01h
-	0x00,
-	0x02,		-- usb version 2.00
-	0x00,		-- class
-	0x00,		-- subclass
-	0x00,		-- protocol
-	USB_EP0_OUT_SIZE,		-- max packet size for end point 0
-	0xd8,
-	0x04,		-- Microchip's vendor
-	0x55,
-	0x00,		-- Microchip keyboard demo
-	0x01,
-	0x00, 	     -- version 1.0 of the product
-	0x01,		-- string 1 for manufacturer
-	0x02,		-- string 2 for product
-	0x00,		-- string 3 for serial number
-	0x01		-- number of configurations
-}
-
-
-const byte USB_HID_REPORT1[]=
-{
-	0x05, 0x01,                    -- USAGE_PAGE (Generic Desktop)
-    0x09, 0x06,                    -- USAGE (Keyboard)
-    0xa1, 0x01,                    -- COLLECTION (Application)
-    0x05, 0x07,                    -- USAGE_PAGE (Keyboard)
-    0x19, 0xe0,                    -- USAGE_MINIMUM (Keyboard LeftControl)
-    0x29, 0xe7,                    -- USAGE_MAXIMUM (Keyboard Right GUI)
-    0x15, 0x00,                    -- LOGICAL_MINIMUM (0)
-    0x25, 0x01,                    -- LOGICAL_MAXIMUM (1)
-    0x75, 0x01,                    -- REPORT_SIZE (1)
-    0x95, 0x08,                    -- REPORT_COUNT (8)
-    0x81, 0x02,                    -- INPUT (Data,Var,Abs)
-    0x95, 0x01,                    -- REPORT_COUNT (1)
-    0x75, 0x08,                    -- REPORT_SIZE (8)
-    0x81, 0x03,                    -- INPUT (Cnst,Var,Abs)
-    0x95, 0x05,                    -- REPORT_COUNT (5)
-    0x75, 0x01,                    -- REPORT_SIZE (1)
-    0x05, 0x08,                    -- USAGE_PAGE (LEDs)
-    0x19, 0x01,                    -- USAGE_MINIMUM (Num Lock)
-    0x29, 0x05,                    -- USAGE_MAXIMUM (Kana)
-    0x91, 0x02,                    -- OUTPUT (Data,Var,Abs)
-    0x95, 0x01,                    -- REPORT_COUNT (1)
-    0x75, 0x03,                    -- REPORT_SIZE (3)
-    0x91, 0x03,                    -- OUTPUT (Cnst,Var,Abs)
-    0x95, 0x06,                    -- REPORT_COUNT (6)
-    0x75, 0x08,                    -- REPORT_SIZE (8)
-    0x15, 0x00,                    -- LOGICAL_MINIMUM (0)
-    0x25, 0x65,                    -- LOGICAL_MAXIMUM (101)
-    0x05, 0x07,                    -- USAGE_PAGE (Keyboard)
-    0x19, 0x00,                    -- USAGE_MINIMUM (Reserved (no event indicated))
-    0x29, 0x65,                    -- USAGE_MAXIMUM (Keyboard Application)
-    0x81, 0x00,                    -- INPUT (Data,Ary,Abs)
-    0xc0  
-}
-const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x09 + 0x07
-
-const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
-{	
-	-- configuration descriptor - - - - - - - - - - 
-	0x09,	-- length,
-	USB_DT_CONFIGURATION,	-- descriptor_type
-
-	USB_CONFIGURATION_DESCRIPTOR_SIZE,
-	0x00,	-- total_length;
-	
-	0x01,	-- num_interfaces,
-	0x01,	-- configuration_value,
-	0x00,	-- configuration_string_id,
-	0b10000000, -- attributes (bus powered, no remote wake up)
-	100,	-- max_power; (200ma)
-
-	-- interface descriptor - - - - - - - - - - - -
-	0x09,						-- length,
-	USB_DT_INTERFACE,			-- descriptor_type,
-	0x00,						-- interface_number, (starts at zero)
-	0x00,						-- alternate_setting, (no alternatives)
-	0x01,						-- num_endpoints,
-	USB_HID_INTF,				-- interface_class, (HID)
-	USB_BOOT_INTF_SUBCLASS,		-- interface_subclass, (boot)
-	USB_HID_PROTOCOL_KEYBOARD,	-- interface_protocol, (keyboard)
-	0x00,	-- interface_string_id;
-	
-	-- hid descriptor - - - - - - - - - - - - - - -
-	0x09,				-- length,
-	USB_DT_HID,			-- descriptor_type;
-	0x11,
-	0x01,				-- hid_spec in BCD (1.11)
-	0x00,				-- country_code, (0=not country specific)
-	0x01,				-- num_class_descriptors, (1)
-	USB_DT_HID_REPORT,	-- class_descriptor_type; (0x22 = report)
-	(count( USB_HID_REPORT1 ) & 0xFF ),
-	(count( USB_HID_REPORT1 ) >> 8 ),
-	
-	0x07,				-- length,
-	USB_DT_ENDPOINT,	-- descriptor_type,
-	0b10000001,			-- endpoint_address, (Endpoint 1, IN)
-	USB_EPT_INT,		-- attributes; (Interrupt)
-	USB_EP1_IN_SIZE,				
-	0x00,				-- max_packet_size
-	0x01				-- interval (1ms)
-}
-
-const byte USB_STRING0[] = 
-{
-	0x04,	-- bLength
-	USB_DT_STRING,	-- bDescriptorType
-	0x09,	-- wLANGID[0] (low byte)
-	0x04	-- wLANGID[0] (high byte)
-}
-
-const byte USB_STRING1[0x36] = 
-{
-	0x36,	-- bLength
-	USB_DT_STRING,	-- bDescriptorType
-	"M", 0x00, 
-	"i", 0x00, 
-	"c", 0x00, 
-	"r", 0x00, 
-	"o", 0x00, 
-	"c", 0x00, 
-	"h", 0x00, 
-	"i", 0x00, 
-	"p", 0x00, 
-	" ", 0x00,
-	"T", 0x00, 
-	"e", 0x00, 
-	"c", 0x00, 
-	"h", 0x00, 
-	"n", 0x00, 
-	"o", 0x00, 
-	"l", 0x00, 
-	"o", 0x00, 
-	"g", 0x00, 
-	"y", 0x00, 
-	",", 0x00, 
-	" ", 0x00,
-	"I", 0x00, 
-	"n", 0x00, 
-	"c", 0x00, 
-	".", 0x00
-}
-
-const byte USB_STRING2[42] = 
-{
-	42,	-- bLength
-	USB_DT_STRING,	-- bDescriptorType
-	"J", 0x00, 
-	"A", 0x00, 
-	"L", 0x00, 
-	" ", 0x00, 
-	"H", 0x00, 
-	"I", 0x00, 
-	"D", 0x00, 
-	" ", 0x00, 
-	"K", 0x00, 
-	"e", 0x00,
-	"b", 0x00, 
-	"o", 0x00, 
-	"a", 0x00, 
-	"r", 0x00, 
-	" ", 0x00, 
-	" ", 0x00, 
-	"D", 0x00, 
-	"e", 0x00, 
-	"m", 0x00, 
-	"o", 0x00
-}
-
-include usb_drv_core
-
-
-var volatile bit usb_hid_can_tx = true
-
-const byte USB_HID_REQ_HID 			= 0x21
-const byte USB_HID_REQ_REPORT 		= 0x22
-const byte USB_HID_REQ_PHYSDISCR	= 0x23
-
-const byte USB_HCR_GET_REPORT		= 0x01
-const byte USB_HCR_GET_IDLE			= 0x02
-const byte USB_HCR_GET_PROTOCOL		= 0x03
-const byte USB_HCR_SET_REPORT		= 0x09
-const byte USB_HCR_SET_IDLE			= 0x0A
-const byte USB_HCR_SET_PROTOCOL		= 0x0B
-
-procedure usb_handle_class_request_callback() is
-    
-    -- compiler issue, do local assignment to resolve
-    var byte req01 = usb_sdp_request
-    var word len = usb_sdp_length
-    var word val = usb_sdp_value
-    var byte valbt[2] at usb_sdp_value
-
-
-
-    if USB_HID_DEBUG_HIGH then
-        const byte str[] = " HID CL CALLBACK REQ: "
-        const byte str1[] = " bytes "
-        print_byte_hex(serial_hw_data,str)
-        print_byte_hex(serial_hw_data,len & 0xFF)
-        print_byte_hex(serial_hw_data,str1)
-        print_byte_hex(serial_hw_data,val >> 8 )
-        print_byte_hex(serial_hw_data,val & 0xFF)
-        serial_hw_write( " " )
-        print_byte_hex(serial_hw_data,req01 )
-    end if
-        
-	case (req01) of
-
-
-		USB_HCR_GET_REPORT:
-		block
-			if USB_HID_DEBUG then
-				const byte str[] = "GET_REPORT "
-				print_byte_hex(serial_hw_data,str)
-			end if
-		end block
-		
-		USB_HCR_GET_IDLE:
-		block
-			if USB_HID_DEBUG then
-				const byte str[] = "GET_IDLE "
-				print_byte_hex(serial_hw_data,str)
-			end if
-		end block
-
-		USB_HCR_GET_PROTOCOL:
-		block
-			if USB_HID_DEBUG then
-				const byte str[] = "GET_PROTOCOL "
-				print_byte_hex(serial_hw_data,str)
-			end if
-		end block
-		
-		USB_HCR_SET_REPORT:
-		block
-			if USB_HID_DEBUG then
-				const byte str[] = "SET_REPORT "
-				print_byte_hex(serial_hw_data,str)
-				
-				if ( len > 0 ) then
-					usb_control_mode = USB_CM_CTRL_WRITE_DATA_STAGE_CLASS
-				end if
-			end if
-		end block
-		
-		USB_HCR_SET_IDLE:
-		block
-			if USB_HID_DEBUG then
-				const byte str[] = "SET_IDLE "
-				print_byte_hex(serial_hw_data,str)
-			end if
-		end block
-
-		USB_HCR_SET_PROTOCOL:
-		block
-			if USB_HID_DEBUG then
-				const byte str[] = "SET_PROTOCOL "
-				print_byte_hex(serial_hw_data,str)
-			end if
-		end block
-		
-		otherwise
-		block
-			if USB_HID_DEBUG then
-				const byte str[] = "UNKNOWN CL REQUEST "
-				print_byte_hex(serial_hw_data,str)
-			end if
-		end block
-	end case
-	
-end procedure
-
-var byte usb_kbd_report[8]
-
-procedure usb_handle_class_ctrl_write_callback() is
-    -- compiler issue, do local assignment to resolve
-    var byte req01 = usb_sdp_request
-    var word len = usb_sdp_length
-    var word val = usb_sdp_value
-    var byte valbt[2] at usb_sdp_value
-
-
-
-    if USB_HID_DEBUG_HIGH then
-        const byte str[] = " HID CL CALLBACK WR: "
-        print_byte_hex(serial_hw_data,req01 )
-    end if
-    
-	case (req01) of
-		USB_HCR_SET_REPORT:
-		block
-			if USB_HID_DEBUG then
-				const byte str[] = "SET_REPORT "
-				print_byte_hex(serial_hw_data,str)
-				
-				
-				var byte idx
-				var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR
-				
-				for count( usb_kbd_report ) loop
-					print_byte_hex(serial_hw_data, bd0_out_buffer[idx] )
-					usb_kbd_report[ idx ] = bd0_out_buffer[idx]
-				end loop
-							
-				usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
-				usb_send_status_ack()
-				
-			end if
-		end block
-
-		otherwise
-		block
-			if USB_HID_DEBUG then
-				const byte str[] = "UNKNOWN CL REQUEST "
-				print_byte_hex(serial_hw_data,str)
-			end if
-		end block
-
-	end case
-    
-end procedure
-
-procedure usb_handle_class_ctrl_read_callback() is
-    -- compiler issue, do local assignment to resolve
-    var byte req01 = usb_sdp_request
-    var word len = usb_sdp_length
-    var word val = usb_sdp_value
-    var byte valbt[2] at usb_sdp_value
-
-    if USB_HID_DEBUG_HIGH then
-        const byte str[] = " HID CL CALLBACK RD: "
-        const byte str1[] = " bytes "
-        print_byte_hex(serial_hw_data,str)
-        print_byte_hex(serial_hw_data,len & 0xFF)
-        print_byte_hex(serial_hw_data,str1)
-        print_byte_hex(serial_hw_data,val >> 8 )
-        print_byte_hex(serial_hw_data,val & 0xFF)
-        serial_hw_write( " " )
-        print_byte_hex(serial_hw_data,req01 )
-    end if
-end procedure
-
-
-procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word in byte_count) is
-    
-    if USB_HID_DEBUG_HIGH then
-        const byte str[] = " EP data in: "
-        const byte str1[] = " bytes "
-        print_byte_hex(serial_hw_data,str)
-        print_byte_hex(serial_hw_data,byte_count & 0xFF)
-        print_byte_hex(serial_hw_data,str1)
-    end if
-    
-    -- data has been sent, so do we need to send more?
-    if (end_point == USB_HID_ENDPOINT) then
-        -- it's the data end point
-        usb_hid_can_tx = true
-    end if
-end procedure
-
-procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word in byte_count) is
-    var byte cdc_rx_next
-    if USB_HID_DEBUG then
-        const byte str[] = " EP data out: "
-        const byte str1[] = " bytes "
-        print_byte_hex(serial_hw_data,str)
-        print_byte_hex(serial_hw_data,byte_count)
-        print_byte_hex(serial_hw_data,str1)
-    end if
-    
-    -- We have some data!
-    if (end_point == USB_HID_ENDPOINT) then
-	end if
-end procedure
-
-
-include usb_drv
-
-
--- constants
-const  byte str_welcome[] = "JAL USB Keyboard HID demo version 0.02\nplease wait (takes ~20 seconds) before the device is fully configured"
-
--- variables
-var word i = 0
-var bit usb_initialized = false
-
--- 0 Modifier byte
---		bit
---		0 LEFT CTRL
---		1 LEFT SHIFT
---		2 LEFT ALT
---		3 LEFT GUI
---		4 RIGHT CTRL
---		5 RIGHT SHIFT
---		6 RIGHT ALT
---		7 RIGHT GUI
--- 1 reserved
--- 2 keycode array (0)
--- 3 keycode array (1)
--- 4 keycode array (2)
--- 5 keycode array (3)
--- 6 keycode array (4)
--- 7 keycode array (5)
-var byte hid_report_in[8]
-
-var word ticks100us = 0
-var bit enable_keyboard = false
-
-
-procedure usb_tasks() is    
-    -- Servicing Hardware
-    -- use polling method
-    usb_handle_isr()
-end procedure
-
-procedure usb_hid_tx_report( byte in hid_report_in[], byte in cnt ) is
-	
-	while ( usb_hid_can_tx == false ) loop
-		usb_tasks()
-	end loop
-	usb_hid_can_tx = false
-	usb_send_data(USB_HID_ENDPOINT, hid_report_in, cnt , low )
-end procedure
-
--- interrupts? No thanks
-while INTCON_GIE loop
-    INTCON_GIE = false
-end loop
-
-if defined( HAS_SERIAL_DEBUG_PORT ) == high then
-	-- put info on RS-232 serial line
-	serial_newline()
-	serial_newline()
-
-	print_string(serial_hw_data, str_welcome )
-	serial_newline()
-end if
-
--- setup the USB device
-usb_setup()
-
-delay_1ms(10)
-
--- enable USB device
-usb_enable_module()
-
-pin_b5_direction = input
-
-
-var byte key_value = 4
-var bit sw3 is pin_b5
-
-var bit latched_sw3 = sw3
-
-var bit send_key_stroke = false 
-
--- disable analog unit, all ports set to digital
-enable_digital_io()
-
--- main loop
-forever loop
-	-- poll the usb ISR function on a regular base, in order to 
-	-- serve the USB requests
-	usb_tasks()
-	
-    -- check if USB device has been configured by the HOST
-    if usb_is_configured()  then
-
-		-- note user via serial line that USB has been configured
-		if usb_initialized == false then
-			usb_initialized = true
-			
-			if defined( HAS_SERIAL_DEBUG_PORT ) == true then			
-				const  byte str[] = "USB device has been configured by the HOST!"
-				print_string(serial_hw_data, str )
-				serial_newline()
-
-				-- now keyboard chars can be send to the host
-				enable_keyboard = true
-			end if
-		end if
-    end if
-
-	-- prepare the HID buffer
-	hid_report_in[0] = 0
-	hid_report_in[1] = 0
-	hid_report_in[2] = 0
-	hid_report_in[3] = 0
-	hid_report_in[4] = 0
-	hid_report_in[5] = 0
-	hid_report_in[6] = 0
-	hid_report_in[7] = 0
-	
-	if ( sw3 != latched_sw3 ) then
-
-		latched_sw3 = sw3
-			
-		if ( sw3 == low )then
-			hid_report_in[2] = key_value
-			key_value = key_value + 1
-			if ( key_value == 40 ) then
-				key_value = 4
-			end if
-		else
-			hid_report_in[2] = 0
-		end if
-		
-		-- Send the 8 byte packet over USB to the host.
-		if enable_keyboard then
-			usb_hid_tx_report( hid_report_in, count( hid_report_in ) )
-		end if
-
-		-- debounce
-		delay_1ms(50)
-		
-	end if
-
-	if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
-		if PIR1_RCIF then
-		end if
-	end if	
-    
+;@jallib section chipdef
+-- chip setup
+include 18f2450
+
+-- even though the external crystal is 20 MHz, the configuration is such that
+-- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
+-- target frequency to 48 MHz
+pragma target clock       48_000_000
+
+
+-- fuses
+pragma target PLLDIV		DIVIDE_BY_5__20MHZ_INPUT_
+pragma target CPUDIV		_OSC1_OSC2_SRC___1__96MHZ_PLL_SRC___2_
+pragma target USBPLL		CLOCK_SRC_FROM_96MHZ_PLL_2
+pragma target OSC			HS_PLL
+pragma target FCMEN			DISABLED
+pragma target IESO			DISABLED
+pragma target PWRTE			DISABLED	-- power up timer
+pragma target VREGEN		ENABLED		-- USB voltage regulator
+pragma target VOLTAGE		V20			-- brown out voltage
+pragma target BROWNOUT		DISABLED	-- no brownout detection
+pragma target WDTPS			P32768		-- watch dog saler setting
+pragma target WDT			DISABLED    -- no watchdog
+pragma target PBADEN		DIGITAL		-- digital input port<0..4>
+pragma target LPT1OSC		DISABLED	-- low power timer 1
+-- pragma target MCLR			EXTERNAL	-- master reset on RE3
+pragma target MCLR			INTERNAL	-- no master reset 
+pragma target STVR			DISABLED    -- reset on stack over/under flow
+pragma target LVP			DISABLED    -- no low-voltage programming
+pragma target ENICPORT		DISABLED	-- In circuit debugger
+pragma target XINST			ENABLED		-- extended instruction set
+pragma target BACKBUG		DISABLED	-- background debugging
+pragma target CP_0			DISABLED	-- code block 0 not protected
+pragma target CP_1			DISABLED	-- code block 1 not protected
+pragma target CPB			DISABLED	-- bootblock code not write protected
+pragma target WRT_0			DISABLED	-- table writeblock 0 not protected
+pragma target WRT_1			DISABLED	-- table write block 1 not protected
+pragma target WRTB			DISABLED	-- bootblock not write protected
+pragma target WRTC			DISABLED	-- config not write protected
+pragma target EBTR_0		DISABLED	-- table read block 0 not protected
+pragma target EBTR_1		DISABLED	-- table read block 1 not protected
+pragma target EBTRB 		DISABLED	-- boot block not protected
+
+
+include delay
+
+;@jallib section serial
+
+
+-- whether or not using the serial port
+const HAS_SERIAL_DEBUG_PORT = 1
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == true then
+
+	const serial_hw_baudrate = 115_200
+	
+	include serial_hardware
+	include format
+	include print
+	
+	-- intialze serial device
+	serial_hw_init()
+
+	procedure serial_print_spc() is 
+		serial_hw_write( " " )
+	end procedure
+
+	procedure serial_newline() is
+		serial_hw_write( 10 )
+		-- serial_hw_write( 13 )
+	end procedure
+end if
+
+
+
+const bit USB_DEBUG = false
+const bit USB_DEBUG_HIGH = false
+const bit USB_HID_DEBUG = false
+const bit USB_HID_DEBUG_HIGH = false
+const byte USB_HID_ENDPOINT = 0x01
+
+include usb_defs
+
+const bit USB_EP0 = 1
+const byte USB_EP0_OUT_SIZE = 8
+const word USB_EP0_OUT_ADDR = 0x0420
+const byte USB_EP0_IN_SIZE  = USB_EP0_OUT_SIZE
+const word USB_EP0_IN_ADDR  = 0x0428
+
+const bit USB_EP1 = 1
+const byte USB_EP1_OUT_SIZE = 8
+const word USB_EP1_OUT_ADDR = 0x0430
+const byte USB_EP1_IN_SIZE  = 8
+const word USB_EP1_IN_ADDR  = 0x0438
+var volatile byte  usb_ep1in_buf[ 8 ]
+
+const bit USB_EP2 = 0
+const byte USB_EP2_OUT_SIZE = 8
+const word USB_EP2_OUT_ADDR = 0x0000
+const byte USB_EP2_IN_SIZE  = 8
+const word USB_EP2_IN_ADDR  = 0x0000
+
+const bit USB_EP3 = 0
+const byte USB_EP3_OUT_SIZE = 8
+const word USB_EP3_OUT_ADDR = 0x0000
+const byte USB_EP3_IN_SIZE = 8
+const word USB_EP3_IN_ADDR  = 0x0000
+
+const bit USB_CALLBACK_ON_CLASS_CTRL 		= true
+const bit USB_CALLBACK_ON_DEVICE_CONFIGURED = false
+const bit USB_CALLBACK_ON_VENDOR_CTRL 		= false
+const bit USB_EP_DATA_CALLBACK 				= true
+const bit USB_CALLBACK_ON_SOF 				= false
+
+const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
+	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
+	USB_DT_DEVICE, 	-- DEVICE 01h
+	0x00,
+	0x02,		-- usb version 2.00
+	0x00,		-- class
+	0x00,		-- subclass
+	0x00,		-- protocol
+	USB_EP0_OUT_SIZE,		-- max packet size for end point 0
+	0xd8,
+	0x04,		-- Microchip's vendor
+	0x55,
+	0x00,		-- Microchip keyboard demo
+	0x01,
+	0x00, 	     -- version 1.0 of the product
+	0x01,		-- string 1 for manufacturer
+	0x02,		-- string 2 for product
+	0x00,		-- string 3 for serial number
+	0x01		-- number of configurations
+}
+
+
+const byte USB_HID_REPORT1[]=
+{
+	0x05, 0x01,                    -- USAGE_PAGE (Generic Desktop)
+    0x09, 0x06,                    -- USAGE (Keyboard)
+    0xa1, 0x01,                    -- COLLECTION (Application)
+    0x05, 0x07,                    -- USAGE_PAGE (Keyboard)
+    0x19, 0xe0,                    -- USAGE_MINIMUM (Keyboard LeftControl)
+    0x29, 0xe7,                    -- USAGE_MAXIMUM (Keyboard Right GUI)
+    0x15, 0x00,                    -- LOGICAL_MINIMUM (0)
+    0x25, 0x01,                    -- LOGICAL_MAXIMUM (1)
+    0x75, 0x01,                    -- REPORT_SIZE (1)
+    0x95, 0x08,                    -- REPORT_COUNT (8)
+    0x81, 0x02,                    -- INPUT (Data,Var,Abs)
+    0x95, 0x01,                    -- REPORT_COUNT (1)
+    0x75, 0x08,                    -- REPORT_SIZE (8)
+    0x81, 0x03,                    -- INPUT (Cnst,Var,Abs)
+    0x95, 0x05,                    -- REPORT_COUNT (5)
+    0x75, 0x01,                    -- REPORT_SIZE (1)
+    0x05, 0x08,                    -- USAGE_PAGE (LEDs)
+    0x19, 0x01,                    -- USAGE_MINIMUM (Num Lock)
+    0x29, 0x05,                    -- USAGE_MAXIMUM (Kana)
+    0x91, 0x02,                    -- OUTPUT (Data,Var,Abs)
+    0x95, 0x01,                    -- REPORT_COUNT (1)
+    0x75, 0x03,                    -- REPORT_SIZE (3)
+    0x91, 0x03,                    -- OUTPUT (Cnst,Var,Abs)
+    0x95, 0x06,                    -- REPORT_COUNT (6)
+    0x75, 0x08,                    -- REPORT_SIZE (8)
+    0x15, 0x00,                    -- LOGICAL_MINIMUM (0)
+    0x25, 0x65,                    -- LOGICAL_MAXIMUM (101)
+    0x05, 0x07,                    -- USAGE_PAGE (Keyboard)
+    0x19, 0x00,                    -- USAGE_MINIMUM (Reserved (no event indicated))
+    0x29, 0x65,                    -- USAGE_MAXIMUM (Keyboard Application)
+    0x81, 0x00,                    -- INPUT (Data,Ary,Abs)
+    0xc0  
+}
+const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x09 + 0x07
+
+const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
+{	
+	-- configuration descriptor - - - - - - - - - - 
+	0x09,	-- length,
+	USB_DT_CONFIGURATION,	-- descriptor_type
+
+	USB_CONFIGURATION_DESCRIPTOR_SIZE,
+	0x00,	-- total_length;
+	
+	0x01,	-- num_interfaces,
+	0x01,	-- configuration_value,
+	0x00,	-- configuration_string_id,
+	0b10000000, -- attributes (bus powered, no remote wake up)
+	100,	-- max_power; (200ma)
+
+	-- interface descriptor - - - - - - - - - - - -
+	0x09,						-- length,
+	USB_DT_INTERFACE,			-- descriptor_type,
+	0x00,						-- interface_number, (starts at zero)
+	0x00,						-- alternate_setting, (no alternatives)
+	0x01,						-- num_endpoints,
+	USB_HID_INTF,				-- interface_class, (HID)
+	USB_BOOT_INTF_SUBCLASS,		-- interface_subclass, (boot)
+	USB_HID_PROTOCOL_KEYBOARD,	-- interface_protocol, (keyboard)
+	0x00,	-- interface_string_id;
+	
+	-- hid descriptor - - - - - - - - - - - - - - -
+	0x09,				-- length,
+	USB_DT_HID,			-- descriptor_type;
+	0x11,
+	0x01,				-- hid_spec in BCD (1.11)
+	0x00,				-- country_code, (0=not country specific)
+	0x01,				-- num_class_descriptors, (1)
+	USB_DT_HID_REPORT,	-- class_descriptor_type; (0x22 = report)
+	(count( USB_HID_REPORT1 ) & 0xFF ),
+	(count( USB_HID_REPORT1 ) >> 8 ),
+	
+	0x07,				-- length,
+	USB_DT_ENDPOINT,	-- descriptor_type,
+	0b10000001,			-- endpoint_address, (Endpoint 1, IN)
+	USB_EPT_INT,		-- attributes; (Interrupt)
+	USB_EP1_IN_SIZE,				
+	0x00,				-- max_packet_size
+	0x01				-- interval (1ms)
+}
+
+const byte USB_STRING0[] = 
+{
+	0x04,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	0x09,	-- wLANGID[0] (low byte)
+	0x04	-- wLANGID[0] (high byte)
+}
+
+const byte USB_STRING1[0x36] = 
+{
+	0x36,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	"M", 0x00, 
+	"i", 0x00, 
+	"c", 0x00, 
+	"r", 0x00, 
+	"o", 0x00, 
+	"c", 0x00, 
+	"h", 0x00, 
+	"i", 0x00, 
+	"p", 0x00, 
+	" ", 0x00,
+	"T", 0x00, 
+	"e", 0x00, 
+	"c", 0x00, 
+	"h", 0x00, 
+	"n", 0x00, 
+	"o", 0x00, 
+	"l", 0x00, 
+	"o", 0x00, 
+	"g", 0x00, 
+	"y", 0x00, 
+	",", 0x00, 
+	" ", 0x00,
+	"I", 0x00, 
+	"n", 0x00, 
+	"c", 0x00, 
+	".", 0x00
+}
+
+const byte USB_STRING2[42] = 
+{
+	42,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	"J", 0x00, 
+	"A", 0x00, 
+	"L", 0x00, 
+	" ", 0x00, 
+	"H", 0x00, 
+	"I", 0x00, 
+	"D", 0x00, 
+	" ", 0x00, 
+	"K", 0x00, 
+	"e", 0x00,
+	"b", 0x00, 
+	"o", 0x00, 
+	"a", 0x00, 
+	"r", 0x00, 
+	" ", 0x00, 
+	" ", 0x00, 
+	"D", 0x00, 
+	"e", 0x00, 
+	"m", 0x00, 
+	"o", 0x00
+}
+
+include usb_drv_core
+
+
+var volatile bit usb_hid_can_tx = true
+
+const byte USB_HID_REQ_HID 			= 0x21
+const byte USB_HID_REQ_REPORT 		= 0x22
+const byte USB_HID_REQ_PHYSDISCR	= 0x23
+
+const byte USB_HCR_GET_REPORT		= 0x01
+const byte USB_HCR_GET_IDLE			= 0x02
+const byte USB_HCR_GET_PROTOCOL		= 0x03
+const byte USB_HCR_SET_REPORT		= 0x09
+const byte USB_HCR_SET_IDLE			= 0x0A
+const byte USB_HCR_SET_PROTOCOL		= 0x0B
+
+procedure usb_handle_class_request_callback() is
+    
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+
+
+
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " HID CL CALLBACK REQ: "
+        const byte str1[] = " bytes "
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,len & 0xFF)
+        print_byte_hex(serial_hw_data,str1)
+        print_byte_hex(serial_hw_data,val >> 8 )
+        print_byte_hex(serial_hw_data,val & 0xFF)
+        serial_hw_write( " " )
+        print_byte_hex(serial_hw_data,req01 )
+    end if
+        
+	case (req01) of
+
+
+		USB_HCR_GET_REPORT:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "GET_REPORT "
+				print_byte_hex(serial_hw_data,str)
+			end if
+		end block
+		
+		USB_HCR_GET_IDLE:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "GET_IDLE "
+				print_byte_hex(serial_hw_data,str)
+			end if
+		end block
+
+		USB_HCR_GET_PROTOCOL:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "GET_PROTOCOL "
+				print_byte_hex(serial_hw_data,str)
+			end if
+		end block
+		
+		USB_HCR_SET_REPORT:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_REPORT "
+				print_byte_hex(serial_hw_data,str)
+				
+				if ( len > 0 ) then
+					usb_control_mode = USB_CM_CTRL_WRITE_DATA_STAGE_CLASS
+				end if
+			end if
+		end block
+		
+		USB_HCR_SET_IDLE:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_IDLE "
+				print_byte_hex(serial_hw_data,str)
+			end if
+		end block
+
+		USB_HCR_SET_PROTOCOL:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_PROTOCOL "
+				print_byte_hex(serial_hw_data,str)
+			end if
+		end block
+		
+		otherwise
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "UNKNOWN CL REQUEST "
+				print_byte_hex(serial_hw_data,str)
+			end if
+		end block
+	end case
+	
+end procedure
+
+var byte usb_kbd_report[8]
+
+procedure usb_handle_class_ctrl_write_callback() is
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+
+
+
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " HID CL CALLBACK WR: "
+        print_byte_hex(serial_hw_data,req01 )
+    end if
+    
+	case (req01) of
+		USB_HCR_SET_REPORT:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_REPORT "
+				print_byte_hex(serial_hw_data,str)
+				
+				
+				var byte idx
+				var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR
+				
+				for count( usb_kbd_report ) loop
+					print_byte_hex(serial_hw_data, bd0_out_buffer[idx] )
+					usb_kbd_report[ idx ] = bd0_out_buffer[idx]
+				end loop
+							
+				usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
+				usb_send_status_ack()
+				
+			end if
+		end block
+
+		otherwise
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "UNKNOWN CL REQUEST "
+				print_byte_hex(serial_hw_data,str)
+			end if
+		end block
+
+	end case
+    
+end procedure
+
+procedure usb_handle_class_ctrl_read_callback() is
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " HID CL CALLBACK RD: "
+        const byte str1[] = " bytes "
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,len & 0xFF)
+        print_byte_hex(serial_hw_data,str1)
+        print_byte_hex(serial_hw_data,val >> 8 )
+        print_byte_hex(serial_hw_data,val & 0xFF)
+        serial_hw_write( " " )
+        print_byte_hex(serial_hw_data,req01 )
+    end if
+end procedure
+
+
+procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+    
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " EP data in: "
+        const byte str1[] = " bytes "
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,byte_count & 0xFF)
+        print_byte_hex(serial_hw_data,str1)
+    end if
+    
+    -- data has been sent, so do we need to send more?
+    if (end_point == USB_HID_ENDPOINT) then
+        -- it's the data end point
+        usb_hid_can_tx = true
+    end if
+end procedure
+
+procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+    var byte cdc_rx_next
+    if USB_HID_DEBUG then
+        const byte str[] = " EP data out: "
+        const byte str1[] = " bytes "
+        print_byte_hex(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,byte_count)
+        print_byte_hex(serial_hw_data,str1)
+    end if
+    
+    -- We have some data!
+    if (end_point == USB_HID_ENDPOINT) then
+	end if
+end procedure
+
+
+include usb_drv
+
+
+-- constants
+const  byte str_welcome[] = "JAL USB Keyboard HID demo version 0.02\nplease wait (takes ~20 seconds) before the device is fully configured"
+
+-- variables
+var word i = 0
+var bit usb_initialized = false
+
+-- 0 Modifier byte
+--		bit
+--		0 LEFT CTRL
+--		1 LEFT SHIFT
+--		2 LEFT ALT
+--		3 LEFT GUI
+--		4 RIGHT CTRL
+--		5 RIGHT SHIFT
+--		6 RIGHT ALT
+--		7 RIGHT GUI
+-- 1 reserved
+-- 2 keycode array (0)
+-- 3 keycode array (1)
+-- 4 keycode array (2)
+-- 5 keycode array (3)
+-- 6 keycode array (4)
+-- 7 keycode array (5)
+var byte hid_report_in[8]
+
+var word ticks100us = 0
+var bit enable_keyboard = false
+
+
+procedure usb_tasks() is    
+    -- Servicing Hardware
+    -- use polling method
+    usb_handle_isr()
+end procedure
+
+procedure usb_hid_tx_report( byte in hid_report_in[], byte in cnt ) is
+	
+	while ( usb_hid_can_tx == false ) loop
+		usb_tasks()
+	end loop
+	usb_hid_can_tx = false
+	usb_send_data(USB_HID_ENDPOINT, hid_report_in, cnt , low )
+end procedure
+
+-- interrupts? No thanks
+while INTCON_GIE loop
+    INTCON_GIE = false
+end loop
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == high then
+	-- put info on RS-232 serial line
+	serial_newline()
+	serial_newline()
+
+	print_string(serial_hw_data, str_welcome )
+	serial_newline()
+end if
+
+-- setup the USB device
+usb_setup()
+
+delay_1ms(10)
+
+-- enable USB device
+usb_enable_module()
+
+pin_b5_direction = input
+
+
+var byte key_value = 4
+var bit sw3 is pin_b5
+
+var bit latched_sw3 = sw3
+
+var bit send_key_stroke = false 
+
+-- disable analog unit, all ports set to digital
+enable_digital_io()
+
+-- main loop
+forever loop
+	-- poll the usb ISR function on a regular base, in order to 
+	-- serve the USB requests
+	usb_tasks()
+	
+    -- check if USB device has been configured by the HOST
+    if usb_is_configured()  then
+
+		-- note user via serial line that USB has been configured
+		if usb_initialized == false then
+			usb_initialized = true
+			
+			if defined( HAS_SERIAL_DEBUG_PORT ) == true then			
+				const  byte str[] = "USB device has been configured by the HOST!"
+				print_string(serial_hw_data, str )
+				serial_newline()
+
+				-- now keyboard chars can be send to the host
+				enable_keyboard = true
+			end if
+		end if
+    end if
+
+	-- prepare the HID buffer
+	hid_report_in[0] = 0
+	hid_report_in[1] = 0
+	hid_report_in[2] = 0
+	hid_report_in[3] = 0
+	hid_report_in[4] = 0
+	hid_report_in[5] = 0
+	hid_report_in[6] = 0
+	hid_report_in[7] = 0
+	
+	if ( sw3 != latched_sw3 ) then
+
+		latched_sw3 = sw3
+			
+		if ( sw3 == low )then
+			hid_report_in[2] = key_value
+			key_value = key_value + 1
+			if ( key_value == 40 ) then
+				key_value = 4
+			end if
+		else
+			hid_report_in[2] = 0
+		end if
+		
+		-- Send the 8 byte packet over USB to the host.
+		if enable_keyboard then
+			usb_hid_tx_report( hid_report_in, count( hid_report_in ) )
+		end if
+
+		-- debounce
+		delay_1ms(50)
+		
+	end if
+
+	if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
+		if PIR1_RCIF then
+		end if
+	end if	
+    
 end loop
