@@ -12,8 +12,8 @@
  *              http://www.opensource.org/licenses/bsd-license.php          *
  *                                                                          *
  * Description:                                                             *
- *   Rexx script to create device include files for JALV2,                  *
- *   and the file chipdef_jallib.jal, included by each of these.            *
+ *   Rexx script to create device include files for JALV2, and              *
+ *   the file chipdef_jallib.jal, included by each of these.                *
  *   Apart from declaration of all ports and pins of the chip               *
  *   the include files will contain shadowing procedures to                 *
  *   prevent the 'read-modify-write' problems of midrange PICs              *
@@ -28,18 +28,18 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.61'                   /*                          */
+   ScriptVersion   = '0.0.62'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4j'                   /*                          */
 /* ------------------------------------------------------------------------ */
 
-mplabdir = '/mplab830/'                         /* MPLAB base directory     */
-devdir   = mplabdir'mplab_ide/device/'          /* dir with .dev files      */
-lkrdir   = mplabdir'mpasm_suite/lkr/'           /* dir with .lkr files      */
-dstdir   = '/jallib/include/device/'            /* default destination      */
+mplabdir = 'k:/mplab830/'                       /* MPLAB base directory */
+                                                /* (drive must be spec'd!) */
+devdir   = mplabdir'mplab_ide/device/'          /* dir with .dev files */
+lkrdir   = mplabdir'mpasm_suite/lkr/'           /* dir with .lkr files */
+dstdir   = '/jallib/include/device/'            /* default destination */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
-say 'Creating JALV2 device files ...'
 
 parse upper arg destination selection .         /* commandline arguments */
 if destination = 'PROD' then                    /* production run */
@@ -47,11 +47,9 @@ if destination = 'PROD' then                    /* production run */
 else if destination = 'TEST' then               /* test run */
   dstdir = 'test/'                              /* destination for testing */
 else do
-  say 'Error: Required parameter missing: "prod" or "test"'
+  say 'Error: Required argument missing: "prod" or "test"'
   return 1
 end
-
-chipdef = dstdir'chipdef_jallib.jal'            /* common include file */
 
 if selection = '' then                          /* no selection spec'd */
   wildcard = 'pic1*.dev'                        /* default (8 bit PICs) */
@@ -63,23 +61,27 @@ else do                                         /* PROD run with selection */
 end
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
-call SysLoadFuncs                               /* load Rexx utilities   */
+call SysLoadFuncs                               /* load Rexx utilities */
 
 call SysFileTree devdir||wildcard, dir, 'FO'    /* get list of filespecs */
 if dir.0 < 1 then do
-  say 'No appropriate .dev files found in directory' devdir
+  say 'No .dev files matching <'wildcard'> found in' devdir
   return 1
 end
 
-signal on syntax name catch_syntax              /* catch syntax error */
-signal on error  name catch_error               /* catch execution errors */
-
+chipdef = dstdir'chipdef_jallib.jal'            /* common include file */
 if stream(chipdef, 'c', 'query exists') \= '' then   /* old chipdef file present */
-  '@erase' translate(chipdef,'\','/')           /* delete it */
+  call SysFileDelete chipdef                    /* delete it */
 if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* new chipdef file */
   Say 'Error: Could not create common include file' chipdef
   return 1
 end
+
+call time 'E'                                   /* start 'elapsed' timer */
+say 'Creating JALV2 device files ...'
+
+signal on syntax name catch_syntax              /* catch syntax error */
+signal on error  name catch_error               /* catch execution errors */
 
 call list_chip_const                            /* make header of chipdef file */
 
@@ -109,21 +111,21 @@ do i=1 to dir.0                                 /* all relevant .dev files */
 
   if pos('f18', PicName) > 0  |,                /* exclude extended 14-bit core */
      pos('f19', PicName) > 0 then do
-    say PicName "skipped: not supported by JalV2"
+    say PicName 'skipped: not supported by JalV2'
     iterate                                     /* skip */
   end
 
   say PicName                                   /* progress signal */
 
   if file_read_dev() = 0 then                   /* read .dev file */
-    iterate                                     /* zero records */
+    iterate                                     /* problem */
 
   if file_read_lkr() = 0 then                   /* read .lkr file */
-    iterate                                     /* zero records */
+    iterate                                     /* problem */
 
   jalfile = dstdir||PicName'.jal'               /* .jal file */
-  if stream(jalfile, 'c', 'query exists') \= '' then   /* old file */
-    '@erase' translate(jalfile,'\','/')         /* delete */
+  if stream(jalfile, 'c', 'query exists') \= '' then   /* previous */
+    call SysFileDelete jalfile                  /* delete */
   if stream(jalfile, 'c', 'open write') \= 'READY:' then do
     Say 'Error: Could not create device file' jalfile
     iterate
@@ -137,14 +139,14 @@ do i=1 to dir.0                                 /* all relevant .dev files */
       rx = dev2Jal14()
     when core = 16 then                         /* 18Fs */
       rx = dev2Jal16()
-  otherwise                                     /* other core */
+  otherwise                                     /* other or undetermined core */
     say 'Unsupported core:' Core                /* report detected Core */
     rx = 1                                      /* fault */
   end
 
   call stream jalfile, 'c', 'close'             /* done */
   if rx = 0 then                                /* device file created */
-    ListCount = ListCount + 1;
+    ListCount = ListCount + 1;                  /* count successful results */
   else                                          /* failed */
     say 'Failed to build device file for' PicName
 
@@ -153,8 +155,12 @@ end
 call lineout chipdef, '--'
 call stream  chipdef, 'c', 'close'              /* done */
 
-say 'PIC device files for JALV2 created for' listcount,
-    'flash PICs out of' dir.0 '.dev files'
+say 'Generated' listcount 'device files out of' dir.0 '.dev files in',
+     format(time('E'),,2) 'seconds'
+
+signal off error
+signal off syntax                               /* restore to default */
+
 return 0
 
 
@@ -254,7 +260,7 @@ return 0
 file_read_dev: procedure expose DevFile Dev.
 Dev.0 = 0                                       /* no records read yet */
 if stream(DevFile, 'c', 'open read') \= 'READY:' then do
-  Say 'Error: .dev file' DevFile 'could not be opened!'
+  Say 'Error: could not open .dev file' DevFile
   return 0                                      /* zero records */
 end
 i = 1                                           /* first record */
@@ -272,25 +278,26 @@ return Dev.0
 
 /* ------------------------------------------- */
 /* Read .lkr file contents into stem variable  */
-/* input: - PicName                            */
+/* input:  - PicName                           */
+/* output: - LkrFile pathspec                  */
 /*                                             */
 /* Collect only relevant lines!                */
 /* ------------------------------------------- */
 file_read_lkr: procedure expose PicName LkrDir LkrFile Lkr.
-LkrFile = LkrDir||PicName'_g.lkr'               /* build filespec */
-if stream(LkrFile, 'c', 'query exists') = '' then do     /* not found */
+LkrFile = LkrDir||PicName'_g.lkr'               /* try with full PIC name */
+if stream(LkrFile, 'c', 'query exists') = '' then do
   if pos('lf',PicName) > 0 then do              /* low voltage PIC */
-    LkrFile = LkrDir||left(PicName,3)||substr(PicName,5)'_g.lkr'
+    LkrFile = LkrDir||left(PicName,3)||substr(PicName,5)'_g.lkr'  /* keep 'L', strip 'F' */
     if stream(LkrFile,'c','query exists') = '' then do
-      LkrFile = LkrDir||left(PicName,2)||substr(PicName,4)'_g.lkr'
+      LkrFile = LkrDir||left(PicName,2)||substr(PicName,4)'_g.lkr'  /* strip 'L' */
       if stream(LkrFile,'c','query exists') = '' then
-        nop                                     /* LF alternatives failed */
+        nop                                     /* all LF alternatives failed */
     end
   end
 end
 Lkr.0 = 0                                       /* no records read */
 if stream(LkrFile, 'c', 'open read') \= 'READY:' then do
-  Say 'Error: .lkr file' LkrFile 'could not be opened!'
+  Say 'Error: Could not find any suitable .lkr file for' PicName
   return 0                                      /* zero records */
 end
 i = 1                                           /* first record */
@@ -325,10 +332,12 @@ return Lkr.0                                    /* number of records */
 
 /* ---------------------------------------------- */
 /* procedure to collect Config (fuses) info       */
-/* input:  - nothing                              */
+/* input:   - nothing                             */
+/* output:  - code tyope (0, 12, 14, 16)          */
 /* ---------------------------------------------- */
 load_config_info: procedure expose Dev. CfgAddr. Core
 CfgAddr.0 = 0                                   /* empty */
+Core = 0                                        /* reset: undetermined */
 do i = 1 to Dev.0
   parse var Dev.i 'CFGMEM' '(' 'REGION' '=' '0X' Val1 '-' '0X' Val2 ')' .
   if Val1 \= '' then do
@@ -1745,19 +1754,14 @@ do i = 1 to dev.0                               /* scan .dev file */
         else if pos('WRT ',key) > 0  |,
                 pos('WRT_ENABLE',key) > 0 then
           key = 'WRT'
-        if Core = 12  |  core = 14 then do
-          if CfgAddr.0 > 1 then                 /* multi fuse bytes/words */
-            call lineout jalfile, 'pragma fuse_def',
-                                  key':'X2D(addr) - CfgAddr.1,
-                                  '0x'strip(val2) '{'
-          else
-            call lineout jalfile, 'pragma fuse_def' key '0x'strip(val2) '{'
-        end
-        else do
+
+        if CfgAddr.0 > 1 then                 /* multi fuse bytes/words */
           call lineout jalfile, 'pragma fuse_def',
                                 key':'X2D(addr) - CfgAddr.1,
                                 '0x'strip(val2) '{'
-        end
+        else
+          call lineout jalfile, 'pragma fuse_def' key '0x'strip(val2) '{'
+
         if key = 'OSC' then
           call list_fuse_def_osc i, key
         else if key = 'DSWDTPS' then
@@ -2091,43 +2095,45 @@ if flag_enabled \= flag_disabled then               /* impaired */
 return
 
 
-/* ----------------------------------------------------------------------------- */
-/* Generate functions w.r.t. analog modules.                                     */
-/* First individual procedures for different analog modules,                     */
-/* then a procedure to invoke these procedures.                                  */
-/*                                                                               */
-/* Possible combinations for the different PICS:                                 */
-/* ANSEL   [ANSELH]                                                              */
-/* ANSEL0  [ANSEL1]                                                              */
-/* ANSELA   ANSELB [ANSELD  ANSELE]                                              */
-/* ADCON0  [ADCON1 [ADCON2 [ADCON3]]]                                            */
-/* ANCON0   ANCON1                                                               */
-/* CMCON                                                                         */
-/* CMCON0  [CMCON1]                                                              */
-/* CM1CON0 [CM1CON1] [CM2CON0 CM2CON1]                                           */
-/* Between brackets optional, otherwise always together.                         */
-/* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
-/* PICs are classified in groups for ADC module settings                         */
-/* ADC_V0   ADCON0 = 0b0000_0000 [ADCON1 = 0b0000_0000]                          */
-/*          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000  (or ANSEL_/H,A/B/D/E)    */
-/* ADC_V1   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0111                           */
-/* ADC_V2   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
-/* ADC_V3   ADCON0 = 0b0000_0000  ADCON1 = 0b1111_1111                           */
-/* ADC_V4   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
-/* ADC_V5   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
-/* ADC_V6   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           */
-/* ADC_V7   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     */
-/*          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000                           */
-/* ADC_V7_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     */
-/*          ANSEL  = 0b0000_0000 [ANSELH = 0b0000_0000]                          */
-/* ADC_V8   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     */
-/*          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           */
-/* ADC_V9   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           */
-/*          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           */
-/* ADC_V10  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           */
-/*          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           */
-/* ADC_V11  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111   (no datasheet found!)   */
-/* ----------------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------------- *
+ * Generate functions w.r.t. analog modules.                                     *
+ * First individual procedures for different analog modules,                     *
+ * then a procedure to invoke these procedures.                                  *
+ *                                                                               *
+ * Possible combinations for the different PICS:                                 *
+ * ANSEL   [ANSELH]                                                              *
+ * ANSEL0  [ANSEL1]                                                              *
+ * ANSELA   ANSELB [ANSELD  ANSELE]                                              *
+ * ADCON0  [ADCON1 [ADCON2 [ADCON3]]]                                            *
+ * ANCON0   ANCON1                                                               *
+ * CMCON                                                                         *
+ * CMCON0  [CMCON1]                                                              *
+ * CM1CON0 [CM1CON1] [CM2CON0 CM2CON1]                                           *
+ * Between brackets optional, otherwise always together.                         *
+ * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - *
+ * PICs are classified in groups for ADC module settings                         *
+ * ADC_V0   ADCON0 = 0b0000_0000 [ADCON1 = 0b0000_0000]                          *
+ *          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000  (or ANSEL_/H,A/B/D/E)    *
+ * ADC_V1   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0111                           *
+ * ADC_V2   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
+ * ADC_V3   ADCON0 = 0b0000_0000  ADCON1 = 0b0111_1111                           *
+ * ADC_V4   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
+ * ADC_V5   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
+ * ADC_V6   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
+ * ADC_V7   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     *
+ *          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000                           *
+ * ADC_V7_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     *
+ *          ANSEL  = 0b0000_0000 [ANSELH = 0b0000_0000]                          *
+ * ADC_V8   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     *
+ *          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           *
+ * ADC_V9   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           *
+ *          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           *
+ * ADC_V10  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           *
+ *          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           *
+ * ADC_V11  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           *
+ *          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           *
+ * ADC_V12  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000     *
+ * ----------------------------------------------------------------------------- */
 list_analog_functions: procedure expose jalfile Name. Core PicName
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
@@ -2166,10 +2172,10 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
         call lineout jalfile, '   'qname '= 0b0000_0000        -- all digital'
     end
   end
-  if Name.ANCON0 \= '-' then do                         /* ANCON0 declared */
+  if Name.ANCON0 \= '-' then                            /* ANCON0 declared */
     call lineout jalfile, '   ANCON0 = 0b1111_1111        -- all digital'
+  if Name.ANCON1 \= '-' then                            /* ANCON1 declared */
     call lineout jalfile, '   ANCON1 = 0b1111_1111        -- all digital'
-  end
   call lineout jalfile, 'end procedure'
   call lineout jalfile, '--'
 end
@@ -2192,14 +2198,14 @@ if Name.ADCON0 \= '-' then do                           /* check on presence */
             ADCgroup = 'ADC_V4'  |,
             ADCgroup = 'ADC_V5'  |,
             ADCgroup = 'ADC_V6'  |,
-            ADCgroup = 'ADC_V11' then
+            ADCgroup = 'ADC_V12' then
       call lineout jalfile, '   ADCON1 = 0b0000_1111         -- digital I/O'
     else if ADCgroup = 'ADC_V3' then
-      call lineout jalfile, '   ADCON1 = 0b1111_1111         -- digital I/O'
-    else                                                /* ADC_V7,7_1,8,9,10 */
+      call lineout jalfile, '   ADCON1 = 0b0111_1111         -- digital I/O'
+    else                                                /* ADC_V7,7_1,8,9,10,11 */
       call lineout jalfile, '   ADCON1 = 0b0000_0000'
     if Name.ADCON2 \= '-' then                          /* ADCON2 declared */
-      call lineout jalfile, '   ADCON2 = 0b0000_0000'    /* all groups */
+      call lineout jalfile, '   ADCON2 = 0b0000_0000'   /* all groups */
   end
   call lineout jalfile, 'end procedure'
   call lineout jalfile, '--'
@@ -2278,8 +2284,8 @@ call lineout jalfile, '--      operations, like:'
 call lineout jalfile, '--      . enable_digital_io()'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Sources:'
-call lineout jalfile, '--  - x'substr(DevFile,2)         /* always derive 'x' */
-call lineout jalfile, '--  - x'substr(LkrFile,2)
+call lineout jalfile, '--  - x:'substr(DevFile,3)      /* always drive 'x' */
+call lineout jalfile, '--  - x:'substr(LkrFile,3)
 call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
 call lineout jalfile, '--  - Created with Dev2Jal Rexx script version' ScriptVersion
