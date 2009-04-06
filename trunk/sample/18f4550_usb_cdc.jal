@@ -1,594 +1,593 @@
--- -----------------------------------------------------------------------------
--- Title: USB CDC demo
--- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
--- Adapted-by: -
--- Compiler: >=2.4j
--- 
--- This file is part of jallib (http://jallib.googlecode.com)
--- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
--- 
--- Description: This application demonstratesest USB CDC, this application will 
--- emulate a RS-232 terminal device. Once the USB device has been detected by the 
--- host operating system, it will create a virtual COM port. When opening this COM
--- on the host computer, using a standard terminal application, it should show a
--- welcome message, after the welcome message all input characters are echoed back
--- to the terminal application
--- --
--- 
--- Sources: http://www.usb.org for USB specifications
--- 
--- Notes: compiled with following flags
--- -loader18 -no-fuse 
--- use -no-variable-reuse when debugging flags are
--- set due to a compiler issue
---
--- Some instructions for use:
---
--- 1. Make sure you logon as administrator, or with administrator privileges,
---    on Windows XP.
--- 2. If needed convert to the correct PIC device (change include file), 
---    adapt fuses fuses and speed
--- 3. Create a basic board with USB PIC device
--- 4. Compile the program (usb_test_cdc) and transfer into the PIC.
--- 5. After a (short) while you'll get the "new hardware found" message for
---    "CDC RS232 emulation demo". Point Windows manually to the driver in the
---    driver directory xp_drivers. Ignore the warning that this driver doesn't
---    have a certificate. Wait for the installation to complete.
--- 
--- 6. Open the Windows Device Manager and check out the "ports" section. A new
---    communications port will be there, with a COM number.
--- 
--- 7. Open a terminal program (for example HyperTerminal) and select the COM
---    port you found in the previous step. Pick any baudrate, Windows will
---    accommodate automatically, and use 8-N-1-no for the other settings.
--- 
--- 8. Press enter and read the message. Now everything you type will be echoed
---    back.
--- 
--- 9. Have fun, adapt to your needs
---
--- ------------------------------------------------------
--- ------------------------------------------------------
---
---
---
--- This file has been generated on 03/25/09 17:13:54, from:
---    * board: board_18f4550_af.jal
---    * test : test_usb_cdc.jal
---
-
+-- -----------------------------------------------------------------------------
+-- Title: USB CDC demo
+-- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
+-- Adapted-by: -
+-- Compiler: >=2.4j
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- 
+-- Description: This application demonstratesest USB CDC, this application will 
+-- emulate a RS-232 terminal device. Once the USB device has been detected by the 
+-- host operating system, it will create a virtual COM port. When opening this COM
+-- on the host computer, using a standard terminal application, it should show a
+-- welcome message, after the welcome message all input characters are echoed back
+-- to the terminal application
+-- --
+-- 
+-- Sources: http://www.usb.org for USB specifications
+-- 
+-- Notes: compiled with following flags
+-- -loader18 -no-fuse 
+-- use -no-variable-reuse when debugging flags are
+-- set due to a compiler issue
+--
+-- Some instructions for use:
+--
+-- 1. Make sure you logon as administrator, or with administrator privileges,
+--    on Windows XP.
+-- 2. If needed convert to the correct PIC device (change include file), 
+--    adapt fuses fuses and speed
+-- 3. Create a basic board with USB PIC device
+-- 4. Compile the program (usb_test_cdc) and transfer into the PIC.
+-- 5. After a (short) while you'll get the "new hardware found" message for
+--    "CDC RS232 emulation demo". Point Windows manually to the driver in the
+--    driver directory xp_drivers. Ignore the warning that this driver doesn't
+--    have a certificate. Wait for the installation to complete.
+-- 
+-- 6. Open the Windows Device Manager and check out the "ports" section. A new
+--    communications port will be there, with a COM number.
+-- 
+-- 7. Open a terminal program (for example HyperTerminal) and select the COM
+--    port you found in the previous step. Pick any baudrate, Windows will
+--    accommodate automatically, and use 8-N-1-no for the other settings.
+-- 
+-- 8. Press enter and read the message. Now everything you type will be echoed
+--    back.
+-- 
+-- 9. Have fun, adapt to your needs
+--
+-- ------------------------------------------------------
+-- ------------------------------------------------------
+--
+--
+--
+-- This file has been generated on 04/06/09 23:43:26, from:
+--    * board: board_18f4550_af.jal
+--    * test : test_usb_cdc.jal
+--
 
-;@jallib section chipdef
--- chip setup
-include 18f4550
-
--- even though the external crystal is 20 MHz, the configuration is such that
--- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
--- target frequency to 48 MHz
-pragma target clock       48_000_000
-
-
--- fuses
-pragma target PLLDIV		DIVIDE_BY_5__20MHZ_INPUT_
-pragma target CPUDIV		_OSC1_OSC2_SRC___1__96MHZ_PLL_SRC___2_
-pragma target USBPLL		CLOCK_SRC_FROM_96MHZ_PLL_2
-pragma target OSC			HS_PLL
-pragma target FCMEN			DISABLED
-pragma target IESO			DISABLED
-pragma target PWRTE			DISABLED	-- power up timer
-pragma target VREGEN		ENABLED		-- USB voltage regulator
-pragma target VOLTAGE		V20			-- brown out voltage
-pragma target BROWNOUT		DISABLED	-- no brownout detection
-pragma target WDTPS			P32768		-- watch dog saler setting
-pragma target WDT			DISABLED    -- no watchdog
-pragma target CCP2MUX		RC1			-- CCP2 pin
-pragma target PBADEN		DIGITAL		-- digital input port<0..4>
-pragma target LPT1OSC		DISABLED	-- low power timer 1
-pragma target MCLR			EXTERNAL	-- master reset on RE3
-pragma target STVR			DISABLED    -- reset on stack over/under flow
-pragma target LVP			DISABLED    -- no low-voltage programming
-pragma target ENICPORT		DISABLED	-- In circuit debugger
-pragma target XINST			ENABLED		-- extended instruction set
-pragma target BACKBUG		DISABLED	-- background debugging
-pragma target CP_0			DISABLED	-- code block 0 not protected
-pragma target CP_1			DISABLED	-- code block 1 not protected
-pragma target CP_2			DISABLED	-- code block 2 not protected
-pragma target CP_3			DISABLED	-- code block 3 not protected
-pragma target CPB			DISABLED	-- bootblock code not write protected
-pragma target CPD			DISABLED	-- eeprom code not write protected
-pragma target WRT_0			DISABLED	-- table writeblock 0 not protected
-pragma target WRT_1			DISABLED	-- table write block 1 not protected
-pragma target WRT_2			DISABLED	-- table write block 2 not protected
-pragma target WRT_3			DISABLED	-- table write block 3 not protected
-pragma target WRTB			DISABLED	-- bootblock not write protected
-pragma target WRTD			DISABLED	-- eeprom not write protected
-pragma target WRTC			DISABLED	-- config not write protected
-pragma target EBTR_0		DISABLED	-- table read block 0 not protected
-pragma target EBTR_1		DISABLED	-- table read block 1 not protected
-pragma target EBTR_2		DISABLED	-- table read block 2 not protected
-pragma target EBTR_3		DISABLED	-- table read block 3 not protected
-pragma target EBTRB 		DISABLED	-- boot block not protected
-
-
-include delay
-
-;@jallib section serial
-
-
--- whether or not using the serial port
-const HAS_SERIAL_DEBUG_PORT = 1
-
-if defined( HAS_SERIAL_DEBUG_PORT ) == true then
-
-	const serial_hw_baudrate = 115_200
-	
-	include serial_hardware
-	include format
-	include print
-	
-	-- intialze serial device
-	serial_hw_init()
-
-	procedure serial_print_spc() is 
-		serial_hw_write( " " )
-	end procedure
-
-	procedure serial_newline() is
-		serial_hw_write( 10 )
-		-- serial_hw_write( 13 )
-	end procedure
-end if
-
-
--- uncomment lines for debugging
-const bit USB_DEBUG = false
-const bit USB_CDC_DEBUG = false
-
-include usb_defs
-
-const bit USB_CALLBACK_ON_CLASS_CTRL = true
-const bit USB_CALLBACK_ON_DEVICE_CONFIGURED = false
-const bit USB_CALLBACK_ON_VENDOR_CTRL = false
-const bit USB_EP_DATA_CALLBACK = true
-const bit USB_CALLBACK_ON_SOF = true
-
-const word USB_CDC_TX_BUFFER_LOC = 0x04A0
-const byte USB_CDC_TX_BUFFER_SIZE = 0x20
-
-const word USB_CDC_RX_BUFFER_LOC = 0x0480
-const byte USB_CDC_RX_BUFFER_SIZE = 0x20
-
-
-const bit USB_EP0 = 1
-const byte USB_EP0_OUT_SIZE = 8
-
-const word USB_EP0_OUT_ADDR = 0x0420
-
-const byte USB_EP0_IN_SIZE  = 8
-
-const word USB_EP0_IN_ADDR  = 0x0028
-
-
-const bit USB_EP1 = 1
-const byte USB_EP1_OUT_SIZE = 8
-const word USB_EP1_OUT_ADDR = 0x0430
-
-const byte USB_EP1_IN_SIZE  = 8
-const word USB_EP1_IN_ADDR  = 0x0438
-
-var volatile byte  usb_ep1in_buf[ 8 ]
-
-const bit USB_EP2 = 1
-const byte USB_EP2_OUT_SIZE = 8
-const word USB_EP2_OUT_ADDR = 0x0440
-
-const byte USB_EP2_IN_SIZE  = 8
-const word USB_EP2_IN_ADDR  = 0x0448
-
-const bit USB_EP3 = 1
-const byte USB_EP3_OUT_SIZE = 8
-const word USB_EP3_OUT_ADDR = 0x0450
-const byte USB_EP3_IN_SIZE = 8
-
-
-const word USB_EP3_IN_ADDR  = USB_CDC_TX_BUFFER_LOC
-
-
-const byte USB_CDC_DATA_ENDPOINT = 3
-
-
-
--- Functional Descriptors
--- Type Values for the bDscType Field 
-const byte USB_CS_INTERFACE                = 0x24
-const byte USB_CS_ENDPOINT                 = 0x25
-const byte USB_DCS_INTERFACE               = 0x04
-
-const byte USB_CDC_DATA_INTF = 0x0A
-const byte USB_CDC_NO_PROTOCOL = 0x00    -- No class specific protocol required
-
--- bDscSubType in Functional Descriptors
-const byte USB_DSC_FN_HEADER               = 0x00
-const byte USB_DSC_FN_CALL_MGT             = 0x01
-const byte USB_DSC_FN_ACM                  = 0x02    -- ACM - Abstract Control Management
-const byte USB_DSC_FN_DLM                  = 0x03    -- DLM - Direct Line Managment
-const byte USB_DSC_FN_TELEPHONE_RINGER     = 0x04
-const byte USB_DSC_FN_RPT_CAPABILITIES     = 0x05
-const byte USB_DSC_FN_UNION                = 0x06
-const byte USB_DSC_FN_COUNTRY_SELECTION    = 0x07
-const byte USB_DSC_FN_TEL_OP_MODES         = 0x08
-const byte USB_DSC_FN_USB_TERMINAL         = 0x09
--- more.... see Table 25 in USB CDC Specification 1.1
-
-const byte USB_CDC_COMM_INTF_ID = 0x00
--- #define CDC_COMM_UEP            UEP2
--- #define CDC_INT_BD_IN           ep2Bi
-const byte USB_CDC_INT_EP_SIZE = 8
-
-const byte USB_CDC_DATA_INTF_ID = 0x01
-
-
-const byte USB_CDC_BULK_OUT_EP_SIZE = USB_EP3_OUT_SIZE
--- #define CDC_BULK_BD_IN          ep3Bi
-const byte CDC_BULK_IN_EP_SIZE      = USB_EP3_IN_SIZE
-
-
-const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
-	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
-	USB_DT_DEVICE, 	-- DEVICE 01h
-	0x00,
-	0x02,		-- usb version 2.00
-	USB_CDC_DEVICE,		-- class
-	0x00,		-- subclass
-	0x00,		-- protocol
-	0x08,		-- max packet size for end point 0
-	0xd8,
-	0x04,		-- Microchip's vendor
-	0x0A, 		-- 
-	0x00,		-- Product ID: CDC RS-232 Emulation Demo
-	0x01,
-	0x00,		-- Device release number in BCD format
-	0x01,		-- string 1 for manufacturer
-	0x02,		-- string 2 for product
-	0x00,		-- string 3 for serial number
-	0x01		-- number of configurations
-}
-
-const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x05 + 0x04 + 0x05 + 0x05 + 0x07 + 0x09 + 0x07 + 0x07
-
-
-const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
-{	
-	-- configuration descriptor - - - - - - - - - - 0x09 bytes
-	0x09,	-- length,
-	USB_DT_CONFIGURATION,	-- descriptor_type
-
-	USB_CONFIGURATION_DESCRIPTOR_SIZE,
-	0x00,	-- total_length;
-	
-	0x02,	-- num_interfaces,
-	0x01,	-- configuration_value,
-	0x00,	-- configuration_string_id,
-	0b10000000, -- attributes (bus powered, no remote wake up)
-	50,		-- max_power; (2x ma)
-
-	-- interface descriptor - - - - - - - - - - - - 0x09 bytes
-	0x09,	-- length,
-	USB_DT_INTERFACE,	-- descriptor_type,
-	0x00,	-- interface_number, (starts at zero)
-	0x00,	-- alternate_setting, (no alternatives)
-	0x01,	-- num_endpoints,
-	USB_COMM_INTF,	-- interface_class, (CDC)
-	USB_ABSTRACT_CONTROL_MODEL,	-- interface_subclass, (COMM interface)
-	USB_V25TER,	-- interface_protocol, (hayes type modem)
-	0x00,	-- interface_string_id;
-
-	-- Functional Descriptor Structure - See CDC Specification 1.1 for details
-	-- functional descriptor - - - - - - - - - - - - 0x05 bytes
-	0X05, -- length
-	USB_CS_INTERFACE, -- DSC Type
-	USB_DSC_FN_HEADER, -- DSC Sub Type
-	0x10,
-	0x01, -- CDC (bcd)
-
-	-- functional descriptor - - - - - - - - - - - - 0x04 bytes
-	0X04, -- length
-	USB_CS_INTERFACE, 						-- DSC Type
-	USB_DSC_FN_ACM, 						-- DSC Sub Type
-	0x02, 									-- Capabilities
-
-	-- functional descriptor - - - - - - - - - - - - 0x05 bytes
-	0X05, -- length
-	USB_CS_INTERFACE, 						-- DSC Type
-	USB_DSC_FN_UNION, 						-- DSC Sub Type
-	USB_CDC_COMM_INTF_ID,					-- MasterIntf
-	USB_CDC_DATA_INTF_ID,					-- SaveIntf0
-											
-	-- functional descriptor - - - - - - - - - - - - 0x05 bytes
-	0X05, -- length
-	USB_CS_INTERFACE, 						-- DSC Type
-	USB_DSC_FN_CALL_MGT, 					-- DSC Sub Type
-	0x00, 									-- Capabilities
-	USB_CDC_DATA_INTF_ID,					-- DataInterface
-
-
-	-- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
-	0x07,					-- length,
-	USB_DT_ENDPOINT,		-- descriptor_type,
-	0b10000010,				-- endpoint_address, (Endpoint 2, IN)
-	USB_EPT_INT,			-- attributes
-	USB_CDC_INT_EP_SIZE,	-- 			
-	0x00,					-- max_packet_size
-	0x02	,				-- interval
-
-	-- interface descriptor - - - - - - - - - - - - 0x09 bytes
-	0x09,					-- length,
-	USB_DCS_INTERFACE,		-- descriptor_type,
-	0x01,					-- interface_number, (starts at zero)
-	0x00,					-- alternate_setting, (no alternatives)
-	0x02,					-- num_endpoints
-	USB_CDC_DATA_INTF,		-- interface_class
-	0x00,					-- interface_subclass
-	USB_CDC_NO_PROTOCOL,	-- interface_protocol
-	0x00,					-- interface_string_id;
-	
-	-- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
-	0x07,					-- length,
-	USB_DT_ENDPOINT,		-- descriptor_type,
-	0b00000011,				-- endpoint_address, (Endpoint 3, OUT)
-	USB_EPT_BULK,			-- attributes
-	USB_CDC_BULK_OUT_EP_SIZE,				
-	0x00,					-- max_packet_size
-	0x00,					-- interval
-
-	-- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
-	0x07,					-- length,
-	USB_DT_ENDPOINT,		-- descriptor_type,
-	0b10000011,				-- endpoint_address, (Endpoint 3, IN)
-	USB_EPT_BULK,			-- attributes
-	USB_CDC_BULK_OUT_EP_SIZE,				
-	0x00,					-- max_packet_size
-	0x00					-- interval
-}
-
-const byte USB_STRING0[] = 
-{
-	0x04,	-- bLength
-	USB_DT_STRING,	-- bDescriptorType
-	0x09,	-- wLANGID[0] (low byte)
-	0x04	-- wLANGID[0] (high byte)
-}
-
-const byte USB_STRING1[] = 
-{
-	0x36,	-- bLength
-	USB_DT_STRING,	-- bDescriptorType
-	"M", 0x00, 
-	"i", 0x00, 
-	"c", 0x00, 
-	"r", 0x00, 
-	"o", 0x00, 
-	"c", 0x00, 
-	"h", 0x00, 
-	"i", 0x00, 
-	"p", 0x00, 
-	" ", 0x00,
-	"T", 0x00, 
-	"e", 0x00, 
-	"c", 0x00, 
-	"h", 0x00, 
-	"n", 0x00, 
-	"o", 0x00, 
-	"l", 0x00, 
-	"o", 0x00, 
-	"g", 0x00, 
-	"y", 0x00, 
-	",", 0x00, 
-	" ", 0x00,
-	"I", 0x00, 
-	"n", 0x00, 
-	"c", 0x00, 
-	".", 0x00
-}
-
-const byte USB_STRING2[52] = 
-{
-	52,	-- bLength
-	USB_DT_STRING,	-- bDescriptorType
-	"C", 0x00, 
-	"D", 0x00, 
-	"C", 0x00, 
-	" ", 0x00, 
-	"R", 0x00, 
-	"S", 0x00, 
-	"-", 0x00, 
-	"2", 0x00, 
-	"3", 0x00, 
-	"2", 0x00,
-	" ", 0x00,
-	"E", 0x00, 
-	"m", 0x00, 
-	"u", 0x00, 
-	"l", 0x00, 
-	"a", 0x00, 
-	"t", 0x00, 
-	"i", 0x00, 
-	"o", 0x00, 
-	"n", 0x00, 
-	" ", 0x00,
-	"D", 0x00, 
-	"e", 0x00, 
-	"m", 0x00, 
-	"o", 0x00
-}
-
-include usb_drv_core
-include usb_drv_cdc_class
-include usb_drv
-
--- constants
-const  byte str_welcome[] = "JAL USB CDC RS-232 emulation demo version 0.30 (JALLIB)\nplease wait (takes ~10 seconds) before the device is fully configured"
-const  byte str_cdc_welcome[] = "\nJAL USB CDC RS-232 echo demo, characters will be echoed\n"
-const  byte str_tqbf[] = "The quick brown fox jumps over the lazy dog"
-
--- variables
-var word i = 0
-var bit usb_initialized = false
-var word ticks100us = 0
-var bit enable_modem = false
-var byte loop_cnt_lo = 0
-var byte loop_cnt_hi = 0
- 
-
-procedure usb_tasks() is    
-    -- Servicing Hardware
-    -- use polling method
-    usb_handle_isr()
-end procedure
-
-
--- interrupts? No thanks
-while INTCON_GIE loop
-    INTCON_GIE = false
-end loop
-
-if defined( HAS_SERIAL_DEBUG_PORT ) == true then 
-	-- put info on RS-232 serial line
-	serial_newline()
-	serial_newline()
-
-	print_string(serial_hw_data, str_welcome )
-	serial_newline()
-end if	
-
-
--- setup the USB device
-usb_setup()
-
-
-delay_1ms(200)
-
--- enable USB device
-usb_enable_module()
-
-
-procedure usb_cdc_print_hex( byte in value ) is 
-
-	var byte nibble = value >>4
-	if ( nibble > 9 ) then
-		usb_cdc_putc( "A" - 10 + nibble )
-	else
-		usb_cdc_putc( "0" + nibble )
-	end if
-
-	nibble = value & 0x0F
-
-	if ( nibble > 9 ) then
-		usb_cdc_putc( "A" - 10 + nibble )
-	else
-		usb_cdc_putc( "0" + nibble )
-	end if
-end procedure
-
-
-
--- main loop
-forever loop
-	-- poll the usb ISR function on a regular base, in order to 
-	-- serve the USB requests
-    usb_tasks()
-    
-    -- check if USB device has been configured by the HOST
-    if usb_is_configured()  then
-
-		-- note user via serial line that USB has been configured
-		if usb_initialized == false then
-			usb_initialized = true
-			
-			if defined( HAS_SERIAL_DEBUG_PORT ) == true then 
-				const  byte str[] = "USB device has been configured by the HOST!"
-				print_string(serial_hw_data, str )
-				serial_newline()
-			end if	
-		end if
-
-    end if
-
-	if ( usb_cdc_line_status() > 0x00 )  then
-		-- modem is connected to DTE
-		if ( enable_modem == false ) then
-			enable_modem = true
-			if defined( HAS_SERIAL_DEBUG_PORT ) == true then 
-				const  byte str[] = "DTE online!"
-				print_string(serial_hw_data, str )
-				serial_newline()
-			end if	
-			ticks100us = 0
-		end if
-	else
-		enable_modem = false			
-	end if
-
-	
-    if enable_modem then
-
-		delay_10us(10)
-
-		if ticks100us == 1500  then
-			var byte idx
-			for count( str_cdc_welcome ) using idx loop
-				usb_cdc_putc( str_cdc_welcome[ idx ]  )
-			end loop
-			ticks100us = ticks100us + 1
-		end if	
-		
-		if ticks100us < 10000 then
-			ticks100us = ticks100us + 1
-		end if
-
-
-if false then
-		-- if ticks100us == 50 then
-		if ticks100us == 50 then
-			var byte idx
-
-			usb_cdc_print_hex( loop_cnt_hi ) 
-			usb_cdc_print_hex( loop_cnt_lo ) 
-			loop_cnt_lo = loop_cnt_lo +1
-
-			if ( loop_cnt_lo == 0 ) then
-				loop_cnt_hi = loop_cnt_hi + 1
-			end if
-			
-			usb_cdc_putc( " " )
-
-			for count( str_tqbf ) using idx loop
-				usb_cdc_putc( str_tqbf[ idx ]  )
-			end loop
-
-			usb_cdc_putc( 10  )
-			usb_cdc_putc( 13  )
-
-			ticks100us = 0
-		end if
-end if			
-		
-		-- echo all characters
-		while ( usb_cdc_rx_avail() == high ) loop
-			var byte ch = usb_cdc_getc()
-			usb_cdc_putc( ch )
-		end loop
-    end if
-    
-	if defined( HAS_SERIAL_DEBUG_PORT ) == true then
-		if PIR1_RCIF then
-			serial_hw_write( RCREG )
-			
-			if RCREG == "S" then
-			end if
-			if RCREG == "T" then
-			end if
-		end if
-	end if
-	
+;@jallib section chipdef
+-- chip setup
+include 18f4550
+
+-- even though the external crystal is 20 MHz, the configuration is such that
+-- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
+-- target frequency to 48 MHz
+pragma target clock       48_000_000
+
+
+-- fuses
+pragma target PLLDIV		DIVIDE_BY_5__20MHZ_INPUT_
+pragma target CPUDIV		_OSC1_OSC2_SRC___1__96MHZ_PLL_SRC___2_
+pragma target USBPLL		CLOCK_SRC_FROM_96MHZ_PLL_2
+pragma target OSC			HS_PLL
+pragma target FCMEN			DISABLED
+pragma target IESO			DISABLED
+pragma target PWRTE			DISABLED	-- power up timer
+pragma target VREGEN		ENABLED		-- USB voltage regulator
+pragma target VOLTAGE		V20			-- brown out voltage
+pragma target BROWNOUT		DISABLED	-- no brownout detection
+pragma target WDTPS			P32768		-- watch dog saler setting
+pragma target WDT			DISABLED    -- no watchdog
+pragma target CCP2MUX		RC1			-- CCP2 pin
+pragma target PBADEN		DIGITAL		-- digital input port<0..4>
+pragma target LPT1OSC		DISABLED	-- low power timer 1
+pragma target MCLR			EXTERNAL	-- master reset on RE3
+pragma target STVR			DISABLED    -- reset on stack over/under flow
+pragma target LVP			DISABLED    -- no low-voltage programming
+pragma target ENICPORT		DISABLED	-- In circuit debugger
+pragma target XINST			ENABLED		-- extended instruction set
+pragma target BACKBUG		DISABLED	-- background debugging
+pragma target CP_0			DISABLED	-- code block 0 not protected
+pragma target CP_1			DISABLED	-- code block 1 not protected
+pragma target CP_2			DISABLED	-- code block 2 not protected
+pragma target CP_3			DISABLED	-- code block 3 not protected
+pragma target CPB			DISABLED	-- bootblock code not write protected
+pragma target CPD			DISABLED	-- eeprom code not write protected
+pragma target WRT_0			DISABLED	-- table writeblock 0 not protected
+pragma target WRT_1			DISABLED	-- table write block 1 not protected
+pragma target WRT_2			DISABLED	-- table write block 2 not protected
+pragma target WRT_3			DISABLED	-- table write block 3 not protected
+pragma target WRTB			DISABLED	-- bootblock not write protected
+pragma target WRTD			DISABLED	-- eeprom not write protected
+pragma target WRTC			DISABLED	-- config not write protected
+pragma target EBTR_0		DISABLED	-- table read block 0 not protected
+pragma target EBTR_1		DISABLED	-- table read block 1 not protected
+pragma target EBTR_2		DISABLED	-- table read block 2 not protected
+pragma target EBTR_3		DISABLED	-- table read block 3 not protected
+pragma target EBTRB 		DISABLED	-- boot block not protected
+
+
+include delay
+
+;@jallib section serial
+
+
+-- whether or not using the serial port
+const HAS_SERIAL_DEBUG_PORT = 1
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == true then
+
+	const serial_hw_baudrate = 115_200
+	
+	include serial_hardware
+	include format
+	include print
+	
+	-- intialze serial device
+	serial_hw_init()
+
+	procedure serial_print_spc() is 
+		serial_hw_write( " " )
+	end procedure
+
+	procedure serial_newline() is
+		serial_hw_write( 10 )
+		-- serial_hw_write( 13 )
+	end procedure
+end if
+
+
+-- uncomment lines for debugging
+const bit USB_DEBUG = false
+const bit USB_CDC_DEBUG = false
+
+include usb_defs
+
+const bit USB_CALLBACK_ON_CLASS_CTRL = true
+const bit USB_CALLBACK_ON_DEVICE_CONFIGURED = false
+const bit USB_CALLBACK_ON_VENDOR_CTRL = false
+const bit USB_EP_DATA_CALLBACK = true
+const bit USB_CALLBACK_ON_SOF = true
+
+const word USB_CDC_TX_BUFFER_LOC = 0x0480
+const byte USB_CDC_TX_BUFFER_SIZE = 0x40
+
+-- const word USB_CDC_RX_BUFFER_LOC = 0x0480
+const byte USB_CDC_RX_BUFFER_SIZE = 0x20
+
+
+const bit USB_EP0 = 1
+const byte USB_EP0_OUT_SIZE = 8
+
+const word USB_EP0_OUT_ADDR = 0x0420
+
+const byte USB_EP0_IN_SIZE  = 8
+
+const word USB_EP0_IN_ADDR  = 0x0028
+
+
+const bit USB_EP1 = 1
+const byte USB_EP1_OUT_SIZE = 8
+const word USB_EP1_OUT_ADDR = 0x0430
+
+const byte USB_EP1_IN_SIZE  = 8
+const word USB_EP1_IN_ADDR  = 0x0438
+
+var volatile byte  usb_ep1in_buf[ 8 ]
+
+const bit USB_EP2 = 1
+const byte USB_EP2_OUT_SIZE = 8
+const word USB_EP2_OUT_ADDR = 0x0440
+
+const byte USB_EP2_IN_SIZE  = 8
+const word USB_EP2_IN_ADDR  = 0x0448
+
+const bit USB_EP3 = 1
+const byte USB_EP3_OUT_SIZE = 8
+const word USB_EP3_OUT_ADDR = 0x0450
+const byte USB_EP3_IN_SIZE = 8
+
+
+const word USB_EP3_IN_ADDR  = USB_CDC_TX_BUFFER_LOC
+
+
+const byte USB_CDC_DATA_ENDPOINT = 3
+
+
+
+-- Functional Descriptors
+-- Type Values for the bDscType Field 
+const byte USB_CS_INTERFACE                = 0x24
+const byte USB_CS_ENDPOINT                 = 0x25
+const byte USB_DCS_INTERFACE               = 0x04
+
+const byte USB_CDC_DATA_INTF = 0x0A
+const byte USB_CDC_NO_PROTOCOL = 0x00    -- No class specific protocol required
+
+-- bDscSubType in Functional Descriptors
+const byte USB_DSC_FN_HEADER               = 0x00
+const byte USB_DSC_FN_CALL_MGT             = 0x01
+const byte USB_DSC_FN_ACM                  = 0x02    -- ACM - Abstract Control Management
+const byte USB_DSC_FN_DLM                  = 0x03    -- DLM - Direct Line Managment
+const byte USB_DSC_FN_TELEPHONE_RINGER     = 0x04
+const byte USB_DSC_FN_RPT_CAPABILITIES     = 0x05
+const byte USB_DSC_FN_UNION                = 0x06
+const byte USB_DSC_FN_COUNTRY_SELECTION    = 0x07
+const byte USB_DSC_FN_TEL_OP_MODES         = 0x08
+const byte USB_DSC_FN_USB_TERMINAL         = 0x09
+-- more.... see Table 25 in USB CDC Specification 1.1
+
+const byte USB_CDC_COMM_INTF_ID = 0x00
+-- #define CDC_COMM_UEP            UEP2
+-- #define CDC_INT_BD_IN           ep2Bi
+const byte USB_CDC_INT_EP_SIZE = 8
+
+const byte USB_CDC_DATA_INTF_ID = 0x01
+
+
+const byte USB_CDC_BULK_OUT_EP_SIZE = USB_EP3_OUT_SIZE
+-- #define CDC_BULK_BD_IN          ep3Bi
+const byte CDC_BULK_IN_EP_SIZE      = USB_EP3_IN_SIZE
+
+
+const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
+	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
+	USB_DT_DEVICE, 	-- DEVICE 01h
+	0x00,
+	0x02,		-- usb version 2.00
+	USB_CDC_DEVICE,		-- class
+	0x00,		-- subclass
+	0x00,		-- protocol
+	0x08,		-- max packet size for end point 0
+	0xd8,
+	0x04,		-- Microchip's vendor
+	0x0A, 		-- 
+	0x00,		-- Product ID: CDC RS-232 Emulation Demo
+	0x01,
+	0x00,		-- Device release number in BCD format
+	0x01,		-- string 1 for manufacturer
+	0x02,		-- string 2 for product
+	0x00,		-- string 3 for serial number
+	0x01		-- number of configurations
+}
+
+const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x05 + 0x04 + 0x05 + 0x05 + 0x07 + 0x09 + 0x07 + 0x07
+
+
+const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
+{	
+	-- configuration descriptor - - - - - - - - - - 0x09 bytes
+	0x09,	-- length,
+	USB_DT_CONFIGURATION,	-- descriptor_type
+
+	USB_CONFIGURATION_DESCRIPTOR_SIZE,
+	0x00,	-- total_length;
+	
+	0x02,	-- num_interfaces,
+	0x01,	-- configuration_value,
+	0x00,	-- configuration_string_id,
+	0b10000000, -- attributes (bus powered, no remote wake up)
+	50,		-- max_power; (2x ma)
+
+	-- interface descriptor - - - - - - - - - - - - 0x09 bytes
+	0x09,	-- length,
+	USB_DT_INTERFACE,	-- descriptor_type,
+	0x00,	-- interface_number, (starts at zero)
+	0x00,	-- alternate_setting, (no alternatives)
+	0x01,	-- num_endpoints,
+	USB_COMM_INTF,	-- interface_class, (CDC)
+	USB_ABSTRACT_CONTROL_MODEL,	-- interface_subclass, (COMM interface)
+	USB_V25TER,	-- interface_protocol, (hayes type modem)
+	0x00,	-- interface_string_id;
+
+	-- Functional Descriptor Structure - See CDC Specification 1.1 for details
+	-- functional descriptor - - - - - - - - - - - - 0x05 bytes
+	0X05, -- length
+	USB_CS_INTERFACE, -- DSC Type
+	USB_DSC_FN_HEADER, -- DSC Sub Type
+	0x10,
+	0x01, -- CDC (bcd)
+
+	-- functional descriptor - - - - - - - - - - - - 0x04 bytes
+	0X04, -- length
+	USB_CS_INTERFACE, 						-- DSC Type
+	USB_DSC_FN_ACM, 						-- DSC Sub Type
+	0x02, 									-- Capabilities
+
+	-- functional descriptor - - - - - - - - - - - - 0x05 bytes
+	0X05, -- length
+	USB_CS_INTERFACE, 						-- DSC Type
+	USB_DSC_FN_UNION, 						-- DSC Sub Type
+	USB_CDC_COMM_INTF_ID,					-- MasterIntf
+	USB_CDC_DATA_INTF_ID,					-- SaveIntf0
+											
+	-- functional descriptor - - - - - - - - - - - - 0x05 bytes
+	0X05, -- length
+	USB_CS_INTERFACE, 						-- DSC Type
+	USB_DSC_FN_CALL_MGT, 					-- DSC Sub Type
+	0x00, 									-- Capabilities
+	USB_CDC_DATA_INTF_ID,					-- DataInterface
+
+
+	-- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
+	0x07,					-- length,
+	USB_DT_ENDPOINT,		-- descriptor_type,
+	0b10000010,				-- endpoint_address, (Endpoint 2, IN)
+	USB_EPT_INT,			-- attributes
+	USB_CDC_INT_EP_SIZE,	-- 			
+	0x00,					-- max_packet_size
+	0x02	,				-- interval
+
+	-- interface descriptor - - - - - - - - - - - - 0x09 bytes
+	0x09,					-- length,
+	USB_DCS_INTERFACE,		-- descriptor_type,
+	0x01,					-- interface_number, (starts at zero)
+	0x00,					-- alternate_setting, (no alternatives)
+	0x02,					-- num_endpoints
+	USB_CDC_DATA_INTF,		-- interface_class
+	0x00,					-- interface_subclass
+	USB_CDC_NO_PROTOCOL,	-- interface_protocol
+	0x00,					-- interface_string_id;
+	
+	-- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
+	0x07,					-- length,
+	USB_DT_ENDPOINT,		-- descriptor_type,
+	0b00000011,				-- endpoint_address, (Endpoint 3, OUT)
+	USB_EPT_BULK,			-- attributes
+	USB_CDC_BULK_OUT_EP_SIZE,				
+	0x00,					-- max_packet_size
+	0x00,					-- interval
+
+	-- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
+	0x07,					-- length,
+	USB_DT_ENDPOINT,		-- descriptor_type,
+	0b10000011,				-- endpoint_address, (Endpoint 3, IN)
+	USB_EPT_BULK,			-- attributes
+	USB_CDC_BULK_OUT_EP_SIZE,				
+	0x00,					-- max_packet_size
+	0x00					-- interval
+}
+
+const byte USB_STRING0[] = 
+{
+	0x04,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	0x09,	-- wLANGID[0] (low byte)
+	0x04	-- wLANGID[0] (high byte)
+}
+
+const byte USB_STRING1[] = 
+{
+	0x36,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	"M", 0x00, 
+	"i", 0x00, 
+	"c", 0x00, 
+	"r", 0x00, 
+	"o", 0x00, 
+	"c", 0x00, 
+	"h", 0x00, 
+	"i", 0x00, 
+	"p", 0x00, 
+	" ", 0x00,
+	"T", 0x00, 
+	"e", 0x00, 
+	"c", 0x00, 
+	"h", 0x00, 
+	"n", 0x00, 
+	"o", 0x00, 
+	"l", 0x00, 
+	"o", 0x00, 
+	"g", 0x00, 
+	"y", 0x00, 
+	",", 0x00, 
+	" ", 0x00,
+	"I", 0x00, 
+	"n", 0x00, 
+	"c", 0x00, 
+	".", 0x00
+}
+
+const byte USB_STRING2[52] = 
+{
+	52,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	"C", 0x00, 
+	"D", 0x00, 
+	"C", 0x00, 
+	" ", 0x00, 
+	"R", 0x00, 
+	"S", 0x00, 
+	"-", 0x00, 
+	"2", 0x00, 
+	"3", 0x00, 
+	"2", 0x00,
+	" ", 0x00,
+	"E", 0x00, 
+	"m", 0x00, 
+	"u", 0x00, 
+	"l", 0x00, 
+	"a", 0x00, 
+	"t", 0x00, 
+	"i", 0x00, 
+	"o", 0x00, 
+	"n", 0x00, 
+	" ", 0x00,
+	"D", 0x00, 
+	"e", 0x00, 
+	"m", 0x00, 
+	"o", 0x00
+}
+
+include usb_drv_core
+include usb_drv_cdc_class
+include usb_drv
+
+-- constants
+const  byte str_welcome[] = "JAL USB CDC RS-232 emulation demo version 0.30 (JALLIB)\nplease wait (takes ~10 seconds) before the device is fully configured"
+const  byte str_cdc_welcome[] = "\nJAL USB CDC RS-232 echo demo, characters will be echoed\n"
+const  byte str_tqbf[] = "The quick brown fox jumps over the lazy dog"
+
+-- variables
+var word i = 0
+var bit usb_initialized = false
+var word ticks100us = 0
+var bit enable_modem = false
+var byte loop_cnt_lo = 0
+var byte loop_cnt_hi = 0
+ 
+
+procedure usb_tasks() is    
+    -- Servicing Hardware
+    -- use polling method
+    usb_handle_isr()
+end procedure
+
+
+-- interrupts? No thanks
+while INTCON_GIE loop
+    INTCON_GIE = false
+end loop
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == true then 
+	-- put info on RS-232 serial line
+	serial_newline()
+	serial_newline()
+
+	print_string(serial_hw_data, str_welcome )
+	serial_newline()
+end if	
+
+
+-- setup the USB device
+usb_setup()
+
+
+delay_1ms(200)
+
+-- enable USB device
+usb_enable_module()
+
+
+procedure usb_cdc_print_hex( byte in value ) is 
+
+	var byte nibble = value >>4
+	if ( nibble > 9 ) then
+		usb_cdc_putc( "A" - 10 + nibble )
+	else
+		usb_cdc_putc( "0" + nibble )
+	end if
+
+	nibble = value & 0x0F
+
+	if ( nibble > 9 ) then
+		usb_cdc_putc( "A" - 10 + nibble )
+	else
+		usb_cdc_putc( "0" + nibble )
+	end if
+end procedure
+
+
+
+-- main loop
+forever loop
+	-- poll the usb ISR function on a regular base, in order to 
+	-- serve the USB requests
+    usb_tasks()
+    
+    -- check if USB device has been configured by the HOST
+    if usb_is_configured()  then
+
+		-- note user via serial line that USB has been configured
+		if usb_initialized == false then
+			usb_initialized = true
+			
+			if defined( HAS_SERIAL_DEBUG_PORT ) == true then 
+				const  byte str[] = "USB device has been configured by the HOST!"
+				print_string(serial_hw_data, str )
+				serial_newline()
+			end if	
+		end if
+
+    end if
+
+	if ( usb_cdc_line_status() > 0x00 )  then
+		-- modem is connected to DTE
+		if ( enable_modem == false ) then
+			enable_modem = true
+			if defined( HAS_SERIAL_DEBUG_PORT ) == true then 
+				const  byte str[] = "DTE online!"
+				print_string(serial_hw_data, str )
+				serial_newline()
+			end if	
+			ticks100us = 0
+		end if
+	else
+		enable_modem = false			
+	end if
+
+	
+    if enable_modem then
+
+		delay_10us(10)
+
+		if ticks100us == 1500  then
+			var byte idx
+			for count( str_cdc_welcome ) using idx loop
+				usb_cdc_putc( str_cdc_welcome[ idx ]  )
+			end loop
+			ticks100us = ticks100us + 1
+		end if	
+		
+		if ticks100us < 10000 then
+			ticks100us = ticks100us + 1
+		end if
+
+
+if false then
+		-- if ticks100us == 50 then
+		if ticks100us == 50 then
+			var byte idx
+
+			usb_cdc_print_hex( loop_cnt_hi ) 
+			usb_cdc_print_hex( loop_cnt_lo ) 
+			loop_cnt_lo = loop_cnt_lo +1
+
+			if ( loop_cnt_lo == 0 ) then
+				loop_cnt_hi = loop_cnt_hi + 1
+			end if
+			
+			usb_cdc_putc( " " )
+
+			for count( str_tqbf ) using idx loop
+				usb_cdc_putc( str_tqbf[ idx ]  )
+			end loop
+
+			usb_cdc_putc( 10  )
+			usb_cdc_putc( 13  )
+
+			ticks100us = 0
+		end if
+end if			
+		
+		-- echo all characters
+		while ( usb_cdc_rx_avail() == high ) loop
+			var byte ch = usb_cdc_getc()
+			usb_cdc_putc( ch )
+		end loop
+    end if
+    
+	if defined( HAS_SERIAL_DEBUG_PORT ) == true then
+		if PIR1_RCIF then
+			serial_hw_write( RCREG )
+			
+			if RCREG == "S" then
+			end if
+			if RCREG == "T" then
+			end if
+		end if
+	end if
+	
 end loop
