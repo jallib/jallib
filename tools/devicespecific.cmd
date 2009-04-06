@@ -50,7 +50,7 @@ return result                           /* return string */
  *          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000  (or ANSEL_/H,A/B/D/E)    *
  * ADC_V1   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0111                           *
  * ADC_V2   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
- * ADC_V3   ADCON0 = 0b0000_0000  ADCON1 = 0b1111_1111                           *
+ * ADC_V3   ADCON0 = 0b0000_0000  ADCON1 = 0b0111_1111                           *
  * ADC_V4   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
  * ADC_V5   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
  * ADC_V6   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
@@ -64,7 +64,8 @@ return result                           /* return string */
  *          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           *
  * ADC_V10  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           *
  *          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           *
- * ADC_V11  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
+ * ADC_V11  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           *
+ *          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           *
  * ADC_V12  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000     *
  *                                                                               *
  * Note: Comment shows if the ADC group settings have been checked.              *
@@ -85,6 +86,7 @@ select
   when PicName = '12F519'     then return '-'                               /* + */
   when PicName = '12F609'     then return '-'                               /* + */
   when PicName = '12F615'     then return 'ADC_V0'                          /* - */
+  when PicName = '12F520'     then return '-'                               /* + */
   when PicName = '12F629'     then return '-'                               /* + */
   when PicName = '12F635'     then return '-'                               /* + */
   when PicName = '12F675'     then return 'ADC_V0'                          /* - */
@@ -356,6 +358,8 @@ select
   when PicName = '18F87J50'   then return 'ADC_V9'                          /* + */
   when PicName = '18F87J60'   then return 'ADC_V6'                          /* + */
   when PicName = '18F87J90'   then return 'ADC_V12'                         /* + */
+  when PicName = '18F87K22'   then return '-'                               /* - */
+  when PicName = '18F87K90'   then return '-'                               /* - */
   when PicName = '18F87J93'   then return 'ADC_V2'                          /* + */
   when PicName = '18F96J60'   then return 'ADC_V6'                          /* + */
   when PicName = '18F96J65'   then return 'ADC_V6'                          /* + */
@@ -401,6 +405,7 @@ select
   when PicName = '12F509'     then return '41236'
   when PicName = '12F510'     then return '41268'
   when PicName = '12F519'     then return '41319'
+  when PicName = '12F520'     then return '-'
   when PicName = '12F609'     then return '41302'
   when PicName = '12F615'     then return '41302'
   when PicName = '12F629'     then return '41190'
@@ -687,6 +692,8 @@ select
   when PicName = '18F87J60'   then return '39762'
   when PicName = '18F87J90'   then return '39933'
   when PicName = '18F87J93'   then return '-'
+  when PicName = '18F87K22'   then return '-'
+  when PicName = '18F87K90'   then return '-'
   when PicName = '18F96J60'   then return '39762'
   when PicName = '18F96J65'   then return '39762'
   when PicName = '18F97J60'   then return '39762'
