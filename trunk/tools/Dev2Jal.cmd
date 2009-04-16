@@ -28,25 +28,24 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.63'                   /*                          */
+   ScriptVersion   = '0.0.64'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '>=2.4k'                   /*                          */
 /* ------------------------------------------------------------------------ */
 
 mplabdir = 'k:/mplab830/'                       /* MPLAB base directory */
-                                                /* (drive must be spec'd!) */
+                                                /* (drive letter mandatory!) */
 devdir      = mplabdir'mplab_ide/device/'       /* dir with .dev files */
 lkrdir      = mplabdir'mpasm_suite/lkr/'        /* dir with .lkr files */
-dstdir      = '/jallib/include/device/'         /* default destination */
 PicSpecFile = 'devicespecific.cmd'              /* PIC specific info */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
 
 parse upper arg destination selection .         /* commandline arguments */
 if destination = 'PROD' then                    /* production run */
-  nop                                           /* use default destination */
+  dstdir = '/jallib/include/device/'            /* local Jallib */
 else if destination = 'TEST' then               /* test run */
-  dstdir = 'test/'                              /* destination for testing */
+  dstdir = 'test/'                              /* subdir for testing */
 else do
   say 'Error: Required argument missing: "prod" or "test"'
   return 1
@@ -79,13 +78,13 @@ if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* new chipdef file 
 end
 
 call time 'E'                                   /* start 'elapsed' timer */
-say 'Creating JALV2 device files ...'
+say 'Creating JalV2 device files ...'
 
-signal on syntax name catch_syntax              /* catch syntax error */
+signal on syntax name catch_syntax              /* catch syntax errors */
 signal on error  name catch_error               /* catch execution errors */
 
-PicSpec. = '-'                                  /* PIC specific data */
-call file_read_picspec                          /* interpret PicSpec file contents */
+PicSpec. = '?'                                  /* PIC specific data */
+call file_read_picspec                          /* read device specific data */
 
 call list_chip_const                            /* make header of chipdef file */
 
@@ -758,6 +757,10 @@ return
 list_fuses_words1x: procedure expose jalfile CfgAddr. PicSpec. PicName
 PicNameCap = toupper(PicName)
 FusesDefault = PicSpec.FusesDefault.PicNameCap
+if FusesDefault = '?' then do
+  say PicName 'unknown for FusesDefault in devicespecific.cmd!'
+  exit 1
+end
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
 if CfgAddr.0 = 1 then do
   call lineout jalfile, 'const word  _FUSE_BASE            = 0x'D2X(CfgAddr.1)
@@ -803,6 +806,10 @@ return
 list_fuses_bytes16: procedure expose jalfile CfgAddr. PicSpec. PicName
 PicNameCap = toupper(PicName)
 FusesDefault = PicSpec.FusesDefault.PicNameCap      /* get default */
+if FusesDefault = '?' then do
+  say PicName 'unknown for FusesDefault in devicespecific.cmd!'
+  exit 1
+end
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
 call charout jalfile, 'const dword _FUSE_BASE[_FUSES_CT] = { '
 do  j = 1 to CfgAddr.0
@@ -2176,12 +2183,19 @@ return
 list_analog_functions: procedure expose jalfile Name. Core PicSpec. PicName
 PicNameCap = toupper(PicName)
 ADCgroup = PicSpec.ADCgroup.PicNameCap
+if ADCgroup = '?' then do
+  say PicName 'unknown for ADCgroup in devicespecific.cmd!'
+  exit 1
+end
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
 call lineout jalfile, '-- Special (device specific) constants and procedures'
 call lineout jalfile, '--'
-call lineout jalfile, 'const ADC_GROUP "'ADCgroup'"'
+call charout jalfile, 'const ADC_GROUP = 'ADCgroup
+if ADCgroup = '0' then
+   call charout jalfile, '         -- no ADC module present'
+call lineout jalfile, ''
 call lineout jalfile, '--'
 
 analog. = '-'                                           /* no analog modules */
@@ -2338,8 +2352,16 @@ call lineout jalfile, '--'
 call list_devID
 PicNameCap = toupper(PicName)
 DataSheet = PicSpec.DataSheet.PicNameCap
+if DataSheet = '?' then do
+  say PicName 'unknown for Datasheet in devicespecific.cmd!'
+  exit 1
+end
 call lineout jalfile, '-- DataSheet:' DataSheet
-PgmSpec = PicSpec.PGMSPEC.PicNameCap
+PgmSpec = PicSpec.PgmSpec.PicNameCap
+if PgmSpec = '?' then do
+  say PicName 'unknown for PgmSpec in devicespecific.cmd!'
+  exit 1
+end
 call lineout jalfile, '-- Programming Specifications:' PgmSpec
 call list_Vdd
 call list_Vpp
@@ -2449,6 +2471,21 @@ call lineout chipdef, 'const bit   INPUT             = TRUE'
 call lineout chipdef, 'const bit   OUTPUT            = FALSE'
 call lineout chipdef, 'const byte  ALL_INPUT         = 0b_1111_1111'
 call lineout chipdef, 'const byte  ALL_OUTPUT        = 0b_0000_0000'
+call lineout chipdef, '--'
+call lineout chipdef, 'const       ADC_V0            = 0x_ADC_0'
+call lineout chipdef, 'const       ADC_V1            = 0x_ADC_1'
+call lineout chipdef, 'const       ADC_V2            = 0x_ADC_2'
+call lineout chipdef, 'const       ADC_V3            = 0x_ADC_3'
+call lineout chipdef, 'const       ADC_V4            = 0x_ADC_4'
+call lineout chipdef, 'const       ADC_V5            = 0x_ADC_5'
+call lineout chipdef, 'const       ADC_V6            = 0x_ADC_6'
+call lineout chipdef, 'const       ADC_V7            = 0x_ADC_7'
+call lineout chipdef, 'const       ADC_V7_1          = 0x_ADC_7_1'
+call lineout chipdef, 'const       ADC_V8            = 0x_ADC_8'
+call lineout chipdef, 'const       ADC_V9            = 0x_ADC_9'
+call lineout chipdef, 'const       ADC_V10           = 0x_ADC_10'
+call lineout chipdef, 'const       ADC_V11           = 0x_ADC_11'
+call lineout chipdef, 'const       ADC_V12           = 0x_ADC_12'
 call lineout chipdef, '--'
 call lineout chipdef, '-- =================================================================='
 call lineout chipdef, '--'
