@@ -16,8 +16,8 @@
  *   the file chipdef_jallib.jal, included by each of these.                *
  *   Apart from declaration of all ports and pins of the chip               *
  *   the include files will contain shadowing procedures to                 *
- *   prevent the 'read-modify-write' problems of midrange PICs              *
- *   and for the 18F force the use of LATx in stead of PORTx.               *
+ *   prevent the 'read-modify-write' problems of midrange PICs and          *
+ *   for the 18F force the use of LATx for output in stead of PORTx.        *
  *   In addition some device dependent procedures are provided              *
  *   for common operations, like enable-digital-io().                       *
  *                                                                          *
@@ -28,16 +28,17 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.62'                   /*                          */
+   ScriptVersion   = '0.0.63'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
-   CompilerVersion = '>=2.4j'                   /*                          */
+   CompilerVersion = '>=2.4k'                   /*                          */
 /* ------------------------------------------------------------------------ */
 
 mplabdir = 'k:/mplab830/'                       /* MPLAB base directory */
                                                 /* (drive must be spec'd!) */
-devdir   = mplabdir'mplab_ide/device/'          /* dir with .dev files */
-lkrdir   = mplabdir'mpasm_suite/lkr/'           /* dir with .lkr files */
-dstdir   = '/jallib/include/device/'            /* default destination */
+devdir      = mplabdir'mplab_ide/device/'       /* dir with .dev files */
+lkrdir      = mplabdir'mpasm_suite/lkr/'        /* dir with .lkr files */
+dstdir      = '/jallib/include/device/'         /* default destination */
+PicSpecFile = 'devicespecific.cmd'              /* PIC specific info */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
 
@@ -54,7 +55,7 @@ end
 if selection = '' then                          /* no selection spec'd */
   wildcard = 'pic1*.dev'                        /* default (8 bit PICs) */
 else if destination = 'TEST' then               /* TEST run */
-  wildcard = 'PIC'selection'.dev'               /* accept user selection */
+  wildcard = 'pic'selection'.dev'               /* accept user selection */
 else do                                         /* PROD run with selection */
   say 'Selection not allowed for production run!'
   return 1                                      /* exit */
@@ -82,6 +83,9 @@ say 'Creating JALV2 device files ...'
 
 signal on syntax name catch_syntax              /* catch syntax error */
 signal on error  name catch_error               /* catch execution errors */
+
+PicSpec. = '-'                                  /* PIC specific data */
+call file_read_picspec                          /* interpret PicSpec file contents */
 
 call list_chip_const                            /* make header of chipdef file */
 
@@ -155,7 +159,7 @@ end
 call lineout chipdef, '--'
 call stream  chipdef, 'c', 'close'              /* done */
 
-say 'Generated' listcount 'device files out of' dir.0 '.dev files in',
+say 'Generated' listcount 'device files for' dir.0 '.dev files in',
      format(time('E'),,2) 'seconds'
 
 signal off error
@@ -169,7 +173,7 @@ return 0
 /* ==================================================================== */
 dev2jal12: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             Core PicName JalFile ChipDef DevFile LkrFile,
-                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr.
+                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr. PicSpec.
 
 MAXRAM     = 128                                /* range 0..0x7F */
 BANKSIZE   = 32                                 /* 0x0020 */
@@ -197,7 +201,7 @@ return 0
 /* ==================================================================== */
 dev2jal14: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             Core PicName JalFile ChipDef DevFile LkrFile,
-                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr.
+                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr. PicSpec.
 
 MAXRAM     = 512                                /* range 0..0x1FF */
 BANKSIZE   = 128                                /* 0x0080 */
@@ -225,7 +229,7 @@ return 0
 /* ==================================================================== */
 dev2jal16: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             Core PicName JalFile ChipDef DevFile LkrFile,
-                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr.
+                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr. PicSpec.
 
 MAXRAM     = 4096                               /* range 0..0x0xFFF */
 BANKSIZE   = 256                                /* 0x0100 */
@@ -330,10 +334,26 @@ Lkr.0 = i - 1                                   /* # non-comment records */
 return Lkr.0                                    /* number of records */
 
 
+/* -------------------------------------------------- */
+/* Read file with Device Specific data                */
+/* Interpret contents: fill compund variable PicSpec. */
+/* -------------------------------------------------- */
+file_read_picspec: procedure expose PicSpecFile PicSpec.
+if stream(PicSpecFile, 'c', 'open read') \= 'READY:' then do
+  Say 'Error: could not open file with Device Specific data' PicSpecFile
+  exit 1                                        /* zero records */
+end
+do while lines(PicSpecFile) > 0                 /* read whole file */
+  interpret linein(PicSpecFile)                 /* read and intepret line */
+end
+call stream PicSpecFile, 'c', 'close'           /* done */
+return
+
+
 /* ---------------------------------------------- */
 /* procedure to collect Config (fuses) info       */
 /* input:   - nothing                             */
-/* output:  - code tyope (0, 12, 14, 16)          */
+/* output:  - core (0, 12, 14, 16 bits)           */
 /* ---------------------------------------------- */
 load_config_info: procedure expose Dev. CfgAddr. Core
 CfgAddr.0 = 0                                   /* empty */
@@ -735,12 +755,17 @@ return
 /* 12-bit and 14-bit core                         */
 /* uses device specific table                     */
 /* ---------------------------------------------- */
-list_fuses_words1x: procedure expose jalfile CfgAddr. PicName
-FusesDefault = devicespecific('FusesDefault', PicName)  /* get default */
+list_fuses_words1x: procedure expose jalfile CfgAddr. PicSpec. PicName
+PicNameCap = toupper(PicName)
+FusesDefault = PicSpec.FusesDefault.PicNameCap
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
 if CfgAddr.0 = 1 then do
   call lineout jalfile, 'const word  _FUSE_BASE            = 0x'D2X(CfgAddr.1)
-  call lineout jalfile, 'const word  _FUSES                = 0x'FusesDefault
+  call charout jalfile, 'const word  _FUSES                = 0b'
+  do i = 1 to 4
+    call charout jalfile, '_'X2B(substr(FusesDefault,i,1))
+  end
+  call lineout jalfile, ''
 end
 else do
   call charout jalfile, 'const word  _FUSE_BASE[_FUSES_CT] = { '
@@ -752,11 +777,18 @@ else do
   call lineout jalfile, ' }'
   call charout jalfile, 'const word  _FUSES[_FUSES_CT]     = { '
   do  j = 1 to CfgAddr.0
-    call charout jalfile, '0x'substr(FusesDefault,1+4*(j-1),4,'0')
+    call charout jalfile, '0b'
+    do i = 1 to 4
+      call charout jalfile, '_'X2B(substr(FusesDefault,i+4*(j-1),1,'0'))
+    end
+    if j < CfgAddr.0 then                           /* not last word */
+      call charout jalfile, ', '
+    else
+      call charout jalfile, ' }'
+    call lineout jalfile, '        -- CONFIG'||j
     if j < CfgAddr.0 then
-      call charout jalfile, ','
+      call charout jalfile, left('',38,' ')
   end
-  call lineout jalfile, ' }'
 end
 call lineout jalfile, '--'
 return
@@ -768,8 +800,9 @@ return
 /* 16-bit core                                    */
 /* uses device specific table                     */
 /* ---------------------------------------------- */
-list_fuses_bytes16: procedure expose jalfile CfgAddr. PicName
-FusesDefault = devicespecific('FusesDefault', PicName)  /* get default */
+list_fuses_bytes16: procedure expose jalfile CfgAddr. PicSpec. PicName
+PicNameCap = toupper(PicName)
+FusesDefault = PicSpec.FusesDefault.PicNameCap      /* get default */
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
 call charout jalfile, 'const dword _FUSE_BASE[_FUSES_CT] = { '
 do  j = 1 to CfgAddr.0
@@ -781,14 +814,19 @@ do  j = 1 to CfgAddr.0
 end
 call lineout jalfile, ' }'
 call charout jalfile, 'const byte  _FUSES[_FUSES_CT]     = { '
-do  j = 1 to CfgAddr.0
-  call charout jalfile, '0x'substr(FusesDefault,1+2*(j-1),2,'0')
-  if j < CfgAddr.0 then do
-    call lineout jalfile, ','
-    call charout jalfile, left('',38,' ')
+do j = 1 to CfgAddr.0
+  call charout jalfile, '0b'
+  do i = 1 to 2
+    call charout jalfile, '_'X2B(substr(FusesDefault,i+2*(j-1),1,'0'))
   end
+  if j < CfgAddr.0 then
+    call charout jalfile, ', '
+  else
+    call charout jalfile, ' }'
+  call lineout jalfile, '        -- CONFIG'||(j+1)%2||substr('LH',1+(j//2),1)
+  if j < CfgAddr.0 then
+    call charout jalfile, left('',38,' ')
 end
-call lineout jalfile, ' }'
 call lineout jalfile, '--'
 return
 
@@ -2111,7 +2149,8 @@ return
  * CM1CON0 [CM1CON1] [CM2CON0 CM2CON1]                                           *
  * Between brackets optional, otherwise always together.                         *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - *
- * PICs are classified in groups for ADC module settings                         *
+ * PICs are classified in groups for ADC module settings.                        *
+ * Below the register settings for all-digital I/O:                              *
  * ADC_V0   ADCON0 = 0b0000_0000 [ADCON1 = 0b0000_0000]                          *
  *          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000  (or ANSEL_/H,A/B/D/E)    *
  * ADC_V1   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0111                           *
@@ -2134,11 +2173,15 @@ return
  *          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           *
  * ADC_V12  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000     *
  * ----------------------------------------------------------------------------- */
-list_analog_functions: procedure expose jalfile Name. Core PicName
+list_analog_functions: procedure expose jalfile Name. Core PicSpec. PicName
+PicNameCap = toupper(PicName)
+ADCgroup = PicSpec.ADCgroup.PicNameCap
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
-call lineout jalfile, '-- Special device dependent procedures'
+call lineout jalfile, '-- Special (device specific) constants and procedures'
+call lineout jalfile, '--'
+call lineout jalfile, 'const ADC_GROUP "'ADCgroup'"'
 call lineout jalfile, '--'
 
 analog. = '-'                                           /* no analog modules */
@@ -2180,11 +2223,10 @@ if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
   call lineout jalfile, '--'
 end
 
-ADCgroup = devicespecific('adcgroup', PicName)
 if Name.ADCON0 \= '-' then do                           /* check on presence */
   analog.ADC = 'adc'                                    /* ADC module present */
   call lineout jalfile, '-- ---------------------------------------------------'
-  call lineout jalfile, '-- Disable ADC module (ADC_group' ADCgroup')'
+  call lineout jalfile, '-- Disable ADC module'
   call lineout jalfile, '--'
   call lineout jalfile, 'procedure adc_off() is'
   call lineout jalfile, '   pragma inline'
@@ -2294,9 +2336,10 @@ call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
 call list_devID
-DataSheet = devicespecific('DataSheet', PicName)
+PicNameCap = toupper(PicName)
+DataSheet = PicSpec.DataSheet.PicNameCap
 call lineout jalfile, '-- DataSheet:' DataSheet
-PgmSpec = devicespecific('pgmspec', PicName)
+PgmSpec = PicSpec.PGMSPEC.PicNameCap
 call lineout jalfile, '-- Programming Specifications:' PgmSpec
 call list_Vdd
 call list_Vpp
@@ -2485,6 +2528,12 @@ end
 /* ---------------------------------------------- */
 tolower:
 return translate(arg(1), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+
+/* ---------------------------------------------- */
+/* translate string to lower case                 */
+/* ---------------------------------------------- */
+toupper:
+return translate(arg(1), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')
 
 
 /* ---------------------------------------------- */
