@@ -271,6 +271,7 @@ procedure usb_cdc_handle_tx() is
 	end if
 
 
+	var byte bytes_to_send 
 
 	-- anything in the fifo?
     if ( cdc_tx_wr == cdc_tx_rd ) then
@@ -279,22 +280,24 @@ procedure usb_cdc_handle_tx() is
 			-- nothing to do, so return
 			return
 		end if
-    end if
+		bytes_to_send = 0
+	else	
 
-	var byte bytes_to_send 
-	
-	if ( cdc_tx_wr > cdc_tx_rd ) then
-		bytes_to_send = cdc_tx_wr - cdc_tx_rd
-	else
-		-- to keep it simple, don't support splitted buffers
-		-- so we don't have to copy the bytes into another array
-		bytes_to_send = USB_CDC_TX_BUFFER_SIZE - cdc_tx_rd
-	end if
+		if ( cdc_tx_wr > cdc_tx_rd ) then
+			bytes_to_send = cdc_tx_wr - cdc_tx_rd
+		else
+			-- to keep it simple, don't support splitted buffers
+			-- so we don't have to copy the bytes into another array
+			bytes_to_send = USB_CDC_TX_BUFFER_SIZE - cdc_tx_rd
+		end if
+
+    end if
 
 	-- clip to maximum EP transfer size
 	if ( bytes_to_send  > CDC_BULK_IN_EP_SIZE ) then
 		bytes_to_send  = CDC_BULK_IN_EP_SIZE
 	end if
+
     
 	if USB_CDC_DEBUG > 0  then
 		const byte str[] = "send="
@@ -341,7 +344,7 @@ procedure usb_cdc_handle_tx() is
 
 	if (cdc_tx_rd > ( USB_CDC_TX_BUFFER_SIZE - 1 ))  then
 		cdc_tx_rd = 0
-	end if
+ 	end if
 
 	-- Mark if we got a full packet (8 bytes),
 	last_packet_is_full = ( bytes_to_send == 8 )
