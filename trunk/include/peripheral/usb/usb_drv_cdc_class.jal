@@ -6,7 +6,12 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 -- 
--- Description: USB Cummunication Device code
+-- Description: USB Communication Device Class (CDC) code
+-- This USB library files contains the low level implementation to perform serial
+-- communication over a USB interface. The usage of this library requires detailed
+-- knowledge of the USB interface and requires that several configuration parameters
+-- are defined correctly. In order to make USB serial communication more accessible 
+-- for the end user, I would highly recommend to use the usb_serial library
 -- --
 -- 
 -- Sources: http://www.usb.org for USB specifications
@@ -46,17 +51,37 @@ var byte cdc_line_status = 0x00
 var bit last_packet_is_full = false
 
 -- Transmit fifo
-var byte cdc_tx_buffer[USB_CDC_TX_BUFFER_SIZE] at  USB_CDC_TX_BUFFER_LOC
-var byte cdc_tx_wr=0
-var byte cdc_tx_rd=0
+
+if defined(USB_CDC_TX_BUFFER_ADDR) == true then
+	var byte cdc_tx_buffer[USB_CDC_TX_BUFFER_SIZE] at USB_CDC_TX_BUFFER_ADDR
+else
+	var byte cdc_tx_buffer[USB_CDC_TX_BUFFER_SIZE]
+end if
 
 
+var volatile byte cdc_tx_wr=0
+var volatile byte cdc_tx_rd=0
 
-var byte cdc_rx_buffer[USB_CDC_RX_BUFFER_SIZE] -- at  USB_CDC_RX_BUFFER_LOC
-var byte cdc_rx_wr = 0
-var byte cdc_rx_rd = 0
+if defined(USB_CDC_RX_BUFFER_ADDR) == true then
+	var byte cdc_rx_buffer[USB_CDC_RX_BUFFER_SIZE] at USB_CDC_RX_BUFFER_ADDR
+else
+var byte cdc_rx_buffer[USB_CDC_RX_BUFFER_SIZE]
+end if
 
+var volatile byte cdc_rx_wr = 0
+var volatile byte cdc_rx_rd = 0
 
+var volatile byte cdc_out_stat is usb_bd3out_stat
+var volatile byte cdc_out_cnt is usb_bd3out_cnt
+var volatile word cdc_out_addr is usb_bd3out_addr
+var volatile byte cdc_out_addrl is usb_bd3out_addrl
+var volatile byte cdc_out_addrh is usb_bd3out_addrh
+
+var volatile byte cdc_in_stat is usb_bd3in_stat
+var volatile byte cdc_in_cnt is usb_bd3in_cnt
+var volatile word cdc_in_addr is usb_bd3in_addr
+var volatile byte cdc_in_addrl is usb_bd3in_addrl
+var volatile byte cdc_in_addrh is usb_bd3in_addrh
 
 procedure usb_handle_class_request_callback() is
     
@@ -216,10 +241,12 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word 
         for byte_count using count loop
             
             cdc_rx_next = cdc_rx_wr + 1	-- get next buffer position
+            
             if (cdc_rx_next == USB_CDC_RX_BUFFER_SIZE) then
                 -- if we're at the end
                 cdc_rx_next = 0	-- then wrap to the beginning
             end if
+            
             if (cdc_rx_next != cdc_rx_rd) then
                 -- if space in the fifo
 				var byte ch = POSTINC0
@@ -247,32 +274,34 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word 
     end if
 end procedure
 
+-- --------------------------------------------------------------------------------------
+-- This function returns the status of the SIE tx buffer. Either the SIE can own the
+-- transmit buffer (tranmit is pending) or it can be owned by the CPU. This function 
+-- return true if the SIE owns the buffer, otherwise false is returned
+-- --------------------------------------------------------------------------------------
+function does_sie_owns_tx_buffer() return bit is 
+	pragma inline
+	var bit uown_bit shared at cdc_in_stat:USB_BDSTATUS_UOWN
+	return uown_bit
+end function
 
 
+-- --------------------------------------------------------------------------------------
+-- This procedure will handle the transmission of the (bulk) data. The procedure check
+-- if there are pending characters in the tranmit FIFO. These character(s) are send in
+-- chunk(s), the chunk size is dependent on the conifguration of the bulk interface
+-- endpoint
+-- --------------------------------------------------------------------------------------
 procedure usb_cdc_handle_tx() is
-
-	var word cdc_tx_addr
-	
-	var volatile byte cdc_out_stat is usb_bd3out_stat
-	var volatile byte cdc_out_cnt is usb_bd3out_cnt
-	var volatile word cdc_out_addr is usb_bd3out_addr
-	var volatile byte cdc_out_addrl is usb_bd3out_addrl
-	var volatile byte cdc_out_addrh is usb_bd3out_addrh
-
-	var volatile byte cdc_in_stat is usb_bd3in_stat
-	var volatile byte cdc_in_cnt is usb_bd3in_cnt
-	var volatile word cdc_in_addr is usb_bd3in_addr
-	var volatile byte cdc_in_addrl is usb_bd3in_addrl
-	var volatile byte cdc_in_addrh is usb_bd3in_addrh
-
-	if ( ( cdc_in_stat & (1<<USB_BDSTATUS_UOWN) ) != 0 ) then
-		-- if there's already something in play
-		return	-- give up
-	end if
-
 
 	var byte bytes_to_send 
 
+	-- var word cdc_tx_addr
+	if ( does_sie_owns_tx_buffer() ) then
+		-- if there's already something in play
+		return
+	end if
+		
 	-- anything in the fifo?
     if ( cdc_tx_wr == cdc_tx_rd ) then
 		-- and we don't have to send an empty packet
@@ -294,8 +323,8 @@ procedure usb_cdc_handle_tx() is
     end if
 
 	-- clip to maximum EP transfer size
-	if ( bytes_to_send  > CDC_BULK_IN_EP_SIZE ) then
-		bytes_to_send  = CDC_BULK_IN_EP_SIZE
+	if ( bytes_to_send  > USB_CDC_BULK_IN_EP_SIZE ) then
+		bytes_to_send  = USB_CDC_BULK_IN_EP_SIZE
 	end if
 
     
@@ -310,10 +339,18 @@ procedure usb_cdc_handle_tx() is
 		print_byte_hex(serial_hw_data,cdc_tx_wr)
 		serial_hw_write("#")
 	end if
-		
+	
+	
 
-	cdc_tx_addr =  USB_CDC_TX_BUFFER_LOC + cdc_tx_rd
-	cdc_in_addr = cdc_tx_addr
+		var byte idx	
+	-- copy bytes
+	for bytes_to_send using idx loop
+		usb_cdc_eptx_buffer[ idx ] = cdc_tx_buffer[ cdc_tx_rd + idx ]
+	end loop
+	
+	
+	
+	cdc_in_addr = USB_CDC_BULK_IN_EP_ADDR
 
 	if USB_CDC_DEBUG > 0  then
 		print_byte_hex(serial_hw_data, cdc_in_addrh )
@@ -340,18 +377,21 @@ procedure usb_cdc_handle_tx() is
 	end if
 
 	-- advance read pointer
-	cdc_tx_rd = cdc_tx_rd + bytes_to_send
+	var byte next_tx_rd = cdc_tx_rd + bytes_to_send
 
-	if (cdc_tx_rd > ( USB_CDC_TX_BUFFER_SIZE - 1 ))  then
-		cdc_tx_rd = 0
+	if (next_tx_rd > ( USB_CDC_TX_BUFFER_SIZE - 1 ))  then
+		next_tx_rd = 0
  	end if
+ 	cdc_tx_rd = next_tx_rd
 
 	-- Mark if we got a full packet (8 bytes),
 	last_packet_is_full = ( bytes_to_send == 8 )
 	
 end procedure
 
-
+-- --------------------------------------------------------------------------------------
+-- This function is called when data can be transmitted via the bulk interface
+-- --------------------------------------------------------------------------------------
 procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word in byte_count) is
     
     if USB_CDC_DEBUG > 0  then
@@ -369,22 +409,25 @@ procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word i
     end if
 end procedure
 
-
-
+-- --------------------------------------------------------------------------------------
+-- This usb_cdc_putc will transmit the specified character. Under normal conditions
+-- the character to be transmitted is placed into the fifo, so the call will be non
+-- blocking. This implies that buffer overruns can occur when the transmit FIFO is full. 
+-- Therefore it is adviced to check the transmit FIFO state before calling this procedure
+-- to avoid buffer overruns. These buffer overrun issues have been addressed in the 
+-- usb_serial library, therefore it is highly recommended to use this library instead 
+-- of calling this low level procedure
+-- --------------------------------------------------------------------------------------
 procedure usb_cdc_putc(byte in c) is
 
     var byte cdc_tx_next
 
     cdc_tx_next = cdc_tx_wr + 1	-- get next buffer position
+    
     if (cdc_tx_next == USB_CDC_TX_BUFFER_SIZE) then
 		-- if we're at the end
 		cdc_tx_next = 0	-- wrap to the beginning
     end if
-
-    while (cdc_tx_next == cdc_tx_rd) loop
-		-- call tx handler to free fifo
-		usb_cdc_handle_tx()
-    end loop
     
     -- put it in
 	cdc_tx_buffer[ cdc_tx_wr] = c 
@@ -393,17 +436,13 @@ procedure usb_cdc_putc(byte in c) is
     cdc_tx_wr = cdc_tx_next  
 end procedure
     
+-- --------------------------------------------------------------------------------------
+-- This usb_cdc_getc function wait (blocking) until a character has been received.
+-- The byte value of the received character is returned by this function
+-- --------------------------------------------------------------------------------------
 function usb_cdc_getc() return byte is
     var byte cdc_rx_char, cdc_rx_next
         
-    -- block, but keep servicing the USB library    
---	while(cdc_rx_wr == cdc_rx_rd) loop
---	    usb_handle_isr()
-
-        -- wait until there is something received
- --   end loop
-
-       
     -- get character from the front of the buffer   
     cdc_rx_char = cdc_rx_buffer[ cdc_rx_rd ]	
 
@@ -416,25 +455,31 @@ function usb_cdc_getc() return byte is
 	end if
     
     -- move read pointer to next position in fifo
-    cdc_rx_rd = cdc_rx_rd + 1
-
-
+    var byte cdc_rx_rd_next = cdc_rx_rd + 1
     
-    if (cdc_rx_rd == USB_CDC_RX_BUFFER_SIZE) then
+    if (cdc_rx_rd_next == USB_CDC_RX_BUFFER_SIZE) then
         -- if we're at the end
-        cdc_rx_rd = 0	-- then wrap to the beginning
+        cdc_rx_rd_next = 0	-- then wrap to the beginning
     end if
+    
+    cdc_rx_rd = cdc_rx_rd_next
        
     -- return the result we first thought of   
     return cdc_rx_char	
 end function
-    
 
-
+-- --------------------------------------------------------------------------------------
+-- This function returns there has been a character received, function will return true 
+-- if there is at least one pending receive character, false otherwise
+-- --------------------------------------------------------------------------------------
 function usb_cdc_rx_avail() return bit is
     return cdc_rx_rd != cdc_rx_wr
 end function
 
+-- --------------------------------------------------------------------------------------
+-- This function returns the empty status of the transmit FIFO, it will return true if
+-- transmit FIFO is empty, false otherwise
+-- --------------------------------------------------------------------------------------
 function usb_cdc_tx_empty() return byte is
     return cdc_tx_rd == cdc_tx_wr
 end function
@@ -446,6 +491,9 @@ procedure usb_sof_callback() is
 end procedure
 
 
+-- --------------------------------------------------------------------------------------
+-- This procedure will intialize the line status of the communicatin device class
+-- --------------------------------------------------------------------------------------
 procedure usb_cdc_setup() is
     cdc_line_coding_dte_rate = 0x0001C200  -- data rate in bits per second , set to 115200
     cdc_line_coding_stop_bits = 0	-- = 1 stop bit
@@ -453,11 +501,14 @@ procedure usb_cdc_setup() is
     cdc_line_coding_parity = 0		-- = No parity
 end procedure
 
+-- --------------------------------------------------------------------------------------
+-- This function returns the line status. If on the host side the COM port has not been
+-- opened, the return status will be 0x00, otherwise it will be != 0
+-- --------------------------------------------------------------------------------------
 function usb_cdc_line_status() return byte is 
 	pragma inline
 	return cdc_line_status
 end function
 
 
-usb_cdc_setup()
 
