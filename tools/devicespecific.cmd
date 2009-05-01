@@ -1,6 +1,19 @@
 /* DeviceSpecific.cmd */
 /* Contents to be read and to be INTERPRET-ed by Dev2jal.cmd */
 
+/* Scripts using this file should contain a rouutine like:          */
+/* PicSpecFile = 'devicespecific.cmd'                               */
+/* PicSpec. = '-'                                                   */
+/* if stream(PicSpecFile, 'c', 'open read') \= 'READY:' then do     */
+/*   Say 'Error: Open failed for Device Specific data' PicSpecFile  */
+/*   exit 1                                                         */
+/* end                                                              */
+/* do while lines(PicSpecFile) > 0                                  */
+/*   interpret linein(PicSpecFile)                                  */
+/* end                                                              */
+/* call stream PicSpecFile, 'c', 'close'                            */
+
+
 /* ADC group classification, see Dev2Jal.cmd for additional comments.          */
 /* Comments:  '-' unchecked                                                    */
 /*            '+' checked against datasheet or set according to MCC18 compiler */
@@ -513,7 +526,7 @@
   PicSpec.DataSheet.18F4525      = '39626'
   PicSpec.DataSheet.18F4539      = '30485'
   PicSpec.DataSheet.18F4550      = '39632'
-  PicSpec.DataSheet.18F4553      = '39632'
+  PicSpec.DataSheet.18F4553      = '39887'
   PicSpec.DataSheet.18F458       = '41159'
   PicSpec.DataSheet.18F4580      = '39637'
   PicSpec.DataSheet.18F4585      = '39625'
@@ -552,7 +565,7 @@
   PicSpec.DataSheet.18F6621      = '39612'
   PicSpec.DataSheet.18F6622      = '39646'
   PicSpec.DataSheet.18F6627      = '39646'
-  PicSpec.DataSheet.18F6628      = '39646'
+  PicSpec.DataSheet.18F6628      = '39894'
   PicSpec.DataSheet.18F6680      = '30491'
   PicSpec.DataSheet.18F66J10     = '39663'
   PicSpec.DataSheet.18F66J11     = '39778'
@@ -566,7 +579,7 @@
   PicSpec.DataSheet.18F66J93     = '-'
   PicSpec.DataSheet.18F6720      = '39609'
   PicSpec.DataSheet.18F6722      = '39646'
-  PicSpec.DataSheet.18F6723      = '39646'
+  PicSpec.DataSheet.18F6723      = '39894'
   PicSpec.DataSheet.18F67J10     = '39663'
   PicSpec.DataSheet.18F67J11     = '39778'
   PicSpec.DataSheet.18F67J50     = '39775'
@@ -596,7 +609,7 @@
   PicSpec.DataSheet.18F8621      = '39612'
   PicSpec.DataSheet.18F8622      = '39646'
   PicSpec.DataSheet.18F8627      = '39646'
-  PicSpec.DataSheet.18F8628      = '39646'
+  PicSpec.DataSheet.18F8628      = '39894'
   PicSpec.DataSheet.18F8680      = '30491'
   PicSpec.DataSheet.18F86J10     = '39663'
   PicSpec.DataSheet.18F86J11     = '39778'
@@ -610,7 +623,7 @@
   PicSpec.DataSheet.18F86J93     = '-'
   PicSpec.DataSheet.18F8720      = '39609'
   PicSpec.DataSheet.18F8722      = '39646'
-  PicSpec.DataSheet.18F8723      = '39646'
+  PicSpec.DataSheet.18F8723      = '39894'
   PicSpec.DataSheet.18F87J10     = '39663'
   PicSpec.DataSheet.18F87J11     = '39778'
   PicSpec.DataSheet.18F87J50     = '39775'
@@ -979,7 +992,7 @@
   PicSpec.FusesDefault.10F202    = '0FFF'                            /* + */
   PicSpec.FusesDefault.10F204    = '0FFF'                            /* + */
   PicSpec.FusesDefault.10F206    = '0FFF'                            /* T */
-  PicSpec.FusesDefault.10F220    = '0FFF'                            /* ! */
+  PicSpec.FusesDefault.10F220    = '0FFF'                            /* + */
   PicSpec.FusesDefault.10F222    = '0FFF'                            /* T */
   PicSpec.FusesDefault.12F508    = '0FFF'                            /* + */
   PicSpec.FusesDefault.12F509    = '0FFF'                            /* + */
