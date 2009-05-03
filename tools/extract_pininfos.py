@@ -26,7 +26,7 @@ for k,v in adc_pins.items():
 	grp.setdefault(l,[]).append(k)
 
 fout = file("adc_an_grp.py","w")
-print >> fout, "adc_grp = \\"
+print >> fout, "adc_an_grp = \\"
 print >> fout, pprint.pformat(grp)
 fout.close()
 
