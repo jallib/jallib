@@ -354,9 +354,19 @@ procedure _usb_handle_transaction() is
 			var byte tmp2[8] at usb_sdp_loc
 			var byte idx
 			
-			for 8 using idx loop
-				tmp2[idx ] = tmp1[idx ]
-			end loop
+			tmp2[0] = tmp1[0]
+			tmp2[1] = tmp1[1]
+			tmp2[2] = tmp1[2]
+			tmp2[3] = tmp1[3]
+			tmp2[4] = tmp1[4]
+			tmp2[5] = tmp1[5]
+			tmp2[6] = tmp1[6]
+			tmp2[7] = tmp1[7]
+			
+			--tmp2 = tmp1
+			-- for 8 using idx loop
+			-- tmp2[idx ] = tmp1[idx ]
+			-- end loop
 			
 			if USB_DEBUG > 0 then
 				serial_newline()
@@ -403,16 +413,15 @@ procedure _usb_handle_transaction() is
 					block
 						-- serial_hw_write( "S" )					
 						-- standard request
-
-						if ((usb_sdp_request_type & 0b00011111) == 0) then
-							--print_string( serial_hw_data," 2dev ");
-						elsif ((usb_sdp_request_type & 0b00011111) == 1) then	
-							--print_string( serial_hw_data," 2int ");
-						elsif ((usb_sdp_request_type & 0b00011111) == 0b00011 ) then	
-							--print_string( serial_hw_data," 2oth ");
-						end if
-						
 						if USB_DEBUG > 0 then
+							var byte masked_request = (usb_sdp_request_type & 0b00011111)
+							if ( masked_request == 0) then
+								--print_string( serial_hw_data," 2dev ");
+							elsif ( masked_request == 1) then	
+								--print_string( serial_hw_data," 2int ");
+							elsif ( masked_request == 0b00011 ) then	
+								--print_string( serial_hw_data," 2oth ");
+							end if
 							const byte str[] = " std "
 							-- print_string( serial_hw_data,str);
 						end if	
@@ -586,7 +595,7 @@ procedure _usb_handle_transaction() is
 					USB_CM_CTRL_READ_AWAITING_STATUS:
 					block
 						if USB_DEBUG > 0 then
-							const byte str[] = " ----\n"
+							const byte str[] = " -xx-\n"
 							print_string( serial_hw_data, str )
 						end if
 						usb_control_mode = USB_CM_IDLE
@@ -648,28 +657,38 @@ procedure _usb_handle_transaction() is
 				case end_point of
 					0:
 					block
+if false then
 						addr = usb_bd0in_addr
 						bcnt = usb_bd0in_cnt
+end if
 					end block
 					1:
 					block
-						addr = usb_bd1in_addr
-						bcnt = usb_bd1in_cnt
+						if defined( USB_EP1 ) == true then 
+							addr = usb_bd1in_addr
+							bcnt = usb_bd1in_cnt
+						end if
 					end block
 					2:
 					block
-						addr = usb_bd2in_addr
-						bcnt = usb_bd2in_cnt
+						if defined( USB_EP2 ) == true then 
+							addr = usb_bd2in_addr
+							bcnt = usb_bd2in_cnt
+						end if
 					end block
 					3:
 					block
-						addr = usb_bd3in_addr
-						bcnt = usb_bd3in_cnt
+						if defined( USB_EP3 ) == true then 
+							addr = usb_bd3in_addr
+							bcnt = usb_bd3in_cnt
+						end if
 					end block
 					4:
 					block
-						addr = usb_bd4in_addr
-						bcnt = usb_bd4in_cnt
+						if defined( USB_EP4 ) == true then 
+							addr = usb_bd4in_addr
+							bcnt = usb_bd4in_cnt
+						end if
 					end block
 					otherwise
 					block
@@ -694,28 +713,38 @@ procedure _usb_handle_transaction() is
 				case end_point of
 					0:
 					block
+if false then
 						addr = usb_bd0out_addr
 						bcnt = usb_bd0out_cnt					
+end if
 					end block
 					1:
 					block
-						addr = usb_bd1out_addr
-						bcnt = usb_bd1out_cnt					
+						if defined( USB_EP1 ) == true then 
+							addr = usb_bd1out_addr
+							bcnt = usb_bd1out_cnt
+						end if					
 					end block
 					2:
 					block
-						addr = usb_bd2out_addr
-						bcnt = usb_bd2out_cnt					
+						if defined( USB_EP2 ) == true then 
+							addr = usb_bd2out_addr
+							bcnt = usb_bd2out_cnt					
+						end if					
 					end block
 					3:
 					block
-						addr = usb_bd3out_addr
-						bcnt = usb_bd3out_cnt					
+						if defined( USB_EP3 ) == true then 
+							addr = usb_bd3out_addr
+							bcnt = usb_bd3out_cnt					
+						end if					
 					end block
 					4:
 					block
-						addr = usb_bd4out_addr
-						bcnt = usb_bd4out_cnt					
+						if defined( USB_EP4 ) == true then 
+							addr = usb_bd4out_addr
+							bcnt = usb_bd4out_cnt					
+						end if					
 					end block
 					otherwise
 					block
@@ -848,6 +877,7 @@ end procedure
 -- Procedure can be called when the USB device has to be stalled
 -- --------------------------------------------------------------------------------------
 procedure usb_handle_stall() is
+	pragma inline
 	if USB_DEBUG > 0 then
 		const byte str[] = " U:Stall "
 		print_string( serial_hw_data, str )
@@ -862,7 +892,7 @@ end procedure
 -- to keep the input and output transfers flowing
 -- --------------------------------------------------------------------------------------
 procedure usb_handle_isr() is
-	
+	pragma inline
 	-- const byte str1[] = " ENTER usb_handle_isr "
 	-- const byte str2[] = " EXIT usb_handle_isr "
 	--print_string( serial_hw_data,str1)	
@@ -925,8 +955,6 @@ procedure usb_handle_isr() is
 			UIR_UERRIF = low
 		end if
 	end if
-
-
 end procedure
 
  
@@ -991,6 +1019,7 @@ end procedure
 -- USB_STATE_CONFIGURED -> USB device is completely configured and ready to rock and roll 
 -- --------------------------------------------------------------------------------------
 function usb_get_state() return byte is
+	pragma inline
 	return usb_state;
 end function
 
@@ -1012,7 +1041,7 @@ end function
 -- Procedure to turn on the USB device
 -- --------------------------------------------------------------------------------------
 procedure usb_enable_module() is 
-	
+	pragma inline
 	UIR = 0
 	UCON = 0x00
 	
