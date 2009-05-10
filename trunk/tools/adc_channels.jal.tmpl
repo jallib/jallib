@@ -34,21 +34,35 @@ include adc_pindef
 #end def
 
 
-#def analyze_config(bits,dpins)
+#def analyze_config(bits,dpins,mapping)
 	#set num_a = len([d for d in dpins.values() if d == 'A'])
 	#set num_d = len([d for d in dpins.values() if d == 'D'])
 	#set num_vref = len([d for d in dpins.values() if d.startswith('VREF')])
 	## There can be "anything" bits...
 	#silent bits = bits.replace("x","0")
+	## Mapping for 0, 1 or 2 VREF
+	#silent mapping.setdefault(num_a,{0 : '0', 1 : '0', 2 : '0'})[num_vref] = bits
 	#return "const bit*%d ADC_PCFG_%sANA_%sREF = 0b_%s" % (len(bits),num_a,num_vref,bits)
 #end def
 
 #def pcfg_conf(dsref)
 	#set confs = $adc_pcfg[$dsref]
+	#set mapping = {}
 	#for bits,dpins in confs.items()
-		#set r = $analyze_config(bits,dpins)
+		#set r = $analyze_config(bits,dpins,mapping)
          $r
 	#end for
+	#set smap = sorted(mapping.items())
+	#set lmap = []
+	#silent [(lmap.append(m[1][0]),lmap.append(m[1][1]),lmap.append(m[1][2])) for m in smap]
+	#set lenlmap = str(len(lmap))
+	#set lenbits = str(len(bits))
+	#set map = "const byte ADC_PCFG_MAP [" + lenlmap + "] = {0b_" + ", 0b_".join(lmap) + "}"
+
+         $map
+         var bit*$lenbits no_vref = 0
+         var bit*$lenbits one_vref = 0
+         var bit*$lenbits two_vref = 0
 #end def
 
 
@@ -64,9 +78,22 @@ $pcfg_conf($dsref)
    end if
 
 	#end for
-   if !defined(ADC_NCHANNEL) then
-      _error "You need to specify how many ADC channels you want, using  ADC_NCHANNEL const"
+
+   -- Retrieve config bits according to selected number of ADC channels
+   const byte idx = (ADC_NCHANNEL - 1) * 3
+   if ADC_NVREF == 0 then
+      no_vref = ADC_PCFG_MAP[idx]
+      ADCON1_PCFG = no_vref
+   elsif ADC_NVREF == 1 then
+      one_vref = ADC_PCFG_MAP[idx + 1]
+      ADCON1_PCFG = one_vref
+   elsif ADC_NVREF == 2 then
+      two_vref = ADC_PCFG_MAP[idx + 2]
+      ADCON1_PCFG = two_vref
+   else
+      _error "You can't have more than 2 VRef..."
    end if
+
 
 #end def
 
@@ -92,180 +119,182 @@ $pcfg_conf($dsref)
          _error "More ADC channels than available, adjust ADC_NCHANNEL"
       end if
       -- Max 13 ADC channels
+      -- At least 1 channel
       if ADC_NCHANNEL > 0 then
          ANCON0_PCFG0 = false
       end if
-     if ADC_NCHANNEL > 1 then
-         ANCON0_PCFG1 = false
-     end if
-     if ADC_NCHANNEL > 2 then
-         ANCON0_PCFG2 = false
-     end if
-     if ADC_NCHANNEL > 3 then
-         ANCON0_PCFG3 = false
-     end if
-     if ADC_NCHANNEL > 4 then
-         ANCON0_PCFG4 = false
-     end if
-     if ADC_NCHANNEL > 5 then
-         ANCON0_PCFG5 = false
-     end if
-     if ADC_NCHANNEL > 6 then
-         ANCON0_PCFG6 = false
-     end if
-     if ADC_NCHANNEL > 7 then
-         ANCON0_PCFG7 = false
-     end if
-     if ADC_NCHANNEL > 8 then
-         ANCON1_PCFG8 = false
-     end if
-     if ADC_NCHANNEL > 9 then
-         ANCON1_PCFG9 = false
-     end if
-     if ADC_NCHANNEL > 10 then
-         ANCON1_PCFG10 = false
-     end if
-     if ADC_NCHANNEL > 11 then
-         ANCON1_PCFG11 = false
-     end if
-     if ADC_NCHANNEL > 12 then
-         ANCON1_PCFG12 = false
-     end if
+      -- At least 2 channels
+      if ADC_NCHANNEL > 1 then
+          ANCON0_PCFG1 = false
+      end if
+      -- At least 3 channels
+      if ADC_NCHANNEL > 2 then
+          ANCON0_PCFG2 = false
+      end if
+      -- At least 4 channels
+      if ADC_NCHANNEL > 3 then
+          ANCON0_PCFG3 = false
+      end if
+      -- At least 5 channels
+      if ADC_NCHANNEL > 4 then
+          ANCON0_PCFG4 = false
+      end if
+      -- At least 6 channels
+      if ADC_NCHANNEL > 5 then
+          ANCON0_PCFG5 = false
+      end if
+      -- At least 7 channels
+      if ADC_NCHANNEL > 6 then
+          ANCON0_PCFG6 = false
+      end if
+      -- At least 8 channels
+      if ADC_NCHANNEL > 7 then
+          ANCON0_PCFG7 = false
+      end if
+      -- At least 9 channels
+      if ADC_NCHANNEL > 8 then
+          ANCON1_PCFG8 = false
+      end if
+      -- At least 10 channels
+      if ADC_NCHANNEL > 9 then
+          ANCON1_PCFG9 = false
+      end if
+      -- At least 11 channels
+      if ADC_NCHANNEL > 10 then
+          ANCON1_PCFG10 = false
+      end if
+      -- At least 12 channels
+      if ADC_NCHANNEL > 11 then
+          ANCON1_PCFG11 = false
+      end if
+      -- At least 13 channels
+      if ADC_NCHANNEL > 12 then
+          ANCON1_PCFG12 = false
+      end if
 
 
    -- Or specify manually which pin should act as ADC
    -- Provide procedure for this (eg. for pin AN7 to be analog, set_analog_pin(7))
    else
+
+      -- Configure a pin to act as an analog pin.
+      -- an_pin_num references the 'x' in ANx notation.
+      -- Say you want to activate pin AN7, which is pin #12, also named RA4 in digital mode:
+      --     - set_analog_pin(7) will set this pin as analog
+      --     - set_analog_pin(12) won't set this pin as analog, but the equivalent
+      --       one named AN12, if any
+      --     - set_analog_pin(4) will do the same for AN4
       procedure set_analog_pin(byte in an_pin_num) is
-         if defined(ANCON0_PCFG0) == true then
-            if an_pin_num == 0 then
-               ANCON0_PCFG0 = false
-            end if
+         -- There's a mininum of 5 channels, so ANCON0_PCFG0, ANCON0_PCFG1,
+         -- ANCON0_PCFG2, ANCON0_PCFG3 and ANCON0_PCFG4 are always defined
+         if an_pin_num == 0 then
+            ANCON0_PCFG0 = false
          end if
-         if defined(ANCON0_PCFG1) == true then
-            if an_pin_num == 1 then
-               ANCON0_PCFG1 = false
-            end if
+         if an_pin_num == 1 then
+            ANCON0_PCFG1 = false
          end if
-         if defined(ANCON0_PCFG2) == true then
-            if an_pin_num == 2 then
-               ANCON0_PCFG2 = false
-            end if
+         if an_pin_num == 2 then
+            ANCON0_PCFG2 = false
          end if
-         if defined(ANCON0_PCFG3) == true then
-            if an_pin_num == 3 then
-               ANCON0_PCFG3 = false
-            end if
+         if an_pin_num == 3 then
+            ANCON0_PCFG3 = false
          end if
-         if defined(ANCON0_PCFG4) == true then
-            if an_pin_num == 4 then
-               ANCON0_PCFG4 = false
-            end if
+         if an_pin_num == 4 then
+            ANCON0_PCFG4 = false
          end if
-         if defined(ANCON0_PCFG5) == true then
+
+         -- Sometimes, there are gaps in PCFG bits
+         -- 18lf24j50 has PCFG0 to PCFG12 bits, but without PCFG5, PCFG6 and PCFG7
+         -- (this is because these bits only exist in the 44-pins version, according to DS)
+         -- This shouldn't be a problem because numbering between PCFG bits and
+         -- analog pins is respected: there's no AN5, AN6 and AN7 as well)
+
+         -- PCFG5, PCFG6 and PCFG7 are always found together
+         if defined(ANCON0_PCFG5) == true & defined(ANCON0_PCFG6) == true & defined(ANCON0_PCFG7) == true then
             if an_pin_num == 5 then
                ANCON0_PCFG5 = false
             end if
-         end if
-         if defined(ANCON0_PCFG6) == true then
             if an_pin_num == 6 then
                ANCON0_PCFG6 = false
             end if
-         end if
-         if defined(ANCON0_PCFG7) == true then
             if an_pin_num == 7 then
                ANCON0_PCFG7 = false
             end if
          end if
-         if defined(ANCON1_PCFG8) == true then
+
+         -- PCFG8, PCFG9, PCFG10, PCFG11 and PCFG12 are always found together
+         if defined(ANCON1_PCFG8) == true & defined(ANCON1_PCFG9) == true & defined(ANCON1_PCFG10) == true & defined(ANCON1_PCFG11) == true & defined(ANCON1_PCFG12) == true then
             if an_pin_num == 8 then
                ANCON1_PCFG8 = false
             end if
-         end if
-         if defined(ANCON1_PCFG9) == true then
             if an_pin_num == 9 then
                ANCON1_PCFG9 = false
             end if
-         end if
-         if defined(ANCON1_PCFG10) == true then
             if an_pin_num == 10 then
                ANCON1_PCFG10 = false
             end if
-         end if
-         if defined(ANCON1_PCFG11) == true then
             if an_pin_num == 11 then
                ANCON1_PCFG11 = false
             end if
-         end if
-         if defined(ANCON1_PCFG12) == true then
             if an_pin_num == 12 then
                ANCON1_PCFG12 = false
             end if
          end if
       end procedure
 
+      -- Configure a pin to act as an digital pin.
+      -- Because setting a pin to act as digital makes only sens for
+      -- pins which can also be configured as analog,
+      -- an_pin_num references the 'x' in ANx notation.
+      -- Say you want to deactivate pin AN7, which is pin #12, also named RA4 in digital mode:
+      --     - set_digital_pin(7) will set this pin as digital
+      --     - set_analog_pin(12) won't set this pin as digital, but the equivalent
+      --       one named AN12, if any
+      --     - set_analog_pin(4) will do the same for AN4
       procedure set_digital_pin(byte in an_pin_num) is
-         if defined(ANCON0_PCFG0) == true then
-            if an_pin_num == 0 then
-               ANCON0_PCFG0 = true
-            end if
+         if an_pin_num == 0 then
+            ANCON0_PCFG0 = true
          end if
-         if defined(ANCON0_PCFG1) == true then
-            if an_pin_num == 1 then
-               ANCON0_PCFG1 = true
-            end if
+         if an_pin_num == 1 then
+            ANCON0_PCFG1 = true
          end if
-         if defined(ANCON0_PCFG2) == true then
-            if an_pin_num == 2 then
-               ANCON0_PCFG2 = true
-            end if
+         if an_pin_num == 2 then
+            ANCON0_PCFG2 = true
          end if
-         if defined(ANCON0_PCFG3) == true then
-            if an_pin_num == 3 then
-               ANCON0_PCFG3 = true
-            end if
+         if an_pin_num == 3 then
+            ANCON0_PCFG3 = true
          end if
-         if defined(ANCON0_PCFG4) == true then
-            if an_pin_num == 4 then
-               ANCON0_PCFG4 = true
-            end if
+         if an_pin_num == 4 then
+            ANCON0_PCFG4 = true
          end if
-         if defined(ANCON0_PCFG5) == true then
+
+         -- PCFG5, PCFG6 and PCFG7 are always found together
+         if defined(ANCON0_PCFG5) == true & defined(ANCON0_PCFG6) == true & defined(ANCON0_PCFG7) == true then
             if an_pin_num == 5 then
                ANCON0_PCFG5 = true
             end if
-         end if
-         if defined(ANCON0_PCFG6) == true then
             if an_pin_num == 6 then
                ANCON0_PCFG6 = true
             end if
-         end if
-         if defined(ANCON0_PCFG7) == true then
             if an_pin_num == 7 then
                ANCON0_PCFG7 = true
             end if
          end if
-         if defined(ANCON1_PCFG8) == true then
+
+         -- PCFG8, PCFG9, PCFG10, PCFG11 and PCFG12 are always found together
+         if defined(ANCON1_PCFG8) == true & defined(ANCON1_PCFG9) == true & defined(ANCON1_PCFG10) == true & defined(ANCON1_PCFG11) == true & defined(ANCON1_PCFG12) == true then
             if an_pin_num == 8 then
                ANCON1_PCFG8 = true
             end if
-         end if
-         if defined(ANCON1_PCFG9) == true then
             if an_pin_num == 9 then
                ANCON1_PCFG9 = true
             end if
-         end if
-         if defined(ANCON1_PCFG10) == true then
             if an_pin_num == 10 then
                ANCON1_PCFG10 = true
             end if
-         end if
-         if defined(ANCON1_PCFG11) == true then
             if an_pin_num == 11 then
                ANCON1_PCFG11 = true
             end if
-         end if
-         if defined(ANCON1_PCFG12) == true then
             if an_pin_num == 12 then
                ANCON1_PCFG12 = true
             end if
@@ -277,10 +306,11 @@ $pcfg_conf($dsref)
 
 #def ans
    -- Selecting the number of ADC channels is done using ANS bits
-   nop
+   asm nop
 #end def
 
 #def vcfg
+
 #end def
 
 #def main
