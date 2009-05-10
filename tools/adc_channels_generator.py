@@ -40,6 +40,7 @@ if __name__ == "__main__":
 	tmpl.adc_pcfg = adc_pcfg
 	tmpl.pic_ds = pic_ds
 	tmpl.ds_pic = ds_pic
+	tmpl.adc_pins = adc_pins
 	
 	fout = file("adc_channels.jal","w")
 	print >> fout,tmpl.main()

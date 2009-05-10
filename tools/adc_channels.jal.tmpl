@@ -35,19 +35,22 @@ include adc_pindef
 
 
 #def analyze_config(bits,dpins,mapping)
-	#set num_a = len([d for d in dpins.values() if d == 'A'])
-	#set num_d = len([d for d in dpins.values() if d == 'D'])
-	#set num_vref = len([d for d in dpins.values() if d.startswith('VREF')])
+	#set analog = [d for d in dpins.items() if d[1] == 'A']
+	#set vrefs = [d for d in dpins.items() if d[1].startswith('VREF')]
+	#set num_a = len(analog)
+	#set num_vref = len(vrefs)
 	## There can be "anything" bits...
 	#silent bits = bits.replace("x","0")
 	## Mapping for 0, 1 or 2 VREF
-	#silent mapping.setdefault(num_a,{0 : '0', 1 : '0', 2 : '0'})[num_vref] = bits
+	#silent mapping.setdefault(num_a + num_vref,{0 : '0', 1 : '0', 2 : '0', 'analog_pins' : []})[num_vref] = bits
+	#silent mapping[num_a + num_vref]['analog_pins'] = analog + vrefs
 	#return "const bit*%d ADC_PCFG_%sANA_%sREF = 0b_%s" % (len(bits),num_a,num_vref,bits)
 #end def
 
 #def pcfg_conf(dsref)
 	#set confs = $adc_pcfg[$dsref]
 	#set mapping = {}
+         -- These are some constants similar to what can be found in MCC18 adc.h header file
 	#for bits,dpins in confs.items()
 		#set r = $analyze_config(bits,dpins,mapping)
          $r
@@ -59,10 +62,33 @@ include adc_pindef
 	#set lenbits = str(len(bits))
 	#set map = "const byte ADC_PCFG_MAP [" + lenlmap + "] = {0b_" + ", 0b_".join(lmap) + "}"
 
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
          $map
          var bit*$lenbits no_vref = 0
          var bit*$lenbits one_vref = 0
          var bit*$lenbits two_vref = 0
+
+	## Generate procedure to access combinations
+	## All PICs in this section are in the same DS (assert)
+	## Get a PIC in this DS to access ANx pins mapping
+	#set dummy_pic = $ds_pic[dsref][-1]
+    #for i,(numch,dconf) in enumerate(smap)
+		#if i == 0
+         if (ADC_NCHANNEL + ADC_NVREF) == $numch then
+		#else
+         elsif (ADC_NCHANNEL + ADC_NVREF) == $numch then
+		#end if
+		#for strpin in dconf['analog_pins']:
+			#set an_pin = strpin[0].split("/")[0]
+			#if not an_pin.startswith("AN")
+				#silent an_pin = $adc_pins[dummy_pic][an_pin]
+			#end if
+            adc_pin_${an_pin}_direction = input
+		#end for
+	#end for
+         end if
 #end def
 
 
@@ -71,7 +97,10 @@ include adc_pindef
 	#silent [bydsref.setdefault($pic_ds[p],[]).append(p) for p in $pcfg_combination_pics]
 	#for dsref, pics in bydsref.items()
 		#set condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),pics))
+		#set ds_refs = list(set([$pic_ds[p] for p in pics]))
+		#assert len(ds_refs) == 1
 
+   -- Datasheet: $ds_refs[0]
    if $condition then
 
 $pcfg_conf($dsref)
@@ -122,54 +151,67 @@ $pcfg_conf($dsref)
       -- At least 1 channel
       if ADC_NCHANNEL > 0 then
          ANCON0_PCFG0 = false
+         adc_pin_AN0_direction = input
       end if
       -- At least 2 channels
       if ADC_NCHANNEL > 1 then
-          ANCON0_PCFG1 = false
+         ANCON0_PCFG1 = false
+         adc_pin_AN1_direction = input
       end if
       -- At least 3 channels
       if ADC_NCHANNEL > 2 then
           ANCON0_PCFG2 = false
+         adc_pin_AN2_direction = input
       end if
       -- At least 4 channels
       if ADC_NCHANNEL > 3 then
-          ANCON0_PCFG3 = false
+         ANCON0_PCFG3 = false
+         adc_pin_AN3_direction = input
       end if
       -- At least 5 channels
       if ADC_NCHANNEL > 4 then
-          ANCON0_PCFG4 = false
+         ANCON0_PCFG4 = false
+         adc_pin_AN4_direction = input
       end if
       -- At least 6 channels
       if ADC_NCHANNEL > 5 then
-          ANCON0_PCFG5 = false
+         ANCON0_PCFG5 = false
+         adc_pin_AN5_direction = input
       end if
       -- At least 7 channels
       if ADC_NCHANNEL > 6 then
-          ANCON0_PCFG6 = false
+         ANCON0_PCFG6 = false
+         adc_pin_AN6_direction = input
       end if
       -- At least 8 channels
       if ADC_NCHANNEL > 7 then
-          ANCON0_PCFG7 = false
+         ANCON0_PCFG7 = false
+         adc_pin_AN7_direction = input
       end if
       -- At least 9 channels
       if ADC_NCHANNEL > 8 then
-          ANCON1_PCFG8 = false
+         ANCON1_PCFG8 = false
+         adc_pin_AN8_direction = input
       end if
       -- At least 10 channels
       if ADC_NCHANNEL > 9 then
-          ANCON1_PCFG9 = false
+         ANCON1_PCFG9 = false
+         adc_pin_AN9_direction = input
       end if
       -- At least 11 channels
       if ADC_NCHANNEL > 10 then
-          ANCON1_PCFG10 = false
+         ANCON1_PCFG10 = false
+         adc_pin_AN10_direction = input
       end if
       -- At least 12 channels
       if ADC_NCHANNEL > 11 then
-          ANCON1_PCFG11 = false
+         ANCON1_PCFG11 = false
+         adc_pin_AN11_direction = input
       end if
       -- At least 13 channels
       if ADC_NCHANNEL > 12 then
-          ANCON1_PCFG12 = false
+         ANCON1_PCFG12 = false
+         adc_pin_AN12_direction = input
       end if
 
 
@@ -189,18 +231,23 @@ $pcfg_conf($dsref)
          -- ANCON0_PCFG2, ANCON0_PCFG3 and ANCON0_PCFG4 are always defined
          if an_pin_num == 0 then
             ANCON0_PCFG0 = false
+            adc_pin_AN0_direction = input
          end if
          if an_pin_num == 1 then
             ANCON0_PCFG1 = false
+            adc_pin_AN1_direction = input
          end if
          if an_pin_num == 2 then
             ANCON0_PCFG2 = false
+            adc_pin_AN2_direction = input
          end if
          if an_pin_num == 3 then
             ANCON0_PCFG3 = false
+            adc_pin_AN3_direction = input
          end if
          if an_pin_num == 4 then
             ANCON0_PCFG4 = false
+            adc_pin_AN4_direction = input
          end if
 
          -- Sometimes, there are gaps in PCFG bits
@@ -213,12 +260,15 @@ $pcfg_conf($dsref)
          if defined(ANCON0_PCFG5) == true & defined(ANCON0_PCFG6) == true & defined(ANCON0_PCFG7) == true then
             if an_pin_num == 5 then
                ANCON0_PCFG5 = false
+               adc_pin_AN5_direction = input
             end if
             if an_pin_num == 6 then
                ANCON0_PCFG6 = false
+               adc_pin_AN6_direction = input
             end if
             if an_pin_num == 7 then
                ANCON0_PCFG7 = false
+               adc_pin_AN7_direction = input
             end if
          end if
 
@@ -226,18 +276,23 @@ $pcfg_conf($dsref)
          if defined(ANCON1_PCFG8) == true & defined(ANCON1_PCFG9) == true & defined(ANCON1_PCFG10) == true & defined(ANCON1_PCFG11) == true & defined(ANCON1_PCFG12) == true then
             if an_pin_num == 8 then
                ANCON1_PCFG8 = false
+               adc_pin_AN8_direction = input
             end if
             if an_pin_num == 9 then
                ANCON1_PCFG9 = false
+               adc_pin_AN9_direction = input
             end if
             if an_pin_num == 10 then
                ANCON1_PCFG10 = false
+               adc_pin_AN10_direction = input
             end if
             if an_pin_num == 11 then
                ANCON1_PCFG11 = false
+               adc_pin_AN11_direction = input
             end if
             if an_pin_num == 12 then
                ANCON1_PCFG12 = false
+               adc_pin_AN12_direction = input
             end if
          end if
       end procedure
@@ -251,33 +306,43 @@ $pcfg_conf($dsref)
       --     - set_analog_pin(12) won't set this pin as digital, but the equivalent
       --       one named AN12, if any
       --     - set_analog_pin(4) will do the same for AN4
+      -- 
+      -- Note: the pin direction is not modified
       procedure set_digital_pin(byte in an_pin_num) is
          if an_pin_num == 0 then
             ANCON0_PCFG0 = true
+            adc_pin_AN0_direction = input
          end if
          if an_pin_num == 1 then
             ANCON0_PCFG1 = true
+            adc_pin_AN1_direction = input
          end if
          if an_pin_num == 2 then
             ANCON0_PCFG2 = true
+            adc_pin_AN2_direction = input
          end if
          if an_pin_num == 3 then
             ANCON0_PCFG3 = true
+            adc_pin_AN3_direction = input
          end if
          if an_pin_num == 4 then
             ANCON0_PCFG4 = true
+            adc_pin_AN4_direction = input
          end if
 
          -- PCFG5, PCFG6 and PCFG7 are always found together
          if defined(ANCON0_PCFG5) == true & defined(ANCON0_PCFG6) == true & defined(ANCON0_PCFG7) == true then
             if an_pin_num == 5 then
                ANCON0_PCFG5 = true
+               adc_pin_AN5_direction = input
             end if
             if an_pin_num == 6 then
                ANCON0_PCFG6 = true
+               adc_pin_AN6_direction = input
             end if
             if an_pin_num == 7 then
                ANCON0_PCFG7 = true
+               adc_pin_AN7_direction = input
             end if
          end if
 
@@ -285,18 +350,23 @@ $pcfg_conf($dsref)
          if defined(ANCON1_PCFG8) == true & defined(ANCON1_PCFG9) == true & defined(ANCON1_PCFG10) == true & defined(ANCON1_PCFG11) == true & defined(ANCON1_PCFG12) == true then
             if an_pin_num == 8 then
                ANCON1_PCFG8 = true
+               adc_pin_AN8_direction = input
             end if
             if an_pin_num == 9 then
                ANCON1_PCFG9 = true
+               adc_pin_AN9_direction = input
             end if
             if an_pin_num == 10 then
                ANCON1_PCFG10 = true
+               adc_pin_AN10_direction = input
             end if
             if an_pin_num == 11 then
                ANCON1_PCFG11 = true
+               adc_pin_AN11_direction = input
             end if
             if an_pin_num == 12 then
                ANCON1_PCFG12 = true
+               adc_pin_AN12_direction = input
             end if
          end if
       end procedure
