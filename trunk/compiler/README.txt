@@ -2,7 +2,6 @@ JalV2 readme
 ============
 
 Please see jaldiff.txt for important information about differences.
-OS/2 Makefiles are available at <http://www.robh.nl/picsoft.php#jalv2>
 
 Included in this archive:
 
@@ -13,8 +12,37 @@ jalv2.exe   : win32 binary (no debugging, optimization on)
 jalv2d.exe  : win32 binary with debugging enabled
 chipdef/*   : chip definition files
 
+Makefiles and executable for eComStation (OS/2) are available at
+http://www.robh.nl/picsoft.php#jalv2
+
+Note this package contains only the compiler. For a comprehensive set 
+of JalV2 libraries see the Jallib collection at: 
+
+http://jallib.google.code
+
+or Bert van Dam's JAL Startpack:
+
+http://home.hetnet.nl/~annie86/bvd/lonelynights/index.html
+
+
 History
 =======
+2.4k  -- ?? ??? ????
+         * very minor optimization for bit value return
+         * B00059: compiler generated 'put for bits doesn't work
+         * B00058: compiler generated 'put doesn't work
+         * B00057: cannot pass volatile bit out parameter
+         * fixed jalpragm.txt to match the code
+         * B00060: cannot assign to a multi-bit on 16 bit cores
+         * cleaned up signed/unsigned and truncation warnings
+         * B00061: 16 bit cores should save TBLPTR/TABLAT on ISR
+         * B00039: FSR should be saved if used in an ISR
+         * B00063: IF cond THEN...generates bad code in some cases
+         * databits aren't set correctly on indirectly called functions
+         * if an indirect function used no data space *and* called other
+           functions that *did* use data space, the space for those data
+           would not be correctly allocated.
+
 2.4j  -- 12 Mar 2009
          * B00052: Allow any characters in an include filename except
            ';' and '--'. Also, the filename may neither begin
@@ -31,7 +59,7 @@ History
          * fixed comparing signed constants
          * in some instances assigning a negative number to a signed variable
            that can clearly contain it resulted in signed/unsigned mismatch
-         * Removed OS/2 Makefiles (see above)
+         * Removed OS/2 Makefiles
          * Issue warning when multi-byte string is used in an expression
            (x = "abc" * 2 --> only 'a' is used)
          * *Always* set the 2nd high bit when passing constant arrays  
