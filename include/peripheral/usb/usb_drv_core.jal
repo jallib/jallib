@@ -172,20 +172,22 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 	
 	var byte idx;
 
-	if USB_DEBUG_HIGH > 0 then
+	if USB_DEBUG > 0 then
 		serial_newline()
 		serial_hw_write("~")
+		print_byte_hex(serial_hw_data,  endpoint )
+		serial_hw_write(">")
 	end if
 		
 	for byte_cnt using idx  loop
 		usb_delivery_buffer[idx] = data[idx]
-		if USB_DEBUG_HIGH > 0 then
+		if USB_DEBUG > 0 then
 			print_byte_hex(serial_hw_data,  usb_delivery_buffer[idx] )
 		end if
 	end loop
 
 
-	if USB_DEBUG_HIGH > 0 then
+	if USB_DEBUG > 0 then
 		serial_hw_write("~")
 	end if
 	
@@ -197,7 +199,7 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 			var volatile bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
 			
 			if is_new_sequence then
-				-- serial_hw_write("N")
+--				serial_hw_write("N")
 				dts_bit = low
 			end if
 			
@@ -229,7 +231,7 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 				usb_bd1in_cnt = byte_cnt
 				var volatile bit dts_bit at usb_bd1in_stat : USB_BDSTATUS_DTS
 				if is_new_sequence then
-					dts_bit = high
+					dts_bit = low
 				end if
 				if ( dts_bit  ) then
 					usb_bd1in_stat = 0b_1000_1000
@@ -242,10 +244,10 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 		block
 			if USB_EP2 then
 				_usb_copy_array_to_ram( USB_EP2_IN_ADDR, data, byte_cnt )
-				usb_bd2in_addr = USB_EP0_IN_ADDR
+				usb_bd2in_addr = USB_EP2_IN_ADDR
 				var volatile bit dts_bit at usb_bd2in_stat : USB_BDSTATUS_DTS
 				if is_new_sequence then
-					dts_bit = high
+					dts_bit = low
 				end if
 				if ( dts_bit  ) then
 					usb_bd2in_stat = 0b_1000_1000
@@ -259,10 +261,10 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 		block
 			if USB_EP3 then
 				_usb_copy_array_to_ram( USB_EP3_IN_ADDR, data, byte_cnt )
-				usb_bd3in_addr = USB_EP0_IN_ADDR
+				usb_bd3in_addr = USB_EP3_IN_ADDR
 				var volatile bit dts_bit at usb_bd3in_stat : USB_BDSTATUS_DTS
 				if is_new_sequence then
-					dts_bit = high
+					dts_bit = low
 				end if
 				if ( dts_bit  ) then
 					usb_bd3in_stat = 0b_1000_1000
@@ -405,6 +407,7 @@ procedure usb_stall_ep0() is
 	usb_bd0out_stat = usb_bd0out_stat | 0b_1000_0100
 end procedure
 
+
 procedure usb_prime_ep0_out() is
 	var byte new_value
 	usb_bd0out_cnt = USB_EP0_OUT_SIZE
@@ -413,6 +416,13 @@ procedure usb_prime_ep0_out() is
 	-- AF CHECK THIS STUFF TODO
 	if ( usb_control_mode == USB_CM_CTRL_READ_DATA_STAGE ) then
 		new_value = 0x8C
+		if USB_DEBUG > 0  then
+			serial_newline()
+			serial_hw_write("i")
+			print_byte_hex(serial_hw_data,  usb_bd0in_stat )
+			print_byte_hex(serial_hw_data, 0)	
+		end if
+		usb_bd0in_stat = 0x00
 	else
 		-- AF TODO, STALL
 		new_value = 0b_1100_1000	
@@ -423,19 +433,17 @@ procedure usb_prime_ep0_out() is
 		serial_hw_write("o")
 		print_byte_hex(serial_hw_data,  usb_bd0out_stat )
 		print_byte_hex(serial_hw_data, new_value)	
-	end if
-
-	-- AF CHECK THIS STUFF TODO
-	if ( usb_control_mode == USB_CM_CTRL_READ_DATA_STAGE ) then
-
-		if USB_DEBUG > 0  then
-			serial_newline()
-			serial_hw_write("i")
-			print_byte_hex(serial_hw_data,  usb_bd0in_stat )
-			print_byte_hex(serial_hw_data, 0)	
-		end if
-		usb_bd0in_stat = 0x00
+		
 	end if
 
 	usb_bd0out_stat = new_value		
+end procedure
+
+procedure usb_prime_epx_out( byte in end_point, byte in size ) is 
+	var byte idx = end_point * 8
+	-- reset size
+	usb_bd_array[ idx + 1 ] = size
+	-- set to UOWN
+	usb_bd_array[ idx  ] = 0x80 				
+
 end procedure
