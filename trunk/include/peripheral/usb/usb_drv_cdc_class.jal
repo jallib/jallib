@@ -23,6 +23,8 @@
 --
 --
 
+var volatile byte tmp_cdc[7] at 0x700
+
 if defined( USB_CDC_DEBUG ) == false then
 	const bit USB_CDC_DEBUG = false
 end if
@@ -41,11 +43,11 @@ const byte USB_REQ_SEND_BREAK = 0x23
 -- USB to RS232 converter
 
 
-var byte cdc_line_coding[7]
-var dword cdc_line_coding_dte_rate at cdc_line_coding[0]
-var byte cdc_line_coding_stop_bits at cdc_line_coding[4]    -- 0=1 stop bit, 1=1.5 stop bits, 2=2 stop bits
-var byte cdc_line_coding_parity at cdc_line_coding[5]       -- 0=None, 1=Odd, 2=Even, 3=Mark, 4=Space
-var byte cdc_line_coding_data_bits at cdc_line_coding[6]    -- 5,6,7,8 or 16 bits
+var volatile byte cdc_line_coding[7]
+var volatile dword cdc_line_coding_dte_rate at cdc_line_coding[0]
+var volatile byte cdc_line_coding_stop_bits at cdc_line_coding[4]    -- 0=1 stop bit, 1=1.5 stop bits, 2=2 stop bits
+var volatile byte cdc_line_coding_parity at cdc_line_coding[5]       -- 0=None, 1=Odd, 2=Even, 3=Mark, 4=Space
+var volatile byte cdc_line_coding_data_bits at cdc_line_coding[6]    -- 5,6,7,8 or 16 bits
 
 var byte cdc_line_status = 0x00
 var bit last_packet_is_full = false
@@ -70,6 +72,7 @@ end if
 
 var volatile byte cdc_rx_wr = 0
 var volatile byte cdc_rx_rd = 0
+var volatile byte cdc_rx_free = USB_CDC_RX_BUFFER_SIZE
 
 var volatile byte cdc_out_stat is usb_bd3out_stat
 var volatile byte cdc_out_cnt is usb_bd3out_cnt
@@ -101,6 +104,13 @@ procedure usb_handle_class_request_callback() is
 				const byte str[] = " SET_LINE "
 				print_string(serial_hw_data,str)
 			end if
+			
+var byte idx
+			var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR
+for 7 using idx loop
+tmp_cdc[idx ] = bd0_out_buffer[idx]
+end loop
+			
 			usb_control_mode = USB_CM_CTRL_WRITE_DATA_STAGE_CLASS
 		end block
 		USB_REQ_GET_LINE_CODING:
@@ -109,19 +119,38 @@ procedure usb_handle_class_request_callback() is
 				const byte str[] = " GET_LINE len="
 				print_string(serial_hw_data,str)
 				print_byte_hex(serial_hw_data,len & 0xFF)
-				serial_hw_write(" ")
+				serial_hw_write(" ")			
 			end if
 
-			--control_mode = USB_CM_CTRL_READ_DATA_STAGE_CLASS
+if false then
+
 			usb_control_mode = USB_CM_CTRL_READ_DATA_STAGE_CLASS
 
 			--  need to prime ep0 IN with some funky data here
 			usb_send_data( 0, cdc_line_coding, 7, 1 )
 
+else
+				usb_delivery_bytes_max_send = 0xFF
+				usb_delivery_bytes_to_send = 7
+				_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, cdc_line_coding, usb_delivery_bytes_to_send )
+				usb_delivery_buffer_size = USB_EP0_IN_SIZE
+				-- usb_delivery_bytes_to_send
+				usb_control_mode = USB_CM_CTRL_READ_DATA_STAGE
+				usb_delivery_bytes_sent = 0
+				var bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
+				dts_bit = low				
+				
+				-- AF ISO OF PRIME
+				usb_send_data_chunk()
+end if
+
 			-- actually we know this will be the last packet, so go straight to waiting for the status ack
-			usb_control_mode = USB_CM_CTRL_READ_AWAITING_STATUS
+			--usb_control_mode = USB_CM_CTRL_READ_AWAITING_STATUS
 
 		end block
+		
+		
+
 		USB_REQ_SET_CONTROL_LINE_STATE:
 		block
 			if USB_CDC_DEBUG > 0  then
@@ -147,6 +176,7 @@ procedure usb_handle_class_request_callback() is
 	end case
 end procedure
 
+
 procedure usb_handle_class_ctrl_write_callback() is   
     pragma inline
 
@@ -159,9 +189,10 @@ procedure usb_handle_class_ctrl_write_callback() is
 			var byte idx
 			var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR
 			
-			for count( cdc_line_coding ) loop
+			for count( cdc_line_coding ) using idx loop
 				cdc_line_coding[ idx ] = bd0_out_buffer[idx]
 			end loop
+
 			
 			if USB_CDC_DEBUG > 0  then
 				const byte str[] = " st="
@@ -180,6 +211,10 @@ procedure usb_handle_class_ctrl_write_callback() is
 				print_byte_hex(serial_hw_data,cdc_line_coding_data_bits)
 			end if
 			
+			
+			if defined( usb_cdc_line_coding_changed_callback ) == true then
+				usb_cdc_line_coding_changed_callback()
+			end if
 			usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
 			usb_send_status_ack()
 			
@@ -220,7 +255,7 @@ procedure usb_handle_class_ctrl_read_callback() is
 	end case
 end procedure
 
-procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
     pragma inline
     var byte cdc_rx_next
     if USB_CDC_DEBUG > 0  then
@@ -264,6 +299,7 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word 
 				
                 cdc_rx_buffer[cdc_rx_wr] = ch 
                 cdc_rx_wr = cdc_rx_next  -- and move pointer along
+                cdc_rx_free = cdc_rx_free - 1
             else
                 -- else... just ignore it, we've lost a byte, no room in the fifo
             end if 
@@ -395,7 +431,7 @@ end procedure
 -- --------------------------------------------------------------------------------------
 -- This function is called when data can be transmitted via the bulk interface
 -- --------------------------------------------------------------------------------------
-procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
     pragma inline
     if USB_CDC_DEBUG > 0  then
         const byte str[] = " EP data in: "
@@ -449,6 +485,9 @@ function usb_cdc_getc() return byte is
     -- get character from the front of the buffer   
     cdc_rx_char = cdc_rx_buffer[ cdc_rx_rd ]	
 
+	-- update fifo free size
+	cdc_rx_free = cdc_rx_free + 1
+
 	if USB_CDC_DEBUG > 0  then
 		serial_hw_write("<")
 		print_byte_hex(serial_hw_data,cdc_rx_rd)
@@ -467,6 +506,11 @@ function usb_cdc_getc() return byte is
     
     cdc_rx_rd = cdc_rx_rd_next
        
+    -- AF TEMP   
+ 	if USB_CDC_DEBUG > 0  then
+		serial_hw_write("<")
+	end if
+	
     -- return the result we first thought of   
     return cdc_rx_char	
 end function
@@ -491,6 +535,14 @@ end function
 procedure usb_sof_callback() is
     -- we don't care about the frame number, we only care if there's something to send...
     usb_cdc_handle_tx()	-- start transmission
+    
+    if ( cdc_rx_free >= 8 ) then
+		var bit uown_bit shared at cdc_out_stat:USB_BDSTATUS_UOWN
+		if ( uown_bit == false ) then
+			usb_prime_epx_out( 3, USB_EP3_OUT_SIZE )
+		end if
+    end if
+    
 end procedure
 
 

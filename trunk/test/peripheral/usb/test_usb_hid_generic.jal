@@ -94,13 +94,6 @@ const word USB_EP3_IN_ADDR  = 0x0000
 
 const byte HID_OUT_REPORT_SIZE = 8
 
-const bit USB_CALLBACK_ON_CLASS_CTRL 		= false
-const bit USB_CALLBACK_ON_DEVICE_CONFIGURED = false
-const bit USB_CALLBACK_ON_VENDOR_CTRL 		= false
-const bit USB_EP_DATA_CALLBACK 				= true
-const bit USB_CALLBACK_ON_SOF 				= false
-
-
 const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
 	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
 	USB_DT_DEVICE, 	-- DEVICE 01h
@@ -235,13 +228,16 @@ const byte USB_STRING1[18] =
 	".", 0x00
 }
 
-const byte USB_STRING2[42] = 
+const byte USB_STRING2[48] = 
 {
-	42,				-- bLength
+	48,				-- bLength
 	USB_DT_STRING,	-- bDescriptorType
 	"J", 0x00, 
 	"A", 0x00, 
 	"L", 0x00, 
+	"L", 0x00, 
+	"I", 0x00, 
+	"B", 0x00, 
 	" ", 0x00, 
 	"G", 0x00, 
 	"e", 0x00, 
@@ -415,14 +411,14 @@ procedure timer_0_isr() is
 end procedure
 
 
-procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word in byte_count) is
-    
+procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
+    pragma inline
     if USB_HID_DEBUG_HIGH then
         const byte str[] = " EP data in: "
         const byte str1[] = " bytes "
-        print_byte_hex(serial_hw_data,str)
+        print_string(serial_hw_data,str)
         print_byte_hex(serial_hw_data,byte_count & 0xFF)
-        print_byte_hex(serial_hw_data,str1)
+        print_string(serial_hw_data,str1)
     end if
     
     -- data has been sent, so do we need to send more?
@@ -433,17 +429,19 @@ procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, word i
     end if
 end procedure
 
-procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word in byte_count) is
+procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
+    pragma inline
+
     var byte cdc_rx_next
 
     if USB_HID_DEBUG then
         const byte str[] = " EP data out: "
         const byte str1[] = " bytes "
-        print_byte_hex(serial_hw_data,str)
+        print_string(serial_hw_data,str)
         print_byte_hex(serial_hw_data,byte_count)
 		serial_hw_write( " " )
         print_byte_hex(serial_hw_data, end_point )
-        print_byte_hex(serial_hw_data,str1)
+        print_string(serial_hw_data,str1)
     end if
     
     -- We have some data!
@@ -496,6 +494,7 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word 
 
 			0x03:
 			block
+				PORTB = hid_tx_buffer[ 1 ]
 				if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
 				end if
 			end block
@@ -517,6 +516,9 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, word 
 			end block
 		end case
 	end if
+	
+	usb_prime_epx_out( end_point, USB_EP1_OUT_SIZE )
+	
 end procedure
 
 

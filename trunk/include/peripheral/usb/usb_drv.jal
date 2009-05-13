@@ -121,7 +121,6 @@ procedure _usb_handle_standard_request() is
 				block
 				
 					if USB_DEBUG > 0 then
-
 						const byte str1[] = " HID report "
 						print_string( serial_hw_data,str1)
 					end if	
@@ -146,18 +145,10 @@ procedure _usb_handle_standard_request() is
 			
 			if ( usb_delivery_bytes_to_send > 0 ) then
 			
-				var byte high_byte = wbt_length[1]
-				--	-- we've got something
+				-- we've got something
 				usb_delivery_buffer_size = USB_EP0_IN_SIZE
-
---				serial_newline()
---				serial_hw_write( "{" )
---				print_byte_hex(serial_hw_data,  wbtLength[0] )
---				print_byte_hex(serial_hw_data,  highByte )
---				serial_hw_write( "}" )
 				
-				-- COMPILER ISSUE, if ( wbtLength[1] == 0  ) then does not work ????
-				if ( high_byte == 0  ) then
+				if ( wbt_length[1] == 0  ) then
 					usb_delivery_bytes_max_send = wbt_length[0]
 				else
 					usb_delivery_bytes_max_send = 0xFF
@@ -170,11 +161,6 @@ procedure _usb_handle_standard_request() is
 				dts_bit = low				
 				
 				-- AF ISO OF PRIME
-				-- serial_hw_write( ">" )
-				-- print_byte_hex(serial_hw_data,  0b_1000_0000 )
-				-- usb_bd0out_stat = 0b_1000_0000
-				-- serial_hw_write( 10 )
-				
 				usb_send_data_chunk()
 
 			else
@@ -218,7 +204,7 @@ procedure _usb_handle_standard_request() is
 			usb_configure_endpoints();
 			
 			-- and do a call back to let the app know we're ready
-			if USB_CALLBACK_ON_DEVICE_CONFIGURED then
+			if defined( usb_device_configured_callback ) == true then
 				usb_device_configured_callback()
 			end if	
 		end block
@@ -382,11 +368,6 @@ procedure _usb_handle_transaction() is
 			usb_prime_ep0_out()
 				
 				if USB_DEBUG > 0 then
-					--const byte str[] = " SUP "
-					--print_string( serial_hw_data,str)
-					
-					--serial_print_hex_hex( usb_sdp_request_type );
-					--serial_hw_write(" ");
 					
 					var volatile bit  dir_bit at usb_sdp_request_type : USB_DATA_STAGE_DIR_BIT
 					
@@ -399,14 +380,10 @@ procedure _usb_handle_transaction() is
 					end if
 				end if
 				
-				-- print_string( serial_hw_data," len: ");
-				-- print_byte_hex(serial_hw_data, usb_sdp_length);	
-				-- Is it a standard request?
-				-- serial_hw_write('\\');
 				
-				-- AGAIN A COMPILER ISSUE, first assign to req01, then shift and mask
-				var byte req01 = usb_sdp_request_type
-				req01 = ( req01 >> USB_REQUEST_TYPE0_BIT ) & 0b_0000_0011
+				-- obtain request
+				var byte req01
+				req01 = ( usb_sdp_request_type  >> USB_REQUEST_TYPE0_BIT ) & 0b_0000_0011
 
 				case req01 of
 					0x00:
@@ -436,7 +413,7 @@ procedure _usb_handle_transaction() is
 							const byte str[] = " class "
 							print_string( serial_hw_data,str)
 						end if
-						if USB_CALLBACK_ON_CLASS_CTRL then
+						if defined( usb_handle_class_request_callback ) == true then
 							usb_handle_class_request_callback()
 						end if	
 					end block
@@ -447,7 +424,7 @@ procedure _usb_handle_transaction() is
 							const byte str[] = " vendor "
 							print_string( serial_hw_data,str)
 						end if
-						if USB_CALLBACK_ON_VENDOR_CTRL then
+						if defined( usb_handle_vendor_request_callback ) == true then
 							usb_handle_vendor_request_callback()
 						end if	
 					end block
@@ -524,7 +501,7 @@ procedure _usb_handle_transaction() is
 							print_string( serial_hw_data,str);
 						end if	
 						-- Must be more to come
-						if USB_CALLBACK_ON_CLASS_CTRL then
+						if defined( usb_handle_class_ctrl_read_callback ) == true then
 							usb_handle_class_ctrl_read_callback();
 						end if	
 					end block
@@ -562,7 +539,7 @@ procedure _usb_handle_transaction() is
 
 					USB_CM_CTRL_READ_DATA_STAGE_CLASS: 
 					block
-						if USB_CALLBACK_ON_CLASS_CTRL then
+						if defined( usb_handle_class_ctrl_read_callback ) == true then
 							usb_handle_class_ctrl_read_callback()
 						end if	
 					end block
@@ -604,7 +581,7 @@ procedure _usb_handle_transaction() is
 
 					USB_CM_CTRL_WRITE_DATA_STAGE_CLASS:
 					block
-						if USB_CALLBACK_ON_CLASS_CTRL then
+						if defined( usb_handle_class_ctrl_write_callback ) == true then
 							usb_handle_class_ctrl_write_callback()
 							-- !! should include bc bits here for total count
 							-- this only works for 8 bit data packets
@@ -650,130 +627,47 @@ procedure _usb_handle_transaction() is
 				print_byte_hex(serial_hw_data, end_point)
 				serial_hw_write( " " )
 			end if
-			if USB_EP_DATA_CALLBACK then
-				var word addr 
-				var word bcnt
+
+			if defined( usb_ep_data_in_callback ) == true then
+				var byte idx = end_point * 8
 				
-				case end_point of
-					0:
-					block
-if false then
-						addr = usb_bd0in_addr
-						bcnt = usb_bd0in_cnt
-end if
-					end block
-					1:
-					block
-						if defined( USB_EP1 ) == true then 
-							addr = usb_bd1in_addr
-							bcnt = usb_bd1in_cnt
-						end if
-					end block
-					2:
-					block
-						if defined( USB_EP2 ) == true then 
-							addr = usb_bd2in_addr
-							bcnt = usb_bd2in_cnt
-						end if
-					end block
-					3:
-					block
-						if defined( USB_EP3 ) == true then 
-							addr = usb_bd3in_addr
-							bcnt = usb_bd3in_cnt
-						end if
-					end block
-					4:
-					block
-						if defined( USB_EP4 ) == true then 
-							addr = usb_bd4in_addr
-							bcnt = usb_bd4in_cnt
-						end if
-					end block
-					otherwise
-					block
-						if USB_DEBUG > 0 then
-							const byte str1[] = " ENPOINT NOT SUPPORTED YET "
-							print_string( serial_hw_data,str1)
-						end if
-					end block
-				end case
+				idx = idx + 4 -- need to access the in structures
+				
+	--			print_byte_hex( serial_hw_data,idx)
+
+				var word addr
+				var byte bcnt
+				var byte bt_addr[2] at addr
+				
+				bt_addr[0] = usb_bd_array[ idx + 2 ]
+				bt_addr[1] = usb_bd_array[ idx + 3 ]
+				bcnt = usb_bd_array[ idx + 1 ]				
 			
 				-- call callback function
 				usb_ep_data_in_callback( end_point, addr, bcnt )
 			end if 
 		else
---			const byte str[] = " EP DATA OUT on endpoint "
---			print_string( serial_hw_data,str)
---			print_byte_hex(serial_hw_data, end_point)
+		
+			if defined(usb_ep_data_out_callback) == true then
+				var byte idx = end_point * 8
 
-			if USB_EP_DATA_CALLBACK then
-				var word addr 
-				var word bcnt
-				case end_point of
-					0:
-					block
-if false then
-						addr = usb_bd0out_addr
-						bcnt = usb_bd0out_cnt					
-end if
-					end block
-					1:
-					block
-						if defined( USB_EP1 ) == true then 
-							addr = usb_bd1out_addr
-							bcnt = usb_bd1out_cnt
-						end if					
-					end block
-					2:
-					block
-						if defined( USB_EP2 ) == true then 
-							addr = usb_bd2out_addr
-							bcnt = usb_bd2out_cnt					
-						end if					
-					end block
-					3:
-					block
-						if defined( USB_EP3 ) == true then 
-							addr = usb_bd3out_addr
-							bcnt = usb_bd3out_cnt					
-						end if					
-					end block
-					4:
-					block
-						if defined( USB_EP4 ) == true then 
-							addr = usb_bd4out_addr
-							bcnt = usb_bd4out_cnt					
-						end if					
-					end block
-					otherwise
-					block
-						if USB_DEBUG > 0 then
-							const byte str1[] = " ENPOINT NOT SUPPORTED YET "
-							print_string( serial_hw_data,str1)
-						end if
-					end block
-				end case
-				-- call callback function
+				var word addr
+				var byte bcnt
+				var byte bt_addr[2] at addr
+				
+				bt_addr[0] = usb_bd_array[ idx + 2 ]
+				bt_addr[1] = usb_bd_array[ idx + 3 ]
+				bcnt = usb_bd_array[ idx + 1 ]
+				
 				usb_ep_data_out_callback( end_point, addr, bcnt )
-			end if	
+			else
+				usb_prime_epx_out( end_point, 0x08 )
+			end if
 			
-			case end_point of
-				0: usb_bd0out_stat = 0x80
-				1: usb_bd1out_stat = 0x80
-				2: usb_bd2out_stat = 0x80
-				3: usb_bd3out_stat = 0x80
-				4: usb_bd4out_stat = 0x80
-				otherwise
-				block
-					if USB_DEBUG > 0 then
-						const byte str1[] = " ENPOINT NOT SUPPORTED YET "
-						print_string( serial_hw_data,str1)
-					end if	
-				end block
-			end case
+
 		end if
-	end if	
+	end if	-- enpoint == 0
+	
 end procedure
 
 -- --------------------------------------------------------------------------------------
@@ -941,7 +835,7 @@ procedure usb_handle_isr() is
 		if ( UIR_SOFIF ) then
 --			const byte str1[] = " !SOF "
 --			print_string( serial_hw_data,str1)
-			if USB_CALLBACK_ON_SOF then
+			if defined( usb_sof_callback ) == true then
 				usb_sof_callback()
 			end if
 			UIR_SOFIF = low
@@ -972,9 +866,8 @@ procedure _usb_ints_on() is
 
 	PIE2_USBIE = low 	-- general USB interrupts
 	
-	if USB_CALLBACK_ON_SOF then  
-		UIE_SOFIE = high
-	end if	
+	UIE_SOFIE = high
+	
 end procedure
 
 
