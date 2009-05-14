@@ -1,0 +1,1065 @@
+-- Title: USB driver library
+-- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
+-- Adapted-by: Richard Zengerink 14-05-2009
+-- Compiler: >=2.4j
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- --
+-- Description: This file contains the lowl level USB driver routines. It constrols
+-- the USB serial interface engine, by managing the input and output transfers,
+-- and calling the defined callback function when required
+--
+-- Sources: http://www.usb.org ; for USB specifications
+--          http://www.lvr.com/usbc.htm ; a lot of information about USB
+--          http://www.beyondlogic.org/ ; also a nice with with useful information
+--
+-- Notes: 
+--
+
+-- --------------------------------------------------------------------------------------
+-- Internal procedure to handle standard USB requests
+-- it will take care of the overall state of the device
+-- performing USB buffer management
+-- controlling the SIE
+-- and call the callback function if required
+-- --------------------------------------------------------------------------------------
+procedure _usb_handle_standard_request() is
+
+	var volatile byte request = usb_sdp_request
+	var volatile byte wbt_value[2] at usb_sdp_value
+	var volatile byte wbt_length[2] at usb_sdp_length
+
+	case request of
+
+		USB_REQUEST_GET_DESCRIPTOR:
+		block
+			if USB_DEBUG > 0 then
+				const byte str[] = " GD: "
+				-- print_string( serial_hw_data, str )
+			end if
+				
+			
+			var byte descriptor_type = wbt_value[1] -- high byte is descriptor
+			var byte descriptor_num  = wbt_value[0] -- low byte is particular descriptor
+			
+			usb_delivery_bytes_to_send = 0 
+			
+			if USB_DEBUG > 0 then
+				print_byte_hex(serial_hw_data,  descriptor_type )
+			end if
+			
+			case descriptor_type of
+				USB_DT_DEVICE:
+				block
+					const byte str1[] = " Device "
+					
+					-- print_string( serial_hw_data,str1)
+					usb_delivery_bytes_to_send = count( USB_DEVICE_DESCRIPTOR )
+					-- print_byte_hex(serial_hw_data,  usb_delivery_bytes_to_send )
+					_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, USB_DEVICE_DESCRIPTOR, usb_delivery_bytes_to_send )
+				end block	
+				
+				USB_DT_CONFIGURATION:
+				block	
+					if USB_DEBUG > 0 then
+						const byte str1[] = " Config "
+						print_string( serial_hw_data,str1);
+					end if	
+					usb_delivery_bytes_to_send = count( USB_CONFIGURATION_DESCRIPTOR )
+					
+					_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, USB_CONFIGURATION_DESCRIPTOR, usb_delivery_bytes_to_send )				
+				end block
+				
+				USB_DT_STRING:
+				block			
+				
+					if USB_DEBUG > 0 then
+						const byte str1[] = " String: "
+						print_string( serial_hw_data,str1);
+						
+						print_byte_hex(serial_hw_data, descriptor_num)
+					end if
+					
+					if defined(USB_STRING0) == true then					
+						if (descriptor_num == 0 ) then
+							usb_delivery_bytes_to_send = count( USB_STRING0 )
+							_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, USB_STRING0, usb_delivery_bytes_to_send )
+						end if
+					end if
+					if defined(USB_STRING1) == true  then					
+						if (descriptor_num == 1 ) then
+							usb_delivery_bytes_to_send = count( USB_STRING1 )
+							_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, USB_STRING1, usb_delivery_bytes_to_send )
+						end if
+					end if					
+					if defined(USB_STRING2) == true then					
+						if (descriptor_num == 2 ) then
+							usb_delivery_bytes_to_send = count( USB_STRING2 )
+							_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, USB_STRING2, usb_delivery_bytes_to_send )
+						end if
+					end if				
+					if defined(USB_STRING3) == true then					
+						if (descriptor_num == 3 ) then
+							usb_delivery_bytes_to_send = count( USB_STRING3 )
+							_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, USB_STRING3, usb_delivery_bytes_to_send )
+						end if
+					end if				
+					if defined(USB_STRING4) == true then					
+						if (descriptor_num == 4 ) then
+							usb_delivery_bytes_to_send = count( USB_STRING4 )
+							_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, USB_STRING4, usb_delivery_bytes_to_send )
+						end if
+					end if				
+				end block
+				
+				-- AF TODO?
+				-- USB_DT_DEVICE_QUALIFIER:
+				-- block	
+				-- end block
+				USB_DT_HID_REPORT:
+				block
+				
+					if USB_DEBUG > 0 then
+
+						const byte str1[] = " HID report "
+						print_string( serial_hw_data,str1)
+					end if	
+					if ( defined( USB_HID_REPORT1 ) == true ) then
+						usb_delivery_bytes_to_send = count( USB_HID_REPORT1 )
+						_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, USB_HID_REPORT1, usb_delivery_bytes_to_send )					
+					end if
+				end block
+				
+				
+				otherwise
+				block	
+					if USB_DEBUG > 0 then					
+						const byte str1[] = " !!HSTDREQ?? "
+						print_string( serial_hw_data,str1)
+					end if
+				end block
+
+				
+			end case
+
+			
+			if ( usb_delivery_bytes_to_send > 0 ) then
+			
+				var byte high_byte = wbt_length[1]
+				--	-- we've got something
+				usb_delivery_buffer_size = USB_EP0_IN_SIZE
+
+--				serial_newline()
+--				serial_hw_write( "{" )
+--				print_byte_hex(serial_hw_data,  wbtLength[0] )
+--				print_byte_hex(serial_hw_data,  highByte )
+--				serial_hw_write( "}" )
+				
+				-- COMPILER ISSUE, if ( wbtLength[1] == 0  ) then does not work ????
+				if ( high_byte == 0  ) then
+					usb_delivery_bytes_max_send = wbt_length[0]
+				else
+					usb_delivery_bytes_max_send = 0xFF
+				end if
+				
+				-- usb_delivery_bytes_to_send
+				usb_control_mode = USB_CM_CTRL_READ_DATA_STAGE
+				usb_delivery_bytes_sent = 0
+				var bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
+				dts_bit = low				
+				
+				-- AF ISO OF PRIME
+				-- serial_hw_write( ">" )
+				-- print_byte_hex(serial_hw_data,  0b_1000_0000 )
+				-- usb_bd0out_stat = 0b_1000_0000
+				-- serial_hw_write( 10 )
+				
+				usb_send_data_chunk()
+
+			else
+				if USB_DEBUG > 0 then
+					const byte str[] = " <stall> "
+					print_string( serial_hw_data, str )
+				end if
+				usb_stall_ep0();
+			end if						
+		end block
+		
+		USB_REQUEST_SET_ADDRESS:
+		block
+			usb_address = wbt_value[0]
+			if USB_DEBUG > 0 then
+				const byte str[] = " SA:"
+				print_string( serial_hw_data, str )
+				print_byte_hex(serial_hw_data,  usb_address )
+			end if 				
+			usb_status = USB_STATUS_SET_ADDRESS
+			
+			-- Send a status ack - when we confirm that, THEN change address
+			usb_send_status_ack()
+			usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
+		end block
+		
+		USB_REQUEST_SET_CONFIGURATION:
+		block
+			if USB_DEBUG > 0 then
+				const byte str[] = " SC: "
+				print_string( serial_hw_data,str)
+			end if 			
+
+			--sdp.wValue & 0xff; -- MORE WORK see p136
+			usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
+			usb_send_status_ack()
+			
+			usb_state = USB_STATE_CONFIGURED
+			
+			-- device is up - so now get the endpoints happy
+			usb_configure_endpoints();
+			
+			-- and do a call back to let the app know we're ready
+			if USB_CALLBACK_ON_DEVICE_CONFIGURED then
+				usb_device_configured_callback()
+			end if	
+		end block
+		
+		USB_REQUEST_GET_INTERFACE:
+		block
+			if USB_DEBUG > 0 then
+				const byte str[] = " GI "
+				print_string( serial_hw_data,str)
+			end if	
+			usb_control_mode = USB_CM_CTRL_READ_DATA_STAGE
+			usb_send_one_byte( 1 )
+		end block
+		
+		USB_REQUEST_GET_STATUS:
+		block
+		
+		
+			-- send two bytes
+			if USB_DEBUG > 0 then	
+				const byte str[] = " GS "
+				print_string( serial_hw_data,str)
+			end if
+			usb_send_one_byte(0)
+
+if false then
+			if USB_SELF_POWERED then
+				usb_send_one_byte(1)
+				usb_delivery_buffer[0] = 0x01	-- self powered
+			else
+				usb_delivery_buffer[0] = 0x00	-- bus powered
+			end if
+			
+			-- Remote wake-up
+			usb_delivery_buffer[1] = 0x00
+			
+			usb_delivery_buffer_size = USB_EP0_IN_SIZE
+			usb_delivery_bytes_sent = 0
+			usb_delivery_bytes_to_send = 2
+			usb_delivery_bytes_max_send = 0
+
+			-- clear DTS in order to toggle it
+			var bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
+			dts_bit = low
+
+			usb_send_data_chunk()
+
+end if
+
+		end block
+
+		
+		otherwise
+		block
+			if USB_DEBUG > 0 then
+				const byte str[] = " ??SR "
+				print_string( serial_hw_data,str)
+				print_byte_hex(serial_hw_data, usb_sdp_request)
+			end if
+		end block
+
+	end case	
+
+end procedure	
+
+
+-- --------------------------------------------------------------------------------------
+-- Internal procedure to handle the USB transactions
+-- it will take care of the overall state of the device
+-- performing USB buffer management
+-- controlling the SIE
+-- and call the callback function if required
+-- --------------------------------------------------------------------------------------
+procedure _usb_handle_transaction() is
+
+	var byte end_point
+	var byte pid
+
+	end_point = USTAT >> 3;
+
+	
+	if USTAT_DIR then
+		if USB_DEBUG_HIGH > 0 then
+			serial_newline()
+			serial_hw_write( "@" )
+			print_byte_hex(serial_hw_data,  usb_bd0in_cnt );
+			print_byte_hex(serial_hw_data,  usb_bd0in_stat );
+		end if		
+		-- mask out pid
+		pid = ( usb_bd0in_stat >> 2) & 0x0f
+	else
+		pid = ( usb_bd0out_stat >> 2) & 0x0f
+
+		if USB_DEBUG_HIGH > 0 then
+			serial_newline()			
+			serial_hw_write( "?" )
+			print_byte_hex(serial_hw_data,  usb_bd0out_cnt );
+			print_byte_hex(serial_hw_data,  usb_bd0out_stat );
+		end if
+		
+		if USB_DEBUG_HIGH > 0 then
+--			print_byte_hex(serial_hw_data,  usb_bd0out_cnt )
+--			serial_print_spc()
+		end if	
+	
+	end if
+	
+	if USB_DEBUG_HIGH > 0 then
+		if (end_point != 0) then
+			serial_newline()			
+			serial_hw_write("E")
+			print_byte_hex(serial_hw_data,  end_point )
+			serial_print_spc()
+		end if
+	end if
+
+	
+	if ( end_point == 0 ) then
+	
+		if USB_DEBUG_HIGH > 0 then
+			const byte str[] = " bytes: "
+			-- print_string( serial_hw_data,str)
+			-- print_byte_hex(serial_hw_data, usb_bd0out_cnt)
+		end if
+
+
+		case pid of
+			USB_PID_SETUP:
+			block
+			-- AF FIXME Ram2RamCopy( usb_sdp_loc, USB_EP0_OUT_ADDR, count(usb_sdp) )
+				
+			var byte tmp1[8] at USB_EP0_OUT_ADDR
+			var byte tmp2[8] at usb_sdp_loc
+			var byte idx
+			
+			tmp2[0] = tmp1[0]
+			tmp2[1] = tmp1[1]
+			tmp2[2] = tmp1[2]
+			tmp2[3] = tmp1[3]
+			tmp2[4] = tmp1[4]
+			tmp2[5] = tmp1[5]
+			tmp2[6] = tmp1[6]
+			tmp2[7] = tmp1[7]
+			
+			--tmp2 = tmp1
+			-- for 8 using idx loop
+			-- tmp2[idx ] = tmp1[idx ]
+			-- end loop
+			
+			if USB_DEBUG > 0 then
+				serial_newline()
+				serial_hw_write( "!" )
+				for 8 using idx loop
+					print_byte_hex(serial_hw_data,  tmp1[ idx ] )
+				end loop	
+			end if
+			
+			-- clear PKTDIS before setting up the endpoint(s) again
+			UCON_PKTDIS = low		
+		
+			usb_prime_ep0_out()
+				
+				if USB_DEBUG > 0 then
+					--const byte str[] = " SUP "
+					--print_string( serial_hw_data,str)
+					
+					--serial_print_hex_hex( usb_sdp_request_type );
+					--serial_hw_write(" ");
+					
+					var volatile bit  dir_bit at usb_sdp_request_type : USB_DATA_STAGE_DIR_BIT
+					
+					if dir_bit then
+						const byte str [] = " DS=IN "
+						--print_string( serial_hw_data,str)
+					else
+						const byte str [] = " DS=OUT/NO "
+						--print_string( serial_hw_data,str)
+					end if
+				end if
+				
+				-- print_string( serial_hw_data," len: ");
+				-- print_byte_hex(serial_hw_data, usb_sdp_length);	
+				-- Is it a standard request?
+				-- serial_hw_write('\\');
+				
+				-- AGAIN A COMPILER ISSUE, first assign to req01, then shift and mask
+				var byte req01 = usb_sdp_request_type
+				req01 = ( req01 >> USB_REQUEST_TYPE0_BIT ) & 0b_0000_0011
+
+				case req01 of
+					0x00:
+					block
+						-- serial_hw_write( "S" )					
+						-- standard request
+						if USB_DEBUG > 0 then
+							var byte masked_request = (usb_sdp_request_type & 0b00011111)
+							if ( masked_request == 0) then
+								--print_string( serial_hw_data," 2dev ");
+							elsif ( masked_request == 1) then	
+								--print_string( serial_hw_data," 2int ");
+							elsif ( masked_request == 0b00011 ) then	
+								--print_string( serial_hw_data," 2oth ");
+							end if
+							const byte str[] = " std "
+							-- print_string( serial_hw_data,str);
+						end if	
+						
+						_usb_handle_standard_request()
+						
+					end block
+					0x01:
+					block					
+						-- class request
+						if USB_DEBUG > 0 then
+							const byte str[] = " class "
+							print_string( serial_hw_data,str)
+						end if
+						if USB_CALLBACK_ON_CLASS_CTRL then
+							usb_handle_class_request_callback()
+						end if	
+					end block
+					0x10:
+					block					
+						-- class request
+						if USB_DEBUG > 0 then
+							const byte str[] = " vendor "
+							print_string( serial_hw_data,str)
+						end if
+						if USB_CALLBACK_ON_VENDOR_CTRL then
+							usb_handle_vendor_request_callback()
+						end if	
+					end block
+					otherwise
+					block
+					
+						if USB_DEBUG > 0 then
+							--print_string( serial_hw_data," req no ");
+							--print_byte_hex(serial_hw_data, usb_sdp.bRequest);
+							-- serial_print_spc();
+							const byte str[] = " ??req t="
+							print_string( serial_hw_data,str)
+							print_byte_hex(serial_hw_data,  usb_sdp_request_type )
+							serial_hw_write(" ")
+						end if	
+					end block
+				end case
+			end block
+			
+			
+			USB_PID_IN:
+			block
+				if USB_DEBUG > 0 then
+					const byte str[] = " IN CM="
+					-- print_string( serial_hw_data,str)
+					-- print_byte_hex(serial_hw_data,  usb_control_mode )
+				end if
+				
+				case usb_control_mode of
+					USB_CM_CTRL_READ_DATA_STAGE:
+					block
+						-- it's ours, so send next chunk
+						usb_send_data_chunk()				
+					end block
+					
+					USB_CM_CTRL_WRITE_SENDING_STATUS:
+					block
+						--print_string( serial_hw_data,"std ")
+						usb_control_mode = USB_CM_IDLE
+						if (usb_status == USB_STATUS_SET_ADDRESS) then
+						
+							if USB_DEBUG > 0 then
+								const  byte str[] =" addr to "
+								serial_newline()
+								print_string( serial_hw_data,str)
+								print_byte_hex(serial_hw_data,  usb_address )
+							end if
+								
+							usb_state = USB_STATE_ADDRESS
+							uaddr = usb_address
+							--print_byte_hex(serial_hw_data, uaddr)
+							--serial_hw_write('!')
+							usb_status = USB_STATUS_IDLE
+						end if
+						
+						if USB_DEBUG > 0 then
+							const byte str[] = " ----\n"
+							print_string( serial_hw_data,str)
+						end if	
+					end block
+
+					USB_CM_CTRL_READ_AWAITING_STATUS:
+					block
+						-- Must have been last IN of the read, so still waiting for status
+						if USB_DEBUG > 0 then
+							--print_string( serial_hw_data," last read, waiting status");
+						end if	
+					end block
+
+					USB_CM_CTRL_READ_DATA_STAGE_CLASS:
+					block
+						if USB_DEBUG > 0 then
+							const byte str[] = " ctrl read "
+							print_string( serial_hw_data,str);
+						end if	
+						-- Must be more to come
+						if USB_CALLBACK_ON_CLASS_CTRL then
+							usb_handle_class_ctrl_read_callback();
+						end if	
+					end block
+
+					otherwise
+					block
+						if USB_DEBUG > 0 then
+							const byte str[] = " ?? cm="
+							print_string( serial_hw_data,str)
+							print_byte_hex(serial_hw_data,  usb_control_mode )
+							serial_print_spc()
+						end if					
+					end block
+				end case
+			end block
+
+
+			USB_PID_ACK:
+			block
+				if USB_DEBUG > 0 then
+					const byte str[] = "****A\n"
+					print_string( serial_hw_data,str)
+				end if
+
+
+				case usb_control_mode of
+					USB_CM_CTRL_READ_DATA_STAGE: 
+					block
+						if USB_DEBUG > 0 then
+							const byte str[] = " &2 "
+							print_string( serial_hw_data,str)
+						end if
+						usb_send_data_chunk()
+					end block
+
+					USB_CM_CTRL_READ_DATA_STAGE_CLASS: 
+					block
+						if USB_CALLBACK_ON_CLASS_CTRL then
+							usb_handle_class_ctrl_read_callback()
+						end if	
+					end block
+					USB_CM_CTRL_WRITE_SENDING_STATUS: 
+					block
+						if USB_DEBUG > 0 then
+							const byte str[] = " st sent "
+							print_string( serial_hw_data, str )
+						end if
+						usb_control_mode = USB_CM_IDLE
+					end block
+				end case
+			end block
+
+
+			USB_PID_OUT:
+			block
+				-- We've done an out
+				--print_string( serial_hw_data," OUT ");
+
+				if USB_DEBUG_HIGH > 0 then
+					const byte str1[] = "PID_OUT "
+					serial_newline()
+					print_string( serial_hw_data,str1)
+					print_byte_hex(serial_hw_data,  usb_control_mode)
+				end if
+				
+				case usb_control_mode of
+
+					USB_CM_CTRL_READ_AWAITING_STATUS:
+					block
+						if USB_DEBUG > 0 then
+							const byte str[] = " -xx-\n"
+							print_string( serial_hw_data, str )
+						end if
+						usb_control_mode = USB_CM_IDLE
+						usb_prime_ep0_out()
+					end block
+
+					USB_CM_CTRL_WRITE_DATA_STAGE_CLASS:
+					block
+						if USB_CALLBACK_ON_CLASS_CTRL then
+							usb_handle_class_ctrl_write_callback()
+							-- !! should include bc bits here for total count
+							-- this only works for 8 bit data packets
+						end if	
+						usb_prime_ep0_out()
+					end block
+					
+					USB_CM_CTRL_READ_DATA_STAGE:
+					block
+						--print_string( serial_hw_data," Status early ");
+						usb_prime_ep0_out()
+						usb_control_mode = USB_CM_IDLE
+
+					end block
+					
+					otherwise
+					block					
+						if USB_DEBUG > 0 then
+							const byte str[] = "??unk pid_OUT "
+							print_string( serial_hw_data,str)
+							print_byte_hex(serial_hw_data,  usb_control_mode )
+						end if	
+						usb_prime_ep0_out()
+					end block
+			
+				end case
+
+			end block
+			otherwise
+			block
+				if USB_DEBUG > 0 then
+					const byte str[] = " UKPID = "
+					print_string( serial_hw_data,str)
+				end if	
+			end block			
+		end case
+
+	else
+		if USTAT_DIR then
+			if USB_DEBUG_HIGH > 0 then
+				const byte str[] = " EPDIN "
+				print_string( serial_hw_data,str)
+				print_byte_hex(serial_hw_data, end_point)
+				serial_hw_write( " " )
+			end if
+			if USB_EP_DATA_CALLBACK then
+				var word addr 
+				var word bcnt
+				
+				case end_point of
+					0:
+					block
+if false then
+						addr = usb_bd0in_addr
+						bcnt = usb_bd0in_cnt
+end if
+					end block
+					1:
+					block
+						if defined( USB_EP1 ) == true then 
+							addr = usb_bd1in_addr
+							bcnt = usb_bd1in_cnt
+						end if
+					end block
+					2:
+					block
+						if defined( USB_EP2 ) == true then 
+							addr = usb_bd2in_addr
+							bcnt = usb_bd2in_cnt
+						end if
+					end block
+					3:
+					block
+						if defined( USB_EP3 ) == true then 
+							addr = usb_bd3in_addr
+							bcnt = usb_bd3in_cnt
+						end if
+					end block
+					4:
+					block
+						if defined( USB_EP4 ) == true then 
+							addr = usb_bd4in_addr
+							bcnt = usb_bd4in_cnt
+						end if
+					end block
+					otherwise
+					block
+						if USB_DEBUG > 0 then
+							const byte str1[] = " ENPOINT NOT SUPPORTED YET "
+							print_string( serial_hw_data,str1)
+						end if
+					end block
+				end case
+			
+				-- call callback function
+				usb_ep_data_in_callback( end_point, addr, bcnt )
+			end if 
+		else
+--			const byte str[] = " EP DATA OUT on endpoint "
+--			print_string( serial_hw_data,str)
+--			print_byte_hex(serial_hw_data, end_point)
+
+			if USB_EP_DATA_CALLBACK then
+				var word addr 
+				var word bcnt
+				case end_point of
+					0:
+					block
+if false then
+						addr = usb_bd0out_addr
+						bcnt = usb_bd0out_cnt					
+end if
+					end block
+					1:
+					block
+						if defined( USB_EP1 ) == true then 
+							addr = usb_bd1out_addr
+							bcnt = usb_bd1out_cnt
+						end if					
+					end block
+					2:
+					block
+						if defined( USB_EP2 ) == true then 
+							addr = usb_bd2out_addr
+							bcnt = usb_bd2out_cnt					
+						end if					
+					end block
+					3:
+					block
+						if defined( USB_EP3 ) == true then 
+							addr = usb_bd3out_addr
+							bcnt = usb_bd3out_cnt					
+						end if					
+					end block
+					4:
+					block
+						if defined( USB_EP4 ) == true then 
+							addr = usb_bd4out_addr
+							bcnt = usb_bd4out_cnt					
+						end if					
+					end block
+					otherwise
+					block
+						if USB_DEBUG > 0 then
+							const byte str1[] = " ENPOINT NOT SUPPORTED YET "
+							print_string( serial_hw_data,str1)
+						end if
+					end block
+				end case
+				-- call callback function
+				usb_ep_data_out_callback( end_point, addr, bcnt )
+			end if	
+			
+			case end_point of
+				0: usb_bd0out_stat = 0x80
+				1: usb_bd1out_stat = 0x80
+				2: usb_bd2out_stat = 0x80
+				3: usb_bd3out_stat = 0x80
+				4: usb_bd4out_stat = 0x80
+				otherwise
+				block
+					if USB_DEBUG > 0 then
+						const byte str1[] = " ENPOINT NOT SUPPORTED YET "
+						print_string( serial_hw_data,str1)
+					end if	
+				end block
+			end case
+		end if
+	end if	
+end procedure
+
+-- --------------------------------------------------------------------------------------
+-- Internal procedure to reset the USB device
+-- --------------------------------------------------------------------------------------
+procedure _usb_handle_reset() is
+
+	UEIR = 0
+	UIR = 0
+    --UEIE = 0b10011111 -- Unmask all USB error interrupts
+    --UIE = 0b01111011  -- Enable all interrupts except ACTVIE
+
+	if USB_DEBUG > 0 then
+		serial_newline()
+		serial_hw_write( "C" )
+		print_byte_hex(serial_hw_data,  UCFG )
+		serial_hw_write( "D" )
+		print_byte_hex(serial_hw_data,  UCON )
+	end if
+		
+	usb_address = 0
+
+	--UADDR = 0x00
+		
+	-- init buffers
+
+	UEP1 = 0X00
+	UEP2 = 0X00
+	UEP3 = 0X00
+	UEP4 = 0X00
+	UEP5 = 0X00
+	UEP6 = 0X00
+	UEP7 = 0X00
+
+
+if ( 	(target_chip == PIC_18F14K50 ) |
+		(target_chip == PIC_18F13K50 ) |
+		(target_chip == PIC_18LF14K50 ) |
+		(target_chip == PIC_18LF13K50 ) )then
+   asm nop
+else
+
+	UEP8 = 0X00
+	UEP9 = 0X00
+	UEP10 = 0X00
+	UEP11 = 0X00
+	UEP12 = 0X00
+	UEP13 = 0X00
+	UEP14 = 0X00
+	UEP15 = 0X00
+end if
+
+
+
+	UEP0 = USB_EP_CTRL | USB_HSHK_EN
+
+		
+	while UIR_TRNIF ==1 loop 
+		-- clear fifo
+		UIR_TRNIF = low
+		asm nop
+		asm nop
+		asm nop
+		asm nop
+		asm nop
+		asm nop		
+	end loop
+	
+	usb_control_mode = USB_CM_IDLE
+	usb_status   = USB_STATUS_IDLE
+	
+    UCON_PKTDIS = 0 -- Make sure packet processing is enabled
+
+	-- EP0 OUT
+	usb_bd0out_cnt  = 8
+	usb_bd0out_addr = USB_EP0_OUT_ADDR
+	-- usb_bd0out_addr = 0x0500
+	-- usb_bd0out_addrl = 0x00 -- USB_EP0_OUT_ADDR & 0xFF
+	-- usb_bd0out_addrh = 0x05 -- USB_EP0_OUT_ADDR >> 8	
+	-- set UOWN bit, SIE owns the buffer since we expect frist transaction to be SETUP
+	-- AF CHECK
+	usb_bd0out_stat = 0x8C
+								
+	-- EP0 IN
+	usb_bd0in_cnt = 8
+	usb_bd0in_addr = USB_EP0_IN_ADDR
+	-- clear UOWN bit, uC owns buffer
+	-- AF CHECK DTSEN bit not set???
+	usb_bd0in_stat = 0x00
+
+	if USB_DEBUG > 0 then
+		serial_newline()
+		serial_hw_write( "R" )
+		serial_hw_write( "o" )
+		print_byte_hex(serial_hw_data,  0x8C )
+		serial_hw_write( "i" )
+		print_byte_hex(serial_hw_data,  0x00 )
+
+		serial_newline()
+		serial_hw_write( "U" )
+		print_byte_hex(serial_hw_data,  UEP0 )
+	end if
+
+--	if USB_DEBUG > 0 then
+--		const byte str [] = " R "
+--		serial_newline()
+--		print_string( serial_hw_data, str );
+--		serial_print_hex_hex(UIR);
+--	end if
+		
+end procedure
+
+-- --------------------------------------------------------------------------------------
+-- Procedure can be called when the USB device has to be stalled
+-- --------------------------------------------------------------------------------------
+procedure usb_handle_stall() is
+	pragma inline
+	if USB_DEBUG > 0 then
+		const byte str[] = " U:Stall "
+		print_string( serial_hw_data, str )
+	end if
+end procedure
+
+-- --------------------------------------------------------------------------------------
+-- This is the heard of the USB library, all pending IO transfers are handled by
+-- this main (interrupt) service routine. For the PIC USB device it does not make much 
+-- sense to use real interrupts since all real time aspects are handle by the SIE. 
+-- Therefore this usb_handle_isr() must be polled on a regular base, in order to 
+-- to keep the input and output transfers flowing
+-- --------------------------------------------------------------------------------------
+procedure usb_handle_isr() is
+	pragma inline
+	-- const byte str1[] = " ENTER usb_handle_isr "
+	-- const byte str2[] = " EXIT usb_handle_isr "
+	--print_string( serial_hw_data,str1)	
+
+	if ( PIR2_USBIF ) then
+
+		-- print_byte_hex(serial_hw_data,  UIR )
+		-- print_byte_hex(serial_hw_data,  UIE )
+		-- serial_print_spc()
+	
+	
+		PIR2_USBIF = low
+
+		for 4 loop
+			if ( UIR_TRNIF ) then				
+				_usb_handle_transaction()
+				UIR_TRNIF = low
+			end if
+		end loop	
+
+		if ( UIR_URSTIF ) then
+			_usb_handle_reset();
+			UIR_URSTIF = low
+		end if	
+
+
+		if ( UIR_STALLIF ) then
+			if USB_DEBUG > 0 then					
+				const byte str1[] = " !STALL "
+				print_string( serial_hw_data,str1)
+			end if	
+			usb_handle_stall();
+			UIR_STALLIF = low
+		end if
+	 
+--		if ( UIR_ACTIVIF ) then
+			-- const byte str1[] = "!W"
+			-- print_string( serial_hw_data,str1)		
+			-- ACTVIF = low
+--		end if
+		
+		if ( UIR_IDLEIF ) then
+			UIR_IDLEIF = low
+		end if
+
+		if ( UIR_SOFIF ) then
+--			const byte str1[] = " !SOF "
+--			print_string( serial_hw_data,str1)
+			if USB_CALLBACK_ON_SOF then
+				usb_sof_callback()
+			end if
+			UIR_SOFIF = low
+		end if
+		
+		if ( UIR_UERRIF ) then
+			if USB_DEBUG > 0 then		
+				const byte str1[] = " !ERROR "
+				print_string( serial_hw_data,str1)
+			end if
+			UIR_UERRIF = low
+		end if
+	end if
+end procedure
+
+ 
+-- --------------------------------------------------------------------------------------
+-- Internal procedure to set the correct interrupt flags, note that for PIC USB device
+-- it does not make much sense to use real interrupts since all real time aspects
+-- are handle by the SIE. However, the library does use the interrupt flags, this
+-- procedure will setup to proper interrupt flags
+-- --------------------------------------------------------------------------------------
+procedure _usb_ints_on() is
+	UIE= 0x00
+	UIE_STALLIE = high  -- interrupt on stall
+	UIE_TRNIE = high 	-- on transaction complete
+	UIE_URSTIE = high 	-- on reset 
+
+	PIE2_USBIE = low 	-- general USB interrupts
+	
+	if USB_CALLBACK_ON_SOF then  
+		UIE_SOFIE = high
+	end if	
+end procedure
+
+
+-- --------------------------------------------------------------------------------------
+-- Procedure to intialize the USB device, it will only do the setup, to enable
+-- the USB device, use the usb_enable() procedure
+-- --------------------------------------------------------------------------------------
+procedure usb_setup() is
+
+	usb_state = USB_STATE_POWERED;
+
+	UCON = 0x00
+	UCFG = 0x00
+		
+	-- init hardware
+	--UCFG_UTRDIS = low	 	-- enable internal tranceiver
+	UCFG_FSEN = high		-- clear for low speed, set for high speed
+	UCFG_UPUEN = high		-- enable on-chip pull-ups
+	--UCFG_PPB:0 = 0		-- disable double buffering for now
+
+
+	-- if using ping pong buffers, need to do this:
+	-- set_bit(ucon, PPBRST);	-- reset ping pong buffers to even
+	-- clear_bit(ucon, PPBRST);
+
+	-- init endpoint 0		
+	UEP0_EPHSHK = high 		-- EP0 handshaking on
+	UEP0_EPOUTEN = high 		-- EP0 OUT enable 
+	UEP0_EPINEN = high 		-- EP0 IN enable 
+	UEP0_EPCONDIS = low 		-- EP0 control transfers on (and IN and OUT)
+	
+	-- enable the interrupt flags
+	_usb_ints_on()
+end procedure
+
+-- --------------------------------------------------------------------------------------
+-- Get the state of the USB device
+-- 
+-- USB_STATE_POWERED -> USB device is powered up, ready to start negotiating
+-- USB_STATE_DEFAULT -> USB device is now negotiating
+-- USB_STATE_ADDRESS -> USB device now has an address
+-- USB_STATE_CONFIGURED -> USB device is completely configured and ready to rock and roll 
+-- --------------------------------------------------------------------------------------
+function usb_get_state() return byte is
+	pragma inline
+	return usb_state;
+end function
+
+	
+-- --------------------------------------------------------------------------------------
+-- Function returns true if the usb device has been completely configured, otherwise
+-- return value will be false
+-- --------------------------------------------------------------------------------------
+function usb_is_configured() return bit is
+	if ( usb_state == USB_STATE_CONFIGURED ) then
+		return 1
+	else
+		return 0
+	end if
+end function
+
+	
+-- --------------------------------------------------------------------------------------
+-- Procedure to turn on the USB device
+-- --------------------------------------------------------------------------------------
+procedure usb_enable_module() is 
+	pragma inline
+	UIR = 0
+	UCON = 0x00
+	
+	-- enable USB serial interface engine (SIE)
+	UCON_USBEN = high 
+	usb_state = USB_STATE_DEFAULT
+end procedure
+
