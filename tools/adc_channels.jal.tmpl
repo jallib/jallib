@@ -379,26 +379,66 @@ $pcfg_conf($dsref)
    asm nop
 #end def
 
-#def vcfg
+
+#def vcfg()
+   -- Normalize for VCFG format
+   var byte vcfg_shadow = ADC_NVREF
+   if ADC_NVREF == 2 then
+	  vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
+   end if
+   
+   if defined(ADCON0_VCFG) == true then
+	  ADCON0_VCFG = vcfg_shadow
+   elsif defined(ADCON1_VCFG) == true then
+	  ADCON1_VCFG = vcfg_shadow
+   else
+	  _error "There should be VCFG bits, I've made a mistake..."
+   end if
 
 #end def
+
 
 #def main
 $header
 $deps
 #set pcfg_combination_condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),$pcfg_combination_pics))
 
+-- -----------------------------------------
+-- FIRST CASE: 
+--  - PCFG bits exist, 
+--  - analog are dependent from each other
+--  - Vref config is done via PCFG bits
+--    combination
+-- -----------------------------------------
+
 ## Check PICs which use PCFG bits as combinations
 if $pcfg_combination_condition then
 $pcfg_combination
 
+
+-- --------------------------------------------
+-- SECOND CASE: 
+--  - PCFG bits exist 
+--  - analog are independent from each other
+--  - Vref config is done via VCFG bits
+-- --------------------------------------------
+
 ## 18F PICs, which use PCFG bits
 elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) | defined(ANCON0_PCFG1) | defined(ANCON0_PCFG2) | defined(ANCON0_PCFG3) | defined(ANCON0_PCFG4) | defined(ANCON0_PCFG5) | defined(ANCON0_PCFG6) | defined(ANCON0_PCFG7) | defined(ANCON1_PCFG10) | defined(ANCON1_PCFG11) | defined(ANCON1_PCFG12) | defined(ANCON1_PCFG8) | defined(ANCON1_PCFG9)) then
 $pcfg_18f
+$vcfg
+
+-- --------------------------------------------
+-- THIRD CASE: 
+--  - ANS bits exist, 
+--  - analog are independent from each other
+--  - Vref config is done via VCFG bits
+-- --------------------------------------------
 
 ## So these are PICs which use ANS bits, wether non-18F or 18F
 else
 $ans
+$vcfg
 
 end if
 #end def

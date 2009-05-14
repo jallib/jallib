@@ -30,6 +30,14 @@
 include adc_pindef
 
 
+-- -----------------------------------------
+-- FIRST CASE: 
+--  - PCFG bits exist, 
+--  - analog are dependent from each other
+--  - Vref config is done via PCFG bits
+--    combination
+-- -----------------------------------------
+
 if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_18F8585 | target_chip == PIC_18F8680 | target_chip == PIC_16F870 | target_chip == PIC_16F871 | target_chip == PIC_16F73 | target_chip == PIC_16F74 | target_chip == PIC_16F76 | target_chip == PIC_16F77 | target_chip == PIC_16F737 | target_chip == PIC_16F747 | target_chip == PIC_16F767 | target_chip == PIC_16F777 | target_chip == PIC_16F72 | target_chip == PIC_16F873A | target_chip == PIC_16F874A | target_chip == PIC_16F876A | target_chip == PIC_16F877A | target_chip == PIC_16F716 | target_chip == PIC_18F2439 | target_chip == PIC_18F2539 | target_chip == PIC_18F4439 | target_chip == PIC_18F4539 | target_chip == PIC_16F873 | target_chip == PIC_16F874 | target_chip == PIC_16F876 | target_chip == PIC_16F877 | target_chip == PIC_16F872 | target_chip == PIC_16F818 | target_chip == PIC_16F819 then
 
    -- Datasheet: 30491C
@@ -856,6 +864,14 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
 
 
 
+
+-- --------------------------------------------
+-- SECOND CASE: 
+--  - PCFG bits exist 
+--  - analog are independent from each other
+--  - Vref config is done via VCFG bits
+-- --------------------------------------------
+
 elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) | defined(ANCON0_PCFG1) | defined(ANCON0_PCFG2) | defined(ANCON0_PCFG3) | defined(ANCON0_PCFG4) | defined(ANCON0_PCFG5) | defined(ANCON0_PCFG6) | defined(ANCON0_PCFG7) | defined(ANCON1_PCFG10) | defined(ANCON1_PCFG11) | defined(ANCON1_PCFG12) | defined(ANCON1_PCFG8) | defined(ANCON1_PCFG9)) then
 
    -- Selecting the number of ADC channels is done using PCFG bits
@@ -1090,10 +1106,47 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) | defined(ANCON0_PCFG1) | de
    end if
 
 
+   -- Normalize for VCFG format
+   var byte vcfg_shadow = ADC_NVREF
+   if ADC_NVREF == 2 then
+	  vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
+   end if
+   
+   if defined(ADCON0_VCFG) == true then
+	  ADCON0_VCFG = vcfg_shadow
+   elsif defined(ADCON1_VCFG) == true then
+	  ADCON1_VCFG = vcfg_shadow
+   else
+	  _error "There should be VCFG bits, I've made a mistake..."
+   end if
+
+
+
+-- --------------------------------------------
+-- THIRD CASE: 
+--  - ANS bits exist, 
+--  - analog are independent from each other
+--  - Vref config is done via VCFG bits
+-- --------------------------------------------
 
 else
    -- Selecting the number of ADC channels is done using ANS bits
    asm nop
+
+   -- Normalize for VCFG format
+   var byte vcfg_shadow = ADC_NVREF
+   if ADC_NVREF == 2 then
+	  vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
+   end if
+   
+   if defined(ADCON0_VCFG) == true then
+	  ADCON0_VCFG = vcfg_shadow
+   elsif defined(ADCON1_VCFG) == true then
+	  ADCON1_VCFG = vcfg_shadow
+   else
+	  _error "There should be VCFG bits, I've made a mistake..."
+   end if
+
 
 
 end if
