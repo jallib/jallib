@@ -62,6 +62,8 @@ export:
 	mkdir distrib/jallib-all_devices-${VERSION}/lib
 	mkdir distrib/jallib-all_devices-${VERSION}/blink
 	mkdir -p distrib/jallib-all_devices-${VERSION}/doc/html
+	# special dir with all libs, except device files, for "one page" doc
+	mkdir distrib/jallib-libnodevice
 	# generate VERSION file for each
 	echo ${VERSION} > distrib/jallib-${VERSION}/VERSION
 	echo ${VERSION} > distrib/jallib-all_devices-${VERSION}/VERSION
@@ -76,10 +78,14 @@ export:
 dispatch:
 	# flatten library files
 	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f lib; done
+	# same but no device
+	cd  distrib/jallib-libnodevice && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep -v ^include\/device | grep ^include\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f .; done
 	# keep sample structure, but only for those in TORELEASE
-	###cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do mkdir -p `dirname $$f` ; done                                                                 
 	-cd  distrib/jallib-${VERSION} && mkdir sample
 	-cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f sample/; done
+	# same for "project"
+	-cd  distrib/jallib-${VERSION} && mkdir project
+	-cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^project\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f project/; done
 	# for all_devices package, keep everything...
 	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
 	for f in `find distrib/jallib-export/sample -type f | grep -e '[[:digit:]]\{2\}[[:alpha:]]\+.*_blink\.jal'`; \
@@ -94,7 +100,7 @@ dispatch:
 		python jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
 	done
 	# one-page doc
-	python jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-${VERSION}/lib/
+	python jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
 	# doc menu...
 	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
 	# manually include device files doc, as it's not generated from a lib
@@ -134,7 +140,6 @@ dispatch:
 pack:
 	# now include compiler binaries
 	# guess compiler version
-	##compiler=`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`
 	mkdir -p distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
 	# generate VERSION file (jallib version)
 	echo ${VERSION} > distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/VERSION
