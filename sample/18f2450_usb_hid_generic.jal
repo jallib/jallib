@@ -23,7 +23,7 @@
 --
 -- compiled with following flags: -loader18 -no-fuse -no-variable-reuse
 --
--- This file has been generated on 05/13/09 16:40:41, from:
+-- This file has been generated on 05/20/09 20:35:49, from:
 --    * board: board_18f2450_af.jal
 --    * test : test_usb_hid_generic.jal
 --
@@ -111,20 +111,19 @@ const byte USB_HID_ENDPOINT = 0x01
 
 include usb_defs
 
-const word USB_EP_BASE_ADDRESS = 0x0420
-
 const bit USB_EP0 = 1
 const byte USB_EP0_OUT_SIZE = 8
-const word USB_EP0_OUT_ADDR = USB_EP_BASE_ADDRESS
-const byte USB_EP0_IN_SIZE  = USB_EP0_OUT_SIZE
-const word USB_EP0_IN_ADDR  = USB_EP_BASE_ADDRESS + USB_EP0_OUT_SIZE
+const word USB_EP0_OUT_ADDR = ( USB_BASE_ADDRESS + 0x0010 )
+const byte USB_EP0_IN_SIZE  = 8
+const word USB_EP0_IN_ADDR  = ( USB_EP0_OUT_ADDR + USB_EP0_OUT_SIZE )
 
 const bit USB_EP1 = 1
 const byte USB_EP1_OUT_SIZE = 8
-const word USB_EP1_OUT_ADDR = USB_EP_BASE_ADDRESS + USB_EP0_OUT_SIZE  + USB_EP0_IN_SIZE
-const byte USB_EP1_IN_SIZE  = USB_EP1_OUT_SIZE
-const word USB_EP1_IN_ADDR  = USB_EP_BASE_ADDRESS + USB_EP0_OUT_SIZE  + USB_EP0_IN_SIZE + USB_EP1_OUT_SIZE
-var volatile byte  usb_ep1in_buf[ 8 ]
+const word USB_EP1_OUT_ADDR = ( USB_EP0_IN_ADDR + USB_EP0_IN_SIZE )
+const byte USB_EP1_IN_SIZE  = 8
+const word USB_EP1_IN_ADDR  = ( USB_EP1_OUT_ADDR + USB_EP1_OUT_SIZE )
+
+var volatile byte  usb_ep1in_buf[ 8 ] at USB_EP1_IN_ADDR
 
 const bit USB_EP2 = 0
 const byte USB_EP2_OUT_SIZE = 8
@@ -308,21 +307,33 @@ const byte USB_STRING2[48] =
 include usb_drv_core
 
 
--------------------------------- ADC STUFF -------------------------------------
-const no_adc = 0x06
-const ADC_HARDWARE_NCHAN     = 1
-const ADC_HARDWARE_NVREF     = 0         ;number of external references
-const ADC_HARDWARE_RSOURCE   = 10_000    ;maximum source resistance
-const ADC_HARDWARE_HIGH_RESOLUTION = true ;true = high resolution = 10 bits
-
--- get the library, after defining the constants
-include adc_hardware
-
--- initialize the AD converter according to the above parameters
--- LEFT JUSTIFIED, 16 TAD, FOSC / 64 
-ADCON2 = 0b_10_000_110
-adc_init()
-adc_on()
+-- adc lib is horribly broken, it won't work K50 series, so disable for the time being
+if ( 	(target_chip == PIC_18F14K50 ) |
+		(target_chip == PIC_18F13K50 ) |
+		(target_chip == PIC_18LF14K50 ) |
+		(target_chip == PIC_18LF13K50 ) )then
+	const bit no_analog = true
+else
+	const bit no_analog = true
+end if
+	
+if !no_analog	then
+	-------------------------------- ADC STUFF -------------------------------------
+	const no_adc = 0x06
+	const ADC_HARDWARE_NCHAN     = 1
+	const ADC_HARDWARE_NVREF     = 0         ;number of external references
+	const ADC_HARDWARE_RSOURCE   = 10_000    ;maximum source resistance
+	const ADC_HARDWARE_HIGH_RESOLUTION = true ;true = high resolution = 10 bits
+	
+	-- get the library, after defining the constants
+	include adc_hardware
+	
+	-- initialize the AD converter according to the above parameters
+	-- LEFT JUSTIFIED, 16 TAD, FOSC / 64 
+	ADCON2 = 0b_10_000_110
+	adc_init()
+	adc_on()
+end if
 
 -- -----------------------------------------------------------------------------
 
@@ -347,9 +358,6 @@ const byte TMR0_OFFSET = 106
 
 -- set timer 0, 8 bit mode, timer enabled
 T0CON = 0b_11000_010
-
--- weak pull up enabled on port b
-INTCON2_NRBPU = 0
 
 var word num_timer_ints = 0
 
@@ -391,7 +399,7 @@ procedure timer_0_isr() is
         num_timer_ints = num_timer_ints + 1
 
         if ( num_timer_ints == 100 ) then
-			-- send ADC event
+			-- send portA event
 			hid_tx_buffer[ 0 ] = 0x10
 			hid_tx_buffer[ 1 ] = PORTA
 			
@@ -399,7 +407,7 @@ procedure timer_0_isr() is
 		end if
         
         if ( num_timer_ints == 200 ) then
-			-- send ADC event
+			-- send portB event
 			hid_tx_buffer[ 0 ] = 0x11
 			hid_tx_buffer[ 1 ] = PORTB
 			
@@ -407,7 +415,7 @@ procedure timer_0_isr() is
 		end if
 
         if ( num_timer_ints == 300 ) then
-			-- send ADC event
+			-- send portC event
 			hid_tx_buffer[ 0 ] = 0x12
 			hid_tx_buffer[ 1 ] = PORTC
 			
@@ -428,11 +436,13 @@ procedure timer_0_isr() is
 			num_timer_ints = 0
 			
 			if adc_enabled then
-				var byte adc_hbyte
-				var byte adc_lbyte
+				var byte adc_hbyte = 0x80
+				var byte adc_lbyte = 0x00
 				
+				
+if !no_analog then
 				adc_read_bytes( 0 , adc_hbyte, adc_lbyte)
-				
+end if				
 				-- send ADC event
 				hid_tx_buffer[ 0 ] = 0x02
 				hid_tx_buffer[ 1 ] = adc_hbyte
@@ -541,7 +551,7 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
 
 			0x03:
 			block
-				PORTB = hid_tx_buffer[ 1 ]
+				PORTC = hid_tx_buffer[ 1 ]
 				if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
 				end if
 			end block
@@ -576,7 +586,7 @@ include usb_drv
 
 -- set port A and B to inputs
 PORTA_direction  = 0b_1111_1111
-PORTB_direction  = 0b_1111_1111
+PORTC_direction  = all_output
 
 
 
@@ -637,9 +647,8 @@ usb_enable_module()
 
 -- enable digital inputs on port B
 -- enable_digital_io()
-ADCON1 = 0x0E
 
-pin_b5_direction = input
+ADCON1 = 0x0E
 
 -- main loop
 forever loop
