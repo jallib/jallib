@@ -17,6 +17,37 @@
 -- Notes: 
 --
 
+
+-- USB_PING_PONG_MODE, defines the USB pint pong buffer configuration
+-- set value to USB_PING_PONG__NO_PING_PONG, other modes not supported yet
+if defined( USB_PING_PONG__NO_PING_PONG ) == false then
+    const byte USB_PING_PONG__NO_PING_PONG = USB_PING_PONG__NO_PING_PONG
+end if
+
+
+-- USB_PULLUP_OPTION, defines the USB PULL UP configuration
+-- value can be set to USB_PULLUP_ENABLE to enable the USB pull up resistors
+-- value can be set to USB_PULLUP_DISABLE to disable the USB pull up resistors
+if defined( USB_PULLUP_OPTION ) == false then
+    const byte USB_PULLUP_OPTION = USB_PULLUP_ENABLE
+end if
+
+
+-- USB_TRANSCEIVER_OPTION, defines if the internal USB transeiver is enabled
+-- value can be set to USB_INTERNAL_TRANSCEIVER to enable the internal USB tranceiver
+-- value can be set to USB_EXTERNAL_TRANSCEIVER to disable the internal USB tranceiver
+if defined( USB_TRANSCEIVER_OPTION ) == false then
+    const byte USB_TRANSCEIVER_OPTION = USB_PULLUP_ENABLE
+end if
+
+
+-- USB_SPEED_OPTION, defines the USB speed (low or high speed USB)
+-- value can be set to USB_LOW_SPEED to use low speed (1.5 Mbps) USB option
+-- value can be set to USB_HIGH_SPEED to use high speed (12 Mb-s) USB option
+if defined( USB_SPEED_OPTION ) == false then
+    const byte USB_SPEED_OPTION = USB_FULL_SPEED
+end if
+
 -- --------------------------------------------------------------------------------------
 -- Internal procedure to handle standard USB requests
 -- it will take care of the overall state of the device
@@ -334,33 +365,20 @@ procedure _usb_handle_transaction() is
 		case pid of
 			USB_PID_SETUP:
 			block
-			-- AF FIXME Ram2RamCopy( usb_sdp_loc, USB_EP0_OUT_ADDR, count(usb_sdp) )
+				var byte src[8] at USB_EP0_OUT_ADDR
+				var byte idx
 				
-			var byte tmp1[8] at USB_EP0_OUT_ADDR
-			var byte tmp2[8] at usb_sdp_loc
-			var byte idx
-			
-			tmp2[0] = tmp1[0]
-			tmp2[1] = tmp1[1]
-			tmp2[2] = tmp1[2]
-			tmp2[3] = tmp1[3]
-			tmp2[4] = tmp1[4]
-			tmp2[5] = tmp1[5]
-			tmp2[6] = tmp1[6]
-			tmp2[7] = tmp1[7]
-			
-			--tmp2 = tmp1
-			-- for 8 using idx loop
-			-- tmp2[idx ] = tmp1[idx ]
-			-- end loop
-			
-			if USB_DEBUG > 0 then
-				serial_newline()
-				serial_hw_write( "!" )
 				for 8 using idx loop
-					print_byte_hex(serial_hw_data,  tmp1[ idx ] )
-				end loop	
-			end if
+					usb_sdp[idx ] = src[idx ]
+				end loop
+				
+				if USB_DEBUG > 0 then
+					serial_newline()
+					serial_hw_write( "!" )
+					for 8 using idx loop
+						print_byte_hex(serial_hw_data,  usb_sdp[ idx ] )
+					end loop	
+				end if
 			
 			-- clear PKTDIS before setting up the endpoint(s) again
 			UCON_PKTDIS = low		
@@ -677,8 +695,6 @@ procedure _usb_handle_reset() is
 
 	UEIR = 0
 	UIR = 0
-    --UEIE = 0b10011111 -- Unmask all USB error interrupts
-    --UIE = 0b01111011  -- Enable all interrupts except ACTVIE
 
 	if USB_DEBUG > 0 then
 		serial_newline()
@@ -730,36 +746,27 @@ procedure _usb_handle_reset() is
 		
 	while UIR_TRNIF ==1 loop 
 		-- clear fifo
-		UIR_TRNIF = low
-		asm nop
-		asm nop
-		asm nop
-		asm nop
-		asm nop
-		asm nop		
+		UIR_TRNIF = low	
 	end loop
 	
 	usb_control_mode = USB_CM_IDLE
 	usb_status   = USB_STATUS_IDLE
 	
-    UCON_PKTDIS = 0 -- Make sure packet processing is enabled
+	-- Make sure packet processing is enabled
+    UCON_PKTDIS = 0 
 
-	-- EP0 OUT
-	usb_bd0out_cnt  = 8
-	usb_bd0out_addr = USB_EP0_OUT_ADDR
-	-- usb_bd0out_addr = 0x0500
-	-- usb_bd0out_addrl = 0x00 -- USB_EP0_OUT_ADDR & 0xFF
-	-- usb_bd0out_addrh = 0x05 -- USB_EP0_OUT_ADDR >> 8	
-	-- set UOWN bit, SIE owns the buffer since we expect frist transaction to be SETUP
-	-- AF CHECK
-	usb_bd0out_stat = 0x8C
-								
 	-- EP0 IN
 	usb_bd0in_cnt = 8
 	usb_bd0in_addr = USB_EP0_IN_ADDR
 	-- clear UOWN bit, uC owns buffer
-	-- AF CHECK DTSEN bit not set???
 	usb_bd0in_stat = 0x00
+
+	-- EP0 OUT
+	usb_bd0out_cnt  = 8
+	usb_bd0out_addr = USB_EP0_OUT_ADDR
+	-- set UOWN bit, SIE owns the buffer since we expect frist transaction to be SETUP
+	usb_bd0out_stat = 0x8C
+								
 
 	if USB_DEBUG > 0 then
 		serial_newline()
@@ -773,14 +780,7 @@ procedure _usb_handle_reset() is
 		serial_hw_write( "U" )
 		print_byte_hex(serial_hw_data,  UEP0 )
 	end if
-
---	if USB_DEBUG > 0 then
---		const byte str [] = " R "
---		serial_newline()
---		print_string( serial_hw_data, str );
---		serial_print_hex_hex(UIR);
---	end if
-		
+	
 end procedure
 
 -- --------------------------------------------------------------------------------------
@@ -802,10 +802,7 @@ end procedure
 -- to keep the input and output transfers flowing
 -- --------------------------------------------------------------------------------------
 procedure usb_handle_isr() is
-	pragma inline
-	-- const byte str1[] = " ENTER usb_handle_isr "
-	-- const byte str2[] = " EXIT usb_handle_isr "
-	--print_string( serial_hw_data,str1)	
+	-- pragma inline
 
 	if ( PIR2_USBIF ) then
 
@@ -877,15 +874,13 @@ end procedure
 -- procedure will setup to proper interrupt flags
 -- --------------------------------------------------------------------------------------
 procedure _usb_ints_on() is
+	pragma inline
 	UIE= 0x00
 	UIE_STALLIE = high  -- interrupt on stall
 	UIE_TRNIE = high 	-- on transaction complete
 	UIE_URSTIE = high 	-- on reset 
-
-	PIE2_USBIE = low 	-- general USB interrupts
-	
 	UIE_SOFIE = high
-	
+	PIE2_USBIE = low 	-- general USB interrupts
 end procedure
 
 
@@ -898,24 +893,9 @@ procedure usb_setup() is
 	usb_state = USB_STATE_POWERED;
 
 	UCON = 0x00
-	UCFG = 0x00
-		
-	-- init hardware
-	--UCFG_UTRDIS = low	 	-- enable internal tranceiver
-	UCFG_FSEN = high		-- clear for low speed, set for high speed
-	UCFG_UPUEN = high		-- enable on-chip pull-ups
-	--UCFG_PPB:0 = 0		-- disable double buffering for now
-
-
-	-- if using ping pong buffers, need to do this:
-	-- set_bit(ucon, PPBRST);	-- reset ping pong buffers to even
-	-- clear_bit(ucon, PPBRST);
-
-	-- init endpoint 0		
-	UEP0_EPHSHK = high 		-- EP0 handshaking on
-	UEP0_EPOUTEN = high 		-- EP0 OUT enable 
-	UEP0_EPINEN = high 		-- EP0 IN enable 
-	UEP0_EPCONDIS = low 		-- EP0 control transfers on (and IN and OUT)
+	
+	-- setup USB configuration (Speed, ping-ping buffers, transeiver enabled, pull up configuration
+	UCFG = USB_SPEED_OPTION | USB_TRANSCEIVER_OPTION |USB_PULLUP_OPTION |USB_PING_PONG__NO_PING_PONG
 	
 	-- enable the interrupt flags
 	_usb_ints_on()
