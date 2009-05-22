@@ -502,7 +502,7 @@ def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
 	header = os.linesep.join([h for i,h in header])
 	header += os.linesep.join([
 						 os.linesep + "--",
-	                     "-- This file has been generated on %s, from:" % time.strftime("%c",datetime.datetime.now().timetuple()),
+	                     "-- This file has been generated from:",
 	                     "--    * board: %s" % os.path.basename(boardfile),
 	                     "--    * test : %s" % os.path.basename(testfile),
 	                     "--",
