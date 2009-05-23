@@ -1,0 +1,650 @@
+#def header
+-- Title: ADC channel configuration.
+-- Author: Sébastien Lelong, Copyright (C) 2009, all rights reserved. 
+-- Adapted-by: 
+-- Compiler: >=2.4k
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library acts as a wrapper. When included, it'll define ways to
+-- configure the number ADC channels. There are 3 different cases:
+--    1. the number of channels is specified setting/clearing PCFG bits
+--       => a combination of PCFG bits selects a given number of ADC channels.
+--          It is not possible to independently select which pins as ADC pins.
+--          If available, Vref+ and Vref- are part of these combinations.
+--          PCFG bits are in ADCON1, as ADCON1_PCFG
+--    2. the number of channels is specified clearing PCFG bits (case only found in 18F, I think)
+--       => pins can be configured independently (you can decide which pin will act as
+--          an analog pin, and define your own combination
+--          Vref+/Vref- are configured using VCFG bits.
+--          PCFG bits are in ADCON0 and ADCON1, and are numbered (eg. ADCON_PCFG5)
+--    3. the number of channels is set using ANS bits (18F and non-18F)
+--       => same as case 2., channels can be configured independently
+--          Vref+/Vref- are configured using VCFG bits.
+--
+--
+-- Notes: this file is generated, don't modify it directly...
+--
+
+#end def
+
+#def deps
+include adc_pindef
+#end def
+
+
+#def analyze_config(bits,dpins,mapping)
+	#set analog = [d for d in dpins.items() if d[1] == 'A']
+	#set vrefs = [d for d in dpins.items() if d[1].startswith('VREF')]
+	#set num_a = len(analog)
+	#set num_vref = len(vrefs)
+	## There can be "anything" bits...
+	#silent bits = bits.replace("x","0")
+	## Mapping for 0, 1 or 2 VREF
+	#silent mapping.setdefault(num_a + num_vref,{0 : '0', 1 : '0', 2 : '0', 'analog_pins' : []})[num_vref] = bits
+	#silent mapping[num_a + num_vref]['analog_pins'] = analog + vrefs
+	#return "const bit*%d ADC_PCFG_%sANA_%sREF = 0b_%s" % (len(bits),num_a,num_vref,bits)
+#end def
+
+#def pcfg_conf(dsref)
+	#set confs = $adc_pcfg[$dsref]
+	#set mapping = {}
+         -- These are some constants similar to what can be found in MCC18 adc.h header file
+	#for bits,dpins in confs.items()
+		#set r = $analyze_config(bits,dpins,mapping)
+         $r
+	#end for
+	#set smap = sorted(mapping.items())
+	#set lmap = []
+	#silent [(lmap.append(m[1][0]),lmap.append(m[1][1]),lmap.append(m[1][2])) for m in smap]
+	#set lenlmap = str(len(lmap))
+	#set lenbits = str(len(bits))
+	#set map = "const byte ADC_PCFG_MAP [" + lenlmap + "] = {0b_" + ", 0b_".join(lmap) + "}"
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         $map
+         var bit*$lenbits no_vref = 0
+         var bit*$lenbits one_vref = 0
+         var bit*$lenbits two_vref = 0
+
+	## Generate procedure to access combinations
+	## All PICs in this section are in the same DS (assert)
+	## Get a PIC in this DS to access ANx pins mapping
+	#set dummy_pic = $ds_pic[dsref][-1]
+    #for i,(numch,dconf) in enumerate(smap)
+		#if i == 0
+         if (ADC_NCHANNEL + ADC_NVREF) == $numch then
+		#else
+         elsif (ADC_NCHANNEL + ADC_NVREF) == $numch then
+		#end if
+		#for strpin in dconf['analog_pins']:
+			#set an_pin = strpin[0].split("/")[0]
+			#if not an_pin.startswith("AN")
+				#silent an_pin = $adc_pins[dummy_pic][an_pin]
+			#end if
+            adc_pin_${an_pin}_direction = input
+		#end for
+	#end for
+         end if
+#end def
+
+
+#def pcfg_combination
+	#set bydsref = {}
+	#silent [bydsref.setdefault($pic_ds[p],[]).append(p) for p in $pcfg_combination_pics]
+	#for dsref, pics in bydsref.items()
+		#set condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),pics))
+		#set ds_refs = list(set([$pic_ds[p] for p in pics]))
+		#assert len(ds_refs) == 1
+
+   -- Datasheet: $ds_refs[0]
+   if $condition then
+
+$pcfg_conf($dsref)
+   end if
+
+	#end for
+
+   -- Retrieve config bits according to selected number of ADC channels
+   const byte idx = (ADC_NCHANNEL - 1) * 3
+   if ADC_NVREF == 0 then
+      no_vref = ADC_PCFG_MAP[idx]
+      ADCON1_PCFG = no_vref
+   elsif ADC_NVREF == 1 then
+      one_vref = ADC_PCFG_MAP[idx + 1]
+      ADCON1_PCFG = one_vref
+   elsif ADC_NVREF == 2 then
+      two_vref = ADC_PCFG_MAP[idx + 2]
+      ADCON1_PCFG = two_vref
+   else
+      _error "You can't have more than 2 VRef..."
+   end if
+
+
+#end def
+
+#def pcfg_18f
+	## PCFG0  in ANCON0
+	## PCFG1  in ANCON0
+	## PCFG2  in ANCON0
+	## PCFG3  in ANCON0
+	## PCFG4  in ANCON0
+	## PCFG5  in ANCON0
+	## PCFG6  in ANCON0
+	## PCFG7  in ANCON0
+	## PCFG8  in         ANCON1
+	## PCFG9  in         ANCON1
+	## PCFG10 in         ANCON1
+	## PCFG11 in         ANCON1
+	## PCFG12 in         ANCON1
+
+   -- Selecting the number of ADC channels is done using PCFG bits
+   -- User can optionally specify ADC channels number
+   if defined(ADC_NCHANNEL) == true then
+      if ADC_NCHANNEL > ADC_NTOTAL_CHANNEL then
+         _error "More ADC channels than available, adjust ADC_NCHANNEL"
+      end if
+      -- Max 13 ADC channels
+      -- At least 1 channel
+      if ADC_NCHANNEL > 0 then
+         ANCON0_PCFG0 = false
+         adc_pin_AN0_direction = input
+      end if
+      -- At least 2 channels
+      if ADC_NCHANNEL > 1 then
+         ANCON0_PCFG1 = false
+         adc_pin_AN1_direction = input
+      end if
+      -- At least 3 channels
+      if ADC_NCHANNEL > 2 then
+          ANCON0_PCFG2 = false
+         adc_pin_AN2_direction = input
+      end if
+      -- At least 4 channels
+      if ADC_NCHANNEL > 3 then
+         ANCON0_PCFG3 = false
+         adc_pin_AN3_direction = input
+      end if
+      -- At least 5 channels
+      if ADC_NCHANNEL > 4 then
+         ANCON0_PCFG4 = false
+         adc_pin_AN4_direction = input
+      end if
+      -- At least 6 channels
+      if ADC_NCHANNEL > 5 then
+         ANCON0_PCFG5 = false
+         adc_pin_AN5_direction = input
+      end if
+      -- At least 7 channels
+      if ADC_NCHANNEL > 6 then
+         ANCON0_PCFG6 = false
+         adc_pin_AN6_direction = input
+      end if
+      -- At least 8 channels
+      if ADC_NCHANNEL > 7 then
+         ANCON0_PCFG7 = false
+         adc_pin_AN7_direction = input
+      end if
+      -- At least 9 channels
+      if ADC_NCHANNEL > 8 then
+         ANCON1_PCFG8 = false
+         adc_pin_AN8_direction = input
+      end if
+      -- At least 10 channels
+      if ADC_NCHANNEL > 9 then
+         ANCON1_PCFG9 = false
+         adc_pin_AN9_direction = input
+      end if
+      -- At least 11 channels
+      if ADC_NCHANNEL > 10 then
+         ANCON1_PCFG10 = false
+         adc_pin_AN10_direction = input
+      end if
+      -- At least 12 channels
+      if ADC_NCHANNEL > 11 then
+         ANCON1_PCFG11 = false
+         adc_pin_AN11_direction = input
+      end if
+      -- At least 13 channels
+      if ADC_NCHANNEL > 12 then
+         ANCON1_PCFG12 = false
+         adc_pin_AN12_direction = input
+      end if
+   end if
+
+   -- Or specify manually which pin should act as ADC
+   -- Provide procedure for this (eg. for pin AN7 to be analog, set_analog_pin(7))
+
+   -- Configure a pin to act as an analog pin.
+   -- an_pin_num references the 'x' in ANx notation.
+   -- Say you want to activate pin AN7, which is pin #12, also named RA4 in digital mode:
+   --     - set_analog_pin(7) will set this pin as analog
+   --     - set_analog_pin(12) won't set this pin as analog, but the equivalent
+   --       one named AN12, if any
+   --     - set_analog_pin(4) will do the same for AN4
+   procedure set_analog_pin(byte in an_pin_num) is
+      -- There's a mininum of 5 channels, so ANCON0_PCFG0, ANCON0_PCFG1,
+      -- ANCON0_PCFG2, ANCON0_PCFG3 and ANCON0_PCFG4 are always defined
+      if an_pin_num == 0 then
+         ANCON0_PCFG0 = false
+         adc_pin_AN0_direction = input
+      end if
+      if an_pin_num == 1 then
+         ANCON0_PCFG1 = false
+         adc_pin_AN1_direction = input
+      end if
+      if an_pin_num == 2 then
+         ANCON0_PCFG2 = false
+         adc_pin_AN2_direction = input
+      end if
+      if an_pin_num == 3 then
+         ANCON0_PCFG3 = false
+         adc_pin_AN3_direction = input
+      end if
+      if an_pin_num == 4 then
+         ANCON0_PCFG4 = false
+         adc_pin_AN4_direction = input
+      end if
+
+      -- Sometimes, there are gaps in PCFG bits
+      -- 18lf24j50 has PCFG0 to PCFG12 bits, but without PCFG5, PCFG6 and PCFG7
+      -- (this is because these bits only exist in the 44-pins version, according to DS)
+      -- This shouldn't be a problem because numbering between PCFG bits and
+      -- analog pins is respected: there's no AN5, AN6 and AN7 as well)
+
+      -- PCFG5, PCFG6 and PCFG7 are always found together
+      if defined(ANCON0_PCFG5) == true & defined(ANCON0_PCFG6) == true & defined(ANCON0_PCFG7) == true then
+         if an_pin_num == 5 then
+            ANCON0_PCFG5 = false
+            adc_pin_AN5_direction = input
+         end if
+         if an_pin_num == 6 then
+            ANCON0_PCFG6 = false
+            adc_pin_AN6_direction = input
+         end if
+         if an_pin_num == 7 then
+            ANCON0_PCFG7 = false
+            adc_pin_AN7_direction = input
+         end if
+      end if
+
+      -- PCFG8, PCFG9, PCFG10, PCFG11 and PCFG12 are always found together
+      if defined(ANCON1_PCFG8) == true & defined(ANCON1_PCFG9) == true & defined(ANCON1_PCFG10) == true & defined(ANCON1_PCFG11) == true & defined(ANCON1_PCFG12) == true then
+         if an_pin_num == 8 then
+            ANCON1_PCFG8 = false
+            adc_pin_AN8_direction = input
+         end if
+         if an_pin_num == 9 then
+            ANCON1_PCFG9 = false
+            adc_pin_AN9_direction = input
+         end if
+         if an_pin_num == 10 then
+            ANCON1_PCFG10 = false
+            adc_pin_AN10_direction = input
+         end if
+         if an_pin_num == 11 then
+            ANCON1_PCFG11 = false
+            adc_pin_AN11_direction = input
+         end if
+         if an_pin_num == 12 then
+            ANCON1_PCFG12 = false
+            adc_pin_AN12_direction = input
+         end if
+      end if
+   end procedure
+
+   -- Configure a pin to act as an digital pin.
+   -- Because setting a pin to act as digital makes only sens for
+   -- pins which can also be configured as analog,
+   -- an_pin_num references the 'x' in ANx notation.
+   -- Say you want to deactivate pin AN7, which is pin #12, also named RA4 in digital mode:
+   --     - set_digital_pin(7) will set this pin as digital
+   --     - set_analog_pin(12) won't set this pin as digital, but the equivalent
+   --       one named AN12, if any
+   --     - set_analog_pin(4) will do the same for AN4
+   -- 
+   -- Note: the pin direction is not modified
+   procedure set_digital_pin(byte in an_pin_num) is
+      if an_pin_num == 0 then
+         ANCON0_PCFG0 = true
+         adc_pin_AN0_direction = input
+      end if
+      if an_pin_num == 1 then
+         ANCON0_PCFG1 = true
+         adc_pin_AN1_direction = input
+      end if
+      if an_pin_num == 2 then
+         ANCON0_PCFG2 = true
+         adc_pin_AN2_direction = input
+      end if
+      if an_pin_num == 3 then
+         ANCON0_PCFG3 = true
+         adc_pin_AN3_direction = input
+      end if
+      if an_pin_num == 4 then
+         ANCON0_PCFG4 = true
+         adc_pin_AN4_direction = input
+      end if
+
+      -- PCFG5, PCFG6 and PCFG7 are always found together
+      if defined(ANCON0_PCFG5) == true & defined(ANCON0_PCFG6) == true & defined(ANCON0_PCFG7) == true then
+         if an_pin_num == 5 then
+            ANCON0_PCFG5 = true
+            adc_pin_AN5_direction = input
+         end if
+         if an_pin_num == 6 then
+            ANCON0_PCFG6 = true
+            adc_pin_AN6_direction = input
+         end if
+         if an_pin_num == 7 then
+            ANCON0_PCFG7 = true
+            adc_pin_AN7_direction = input
+         end if
+      end if
+
+      -- PCFG8, PCFG9, PCFG10, PCFG11 and PCFG12 are always found together
+      if defined(ANCON1_PCFG8) == true & defined(ANCON1_PCFG9) == true & defined(ANCON1_PCFG10) == true & defined(ANCON1_PCFG11) == true & defined(ANCON1_PCFG12) == true then
+         if an_pin_num == 8 then
+            ANCON1_PCFG8 = true
+            adc_pin_AN8_direction = input
+         end if
+         if an_pin_num == 9 then
+            ANCON1_PCFG9 = true
+            adc_pin_AN9_direction = input
+         end if
+         if an_pin_num == 10 then
+            ANCON1_PCFG10 = true
+            adc_pin_AN10_direction = input
+         end if
+         if an_pin_num == 11 then
+            ANCON1_PCFG11 = true
+            adc_pin_AN11_direction = input
+         end if
+         if an_pin_num == 12 then
+            ANCON1_PCFG12 = true
+            adc_pin_AN12_direction = input
+         end if
+      end if
+   end procedure
+
+#end def
+
+#def ans
+   -- Selecting the number of ADC channels is done using ANS bits
+   -- There are many different cases where ANS bits can be found
+   --   - bit*2 ADCON0_ANS
+   --   - bit ANSEL0_ANSx (x in [0,7])
+   --   - bit ANSEL1_ANSx (x in [8,11])
+   --   - bit*6 ANSELA_ANSA
+   --   - bit*6 ANSELB_ANSB
+   --   - byte ANSELD_ANSD
+   --   - bit*3 ANSELE_ANSE
+   --   - bit*4 ANSELH_ANSELH
+   --   - bit*4 ANSEL_ANS
+   --   - bit ANSEL_ANSx (x in [0,7] or x in [0,4], or x in [0,1]U[4,7], or x in [0,6])
+   --   - bit ANSEL_ANSELx (0 <= x <= 7, or 3 <= x <= 7)
+   --   - bit ANSELH_ANSx (8 <= x <= 13, or 8 <= x <= 12)
+   --
+   -- There's a need for normalization...
+   -- All ANS bits will looks like: JALLIB_ANSx
+
+   -- PICs: 10f220, 10f222, 12f510, 16f506, 16f526
+   if defined(ADCON0_ANS) == true then
+      var volatile bit JALLIB_ANS0      at ADCON0_ANS : 0
+      var volatile bit JALLIB_ANS1      at ADCON0_ANS : 1
+   end if
+
+   -- PICs: 16f785, 16hv785
+   if defined(ANSEL0_ANS0) == true then
+      var volatile bit JALLIB_ANS0      is ANSEL0_ANS0
+      var volatile bit JALLIB_ANS1      is ANSEL0_ANS1
+      var volatile bit JALLIB_ANS2      is ANSEL0_ANS2
+      var volatile bit JALLIB_ANS3      is ANSEL0_ANS3
+      var volatile bit JALLIB_ANS4      is ANSEL0_ANS4
+      var volatile bit JALLIB_ANS5      is ANSEL0_ANS5
+      var volatile bit JALLIB_ANS6      is ANSEL0_ANS6
+      var volatile bit JALLIB_ANS7      is ANSEL0_ANS7
+   end if
+   -- PICs: 16f785, 16hv785
+   if defined(ANSEL1_ANS8) == true then
+      var volatile bit JALLIB_ANS8      is ANSEL1_ANS8
+      var volatile bit JALLIB_ANS9      is ANSEL1_ANS9
+      var volatile bit JALLIB_ANS10     is ANSEL1_ANS10
+      var volatile bit JALLIB_ANS11     is ANSEL1_ANS11
+   end if
+
+   -- PICs: 16f722, 16f723, 16f724, 16f726, 16f727, 16lf722, 16lf723, 16lf724, 16lf726, 16lf727
+   if defined(ANSELA_ANSA) == true then
+      var volatile bit JALLIB_ANS0      at ANSELA_ANSA : 0
+      var volatile bit JALLIB_ANS1      at ANSELA_ANSA : 1
+      var volatile bit JALLIB_ANS2      at ANSELA_ANSA : 2
+      var volatile bit JALLIB_ANS3      at ANSELA_ANSA : 3
+      var volatile bit JALLIB_ANS4      at ANSELA_ANSA : 4
+      var volatile bit JALLIB_ANS5      at ANSELA_ANSA : 5
+   end if
+   -- PICs: 16f722, 16f723, 16f724, 16f726, 16f727, 16lf722, 16lf723, 16lf724, 16lf726, 16lf727
+   if defined(ANSELB_ANSB) == true then
+      var volatile bit JALLIB_ANS6      at ANSELB_ANSB : 0
+      var volatile bit JALLIB_ANS7      at ANSELB_ANSB : 1
+      var volatile bit JALLIB_ANS8      at ANSELB_ANSB : 2
+      var volatile bit JALLIB_ANS9      at ANSELB_ANSB : 3
+      var volatile bit JALLIB_ANS10     at ANSELB_ANSB : 4
+      var volatile bit JALLIB_ANS11     at ANSELB_ANSB : 5
+   end if
+   -- PICs: 16f724, 16f727, 16lf724, 16lf727
+   if defined(ANSELD_ANSD) == true then
+      var volatile bit JALLIB_ANS12     at ANSELD_ANSD : 0
+      var volatile bit JALLIB_ANS13     at ANSELD_ANSD : 1
+      var volatile bit JALLIB_ANS14     at ANSELD_ANSD : 2
+      var volatile bit JALLIB_ANS15     at ANSELD_ANSD : 3
+      var volatile bit JALLIB_ANS16     at ANSELD_ANSD : 4
+      var volatile bit JALLIB_ANS17     at ANSELD_ANSD : 5
+      var volatile bit JALLIB_ANS18     at ANSELD_ANSD : 6
+      var volatile bit JALLIB_ANS19     at ANSELD_ANSD : 7
+   end if
+   -- PICs: 16f724, 16f727, 16lf724, 16lf727
+   if defined(ANSELE_ANSE) == true then
+      var volatile bit JALLIB_ANS20     at ANSELE_ANSE : 0
+      var volatile bit JALLIB_ANS21     at ANSELE_ANSE : 1
+      var volatile bit JALLIB_ANS22     at ANSELE_ANSE : 2
+   end if
+
+   -- PICs: 16f677, 16f685, 16f687, 16f689, 16f690, 18f13k22, 18f13k50, 18f14k22, 
+   --       18f14k50, 18lf13k22, 18lf13k50, 18lf14k22, 18lf14k50
+   -- ANSELH_ANSELH can be associated (ie. "high part of") ANSEL_ANSx and ANSEL_ANSELx
+   if defined(ANSELH_ANSELH) == true  then
+      var volatile bit JALLIB_ANS8      at ANSELH_ANSELH : 0
+      var volatile bit JALLIB_ANS9      at ANSELH_ANSELH : 1
+      var volatile bit JALLIB_ANS10     at ANSELH_ANSELH : 2
+      var volatile bit JALLIB_ANS11     at ANSELH_ANSELH : 3
+   end if
+
+   -- PICs: 12f609, 12f615, 12f675, 12f683, 12hv609, 12hv615
+   if defined(ANSEL_ANS) == true then
+      var volatile bit JALLIB_ANS0      at ANSEL_ANS : 0
+      var volatile bit JALLIB_ANS1      at ANSEL_ANS : 1
+      var volatile bit JALLIB_ANS2      at ANSEL_ANS : 2
+      var volatile bit JALLIB_ANS3      at ANSEL_ANS : 3
+   end if
+
+   -- PICs: 16f610, 16f616, 16f676, 16f677, 16f684, 16f685, 16f687, 16f688, 16f689, 
+   --       16f690, 16f88, 16f882, 16f883, 16f884, 16f886, 16f887, 16hv610, 16hv616, 
+   --       18f23k20, 18f24k20, 18f25k20, 18f26k20, 18f43k20, 18f44k20, 18f45k20, 18f46k20
+   if defined(ANSEL_ANS0) == true then
+      -- ANS0 always comes with ANS1 and ANS4
+      var volatile bit JALLIB_ANS0      is ANSEL_ANS0
+      var volatile bit JALLIB_ANS1      is ANSEL_ANS1
+      var volatile bit JALLIB_ANS4      is ANSEL_ANS4
+   end if
+   -- PICs: 16f616, 16f676, 16f677, 16f684, 16f685, 16f687, 16f688, 16f689, 16f690, 
+   --       16f88, 16f882, 16f883, 16f884, 16f886, 16f887, 16hv616, 18f23k20, 18f24k20, 
+   --       18f25k20, 18f26k20, 18f43k20, 18f44k20, 18f45k20, 18f46k20,
+   if defined(ANSEL_ANS2) == true then
+      var volatile bit JALLIB_ANS2      is ANSEL_ANS2
+   end if
+   -- PICs: 16f616, 16f676, 16f677, 16f684, 16f685, 16f687, 16f688, 16f689, 16f690, 
+   --       16f88, 16f882, 16f883, 16f884, 16f886, 16f887, 16hv616, 18f23k20, 18f24k20, 
+   --       18f25k20, 18f26k20, 18f43k20, 18f44k20, 18f45k20, 18f46k20,
+   if defined(ANSEL_ANS3) == true then
+      var volatile bit JALLIB_ANS3      is ANSEL_ANS3
+   end if
+   -- PICs: 16f610, 16f616, 16f676, 16f677, 16f684, 16f685, 16f687, 16f688, 16f689, 
+   --       16f690, 16f88, 16f884, 16f887, 16hv610, 16hv616, 18f43k20, 18f44k20, 
+   --       18f45k20, 18f46k20,
+   if defined(ANSEL_ANS5) == true then
+      -- ANS5 always comes with ANS6
+      var volatile bit JALLIB_ANS5      is ANSEL_ANS5
+      var volatile bit JALLIB_ANS6      is ANSEL_ANS6
+   end if
+   -- PICs: 16f610, 16f616, 16f676, 16f677, 16f684, 16f685, 16f687, 16f688, 16f689, 
+   --       16f690, 16f884, 16f887, 16hv610, 16hv616, 18f43k20, 18f44k20, 18f45k20, 18f46k20,
+   if defined(ANSEL_ANS7) == true then
+      var volatile bit JALLIB_ANS7      is ANSEL_ANS7
+   end if
+
+
+   -- Now, it's normalized...
+   -- Provide helper func to configure pins either in digital or analog mode
+   -- (/!\, true/false logic is inverted compared to PCFGx bits)
+
+   -- Configure a pin to act as an analog pin.
+   -- an_pin_num references the 'x' in ANx notation.
+   -- Say you want to activate pin AN7, which is pin #12, also named RA4 in digital mode:
+   --     - set_analog_pin(7) will set this pin as analog
+   --     - set_analog_pin(12) won't set this pin as analog, but the equivalent
+   --       one named AN12, if any
+   --     - set_analog_pin(4) will do the same for AN4
+   procedure set_analog_pin(byte in an_pin_num) is
+      #for i in range(23)
+      if defined(JALLIB_ANS$i) == true then
+		 if an_pin_num == $i then
+			JALLIB_ANS$i = true
+		 end if
+      end if
+      #end for
+   end procedure
+
+   -- Configure a pin to act as an digital pin.
+   -- Because setting a pin to act as digital makes only sens for
+   -- pins which can also be configured as analog,
+   -- an_pin_num references the 'x' in ANx notation.
+   -- Say you want to deactivate pin AN7, which is pin #12, also named RA4 in digital mode:
+   --     - set_digital_pin(7) will set this pin as digital
+   --     - set_analog_pin(12) won't set this pin as digital, but the equivalent
+   --       one named AN12, if any
+   --     - set_analog_pin(4) will do the same for AN4
+   -- 
+   -- Note: the pin direction is not modified
+   procedure set_digital_pin(byte in an_pin_num) is
+      #for i in range(23)
+      if defined(JALLIB_ANS$i) == true then
+		 if an_pin_num == $i then
+			JALLIB_ANS$i = false
+		 end if
+      end if
+      #end for
+   end procedure
+
+#end def
+
+
+#def vcfg()
+
+   -- Configure Voltage Reference, Vref bits
+   -- This is only valid for PICs where Vref isn't part of PCFG bits combination
+
+   var byte vcfg_shadow = ADC_NVREF
+   if ADC_NVREF == 2 then
+      vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
+   end if
+   
+   if defined(ADCON0_VCFG) == true then
+      ADCON0_VCFG = vcfg_shadow
+   elsif defined(ADCON1_VCFG) == true then
+      ADCON1_VCFG = vcfg_shadow
+
+   -- VCFG0 bit can be found in ADCON0 or ADCON1 register
+   elsif defined(ADCON1_VCFG0) == true then
+      if ADC_NVREF == 1 then
+         ADCON1_VCFG0 = true
+      elsif ADC_NVREF == 2 then
+         ADCON1_VCFG0 = true
+         ADCON1_VCFG1 = true
+      end if
+   elsif defined(ADCON0_VCFG0) == true then
+      if ADC_NVREF == 1 then
+         ADCON0_PVCFG0 = true
+      elsif ADC_NVREF == 2 then
+         ADCON0_VCFG0 = true
+         ADCON0_VCFG1 = true
+      end if
+   -- Special case for PVCFG
+   elsif defined(ADCON1_PVCFG0) == true then
+      if ADC_NVREF > 0 then
+         -- PVCFG = 0b_01
+         ADCON1_PVCFG0 = false
+         ADCON1_PVCFG1 = true
+      elsif ADC_NVREF == 2 then
+         -- NVCFG = 0b_01
+         ADCON1_NVCFG0 = false
+         ADCON1_NVCFG1 = true
+      end if
+   else
+      if defined(ADC_NVREF) == true & ADC_NVREF != 0 then
+         _error "You've specified ADC_NVREF, but I can't find VCFG bits. There should be VCFG bits, except if I've made a mistake..."
+      end if
+   end if
+
+#end def
+
+
+#def main
+$header
+$deps
+#set pcfg_combination_condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),$pcfg_combination_pics))
+
+-- -----------------------------------------
+-- FIRST CASE: 
+--  - PCFG bits exist, 
+--  - analog are dependent from each other
+--  - Vref config is done via PCFG bits
+--    combination
+-- -----------------------------------------
+
+## Check PICs which use PCFG bits as combinations
+if $pcfg_combination_condition then
+$pcfg_combination
+
+
+-- --------------------------------------------
+-- SECOND CASE: 
+--  - PCFG bits exist 
+--  - analog are independent from each other
+--  - Vref config is done via VCFG bits
+-- --------------------------------------------
+
+## 18F PICs, which use PCFG bits
+elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) | defined(ANCON0_PCFG1) | defined(ANCON0_PCFG2) | defined(ANCON0_PCFG3) | defined(ANCON0_PCFG4) | defined(ANCON0_PCFG5) | defined(ANCON0_PCFG6) | defined(ANCON0_PCFG7) | defined(ANCON1_PCFG10) | defined(ANCON1_PCFG11) | defined(ANCON1_PCFG12) | defined(ANCON1_PCFG8) | defined(ANCON1_PCFG9)) then
+$pcfg_18f
+$vcfg
+
+-- --------------------------------------------
+-- THIRD CASE: 
+--  - ANS bits exist, 
+--  - analog are independent from each other
+--  - Vref config is done via VCFG bits
+-- --------------------------------------------
+
+## So these are PICs which use ANS bits, wether non-18F or 18F
+else
+$ans
+$vcfg
+
+end if
+#end def
+
+$main
+

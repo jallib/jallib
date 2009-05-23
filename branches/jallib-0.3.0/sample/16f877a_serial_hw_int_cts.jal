@@ -1,0 +1,104 @@
+-- ------------------------------------------------------
+-- Title: Test program for serial_hw_int_cts.jal
+--
+-- Author: Joep Suijs, Copyright (c) 2008..2008, all rights reserved.
+--
+-- Adapted-by: 
+--
+-- Compiler: >=2.4g
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: test program for serial hardware lib using interrutps.
+-- --
+-- This file defines a test for JALLIB testing, using a test-board
+--  defined by a BOARD file .
+--
+-- Sources:
+--
+-- Notes: 
+--    setup: a serial connection to a terminal
+--
+-- ------------------------------------------------------
+--
+-- This file has been generated on 01/27/09 23:07:45, from:
+--    * board: board_16f877a_dwarf.jal
+--    * test : test_serial_hw_int_cts.jal
+--
+
+
+;@jallib section chipdef
+-- chip setup
+include 16f877a
+
+pragma target clock 20_000_000                  -- xtal frequency
+pragma target OSC        hs
+pragma target   LVP disabled
+pragma target   WDT disabled
+;@jallib section led
+-- LED IO definition
+var bit led             is pin_a0
+var bit led_direction   is pin_a0_direction
+var bit led2            is pin_a1
+var bit led2_direction  is pin_a1_direction
+
+include delay
+
+-- set all IO as digital
+enable_digital_io()
+
+-- ok, now setup serial;@jallib section serial
+const serial_hw_baudrate = 115_200
+var  bit serial_ctsinv  is  pin_B4        -- incoming data flow control
+var  bit serial_overflow_discard = true   -- With transmit buffer overflow
+
+include serial_hw_int_cts
+serial_hw_init()
+
+include print                       -- output library
+
+led_direction = output
+for 4 loop
+   LED = on
+   delay_100ms(3)
+   LED = off
+   delay_100ms(3)
+end loop
+
+
+
+const byte str1[] = "Hello serial world\r\n"   -- define a string
+print_string(serial_hw_data, str1)  -- output string to serial
+
+-- inform user PIC is ready !
+serial_hw_write("!")
+
+-- let's build our loop
+var byte char	-- will store received char
+var word counter = 10
+forever loop
+	if serial_hw_read(char)	then
+
+      if (char == " ") then
+         -- space triggers large output
+         for 40 loop 
+            var byte i
+            for 9 using i loop
+               serial_hw_data = i | 0x30  
+            end loop      
+         end loop        
+         counter = 50000  -- restart timeout (don't let the dot interfere)
+      else
+   		serial_hw_write(char)	-- that's the echo...
+      end if
+	end if
+	
+	counter = counter - 1;
+	if (counter == 0) then
+	   counter = 50000
+      serial_hw_data = "."	   
+      LED = ! LED
+   end if
+end loop
+

@@ -1,0 +1,432 @@
+JALv2 Pragmas
+=============
+
+There are eight types of pragmas: chip configuration, compiler
+configuration, global, procedure, optimization, warning, chip 
+specification, and debugging.
+
+1. Chip Configuration
+   ------------------
+
+   Select various attributes of a chip.
+
+   PRAGMA TARGET CHIP chipname
+
+     Analogous to: const target_chip = pic_chipname
+
+   PRAGMA TARGET CLOCK speed
+
+     Analogous to: const target_clock = speed
+
+     speed is in Hz. The compiler only needs this if the _usec_delay
+     statement is used.
+
+   PRAGMA TARGET FUSES [which] fuse
+
+     which is only used when multiple config words exist in which case
+     0 is the first config word, 1 the second, and so on.
+
+     const _config = fuse
+       or
+     const _config[which] = fuse
+
+     Set the config word to {fuse}. On chips with multiple config words,
+     {which} defines which one you're setting (zero based).
+
+   PRAGMA TARGET opt tag
+
+     This accesses the mneumonic symbols defined with PRAGMA FUSE_DEF.
+
+2. Compiler Configuration
+   ----------------------
+
+   Configure compiler code generation policies.
+
+   PRAGMA CLEAR { YES | NO | }
+
+     YES        : Code is generated to set all user-data to 0
+     NO         : No such code is generated
+     {empty}    : default : NO
+
+     nb: volatile variables, and variables explicitly placed by the
+         user are *not* set to 0
+
+   PRAGMA EEDATA n[','n2...]
+
+     Places data into the EEPROM. The first time this statement is executed,
+     the data are placed into location 0 of the EEPROM. Each time after the
+     data are placed in consecutive locations.
+
+   PRAGMA FUSE { YES | NO | }
+
+     yes        : The `__config' line is written to the assembly file
+     no         : The `__config' line is not written to the assembly file
+     {empty}    : default : YES
+
+     It is often convenient *not* to program the CONFIG word (for example,
+     when using a boot loader). This suppresses that programming.
+
+   PRAGMA BOOTLOADER { RICKPIC | LONG_START | }
+
+     Set the user code preamble as follows:
+
+       RICKPIC    : program ORG is 0x0003
+                    first instruction is `goto _pic_pre_user'
+                    nb: if `PRAGMA INTERRUPT RAW' is used, the interrupt
+                        routine must not exceed one page (minus a few bytes).
+
+       LONG_START : program ORG is 0x0000
+                    first instructions are:
+                      bsf/bcf _pclath, 4
+                      bsf/bcf _pclath, 3
+                      goto _pic_pre_user
+                      nop
+
+       {empty}    : progam ORG is 0x0000
+                    Default: there is no preamble.
+
+   PRAGMA TASK n
+
+     Set the maximum concurrent task count to n.
+
+     nb: When multiple tasks are used, the main task requires one task slot.
+
+3. Global
+   ------
+
+   These can all be used globally.
+
+   PRAGMA ERROR
+
+     Causes an error to be generated
+
+   PRAGMA NAME str
+
+     Causes an error to be generated if the current source file name
+     (excluding the .jal extension and path) doesn't match str.
+
+   PRAGMA SPEED
+
+     Anything physically following this pragma will be optimized for
+     speed. Currently this only affects the generation of the shift
+     operators -- loops will be unrolled for SPEED, but used for SIZE.
+     In the future this could affect other loop unrolling.
+
+   PRAGMA SIZE
+
+     Anything physically following this pragma will be optimized for
+     size. See notes under `PRAGMA SPEED'
+
+4. procedure/function
+   ------------------
+
+   These must be used with a procedure and/or function and are only in
+   effect for the procedure/function in which they're used.
+ 
+   PRAGMA FRAME
+
+     Used within a function or procedure, declares that all variables in
+     the function or procedure will be allocated into a single `frame'.
+     This guarantees that all local variables will be allocated in the
+     same data bank, so bank switching to access variables will be
+     minimized. This can also result in `out of data space' errors due to
+     memory fragmentation when plenty of space is otherwise available.
+
+     Normally variables are allocated at the lowest address into which
+     they will fit. This makes much better use of the memory, but can
+     cause variables in the same function to be allocated in separate
+     banks which results in bank switching overhead.
+
+     nb: Any re-entrant function, and any function called through a function
+         pointer (aka, pseudo-variable function) will allocate per-frame
+         regardless of this setting.
+
+   PRAGMA INLINE
+
+     Used within a function or procedure, declares that this function or
+     procedure will not get a seperate body, but rather will be copied
+     directly into the calling code.
+
+     nb: If a procedure or function marked `inline' is executed as a volatile
+         parameter, it will get a body.
+
+   PRAGMA INTERRUPT { FAST | RAW | NORMAL | }
+
+     This must be used within a procedure that takes no parameters. It defines
+     the procedure as an interrupt entry point. Such a procedure is added to
+     a chain of procedures executed whenever an interrupt hits. Once a
+     procedure has been marked interrupt, it cannot be called directly by the
+     program.
+
+     NORMAL  : W, STATUS, PCLATH, and _picstate are saved on ISR entry,
+               restored on exit
+
+     FAST    : _pic_state is *not* saved or restored. In this case, the
+               interrupt procedure should be written entirely in assembly to
+               avoid corrupting the pic_state area.
+
+     RAW     : *none* of the normal pre-amble or cleanup code is generated. The
+               user is entirely responsible for the interrupt. The code is
+               guarenteed to placed at the interrupt vector.
+
+               nb: this feature isn't yet available
+
+     {empty} : The normal interrupt preamble is generated.
+
+   PRAGMA JUMP_TABLE
+
+     This generates a warning, but does nothing. It's here for backward
+     compatability.
+
+   PRAGMA KEEP { BANK | PAGE }
+
+     This guarentees the page and/or bank select bit manipulations will not
+     be removed. Normally, they are removed if analysis shows them to be
+     unnecessary. This is only useful to guarentee certain timings. This
+     effects the entire procedure or function in which it is declared
+     (not just from point of declaration).
+
+   PRAGMA NOSTACK
+
+     Used within a procedure, the procedure will not be called using
+     the normal call/return instructions. Instead, the return address
+     will be stored in a procedure-local variable, '_return,' and the
+     call will be executed by jumping to the start of the procedure.
+     The return will be executed by jumping to the first statement
+     after the call.
+
+     The overhead for this is two or three data bytes, four to six
+     instructions for the return, and eight to ten instructions for the
+     call. Currently re-entrant functions and functions called indirectly
+     cannot use this pragma.
+
+5. Optimization
+   ------------
+
+   These all effect various optimizations done by the compiler. These
+   cannot be used to turn on and off optimizations for specific parts
+   of the code -- the last one parsed will be the one in effect.
+
+   PRAGMA OPT EXPR_REDUCE { YES | NO | }
+
+     YES     : expression reduction is performed
+     NO      : expression reduction is not performed
+     {empty} : default: YES
+
+     Expression reduction looks for things like `x * 1' and replaces
+     with `x'. See `EXPRESSION REDUCTION' in jalopts.txt for details.
+
+   PRAGMA OPT CEXPR_REDUCE { YES | NO | }
+
+     YES     : constant expression reduction is performed
+     NO      : constant expression reduction is no performed
+     {empty} : default : YES
+
+     Constant expression reduction looks for operations on two constants
+     that can be evaluated at compile time, saving both time and memory.
+
+     nb: disabling this will cause the backend code generators to fail,
+         so only do so if `PRAGMA DEBUG CODEGEN OFF' is specified.
+
+   PRAGMA OPT CONST_DETECT { YES | NO | }
+
+     YES     : enable constant detection
+     NO      : disable constant detection
+     {empty} : default : NO
+
+     Look for variables that are defined but are either only assigned once,
+     or are always assigned the same value. When this happens, replace all
+     occurances of the variable with the constant.
+
+     nb : PRAGMA CLEAR will prevent this option from having any effect
+          unless the variable is only assigned the constant 0.
+
+   PRAGMA OPT LOAD_REDUCE { YES | NO | }
+
+     YES     : Perform load reduction
+     NO      : Do not perform load reduction
+     {empty} : default : NO
+
+     Load reduction tracks the value in W and attempts to remove any
+     load into W of a value it already holds.
+
+     nb: this is still considered experimental!
+
+   PRAGMA OPT TEMP_REDUCE { YES | NO | }
+
+     YES     : Perform temporary variable reduction
+     NO      : Do not perform temporary variable reduction
+     {empty} : default : NO
+
+     Temporary reduction effects complex instructions. For example,
+     without temporary reduction the expression:
+       a = b + c * d + e
+     will use three temporary variables. With reduction, it will only
+     use one.
+
+   PRAGMA OPT VARIABLE_FRAME { YES | NO | }
+
+     YES     : allocate variables a frame at a time
+     NO      : allocate variables individually
+     {empty} : default : YES
+
+     Normally, variables are allocated individually. This allows optimal
+     use of data memory, but means that variables in a given procedure
+     might be spread across multiple banks. Enabling this option will
+     guarentee that all variables in a procedure will reside in a single
+     bank.
+
+   PRAGMA OPT VARIABLE_REDUCE { YES | NO | }
+
+     YES     : Perform variable reduction
+     NO      : Do not perform variable reduction
+     {empty} : default : YES
+
+     Variable reduction looks for variables that are assigned, but not
+     used, or used, but not assigned, or neither used nor assigned. In
+     these cases normally the variable is removed (unless it is volatile).
+     Turning this off leaves the variable around.
+
+6. Warning
+   -------
+
+   Warning pragmas are in effect until changed (they can be turned on
+   and off at will).
+
+   PRAGMA WARN ALL { YES | NO }
+
+     YES  : enable all warnings
+     NO : disable all warnings
+
+   PRAGMA WARN CONVERSION { YES | NO | }
+
+     YES     : enable conversion warnings
+     NO      : disable conversion warnings
+     {empty} : default : YES
+
+     Conversion warnings occur when assigning unsigned to signed, or
+     signed to unsigned.
+
+   PRAGMA WARN DIRECTIVES { YES | NO | }
+
+     YES     : enable directive warnings
+     NO      : disable directive warnings
+     {empty} : default : NO
+
+     The JAL language has a peculiar feature : the construct:
+        IF cexpr THEN ... END IF
+     is actually a compiler directive. If cexpr evaluates to 0,
+     the compiler stops translating the code until it reaches the
+     corresponding END IF. This warning will simply show where this
+     construct is used.
+
+   PRAGMA WARN MISC
+
+     YES     : enable misc. warnings
+     NO      : disable misc. warning
+     {empty} : default : YES
+
+     There are some warnings that are not catagorized. This enables
+     or disables them.
+
+   PRAGMA WARN RANGE { YES | NO | }
+
+     YES     : enable out of range warnings
+     NO      : disable out of range warnings
+     {empty} : default : YES
+
+     This enables or disabled `value out of range' warnings.
+
+   PRAGMA WARN STACK_OVERFLOW { YES | NO | }
+
+     YES     : stack overflow results in a warning
+     NO      : stack overflow results in an error
+     {empty} : default : NO
+
+   PRAGMA WARN TRUNCATE { YES | NO | }
+
+     YES     : enable the truncation warning
+     NO      : disable the truncation warning
+     {empty} : default : YES
+
+     Truncation can occur when a larger sized value is assigned
+     to smaller one.
+
+7. Chip Specification
+   ------------------
+
+   These are used in the chip definition files, not normally by the end
+   user.
+
+   PRAGMA CODE size
+
+     Defines the code size for a device -- used to detect code too large.
+
+   PRAGMA [DATA | SHARED] lo['-'hi[',' ...]
+
+     Defines a range allowed when allocating variables. DATA access is
+     assumed to require whatever banking method is needed for the target,
+     whereas SHARED is assumed to not require these bits.
+
+   PRAGMA EEPROM base, size
+
+     Defines EEPROM available to the chip. Base is the ORG used when
+     programming the device, size is the EEPROM size in bytes.
+
+   PRAGMA FUSE_DEF opt[':'n] mask '{'
+     tag '=' bits
+     ...
+   '}'
+
+     Defines symbolic fuse bits so the end user needn't twiddle them
+     directly.
+       opt  : a string presented to the user
+       [:n] : which config word stores this entry, starting with 0
+       mask : the fuse word is bit-wise ANDed with this before continuing
+       tag  : the sub-tag
+       bits : which bit to set
+
+   PRAGMA STACK size
+
+     Defines the stack size for a device -- used to detect stack overflow.
+
+   PRAGMA TARGET CPU cexpr
+
+     Set the target CPU. cexpr should be one of the constants from
+     come from chipdef.jal
+
+     Analogous to: const target_cpu = pic_##
+
+   PRAGMA TARGET BANK cexpr
+
+     Set the target's data bank size. The default is 128 bytes.
+
+     Analogous to: const target_bank_size = #
+
+   PRAGMA TARGET PAGE cexpr
+
+     Set the target's code page size. The default is 2048 words.
+     This is not used in the 16 bit cores.
+
+     Analogous to: const target_page_size = #
+
+8. Debugging
+   ---------
+
+   The following are only useful when debugging compiler errors.
+
+   PRAGMA DEBUG CODEGEN { YES | NO | }
+
+     YES        : Enable the back_end code generation
+     NO         : Disable the back_end code generation
+     {empty}    : default : YES
+
+     Allow the pcode to be generated without executing the PIC code
+     generator.
+
+   PRAGMA DEBUG PCODE { YES | NO | }
+
+     YES        : show the pcode in the asm file
+     NO         : don't show the pcode in the asm file
+     {empty}    : default : NO
+

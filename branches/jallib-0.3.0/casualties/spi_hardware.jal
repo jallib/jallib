@@ -1,0 +1,173 @@
+;<;<;pjal=1
+
+This spi hardware file is related to serial_hw. It should be able to talk spi via the
+usart in synchrone mode. It is a casualty in the way it is a left-over from the first
+jallib port
+
+Todo:
+
+- port this lib to jallib
+- rename procedures to indicate it is *usart* spi
+- test it!
+
+   
+
+-- -----------------------------------------------------------------------------
+-- <title SPI hardware control
+-- <License
+-- freeware, under the terms of the MPL
+--  Copyright (C) 2002..2006 Stef Mientki
+-- -----------------------------------------------------------------------------
+-- <Description
+-- USART hardware control.
+--  Routines for sending and receiving through the PIC-usart,
+-- both RS232 and SPI are supported
+--  Baudrate can simply be set through a human constant,
+--  (for RS232 procedures, see Serial_Hardware)
+-- because the baudrate depending registers are calculated by this unit.
+--  Baudrate is calculated, starting at the high baudrate flag,
+-- which will ensure the highest possible accuracy.
+--  SPI routines are setup for more SPI-devices,
+-- in which case CS should be controled outside this unit.
+--
+-- <non-tag
+-- procedure SPI_init is
+-- procedure SPI_HW_write( byte in x ) is
+-- procedure SPI_HW_read( byte out x ) is
+--
+-- <Version: 5    ,20-01-2006, Stef Mientki
+--   - JAL V2 compatibel
+--   - SPI procedures removed from Serial_hardware
+--   - NAMES changed according to CONSOLE definitions
+--
+--
+-- <Version: 4.0    ,24-12-2005, Stef Mientki
+--   - bug fixed, PIE1 bits were directed to PIR1
+--   - pJAL compatibel
+--
+-- <Version: 3.0    ,21-08-2002, Stef Mientki
+--   - INTCON clearing removed, blocked all interrupts,
+--     instead PIE bits cleared to prevent USART interrupts
+--
+-- <Version: 2.0    ,21-06-2002, Stef Mientki
+--   - added Procedure ASYNCH_DISABLE_HW
+--
+-- <Version: 1.0    ,17-03-2002, Stef Mientki
+--   - original release
+-- --------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- <Example SPI
+-- -----------------------------------------------------------------------------
+
+
+-- <code
+
+include Serial_Hardware
+
+
+-- --------------------------------------------------------------------
+-- Initializes the SPI port, calculates baudrate registers.
+-- Normally this routine should not be called by the user program,
+-- it's called once at the end of this unit.
+-- Only after "asynch_disable_hw" it's necessary to call this routine,
+-- to enable the SPI hardware again.
+-- --------------------------------------------------------------------
+procedure SPI_HW_init is
+  -- Calculate and Load baudrate generator
+  _calculate_and_set_baudrate
+
+  -- disable all USART interrupts
+  RCIE = false
+  TXIE = false
+
+
+  -- TXSTA = CSRC - TX9 - TXEN - SYNC -- x - BRGH - TRMT - TX9D
+  -- CSRC = 1 = master mode
+  -- TX9  = 0 = disable 9 bit transmission
+  -- TXEN = 1 = enable transmission
+  -- SYNC = 1 = enable synchronous mode
+  --
+  -- x    = 0
+  -- BRGH = 1 = high speed baudrate (in synchronous mode don't care)
+  -- TRMT = 0 = true if TSR register empty (data is send)
+  -- TX9D = 0 = 9-bit to be send
+  TXSTA = 0b_1011_0100
+
+  -- RCSTA = SPEN - RX9 - SREN - CREN -- ADEN - FERR - OERR - RX9D
+  -- SPEN = 1 = enable serial port
+  -- RX9  = 0 = disable 9 bit receiving
+  -- SREN = 0 = disable single byte reception
+  -- CREN = 0 = disable multi byte reception (CREN=1 overrules SREN)
+  --            also used to clear OERR
+  --
+  -- ADEN = 0 = address detect
+  -- FERR = 0 = framing error
+  -- OERR = 0 = overrun error (received bytes are not removed by reading RCREG)
+  -- RX9D = 0 = 9-bit received
+  -- Enable serial port : SPEN=1
+  RCSTA = 0b_1000_0000
+
+end procedure
+-- --------------------------------------------------------------------
+
+
+
+
+
+-- --------------------------------------------------------------------
+-- SPI send routine, using the TX pin
+-- Sends byte X (8 bit with no parity) to the serial port
+-- After sending the byte, this routine will wait till byte is really transmitted.
+-- This is done in order to be able to use CS for multiple SPI-devices.
+--
+-- remark: PIR1-register (containing _TXIF-flag) must be in bank0 !!
+-- --------------------------------------------------------------------
+procedure SPI_HW_write ( byte in x ) is
+  -- enable transmission
+  TXEN = true
+
+  Serial_HW_write (x)
+
+  -- wait till transmission ready (safe through empty of TSR register)
+  while  (( TXSTA & 0b_0000_0010 ) == 0 )  loop end loop
+
+  -- disable transmission
+  TXSTA = TXSTA & (! 0b_0010_0000)
+end procedure
+-- --------------------------------------------------------------------
+
+
+-- --------------------------------------------------------------------
+-- reads a byte from the SPI-bus
+-- After reception, all error flags are cleared
+-- --------------------------------------------------------------------
+procedure SPI_HW_read ( byte out x ) is
+  -- enable receiving
+  RCSTA = RCSTA & (! 0x30 )    -- clear OERR, by clearing CREN and SREN
+  RCSTA = RCSTA | 0x20         -- enable single reception
+
+  -- wait until byte received, RXREG is filled
+  while ! RCIF loop end loop
+
+  -- get byte and transport to outer world
+  x = RCREG
+
+  -- clear all errors and disable reception
+  RCSTA = RCSTA & (! 0x30 )    -- clear OERR, by clearing CREN and SREN
+end procedure
+-- --------------------------------------------------------------------
+
+
+-- --------------------------------------------------------------------
+-- Library ID
+-- --------------------------------------------------------------------
+const word SPI_Hardware_ID = 15
+const word SPI_Hardware_Version = 5
+if Ask_Library_IDentity then
+  my_identity (SPI_Hardware_ID, SPI_Hardware_Version)
+end if
+-- --------------------------------------------------------------------
+
+

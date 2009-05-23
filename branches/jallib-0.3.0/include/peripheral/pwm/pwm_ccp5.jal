@@ -1,0 +1,118 @@
+-- Title: hardware PWM control, dedicated to register CCP5
+-- Author: Stef Mientki, Copyright (C) 2002-2006, all rights reserved. 
+-- Adapted-by: Sebastien Lelong
+-- Compiler: >=2.4g
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: performs PWM operations on CCP5
+-- The target must support this.
+--
+-- Notes: this is a heavy refactoring of the original pwm_hardware.jal
+-- Stef's lib
+--
+
+var byte ccpr5l_shadow  = 0
+var byte ccp5con_shadow = 0
+
+-- Sets dutycyle in low resolution mode.
+-- The 2 LSbits take their value from ccp5con_shadow, by default 0
+-- This means if duty5 = 0, there's no pwm, if duty5 = 255, you're closed to
+-- (but not at) the maximum pwm
+procedure pwm5_set_dutycycle(byte in duty) is
+   ccpr5l_shadow = duty
+   CCPR5L  = ccpr5l_shadow   -- reload 8 high order bits of dutycycle
+   CCP5CON = ccp5con_shadow  -- reload 2 low  order bits of dutycycle 
+end procedure
+
+
+-- sets dutycyle in high resolution mode
+-- the word passed to the procedure represents the high resolution value
+-- of the duty cycle:
+--  * duty5h<0:1> are the 2 LSbits
+--  * duty5h<2:9> are the 8 MSbits
+--
+-- Because duty cycle is coded on 10 bits, the given value can't greater than 1024
+-- If not active yet, calling this procedure will enable PWM
+procedure pwm5_set_dutycycle_highres(word in duty) is
+
+   -- split word into 8 MSb and 2LSb
+   var word dutyl = duty & 0b_0000_0011
+   var word dutyh = duty >> 2
+
+   ccpr5l_shadow = byte(dutyh)
+   ccp5con_shadow = (byte(dutyl) & 0b_0000_0011) << 4
+   
+   CCPR5L  = ccpr5l_shadow
+   -- reload while (re)activating pwm
+   ccp5con_shadow = ccp5con_shadow | 0b_0000_1100
+   CCP5CON = ccp5con_shadow
+end procedure
+
+procedure pwm5_on() is
+   -- pwm mode on, while keeping 2 LSbits
+   ccp5con_shadow = ccp5con_shadow | 0b_0000_1100
+   CCP5CON = ccp5con_shadow
+end procedure
+
+
+procedure pwm5_off() is
+   -- pwm mode off, but keep 2 LSbits values
+   ccp5con_shadow = ccp5con_shadow & !0b_0000_1100
+   CCP5CON = ccp5con_shadow
+end procedure
+
+-- include common/factored part of pwm
+include pwm_common
+
+-- Following procedures needs variables defined in pwm_common
+-- so they are listed here
+
+-- This procedure set duty cycle using a percentage
+-- According to what has been computed by pwm_set_frequency(),
+-- it converts the duty percent to a value suitable for the
+-- selected pwm frequency.
+procedure pwm5_set_percent_dutycycle(byte in percent) is
+   
+   -- due to a limitation in JAL, the brackects below are VERY essential
+   var dword _duty5_1  = ((percent * 4) * _pr2_1) / 100
+   var dword _duty5_4  = ((percent * 4) * _pr2_4) / 100
+   var dword _duty5_16 = ((percent * 4) * _pr2_16) / 100
+
+   var byte dutyh
+   var byte dutyl
+   -- select suitable duty value
+   if _pr2_1 == 0 then
+      ;;pragma error    -- pwm frequency is too high
+   elsif _pr2_1 <= 256 then
+      ;;ccpr5l_shadow = byte(_duty5_1 / 4)        -- 8 high order bits of dutycycle
+      ;;ccp5con_shadow = byte((_duty5_1 & 0b_0000_0011) * 16)
+      dutyh = byte(_duty5_1 / 4)        -- 8 high order bits of dutycycle
+      dutyl = byte((_duty5_1 & 0b_0000_0011) * 16)
+   elsif _pr2_4 <= 256 then
+      ;;ccpr5l_shadow = byte(_duty5_4 / 4)
+      ;;ccp5con_shadow = byte((_duty5_4 & 0b_0000_0011) * 16)
+      dutyh = byte(_duty5_4 / 4)
+      dutyl = byte((_duty5_4 & 0b_0000_0011) * 16)
+      
+   elsif _pr2_16 <= 256 then
+      -- Stef is a sioux: x * 16 <=> x << 4 !!!
+      ;;ccpr5l_shadow = byte(_duty5_16 / 4)
+      ;;ccp5con_shadow = byte((_duty5_16 & 0b_0000_0011) * 16)
+      dutyh = byte(_duty5_16 / 4)
+      dutyl = byte((_duty5_16 & 0b_0000_0011) * 16)
+   else
+      ;;pragma error  -- pwm frequency is too low to be realized by this routine,
+      -- use the post scaler and interrupt
+   end if
+
+   -- build a word storing duty cycle high resolution'ed
+   var word duty_tmp = dutyh << 2
+   duty_tmp = dutyh | dutyl
+   pwm5_set_dutycycle_highres(duty_tmp)
+
+
+end procedure
+
+
