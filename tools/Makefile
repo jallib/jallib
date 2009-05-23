@@ -85,7 +85,7 @@ dispatch:
 	-cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f sample/; done
 	# same for "project"
 	-cd  distrib/jallib-${VERSION} && mkdir project
-	-cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^project\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f project/; done
+	-cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^project\/ | sed 's#\r##g'`; do mkdir -p `dirname $$f`; cp ../jallib-export/$$f `dirname $$f`/; done
 	# for all_devices package, keep everything...
 	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
 	for f in `find distrib/jallib-export/sample -type f | grep -e '[[:digit:]]\{2\}[[:alpha:]]\+.*_blink\.jal'`; \
