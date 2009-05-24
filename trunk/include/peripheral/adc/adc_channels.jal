@@ -30,6 +30,78 @@
 include adc_pindef
 
 
+
+
+-- Configure Voltage reference using VCFG bits
+procedure adc_vcfg() is
+   pragma inline
+   -- Configure Voltage Reference, Vref bits
+   -- This is only valid for PICs where Vref isn't part of PCFG bits combination
+
+   var byte vcfg_shadow = ADC_NVREF
+   if ADC_NVREF == 2 then
+      vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
+   end if
+   
+   if defined(ADCON0_VCFG) == true then
+      ADCON0_VCFG = vcfg_shadow
+   elsif defined(ADCON1_VCFG) == true then
+      ADCON1_VCFG = vcfg_shadow
+
+   -- VCFG0 bit can be found in ADCON0 or ADCON1 register
+   elsif defined(ADCON1_VCFG0) == true then
+      if ADC_NVREF == 1 then
+         ADCON1_VCFG0 = true
+      elsif ADC_NVREF == 2 then
+         ADCON1_VCFG0 = true
+         ADCON1_VCFG1 = true
+      end if
+   elsif defined(ADCON0_VCFG0) == true then
+      if ADC_NVREF == 1 then
+         ADCON0_PVCFG0 = true
+      elsif ADC_NVREF == 2 then
+         ADCON0_VCFG0 = true
+         ADCON0_VCFG1 = true
+      end if
+   -- Special case for PVCFG
+   elsif defined(ADCON1_PVCFG0) == true then
+      if ADC_NVREF > 0 then
+         -- PVCFG = 0b_01
+         ADCON1_PVCFG0 = false
+         ADCON1_PVCFG1 = true
+      elsif ADC_NVREF == 2 then
+         -- NVCFG = 0b_01
+         ADCON1_NVCFG0 = false
+         ADCON1_NVCFG1 = true
+      end if
+   else
+      if defined(ADC_NVREF) == true & ADC_NVREF != 0 then
+         _error "You've specified ADC_NVREF, but I can't find VCFG bits. There should be VCFG bits, except if I've made a mistake..."
+      end if
+   end if
+end procedure
+
+
+
+-- Configure Voltage reference using ADREF bits
+-- Found in PICs: 16f722, 16f723, 16f724, 16f726, 16f727, 16lf722, 
+--                16lf723, 16lf724, 16lf726, 16lf727,
+-- Same family, DS 41341B
+procedure adc_adref() is
+
+   if defined(ADCON1_ADREF) == true then
+      if ADC_NVREF == 1 then
+         ADCON1_ADREF = 0b_10
+      elsif ADC_NVREF != 0 then
+         _error "ADC_NVREF must be 0 or 1"
+      end if
+   end if
+
+end procedure
+
+
+
+
 -- -----------------------------------------
 -- FIRST CASE: 
 --  - PCFG bits exist, 
@@ -64,7 +136,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [48] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1010, 0b_0, 0b_0, 0b_1001, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0111, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0010, 0b_0, 0b_0, 0b_0001, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
+         const byte ADC_PCFG_MAP [51] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1010, 0b_0, 0b_0, 0b_1001, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0111, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0010, 0b_0, 0b_0, 0b_0001, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
          var bit*4 no_vref = 0
          var bit*4 one_vref = 0
          var bit*4 two_vref = 0
@@ -189,6 +261,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
             adc_pin_AN10_direction = input
             adc_pin_AN11_direction = input
             adc_pin_AN6_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 15 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 16 then
             adc_pin_AN2_direction = input
             adc_pin_AN5_direction = input
@@ -234,7 +307,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [21] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0000, 0b_0001, 0b_1000}
+         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
          var bit*4 no_vref = 0
          var bit*4 one_vref = 0
          var bit*4 two_vref = 0
@@ -242,6 +315,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          if (ADC_NCHANNEL + ADC_NVREF) == 0 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 1 then
             adc_pin_AN0_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 2 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 3 then
             adc_pin_AN0_direction = input
             adc_pin_AN2_direction = input
@@ -264,6 +338,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
             adc_pin_AN3_direction = input
             adc_pin_AN0_direction = input
             adc_pin_AN1_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 7 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 8 then
             adc_pin_AN7_direction = input
             adc_pin_AN5_direction = input
@@ -293,22 +368,27 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [12] = {0b_110, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_010, 0b_011, 0b_0, 0b_000, 0b_001, 0b_0}
+         const byte ADC_PCFG_MAP [27] = {0b_110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_0, 0b_0, 0b_0, 0b_010, 0b_011, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_000, 0b_001, 0b_0}
          var bit*3 no_vref = 0
          var bit*3 one_vref = 0
          var bit*3 two_vref = 0
 
          if (ADC_NCHANNEL + ADC_NVREF) == 0 then
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 1 then
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 2 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 3 then
             adc_pin_AN0_direction = input
             adc_pin_AN1_direction = input
             adc_pin_AN3_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 4 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 5 then
             adc_pin_AN4_direction = input
             adc_pin_AN2_direction = input
             adc_pin_AN0_direction = input
             adc_pin_AN1_direction = input
             adc_pin_AN3_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 6 then
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 7 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 8 then
             adc_pin_AN7_direction = input
             adc_pin_AN5_direction = input
@@ -492,16 +572,19 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [9] = {0b_111, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_000, 0b_001, 0b_0}
+         const byte ADC_PCFG_MAP [18] = {0b_111, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_0, 0b_0, 0b_0, 0b_000, 0b_001, 0b_0}
          var bit*3 no_vref = 0
          var bit*3 one_vref = 0
          var bit*3 two_vref = 0
 
          if (ADC_NCHANNEL + ADC_NVREF) == 0 then
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 1 then
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 2 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 3 then
             adc_pin_AN0_direction = input
             adc_pin_AN1_direction = input
             adc_pin_AN3_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 4 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 5 then
             adc_pin_AN4_direction = input
             adc_pin_AN2_direction = input
@@ -536,7 +619,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [21] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_1111, 0b_0, 0b_0101, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0000, 0b_0001, 0b_1000}
+         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_1111, 0b_0, 0b_0101, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
          var bit*4 no_vref = 0
          var bit*4 one_vref = 0
          var bit*4 two_vref = 0
@@ -544,6 +627,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          if (ADC_NCHANNEL + ADC_NVREF) == 0 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 1 then
             adc_pin_AN0_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 2 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 3 then
             adc_pin_AN0_direction = input
             adc_pin_AN2_direction = input
@@ -566,6 +650,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
             adc_pin_AN3_direction = input
             adc_pin_AN0_direction = input
             adc_pin_AN5_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 7 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 8 then
             adc_pin_AN4_direction = input
             adc_pin_AN1_direction = input
@@ -593,12 +678,14 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [9] = {0b_110, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_000, 0b_001, 0b_0}
+         const byte ADC_PCFG_MAP [15] = {0b_110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_000, 0b_001, 0b_0}
          var bit*3 no_vref = 0
          var bit*3 one_vref = 0
          var bit*3 two_vref = 0
 
          if (ADC_NCHANNEL + ADC_NVREF) == 0 then
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 1 then
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 2 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 3 then
             adc_pin_AN0_direction = input
             adc_pin_AN1_direction = input
@@ -636,7 +723,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [21] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0000, 0b_0001, 0b_1000}
+         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
          var bit*4 no_vref = 0
          var bit*4 one_vref = 0
          var bit*4 two_vref = 0
@@ -644,6 +731,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          if (ADC_NCHANNEL + ADC_NVREF) == 0 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 1 then
             adc_pin_AN0_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 2 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 3 then
             adc_pin_AN0_direction = input
             adc_pin_AN2_direction = input
@@ -666,6 +754,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
             adc_pin_AN3_direction = input
             adc_pin_AN0_direction = input
             adc_pin_AN1_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 7 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 8 then
             adc_pin_AN7_direction = input
             adc_pin_AN5_direction = input
@@ -702,12 +791,14 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0000, 0b_0001, 0b_1000}
+         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
          var bit*4 no_vref = 0
          var bit*4 one_vref = 0
          var bit*4 two_vref = 0
 
          if (ADC_NCHANNEL + ADC_NVREF) == 0 then
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 1 then
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 2 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 3 then
             adc_pin_AN0_direction = input
             adc_pin_AN2_direction = input
@@ -730,6 +821,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
             adc_pin_AN3_direction = input
             adc_pin_AN0_direction = input
             adc_pin_AN5_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 7 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 8 then
             adc_pin_AN4_direction = input
             adc_pin_AN1_direction = input
@@ -767,7 +859,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [15] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
+         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
          var bit*4 no_vref = 0
          var bit*4 one_vref = 0
          var bit*4 two_vref = 0
@@ -775,6 +867,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          if (ADC_NCHANNEL + ADC_NVREF) == 0 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 1 then
             adc_pin_AN0_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 2 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 3 then
             adc_pin_AN0_direction = input
             adc_pin_AN2_direction = input
@@ -818,7 +911,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [15] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
+         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
          var bit*4 no_vref = 0
          var bit*4 one_vref = 0
          var bit*4 two_vref = 0
@@ -826,6 +919,7 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
          if (ADC_NCHANNEL + ADC_NVREF) == 0 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 1 then
             adc_pin_AN0_direction = input
+         elsif (ADC_NCHANNEL + ADC_NVREF) == 2 then
          elsif (ADC_NCHANNEL + ADC_NVREF) == 3 then
             adc_pin_AN0_direction = input
             adc_pin_AN2_direction = input
@@ -847,7 +941,8 @@ if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 | target_chip == PIC_
 
 
    -- Retrieve config bits according to selected number of ADC channels
-   const byte idx = (ADC_NCHANNEL - 1) * 3
+   -- ADC_PCFG_MAP contains all confs, from 0 analog to the max
+   const byte idx = ADC_NCHANNEL * 3
    if ADC_NVREF == 0 then
       no_vref = ADC_PCFG_MAP[idx]
       ADCON1_PCFG = no_vref
@@ -1105,50 +1200,12 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) | defined(ANCON0_PCFG1) | de
 
 
 
-   -- Configure Voltage Reference, Vref bits
-   -- This is only valid for PICs where Vref isn't part of PCFG bits combination
-
-   var byte vcfg_shadow = ADC_NVREF
-   if ADC_NVREF == 2 then
-      vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
+   if defined(ADCON0_VCFG) == true | defined(ADCON1_VCFG) then
+      adc_vcfg()
+   elsif defined(ADCON1_ADREF) == true then
+      adc_adref()
    end if
-   
-   if defined(ADCON0_VCFG) == true then
-      ADCON0_VCFG = vcfg_shadow
-   elsif defined(ADCON1_VCFG) == true then
-      ADCON1_VCFG = vcfg_shadow
 
-   -- VCFG0 bit can be found in ADCON0 or ADCON1 register
-   elsif defined(ADCON1_VCFG0) == true then
-      if ADC_NVREF == 1 then
-         ADCON1_VCFG0 = true
-      elsif ADC_NVREF == 2 then
-         ADCON1_VCFG0 = true
-         ADCON1_VCFG1 = true
-      end if
-   elsif defined(ADCON0_VCFG0) == true then
-      if ADC_NVREF == 1 then
-         ADCON0_PVCFG0 = true
-      elsif ADC_NVREF == 2 then
-         ADCON0_VCFG0 = true
-         ADCON0_VCFG1 = true
-      end if
-   -- Special case for PVCFG
-   elsif defined(ADCON1_PVCFG0) == true then
-      if ADC_NVREF > 0 then
-         -- PVCFG = 0b_01
-         ADCON1_PVCFG0 = false
-         ADCON1_PVCFG1 = true
-      elsif ADC_NVREF == 2 then
-         -- NVCFG = 0b_01
-         ADCON1_NVCFG0 = false
-         ADCON1_NVCFG1 = true
-      end if
-   else
-      if defined(ADC_NVREF) == true & ADC_NVREF != 0 then
-         _error "You've specified ADC_NVREF, but I can't find VCFG bits. There should be VCFG bits, except if I've made a mistake..."
-      end if
-   end if
 
 
 
@@ -1562,50 +1619,12 @@ else
 
 
 
-   -- Configure Voltage Reference, Vref bits
-   -- This is only valid for PICs where Vref isn't part of PCFG bits combination
-
-   var byte vcfg_shadow = ADC_NVREF
-   if ADC_NVREF == 2 then
-      vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
+   if defined(ADCON0_VCFG) == true | defined(ADCON1_VCFG) then
+      adc_vcfg()
+   elsif defined(ADCON1_ADREF) == true then
+      adc_adref()
    end if
-   
-   if defined(ADCON0_VCFG) == true then
-      ADCON0_VCFG = vcfg_shadow
-   elsif defined(ADCON1_VCFG) == true then
-      ADCON1_VCFG = vcfg_shadow
 
-   -- VCFG0 bit can be found in ADCON0 or ADCON1 register
-   elsif defined(ADCON1_VCFG0) == true then
-      if ADC_NVREF == 1 then
-         ADCON1_VCFG0 = true
-      elsif ADC_NVREF == 2 then
-         ADCON1_VCFG0 = true
-         ADCON1_VCFG1 = true
-      end if
-   elsif defined(ADCON0_VCFG0) == true then
-      if ADC_NVREF == 1 then
-         ADCON0_PVCFG0 = true
-      elsif ADC_NVREF == 2 then
-         ADCON0_VCFG0 = true
-         ADCON0_VCFG1 = true
-      end if
-   -- Special case for PVCFG
-   elsif defined(ADCON1_PVCFG0) == true then
-      if ADC_NVREF > 0 then
-         -- PVCFG = 0b_01
-         ADCON1_PVCFG0 = false
-         ADCON1_PVCFG1 = true
-      elsif ADC_NVREF == 2 then
-         -- NVCFG = 0b_01
-         ADCON1_NVCFG0 = false
-         ADCON1_NVCFG1 = true
-      end if
-   else
-      if defined(ADC_NVREF) == true & ADC_NVREF != 0 then
-         _error "You've specified ADC_NVREF, but I can't find VCFG bits. There should be VCFG bits, except if I've made a mistake..."
-      end if
-   end if
 
 
 
