@@ -49,11 +49,21 @@ include adc_pindef
 
 #def pcfg_conf(dsref)
 	#set confs = $adc_pcfg[$dsref]
-	#set mapping = {}
+	#set mapping = dict()
          -- These are some constants similar to what can be found in MCC18 adc.h header file
 	#for bits,dpins in confs.items()
 		#set r = $analyze_config(bits,dpins,mapping)
          $r
+	#end for
+	## mapping contains only valid/existing config, but these aren't continue:
+	## we can have 1 ANA, then 3 ANA, but no 2 ANA config.
+	## We need to have "padding" configs, because these aren going to be put
+	## in a array, and accessed by ADC_NCHANNEL/ADC_NVREF
+	#set tmpmap = dict().fromkeys(range(0,max(mapping.keys()) + 1))
+	#for k,v in tmpmap.items()
+		#if not k in mapping
+			#silent mapping[k] = {0 : '0', 1 : '0', 2 : '0', 'analog_pins' : []}
+		#end if
 	#end for
 	#set smap = sorted(mapping.items())
 	#set lmap = []
@@ -109,7 +119,8 @@ $pcfg_conf($dsref)
 	#end for
 
    -- Retrieve config bits according to selected number of ADC channels
-   const byte idx = (ADC_NCHANNEL - 1) * 3
+   -- ADC_PCFG_MAP contains all confs, from 0 analog to the max
+   const byte idx = ADC_NCHANNEL * 3
    if ADC_NVREF == 0 then
       no_vref = ADC_PCFG_MAP[idx]
       ADCON1_PCFG = no_vref
@@ -562,6 +573,10 @@ $pcfg_conf($dsref)
 
 #def vcfg()
 
+
+-- Configure Voltage reference using VCFG bits
+procedure adc_vcfg() is
+   pragma inline
    -- Configure Voltage Reference, Vref bits
    -- This is only valid for PICs where Vref isn't part of PCFG bits combination
 
@@ -606,6 +621,39 @@ $pcfg_conf($dsref)
          _error "You've specified ADC_NVREF, but I can't find VCFG bits. There should be VCFG bits, except if I've made a mistake..."
       end if
    end if
+end procedure
+
+#end def
+
+
+#def adref
+
+-- Configure Voltage reference using ADREF bits
+-- Found in PICs: 16f722, 16f723, 16f724, 16f726, 16f727, 16lf722, 
+--                16lf723, 16lf724, 16lf726, 16lf727,
+-- Same family, DS 41341B
+procedure adc_adref() is
+
+   if defined(ADCON1_ADREF) == true then
+      if ADC_NVREF == 1 then
+         ADCON1_ADREF = 0b_10
+      elsif ADC_NVREF != 0 then
+         _error "ADC_NVREF must be 0 or 1"
+      end if
+   end if
+
+end procedure
+
+#end def
+
+
+#def select_vref
+
+   if defined(ADCON0_VCFG) == true | defined(ADCON1_VCFG) then
+      adc_vcfg()
+   elsif defined(ADCON1_ADREF) == true then
+      adc_adref()
+   end if
 
 #end def
 
@@ -613,6 +661,10 @@ $pcfg_conf($dsref)
 #def main
 $header
 $deps
+
+$vcfg
+$adref
+
 #set pcfg_combination_condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),$pcfg_combination_pics))
 
 -- -----------------------------------------
@@ -638,7 +690,8 @@ $pcfg_combination
 ## 18F PICs, which use PCFG bits
 elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) | defined(ANCON0_PCFG1) | defined(ANCON0_PCFG2) | defined(ANCON0_PCFG3) | defined(ANCON0_PCFG4) | defined(ANCON0_PCFG5) | defined(ANCON0_PCFG6) | defined(ANCON0_PCFG7) | defined(ANCON1_PCFG10) | defined(ANCON1_PCFG11) | defined(ANCON1_PCFG12) | defined(ANCON1_PCFG8) | defined(ANCON1_PCFG9)) then
 $pcfg_18f
-$vcfg
+$select_vref
+
 
 -- --------------------------------------------
 -- THIRD CASE: 
@@ -650,7 +703,8 @@ $vcfg
 ## So these are PICs which use ANS bits, wether non-18F or 18F
 else
 $ans
-$vcfg
+$select_vref
+
 
 end if
 #end def
