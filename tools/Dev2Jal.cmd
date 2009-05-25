@@ -28,9 +28,9 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.64'                   /*                          */
+   ScriptVersion   = '0.0.65'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
-   CompilerVersion = '>=2.4k'                   /*                          */
+   CompilerVersion = '2.4k'                     /*                          */
 /* ------------------------------------------------------------------------ */
 
 mplabdir = 'k:/mplab830/'                       /* MPLAB base directory */
@@ -234,6 +234,7 @@ MAXRAM     = 4096                               /* range 0..0x0xFFF */
 BANKSIZE   = 256                                /* 0x0100 */
 DataStart  = '0xF00000'                         /* default */
 NumBanks   = 1                                  /* default */
+AccessBankSplitOffset = 128                     /* default */
 StackDepth = 31                                 /* default */
 
 call load_sfr16                                 /* load sfr */
@@ -488,11 +489,16 @@ return 0
 /*                                                            */
 /* 16-bit core                                                */
 /* ---------------------------------------------------------- */
-load_sfr16: procedure expose Dev. Ram. BankSize NumBanks
+load_sfr16: procedure expose Dev. Ram. BankSize NumBanks AccessBankSplitOffset
 do i = 1 to Dev.0
   parse var Dev.i 'NUMBANKS' '=' Value .        /* memory banks */
   if Value \= '' then do
-    NumBanks = strip(Value)                     /* feedback! */
+    NumBanks = strip(Value)                     /* feedback */
+    iterate
+  end
+  parse var Dev.i 'ACCESSBANKSPLITOFFSET' '=' '0X' Value .  /* split */
+  if Value \= '' then do
+    AccessBankSplitOffset = X2D(strip(Value))    /* feedback */
     iterate
   end
   parse var Dev.i 'UNUSEDREGS' '(' '0X' lo '-' '0X' hi ')' .
@@ -895,7 +901,7 @@ do i = 1 to Dev.0
   parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 .
   if val1 \= '' then do
     reg = strip(val1)                           /* register name */
-    if reg = 'SSPCON1' |,                       /* to be renamed */
+    if reg = 'SSPCON1' |,                       /* to be normalized */
        reg = 'SSPCON0' then
       reg = 'SSPCON'                            /* normalized name */
     Name.reg = reg                              /* add to collection of names */
@@ -1007,20 +1013,16 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                 end
               end
             end
-            else do
+            else do                                     /* not twin name */
               field = reg'_'n.j
-              if duplicate_name(field,reg) = 0 then do  /* unique */
+              if duplicate_name(field,reg) = 0 then     /* unique */
                 call lineout jalfile, 'var volatile bit  ',
                                left(field,20) 'at' reg ':' offset
-              end
               if reg = 'INTCON' then do
                 if left(n.j,2) = 'T0' then
                   call lineout jalfile, 'var volatile bit  ',
                            left(reg'_TMR0'||substr(n.j,3),20) 'at' reg ':' offset
-           /*   else if left(n.j,4) = 'TMR0' then
-                  call lineout jalfile, 'var volatile bit  ',
-                           left(reg'_T0'||substr(n.j,5),20) 'at' reg ':' offset
-           */   end
+                end
               else if left(reg,4) = 'PORT' then do
                 if left(n.j,1) = 'R'  &,
                     substr(n.j,2,1) = right(reg,1) then do  /* prob. I/O pin */
@@ -1041,7 +1043,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                 shadow = '_PORTA_shadow'
                 pin = 'pin_A'right(n.j,1)
                 call lineout jalfile, 'var volatile bit  ',
-                                      left(pin,20) 'at' reg ':' offset
+                                     left(pin,20) 'at' reg ':' offset
                 call lineout jalfile, '--'
                 call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                  'at' shadow ':' offset') is'
@@ -1061,6 +1063,13 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   call lineout jalfile, 'var volatile bit  ',
                     left('pin_'substr(n.j,5)'_direction',20) 'at' reg ':' offset
               end
+              else if left(reg,5) = 'ADCON'  &,         /* ADCON0/1 */
+                      pos('VCFG',field) > 0  then do    /* VCFG field */
+                p = j - 1                               /* previous bit */
+                if right(n.j,5) = 'VCFG0' & right(n.p,5) = 'VCFG1' then
+                  call lineout jalfile, 'var volatile bit*2',
+                       left(left(field,length(field)-1),20) 'at' reg ':' offset
+              end
             end
             offset = offset - 1                         /* next bit */
           end
@@ -1071,17 +1080,18 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
             else if field = 'OSCCON_IRFC' then          /* wrong name */
               field = 'OSCCON_IRCF'                     /* datasheet name */
             if duplicate_name(field,reg) = 0 then do    /* unique */
+              if left(reg,5) = 'ADCON'  &,              /* ADCON0/1 */
+                 pos('VCFG',field) > 0  &,              /* VCFG field */
+                 s.j > 1 then do                        /* multi-bit to enumerate */
+                call lineout jalfile, 'var volatile bit  ',
+                      left(field'1',20) 'at' reg ':' offset - 0
+                call lineout jalfile, 'var volatile bit  ',
+                      left(field'0',20) 'at' reg ':' offset - 1
+              end
               call lineout jalfile, 'var volatile bit*'s.j,
-                    left(field,20) 'at' reg ':' offset - s.j + 1
+                           left(field,20) 'at' reg ':' offset - s.j + 1
             end
             offset = offset - s.j
-          end
-          else if s.j > 8 then do                       /* multi-byte */
-            field = reg'_'n.j
-            if duplicate_name(field,reg) = 0 then do    /* unique */
-              call lineout jalfile, 'var volatile bit  ',
-                   left(field,20) 'at' reg ':' offset
-            end
           end
         end
       end
@@ -1098,7 +1108,8 @@ return 0
 /* Note: - name is stored but not checked on duplicates     */
 /* 16-bit core                                              */
 /* -------------------------------------------------------  */
-list_sfr16: procedure expose Dev. Ram. Name. jalfile BANKSIZE NumBanks
+list_sfr16: procedure expose Dev. Ram. Name. jalfile,
+            BANKSIZE NumBanks PicName AccessBankSplitOffset
 do i = 1 to Dev.0
   if word(Dev.i,1) \= 'SFR' then
     iterate
@@ -1119,8 +1130,13 @@ do i = 1 to Dev.0
       field = 'byte*3'
     Ram.k = k                                   /* mark in use */
     call lineout jalfile, '-- ------------------------------------------------'
-    call lineout jalfile, 'var volatile' field left(reg,20),
-                          'shared at 0x'addr
+    if  k < AccessBankSplitOffset + X2D('F00') then do
+      memtype = '      '                        /* in non shared memory */
+ /*   say 'SFR below AccessBankSplitOffset (0xF'D2X(AccessbankSplitOffset)'): 0x'addr   */
+    end
+    else
+      memtype = 'shared'                        /* in shared memory */
+    call lineout jalfile, 'var volatile' field left(reg,20) memtype 'at 0x'addr
 
     if left(reg,3) = 'LAT' then do              /* LATx register */
       call list_port16_shadow reg               /* force use of LATx */
@@ -1132,7 +1148,7 @@ do i = 1 to Dev.0
       call list_tris_nibbles reg                 /* nibble directions */
     end
 
-    call list_sfr_subfields16 i, reg            /* bit fields */
+    call list_sfr_subfields16 i, reg, memtype   /* bit fields */
 
     if  reg = 'FSR0'   |,
         reg = 'FSR0L'  |,
@@ -1159,13 +1175,11 @@ return 0
 
 
 /* -------------------------------------------------------- */
-/* procedure to normalize MSSP resgiter names               */
+/* procedure to normalize MSSP register names               */
 /* input: - register name                                   */
 /* 16-bit core                                              */
 /* -------------------------------------------------------  */
 normalize_ssp16:
-if left(reg,3) \= 'SSP' then                    /* only for SSP registers */
-  return reg
 select
   when reg = 'SSPADD' then
     reg = 'SSP1ADD'
@@ -1199,6 +1213,7 @@ return  reg                                     /* return normalized name */
 list_sfr_subfields16: procedure expose Dev. Name. jalfile
 i = arg(1) + 1                                          /* 1st after reg */
 reg = arg(2)                                            /* register (name) */
+memtype = arg(3)                                        /* shared/blank */
 do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                      word(Dev.i,1) \= 'NMMR')           /* other register */
   parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
@@ -1219,7 +1234,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
           field_type = 'byte*3'
         field = reg'_'n.1
         if duplicate_name(field,reg) = 0 then do        /* unique */
-          call lineout jalfile, 'var volatile' field_type left(field,20) 'shared at' reg
+          call lineout jalfile, 'var volatile' field_type left(field,20) memtype 'at' reg
         end
       end
     end
@@ -1237,37 +1252,33 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                 field = reg'_'val1
                 if duplicate_name(field,reg) = 0 then do  /* unique */
                   call lineout jalfile, 'var volatile bit   ',
-                       left(field,20) 'shared at' reg ':' offset
+                       left(field,20) memtype 'at' reg ':' offset
                 end
               end
               if val2 \= '' then do
                 field = reg'_'val2
                 if duplicate_name(field,reg) = 0 then do  /* unique */
                   call lineout jalfile, 'var volatile bit   ',
-                       left(field,20) 'shared at' reg ':' offset
+                       left(field,20) memtype 'at' reg ':' offset
                 end
               end
             end
-            else do
+            else do                                     /* not twin name */
               field = reg'_'n.j
-              if duplicate_name(field,reg) = 0 then do  /* unique */
+              if duplicate_name(field,reg) = 0 then     /* unique */
                 call lineout jalfile, 'var volatile bit   ',
-                     left(field,20) 'shared at' reg ':' offset
-              end
+                     left(field,20) memtype 'at' reg ':' offset
               if reg = 'INTCON' then do
                 if left(n.j,2) = 'T0' then
                   call lineout jalfile, 'var volatile bit   ',
-                           left(reg'_TMR0'||substr(n.j,3),20) 'shared at' reg ':' offset
-          /*    else if left(n.j,4) = 'TMR0' then
-                  call lineout jalfile, 'var volatile bit   ',
-                           left(reg'_T0'||substr(n.j,5),20) 'shared at' reg ':' offset
-          */  end
+                           left(reg'_TMR0'||substr(n.j,3),20) memtype 'at' reg ':' offset
+              end
               else if left(reg,3) = 'LAT' then do       /* LATx register */
                 if left(n.j,3) = 'LAT'   &,
                     substr(n.j,4,1) = right(reg,1) then do     /* I/O pin */
                   pin = 'pin_'||substr(n.j,4)
                   call lineout jalfile, 'var volatile bit   ',
-                           left(pin,20) 'shared at PORT'substr(reg,4) ':' offset
+                           left(pin,20) memtype 'at PORT'substr(reg,4) ':' offset
                   call lineout jalfile, '--'
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                    'at' reg ':' offset') is'
@@ -1280,7 +1291,14 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                 pin = 'pin_'||substr(n.j,5)'_direction'
                 if  left(n.j,4) = 'TRIS' then           /* only TRIS bits */
                   call lineout jalfile, 'var volatile bit   ',
-                               left(pin,20) 'shared at' reg ':' offset
+                               left(pin,20) memtype 'at' reg ':' offset
+              end
+              else if left(reg,5) = 'ADCON'  &,         /* ADCON0/1 */
+                      pos('VCFG',field) > 0  then do    /* VCFG field */
+                p = j - 1                               /* previous bit */
+                if right(n.j,5) = 'VCFG0' & right(n.p,5) = 'VCFG1' then
+                  call lineout jalfile, 'var volatile bit*2 ',
+                       left(left(field,length(field)-1),20) memtype 'at' reg ':' offset
               end
             end
             offset = offset - 1                         /* next bit */
@@ -1289,8 +1307,16 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
             field = reg'_'n.j
             if field \= reg then do                     /* not reg alias */
               if duplicate_name(field,reg) = 0 then do  /* unique */
+                if left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
+                   pos('VCFG',field) > 0  &,            /* VCFG field */
+                   s.j > 1                then do       /* multibit */
+                  call lineout jalfile, 'var volatile bit   ',
+                        left(field'1',20) memtype 'at' reg ':' offset - 0
+                  call lineout jalfile, 'var volatile bit   ',
+                        left(field'0',20) memtype 'at' reg ':' offset - 1
+                end
                 call lineout jalfile, 'var volatile bit*'s.j' ',
-                      left(field,20) 'shared at' reg ':' offset - s.j + 1
+                             left(field,20) memtype 'at' reg ':' offset - s.j + 1
               end
             end
             offset = offset - s.j
@@ -2203,9 +2229,8 @@ analog. = '-'                                           /* no analog modules */
 if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,           /* check on presence */
    Name.ANSELA \= '-' | Name.ANCON0 \= '-'  then do
   analog.ANSEL = 'analog'                       /* analog functions present */
-  call lineout jalfile, '-- ---------------------------------------------------'
+  call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
   call lineout jalfile, '-- Change analog I/O pins into digital I/O pins.'
-  call lineout jalfile, '--'
   call lineout jalfile, 'procedure analog_off() is'
   call lineout jalfile, '   pragma inline'
   if Name.ANSEL \= '-' then do                          /* ANSEL declared */
@@ -2239,9 +2264,8 @@ end
 
 if Name.ADCON0 \= '-' then do                           /* check on presence */
   analog.ADC = 'adc'                                    /* ADC module present */
-  call lineout jalfile, '-- ---------------------------------------------------'
+  call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
   call lineout jalfile, '-- Disable ADC module'
-  call lineout jalfile, '--'
   call lineout jalfile, 'procedure adc_off() is'
   call lineout jalfile, '   pragma inline'
   call lineout jalfile, '   ADCON0 = 0b0000_0000         -- disable ADC'
@@ -2270,9 +2294,8 @@ end
 if Name.CMCON   \= '-' | Name.CMCON0 \= '-' |,
    Name.CM1CON0 \= '-' | Name.CM1CON1 \= '-' then do
   analog.CMCON = 'comparator'                           /* Comparator present */
-  call lineout jalfile, '-- ---------------------------------------------------'
+  call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
   call lineout jalfile, '-- Disable comparator module'
-  call lineout jalfile, '--'
   call lineout jalfile, 'procedure comparator_off() is'
   call lineout jalfile, '   pragma inline'
   if Name.CMCON \= '-' then
@@ -2293,9 +2316,8 @@ if Name.CMCON   \= '-' | Name.CMCON0 \= '-' |,
   call lineout jalfile, '--'
 end
 
-call lineout jalfile, '-- ---------------------------------------------------'
+call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
 call lineout jalfile, '-- Switch analog ports to digital mode (if analog module present).'
-call lineout jalfile, '--'
 call lineout jalfile, 'procedure enable_digital_io() is'
 call lineout jalfile, '   pragma inline'
 
@@ -2307,10 +2329,9 @@ if analog.CMCON \= '-' then
   call lineout jalfile, '   comparator_off()'
 
 if left(PicName,3) = '10f' |,                   /* all 10Fs */
-   PicName = '12f508' | PicName = '12f509' | PicName = '12f510'  |,
-   PicName = '16f505' | PicName = '16f506' | PicName = '16f526'  ,
-  then
-    call lineout jalfile, '   OPTION_REG_T0CS = OFF        -- T0CKI pin input + output'
+   PicName = '12f508' | PicName = '12f509' | PicName = '12f510' |,
+   PicName = '16f505' | PicName = '16f506' | PicName = '16f526' then
+  call lineout jalfile, '   OPTION_REG_T0CS = OFF        -- T0CKI pin input + output'
 call lineout jalfile, 'end procedure'
 
 return
@@ -2334,7 +2355,7 @@ else do                                         /* for the 18F series */
   call lineout jalfile, '--    - Procedures to force the use of the LATx register'
   call lineout jalfile, '--      when PORTx is addressed.'
 end
-call lineout jalfile, '--    - Symbolic definitions for config bits (fuses)'
+call lineout jalfile, '--    - Symbolic definitions for configuration bits (fuses)'
 call lineout jalfile, '--    - Some device dependent procedures for common'
 call lineout jalfile, '--      operations, like:'
 call lineout jalfile, '--      . enable_digital_io()'
@@ -2423,9 +2444,9 @@ if Core = 12  | Core = 14 then do
 end
 else if Core = 16 then do
   call lineout jalfile, 'var volatile byte _pic_accum shared at',
-                                 '0x'D2X(MaxSharedRAM-1)'   -- (compiler)'
+                        '0x'D2X(MaxSharedRAM-1)'   -- (compiler)'
   call lineout jalfile, 'var volatile byte _pic_isr_w shared at',
-                                 '0x'D2X(MaxSharedRAM)'   -- (compiler)'
+                        '0x'D2X(MaxSharedRAM)'   -- (compiler)'
 end
 call lineout jalfile, '--'
 return
@@ -2495,7 +2516,6 @@ call lineout chipdef, '-- Can be used for conditional compilation, for example:'
 call lineout chipdef, '--    if (target_chip = PIC_16F88) then'
 call lineout chipdef, '--      ....                                  -- for 16F88 only'
 call lineout chipdef, '--    endif'
-/* call lineout chipdef, '-- Note: Variables declared in such a block are local!' */
 call lineout chipdef, '--'
 return
 
@@ -2564,13 +2584,16 @@ end
 /* translate string to lower case                 */
 /* ---------------------------------------------- */
 tolower:
-return translate(arg(1), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+return translate(arg(1), 'abcdefghijklmnopqrstuvwxyz',,
+                         'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+
 
 /* ---------------------------------------------- */
 /* translate string to lower case                 */
 /* ---------------------------------------------- */
 toupper:
-return translate(arg(1), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')
+return translate(arg(1), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',,
+                         'abcdefghijklmnopqrstuvwxyz')
 
 
 /* ---------------------------------------------- */
