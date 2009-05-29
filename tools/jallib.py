@@ -221,7 +221,7 @@ def do_compile(args,exitonerror=True,clean=False):
 def content_not_empty(val):
 	return val.strip() != ''
 def compiler_version(val):
-	return re.match("^(>|<|>=|<=|=)\d+(\.\d+\w*)+\s+",val)
+	return re.match("^(>|<|>=|<=|=)?\d+(\.\d+\w*)+\s+$",val)
 
 JALLIB = """^-- This file is part of jallib\s+\(http://jallib.googlecode.com\)"""
 LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
