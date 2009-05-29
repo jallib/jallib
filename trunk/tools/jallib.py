@@ -204,9 +204,9 @@ def do_compile(args,exitonerror=True,clean=False):
 					toclean = os.path.join(outdir,f)
 					print >> sys.stderr, "Cleaning %s" % toclean
 					os.unlink(toclean)
-
 			
 		return status
+
 	except subprocess.CalledProcessError,e:
 		print >> sys.stderr, "Error while compiling file (status=%s).\nSee previous message." % e.returncode
 		exitonerror and sys.exit(e.returncode)
@@ -221,7 +221,7 @@ def do_compile(args,exitonerror=True,clean=False):
 def content_not_empty(val):
 	return val.strip() != ''
 def compiler_version(val):
-	return re.match("^(>|<|>=|<=|=)\d+(\.\d+\w*)+\s+$",val)
+	return re.match("^(>|<|>=|<=|=)\d+(\.\d+\w*)+\s+",val)
 
 JALLIB = """^-- This file is part of jallib\s+\(http://jallib.googlecode.com\)"""
 LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
@@ -737,6 +737,107 @@ def do_reindent(args):
 # JALAPI FUNC #
 #-------------#
 
+def picshell_unittest(jalFileName,asmFileName,hexFileName):
+
+	# This piece of code is loosely based on PICShell implementation.
+	# This is a quick & dirty assembling :)
+
+	from picshell.parser.JalV2AsmParser import JalV2AsmParser
+	from picshell.parser.AnnotationParser import AnnotationParser
+	from picshell.engine.core.PicThreadEngine import PicThreadEngine
+	from picshell.engine.core.PicEngine import PicEngine
+	from picshell.engine.core.State import State
+	from picshell.util.AssertUtil import AssertUtil
+	
+	from picshell.ui.UIManager import UIManager
+	
+	asmParser = JalV2AsmParser()
+	wholeCode = asmParser.parseAsmFile(asmFileName, [])
+	varTypeDict = JalV2AsmParser.buildVarTypeDict(wholeCode)
+	
+	parseRes = AnnotationParser.parse(file(jalFileName).read())
+	noDebugList = parseRes["noDebug"]
+	debugList = parseRes["debug"]
+	langParser = JalV2AsmParser()
+	code = langParser.parseAsmFile(asmFileName, noDebugList,debugList)
+	
+	def unittest_callback(address):
+		line = langParser.adrToLine[address]
+		if line != None:
+			txt = code[line].line
+			if "@assertEquals" in txt:
+				res = AssertUtil.parse(txt)
+				var = res["var"].lower()
+				label = res["label"]
+				ref = res["ref"]
+				if (langParser.varAdrMapping.has_key("v_"+str(var))):
+					varAddr = langParser.varAdrMapping["v_"+str(var)]
+					varType = type = varTypeDict.get(var,'bit')
+					val = ui.varValue(varAddr,varType)
+					res= varType+" "+var+" (@"+str(varAddr)+") = 0x%X , expected : 0x%X" %(val,ref)
+	
+					print label,
+					if (ref == val) :
+						print ": OK"
+					else :
+						print ": FAIL, %s != %s" % (ref,val)
+				else:
+					print "Can't run test '%s' because var '%s' can't be found" % (label,var)
+	
+	
+	emu = PicEngine.newInstance(State(),hexFileName)
+	# needed to access varValue function
+	ui = UIManager()
+	ui.emu = emu
+	
+	def run(to,emu,unittest_callback):
+		current_address = emu.runNext()
+		while current_address != to:
+			#unit testing ?
+			if unittest_callback != None:
+				unittest_callback(current_address)
+			current_address = emu.runNext()
+		# last call on finishing address
+		unittest_callback(current_address)
+
+
+	run(emu.lastAddress,emu,unittest_callback)
+
+def unittest(filename):
+	import StringIO
+	# catch stderr/stdout from compilation step
+	try:
+		status = do_compile([filename],exitonerror=False,clean=False)
+	except Exception,e:
+		print >> sys.stderr, "Error while compiling file '%s': %s" % (filename,e)
+		sys.exit(1)
+
+	if status == 0:
+			print "%s compiled, running tests..." % filename
+
+	
+	jal = filename
+	asm = filename.replace(".jal",".asm")
+	hex = filename.replace(".jal",".hex")
+	picshell_unittest(jal,asm,hex)
+
+
+def do_unittest(args):
+	# args contain jal files to test
+	at_least_one_failed = False
+	for filename in args:
+		unittest(filename)
+
+	if at_least_one_failed:
+		sys.exit(1)
+	else:
+		sys.exit(0)
+
+
+#-------------#
+# JALAPI FUNC #
+#-------------#
+
 SVN_URL_SAMPLEDIR = "http://code.google.com/p/jallib/source/browse/trunk/sample"
 
 def do_jalapi(args):
@@ -1034,6 +1135,27 @@ with special cases for space and tab chars (for convenience). Examples:
 
 """
 
+def unittest_help():
+	print """
+    jallib test file.jal [file.jal]
+
+Run test file and produce results. Takes a jal file, or
+a test file (*.jalt extention). The differences are test files contain several
+tests, several sections, which are assembled on the fly
+(something like board/test files producing samples)
+
+Tests is done using PICShell unittesting facilities. PIC 18F aren't
+supported. Several actions can be checked:
+
+  - @assertEquals: will check a variable against a value (from PICShell).
+
+"""
+
+###  - @assertWarning: will check given text will appear as a warning during
+###                    compilation (from jallib)
+###  - @assertError: same as @assertWarning but for an error
+
+
 def jalapi_help():
 	print """
     jallib jalapi [-l|-s] [-d path/to/sample] -t template.tmpl
@@ -1104,6 +1226,7 @@ ACTIONS = {
 		'jalapi'	: {'callback' : do_jalapi,   'options' : 'slt:d:g:o:', 'help' : jalapi_help},
 		'sample'	: {'callback' : do_sample,   'options' : 'a:b:t:o:',   'help' : sample_help},
 		'reindent'	: {'callback' : do_reindent, 'options' : 'c:',         'help' : reindent_help},
+		'unittest'	: {'callback' : do_unittest,     'options' : '',           'help' : unittest_help},
 		'help'		: {'callback' : do_help,     'options' : '',           'help' : None},
 		'license'	: {'callback' : do_license,  'options' : '',           'help' : None},
 		}
