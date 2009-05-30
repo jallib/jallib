@@ -1,4 +1,4 @@
--- Title: queue04 - fifo queue (number 04 is the template)
+-- Title: queue04 - fifo queue (number 01 is the template)
 -- Author: Joep Suijs, Copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4i
@@ -22,7 +22,7 @@
 -- --
 -- other methods:
 -- queue04_clear()    -- clear queue (makes queue empty)
--- queue04_empty()    -- returns true if queue is emtpy (depricated, use queue4_is_empty())
+-- queue04_empty()    -- returns true if queue is emtpy (depricated, use queue1_is_empty())
 -- queue04_is_empty() -- returns true if queue is emtpy 
 -- queue04_is_full()  -- returns true if queue is full
 -- queue04_nr_free()  -- returns nr of free places in queue
@@ -33,11 +33,11 @@
 
 if (defined(queue04_size) == false) then
    -- queue size default
-   const byte  queue04_size = 40
+   const byte  queue04_size = 10
 end if
 
 -- queue vars
-var volatile byte queue04_data[queue04_size + 4]
+var volatile byte queue04_data[queue04_size + 1]
 var volatile byte queue04_in_pointer  = 0 ; wijst naar vrije locatie
 var volatile byte queue04_out_pointer = 0 ; wijst naar databyte
 
@@ -65,12 +65,11 @@ end function
 -- -----------------------------------------------------------------------
 function queue04_nr_used() return byte is
 
-  var byte ret = queue04_in_pointer - queue04_out_pointer
-  if (queue04_in_pointer <  queue04_out_pointer) then 
-      ret = ret + queue04_size
+   if (queue04_in_pointer <  queue04_out_pointer) then 
+      return queue04_in_pointer - queue04_out_pointer + queue04_size
    end if      
 
-   return ret
+   return queue04_in_pointer - queue04_out_pointer
 
 end function
 
@@ -80,7 +79,12 @@ end function
 -- -----------------------------------------------------------------------
 function queue04_nr_free() return byte is
 
-   return queue04_size - 4 - queue04_nr_used() 
+
+   if (queue04_in_pointer <  queue04_out_pointer) then 
+      return  queue04_out_pointer - 1 - queue04_in_pointer
+   end if      
+
+   return queue04_size - 1 - queue04_in_pointer + queue04_out_pointer
 
 end function
 
@@ -100,8 +104,13 @@ end function
 -- ----------------------------------------------------------------------- 
 function queue04_is_full() return bit is
 
-    return (queue04_size - 4) == queue04_nr_used() 
+   var byte pntr = queue04_in_pointer + 1
+   if (pntr > queue04_size) then
+      pntr = 0
+   end if
 
+   return (pntr == queue04_out_pointer)
+   
 end function
 
 -- -----------------------------------------------------------------------
@@ -113,7 +122,8 @@ end function
 --          false when the queue is empty (byte is not read from queue)
 -- -----------------------------------------------------------------------
 function queue04_nb_get(byte out v) return bit is
-
+   var byte pntr
+   
    if (queue04_in_pointer == queue04_out_pointer) then
       -- queue is empty
       return false;
@@ -121,10 +131,13 @@ function queue04_nb_get(byte out v) return bit is
 
    ; data in queue
    v = queue04_data[queue04_out_pointer]
-   queue04_out_pointer = queue04_out_pointer + 4
-   if (queue04_out_pointer > queue04_size) then
-      queue04_out_pointer = 0
-   end if
+   pntr = queue04_out_pointer + 1
+   if (pntr > queue04_size) then
+      pntr = 0
+   end if  
+
+   queue04_out_pointer = pntr
+   
    return true;
    
 end function
@@ -137,7 +150,7 @@ end function
 -- -----------------------------------------------------------------------
 function queue04_nb_put(byte in v) return bit is
 
-   var byte pntr = queue04_in_pointer + 4
+   var byte pntr = queue04_in_pointer + 1
    if (pntr > queue04_size) then
       pntr = 0
    end if
@@ -161,6 +174,7 @@ end function
 -- -----------------------------------------------------------------------
 function queue04_nb'get() return byte is
    var byte v
+   var byte pntr
    
    if (queue04_in_pointer == queue04_out_pointer) then
       -- queue is empty
@@ -169,11 +183,12 @@ function queue04_nb'get() return byte is
 
    ; data in queue
    v = queue04_data[queue04_out_pointer]
-   queue04_out_pointer = queue04_out_pointer + 4
-   if (queue04_out_pointer > queue04_size) then
-      queue04_out_pointer = 0
+   pntr = queue04_out_pointer + 1
+   if (pntr > queue04_size) then
+      pntr = 0
    end if  
-   
+
+   queue04_out_pointer = pntr
    return v
    
 end function
@@ -184,7 +199,7 @@ end function
 -- -----------------------------------------------------------------------
 procedure queue04_nb'put(byte in v) is
 
-   var byte pntr = queue04_in_pointer + 4
+   var byte pntr = queue04_in_pointer + 1
    if (pntr > queue04_size) then
       pntr = 0
    end if
@@ -206,7 +221,7 @@ end procedure
 -- -----------------------------------------------------------------------
 procedure queue04'put(byte in v) is
    
-   var byte pntr = queue04_in_pointer + 4
+   var byte pntr = queue04_in_pointer + 1
    if (pntr > queue04_size) then
       pntr = 0
    end if
@@ -227,16 +242,19 @@ end procedure
 -- -----------------------------------------------------------------------
 function queue04'get() return byte is
    var byte v
+   var byte pntr
    
    -- wait if there are no bytes in the queue
    while (queue04_in_pointer == queue04_out_pointer) loop end loop
    
    ; data in queue04_
    v = queue04_data[queue04_out_pointer]
-   queue04_out_pointer = queue04_out_pointer + 4
-   if (queue04_out_pointer > queue04_size) then
-      queue04_out_pointer = 0
-   end if
+   pntr = queue04_out_pointer + 1
+   if (pntr > queue04_size) then
+      pntr = 0
+   end if  
+
+   queue04_out_pointer = pntr
 
    return v
 end function

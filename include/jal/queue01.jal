@@ -65,12 +65,11 @@ end function
 -- -----------------------------------------------------------------------
 function queue01_nr_used() return byte is
 
-  var byte ret = queue01_in_pointer - queue01_out_pointer
-  if (queue01_in_pointer <  queue01_out_pointer) then 
-      ret = ret + queue01_size
+   if (queue01_in_pointer <  queue01_out_pointer) then 
+      return queue01_in_pointer - queue01_out_pointer + queue01_size
    end if      
 
-   return ret
+   return queue01_in_pointer - queue01_out_pointer
 
 end function
 
@@ -80,7 +79,12 @@ end function
 -- -----------------------------------------------------------------------
 function queue01_nr_free() return byte is
 
-   return queue01_size - 1 - queue01_nr_used() 
+
+   if (queue01_in_pointer <  queue01_out_pointer) then 
+      return  queue01_out_pointer - 1 - queue01_in_pointer
+   end if      
+
+   return queue01_size - 1 - queue01_in_pointer + queue01_out_pointer
 
 end function
 
@@ -100,8 +104,13 @@ end function
 -- ----------------------------------------------------------------------- 
 function queue01_is_full() return bit is
 
-    return (queue01_size - 1) == queue01_nr_used() 
+   var byte pntr = queue01_in_pointer + 1
+   if (pntr > queue01_size) then
+      pntr = 0
+   end if
 
+   return (pntr == queue01_out_pointer)
+   
 end function
 
 -- -----------------------------------------------------------------------
@@ -113,7 +122,8 @@ end function
 --          false when the queue is empty (byte is not read from queue)
 -- -----------------------------------------------------------------------
 function queue01_nb_get(byte out v) return bit is
-
+   var byte pntr
+   
    if (queue01_in_pointer == queue01_out_pointer) then
       -- queue is empty
       return false;
@@ -121,10 +131,13 @@ function queue01_nb_get(byte out v) return bit is
 
    ; data in queue
    v = queue01_data[queue01_out_pointer]
-   queue01_out_pointer = queue01_out_pointer + 1
-   if (queue01_out_pointer > queue01_size) then
-      queue01_out_pointer = 0
-   end if
+   pntr = queue01_out_pointer + 1
+   if (pntr > queue01_size) then
+      pntr = 0
+   end if  
+
+   queue01_out_pointer = pntr
+   
    return true;
    
 end function
@@ -161,6 +174,7 @@ end function
 -- -----------------------------------------------------------------------
 function queue01_nb'get() return byte is
    var byte v
+   var byte pntr
    
    if (queue01_in_pointer == queue01_out_pointer) then
       -- queue is empty
@@ -169,11 +183,12 @@ function queue01_nb'get() return byte is
 
    ; data in queue
    v = queue01_data[queue01_out_pointer]
-   queue01_out_pointer = queue01_out_pointer + 1
-   if (queue01_out_pointer > queue01_size) then
-      queue01_out_pointer = 0
+   pntr = queue01_out_pointer + 1
+   if (pntr > queue01_size) then
+      pntr = 0
    end if  
-   
+
+   queue01_out_pointer = pntr
    return v
    
 end function
@@ -227,16 +242,19 @@ end procedure
 -- -----------------------------------------------------------------------
 function queue01'get() return byte is
    var byte v
+   var byte pntr
    
    -- wait if there are no bytes in the queue
    while (queue01_in_pointer == queue01_out_pointer) loop end loop
    
    ; data in queue01_
    v = queue01_data[queue01_out_pointer]
-   queue01_out_pointer = queue01_out_pointer + 1
-   if (queue01_out_pointer > queue01_size) then
-      queue01_out_pointer = 0
-   end if
+   pntr = queue01_out_pointer + 1
+   if (pntr > queue01_size) then
+      pntr = 0
+   end if  
+
+   queue01_out_pointer = pntr
 
    return v
 end function
