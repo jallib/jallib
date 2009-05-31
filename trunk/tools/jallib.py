@@ -47,6 +47,12 @@ try:
 except ImportError:
    has_subprocess = False
 
+try:
+	import picshell.engine.core.PicEngine
+	has_picshell = True
+except ImportError:
+	has_picshell = False
+
 
 #########
 # TOOLS #
@@ -117,6 +123,21 @@ def _explore_dir(onedir):
 		if not fd.startswith("."):
 			keepit(os.path.join(onedir,fd))
 	return dirs
+
+
+def clean_compiler_products(fromjalfile):
+	outdir = os.path.dirname(fromjalfile) or os.path.curdir
+	outfile = os.path.basename(fromjalfile)
+	noext = outfile[:-4]
+	for f in os.listdir(outdir):
+		# luckily all product files have 3-letters extension
+		if f[:-4] == noext and f[-4:] in [".asm",".hex",".err",".cod",".obj",".lst"]:
+			toclean = os.path.join(outdir,f)
+			print >> sys.stderr, "Cleaning %s" % toclean
+			try:
+				os.unlink(toclean)
+			except OSError,e:
+				print >> sys.stderr, "Can't clean %s because: %s" % (toclean,e)
 
 
 def do_compile(args,exitonerror=True,clean=False):
@@ -195,15 +216,7 @@ def do_compile(args,exitonerror=True,clean=False):
 			if not srcfile.endswith(".jal"):
 				print >> sys.stderr, "Can't clean, because can't know which file is the source file"
 				return status
-			outdir = os.path.dirname(srcfile) or os.path.curdir
-			outfile = os.path.basename(srcfile)
-			noext = outfile[:-4]
-			for f in os.listdir(outdir):
-				# luckily all product files have 3-letters extension
-				if f[:-4] == noext and f[-4:] in [".asm",".hex",".err",".cod",".obj",".lst"]:
-					toclean = os.path.join(outdir,f)
-					print >> sys.stderr, "Cleaning %s" % toclean
-					os.unlink(toclean)
+			clean_compiler_products(srcfile)
 			
 		return status
 
@@ -450,20 +463,31 @@ def do_validate(args):
 # SAMPLE #
 #--------#
 
-def parse_board(boardcontent):
-	current_section = None
-	sections = {}
-	for l in boardcontent:
+def parse_tags(content,*args):
+	current_tag = None
+	current_value = None
+	restags = {}
+	for l in content:
 		if "@jallib" in l:
-			current_section = l.split()[-1]
-			sections[current_section] = []
-		if current_section:
-			sections[current_section].append(l)
-	return {'sections' : sections}
+			what = l.split()
+			# only keep "interesting" jallib invokations
+			if len(what) == 3:
+				atjallib,tag,value = l.split()
+				if tag in args:
+					current_tag = tag
+					current_value = value
+					restags.setdefault(current_tag,{})[current_value] = []
+				
+		if current_tag:
+			restags[current_tag][current_value].append(l)
+	return restags
 	
 
+def parse_sections(content):
+	return parse_tags(content,"section")
+
 def merge_board_testfile(boardcontent,testcontent):
-	board = parse_board(boardcontent)
+	board = parse_sections(boardcontent)
 	# replace sections in testcontent
 	testcontent = os.linesep.join(testcontent)
 	toreplace = [m for m in re.finditer("((--)+)|(;+)\s*@jallib use (.*)",testcontent,re.MULTILINE) if m.groups()[-1]]
@@ -474,7 +498,7 @@ def merge_board_testfile(boardcontent,testcontent):
 		# when eating line sep char (to keep layout),
 		# remember some OS needs 2 chars !
 		newcontent += testcontent[start:m.start() - len(os.linesep)]
-		new = os.linesep.join(board['sections'][sectionname])
+		new = os.linesep.join(board['section'][sectionname])
 		start = m.end() + 1	# next char
 		newcontent += new
 	newcontent += testcontent[start:]
@@ -566,6 +590,8 @@ def generate_samples_for_board(path_to_sample,board,outdir=None):
 		   generate_one_sample(board,test,fullsamplepath)
 		except Exception,e:
 		   print >> sys.stderr,"Invalid board/test combination: %s" % e
+		   import traceback
+		   print >> sys.stderr, traceback.format_exc()
 		   continue
 
 def generate_all_samples(path_to_sample,outdir=None):
@@ -739,6 +765,10 @@ def do_reindent(args):
 
 def picshell_unittest(jalFileName,asmFileName,hexFileName):
 
+	if not has_picshell:
+		print >> sys.stderr, "Can't find PICShell libraries. Install PICShell and adjust PYTHONPATH"
+		sys.exit(255)
+
 	# This piece of code is loosely based on PICShell implementation.
 	# This is a quick & dirty assembling :)
 
@@ -761,7 +791,7 @@ def picshell_unittest(jalFileName,asmFileName,hexFileName):
 	langParser = JalV2AsmParser()
 	code = langParser.parseAsmFile(asmFileName, noDebugList,debugList)
 	
-	def unittest_callback(address):
+	def unittest_callback(address,oracle):
 		line = langParser.adrToLine[address]
 		if line != None:
 			txt = code[line].line
@@ -778,55 +808,109 @@ def picshell_unittest(jalFileName,asmFileName,hexFileName):
 	
 					print label,
 					if (ref == val) :
+						oracle['success'] += 1
 						print ": OK"
 					else :
+						oracle['failure'] += 1
 						print ": FAIL, %s != %s" % (ref,val)
 				else:
+					oracle['notrun'] += 1
 					print "Can't run test '%s' because var '%s' can't be found" % (label,var)
-	
 	
 	emu = PicEngine.newInstance(State(),hexFileName)
 	# needed to access varValue function
 	ui = UIManager()
 	ui.emu = emu
 	
+	#		  success failure notrun
+	oracle = {'success' : 0, 'failure' : 0, 'notrun' : 0}
 	def run(to,emu,unittest_callback):
 		current_address = emu.runNext()
 		while current_address != to:
 			#unit testing ?
 			if unittest_callback != None:
-				unittest_callback(current_address)
+				unittest_callback(current_address,oracle)
 			current_address = emu.runNext()
 		# last call on finishing address
-		unittest_callback(current_address)
-
+		unittest_callback(current_address,oracle)
 
 	run(emu.lastAddress,emu,unittest_callback)
 
+	return oracle
+
 def unittest(filename):
-	import StringIO
-	# catch stderr/stdout from compilation step
+	oracle = {'success' : None, 'failure' : None, 'notrun' : None}
+	content = file(filename).read().splitlines()
+	testcases = parse_tags(content,"testcase")
+	if testcases:
+		assert len(testcases['testcase']) == 1, "%s declares more than one test case: %s" % (filename,testcases['testcase'].keys())
+		testcase = testcases['testcase'].keys()[0]
+	else:
+		testcase = "noname"
 	try:
-		status = do_compile([filename],exitonerror=False,clean=False)
-	except Exception,e:
-		print >> sys.stderr, "Error while compiling file '%s': %s" % (filename,e)
-		sys.exit(1)
+		try:
+			status = do_compile([filename],exitonerror=False,clean=False)
+		except Exception,e:
+			print >> sys.stderr, "Error while compiling file '%s': %s" % (filename,e)
+			raise
 
-	if status == 0:
-			print "%s compiled, running tests..." % filename
+		if status == 0:
+			print "%s compiled, running tests from testcase %s..." % (filename,testcase)
 
-	
-	jal = filename
-	asm = filename.replace(".jal",".asm")
-	hex = filename.replace(".jal",".hex")
-	picshell_unittest(jal,asm,hex)
+			jal = filename
+			asm = filename.replace(".jal",".asm")
+			hex = filename.replace(".jal",".hex")
+			oracle = picshell_unittest(jal,asm,hex)
 
+	finally:
+		clean_compiler_products(filename)
+
+	return oracle
+
+
+def parse_unittest(filename):
+	import tempfile
+	content = file(filename).read().splitlines()
+	restags = parse_tags(content,"section","testcase")
+
+	# build a pseudo board
+	pseudoboard = []
+	[pseudoboard.extend(l) for k,l in restags['section'].items()]
+
+	# extract each tests, and store them in temporary files
+	test_filenames = []
+	for testname,testcontent in restags['testcase'].items():
+		wholetest = merge_board_testfile(pseudoboard,testcontent)
+		fileno,filename = tempfile.mkstemp(prefix="jallib_",suffix="_%s.jal" % testname)
+		fileobj = os.fdopen(fileno,"w")
+		fileobj.write(wholetest)
+		fileobj.close()
+		test_filenames.append(filename)
+
+	return test_filenames
 
 def do_unittest(args):
 	# args contain jal files to test
 	at_least_one_failed = False
 	for filename in args:
-		unittest(filename)
+		# is it a file "jal test" file, with multiple declared tests in it ?
+		if filename.endswith(".jalt"):
+			utests = parse_unittest(filename)
+			for t in utests:
+				try:
+					oracle = unittest(t)
+				finally:
+					# clean tmp file !
+					os.unlink(t)
+				print "Test results: %s" % oracle
+				if oracle['failure']:
+					at_least_one_failed = True
+		# or just a regular file
+		else:
+			oracle = unittest(filename)
+			print "Test results: %s" % oracle
+			if oracle['failure']:
+				at_least_one_failed = True
 
 	if at_least_one_failed:
 		sys.exit(1)
