@@ -54,7 +54,7 @@ end if
 
 -- sanity check
 if ADC_HIGH_RESOLUTION & ! defined(ADRESH) then
-   _warn "This pic does not seem to handle 10-bits ADC"
+   _warn "This PIC does not seem to handle 10-bits ADC"
 end if
 
 -- local variables
@@ -159,18 +159,34 @@ end function
 
 
 procedure _adc_init_justify() is
-   -- TODO: jallibize this !
+   -- Seb: justification is done through ADFM bits
+   -- They can be found in:
+   --   - ADCON0_ADFM
+   --   - ADCON1_ADFM
+   --   - ADCON2_ADFM
+   --
+   -- When true (1), it's right justified: the 6 MSb of ADRESH are read as '0'
+   -- When false (0), it's left justified: the 6 LSb of ADRESL are read as '0'
+   -- 
+   -- The choice here is kept from Stef's logic:
+   --   - if high resolution, right justified, read H + L
+   --   - if low  resolution, left  justified, only read H
 
-   -- if high resolution, right justified, read H + L
-   -- if low  resolution, left  justified, only read H
-   if target_chip == PIC_12F675 then
-      if ADC_HIGH_RESOLUTION then
-         _adcon0_shadow = _adcon0_shadow | 0x80
-      end if
+   -- first normalize ADFM bit
+   if defined(ADCON0_ADFM) == true then
+	  var volatile bit JALLIB_ADFM is ADCON0_ADFM
+   elsif defined(ADCON1_ADFM) == true then
+	  var volatile bit JALLIB_ADFM is ADCON1_ADFM
+   elsif defined(ADCON2_ADFM) == true then
+	  var volatile bit JALLIB_ADFM is ADCON2_ADFM
    else
-      if ADC_HIGH_RESOLUTION then 
-         ADCON1 = ADCON1 | 0x80
-      end if
+      _err "Couldn't found ADFM bits, report this error !"
+   end if
+
+   if ADC_HIGH_RESOLUTION == true then
+	  JALLIB_ADFM = 1
+   else
+	  JALLIB_ADFM = 0
    end if
    
 end procedure
