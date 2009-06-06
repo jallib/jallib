@@ -841,12 +841,6 @@ def picshell_unittest(jalFileName,asmFileName,hexFileName):
 def unittest(filename):
 	oracle = {'success' : None, 'failure' : None, 'notrun' : None}
 	content = file(filename).read().splitlines()
-	testcases = parse_tags(content,"testcase")
-	if testcases:
-		assert len(testcases['testcase']) == 1, "%s declares more than one test case: %s" % (filename,testcases['testcase'].keys())
-		testcase = testcases['testcase'].keys()[0]
-	else:
-		testcase = "noname"
 	try:
 		try:
 			status = do_compile([filename],exitonerror=False,clean=False)
@@ -855,7 +849,7 @@ def unittest(filename):
 			raise
 
 		if status == 0:
-			print "%s compiled, running tests from testcase %s..." % (filename,testcase)
+			print "%s compiled, running tests..." % filename
 
 			jal = filename
 			asm = filename.replace(".jal",".asm")
