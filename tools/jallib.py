@@ -862,7 +862,7 @@ def unittest(filename):
 	return oracle
 
 
-def parse_unittest(filename):
+def parse_unittest(filename,run_testcases=[]):
 	import tempfile
 	content = file(filename).read().splitlines()
 	restags = parse_tags(content,"section","testcase")
@@ -874,6 +874,8 @@ def parse_unittest(filename):
 	# extract each tests, and store them in temporary files
 	test_filenames = []
 	for testname,testcontent in restags['testcase'].items():
+		if run_testcases and not testname in run_testcases:
+			continue
 		wholetest = merge_board_testfile(pseudoboard,testcontent)
 		fileno,filename = tempfile.mkstemp(prefix="jallib_",suffix="_%s.jal" % testname)
 		fileobj = os.fdopen(fileno,"w")
@@ -884,27 +886,32 @@ def parse_unittest(filename):
 	return test_filenames
 
 def do_unittest(args):
-	# args contain jal files to test
+	# args contain a jal file to test, and optionally a list
+	# testcase's name to run. If it's a "regular jal" file
+	# there's no way to specify which testcase to run, since
+	# only one testcase can be declared.
+	filename = args[0]
+	testcases = args[1:]
+
 	at_least_one_failed = False
-	for filename in args:
-		# is it a file "jal test" file, with multiple declared tests in it ?
-		if filename.endswith(".jalt"):
-			utests = parse_unittest(filename)
-			for t in utests:
-				try:
-					oracle = unittest(t)
-				finally:
-					# clean tmp file !
-					os.unlink(t)
-				print "Test results: %s" % oracle
-				if oracle['failure']:
-					at_least_one_failed = True
-		# or just a regular file
-		else:
-			oracle = unittest(filename)
-			print "Test results: %s" % oracle
+	if filename.endswith(".jalt"):
+		utests = parse_unittest(filename,testcases)
+		for t in utests:
+			try:
+				oracle = unittest(t)
+			finally:
+				# clean tmp file !
+				os.unlink(t)
 			if oracle['failure']:
 				at_least_one_failed = True
+			print "Test results: %s" % oracle
+			
+	# or just a regular file
+	else:
+		oracle = unittest(filename)
+		if oracle['failure']:
+			at_least_one_failed = True
+		print "Test results: %s" % oracle
 
 	if at_least_one_failed:
 		sys.exit(1)
@@ -1304,7 +1311,7 @@ ACTIONS = {
 		'jalapi'	: {'callback' : do_jalapi,   'options' : 'slt:d:g:o:', 'help' : jalapi_help},
 		'sample'	: {'callback' : do_sample,   'options' : 'a:b:t:o:',   'help' : sample_help},
 		'reindent'	: {'callback' : do_reindent, 'options' : 'c:',         'help' : reindent_help},
-		'unittest'	: {'callback' : do_unittest,     'options' : '',           'help' : unittest_help},
+		'unittest'	: {'callback' : do_unittest, 'options' : '',           'help' : unittest_help},
 		'help'		: {'callback' : do_help,     'options' : '',           'help' : None},
 		'license'	: {'callback' : do_license,  'options' : '',           'help' : None},
 		}
