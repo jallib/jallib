@@ -58,14 +58,10 @@ var byte adc_conversion_delay
 -- Does an AD conversion with low resolution (8 bit) on the selected channel
 procedure _adc_read_low_res(byte in adc_chan, byte out adc_byte) is
    
-   if target_chip == PIC_12F675 then
-      ADCON0 = _adcon0_shadow | ((adc_chan & 0x03) << 2) -- setup multiplexer
-   else 
-      ADCON0 = _adcon0_shadow | ((adc_chan & 0x07) << 3) -- setup multiplexer
-   end if
+   ADCON0_CHS = adc_chan
    delay_10us(adc_conversion_delay)  -- wait acquisition time
-   ADCON0_GO = true                          -- start conversion
-   while ADCON0_GO loop end loop             -- wait till conversion finished
+   ADCON0_GO = true                  -- start conversion
+   while ADCON0_GO loop end loop     -- wait till conversion finished
    -- 2 cases:
    --   - PIC has 10-bits ADC: since low resoltion if left
    --     justified, need to read ADRESH
@@ -77,11 +73,14 @@ procedure _adc_read_low_res(byte in adc_chan, byte out adc_byte) is
    else
       adc_byte = ADRES
    end if
-   if target_clock <= (5_000_000 / 16)  then                            
-      delay_10us(1)                    -- to satisfy 2*Tad for next conversion
+   -- Honor 2*Tad time
+   -- tad_value comes from adc_clock
+   -- we won't be that accurate here (mostly because there's no delay_usec(byte in x) procedure)
+   if tad_value >= (ADC_MAX_TAD + ADC_MIN_TAD) / 2 then
+	  _usec_delay(2 * ADC_MAX_TAD)
+   else
+	  _usec_delay(2 * ADC_MIN_TAD)
    end if
-   -- Seb: but what if target_clock is, say 8MHz ? There's no 2*Tad delay. Is it because
-   -- was "too" generous when computing _adc_acquisition_time ?
 end procedure
 
 
@@ -93,10 +92,10 @@ function adc_read(byte in adc_chan) return word is
    var byte ax[2] at ad_value
    
    if ADC_HIGH_RESOLUTION then
-      _adc_read_low_res (adc_chan,ax[1])   -- do conversion and get high byte  
+      _adc_read_low_res(adc_chan,ax[1])   -- do conversion and get high byte  
       ax[0] = ADRESL                       -- get low byte
    else
-      _adc_read_low_res (adc_chan,ax[0])   -- do conversion and get low byte  
+      _adc_read_low_res(adc_chan,ax[0])   -- do conversion and get low byte  
       ax[1] = 0                            -- clear high byte
       -- shift 2 highest order bits form low byte to high byte,
       -- to get a 10-bit result
@@ -113,7 +112,7 @@ end function
 procedure adc_read_bytes(byte in adc_chan, byte out adc_hbyte, byte out adc_lbyte) is
    var word ad_value
    var byte ax[2] at ad_value
-   ad_value = adc_read (adc_chan)
+   ad_value = adc_read(adc_chan)
    adc_hbyte = ax[1]
    adc_lbyte = ax[0]
 end procedure
@@ -130,10 +129,14 @@ function adc_read_low_res(byte in adc_chan) return byte is
       _adc_read_low_res(adc_chan,adc_hbyte)
       adc_value = ADRESL
       -- shift the 2 highest order bits form high byte to low byte
-      asm  rrf   adc_hbyte,f
-      asm  rrf   adc_value,f
-      asm  rrf   adc_hbyte,f
-      asm  rrf   adc_value,f
+	  adc_hbyte = adc_hbyte >> 1
+	  adc_value = adc_value >> 1
+	  adc_hbyte = adc_hbyte >> 1
+	  adc_value = adc_value >> 1
+      ;;asm  rrf   adc_hbyte,f
+      ;;asm  rrf   adc_value,f
+      ;;asm  rrf   adc_hbyte,f
+      ;;asm  rrf   adc_value,f
    end if
    return adc_value
 end function
