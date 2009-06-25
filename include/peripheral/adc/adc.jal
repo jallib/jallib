@@ -49,6 +49,12 @@ if ADC_HIGH_RESOLUTION & ! defined(ADRESH) then
    _warn "This PIC does not seem to handle 10-bits ADC"
 end if
 
+-- some PICs don't handle high resolution (8bits only) *and*
+-- don't have ADRESL register. Normalize !
+if defined(ADRESL) == false then
+   var volatile byte ADRESL is ADRES 
+end if
+
 -- local variables
 
 var volatile byte _adcon0_shadow = 0
@@ -166,7 +172,10 @@ procedure _adc_init_justify() is
    elsif defined(ADCON2_ADFM) == true then
 	  var volatile bit JALLIB_ADFM is ADCON2_ADFM
    else
-      _err "Couldn't found ADFM bits, report this error !"
+	  var volatile bit JALLIB_ADFM = 0 ; fake
+	  if ADC_HIGH_RESOLUTION == true then
+		 _error "Couldn't found ADFM bits, can't setup justification. Are you sure this PIC handles high resolution ADC ?"
+	  end if
    end if
 
    if ADC_HIGH_RESOLUTION == true then
