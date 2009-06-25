@@ -1,22 +1,22 @@
 -- Title: Sample showing how to use adc_hardware library
--- Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4g
+-- Compiler: >=2.4k
 -- 
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description: this program shows how to use adc_hardware library. It regurlarly performs an
--- Analog-to-Digital Conversion, on channel AN0 (for 16f88, it's pin A0), and sends
--- the result through serial.
+-- Analog-to-Digital Conversion, on channels AN0 to AN6 (see pin diagrams to know which pins are involved),
+-- and sends the result through serial.
 -- 
 -- Notes: as output, this sample produces characters on a serial link, and uses delay library.
 -- First be sure you're able to run serial and delay tests.
 --
 --
--- Few words about diagram: this program performs ADC on channel AN0, so you can 
--- any voltage source connected to AN0 (no more 5V please). To test the whole, you can
--- use a voltage divider:
+-- Few words about diagram: this program performs ADC on channels AN0 to AN6, so you can measure
+-- any voltage source connected to these channels (no more than 5V please). To test the whole, you can
+-- use a voltage divider. For AN0:
 --		
 --     5V
 --     |
@@ -72,19 +72,33 @@ const bit ADC_HIGH_RESOLUTION = false
 include adc
 -- And initialize the whole with our parameters
 adc_init()
--- We just need only one ADC channel
-set_analog_pin(0) -- make RA0/AN0 analog
+-- Declare analog channels
+set_analog_pin(0)
+set_analog_pin(1)
+set_analog_pin(2)
+set_analog_pin(3)
+set_analog_pin(4)
+set_analog_pin(5)
+set_analog_pin(6)
 
 
 -- will periodically send those chars
 var byte measure
+const byte prefix[] = "Channel "
 forever loop
-	-- get ADC result, on channel 0
-	measure = adc_read_low_res(0)
-	-- send it back through serial
-	print_byte_dec(serial_hw_data,measure)
-	print_crlf(serial_hw_data)
-	-- and sleep a litte...
-	delay_1ms(200)
+   var byte channel = 0
+   -- loop over all channels and read
+   for 7 using channel loop
+	  -- get ADC result
+	  measure = adc_read_low_res(channel)
+	  -- send it back through serial
+	  print_string(serial_hw_data,prefix)
+	  print_byte_dec(serial_hw_data,channel)
+	  serial_hw_write(":")
+	  print_byte_dec(serial_hw_data,measure)
+	  print_crlf(serial_hw_data)
+	  -- and sleep a litte...
+	  delay_1ms(200)
+   end loop
 end loop
 
