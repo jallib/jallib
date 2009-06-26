@@ -11,24 +11,11 @@ for pic,pinfo in pinmap.items():
 			if f.startswith("AN"):
 				adc_pins.setdefault(pic,{})[pin] = f  
 
-fout = file("adc_pins.py","w")
-print >> fout, "adc_pins = \\"
+fout = file("adc/adc_pins.py","w")
+fout.write("adc_pins = \\\n")
 print >> fout, pprint.pformat(adc_pins)
 fout.close()
 
-
-# ADC group according to AN*
-from adc_pins import adc_pins
-grp = {}
-for k,v in adc_pins.items():
-	# group by the way ADC pins appears in PIC
-	l = tuple(sorted(v.items()))
-	grp.setdefault(l,[]).append(k)
-
-fout = file("adc_an_grp.py","w")
-print >> fout, "adc_an_grp = \\"
-print >> fout, pprint.pformat(grp)
-fout.close()
 
 
 # VREF
@@ -39,8 +26,18 @@ for pic,pinfo in pinmap.items():
 			if f.startswith("VREF"):
 				vref_pins.setdefault(pic,{})[pin] = f
 
-fout = file("vref_pins.py","w")
-print >> fout, "vref_pins = \\"
+fout = file("adc/vref_pins.py","w")
+fout.write("vref_pins = \\\n")
 print >> fout, pprint.pformat(vref_pins)
+fout.close()
+
+# ADC groups, pin<=>analog => PICs
+adc_an_grp = {}
+for pic,pins in adc_pins.items():
+   adc_an_grp.setdefault(tuple(pins.items()),[]).append(pic)
+
+fout = file("adc/adc_an_grp.py","w")
+fout.write("adc_an_grp = \\\n")
+print >> fout, pprint.pformat(adc_an_grp)
 fout.close()
 
