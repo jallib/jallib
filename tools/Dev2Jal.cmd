@@ -28,12 +28,12 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.65'                   /*                          */
+   ScriptVersion   = '0.0.68'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '2.4k'                     /*                          */
 /* ------------------------------------------------------------------------ */
 
-mplabdir = 'k:/mplab830/'                       /* MPLAB base directory */
+mplabdir    = 'k:/mplab830/'                    /* MPLAB base directory */
                                                 /* (drive letter mandatory!) */
 devdir      = mplabdir'mplab_ide/device/'       /* dir with .dev files */
 lkrdir      = mplabdir'mpasm_suite/lkr/'        /* dir with .lkr files */
@@ -540,9 +540,10 @@ return
 /* ---------------------------------------------------------- */
 list_data_size: procedure expose Dev. jalfile DataStart
 do i = 1 to Dev.0
-  if word(Dev.i,1) \= 'EEDATA' then
+  if word(Dev.i,1) \= 'EEDATA'    &,
+     word(Dev.i,1) \= 'FLASHDATA' then
     iterate
-  parse var Dev.i 'EEDATA' 'REGION' '=' Value ')' .
+  parse var Dev.i val0 'REGION' '=' Value ')' .
   if Value \= '' then do
     parse var Value '0X' val1 '-' '0X' val2 .
     DataSize = X2D(val2) - X2D(val1) + 1
@@ -960,7 +961,7 @@ return 0
 /* Formatting of special function register subfields */
 /* input:  - index in .dev                           */
 /*         - register name                           */
-/* Generates names for pins or bits                  */
+/* Generates names for pins or bit fields            */
 /* 12-bit and 14-bit core                            */
 /* ------------------------------------------------- */
 list_sfr_subfields1x: procedure expose Dev. Name. jalfile
@@ -1029,7 +1030,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   shadow = '_PORT'right(reg,1)'_shadow'
                   pin = 'pin_'||substr(n.j,2)
                   call lineout jalfile, 'var volatile bit  ',
-                                        left(pin,20) 'at' reg ':' offset
+                                        left(pin,20) 'is' field
+                                 /*     left(pin,20) 'at' reg ':' offset  */
                   call lineout jalfile, '--'
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                  'at' shadow ':' offset') is'
@@ -1070,6 +1072,21 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   call lineout jalfile, 'var volatile bit*2',
                        left(left(field,length(field)-1),20) 'at' reg ':' offset
               end
+              else if left(reg,5) = 'ADCON'  &,         /* ADCON0/1 */
+                      n.j = 'CHS3'  then do             /* 'loose' 4th bit */
+                if  Name.ADCON0_CHS012 = '-' then       /* partner field not present */
+                  say 'WNG: ADCONx_CHS3 bit without previous ADCONx_CHS012 field declaration'
+                else do
+                  call lineout jalfile, 'procedure' reg'_CHS'"'put"'(byte in x) is'
+                  call lineout jalfile, '   pragma inline'
+                  call lineout jalfile, '   'reg'_CHS012 = x         -- low order bits'
+                  call lineout jalfile, '   'reg'_CHS3 = 0'
+                  call lineout jalfile, '   if ((x & 0x08) != 0) then'
+                  call lineout jalfile, '      'reg'_CHS3 = 1        -- high order bit'
+                  call lineout jalfile, '   end if'
+                  call lineout jalfile, 'end procedure'
+                end
+              end
             end
             offset = offset - 1                         /* next bit */
           end
@@ -1087,9 +1104,20 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                       left(field'1',20) 'at' reg ':' offset - 0
                 call lineout jalfile, 'var volatile bit  ',
                       left(field'0',20) 'at' reg ':' offset - 1
+                call lineout jalfile, 'var volatile bit*'s.j,
+                      left(field,20) 'at' reg ':' offset - s.j + 1
               end
-              call lineout jalfile, 'var volatile bit*'s.j,
-                           left(field,20) 'at' reg ':' offset - s.j + 1
+              else if left(reg,5) = 'ADCON'  &,         /* ADCON0/1 */
+                      n.j = 'CHS'            &,         /* (multibit) CHS field */
+                      pos('CHS3',Dev.i) > 0  then do    /* 'loose' 4th bit present */
+                field = field'012'                      /* rename! */
+                if duplicate_name(field,reg) = 0 then      /* renamed subfield */
+                  call lineout jalfile, 'var volatile bit*'s.j,
+                      left(field,20) 'at' reg ':' offset - s.j + 1
+              end
+              else                                      /* other */
+                call lineout jalfile, 'var volatile bit*'s.j,
+                            left(field,20) 'at' reg ':' offset - s.j + 1
             end
             offset = offset - s.j
           end
@@ -1207,7 +1235,7 @@ return  reg                                     /* return normalized name */
 /* Formatting of special function register */
 /* input:  - index in .dev                 */
 /*         - register name                 */
-/* Generates names for pins or bits        */
+/* Generates names for pins or bit fields  */
 /* 16-bit core                             */
 /* --------------------------------------- */
 list_sfr_subfields16: procedure expose Dev. Name. jalfile
@@ -1351,7 +1379,7 @@ do i = 1 to Dev.0
       Name.reg = reg                                    /* add to collection of names */
       call lineout jalfile, '-- ------------------------------------------------'
       portletter = substr(reg,5)
-      if portletter = 'IO' then                         /* TRISIO */
+      if portletter = 'IO'  |  portletter = '' then     /* TRISIO */
         portletter = 'A'                                /* handle it as TRISA */
       shadow = '_TRIS'portletter'_shadow'
       call lineout jalfile, 'var  byte' shadow '= 0b1111_1111         -- default all input'
@@ -1397,7 +1425,7 @@ do i = 1 to Dev.0
       call lineout jalfile, '--'
       call lineout jalfile, 'procedure' reg"'put(byte in x) is"
       call lineout jalfile, '   pragma inline'
-      call lineout jalfile, '   'shadow '=' x
+      call lineout jalfile, '   'shadow '= x'
       call lineout jalfile, '   asm movf' shadow',0'
       if reg = 'OPTION_REG' then                        /* OPTION_REG */
         call lineout jalfile, '   asm option'
@@ -2220,7 +2248,7 @@ call lineout jalfile, '-- Special (device specific) constants and procedures'
 call lineout jalfile, '--'
 call charout jalfile, 'const ADC_GROUP = 'ADCgroup
 if ADCgroup = '0' then
-   call charout jalfile, '         -- no ADC module present'
+   call charout jalfile, '             -- no ADC module present'
 call lineout jalfile, ''
 call lineout jalfile, '--'
 
@@ -2329,8 +2357,10 @@ if analog.CMCON \= '-' then
   call lineout jalfile, '   comparator_off()'
 
 if left(PicName,3) = '10f' |,                   /* all 10Fs */
-   PicName = '12f508' | PicName = '12f509' | PicName = '12f510' |,
-   PicName = '16f505' | PicName = '16f506' | PicName = '16f526' then
+   PicName = '12f508' | PicName = '12f509' |,
+   PicName = '12f510' | PicName = '12f519' |,
+   PicName = '16f505' | PicName = '16f506' |,
+   PicName = '16f526' then
   call lineout jalfile, '   OPTION_REG_T0CS = OFF        -- T0CKI pin input + output'
 call lineout jalfile, 'end procedure'
 
@@ -2342,7 +2372,7 @@ return
 /* --------------------------------------- */
 list_head:
 call lineout jalfile, '-- ==================================================='
-call lineout jalfile, '-- Title: JalV2 device include file for pic'PicName
+call lineout jalfile, '-- Title: JalV2 device include file for PIC' toupper(PicName)
 call list_copyright_etc jalfile
 call lineout jalfile, '-- Description:'
 call lineout Jalfile, '--    Device include file for pic'PicName', containing:'
@@ -2581,19 +2611,13 @@ end
 
 
 /* ---------------------------------------------- */
-/* translate string to lower case                 */
+/* translate string to lower/upper case           */
 /* ---------------------------------------------- */
 tolower:
-return translate(arg(1), 'abcdefghijklmnopqrstuvwxyz',,
-                         'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
+return translate(arg(1), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')
 
-
-/* ---------------------------------------------- */
-/* translate string to lower case                 */
-/* ---------------------------------------------- */
 toupper:
-return translate(arg(1), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',,
-                         'abcdefghijklmnopqrstuvwxyz')
+return translate(arg(1), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')
 
 
 /* ---------------------------------------------- */

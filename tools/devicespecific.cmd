@@ -25,6 +25,7 @@
   PicSpec.ADCgroup.10F206        = '0'                               /* + */
   PicSpec.ADCgroup.10F220        = 'ADC_V0'                          /* + */
   PicSpec.ADCgroup.10F222        = 'ADC_V0'                          /* + */
+  PicSpec.ADCgroup.12C508        = '0'                               /* + */
   PicSpec.ADCgroup.12F508        = '0'                               /* + */
   PicSpec.ADCgroup.12F509        = '0'                               /* + */
   PicSpec.ADCgroup.12F510        = 'ADC_V0'                          /* + */
@@ -339,6 +340,7 @@
   PicSpec.DataSheet.10F206       = '41239'
   PicSpec.DataSheet.10F220       = '41270'
   PicSpec.DataSheet.10F222       = '41270'
+  PicSpec.DataSheet.12C508       = '41236'
   PicSpec.DataSheet.12F508       = '41236'
   PicSpec.DataSheet.12F509       = '41236'
   PicSpec.DataSheet.12F510       = '41268'
@@ -576,7 +578,7 @@
   PicSpec.DataSheet.18F66J60     = '39762'
   PicSpec.DataSheet.18F66J65     = '39762'
   PicSpec.DataSheet.18F66J90     = '39933'
-  PicSpec.DataSheet.18F66J93     = '-'
+  PicSpec.DataSheet.18F66J93     = '39948'
   PicSpec.DataSheet.18F6720      = '39609'
   PicSpec.DataSheet.18F6722      = '39646'
   PicSpec.DataSheet.18F6723      = '39894'
@@ -585,7 +587,7 @@
   PicSpec.DataSheet.18F67J50     = '39775'
   PicSpec.DataSheet.18F67J60     = '39762'
   PicSpec.DataSheet.18F67J90     = '39933'
-  PicSpec.DataSheet.18F67J93     = '-'
+  PicSpec.DataSheet.18F67J93     = '39948'
   PicSpec.DataSheet.18F8310      = '39635'
   PicSpec.DataSheet.18F8390      = '39629'
   PicSpec.DataSheet.18F8393      = '39896'
@@ -620,7 +622,7 @@
   PicSpec.DataSheet.18F86J60     = '39762'
   PicSpec.DataSheet.18F86J65     = '39762'
   PicSpec.DataSheet.18F86J90     = '39933'
-  PicSpec.DataSheet.18F86J93     = '-'
+  PicSpec.DataSheet.18F86J93     = '39948'
   PicSpec.DataSheet.18F8720      = '39609'
   PicSpec.DataSheet.18F8722      = '39646'
   PicSpec.DataSheet.18F8723      = '39894'
@@ -629,7 +631,7 @@
   PicSpec.DataSheet.18F87J50     = '39775'
   PicSpec.DataSheet.18F87J60     = '39762'
   PicSpec.DataSheet.18F87J90     = '39933'
-  PicSpec.DataSheet.18F87J93     = '-'
+  PicSpec.DataSheet.18F87J93     = '39948'
   PicSpec.DataSheet.18F87K22     = '-'
   PicSpec.DataSheet.18F87K90     = '-'
   PicSpec.DataSheet.18F96J60     = '39762'
@@ -665,6 +667,7 @@
   PicSpec.PgmSpec.10F206         = '41228'
   PicSpec.PgmSpec.10F220         = '41266'
   PicSpec.PgmSpec.10F222         = '41266'
+  PicSpec.PgmSpec.12C508         = '41227'
   PicSpec.PgmSpec.12F508         = '41227'
   PicSpec.PgmSpec.12F509         = '41227'
   PicSpec.PgmSpec.12F510         = '41257'
@@ -994,6 +997,7 @@
   PicSpec.FusesDefault.10F206    = '0FFF'                            /* T */
   PicSpec.FusesDefault.10F220    = '0FFF'                            /* + */
   PicSpec.FusesDefault.10F222    = '0FFF'                            /* T */
+  PicSpec.FusesDefault.12C508    = '0FFF'                            /* + */
   PicSpec.FusesDefault.12F508    = '0FFF'                            /* + */
   PicSpec.FusesDefault.12F509    = '0FFF'                            /* + */
   PicSpec.FusesDefault.12F510    = '0FFF'                            /* + */
