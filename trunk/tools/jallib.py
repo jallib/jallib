@@ -133,14 +133,14 @@ def clean_compiler_products(fromjalfile):
 		# luckily all product files have 3-letters extension
 		if f[:-4] == noext and f[-4:] in [".asm",".hex",".err",".cod",".obj",".lst"]:
 			toclean = os.path.join(outdir,f)
-			print >> sys.stderr, "Cleaning %s" % toclean
+			###print >> sys.stderr, "Cleaning %s" % toclean
 			try:
 				os.unlink(toclean)
 			except OSError,e:
 				print >> sys.stderr, "Can't clean %s because: %s" % (toclean,e)
 
 
-def do_compile(args,exitonerror=True,clean=False):
+def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
 	if not has_subprocess:
 		print >> sys.stderr, "You can't use this action, because subprocess module is not installed"
 		sys.exit(255)
@@ -208,8 +208,7 @@ def do_compile(args,exitonerror=True,clean=False):
 	if args:
 		cmd.extend(args)
 	try:
-		print >> sys.stderr, "cmd: %s" % cmd
-		status = subprocess.check_call(cmd,shell=False)
+		status = subprocess.check_call(cmd,shell=False,stdout=stdout,stderr=stderr)
 		if clean:
 			# assume srcfile is last arg (it not, can't clean)
 			srcfile = cmd[-1]
@@ -838,12 +837,16 @@ def picshell_unittest(jalFileName,asmFileName,hexFileName):
 
 	return oracle
 
-def unittest(filename):
+def unittest(filename,verbose=False):
 	oracle = {'success' : None, 'failure' : None, 'notrun' : None}
 	content = file(filename).read().splitlines()
+	fnout = filename + ".stdout"
+	fnerr = filename + ".stderr"
 	try:
 		try:
-			status = do_compile([filename],exitonerror=False,clean=False)
+			fout = file(fnout,"w")
+			ferr = file(fnerr,"w")
+			status = do_compile([filename],exitonerror=False,clean=False,stdout=fout,stderr=ferr)
 		except Exception,e:
 			print >> sys.stderr, "Error while compiling file '%s': %s" % (filename,e)
 			raise
@@ -858,14 +861,22 @@ def unittest(filename):
 
 	finally:
 		clean_compiler_products(filename)
+		if verbose:
+			print file(fnout).read()
+			print file(fnerr).read()
+		os.unlink(fnout)
+		os.unlink(fnerr)
 
 	return oracle
 
+def get_testcases(filename):
+	content = file(filename).read().splitlines()
+	restags = parse_tags(content,"section","testcase")
+	return restags
 
 def parse_unittest(filename,run_testcases=[]):
 	import tempfile
-	content = file(filename).read().splitlines()
-	restags = parse_tags(content,"section","testcase")
+	restags = get_testcases(filename)
 
 	# build a pseudo board
 	pseudoboard = []
@@ -886,6 +897,25 @@ def parse_unittest(filename,run_testcases=[]):
 	return test_filenames
 
 def do_unittest(args):
+
+	try:
+		opts, args = getopt.getopt(args, ACTIONS['unittest']['options'])
+	except getopt.error,e:
+		print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+		sys.exit(255)
+	
+	# default jallib standard
+	list_only = False
+	clean_files = True
+	verbose = False
+	for o,v in opts:
+		if o == "-k":
+			clean_files = False
+		elif o == "-l":
+			list_only = True
+		elif o == "-v":
+			verbose = True
+
 	# args contain a jal file to test, and optionally a list
 	# testcase's name to run. If it's a "regular jal" file
 	# there's no way to specify which testcase to run, since
@@ -895,16 +925,21 @@ def do_unittest(args):
 
 	at_least_one_failed = False
 	if filename.endswith(".jalt"):
-		utests = parse_unittest(filename,testcases)
-		for t in utests:
-			try:
-				oracle = unittest(t)
-			finally:
-				# clean tmp file !
-				os.unlink(t)
-			if oracle['failure']:
-				at_least_one_failed = True
-			print "Test results: %s" % oracle
+		if list_only:
+			restags = get_testcases(filename)
+			print "\n".join(restags['testcase'].keys())
+		else:
+			utests = parse_unittest(filename,testcases)
+			for t in utests:
+				try:
+					oracle = unittest(t,verbose)
+				finally:
+					if clean_files:
+						# clean tmp file !
+						os.unlink(t)
+				if oracle['failure']:
+					at_least_one_failed = True
+				print "Test results: %s" % oracle
 			
 	# or just a regular file
 	else:
@@ -1224,7 +1259,15 @@ def unittest_help():
 	print """
     jallib test file.jal [file.jal]
 
-Run test file and produce results. Takes a jal file, or
+Run test file and produce results.
+
+  -k: keep jal files generated from jal test files (jalt)
+       (careful, there can be many)
+  -v: verbose, shows compiler output, ...
+  -l: list only testcases, don't run them
+
+
+Takes a jal file, or
 a test file (*.jalt extention). The differences are test files contain several
 tests, several sections, which are assembled on the fly
 (something like board/test files producing samples)
@@ -1311,7 +1354,7 @@ ACTIONS = {
 		'jalapi'	: {'callback' : do_jalapi,   'options' : 'slt:d:g:o:', 'help' : jalapi_help},
 		'sample'	: {'callback' : do_sample,   'options' : 'a:b:t:o:',   'help' : sample_help},
 		'reindent'	: {'callback' : do_reindent, 'options' : 'c:',         'help' : reindent_help},
-		'unittest'	: {'callback' : do_unittest, 'options' : '',           'help' : unittest_help},
+		'unittest'	: {'callback' : do_unittest, 'options' : 'kvl',        'help' : unittest_help},
 		'help'		: {'callback' : do_help,     'options' : '',           'help' : None},
 		'license'	: {'callback' : do_license,  'options' : '',           'help' : None},
 		}
