@@ -672,6 +672,7 @@
   PicSpec.PgmSpec.12F509         = '41227'
   PicSpec.PgmSpec.12F510         = '41257'
   PicSpec.PgmSpec.12F519         = '41316'
+  PicSpec.PgmSpec.12F520         = '-'
   PicSpec.PgmSpec.12F609         = '41284'
   PicSpec.PgmSpec.12F615         = '41284'
   PicSpec.PgmSpec.12F629         = '41191'
@@ -958,6 +959,8 @@
   PicSpec.PgmSpec.18F87J60       = '39688'
   PicSpec.PgmSpec.18F87J90       = '39644'
   PicSpec.PgmSpec.18F87J93       = '39644'
+  PicSpec.PgmSpec.18F87K22       = '-'
+  PicSpec.PgmSpec.18F87K90       = '-'
   PicSpec.PgmSpec.18F96J60       = '39688'
   PicSpec.PgmSpec.18F96J65       = '39688'
   PicSpec.PgmSpec.18F97J60       = '39688'
@@ -1002,6 +1005,7 @@
   PicSpec.FusesDefault.12F509    = '0FFF'                            /* + */
   PicSpec.FusesDefault.12F510    = '0FFF'                            /* + */
   PicSpec.FusesDefault.12F519    = '0FFF'                            /* + */
+  PicSpec.FusesDefault.12F520    = '0FFF'                            /* + */
   PicSpec.FusesDefault.12F609    = '3FFF'                            /* + */
   PicSpec.FusesDefault.12F615    = '3FFF'                            /* + */
   PicSpec.FusesDefault.12F629    = '31FF'                            /* + */
@@ -1222,6 +1226,7 @@
   PicSpec.FusesDefault.18F66J60  = 'E1F7C7FFF8FFF000'                /* - */
   PicSpec.FusesDefault.18F66J65  = 'E1F7C7FFF8FFF000'                /* - */
   PicSpec.FusesDefault.18F66J90  = 'E1F4C7FF00F3F000'                /* - */
+  PicSpec.FusesDefault.18F66J93  = 'E1F4C7FF00F3F000'                /* - */
   PicSpec.FusesDefault.18F6720   = '00270F0F83018500FFC0FFE0FF40'    /* - */
   PicSpec.FusesDefault.18F6722   = '00CF1F1F0385F500FFC0FFE0FF40'    /* - */
   PicSpec.FusesDefault.18F6723   = '00CF1F1F0085F500FFC0FFE0FF40'    /* - */
@@ -1230,6 +1235,7 @@
   PicSpec.FusesDefault.18F67J50  = 'E1F4C7FF00F3F000'                /* - */
   PicSpec.FusesDefault.18F67J60  = 'E1F7C7FFF8FFF000'                /* - */
   PicSpec.FusesDefault.18F67J90  = 'E1F4C7FF00F3F000'                /* - */
+  PicSpec.FusesDefault.18F67J93  = 'E1F4C7FF00F3F000'                /* - */
   PicSpec.FusesDefault.18F8310   = '00CF1F1FC385C100010000000100'    /* - */
   PicSpec.FusesDefault.18F8390   = '00CF1F1FC385C100010000000100'    /* - */
   PicSpec.FusesDefault.18F8393   = '00CF1F1FC385C100010000000100'    /* - */
@@ -1264,6 +1270,7 @@
   PicSpec.FusesDefault.18F86J60  = 'E1F7C7FFF8FFF000'                /* - */
   PicSpec.FusesDefault.18F86J65  = 'E1F7C7FFF8FFF000'                /* - */
   PicSpec.FusesDefault.18F86J90  = 'E1F7DFFF02FFF000'                /* - */
+  PicSpec.FusesDefault.18F86J93  = 'E1F7DFFF02FFF000'                /* - */
   PicSpec.FusesDefault.18F8720   = '00270F0F83018500FFC0FFE0FF40'    /* - */
   PicSpec.FusesDefault.18F8722   = '00CF1F1FF387F500FFC0FFE0FF40'    /* - */
   PicSpec.FusesDefault.18F8723   = '00CF1F1FF387F500FFC0FFE0FF40'    /* - */
@@ -1272,6 +1279,9 @@
   PicSpec.FusesDefault.18F87J50  = 'E1F7DFFF02FFF000'                /* - */
   PicSpec.FusesDefault.18F87J60  = 'E1F7C7FFF8FFF000'                /* - */
   PicSpec.FusesDefault.18F87J90  = 'E1F7DFFF02FFF000'                /* - */
+  PicSpec.FusesDefault.18F87J93  = 'E1F7DFFF02FFF000'                /* - */
+  PicSpec.FusesDefault.18F87K22  = 'E1F7DFFF02FFF000'                /* - */
+  PicSpec.FusesDefault.18F87K90  = 'E1F7DFFF02FFF000'                /* - */
   PicSpec.FusesDefault.18F96J60  = 'E1F7C7FFF8FFF000'                /* - */
   PicSpec.FusesDefault.18F96J65  = 'E1F7C7FFF8FFF000'                /* - */
   PicSpec.FusesDefault.18F97J60  = 'E1F7C7FFF8FFF000'                /* - */

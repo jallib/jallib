@@ -28,12 +28,12 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.68'                   /*                          */
+   ScriptVersion   = '0.0.69'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '2.4k'                     /*                          */
 /* ------------------------------------------------------------------------ */
 
-mplabdir    = 'k:/mplab830/'                    /* MPLAB base directory */
+mplabdir    = 'k:/mplab833/'                    /* MPLAB base directory */
                                                 /* (drive letter mandatory!) */
 devdir      = mplabdir'mplab_ide/device/'       /* dir with .dev files */
 lkrdir      = mplabdir'mpasm_suite/lkr/'        /* dir with .lkr files */
@@ -546,6 +546,10 @@ do i = 1 to Dev.0
   parse var Dev.i val0 'REGION' '=' Value ')' .
   if Value \= '' then do
     parse var Value '0X' val1 '-' '0X' val2 .
+    if X2D(val1) > 0 then do                       /* start address */
+      say 'INFO: DataStart changed from' DataStart 'to 0x'val1
+      DataStart = '0x'val1
+    end
     DataSize = X2D(val2) - X2D(val1) + 1
     call lineout jalfile, 'pragma  eeprom  'DataStart','DataSize
     leave                                       /* 1 occurence expected */
@@ -1782,11 +1786,14 @@ call lineout jalfile, 'const        byte  ' left('_access',20) '=  0',
 return
 
 
-/* -------------------------------------- */
-/* Formatting of configuration bits       */
-/* input:  - nothing                      */
-/* -------------------------------------- */
-list_fuses_bits:   procedure expose Dev. jalfile CfgAddr. Core
+/* ---------------------------------------------------------------------- */
+/* Formatting of configuration bits                                       */
+/* input:  - nothing                                                      */
+/* Note:  some fuse_defs are omitted because the bits is not supported,   */
+/*        even if it is (partly) specified in the .dev file.              */
+/*        See at the bottom of changes.txt for details.                   */
+/* ---------------------------------------------------------------------- */
+list_fuses_bits:   procedure expose Dev. jalfile CfgAddr. Core PicName
 call lineout jalfile, '--'
 call lineout jalfile, '-- =================================================='
 call lineout jalfile, '--'
@@ -1813,7 +1820,40 @@ do i = 1 to dev.0                               /* scan .dev file */
         if pos('RESERVED',key) > 0 then do      /* skip */
           i = i + 1
           ln = Dev.i
-          iterate
+          iterate                               /* to next key */
+        end
+        if pos('ENICPORT',key) > 0 then do      /* ignore */
+          i = i + 1
+          ln = Dev.i
+          say 'fuse_def suppressed for' key 'of' PicName
+          iterate                               /* to next key */
+        end
+        if (key = 'CPD' | key = 'WRTD')  &,
+           (PicName = '18f2410' | PicName = '18f2510' |,
+            PicName = '18f2515' | PicName = '18f2610' |,
+            PicName = '18f4410' | PicName = '18f4510' |,
+            PicName = '18f4515' | PicName = '18f4610')  then do
+          i = i + 1
+          ln = Dev.i
+          say 'fuse_def suppressed for' key 'of' PicName
+          iterate                               /* to next key */
+        end
+        if (PicName = '18f4585') &,
+           (key = 'EBTR_3' | key = 'CP_3' | key = 'WRT_3') then do
+          i = i + 1
+          ln = Dev.i
+          say 'fuse_def suppressed for' key 'of' PicName
+          iterate                               /* to next key */
+        end
+        if (PicName = '18f6520' | PicName = '18f8520') &,
+           (key = 'EBTR_4' | key = 'CP_4' | key = 'WRT_4' |,
+            key = 'EBTR_5' | key = 'CP_5' | key = 'WRT_5' |,
+            key = 'EBTR_6' | key = 'CP_6' | key = 'WRT_6' |,
+            key = 'EBTR_7' | key = 'CP_7' | key = 'WRT_7') then do
+          i = i + 1
+          ln = Dev.i
+          say 'fuse_def suppressed for' key 'of' PicName
+          iterate                               /* to next key */
         end
         if pos('OSC',key) > 0      &,           /* any ...OSC... */
            key \= 'FOSC2'          &,           /* excl FOSC2 */
