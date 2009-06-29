@@ -28,7 +28,7 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.69'                   /*                          */
+   ScriptVersion   = '0.0.70'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '2.4k'                     /*                          */
 /* ------------------------------------------------------------------------ */
@@ -899,7 +899,7 @@ return
 /* Note: name is stored but not checked on duplicates */
 /* 12-bit and 14-bit core                             */
 /* -------------------------------------------------- */
-list_sfr1x: procedure expose Dev. Ram. Name. jalfile BANKSIZE NumBanks
+list_sfr1x: procedure expose Dev. Ram. Name. PicName jalfile BANKSIZE NumBanks
 do i = 1 to Dev.0
   if word(Dev.i,1) \= 'SFR' then                /* skip */
     iterate
@@ -968,7 +968,7 @@ return 0
 /* Generates names for pins or bit fields            */
 /* 12-bit and 14-bit core                            */
 /* ------------------------------------------------- */
-list_sfr_subfields1x: procedure expose Dev. Name. jalfile
+list_sfr_subfields1x: procedure expose Dev. Name. PicName jalfile
 i = arg(1) + 1                                          /* first after reg */
 reg = arg(2)                                            /* register (name) */
 do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
@@ -1034,8 +1034,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   shadow = '_PORT'right(reg,1)'_shadow'
                   pin = 'pin_'||substr(n.j,2)
                   call lineout jalfile, 'var volatile bit  ',
-                                        left(pin,20) 'is' field
-                                 /*     left(pin,20) 'at' reg ':' offset  */
+                                        left(pin,20) 'at' reg ':' offset
                   call lineout jalfile, '--'
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                  'at' shadow ':' offset') is'
