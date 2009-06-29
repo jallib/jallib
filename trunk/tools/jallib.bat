@@ -29,6 +29,7 @@ set JALLIB_REPOS=%JALLIB_ROOT%\include
 rem path to jallib root's samples.
 set JALLIB_SAMPLEDIR=%JALLIB_ROOT%\sample
 rem path to "jalv2" executable. If not in your PATH, set an absolute path to the exec
+rem Arguments can be added if they're needed as default (Ex: "jalv2 -long-start")
 set JALLIB_JALV2=%JALLIB_ROOT%\compiler\jalv2.exe
 
 
