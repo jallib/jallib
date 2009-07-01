@@ -1,7 +1,7 @@
 /* DeviceSpecific.cmd */
 /* Contents to be read and to be INTERPRET-ed by Dev2jal.cmd */
 
-/* Scripts using this file should contain a rouutine like:          */
+/* Scripts using this file should contain a routine like:           */
 /* PicSpecFile = 'devicespecific.cmd'                               */
 /* PicSpec. = '-'                                                   */
 /* if stream(PicSpecFile, 'c', 'open read') \= 'READY:' then do     */
