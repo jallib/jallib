@@ -53,6 +53,12 @@ jsg:
 		./jallib.py validate $$f ;\
 	done 
 
+pwmlib:
+	cd pwm && ./pwm_generate_all.sh
+
+adclib:
+	cd adc && ./adc_generate_all.sh
+
 doc:
 	./jalapi_generate.sh ..
 
