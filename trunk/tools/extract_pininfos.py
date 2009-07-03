@@ -46,12 +46,12 @@ fout.close()
 for pic,picpin in pinmap.items():
 	pinaliases = {}
 	for pin,aliases in picpin.items():
+		newpins = []
 		for alias in aliases:
-			if alias == pin:
-				# skip duplicated pins
-				picpin[pin].pop(picpin[pin].index(alias))
-				continue
-			pinaliases.setdefault(alias,[]).append(pin)
+			if alias != pin:
+				newpins.append(alias)
+				pinaliases.setdefault(alias,[]).append(pin)
+		picpin[pin] = newpins
 	for alias,pins in pinaliases.items():
 		if len(pins) > 1:
 			for pin in pins:
