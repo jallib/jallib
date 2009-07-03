@@ -12,6 +12,7 @@ all : clean test
 
 VERSION=dev
 SAMPLIR_DIR=../sample
+TEST_DIR=../test
 INCLUDE_DIR=../include
 
 clean :
@@ -22,6 +23,12 @@ clean :
 	find ${SAMPLIR_DIR} -name \*.err -exec rm {} \;
 	find ${SAMPLIR_DIR} -name \*.obj -exec rm {} \;
 	find ${SAMPLIR_DIR} -name \*.asm -exec rm {} \;
+	find ${TEST_DIR} -name \*.cod -exec rm {} \;
+	find ${TEST_DIR} -name \*.lst -exec rm {} \;
+	find ${TEST_DIR} -name \*.hex -exec rm {} \;
+	find ${TEST_DIR} -name \*.err -exec rm {} \;
+	find ${TEST_DIR} -name \*.obj -exec rm {} \;
+	find ${TEST_DIR} -name \*.asm -exec rm {} \;
 	# clean python bytecode
 	find ./ -name \*.pyc -exec rm {} \;
 	# clean distrib dir
