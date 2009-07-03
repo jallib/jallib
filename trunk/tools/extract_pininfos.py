@@ -41,3 +41,24 @@ fout.write("adc_an_grp = \\\n")
 print >> fout, pprint.pformat(adc_an_grp)
 fout.close()
 
+# build a pinmap dedicated to jallib (no duplicated, suffixes added when 
+# multiple pins have the same alias (ex. CCP1MUX)
+for pic,picpin in pinmap.items():
+	pinaliases = {}
+	for pin,aliases in picpin.items():
+		for alias in aliases:
+			if alias == pin:
+				# skip duplicated pins
+				picpin[pin].pop(picpin[pin].index(alias))
+				continue
+			pinaliases.setdefault(alias,[]).append(pin)
+	for alias,pins in pinaliases.items():
+		if len(pins) > 1:
+			for pin in pins:
+				picpin[pin][picpin[pin].index(alias)] += "_%s" % pin
+
+fout = file("pinmap_pinsuffix.py","w")
+fout.write("pinmap_pinsuffix = \\\n")
+print >> fout, pprint.pformat(pinmap)
+fout.close()
+
