@@ -1,0 +1,58 @@
+#summary parsing datasheets and combining jallib information to fill pinmap.py
+#labels Phase-Implementation
+
+
+Say you want to parse datasheet for a new PIC, 18F87J93.
+
+
+
+ * Need to create a PIC-DS.txt file from Datasheets.wiki
+
+{{{
+cat DataSheets.wiki | grep ^\| | grep -v PIC.*Number | sed "s#||##g" | awk '{print $1,$2}' > PIC-DS.txt
+}}}
+
+ * use device files to create a new file only containing pins (starting with "R", eg. "RA0")
+
+{{{
+cat include/device/18f87j93.jal | grep pin_.*direction | sed "s#.*pin_\(.*\)_.*#R\1#" > 18f87j93.jal.pins
+}}}
+
+ * download PDF (Datasheet.wiki page says it's 39948a.pdf, and convert it to text
+
+{{{
+export ds=39948A
+wget ww1.microchip.com/downloads/en/DeviceDoc/$ds.pdf
+pdftotext $ds.pdf
+}}}
+
+ * run magical script. You may need to adjust some file/directory location
+
+Note: before running this step, you may want to reprocude previous steps in order to parse/analyze several datasheets at a time
+
+{{{
+python parse_ds_pins.py
+}}}
+
+
+ * cross your fingers it doesn't crash
+
+ * observe the generated  pinmap_tmp.py. Are you happy ? Then merge it to master pinmap.py
+
+{{{
+cd tools
+ipython
+python> run pinmap
+python> run pinmap_tmp
+python> pinmap.update(pinmap_tmp)
+python> import pprint
+python> fout = file("pinmap.py","w")
+python> fout.write("pinmap = \\\n")
+python> print >> fout, pprint.pformat(pinmap)
+python> fout.close()
+python> exit
+}}}
+
+ * have a beer (or two)
+
+ * (or three)
