@@ -72,8 +72,8 @@ for f in pin_files:
 			glue[pic][pin] = clean_pin_info(res[0][2])
 
 import pprint
-fout = file("pinmap.py","w")
-print >> fout, "pinmap = \\"
+fout = file("pinmap_tmp.py","w")
+print >> fout, "pinmap_tmp = \\"
 s = pprint.pformat(glue)
 print >> fout, s
 fout.close()
