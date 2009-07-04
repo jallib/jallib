@@ -93,7 +93,7 @@ pinmap_pinsuffix = \
              'RA1': ['GP1', 'AN1', 'CIN0-', 'ICSPCLK'],
              'RA2': ['GP2', 'AN2', 'T0CKI', 'INT', 'COUT'],
              'RA3': ['GP3', 'MCLR', 'VPP'],
-             'RA4': ['GP4', 'AN3', 'T1G', 'OSC2', 'CLKOUT'],
+             'RA4': ['GP4', 'AN3', 'C1IN-', 'T1G', 'OSC2', 'CLKOUT'],
              'RA5': ['GP5', 'T1CKI', 'OSC1', 'CLKIN']},
  '16F505': {'RB0': ['ICSPDAT'],
             'RB1': ['ICSPCLK'],
