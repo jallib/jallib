@@ -1,18 +1,11 @@
 import os, sys, re
 
-PIC_DS_FILE = "PIC-DS.txt"
-DS_REF = "DS_ref.txt"
 PINS_DIR = "pins"
 DS_DIR = "ds"
 
 
 glue = {}
-
-picdsmap = {}
-picds = map(str.strip,file(PIC_DS_FILE).readlines())
-for p,d in [re.split(" +",e) for e in picds]:
-	picdsmap[p] = d
-
+from pic_ds_map import pic_ds
 
 try:
 	pin_files = [os.path.basename(sys.argv[1])]
@@ -37,7 +30,7 @@ for f in pin_files:
 	print "Dealing with %s" % f
 
 	pic = re.sub("\.jal.pins","",f).upper()
-	dsfile = picdsmap[pic]
+	dsfile = pic_ds[pic]
 	dsfiletxt = dsfile + ".txt"
 	fin = file(os.path.join(DS_DIR,dsfiletxt)).read()
 	fin = fin.replace("\n","_____")	# this will help searching with regex ("____" not supposed to exist)
