@@ -858,6 +858,8 @@ def unittest(filename,verbose=False):
 			asm = filename.replace(".jal",".asm")
 			hex = filename.replace(".jal",".hex")
 			oracle = picshell_unittest(jal,asm,hex)
+		else:
+			oracle['failure'] = 1
 
 	finally:
 		clean_compiler_products(filename)

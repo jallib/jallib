@@ -20,7 +20,7 @@ echo "" > /tmp/validate.failed
 for jalfile in `echo $jalsamples $jallibs`
 do
 	##echo -n file: $jalfile... 
-	$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py validate $jalfile> /tmp/tmpval.out 2>&1 
+	$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py validate $jalfile > /tmp/tmpval.out 2>&1 
 	if [ "$?" != "0" ]
 	then
 		echo -- jsg output -- >> /tmp/validate.out
@@ -49,8 +49,8 @@ fi
 
 echo "Environment config"
 echo JALLIB_ROOT=$JALLIB_ROOT
-echo JALLIB_REPOS=$JALLIB_ROOT/include
-echo JALLIB_SAMPLEDIR=$JALLIB_ROOT/sample
+echo JALLIB_REPOS=$JALLIB_REPOS
+echo JALLIB_SAMPLEDIR=$JALLIB_SAMPLEDIR
 echo JALLIB_JALV2=$JALLIB_JALV2
 echo JALLIB_PYTHON=$JALLIB_PYTHON
 
