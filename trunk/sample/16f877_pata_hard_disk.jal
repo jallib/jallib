@@ -1,0 +1,236 @@
+-- Title: Hard disk library for communicating with parallel ata hard drives
+--        with a 40 pin ide connector.
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this library provides example usage for pata/ide hard disk drives.
+--              includes examples for : spin up / spin down drive
+--                                    : read sectors
+--                                    : identify drive
+--                                    : write sectors
+--
+-- Sources:
+-- "connecting ide drives by tilmann reh" - http://www.gaby.de/gide/ide-tcj.txt
+-- IDE hardware reference & information document by alex t. ivopol
+-- ATA Attachement with Packet Interface 6 - d1410r3-ATA-ATAPI-6.pdf
+--
+
+-- include chip
+include 16f877                    -- target picmicro
+;include 16f877a                  -- target picmicro
+;include 18F452                   -- target picmicro
+
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+pragma target osc hs              -- hs crystal or resonator
+pragma target clock 20_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
+--
+
+enable_digital_io() -- disable all analog pins if any
+
+include delay       -- include the delay library
+
+-- setup uart for communication
+const usart_hw_serial     = true    -- true = rs232, false = spi
+const serial_hw_baudrate  = 38400   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+-- pin assignments
+var volatile byte    pata_hd_data_low              is portb   -- data port (low bits)
+var volatile byte    pata_hd_data_low_direction    is portb_direction
+var volatile byte    pata_hd_data_high             is portd   -- data port (high bits)
+var volatile byte    pata_hd_data_high_direction   is portd_direction
+var volatile bit     pata_hd_a0                    is pin_a0
+var volatile bit     pata_hd_a0_direction          is pin_a0_direction
+var volatile bit     pata_hd_a1                    is pin_a1
+var volatile bit     pata_hd_a1_direction          is pin_a1_direction
+var volatile bit     pata_hd_a2                    is pin_a2
+var volatile bit     pata_hd_a2_direction          is pin_a2_direction
+var volatile bit     pata_hd_cs1                   is pin_a3
+var volatile bit     pata_hd_cs1_direction         is pin_a3_direction
+var volatile bit     pata_hd_cs0                   is pin_a4
+var volatile bit     pata_hd_cs0_direction         is pin_a4_direction
+var volatile bit     pata_hd_iowr                  is pin_c2
+var volatile bit     pata_hd_iowr_direction        is pin_c2_direction
+var volatile bit     pata_hd_iord                  is pin_c1
+var volatile bit     pata_hd_iord_direction        is pin_c1_direction
+
+pata_hd_a0_direction = output    -- register select pin
+pata_hd_a1_direction = output    -- register select pin
+pata_hd_a2_direction = output    -- register select pin
+pata_hd_cs1_direction = output   -- register select pin
+pata_hd_cs0_direction = output   -- register select pin
+pata_hd_iowr_direction = output  -- used for write pulse
+pata_hd_iord_direction = output  -- used for read pulse
+
+var byte pata_hd_word_count = 0      -- counts words read, 256 words in a sector.
+const bit PATA_HD_NO_INVERTER = true -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
+
+include pata_hard_disk           -- include the parallel ata ide hard disk library
+pata_hd_init()                   -- initialize startup settings
+
+-- Function for sending hard disk data via serial port, data is read 2 bytes at a time.
+procedure send_word(byte in lowbit, byte in highbit) is
+	serial_hw_write( lowbit )  -- send 1st serial data byte
+	serial_hw_write( highbit ) -- send 2nd serial data byte
+end procedure
+
+-- Declare variables for this example.
+var byte in_a
+var byte in_b
+
+-----main prog----
+
+_usec_delay (1_000_000) -- wait for power to stabilize
+
+-- send "start" to pc / test uart communication
+send_word ("S", "T")
+send_word ("A", "R")
+send_word ("T", 0x20)
+send_word (13, 10)
+send_word (13, 10)
+
+-- ----------------------------------------------------------------------------
+-- Example spin up & spin down drive command
+-- ----------------------------------------------------------------------------
+for 2 loop
+    pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_SPIN_UP)      -- turn on motor
+    _USEC_DELAY (5_000_000) -- 5 sec delay
+    pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_SPIN_DOWN)    -- turn off motor
+    _USEC_DELAY (5_000_000) -- 5 sec delay
+END LOOP
+
+pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_SPIN_UP)          -- turn on motor
+
+_USEC_DELAY (10_000_000) -- wait 10 seconds before next example
+
+-- ----------------------------------------------------------------------------
+-- Example read sectors command
+-- ----------------------------------------------------------------------------
+pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE) -- recalibrate the drive
+
+-- go to sector 0 (the boot sector)
+-- and set sector count to read 2 sectors
+pata_hd_go_to_sector (0,2)
+pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_READ_SECTOR) -- send the read command to the command register
+
+-- hard disk led will turn on at this point
+
+-- check if drive is ready for reading and set data ports as inputs
+-- this MUST be used before reading each sector
+pata_hd_data_request(PATA_HD_WAIT_READ)
+-- Read one sector
+for 256 loop                            -- 256 words, 512 bytes per sector
+  pata_hd_read_data (in_b, in_a)        -- read data
+  send_word (in_b, in_a)                -- send data via serial port
+end loop
+
+-- You will see hard disk LED on during this delay
+-- because you did not read 2 sectors yet.
+_USEC_DELAY (2_000_000) -- 2 second delay
+
+-- check if drive is ready for reading and set data ports as inputs
+-- this MUST be used before reading each sector
+pata_hd_data_request(PATA_HD_WAIT_READ)
+-- Read 2nd sector.
+for 256 loop                            -- 256 words, 512 bytes per sector
+  pata_hd_read_data (in_b, in_a)        -- read data
+  send_word     (in_b, in_a)            -- send data via serial port
+end loop
+
+-- hard disk led will turn off at this point.
+
+_USEC_DELAY (10_000_000) -- wait 10 seconds before next example
+
+-- ----------------------------------------------------------------------------
+-- Example identify drive command (Read drive information)
+-- size of drive, make, model, serial number, etc.
+-- ----------------------------------------------------------------------------
+pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_IDENTIFY_DRIVE) -- recalibrate the drive
+
+-- check if drive is ready reading and set data ports as inputs
+-- this MUST be used before reading each sector
+pata_hd_data_request(PATA_HD_WAIT_READ)
+-- Read 512 bytes
+for 256 loop                            -- 256 words, 512 bytes per sector
+  pata_hd_read_data (in_b, in_a)        -- read data
+  send_word     (in_a, in_b )           -- send data via serial port
+end loop                                -- drive info high/low bytes are in reverse order
+
+
+_USEC_DELAY (10_000_000) -- wait 10 seconds before next example
+
+-- ----------------------------------------------------------------------------
+-- Example write sectors command
+-- note: this will over write data currently on your drive
+-- ----------------------------------------------------------------------------
+pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE) -- recalibrate the drive
+
+-- go to sector 200
+-- and set sector count to write 2 sectors
+pata_hd_go_to_sector (200,2)
+pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_WRITE_SECTOR) -- send the write command to the command register
+
+-- check if drive is ready for next write and set data ports as outputs
+-- this MUST be used before writing each sector
+pata_hd_data_request(PATA_HD_WAIT_WRITE)
+-- write one sector, data will not be written unless 512 bytes are sent
+for 256 loop                      -- 256 words, 512 bytes per sector
+  pata_hd_write_data (0xAA, 0xBB) -- write data 0xAA, 0xBB over and over
+end loop
+ 
+-- You will see hard disk LED on during this delay
+-- because you did not write 2 sectors yet.
+_USEC_DELAY (2_000_000) -- 2 second delay
+
+-- check if drive is ready for next write and set data ports as outputs
+-- this MUST be used before writing each sector
+pata_hd_data_request(PATA_HD_WAIT_WRITE)
+-- now write one more sector, data will not be written unless 512 bytes are sent
+for 250 loop
+  pata_hd_write_data (0xCC, 0xDD) -- write data 0xCC, 0xDD over and over
+end loop
+-- only 250 writes sent so lets finnish the sector with 6 more write pulses (0's as data)
+pata_hd_write_pulse (6)
+ 
+-- hard disk led will turn off at this point.
+
+
+
+-- Now read the 1st sector you just wrote, should get 0xAA, 0xBB over and over
+pata_hd_go_to_sector (200,2)       -- go sector 200
+pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_READ_SECTOR) -- send the read command
+
+-- check if drive is ready for reading and set data ports as inputs
+-- this MUST be used before reading each sector
+pata_hd_data_request(PATA_HD_WAIT_READ)
+-- now get the data
+for 256 loop                            -- 256 words, 512 bytes per sector
+  pata_hd_read_data (in_b, in_a)        -- read data
+  send_word     (in_b, in_a)            -- send data via serial port
+end loop
+
+-- Now read the 2nd sector you just wrote, should get 250 x (0xCC, 0xDD)
+-- and you will get 6 x (0x00 0x00) at the end of the sector that we wrote.
+
+-- check if drive is ready for reading and set data ports as inputs
+-- this MUST be used before reading each sector
+pata_hd_data_request(PATA_HD_WAIT_READ)
+-- now get the data
+for 256 loop                            -- 256 words, 512 bytes per sector
+  pata_hd_read_data (in_b, in_a)        -- read data
+  send_word     (in_b, in_a)            -- send data via serial port
+end loop
+
+-- We're done, lets turn off the hd motor
+pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_SPIN_DOWN)
+
+
