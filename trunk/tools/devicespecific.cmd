@@ -13,7 +13,6 @@
 /* end                                                              */
 /* call stream PicSpecFile, 'c', 'close'                            */
 
-
 /* ADC group classification, see Dev2Jal.cmd for additional comments.          */
 /* Comments:  '-' unchecked                                                    */
 /*            '+' checked against datasheet or set according to MCC18 compiler */
@@ -321,6 +320,7 @@
   PicSpec.ADCgroup.18LF25J11     = 'ADC_V11'                         /* + */
   PicSpec.ADCgroup.18LF25J50     = 'ADC_V11'                         /* + */
   PicSpec.ADCgroup.18LF26J11     = 'ADC_V11'                         /* + */
+
   PicSpec.ADCgroup.18LF26J50     = 'ADC_V11'                         /* + */
   PicSpec.ADCgroup.18LF44J10     = 'ADC_V6'                          /* + */
   PicSpec.ADCgroup.18LF44J11     = 'ADC_V11'                         /* + */
@@ -354,6 +354,8 @@
   PicSpec.DataSheet.12F683       = '41211'
   PicSpec.DataSheet.12HV609      = '41302'
   PicSpec.DataSheet.12HV615      = '41302'
+  PicSpec.DataSheet.16F1826      = '41391'
+  PicSpec.DataSheet.16F1827      = '41391'
   PicSpec.DataSheet.16F1933      = '41364'
   PicSpec.DataSheet.16F1934      = '41364'
   PicSpec.DataSheet.16F1936      = '41364'
@@ -681,6 +683,8 @@
   PicSpec.PgmSpec.12F683         = '41204'
   PicSpec.PgmSpec.12HV609        = '41284'
   PicSpec.PgmSpec.12HV615        = '41284'
+  PicSpec.PgmSpec.16F1826        = '41390'
+  PicSpec.PgmSpec.16F1827        = '41390'
   PicSpec.PgmSpec.16F1933        = '41360'
   PicSpec.PgmSpec.16F1934        = '41360'
   PicSpec.PgmSpec.16F1936        = '41360'
