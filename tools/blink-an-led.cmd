@@ -65,13 +65,21 @@ do i=1 to pic.0
   parse value filespec('Name', pic.i) with PicName '.jal'
   say PicName
 
+  '@python' validator Include||PicName'.jal' '1>'PicName'.pyout' '2>'PicName'.pyerr'
+  if rc \= 0 then do
+    say 'Validation of device file for' PicName 'failed, rc' rc
+    leave                                       /* terminate! */
+  end
+  '@erase' PicName'.py*'                        /* when OK, discard logs */
+  say '     Device file validated OK!'
+
   PgmName = PicName'_blink'                     /* program name */
   PgmFile = PgmName'.jal'                       /* program filespec */
 
   '@python' validator  pic.i '1>'PgmName'.pyout'  '2>'PgmName'.pyerr'
   if rc \= 0 then do
     say 'Validation of device file' PicName'.jal failed, rc' rc
-    exit rc
+    leave
   end
   '@erase' PgmName'.py*'                      /* when OK, discard python output */
 
@@ -106,20 +114,36 @@ do i=1 to pic.0
   call lineout PgmFile, '--'
   call SysFileSearch 'pragma fuse_def OSC', pic.i, osc.
   if osc.0 > 0 then do                                  /* oscillator pragma present */
-    call SysFileSearch 'HS =', pic.i, osc.
+    call SysFileSearch ' HS', pic.i, osc.
     if  osc.0 > 0 then do                               /* HS mode supported */
+      hs = 'HS'
+      do j = 1 to osc.0
+        if pos('PLL', word(osc.j,1)) = 0 then do        /* no PLL */
+          hs = word(osc.j,1)                            /* select! */
+          leave
+        end
+      end
       call lineout PgmFile, '-- This program assumes a 20 MHz resonator or crystal'
       call lineout PgmFile, '-- is connected to pins OSC1 and OSC2.'
       if left(PicName,2) = '18' then
         call lineout PgmFile, '-- Not specified configuration bits may cause a different frequency!'
-      call lineout PgmFile, 'pragma target OSC HS               -- HS crystal or resonator'
       call lineout PgmFile, 'pragma target clock 20_000_000     -- oscillator frequency'
+      call lineout PgmFile, '-- configuration memory settings (fuses)'
+      call lineout PgmFile, 'pragma target OSC  'hs'              -- HS crystal or resonator'
     end
     else do                                             /* assume internal oscillator */
       call lineout PgmFile, '-- This program assumes the internal oscillator'
       call lineout PgmFile, '-- is running at a frequency of 4 MHz.'
-      call lineout PgmFile, 'pragma target OSC INTOSC_NOCLKOUT  -- internal oscillator'
       call lineout PgmFile, 'pragma target clock 4_000_000      -- oscillator frequency'
+      call lineout PgmFile, '-- configuration memory settings (fuses)'
+      call SysFileSearch ' INTOSC', pic.i, osc.
+      if osc.0 > 0 then
+        call lineout PgmFile, 'pragma target OSC  'word(osc.1,1)'     -- internal oscillator'
+      else do
+        call SysFileSearch ' INTRC', pic.i, osc.
+        if osc.0 > 0 then
+          call lineout PgmFile, 'pragma target OSC  'word(osc.1,1)'     -- internal oscillator'
+      end
       call SysFileSearch ' IOSCFS ', pic.i, ioscfs.
       if ioscfs.0 > 0 then
         call lineout PgmFile, 'pragma target IOSCFS  F4MHZ        -- select 4 MHz'
@@ -129,32 +153,32 @@ do i=1 to pic.0
     call lineout PgmFile, '-- This program assumes the internal oscillator'
     call lineout PgmFile, '-- is running at a frequency of 4 MHz.'
     call lineout PgmFile, 'pragma target clock 4_000_000      -- oscillator frequency'
+    call lineout PgmFile, '-- configuration memory settings (fuses)'
     call SysFileSearch ' IOSCFS ', pic.i, ioscfs.
     if ioscfs.0 > 0 then
       call lineout PgmFile, 'pragma target IOSCFS  F4MHZ        -- select 4 MHz'
   end
-  call lineout PgmFile, '--'
   call SysFileSearch 'pragma fuse_def WDT', pic.i, wdt.
   if wdt.0 > 0 then do
-    call lineout PgmFile, 'pragma target WDT  disabled'
+    call lineout PgmFile, 'pragma target WDT  disabled        -- no watchdog'
   end
   call SysFileSearch 'pragma fuse_def LVP', pic.i, lvp.
   if lvp.0 > 0 then do
-    call lineout PgmFile, 'pragma target LVP  disabled'
+    call lineout PgmFile, 'pragma target LVP  disabled        -- no Low Voltage Programming'
   end
   call SysFileSearch 'pragma fuse_def MCLR', pic.i, mclr., 'N'
   if mclr.0 > 0 then do
-    do  word(mclr.1,1)                                  /* skip lines */
+    do  word(mclr.1,1)                                  /* skip lines ahead of MCLR */
       call linein pic.i
     end
-    ln = linein(pic.i)                                  /* line after fuse_def */
+    ln = linein(pic.i)                                  /* line after fuse_def MCLR */
     if pos('EXTERNAL',ln) > 0 then do                   /* MCLR external */
-      call lineout PgmFile, 'pragma target MCLR external'
+      call lineout PgmFile, 'pragma target MCLR external        -- reset externally'
     end
     else do
       ln = linein(pic.i)                                /* try next line */
       if pos('EXTERNAL',ln) > 0 then do                 /* MCLR external */
-        call lineout PgmFile, 'pragma target MCLR external'
+        call lineout PgmFile, 'pragma target MCLR external        -- reset externally'
       end
     end
   end
@@ -176,8 +200,8 @@ do i=1 to pic.0
       if pin.0 > 0 then do                              /* pin found */
         call SysFileSearch ' 'pinPQ'_direction', pic.i, tris.    /* search TRISx */
         if tris.0 > 0 then do                           /* found */
-          call lineout PgmFile, 'var bit led           is' pinPQ '   -- alias'
-          call lineout PgmFile, pinPQ'_direction = output'
+          call lineout PgmFile, 'var bit led      is' pinPQ '        -- alias'
+          call lineout PgmFile, pinPQ'_direction =  output'
           leave p
         end
         else do                                         /* no TRISx found */
@@ -208,9 +232,10 @@ do i=1 to pic.0
   '@python' validator PgmFile '1>'PgmName'.pyout' '2>'PgmName'.pyerr'
   if rc \= 0 then do
     say 'Validation of blink sample program' PgmFile 'failed, rc' rc
-    exit rc                                     /* terminate! */
+    leave                                       /* terminate! */
   end
   '@erase' PgmName'.py*'                        /* when OK, discard log */
+  say '     Blink-an-LED sample validated OK!'
 
   '@'JalV2 Options PgmFile '>'PgmName'.log'     /* compile */
 
@@ -218,6 +243,7 @@ do i=1 to pic.0
     say 'JalV2 compile error' rc
     leave                                       /* terminate */
   end
+  say '     Blink-an-LED sample compiled OK!'
 
   '@erase' PgmName'.cod' PgmName'.err' PgmName'.lst' PgmName'.obj' '1>nul 2>nul'
 
@@ -249,7 +275,7 @@ do i=1 to pic.0
 
 end
 
-say 'Compiled' k 'of' pic.0 'blink-an-led programs without warnings or errors!'
+say 'Processed successfully' k 'of' pic.0 ' device files and blink-an-led programs!'
 
 return 0
 
