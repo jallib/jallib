@@ -28,7 +28,7 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.72'                   /*                          */
+   ScriptVersion   = '0.0.73'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '2.4k'                     /*                          */
 /* ------------------------------------------------------------------------ */
@@ -39,6 +39,7 @@ devdir      = mplabdir'mplab_ide/device/'       /* dir with .dev files */
 lkrdir      = mplabdir'mpasm_suite/lkr/'        /* dir with .lkr files */
 PicSpecFile = 'devicespecific.cmd'              /* script with PIC specific info */
 PinMapFile  = 'pinmap.cmd'                      /* script with pin aliases */
+FuseDefFile = 'fusedefmap.cmd'                  /* script with fuse_def name mapping */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
 
@@ -89,6 +90,9 @@ call file_read_picspec                          /* read device specific data */
 
 PinMap.  = '?'                                  /* pin mapping data */
 call file_read_pinmap                           /* read pin alias names */
+
+Fuse_Def. = '?'                                 /* Fuse_Def name mapping */
+call file_read_fusedef                          /* read fuse_def table */
 
 call list_chip_const                            /* make header of chipdef file */
 
@@ -175,7 +179,8 @@ return 0
 /* ==================================================================== */
 dev2jal12: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             Core PicName JalFile ChipDef DevFile LkrFile,
-                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr. PicSpec. PinMap.
+                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
+                            PicSpec. PinMap. Fuse_Def.
 
 MAXRAM     = 128                                /* range 0..0x7F */
 BANKSIZE   = 32                                 /* 0x0020 */
@@ -203,7 +208,8 @@ return 0
 /* ==================================================================== */
 dev2jal14: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             Core PicName JalFile ChipDef DevFile LkrFile,
-                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr. PicSpec. PinMap.
+                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
+                            PicSpec. PinMap. Fuse_Def.
 
 MAXRAM     = 512                                /* range 0..0x1FF */
 BANKSIZE   = 128                                /* 0x0080 */
@@ -231,7 +237,8 @@ return 0
 /* ==================================================================== */
 dev2jal16: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             Core PicName JalFile ChipDef DevFile LkrFile,
-                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr. PicSpec. PinMap.
+                            Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
+                            PicSpec. PinMap. Fuse_Def.
 
 MAXRAM     = 4096                               /* range 0..0x0xFFF */
 BANKSIZE   = 256                                /* 0x0100 */
@@ -337,10 +344,10 @@ Lkr.0 = i - 1                                   /* # non-comment records */
 return Lkr.0                                    /* number of records */
 
 
-/* -------------------------------------------------- */
-/* Read file with Device Specific data                */
-/* Interpret contents: fill compund variable PicSpec. */
-/* -------------------------------------------------- */
+/* --------------------------------------------------- */
+/* Read file with Device Specific data                 */
+/* Interpret contents: fill compound variable PicSpec. */
+/* --------------------------------------------------- */
 file_read_picspec: procedure expose PicSpecFile PicSpec.
 if stream(PicSpecFile, 'c', 'open read') \= 'READY:' then do
   Say 'Error: could not open file with Device Specific data' PicSpecFile
@@ -355,13 +362,13 @@ say 'done!'
 return
 
 
-/* -------------------------------------------------- */
-/* Read file with pin alias information               */
-/* Interpret contents: fill compund variable PinMap.  */
-/* -------------------------------------------------- */
+/* --------------------------------------------------- */
+/* Read file with pin alias information                */
+/* Interpret contents: fill compound variable PinMap.  */
+/* --------------------------------------------------- */
 file_read_pinmap: procedure expose PinMapFile PinMap.
 if stream(PinMapFile, 'c', 'open read') \= 'READY:' then do
-  Say 'Error: could not open file with Pin Alias inforrmation' PinMapFile
+  Say 'Error: could not open file with Pin Alias information' PinMapFile
   exit 1                                        /* zero records */
 end
 call charout , 'Reading pin alias names from' PinMapFile '... '
@@ -369,6 +376,24 @@ do while lines(PinMapFile) > 0                  /* read whole file */
   interpret linein(PinMapFile)                  /* read and interpret line */
 end
 call stream PinMapFile, 'c', 'close'            /* done */
+say 'done!'
+return
+
+
+/* ---------------------------------------------------- */
+/* Read file with oscillator name mapping               */
+/* Interpret contents: fill compound variable Fuse_Def. */
+/* ---------------------------------------------------- */
+file_read_fusedef: procedure expose FuseDefFile Fuse_Def.
+if stream(FuseDefFile, 'c', 'open read') \= 'READY:' then do
+  Say 'Error: could not open file with fuse_def mappings' FuseDefFile
+  exit 1                                        /* zero records */
+end
+call charout , 'Reading Fusedef Names from' FuseDefFile '... '
+do while lines(FuseDefFile) > 0                 /* read whole file */
+  interpret linein(FuseDefFile)                 /* read and interpret line */
+end
+call stream FuseDefFile, 'c', 'close'           /* done */
 say 'done!'
 return
 
@@ -606,12 +631,12 @@ if DevId == '0000' then do                      /* DevID not found */
     Devid = '0560'
 end
 parse upper var PicName PicNameUpper
-if DevId \== '0000' then do                     /* not missing DevID */
-  call lineout jalfile, '-- Device-ID: 0x'DevId
+call lineout jalfile, 'const word DEVICE_ID   = 0x'DevID
+if DevId \== '0000' then do                     /* DevID not missing */
   call lineout chipdef, left('const       PIC_'PicNameUpper,29) '= 0x_'Core'_'DevID
 end
-else do                                         /* unknown device ID */
-  DevID = right(PicNameUpper,3)                 /* rightmost 3 chars */
+else do                                         /* DevID unknown */
+  DevID = right(PicNameUpper,3)                 /* rightmost 3 chars of name */
   if datatype(Devid,'X') = 0 then do            /* not all hex digits */
     DevID = right(right(PicNameUpper,2),3,'F')  /* 'F' + rightmost 2 chars */
   end
@@ -1005,19 +1030,6 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
     n. = '-'                                            /* reset */
     parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
     parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
-/*  if s.1 = 8  | s.1 = 16 then do                  */  /* full byte or word */
-/*    if n.1 \= reg then do                         */  /* different name */
-/*      if s.1 = 8 then                             */  /* single byte */
-/*        field_type = 'byte  '                     */
-/*      else                                        */  /* two bytes */
-/*        field_type = 'word  '                     */
-/*      field = reg'_'n.1                           */
-/*      if duplicate_name(field,reg) = 0 then       */  /* unique name */
-/*        call lineout jalfile, 'var volatile' field_type left(field,25) 'at' reg,  */
-/*                              '   -- alias'                                       */
-/*    end                                                                           */
-/*  end  */
-/*  else do  */                                         /* subfields */
     do                                                  /* subfields */
       offset = 7                                        /* MSbit first */
       do j = 1 to 8 while offset >= 0                   /* max 8 bits */
@@ -1322,21 +1334,6 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
     sizes = strip(strip(val2), 'B', "'")                /* .. and quotes */
     parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
     parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
-/*  if s.1 = 8 | s.1 = 16 | s.1 = 24 then do        */  /* (multi) byte */
-/*    if n.1 \= reg then do                         */  /* other name */
-/*      if s.1 = 8 then                             */  /* single byte */
-/*        field_type = 'byte  '                     */
-/*      else if s.1 = 16 then                       */  /* two bytes */
-/*        field_type = 'word  '                     */
-/*      else                                        */  /* three bytes */
-/*        field_type = 'byte*3'                     */
-/*      field = reg'_'n.1                           */
-/*      if duplicate_name(field,reg) = 0 then do    */  /* unique */
-/*        call lineout jalfile, 'var volatile' field_type left(field,25) memtype 'at' reg */
-/*      end                                                                               */
-/*    end                                                                                 */
-/*  end                                                                                   */
-/*  else do  */                                         /* sub-div of reg */
     do                                                  /* sub-div of reg */
       offset = 7                                        /* MSbit first */
       do j = 1 to 8 while offset >= 0                   /* 8 bits */
@@ -1789,6 +1786,9 @@ return
 
 /* -------------------------------------------------------- */
 /* procedure to add pin alias declarations                  */
+/* input:  - register name                                  */
+/*         - original pin name (Rx)                         */
+/*         - pinname for aliases (pin_Xy)                   */
 /* -------------------------------------------------------- */
 insert_pin_alias: procedure expose  PinMap. Name. PicName jalfile
 PicUpper = toupper(PicName)
@@ -1801,19 +1801,23 @@ if PinMap.PicUpper.PinName.0 = '?' then do
   return
 end
 if PinMap.PicUpper.PinName.0 > 0 then do
-  do k = 1 while k <= PinMap.PicUpper.PinName.0   /* all aliases */
+  do k = 1 while k <= PinMap.PicUpper.PinName.0     /* all aliases */
     pinalias = 'pin_'PinMap.PicUpper.PinName.k
-    if duplicate_name(pinalias,reg) = 0 then do   /* unique */
-      call lineout jalfile, 'var volatile bit   ',
-              left(pinalias,25) 'is' Pin
+    if duplicate_name(pinalias,reg) = 0 then do     /* unique */
+      call lineout jalfile, 'var volatile bit   ' left(pinalias,25) 'is' Pin
     end
   end
 end
+call lineout jalfile, '--'                          /* separator */
 return k
 
 
 /* -------------------------------------------------------- */
 /* procedure to add pin_direction alias declarations        */
+/* input:  - register name                                  */
+/*         - original pin name (Rx)                         */
+/*         - pinname for aliases (pin_Xy)                   */
+/* note: '_direction' is added                              */
 /* -------------------------------------------------------- */
 insert_pin_dir_alias: procedure expose  PinMap. Name. PicName jalfile
 PicUpper = toupper(PicName)
@@ -1826,14 +1830,14 @@ if PinMap.PicUpper.PinName.0 = '?' then do
   return
 end
 if PinMap.PicUpper.PinName.0 > 0 then do
-  do k = 1 while k <= PinMap.PicUpper.PinName.0    /* all aliases */
+  do k = 1 while k <= PinMap.PicUpper.PinName.0     /* all aliases */
     pinalias = 'pin_'PinMap.PicUpper.PinName.k'_direction'
-    if duplicate_name(pinalias,reg) = 0 then do    /* unique */
-      call lineout jalfile, 'var volatile bit   ',
-             left(pinalias,25) 'is' pin
+    if duplicate_name(pinalias,reg) = 0 then do     /* unique */
+      call lineout jalfile, 'var volatile bit   ' left(pinalias,25) 'is' pin
     end
   end
 end
+call lineout jalfile, '--'                          /* separator */
 return k
 
 
@@ -1941,7 +1945,7 @@ return
 /*        even if it is (partly) specified in the .dev file.              */
 /*        See at the bottom of changes.txt for details.                   */
 /* ---------------------------------------------------------------------- */
-list_fuses_bits:   procedure expose Dev. jalfile CfgAddr. Core PicName
+list_fuses_bits:   procedure expose Dev. jalfile CfgAddr. Fuse_Def. Core PicName
 call lineout jalfile, '--'
 call lineout jalfile, '-- =================================================='
 call lineout jalfile, '--'
@@ -1986,18 +1990,18 @@ do i = 1 to dev.0                               /* scan .dev file */
           say 'Warning: fuse_def suppressed for' key 'of' PicName
           iterate                               /* to next key */
         end
-        if (PicName = '18f4585') &,
-           (key = 'EBTR_3' | key = 'CP_3' | key = 'WRT_3') then do
+        if (key = 'EBTR_3' | key = 'CP_3' | key = 'WRT_3') &,
+           (PicName = '18f4585') then do
           i = i + 1
           ln = Dev.i
           say 'Warning: fuse_def suppressed for' key 'of' PicName
           iterate                               /* to next key */
         end
-        if (PicName = '18f6520' | PicName = '18f8520') &,
-           (key = 'EBTR_4' | key = 'CP_4' | key = 'WRT_4' |,
+        if (key = 'EBTR_4' | key = 'CP_4' | key = 'WRT_4' |,
             key = 'EBTR_5' | key = 'CP_5' | key = 'WRT_5' |,
             key = 'EBTR_6' | key = 'CP_6' | key = 'WRT_6' |,
-            key = 'EBTR_7' | key = 'CP_7' | key = 'WRT_7') then do
+            key = 'EBTR_7' | key = 'CP_7' | key = 'WRT_7')   &,
+           (PicName = '18f6520' | PicName = '18f8520') then do
           i = i + 1
           ln = Dev.i
           say 'Warning: fuse_def suppressed for' key 'of' PicName
@@ -2011,9 +2015,11 @@ do i = 1 to dev.0                               /* scan .dev file */
            key \= 'DSWDTOSC'       &,           /* excl deep sleep WDT osc */
            key \= 'RTCOSC'         &,           /* excl RTC OSC */
            key \= 'RTCSOSC'        &,           /* excl RTC OSC */
+           key \= 'SOSCEL'         &,           /* excl Security */
            key \= 'T1OSCMX'            then     /* excl T1 OSC mux */
           key = 'OSC'
-        else if pos('IOSCFS',key) > 0 then
+        else if pos('IOSCFS',key) > 0 |,
+                pos('IOFSCS',key) > 0 then      /* .dev error */
           key = 'IOSCFS'
         else if pos('DSWDTEN',key) > 0 then
           key = 'DSWDTEN'
@@ -2087,7 +2093,7 @@ return
 /* - filter possible secundary effects         */
 /* - check on duplicate names (filter fault!)  */
 /* ------------------------------------------- */
-list_fuse_def_osc: procedure expose Dev. jalfile PICname
+list_fuse_def_osc: procedure expose Dev. Fuse_Def. jalfile PICname
 aoscname. = '-'                                 /* empty name compound */
 do i = arg(1) + 1 while i <= dev.0  &,
           (word(dev.i,1) = 'SETTING' | word(dev.i,1) = 'CHECKSUM')
@@ -2095,60 +2101,18 @@ do i = arg(1) + 1 while i <= dev.0  &,
                          val1 'DESC' '=' '"' val2 '"' .
   if val1 \= '' then do
     mask = strip(val1)                          /* bit mask (hex) */
-    desc = translate(val2, '                 ', ' +-:;.,<>{}[]()=/')  /* to blanks */
-    if wordpos('LP',desc) > 0 then              /* low power crystal */
-      osctype = 'LP'
-    else if wordpos('XT',desc) > 0 then         /* crystal */
-      osctype = 'XT'
-    else if pos('HS',desc) > 0  &,              /* high speed */
-            left(desc,3) \= 'INT' then          /* not internal osc */
-      osctype = 'HS'
-    else if left(desc,3) = 'INT' then           /* internal osc */
-      osctype = 'INTOSC'
-    else if wordpos('EC',desc) > 0  |,          /* external clock */
-            wordpos('EXTCLK',desc) > 0 then     /* external clock */
-      osctype = 'EC'
-    else if left(desc,3) = 'EXT'    |,          /* external osc */
-            desc = 'ER' | wordpos('ER ',desc) > 0  |,
-            desc = 'RC' | wordpos('RC ',desc) > 0 then
-      osctype = 'EXTOSC'
-    else do                                     /* not one of the above */
-      osctype = translate(desc, '_', ' ')       /* blank -> underscore */
-      if datatype(left(osctype,1)) = 'NUM' then    /* 1st char is digit */
-        osctype = '_'osctype                    /* add prefix */
-      say 'Warning: OSC='osctype                /* special! */
+    name = translate(val2, '_________________',' +-:;.,<>{}[]()=/')
+    oscname = Fuse_Def.Osc.name
+    if oscname = '?' then do
+      say 'Warning: No mapping for OSC Name' name
+      return
     end
-
-    oscsub  = ''                                /* default no sub func */
-    if osctype = 'HS'  &,                       /* only for HS */
-       pos('PLL',desc) > 0 then                 /* PLL */
-      oscsub = '_PLL'
-    if osctype = 'INTOSC' |,                    /* int osc */
-       osctype = 'EXTOSC' |,                    /* ext osc */
-       osctype = 'EC'     then do               /* ext clock */
-      if pos('NO CL',val2) > 0      |,
-         pos('INTRCIO',val2) > 0    |,
-         pos('INTOSCIO',val2) > 0   |,
-         pos('EXTRCIO',val2) > 0    |,
-         pos('EXTOSCIO',val2) > 0   then
-        oscsub = '_NOCLKOUT'
-      else if pos('-CLKO',val2) > 0      |,
-              pos(' CLKO',val2) > 0      |,
-              pos('CLOCK OUT',val2) > 0  |,
-              pos(' CLOCK',val2) > 0     then
-        oscsub = '_CLKOUT'
-      else
-        oscsub = '_NOCLKOUT'
-    end
-
-    oscname = osctype||oscsub                   /* combine */
     if aoscname.oscname = '-' then do           /* not duplicate */
       aoscname.oscname = oscname                /* store name */
       call lineout jalfile, '       'oscname '= 0x'mask
     end
-    else do
-      say 'Warning: Duplicate OSC name:' oscname '('val2')'
-    end
+    else
+      say 'Warning: Duplicate OSC name:' oscname '('name')'
   end
 end
 return
@@ -2604,18 +2568,20 @@ call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
 call list_devID
 PicNameCap = toupper(PicName)
+call lineout jalfile, 'const byte PICTYPE[]   = "'PicNameCap'"'
 DataSheet = PicSpec.DataSheet.PicNameCap
 if DataSheet = '?' then do
-  say PicName 'unknown for Datasheet in devicespecific.cmd!'
+  say PicName 'unknown for Datasheet in devicespecific.cmd!'
   exit 1
 end
-call lineout jalfile, '-- DataSheet:' DataSheet
+call lineout jalfile, 'const byte DATASHEET[] = "'DataSheet'"'
 PgmSpec = PicSpec.PgmSpec.PicNameCap
 if PgmSpec = '?' then do
-  say PicName 'unknown for PgmSpec in devicespecific.cmd!'
+  say PicName 'unknown for PgmSpec in devicespecific.cmd!'
   exit 1
 end
-call lineout jalfile, '-- Programming Specifications:' PgmSpec
+call lineout jalfile, 'const byte PGMSPEC[]   = "'PgmSpec'"'
+call lineout jalfile, '--'
 call list_Vdd
 call list_Vpp
 call lineout jalfile, '--'
