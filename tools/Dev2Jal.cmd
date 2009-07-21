@@ -28,7 +28,7 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.73'                   /*                          */
+   ScriptVersion   = '0.0.74'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '2.4k'                     /*                          */
 /* ------------------------------------------------------------------------ */
@@ -1977,7 +1977,7 @@ do i = 1 to dev.0                               /* scan .dev file */
         if pos('ENICPORT',key) > 0 then do      /* ignore */
           i = i + 1
           ln = Dev.i
-          say 'Warning: fuse_def suppressed for' key 'of' PicName
+  /*      say 'Warning: fuse_def suppressed for' key 'of' PicName   */
           iterate                               /* to next key */
         end
         if (key = 'CPD' | key = 'WRTD')  &,
@@ -1987,14 +1987,14 @@ do i = 1 to dev.0                               /* scan .dev file */
             PicName = '18f4515' | PicName = '18f4610')  then do
           i = i + 1
           ln = Dev.i
-          say 'Warning: fuse_def suppressed for' key 'of' PicName
+  /*      say 'Warning: fuse_def suppressed for' key 'of' PicName   */
           iterate                               /* to next key */
         end
         if (key = 'EBTR_3' | key = 'CP_3' | key = 'WRT_3') &,
            (PicName = '18f4585') then do
           i = i + 1
           ln = Dev.i
-          say 'Warning: fuse_def suppressed for' key 'of' PicName
+  /*      say 'Warning: fuse_def suppressed for' key 'of' PicName   */
           iterate                               /* to next key */
         end
         if (key = 'EBTR_4' | key = 'CP_4' | key = 'WRT_4' |,
@@ -2004,7 +2004,7 @@ do i = 1 to dev.0                               /* scan .dev file */
            (PicName = '18f6520' | PicName = '18f8520') then do
           i = i + 1
           ln = Dev.i
-          say 'Warning: fuse_def suppressed for' key 'of' PicName
+  /*      say 'Warning: fuse_def suppressed for' key 'of' PicName   */
           iterate                               /* to next key */
         end
         if pos('OSC',key) > 0      &,           /* any ...OSC... */
