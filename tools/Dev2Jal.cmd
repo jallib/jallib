@@ -28,7 +28,7 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.74'                   /*                          */
+   ScriptVersion   = '0.0.75'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /* global constants         */
    CompilerVersion = '2.4k'                     /*                          */
 /* ------------------------------------------------------------------------ */
@@ -1088,6 +1088,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   call lineout jalfile, 'var volatile bit   ',
                                         left(pin,25) 'at' reg ':' offset
 /* alias */       call insert_pin_alias reg, n.j, pin
+                  call lineout jalfile, '--'
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                  'at' shadow ':' offset') is'
                   call lineout jalfile, '   pragma inline'
@@ -1102,6 +1103,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                 call lineout jalfile, 'var volatile bit   ',
                                      left(pin,25) 'at' reg ':' offset
 /* alias */     call insert_pin_alias 'PORTA', 'RA'right(n.j,1), pin
+                call lineout jalfile, '--'
                 call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                  'at' shadow ':' offset') is'
                 call lineout jalfile, '   pragma inline'
@@ -1378,13 +1380,14 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                   call lineout jalfile, 'var volatile bit   ',
                            left(reg'_TMR0'||substr(n.j,3),25) memtype 'at' reg ':' offset
               end
-              else if left(reg,3) = 'LAT' then do       /* LATx register */
-                if left(n.j,3) = 'LAT'   &,
-                    substr(n.j,4,1) = right(reg,1) then do     /* I/O pin */
-                  pin = 'pin_'||substr(n.j,4)
+              else if left(reg,4) = 'PORT' then do       /* PORTx register */
+                if substr(n.j,2,1) = right(reg,1)  &,        /* port letter */
+                   datatype(substr(n.j,3)) = 'NUM' then do   /* pin number */
+                  pin = 'pin_'||substr(n.j,2)
                   call lineout jalfile, 'var volatile bit   ',
-                           left(pin,25) memtype 'at PORT'substr(reg,4) ':' offset
-/* alias */       call insert_pin_alias 'PORT'substr(reg,4), 'R'substr(n.j,4), pin
+                           left(pin,25) memtype 'at' reg ':' offset
+/* alias */       call insert_pin_alias reg, n.j, pin
+                  call lineout jalfile, '--'
                   call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                    'at' reg ':' offset') is'
                   call lineout jalfile, '   pragma inline'
@@ -1808,7 +1811,6 @@ if PinMap.PicUpper.PinName.0 > 0 then do
     end
   end
 end
-call lineout jalfile, '--'                          /* separator */
 return k
 
 
