@@ -23,8 +23,6 @@
 --
 --
 
-var volatile byte tmp_cdc[7] at 0x700
-
 if defined( USB_CDC_DEBUG ) == false then
 	const bit USB_CDC_DEBUG = false
 end if
@@ -96,6 +94,16 @@ procedure usb_handle_class_request_callback() is
     var byte valbt[2] at usb_sdp_value
     
     case (req01) of
+		USB_REQ_SEND_BREAK:
+		block
+			if USB_CDC_DEBUG > 0  then
+				const byte str[] = " SET_BREAK "
+				print_string(serial_hw_data,str)
+			end if
+			-- no data, so just ack the status
+			usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
+			usb_send_status_ack()
+		end block
 		USB_REQ_SET_LINE_CODING:
 		block
 			-- we now expect the line coding to arrive in the data stage
@@ -105,12 +113,7 @@ procedure usb_handle_class_request_callback() is
 				print_string(serial_hw_data,str)
 			end if
 			
-var byte idx
-			var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR
-for 7 using idx loop
-tmp_cdc[idx ] = bd0_out_buffer[idx]
-end loop
-			
+			var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR			
 			usb_control_mode = USB_CM_CTRL_WRITE_DATA_STAGE_CLASS
 		end block
 		USB_REQ_GET_LINE_CODING:
@@ -149,8 +152,6 @@ end if
 
 		end block
 		
-		
-
 		USB_REQ_SET_CONTROL_LINE_STATE:
 		block
 			if USB_CDC_DEBUG > 0  then
