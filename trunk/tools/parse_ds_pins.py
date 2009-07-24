@@ -30,7 +30,15 @@ for f in pin_files:
 	print "Dealing with %s" % f
 
 	pic = re.sub("\.jal.pins","",f).upper()
-	dsfile = pic_ds[pic]
+	try:
+		dsfile = pic_ds[pic]
+	except KeyError:
+		print "No datasheet for %s" % pic
+		continue
+
+	if dsfile == '-':
+		# No DS available
+		continue
 	dsfiletxt = dsfile + ".txt"
 	fin = file(os.path.join(DS_DIR,dsfiletxt)).read()
 	fin = fin.replace("\n","_____")	# this will help searching with regex ("____" not supposed to exist)
