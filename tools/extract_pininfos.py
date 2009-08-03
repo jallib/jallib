@@ -5,7 +5,7 @@ import simplejson
 from pinmap import pinmap
 
 # first generate JSON format
-simplejson.dump(pinmap,file("pinmap.json","w"))
+simplejson.dump(pinmap,file("pinmap.json","w"),indent=3,sort_keys=True)
 
 # AN...
 adc_pins = {}
@@ -15,12 +15,10 @@ for pic,pinfo in pinmap.items():
 			if f.startswith("AN"):
 				adc_pins.setdefault(pic,{})[pin] = f  
 
-simplejson.dump(pinmap,file("adc/adc_pins.json","w"))
 fout = file("adc/adc_pins.py","w")
 fout.write("adc_pins = \\\n")
 print >> fout, pprint.pformat(adc_pins)
 fout.close()
-
 
 
 # VREF
@@ -31,7 +29,6 @@ for pic,pinfo in pinmap.items():
 			if f.startswith("VREF"):
 				vref_pins.setdefault(pic,{})[pin] = f
 
-simplejson.dump(pinmap,file("adc/vref_pins.json","w"))
 fout = file("adc/vref_pins.py","w")
 fout.write("vref_pins = \\\n")
 print >> fout, pprint.pformat(vref_pins)
@@ -42,7 +39,6 @@ adc_an_grp = {}
 for pic,pins in adc_pins.items():
    adc_an_grp.setdefault(tuple(pins.items()),[]).append(pic)
 
-simplejson.dump(pinmap,file("adc/adc_an_grp.json","w"))
 fout = file("adc/adc_an_grp.py","w")
 fout.write("adc_an_grp = \\\n")
 print >> fout, pprint.pformat(adc_an_grp)
@@ -63,9 +59,5 @@ for pic,picpin in pinmap.items():
 		if len(pins) > 1:
 			for pin in pins:
 				picpin[pin][picpin[pin].index(alias)] += "_%s" % pin
-simplejson.dump(pinmap,file("pinmap_pinsuffix.json","w"))
-fout = file("pinmap_pinsuffix.py","w")
-fout.write("pinmap_pinsuffix = \\\n")
-print >> fout, pprint.pformat(pinmap)
-fout.close()
+simplejson.dump(pinmap,file("pinmap_pinsuffix.json","w"),indent=3,sort_keys=True)
 
