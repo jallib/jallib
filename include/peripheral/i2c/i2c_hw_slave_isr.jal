@@ -47,7 +47,16 @@
 --   - AN734: http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1824&appnote=en011798
 -- 
 
+-- enable line below to enable testing of the clock stretching feature
+-- it will add an additional delay of 200us in the interrupt handler
+-- so were sure that clock stretching is required for 100 KHz I3C operation
 
+-- const bit I2C_HW_SLAVE_TEST_CLOCK_STRETCHING == 1
+
+
+if defined( I2C_HW_SLAVE_TEST_CLOCK_STRETCHING ) == true then
+   include delay
+end if
 
 -- i2c ISR handler. Detects states a call appropriate procedures
 procedure i2c_hw_slave_isr_handler() is
@@ -56,6 +65,12 @@ procedure i2c_hw_slave_isr_handler() is
       return
    end if
 
+   -- Test code to simulate a large delay in the I2C interrupt handling
+   -- to test if the clock stretching feature is working properly
+   if defined( I2C_HW_SLAVE_TEST_CLOCK_STRETCHING ) == true then
+      delay_10us( 20 )
+   end if
+   
    PIR1_SSPIF = false
    tmpstat = SSPSTAT              
 
@@ -92,6 +107,8 @@ procedure i2c_hw_slave_isr_handler() is
    -- mask out unimportant bit
    tmpstat = tmpstat & 0b_0010_1101
 
+   -- State machine for PIC18f is slightly different, therefore specific
+   -- code for PIC16 and PIC18
 	if defined(i2c_old_statemachine) == true then
 
 	   -- state 1: write operation, last byte is address, buffer full
@@ -186,10 +203,7 @@ procedure i2c_hw_slave_isr_handler() is
 	   then
 		  var byte rcv = i2c_hw_slave_read_i2c()
 		  i2c_hw_slave_on_state_2(rcv)
-	
-	   if ((tmpstat & 0b_0000_1000) == false) then
-	      SSPCON_CKP = 1                          
-	   end if
+        	
 	   -- state 3: read operation, last byte is address, buffer empty
 	   -- master wants to get a value from us
 	   --
@@ -206,7 +220,8 @@ procedure i2c_hw_slave_isr_handler() is
 
 	   elsif ((tmpstat & 0b_1111_1011) ^ 0b_0010_1000) == false
 	   then
-		   
+		
+         -- check CKP bit to distinguish between state 4 and 5
 			if ( SSPCON_CKP == 0 ) then
 
 			   -- state 4: read operation, last byte is data, buffer empty
@@ -224,7 +239,7 @@ procedure i2c_hw_slave_isr_handler() is
 			   --     => call i2c_hw_slave_on_state_5()
 				-- AN734 does not talk about setting CKP, whereas spec says
 				-- it must be set. Some people say it can be error prone.
-				SSPCON_CKP = 1
+				-- SSPCON_CKP = 1
 				i2c_hw_slave_on_state_5()
 			end if
 			
@@ -232,10 +247,12 @@ procedure i2c_hw_slave_isr_handler() is
 	   else
 		  -- something went wrong, that is, XOR operations did not match
 		  -- SSPSTAT bits        
-	     SSPCON_CKP = 1
 		  i2c_hw_slave_on_error()
 	   end if
-
+	   
+	   -- always clear CKP so clock line will be released (HW will set CKP
+	   -- bit when clock stretching feature is enabled
+      SSPCON_CKP = 1
 	end if
 	
 end procedure
