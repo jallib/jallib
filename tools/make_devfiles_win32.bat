@@ -15,17 +15,17 @@ REM ****************************************************************************
 
 mkdir d:\temp
 mkdir d:\temp\mplab833
-mkdir "d:\temp\mplab833\MPASM Suite"
-mkdir "d:\temp\mplab833\MPASM Suite\LKR"
-mkdir "d:\temp\mplab833\MPLAB IDE"
-mkdir "d:\temp\mplab833\MPLAB IDE\device"
+mkdir "d:\temp\mplab833\mpasm_suite"
+mkdir "d:\temp\mplab833\mpasm_suite\LKR"
+mkdir "d:\temp\mplab833\mplab_ide"
+mkdir "d:\temp\mplab833\mplab_ide\device"
 
-del "d:\temp\mplab833\MPASM Suite\LKR\*.*" /S /F /Q
-del "d:\temp\mplab833\MPLAB IDE\device" /S /F /Q
+del "d:\temp\mplab833\mpasm_suite\LKR\*.*" /S /F /Q
+del "d:\temp\mplab833\mplab_ide\device" /S /F /Q
  
 
-copy "D:\pic\Microchip\MPASM Suite\LKR\*.*" "d:\temp\mplab833\MPASM Suite\LKR\"
-copy "D:\pic\Microchip\MPLAB IDE\device\*.*" "d:\temp\mplab833\MPLAB IDE\device\"
+copy "D:\pic\Microchip\MPASM Suite\LKR\*.*" "d:\temp\mplab833\mpasm_suite\LKR\"
+copy "D:\pic\Microchip\MPLAB IDE\device\*.*" "d:\temp\mplab833\mplab_ide\device\"
 
 subst k: /d
 subst k: d:\temp
