@@ -28,7 +28,7 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.77'                   /*                          */
+   ScriptVersion   = '0.0.78'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /*                          */
    CompilerVersion = '2.4l'                     /* use of alias keyword     */
 /* ------------------------------------------------------------------------ */
@@ -38,7 +38,7 @@ mplabdir    = 'k:/mplab833/'                    /* MPLAB base directory */
 devdir      = mplabdir'mplab_ide/device/'       /* dir with .dev files */
 lkrdir      = mplabdir'mpasm_suite/lkr/'        /* dir with .lkr files */
 PicSpecFile = 'devicespecific.cmd'              /* script with PIC specific info */
-PinMapFile  = 'pinmap.cmd'                      /* script with pin aliases */
+PinMapFile  = 'k:/jallib/tools/pinmap_pinsuffix.json'  /* pin aliases */
 FuseDefFile = 'fusedefmap.cmd'                  /* script with fuse_def name mapping */
 
 say 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
@@ -50,6 +50,7 @@ else if destination = 'TEST' then               /* test run */
   dstdir = 'test/'                              /* subdir for testing */
 else do
   say 'Error: Required argument missing: "prod" or "test"'
+  say '       Optional second argument: PIC selection (wildcard), e.g.: 18F45*'
   return 1
 end
 
@@ -363,8 +364,8 @@ return
 
 
 /* --------------------------------------------------- */
-/* Read file with pin alias information                */
-/* Interpret contents: fill compound variable PinMap.  */
+/* Read file with pin alias information (JSON format)  */
+/* Fill compound variable PinMap.                      */
 /* --------------------------------------------------- */
 file_read_pinmap: procedure expose PinMapFile PinMap.
 if stream(PinMapFile, 'c', 'open read') \= 'READY:' then do
@@ -372,12 +373,78 @@ if stream(PinMapFile, 'c', 'open read') \= 'READY:' then do
   exit 1                                        /* zero records */
 end
 call charout , 'Reading pin alias names from' PinMapFile '... '
-do while lines(PinMapFile) > 0                  /* read whole file */
-  interpret linein(PinMapFile)                  /* read and interpret line */
+do until x = '{'                        /* search begin of pinmap */
+  x = json_newchar()
 end
-call stream PinMapFile, 'c', 'close'            /* done */
+do until x = '}' | x = 0                /* end of pinmap */
+  do until x = '}'                      /* end of pic */
+    picname = json_newstring()                 /* new PIC */
+    do until x = '{'                    /* search begin PIC specs */
+      x = json_newchar()
+    end
+    ANcount = 0                         /* zero ANxx count this PIC */
+    do until x = '}'                    /* this PICs specs */
+      pinname = json_newstring()
+      i = 0                             /* no aliases (yet) */
+      do until x = '['                  /* search pin aliases */
+        x = json_newchar()
+      end
+      do until x = ']'                  /* end of aliases this pin */
+        aliasname = json_newstring()
+        if aliasname = '' then do       /* no (more) aliases */
+          x = ']'                       /* must have been last char read! */
+          iterate
+        end
+        if right(aliasname,1) = '-' then        /* handle trailing '-' character */
+          aliasname = strip(aliasname,'T','-')'_NEG'
+        else if right(aliasname,1) = '+' then   /* handle trailing '+' character */
+          aliasname = strip(aliasname,'T','+')'_POS'
+        i = i + 1
+        PinMap.picname.pinname.i = aliasname
+        if left(aliasname,2) = 'AN' & datatype(substr(aliasname,3)) = 'NUM' then
+          ANcount = ANcount + 1
+        x = json_newchar()
+      end
+      PinMap.picname.pinname.0 = i
+/*    if i = 0 then
+        say '    no alias for' pinname  */
+      x = json_newchar()
+    end
+    ANCountName = 'ANCOUNT'
+    PinMap.picname.ANCountName = ANcount
+    x = json_newchar()
+  end
+  x = json_newchar()
+end
+call stream PinMapFile, 'c', 'close'
 say 'done!'
 return
+
+
+/* -------------------------------- */
+json_newstring: procedure expose PinMapFile
+do until x = '"' | x = ']' | x = '}' | x = 0    /* start of newstring or end of all aliases */
+  x = json_newchar()
+end
+if x \= '"' then
+  return ''
+str = ''
+x = json_newchar()                  /* first char */
+do while x \= '"'
+  str = str||x
+  x = json_newchar()
+end
+return str
+
+/* -------------------------------- */
+json_newchar: procedure expose PinMapFile
+do while chars(PinMapFile) > 0
+  x = charin(PinMapFile)
+  if x <= ' ' then                  /* white space */
+    iterate
+  return x
+end
+return 0                            /* dummy */
 
 
 /* ---------------------------------------------------- */
@@ -1227,6 +1294,7 @@ return 0
 /* -------------------------------------------------------  */
 list_sfr16: procedure expose Dev. Ram. Name. PinMap. jalfile,
             BANKSIZE NumBanks PicName AccessBankSplitOffset
+PortLat. = 0                                    /* no pins at all */
 do i = 1 to Dev.0
   if word(Dev.i,1) \= 'SFR' then
     iterate
@@ -1255,7 +1323,12 @@ do i = 1 to Dev.0
       memtype = 'shared'                        /* in shared memory */
     call lineout jalfile, 'var volatile' field left(reg,25) memtype 'at 0x'addr
 
-    if left(reg,3) = 'LAT' then do              /* LATx register */
+    if left(reg,4) = 'PORT' then do             /* PORTx register */
+      PortLetter = right(reg,1)
+      PortLat.PortLetter. = 0                   /* init: no pins in PORTx */
+                                                /* updated in list_sfr_subfields16 */
+    end
+    else if left(reg,3) = 'LAT' then do         /* LATx register */
       call list_port16_shadow reg               /* force use of LATx */
                                                 /* for output to PORTx */
     end
@@ -1291,36 +1364,6 @@ end
 return 0
 
 
-/* -------------------------------------------------------- */
-/* procedure to normalize MSSP register names               */
-/* input: - register name                                   */
-/* 16-bit core                                              */
-/* -------------------------------------------------------  */
-normalize_ssp16:
-select
-  when reg = 'SSPADD' then
-    reg = 'SSP1ADD'
-  when reg = 'SSP1CON1' |,
-       reg = 'SSPCON1'  |,
-       reg = 'SSPCON'   then
-    reg = 'SSP1CON'
-  when reg = 'SSPCON2'  then
-    reg = 'SSP1CON2'
-  when reg = 'SSPMSK'   |,
-       reg = 'SSPMASK'  then
-    reg = 'SSP1MSK'
-  when reg = 'SSPSTAT'  then
-    reg = 'SSP1STAT'
-  when reg = 'SSPBUF'   then
-    reg = 'SSP1BUF'
-  when reg = 'SSP2CON1' then                    /* second MSSP modle */
-    reg = 'SSP2CON'
-  otherwise
-    nop
-end
-return  reg                                     /* return normalized name */
-
-
 /* --------------------------------------- */
 /* Formatting of special function register */
 /* input:  - index in .dev                 */
@@ -1330,7 +1373,7 @@ return  reg                                     /* return normalized name */
 /* Fixes some errors in MPLAB              */
 /* 16-bit core                             */
 /* --------------------------------------- */
-list_sfr_subfields16: procedure expose Dev. Name. PinMap. PicName jalfile
+list_sfr_subfields16: procedure expose Dev. Name. PinMap. PortLat. PicName jalfile
 i = arg(1) + 1                                          /* 1st after reg */
 reg = arg(2)                                            /* register (name) */
 memtype = arg(3)                                        /* shared/blank */
@@ -1345,11 +1388,9 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
     parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
     parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
     offset = 7                                          /* MSbit first */
+    PortLat16 = '00000000'                              /* no pins */
     do j = 1 to 8 while offset >= 0                     /* 8 bits */
-      if n.j = '-' then do                              /* bit not used */
-        nop
-      end
-      else if s.j = 1 then do                           /* single bit */
+      if s.j = 1 then do                                /* single bit */
         if pos('/', n.j) \= 0 then do                   /* twin name */
           parse var n.j val1'/'val2 .
           if val1 \= '' then do
@@ -1384,23 +1425,36 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
             call lineout jalfile, 'var volatile bit   ',
                  left(reg'_N'n.j,25) memtype 'at' reg ':' offset
           end
-          else if duplicate_name(field,reg) = 0 then    /* unique */
-            call lineout jalfile, 'var volatile bit   ',
-                 left(field,25) memtype 'at' reg ':' offset
-
+          else if n.j \= '-' then do                    /* bit present  */
+            if duplicate_name(field,reg) = 0 then do    /* unique */
+              call lineout jalfile, 'var volatile bit   ',
+                                    left(field,25) memtype 'at' reg ':' offset
+              if left(reg,4) = 'PORT' then do
+                PortLetter = right(reg,1)
+                if left(n.j,2) = 'R'portletter  &,      /* probably pin */
+                   substr(n.j,3) = offset  then         /* number OK */
+                  PortLat.PortLetter.offset = Portletter||offset   /* store pinname */
+              end
+            end
+          end
+                                                /* additional declarations */
           if reg = 'INTCON' then do
             if left(n.j,2) = 'T0' then
               call lineout jalfile, 'var volatile bit   ',
                        left(reg'_TMR0'||substr(n.j,3),25) memtype 'at' reg ':' offset
           end
-          else if left(reg,4) = 'PORT' then do          /* PORTx register */
-            if substr(n.j,2,1) = right(reg,1)  &,       /* port letter */
-               datatype(substr(n.j,3)) = 'NUM' then do  /* pin number */
-              pin = 'pin_'||substr(n.j,2)
+          else if left(reg,3) = 'LAT' then do           /* LATx register */
+            PortLetter = right(reg,1)
+            PinNumber  = right(n.j,1)
+            pin = 'pin_'PortLat.PortLetter.offset
+            if PortLat.PortLetter.offset \= 0 then do   /* pin present in PORTx */
               call lineout jalfile, 'var volatile bit   ',
-                       left(pin,25) memtype 'at' reg ':' offset
-              call insert_pin_alias reg, n.j, pin
+                       left(pin,25) memtype 'at' 'PORT'portletter ':' offset
+              call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
               call lineout jalfile, '--'
+            end
+            if substr(n.j,4,1) = portletter  &,         /* port letter */
+               datatype(pinnumber) = 'NUM' then do      /* pin number */
               call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                'at' reg ':' offset') is'
               call lineout jalfile, '   pragma inline'
@@ -1408,13 +1462,17 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
               call lineout jalfile, '--'
             end
           end
-          else if left(reg,4) = 'TRIS' then do
-            pin = 'pin_'||substr(n.j,5)'_direction'
-            if  left(n.j,4) = 'TRIS' then do            /* only TRIS bits */
-              call lineout jalfile, 'var volatile bit   ',
-                           left(pin,25) memtype 'at' reg ':' offset
-              call insert_pin_direction_alias 'PORT'substr(reg,5), 'R'substr(n.j,5), pin
-              call lineout jalfile, '--'
+          else if left(reg,4) = 'TRIS' then do          /* TRISx register */
+            portletter = right(reg,1)
+            pinnumber  = right(n.j,1)
+            if PortLat.PortLetter.offset \= 0 then do   /* pin present in PORTx */
+              pin = 'pin_'PortLat.PortLetter.offset'_direction'
+              if  left(n.j,4) = 'TRIS' then do          /* only 'TRIS' bits */
+                call lineout jalfile, 'var volatile bit   ',
+                             left(pin,25) memtype 'at' reg ':' offset
+                call insert_pin_direction_alias 'PORT'substr(reg,5), 'R'substr(n.j,5), pin
+                call lineout jalfile, '--'
+              end
             end
           end
           else if left(reg,5) = 'ADCON'  &,             /* ADCON0/1 */
@@ -1425,6 +1483,9 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                    left(left(field,length(field)-1),25) memtype 'at' reg ':' offset
           end
         end
+      end
+      else if n.j = '-' then do                         /* bit not used */
+        nop
       end
       else if s.j <= 8 then do                          /* multi bit sub field */
         field = reg'_'n.j
@@ -1487,6 +1548,36 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
   i = i + 1                                             /* next record */
 end
 return 0
+
+
+/* -------------------------------------------------------- */
+/* procedure to normalize MSSP register names               */
+/* input: - register name                                   */
+/* 16-bit core                                              */
+/* -------------------------------------------------------  */
+normalize_ssp16:
+select
+  when reg = 'SSPADD' then
+    reg = 'SSP1ADD'
+  when reg = 'SSP1CON1' |,
+       reg = 'SSPCON1'  |,
+       reg = 'SSPCON'   then
+    reg = 'SSP1CON'
+  when reg = 'SSPCON2'  then
+    reg = 'SSP1CON2'
+  when reg = 'SSPMSK'   |,
+       reg = 'SSPMASK'  then
+    reg = 'SSP1MSK'
+  when reg = 'SSPSTAT'  then
+    reg = 'SSP1STAT'
+  when reg = 'SSPBUF'   then
+    reg = 'SSP1BUF'
+  when reg = 'SSP2CON1' then                    /* second MSSP modle */
+    reg = 'SSP2CON'
+  otherwise
+    nop
+end
+return  reg                                     /* return normalized name */
 
 
 /* -------------------------------------------------- */
@@ -2789,7 +2880,7 @@ return addr_list' }'                            /* complete string */
 /* Signal duplicates names                       */
 /* Collect all names in Name. compound variable  */
 /* Return - 0 when name is unique                */
-/*        - 1 when name is dumplicate            */
+/*        - 1 when name is duplicate             */
 /* --------------------------------------------- */
 duplicate_name: procedure expose Name. PicName
 newname = arg(1)
