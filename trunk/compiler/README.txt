@@ -27,7 +27,36 @@ http://home.hetnet.nl/~annie86/bvd/lonelynights/index.html
 
 History
 =======
-2.4k  -- ?? ??? ????
+2.4l  --  7 Aug 2009
+         * -const-detect ordered the constant big endian instead
+           if little endian
+         * 16 bit code generation fixed to match mpasm (namely,
+           the PC is shown in bytes not words)
+         * Added inline assembly: reset
+         * A procedure taking a volatile parameter and also
+           re-entrant would cause an assert()
+         * Changed re-rentrant entry/exit to *not* use stkpush/pop  
+         * A re-entrant *function's* return value was over-written
+           if there were any non-volatile OUT paramters
+         * added a numeric option to -loader18 to set the offset
+           Examples:
+             -loader18      : starts the code at 2048
+             -loader18 4096 : starts the code a 4096
+         * Added units to jalpragm.txt to explain that for
+           `PRAGMA CODE size', size is in WORDs for 12/14 bit
+           cores, and BYTEs for 16 bit cores (thanks MicroChip!).
+           This follows from the second bullet above.
+         * Included inclue assembly opcodes: rlcf/rlncf/rrcf/rrncf  
+         * Fixed 16-bit code to use rrcf instead of rrf
+         * Make sure variables don't span banks even if the banks
+           are contiguous (a problem seen on 16 bit cores).
+         * `ALIAS...IS' should work even if the underlying variable
+           is only a pseudo-variable
+         * Output of `Code area' was screwy on 16 bit cores  
+         * Changed `pragma code' on the 18 series to use bytes instead
+           of words
+
+2.4k  -- 08 May 2009
          * very minor optimization for bit value return
          * B00059: compiler generated 'put for bits doesn't work
          * B00058: compiler generated 'put doesn't work
