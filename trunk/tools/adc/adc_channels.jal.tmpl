@@ -459,6 +459,53 @@ $pcfg_conf($dsref,$picsgrp)
    -- Provide helper func to configure pins either in digital or analog mode
    -- (/!\, true/false logic is inverted compared to PCFGx bits)
 
+   -- Some exceptions have been reported related to 16f72X family. These devises
+   -- have gaps within their analog pins, but ANSx bits are continued. For instance,
+   -- for 16f722, JANSEL_ANS5 should refer to analog pin AN5, but it does not exist !
+   -- We need to put some more exceptions here, hoping there won't be much more. If so, 
+   -- these would have to be dealt an in external file people could easily enrich.
+   -- Anyway... here we go !
+   -- Guilty PICs: 16F722, 16F723, 16F724, 16F726, 16F727 + LF versions
+   -- Here's how ANSx bits are mapped to analog pins:
+   ## stores JANSEL_ANSx <=> AN pin number
+   ## 16F72X_map = {0:0, 1:1, 2:2, 3:3, 4:5, 6:12, 7:10, 8:8, 9:9, 10:11, 11:13, 20:5, 21:6, 22:7}
+   ## Maybe this should be in an external python lib file...
+
+   if target_chip == PIC_16F722 | target_chip == PIC_16F723 | target_chip == PIC_16F724 | target_chip == PIC_16F726 | target_chip == PIC_16F727 |
+      target_chip == PIC_16LF722 | target_chip == PIC_16LF723 | target_chip == PIC_16LF724 | target_chip == PIC_16LF726 | target_chip == PIC_16LF727 then
+
+	  ## always exists in all 16F72X family
+	  alias ADC_JANSEL_ANS0  is JANSEL_ANS0
+	  alias ADC_JANSEL_ANS1  is JANSEL_ANS1
+	  alias ADC_JANSEL_ANS2  is JANSEL_ANS2
+	  alias ADC_JANSEL_ANS3  is JANSEL_ANS3
+	  alias ADC_JANSEL_ANS4  is JANSEL_ANS5
+	  alias ADC_JANSEL_ANS12 is JANSEL_ANS6
+	  alias ADC_JANSEL_ANS10 is JANSEL_ANS7
+	  alias ADC_JANSEL_ANS8  is JANSEL_ANS8
+	  alias ADC_JANSEL_ANS9  is JANSEL_ANS9
+	  alias ADC_JANSEL_ANS11 is JANSEL_ANS10
+	  alias ADC_JANSEL_ANS13 is JANSEL_ANS11
+
+
+
+
+	  ## only for these
+	  if target_chip == PIC_16F724 | target_chip == PIC_16F727 | target_chip == PIC_16LF724 | target_chip == PIC_16LF727 then
+		 alias ADC_JANSEL_ANS5 is JANSEL_ANS20
+	  	 alias ADC_JANSEL_ANS6 is JANSEL_ANS21
+	  	 alias ADC_JANSEL_ANS7 is JANSEL_ANS22
+	  end if
+
+   else
+	  -- no exception here: ANSx corresponds to analog pin n°x
+      #for i in range(23)
+		 if defined(JANSEL_ANS$i) == true then
+			alias ADC_JANSEL_ANS$i is JANSEL_ANS$i
+		 end if
+	  #end for
+   end if
+
    -- Configure a pin to act as an analog pin.
    -- an_pin_num references the 'x' in ANx notation.
    -- Say you want to activate pin AN7, which is pin #12, also named RA4 in digital mode:
@@ -468,9 +515,9 @@ $pcfg_conf($dsref,$picsgrp)
    --     - set_analog_pin(4) will do the same for AN4
    procedure set_analog_pin(byte in an_pin_num) is
       #for i in range(23)
-      if defined(JANSEL_ANS$i) == true then
+      if defined(ADC_JANSEL_ANS$i) == true then
          if an_pin_num == $i then
-            JANSEL_ANS$i = true
+            ADC_JANSEL_ANS$i = true
             pin_AN${i}_direction = input
          end if
       end if
@@ -490,9 +537,9 @@ $pcfg_conf($dsref,$picsgrp)
    -- Note: the pin direction is not modified
    procedure set_digital_pin(byte in an_pin_num) is
       #for i in range(23)
-      if defined(JANSEL_ANS$i) == true then
+      if defined(ADC_JANSEL_ANS$i) == true then
          if an_pin_num == $i then
-            JANSEL_ANS$i = false
+            ADC_JANSEL_ANS$i = false
          end if
       end if
       #end for
