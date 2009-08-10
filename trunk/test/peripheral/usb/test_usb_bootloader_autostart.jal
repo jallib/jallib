@@ -29,6 +29,14 @@
 -- const STUB_ERASE = 1
 -- const STUB_WRITE_FLASH = 1
 
+-- needed to get compact code, bootloader has to
+-- fit within first 2048 bytes in order to be
+-- compatible with default of PDFSUSB
+-- currently only 2 bytes left (2022 bytes)
+PRAGMA OPT CONST_DETECT YES
+
+
+
 ;@jallib use chipdef
 
 
@@ -235,8 +243,6 @@ const byte USB_STRING0[] =
 include usb_drv_core
 
 
-procedure usb_tasks()
-
 procedure trigger_dev2host_transfer() is 
 	var volatile bit dts_bit at usb_bd1in_stat : USB_BDSTATUS_DTS
 --	var volatile bit uown_bit_out at usb_bd1in_stat : USB_BDSTATUS_UOWN 
@@ -268,6 +274,7 @@ procedure start_write() is
 end procedure
 
 procedure set_boot_address() is 
+	-- pragma inline
 	TBLPTRU = boot_cmd_addru
 	TBLPTRH = boot_cmd_addrh
 	TBLPTRL = boot_cmd_addrl
@@ -277,6 +284,22 @@ procedure set_boot_address() is
 	end if
 	 
 end procedure
+
+procedure disable_boot() is 
+	var word big_counter = 0xFFFF 
+
+	-- disable timer 1
+	T1CON = 0x00
+
+	-- disable USB
+	UCON = 0x00
+	
+	-- force timeout on USB
+	while big_counter != 0  loop
+		big_counter = big_counter - 1
+	end loop
+end procedure
+
 
 procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
 	pragma inline
@@ -319,10 +342,14 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
 			boot_cmd_buffer[2] = MINOR_VERSION;
 			boot_cmd_buffer[3] = MAJOR_VERSION;
 			usb_bd1in_cnt = 4
+			T1CON = 0b0000_0000 -- disable timer 1
 		end block
 		
  		READ_EEDATA:
 		block
+if true then
+
+
 			if defined( EECON1_EEPGD ) == true then			
 				var byte counter
 				EECON1_EEPGD = 0
@@ -347,6 +374,7 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
 					boot_cmd_data[ counter ] = EEDATA
 				end loop
 			end if
+end if
 						
 			usb_bd1in_cnt = 5 + boot_cmd_len
 
@@ -466,6 +494,7 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
 		
 		WRITE_EEDATA:
 		block
+if true then
 
 			if defined( EECON1_EEPGD ) == true then			
 		
@@ -479,6 +508,7 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
 					end loop
 				end loop
 			end if			
+end if
 			usb_bd1in_cnt = 1		
 		end block
 		
@@ -520,12 +550,9 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
 		
 		RESET: 
 			block
-				var word big_counter = 0xFFFF
-				UCON = 0x00
-				while big_counter != 0  loop
-					big_counter = big_counter - 1
-				end loop
-				asm reset
+				disable_boot()
+				-- asm reset
+				asm goto 0x800
 			end block		
     end case
 
@@ -567,7 +594,7 @@ procedure usb_tasks() is
 end procedure
 
 -- interrupts? No thanks
-INTCON_GIE = false
+-- INTCON_GIE = false
 
 if defined( HAS_SERIAL_DEBUG_PORT ) == high then
 	-- put info on RS-232 serial line
@@ -578,40 +605,66 @@ if defined( HAS_SERIAL_DEBUG_PORT ) == high then
 	serial_newline()
 end if
 
-
-
-bootloader_program_pin_direction = input
-var byte saved_adcon
-saved_adcon = ADCON1
-ADCON1 = ADCON1 | 0x0F
-
-
 procedure interrupt_high() is 
 	pragma interrupt raw
-	asm goto 0x0818
+	asm goto ( 0x0818 )
 end procedure
 
-if ( bootloader_program_pin == high ) then
+-- read first byte of USER ID
+-- TBLPTRU = 0x20
+-- TBLPTRH = 0x00
+-- TBLPTRL = 0x00
+--asm TBLRD*+
+
+--if ( TABLAT != 0x00 ) then
 -- if ( false) then
-	ADCON1 = saved_adcon
-	asm goto 0x800
-else
+--	asm goto ( 0x800)
+--else
 	-- setup the USB device
 	usb_setup()
 
 	-- enable USB device
 	usb_enable_module()		
-end if
+--end if
 
 usb_bd1in_addr = USB_EP1_IN_ADDR
+
+T1CON = 0b0011_0001 -- timer 1 on, prescaler 8
+
+var byte t1_count = 0 
 
 -- main loop
 forever loop
 	-- poll the usb ISR function on a regular base, in order to 
 	-- serve the USB requests
-	usb_tasks()
+    usb_handle_isr()
 	if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
 		if PIR1_RCIF then
 		end if
+	end if
+	
+	if PIR1_TMR1IF == 1 then
+		t1_count = t1_count + 1 
+		PIR1_TMR1IF = 0
+		
+		-- 22 counts per second, ~10 seconds wait => 220 ticks
+		-- if expired, 
+		if t1_count > 220 then
+			-- set ID 0
+			-- EECON1 = 0b_1000_0100 -- Setup writes: EEPGD=1,WREN=1
+
+			-- TBLPTRU = 0x20
+			-- TBLPTRH = 0x00
+			-- TBLPTRL = 0x00
+			-- TABLAT  = 0x00
+			-- asm TBLWT*+
+			-- start_write()
+			disable_boot()
+			
+						
+			-- start user app
+			asm goto 0x800
+			
+		end if 
 	end if	
 end loop
