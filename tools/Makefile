@@ -40,7 +40,7 @@ test :
 compile:
 	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
 	do \
-		../compiler/jalv2 -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '0 errors' && true || ( echo problem with $$f && exit 255; ) \
+		../compiler/jalv2 -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors' && true || ( echo problem with $$f && exit 255; ) \
 	done 
 
 jsg:
@@ -171,3 +171,7 @@ release: export dispatch pack
 	cd distrib/jallib-all_devices-${VERSION} && zip -r jallib-all_devices-${VERSION}.zip . && mv jallib-all_devices-${VERSION}.zip ..
 	cd distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION} && zip -r jallib-pack-`../jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}.zip . && mv jallib-pack-`../jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}.zip ..
 
+check:
+	sh check_package.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2
+	sh check_package.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2
+	sh check_package.sh distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/lib distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/sample distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/compiler/jalv2
