@@ -1,0 +1,145 @@
+#def header
+-- Title: hardware PWM control, dedicated to register $ccp_name
+-- Author: Stef Mientki, Copyright (C) 2002-2006, all rights reserved. 
+-- Adapted-by: Sebastien Lelong
+-- Compiler: >=2.4g
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: performs PWM operations on $ccp_name
+-- The target must support this.
+--
+-- Notes: this is a heavy refactoring of the original pwm_hardware.jal
+-- Stef's lib
+--
+#end def
+
+
+#def global_vars
+var byte ${ccprxl}_shadow  = 0
+var byte ${ccpxcon}_shadow = 0
+#end def
+
+
+
+#def pwm_set_dutycycle
+-- Sets dutycyle in low resolution mode.
+-- The 2 LSbits take their value from ${ccpxcon}_shadow, by default 0
+-- This means if duty$num = 0, there's no pwm, if duty$num = 255, you're closed to
+-- (but not at) the maximum pwm
+procedure pwm${num}_set_dutycycle(byte in duty) is
+   ${ccprxl}_shadow = duty
+   $CCPRXL  = ${ccprxl}_shadow   -- reload 8 high order bits of dutycycle
+   $CCPXCON = ${ccpxcon}_shadow  -- reload 2 low  order bits of dutycycle 
+end procedure
+
+
+-- sets dutycyle in high resolution mode
+-- the word passed to the procedure represents the high resolution value
+-- of the duty cycle:
+--  * duty${num}h<0:1> are the 2 LSbits
+--  * duty${num}h<2:9> are the 8 MSbits
+--
+-- Because duty cycle is coded on 10 bits, the given value can't greater than 1024
+-- If not active yet, calling this procedure will enable PWM
+procedure pwm${num}_set_dutycycle_highres(word in duty) is
+
+   -- split word into 8 MSb and 2LSb
+   var word dutyl = duty & 0b_0000_0011
+   var word dutyh = duty >> 2
+
+   ${ccprxl}_shadow = byte(dutyh)
+   ${ccpxcon}_shadow = (byte(dutyl) & 0b_0000_0011) << 4
+   
+   $CCPRXL  = ${ccprxl}_shadow
+   -- reload while (re)activating pwm
+   ${ccpxcon}_shadow = ${ccpxcon}_shadow | 0b_0000_1100
+   $CCPXCON = ${ccpxcon}_shadow
+end procedure
+#end def
+
+
+#def pwm_on_off
+procedure pwm${num}_on() is
+   -- pwm mode on, while keeping 2 LSbits
+   ${ccpxcon}_shadow = ${ccpxcon}_shadow | 0b_0000_1100
+   $CCPXCON = ${ccpxcon}_shadow
+end procedure
+
+
+procedure pwm${num}_off() is
+   -- pwm mode off, but keep 2 LSbits values
+   ${ccpxcon}_shadow = ${ccpxcon}_shadow & !0b_0000_1100
+   $CCPXCON = ${ccpxcon}_shadow
+end procedure
+#end def
+
+#def include
+-- include common/factored part of pwm
+include pwm_common
+#end def
+
+
+#def pwm_set_percent
+-- Following procedures needs variables defined in pwm_common
+-- so they are listed here
+
+-- This procedure set duty cycle using a percentage
+-- According to what has been computed by pwm_set_frequency(),
+-- it converts the duty percent to a value suitable for the
+-- selected pwm frequency.
+procedure pwm${num}_set_percent_dutycycle(byte in percent) is
+   
+   -- due to a limitation in JAL, the brackects below are VERY essential
+   var dword _duty${num}_1  = ((percent * 4) * _pr2_1) / 100
+   var dword _duty${num}_4  = ((percent * 4) * _pr2_4) / 100
+   var dword _duty${num}_16 = ((percent * 4) * _pr2_16) / 100
+
+   var byte dutyh
+   var byte dutyl
+   -- select suitable duty value
+   if _pr2_1 == 0 then
+      ;;pragma error    -- pwm frequency is too high
+   elsif _pr2_1 <= 256 then
+      ;;${ccprxl}_shadow = byte(_duty${num}_1 / 4)        -- 8 high order bits of dutycycle
+      ;;${ccpxcon}_shadow = byte((_duty${num}_1 & 0b_0000_0011) * 16)
+      dutyh = byte(_duty${num}_1 / 4)        -- 8 high order bits of dutycycle
+      dutyl = byte((_duty${num}_1 & 0b_0000_0011) * 16)
+   elsif _pr2_4 <= 256 then
+      ;;${ccprxl}_shadow = byte(_duty${num}_4 / 4)
+      ;;${ccpxcon}_shadow = byte((_duty${num}_4 & 0b_0000_0011) * 16)
+      dutyh = byte(_duty${num}_4 / 4)
+      dutyl = byte((_duty${num}_4 & 0b_0000_0011) * 16)
+      
+   elsif _pr2_16 <= 256 then
+      -- Stef is a sioux: x * 16 <=> x << 4 !!!
+      ;;${ccprxl}_shadow = byte(_duty${num}_16 / 4)
+      ;;${ccpxcon}_shadow = byte((_duty${num}_16 & 0b_0000_0011) * 16)
+      dutyh = byte(_duty${num}_16 / 4)
+      dutyl = byte((_duty${num}_16 & 0b_0000_0011) * 16)
+   else
+      ;;pragma error  -- pwm frequency is too low to be realized by this routine,
+      -- use the post scaler and interrupt
+   end if
+
+   -- build a word storing duty cycle high resolution'ed
+   var word duty_tmp = dutyh << 2
+   duty_tmp = dutyh | dutyl
+   pwm${num}_set_dutycycle_highres(duty_tmp)
+
+
+end procedure
+#end def
+
+
+#def main
+$header
+$global_vars
+$pwm_set_dutycycle
+$pwm_on_off
+$include
+$pwm_set_percent
+#end def
+
+$main

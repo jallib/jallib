@@ -1,0 +1,255 @@
+Jal Version 2 Compiler Options
+==============================
+
+File Naming
+-----------
+  -hex name
+      Set the name of the generated HEX file to `name'. The default
+      is the program name with `.jal' replaced by `.hex', or `.hex'
+      appended if the program name doesn't end in `.jal'
+
+  -asm name
+      Set the name of the generated assembly file to `name'. The
+      default is the program name with `.jal' replaced by `.asm', or
+      `.asm' appended if the program name doesn't end in `.jal'
+
+Misc.
+-----
+  -quiet
+      Turns off the progress messages
+
+  -s path
+      Sets the library search path to `path'. Multiple directories
+      are seperated by ';'
+
+  -[no-]fuse
+      Do not put the `__config' line in the assembly or HEX files
+
+  -task n
+      Sets the maximum number of concurrent tasks to n. The default
+      is 0
+
+  -clear
+      Clear data area on program entry.
+
+
+Bootloader
+----------
+  -rickpic
+      Assumes the target PIC is using Rick Farmer's PIC bootloader. 
+      This begins the program at 0x0003 instead of 0x0000 and forces 
+      the first instruction to be a GOTO.
+
+  -long-start
+      Force the first generated instruction to be a long jump
+      (needed by some bootloaders)
+
+  -bloader
+      Using the screamer/bloader PIC loader. The first instruction
+      starts at 0x0003 and is a `goto start'
+
+  -loader18 [n]
+      Used on the 16 bit cores (PIC18xxxxx) this sets an offset
+      from the beginning of code space for the loader. Normally
+      the reset vector is 0x0000, the high priority interrupt at
+      0x0008, and the low priority interrupt at 0x0018. This
+      simply offsets the value. If n is present, that value is
+      used as the offset, if not the default is 0x0800 (putting the
+      reset vector at 0x0800, high priority interrupt at 0x0808, and
+      low priority at 0x0818).
+  
+Warnings
+--------
+  -Wdirectives
+      Warn if a compiler directive is found. A compiler directive
+      occurs when an IF statement uses a constant expression. In this
+      case the block is completely skipped -- not checked for
+      syntax or other errors
+
+  -Wstack-overflow
+      Normally if a stack overflow is detected the compiler throws
+      an error. This option changes it to a warning.
+
+  -Wno-conversion
+      Disable the `signed/unsigned mismatch' warning
+
+  -Wno-truncate
+      Disable the `assignment to smaller type...' warning
+
+  -Wno-warn
+      Disable all warnings
+
+Optimizer
+---------
+  -expr-reduction
+  -no-expr-reduction
+      Turns on or off expression reduction (see EXPRESSION REDUCTION below)
+      default : on
+
+  -expr-simplify
+  -no-expr-simplify
+      Turns on or off expression simplification (see EXPRESSION SIMPLIFICATION
+      below)
+      default : off
+
+  -cexpr-reduction
+  -no-cexpr-reduction
+      Turns on or off constant expression reduction, also known as constant
+      folding 
+      default : on
+
+  -temp-reduce
+  -no-temp-reduce
+      Attempt to re-use temporary variables created by complex
+      evaluations
+      default : off
+
+  -const-detect
+  -no-const-detect
+      Attempt to detect variables that are only assigned a single
+      value a change all references to them to constants
+      default : off
+
+  -variable-frame
+  -no-variable-frame
+      Allocate all variables used by a procedure into a data bank.
+      default : off
+
+  -variable-reduce
+  -no-variable-reduce
+      Do not eliminate variables that are never assigned and/or never
+      used.
+      default : on
+
+  -load-reduce
+  -no-load-reduce
+      Reduce redundant assigned & loads (track W)
+      default : off
+
+Debugging
+---------
+  -debug
+      Print copius amount of debugging information, and dumps much extra
+      to the ASM file
+
+  -pcode
+      Places the generated pcode into the ASM file
+
+  -nocodegen
+      Do not do any PIC code generation
+
+
+EXPRESSION REDUCTION
+====================
+
+The following simple expressions are reduced or removed:
+  x + 0 --> x
+  x - 0 --> x
+  0 - x --> -x
+  x * 0 --> 0
+  x * 1 --> x
+  x / 0 --> divide by zero error
+  x / 1 --> x
+  0 / x --> 0
+  x % 0 --> 0
+  x % 1 --> 0
+  x < 0, x unsigned --> 0
+  x <= 0, x unsigned --> x == 0
+  x >= 0, x unsigned --> 1
+  x > 0, x unsigned --> x != 0
+  x & 0 --> 0
+  x & x --> x
+  x | 0 --> x
+  x | x --> x
+  x ^ 0 --> x
+  x ^ x --> 0
+  -x, x is a BIT --> x
+  0 << x --> 0
+  x << 0 --> x
+  x << n, n is greater than 8 * size x --> 0
+  x >> 0 --> x
+  x >> n, n is greater than 8 * size x --> 0
+
+EXPRESSION SIMPLIFICATION
+=========================
+
+Introduced in jal24l, currently an *experimental* feature. The
+JAL --> pcode conversion is rather stupid. It takes JAL code and
+directly creates a simple list of three address codes in the form
+
+   operator (dst, val1, val2)
+
+This leaves little room for optimization, and tends to use quite
+a few temporary variables for any complex expression. For example,
+the expression:
+
+   xx = ((xx + 1) + 2) + 3)
+
+literally translates to:
+
+   t0 = xx + 1
+   t1 = t0 + 2
+   t2 = t1 + 3
+   xx = t2
+
+Expression simplification looks for expressions and from
+them creates an n-way tree, looking vaguely like:
+
+      =
+     / \
+   xx   t0
+        |
+  xx + 1 + 2 + 3
+
+which can be simplified to:
+
+      =
+     / \
+   xx   t0
+        |
+     xx + 6
+
+which can be further simplified as:
+
+  xx += 6
+
+of equal importance, this also introduces the concept of subexpression
+elimination. The following:
+
+  xx = xx * yy + yy * xx + xx * yy + yy * xx
+
+formerly:
+
+  t0 = xx * yy
+  t1 = yy * xx
+  t2 = t0 + t1
+  xx = t2
+
+becomes:
+
+  t0 = xx * yy
+  xx = t0 + t0
+
+(yes, this actually becomes: xx = t0 << 1)
+
+This will also detect identities:
+
+  xx = xx + 1 - xx
+
+becomes:
+
+  xx = 1
+
+It should not, however, change the results of any operation, and
+that is why it is currently experimental. Algebraically, the
+following is true:
+
+  xx = (xx / 10) * 10
+
+is the same as:
+
+  xx = xx (aka, no-op)
+
+however in integer arithmetic this is *not* true, so this
+change is not done.
+
