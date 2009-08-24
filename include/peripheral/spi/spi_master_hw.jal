@@ -1,0 +1,58 @@
+-- Title: SPI Master  (spi_master_hw.jal)
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Compiler: uncertain. FIXME
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: SPI Master hardware control.
+-- Routines for sending and receiving through the SPI in master mode
+--
+-- TODO: only tested in Master mode 00
+--
+
+-- SPI is full-duplex, so we exchange master and slave data byte
+function spi_master_hw_exchange (byte in m_data) return byte is
+   var byte stat
+   SSPBUF = m_data
+   
+   stat = SSPCON & 0x80
+   if ( stat != 0 ) then
+      -- FIXME how to report error???
+      return 0xFF
+   end if
+   
+   while ( SSPSTAT_BF == 0 ) loop end loop
+   
+   -- return slave data
+   return SSPBUF
+end function
+
+-- half-duplex convenience function. send data to slave, discard reply
+procedure spi_master_hw'put(byte in data) is
+   var byte dummy
+   dummy = spi_master_hw_exchange(data)
+end procedure
+
+-- half-duplex convenience function. send 0xFF, get slave data
+function spi_master_hw'get() return byte is
+   var byte data
+   data = spi_master_hw_exchange(0xFF)
+   return data
+end function
+
+-- SPI Master mode 0,0 example.
+-- Note: check your datasheet -- TRIS settings, any SPI errata?
+procedure _spi_init_mode00() is
+   var byte v
+   SSPCON = 0
+   v = SSPSTAT & 0x3F
+   SSPSTAT = v
+   v = v | 0x40 -- CKE = 1
+   SSPSTAT = v
+   v = SSPCON
+   v = v | 2 -- CKP=0, Master mode, OSC/64
+   SSPCON = v
+   SSPCON_SSPEN = 1
+end procedure
+
