@@ -240,8 +240,8 @@ const CAN_RTS_TX0 = 0x81
 const CAN_RTS_TX1 = 0x82
 const CAN_RTS_TX2 = 0x84
 const CAN_RTS_ALL = 0x87
-const CAN_READ_RX0 = 0x90
-const CAN_READ_RX1 = 0x94
+const CAN_READ_RX0_DATA = 0x92
+const CAN_READ_RX1_DATA = 0x96
 const CAN_READ_STATUS_CMD = 0xA0
 const CAN_RX_STATUS_CMD = 0xB0
 const CAN_RESET_CMD = 0xC0
@@ -372,4 +372,113 @@ procedure can_set_rxb1_filter5(byte in sidh, byte in sidl, byte in eid8, byte in
    can_write(RXF5EID8, eid8)
    can_write(RXF5EID0, eid0)
 end procedure
+
+-- send standard 11-bit CAN frame
+-- N.B. the caller must make certain that the buffer is available / free / not busy.
+-- FIXME. this is ugly code
+procedure can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) is
+   var byte r_base, i
+   var word sidh, sidl
+   if buf_no == 0 then
+      r_base = TXB0CTRL
+   elsif buf_no == 1 then
+      r_base = TXB1CTRL
+   elsif buf_no == 2 then
+      r_base = TXB2CTRL
+   else
+      return
+   end if
+   
+   can_write(r_base, 0)
+   
+   -- N.B. SIDH and SIDL bit-layout are weird (see datasheet)
+   sidh = std_id >> 3
+   sidl = std_id & 7
+   sidl = sidl << 5
+   
+   can_write(r_base+1, sidh)
+   can_write(r_base+2, sidl)
+   can_write(r_base+3, 0)
+   can_write(r_base+4, 0)
+   can_write(r_base+5, len)
+   for 8 using i loop
+      var byte j
+      j = r_base + i + 6
+      can_write(j, buf[i])
+   end loop
+   
+   can_write(r_base, 8) -- request TX now/soonest
+   
+end procedure
+
+-- receive standard 11-bit CAN frame
+-- FIXME. N. B. This routine will automatically discard any extended frames!
+-- FIXME. this is ugly code
+function can_receive(byte in buf_no, word out std_id, byte out buf[8], byte out len) return bit is
+   var bit rtr, ide, stat, ex
+   var byte op, i
+   var byte sidh, sidl
+   
+   -- quick check to make sure we have a message waiting
+   if buf_no == 0 then
+      stat = can_rx_status() & 1
+      if stat == 0 then
+         return 0
+      end if
+   elsif buf_no == 1 then
+      stat = can_rx_status() & 2
+      if stat == 0 then
+         return 0
+      end if
+   else
+      return 0 -- illegal value for buf_no
+   end if
+   
+   -- N.B. At this point we have a message. We must read it,
+   -- even if we decide to discard it later.
+   if buf_no == 0 then
+      rtr = can_read(RXB0CTRL) & 8
+      sidh = can_read(RXB0SIDH)
+      sidl = can_read(RXB0SIDL)
+      len = can_read(RXB0DLC)
+      op = CAN_READ_RX0_DATA
+      
+   elsif buf_no == 1 then
+      rtr = can_read(RXB1CTRL) & 8
+      sidh = can_read(RXB1SIDH)
+      sidl = can_read(RXB1SIDL)
+      len = can_read(RXB1DLC)
+      op = CAN_READ_RX1_DATA
+      
+   end if
+   
+   -- fast read of the buffer
+   can_sel = 0
+   spi_master_hw = op
+   for 8 using i loop
+      buf[i] = spi_master_hw
+   end loop
+   can_sel = 1
+   
+   -- Remote Request frames do not include any data
+   if rtr != 0 then
+      len = 0
+   end if
+   
+   -- discard 'extended frames'
+   -- FIXME
+   ide = sidl & 8
+   if ide != 0 then
+      return 0
+   end if
+   
+   -- form the 11-bit ID. See datasheet.
+   std_id = sidh
+   std_id = std_id << 3
+   sidl = sidl & 7
+   std_id = std_id | sidl
+   
+   return 1
+   
+end function
 
