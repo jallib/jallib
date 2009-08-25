@@ -10,10 +10,22 @@
 
 all : clean test
 
+WEEKLYBUILDCODENAME=bee
 VERSION=dev
 SAMPLIR_DIR=../sample
 TEST_DIR=../test
 INCLUDE_DIR=../include
+JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2
+JALV2_VERSION := `${JALV2_BIN} | sed "s\#.*jal \(.*\) (.*\#\1\#"`
+# dummy
+UPLOAD_USER=noone
+UPLOAD_PASSWD=nothing
+
+
+t:
+	echo bla
+	echo $(JALV2_VERSION)
+	echo done
 
 clean :
 	# clean what jal produces
@@ -88,17 +100,33 @@ export:
 	# get readme for the release (force because target dir already exists)
 	svn export --force http://jallib.googlecode.com/svn/trunk/tools distrib/jallib-extra
 
-dispatch:
+prepare:
 	# flatten library files
-	cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f lib; done
+	cd  distrib/jallib-${VERSION} && \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/ | sed 's#\r##g'`; \
+	do \
+		cp ../jallib-export/$$f lib || (echo problem with $$f ) \
+	done | grep problem && exit 255 || true
 	# same but no device
-	cd  distrib/jallib-libnodevice && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep -v ^include\/device | grep ^include\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f .; done
+	cd  distrib/jallib-libnodevice && \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep -v ^include\/device | grep ^include\/ | sed 's#\r##g'`; \
+	do \
+		cp ../jallib-export/$$f . || (echo problem with $$f ) \
+	done | grep problem && exit 255 || true
 	# keep sample structure, but only for those in TORELEASE
 	-cd  distrib/jallib-${VERSION} && mkdir sample
-	-cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; do cp ../jallib-export/$$f sample/; done
+	-cd  distrib/jallib-${VERSION} && \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; \
+	do \
+		cp ../jallib-export/$$f sample/ || (echo problem with $$f ) \
+	done | grep problem && exit 255 || true
 	# same for "project"
 	-cd  distrib/jallib-${VERSION} && mkdir project
-	-cd  distrib/jallib-${VERSION} && for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^project\/ | sed 's#\r##g'`; do mkdir -p `dirname $$f`; cp ../jallib-export/$$f `dirname $$f`/; done
+	-cd  distrib/jallib-${VERSION} && \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^project\/ | sed 's#\r##g'`; \
+	do \
+		mkdir -p `dirname $$f`; cp ../jallib-export/$$f `dirname $$f`/ || (echo problem with $$f ) \
+	done
 	# for all_devices package, keep everything...
 	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
 	for f in `find distrib/jallib-export/sample -type f | grep -e '[[:digit:]]\{2\}[[:alpha:]]\+.*_blink\.jal'`; \
@@ -150,28 +178,50 @@ dispatch:
 	cp distrib/jallib-export/CHANGELOG distrib/jallib-all_devices-${VERSION}/
 	echo DONE: release directory distrib/jallib-${VERSION}/ and distrib/jallib-all_devices-${VERSION}/
 
-pack:
+jallib-pack:
 	# now include compiler binaries
 	# guess compiler version
-	mkdir -p distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
+	mkdir -p distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	# generate VERSION file (jallib version)
-	echo ${VERSION} > distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/VERSION
+	echo ${VERSION} > distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/VERSION
 	# include CHANGELOG
-	cp distrib/jallib-export/CHANGELOG distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/
-	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
-	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
+	cp distrib/jallib-export/CHANGELOG distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/
+	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
+	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	echo DONE: jallib pack ready
 
-release: export dispatch pack
+archive:
 	cd distrib && tar czfv jallib-${VERSION}.tar.gz jallib-${VERSION}
 	cd distrib && tar czfv jallib-all_devices-${VERSION}.tar.gz jallib-all_devices-${VERSION}
-	cd distrib && tar czfv jallib-pack-`jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}.tar.gz jallib-pack-`jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}
+	cd distrib && tar czfv jallib-pack-${JALV2_VERSION}-${VERSION}.tar.gz jallib-pack-${JALV2_VERSION}-${VERSION}
 	# ZIPs don't contain a base directory
 	cd distrib/jallib-${VERSION} && zip -r jallib-${VERSION}.zip . && mv jallib-${VERSION}.zip ..
 	cd distrib/jallib-all_devices-${VERSION} && zip -r jallib-all_devices-${VERSION}.zip . && mv jallib-all_devices-${VERSION}.zip ..
-	cd distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION} && zip -r jallib-pack-`../jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}.zip . && mv jallib-pack-`../jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}.zip ..
+	cd distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && zip -r jallib-pack-${JALV2_VERSION}-${VERSION}.zip . && mv jallib-pack-${JALV2_VERSION}-${VERSION}.zip ..
 
 check:
 	sh check_package.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2
 	sh check_package.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2
-	sh check_package.sh distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/lib distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/sample distrib/jallib-pack-`distrib/jallib-export/compiler/jalv2 | sed "s#.*jal \(.*\) (.*#\1#"`-${VERSION}/compiler/jalv2
+	sh check_package.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2
+
+bee-archive:
+	# weekly build packages don't have any information about the version (except "bee", which is in VERSION env var)
+	# this way, we don't have to deal with old uploaded pakcages in GC. Each upload overwrite previous one
+	# Note: only jallib-pack are bee'fied...
+	-mv distrib/jallib-pack-${JALV2_VERSION}-${VERSION} distrib/jallib-pack-${VERSION}
+	# We need to enrich version with date, so user can report what exact version is used (else there'll just a "bee"
+	echo ${VERSION}-${JALV2_VERSION}-`date +%Y%m%d` > distrib/jallib-pack-${VERSION}/VERSION
+	cd distrib && tar czfv jallib-pack-${VERSION}.tar.gz jallib-pack-${VERSION}
+	cd distrib/jallib-pack-${VERSION} && zip -r jallib-pack-${VERSION}.zip . && mv jallib-pack-${VERSION}.zip ..
+
+bee-upload:
+	python ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib" -l Type-Buildbot -p jallib -u ${UPLOAD_USER} -w ${UPLOAD_PASSWD} distrib/jallib-pack-${VERSION}.tar.gz
+	python ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib" -p jallib -l Type-Buildbot -p jallib -u ${UPLOAD_USER} -w ${UPLOAD_PASSWD} distrib/jallib-pack-${VERSION}.zip
+
+bee-check:
+	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2
+
+release: export prepare jallib-pack archive check
+
+bee: clean export prepare jallib-pack bee-archive bee-check bee-upload
+
