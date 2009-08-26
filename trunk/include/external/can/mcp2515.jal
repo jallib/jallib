@@ -374,9 +374,10 @@ procedure can_set_rxb1_filter5(byte in sidh, byte in sidl, byte in eid8, byte in
 end procedure
 
 -- send standard 11-bit CAN frame
--- N.B. the caller must make certain that the buffer is available / free / not busy.
+-- Non-blocking -- function returns immediately if buffer is busy (in-use)
 -- FIXME. this is ugly code
-procedure can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) is
+function can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) return bit is
+   var bit stat
    var byte r_base, i
    var word sidh, sidl
    if buf_no == 0 then
@@ -386,9 +387,16 @@ procedure can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) 
    elsif buf_no == 2 then
       r_base = TXB2CTRL
    else
-      return
+      return 0
    end if
    
+   -- buffer already in-use / busy?
+   stat = can_read(r_base) & 8
+   if stat == 1 then
+      return 0
+   end if
+   
+   -- FIXME this sets priority and other side-effects
    can_write(r_base, 0)
    
    -- N.B. SIDH and SIDL bit-layout are weird (see datasheet)
@@ -409,9 +417,11 @@ procedure can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) 
    
    can_write(r_base, 8) -- request TX now/soonest
    
-end procedure
+   return 1
+end function
 
 -- receive standard 11-bit CAN frame
+-- Non-blocking -- function returns immediately if no message is available.
 -- FIXME. N. B. This routine will automatically discard any extended frames!
 -- FIXME. this is ugly code
 function can_receive(byte in buf_no, word out std_id, byte out buf[8], byte out len) return bit is
