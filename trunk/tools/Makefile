@@ -17,9 +17,6 @@ TEST_DIR=../test
 INCLUDE_DIR=../include
 JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2
 JALV2_VERSION := `${JALV2_BIN} | sed "s\#.*jal \(.*\) (.*\#\1\#"`
-# dummy
-UPLOAD_USER=noone
-UPLOAD_PASSWD=nothing
 
 
 t:
@@ -138,10 +135,10 @@ prepare:
 	do \
 		libfile=`basename $$f`; \
 		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
-		python jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
+		python2.5 jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
 	done
 	# one-page doc
-	python jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
+	python2.5 jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
 	# doc menu...
 	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
 	# manually include device files doc, as it's not generated from a lib
@@ -215,8 +212,8 @@ bee-archive:
 	cd distrib/jallib-pack-${VERSION} && zip -r jallib-pack-${VERSION}.zip . && mv jallib-pack-${VERSION}.zip ..
 
 bee-upload:
-	python ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib" -l Type-Buildbot -p jallib -u ${UPLOAD_USER} -w ${UPLOAD_PASSWD} distrib/jallib-pack-${VERSION}.tar.gz
-	python ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib" -p jallib -l Type-Buildbot -p jallib -u ${UPLOAD_USER} -w ${UPLOAD_PASSWD} distrib/jallib-pack-${VERSION}.zip
+	python2.5 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib" -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-${VERSION}.tar.gz
+	python2.5 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib" -p jallib -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-${VERSION}.zip
 
 bee-check:
 	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2
