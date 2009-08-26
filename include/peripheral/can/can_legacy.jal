@@ -91,3 +91,120 @@ procedure can_set_rxb1_filter5(byte in sidh, byte in sidl, byte in eidh, byte in
    RXF5EIDL = eidl
 end procedure
 
+-- send standard 11-bit CAN frame
+-- Non-blocking -- function returns immediately if buffer is busy (in-use)
+-- FIXME. this is ugly code
+function can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) return bit is
+   var bit stat
+   var byte r_base, i, v
+   var word sidh, sidl
+   
+   if buf_no == 0 then
+      r_base = 0x40
+   elsif buf_no == 1 then
+      r_base = 0x30
+   elsif buf_no == 2 then
+      r_base = 0x20
+   else
+      return 0
+   end if
+   
+   FSR1L = r_base
+   FSR1H = 0x0F
+   
+   -- buffer already in-use / busy?
+   v = INDF1
+   stat = v & 8
+   if stat == 1 then
+      return 0
+   end if
+   
+   -- FIXME this sets priority and other side-effects
+   POSTINC1 = 0
+   
+   -- N.B. SIDH and SIDL bit-layout are weird (see datasheet)
+   sidh = std_id >> 3
+   sidl = std_id & 7
+   sidl = sidl << 5
+   
+   POSTINC1 = byte(sidh)
+   POSTINC1 = byte(sidl)
+   POSTINC1 = 0
+   POSTINC1 = 0
+   POSTINC1 = len
+   for 8 using i loop
+      POSTINC1 = buf[i]
+   end loop
+   
+   FSR1L = r_base
+   INDF1 = 8  -- request TX now/soonest
+   
+   return 1
+end function
+
+-- receive standard 11-bit CAN frame
+-- Non-blocking -- function returns immediately if no message is available.
+-- FIXME. N. B. This routine will automatically discard any extended frames!
+-- FIXME. this is ugly code
+function can_receive(byte in buf_no, word out std_id, byte out buf[8], byte out len) return bit is
+   var bit rtr, ide, stat, ex
+   var byte r_base, i, v
+   var byte sidh, sidl
+   
+   if buf_no == 0 then
+      r_base = 0x60
+   elsif buf_no == 1 then
+      r_base = 0x50
+   else
+      return 0 -- illegal value for buf_no
+   end if
+   
+   FSR1L = r_base
+   FSR1H = 0x0F
+   
+   -- message waiting?
+   v = POSTINC1
+   stat = v & 0x80
+   if stat == 0 then
+      return 0
+   end if
+   
+   -- N.B. At this point we have a message. We must read it,
+   -- even if we decide to discard it later.
+   
+   rtr = v & 8
+   sidh = POSTINC1
+   sidl = POSTINC1
+   v = POSTINC1  -- skip EIDH
+   v = POSTINC1  -- skip EIDL
+   len = POSTINC1
+   
+   for 8 using i loop
+      buf[i] = POSTINC1
+   end loop
+   
+   -- FIXME, side-effects to writing all bits of RXBnCON register
+   FSR1L = r_base
+   INDF1 = 0
+   
+   -- Remote Request frames do not include any data
+   if rtr != 0 then
+      len = 0
+   end if
+   
+   -- discard 'extended frames'
+   -- FIXME
+   ide = sidl & 8
+   if ide != 0 then
+      return 0
+   end if
+   
+   -- form the 11-bit ID. See datasheet.
+   std_id = word(sidh)
+   std_id = std_id << 3
+   sidl = sidl >> 5
+   std_id = std_id | word(sidl)
+   
+   return 1
+end function
+
