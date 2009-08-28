@@ -133,12 +133,10 @@ do i=1 to dir.0                                 /* all relevant .dev files */
   PicNameCaps = toupper(PicName)
   if PicSpec.DataSheet.PicNameCaps == '?' then do
     say PicName 'not listed in' PicSpecFile', no device file generated'
-    say PicSpec.datasheet.picnamecaps
     iterate
   end
   else if PicSpec.Datasheet.PicNameCaps == '-' then do
-    say 'No datasheet found in' PicSpecFile 'for' PicName', no device file generated'
-    say PicSpec.datasheet.picnamecaps
+    say PicName 'no datasheet found in' PicSpecFile', no device file generated'
     iterate                                     /* skip */
   end
 
