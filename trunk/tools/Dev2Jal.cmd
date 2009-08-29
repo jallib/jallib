@@ -28,7 +28,7 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.79'                   /*                          */
+   ScriptVersion   = '0.0.80'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /*                          */
    CompilerVersion = '2.4l'                     /* use of alias keyword     */
 /* ------------------------------------------------------------------------ */
@@ -126,7 +126,7 @@ do i=1 to dir.0                                 /* all relevant .dev files */
 
   if pos('f18', PicName) > 0  |,                /* exclude extended 14-bit core */
      pos('f19', PicName) > 0 then do
-    say 'Info:' PicName 'skipped: not supported by JalV2'
+    say PicName 'info: skipped: not supported by JalV2'
     iterate                                     /* skip */
   end
 
@@ -1064,9 +1064,12 @@ do i = 1 to Dev.0
       when left(reg,4) = 'PORT' then do         /* port */
         call list_port1x_shadow reg
       end
-      when reg = 'GPIO' | reg = 'GP' then do    /* port */
+      when reg = 'GPIO' then do                 /* port */
         call lineout jalfile, 'var volatile byte  ' left('PORTA',25) 'at' reg
         call list_port1x_shadow 'PORTA'
+      end
+      when reg = 'GP' then do                   /* port */
+        say 'Warning: register GP to be renamed to GPIO'
       end
       when reg = 'TRISIO' then do               /* low pincount PIC */
         call lineout jalfile, 'var volatile byte  ' left('TRISA',25) 'at' reg
@@ -1176,6 +1179,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
               call lineout jalfile, 'var volatile bit   ',
                            left(field,25) 'at' reg ':' offset
             end
+            when reg = 'GPIO' & left(n.j,4) = 'GPIO' then do
+              field = reg'_GP'right(n.j,1)              /* pin GPIOx -> GPx */
+              call lineout jalfile, 'var volatile bit   ',
+                           left(field,25) 'at' reg ':' offset
+            end
           otherwise
             if duplicate_name(field,reg) = 0 then       /* unique */
               call lineout jalfile, 'var volatile bit   ',
@@ -1205,7 +1213,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
               end
               call lineout jalfile, '--'
             end
-            when reg = 'GPIO' | reg = 'GP' then do
+            when reg = 'GPIO' then do
               shadow = '_PORTA_shadow'
               pin = 'pin_A'right(n.j,1)
               call lineout jalfile, 'var volatile bit   ',
@@ -1258,7 +1266,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                 call lineout jalfile, 'end procedure'
               end
             end
-          otherwise
+          otherwise                                     /* skip all other regs */
             nop
           end
         end
