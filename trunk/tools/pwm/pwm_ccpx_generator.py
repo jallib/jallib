@@ -36,13 +36,10 @@ Example to generate pwm_ccp1.jal:
 	tmplsrc = "".join(file(tmpl_file,"r").readlines())
 	klass = Cheetah.Template.Template.compile(tmplsrc)
 	tmpl = klass()
-	tmpl.ccp_name = "CCP%s" % num
-	tmpl.CCPXCON = "CCP%sCON" % num
-	tmpl.CCPRXL = "CCPR%sL" % num
-	tmpl.ccpxcon = tmpl.CCPXCON.lower()
-	tmpl.ccprxl = tmpl.CCPRXL.lower()
 	tmpl.num = num
 	
-	print tmpl.main()
+	fout = file("pwm_ccp%s.jal" % num,"w")
+	fout.write(tmpl.main())
+	#print tmpl.main()
 	sys.exit(0)
 
