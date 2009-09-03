@@ -11,13 +11,49 @@
 -- TODO: only tested in Master mode 00
 --
 
+-- FIXME. This probably should be handled in the device files themselves.
+-- But until then, we will attempt to provide a 'legacy' mode such that this
+-- library may be used with 18F parts.
+--
+-- Credits: This 'aliasing' approach has been 'borrowed' from i2c_hardware_aliases.jal
+--
+if ( target_cpu == PIC_16 ) then
+   
+   if defined( SSPCON ) == false then
+      alias SSPCON is SSP1CON
+      alias SSPCON_WCOL is SSP1CON_WCOL
+      alias SSPCON_SSPOV is SSP1CON_SSPOV
+      alias SSPCON_SSPEN is SSP1CON_SSPEN
+      alias SSPCON_CKP is SSP1CON_CKP
+      alias SSPCON_SSPM is SSP1CON_SSPM			
+   end if
+   
+   if defined( SSPSTAT ) == false then
+      alias SSPSTAT is SSP1STAT
+      alias SSPSTAT_SMP is SSP1STAT_SMP
+      alias SSPSTAT_CKE is SSP1STAT_CKE
+      alias SSPSTAT_D is SSP1STAT_D
+      alias SSPSTAT_NA is SSP1STAT_NA
+      alias SSPSTAT_P is SSP1STAT_P
+      alias SSPSTAT_S is SSP1STAT_S
+      alias SSPSTAT_R is SSP1STAT_R
+      alias SSPSTAT_NW is SSP1STAT_NW
+      alias SSPSTAT_UA is SSP1STAT_UA
+      alias SSPSTAT_BF is SSP1STAT_BF
+   end if
+   
+   if defined( SSPBUF ) == false then
+      alias SSPBUF is SSP1BUF
+   end if
+   
+end if
+
 -- SPI is full-duplex, so we exchange master and slave data byte
 function spi_master_hw_exchange(byte in m_data) return byte is
-   var byte stat
+   
    SSPBUF = m_data
    
-   stat = SSPCON & 0x80
-   if ( stat != 0 ) then
+   if ( SSPCON_WCOL != 0 ) then
       -- FIXME how to report error???
       return 0xFF
    end if
@@ -41,13 +77,37 @@ function spi_master_hw'get() return byte is
    return data
 end function
 
--- SPI Master mode 0,0 example.
+const SPI_MODE_00 = 0
+const SPI_MODE_01 = 1
+const SPI_MODE_10 = 2
+const SPI_MODE_11 = 3
+
+const SPI_RATE_FOSC_4 = 0
+const SPI_RATE_FOSC_16 = 1
+const SPI_RATE_FOSC_64 = 2
+const SPI_RATE_TMR = 3
+
+-- Initialize the SPI registers.
 -- Note: check your datasheet -- TRIS settings, any SPI errata?
-procedure _spi_init_mode00() is
+procedure spi_init(byte in spi_mode, byte in spi_rate) is
    SSPCON = 0
    SSPSTAT_SMP = 0
-   SSPSTAT_CKE = 1
-   SSPCON_SSPM = 2
-   SSPCON_SSPEN = 1 -- CKP=0, Master mode, OSC/64
+   
+   if spi_mode == SPI_MODE_00 then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   elsif spi_mode == SPI_MODE_01 then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 0
+   elsif spi_mode == SPI_MODE_10 then
+      SSPCON_CKP = 1
+      SSPSTAT_CKE = 1
+   else
+      SSPCON_CKP = 1
+      SSPSTAT_CKE = 0
+   end if
+   
+   SSPCON_SSPM = spi_rate
+   SSPCON_SSPEN = 1
 end procedure
 
