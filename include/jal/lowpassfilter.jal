@@ -5,18 +5,19 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: 1st and 2nd order low pass fitlers
+-- Description: 1st and 2nd order low pass filters
 --
 
 -- ---------------------------------------------------------------------------
 -- lpr_2nd_order
 -- ---------------------------------------------------------------------------
--- time_const = aantal bits dat naar rechts wordt geshift, 
---					bijv 3 = delen door 8, 1 tau = 8 aanroepen.
--- u1 en u2 zijn hulpvars voor het tweede orde filter.
--- 	u1 is een maat voor de eerste afgeleide van de output.
--- 	u2 bevat de return-waarde << 16
--- Bug: bij input 0 kan output -1 (=65535) worden
+-- time_const = nr of bits that is shifted to the right 
+--    ex: 3 = divide by 8, which takes 8 calls to achieve 1 tau
+--    (see http://en.wikipedia.org/wiki/Low-pass_filter for explanation of tau)
+-- u1 and u2 are internal variables for the filter.
+-- 	(u1 is an indication of the first order of the output)
+-- 	(u2 contains the return-value << 16)
+-- Bug: with input 0, output can wrap around to -1 (=65535)
 -- ---------------------------------------------------------------------------
 function lpf_2nd_order(sword in ui, sdword in out u1, sdword in out u2, byte in time_const) return sword is
 	var sdword tmp
@@ -44,18 +45,20 @@ end function
 -- ---------------------------------------------------------------------------
 -- lpr_1st_order
 -- ---------------------------------------------------------------------------
+-- time_const = nr of bits that is shifted to the right 
+--    ex: 3 = divide by 8, which takes 8 calls to achieve 1 tau
+--    (see http://en.wikipedia.org/wiki/Low-pass_filter for explanation of tau)
+-- u1 is an are internal variables for the filter.
+-- 	(u1 contains the return-value << time_const)
 -- ---------------------------------------------------------------------------
 function lpf_1st_order( sword in ui, sdword in out u1, byte in time_const) return sword is 
 	var sdword tmp
-
-;	Result = Result - (Result / 64) + adc
 
    u1 = u1 - (u1 >> time_const)
    u1 = u1 + ui
    
    ; return (u2 + 32768) / 65536	tmp = u2
    tmp = u1
-;;	tmp = tmp + 32768 ; juist afronden
 	tmp = tmp >> time_const
 	return sword(tmp)
 
