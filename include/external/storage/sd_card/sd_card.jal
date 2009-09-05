@@ -1,0 +1,289 @@
+-- Title: Library for communicating with SD memory cards
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4l
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides functions for SD memory cards.
+--
+-- Notes: This version works with only standard capacity sd cards up to 4gb,
+--        high capacity up to 32 gb, and Extended Capacity up to 2TB
+--        may be supported later on.
+--
+-- Sources:
+-- SanDisk Secure Digital Card - http://www.cs.ucr.edu/~amitra/sdcard/ProdManualSDCardv1.9.pdf
+-- How to use MMC/SDC - http://forums.parallax.com/forums/attach.aspx?a=32012
+--
+-- Functions descriptions:
+-- sd_init                -- initialize startup settings
+-- sd_start_read          -- get sd card ready for reading and
+--                           select a sector to read from
+-- sd_read_data           -- read 2 bytes to the sd card
+-- sd_stop_read           -- tell sd card you are finished reading
+-- sd_read_pulse          -- send a read pulse to the sd card, go 2 bytes
+--                           forward in current sector.
+-- sd_start_write         -- get sd card ready for writing and
+--                           select a sector to write to
+-- sd_write_data          -- write 2 bytes to the sd card
+-- sd_stop_write          -- tell sd card you are finished writing, must be
+--                           at end of sector to use this
+-- sd_write_to_sector_end -- write till the end of the current sector,
+--                           you must finish writing a sector before
+--                           data actually gets written to the sd card.
+-- sd_write_pulse         -- write 2 bytes of 0's, go 2 bytes forward in
+--                           current sector
+
+-- counters
+var byte sd_word_count = 0
+var word sd_sector_count = 0
+
+-- Basic Commands
+const byte SD_GO_IDLE_STATE = 0
+const byte SD_SEND_OP_COND = 1
+const byte SD_SEND_CSD = 9      -- sd sends "Card Specific Data" standard or high capacity
+const byte SD_SEND_CID = 10
+const byte SD_STOP_TRANSMISSION = 12
+const byte SD_SEND_STATUS = 13
+
+-- Read Commands
+const byte SD_SET_BLOCKLEN = 16
+const byte SD_READ_SINGLE_BLOCK = 17
+const byte SD_READ_MULTIPLE_BLOCK = 18
+
+-- Write Commands
+const byte SD_WRITE_BLOCK = 24
+const byte SD_WRITE_MULTIPLE_BLOCK = 25
+const byte SD_PROGRAM_CSD = 27
+
+-- Write Protection Commands
+const byte SD_SET_WRITE_PROT = 28
+const byte SD_CLR_WRITE_PROT = 29
+const byte SD_SEND_WRITE_PROT = 30
+
+-- Erase Commands
+const byte SD_ERASE_WR_BLK_START = 32
+const byte SD_ERASE_WR_BLK_END = 33
+const byte SD_ERASE = 38
+
+-- Application Specific Commands
+const byte SD_APP_CMD = 55 -- indicate that the next command is a application specific command
+const byte SD_GEN_CMD = 56
+
+-- Other Commands
+const byte SD_READ_OCR = 58
+const byte SD_CRC_ON_OFF = 59 -- default is off
+
+-- application specific command, must write command 55 first
+const byte SD_SD_STATUS = 13
+const byte SD_SEND_NUM_WR_BLOCKS = 22
+const byte SD_SET_WR_BLK_ERASE_COUNT = 23
+const byte SD_SD_APP_OP_COND = 41
+const byte SD_SET_CLR_CARD_DETECT = 42
+const byte SD_SEND_SCR = 51
+
+
+--------------------------------------------------------------------------------
+-- send a command to the sd card (commands with 1 response only
+--------------------------------------------------------------------------------
+procedure send_command(byte in command,dword in data, byte out response) is
+  var byte paramiters[4] at data
+  var byte x
+  
+  -- send a valid CRC byte only for set idle command
+  -- right bit must always be 1 (stop bit)
+  if command == SD_GO_IDLE_STATE then
+    x = 0x95
+  else
+    x = 0xFF
+  end if
+  
+  command = command + 64          -- left bits must be 01 (start bits)
+
+  spi_master_hw = 0xFF            -- send 8 clock pulses
+  
+  spi_master_hw = command         -- send the command
+  spi_master_hw = paramiters[3]   -- send command parameters
+  spi_master_hw = paramiters[2]   -- send command parameters
+  spi_master_hw = paramiters[1]   -- send command parameters
+  spi_master_hw = paramiters[0]   -- send command parameters
+  spi_master_hw = x               -- CRC data byte, crc disabled in this lib.
+  spi_master_hw = 0xFF            -- send 8 clock pulses
+
+
+  response = spi_master_hw        -- Get a responce from the card after each command
+
+
+  spi_master_hw = 0xFF            -- send 8 clock pulses
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- check if the sd card is ready after last command.
+--------------------------------------------------------------------------------
+procedure sd_ready() is
+  var byte response = 1
+  while response != 0 loop   -- wait till last command has been completed
+    send_command(SD_SEND_OP_COND,0, response)
+  end loop
+end procedure
+
+--------------------------------------------------------------------------------
+-- initalize the sd card in SPI data transfer mode.
+--------------------------------------------------------------------------------
+procedure sd_init() is
+  var byte reply           -- shows if sd card init is ok
+  
+   -- set sd card to use SPI
+  chip_select = high        -- chip select high
+  for 10 loop
+    spi_master_hw = 0xFF    -- send 0xFF 10 times
+  end loop
+  chip_select = low         -- select the sd card (low for rest of program unless multiple cards)
+
+  send_command(SD_GO_IDLE_STATE,0,reply) -- command 0, Resets card to idle state, get a response
+  sd_ready()   -- wait till sd card is ready
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- set the sd card to idle state
+--------------------------------------------------------------------------------
+procedure sd_set_idle() is
+  var byte reply
+  send_command(SD_STOP_TRANSMISSION,0,reply) -- stop current transmission
+  sd_ready()                                 -- wait till sd card is ready
+  send_command(SD_GO_IDLE_STATE,0,reply)     -- command 0, Resets card to idle state
+  sd_ready()                                 -- wait till sd card is ready
+end procedure
+
+--------------------------------------------------------------------------------
+-- tell sd card you will be reading data from a specified sector
+--------------------------------------------------------------------------------
+procedure  sd_start_read(dword in address) is
+  var byte reply
+  address = address * 512 -- make sd card sector addressable, sd cards are normally byte addressable.
+  send_command(SD_READ_MULTIPLE_BLOCK,address,reply) -- send read multi block command, ignore reply.
+  sd_word_count = 0       -- reset count
+  sd_sector_count = 0     -- reset count
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- read 2 bytes from the sd card
+--------------------------------------------------------------------------------
+procedure sd_read_data(byte out low_byte, byte out high_byte) is
+  var byte x
+  
+  if sd_word_count == 0 then              -- beginning of sector read
+    while spi_master_hw != 0xFE loop      -- wait till data is ready to read
+    end loop
+  end if
+
+  low_byte = spi_master_hw                -- get data byte
+  high_byte = spi_master_hw               -- get data byte
+  
+  if sd_word_count == 255 then            -- end of sector read
+    sd_sector_count = sd_sector_count + 1 -- increment sector number
+    x = spi_master_hw                     -- get junk crc data, crc is disabled
+    x = spi_master_hw                     -- get junk crc data, crc is disabled
+  end if
+  
+  sd_word_count = sd_word_count + 1       -- increment word_count
+end procedure
+
+--------------------------------------------------------------------------------
+-- send a read pulse to the sd card, go 2 bytes forward in current sector.
+--------------------------------------------------------------------------------
+procedure sd_read_pulse(byte in count1) is
+  var byte x,y
+  for count1 loop      -- loop specified number of times
+    sd_read_data (x,y) -- do a data read and ignore the incomming data
+  end loop
+end procedure
+
+--------------------------------------------------------------------------------
+-- tell sd card you will be writing data to a specified sector
+-- must write 1 sector at a time, 512 bytes
+--------------------------------------------------------------------------------
+procedure sd_start_write(dword in address) is
+  var byte reply
+  address = address * 512 -- make sd card sector addressable, sd cards are normally byte addressable.
+  send_command(SD_WRITE_MULTIPLE_BLOCK,address,reply) -- send read multi block command, ignore reply.
+  sd_word_count = 0       -- reset count
+  sd_sector_count = 0     -- reset count
+end procedure
+
+--------------------------------------------------------------------------------
+-- write 2 bytes to the sd card
+--------------------------------------------------------------------------------
+procedure sd_write_data(byte in low_byte, byte in high_byte) is
+  var byte x
+
+  if sd_word_count == 0 then  -- beginning of sector write
+    spi_master_hw = 0xFC      -- send "stop transmission token" write multiple command
+   ;spi_master_hw = 0xFE      -- send "stop transmission token" for write single command
+  end if
+
+  spi_master_hw = low_byte     -- send data byte
+  spi_master_hw = high_byte    -- send data byte
+
+  if sd_word_count == 255 then -- end of sector write
+    sd_sector_count = sd_sector_count + 1 -- increment sector count
+
+    spi_master_hw = 0xFF  -- send junk crc, crc is disabled
+    spi_master_hw = 0xFF  -- send junk crc, crc is disabled
+
+    x = spi_master_hw   -- wait for a response
+    while x == 0 loop
+      x = spi_master_hw
+    end loop
+    -- response = 010 = data accepted
+    -- response = 101 = crc error
+    -- response = 110 = write error
+
+    x = spi_master_hw   -- wait for sd card to become ready
+    while x != 0xFF loop
+      x = spi_master_hw
+    end loop
+  end if
+  
+  sd_word_count = sd_word_count + 1  -- increment word count
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- tell sd card you are finished writing
+--------------------------------------------------------------------------------
+procedure sd_stop_write() is
+  spi_master_hw = 0xFD -- send "stop transmission token"
+  sd_set_idle()
+end procedure
+
+--------------------------------------------------------------------------------
+-- send a write pulse to the sd card by writing 2 bytes, 0's as data
+--------------------------------------------------------------------------------
+procedure sd_write_pulse(byte in count1) is
+  for count1 loop
+    sd_write_data(0, 0) -- write 2 bytes, 0's as data
+  end loop
+end procedure
+
+--------------------------------------------------------------------------------
+-- write till sector is finished with input byte
+-- data does not actually get written till you get to the end of the sector
+--------------------------------------------------------------------------------
+procedure sd_write_to_sector_end(byte in input_byte) is
+  var byte x
+  x = 256 - sd_word_count
+  for x loop
+    sd_write_data(input_byte, input_byte) -- write 2 bytes, 0's as data
+  end loop
+end procedure
+
+--------------------------------------------------------------------------------
+-- tell sd card you are finished reading
+-- needed to be the same as other mass media libs
+--------------------------------------------------------------------------------
+ALIAS sd_stop_read is sd_set_idle
