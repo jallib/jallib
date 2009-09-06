@@ -28,7 +28,7 @@
  *   - The script contains some test and debugging code.                    *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.81'                   /*                          */
+   ScriptVersion   = '0.0.82'                   /*                          */
    ScriptAuthor    = 'Rob Hamerling'            /*                          */
    CompilerVersion = '2.4l'                     /* use of alias keyword     */
 /* ------------------------------------------------------------------------ */
@@ -1318,7 +1318,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                 field = reg'_DC'substr(n.j,3,1)'B'
               else
                 field = reg'_DC'substr(n.j,4,1)'B'
-              if duplicate_name(reg'_DC'n'B') = 0 then       /* unique */
+              if duplicate_name(reg'_DC'n'B',reg) = 0 then       /* unique */
                 call lineout jalfile, 'var volatile bit*2 ',
                              left(field,25) 'at' reg ':' offset - s.j + 1
             end
@@ -1405,6 +1405,7 @@ return 0
 /* procedure to list special function registers             */
 /* input:  - nothing                                        */
 /* Note: - name is stored but not checked on duplicates     */
+/*       - generates some midrange aliases                  */
 /* 16-bit core                                              */
 /* -------------------------------------------------------  */
 list_sfr16: procedure expose Dev. Ram. Name. PinMap. jalfile,
@@ -1454,7 +1455,6 @@ do i = 1 to Dev.0
                left('PORT'substr(reg,5)'_direction',25) 'shared at' reg
         call list_tris_nibbles reg                      /* nibble directions */
       end
-/* new: legacy aliases for ECCPxCON and ECCPRx.. registers */
       when left(reg,4) = 'ECCP'  &,                     /* enhanced CCP register */
           (right(reg,3) = 'CON' | left(reg,5) = 'ECCPR') then do   /* declare legacy alias */
         if (PicName = '18f448'  | PicName = '18f4480' |,
@@ -1467,7 +1467,13 @@ do i = 1 to Dev.0
         end
         else
           alias = substr(reg,2)                         /* simply strip 'E' prefix */
-        if duplicate_name(alias) = 0 then               /* unique */
+        if duplicate_name(alias,reg) = 0 then               /* unique */
+          call lineout jalfile, 'alias               'left(alias,32) 'is' reg
+      end
+/* new: midrange aliases for (some) SSP1xxx registers */
+      when left(reg,4) = 'SSP1' then do                 /* first or only SSP module */
+        alias = delstr(reg,4,1)                         /* remove '1' from reg */
+        if duplicate_name(alias,reg) = 0 then
           call lineout jalfile, 'alias               'left(alias,32) 'is' reg
       end
 /* end */
@@ -1511,6 +1517,7 @@ return 0
 /*         - register name                 */
 /* Generates names for pins or bit fields  */
 /* Normalises ANS bits                     */
+/* Generates some midrange aliases         */
 /* Fixes some errors in MPLAB              */
 /* 16-bit core                             */
 /* --------------------------------------- */
@@ -1633,7 +1640,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                 field = reg'_DC'substr(n.j,3,1)'B'
               else
                 field = reg'_DC'substr(n.j,4,1)'B'
-              if duplicate_name(reg'_DC'n'B') = 0 then       /* unique */
+              if duplicate_name(reg'_DC'n'B',reg) = 0 then       /* unique */
                 call lineout jalfile, 'var volatile bit*2 ',
                              left(field,25) memtype 'at' reg ':' offset - s.j + 1
             end
@@ -1702,7 +1709,6 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
       end
 
                                                         /* additional declarations */
-/* new: legacy aliases for specific subfields of ECCPxCON and ECCPRx.. registers */
       if left(reg,4) = 'ECCP'  &,                       /* enhanced CCP register */
         (right(reg,3) = 'CON' | left(reg,5) = 'ECCPR')  &,     /* registers */
         (left(n.j,3) = 'EDC'  | left(n.j,4) = 'ECCP' |,        /* specific .. */
@@ -1726,13 +1732,43 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
             alias = substr(reg,2)'_'n.j                 /* take whole field name */
         end
         if s.j \= 8 & s.j \= 16 then do                 /* not full byte/word */
-          if duplicate_name(alias) = 0 then             /* unique */
+          if duplicate_name(alias,regalias) = 0 then    /* unique */
             call lineout jalfile, 'alias              ' left(alias,32) 'is' field
+        end
+      end
+
+/* new: midrange aliases for subfields of some SSP1xxx regsiters */
+      if reg = 'SSP1CON'  |,
+         reg = 'SSP1CON2' |,                            /* selected SSP1 regs */
+         reg = 'SSP1STAT' then do
+        regalias = delstr(reg,4,1)                      /* remove '1' from the name */
+        if pos('/', n.j) \= 0 then do                   /* twin name */
+          parse var n.j val1'/'val2 .
+          if val1 \= '' then do
+            alias = regalias'_'val1
+            if duplicate_name(alias,reg) = 0 then do    /* unique */
+              call lineout jalfile, 'alias               'left(alias,32) 'is' reg'_'val1
+            end
+          end
+          if val2 \= '' then do
+            alias = regalias'_'val2
+            if duplicate_name(alias,reg) = 0 then do    /* unique */
+              call lineout jalfile, 'alias               'left(alias,32) 'is' reg'_'val2
+            end
+          end
+        end
+        else do
+          alias = regalias'_'n.j
+          if alias \= '' then do                        /* alias to be generated */
+            if duplicate_name(alias,reg) = 0 then
+              call lineout jalfile, 'alias               'left(alias,32) 'is' reg'_'n.j
+          end
         end
       end
 /* end */
 
       offset = offset - s.j                             /* next offset */
+
     end
   end
   i = i + 1                                             /* next record */
