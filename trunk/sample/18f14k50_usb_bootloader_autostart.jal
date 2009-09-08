@@ -1,7 +1,7 @@
 -- Title: USB (legacy) bootloader
 -- Author: Albert Faber, Copyright (c) 2009, all rights reserved.
 -- Adapted-by: -
--- Compiler: >=2.4j
+-- Compiler: >=2.4l
 -- 
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
@@ -38,7 +38,7 @@
 -- needed to get compact code, bootloader has to
 -- fit within first 2048 bytes in order to be
 -- compatible with default of PDFSUSB
--- currently only 2 bytes left (2022 bytes)
+-- currently only 14 bytes left (2010 bytes)
 PRAGMA OPT CONST_DETECT YES
 
 
@@ -681,7 +681,21 @@ end procedure
 
 usb_bd1in_addr = USB_EP1_IN_ADDR
 
-T1CON = 0b0011_0001 -- timer 1 on, prescaler 8
+-- timer 1 on, prescaler 8
+T1CON = 0b0011_0001 
+
+-- check if highest part of goto instruction 
+-- if bytes are set to 0xFFFF, then disable
+-- timer
+var volatile byte goto_hvec_0 at 0x802
+var volatile byte goto_hvec_1 at 0x803
+
+if goto_hvec_0 == 0xFF then
+   if goto_hvec_1 == 0xFF then
+       T1CON = 0x00
+   end if
+end if
+
 
 var byte t1_count = 0 
 
@@ -700,23 +714,12 @@ forever loop
 		PIR1_TMR1IF = 0
 		
 		-- 22 counts per second, ~10 seconds wait => 220 ticks
-		-- if expired, 
+		-- if expired, then jump to user location
 		if t1_count > 220 then
-			-- set ID 0
-			-- EECON1 = 0b_1000_0100 -- Setup writes: EEPGD=1,WREN=1
-
-			-- TBLPTRU = 0x20
-			-- TBLPTRH = 0x00
-			-- TBLPTRL = 0x00
-			-- TABLAT  = 0x00
-			-- asm TBLWT*+
-			-- start_write()
 			disable_boot()
 			
-						
 			-- start user app
 			asm goto 0x800
-			
 		end if 
 	end if	
 end loop
