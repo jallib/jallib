@@ -9,7 +9,7 @@
 -- interface.  The controller has 3 transmit buffers and 2 receive buffers.
 --
 -- Note:  uses SPI Master library and also needs a 'chip select' pin such as:
---              var bit can_sel is pin_B0
+--              alias can_sel is pin_B0
 
 -- Three transmit buffers. Each transmit buffer has a control register, header 
 -- registers, length register and (up to ) eight bytes of payload.
@@ -246,6 +246,56 @@ const CAN_READ_STATUS_CMD = 0xA0
 const CAN_RX_STATUS_CMD = 0xB0
 const CAN_RESET_CMD = 0xC0
 
+-- the CAN ID uses the same 32-bit unsigned int format as the socket-CAN C library
+-- bit 0-28 : CAN identifier (11/29 bit)
+-- bit 29   : error frame flag (0 = data frame, 1 = error frame)
+-- bit 30   : remote transmission request flag (1 = rtr frame)
+-- bit 31   : frame format flag (0 = standard 11 bit, 1 = extended 29 bit)
+--
+
+procedure can_encode_rtr_id(dword in out can_id) is
+   pragma inline
+   var bit rtr at can_id:30
+   rtr = 1
+end procedure
+
+procedure can_encode_ext_id(dword in out can_id) is
+   pragma inline
+   var bit ext at can_id:31
+   ext = 1
+end procedure
+
+procedure can_encode_std_id(dword in out can_id) is
+   pragma inline
+   var bit ext at can_id:31
+   ext = 0
+end procedure
+
+-- FIXME: will we ever need this?
+function can_is_error_id(dword in can_id) return bit is
+   pragma inline
+   var bit error at can_id:29
+   return error
+end function
+
+function can_is_rtr_id(dword in can_id) return bit is
+   pragma inline
+   var bit rtr at can_id:30
+   return rtr
+end function
+
+function can_is_ext_id(dword in can_id) return bit is
+   pragma inline
+   var bit ext at can_id:31
+   return ext
+end function
+
+function can_is_std_id(dword in can_id) return bit is
+   pragma inline
+   var bit ext at can_id:31
+   return ext == 0
+end function
+
 -- mcp2515 Reset instruction.
 -- Puts the mcp2515 in Configuration Mode.
 procedure can_reset() is
@@ -373,13 +423,36 @@ procedure can_set_rxb1_filter5(byte in sidh, byte in sidl, byte in eid8, byte in
    can_write(CAN_RXF5EID0, eid0)
 end procedure
 
--- send standard 11-bit CAN frame
+-- send CAN frame
 -- Non-blocking -- function returns immediately if buffer is busy (in-use)
 -- FIXME. this is ugly code
-function can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) return bit is
-   var bit stat
-   var byte r_base, i
-   var word sidh, sidl
+function can_send(byte in buf_no, dword in can_id, byte in buf[8], byte in len) return bit is
+   var bit can_id_rtr at can_id:30
+   var bit can_id_ext at can_id:31
+   var bit stat, rtr, exid
+   var byte r_base, i, v
+   var dword sidh, sidl, eidh, eidl, dtmp
+   
+   exid = can_id_ext
+   rtr = can_id_rtr
+   
+   -- bullet-proofing
+   if exid then
+      can_id = can_id & 0x1FFFFFFF
+   else
+      can_id = can_id & 0x7FF
+   end if
+   
+   -- bullet-proofing
+   if len > 8 then
+      len = 8
+   end if
+   
+   -- Remote Request frame? set RTR bit
+   if rtr then
+      len = len | 0x40
+   end if
+   
    if buf_no == 0 then
       r_base = CAN_TXB0CTRL
    elsif buf_no == 1 then
@@ -400,14 +473,40 @@ function can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) r
    can_write(r_base, 0)
    
    -- N.B. SIDH and SIDL bit-layout are weird (see datasheet)
-   sidh = std_id >> 3
-   sidl = std_id & 7
-   sidl = sidl << 5
+   -- tip: to allow both 11-bit and 29-bit on same bus and same controller,
+   -- the 29-bit is broken into an 11-bit section and an 18-bit section.
+   
+   -- we'll do the 18-bit section first
+   
+   if exid then
+      eidl = can_id & 0xff
+      can_id = can_id >> 8
+      
+      eidh = can_id & 0xff
+      can_id = can_id >> 8
+      
+      sidl = can_id & 3
+      can_id = can_id >> 2
+      
+      -- set the EXIDEN bit
+      sidl = sidl | 8
+   else
+      sidl = 0
+   end if
+   
+   -- now the 11-bit section.
+   dtmp = can_id & 7
+   can_id = can_id >> 3
+   dtmp = dtmp << 5
+   sidl = sidl | dtmp
+   
+   -- the final 8 bits.
+   sidh = can_id
    
    can_write(r_base+1, sidh)
    can_write(r_base+2, sidl)
-   can_write(r_base+3, 0)
-   can_write(r_base+4, 0)
+   can_write(r_base+3, eidh)
+   can_write(r_base+4, eidl)
    can_write(r_base+5, len)
    for 8 using i loop
       var byte j
@@ -420,14 +519,17 @@ function can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) r
    return 1
 end function
 
--- receive standard 11-bit CAN frame
+-- receive CAN frame, sets can_id flag bits as to standard/extended, error, and remote.
 -- Non-blocking -- function returns immediately if no message is available.
--- FIXME. N. B. This routine will automatically discard any extended frames!
 -- FIXME. this is ugly code
-function can_receive(byte in buf_no, word out std_id, byte out buf[8], byte out len) return bit is
-   var bit rtr, ide, stat, ex
-   var byte op, i
-   var byte sidh, sidl
+function can_receive(byte in buf_no, dword out can_id, byte out buf[8], byte out len) return bit is
+   var bit can_id_error at can_id:29
+   var bit can_id_rtr at can_id:30
+   var bit can_id_ext at can_id:31
+   var bit rtr, exid, stat 
+   var byte r_base, i, v, op
+   var byte sidh, sidl, eidh, eidl
+   var dword dtmp
    
    -- quick check to make sure we have a message waiting
    if buf_no == 0 then
@@ -435,32 +537,27 @@ function can_receive(byte in buf_no, word out std_id, byte out buf[8], byte out 
       if stat == 0 then
          return 0
       end if
+      r_base = CAN_RXB0CTRL
+      op = CAN_READ_RX0_DATA
+      
    elsif buf_no == 1 then
       stat = can_read_status() & 2
       if stat == 0 then
          return 0
       end if
+      r_base = CAN_RXB1CTRL
+      op = CAN_READ_RX1_DATA
    else
       return 0 -- illegal value for buf_no
    end if
    
-   -- N.B. At this point we have a message. We must read it,
-   -- even if we decide to discard it later.
-   if buf_no == 0 then
-      rtr = can_read(CAN_RXB0CTRL) & 8
-      sidh = can_read(CAN_RXB0SIDH)
-      sidl = can_read(CAN_RXB0SIDL)
-      len = can_read(CAN_RXB0DLC)
-      op = CAN_READ_RX0_DATA
-      
-   elsif buf_no == 1 then
-      rtr = can_read(CAN_RXB1CTRL) & 8
-      sidh = can_read(CAN_RXB1SIDH)
-      sidl = can_read(CAN_RXB1SIDL)
-      len = can_read(CAN_RXB1DLC)
-      op = CAN_READ_RX1_DATA
-      
-   end if
+   -- N.B. At this point we have a message.
+   rtr = can_read(r_base) & 8
+   sidh = can_read(r_base+1)
+   sidl = can_read(r_base+2)
+   eidh = can_read(r_base+3)
+   eidl = can_read(r_base+4)
+   len = can_read(r_base+5)
    
    -- fast read of the buffer
    can_sel = 0
@@ -470,23 +567,52 @@ function can_receive(byte in buf_no, word out std_id, byte out buf[8], byte out 
    end loop
    can_sel = 1
    
-   -- Remote Request frames do not include any data
-   if rtr != 0 then
-      len = 0
+   rtr = len & 0x40
+   len = len & 0x0F
+   
+   -- bullet-proofing
+   if len > 8 then
+      len = 8
    end if
    
-   -- discard 'extended frames'
-   -- FIXME
-   ide = sidl & 8
-   if ide != 0 then
-      return 0
+   -- is this an extended frame? save this info for later.
+   exid = sidl & 8
+   
+   -- form the CAN ID, watch out for weird hardware bits. See datasheet.
+   -- tip: to allow both 11-bit and 29-bit on same bus and same controller,
+   -- the 29-bit is broken into an 11-bit section and an 18-bit section.
+   
+   -- start of 11-bit section.
+   -- 8 highest bits
+   can_id = dword(sidh)
+   
+   -- next 3 bits. OK that's 11 bits so far.
+   -- SIDL has a weird layout. see datasheet.
+   can_id = can_id << 3
+   dtmp = dword(sidl) >> 5
+   can_id = can_id | dtmp
+   
+   if exid then
+      
+      -- start of 18-bit section.
+      -- 2 bits.
+      can_id = can_id << 2
+      dtmp = dword(sidl) & 3
+      can_id = can_id | dtmp
+      
+      -- next 8 bits
+      can_id = can_id << 8
+      can_id = can_id | dword(eidh)
+      
+      -- final 8 bits. 11+18=29 bits.
+      can_id = can_id << 8
+      can_id = can_id | dword(eidl)
+      
    end if
    
-   -- form the 11-bit ID. See datasheet.
-   std_id = word(sidh)
-   std_id = std_id << 3
-   sidl = sidl >> 5
-   std_id = std_id | word(sidl)
+   can_id_ext = exid
+   can_id_rtr = rtr
+   can_id_error = 0
    
    return 1
 end function
