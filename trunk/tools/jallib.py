@@ -775,7 +775,6 @@ def picshell_unittest(jalFileName,asmFileName,hexFileName):
 	from picshell.parser.AnnotationParser import AnnotationParser
 	from picshell.engine.core.PicThreadEngine import PicThreadEngine
 	from picshell.engine.core.PicEngine import PicEngine
-	from picshell.engine.core.State import State
 	from picshell.util.AssertUtil import AssertUtil
 	
 	from picshell.ui.UIManager import UIManager
@@ -816,7 +815,7 @@ def picshell_unittest(jalFileName,asmFileName,hexFileName):
 					oracle['notrun'] += 1
 					print "Can't run test '%s' because var '%s' can't be found" % (label,var)
 	
-	emu = PicEngine.newInstance(State(),hexFileName)
+	emu = PicEngine.newInstance("16f877a",hexFileName)
 	# needed to access varValue function
 	ui = UIManager()
 	ui.emu = emu
@@ -860,14 +859,18 @@ def unittest(filename,verbose=False):
 			oracle = picshell_unittest(jal,asm,hex)
 		else:
 			oracle['failure'] = 1
-
+		
+		fout.close()
+		ferr.close()
+		      
 	finally:
 		clean_compiler_products(filename)
+
 		if verbose:
 			print file(fnout).read()
 			print file(fnerr).read()
-		os.unlink(fnout)
-		os.unlink(fnerr)
+		#os.unlink(fnout)
+		#os.unlink(fnerr)
 
 	return oracle
 
