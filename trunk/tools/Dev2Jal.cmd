@@ -14,62 +14,101 @@
  * Description:                                                             *
  *   Rexx script to create device include files for JALV2, and              *
  *   the file chipdef_jallib.jal, included by each of these.                *
- *   Apart from declaration of all ports and pins of the chip               *
- *   the include files will contain shadowing procedures to                 *
- *   prevent the 'read-modify-write' problems of midrange PICs and          *
+ *   Apart from declaration of all registers, register-subfields, ports     *
+ *   and pins of the chip the device files contain shadowing procedures     *
+ *   to prevent the 'read-modify-write' problems of midrange PICs and       *
  *   for the 18F force the use of LATx for output in stead of PORTx.        *
  *   In addition some device dependent procedures are provided              *
  *   for common operations, like enable-digital-io().                       *
+ *   Also a number of aliases are declared for the comfort of libraries.    *
  *                                                                          *
  * Sources:  MPLAB .dev and .lkr files                                      *
  *                                                                          *
  * Notes:                                                                   *
- *   - Summary of internal changes is kept in 'changes.txt' (not published) *
- *   - The script contains some test and debugging code.                    *
+ *   - This script is developed for 'classic' Rexx, as delivered with       *
+ *     eComStation (OS/2) and executed on a specific system.                *
+ *     It can be run on another platform (Linux, Windows) with the          *
+ *     combination of "Regina Rexx" and "RegUtil", ref:                     *
+ *        - http://regina-rexx.sourceforge.net/                             *
+ *        - http://www.interlog.com/~ptjm/                                  *
+ *     See the embedded comments below for some 'customisation' when run    *
+ *     a different system or platform.                                      *
+ *   - A summary of changes is kept in 'changes.txt' (not published).       *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.82'                   /*                          */
-   ScriptAuthor    = 'Rob Hamerling'            /*                          */
-   CompilerVersion = '2.4l'                     /* use of alias keyword     */
+   ScriptVersion   = '0.0.83'
+   ScriptAuthor    = 'Rob Hamerling'
+   CompilerVersion = '2.4l'
 /* ------------------------------------------------------------------------ */
 
-mplabdir    = 'k:/mplab836/'                    /* MPLAB base directory */
-                                                /* (drive letter mandatory!) */
-devdir      = mplabdir'mplab_ide/device/'       /* dir with .dev files */
-lkrdir      = mplabdir'mpasm_suite/lkr/'        /* dir with .lkr files */
-/* PicSpecFile = 'devicespecific.cmd' */               /* script with PIC specific info */
-PicSpecFile = 'k:/jallib/tools/devicespecific.json'    /* pic specific data items */
-PinMapFile  = 'k:/jallib/tools/pinmap_pinsuffix.json'  /* pin aliases */
-FuseDefFile = 'fusedefmap.cmd'                  /* script with fuse_def name mapping */
+/* MPLAB and a local copy of the Jallib SVN tree should be installed.       */
+/* Regardless platform or system configuration the following base           */
+/* information should be provided as a minimum:                             */
 
-say ' Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
+MPLABbase   = 'K:/MPLAB836'                     /* base dir MPLAB           */
+JALLIBbase  = 'K:/JALLIB'                       /* base dir JALLIB          */
 
-parse upper arg destination selection .         /* commandline arguments */
+/* The following libraries are used to collect information from             */
+/* MPLAB .dev and .lkr files:                                               */
+
+devdir = MPLABbase'/mplab ide/device/'         /* dir with MPLAB .dev files */
+lkrdir = MPLABbase'/mpasm suite/lkr/'          /* dir with MPLAB .lkr files */
+
+/* Some other information is collected from files in JALLIB tools directory */
+
+PicSpecFile = JALLIBbase'/tools/devicespecific.json'    /* pic specific data items */
+PinMapFile  = JALLIBbase'/tools/pinmap_pinsuffix.json'  /* pin aliases      */
+FuseDefFile = JALLIBbase'/tools/fusedefmap.cmd'         /* fuse_def name mapping */
+
+call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
+call SysLoadFuncs                             /* load Rexx system functions */
+
+/* The destination of the generated device files depends on the             */
+/* first commandline argument, which must be 'PROD' or 'TEST'               */
+/*  - with 'PROD' the files goto directory "<JALLIBbase>/include/device"    */
+/*  - with 'TEST' the files goto directory "./test>"                        */
+/* Note: The destination directory is not emptied! Previous device          */
+/*       files remain there but could be overwritten!                       */
+
+parse upper arg destination selection .         /* commandline arguments    */
 select
-  when destination = 'PROD' then                /* production run */
-    dstdir = '/jallib/include/device/'          /* local Jallib */
-  when destination = 'TEST' then                /* test run */
-    dstdir = 'test/'                            /* subdir for testing */
+  when destination = 'PROD' then                /* production run           */
+    dstdir = JALLIBbase'/jallib/include/device/'  /* local Jallib           */
+  when destination = 'TEST' then do             /* test run                 */
+    dstdir = './test/'                          /* subdir for testing       */
+    rx = SysMkDir(strip(dstdir,'T','/'))        /* create destination dir   */
+    if rx \= 0 & rx \= 5 then do                /* not created or existing  */
+      say 'Error' rx 'while creating destination directory' dstdir
+      return rx
+    end
+  end
 otherwise
   say '   Error: Required argument missing: "prod" or "test"'
   say '          Optional second argument: PIC selection (wildcard), e.g.: 18F45*'
   return 1
 end
 
+/* The optional second commandline argument designates for which PICs device */
+/* files must be generated. This argument is only accepted with a 'TEST' run.*/
+/* The selection may contain wildcards like '18LF*', default is '*' (all).   */
+
 select
-  when selection = '' then                      /* no selection spec'd */
-    wildcard = 'pic1*.dev'                      /* default (8 bit PICs) */
-  when destination = 'TEST' then                /* TEST run */
-    wildcard = 'pic'selection'.dev'             /* accept user selection */
-otherwise                                       /* PROD run with selection */
+  when selection = '' then                      /* no selection spec'd      */
+    wildcard = 'pic1*.dev'                      /* default (8 bit PICs)     */
+  when destination = 'TEST' then                /* TEST run                 */
+    wildcard = 'pic'selection'.dev'             /* accept user selection    */
+otherwise                                       /* PROD run with selection  */
   say '   Selection not allowed for production run!'
-  return 1                                      /* exit */
+ return 1                                       /* exit */
 end
 
-call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
-call SysLoadFuncs                               /* load Rexx utilities */
+/* Now the generation of device files is really started!!                   */
 
-call SysFileTree devdir||wildcard, dir, 'FO'    /* get list of filespecs */
+call time 'E'                                   /* start 'elapsed' timer    */
+
+say ' Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
+
+call SysFileTree devdir||wildcard, dir, 'FO'    /* get list of filespecs    */
 if dir.0 < 1 then do
   say '   No .dev files matching <'wildcard'> found in' devdir
   return 1
@@ -82,9 +121,6 @@ if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* new chipdef file 
   Say '   Error: Could not create common include file' chipdef
   return 1
 end
-
-call time 'E'                                   /* start 'elapsed' timer */
-say '   Creating JalV2 device files ...'
 
 signal on syntax name catch_syntax              /* catch syntax errors */
 signal on error  name catch_error               /* catch execution errors */
@@ -101,7 +137,7 @@ call file_read_fusedef                          /* read fuse_def table */
 call list_chip_const                            /* make header of chipdef file */
 
 ListCount = 0                                   /* # created device files */
-LkrMissCount = 0                                /* # created device files */
+LkrMissCount = 0                                /* # missing '.lkr' files */
 
 do i=1 to dir.0                                 /* all relevant .dev files */
                                                 /* init for each new PIC */
@@ -182,10 +218,12 @@ call stream  chipdef, 'c', 'close'              /* done */
 
 say 'Generated' listcount 'device files in' format(time('E'),,2) 'seconds'
 if LkrMissCount > 0 then
-  say LkrMissCount 'device files could not be created because of missing .lkr file'
+  say LkrMissCount 'device files could not be created because of missing .lkr files'
 
 signal off error
 signal off syntax                               /* restore to default */
+
+call SysDropFuncs                               /* release Rexxutil */
 
 return 0
 
@@ -367,45 +405,27 @@ return Lkr.0                                    /* number of records */
 /* Read file with Device Specific data                 */
 /* Interpret contents: fill compound variable PicSpec. */
 /* --------------------------------------------------- */
-old_file_read_picspec: procedure expose PicSpecFile PicSpec.
-if stream(PicSpecFile, 'c', 'open read') \= 'READY:' then do
-  Say '  Error: could not open file with Device Specific data' PicSpecFile
-  exit 1                                        /* zero records */
-end
-call charout , 'Reading PIC specific properties from' PicSpecFile '... '
-do while lines(PicSpecFile) > 0                 /* read whole file */
-  interpret linein(PicSpecFile)                 /* read and interpret line */
-end
-call stream PicSpecFile, 'c', 'close'           /* done */
-say 'done!'
-return
-
-
-/* --------------------------------------------------- */
-/* Read file with Device Specific data                 */
-/* Interpret contents: fill compound variable PicSpec. */
-/* --------------------------------------------------- */
 file_read_picspec: procedure expose PicSpecFile PicSpec.
 if stream(PicSpecFile, 'c', 'open read') \= 'READY:' then do
   Say '  Error: could not open file with device specific data' PicSpecFile
   exit 1                                        /* zero records */
 end
 call charout , 'Reading device specific data items from' PicSpecFile '... '
-do until x = '{' | x = 0                /* search begin of pinmap */
+do until x = '{' | x = 0                        /* search begin of pinmap */
   x = json_newchar(PicSpecFile)
 end
-do until x = '}' | x = 0                /* end of pinmap */
-  do until x = '}' | x = 0              /* end of pic */
-    PicName = json_newstring(PicSpecFile)  /* new PIC */
-    do until x = '{' | x = 0            /* search begin PIC specs */
+do until x = '}' | x = 0                        /* end of pinmap */
+  do until x = '}' | x = 0                      /* end of pic */
+    PicName = json_newstring(PicSpecFile)       /* new PIC */
+    do until x = '{' | x = 0                    /* search begin PIC specs */
       x = json_newchar(PicSpecFile)
     end
-    do until x = '}' | x = 0            /* this PICs specs */
+    do until x = '}' | x = 0                    /* this PICs specs */
       ItemName = json_newstring(PicSpecFile)
-      do until x = '[' | x = 0          /* search item */
+      do until x = '[' | x = 0                  /* search item */
         x = json_newchar(PicSpecFile)
       end
-      do until x = ']' | x = 0          /* end of item */
+      do until x = ']' | x = 0                  /* end of item */
         value = json_newstring(PicSpecFile)
         PicSpec.ItemName.PicName = value
         x = json_newchar(PicSpecFile)
@@ -431,27 +451,27 @@ if stream(PinMapFile, 'c', 'open read') \= 'READY:' then do
   exit 1                                        /* zero records */
 end
 call charout , 'Reading pin alias names from' PinMapFile '... '
-do until x = '{' | x = 0                /* search begin of pinmap */
+do until x = '{' | x = 0                        /* search begin of pinmap */
   x = json_newchar(PinMapFile)
 end
-do until x = '}' | x = 0                /* end of pinmap */
-  do until x = '}' | x = 0              /* end of pic */
-    PicName = json_newstring(PinMapFile)  /* new PIC */
-    PinMap.PicName = PicName            /* PIC listed in JSON file */
-    do until x = '{' | x = 0            /* search begin PIC specs */
+do until x = '}' | x = 0                        /* end of pinmap */
+  do until x = '}' | x = 0                      /* end of pic */
+    PicName = json_newstring(PinMapFile)        /* new PIC */
+    PinMap.PicName = PicName                    /* PIC listed in JSON file */
+    do until x = '{' | x = 0                    /* search begin PIC specs */
       x = json_newchar(PinMapFile)
     end
-    ANcount = 0                         /* zero ANxx count this PIC */
-    do until x = '}' | x = 0            /* this PICs specs */
+    ANcount = 0                                 /* zero ANxx count this PIC */
+    do until x = '}' | x = 0                    /* this PICs specs */
       pinname = json_newstring(PinMapFile)
-      i = 0                             /* no aliases (yet) */
-      do until x = '[' | x = 0          /* search pin aliases */
+      i = 0                                     /* no aliases (yet) */
+      do until x = '[' | x = 0                  /* search pin aliases */
         x = json_newchar(PinMapFile)
       end
-      do until x = ']' | x = 0          /* end of aliases this pin */
+      do until x = ']' | x = 0                  /* end of aliases this pin */
         aliasname = json_newstring(PinMapFile)
-        if aliasname = '' then do       /* no (more) aliases */
-          x = ']'                       /* must have been last char read! */
+        if aliasname = '' then do               /* no (more) aliases */
+          x = ']'                               /* must have been last char read! */
           iterate
         end
         if right(aliasname,1) = '-' then        /* handle trailing '-' character */
@@ -484,10 +504,10 @@ jsonfile = arg(1)
 do until x = '"' | x = ']' | x = '}' | x = 0    /* start new string or end of everything */
   x = json_newchar(jsonfile)
 end
-if x \= '"' then
+if x \= '"' then                                /* no string found */
   return ''
 str = ''
-x = json_newchar(jsonfile)                  /* first char */
+x = json_newchar(jsonfile)                      /* first char */
 do while x \= '"'
   str = str||x
   x = json_newchar(jsonfile)
@@ -499,11 +519,11 @@ json_newchar: procedure
 jsonfile = arg(1)
 do while chars(jsonfile) > 0
   x = charin(jsonfile)
-  if x <= ' ' then                          /* white space */
+  if x <= ' ' then                              /* white space */
     iterate
   return x
 end
-return 0                                    /* dummy */
+return 0                                        /* dummy */
 
 
 /* ---------------------------------------------------- */
@@ -1318,7 +1338,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                 field = reg'_DC'substr(n.j,3,1)'B'
               else
                 field = reg'_DC'substr(n.j,4,1)'B'
-              if duplicate_name(reg'_DC'n'B',reg) = 0 then       /* unique */
+              if duplicate_name(field,reg) = 0 then     /* unique */
                 call lineout jalfile, 'var volatile bit*2 ',
                              left(field,25) 'at' reg ':' offset - s.j + 1
             end
@@ -2923,8 +2943,8 @@ call lineout jalfile, '--      operations, like:'
 call lineout jalfile, '--      . enable_digital_io()'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Sources:'
-call lineout jalfile, '--  - x:'substr(DevFile,3)      /* always drive 'x' */
-call lineout jalfile, '--  - x:'substr(LkrFile,3)
+call lineout jalfile, '--  - "x:'substr(DevFile,3)'"'   /* dummy drive 'x' ! */
+call lineout jalfile, '--  - "x:'substr(LkrFile,3)'"'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
 call lineout jalfile, '--  - Created with Dev2Jal Rexx script version' ScriptVersion
@@ -3074,10 +3094,10 @@ call lineout chipdef, 'const       ADC_V12           = 0x_ADC_12'
 call lineout chipdef, '--'
 call lineout chipdef, '-- =================================================================='
 call lineout chipdef, '--'
-call lineout chipdef, '-- Values assigned to const "target_chip" by'
-call lineout chipdef, '-- "pragma target chip" in device files.'
-call lineout chipdef, '-- Can be used for conditional compilation, for example:'
-call lineout chipdef, '--    if (target_chip = PIC_16F88) then'
+call lineout chipdef, '-- Values assigned to const "target_chip" by"'
+call lineout chipdef, '--    "pragma target chip" in device files'
+call lineout chipdef, '-- can be used for conditional compilation, for example:'
+call lineout chipdef, '--    if (target_chip == PIC_16F88) then'
 call lineout chipdef, '--      ....                                  -- for 16F88 only'
 call lineout chipdef, '--    endif'
 call lineout chipdef, '--'
