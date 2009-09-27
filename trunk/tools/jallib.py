@@ -18,9 +18,9 @@
 # following libraries (if you don't use the action, you can skip it)
 # If you use the binary executables, you won't need to install them
 deps = [
-   # (lib name, used in actions, website)
-   ('cheetah','jalapi','http://cheetahtemplate.org'),
-   ]
+    # (lib name, used in actions, website)
+    ('cheetah','jalapi','http://cheetahtemplate.org'),
+    ]
 # Of course, since it's about jal, you'll need jalv2 compiler installed
 # (not bundled in binary executables)
 # - jalv2 executable (compile): http://www.casadeyork.com/jalv2
@@ -42,10 +42,10 @@ except ImportError:
     has_cheetah = False
 
 try:
-   import subprocess
-   has_subprocess = True
+    import subprocess
+    has_subprocess = True
 except ImportError:
-   has_subprocess = False
+    has_subprocess = False
 
 try:
     import picshell.engine.core.PicEngine
