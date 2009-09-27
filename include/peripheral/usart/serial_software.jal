@@ -18,7 +18,7 @@
 -- Transmission parameters are 8 databits, 2 stopbits, no parity, no handshake.
 --
 -- TODO: should transmission parameters be configurable ? 
--- (8 databits, 2 stopbits, no parity, no handshake)
+-- (8 databits, 1 stopbits, no parity, no handshake)
 --
 
 if (defined(serial_sw_invert) == false) then
@@ -148,7 +148,7 @@ procedure serial_sw_write(byte in data) is
    var bit old_gie    ;status of interrupt enable on entrance
    ;; jallib(seb): this is a way to act on tx pin
    ;;var bit pp at serial_sw_out_port : serial_sw_out_nr
-   alias pp is serial_sw_tx_pin
+   
    var bit data_bit at data : 0
    
    -- stop interrupts and be sure they are stopped
@@ -159,7 +159,7 @@ procedure serial_sw_write(byte in data) is
    end loop
    
    if serial_sw_invert then
-      pp = low
+      serial_sw_tx_pin = low
       _usec_delay((1_000_000/serial_sw_baudrate)-2)
       for 8 loop
          -- wait a whole bittime, less some usec for other actions
@@ -174,17 +174,20 @@ procedure serial_sw_write(byte in data) is
    else
       -- invert the data
       data = ! data 
-      pp = high
+      serial_sw_tx_pin = high
       _usec_delay((1_000_000/serial_sw_baudrate)-2)
       for 8 loop
          -- wait a whole bittime, less some usec for other actions
-         pp = data_bit
+         serial_sw_tx_pin = data_bit
          data = data >> 1
          _usec_delay((1_000_000/serial_sw_baudrate)-2)
       end loop
-      -- add 2 stop bits
-      pp = low
-      _usec_delay((2_000_000/serial_sw_baudrate))
+      -- add 1st stop bits
+      serial_sw_tx_pin = low
+      _usec_delay((1_000_000/serial_sw_baudrate))
+      ;-- add 2nd stop bits
+      ;serial_sw_tx_pin = low
+      ;_usec_delay((1_000_000/serial_sw_baudrate))
    end if
    
    -- restore old interrupt status
@@ -202,7 +205,6 @@ procedure serial_sw_read_wait(byte out data) is
    var bit ready
    ;; jallib(seb): this is a way to act on rx pin
    ;;var bit pp at serial_sw_in_port : serial_sw_in_nr
-   alias pp is serial_sw_rx_pin
    
    -- stop interrupts and be sure they are stopped
    -- save old interrupt status
@@ -213,25 +215,25 @@ procedure serial_sw_read_wait(byte out data) is
    
    if serial_sw_invert then
       -- wait for serial line inactive
-      while !pp loop end loop 
+      while !serial_sw_rx_pin loop end loop 
 
       ready = false
       while !ready loop
          -- wait for startbit
-         while pp loop end loop 
+         while serial_sw_rx_pin loop end loop 
          
          -- wait half a bit time, less 5 usec for other actions
          _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
          
          -- test if still startbit, otherwise restart
-         if !pp then
+         if !serial_sw_rx_pin then
             -- now fetch 8 bits
             for 8 loop
                -- wait a whole bittime, less 5 usec for other actions
                _usec_delay((1_000_000/serial_sw_baudrate)-1)
                -- shift new bit in
                data = data >> 1
-               if pp then
+               if serial_sw_rx_pin then
                   data = data | 0x80
                end if 
             end loop
@@ -242,25 +244,25 @@ procedure serial_sw_read_wait(byte out data) is
       end loop
    else  ;NOT inverted
       -- wait for serial line inactive
-      while pp loop end loop 
+      while serial_sw_rx_pin loop end loop 
       
       ready = false
       while !ready loop
          -- wait for startbit
-         while !pp loop end loop 
+         while !serial_sw_rx_pin loop end loop 
          
          -- wait half a bit time, less 5 usec for other actions
          _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
          
          -- test if still startbit, otherwise restart
-         if pp then
+         if serial_sw_rx_pin then
             -- now fetch 8 bits
             for 8 loop
                -- wait a whole bittime, less 5 usec for other actions
                _usec_delay((1_000_000/serial_sw_baudrate)-1)
                -- shift new bit in
                data = data >> 1
-               if !pp then
+               if !serial_sw_rx_pin then
                   data = data | 0x80
                end if 
             end loop
@@ -306,9 +308,9 @@ function serial_sw_read(byte out data) return bit is
    var bit ie_old    ;status of interrupt enable on entrance
    ;; jallib(seb): this is a way to act on rx pin
    ;;var bit pp at serial_sw_in_port : serial_sw_in_nr
-   alias pp is serial_sw_rx_pin
    
-   if serial_sw_invert != pp then
+   
+   if serial_sw_invert != serial_sw_rx_pin then
       return false
    end if
 
@@ -321,7 +323,7 @@ function serial_sw_read(byte out data) return bit is
    
    if serial_sw_invert then
        -- wait for startbit
-      while pp loop end loop 
+      while serial_sw_rx_pin loop end loop 
       
       -- wait half a bit time, less 5 usec for other actions
       _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
@@ -332,13 +334,13 @@ function serial_sw_read(byte out data) return bit is
          _usec_delay((1_000_000/serial_sw_baudrate)-1)
          -- shift new bit in
          data = data >> 1
-         if pp then
+         if serial_sw_rx_pin then
             data = data | 0x80
          end if 
       end loop
    else  ;NOT inverted
       -- wait for startbit
-      while !pp loop end loop 
+      while !serial_sw_rx_pin loop end loop 
       
       -- wait half a bit time, less 5 usec for other actions
       _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
@@ -349,7 +351,7 @@ function serial_sw_read(byte out data) return bit is
          _usec_delay((1_000_000/serial_sw_baudrate)-1)
          -- shift new bit in
          data = data >> 1
-         if !pp then
+         if !serial_sw_rx_pin then
             data = data | 0x80
          end if 
       end loop
