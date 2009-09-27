@@ -299,52 +299,6 @@ procedure pata_hd_register_read(byte in register, byte out low_byte) is begin
 end procedure
 
 -- ----------------------------------------------------------------------------
--- Send a number of write pulses to data register sending 0's as data.
--- Used to get to the end of a sector or to get to a certain
--- location in a sector.
--- Increment pata_hd_word_count
--- ----------------------------------------------------------------------------
-procedure pata_hd_write_pulse( byte in z ) is begin
-  pata_hd_data_low = 0
-  pata_hd_data_high = 0
-
-  -- send write pulse z number of times
-  for z loop
-    pata_hd_word_count = pata_hd_word_count + 1      -- increment pata_hd_word_count
-    pata_hd_iowr = high ^ PATA_HD_NO_INVERTER        -- send write pulse
-    pata_hd_iowr = low ^ PATA_HD_NO_INVERTER
-  end loop
-end procedure
-
--- ----------------------------------------------------------------------------
--- Send a number of read pulses to data register without getting any data.
--- Used to get to the end of a sector or to get to a certain
--- location in a sector.
--- Increment pata_hd_word_count
--- ----------------------------------------------------------------------------
-procedure pata_hd_read_pulse(dword in z) is
-  if pata_hd_word_count == 0 & pata_hd_sector_count == 0 then
-    pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_READ_SECTOR) -- send the read command to the command register	
-    pata_hd_data_request(PATA_HD_WAIT_READ)                                     -- wait till the drive has data for you
-  elsif pata_hd_word_count == 0 then
-    pata_hd_data_request(PATA_HD_WAIT_READ)
-  end if
-  	
-  if pata_hd_word_count == 255 then
-    pata_hd_sector_count = pata_hd_sector_count + 1
-  end if
-  	
-  ;pata_hd_word_count = pata_hd_word_count + 1           -- increment pata_hd_word_count
-
-  -- send read pulse z number of times		
-  for z loop
-    pata_hd_word_count = pata_hd_word_count + 1
-    pata_hd_iord = high ^ PATA_HD_NO_INVERTER    -- send read pulse
-    pata_hd_iord = low ^ PATA_HD_NO_INVERTER                           		
-  end loop
-end procedure
-
--- ----------------------------------------------------------------------------
 -- Go to a specific sector, select lba/chs mode and master/slave drive
 -- Max sector number is 0x0F_FF_FF_FF or the number of sectors the drive has.
 -- Max drive size is 0x0F_FF_FF_FF * 512 = 137.439 GB
@@ -395,7 +349,7 @@ end procedure
 -- Get drive ready for reading at specified address
 -- ----------------------------------------------------------------------------
 procedure pata_hd_start_read(dword in address) is
-  pata_hd_go_to_sector (address,0)
+  pata_hd_sector_select = address   -- set the users selected sector
   pata_hd_word_count = 0            -- reset number of words read from sector
   pata_hd_sector_count = 0          -- reset number of sectors read
 end procedure
@@ -404,14 +358,16 @@ end procedure
 -- Read two bytes from disk.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_read_data(byte out low_byte, byte out high_byte) is
-  if pata_hd_word_count == 0 & pata_hd_sector_count == 0 then            -- if we are at beginning of read
-    pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_READ_SECTOR)     -- send the read command to the command register	
+  if (pata_hd_word_count == 0) & (pata_hd_sector_count) == 0 then        -- if we are at beginning of read
+    pata_hd_go_to_sector(pata_hd_sector_select,0)                        -- go to the selected sector
+    pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_READ_SECTOR)      -- send the read command to the command register	
     pata_hd_data_request(PATA_HD_WAIT_READ)                              -- wait till the drive has data for you
   elsif pata_hd_word_count == 0 then                                     -- if we are at beginning of a sector
     pata_hd_data_request(PATA_HD_WAIT_READ)                              -- wait for data to be ready for read
   end if
   	
   if pata_hd_word_count == 255 then                                      -- if we are at end of current sector
+    pata_hd_sector_select = pata_hd_sector_select + 1                    -- increment the users selected sector
     pata_hd_sector_count = pata_hd_sector_count + 1                      -- increase sector count
   end if
   	
@@ -422,6 +378,19 @@ procedure pata_hd_read_data(byte out low_byte, byte out high_byte) is
   low_byte = pata_hd_data_low                -- get low data byte
   high_byte  = pata_hd_data_high             -- get high data byte
   pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse 	
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Send a number of read pulses to data register without getting any data.
+-- Used to get to the end of a sector or to get to a certain
+-- location in a sector.
+-- Increment pata_hd_word_count
+-- ----------------------------------------------------------------------------
+procedure pata_hd_read_pulse(dword in z) is
+  var byte x,y
+  for z loop
+    pata_hd_read_data (x,y)                         		
+  end loop
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -446,7 +415,7 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure pata_hd_write_data(byte in low_byte, byte in high_byte) is
   if pata_hd_word_count == 0 then                                     -- if we are at beginning of write
-    pata_hd_go_to_sector (pata_hd_sector_select,1)                    -- go to the uers selected sector, set to write 1 sector
+    pata_hd_go_to_sector (pata_hd_sector_select,1)                    -- go to the correct sector, set to write 1 sector
     pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_WRITE_SECTOR) -- send the write command to the command register
     pata_hd_data_request(PATA_HD_WAIT_WRITE)                          -- wait till data is ready to be read
   end if
@@ -463,6 +432,18 @@ procedure pata_hd_write_data(byte in low_byte, byte in high_byte) is
   pata_hd_data_high = high_byte                  -- set high data byte
   pata_hd_iowr = high ^ PATA_HD_NO_INVERTER      -- send write pulse
   pata_hd_iowr = low ^ PATA_HD_NO_INVERTER 	  	
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Send a number of write pulses to data register sending 0's as data.
+-- Used to get to the end of a sector or to get to a certain
+-- location in a sector.
+-- Increment pata_hd_word_count
+-- ----------------------------------------------------------------------------
+procedure pata_hd_write_pulse( byte in z ) is begin
+  for z loop -- send write pulse z number of times
+    pata_hd_write_data (0,0)
+  end loop
 end procedure
 
 -- ----------------------------------------------------------------------------
