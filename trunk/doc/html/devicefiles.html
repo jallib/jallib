@@ -12,7 +12,7 @@
   <meta name="compiler" content="2.4l">
   <link rel="stylesheet" href="jallib.css" type="text/css">
 </head>
-<body LANG="en-US" DIR="LTR">
+<body lang="en-US" dir="LTR">
 
 <h1>Jallib Device Files Users Guide</h1>
 <p><center>by Rob Hamerling</center>
@@ -61,19 +61,19 @@ supplemented and corrected with information from the datasheets.
 <p>With the design of the device files I had in mind a structure as shown
 below.
 <pre>
-                      +----------+   +------------------+
-                      | device   |   |     general      |
-                      | specific |---|     include      |
-                      | include  |   |chipdef_jallib.jal|
-                      +----------+   +------------------+
-                           |
-           +---------------+---------------+-------------
-           |               |               |
-     +----------+    +----------+    +----------+    +-------
-     | function |    | function |    | function |    |
-     | include  |    | include  |    | include  |    |   etc
-     |'delay_..'|    | 'adc_...'|    |'lcd_....'|    |
-     +----------+    +----------+    +----------+    +-------
+                   +----------+   +------------------+
+                   | device   |   |     general      |
+                   | specific |---|     include      |
+                   | include  |   |chipdef_jallib.jal|
+                   +----------+   +------------------+
+                        |
+         +--------------+--------------+-------------+-----------
+         |              |              |             |
+   +----------+   +----------+   +----------+   +----------+
+   | function |   | function |   | function |   | function |
+   | include  |   | include  |   | include  |   | include  |   etc
+   | 'delay'  |   |  'jal'   |   |'adc.....'|   |'pwm....' |
+   +----------+   +----------+   +----------+   +----------+
 </pre>
 
 <p>These device files are now part of the central JalV2 library
@@ -149,8 +149,8 @@ target name and the corresponding value of target_chip is known by the
 compiler.
 
 <p>Note: The original chipdef.jal file of the compiler package specifies
-a different value for 'target_chip' and not for all PIC type.
-Therefore it has to be replaced when using this set of device files.
+a different value for 'target_chip' and not for all PIC types.
+Therefore it had to be replaced when using this set of device files.
 
 
 <h2>Function Include Files</h2>
@@ -287,7 +287,6 @@ etc. (for all other existing pins)
 variable, for example pin_E3 of the 18F4550.
 
 
-
 <h3>Nibbles</h3>
 <p>Since frequently the upper and lower 4 bits ('nibble') of a port are
 used as a unit, these are declared as pseudo variables.
@@ -315,7 +314,8 @@ to make the pin accessible by a more functional name.
 For example: of the 16F88 pin_B6 is usable as analog input for the ADC
 module as channel 5 and therefore pin_B6 has been given an alias name
 pin_AN5.
-You can find the 'AN5' name in the datasheet.
+You can find the 'AN5' name with the pin layout pictures and tables in the
+datasheet.
 <br>Of course also for the pin_B6_direction an alias is declared and
 called similarly pin_AN5_direction!
 <br>Libraries (for this example the ADC library) will use the alias
@@ -373,8 +373,8 @@ The program or library has to detect the actual use of the CCP2 pin.
 
 
 <h3>Non-memory-mapped registers</h3>
-<p>Some PICs, mainly in the baseline series, are missing some
-addressable ('memory mapped') registers.
+<p>Some PICs, mainly in the baseline series are missing some addressable
+('memory mapped') Special Function Registers (SFRs).
 For example the 12-bit core PICs (10Fs, 12F5x, etc) have no memory
 mapped TRISx registers, in stead these PICs have a TRISx instruction to
 set the direction of ports or pins.
@@ -383,14 +383,22 @@ programs to use statements like:
 <pre>
    PORTA_direction = all_output
 </pre>
-The device files contain pseudo variables which mimic the existence
-of memory mapped registers.
-This makes it possible to use statements like the one above.
+To make this possible the device files contain pseudo variables which mimic the
+existence of memory mapped registers.
 <p>For example: even though a 16F59 has no addressable TRISC register,
 you can still specify:
 <pre>
    pin_C5_direction = output
 </pre>
+<p>Some PICs of the 18F series have SFRs which are only accessible when
+the ADSHR bit in WDTCON is set (when not set a different SFR is addressed).
+For example, with the 18F65J50 both ADCON0 and ADCON1 share address FC2h.
+When the ADSHR bit of WDTCON is reset (0) ADCON0 is accessed,
+when the ADSHR bit is set (1) ADCON1 is accessed.
+<br>The device files will do this automatically with the help of pseudo
+variables.
+When ADCON1 is used in a JALV2 statement the ADSHR bit is set automatically
+(and reset afterwards).
 
 
 <h3>Names of MSSP registers</h3>
@@ -432,12 +440,13 @@ the first SSP module in the devicefiles of the 18F PICs:
 <table>
 <tr><th>field          <th>alias         <th>remarks </tr>
 <tr><td>SSP1CON        <td>SSPCON        <td> </tr>
-<tr><td>SSP1CON2       <td>SSPCON2       <td> </tr>
+<tr><td>SSP1CON2       <td>SSPCON2       <td>when present</tr>
 <tr><td>SSP1STAT       <td>SSPSTAT       <td> </tr>
 <tr><td>SSP1BUF        <td>SSPBUF        <td> </tr>
+<tr><td>SSP1MSK        <td>SSPMSK        <td>when present</tr>
 </table>
 <p>All subfields of these registers have a similar alias
-(only the regsiter prefix is changed, the subfield name is not).
+(the register prefix is changed, the subfield name kept asis).
 
 
 <h3>Names for registers and subfields of CCP modules</h3>
@@ -477,6 +486,7 @@ the following aliases are declared:
 <tr><td>ECCPR1H         <td>CCPR2H        <td>                 </tr>
 <tr><td>ECCPR1L         <td>CCPR2L        <td>                 </tr>
 </table>
+<br>Corresponding pins when called ECCP1 have an alias CCP1.
 
 <p>Some PICs (16F91x,946, 18F2321,2480,2580,4321,4480,4580) have the
 CCPxCON 2-bits subfield DCxB defined as 2 separate bits CCPxX and CCPxY,
@@ -520,7 +530,7 @@ This PIC has as ADC channels 0..4 and 8..13.
 </pre>
 As you can see the prefix JANSEL is not restricted to bits 0..7 of ANSEL
 but is also used for channel numbers higher than 7, controlled by
-another register.
+a different register.
 The 16F724 and 16F727 have 21 ADC channels spread over 4 ANSELx
 registers, but these can controlled with the names JANSEL_ANS0 through
 JANSEL_ANS20.
@@ -872,8 +882,9 @@ Example: 16F59.
 <h3>Analog modules</h3>
 <p>(to be done)
 
+<hr>
 
-<h2>Miscellaneous</h2>
+<h2>Compatibility and Miscellaneous Remarks</h2>
 
 <p>These device files are part of the central JalV2 repository 'Jallib'
 (http://jallib.googlecode.com).
@@ -910,6 +921,51 @@ similarly and groups of other PICs differently.
 This grouping is inspired by the Microchip MCC18 compiler.
 
 </ul>
+
+<!- ---------------------------------------------------------------------- -->
+<hr>
+
+<h2>Generating device files</h2>
+
+<p>The device files are generated by transforming MPLAB files with a script
+'dev2jal.cmd' in the /Jallib/Tools directory.
+The script is developed and executed with 'classic' Rexx as standardly delivered
+with eComStation (OS/2).
+To run it:
+<ul>
+<li>Start a commandline session ('Command prompt')
+<li>Go to the directory k:/Jallib/Tools
+<li>Type: dev2jal test
+</ul>
+<p>Notes:
+<ol>
+<li>The dev2jal script expects both MPLAB and a local copy Jallib installed on
+    drive K.
+<li>The script itself contains comments with instructions what to change
+    in the script with a different system configuration.
+<li>The 'test' argument will put the device files in a 'test' subdirectory
+    of the current directory.
+</ol>
+
+<p>The dev2jal script can be executed on other systems (Linux, Windows)
+when a compatible Rexx interpreter is installed.
+'Regina Rexx' with extension 'Regutil' are doing fine for this script.
+For more information about these products see for example:
+<ul>
+<li>http://regina-rexx.sourceforge.net/index.html
+<li>http://pages.interlog.com/~ptjm/regutil126.zip
+</ul>
+<p>Download and install these packages when you want to run the script on a
+non-eComStation system.
+Probably the easiest way to run the script is:
+<ul>
+<li>Copy /jallib/tools/dev2jal.cmd to the directory where you installed Regina
+and RexxUtil (from the Regutil package)
+<li>Start a CommandLine ('command prompt' / 'MS-DOS prompt' / 'terminal') session
+<li>Go to the directory with Regina.
+<li>Type: regina dev2jal.cmd test
+</ul>
+See also the notes above for eComStation.
 
 </body>
 </html>
