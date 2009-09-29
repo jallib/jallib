@@ -47,6 +47,12 @@ try:
 except ImportError:
     has_subprocess = False
 
+try:
+    import picshell.engine.core.PicEngine
+    has_picshell = True
+except ImportError:
+    has_picshell = False
+
 
 #########
 # TOOLS #
@@ -756,6 +762,81 @@ def do_reindent(args):
 # JALAPI FUNC #
 #-------------#
 
+def picshell_unittest(jalFileName,asmFileName,hexFileName):
+
+    if not has_picshell:
+        print >> sys.stderr, "Can't find PICShell libraries. Install PICShell and adjust PYTHONPATH"
+        sys.exit(255)
+
+    # This piece of code is loosely based on PICShell implementation.
+    # This is a quick & dirty assembling :)
+
+    from picshell.parser.JalV2AsmParser import JalV2AsmParser
+    from picshell.parser.AnnotationParser import AnnotationParser
+    from picshell.engine.core.PicThreadEngine import PicThreadEngine
+    from picshell.engine.core.PicEngine import PicEngine
+    from picshell.engine.core.State import State
+    from picshell.util.AssertUtil import AssertUtil
+
+    from picshell.ui.UIManager import UIManager
+
+    asmParser = JalV2AsmParser()
+    wholeCode = asmParser.parseAsmFile(asmFileName, [])
+    varTypeDict = JalV2AsmParser.buildVarTypeDict(wholeCode)
+
+    parseRes = AnnotationParser.parse(file(jalFileName).read())
+    noDebugList = parseRes["noDebug"]
+    debugList = parseRes["debug"]
+    langParser = JalV2AsmParser()
+    code = langParser.parseAsmFile(asmFileName, noDebugList,debugList)
+
+    def unittest_callback(address,oracle):
+        line = langParser.adrToLine[address]
+        if line != None:
+            txt = code[line].line
+            if "@assertEquals" in txt:
+                res = AssertUtil.parse(txt)
+                var = res["var"].lower()
+                label = res["label"]
+                ref = res["ref"]
+                if (langParser.varAdrMapping.has_key("v_"+str(var))):
+                    varAddr = langParser.varAdrMapping["v_"+str(var)]
+                    varType = type = varTypeDict.get(var,'bit')
+                    val = ui.varValue(varAddr,varType)
+                    res= varType+" "+var+" (@"+str(varAddr)+") = 0x%X , expected : 0x%X" %(val,ref)
+
+                    print label,
+                    if (ref == val) :
+                        oracle['success'] += 1
+                        print ": OK"
+                    else :
+                        oracle['failure'] += 1
+                        print ": FAIL, %s != %s" % (ref,val)
+                else:
+                    oracle['notrun'] += 1
+                    print "Can't run test '%s' because var '%s' can't be found" % (label,var)
+
+    emu = PicEngine.newInstance(State(),hexFileName)
+    # needed to access varValue function
+    ui = UIManager()
+    ui.emu = emu
+
+    #         success failure notrun
+    oracle = {'success' : 0, 'failure' : 0, 'notrun' : 0}
+    def run(to,emu,unittest_callback):
+        current_address = emu.runNext()
+        while current_address != to:
+            #unit testing ?
+            if unittest_callback != None:
+                unittest_callback(current_address,oracle)
+            current_address = emu.runNext()
+        # last call on finishing address
+        unittest_callback(current_address,oracle)
+
+    run(emu.lastAddress,emu,unittest_callback)
+
+    return oracle
+
 def unittest(filename,verbose=False):
     oracle = {'success' : None, 'failure' : None, 'notrun' : None}
     content = file(filename).read().splitlines()
@@ -766,8 +847,6 @@ def unittest(filename,verbose=False):
             fout = file(fnout,"w")
             ferr = file(fnerr,"w")
             status = do_compile([filename],exitonerror=False,clean=False,stdout=fout,stderr=ferr)
-            fout.close()
-            ferr.close()
         except Exception,e:
             print >> sys.stderr, "Error while compiling file '%s': %s" % (filename,e)
             raise
@@ -778,30 +857,15 @@ def unittest(filename,verbose=False):
             jal = filename
             asm = filename.replace(".jal",".asm")
             hex = filename.replace(".jal",".hex")
-            
-            try:
-                from picshell.console.picshell_unittest import picshell_unittest
-                oracle = picshell_unittest(jal,asm,hex)
-            except ImportError:
-                print >> sys.stderr, "Can't find PICShell libraries. Install PICShell and adjust PYTHONPATH"
-                sys.exit(255)
-                oracle['failure'] = 1
-
+            oracle = picshell_unittest(jal,asm,hex)
         else:
             oracle['failure'] = 1
 
     finally:
-        fout = file(fnout)
-        ferr = file(fnerr)
-
         clean_compiler_products(filename)
-
-        fout.close()
-        ferr.close()
         if verbose:
-            print fout.read()
-            print ferr.read()
-
+            print file(fnout).read()
+            print file(fnerr).read()
         os.unlink(fnout)
         os.unlink(fnerr)
 
@@ -1210,7 +1274,8 @@ a test file (*.jalt extention). The differences are test files contain several
 tests, several sections, which are assembled on the fly
 (something like board/test files producing samples)
 
-Tests is done using PICShell unittesting facilities. Several actions can be checked:
+Tests is done using PICShell unittesting facilities. PIC 18F aren't
+supported. Several actions can be checked:
 
   - @assertEquals: will check a variable against a value (from PICShell).
 
