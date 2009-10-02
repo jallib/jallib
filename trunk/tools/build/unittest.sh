@@ -9,6 +9,11 @@ jaltfiles=`find $JALLIB_UNITTESTDIR -name \*.jalt -type f`
 jalfiles=`find $JALLIB_UNITTESTDIR -name \*.jal -type f`
 
 echo `echo $jaltfiles $jalfiles | sed "s#\.jal #.jal\n#g" | sed "s#\.jalt #.jalt\n#g" | wc -l` unittests to run...
+for t in `echo $jaltfiles $jalfiles`
+do
+   echo `basename $t`
+done
+echo
 
 at_least_one_failed=0
 counter=0
