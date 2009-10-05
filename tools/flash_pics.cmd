@@ -32,7 +32,7 @@
 /* -------------------------------------------------------------------------- */
 
 base   = 'k:/picdatasheets/'                    /* XLS downloaded directory   */
-flash  = 'flash'                                /* flash XLS file             */
+flash  = 'FLASH'                                /* flash XLS file             */
 mature = 'Mature PIC® MCUs'                     /* mature product XLS file    */
 date   = '2009-10-03'                           /* date of the XLS files      */
 dev    = 'k:/jallib/include/device/'            /* dir of Jallib device files */
@@ -180,31 +180,42 @@ PicName = 'PIC'PicType
 
 /* say 'list_property:' PicName PropName */
 
-call lineout list, '  'PropName '=' p.PicName.PropName
+call lineout list, '  'PropName '= "'p.PicName.PropName'"'
 call charout json, '      "'PropName'" : [ '    /* open bracket */
 val = p.PicName.PropName                        /* value string */
 if pos(',',val) > 0 then do                     /* CSV subfields */
   do while val \= ''
     val = strip(val,'L')                        /* remove leading blanks */
-    parse var val valsub ',' val                /* split subfields */
+    parse upper var val valsub ',' val          /* split subfields */
     offset_times  = pos('x',valsub)
     offset_hyphen = pos('-',valsub)
     offset_slash  = pos('/',valsub)
+    offset_MHZ    = pos('MHZ',valsub)
+    offset_KHZ    = pos('KHZ',valsub)
     if offset_times > 0 then do
       parse var valsub valx 'x' valy          /* split */
-      call charout json, '{ "'strip(valy,'B')'" : ["'strip(valx,'B')'"] } , '
+      call charout json, '{ "'space(valy,,'_')'" : ["'strip(valx,'B')'"] } , '
     end
     else if offset_hyphen > 0   &,
        (offset_slash = 0 | offset_slash > offset_hyphen) then do
       parse var valsub valx '-' valy          /* split */
-      call charout json, '{ "'strip(valy,'B')'" : ["'strip(valx,'B')'"] } , '
+      call charout json, '{ "'space(valy,,'_')'" : ["'strip(valx,'B')'"] } , '
     end
     else if offset_slash > 0 then do
       parse var valsub valx '/' valy          /* split */
-      call charout json, '{ "'strip(valy,'B')'" : ["'strip(valx,'B')'"] } , '
+      call charout json, '{ "'space(valy,,'_')'" : ["'strip(valx,'B')'"] } , '
     end
-    else
+    else if offset_MHZ > 0 then do
+      call charout json, '{ "MHZ" : ["'word(valsub,1)'"] } , '
+    end
+    else if offset_KHZ > 0 then do
+      call charout json, '{ "KHZ" : ["'word(valsub,1)'"] } , '
+    end
+    else do
+      if words(subval) > 1 then
+        say 'Warning: multiple words in subval:' subval
       call charout json, '"'word(valsub,1)'" ,'
+    end
   end
   call stream  json, 'C', 'seek -2'           /* remove last comma */
 end
@@ -248,7 +259,7 @@ do while lines(csv)
   ln = substr(ln, offset)                   /* skip everything before 'PIC1' */
   parse var ln 'PIC'PicName ',' ln          /* extract PIC type */
   PicName = strip(PicName,'B')
-  if picselect(PicName) = 0 then            /* not in Jallib collection */
+  if PicJalV2(PicName) = 0 then             /* not in Jallib collection */
     iterate
   do i = 2 while ln \= ''                   /* whole line */
     ln = strip(ln,'L')                      /* remove leading blanks */
@@ -267,3 +278,26 @@ end
 call stream csv, 'c', 'close'
 return
 
+
+/* --------------------------------------------------------------- */
+/* Procedure to determine if PIC belongs to JalV2 supported group  */
+/* returns: 0 - not supported                                      */
+/*          1 - supported                                          */
+/* --------------------------------------------------------------- */
+PicJalV2: procedure
+
+parse upper arg PicName .
+
+if (left(PicName,3) = '10F'  |,
+    left(PicName,3) = '12F'  |,
+    left(PicName,4) = '12HV' |,
+    left(PicName,3) = '16F'  |,           /* one of these */
+    left(PicName,4) = '16HV' |,
+    left(PicName,4) = '16LF' |,
+    left(PicName,3) = '18F'  |,
+    left(PicName,4) = '18LF')  &,
+    pos('F18',PicName) = 0     &,         /* not one of these */
+    pos('F19',PicName) = 0    then  do
+      return 1                            /* supported */
+end
+return 0                                  /* not supported */
