@@ -91,11 +91,15 @@ do i = 1 to dev.0
   PicNameCaps = translate('pic'PicType,xrange('A','Z'),xrange('a','z'))
   if p.PicNameCaps.ARCHITECTURE = '?' then do           /* check absence */
     if pos('LF',PicNameCaps) > 0 then do
-      PicType = delstr(PicType,3,1)                     /* remove 'l' */
-      PicNameCaps = translate('pic'PicType,xrange('A','Z'),xrange('a','z'))
+      PicTemp = delstr(PicType,3,1)                     /* remove 'l' */
+      PicNameCaps = translate('pic'PicTemp,xrange('A','Z'),xrange('a','z'))
       if p.PicNameCaps.ARCHITECTURE = '?' then do       /* check abcense */
         call lineout list, '  *** No properties found'
         iterate
+      end
+      else do
+        call lineout json, '   "'PicType'": {'  /* standin present */
+        PicType = PicTemp                       /* show properties of standin */
       end
     end
     else do
@@ -103,8 +107,10 @@ do i = 1 to dev.0
       iterate
     end
   end
+  else                                          /* PicType present */
+    call lineout json, '   "'PicType'": {'
+
   PicCount = PicCount + 1
-  call lineout json, '   "'PicType'": {'
 
   call list_property PicType, 'Architecture'
   call list_property PicType, 'PROGRAM_MEMORY_KBYTES'
@@ -198,15 +204,20 @@ if pos(',',val) > 0 then do                     /* CSV subfields */
     end
     else if offset_hyphen > 0   &,
        (offset_slash = 0 | offset_slash > offset_hyphen) then do
-      parse var valsub valx '-' valy          /* split */
+      parse var valsub valx '-' valy            /* split */
       call charout json, '{ "'space(valy,,'_')'" : ["'strip(valx,'B')'"] } , '
     end
     else if offset_slash > 0 then do
-      parse var valsub valx '/' valy          /* split */
+      parse var valsub valx '/' valy            /* split */
       call charout json, '{ "'space(valy,,'_')'" : ["'strip(valx,'B')'"] } , '
     end
     else if offset_MHZ > 0 then do
-      call charout json, '{ "MHZ" : ["'word(valsub,1)'"] } , '
+      if pos('MHZ',val) > 0 then do             /* 2nd MHZ value present */
+        parse upper var val valsub2 ',' val     /* split inline */
+        call charout json, '{ "MHZ" : ["'word(valsub,1)'" , "'word(valsub2,1)'"] } , '
+      end
+      else
+        call charout json, '{ "MHZ" : ["'word(valsub,1)'"] } , '
     end
     else if offset_KHZ > 0 then do
       call charout json, '{ "KHZ" : ["'word(valsub,1)'"] } , '
@@ -217,7 +228,10 @@ if pos(',',val) > 0 then do                     /* CSV subfields */
       call charout json, '"'word(valsub,1)'" ,'
     end
   end
-  call stream  json, 'C', 'seek -2'           /* remove last comma */
+  call stream  json, 'C', 'seek -2'             /* remove last comma */
+end
+else if pos('MHz',val) > 0 then do              /* with internal oscillator (only?) */
+  call charout json, '{ "MHZ" : ["'word(val,1)'"] }'
 end
 else
   call charout json, '"'val'"'                /* value */
