@@ -1245,7 +1245,7 @@ library, and produces link to them.
     -g : specifies the Google Code SVN base URL containing samples, to build
          links to samples (ignored if -l is set).
          Default: http://code.google.com/p/jallib/source/browse/trunk/sample
-    -o : specifies which file to write HMLT documentation to (use "-o -" to
+    -o : specifies which file to write HTML documentation to (use "-o -" to
          on stdout)
 
 """
