@@ -720,8 +720,8 @@ def reindent_file(filename,withchar,howmany):
 
     assert level == 0, "Reached the end of file, but indent level is not null (it should)"
     # ok, now we can save the content back to the file
-    fout = file(filename,"w")
-    print >> fout, os.linesep.join(content)
+    fout = file(filename,"wb")
+    fout.write(os.linesep.join(content) + os.linesep)   # linefeed on last line
     fout.close()
 
 def do_reindent(args):
