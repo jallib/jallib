@@ -1,0 +1,144 @@
+-- Title: dsm0822a - i2c star burst dispay driver
+-- Author: Joep Suijs, Copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4i
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides a i2c star burst dispay driver 
+--
+-- Sources:
+-- based on C program of Michael Dworkin
+--
+
+-- Translation table of ascci to two bytes, which indicate
+-- which segment have to be switched on.     
+const byte dsm_tab[] =
+{
+    0x00,0x00,
+    0x04,0x20,   -- 21h (33) !
+    0x80,0x20,   -- 22h (34) "
+    0xa8,0x8c,   -- 23h (35) # -> ° (Grad-Zeichen)
+    0xad,0xb5,   -- 24h (36) $
+    0xec,0x37,   -- 25h (37) %
+    0x3b,0x71,   -- 26h (38) &
+    0x00,0x02,   -- 27h (39) '
+    0x00,0x42,   -- 28h (40) (
+    0x42,0x00,   -- 29h (41) )
+    0x66,0x66,   -- 2ah (42) *
+    0x24,0x24,   -- 2bh (43) +
+    0x40,0x00,   -- 2ch (44) ,
+    0x00,0x04,   -- 2dh (45) -
+    0x01,0x00,   -- 2eh (46) .
+    0x40,0x02,   -- 2fh (47) /
+    0x99,0x99,   -- 30h (48) 0
+    0x00,0x0b,   -- 31h (49) 1
+    0x39,0x9c,   -- 32h (50) 2
+    0x29,0x9d,   -- 33h (51) 3
+    0xa0,0x0d,   -- 34h (52) 4
+    0xa9,0x95,   -- 35h (53) 5
+    0xb9,0x95,   -- 36h (54) 6
+    0x08,0x89,   -- 37h (55) 7
+    0xb9,0x9d,   -- 38h (56) 8
+    0xa9,0x9d,   -- 39h (57) 9
+    0x21,0x00,   -- 3ah (58) :
+    0x21,0x00,   -- 3bh (59) ;
+    0x00,0x42,   -- 3ch (60) <
+    0x21,0x00,   -- 3dh (61) =
+    0x42,0x00,   -- 3eh (62) >
+    0x8c,0x8c,   -- 3fh (63) ?
+    0x3d,0x99,   -- 40h (64) @
+    0xb8,0x8d,   -- 41h (65) A
+    0x0d,0xbd,   -- 42h (66) B
+    0x99,0x90,   -- 43h (67) C
+    0x0d,0xb9,   -- 44h (68) D
+    0xb9,0x94,   -- 45h (69) E
+    0xb8,0x84,   -- 46h (70) F
+    0x99,0x95,   -- 47h (71) G
+    0xb0,0x0d,   -- 48h (72) H
+    0x0d,0xb0,   -- 49h (73) I
+    0x11,0x19,   -- 4ah (74) J
+    0xb0,0x42,   -- 4bh (75) K
+    0x91,0x10,   -- 4ch (76) L
+    0x92,0x0b,   -- 4dh (77) M
+    0x92,0x49,   -- 4eh (78) N
+    0x99,0x99,   -- 4fh (79) O
+    0xb8,0x8c,   -- 50h (80) P
+    0x99,0xd9,   -- 51h (81) Q
+    0xb8,0xcc,   -- 52h (82) R
+    0xa9,0x95,   -- 53h (83) S
+    0x0c,0xa0,   -- 54h (84) T
+    0x91,0x19,   -- 55h (85) U
+    0xd0,0x02,   -- 56h (86) V
+    0xd0,0x49,   -- 57h (87) W
+    0x42,0x42,   -- 58h (88) X
+    0xa1,0x1d,   -- 59h (89) Y
+    0x49,0x92,   -- 5ah (90) Z
+    0x99,0x00,   -- 5bh (91) [
+    0x02,0x40,   -- 5ch (92) \
+    0x00,0x99,   -- 5dh (93) ]
+    0x40,0x40,   -- 5eh (94) ^
+    0x01,0x10    -- 5fh (95) _
+};
+
+-- init & clear display
+procedure dsm_init() is
+
+    var byte i;
+   var bit flag;
+   
+   i2c_start()
+   flag = i2c_transmit_byte (112)
+   flag = i2c_transmit_byte (0xE0)  ; 0b.1110.0000 Device select
+   flag = i2c_transmit_byte (0xC8)  ; 0b.1100.1000 Mode set(enabled)
+   for 20 loop
+      flag = i2c_transmit_byte (0)  ; clear LCD 
+   end loop
+   i2c_stop()
+   
+end procedure
+
+-- dsm_out() - Put a character at the designated position
+procedure dsm_out(byte in pos, byte in a) is
+   var bit flag;
+   
+   ; check range of a
+   if (a > 0x7F) then
+      a = 0x5F
+   elsif (a > 0x5F) then
+      a = a - 0x20   ; from lower to upper case
+   elsif (a < 0x20) then
+      a = 0x5F
+   end if
+   
+   i2c_start()
+   flag = i2c_transmit_byte (112)
+;   PrintBit10(serial_hw_data, flag)
+   flag = i2c_transmit_byte (pos * 4)
+;   PrintBit10(serial_hw_data, flag)
+   a=a-32                                    -- calculate position of ascii char in table
+   a=a*2 
+   flag = i2c_transmit_byte(dsm_tab[a])      -- byte 1
+;   PrintBit10(serial_hw_data, flag)
+   flag = i2c_transmit_byte(dsm_tab[a+1])    -- byte 2
+;   PrintBit10(serial_hw_data, flag)
+   i2c_stop()
+
+end procedure
+
+var byte dsm_pos = 0   
+
+-- dsm_data'put() - put a char at the next position
+procedure dsm_data'put(byte in data) is
+   var byte pos
+   pos = dsm_pos
+   dsm_pos = dsm_pos + 1
+   if (dsm_pos > 7) then 
+      dsm_pos = 0
+   end if
+   dsm_out(pos, data)
+
+end procedure
+
+
