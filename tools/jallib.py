@@ -190,8 +190,12 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
             print >> sys.stderr, "Wrong option %s" % o
     # No root specified ? Try env var, else defaut to cwd
     if not dirs:
-        v = os.environ.get('JALLIB_REPOS',os.path.curdir)
-        gdirs = v.split(";")
+        try:
+		    gdirs = os.environ['JALLIB_REPOS'].split(":")
+        except KeyError:
+            # no such env var, takes param from commandline, and honor
+            # jalv2 compiler separator
+            gdirs = os.path.curdir.split(";")
         for d in gdirs:
             dirs = _explore_dir(d)
     # No exec specify, try env var or defaulting
@@ -229,7 +233,7 @@ def content_not_empty(val):
 def compiler_version(val):
     return re.match("^(>|<|>=|<=|=)?\d+(\.\d+\w*)+\s+$",val)
 
-JALLIB = """^-- This file is part of jallib\s+\(http://jallib.googlecode.com\)"""
+JALLIB = """^-- This file is part of (jallib|jaluino)\s+\(http://(jallib|jaluino).googlecode.com\)"""
 LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
 LICENSE2 = """^-- Released under the ZLIB license\s+\(http://www.opensource.org/licenses/zlib-license.html\)"""
 
