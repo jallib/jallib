@@ -1,54 +1,55 @@
-/* ---------------------------------------------------------------------------*/
-/* Flash_pic_fmt.cmd - Process downloaded CSV file of Microchip flash PICs    */
-/*                     * create a straight forward listing                    */
-/*                     * create a straight forward listing                    */
-/*                     In both cases only selected 'columns' are included.    */
-/*                                                                            */
-/* How to run this script:                                                    */
-/*  - To run this script you need a Rexx interpretor. With eComStation (OS/2) */
-/*    Rexx is installed by default. On systems without Rexx:                  */
-/*    * Install Rexx (Regina: http://www.http://regina-rexx.sourceforge.net/) */
-/*    * Install RegUtil (http://pages.interlog.com/~ptjm/)                    */
-/*  - Download the Excel files with PIC properties from the Microchip site    */
-/*    * select 'Products' -> '8-bits PICs' -> 'Flash',                        */
-/*      click 'Show All Specs' and then 'EXPORT TO XLS'                       */
-/*    * select 'Products' -> '8-bits PICs' -> 'Mature Products',              */
-/*      click 'Show All Specs' and then 'EXPORT TO XLS'                       */
-/*    These XLS files us a name format: <product-group>-<date>.csv            */
-/*  - If needed, modify the first few lines below for your system setup:      */
-/*    * directory with the downloaded XLS files                               */
-/*    * names of the XLS files (prefixes without the date)                    */
-/*    * <date> of the XLS files (assumed equal for both XLS files)            */
-/*    * directory with the Jallib device files                                */
-/*      (used for the selection of PICs for which properties to list)         */
-/*  - Start the script:                                                       */
-/*    * with Rexx under eComStation (OS/2) enter in a commandline session:    */
-/*        flash_pics                                                          */
-/*    * with Regina Rexx                                                      */
-/*        regina flash_pics.cmd                                               */
-/*    (no commandline arguments needed)                                       */
-/*                                                                            */
-/*                                                                            */
-/* -------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------*
+ * Flash_pics.cmd - Process downloaded CSV file of Microchip flash PICs       *
+ *                  * create a straight forward listing                       *
+ *                  * create a SimpleJSON formatted file                      *
+ *                  In both cases only selected 'columns' are included.       *
+ *                                                                            *
+ * How to run this script:                                                    *
+ *  - To run this script you need a Rexx interpretor.                         *
+ *    With eComStation (OS/2) Rexx is installed by default.                   *
+ *    On systems without Rexx install:                                        *
+ *    * Rexx (Regina: http://www.http://regina-rexx.sourceforge.net/)         *
+ *    * RegUtil (http://pages.interlog.com/~ptjm/)                            *
+ *  - Download the Excel files with PIC properties from the Microchip site    *
+ *    * select 'Products' -> '8-bits PICs' -> 'Flash',                        *
+ *      click 'Show All Specs' and then 'EXPORT TO XLS'                       *
+ *    * select 'Products' -> '8-bits PICs' -> 'Mature Products',              *
+ *      click 'Show All Specs' and then 'EXPORT TO XLS'                       *
+ *    These Excel files have name format: <product-group>-<date>.csv          *
+ *  - If needed, modify the first few lines below for your system setup:      *
+ *    * directory with the downloaded XLS files                               *
+ *    * names of the XLS files (prefixes without the date)                    *
+ *    * <date> of the XLS files (assumed equal for both XLS files)            *
+ *    * directory with the Jallib device files                                *
+ *      (used for the selection of PICs for which properties to list)         *
+ *  - Start the script:                                                       *
+ *    * with Rexx under eComStation (OS/2) enter in a commandline session:    *
+ *        flash_pics                                                          *
+ *    * with Regina Rexx enter in a commandline session:                      *
+ *        regina flash_pics.cmd                                               *
+ *      (you might have to copy this script to the directory with Regina)     *
+ *                                                                            *
+ * -------------------------------------------------------------------------- */
 
 base   = 'k:/picdatasheets/'                    /* XLS downloaded directory   */
-flash  = 'FLASH'                                /* flash XLS file             */
-mature = 'Mature PIC® MCUs'                     /* mature product XLS file    */
-date   = '2009-10-03'                           /* date of the XLS files      */
+flash  = 'FLASH'                                /* 'flash' XLS file           */
+mature = 'Mature PIC® MCUs'                     /* 'mature products' XLS file */
+date   = '2009-10-16'                           /* date of the XLS files      */
 dev    = 'k:/jallib/include/device/'            /* dir of Jallib device files */
+tools  = 'k:/jallib/tools/'                     /* dir of Jallib tools/data   */
 
 /* build the complete filespecs */
 fls  = base||flash'-'date'.csv'                 /* filespec of flash XLS */
 mat  = base||mature'-'date'.csv'                /* filespec of mature XLS */
+psp  = tools'devicespecific.json'               /* filespec of PIC specific data */
 
-/* specify output files: */
-list = flash'_pics.lst'                         /* filespec output listing */
-json = flash'_pics.json'                        /* filespec output json file */
+/* specify output files */
+list = 'flash_pics.lst'                         /* filespec output listing */
+json = tools'flash_pics.json'                   /* filespec output json file */
 
 /* start processing */
-
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
-call SysLoadFuncs                           /* load REXX functions */
+call SysLoadFuncs                               /* load REXX utilities */
 
 if stream(fls,'c','query exists') = '' then do
   say 'Could not find file with flash properties' fls
@@ -77,6 +78,7 @@ call stream json, 'c', 'open write'
 p. = '?'                                        /* init properties */
 call file_read_csv fls
 call file_read_csv mat
+call file_read_json psp
 
 say dev.0 'device files found in' dev
 
@@ -89,11 +91,13 @@ do i = 1 to dev.0
   parse value filespec('N',dev.i) with PicType '.jal' .
   call lineout list, PicType
   PicNameCaps = translate('pic'PicType,xrange('A','Z'),xrange('a','z'))
-  if p.PicNameCaps.ARCHITECTURE = '?' then do           /* check absence */
+  if p.PicNameCaps.ARCHITECTURE = '?' &,                /* check absence */
+     p.PicNameCaps.DATASHEET = '?' then do
     if pos('LF',PicNameCaps) > 0 then do
       PicTemp = delstr(PicType,3,1)                     /* remove 'l' */
       PicNameCaps = translate('pic'PicTemp,xrange('A','Z'),xrange('a','z'))
-      if p.PicNameCaps.ARCHITECTURE = '?' then do       /* check abcense */
+      if p.PicNameCaps.ARCHITECTURE = '?' &,            /* check abcense */
+         p.PicNameCaps.DATASHEET = '?' then do          /* check abcense */
         call lineout list, '  *** No properties found'
         iterate
       end
@@ -112,12 +116,15 @@ do i = 1 to dev.0
 
   PicCount = PicCount + 1
 
-  call list_property PicType, 'Architecture'
+  call list_property PicType, 'ARCHITECTURE'
+  call list_property PicType, 'DATASHEET'
+  call list_property PicType, 'PGMSPEC'
   call list_property PicType, 'PROGRAM_MEMORY_KBYTES'
   call list_property PicType, 'PROGRAM_MEMORY_KWORDS'
   call list_property PicType, 'SELF_WRITE'
   call list_property PicType, 'EEPROM_DATA_MEMORY'
   call list_property PicType, 'RAM'
+  call list_property PicType, 'FUSESDEFAULT'
   call list_property PicType, 'I_O_PINS'
   call list_property PicType, 'PIN_COUNT'
   call list_property PicType, 'MAX_CPU_SPEED_MHZ'
@@ -134,6 +141,7 @@ do i = 1 to dev.0
   call list_property PicType, 'COMPARATORS'
   call list_property PicType, '#_OF_A_D_CONVERTERS'
   call list_property PicType, '#_OF_A_D_CH'
+  call list_property PicType, 'ADCGROUP'
   call list_property PicType, 'BANDGAP_REFERENCE'
   call list_property PicType, 'SR_LATCH'
   call list_property PicType, 'DIGITAL_COMMUNICATION'
@@ -176,16 +184,16 @@ Say 'Listed properties of ' PicCount 'of' dev.0 'device files'
 return 0
 
 
-/* ----------------------------------- */
-/* procedure to list a single property */
-/* ----------------------------------- */
+/* ------------------------------------------------------------- */
+/* procedure to list a single property                           */
+/*                                                               */
+/* For the SimpleJSON output the 'raw' property is splitted      */
+/* in multiple subfields when applicable.                        */
+/* ------------------------------------------------------------- */
 list_property: procedure expose p. list json
 
 parse upper arg PicType, PropName .
-PicName = 'PIC'PicType
-
-/* say 'list_property:' PicName PropName */
-
+PicName = 'PIC'PicType                          /* name used in p. */
 call lineout list, '  'PropName '= "'p.PicName.PropName'"'
 call charout json, '      "'PropName'" : [ '    /* open bracket */
 val = p.PicName.PropName                        /* value string */
@@ -240,14 +248,23 @@ call lineout json, ' ] ,'                     /* closing bracket */
 return
 
 
-/* -------------------------- */
-/* procedure to read CSV file */
-/* -------------------------- */
+/* -------------------------------------------------------- */
+/* procedure to read CSV file                               */
+/*                                                          */
+/* First line is supposed to contain the columns titles,    */
+/* which are slightly modified to obtain reasonable names   */
+/* for each property.                                       */
+/* The following lines contain the properties, which are    */
+/* stored asis in the compound variable 'p' with the names  */
+/* derived from the first line.                             */
+/* Note: Only lines for PICs supported by JalV2 are         */
+/*       processed, other lines are simply skipped.         */
+/*                                                          */
+/* -------------------------------------------------------- */
 file_read_csv: procedure expose p.
 
 parse arg csv
 
-col. = '-'
 if stream(csv, 'c', 'open read') \= 'READY:' then do
   say 'Warning: Failed to open' csv 'for reading!'
   return
@@ -283,14 +300,86 @@ do while lines(csv)
     end
     else
       parse var ln '"' val '"' ',' ln
-    val = strip(val,'B')                            /* remove surrounding blanks */
+    val = strip(val,'B')                    /* remove surrounding blanks */
     pnm = translate('pic'PicName,xrange('A','Z'),xrange('a','z'))
     hdr = hdr.i                             /* heading of column */
     p.pnm.hdr = val                         /* store value this column */
   end
 end
-call stream csv, 'c', 'close'
+call stream csv, 'c', 'close'               /* done with file */
 return
+
+
+/* --------------------------------------------------- */
+/* Read file with Device Specific data                 */
+/* Interpret contents: fill compound variable p.       */
+/* --------------------------------------------------- */
+file_read_json: procedure expose p.
+
+parse arg jsonfile
+
+if stream(jsonfile, 'c', 'open read') \= 'READY:' then do
+  Say '  Error: could not open file with device specific data' jsonfile
+  exit 1                                        /* zero records */
+end
+
+say 'Reading file' jsonfile '...'
+
+do until x = '{' | x = 0                        /* search begin of properties */
+  x = json_newchar(jsonfile)
+end
+do until x = '}' | x = 0                        /* end of properties */
+  do until x = '}' | x = 0                      /* end of pic */
+    PicName = 'PIC'json_newstring(jsonfile)          /* new PIC */
+    do until x = '{' | x = 0                    /* search begin PIC specs */
+      x = json_newchar(jsonfile)
+    end
+    do until x = '}' | x = 0                    /* this PICs specs */
+      ItemName = json_newstring(jsonfile)
+      do until x = '[' | x = 0                  /* search item */
+        x = json_newchar(jsonfile)
+      end
+      do until x = ']' | x = 0                  /* end of item */
+        value = json_newstring(jsonfile)
+        p.PicName.ItemName = value
+        x = json_newchar(jsonfile)
+      end
+      x = json_newchar(jsonfile)
+    end
+    x = json_newchar(jsonfile)
+  end
+  x = json_newchar(jsonfile)
+end
+call stream jsonfile, 'c', 'close'              /* done with file */
+return
+
+
+/* -------------------------------- */
+json_newstring: procedure
+jsonfile = arg(1)
+do until x = '"' | x = ']' | x = '}' | x = 0    /* start new string or end of everything */
+  x = json_newchar(jsonfile)
+end
+if x \= '"' then
+  return ''
+str = ''
+x = json_newchar(jsonfile)                      /* first char */
+do while x \= '"'
+  str = str||x
+  x = json_newchar(jsonfile)
+end
+return str
+
+/* -------------------------------- */
+json_newchar: procedure
+jsonfile = arg(1)
+do while chars(jsonfile) > 0
+  x = charin(jsonfile)
+  if x <= ' ' then                              /* white space */
+    iterate
+  return x
+end
+return 0                                        /* dummy */
 
 
 /* --------------------------------------------------------------- */
@@ -315,3 +404,4 @@ if (left(PicName,3) = '10F'  |,
       return 1                            /* supported */
 end
 return 0                                  /* not supported */
+
