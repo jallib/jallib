@@ -36,69 +36,69 @@
 
 
 #def analyze_config(bits,dpins,mapping)
-	#set analog = [d for d in dpins.items() if d[1] == 'A']
-	#set vrefs = [d for d in dpins.items() if d[1].startswith('VREF')]
-	#set num_a = len(analog)
-	#set num_vref = len(vrefs)
-	## There can be "anything" bits...
-	#silent bits = bits.replace("x","0")
-	## Mapping for 0, 1 or 2 VREF
-	#silent mapping.setdefault(num_a + num_vref,{0 : '0', 1 : '0', 2 : '0', 'analog_pins' : []})[num_vref] = bits
-	#silent mapping[num_a + num_vref]['analog_pins'] = analog + vrefs
-	#return "const bit*%d ADC_PCFG_%sANA_%sREF = 0b_%s" % (len(bits),num_a,num_vref,bits)
+    #set analog = [d for d in dpins.items() if d[1] == 'A']
+    #set vrefs = [d for d in dpins.items() if d[1].startswith('VREF')]
+    #set num_a = len(analog)
+    #set num_vref = len(vrefs)
+    ## There can be "anything" bits...
+    #silent bits = bits.replace("x","0")
+    ## Mapping for 0, 1 or 2 VREF
+    #silent mapping.setdefault(num_a + num_vref,{0 : '0', 1 : '0', 2 : '0', 'analog_pins' : []})[num_vref] = bits
+    #silent mapping[num_a + num_vref]['analog_pins'] = analog + vrefs
+    #return "const bit*%d ADC_PCFG_%sANA_%sREF = 0b_%s" % (len(bits),num_a,num_vref,bits)
 #end def
 
 #def parse_analog_pin(strpin)
-	#if "/" in strpin
-		#return strpin.split("/")[0]
-	#else
-		#return strpin
-	#end if
+    #if "/" in strpin
+        #return strpin.split("/")[0]
+    #else
+        #return strpin
+    #end if
 #end def
 
 #def pcfg_conf(dsref,pics)
-	#set confs = copy.deepcopy($adc_pcfg[$dsref])
-	## clean/remove some pins when not available in given PICs
-	## (given PICs all have the same pins, but the confs/combination
-	##  may be a merge for different PICs. Ex: 16F77 has RE pins, not 16F76)
-	#set dummy_pic = $pics[-1]
-	#set availpins = $adc_pins[dummy_pic]
-	#for conf,dpins in confs.items():
-		#for pin in dpins.keys()
-			#set an_pin = $parse_analog_pin(pin)
-			## search by digital and analog names
-			#if not an_pin in availpins.keys() and not an_pin in availpins.values()
-				#silent dpins.pop(pin)
-			#end if
-		#end for
-	#end for
+    #set confs = copy.deepcopy($adc_pcfg[$dsref])
+    ## clean/remove some pins when not available in given PICs
+    ## (given PICs all have the same pins, but the confs/combination
+    ##  may be a merge for different PICs. Ex: 16F77 has RE pins, not 16F76)
+    #set dummy_pic = $pics[-1]
+    #set availpins = $adc_pins[dummy_pic]
+    #for conf,dpins in confs.items():
+        #for pin in dpins.keys()
+            #set an_pin = $parse_analog_pin(pin)
+            ## search by digital and analog names
+            #if not an_pin in availpins.keys() and not an_pin in availpins.values()
+                #silent dpins.pop(pin)
+            #end if
+        #end for
+    #end for
 
-	#set mapping = dict()
+    #set mapping = dict()
          ##-- These are some constants similar to what can be found in MCC18 adc.h header file
-	#for bits,dpins in confs.items()
-		#set r = $analyze_config(bits,dpins,mapping)
-		## remove generation of constants, as there can be duplicate, and 
-		## since they're used and since I'm not lazy for now to fix these dups
-		## I prefer "silent" this !
-		## Please forgive me...
+    #for bits,dpins in confs.items()
+        #set r = $analyze_config(bits,dpins,mapping)
+        ## remove generation of constants, as there can be duplicate, and 
+        ## since they're used and since I'm not lazy for now to fix these dups
+        ## I prefer "silent" this !
+        ## Please forgive me...
         ##$r
-	#end for
-	## mapping contains only valid/existing config, but these aren't continue:
-	## we can have 1 ANA, then 3 ANA, but no 2 ANA config.
-	## We need to have "padding" configs, because these aren going to be put
-	## in a array, and accessed by ADC_NCHANNEL/ADC_NVREF
-	#set tmpmap = dict().fromkeys(range(0,max(mapping.keys()) + 1))
-	#for k,v in tmpmap.items()
-		#if not k in mapping
-			#silent mapping[k] = {0 : '0', 1 : '0', 2 : '0', 'analog_pins' : []}
-		#end if
-	#end for
-	#set smap = sorted(mapping.items())
-	#set lmap = []
-	#silent [(lmap.append(m[1][0]),lmap.append(m[1][1]),lmap.append(m[1][2])) for m in smap]
-	#set lenlmap = str(len(lmap))
-	#set lenbits = str(len(bits))
-	#set map = "const byte ADC_PCFG_MAP [" + lenlmap + "] = {0b_" + ", 0b_".join(lmap) + "}"
+    #end for
+    ## mapping contains only valid/existing config, but these aren't continue:
+    ## we can have 1 ANA, then 3 ANA, but no 2 ANA config.
+    ## We need to have "padding" configs, because these aren going to be put
+    ## in a array, and accessed by ADC_NCHANNEL/ADC_NVREF
+    #set tmpmap = dict().fromkeys(range(0,max(mapping.keys()) + 1))
+    #for k,v in tmpmap.items()
+        #if not k in mapping
+            #silent mapping[k] = {0 : '0', 1 : '0', 2 : '0', 'analog_pins' : []}
+        #end if
+    #end for
+    #set smap = sorted(mapping.items())
+    #set lmap = []
+    #silent [(lmap.append(m[1][0]),lmap.append(m[1][1]),lmap.append(m[1][2])) for m in smap]
+    #set lenlmap = str(len(lmap))
+    #set lenbits = str(len(bits))
+    #set map = "const byte ADC_PCFG_MAP [" + lenlmap + "] = {0b_" + ", 0b_".join(lmap) + "}"
 
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
@@ -108,58 +108,58 @@
          var bit*$lenbits one_vref = 0
          var bit*$lenbits two_vref = 0
 
-	## Generate procedure to access combinations
+    ## Generate procedure to access combinations
     #for i,(numch,dconf) in enumerate(smap)
-		#if i == 0
+        #if i == 0
          if (ADC_NCHANNEL) == $numch then
-		#else
+        #else
          elsif (ADC_NCHANNEL) == $numch then
-		#end if
-		#if dconf['analog_pins']
-			#for strpin in dconf['analog_pins']:
-				## pin can looks like "AN0" or a couple like "AN0/RA0"
-				#set an_pin = $parse_analog_pin(strpin[0])
-				## check pin exists in this pic (there can be multiple PIC in the 
-				## same datasheets, but with different analog pins, and the same
-				## PCFG combinations, exceptions (eg. "RE1 pin only exist for 16F77")
-				#if an_pin.startswith("AN")
-					#if not an_pin in $adc_pins[dummy_pic].values()
-						#continue
-					#end if
-				#else
-					#if not an_pin in $adc_pins[dummy_pic].keys()
-						#continue
-					#end if
-				#end if
-				#if not an_pin.startswith("AN")
-					#silent an_pin = $adc_pins[dummy_pic][an_pin]
-				#end if
+        #end if
+        #if dconf['analog_pins']
+            #for strpin in dconf['analog_pins']:
+                ## pin can looks like "AN0" or a couple like "AN0/RA0"
+                #set an_pin = $parse_analog_pin(strpin[0])
+                ## check pin exists in this pic (there can be multiple PIC in the 
+                ## same datasheets, but with different analog pins, and the same
+                ## PCFG combinations, exceptions (eg. "RE1 pin only exist for 16F77")
+                #if an_pin.startswith("AN")
+                    #if not an_pin in $adc_pins[dummy_pic].values()
+                        #continue
+                    #end if
+                #else
+                    #if not an_pin in $adc_pins[dummy_pic].keys()
+                        #continue
+                    #end if
+                #end if
+                #if not an_pin.startswith("AN")
+                    #silent an_pin = $adc_pins[dummy_pic][an_pin]
+                #end if
             pin_${an_pin}_direction = input
-			#end for
-		#else
-		    asm nop
-		#end if
-	#end for
+            #end for
+        #else
+            asm nop
+        #end if
+    #end for
          end if
 #end def
 
 
 #def pcfg_combination
-	#set bydsref = {}
-	#silent [bydsref.setdefault($pic_ds[p],[]).append(p) for p in $pcfg_combination_pics]
-	#for dsref, pics in bydsref.items()
-		## Even if PICs are in the same datasheets, there can be differences
-		## regarding the number of 
-		#set pics = $ds_pic[dsref]
-		#set pingrps = {}
-		#for p in pics
-			#silent pingrps.setdefault(tuple($adc_pins[p]),[]).append(p)
-		#end for
+    #set bydsref = {}
+    #silent [bydsref.setdefault($pic_ds[p],[]).append(p) for p in $pcfg_combination_pics]
+    #for dsref, pics in bydsref.items()
+        ## Even if PICs are in the same datasheets, there can be differences
+        ## regarding the number of 
+        #set pics = $ds_pic[dsref]
+        #set pingrps = {}
+        #for p in pics
+            #silent pingrps.setdefault(tuple($adc_pins[p]),[]).append(p)
+        #end for
 
-		#for pins,picsgrp in pingrps.items()
-			#set condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),picsgrp))
-			#set ds_refs = list(set([$pic_ds[p] for p in picsgrp]))
-			#assert len(ds_refs) == 1
+        #for pins,picsgrp in pingrps.items()
+            #set condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),picsgrp))
+            #set ds_refs = list(set([$pic_ds[p] for p in picsgrp]))
+            #assert len(ds_refs) == 1
 
    -- Datasheet: $ds_refs[0]
    if $condition then
@@ -167,9 +167,9 @@
 $pcfg_conf($dsref,$picsgrp)
    end if
 
-		#end for
+        #end for
 
-	#end for
+    #end for
 
    -- Retrieve config bits according to selected number of ADC channels
    -- ADC_PCFG_MAP contains all confs, from 0 analog to the max
@@ -191,19 +191,19 @@ $pcfg_conf($dsref,$picsgrp)
 #end def
 
 #def pcfg_18f
-	## PCFG0  in ANCON0
-	## PCFG1  in ANCON0
-	## PCFG2  in ANCON0
-	## PCFG3  in ANCON0
-	## PCFG4  in ANCON0
-	## PCFG5  in ANCON0
-	## PCFG6  in ANCON0
-	## PCFG7  in ANCON0
-	## PCFG8  in         ANCON1
-	## PCFG9  in         ANCON1
-	## PCFG10 in         ANCON1
-	## PCFG11 in         ANCON1
-	## PCFG12 in         ANCON1
+    ## PCFG0  in ANCON0
+    ## PCFG1  in ANCON0
+    ## PCFG2  in ANCON0
+    ## PCFG3  in ANCON0
+    ## PCFG4  in ANCON0
+    ## PCFG5  in ANCON0
+    ## PCFG6  in ANCON0
+    ## PCFG7  in ANCON0
+    ## PCFG8  in         ANCON1
+    ## PCFG9  in         ANCON1
+    ## PCFG10 in         ANCON1
+    ## PCFG11 in         ANCON1
+    ## PCFG12 in         ANCON1
 
    -- Selecting the number of ADC channels is done using PCFG bits
    -- User can optionally specify ADC channels number
@@ -474,36 +474,36 @@ $pcfg_conf($dsref,$picsgrp)
    if target_chip == PIC_16F722 | target_chip == PIC_16F723 | target_chip == PIC_16F724 | target_chip == PIC_16F726 | target_chip == PIC_16F727 |
       target_chip == PIC_16LF722 | target_chip == PIC_16LF723 | target_chip == PIC_16LF724 | target_chip == PIC_16LF726 | target_chip == PIC_16LF727 then
 
-	  ## always exists in all 16F72X family
-	  alias ADC_JANSEL_ANS0  is JANSEL_ANS0
-	  alias ADC_JANSEL_ANS1  is JANSEL_ANS1
-	  alias ADC_JANSEL_ANS2  is JANSEL_ANS2
-	  alias ADC_JANSEL_ANS3  is JANSEL_ANS3
-	  alias ADC_JANSEL_ANS4  is JANSEL_ANS5
-	  alias ADC_JANSEL_ANS12 is JANSEL_ANS6
-	  alias ADC_JANSEL_ANS10 is JANSEL_ANS7
-	  alias ADC_JANSEL_ANS8  is JANSEL_ANS8
-	  alias ADC_JANSEL_ANS9  is JANSEL_ANS9
-	  alias ADC_JANSEL_ANS11 is JANSEL_ANS10
-	  alias ADC_JANSEL_ANS13 is JANSEL_ANS11
+      ## always exists in all 16F72X family
+      alias ADC_JANSEL_ANS0  is JANSEL_ANS0
+      alias ADC_JANSEL_ANS1  is JANSEL_ANS1
+      alias ADC_JANSEL_ANS2  is JANSEL_ANS2
+      alias ADC_JANSEL_ANS3  is JANSEL_ANS3
+      alias ADC_JANSEL_ANS4  is JANSEL_ANS5
+      alias ADC_JANSEL_ANS12 is JANSEL_ANS6
+      alias ADC_JANSEL_ANS10 is JANSEL_ANS7
+      alias ADC_JANSEL_ANS8  is JANSEL_ANS8
+      alias ADC_JANSEL_ANS9  is JANSEL_ANS9
+      alias ADC_JANSEL_ANS11 is JANSEL_ANS10
+      alias ADC_JANSEL_ANS13 is JANSEL_ANS11
 
 
 
 
-	  ## only for these
-	  if target_chip == PIC_16F724 | target_chip == PIC_16F727 | target_chip == PIC_16LF724 | target_chip == PIC_16LF727 then
-		 alias ADC_JANSEL_ANS5 is JANSEL_ANS20
-	  	 alias ADC_JANSEL_ANS6 is JANSEL_ANS21
-	  	 alias ADC_JANSEL_ANS7 is JANSEL_ANS22
-	  end if
+      ## only for these
+      if target_chip == PIC_16F724 | target_chip == PIC_16F727 | target_chip == PIC_16LF724 | target_chip == PIC_16LF727 then
+         alias ADC_JANSEL_ANS5 is JANSEL_ANS20
+           alias ADC_JANSEL_ANS6 is JANSEL_ANS21
+           alias ADC_JANSEL_ANS7 is JANSEL_ANS22
+      end if
 
    else
-	  -- no exception here: ANSx corresponds to analog pin n°x
+      -- no exception here: ANSx corresponds to analog pin n°x
       #for i in range(23)
-		 if defined(JANSEL_ANS$i) == true then
-			alias ADC_JANSEL_ANS$i is JANSEL_ANS$i
-		 end if
-	  #end for
+         if defined(JANSEL_ANS$i) == true then
+            alias ADC_JANSEL_ANS$i is JANSEL_ANS$i
+         end if
+      #end for
    end if
 
    -- Configure a pin to act as an analog pin.
@@ -514,6 +514,7 @@ $pcfg_conf($dsref,$picsgrp)
    --       one named AN12, if any
    --     - set_analog_pin(4) will do the same for AN4
    procedure set_analog_pin(byte in an_pin_num) is
+      #set conds = []
       #for i in range(23)
       if defined(ADC_JANSEL_ANS$i) == true then
          if an_pin_num == $i then
@@ -521,7 +522,12 @@ $pcfg_conf($dsref,$picsgrp)
             pin_AN${i}_direction = input
          end if
       end if
+      #silent conds.append("defined(ADC_JANSEL_ANS%s) == false" % $i)
       #end for
+      #set finalcond = " & ".join(conds)
+      if $finalcond then
+         _error "\n\tUnable to configure ADC channels.\n\tConfiguration is supposed to be done using ANS bits\n\tbut it seems there's no ANS bits for this PIC.\n\tMaybe your PIC isn't supported, please report !"
+      end if
    end procedure
 
    -- Configure a pin to act as an digital pin.
@@ -663,6 +669,8 @@ $adref
 
 ## Check PICs which use PCFG bits as combinations
 if $pcfg_combination_condition then
+
+   _debug "ADC channels config: dependent pins, via PCFG bits"
 $pcfg_combination
 
 
@@ -675,6 +683,8 @@ $pcfg_combination
 
 ## 18F PICs, which use PCFG bits
 elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) | defined(ANCON0_PCFG1) | defined(ANCON0_PCFG2) | defined(ANCON0_PCFG3) | defined(ANCON0_PCFG4) | defined(ANCON0_PCFG5) | defined(ANCON0_PCFG6) | defined(ANCON0_PCFG7) | defined(ANCON1_PCFG10) | defined(ANCON1_PCFG11) | defined(ANCON1_PCFG12) | defined(ANCON1_PCFG8) | defined(ANCON1_PCFG9)) then
+
+   _debug "ADC channels config: independent pins, via PCFG bits"
 $pcfg_18f
 $select_vref
 
@@ -688,6 +698,7 @@ $select_vref
 
 ## So these are PICs which use ANS bits, wether non-18F or 18F
 else
+   _debug "ADC channels config: independent pins, via ANS bits"
 $ans
 $select_vref
 
