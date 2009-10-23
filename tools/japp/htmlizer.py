@@ -28,7 +28,9 @@ DRUPAL_CONTENT_PREFIX = "/content/"
 # where to put all stuff to publish
 OUTPUT_DIR="topublish"
 # Filename for filtered HTML
-OUTPUT_FILE="content"
+CONTENT_FILE = "content"
+TITLE_FILE = "title"
+PATH_FILE = "path"
 
 try:
     hfile = sys.argv[1]    
@@ -38,6 +40,7 @@ except IndexError:
 
 # prepare ouput directory
 dirn = os.path.dirname(hfile)
+basen = os.path.basename(hfile)
 os.system("rm -f %s/%s/*" % (dirn,OUTPUT_DIR))
 os.system("mkdir -p %s/%s/" % (dirn,OUTPUT_DIR))
 
@@ -71,6 +74,7 @@ for img in imgs:
 
 # convert link URL
 pat = re.compile("\.html",re.I)
+noext = pat.sub("",basen)
 as_ = body.findAll("a")
 for a in as_:
     try:
@@ -99,11 +103,23 @@ for a in as_:
 # produce twice title
 h1s = body.findAll("h1")
 if not h1s:
-    print >> sys.stderr, "No <h1> element found, assuming no title..."
+    print >> sys.stderr, "No <h1> element found, title will correspond to filename '%s'" % basen
+    title = basen
 else:
     # there should be only one element, but anyway remove first one
+    title = h1s[0].renderContents()
     h1s[0].replaceWith("")
 
 # we're done
-fout = file("%s/%s/%s" % (dirn,OUTPUT_DIR,OUTPUT_FILE),"w")
+fout = file("%s/%s/%s" % (dirn,OUTPUT_DIR,CONTENT_FILE),"w")
 fout.write(body.renderContents())
+fout.close()
+
+fout = file("%s/%s/%s" % (dirn,OUTPUT_DIR,TITLE_FILE),"w")
+fout.write(title)
+fout.close()
+
+fout = file("%s/%s/%s" % (dirn,OUTPUT_DIR,PATH_FILE),"w")
+fout.write(noext)
+fout.close()
+

@@ -1,13 +1,13 @@
 #!/bin/bash
 
-DITAFILE=`pwd`/$1
+DITAFILE=$1
 OUTPUTDIR=$2
 TMPDIR=${OUTPUTDIR}.tmp
 
 if [ "$DITA_HOME" = "" ]
 then
     echo "DITA_HOME must be set to DITA installation directory"
-	exit 255
+    exit 255
 fi
 
 if [ "$DITAFILE" = "" ] || [ "$OUTPUTDIR" = "" ]
