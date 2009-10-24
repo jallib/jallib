@@ -25,12 +25,12 @@
       With basic mailhandler
       behavior, submitting the same document, with the same URL would actually
       create a new document, and force URL to be differen (typically add numbers).
-      In JAPP, when submitting a same document, with the same ULR, a new revision 
-      must be created. mailhandler can do this, you just have to specify "nid" 
+      In JAPP, when submitting a same document, with the same URL, document's content
+      will be updated. mailhandler can do this, you just have to specify "nid" 
       (node ID). The problem is "nid" can't be known while submitting email. So,
       instead we'll look at "path" command, to determine corresponding node. If 
-      a node exists, then hook adds a "nid" command, so mailhandler will create
-      a new revision. If node does not exists, it keeps things as is, so a new 
+      a node exists, then hook adds a "nid" command, so mailhandler will tell Drupal
+      to update the node. If node does not exists, it keeps things as is, so a new 
       node will be created.
     
     - implement hook_mailsave() to put all attachments to a specific location 
@@ -79,11 +79,21 @@ function japp_mailhandler($node, $result, $i, $header, $mailbox) {
                array("%path" => $node->path,"%src" => $node_nid),WATCHDOG_ERROR);
       return FALSE;
     }
+    // Set old revision number, so current content will replace old one
+    // Seb: I finally don't want to create revision, as I would need to deal
+    //      with uploads/attachments revision too. Let's consider SVN revisions
+    //      are enough (remember DITA files are under SVN...)
     $node->nid = (int)$node_nid[1];
-    // set revision to something, so Drupal knows it has to create a new revision !
-    $node->revision = 'vid';
-    watchdog("japp","Creating a new revision for node %title with path %path",
-             array("%title" => $node->title,"%path" => $node->path));
+    $oldnode = node_load($node->nid);
+    $node->vid = $oldnode->vid;
+    // now delete node's attachments. mailsave will add new ones.
+    // This way we're sure one file won't remain unused, and we're sure
+    // attachments are up-to-date.
+    // Note: this won't delete the node itself...
+    upload_delete($oldnode);
+    watchdog("japp","Updating node (nid:%nid, vid:%vid) %title with path %path",
+             array("%title" => $node->title,"%path" => $node->path,
+                   "%nid" => $node->nid, "%vid" => $node->vid));
   } else {
     // no such path, means a new node. Just let mailhandler does its job
     watchdog("japp","Creating a new node for node %title with path %path",
