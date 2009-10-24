@@ -14,6 +14,7 @@
 #  3. format and send an email with content & attachements
 
 source japp_config.py
+
 if [ "$?" != "0" ]
 then
    echo "Unable to source configuration file 'japp_config.py'"
@@ -34,12 +35,6 @@ then
    exit 255
 fi
 
-if [ "$JAPP_EMAIL" = "" ]
-then
-   echo "Please set JAPP_EMAIL env. variable to an account monitored by the website (mailhandler)"
-   exit 255
-fi
-
 if [ "$JAPP_TMP" = "" ]
 then
    JAPP_TMP=/tmp/japptmp
@@ -47,9 +42,11 @@ fi
 
 while read DITAFILE
 do
+   [[ $DITAFILE == \#* ]] && continue
    echo "Processing file '$DITAFILE'..."
    ext=`echo $DITAFILE | sed "s#.*\.\(.*\)\\$#\1#"`
-   noext=`echo $DITAFILE | sed "s#\(.*\)\..*\\$#\1#"`
+   basen=`basename $DITAFILE`
+   noext=`echo $basen | sed "s#\(.*\)\..*\\$#\1#"`
 
    if [ "$ext" = "ditamap" ]
    then
