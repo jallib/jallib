@@ -101,13 +101,14 @@ for a in as_:
 
 # remove title, because title will be put in mail's subject. So leaving it here would
 # produce twice title
-h1s = body.findAll("h1")
+h1s = body.findAll("h1",)
 if not h1s:
     print >> sys.stderr, "No <h1> element found, title will correspond to filename '%s'" % basen
     title = basen
 else:
     # there should be only one element, but anyway remove first one
-    title = h1s[0].renderContents()
+	# only keep text content, not potential inner elements
+    title = h1s[0].findAll(text=True)[0]
     h1s[0].replaceWith("")
 
 # we're done
