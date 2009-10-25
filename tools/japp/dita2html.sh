@@ -12,7 +12,7 @@ fi
 
 if [ "$DITAFILE" = "" ] || [ "$OUTPUTDIR" = "" ]
 then
-    echo "Please provide a DITA file and an outpur directory"
+    echo "Please provide a DITA file and an output directory"
     exit 255
 fi
 
@@ -31,4 +31,6 @@ else
 fi
 
 # -Duser.csspath.url=  ---> don't copy css files
-ant -Dargs.transtype=xhtml -Duser.csspath.url= -Doutput.dir=$OUTPUTDIR -Dargs.input=$DITAFILE -Dargs.logdir=$TMPDIR -Ddita.temp.dir=$TMPDIR -Dargs.target=init -f $DITA_HOME/build.xml dita2xhtml
+cmd="ant -Dargs.transtype=xhtml -Duser.csspath.url= -Doutput.dir=$OUTPUTDIR -Dargs.input=$DITAFILE -Dargs.logdir=$TMPDIR -Ddita.temp.dir=$TMPDIR -Dargs.target=init -f $DITA_HOME/build.xml dita2xhtml"
+echo $cmd
+$cmd

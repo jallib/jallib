@@ -37,7 +37,8 @@ txt = MIMEText(commands + content)
 msg.attach(txt)
 
 # Assume we know that the image files are all in PNG format
-imgfiles = map(lambda x: os.path.join(topublish,x),[f for f in os.listdir(topublish) if not f in ['title','content','path']])
+attachpath = os.path.join(topublish,"attachments")
+imgfiles = map(lambda x: os.path.join(attachpath,x),os.listdir(attachpath))
 for img in imgfiles:
     # Open the files in binary mode.  Let the MIMEImage class automatically
     # guess the specific image type.
