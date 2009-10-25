@@ -41,6 +41,12 @@ FROM_PASSWD=""
 # mailhandler
 TO_ADDRESS=""
 
+# "Sender" address. This must be set to an address known by
+# account FROM_ADDRESS (eg. gmail), so email won't be detected
+# as spam (this can occur if FROM_ADDRESS = TO_ADDRESS and 
+# no Sender)
+SENDER_ADDRESS=""
+
 # SMTP host/port used to send email
 SMTP_HOST="localhost"
 SMTP_PORT=25

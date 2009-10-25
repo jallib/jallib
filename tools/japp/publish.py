@@ -26,14 +26,15 @@ me = japp_config.FROM_ADDRESS
 dest = japp_config.TO_ADDRESS
 msg['From'] = me
 msg['To'] = dest 
+# This should avoid email being detected as spam...
+msg['Sender'] = japp_config.SENDER_ADDRESS
 
 commands = """pass: %s
 path: content/%s
-uid: 3
 
 """ % (japp_config.FROM_PASSWD,path)
 
-txt = MIMEText(commands + content)
+txt = MIMEText(commands + content,_charset="utf8")
 msg.attach(txt)
 
 # Assume we know that the image files are all in PNG format
