@@ -27,6 +27,7 @@ DRUPAL_IMG_PATH_PREFIX = "/sites/default/files/"
 DRUPAL_CONTENT_PREFIX = "/content/"
 # where to put all stuff to publish
 OUTPUT_DIR="topublish"
+ATTACH_DIR="attachments"
 # Filename for filtered HTML
 CONTENT_FILE = "content"
 TITLE_FILE = "title"
@@ -42,7 +43,7 @@ except IndexError:
 dirn = os.path.dirname(hfile)
 basen = os.path.basename(hfile)
 os.system("rm -f %s/%s/*" % (dirn,OUTPUT_DIR))
-os.system("mkdir -p %s/%s/" % (dirn,OUTPUT_DIR))
+os.system("mkdir -p %s/%s/%s/" % (dirn,OUTPUT_DIR,ATTACH_DIR))
 
 
 html = BeautifulSoup(file(hfile).read())
@@ -69,7 +70,7 @@ for img in imgs:
     origsrc = img['src']
     imgfn = os.path.basename(origsrc)
     img['src'] = DRUPAL_IMG_PATH_PREFIX + imgfn
-    os.system("cp %s/%s %s/%s/" % (dirn,origsrc,dirn,OUTPUT_DIR))
+    os.system("cp %s/%s %s/%s/%s/" % (dirn,origsrc,dirn,OUTPUT_DIR,ATTACH_DIR))
 
 
 # convert link URL
