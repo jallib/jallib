@@ -11,7 +11,7 @@
 jaldir      = 'k:/jallib/include/device/'           /* dir with Jallib device files */
 pdfdir      = 'k:/picdatasheets/'                   /* dir with datasheets (local)  */
 PicSpecFile = 'k:/jallib/tools/devicespecific.json' /* PIC specific properties      */
-titles      = 'datasheet.lst'                       /* datasheet number/title file  */
+titles      = 'k:/jallib/tools/datasheet.list'      /* datasheet number/title file  */
 url         = 'http://ww1.microchip.com/downloads/en/DeviceDoc/' /* Microchip site  */
 
 /* -- output -- */
