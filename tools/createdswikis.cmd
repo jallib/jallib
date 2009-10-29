@@ -1,24 +1,31 @@
-/* ------------------------------------------------------------------------- */
-/* CreateDSwikis.cmd - create wiki tables:                                   */
-/*                     * Datasheet                                           */
-/*                     * Programming Specifications                          */
-/*                     * PICs with the same Datasheet                        */
-/*                     * PICs with the same Programming Specifications       */
-/* ------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------- */
+/* CreateDSwikis.cmd - create wiki tables:                                      */
+/*                     * Datasheet                                              */
+/*                     * Programming Specifications                             */
+/*                     * PICs with the same Datasheet                           */
+/*                     * PICs with the same Programming Specifications          */
+/*                                                                              */
+/* Notes: - Only PICs for which a Jallib device file is available.              */
+/*        - Script can be run on any platform which supports Rexx.              */
+/*          See for a 'howto' devicefiles.html and the comments in dev2jal.cmd  */
+/*        - The sort order in the wikis depends on the file system on which the */
+/*          Jallib device files are installed                                   */
+/*          (hpfs, jfs and others have builtin sorted file names).              */
+/* ---------------------------------------------------------------------------- */
 
-
-/* -- input -- */
+/* -- input files (change for other systems od platforms) -- */
 jaldir      = 'k:/jallib/include/device/'           /* dir with Jallib device files */
 pdfdir      = 'k:/picdatasheets/'                   /* dir with datasheets (local)  */
 PicSpecFile = 'k:/jallib/tools/devicespecific.json' /* PIC specific properties      */
 titles      = 'k:/jallib/tools/datasheet.list'      /* datasheet number/title file  */
-url         = 'http://ww1.microchip.com/downloads/en/DeviceDoc/' /* Microchip site  */
 
 /* -- output -- */
 dswiki      = 'k:/jallib/wiki/DataSheets.wiki'      /* out: DS wiki */
 pswiki      = 'k:/jallib/wiki/ProgrammingSpecifications.wiki'    /* out: PS wiki */
 dsgroupwiki = 'k:/jallib/wiki/PicGroups.wiki'
 psgroupwiki = 'k:/jallib/wiki/PicPgmGroups.wiki'
+
+url         = 'http://ww1.microchip.com/downloads/en/DeviceDoc/' /* Microchip site  */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load REXX functions */
@@ -35,28 +42,29 @@ end
 PicSpec. = '?'
 call read_picspec                               /* obtain device specific info */
 
-call  pic_wiki    dswiki
-call  pic_wiki    pswiki
+call  pic_wiki    dswiki                        /* PIC -> datasheet wiki */
+call  pic_wiki    pswiki                        /* PIC -> Programming Specifications wiki */
 call  group_wiki  dsgroupwiki                   /* create PIC groups wiki */
 call  group_wiki  psgroupwiki                   /* create Programming Groups wiki */
 
-return
+return 0
 
 
-/* ---- procedure to create a single wiki -------- */
-
+/* -------------------------------------------------- */
+/*  create a PIC - dataset or programmming specs wiki */
+/* -------------------------------------------------- */
 pic_wiki: procedure expose dir. PicSpec. titles pdfdir url
 
 parse arg wiki .
 
-if pos('ProgrammingSpecifications',wiki) > 0 then
+if pos('ProgrammingSpecifications',wiki) > 0 then    /* select wiki type */
   type = 'ps'
 else
   type = 'ds'
 
 if stream(wiki, 'c', 'query exists') \= '' then
   call SysFileDelete wiki
-call stream wiki, 'c', 'open write'
+call stream wiki, 'c', 'open write'                 /* create new */
 
 if type = 'ps' then do
   say 'Building PICname - Programming Specifications cross reference'
@@ -76,7 +84,7 @@ else
 call lineout wiki, ''
 call lineout wiki, '||  *PIC*    || *Number* || *datasheet title* ||'
 
-do i=1 to dir.0                                /* all entries */
+do i=1 to dir.0                                /* a line for every Jallib PIC device file */
 
   parse upper value filespec('Name', dir.i) with  PicName '.JAL'
   if PicName = '' then do
@@ -85,9 +93,9 @@ do i=1 to dir.0                                /* all entries */
   end
 
   if type = 'ds' then
-    DS = PicSpec.DataSheet.PicName
+    DS = PicSpec.PicName.DataSheet
   else
-    DS = PicSpec.PgmSpec.PicName
+    DS = PicSpec.PicName.PgmSpec
 
   if DS \= '-'  &  DS \= '?' then do
     PicNameFmt = left('"'PicName'"',12)
@@ -97,9 +105,8 @@ do i=1 to dir.0                                /* all entries */
                          '|| <a href="'url||word(dsnum.1,1)'.pdf">'left(word(dsnum.1,1),6)'</a>',
                          '||'delword(dsnum.1,1,1) '||'
       call SysFileTree pdfdir||word(dsnum.1,1).pdf, 'dsfile', 'FO'
-      if dsfile.0 = 0 then do
+      if dsfile.0 = 0 then                              /* check on presence */
         say 'Datasheet' dsnum.1 'not found in' pdfdir
-      end
     end
     else
       call lineout wiki, '||' left(PicName,9),
@@ -119,9 +126,9 @@ call stream wiki, 'c', 'close'
 
 return
 
-/* ------------------------------------------------------------- */
-/*  create wiki of dataset groups or programmming specs groups   */
-/* ------------------------------------------------------------- */
+/* -------------------------------------------------------- */
+/*  create dataset groups or programmming specs groups wiki */
+/* -------------------------------------------------------- */
 group_wiki: procedure expose dir. PicSpec. titles url
 
 parse arg wiki .
@@ -134,6 +141,7 @@ else
 if stream(wiki, 'c', 'query exists') \= '' then
   call SysFileDelete wiki
 call stream  wiki, 'c', 'open write'
+
 call charout wiki, '#summary PICs sharing the same '
 if type = 'ds' then
   call lineout wiki, 'datasheet'
@@ -154,9 +162,9 @@ do i=1 to dir.0                                /* all entries */
   end
 
   if type = 'ds' then
-    Sheet = PicSpec.DataSheet.PicName
+    Sheet = PicSpec.PicName.DataSheet
   else
-    Sheet = PicSpec.PgmSpec.PicName
+    Sheet = PicSpec.PicName.PgmSpec
   if Sheet = '-' then
     Sheet = '_missing_'                         /* no datasheet */
 
@@ -191,7 +199,7 @@ do j = 1 to ds.0
   call SysFileSearch ds.j, titles, dsnum.
   if dsnum.0 > 0 then
     call lineout wiki,,
-                '|| <a href="'url||word(dsnum.1,1)'.pdf">' word(dsnum.1,1) '</a>',
+                '|| <a href="'url||word(dsnum.1,1)'.pdf">'word(dsnum.1,1)'</a>',
                 '||' group.j '||'
   else
     call lineout wiki, '||' left(ds.j,11) '||' group.j '||'
@@ -216,7 +224,7 @@ do j = 1 to ds.0
   call SysFileSearch ds.j, titles, dsnum.
   if dsnum.0 > 0 then do
     call lineout wiki,,
-                '|| <a href="'url||word(dsnum.1,1)'.pdf">' word(dsnum.1,1) '</a>',
+                '|| <a href="'url||word(dsnum.1,1)'.pdf">'word(dsnum.1,1)'</a>',
                 '||' group.j '||'
   end
   else do
@@ -285,7 +293,7 @@ do until x = '}' | x = 0                /* end of pinmap */
       end
       do until x = ']' | x = 0          /* end of item */
         value = json_newstring(PicSpecFile)
-        PicSpec.ItemName.PicName = value
+        PicSpec.PicName.ItemName = value
         x = json_newchar(PicSpecFile)
       end
       x = json_newchar(PicSpecFile)
