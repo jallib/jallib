@@ -27,19 +27,19 @@
  *                                                                          *
  * Notes:                                                                   *
  *   - This script is developed with 'classic' Rexx, as delivered with      *
- *     eComStation (OS/2) ands is executed on on a specific system.         *
- *     With only a few changes it can be executed on a different system, or *
- *     even a different platform (Linux, Windows) with the combination of   *
- *     "Regina Rexx" and "RegUtil", ref:                                    *
+ *     eComStation (OS/2) and is executed on on a specific system.          *
+ *     With only a few changes it can be executed on a different system,    *
+ *     or even a different platform (Linux, Windows) with the combination   *
+ *     of "Regina Rexx" and "RegUtil", ref.                                 *
  *        - http://regina-rexx.sourceforge.net/                             *
  *        - http://www.interlog.com/~ptjm/                                  *
- *     See the embedded comments below for instructions for possible        *
- *     changes.                                                             *
+ *     See the embedded comments below for instructions for possibly        *
+ *     required changes.                                                    *
  *   - A summary of changes of this script is kept in 'changes.txt'         *
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.83'
+   ScriptVersion   = '0.0.84'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4l'
 /* ------------------------------------------------------------------------ */
@@ -63,9 +63,9 @@ lkrdir = MPLABbase'mpasm suite/lkr/'           /* dir with MPLAB .lkr files */
 
 /* Some information is collected from files in JALLIB tools directory       */
 
-PicSpecFile = JALLIBbase'tools/devicespecific.json'   /* pic specific data items */
+PicSpecFile = JALLIBbase'tools/devicespecific.json'   /* pic specific data  */
 PinMapFile  = JALLIBbase'tools/pinmap_pinsuffix.json'  /* pin aliases       */
-FuseDefFile = JALLIBbase'tools/fusedefmap.cmd'        /* fuse_def name mapping */
+FuseDefFile = JALLIBbase'tools/fusedefmap.cmd'        /* fuse_def mapping   */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                             /* load Rexx system functions */
@@ -75,12 +75,12 @@ call SysLoadFuncs                             /* load Rexx system functions */
 /*  - with 'PROD' the files go to directory "<JALLIBbase>include/device"    */
 /*  - with 'TEST' the files go to directory "./test>"                       */
 /* Note: The destination is not emptied, new device files will overwrite    */
-/*       any remaining previous files!                                      */
+/*       any remaining previous files, not overwritten files remain.        */
 
 parse upper arg destination selection .         /* commandline arguments    */
 select
    when destination = 'PROD' then               /* production run           */
-      dstdir = JALLIBbase'include/device/'      /* local Jallib         */
+      dstdir = JALLIBbase'include/device/'      /* local Jallib             */
    when destination = 'TEST' then do            /* test run                 */
       dstdir = './test/'                        /* subdir for testing       */
       rx = SysMkDir(strip(dstdir,'T','/'))      /* create destination dir   */
@@ -121,14 +121,6 @@ if dir.0 = 0 then do
    return 0                                     /* nothing to do            */
 end
 
-chipdef = dstdir'chipdef_jallib.jal'            /* common include file */
-if stream(chipdef, 'c', 'query exists') \= '' then   /* old chipdef file present */
-   call SysFileDelete chipdef                   /* delete it */
-if stream(chipdef, 'c', 'open write') \= 'READY:' then do  /* new chipdef file */
-   Say '   Error: Could not create common include file' chipdef
-   return 1                                     /* unrecoverable: terminate */
-end
-
 signal on syntax name catch_syntax              /* catch syntax errors */
 signal on error  name catch_error               /* catch execution errors */
 
@@ -141,7 +133,14 @@ call file_read_pinmap                           /* read pin alias names */
 Fuse_Def. = '?'                                 /* Fuse_Def name mapping */
 call file_read_fusedef                          /* read fuse_def table */
 
-call list_chipdef_header                        /* build header of chipdef file */
+chipdef = dstdir'chipdef_jallib.jal'            /* common include file */
+if stream(chipdef, 'c', 'query exists') \= '' then     /* old chipdef file present */
+   call SysFileDelete chipdef                   /* delete it */
+if stream(chipdef, 'c', 'open write') \= 'READY:' then do  /* new chipdef file */
+   Say '   Error: Could not create common include file' chipdef
+   return 1                                     /* unrecoverable: terminate */
+end
+call list_chipdef_header                        /* create new chipdef file */
 
 ListCount = 0                                   /* # created device files */
 LkrMissCount = 0                                /* # missing '.lkr' files */
@@ -2415,7 +2414,7 @@ return addr_list' }'                                    /* complete string */
 /* ---------------------------------------------------------------------- */
 /* Formatting of configuration bits                                       */
 /* input:  - nothing                                                      */
-/* Note:  some fuse_defs are omitted because the bits is not supported,   */
+/* Note:  some fuse_defs are omitted because the bit is not supported(!), */
 /*        even if it is (partly) specified in the .dev file.              */
 /*        See at the bottom of changes.txt for details.                   */
 /* ---------------------------------------------------------------------- */
@@ -2441,45 +2440,27 @@ do i = 1 to dev.0                                       /* scan .dev file */
       ln = dev.i                                        /* next line */
       do while i <= dev.0  &  word(ln, 1) \= 'CFGBITS'
          parse var ln 'FIELD' val0 'KEY=' val1 'MASK' '=' '0X' val2 .
-         if val1 \= '' then do                          /* field found */
-            key = strip(val1)
-            select
-               when pos('RESERVED',key) > 0 then do     /* skip */
-                  i = i + 1
-                  ln = Dev.i
-                  iterate                               /* to next key */
-               end
-               when pos('ENICPORT',key) > 0 then do     /* ignore */
-                  i = i + 1
-                  ln = Dev.i
-                  iterate                               /* to next key */
-               end
-               when (key = 'CPD' | key = 'WRTD')  &,
-                    (PicName = '18f2410' | PicName = '18f2510' |,
-                     PicName = '18f2515' | PicName = '18f2610' |,
-                     PicName = '18f4410' | PicName = '18f4510' |,
-                     PicName = '18f4515' | PicName = '18f4610')  then do
-                  i = i + 1
-                  ln = Dev.i
-                  iterate                               /* to next key */
-               end
-               when (key = 'EBTR_3' | key = 'CP_3' | key = 'WRT_3') &,
-                    (PicName = '18f4585') then do
-                  i = i + 1
-                  ln = Dev.i
-                  iterate                               /* to next key */
-               end
-               when (key = 'EBTR_4' | key = 'CP_4' | key = 'WRT_4' |,
-                     key = 'EBTR_5' | key = 'CP_5' | key = 'WRT_5' |,
-                     key = 'EBTR_6' | key = 'CP_6' | key = 'WRT_6' |,
-                     key = 'EBTR_7' | key = 'CP_7' | key = 'WRT_7')   &,
-                    (PicName = '18f6520' | PicName = '18f8520') then do
-                  i = i + 1
-                  ln = Dev.i
-                  iterate                               /* to next key */
-               end
-            otherwise
-              nop
+         key = strip(val1)
+
+         if key \= '' then do                           /* key value found */
+                                                        /* skip some superfluous bits */
+            if ( pos('RESERVED',key) > 0 )                          |,
+               ( pos('ENICPORT',key) > 0 )                          |,
+               ( (key = 'CPD' | key = 'WRTD')  &,
+                 (PicName = '18f2410' | PicName = '18f2510' |,
+                  PicName = '18f2515' | PicName = '18f2610' |,
+                  PicName = '18f4410' | PicName = '18f4510' |,
+                  PicName = '18f4515' | PicName = '18f4610') )      |,
+               ( (key = 'EBTR_3' | key = 'CP_3' | key = 'WRT_3') &,
+                 (PicName = '18f4585') )                            |,
+               ( (key = 'EBTR_4' | key = 'CP_4' | key = 'WRT_4' |,
+                  key = 'EBTR_5' | key = 'CP_5' | key = 'WRT_5' |,
+                  key = 'EBTR_6' | key = 'CP_6' | key = 'WRT_6' |,
+                  key = 'EBTR_7' | key = 'CP_7' | key = 'WRT_7')  &,
+                 (PicName = '18f6520' | PicName = '18f8520') )      then do
+               i = i + 1
+               ln = Dev.i
+               iterate
             end
 
             select
@@ -2494,8 +2475,7 @@ do i = 1 to dev.0                                       /* scan .dev file */
                     key \= 'SOSCEL'         &,          /* excl Security */
                     key \= 'T1OSCMX'        then        /* excl T1 OSC mux */
                   key = 'OSC'
-               when pos('IOSCFS',key) > 0 |,
-                    pos('IOFSCS',key) > 0 then          /* .dev error */
+               when pos('IOSCFS',key) > 0 | pos('IOFSCS',key) > 0 then   /* .dev error */
                   key = 'IOSCFS'
                when pos('DSWDTEN',key) > 0 then
                   key = 'DSWDTEN'
@@ -2509,58 +2489,33 @@ do i = 1 to dev.0                                       /* scan .dev file */
                   key = 'WDTCS'
                when pos('WDT',key) > 0 then
                   key = 'WDT'
-               when pos('BODENV',key) > 0 |,
-                    pos('BOR4V',key)  > 0 |,
-                    pos('BORV',key)   > 0 then
+               when pos('BODENV',key) > 0 | pos('BOR4V',key)  > 0 | pos('BORV',key) > 0 then
                   key = 'VOLTAGE'
                when pos('BODEN',key) > 0  | pos('BOREN',key) > 0 then
                   key = 'BROWNOUT'
                when pos('MCLR',key) > 0 then
                   key = 'MCLR'
-               when pos('PUT',key) > 0 |,
-                    pos('PWRTE',key) > 0 then
+               when left(key,3) = 'CCP' & right(key,2) = 'MX' then
+                  key = left(key,4)'MUX'            /* CCPxMX -> CCPxMUX */
+               when pos('PUT',key) > 0 | pos('PWRTE',key) > 0 then
                   key = 'PWRTE'
-               when pos('WRT ',key) > 0  |,
-                    pos('WRT_ENABLE',key) > 0 then
+               when pos('WRT ',key) > 0 | pos('WRT_ENABLE',key) > 0 then
                   key = 'WRT'
             otherwise
-              nop
+              nop                               /* accept any other key */
             end
 
-            if CfgAddr.0 > 1 then                 /* multi fuse bytes/words */
+            if CfgAddr.0 > 1 then               /* multi fuse bytes/words */
               call lineout jalfile, 'pragma fuse_def',
                                     key':'X2D(addr) - CfgAddr.1,
                                     '0x'strip(val2) '{'
             else
               call lineout jalfile, 'pragma fuse_def' key '0x'strip(val2) '{'
 
-            select
-               when key = 'OSC' then
-                  call list_fuse_def_osc i, key
-               when key = 'DSWDTPS' then
-                  call list_fuse_def_wdtps i, key
-               when key = 'IOSCFS' then
-                  call list_fuse_def_ioscfs i, key
-               when key = 'WDTPS' then
-                  call list_fuse_def_wdtps i, key
-               when key = 'WDT' then
-                  call list_fuse_def_wdt i, key
-               when key = 'VOLTAGE' then
-                  call list_fuse_def_voltage i, key
-               when key = 'BROWNOUT' then
-                  call list_fuse_def_brownout i, key
-               when key = 'MCLR' then
-                  call list_fuse_def_mclr i, key
-               when key = 'LVP' then
-                  call list_fuse_def_lvp i, key
-               when key = 'WRT' then
-                  call list_fuse_def_wrt i, key
-               when key = 'VCAPEN' then
-                  call list_fuse_def_vcapen i, key
-            otherwise
-               call list_fuse_def_other i, key
-            end
+            call list_fuses_bits_details i, key         /* bit settings */
+
             call lineout jalfile, '       }'
+
          end
          i = i + 1
          ln = Dev.i
@@ -2572,317 +2527,227 @@ call lineout jalfile, '--'
 return
 
 
-/* ------------------------------------------- */
-/* Generate fuse_defs for oscillator settings  */
-/* - check on duplicate names (filter fault!)  */
-/* ------------------------------------------- */
-list_fuse_def_osc: procedure expose Dev. Fuse_Def. jalfile PICname
-aoscname. = '-'                                         /* empty name compound */
-do i = arg(1) + 1 while i <= dev.0  &,
+/* ---------------------------------------------------------------------- */
+/* Detailed formatting of configuration bit settings                      */
+/* input:  - line index in dev.                                           */
+/*         - keyword                                                      */
+/* output: lines in jalfile                                               */
+/* ---------------------------------------------------------------------- */
+list_fuses_bits_details: procedure expose Dev. Fuse_Def. jalfile Fuse_Def. PicName
+flag_enabled  = 0                                       /* for checking of pairs */
+flag_disabled = 0
+key           = arg(2)
+aoscname.     = '-'                                     /* empty name compound */
+
+do i = arg(1) + 1  while i <= dev.0  &,
            (word(dev.i,1) = 'SETTING' | word(dev.i,1) = 'CHECKSUM')
    parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
                           val1 'DESC' '=' '"' val2 '"' .
-   if val1 \= '' then do
-      mask = strip(val1)                                /* bit mask (hex) */
-      name = translate(val2, '__________________',' +-:;.,<>{}[]()=/?')
-      oscname = Fuse_Def.Osc.name
-      if oscname = '?' then do
-         say '   Warning: No mapping for OSC Name' name
-         return
-      end
-      if aoscname.oscname = '-' then do                 /* not duplicate */
-         aoscname.oscname = oscname                     /* store name */
-         call lineout jalfile, '       'oscname '= 0x'mask
-      end
-      else
-         say '   Warning: Duplicate OSC name:' oscname '('name')'
-   end
-end
-return
+   if val1 = '' then                                    /* no setting value found */
+      iterate                                           /* skip to next line */
 
+   mask = strip(val1)                                   /* bit mask (hex) */
+   val2 = strip(val2)
 
-/* ------------------------------------------- */
-/* Generate fuse_defs for watchdog postscaler  */
-/* ------------------------------------------- */
-list_fuse_def_wdtps: procedure expose Dev. jalfile
-do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)                                /* remove blanks */
-      parse var val2 p0 ':' p1                          /* split */
-      p1 = translate(word(p1,1),'      ','.,()=/')      /* 1st word, cleaned */
-      p1 = space(p1,0)                                  /* remove all spaces */
-      call lineout jalfile, '       P'p1 '= 0x'val1
-   end
-end
-return
+   select
 
-
-/* ------------------------------------------- */
-/* Generate fuse_defs for watchdog settings    */
-/* ------------------------------------------- */
-list_fuse_def_wdt: procedure expose Dev. jalfile
-flag_enabled = 0                                        /* for checking of pair */
-flag_disabled = 0
-do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)                                /* remove blanks */
-      p_en = pos('ENABLE',val2)
-      p_dis = pos('DISABLE',val2)
-      if val2 = 'ON' | (p_en > 0 & (p_dis = 0 | p_dis > p_en)) then do
-         val2 = 'ENABLED'
-         flag_enabled = flag_enabled + 1
-      end
-      else if val2 = 'OFF' | p_dis > 0 then do
-         val2 = 'DISABLED'
-         flag_disabled = flag_disabled + 1
-      end
-      else
-         val2 = translate(val2, '__________________',' +-:;.,<>{}[]()=/?')  /* undersc. */
-      call lineout jalfile, '       'val2 '= 0x'val1
-   end
-end
-if flag_enabled \= flag_disabled then               /* impaired */
-   say '   Warning: enable('flag_enabled')/disable('flag_disabled') impairment fuse_def' arg(2)
-return
-
-
-/* ------------------------------------------- */
-/* Generate fuse_defs for /MCLR settings       */
-/* ------------------------------------------- */
-list_fuse_def_mclr: procedure expose Dev. jalfile
-do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)
-      val2 = strip(val2)
-      if pos('EXTERN',val2) > 0       |,
-         pos('MCLR ENABLED',val2) > 0 |,
-         pos('MASTER',val2) > 0       |,
-         pos('AS MCLR',val2) > 0      |,
-         pos('IS MCLR',val2) > 0      |,
-         val2 = 'MCLR'                |,
-         val2 = 'ENABLED'     then
-         val2 = 'EXTERNAL'
-      else
-         val2 = 'INTERNAL'
-      call lineout jalfile, '       'val2 '= 0x'val1
-   end
-end
-return
-
-
-/* ------------------------------------------- */
-/* Generate fuse_defs for WRT settings         */
-/* ------------------------------------------- */
-list_fuse_def_wrt: procedure expose Dev. jalfile
-do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)
-      val2 = strip(val2)
-      if pos('DISABLED',val2) > 0 |,                    /* unprotected */
-         pos('OFF',val2) > 0 then
-         val2 = 'NO_PROTECTION'
-      if pos('ENABLED',val2) > 0 then                   /* protected */
-         val2 = 'ALL_PROTECTED'
-      else if left(Val2,1) = '0' then do                /* memory range */
-         parse var Val2 '0X'aa '-' '0X'zz .
-         if zz = '' then do
-            parse var Val2 aa'H' 'TO' zz'H' .
-            if zz = '' then do
-               parse var Val2 aa 'TO' zz .
-               if zz = '' then do
-                  parse var Val2 aa '-' zz .
-             end
-           end
-         end
-         val2 = 'R'right(strip(aa),4,'0')'_'right(strip(zz),4,'0')
-      end
-      else
-        val2 = translate(val2, '__________________',' +-:;.,<>{}[]()=/?')
-      call lineout jalfile, '       'val2 '= 0x'val1
-   end
-end
-return
-
-
-/* ---------------------------------------------- */
-/* Generate fuse_defs for IOSCFS (int oscs freq)  */
-/* ---------------------------------------------- */
-list_fuse_def_ioscfs: procedure expose Dev. jalfile
-do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)                                /* remove blanks */
-      val2 = strip(val2)
-      if pos('MHZ',val2) > 0 then do
-         if pos('8',val2) > 0 then                      /* 8 MHz */
-            val2 = 'F8MHZ'
-         else
-            val2 = 'F4MHZ'                              /* otherwise */
-      end
-      else do
-         val2 = translate(val2, '__________________',' +-:;.,<>{}[]()=/?')  /* to underscore */
-         if left(val2,1) >= '0' & left(val2,1) <= '9' then
-            val2 = '_'val2                              /* prefix when numeric */
-      end
-      call lineout jalfile, '       'val2 '= 0x'val1
-   end
-end
-return
-
-
-/* ------------------------------------------- */
-/* Generate fuse_defs for brownout settings    */
-/* ------------------------------------------- */
-list_fuse_def_brownout: procedure expose Dev. jalfile
-do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)                                /* remove blanks */
-      select
-         when pos('SLEEP',val2) > 0  &  pos('DEEP SLEEP',val2) = 0 then
+      when key = 'BROWNOUT' then do
+         if pos('SLEEP',val2) > 0  &  pos('DEEP SLEEP',val2) = 0 then
             val2 = 'RUNONLY'
-         when pos('ENABLE',val2) \= 0  | val2 = 'ON' then
+         else if pos('ENABLE',val2) \= 0  | val2 = 'ON' then
             val2 = 'ENABLED'
-         when pos('CONTROL',val2) \= 0 then
+         else if pos('CONTROL',val2) \= 0 then
             val2 = 'CONTROL'
-      otherwise
-         val2 = 'DISABLED'
-      end
-      call lineout jalfile, '       'val2 '= 0x'val1
-   end
-end
-return
-
-
-/* ------------------------------------------- */
-/* Generate fuse_defs for brownout Voltage     */
-/* ------------------------------------------- */
-list_fuse_def_voltage: procedure expose Dev. jalfile
-do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                         val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)                                /* remove blanks */
-      val2 = word(val2, words(val2))                    /* only last word */
-      parse var val2 p1 '.' p2 'V'                      /* select digits */
-      call lineout jalfile, '       V'p1||p2 '= 0x'val1
-   end
-end
-return
-
-
-/* ------------------------------ */
-/* Generate fuse_defs for VCAPEN  */
-/* ------------------------------ */
-list_fuse_def_vcapen: procedure expose Dev. jalfile
-do i = arg(1) + 1 while i <= dev.0  &  word(dev.i,1) = 'SETTING'
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)                                /* remove blanks */
-      select
-         when pos('DISABLED',val2) > 0 then
+         else
             val2 = 'DISABLED'
-         when pos('ENABLED',val2) > 0 then do
+         call lineout jalfile, '       'val2 '= 0x'mask
+      end
+
+      when left(key,3) = 'CCP' & right(key,3) = 'MUX' then do   /* CCPxMUX */
+         if pos('MICRO',val2) > 0 then                  /* Mcrocontroller mode */
+            muxpin = 'pin_E7'                           /* fixed! */
+         else
+            muxpin = 'pin_'right(val2,2)                /* last part */
+         call lineout jalfile, '       'muxpin '= 0x'mask
+      end
+
+      when key = 'DSWDTPS'   |,
+           key = 'WDTPS' then do
+         parse var val2 p0 ':' p1                       /* split */
+         p1 = translate(word(p1,1),'      ','.,()=/')   /* 1st word, cleaned */
+         p1 = space(p1,0)                               /* remove all spaces */
+         call lineout jalfile, '       P'p1 '= 0x'mask
+      end
+
+      when key = 'FOSC2' then do
+         if pos('INTRC',val2) > 0 then
+            val2 = 'INTRC'
+         else
+            val2 = 'OSC'
+         call lineout jalfile, '       'val2 '= 0x'mask
+      end
+
+      when key = 'IOSCFS' then do
+         val2 = strip(val2)
+         if pos('MHZ',val2) > 0 then do
+            if pos('8',val2) > 0 then                   /* 8 MHz */
+               val2 = 'F8MHZ'
+            else
+               val2 = 'F4MHZ'                           /* otherwise */
+         end
+         else do
+            val2 = translate(val2, '                 ','+-:;.,<>{}[]()=/?')  /* to underscore */
+            val2 = space(val2,,'_')
+            if left(val2,1) >= '0' & left(val2,1) <= '9' then
+               val2 = '_'val2                           /* prefix when numeric */
+         end
+         call lineout jalfile, '       'val2 '= 0x'mask
+      end
+
+      when key = 'LVP' then do
+         val2 = strip(val2)
+         if pos('ENABLE',val2) > 0 then do
+            val2 = 'ENABLED'
+            flag_enabled = flag_enabled + 1
+         end
+         else do
+            val2 = 'DISABLED'
+            flag_disabled = flag_disabled + 1
+         end
+         call lineout jalfile, '       'val2 '= 0x'mask
+      end
+
+      when key = 'MCLR' then do
+         val2 = strip(val2)
+         if pos('EXTERN',val2) > 0       |,
+            pos('MCLR ENABLED',val2) > 0 |,
+            pos('MASTER',val2) > 0       |,
+            pos('AS MCLR',val2) > 0      |,
+            pos('IS MCLR',val2) > 0      |,
+            val2 = 'MCLR'                |,
+            val2 = 'ENABLED'   then
+            val2 = 'EXTERNAL'
+         else
+            val2 = 'INTERNAL'
+         call lineout jalfile, '       'val2 '= 0x'mask
+      end
+
+      when key = 'OSC' then do
+         val2 = translate(val2, '                 ','+-:;.,<>{}[]()=/?')
+         val2 = space(val2,,'_')
+         oscname = Fuse_Def.Osc.val2
+         if oscname = '?' then do
+            say '   Warning: No mapping for OSC Name' val2
+            return
+         end
+         if aoscname.oscname = '-' then do              /* not duplicate */
+            aoscname.oscname = oscname                  /* store name */
+            call lineout jalfile, '       'oscname '= 0x'mask
+         end
+         else
+            say '   Warning: Duplicate OSC name:' oscname '('val2')'
+      end
+
+      when key = 'VCAPEN' then do
+         if pos('DISABLED',val2) > 0 then
+            val2 = 'DISABLED'
+         else if pos('ENABLED',val2) > 0 then do
             val2 = word(val2, words(val2))              /* last word */
             if left(val2,1) = 'R' then                  /* pinname Rxy */
                val2 = 'pin_'substr(val2,2)              /* make it pin_xy */
          end
-      otherwise
-         val2 = 'ENABLED'
+         else
+            val2 = 'ENABLED'
+         call lineout jalfile, '       'val2 '= 0x'mask
       end
-      call lineout jalfile, '       'val2 '= 0x'val1
-   end
-end
-return
 
-
-/* ------------------------------------ */
-/* Generate fuse_defs for LVP settings  */
-/* ------------------------------------ */
-list_fuse_def_lvp: procedure expose Dev. jalfile
-flag_enabled = 0                                /* for checking of pair */
-flag_disabled = 0
-do i = arg(1) + 1 while i <= dev.0  &,
-        (word(dev.i,1) = 'SETTING' | word(dev.i,1) = 'CHECKSUM')
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)                                /* remove blanks */
-      val2 = strip(val2)
-      if pos('ENABLE',val2) > 0 then do
-         val2 = 'ENABLED'
-         flag_enabled = flag_enabled + 1
+      when key = 'VOLTAGE' then do
+         val2 = word(val2, words(val2))                 /* only last word */
+         parse var val2 p1 '.' p2 'V'                   /* select digits */
+         call lineout jalfile, '       V'p1||p2 '= 0x'mask
       end
-      else do
-         val2 = 'DISABLED'
-         flag_disabled = flag_disabled + 1
-      end
-      call lineout jalfile, '       'val2 '= 0x'val1
-   end
-end
-if flag_enabled \= flag_disabled then               /* impaired */
-   say '   Warning: enable('flag_enabled')/disable('flag_disabled') impairment fuse_def' arg(2)
-return
 
-
-/* ------------------------------------------- */
-/* Generate fuse_defs for 'other' settings     */
-/* ------------------------------------------- */
-list_fuse_def_other: procedure expose Dev. jalfile
-flag_enabled = 0                                /* for checking of pair */
-flag_disabled = 0
-do i = arg(1) + 1 while i <= dev.0  &,
-        (word(dev.i,1) = 'SETTING' | word(dev.i,1) = 'CHECKSUM')
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' ')' .
-   if val1 \= '' then do
-      val1 = strip(val1)                                /* remove blanks */
-      val2 = strip(val2)
-      select
-         when pos('ACTIVE',val2) > 0 then do
-            if pos('HIGH',val2) > pos('ACTIVE',val2) then
-               val2 = 'ACTIVE_HIGH'
-            else if pos('LOW',val2) > pos('ACTIVE',val2) then
-               val2 = 'ACTIVE_LOW'
-            else do
-              val2 = 'ENABLED'
-              flag_enabled = flag_enabled + 1
-            end
-         end
-         when pos('ENABLE',val2) > 0 | val2 = 'ON' | val2 = 'ALL' then do
+      when key = 'WDT' then do
+         p_en = pos('ENABLE',val2)
+         p_dis = pos('DISABLE',val2)
+         if val2 = 'ON' | (p_en > 0 & (p_dis = 0 | p_dis > p_en)) then do
             val2 = 'ENABLED'
             flag_enabled = flag_enabled + 1
          end
-         when pos('DISABLE',val2) > 0 | val2 = 'OFF' then do
+         else if val2 = 'OFF' | p_dis > 0 then do
             val2 = 'DISABLED'
             flag_disabled = flag_disabled + 1
          end
-         when pos('ANALOG',val2) > 0 then
-            val2 = 'ANALOG'
-         when pos('DIGITAL',val2) > 0 then
-            val2 = 'DIGITAL'
-      otherwise
-         val2 = translate(val2, '__________________',' +-:;.,<>{}[]()=/?')  /* to blanks */
-         if left(val2,1) >= '0' & left(val2,1) <= '9' then
-            val2 = '_'val2                              /* prefix when numeric */
+         else do
+            val2 = translate(val2, '                 ','+-:;.,<>{}[]()=/?')  /* undersc. */
+            val2 = space(val2,,'_')                     /* leading/trailing '_' */
+         end
+         call lineout jalfile, '       'val2 '= 0x'mask
       end
-      call lineout jalfile, '       'val2 '= 0x'val1
 
+      when key = 'WRT' then do
+         val2 = strip(val2)
+         if pos('DISABLED',val2) > 0 |,                 /* unprotected */
+            pos('OFF',val2) > 0 then
+            val2 = 'NO_PROTECTION'
+         else if pos('ENABLED',val2) > 0 then           /* protected */
+            val2 = 'ALL_PROTECTED'
+         else if left(Val2,1) = '0' then do             /* memory range */
+            parse var Val2 '0X'aa '-' '0X'zz .
+            if zz = '' then do
+               parse var Val2 aa'H' 'TO' zz'H' .
+               if zz = '' then do
+                  parse var Val2 aa 'TO' zz .
+                  if zz = '' then do
+                     parse var Val2 aa '-' zz .
+                end
+              end
+            end
+            val2 = 'R'right(strip(aa),4,'0')'_'right(strip(zz),4,'0')
+         end
+         else do
+           val2 = translate(val2, '                  ','+-:;.,<>{}[]()=/?')
+           val2 = space(val2,,'_')
+         end
+         call lineout jalfile, '       'val2 '= 0x'mask
+      end
+
+   otherwise                                            /* other keys */
+      val2 = strip(val2)
+      if pos('ACTIVE',val2) > 0 then do
+         if pos('HIGH',val2) > pos('ACTIVE',val2) then
+            val2 = 'ACTIVE_HIGH'
+         else if pos('LOW',val2) > pos('ACTIVE',val2) then
+            val2 = 'ACTIVE_LOW'
+         else do
+           val2 = 'ENABLED'
+           flag_enabled = flag_enabled + 1
+         end
+      end
+      else if pos('ENABLE',val2) > 0 | val2 = 'ON' | val2 = 'ALL' then do
+         val2 = 'ENABLED'
+         flag_enabled = flag_enabled + 1
+      end
+      else if pos('DISABLE',val2) > 0 | val2 = 'OFF' then do
+         val2 = 'DISABLED'
+         flag_disabled = flag_disabled + 1
+      end
+      else if pos('ANALOG',val2) > 0 then
+         val2 = 'ANALOG'
+      else if pos('DIGITAL',val2) > 0 then
+         val2 = 'DIGITAL'
+      else do
+         val2 = translate(val2, '                 ','+-:;.,<>{}[]()=/?')  /* to blanks */
+         val2 = space(val2,,'_')
+      end
+      call lineout jalfile, '       'val2 '= 0x'mask
    end
+
 end
+
 if flag_enabled \= flag_disabled then               /* impaired */
    say '   Warning: enable('flag_enabled')/disable('flag_disabled') impairment fuse_def' arg(2)
+
 return
 
 
