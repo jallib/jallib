@@ -321,7 +321,7 @@
       <!--div class="jalweb-contributor">Contributor: <xsl:value-of select="."/></div-->
     </xsl:when>
     <xsl:otherwise>
-	  <span class="jalweb-creator"> <xsl:value-of select="."/> |</span>
+	  <span class="jalweb-creator">Author: <xsl:value-of select="."/> |</span>
     </xsl:otherwise>
   </xsl:choose>
 </xsl:template>
@@ -2280,7 +2280,7 @@
   <xsl:if test="$ARTLBL='yes'"> [<xsl:value-of select="@href"/>] </xsl:if>
 </xsl:template>
 
-<xsl:template name="topic-image">
+<xsl:template name="common-topic-image">
   <!-- now invoke the actual content and its alt text -->
   <xsl:element name="img">
     <xsl:call-template name="commonattributes">
@@ -2314,6 +2314,19 @@
       </xsl:when>
     </xsl:choose>
   </xsl:element>
+</xsl:template>
+
+<xsl:template name="topic-image">
+  <xsl:choose>
+    <xsl:when test="@otherprops = 'clickable'">
+      <a href="{@href}" target="_blank">
+        <xsl:call-template name="common-topic-image"/>
+      </a>
+    </xsl:when>
+    <xsl:otherwise>
+      <xsl:call-template name="common-topic-image"/>
+    </xsl:otherwise>
+  </xsl:choose>
 </xsl:template>
 
 <xsl:template match="*[contains(@class,' topic/alt ')]">
