@@ -353,14 +353,15 @@ Any next operation which uses the shadowing mechanism will override the
 previous direct control operation.
 
 <p>Some pin alias names are not acceptable for the JalV2 compiler, in
-which a special name is used.
+which case a special name is used.
 For example PICs with USB support have a D+ and D- pin.
 These are declared (for the 18F4550) as:
 <pre>
    alias  pin_D_POS     is  pin_C5
    alias  pin_D_NEG     is  pin_C4
 </pre>
-Some function pins can be on one or another pin of a PIC, controlled
+
+<p>Some function pins can be on one or another pin of a PIC, controlled
 by a register or a configuration bit setting.
 In these cases the name has to be suffixed to prevent duplicate names.
 The 16F737 for example can have the CCP2 bit on pin_B3 or pin_C1,
@@ -371,6 +372,13 @@ controlled by a configuration bit (fuse_def CCP2MUX).
 </pre>
 The program or library has to detect the actual use of the CCP2 pin.
 
+<p>Some high end 18Fs have an even more complex multiplexing mode.
+With the 18F8310 for example the the multiplexing depends also on the
+processor mode.
+One position of CCP2 is pin_C1, the alternate pin is pin_E7
+(in Microcontroller mode) of pin_B3 (in Microprocessor,
+Extended Microcontroller and Microcontroller with Boot Block modes).
+This variant is not always available in the current device files!
 
 <h3>Non-memory-mapped registers</h3>
 <p>Some PICs, mainly in the baseline series are missing some addressable
@@ -383,22 +391,23 @@ programs to use statements like:
 <pre>
    PORTA_direction = all_output
 </pre>
-To make this possible the device files contain pseudo variables which mimic the
-existence of memory mapped registers.
-<p>For example: even though a 16F59 has no addressable TRISC register,
+To make this possible the device files contain pseudo variables which mimic
+the existence of memory mapped registers.
+<p>For example even though a 16F59 has no addressable TRISC register,
 you can still specify:
 <pre>
    pin_C5_direction = output
 </pre>
+
 <p>Some PICs of the 18F series have SFRs which are only accessible when
-the ADSHR bit in WDTCON is set (when not set a different SFR is addressed).
-For example, with the 18F65J50 both ADCON0 and ADCON1 share address FC2h.
+the ADSHR bit in WDTCON is set (when not set a different SFR is accessed).
+For example with the 18F65J50 ADCON0 and ANCON1 share address FC2h.
 When the ADSHR bit of WDTCON is reset (0) ADCON0 is accessed,
-when the ADSHR bit is set (1) ADCON1 is accessed.
+when the ADSHR bit is set (1) ANCON1 is accessed.
 <br>The device files will do this automatically with the help of pseudo
 variables.
-When ADCON1 is used in a JALV2 statement the ADSHR bit is set automatically
-(and reset afterwards).
+For example when ANCON1 is used in a JALV2 statement the ADSHR bit is set
+automatically (and reset afterwards).
 
 
 <h3>Names of MSSP registers</h3>
@@ -581,7 +590,7 @@ names in the MPLAB .dev files.
 <li>TxCON_TOUTPS is normalized to TxCON_TxOUTPS (x = timer number) for
     the 18Fs.
     Since the midrange PICs have only 1 timer with TOUTPS bit this name
-    has been maintained.
+    has been maintained for these PICs.
 <li>'bit*4 PS' of T0CON splitted into 'bit PSA' and 'bit*3 PS'
 </ul>
 
@@ -643,13 +652,13 @@ Portx_high is read from or written to bits 7..4 of Portx.
 <p>The configuration bits or groups of bits is such a large variety that it
 is almost impossible to obtain a uniform naming convention.
 <ul>
-<li>For all implemented configuration bits an option name and two or more
-tags are defined, but the chosen names may not always be intuitive or
-convenient.
-Some names or tags are very long!
+<li>For all implemented configuration bits or bit fields an option name and
+two or more values are defined, but the chosen names may not always be
+intuitive or convenient.
+Some names or values are very long!
 <li>When the compiler stalls over a fuse-def line a correction should
 be applied.
-If you encounter such occasion please report it in the Jallib
+If you encounter such an occasion please report it in the Jallib
 discussion group at Google Groups or Jallist at Yahoo! groups.
 <li>For the most frequently used configuration bits a 'standard' option
 name is defined, along with a 'standard' tag, see the list below.
@@ -665,6 +674,62 @@ For example it may indicate if the OSC2 pin is CLKOUT or I/O, or if PLL is
 active for the 18F series.
 Descriptions in MPLAB which do not fit in the normalization scheme are copied
 almost literally.
+
+<p>Below the 'normalized' fuse_defs:
+
+<h3>Fuse_Def BROWNOUT  (Brown Out detect)</h3>
+<pre>
+   ENABLED            -- BOD enabled, SBOREN disabled
+   RUNONLY            -- BOD enabled in run, disabled in sleep
+   CONTROL            -- SBOREN controls BOR function
+   DISABLED           -- BOD and SBOREN disabled
+</pre>
+
+<h3>Fuse_Def CCPxMUX (multiplexing of pin of CCP module x)</h3>
+<pre>
+   pin_xy             -- assigned to pin y of PORTx
+   pin_..             -- any other
+</pre>
+The name 'CCPxMUX' is always used even when the datasheet may specify 'CCPxMX'.
+<br>When the multiplexing is also dependend of the microprocessor mode
+(with some high end 18Fs) the pin for 'Microcontroller mode' is specified.
+Of course in other modes the other alternate pin will actually be configured!
+
+<h3>Fuse_Def CP  (Code Protection)</h3>
+<pre>
+   ENABLED            -- Code memory read protection on
+   DISABLED           -- Code mewmory read protection off
+</pre>
+
+<h3>Fuse_Def CPD  (Data Code Protection)</h3>
+<pre>
+   ENABLED            -- Data (EEPROM) memory read protection on
+   DISABLED           -- Data (EEPROM) memory read protection off
+</pre>
+
+<h3>Fuse_Def FOSC2  (primary/secondary oscillator select)</h3>
+<pre>
+   OSC                -- Clock selected by OSC setting
+   INTRC              -- Internal oscillator
+</pre>
+
+<h3>Fuse_Def IOSCFS  (Internal Oscillator Frequency Select)</h3>
+<pre>
+   F4MHZ              -- 4 MHz
+   F8MHZ              -- 8 MHz
+</pre>
+
+<h3>Fuse_Def LVP  (Low Voltage Programming)</h3>
+<pre>
+   ENABLED            -- LVP on, enabled
+   DISABLED           -- LVP off, disabled
+</pre>
+
+<h3>Fuse_Def MCLR  (reset)</h3>
+<pre>
+   EXTERNAL           -- /MCLR pin enabled
+   INTERNAL           -- /MCLR pin is digital I/O
+</pre>
 
 <h3>Fuse_Def OSC  (oscillator)</h3>
 <pre>
@@ -690,6 +755,28 @@ Several other keywords could be possible, for example for PICs:
 The datasheet will specify the possibilities, scan the device files for
 the keyword which applies.
 
+<h3>Fuse_Def PWRTE  (Power-up Timer Enable)</h3>
+<pre>
+   ENABLED            -- Power up timer enabled
+   DISABLED           -- Power Up timer disabled
+</pre>
+
+<h3>Fuse_Def VCAPEN  (Voltage regulator capacitor pin)</h3>
+<pre>
+   DISABLED
+   pin_A0
+   <i>...  etc (other pins which could be assigned</i>
+</pre>
+
+<h3>Fuse_Def VOLTAGE  (Brown Out voltage)</h3>
+<pre>
+   V20                -- 2.0 Volt
+   V27                -- 2.7 Volt
+   V42                -- 4.0 Volt
+   V45                -- 4.5 Volt
+   <i>...  etc (whatever voltages are applicable)</i>
+</pre>
+
 <h3>Fuse_Def WDT  (watchdog)</h3>
 <pre>
    ENABLED            -- Watchdog enabled
@@ -706,65 +793,12 @@ the keyword which applies.
    P1                 --  1 : 1
 </pre>
 
-<h3>Fuse_Def MCLR  (reset)</h3>
-<pre>
-   EXTERNAL           -- /MCLR pin enabled
-   INTERNAL           -- /MCLR pin is digital I/O
-</pre>
-
-<h3>Fuse_Def PWRTE  (Power-up Timer Enable)</h3>
-<pre>
-   ENABLED            -- Power up timer enabled
-   DISABLED           -- Power Up timer disabled
-</pre>
-
-<h3>Fuse_Def BROWNOUT  (Brown Out detect)</h3>
-<pre>
-   ENABLED            -- BOD enabled, SBOREN disabled
-   RUNONLY            -- BOD enabled in run, disabled in sleep
-   CONTROL            -- SBOREN controls BOR function
-   DISABLED           -- BOD and SBOREN disabled
-</pre>
-
-<h3>Fuse_Def VOLTAGE  (Brown Out voltage)</h3>
-<pre>
-   V20                -- 2.0 Volt
-   V27                -- 2.7 Volt
-   V42                -- 4.0 Volt
-   V45                -- 4.5 Volt
-   <i>...  etc (whatever voltages are applicable)</i>
-</pre>
-
-<h3>Fuse_Def LVP  (Low Voltage Programming)</h3>
-<pre>
-   ENABLED            -- LVP on, enabled
-   DISABLED           -- LVP off, disabled
-</pre>
-
-<h3>Fuse_Def CP  (Code Protection)</h3>
-<pre>
-   ENABLED            -- Code memory read protection on
-   DISABLED           -- Code mewmory read protection off
-</pre>
-
-<h3>Fuse_Def CPD  (Data Code Protection)</h3>
-<pre>
-   ENABLED            -- Data (EEPROM) memory read protection on
-   DISABLED           -- Data (EEPROM) memory read protection off
-</pre>
-
 <h3>Fuse_Def WRT  (Program Memory Self-Write Protection)</h3>
 <pre>
    NO_PROTECTION      -- All program memory writable
    ALL_PROTECTED      -- Writing of program memory prohibited
    Rxxxx_yyyy         -- Protected memory range
                       -- <i>(only specific ranges can be write protected)</i>
-</pre>
-
-<h3>Fuse_Def IOSCFS  (Internal Oscillator Frequency Select)</h3>
-<pre>
-   F4MHZ              -- 4 MHz
-   F8MHZ              -- 8 MHz
 </pre>
 
 <p><b>Notes:</b>
