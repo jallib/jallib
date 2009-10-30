@@ -66,10 +66,15 @@ else:
 # (no outer topic) *and* still copy related images (I can do the first, without
 # the second, using onlytopic.in.map=true, but the images don't get copied...)
 imgs = body.findAll("img")
+enclosingas = []
 for img in imgs:
     origsrc = img['src']
     imgfn = os.path.basename(origsrc)
     img['src'] = DRUPAL_IMG_PATH_PREFIX + imgfn
+	# is it enclosed by a <A> element ? (clickable ?)
+    if img.parent.name == "a" and img.parent.get("href") == origsrc:
+        img.parent['href'] = img['src']
+        enclosingas.append(img.parent)
     os.system("cp %s/%s %s/%s/%s/" % (dirn,origsrc,dirn,OUTPUT_DIR,ATTACH_DIR))
 
 
@@ -78,6 +83,10 @@ pat = re.compile("\.html",re.I)
 noext = pat.sub("",basen)
 as_ = body.findAll("a")
 for a in as_:
+    # if <a> element encloses images (makes image clickable) skip it, 
+	# path was adjusted step before
+    if a in enclosingas:
+        continue
     try:
         href = a['href']
         scheme, netloc, path, params, query, fragment = urlparse.urlparse(href)
