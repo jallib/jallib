@@ -75,6 +75,8 @@ for img in imgs:
     if img.parent.name == "a" and img.parent.get("href") == origsrc:
         img.parent['href'] = img['src']
         enclosingas.append(img.parent)
+    # fix relative path (quite dirty...)
+    origsrc = origsrc.replace(os.path.pardir + os.path.sep,"")
     os.system("cp %s/%s %s/%s/%s/" % (dirn,origsrc,dirn,OUTPUT_DIR,ATTACH_DIR))
 
 
