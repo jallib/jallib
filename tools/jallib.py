@@ -426,11 +426,11 @@ def report(filename):
     print >> sys.stderr, "File: %s" % filename
     print >> sys.stderr, "%d errors found" % len(errors)
     for err in errors:
-        print >> sys.stderr, "\tERROR: %s" % err
+        print >> sys.stderr, "\tERROR: %s:%s" % (os.path.basename(filename),err)
     print >> sys.stderr
     print >> sys.stderr, "%d warnings found" % len(warnings)
     for warn in warnings:
-        print >> sys.stderr, "\twarning: %s" % warn
+        print >> sys.stderr, "\twarning: %s:%s" % (os.path.basename(filename),warn)
 
     if errors or warnings:
         return True
