@@ -3,7 +3,7 @@
     xmlns:fo="http://www.w3.org/1999/XSL/Format"
     version="1.1">
 
-	<!-- Remove text on links "on page XX" -->
+    <!-- Remove text on links "on page XX" -->
     <xsl:template name="insertPageNumberCitation">
         <xsl:param name="isTitleEmpty"/>
         <xsl:param name="destination"/>
@@ -25,7 +25,7 @@
                     </xsl:call-template>
                 </fo:inline>
             </xsl:when>
-			<!-- following tutorial on customization, removing "on page XX"
+            <!-- following tutorial on customization, removing "on page XX"
             <xsl:otherwise>
                 <fo:inline>
                     <xsl:call-template name="insertVariable">
@@ -40,7 +40,7 @@
                     </xsl:call-template>
                 </fo:inline>
             </xsl:otherwise>
-			-->
+            -->
         </xsl:choose>
     </xsl:template>
 
@@ -55,5 +55,14 @@
         <!--xsl:apply-templates select="descendant::opentopic-index:index.entry[not(parent::opentopic-index:index.entry)]"/-->
         <!-- edited by William on 2009-07-02 for indexterm bug:2815485 end -->
     </xsl:template>
+
+    <!-- This template is commented in DITA-OT 1.5 M21. Uncommenting it
+         makes appear book summary, owner, ... on front page.
+         I don't know how...
+    -->
+    <xsl:template match="*[contains(@class, ' topic/data ')]">
+        <xsl:apply-templates/>
+    </xsl:template>
+
 
 </xsl:stylesheet>
