@@ -14,8 +14,9 @@
 -- for lower Xtal frequencies the maximum baudrate will be equally lower.
 -- Baudrates are optimized, so even the high baudrates shouldn't be a problem
 -- (my [Stef] standard = 115_200 Baud, which has never given me any problems).
--- Interrupts should be disabled during transmissions.
+-- Interrupts are disabled during transmissions.
 -- Transmission parameters are 8 databits, 2 stopbits, no parity, no handshake.
+-- const serial_sw_stopbits = 1 ; setup for one stopbit.                                                
 --
 -- TODO: should transmission parameters be configurable ? 
 -- (8 databits, 1 stopbits, no parity, no handshake)
@@ -24,6 +25,11 @@
 if (defined(serial_sw_invert) == false) then
    -- default is low active-serial (like serial_hw)
    const bit serial_sw_invert = true
+end if
+
+if (defined(serial_sw_stopbits) == false) then
+   -- default is 2 stopbits
+   const serial_sw_stopbits = 2
 end if
 
 procedure serial_sw_init() is
@@ -167,9 +173,9 @@ procedure serial_sw_write(byte in data) is
          data = data >> 1
          _usec_delay((1_000_000/serial_sw_baudrate)-2)
       end loop
-      -- add 2 stop bits
+      -- add stop bit(s)
       serial_sw_tx_pin = high
-      _usec_delay((2_000_000/serial_sw_baudrate))
+      _usec_delay((serial_sw_stopbits * (1_000_000/serial_sw_baudrate)))
       
    else
       -- invert the data
@@ -182,12 +188,9 @@ procedure serial_sw_write(byte in data) is
          data = data >> 1
          _usec_delay((1_000_000/serial_sw_baudrate)-2)
       end loop
-      -- add 1st stop bits
+      -- add stop bit(s)
       serial_sw_tx_pin = low
-      _usec_delay((1_000_000/serial_sw_baudrate))
-      ;-- add 2nd stop bits
-      ;serial_sw_tx_pin = low
-      ;_usec_delay((1_000_000/serial_sw_baudrate))
+      _usec_delay((serial_sw_stopbits * (1_000_000/serial_sw_baudrate)))
    end if
    
    -- restore old interrupt status
