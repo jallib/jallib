@@ -1,11 +1,11 @@
 /* ------------------------------------------------------------------------ *
- * Title: blink-an-led.cmd - Create and compile blink-an-LED samples.       *
+ * Title: blink-a-led.cmd - Create and compile blink-an-LED samples.       *
  *                                                                          *
  * Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.    *
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
- * Compiler: 2.4k                                                           *
+ * Compiler: N/A                                                            *
  *                                                                          *
  * This file is part of jallib  http://jallib.googlecode.com                *
  * Released under the BSD license                                           *
@@ -27,6 +27,9 @@
  *                                                                          *
  * ------------------------------------------------------------------------ */
 
+   ScriptAuthor    = 'Rob Hamerling'
+   CompilerVersion = '2.4l'
+
 parse upper arg runtype selection .             /* where to store jal files */
 
 call envir 'python'                             /* set Python environment */
@@ -34,7 +37,7 @@ call envir 'python'                             /* set Python environment */
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load Rexx utilities */
 
-JalV2 = 'k:/jallib/compiler/JalV2ecs.exe'       /* latest compiler */
+JalV2 = 'k:/c/jalv2/JalV2ecs.exe'               /* latest compiler */
 Validator = 'k:/jallib/tools/jallib.py validate'  /* validation command */
 
 if runtype = 'TEST' then do                     /* test mode */
@@ -42,10 +45,14 @@ if runtype = 'TEST' then do                     /* test mode */
   Options = '-s' Include                        /* compiler options */
   dst = './'                                    /* current directory */
 end
-else do                                         /* normal mode */
+else if runtype = 'PROD' then do                /* normal mode */
   Include = '/jallib/include/device/'           /* SVN include directory */
   Options = '-a nul -s' Include                 /* no asm output */
   dst = '/jallib/sample/'                       /* sample dir */
+end
+else do                                         /* normal mode */
+  say 'Error: Required argument missing: "prod" or "test"'
+  return 1
 end
 
 if selection = '' then
@@ -76,24 +83,17 @@ do i=1 to pic.0
   PgmName = PicName'_blink'                     /* program name */
   PgmFile = PgmName'.jal'                       /* program filespec */
 
-  '@python' validator  pic.i '1>'PgmName'.pyout'  '2>'PgmName'.pyerr'
-  if rc \= 0 then do
-    say 'Validation of device file' PicName'.jal failed, rc' rc
-    leave
-  end
-  '@erase' PgmName'.py*'                      /* when OK, discard python output */
-
   if stream(PgmFile, 'c', 'query exists') \= '' then
     '@erase' PgmFile
   call stream  PgmFile, 'c', 'open write'
   call lineout PgmFile, '-- ------------------------------------------------------'
   call lineout PgmFile, '-- Title: Blink-an-LED of the Microchip pic'PicName
   call lineout PgmFile, '--'
-  call lineout PgmFile, '-- Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.'
+  call lineout PgmFile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2009, all rights reserved.'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Adapted-by:'
   call lineout PgmFile, '--'
-  call lineout PgmFile, '-- Compiler: 2.4k'
+  call lineout PgmFile, '-- Compiler:' CompilerVersion
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- This file is part of jallib',
                          ' (http://jallib.googlecode.com)'
@@ -126,7 +126,7 @@ do i=1 to pic.0
       call lineout PgmFile, '-- This program assumes a 20 MHz resonator or crystal'
       call lineout PgmFile, '-- is connected to pins OSC1 and OSC2.'
       if left(PicName,2) = '18' then
-        call lineout PgmFile, '-- Not specified configuration bits may cause a different frequency!'
+        call lineout PgmFile, '-- Unspecified configuration bits may cause a different frequency!'
       call lineout PgmFile, 'pragma target clock 20_000_000     -- oscillator frequency'
       call lineout PgmFile, '-- configuration memory settings (fuses)'
       call lineout PgmFile, 'pragma target OSC  'hs'              -- HS crystal or resonator'
@@ -200,7 +200,7 @@ do i=1 to pic.0
       if pin.0 > 0 then do                              /* pin found */
         call SysFileSearch ' 'pinPQ'_direction', pic.i, tris.    /* search TRISx */
         if tris.0 > 0 then do                           /* found */
-          call lineout PgmFile, 'var bit led      is' pinPQ '        -- alias'
+          call lineout PgmFile, 'alias   led      is' pinPQ
           call lineout PgmFile, pinPQ'_direction =  output'
           leave p
         end
@@ -235,15 +235,16 @@ do i=1 to pic.0
     leave                                       /* terminate! */
   end
   '@erase' PgmName'.py*'                        /* when OK, discard log */
-  say '     Blink-an-LED sample validated OK!'
+  say '     Sample program validated OK!'
 
   '@'JalV2 Options PgmFile '>'PgmName'.log'     /* compile */
 
   if rc \= 0 then do                            /* compile error */
     say 'JalV2 compile error' rc
-    leave                                       /* terminate */
+    if runtype = 'PROD' then
+      leave                                     /* terminate */
   end
-  say '     Blink-an-LED sample compiled OK!'
+  say '     Sample program compiled OK!'
 
   '@erase' PgmName'.cod' PgmName'.err' PgmName'.lst' PgmName'.obj' '1>nul 2>nul'
 
