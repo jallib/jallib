@@ -64,5 +64,49 @@
         <xsl:apply-templates/>
     </xsl:template>
 
+    <!-- adjust note width -->
+    <xsl:template match="*[contains(@class,' topic/note ')]">
+        <xsl:variable name="noteType">
+            <xsl:choose>
+                <xsl:when test="@type">
+                    <xsl:value-of select="@type"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:value-of select="'note'"/>
+                </xsl:otherwise>
+            </xsl:choose>
+        </xsl:variable>
+        <xsl:variable name="noteImagePath">
+            <xsl:call-template name="insertVariable">
+                <xsl:with-param name="theVariableID" select="concat($noteType, ' Note Image Path')"/>
+            </xsl:call-template>
+        </xsl:variable>
+        <xsl:choose>
+            <xsl:when test="not($noteImagePath = '')">
+                <fo:table xsl:use-attribute-sets="note__table">
+
+                    <!-- Seb: this is here... -->
+                    <fo:table-column xsl:use-attribute-sets="note__table__column_1"/>
+                    <fo:table-column xsl:use-attribute-sets="note__table__column_2"/>
+
+                    <fo:table-body>
+                        <fo:table-row>
+                                <fo:table-cell xsl:use-attribute-sets="note__image__entry">
+                                    <fo:block>
+                                        <fo:external-graphic src="url({concat($artworkPrefix, $noteImagePath)})" xsl:use-attribute-sets="image"/>
+                                    </fo:block>
+                                </fo:table-cell>
+                                <fo:table-cell xsl:use-attribute-sets="note__text__entry">
+                                    <xsl:call-template name="placeNoteContent"/>
+                                </fo:table-cell>
+                        </fo:table-row>
+                    </fo:table-body>
+                </fo:table>
+            </xsl:when>
+            <xsl:otherwise>
+                <xsl:call-template name="placeNoteContent"/>
+            </xsl:otherwise>
+        </xsl:choose>
+    </xsl:template>
 
 </xsl:stylesheet>
