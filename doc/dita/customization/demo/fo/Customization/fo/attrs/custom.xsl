@@ -7,11 +7,15 @@
     <xsl:attribute-set name="prolog">
         <xsl:attribute name="start-indent">300pt</xsl:attribute>
         <xsl:attribute name="font-size"><xsl:value-of select="$default-font-size"/></xsl:attribute>
+        <xsl:attribute name="font-weight">bold</xsl:attribute>
+        <!--
         <xsl:attribute name="border-style">solid</xsl:attribute>
         <xsl:attribute name="border-color">black</xsl:attribute>
         <xsl:attribute name="border-width">thin</xsl:attribute>
-        <xsl:attribute name="text-align">right</xsl:attribute>
         <xsl:attribute name="background-color">#f0f0d0</xsl:attribute>
+        -->
+        <xsl:attribute name="color">#000037</xsl:attribute>
+        <xsl:attribute name="text-align">right</xsl:attribute>
         <xsl:attribute name="padding">6pt</xsl:attribute>
     </xsl:attribute-set>
 
@@ -57,4 +61,32 @@
         <xsl:attribute name="space-before">15pt</xsl:attribute>
         <xsl:attribute name="keep-with-next.within-column">always</xsl:attribute>
     </xsl:attribute-set>
+
+    <!-- mini toc within chapters -->
+    <xsl:attribute-set name="__toc__mini">
+        <xsl:attribute name="font-size">9pt</xsl:attribute>
+        <xsl:attribute name="font-family">Sans</xsl:attribute>
+        <xsl:attribute name="end-indent">5pt</xsl:attribute>
+    </xsl:attribute-set>
+
+    <xsl:attribute-set name="__toc__mini__table__column_1">
+        <xsl:attribute name="column-number">1</xsl:attribute>
+        <xsl:attribute name="column-width">25%</xsl:attribute>
+    </xsl:attribute-set>
+
+    <xsl:attribute-set name="__toc__mini__table__column_2">
+        <xsl:attribute name="column-number">2</xsl:attribute>
+        <xsl:attribute name="column-width">75%</xsl:attribute>
+    </xsl:attribute-set>
+
+    <xsl:attribute-set name="note__table__column_1">
+        <xsl:attribute name="column-number">1</xsl:attribute>
+        <xsl:attribute name="column-width">10%</xsl:attribute>
+    </xsl:attribute-set>
+
+    <xsl:attribute-set name="note__table__column_2">
+        <xsl:attribute name="column-number">2</xsl:attribute>
+        <xsl:attribute name="column-width">90%</xsl:attribute>
+    </xsl:attribute-set>
+
 </xsl:stylesheet>
