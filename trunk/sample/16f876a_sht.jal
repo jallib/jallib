@@ -15,12 +15,12 @@
 -- select PIC
 include 16f876a
 
-pragma target clock     20_000_000           -- 20 MHz xtal
+pragma target clock     4_000_000            -- 4 MHz xtal
 pragma target OSC       HS                   -- high speed
 pragma target WDT       disabled             -- no watchdog, please
 pragma target LVP       disabled             -- no low voltage programming
 
-enable_digital_io()                          -- no analog pins used in this test
+enable_digital_io()                          -- no analog pins used in this sample
 
 include delay                                -- used by LCD lib and sht lib
 
@@ -36,55 +36,95 @@ lcd_init()
 include print                                -- nice formatted output
 include format                               -- more nice formatting
 
-alias SHT_DATA         is pin_a3             -- data in/out of SHTxx
-alias SHT_DATA_DIR     is pin_a3_direction   -- fake-I2C requires bi-dir comms
-alias SHT_SCK          is pin_a4             -- clock of SHTxx
-pin_a4_direction       = output              -- pin_a4 needs pullup on some PICs
+alias SHT_DATA         is pin_a0             -- data in/out of SHTxx
+alias SHT_DATA_DIR     is pin_a0_direction   -- fake-I2C requires bi-dir comms
+alias SHT_SCK          is pin_a1             -- clock of SHTxx
+pin_a1_direction       = output              -- pin_a4 needs pullup on some PICs
 include humidity_sht                         -- library
 
 -- -------------- VARIABLES ------------------------------
 
-var byte hum
-var word humidity
+var byte humidity_8
+var word humidity_16
+
+var byte hum1, hum2, crc
+var byte t1, t2
+
+var sbyte temperature_7
+var sword temperature_15
+
 var byte counter
 
 -- --------------- START PROGRAM ---------------------------
 
 lcd_clear_screen()
+const byte str1[] = "Temperature and"
+const byte str2[] = "humidity test."
+const byte str3[] = "Sensirion SHT10"
+const byte str4[] = "Thanks to jallib!"
+
 lcd_cursor_position(0,0)
-const byte str1[] = "humidity test"
 print_string(lcd, str1)
-delay_100ms(20)                              -- splash screen
+lcd_cursor_position(1,0)
+print_string(lcd, str2)
+lcd_cursor_position(2,0)
+print_string(lcd, str3)
+lcd_cursor_position(3,0)
+print_string(lcd, str4)
+
+delay_100ms(10)                              -- splash screen
 
 lcd_clear_screen()
 
 forever loop
 
-   if counter % 10 == 0 then                 -- every two seconds
-      read_hum_sht(hum)                      -- max every 500ms, because of self-heating
-      lcd_cursor_position(0, 0)              -- row 1, position = 1
-      print_byte_dec(lcd, hum)
-      lcd = "%"
-      lcd = "R"
-      lcd = "H"
-      lcd = " "
-   end if
+   lcd_cursor_position(0, 0)              -- row 1, position = 1
 
-   if counter % 10 == 5 then
-      read_hum_word_sht(humidity)
-      lcd_cursor_position(1, 0)              -- row 2, position = 1
-      format_word_dec(lcd, humidity, 4, 2)
-      lcd = "%"
-      lcd = "R"
-      lcd = "H"
-      lcd = " "
-   end if
-
-   counter = counter + 1                     -- five times per second
-   lcd_cursor_position(3,0)
-   print_byte_dec(lcd, counter)              -- to see that main loop runs
+   read_raw_hum_sht(hum1, hum2, crc)
+   print_byte_hex(lcd, hum1)
+   print_byte_hex(lcd, hum2)
    lcd = " "
+   delay_1s(1)                              -- because of self-heating
 
-   delay_100ms(2)                            -- optimal LCD display refresh rate
+   read_hum_sht(humidity_8)                      
+   print_byte_dec(lcd, humidity_8)
+   lcd = "%"
+   lcd = "R"
+   lcd = "H"
+   lcd = " "
+   delay_1s(1)
+   
+   read_hum_word_sht(humidity_16)
+   format_word_dec(lcd, humidity_16, 4, 2)
+   lcd = "%"
+   lcd = "R"
+   lcd = "H"
+   lcd = " "   
+   delay_1s(1)
+   
+
+   lcd_cursor_position(1, 0)              -- row 2, position = 1
+
+   read_raw_temp_sht(t1, t2, crc)
+   print_byte_hex(lcd, t1)
+   print_byte_hex(lcd, t2)
+   lcd = " "
+   delay_1s(1)
+
+   read_celsius_temp_sht(temperature_7)
+   print_sbyte_dec(lcd, temperature_7)
+   lcd = 0b1101_1111                   -- japanese char, resembles "degree" symbol
+   lcd = "C"
+   lcd = " "   
+   delay_1s(1)
+
+   read_centicelsius_temp_sht(temperature_15)
+   format_sword_dec(lcd, temperature_15, 5, 2)
+   lcd = 0b1101_1111                   -- japanese char, resembles "degree" symbol
+   lcd = "C"
+   lcd = " "   
+   lcd = " "   
+   delay_1s(1)
+   
 
 end loop
