@@ -71,7 +71,7 @@ for img in imgs:
     origsrc = img['src']
     imgfn = os.path.basename(origsrc)
     img['src'] = DRUPAL_IMG_PATH_PREFIX + imgfn
-	# is it enclosed by a <A> element ? (clickable ?)
+    # is it enclosed by a <A> element ? (clickable ?)
     if img.parent.name == "a" and img.parent.get("href") == origsrc:
         img.parent['href'] = img['src']
         enclosingas.append(img.parent)
@@ -86,7 +86,7 @@ noext = pat.sub("",basen)
 as_ = body.findAll("a")
 for a in as_:
     # if <a> element encloses images (makes image clickable) skip it, 
-	# path was adjusted step before
+    # path was adjusted step before
     if a in enclosingas:
         continue
     try:
@@ -101,6 +101,8 @@ for a in as_:
         # if we get here, url is a local file
         # remove html suffix, as we'll remove it in drupal
         path = pat.sub("",path)
+        # also remove prefix, just keep last part of URL correspoding to XML file
+        path = path.split("/")[-1]
         # add prefix for Drupal's content
         path = DRUPAL_CONTENT_PREFIX + path
         
@@ -119,7 +121,7 @@ if not h1s:
     title = basen
 else:
     # there should be only one element, but anyway remove first one
-	# only keep text content, not potential inner elements
+    # only keep text content, not potential inner elements
     title = h1s[0].findAll(text=True)[0]
     h1s[0].replaceWith("")
 
