@@ -89,4 +89,20 @@
         <xsl:attribute name="column-width">90%</xsl:attribute>
     </xsl:attribute-set>
 
+	<xsl:attribute-set name="fig.title">
+		<xsl:attribute name="font-family">Sans</xsl:attribute>
+		<xsl:attribute name="font-size">8pt</xsl:attribute>
+		<xsl:attribute name="space-before.optimum">5pt</xsl:attribute>
+		<xsl:attribute name="space-after.optimum">10pt</xsl:attribute>
+		<xsl:attribute name="keep-with-previous.within-page">always</xsl:attribute>
+	</xsl:attribute-set>
+
+    <xsl:attribute-set name="fn__body">
+        <xsl:attribute name="provisional-distance-between-starts">8mm</xsl:attribute>
+        <xsl:attribute name="provisional-label-separation">2mm</xsl:attribute>
+        <xsl:attribute name="line-height">1.2</xsl:attribute>
+        <xsl:attribute name="font-size">8pt</xsl:attribute>
+        <xsl:attribute name="start-indent">0pt</xsl:attribute>
+    </xsl:attribute-set>
+
 </xsl:stylesheet>
