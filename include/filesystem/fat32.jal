@@ -24,12 +24,6 @@
 -- must get rid of create_dword procedure
 
 ------- GENERAL SETTINGS & VARS -------
-
-const FAT32_DIR_FRAGMENTS_TO_ALLOW = 10   -- (0 = you must have a defragmented media), usually directories are fragmented.
-                                         -- uses 6 bytes memory per fragment allowed
-                                         -- windows defrag does not defragment directories.
-const FAT32_FILE_FRAGMENTS_TO_ALLOW = 10  -- (0 = you must have a defragmented media)
-                                         -- uses 8 bytes memory per fragment allowed
                                          
 -- vars you can read info from
 var dword fat32_file_size              -- holds file size after file_read_info()
@@ -62,7 +56,7 @@ var bit fat32_filter_is_system at fat32_attrib_filter    : 2
 var bit fat32_filter_is_volume_id at fat32_attrib_filter : 3
 var bit fat32_filter_is_directory at fat32_attrib_filter : 4
 var bit fat32_filter_is_archive at fat32_attrib_filter   : 5
--- you may change these filters here or also modify them in your main program
+-- copy these filters to your your main program then modify there values.
 -- filters out unwanted file types
 fat32_filter_is_read_only  = FALSE
 fat32_filter_is_hidden     = FALSE
@@ -71,6 +65,7 @@ fat32_filter_is_volume_id  = FALSE
 fat32_filter_is_directory  = FALSE
 fat32_filter_is_archive    = FALSE
 
+-- data media selection
 if (DATA_MEDIA == PATA_HARD_DISK) then
   -- hard disk procedures
   ALIAS fat32_start_read is pata_hd_start_read              -- get hard disk ready for reading
@@ -89,11 +84,7 @@ elsif DATA_MEDIA == SD_CARD then
   ALIAS fat32_word_count is sd_word_count                   -- number of words read from current sector (byte var)
 end if
 
--- choose the max filename length (uses ram space)
-CONST BYTE FAT32_FILENAME_SIZE = 100 -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
-var byte LONGNAMELOCATION = 0 -- The start location for the filename if you are using eeprom or external memory source
-
--- "file location list"
+-- "file location list info"
 -- choose max number of files, choose highest entry address (filename's address).
 -- eg. chosen -> FAT32_ENTRIES_MAX = 1, FAT32_FILES_MAX = 30 and there are 3 files A, B & C all in c:\
 -- File A is in sector 0, entry 6. file B is in sector 4, entry 2. file C is in sector 50, entry 2.
@@ -104,24 +95,15 @@ var byte LONGNAMELOCATION = 0 -- The start location for the filename if you are 
 -- there have been no deleted files and all names are short filenames.
 -- if you choose FAT32_ENTRIES_MAX = 2 you will use 2 times 30 = 60bytes. If it multiply's
 
--- bug, <= 26 doesn't work at read_file_info
-const word FAT32_FILES_MAX = 100       -- the max number of files allowed in a directory, should not exceed highest entry address
-;const byte FAT32_ENTRIES_MAX = 1     -- highest file entry address can be 256
-const byte FAT32_ENTRIES_MAX = 2      -- highest file entry address can be 65535
 ;var byte*FAT32_ENTRIES_MAX entry_location[FAT32_FILES_MAX] -- we will use large_array library instead
 
 -- Use internal memory for file location list. FALSE IS NOT AVAILABLE YET.
 -- external memory will later be used if you want to have a large amount
 -- of files in a directory.
-const bit FAT32_USE_INTERNAL_MEMORY = TRUE
-IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
 
-  -- Setup a large array for storing sector data, This is where filename locations are stored
-  const dword LARGE_ARRAY_1_SIZE = FAT32_FILES_MAX          -- choose number of array variables
-  const dword LARGE_ARRAY_1_VARIABLE_SIZE = FAT32_ENTRIES_MAX    -- choose bytes size of variables
-  include large_array_1                    -- include the array library
-  ALIAS entry_location is large_array_1
-elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
+
+;IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
+;elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
 
 -- work in progress
 ;  -- note, external SPI memory must be on different SPI bus if using sd_card lib at the moment.
@@ -140,7 +122,7 @@ elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
 ;  include large_array                    -- include the array library
 ;  ALIAS fat32_sector_data is large_array_1
 
-END IF
+;END IF
 
 
 ------- procedures -------
@@ -149,8 +131,7 @@ END IF
 -- ----------------------------------------------------------------------------
 -- choose a memory source to store 1 filename
 -- ----------------------------------------------------------------------------
-const bit FAT_32_FILENAME_IN_EEPROM = TRUE -- PIC eeprom is slow, loads filenames slow, false = use internal memory
-if FAT_32_FILENAME_IN_EEPROM == FALSE then -- use eeprom memory
+if FAT_32_FILENAME_IN_EEPROM == TRUE then -- use eeprom memory
    ALIAS fat32_write_filename is data_eeprom_write  -- alias the eeprom write rocedure
    ALIAS fat32_get_filename is data_eeprom_read    -- alias the eeprom read procedure
 else -- use internal memory
@@ -170,9 +151,6 @@ else -- use internal memory
 end if
 
 -- ----------------------------------------------------------------------------
--- you can modify this and fat32_write_entry, fat32_read_entry procedures to
--- use internal memory or an external memory source.
--- define where to store the filename entry location list.
 -- these procedures may get removed.
 -- ----------------------------------------------------------------------------
 procedure fat32_write_entry(word in address, byte*FAT32_ENTRIES_MAX in entry_data) is
@@ -327,7 +305,7 @@ end procedure
 -- fat32_dir_fragments_start & fat32_dir_fragment_cluster_count arrays
 -- ----------------------------------------------------------------------------
 const byte FAT32_DIRECTORY = 0
-CONST BYTE FAT32_FILE = 1
+const BYTE FAT32_FILE = 1
 if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
   -- start cluster location of each directory fragment
   var dword fat32_dir_fragments_start[FAT32_DIR_FRAGMENTS_TO_ALLOW]
