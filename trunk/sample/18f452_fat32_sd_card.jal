@@ -74,13 +74,42 @@ sd_init()                    -- initialize startup settings
 ------------------------------------------------------------------------------------
 
 -- setup fat32
--- large_array_1 lib is included within the fat32 lib file and is required as well.
 -- select your data media
 const PATA_HARD_DISK = 0
 const SD_CARD = 1
-const DATA_MEDIA = 1
+const DATA_MEDIA = SD_CARD
+-- change these vaues to save memory
+const word FAT32_FILES_MAX = 100          -- the max number of files allowed in a directory
+const BYTE FAT32_FILENAME_SIZE = 100 -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
+const FAT32_DIR_FRAGMENTS_TO_ALLOW = 10   -- (0 = you must have a defragmented media), usually directories are fragmented.
+--                                         -- uses 6 bytes memory per fragment allowed
+--                                         -- windows defrag does not defragment directories.
+const FAT32_FILE_FRAGMENTS_TO_ALLOW = 10  -- (0 = you must have a defragmented media)
+--                                         -- uses 8 bytes memory per fragment allowed
+const bit FAT_32_FILENAME_IN_EEPROM = FALSE -- PIC eeprom is slow, loads filenames slow, false = use internal memory
+var byte LONGNAMELOCATION = 0 -- The start location for the filename in eeprom. use only if FAT_32_FILENAME_IN_EEPROM = TRUE
+--
+-- experts may change the following values
+;const byte FAT32_ENTRIES_MAX = 1     -- highest file entry address can be 256
+const byte FAT32_ENTRIES_MAX = 2      -- highest file entry address can be 65535
+const bit FAT32_USE_INTERNAL_MEMORY = TRUE -- Use internal memory for file location list (false not supported yet)
+IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
+    -- Setup a large array for storing sector data, This is where filename locations are stored
+  const dword LARGE_ARRAY_1_SIZE = FAT32_FILES_MAX          -- choose number of array variables
+  const dword LARGE_ARRAY_1_VARIABLE_SIZE = FAT32_ENTRIES_MAX    -- choose bytes size of variables
+  include large_array_1                    -- include the array library
+  ALIAS entry_location is large_array_1
+elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
+  -- put your own procedure here if you wish to allow massive
+  -- amounts of files per directory
+END IF
+--
+-- include required files
 include format  -- include format library
 include fat32   -- include fat32 library
+;large_array_1  -- this is included within the fat32 lib.
+-------------------------------------------
+
 -- CHOOSE FILE ATTRIBUTES TO FILTER OUT
 fat32_filter_is_read_only  = FALSE
 fat32_filter_is_hidden     = FALSE
