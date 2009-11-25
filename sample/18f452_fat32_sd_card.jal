@@ -1,0 +1,217 @@
+-- Title: FAT32 library for reading fat32 filesystem
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this example reads files & folders from a fat32 formatted sd card
+--              using the fat32 library.
+--
+-- Sources:
+-- http://www.microsoft.com/whdc/system/platform/firmware/fatgen.mspx
+-- http://www.pjrc.com/tech/8051/ide/fat32.html
+-- http://en.wikipedia.org/wiki/File_Allocation_Table
+--
+------- GENERAL SETTINGS & VARS -------
+
+-- include chip
+include 18f452                   -- target picmicro
+
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+pragma target osc hs              -- hs crystal or resonator
+pragma target clock 20_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
+--
+
+enable_digital_io() -- disable all analog pins if any
+
+include delay       -- include the delay library
+include pic_data_eeprom
+
+-- setup uart for communication
+const serial_hw_baudrate  = 38400   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+_usec_delay (100_000) -- wait for power to stablilize
+
+-- procedure for sending 80 "-----------------" via serial port
+procedure next() is
+  serial_hw_write (13)-- send (carriage return, line feed) characters to serial port
+  serial_hw_write (10)
+  for 80 loop
+    serial_hw_write ("-")
+  end loop
+  serial_hw_write (13)-- send (carriage return, line feed) characters to serial port
+  serial_hw_write (10)
+end procedure
+
+next()
+
+-- setup spi
+include spi_master_hw         -- includes the spi library
+
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+-- spi chip select pin
+ALIAS sd_chip_select_direction   is pin_SS_direction
+ALIAS sd_chip_select             is pin_SS
+sd_chip_select_direction = output    -- chip select/slave select pin
+sd_chip_select = high  -- disable the sd card
+--
+spi_init(SPI_MODE_11,SPI_RATE_FOSC_16) -- init spi, choose mode and speed
+
+include sd_card              -- include the sd card ide hard disk library
+sd_init()                    -- initialize startup settings
+
+------------------------------------------------------------------------------------
+
+-- setup fat32
+-- large_array_1 lib is included within the fat32 lib file and is required as well.
+-- select your data media
+const PATA_HARD_DISK = 0
+const SD_CARD = 1
+const DATA_MEDIA = 1
+include format  -- include format library
+include fat32   -- include fat32 library
+-- CHOOSE FILE ATTRIBUTES TO FILTER OUT
+fat32_filter_is_read_only  = FALSE
+fat32_filter_is_hidden     = FALSE
+fat32_filter_is_system     = FALSE
+fat32_filter_is_volume_id  = FALSE
+fat32_filter_is_directory  = FALSE
+fat32_filter_is_archive    = FALSE
+
+-- start of main program
+var byte in_a, in_b -- vars for storing data read
+
+fat32_init(1)       -- initialize fat32, go to 1st primary partition's root dir "\"
+
+
+------------------------------------------------------------
+-- list a directory, send it via serial port
+------------------------------------------------------------
+
+-- we are now in the root dir of the 1st partition
+
+fat32_list_dir() -- see the procedure, sends dir listing via serial port
+
+;next() -- send "-----" and go to next example
+
+---------------------------------------------------------------------------------------------------------------
+-- example read filename, send it via serial port
+------------------------------------------------------------
+
+-- we are still in the root dir of the 1st partition
+
+;fat32_read_file_info(3) -- read 3rd file's name, location, size, attributes into memory
+
+
+-- now send the filename via the serial port
+;fat32_read_filename()
+
+;next() -- send "-----" and go to next example
+
+------------------------------------------------------------
+-- example select a file,
+-- if dir then go into dir list it
+-- if file then go into file and read it
+------------------------------------------------------------
+
+;  var byte file_number = 13
+;     -- choose a file for reading or dir for opening
+;
+;  if fat32_cd(file_number) then            -- if change directory is successful
+;    list_dir()                              -- sends dir listing via serial port
+;  end if
+;
+;  if fat32_file_open(file_number) then  -- if go into file is successful
+;
+;    fat32_start_read (fat32_file_location)  -- go in the file, get ready to read
+;    for (fat32_file_size / 2) loop          -- reading 2 bytes at a time
+;      fat32_read_file (in_b, in_a)          -- read 2 data bytes
+;       serial_hw_write (in_b)                -- send 2 data bytes via serial port
+;       serial_hw_write (in_a)
+;    end loop
+;
+;    -- if odd number of bytes in file, send last byte
+;    var bit odd_number at fat32_file_size : 0
+;    if odd_number then
+;      fat32_read_file (in_b, in_a)          -- read 2 data bytes
+;      serial_hw_write     (in_b)            -- send last data byte via serial port
+;    end if
+;
+;    fat32_stop_read () -- end of file, set media idle
+;  end if
+;
+;serial_hw_write (13)                -- send 2 data bytes via serial port
+;serial_hw_write (10)
+
+;------------------------------------------------------------
+;-- example raw read one sector from anywhere on media
+;------------------------------------------------------------
+;-- READ ONE SECTOR
+;var byte low_byte
+;var byte high_byte
+;
+;-- raw read the sector containing the root dir (sector 0)
+;fat32_start_read(fat32_cluster_begin + (0x02 * 8))
+;for 256 loop                          -- read 1 sector (256 words)
+;  fat32_raw_read (low_byte, high_byte)  -- read 2 bytes of data
+;  serial_hw_write (low_byte)          -- send byte via serial port
+;  serial_hw_write (high_byte)         -- send byte via serial port
+;end loop
+;fat32_stop_read()                        -- tell sd card you are done reading
+
+------------------------------------------------------------
+-- example user interaction,
+-- send file/dir number via serial port to go into it
+--
+-- if volume id selected, list the current dir (root dir)
+-- if directory selected go into it and list it
+-- if file selected go into file and read it
+------------------------------------------------------------
+
+var byte file_number2 = 0
+forever loop
+
+
+  next() -- send "-----" then loop and wait for user input
+  
+  while !serial_hw_data_available loop
+  end loop
+
+  var byte x
+  x = serial_hw_read(file_number2)
+     -- choose a file for reading or dir for opening
+
+  if fat32_cd(file_number2) then            -- if change directory is successful
+    fat32_list_dir()                              -- sends dir listing via serial port
+  elsif fat32_file_open(file_number2) then  -- if go into file is successful
+
+    fat32_start_read (fat32_file_location)  -- go in the file, get ready to read
+    for (fat32_file_size / 2) loop          -- reading 2 bytes at a time
+      fat32_read_file (in_b, in_a)          -- read 2 data bytes
+      serial_hw_write (in_b)                -- send 2 data bytes via serial port
+      serial_hw_write (in_a)
+    end loop
+
+    -- if odd number of bytes in file, send last byte
+    var bit odd_number at fat32_file_size : 0
+    if odd_number then
+      fat32_read_file (in_b, in_a)          -- read 2 data bytes
+      serial_hw_write     (in_b)            -- send last data byte via serial port
+    end if
+
+    fat32_stop_read () -- end of file, set media idle
+  end if
+
+  
+end loop
