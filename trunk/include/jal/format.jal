@@ -1,6 +1,6 @@
 -- Title: Writes formatted values to output device
 -- Author: Stef Mientki, Copyright (c) 2002 .. 2006, all rights reserved.
--- Adapted-by: Joep Suijs, Albert Faber
+-- Adapted-by: Joep Suijs, Albert Faber, Eur van Andel
 -- Compiler: >=2.2
 -- 
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -291,6 +291,67 @@ end procedure
 -- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
+-- writes decimal formatted signed word to output device
+-- output can be specified in length of string and position
+-- values -32767 to +32768, so lenght = 5 max
+-- last digit is position 0, first is 4 = max
+-- 32768, len=3, pos=2 gives 327
+-- 32768, len=1, pos=0 gives 6
+-- 32768, len=2, pos=4 gives 32
+-- added by Eur van Andel, eur@fiwihex.nl, 23 NOV 2009
+-- -----------------------------------------------------------------------------
+procedure format_sword_dec_length(volatile byte out device, sword in data, 
+                                  bit in sign, byte in len, byte in pos) is
+
+   var bit data_sign at data:15
+   var byte char[5]
+   var byte i
+
+   if sign then
+      if data_sign then
+         device = "-"
+         data = - data
+      else
+         device = "+"
+      end if
+   else
+      if data_sign then
+         data = - data
+      end if
+   end if
+
+   if len == 0 then            -- nothing more will be printed
+      return
+   end if
+
+   char[0]= byte("0" + data/10_000)
+   data = data % 10_000
+   char[1] = byte("0" + data/1_000)
+   data = data % 1_000
+   char[2] = byte("0" + data/100)
+   data = data % 100
+   char[3] = byte("0" + data/10)
+   data = data % 10
+   char[4] = byte("0" + data)
+
+   i = 0
+   while i + pos < 5 loop        -- no more than 5 digits
+      device = char[i + pos]
+      i = i + 1
+      len = len - 1
+      if len == 0 then  
+         i = 5
+      end if
+   end loop
+      
+
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+
+
+-- -----------------------------------------------------------------------------
 -- writes decimal formatted signed dword to output device
 -- the output can be specified as a fraction
 --   n_tot = the total length (including sign and decimal point)
@@ -409,7 +470,7 @@ procedure format_time_hms(volatile byte out device,byte in HH, byte in MM, byte 
    D10 = HH / 10
    HH  = HH % 10
 
-   -- always dsiplay Zeroes
+   -- always display Zeroes
    device = "0" + D10
    device = "0" + HH
    device = ":"
