@@ -24,19 +24,23 @@
       <p>We are not responsible for your data or SD card. Make sure you have nothing important on your SD card before you continue.</p>
       <image href="images/sd_card_sd_card.jpg" width="250"/>
       <image href="images/sd_card_pinout.jpg" width="300"/>
+      <p>These SD Cards are 3.3v devices, therefore a 5v to 3v conversion is needed between the PIC and the sd card. We will use resistors to do the conversion, however there are many other methods. See <xref href="http://www.microchip.com/3v/" format="html">http://www.microchip.com/3v/</xref> for more information. Another setup may be needed if you are putting more devices on the same SPI bus.</p>
+      <p>This circuit will use 16F877 If you are using a different PIC for your project, refer to the PIC&apos;s datasheet for pin output levels/voltage. For example, 18F452 has many pins that are 5v-input that give 3v-output. These pins show as &quot;TTL / ST&quot; - TTL compatible with CMOS level outputs in the datasheet and they will not require any voltage conversion resistors. If you are not sure, set a pin as an output, and make it go high then test with a volt meter.</p>
     </section>
     <section>
-      <p>These SD Cards are 3.3v devices, therefore a 5v to 3v conversion is needed between the PIC and the sd card. We will use resistors to do the conversion, however there are many other methods. See <xref href="http://www.microchip.com/3v/" format="html">http://www.microchip.com/3v/</xref> for more information. Another setup may be needed if you are putting more devices on the same SPI bus.</p>
-      <p>This circuit will use 16F877 If you are using a different PIC for your project, refer to the PIC&apos;s datasheet for pin output levels/voltage. For example, 18F452 has many pins that are 5v-input that give 3v-output. These pins show as &quot;TTL / ST&quot; - TTL compatible with CMOS level outputs in the datasheet and they will not require any voltage conversion resistors.</p>
       <title>Build a SD Card Slot</title>
       <p>Before we can build our circuit, we will need to find ourselves an sd card slot that can plug into our breadboard. You can find pre-made sd card slots on ebay and other places around the net. It is quite easy to make your own anyways. I took one out of a broken digital camera and placed it on some blank breadboard and soldered on some pins. Here are some images of my sd card holder:</p>
       <image href="images/sd_card_holder_front.jpg" width="200" otherprops="clickable"/>
       <image href="images/sd_card_holder_back.jpg" width="200" otherprops="clickable"/>
       <image href="images/sd_card_holder_with_card.jpg" width="200" otherprops="clickable"/>
+    </section>
+    <section>
       <title>Build the circuit</title>
       <p>Follow this schematic for 16f877, if you are using another PIC, check the pin-outs for the SPI bus. The pin-outs of your pic will show SDI, SDO, SCL and SS. The pin SS is the chip select pin, you can use any pin for it but the others must match.</p>
       <image href="images/sd_card_schematic.jpg" width="500" otherprops="clickable"/>
       <image href="images/sd_card_circuit.jpg" width="500" otherprops="clickable"/>
+    </section>
+    <section>
       <title>Compile and write the software to your PIC</title>
       <p>With the use of the sd card lib (sd_card.jal) and a sample file 16f877_sd_card.jal, we can easily put one in our own circuit for mass data storage! You will find these files in the lib &amp; sample directories of your jallib installation. </p>
       <p>The most up to date version of the sample &amp; library can be found at:</p>
@@ -44,6 +48,8 @@
       <p>Library file - <xref href="http://jallib.googlecode.com/svn/trunk/include/external/storage/sd_card/sd_card.jal" format="html">http://jallib.googlecode.com/svn/trunk/include/external/storage/sd_card/sd_card.jal</xref></p>
       <p>Now that our circuit is built, lets test it and make sure it works before we continue with more details. Compile and program your pic with 16f877_sd_card.jal from your jallib samples directory. If you are using another pic, change the &quot;include 16f877&quot; line in 16f877_sd_card.jal to specify your PIC before compiling. </p>
       <p>Now that you have compiled it, burn the .hex file to your PIC</p>
+    </section>
+    <section>
       <title>Power It Up</title>
       <p>Plug your circuit into your PC for serial port communication at 38400 baud rate. Now turn it on. Press the reset button in your circuit, you should get a result similar to this:</p>
       <b>ASCII output</b>
@@ -52,6 +58,8 @@
       <image href="images/sd_card_serial_data.jpg" width="450" otherprops="clickable"/>
       <p>As you can see from the first image, we got some actual readable data off the sd card as well as a bunch of junk. The sample file reads the first sector (512 bytes) from the sd card. My sd card is formated with fat32, this is why I can read some of the data output.</p>
       <p>In the second image (after clearing the output and resetting the circuit), there was too much data to show it all. It only shows the last bytes received. If you get the same hex output &quot;66 22&quot; followed by many &quot;00&quot;, your circuit has successfully written data and read it back again. You now have a working sd card circuit!</p>
+    </section>
+    <section>
       <title>Understand and modify the code</title>
       <p>I&apos;m just going to quickly go over some of the key points you need to know about sd cards. Open the sample file with an editor if you have not done so already.</p>
       <p>The code in the sample file may change, 
@@ -66,6 +74,8 @@ pragma target clock 20_000_000     -- oscillator frequency
 --
 pragma target WDT  disabled
 pragma target LVP  disabled</codeblock>
+      <p><b>Disable Analog Pins</b></p>
+      <codeblock>enable_digital_io() -- disable all analog pins if any</codeblock>
       <p/>
       <p><b>Include other libraries required</b></p>
       <codeblock>-- include the delay library
@@ -79,6 +89,7 @@ serial_hw_init()</codeblock>
       <p/>
       <p><b>SPI Settings</b></p>
       <p>Here you may change the chip select pin &quot;pin_SS&quot; and &quot;pin_SS_direction&quot; to another pin. SDI, SDO and SCK must stay the same for the SPI hardware library.</p>
+      <p>You may notice that we are not defining/aliasing pins sdi, sdo and sck. We do not need to define them with a line like &quot;alias pin_sdo is pin_c5&quot; becase they are set within the PIC and cannot be changed. If we use the SPI hardware library, we must use the spi hardware pins.  We only need to define there direction  like this &quot;pin_sdo_direction = output&quot;.</p>
       <p>You may also choose the SPI rate. According to the SPI hardware library, you can use SPI_RATE_FOSC_4 SPI_RATE_FOSC_16, SPI_RATE_FOSC_64 or SPI_RATE_TMR. The fastest is FOSC_4 (oscillator frequency / 4). You may require a breadboard for the fastest speed, keep your SD Card as close to the PIC as possible.</p>
       <codeblock>-- setup spi
 include spi_master_hw         -- includes the spi library
@@ -96,7 +107,10 @@ spi_init(SPI_MODE_11,SPI_RATE_FOSC_16) -- choose spi mode and speed
 </codeblock>
       <p/>
       <p><b>Include the SD card library</b></p>
+      <p>Select sd card settings &amp; Include the library file, then initalize the sd card.</p>
+      <p>Some sd cards may require a 10ms delay every time you stop writing to the sd card, you can choose weater or not to have this delay. If you are doing many small writes and are worried about speed, you may set SD_DELAY_AFTER_WRITE to &quot;FALSE&quot;.</p>
       <codeblock>-- setup sd card library
+const bit SD_DELAY_AFTER_WRITE = TRUE
 include sd_card -- include sd card library
 sd_init()       -- initalize the sd card</codeblock>
       <p/>
