@@ -94,7 +94,7 @@ const byte SD_SEND_SCR = 51
 procedure send_command(byte in command,dword in data, byte out response) is
    var byte paramiters[4] at data
    var byte x
-   
+
    -- send a valid CRC byte only for set idle command
    -- right bit must always be 1 (stop bit)
    if command == SD_GO_IDLE_STATE then
@@ -102,11 +102,11 @@ procedure send_command(byte in command,dword in data, byte out response) is
    else
       x = 0xFF
    end if
-   
+
    command = command + 64          -- left bits must be 01 (start bits)
-   
+
    spi_master_hw = 0xFF            -- send 8 clock pulses
-   
+
    spi_master_hw = command         -- send the command
    spi_master_hw = paramiters[3]   -- send command parameters
    spi_master_hw = paramiters[2]   -- send command parameters
@@ -114,13 +114,13 @@ procedure send_command(byte in command,dword in data, byte out response) is
    spi_master_hw = paramiters[0]   -- send command parameters
    spi_master_hw = x               -- CRC data byte, crc disabled in this lib.
    spi_master_hw = 0xFF            -- send 8 clock pulses
-   
-   
+
+
    response = spi_master_hw        -- Get a responce from the card after each command
-   
-   
+
+
    spi_master_hw = 0xFF            -- send 8 clock pulses
-   
+
 end procedure
 
 --------------------------------------------------------------------------------
@@ -140,21 +140,21 @@ procedure sd_init() is
    -- put spi into mode 11
    SSPCON_CKP = 1
    SSPSTAT_CKE = 0
-   
+
    var byte reply            -- shows if sd card init is ok
-   
+
    -- steps to set sd card to use SPI
    sd_chip_select = low      -- start chip slect low
    sd_chip_select = high     -- chip select high
    for 10 loop
       spi_master_hw = 0xFF    -- send 0xFF 10 times
    end loop
-   
+
    sd_chip_select = low      -- enable the sd card
    send_command(SD_GO_IDLE_STATE,0,reply) -- command 0, Resets card to idle state, get a response
    sd_ready()             -- wait till sd card is ready
    sd_chip_select = high  -- disable the sd card
-   
+
 end procedure
 
 --------------------------------------------------------------------------------
@@ -162,13 +162,13 @@ end procedure
 --------------------------------------------------------------------------------
 procedure sd_set_idle() is
    sd_chip_select = low  -- enable the sd card
-   
+
    var byte reply
    send_command(SD_STOP_TRANSMISSION,0,reply) -- stop current transmission
    sd_ready()                                 -- wait till sd card is ready
    send_command(SD_GO_IDLE_STATE,0,reply)     -- command 0, Resets card to idle state
    sd_ready()                                 -- wait till sd card is ready
-   
+
    sd_chip_select = high  -- disable the sd card
 end procedure
 
@@ -182,7 +182,7 @@ procedure  sd_start_read(dword in address) is
       SSPCON_CKP = 1
       SSPSTAT_CKE = 0
    end if
-   
+
    var byte reply
    sd_chip_select = low  -- enable the sd card
    address = address * 512 -- make sd card sector addressable, sd cards are normally byte addressable.
@@ -197,21 +197,21 @@ end procedure
 --------------------------------------------------------------------------------
 procedure sd_read_data(byte out low_byte, byte out high_byte) is
    var byte x
-   
+
    if sd_word_count == 0 then              -- beginning of sector read
       while spi_master_hw != 0xFE loop      -- wait till data is ready to read
       end loop
    end if
-   
+
    low_byte = spi_master_hw                -- get data byte
    high_byte = spi_master_hw               -- get data byte
-   
+
    if sd_word_count == 255 then            -- end of sector read
       sd_sector_count = sd_sector_count + 1 -- increment sector number
       x = spi_master_hw                     -- get junk crc data, crc is disabled
       x = spi_master_hw                     -- get junk crc data, crc is disabled
    end if
-   
+
    sd_word_count = sd_word_count + 1       -- increment word_count
 end procedure
 
@@ -245,7 +245,7 @@ procedure sd_start_write(dword in address) is
       SSPCON_CKP = 1
       SSPSTAT_CKE = 0
    end if
-   
+
    sd_chip_select = LOW  -- enable the sd card
    var byte reply
    address = address * 512 -- make sd card sector addressable, sd cards are normally byte addressable.
@@ -259,21 +259,21 @@ end procedure
 --------------------------------------------------------------------------------
 procedure sd_write_data(byte in low_byte, byte in high_byte) is
    var byte x
-   
+
    if sd_word_count == 0 then  -- beginning of sector write
       spi_master_hw = 0xFC      -- send "stop transmission token" write multiple command
       ;spi_master_hw = 0xFE      -- send "stop transmission token" for write single command
    end if
-   
+
    spi_master_hw = low_byte     -- send data byte
    spi_master_hw = high_byte    -- send data byte
-   
+
    if sd_word_count == 255 then -- end of sector write
       sd_sector_count = sd_sector_count + 1 -- increment sector count
-      
+
       spi_master_hw = 0xFF  -- send junk crc, crc is disabled
       spi_master_hw = 0xFF  -- send junk crc, crc is disabled
-      
+
       x = spi_master_hw   -- wait for a response
       while x == 0 loop
          x = spi_master_hw
@@ -281,15 +281,15 @@ procedure sd_write_data(byte in low_byte, byte in high_byte) is
       -- response = 010 = data accepted
       -- response = 101 = crc error
       -- response = 110 = write error
-      
+
       x = spi_master_hw   -- wait for sd card to become ready
       while x != 0xFF loop
          x = spi_master_hw
       end loop
    end if
-   
+
    sd_word_count = sd_word_count + 1  -- increment word count
-   
+
 end procedure
 
 --------------------------------------------------------------------------------
@@ -299,7 +299,9 @@ procedure sd_stop_write() is
    spi_master_hw = 0xFD -- send "stop transmission token"
    sd_set_idle()
    sd_chip_select = high  -- disable the sd card
-   _usec_delay (10_000)
+   if SD_DELAY_AFTER_WRITE == TRUE then
+      _usec_delay (10_000)
+   end if
 end procedure
 
 --------------------------------------------------------------------------------
@@ -324,4 +326,31 @@ procedure sd_write_to_sector_end(byte in input_byte) is
    sd_chip_select = high  -- disable the sd card
 end procedure
 
+--------------------------------------------------------------------------------
+-- read one entire sector
+--------------------------------------------------------------------------------
+const dword LARGE_ARRAY_4_SIZE = 512           -- choose number of array variables
+const dword LARGE_ARRAY_4_VARIABLE_SIZE = 1    -- choose size of variables (byte*2)
+include large_array_4                          -- include the array library
+alias sd_sector_buffer is large_array_4        -- rename/alias the array to test
+procedure  sd_read_sector() is
 
+  var byte x
+  var word count1 = 0
+
+  while spi_master_hw != 0xFE loop      -- wait till data is ready to read
+  end loop
+  
+  for 512 loop
+    sd_sector_buffer [count1] = spi_master_hw                -- get data byte
+    count1 = count1 + 1
+  end loop
+
+  sd_sector_count = sd_sector_count + 1 -- increment sector number
+  x = spi_master_hw                     -- get junk crc data, crc is disabled
+  x = spi_master_hw                     -- get junk crc data, crc is disabled
+
+  sd_word_count = sd_word_count + 1       -- increment word_count
+
+
+end procedure
