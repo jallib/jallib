@@ -181,12 +181,12 @@ jallib-pack: pdfbooks
 	mkdir -p distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	# generate VERSION file (jallib version)
 	echo ${VERSION} > distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/VERSION
-	# include PDF books
-	cp /tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
 	# include CHANGELOG
 	cp distrib/jallib-export/CHANGELOG distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/
 	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
+	# include PDF books
+	cp /tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
 	echo DONE: jallib pack ready
 
 archive:
