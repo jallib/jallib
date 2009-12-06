@@ -175,12 +175,14 @@ prepare:
 	cp distrib/jallib-export/CHANGELOG distrib/jallib-all_devices-${VERSION}/
 	echo DONE: release directory distrib/jallib-${VERSION}/ and distrib/jallib-all_devices-${VERSION}/
 
-jallib-pack:
+jallib-pack: pdfbooks
 	# now include compiler binaries
 	# guess compiler version
 	mkdir -p distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	# generate VERSION file (jallib version)
 	echo ${VERSION} > distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/VERSION
+	# include PDF books
+	cp /tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
 	# include CHANGELOG
 	cp distrib/jallib-export/CHANGELOG distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/
 	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
@@ -222,3 +224,5 @@ release: export prepare jallib-pack archive check
 
 bee: clean export prepare jallib-pack bee-archive bee-check bee-upload
 
+pdfbooks:
+	ant -f $$DITA_HOME/build_demo.xml -Dprompt.ditamap.filename=`pwd`/../doc/dita/tutorials/tutorials.ditamap -Dprompt.output.type=pdf -Dprompt.output.directory=/tmp/pdfbooks_${VERSION} -Dprompt.output.confirm=y
