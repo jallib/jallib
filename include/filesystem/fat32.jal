@@ -1,13 +1,13 @@
--- Title: FAT32 library for reading fat32 filesystem (BETA VERSION)
+-- Title: FAT32 library for reading fat32 filesystem (beta version)
 -- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4m
+-- Compiler: >=2.4k
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: this library reads files & folders from a fat32 formatted media
---              such as sd cards & hard disks.
+--              such as sd cards & hard disks. BETA VERSION!
 --
 -- Sources:
 -- http://www.microsoft.com/whdc/system/platform/firmware/fatgen.mspx
@@ -19,6 +19,28 @@
 -- in the future. Please see this article http://www.desktoplinux.com/news/NS4980952387.html?kc=rss
 -- before you think about implementing writing of filenames into your project.
 --
+-- some of the following may not be correct in this beta version
+--
+-- "file location list info"
+-- choose max number of files, choose highest entry address (filename's address).
+-- eg. chosen -> FAT32_ENTRIES_MAX = 1, FAT32_FILES_MAX = 30 and there are 3 files A, B & C all in c:\
+-- File A is in sector 0, entry 6. file B is in sector 4, entry 2. file C is in sector 50, entry 2.
+-- file A is entry address 0*16 + 6 = 6, file B is entry address 4*16 + 2 = 64, file C is entry address 50*16 + 2 = 802
+-- therefore, file C is out of range and will not be accessable due to fragmentation of the directory structure.
+-- memory space required is byte*1 times 30 = 30bytes
+-- the theoretical max number of files for this config is 256 if
+-- there have been no deleted files and all names are short filenames.
+-- if you choose FAT32_ENTRIES_MAX = 2 you will use 2 times 30 = 60bytes and the
+-- theoretical max number of files for this config is 65535
+--
+--     --here's an example:
+--     ;const byte FAT32_ENTRIES_MAX = 1     -- highest file entry address can be 256
+--     const byte FAT32_ENTRIES_MAX = 2      -- highest file entry address can be 65535
+--     ;var byte*FAT32_ENTRIES_MAX entry_location[FAT32_FILES_MAX] -- we will use large_array library instead
+--
+-- Default uses internal memory for file location list. You may add an
+-- external memory source if you want to have a large amount
+-- of files in a directory. see the sample file
 
 -- known bugs:
 -- must get rid of create_dword procedure
@@ -49,21 +71,21 @@ var bit fat32_is_directory at fat32_attrib : 4
 var bit fat32_is_archive at fat32_attrib   : 5
 
 -- filter file attributes
-var byte fat32_attrib_filter
+var byte fat32_attrib_filter = 0 -- default is do not filter any file attributes
 var bit fat32_filter_is_read_only at fat32_attrib_filter : 0
 var bit fat32_filter_is_hidden at fat32_attrib_filter    : 1
 var bit fat32_filter_is_system at fat32_attrib_filter    : 2
 var bit fat32_filter_is_volume_id at fat32_attrib_filter : 3
 var bit fat32_filter_is_directory at fat32_attrib_filter : 4
 var bit fat32_filter_is_archive at fat32_attrib_filter   : 5
--- copy these filters to your your main program then modify there values.
--- filters out unwanted file types
-fat32_filter_is_read_only  = FALSE
-fat32_filter_is_hidden     = FALSE
-fat32_filter_is_system     = FALSE
-fat32_filter_is_volume_id  = FALSE
-fat32_filter_is_directory  = FALSE
-fat32_filter_is_archive    = FALSE
+-- move these filters to your your main program then modify there values.
+-- filters out files with unwanted file types
+;fat32_filter_is_read_only  = FALSE
+;fat32_filter_is_hidden     = FALSE
+;fat32_filter_is_system     = FALSE
+;fat32_filter_is_volume_id  = FALSE
+;fat32_filter_is_directory  = FALSE
+;fat32_filter_is_archive    = FALSE
 
 -- data media selection
 if (DATA_MEDIA == PATA_HARD_DISK) then
@@ -72,36 +94,25 @@ if (DATA_MEDIA == PATA_HARD_DISK) then
    ALIAS fat32_raw_read is pata_hd_read_data                 -- read one word from hard disk
    ALIAS fat32_read_pulse is pata_hd_read_pulse              -- go forward 2 bytes in current sector
    ALIAS fat32_stop_read is pata_hd_stop_read                -- tell hard disk we are done reading
+   ALIAS fat32_read_sector is pata_hd_read_sector            -- read one sector to sector buffer array
    -- hard disk vars
    ALIAS fat32_word_count is pata_hd_word_count              -- number of words read from current sector (byte var)
+   ALIAS fat32_sector_buffer is pata_hd_sector_buffer             -- sector buffer array
 elsif DATA_MEDIA == SD_CARD then
    -- sd card procedures
    ALIAS fat32_start_read is sd_start_read                   -- get sd card ready for reading
    ALIAS fat32_raw_read is sd_read_data                      -- read one word from sd card
    ALIAS fat32_read_pulse is sd_read_pulse                   -- go forward 2 bytes in current sector
    ALIAS fat32_stop_read  is sd_stop_read                    -- tell sd card we are done reading
+   ALIAS fat32_read_sector is sd_read_sector                 -- read one sector to sector buffer array
    -- sd card vars
    ALIAS fat32_word_count is sd_word_count                   -- number of words read from current sector (byte var)
+   ALIAS fat32_sector_buffer is sd_sector_buffer             -- sector buffer array
 end if
 
--- "file location list info"
--- choose max number of files, choose highest entry address (filename's address).
--- eg. chosen -> FAT32_ENTRIES_MAX = 1, FAT32_FILES_MAX = 30 and there are 3 files A, B & C all in c:\
--- File A is in sector 0, entry 6. file B is in sector 4, entry 2. file C is in sector 50, entry 2.
--- file A is entry address 0*16 + 6 = 6, file B is entry address 4*16 + 2 = 64, file C is entry address 50*16 + 2 = 802
--- therefore, file C is out of range and will not be accessable due to fragmentation of the directory structure.
--- memory space required is byte*1 times 30 = 30bytes
--- the theoretical max number of files for this config is 256 if
--- there have been no deleted files and all names are short filenames.
--- if you choose FAT32_ENTRIES_MAX = 2 you will use 2 times 30 = 60bytes. If it multiply's
-
-;var byte*FAT32_ENTRIES_MAX entry_location[FAT32_FILES_MAX] -- we will use large_array library instead
-
--- Use internal memory for file location list. FALSE IS NOT AVAILABLE YET.
--- external memory will later be used if you want to have a large amount
--- of files in a directory.
-
-
+-- this will later be modified to accept an external SPI memory on the same bus.
+-- however some other fat32 procedures must be modified as well so that the
+-- spi bus does not get inturrupted between fat32_start_read and fat32_stop_read
 ;IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
 ;elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
 
@@ -124,8 +135,6 @@ end if
 
 ;END IF
 
-
-------- procedures -------
 
 
 -- ----------------------------------------------------------------------------
@@ -158,6 +167,7 @@ procedure fat32_write_entry(word in address, byte*FAT32_ENTRIES_MAX in entry_dat
       entry_location [address] = entry_data
    else
       -- your external memory source code goes here
+      entry_location [address] = entry_data -- was aliased for 23k256 word array
    end if
 end procedure
 
@@ -166,6 +176,7 @@ procedure fat32_read_entry(word in address, byte*FAT32_ENTRIES_MAX out entry_dat
       entry_data = entry_location [address]
    else
       -- your external memory source code goes here
+      entry_data = entry_location [address] -- was aliased for 23k256 word array
    end if
 end procedure
 
@@ -537,162 +548,354 @@ if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
    end procedure
 end if
 
+
 -- ----------------------------------------------------------------------------
 -- READ DIR INFO, STORE INTO ENTRY_LOCATION ARRAY
 -- refers to fat32 directory entry characters
 -- ----------------------------------------------------------------------------
 const byte FAT32_ENTRY_NOT_IN_USE = 0xE5            -- usually from a deleted file
 const byte FAT32_ENTRY_IS_PART_OF_LONG_NAME = 0x0F  -- entry has a few characters of a long filename
-procedure fat32_read_dir_info(dword in dir) is
-   var byte*FAT32_ENTRIES_MAX filename_location
-   var byte x
-   var bit send_it = false
-   var bit has_long_name = 0
-   var byte long_name_check
-   var byte in_a
-   var byte in_b
-   var word sectors_read = 0
-   var bit exit_procedure = FALSE
+if FAT32_USE_SECTOR_BUFFER == TRUE then
    
-   var dword clusters_to_read = 1   -- number of clusters to read
-   var word fragment_number = 0  -- the fragment number being read
-   
-   var byte attrib -- this attrib is different var then fat32_attrib
-   var bit fat32_is_read_only at attrib : 0
-   var bit fat32_is_hidden at attrib    : 1
-   var bit fat32_is_system at attrib    : 2
-   var bit fat32_is_volume_id at attrib : 3
-   var bit fat32_is_directory at attrib : 4
-   var bit fat32_is_archive at attrib   : 5
-   
-   fat32_dir_file_count = 0
-   
-   if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
-      fat32_read_fragments (fat32_file_cluster , FAT32_DIRECTORY) -- read the fragment locations
-   else
-      fat32_start_read (dir)       -- go to the dir and get ready to read
-   end if
-   
-   fat32_current_dir_location = dir
-   
-   while exit_procedure == FALSE loop
+   procedure fat32_read_dir_info(dword in dir) is
+      var byte*FAT32_ENTRIES_MAX filename_location
+      var byte x
+      var bit send_it = false
+      var bit has_long_name = 0
+      var byte long_name_check
+      var byte in_a
+      var byte in_b
+      var word sectors_read = 0
+      var bit exit_procedure = FALSE
+      var word current_entry
+      
+      var dword read_address
+      var byte sectors_read_2 = 0
+      
+      var dword clusters_to_read = 1   -- number of clusters to read
+      var word fragment_number = 0  -- the fragment number being read
+      
+      var byte attrib -- this attrib is different var then fat32_attrib
+      var bit fat32_is_read_only at attrib : 0
+      var bit fat32_is_hidden at attrib    : 1
+      var bit fat32_is_system at attrib    : 2
+      var bit fat32_is_volume_id at attrib : 3
+      var bit fat32_is_directory at attrib : 4
+      var bit fat32_is_archive at attrib   : 5
+      
+      fat32_dir_file_count = 0
       
       if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
-         fat32_stop_read() -- stop the current read process if any
-         
-         -- start reading at the beginning of the fragment
-         fat32_start_read (fat32_cluster_begin + (fat32_dir_fragments_start[fragment_number] * fat32_sectors_per_cluster) )
-         clusters_to_read = fat32_dir_fragment_cluster_count[fragment_number] -- the number of clusters beside eachother
-         fragment_number = fragment_number + 1  -- increment the fragment number being read
+         fat32_read_fragments (fat32_file_cluster , FAT32_DIRECTORY) -- read the fragment locations
+      else
+         ;fat32_start_read (dir)       -- go to the dir and get ready to read
+         read_address = dir
+         sectors_read_2 = 0
       end if
       
-      for clusters_to_read * fat32_sectors_per_cluster loop            -- loop till end of fragment
-         for 16 loop                        -- loop once per sector & count sectors read
-            -- get 32 byte directory entry
-            fat32_raw_read (in_a,x)         -- get first byte
-            fat32_read_pulse (1)
-            fat32_read_pulse (1)
-            fat32_raw_read (long_name_check,x)
-            fat32_read_pulse (1)
-            fat32_raw_read (x,attrib)       -- get attrib
-            fat32_read_pulse (10)
+      fat32_current_dir_location = dir
+      
+      while exit_procedure == FALSE loop
+         
+         if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
+            ;fat32_stop_read() -- stop the current read process if any
             
+            -- start reading at the beginning of the fragment
             
-            if (in_a == 0) then -- exit if no more files in current directory
-               exit_procedure = TRUE
-               exit loop
-            end if
+            read_address = (fat32_cluster_begin + (fat32_dir_fragments_start[fragment_number] * fat32_sectors_per_cluster) )
+            ;fat32_start_read (read_address)
+            clusters_to_read = fat32_dir_fragment_cluster_count[fragment_number] -- the number of clusters beside eachother
+            fragment_number = fragment_number + 1  -- increment the fragment number being read
+            sectors_read_2 = 0
+         end if
+         
+         for clusters_to_read * fat32_sectors_per_cluster loop            -- loop till end of fragment
             
-            if (fat32_dir_file_count > FAT32_FILES_MAX) then
-               fat32_dir_file_count = fat32_dir_file_count - 1
-               exit_procedure = TRUE
-               exit loop
-            end if
-;            send_word (in_a,attrib)
-;            send_word (long_name_check,0xFF)
-;            _usec_delay (500_000)
+            fat32_start_read(read_address + sectors_read_2)
+            fat32_read_sector()
+            fat32_stop_read()
+            sectors_read_2 = sectors_read_2 + 1
+            current_entry = 0
             
-            ;-- get the location of the start of the filename
-            
-            if in_a != FAT32_ENTRY_NOT_IN_USE & attrib == FAT32_ENTRY_IS_PART_OF_LONG_NAME then   -- if longname, FAT32_ENTRY_NOT_IN_USE (unused entry), FAT32_ENTRY_IS_PART_OF_LONG_NAME (long filename)
-               if in_a >= 0x41 then
-                  has_long_name = TRUE
-                  ;            long_name_entries = in_a - 0x40
+            for 16 loop                        -- loop once per sector & count sectors read
+               
+               
+               in_a             = fat32_sector_buffer [(current_entry * 32) + 0]
+               long_name_check  = fat32_sector_buffer [(current_entry * 32) + 6]
+               attrib           = fat32_sector_buffer [(current_entry * 32) + 11]
+               current_entry    = current_entry + 1
+               
+;          -- get 32 byte directory entry
+;          fat32_raw_read (in_a,x)         -- get first byte
+;          fat32_read_pulse (1)
+;          fat32_read_pulse (1)
+;          fat32_raw_read (long_name_check,x)
+;          fat32_read_pulse (1)
+;          fat32_raw_read (x,attrib)       -- get attrib
+;          fat32_read_pulse (10)
+               
+               ;    send_word (in_a,attrib)
+               ;    send_word (long_name_check,0xFF)
+               ;    _usec_delay (500_000)
+               
+               if (in_a == 0) then -- exit if no more files in current directory
+                  exit_procedure = TRUE
+                  exit loop
+               end if
+               
+               if (fat32_dir_file_count > FAT32_FILES_MAX) then
+                  fat32_dir_file_count = fat32_dir_file_count - 1
+                  exit_procedure = TRUE
+                  exit loop
+               end if
+               
+               
+               
+               ;-- get the location of the start of the filename
+               
+               if in_a != FAT32_ENTRY_NOT_IN_USE & attrib == FAT32_ENTRY_IS_PART_OF_LONG_NAME then   -- if longname, FAT32_ENTRY_NOT_IN_USE (unused entry), FAT32_ENTRY_IS_PART_OF_LONG_NAME (long filename)
+                  if in_a >= 0x41 then
+                     has_long_name = TRUE
+                     ;            long_name_entries = in_a - 0x40
+                     
+                     -- calculate the entry location
+                     if (current_entry) != 0 then -- do not decrement a zero value
+                        filename_location = (current_entry) + (16 * sectors_read) - 1
+                     else
+                        filename_location = FAT32_ENTRY_IS_PART_OF_LONG_NAME + (16 * sectors_read)
+                     end if
+                     
+                     send_it = TRUE
+                     ;send_word (0xFF,0xFF)
+                     ;send_word (filename_location,fat32_word_count)
+                  end if
+               elsif (in_a != FAT32_ENTRY_NOT_IN_USE) & (long_name_check != "~") then -- if shortname only ("~" = "~")
+                  
+                  has_long_name = false
                   
                   -- calculate the entry location
-                  if (fat32_word_count / 16) != 0 then -- do not decrement a zero value
-                     filename_location = (fat32_word_count / 16) + (16 * sectors_read) - 1
-                  else
+                  if (current_entry) != 0 then
+                     filename_location = (current_entry) + (16 * sectors_read) - 1
+                  else -- do not decrement a zero value
                      filename_location = FAT32_ENTRY_IS_PART_OF_LONG_NAME + (16 * sectors_read)
                   end if
                   
                   send_it = TRUE
-                  ;send_word (0xFF,0xFF)
-                  ;send_word (filename_location,fat32_word_count)
-               end if
-            elsif (in_a != FAT32_ENTRY_NOT_IN_USE) & (long_name_check != "~") then -- if shortname only ("~" = "~")
-               
-               has_long_name = false
-               
-               -- calculate the entry location
-               if (fat32_word_count / 16) != 0 then
-                  filename_location = (fat32_word_count / 16) + (16 * sectors_read) - 1
-               else -- do not decrement a zero value
-                  filename_location = FAT32_ENTRY_IS_PART_OF_LONG_NAME + (16 * sectors_read)
-               end if
-               
-               send_it = TRUE
-               
-               -- fat32_attrib_filter out unwanted attributes
-               if (attrib & fat32_attrib_filter) > 0 then
+                  
+                  -- fat32_attrib_filter out unwanted attributes
+                  if (attrib & fat32_attrib_filter) > 0 then
+                     send_it = false
+                  end if
+                  
+               elsif in_a != FAT32_ENTRY_NOT_IN_USE & long_name_check == "~" then -- if shortname entry that has a long name
+                  
+                  -- fat32_attrib_filter out unwanted attributes
+                  if (attrib & fat32_attrib_filter) > 0 then
+                     fat32_dir_file_count = fat32_dir_file_count - 1
+                  end if
+                  
+                  send_it = false
+               else
                   send_it = false
                end if
                
-            elsif in_a != FAT32_ENTRY_NOT_IN_USE & long_name_check == "~" then -- if shortname entry that has a long name
-               
-               -- fat32_attrib_filter out unwanted attributes
-               if (attrib & fat32_attrib_filter) > 0 then
-                  fat32_dir_file_count = fat32_dir_file_count - 1
+               if send_it == TRUE then
+                  -- reset stuff
+                  send_it = false
+                  has_long_name = false
+                  
+                  fat32_write_entry (fat32_dir_file_count,filename_location)
+                  
+                  ;   send_word (fat32_dir_file_count,filename_location)
+                  ;  _usec_delay (1_000_000)
+                  
+                  fat32_dir_file_count = fat32_dir_file_count + 1
                end if
                
-               send_it = false
-            else
-               send_it = false
-            end if
+            end loop
             
-            if send_it == TRUE then
-               -- reset stuff
-               send_it = false
-               has_long_name = false
-               
-               fat32_write_entry (fat32_dir_file_count,filename_location)
-               
-               ;   send_word (fat32_dir_file_count,filename_location)
-               ;  _usec_delay (1_000_000)
-               
-               fat32_dir_file_count = fat32_dir_file_count + 1
+            if (in_a == 0) | (fat32_dir_file_count > FAT32_FILES_MAX) | exit_procedure == TRUE then -- exit if no more files in current directory or if max files reached
+               exit_procedure = TRUE
+               exit loop
             end if
-            
-         end loop
+            sectors_read = sectors_read + 1
+         end loop -- end sector loop
          
          if (in_a == 0) | (fat32_dir_file_count > FAT32_FILES_MAX) | exit_procedure == TRUE then -- exit if no more files in current directory or if max files reached
             exit_procedure = TRUE
             exit loop
          end if
-         sectors_read = sectors_read + 1
-      end loop -- end sector loop
+         
+      end loop
+      fat32_write_entry (fat32_dir_file_count,0)  -- put 0's in the last entry
+      fat32_stop_read() -- let media wait for next operation
       
-      if (in_a == 0) | (fat32_dir_file_count > FAT32_FILES_MAX) | exit_procedure == TRUE then -- exit if no more files in current directory or if max files reached
-         exit_procedure = TRUE
-         exit loop
+   end procedure
+   
+;  sd_start_read(0)                      -- get sd card ready for read at sector 0
+;  sd_read_sector()
+;  sd_stop_read()                        -- tell sd card you are done reading
+   
+   
+   
+elsif FAT32_USE_SECTOR_BUFFER == FALSE then --------------------------------------------------------------------------
+   
+   procedure fat32_read_dir_info(dword in dir) is
+      var byte*FAT32_ENTRIES_MAX filename_location
+      var byte x
+      var bit send_it = false
+      var bit has_long_name = 0
+      var byte long_name_check
+      var byte in_a
+      var byte in_b
+      var word sectors_read = 0
+      var bit exit_procedure = FALSE
+      
+      var dword clusters_to_read = 1   -- number of clusters to read
+      var word fragment_number = 0  -- the fragment number being read
+      
+      var byte attrib -- this attrib is different var then fat32_attrib
+      var bit fat32_is_read_only at attrib : 0
+      var bit fat32_is_hidden at attrib    : 1
+      var bit fat32_is_system at attrib    : 2
+      var bit fat32_is_volume_id at attrib : 3
+      var bit fat32_is_directory at attrib : 4
+      var bit fat32_is_archive at attrib   : 5
+      
+      fat32_dir_file_count = 0
+      
+      if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
+         fat32_read_fragments (fat32_file_cluster , FAT32_DIRECTORY) -- read the fragment locations
+      else
+         fat32_start_read (dir)       -- go to the dir and get ready to read
       end if
       
-   end loop
-   fat32_write_entry (fat32_dir_file_count,0)  -- put 0's in the last entry
-   fat32_stop_read() -- let media wait for next operation
+      fat32_current_dir_location = dir
+      
+      while exit_procedure == FALSE loop
+         
+         if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
+            fat32_stop_read() -- stop the current read process if any
+            
+            -- start reading at the beginning of the fragment
+            fat32_start_read (fat32_cluster_begin + (fat32_dir_fragments_start[fragment_number] * fat32_sectors_per_cluster) )
+            clusters_to_read = fat32_dir_fragment_cluster_count[fragment_number] -- the number of clusters beside eachother
+            fragment_number = fragment_number + 1  -- increment the fragment number being read
+         end if
+         
+         for clusters_to_read * fat32_sectors_per_cluster loop            -- loop till end of fragment
+            
+            for 16 loop                        -- loop once per sector & count sectors read
+               -- get 32 byte directory entry
+               fat32_raw_read (in_a,x)         -- get first byte
+               fat32_read_pulse (1)
+               fat32_read_pulse (1)
+               fat32_raw_read (long_name_check,x)
+               fat32_read_pulse (1)
+               fat32_raw_read (x,attrib)       -- get attrib
+               fat32_read_pulse (10)
+               
+               
+               if (in_a == 0) then -- exit if no more files in current directory
+                  exit_procedure = TRUE
+                  exit loop
+               end if
+               
+               if (fat32_dir_file_count > FAT32_FILES_MAX) then
+                  fat32_dir_file_count = fat32_dir_file_count - 1
+                  exit_procedure = TRUE
+                  exit loop
+               end if
+               ;            send_word (in_a,attrib)
+               ;            send_word (long_name_check,0xFF)
+               ;            _usec_delay (500_000)
+               
+               ;-- get the location of the start of the filename
+               
+               if in_a != FAT32_ENTRY_NOT_IN_USE & attrib == FAT32_ENTRY_IS_PART_OF_LONG_NAME then   -- if longname, FAT32_ENTRY_NOT_IN_USE (unused entry), FAT32_ENTRY_IS_PART_OF_LONG_NAME (long filename)
+                  if in_a >= 0x41 then
+                     has_long_name = TRUE
+                     ;            long_name_entries = in_a - 0x40
+                     
+                     -- calculate the entry location
+                     if (fat32_word_count / 16) != 0 then -- do not decrement a zero value
+                        filename_location = (fat32_word_count / 16) + (16 * sectors_read) - 1
+                     else
+                        filename_location = FAT32_ENTRY_IS_PART_OF_LONG_NAME + (16 * sectors_read)
+                     end if
+                     
+                     send_it = TRUE
+                     ;send_word (0xFF,0xFF)
+                     ;send_word (filename_location,fat32_word_count)
+                  end if
+               elsif (in_a != FAT32_ENTRY_NOT_IN_USE) & (long_name_check != "~") then -- if shortname only ("~" = "~")
+                  
+                  has_long_name = false
+                  
+                  -- calculate the entry location
+                  if (fat32_word_count / 16) != 0 then
+                     filename_location = (fat32_word_count / 16) + (16 * sectors_read) - 1
+                  else -- do not decrement a zero value
+                     filename_location = FAT32_ENTRY_IS_PART_OF_LONG_NAME + (16 * sectors_read)
+                  end if
+                  
+                  send_it = TRUE
+                  
+                  -- fat32_attrib_filter out unwanted attributes
+                  if (attrib & fat32_attrib_filter) > 0 then
+                     send_it = false
+                  end if
+                  
+               elsif in_a != FAT32_ENTRY_NOT_IN_USE & long_name_check == "~" then -- if shortname entry that has a long name
+                  
+                  -- fat32_attrib_filter out unwanted attributes
+                  if (attrib & fat32_attrib_filter) > 0 then
+                     fat32_dir_file_count = fat32_dir_file_count - 1
+                  end if
+                  
+                  send_it = false
+               else
+                  send_it = false
+               end if
+               
+               if send_it == TRUE then
+                  -- reset stuff
+                  send_it = false
+                  has_long_name = false
+                  
+                  fat32_write_entry (fat32_dir_file_count,filename_location)
+                  
+                  ;   send_word (fat32_dir_file_count,filename_location)
+                  ;  _usec_delay (1_000_000)
+                  
+                  fat32_dir_file_count = fat32_dir_file_count + 1
+               end if
+               
+            end loop
+            
+            if (in_a == 0) | (fat32_dir_file_count > FAT32_FILES_MAX) | exit_procedure == TRUE then -- exit if no more files in current directory or if max files reached
+               exit_procedure = TRUE
+               exit loop
+            end if
+            sectors_read = sectors_read + 1
+         end loop -- end sector loop
+         
+         if (in_a == 0) | (fat32_dir_file_count > FAT32_FILES_MAX) | exit_procedure == TRUE then -- exit if no more files in current directory or if max files reached
+            exit_procedure = TRUE
+            exit loop
+         end if
+         
+      end loop
+      fat32_write_entry (fat32_dir_file_count,0)  -- put 0's in the last entry
+      fat32_stop_read() -- let media wait for next operation
+      
+   end procedure
    
-end procedure
-
+;  sd_start_read(0)                      -- get sd card ready for read at sector 0
+;  sd_read_sector()
+;  sd_stop_read()                        -- tell sd card you are done reading
+   
+end if
 
 -- ----------------------------------------------------------------------------
 -- reads file info such as filename, filesize, filelocation, etc. into memory.
@@ -749,6 +952,7 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
       -- start reading at the correct sector
       fat32_start_read (fat32_current_dir_location + (read_entry_location >> 4))
    end if
+   
    -- start reading at the correct 32 byte entry
    var byte  temp_val[4] at read_entry_location -- get lower nibble out of read_entry_location
    x = temp_val[0]
@@ -965,7 +1169,6 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
    fat32_file_size = fat32_file_size + line[28]
    
    fat32_attrib = line[11] ; GET FILE fat32_attributes
-   
 end procedure
 
 --------------------------------------------------------------------------------
@@ -1071,7 +1274,7 @@ procedure fat32_list_dir() is
       serial_hw_write (0x20) -- sends 2 spaces via serial port
       serial_hw_write (0x20)
       
-;    -- write entery location via serial port
+      -- write entery location via serial port
 ;    serial_hw_write (0x20)
 ;    format_word_dec(serial_hw_data,entry_location[count4],6,0)
 ;    serial_hw_write (0x20)

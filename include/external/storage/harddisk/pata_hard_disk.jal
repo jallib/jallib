@@ -86,8 +86,8 @@ const PATA_HD_DODC_REG = 16       -- digital output / device control
 
 -- common commands for command register:
 const PATA_HD_RECALIBRATE = 0x10     -- sends drive heads to cyl 0, SC, SN, and SDH are not changed
-const PATA_HD_READ_SECTOR = 0x20     -- reads data from sector(s)
-const PATA_HD_WRITE_SECTOR = 0x30    -- write data to sector(s)
+const PATA_HD_READ_SECTORS = 0x20     -- reads data from sector(s)
+const PATA_HD_WRITE_SECTORS = 0x30    -- write data to sector(s)
 const PATA_HD_IDENTIFY_DRIVE = 0xEC  -- read drive info such as make/modem/sn/drive size
 const PATA_HD_SPIN_DOWN = 0xE0       -- turn off the drive's motor
 const PATA_HD_SPIN_UP = 0xE1         -- turn on the drive's motor
@@ -97,10 +97,14 @@ const PATA_HD_SPIN_UP = 0xE1         -- turn on the drive's motor
 const BIT PATA_HD_WAIT_READ = 0  -- wait for sector buffer to fill it's contents with data from disk platters
 const BIT PATA_HD_WAIT_WRITE = 1 -- wait for sector buffer to empty it's contents to disk platters
 
+const PATA_HARD_DISK = 0            -- data media constants for fat32 lib
+const SD_CARD = 1
+const DATA_MEDIA = PATA_HARD_DISK
+
 -- other vars
 var dword pata_hd_sector_select = 0
 var bit pata_hd_48_bit_lba_support = false  -- currently this lib does not support drives > 137,438,952,960 bytes (28 bit addressing)
--- "IDENTIFY DEVICE bit 10 word 83 indicates support for 48-bit addressing" - in ata8 pdf
+                                            -- "IDENTIFY DEVICE bit 10 word 83 indicates support for 48-bit addressing" - in ata8 pdf
 
 -- from "connecting ide drives by tilmann reh" - http://www.gaby.de/gide/ide-tcj.txt
 -- List of commands and required parameters:
@@ -141,21 +145,21 @@ var bit pata_hd_48_bit_lba_support = false  -- currently this lib does not suppo
 -- Set register select pins to selected register, for internal use only.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_select_register(byte in register) is	
-   -- set register select pins one at a time
-   var bit bit0 at register : 0
-   var bit bit1 at register : 1
-   var bit bit2 at register : 2
-   var bit bit3 at register : 3
-   var bit bit4 at register : 4
-   
-   -- setup data bits
-   pata_hd_a0 = bit0
-   pata_hd_a1 = bit1
-   pata_hd_a2 = bit2
-   if PATA_HD_USE_CS0_CS1_PINS == TRUE then
-      pata_hd_cs1 = bit3 ^ PATA_HD_NO_INVERTER
-      pata_hd_cs0 = bit4 ^ PATA_HD_NO_INVERTER
-   end if
+  -- set register select pins one at a time
+  var bit bit0 at register : 0
+  var bit bit1 at register : 1
+  var bit bit2 at register : 2
+  var bit bit3 at register : 3
+  var bit bit4 at register : 4
+
+  -- setup data bits
+  pata_hd_a0 = bit0
+  pata_hd_a1 = bit1
+  pata_hd_a2 = bit2
+  if PATA_HD_USE_CS0_CS1_PINS == TRUE then
+    pata_hd_cs1 = bit3 ^ PATA_HD_NO_INVERTER
+    pata_hd_cs0 = bit4 ^ PATA_HD_NO_INVERTER
+  end if
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -163,37 +167,37 @@ end procedure
 -- Sets data pins as inputs or outputs for next read or write.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_data_request(bit in read_write) is begin
-   var bit s
-   var bit drq at pata_hd_data_low : 3           -- set drq pin to check
-   s = 0
-   
-   -- set data pins as inputs
-   pata_hd_data_low_direction = all_input
-   pata_hd_data_high_direction = all_input
-   
-   pata_hd_select_register (PATA_HD_STATUS_REG)  -- select status register	
-   
-   -- wait for drq in status register to be high.
-   -- may get stuck in loop if drq never goes high
-   -- you can modify to check for errors or have a time-out
-   while s == 0 loop
-      pata_hd_iord = high ^ PATA_HD_NO_INVERTER   -- start read pulse
-      if drq == high then
-         s = 1                                     -- exit loop
-      end if
-      pata_hd_iord = low ^ PATA_HD_NO_INVERTER    -- end read pulse
-   end loop
-   
-   -- after drive is ready for data transfer, go to the data register
-   pata_hd_select_register (PATA_HD_DATA_REG)
-   
-   if read_write == PATA_HD_WAIT_READ then      -- if we are waiting to read data in
-      -- do nothing since data pins are already inputs
-   else                                         -- if we are waiting to write data out
-      -- set data ports to outputs
-      pata_hd_data_low_direction = all_output
-      pata_hd_data_high_direction = all_output
-   end if
+  var bit s
+  var bit drq at pata_hd_data_low : 3           -- set drq pin to check
+  s = 0
+	
+  -- set data pins as inputs
+  pata_hd_data_low_direction = all_input
+  pata_hd_data_high_direction = all_input
+
+  pata_hd_select_register (PATA_HD_STATUS_REG)  -- select status register	
+
+  -- wait for drq in status register to be high.
+  -- may get stuck in loop if drq never goes high
+  -- you can modify to check for errors or have a time-out
+  while s == 0 loop
+    pata_hd_iord = high ^ PATA_HD_NO_INVERTER   -- start read pulse
+    if drq == high then
+      s = 1                                     -- exit loop
+    end if
+    pata_hd_iord = low ^ PATA_HD_NO_INVERTER    -- end read pulse
+  end loop
+
+  -- after drive is ready for data transfer, go to the data register
+  pata_hd_select_register (PATA_HD_DATA_REG)
+
+  if read_write == PATA_HD_WAIT_READ then      -- if we are waiting to read data in
+    -- do nothing since data pins are already inputs
+  else                                         -- if we are waiting to write data out
+    -- set data ports to outputs
+    pata_hd_data_low_direction = all_output
+    pata_hd_data_high_direction = all_output
+  end if
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -201,101 +205,101 @@ end procedure
 -- low due to internal operations.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_busy() is begin
-   var bit s
-   s = 1
-   var bit bsy at pata_hd_data_low : 7           -- set bsy pin to check
-   
-   -- set data pins as inputs
-   pata_hd_data_low_direction = all_input
-   pata_hd_data_high_direction = all_input
-   
-   pata_hd_select_register (PATA_HD_STATUS_REG)  -- select status register
-   
-   -- wait for bsy in status register to be high
-   -- may get stuck in loop if bsy never goes low
-   -- you can modify to check for errors or have a time-out
-   while s == 1 loop
-      pata_hd_iord = high ^ PATA_HD_NO_INVERTER   -- start read pulse
-      if bsy == low then
-         s = 0                                     -- end loop
-      end if
-      pata_hd_iord = low ^ PATA_HD_NO_INVERTER    -- end read pulse
-   end loop
+  var bit s
+  s = 1
+  var bit bsy at pata_hd_data_low : 7           -- set bsy pin to check
+	
+  -- set data pins as inputs
+  pata_hd_data_low_direction = all_input
+  pata_hd_data_high_direction = all_input
+
+  pata_hd_select_register (PATA_HD_STATUS_REG)  -- select status register
+	
+  -- wait for bsy in status register to be high
+  -- may get stuck in loop if bsy never goes low
+  -- you can modify to check for errors or have a time-out
+  while s == 1 loop
+    pata_hd_iord = high ^ PATA_HD_NO_INVERTER   -- start read pulse
+    if bsy == low then
+      s = 0                                     -- end loop
+    end if
+    pata_hd_iord = low ^ PATA_HD_NO_INVERTER    -- end read pulse
+  end loop
 end procedure
 
 -- ----------------------------------------------------------------------------
 -- Wait for drive to be up to speed and ready for a command.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_drive_ready() is begin
-   var bit s
-   s = 1
-   var bit rdy at pata_hd_data_low : 6           -- set rdy pin to check
-   
-   -- set data pins as inputs
-   pata_hd_data_low_direction = all_input
-   pata_hd_data_high_direction = all_input
-   
-   pata_hd_select_register (PATA_HD_STATUS_REG)  -- select status register	
-   
-   -- wait for rdy in status register to be high
-   -- may get stuck in loop if rdy never goes high
-   -- you can modify to check for errors or have a time-out
-   while s == 1 loop
-      pata_hd_iord = high ^ PATA_HD_NO_INVERTER   -- start read pulse
-      if rdy == high then
-         s = 0                                     -- end loop
-      end if
-      pata_hd_iord = low ^ PATA_HD_NO_INVERTER    -- end read pulse
-   end loop
+  var bit s
+  s = 1
+  var bit rdy at pata_hd_data_low : 6           -- set rdy pin to check
+	
+  -- set data pins as inputs
+  pata_hd_data_low_direction = all_input
+  pata_hd_data_high_direction = all_input
+	
+  pata_hd_select_register (PATA_HD_STATUS_REG)  -- select status register	
+	
+  -- wait for rdy in status register to be high
+  -- may get stuck in loop if rdy never goes high
+  -- you can modify to check for errors or have a time-out
+  while s == 1 loop
+    pata_hd_iord = high ^ PATA_HD_NO_INVERTER   -- start read pulse
+    if rdy == high then
+      s = 0                                     -- end loop
+    end if
+    pata_hd_iord = low ^ PATA_HD_NO_INVERTER    -- end read pulse
+  end loop
 end procedure
 
 -- ----------------------------------------------------------------------------
 -- Select a register and give it a command or data.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_register_write(byte in register, byte in low_byte) is begin
-   var byte high_byte = 0
-   
-   -- registers may not be accessed unless drive is not busy
-   pata_hd_busy()
-   
-   if register == PATA_HD_COMMAND_REG then
-      -- make sure the drive is up to speed and ready for a command
-      pata_hd_drive_ready()
-   end if
-   
-   pata_hd_select_register (register)     -- select register
-   
-   -- set data ports to outputs
-   pata_hd_data_low_direction = all_output
-   pata_hd_data_high_direction = all_output	
-   
-   -- send the data trough the ide interface
-   pata_hd_data_low = low_byte                 -- set low data byte
-   pata_hd_data_high = high_byte               -- set high data byte
-   pata_hd_iowr = high ^ PATA_HD_NO_INVERTER   -- send write pulse
-   pata_hd_iowr = low ^ PATA_HD_NO_INVERTER				
+  var byte high_byte = 0
+
+  -- registers may not be accessed unless drive is not busy
+  pata_hd_busy()
+
+  if register == PATA_HD_COMMAND_REG then
+    -- make sure the drive is up to speed and ready for a command
+    pata_hd_drive_ready()
+  end if
+
+  pata_hd_select_register (register)     -- select register
+
+  -- set data ports to outputs
+  pata_hd_data_low_direction = all_output
+  pata_hd_data_high_direction = all_output	
+	
+  -- send the data trough the ide interface
+  pata_hd_data_low = low_byte                 -- set low data byte
+  pata_hd_data_high = high_byte               -- set high data byte
+  pata_hd_iowr = high ^ PATA_HD_NO_INVERTER   -- send write pulse
+  pata_hd_iowr = low ^ PATA_HD_NO_INVERTER				
 end procedure
 
 -- ----------------------------------------------------------------------------
 -- Select a register and get data from it.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_register_read(byte in register, byte out low_byte) is begin
-   var byte high_byte
-   
-   -- registers may not be accessed unless drive is not busy
-   pata_hd_busy()
-   
-   pata_hd_select_register (register)     -- select register
-   
-   -- set data ports to inputs
-   pata_hd_data_low_direction = all_input
-   pata_hd_data_high_direction = all_input
-   
-   -- get the data trough the ide interface
-   pata_hd_iord = high ^ PATA_HD_NO_INVERTER      -- start read pulse
-   low_byte = pata_hd_data_low                    -- get low data byte
-   high_byte  = pata_hd_data_high                 -- get high data byte
-   pata_hd_iord = low ^ PATA_HD_NO_INVERTER       -- end read pulse
+  var byte high_byte
+
+  -- registers may not be accessed unless drive is not busy
+  pata_hd_busy()
+
+  pata_hd_select_register (register)     -- select register
+
+  -- set data ports to inputs
+  pata_hd_data_low_direction = all_input
+  pata_hd_data_high_direction = all_input
+
+  -- get the data trough the ide interface
+  pata_hd_iord = high ^ PATA_HD_NO_INVERTER      -- start read pulse
+  low_byte = pata_hd_data_low                    -- get low data byte
+  high_byte  = pata_hd_data_high                 -- get high data byte
+  pata_hd_iord = low ^ PATA_HD_NO_INVERTER       -- end read pulse
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -306,22 +310,22 @@ end procedure
 -- Sector count value of 0 means 256 sectors will be read
 -- ----------------------------------------------------------------------------
 procedure pata_hd_set_address(byte in pata_hd_head_addr, byte in cyl_high_addr, byte in cyl_low_addr, byte in sec_num_addr, byte in sec_count) is
-   -- select lba or chs mode
-   var volatile byte  pata_hd_sdh_val    =     0b_1110_0000
-   var volatile bit   pata_hd_lba              at pata_hd_sdh_val : 6
-   var volatile bit   pata_hd_slave            at pata_hd_sdh_val : 4
-   
-   -- select drive options
-   pata_hd_lba = true                             -- 1 = lba mode, 0 = chs mode (not tested)
-   pata_hd_slave = false                          -- 0 = master,   1 = slave    (not tested)
-   
-   pata_hd_register_write (PATA_HD_SEC_COUNT_REG,sec_count)     -- set sec count register, sectors to read/write	
-   pata_hd_register_write (PATA_HD_SEC_NUM_REG,sec_num_addr)    -- set sec number register address	
-   pata_hd_register_write (PATA_HD_CYL_LOW_REG,cyl_low_addr)    -- set cyl low register address	
-   pata_hd_register_write (PATA_HD_CYL_HIGH_REG,cyl_high_addr)  -- set cyl high register address		
-   -- set sector/drive/head register, head number
-   -- pata_hd_head_val address can be 0 to 15
-   pata_hd_register_write (PATA_HD_SDH_REG,pata_hd_sdh_val + pata_hd_head_addr)					
+  -- select lba or chs mode
+  var volatile byte  pata_hd_sdh_val    =     0b_1110_0000
+  var volatile bit   pata_hd_lba              at pata_hd_sdh_val : 6
+  var volatile bit   pata_hd_slave            at pata_hd_sdh_val : 4
+
+  -- select drive options
+  pata_hd_lba = true                             -- 1 = lba mode, 0 = chs mode (not tested)
+  pata_hd_slave = false                          -- 0 = master,   1 = slave    (not tested)
+	
+  pata_hd_register_write (PATA_HD_SEC_COUNT_REG,sec_count)     -- set sec count register, sectors to read/write	
+  pata_hd_register_write (PATA_HD_SEC_NUM_REG,sec_num_addr)    -- set sec number register address	
+  pata_hd_register_write (PATA_HD_CYL_LOW_REG,cyl_low_addr)    -- set cyl low register address	
+  pata_hd_register_write (PATA_HD_CYL_HIGH_REG,cyl_high_addr)  -- set cyl high register address		
+  -- set sector/drive/head register, head number
+  -- pata_hd_head_val address can be 0 to 15
+  pata_hd_register_write (PATA_HD_SDH_REG,pata_hd_sdh_val + pata_hd_head_addr)					
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -332,52 +336,52 @@ end procedure
 -- Sector count value of 0 means 256 sectors will be read
 -- ----------------------------------------------------------------------------
 procedure pata_hd_go_to_sector(dword in sector, byte in sec_count) is
-   var byte sec_num_addr,cyl_low_addr,cyl_high_addr,pata_hd_head_addr
-   
-   -- change sector number into bytes
-   var byte  dval[4] at sector
-   sec_num_addr = dval[0]
-   cyl_low_addr = dval[1]
-   cyl_high_addr = dval[2]
-   pata_hd_head_addr = dval[3]
-   
-   -- go to the address
-   pata_hd_set_address (pata_hd_head_addr,cyl_high_addr,cyl_low_addr,sec_num_addr,sec_count)
+  var byte sec_num_addr,cyl_low_addr,cyl_high_addr,pata_hd_head_addr
+
+  -- change sector number into bytes
+  var byte  dval[4] at sector
+  sec_num_addr = dval[0]
+  cyl_low_addr = dval[1]
+  cyl_high_addr = dval[2]
+  pata_hd_head_addr = dval[3]
+
+  -- go to the address
+  pata_hd_set_address (pata_hd_head_addr,cyl_high_addr,cyl_low_addr,sec_num_addr,sec_count)
 end procedure
 
 -- ----------------------------------------------------------------------------
 -- Get drive ready for reading at specified address
 -- ----------------------------------------------------------------------------
 procedure pata_hd_start_read(dword in address) is
-   pata_hd_sector_select = address   -- set the users selected sector
-   pata_hd_word_count = 0            -- reset number of words read from sector
-   pata_hd_sector_count = 0          -- reset number of sectors read
+  pata_hd_sector_select = address   -- set the users selected sector
+  pata_hd_word_count = 0            -- reset number of words read from sector
+  pata_hd_sector_count = 0          -- reset number of sectors read
 end procedure
 
 -- ----------------------------------------------------------------------------
 -- Read two bytes from disk.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_read_data(byte out low_byte, byte out high_byte) is
-   if (pata_hd_word_count == 0) & (pata_hd_sector_count) == 0 then        -- if we are at beginning of read
-      pata_hd_go_to_sector(pata_hd_sector_select,0)                        -- go to the selected sector
-      pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_READ_SECTOR)      -- send the read command to the command register	
-      pata_hd_data_request(PATA_HD_WAIT_READ)                              -- wait till the drive has data for you
-   elsif pata_hd_word_count == 0 then                                     -- if we are at beginning of a sector
-      pata_hd_data_request(PATA_HD_WAIT_READ)                              -- wait for data to be ready for read
-   end if
-   
-   if pata_hd_word_count == 255 then                                      -- if we are at end of current sector
-      pata_hd_sector_select = pata_hd_sector_select + 1                    -- increment the users selected sector
-      pata_hd_sector_count = pata_hd_sector_count + 1                      -- increase sector count
-   end if
-   
-   pata_hd_word_count = pata_hd_word_count + 1   -- increment words read from current sector
-   
-   -- get the data trough the ide interface
-   pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
-   low_byte = pata_hd_data_low                -- get low data byte
-   high_byte  = pata_hd_data_high             -- get high data byte
-   pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse 	
+  if (pata_hd_word_count == 0) & (pata_hd_sector_count) == 0 then        -- if we are at beginning of read
+    pata_hd_go_to_sector(pata_hd_sector_select,0)                        -- go to the selected sector
+    pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_READ_SECTORS)      -- send the read command to the command register	
+    pata_hd_data_request(PATA_HD_WAIT_READ)                              -- wait till the drive has data for you
+  elsif pata_hd_word_count == 0 then                                     -- if we are at beginning of a sector
+    pata_hd_data_request(PATA_HD_WAIT_READ)                              -- wait for data to be ready for read
+  end if
+  	
+  if pata_hd_word_count == 255 then                                      -- if we are at end of current sector
+    pata_hd_sector_select = pata_hd_sector_select + 1                    -- increment the selected sector
+    pata_hd_sector_count = pata_hd_sector_count + 1                      -- increase sector count
+  end if
+  	
+  pata_hd_word_count = pata_hd_word_count + 1   -- increment words read from current sector
+	
+  -- get the data trough the ide interface
+  pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
+  low_byte = pata_hd_data_low                -- get low data byte
+  high_byte  = pata_hd_data_high             -- get high data byte
+  pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse 	
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -387,26 +391,26 @@ end procedure
 -- Increment pata_hd_word_count
 -- ----------------------------------------------------------------------------
 procedure pata_hd_read_pulse(dword in z) is
-   var byte x,y
-   for z loop
-      pata_hd_read_data (x,y)                         		
-   end loop
+  var byte x,y
+  for z loop
+    pata_hd_read_data (x,y)                         		
+  end loop
 end procedure
 
 -- ----------------------------------------------------------------------------
 -- Tell drive you are done reading
 -- ----------------------------------------------------------------------------
 procedure pata_hd_stop_read() is
-   pata_hd_register_write(PATA_HD_COMMAND_REG, 0xE1) -- set media idle
+  pata_hd_register_write(PATA_HD_COMMAND_REG, 0xE1) -- set media idle
 end procedure
 
 -- ----------------------------------------------------------------------------
 -- Get drive ready for writing at specified address
 -- ----------------------------------------------------------------------------
 procedure pata_hd_start_write(dword in address) is
-   pata_hd_sector_select = address
-   pata_hd_word_count = 0              -- reset number of words written to sector
-   pata_hd_sector_count = 0            -- reset number of sectors written
+  pata_hd_sector_select = address
+  pata_hd_word_count = 0              -- reset number of words written to sector
+  pata_hd_sector_count = 0            -- reset number of sectors written
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -414,24 +418,24 @@ end procedure
 -- Data will not be written unless 256 writes are sent.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_write_data(byte in low_byte, byte in high_byte) is
-   if pata_hd_word_count == 0 then                                     -- if we are at beginning of write
-      pata_hd_go_to_sector (pata_hd_sector_select,1)                    -- go to the correct sector, set to write 1 sector
-      pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_WRITE_SECTOR) -- send the write command to the command register
-      pata_hd_data_request(PATA_HD_WAIT_WRITE)                          -- wait till data is ready to be read
-   end if
-   
-   if pata_hd_word_count == 255 then                                   -- if we are at the end of a sector
-      pata_hd_sector_count = pata_hd_sector_count + 1                  -- increment sectors written
-      pata_hd_sector_select = pata_hd_sector_select + 1                -- increment the users selected sector
-   end if
-   
-   pata_hd_word_count = pata_hd_word_count + 1    -- increment words written to disk
-   
-   -- send the data trough the ide interface
-   pata_hd_data_low = low_byte                    -- set low data byte
-   pata_hd_data_high = high_byte                  -- set high data byte
-   pata_hd_iowr = high ^ PATA_HD_NO_INVERTER      -- send write pulse
-   pata_hd_iowr = low ^ PATA_HD_NO_INVERTER 	  	
+  if pata_hd_word_count == 0 then                                     -- if we are at beginning of write
+    pata_hd_go_to_sector (pata_hd_sector_select,1)                    -- go to the correct sector, set to write 1 sector
+    pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_WRITE_SECTORS) -- send the write command to the command register
+    pata_hd_data_request(PATA_HD_WAIT_WRITE)                          -- wait till data is ready to be read
+  end if
+  	
+  if pata_hd_word_count == 255 then                                   -- if we are at the end of a sector
+     pata_hd_sector_count = pata_hd_sector_count + 1                  -- increment sectors written
+     pata_hd_sector_select = pata_hd_sector_select + 1                -- increment the selected sector
+  end if
+  
+  pata_hd_word_count = pata_hd_word_count + 1    -- increment words written to disk
+	
+  -- send the data trough the ide interface
+  pata_hd_data_low = low_byte                    -- set low data byte
+  pata_hd_data_high = high_byte                  -- set high data byte
+  pata_hd_iowr = high ^ PATA_HD_NO_INVERTER      -- send write pulse
+  pata_hd_iowr = low ^ PATA_HD_NO_INVERTER 	  	
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -441,9 +445,9 @@ end procedure
 -- Increment pata_hd_word_count
 -- ----------------------------------------------------------------------------
 procedure pata_hd_write_pulse( byte in z ) is begin
-   for z loop -- send write pulse z number of times
-      pata_hd_write_data (0,0)
-   end loop
+  for z loop -- send write pulse z number of times
+    pata_hd_write_data (0,0)
+  end loop
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -455,19 +459,52 @@ ALIAS pata_hd_stop_write is pata_hd_stop_read -- same procedure as stop read
 -- Finnish writing the current sector with input byte.
 -- ----------------------------------------------------------------------------
 procedure pata_hd_write_to_sector_end(byte in input_byte) is
-   var byte x
-   x = 0 - pata_hd_word_count -- calculate how many words are left to write to current sector
-   for x loop                 -- loop till end of sector
-      pata_hd_write_data(input_byte, input_byte) -- write 2 bytes
-   end loop
+  var byte x
+  x = 0 - pata_hd_word_count -- calculate how many words are left to write to current sector
+  for x loop                 -- loop till end of sector
+    pata_hd_write_data(input_byte, input_byte) -- write 2 bytes
+  end loop
 end procedure
 
 -- ----------------------------------------------------------------------------
 -- initialize startup settings
 -- ----------------------------------------------------------------------------
 procedure pata_hd_init() is begin
-   -- set startup setting for read/read pins
-   pata_hd_iowr = low ^ PATA_HD_NO_INVERTER   -- start write pulse pin low
-   pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- start read pulse pin low
-   pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE) -- recalibrate the drive
+  -- set startup setting for read/read pins
+	pata_hd_iowr = low ^ PATA_HD_NO_INVERTER   -- start write pulse pin low
+  pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- start read pulse pin low
+  pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE) -- recalibrate the drive
 end procedure
+
+--------------------------------------------------------------------------------
+-- read one entire sector
+--------------------------------------------------------------------------------
+const dword LARGE_ARRAY_3_SIZE = 512           -- choose number of array variables
+const dword LARGE_ARRAY_3_VARIABLE_SIZE = 1    -- choose size of variables
+include large_array_3                          -- include the array library
+alias pata_hd_sector_buffer is large_array_3   -- rename/alias the array to pata_hd_sector_buffer
+procedure pata_hd_read_sector() is
+  var word count1
+  pata_hd_word_count = 0
+
+  if pata_hd_sector_count == 0 then                                      -- if we are at beginning of read
+    pata_hd_go_to_sector(pata_hd_sector_select,0)                        -- go to the selected sector
+    pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_READ_SECTORS)     -- send the read command to the command register	
+  end if
+  
+  pata_hd_data_request(PATA_HD_WAIT_READ) -- wait for data to be ready for read before each sector
+	
+	count1 = 0
+   for 256 loop	
+     -- get the data trough the ide interface
+     pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
+     pata_hd_sector_buffer[count1 + 1] = pata_hd_data_high -- get high data byte
+     pata_hd_sector_buffer[count1]     = pata_hd_data_low  -- get low data byte
+     pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
+     count1 = count1 + 2
+	end loop	
+
+  pata_hd_sector_select = pata_hd_sector_select + 1  -- increment the selected sector
+  pata_hd_sector_count = pata_hd_sector_count + 1    -- increase sector count
+end procedure
+
