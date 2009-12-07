@@ -36,6 +36,7 @@
 -- Still to do: switching heating on/off
 
 
+
 -- ---------------------- COMMUNICATION ROUTINES ----------------------
 
 -- send start
@@ -47,17 +48,17 @@
 procedure sht_start() is
    SHT_DATA_DIR = output
    SHT_DATA = high 
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = high    -- \
-   delay_1us()       --  \
+   delay_10us(5)       --  \
    SHT_DATA = low    --   \
-   delay_1us()       --    \
+   delay_10us(5)       --    \
    SHT_SCK = low     --      required sequence
-   delay_1us()       --    /
+   delay_10us(5)       --    /
    SHT_SCK = high    --   /
-   delay_1us()       --  /
+   delay_10us(5)       --  /
    SHT_DATA = high   -- /
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = low
 end procedure
 
@@ -69,9 +70,9 @@ procedure sht_put_data(byte in x) is
    for 8 loop
       SHT_DATA = b
       SHT_SCK = high
-      delay_1us()
+      delay_10us(5)
       SHT_SCK = low
-      delay_1us()
+      delay_10us(5)
       x = x << 1
    end loop
 end procedure 
@@ -80,38 +81,58 @@ end procedure
 procedure sht_get_data(byte out x) is
    var bit b at x: 0
    SHT_DATA_DIR = input
+   delay_1us()
    for 8 loop
       x = x << 1           -- 8 bits, but only 7 shifts
       b = SHT_DATA 
       SHT_SCK = high
-      delay_1us()
+      delay_10us(5)
       SHT_SCK = low
-      delay_1us()
+      delay_10us(5)
    end loop
 end procedure 
 
--- pretend to wait for ACK
+-- wait for ACK, but continue after 1 ms
 procedure sht_wait_ack() is
+   var byte counter = 10
    SHT_DATA_DIR = input
    SHT_SCK = high 
--- if !data then loop         -- don't touch this. if no reply
--- end loop                   -- routine could become stuck here
-   delay_1us()
+   while ((SHT_DATA == high)  & (counter > 1)) loop  
+      delay_10us(10)
+      counter = counter - 1
+   end loop
    SHT_SCK = low
-   delay_1us()
+   delay_10us(5)
    SHT_DATA_DIR = output
    SHT_DATA = high
 end procedure
+
+procedure sht_wait_ack_out(bit out ack) is
+   var byte counter = 10
+   SHT_DATA_DIR = input
+   SHT_SCK = high 
+   while ((SHT_DATA == high)  & (counter > 1)) loop  
+      delay_10us(10)
+      ack = SHT_DATA == low
+      counter = counter - 1
+   end loop
+   SHT_SCK = low
+   delay_10us(5)
+   SHT_DATA_DIR = output
+   SHT_DATA = high
+end procedure
+
+
 
 -- send ACK
 procedure sht_put_ack() is
    SHT_DATA_DIR = output
    SHT_DATA  = low
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = high 
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = low
-   delay_1us()
+   delay_10us(5)
 end procedure
 
 -- reset SHT
@@ -126,9 +147,9 @@ procedure sht_conn_reset() is
    SHT_DATA = high   
    for 9 loop
       SHT_SCK = high
-      delay_1us()
+      delay_10us(5)
       SHT_SCK = low
-      delay_1us()
+      delay_10us(5)
    end loop
 end procedure
 
@@ -142,7 +163,7 @@ end procedure
 -- SHT may only be switched on for 10% of the time because of self-heating
 -- so this measurement can only happen every 500ms
 procedure read_raw_hum_sht(byte out MSB, byte out LSB, byte out CRC) is
-   var byte counter = 8
+   var byte counter = 2
    sht_start()
    sht_put_data(0b000_00101)   -- start humidity measurement
    sht_wait_ack
@@ -160,9 +181,9 @@ procedure read_raw_hum_sht(byte out MSB, byte out LSB, byte out CRC) is
    sht_get_data( CRC )      -- read SHT_DATA
    SHT_DATA_DIR = output
    SHT_DATA = high         -- no ack, end transmission
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = high
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = low
 end procedure
 
@@ -191,9 +212,9 @@ procedure read_hum_sht(byte out hum) is
    sht_get_data( CRC )      -- read SHT_DATA
    SHT_DATA_DIR = output
    SHT_DATA = high         -- no ack, end transmission
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = high
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = low
    
    tmp = MSB
@@ -227,9 +248,9 @@ procedure read_hum_word_sht(word out hum) is
    sht_get_data( CRC )      -- read SHT_DATA
    SHT_DATA_DIR = output
    SHT_DATA = high         -- no ack, end transmission
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = high
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = low
    
    tmp = MSB
@@ -245,10 +266,45 @@ end procedure
 -- read raw 14-bit temperature from SHT
 -- default value of resolution bit is 14 bit temperature
 -- SHT takes 320 ms for measurement @ 14 bits
--- we will wait 400 ms
+-- we will wait 330 ms
 -- SHT may only be switched on for 10% of the time because of self-heating
 -- so this measurement can only happen every two seconds!
 procedure read_raw_temp_sht(byte out MSB, byte out LSB, byte out CRC) is
+   var byte counter = 32
+   sht_start()
+   sht_put_data(0b000_00011)   -- start temperature measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
+
+   while (SHT_DATA == high)  & (counter > 1) loop  
+      delay_1ms(10)
+      counter = counter - 1
+   end loop
+
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
+   SHT_DATA = high         -- no ack, end transmission
+   delay_10us(5)
+   SHT_SCK = high
+   delay_10us(5)
+   SHT_SCK = low
+end procedure
+
+
+-- read Celcius temperature from SHT
+-- with 1 C resolution, result is sbyte type, so -126...+127C
+-- SHT takes 320 ms for measurement @ 14 bits
+-- we will wait 400 ms
+-- SHT may only be switched on for 10% of the time because of self-heating
+-- so this measurement can only happen every four seconds!
+procedure read_celsius_temp_sht(sbyte out celsius) is
+   var byte MSB, LSB, CRC
+   var sdword tmp
+
    var byte counter = 41
    sht_start()
    sht_put_data(0b000_00011)   -- start temperature measurement
@@ -267,51 +323,16 @@ procedure read_raw_temp_sht(byte out MSB, byte out LSB, byte out CRC) is
    sht_get_data( CRC )      -- read SHT_DATA
    SHT_DATA_DIR = output
    SHT_DATA = high         -- no ack, end transmission
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = high
-   delay_1us()
-   SHT_SCK = low
-end procedure
-
-
--- read Celcius temperature from SHT
--- with 1 C resolution, result is sbyte type, so -126...+127C
--- SHT takes 320 ms for measurement @ 14 bits
--- we will wait 400 ms
--- SHT may only be switched on for 10% of the time because of self-heating
--- so this measurement can only happen every four seconds!
-procedure read_celsius_temp_sht(sbyte out celsius) is
-   var byte MSB, LSB, CRC
-   var sdword tmp 
-
-   var byte counter = 32
-   sht_start()
-   sht_put_data(0b000_00011)   -- start temperature measurement
-   sht_wait_ack
-   SHT_DATA_DIR = input
-
-   while (SHT_DATA == high)  & (counter > 1) loop  
-      delay_1ms(10)
-      counter = counter - 1
-   end loop
-
-   sht_get_data( MSB )      -- read SHT_DATA
-   sht_put_ack()
-   sht_get_data( LSB )      -- read SHT_DATA
-   sht_put_ack()
-   sht_get_data( CRC )      -- read SHT_DATA
-   SHT_DATA_DIR = output
-   SHT_DATA = high         -- no ack, end transmission
-   delay_1us()
-   SHT_SCK = high
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = low
 
 -- equation is T = -40.1 + 14_bits/100
 --  we'll do -401 + 14 bits/10 and divide by ten after that
    
    tmp = sword(MSB)
-   tmp = tmp *  256 + LSB
+   tmp = tmp *  256 + sword(LSB)
    tmp = -401 + (tmp/10) 
    tmp = tmp /10 
    celsius = sbyte(tmp)
@@ -329,7 +350,7 @@ procedure read_centicelsius_temp_sht(sword out centicelsius) is
    var byte MSB, LSB, CRC
    var sdword tmp 
 
-   var byte counter = 32
+   var byte counter = 41
    sht_start()
    sht_put_data(0b000_00011)   -- start temperature measurement
    sht_wait_ack
@@ -347,9 +368,9 @@ procedure read_centicelsius_temp_sht(sword out centicelsius) is
    sht_get_data( CRC )      -- read SHT_DATA
    SHT_DATA_DIR = output
    SHT_DATA = high         -- no ack, end transmission
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = high
-   delay_1us()
+   delay_10us(5)
    SHT_SCK = low
    
 -- equation is T = -40.1 + 0.01 * 14_bits
@@ -360,3 +381,46 @@ procedure read_centicelsius_temp_sht(sword out centicelsius) is
    centicelsius = -4010 + centicelsius             
       
 end procedure
+
+-- read Celcius + raw  temperature from SHT
+-- for debugging: SHT gives weird values
+-- with 0.01 C resolution, result is sword type, so -327.68 .. +327.68 C
+-- SHT takes 320 ms for measurement @ 14 bits
+-- we will wait 400 ms
+-- SHT may only be switched on for 10% of the time because of self-heating
+-- so this measurement can only happen every four seconds!
+procedure read_centicelsius_temp_raw_sht(sword out centicelsius, 
+                                         byte out MSB, byte out LSB, bit out ack) is
+   var byte CRC
+   var sdword tmp
+   
+   var byte counter = 41
+   sht_start()
+   sht_put_data(0b000_00011)   -- start temperature measurement
+   sht_wait_ack_out(ack)
+   SHT_DATA_DIR = input
+
+   while (SHT_DATA == high)  & (counter > 1) loop  
+      delay_1ms(10)
+      counter = counter - 1
+   end loop
+
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
+   SHT_DATA = high         -- no ack, end transmission
+   delay_10us(5)
+   SHT_SCK = high
+   delay_10us(5)
+   SHT_SCK = low
+   
+-- equation is T = -40.1 + 0.01 * 14_bits
+--  we'll do -4010 + 14 bits and place the decimal point while printing
+  
+   centicelsius = -4010 + sword(MSB) * 256 + sword(LSB)
+      
+end procedure
+
