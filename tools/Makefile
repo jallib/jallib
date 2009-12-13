@@ -186,7 +186,7 @@ jallib-pack: pdfbooks
 	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	# include PDF books
-	cp /tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
+	cp $$HOME/tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
 	echo DONE: jallib pack ready
 
 archive:
@@ -225,4 +225,4 @@ release: export prepare jallib-pack archive check
 bee: clean export prepare jallib-pack bee-archive bee-check bee-upload
 
 pdfbooks:
-	ant -f $$DITA_HOME/build_demo.xml -Dprompt.ditamap.filename=`pwd`/../doc/dita/tutorials/tutorials.ditamap -Dprompt.output.type=pdf -Dprompt.output.directory=/tmp/pdfbooks_${VERSION} -Dprompt.output.confirm=y
+	ant -f $$DITA_HOME/build_demo.xml -Dprompt.ditamap.filename=`pwd`/../doc/dita/tutorials/tutorials.ditamap -Dprompt.output.type=pdf -Dprompt.output.directory=$$HOME/tmp/pdfbooks_${VERSION} -Dprompt.output.confirm=y
