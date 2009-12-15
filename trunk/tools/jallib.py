@@ -201,7 +201,7 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
     if not jalv2_exec:
         jalv2_exec = os.environ.get('JALLIB_JALV2','jalv2').split()
     cmd = jalv2_exec + ["-s",";".join(dirs)]
-    print cmd
+    ###print cmd
     # Complete with compiler args
     if args:
         cmd.extend(args)
