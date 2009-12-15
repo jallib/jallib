@@ -177,10 +177,9 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
 
 
     jalv2_exec = None
-    dirs = None
+    dirs = []
     for o,v in opts:
         if o == '-R':
-            dirs = []
             gdirs = v.split(";")
             for d in gdirs:
                 dirs.extend(_explore_dir(d))
@@ -191,17 +190,18 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
     # No root specified ? Try env var, else defaut to cwd
     if not dirs:
         try:
-		    gdirs = os.environ['JALLIB_REPOS'].split(":")
+            gdirs = os.environ['JALLIB_REPOS'].split(":")
         except KeyError:
             # no such env var, takes param from commandline, and honor
             # jalv2 compiler separator
             gdirs = os.path.curdir.split(";")
         for d in gdirs:
-            dirs = _explore_dir(d)
+            dirs.extend(_explore_dir(d))
     # No exec specify, try env var or defaulting
     if not jalv2_exec:
         jalv2_exec = os.environ.get('JALLIB_JALV2','jalv2').split()
     cmd = jalv2_exec + ["-s",";".join(dirs)]
+    print cmd
     # Complete with compiler args
     if args:
         cmd.extend(args)
