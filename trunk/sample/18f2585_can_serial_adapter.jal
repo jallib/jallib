@@ -117,6 +117,7 @@ function modeless_cmd(volatile byte out device, byte in ascii_buf[32]) return bi
    
    -- FIXME version
    if cmd == "V" then
+      device = "V"
       device = "0"
       device = "1"
       device = "0"
@@ -126,6 +127,7 @@ function modeless_cmd(volatile byte out device, byte in ascii_buf[32]) return bi
       
       -- FIXME Serial #
    elsif cmd == "N" then
+      device = "N"
       for 8 loop
          device = "9"
       end loop
@@ -140,6 +142,7 @@ function modeless_cmd(volatile byte out device, byte in ascii_buf[32]) return bi
       b = COMSTAT
       c = RXB0CON
       d = RXB1CON
+      device = "I"
       print_byte_hex(device, a)
       device = 32
       print_byte_hex(device, b)
@@ -248,6 +251,7 @@ function open_cmd(volatile byte out device, byte in ascii_buf[32]) return bit is
    if cmd == "F" then
       var byte v
       v = COMSTAT
+      device = "F"
       print_byte_hex(device, v)
       device = 13
       return 1
@@ -255,11 +259,11 @@ function open_cmd(volatile byte out device, byte in ascii_buf[32]) return bit is
       -- bridge CAN message
    elsif ascii_to_can(ascii_buf, can_id, can_data, data_len) then
       while can_send(0, can_id, can_data, data_len) == 0 loop end loop
-      if can_is_ext_id(can_id) then
-         device = "Z"
-      else
-         device = "z"
-      end if
+      -- if can_is_ext_id(can_id) then
+      --    device = "Z"
+      -- else
+      --    device = "z"
+      -- end if
       device = 13
       return 1
    end if
@@ -300,12 +304,14 @@ procedure check_uart_rx() is
    
    if modeless_cmd(serial_hw_data, ascii_rxbuf) then
       ascii_rxcnt = 0
+      led = led ^ 1
       return
    end if
    
    if (is_open == 0) then
       if (closed_cmd(serial_hw_data, ascii_rxbuf) == 1) then
          ascii_rxcnt = 0
+         led = led ^ 1
          return
       end if
    end if
@@ -313,6 +319,7 @@ procedure check_uart_rx() is
    if (is_open == 1) then
       if (open_cmd(serial_hw_data, ascii_rxbuf) == 1) then
          ascii_rxcnt = 0
+         led = led ^ 1
          return
       end if
    end if
