@@ -1,5 +1,7 @@
 #!/bin/bash
 
+start_time=`date +%s`
+
 export JALLIB_ROOT=`pwd`	# correct when set by buildbot
 ###export JALLIB_ROOT=`pwd`/../..	# run manually here
 export JALLIB_REPOS=$JALLIB_ROOT/include
@@ -58,6 +60,10 @@ echo JALLIB_REPOS=$JALLIB_REPOS
 echo JALLIB_UNITTESTDIR=$JALLIB_UNITTESTDIR
 echo JALLIB_JALV2=$JALLIB_JALV2
 echo JALLIB_PYTHON=$JALLIB_PYTHON
+echo
+end_time=`date +%s`
+seconds=`expr $end_time - $start_time`
+echo "Time duration: $seconds secs"
 
 
 
