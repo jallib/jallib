@@ -39,7 +39,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.87'
+   ScriptVersion   = '0.0.88'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4m'
 /* ------------------------------------------------------------------------ */
@@ -266,11 +266,9 @@ StackDepth = 2                                  /* default */
 
 call load_stackdepth                            /* check stack depth */
 call load_sfr1x                                 /* load sfr + mirror info */
-call load_IDAddr                                /* load ID addresses */
 
 call list_head                                  /* header */
 call list_fuses_words1x                         /* config memory */
-call list_IDmem                                 /* ID memory */
 call list_sfr1x                                 /* special function registers */
 call list_nmmr12                                /* non memory mapped regs */
 call list_analog_functions                      /* register info */
@@ -296,11 +294,9 @@ StackDepth = 8                                  /* default */
 
 call load_stackdepth                            /* check stack depth */
 call load_sfr1x                                 /* load sfr + mirror info */
-call load_IDAddr                                /* load ID addresses */
 
 call list_head                                  /* header */
 call list_fuses_words1x                         /* config memory */
-call list_IDmem                                 /* ID memory */
 call list_sfr1x                                 /* register info */
                                                 /* No NMMRs with core_14! */
 call list_analog_functions                      /* register info */
@@ -325,11 +321,9 @@ AccessBankSplitOffset = 128                     /* default */
 StackDepth = 31                                 /* default */
 
 call load_sfr16                                 /* load sfr */
-call load_IDAddr                                /* load ID addresses */
 
 call list_head                                  /* header */
 call list_fuses_bytes16                         /* config memory */
-call list_IDmem                                 /* ID memory */
 call list_sfr16                                 /* register info */
 call list_nmmr16                                /* selected non memory mapped regs */
 call list_analog_functions                      /* register info */
@@ -605,28 +599,6 @@ return
 
 
 /* ---------------------------------------------- */
-/* procedure to determine ID memory range         */
-/* input:  - nothing                              */
-/* ---------------------------------------------- */
-load_IDAddr: procedure expose Dev. IDaddr.
-IDaddr.0 = 0                                    /* empty */
-do i = 1 to Dev.0
-   parse var Dev.i 'USERID' '(' 'REGION' '=' Value ')' .
-   if Value \= '' then do
-      parse var Value '0X' val1 '-' '0X' val2 .
-      if val1 \= '' then do
-         IDaddr.0 = X2D(val2) - X2D(val1) + 1   /* count */
-         do j = 1 to IDAddr.0
-            IDaddr.j = X2D(val1) + j - 1        /* address */
-         end
-      end
-      leave                                     /* 1st occurence only */
-   end
-end
-return
-
-
-/* ---------------------------------------------- */
 /* procedure to obtain hardware stack depth       */
 /* input:  - nothing                              */
 /* ---------------------------------------------- */
@@ -786,6 +758,25 @@ do i = 1 to Dev.0
       end
       DataSize = X2D(val2) - X2D(val1) + 1
       call lineout jalfile, 'pragma  eeprom  'DataStart','DataSize
+      leave                                     /* 1 occurence expected */
+   end
+end
+return
+
+
+/* ---------------------------------------------------------- */
+/* procedure to list ID memory size from .dev file            */
+/* input:  - nothing                                          */
+/* ---------------------------------------------------------- */
+list_ID_size: procedure expose Dev. jalfile msglevel
+do i = 1 to Dev.0
+   if word(Dev.i,1) \= 'USERID' then
+      iterate
+   parse var Dev.i val0 'REGION' '=' Value ')' .
+   if Value \= '' then do
+      parse var Value '0X' val1 '-' '0X' val2 .
+      IDSize = X2D(val2) - X2D(val1) + 1
+      call lineout jalfile, 'pragma  ID      0x'val1','IDSize
       leave                                     /* 1 occurence expected */
    end
 end
@@ -1083,54 +1074,6 @@ do j = 1 to CfgAddr.0
       call charout jalfile, left('',38,' ')
 end
 call lineout jalfile, '--'
-return
-
-
-/* ---------------------------------------------- */
-/* procedure to list ID memory  settings          */
-/* input:  - nothing                              */
-/* ---------------------------------------------- */
-list_IDmem: procedure expose jalfile IDaddr. Core msglevel
-if IDaddr.0 > 0 then do
-   call lineout jalfile, 'const word  _ID_CT                =' IDAddr.0
-   if  core = 12 | core = 14 then
-      call charout jalfile, 'const word  _ID_BASE[_ID_CT]      = { '
-   else                                          /* 16-bits core */
-      call charout jalfile, 'const dword _ID_BASE[_ID_CT]      = { '
-   do  j = 1 to IDaddr.0
-      if Core = 12 | Core = 14 then do
-         call charout jalfile, '0x'D2X(IDaddr.j,4)  /* address */
-         if j < IDaddr.0 then
-            call charout jalfile, ','
-      end
-      else do                                   /* 16-bits core */
-         call charout jalfile, '0x'D2X(IDaddr.j,6)  /* address */
-         if j < IDaddr.0 then do
-            call lineout jalfile, ','
-            call charout jalfile, left('',38,' ')
-         end
-      end
-   end
-   call lineout jalfile, ' }'
-   if Core = 12 | Core = 14 then
-      call charout jalfile, 'const word  _ID[_ID_CT]           = { '
-   else
-      call charout jalfile, 'const byte  _ID[_ID_CT]           = { '
-   do  j = 1 to IDaddr.0
-      if Core = 12 | Core = 14 then
-         call charout jalfile, '0x0000'         /* word */
-      else
-         call charout jalfile, '0x00'           /* byte */
-      if j < IDaddr.0 then
-         call charout jalfile, ','
-   end
-   call lineout jalfile, ' }'
-   call lineout jalfile, '--'
-end
-else do
-   call lineout jalfile, '-- No ID bytes present'
-   call lineout jalfile, '--'
-end
 return
 
 
@@ -3382,6 +3325,7 @@ if core = 12 | core = 14 then
 call lineout jalfile, 'pragma  stack   'StackDepth
 call list_code_size
 call list_data_size
+call list_ID_size
 MaxUnsharedRAM = 0                                      /* no unshared RAM */
 call list_unshared_data_range                           /* MaxUnsharedRam updated! */
 MaxSharedRAM = 0                                        /* no shared RAM */
