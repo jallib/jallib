@@ -1,0 +1,493 @@
+-- Title: External mcp2515 CAN controller
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Compiler: 2.4
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- The MCP2515 is an external CAN controller with Slave SPI 
+-- interface.  The controller has 3 transmit buffers and 2 receive buffers.
+--
+-- Note:  uses SPI Master library and also needs a 'chip select' pin such as:
+--              alias can_sel is pin_B0
+
+-- Three transmit buffers. Each transmit buffer has a control register, header 
+-- registers, length register and (up to ) eight bytes of payload.
+const TXB0CTRL = 0x30
+const TXB0SIDH = 0x31
+const TXB0SIDL = 0x32
+const TXB0EID8 = 0x33
+const TXB0EID0 = 0x34
+const TXB0DLC = 0x35
+const TXB0D0 = 0x36
+const TXB0D1 = 0x37
+const TXB0D2 = 0x38
+const TXB0D3 = 0x39
+const TXB0D4 = 0x3A
+const TXB0D5 = 0x3B
+const TXB0D6 = 0x3C
+const TXB0D7 = 0x3D
+
+const TXB1CTRL = 0x40
+const TXB1SIDH = 0x41
+const TXB1SIDL = 0x42
+const TXB1EID8 = 0x43
+const TXB1EID0 = 0x44
+const TXB1DLC = 0x45
+const TXB1D0 = 0x46
+const TXB1D1 = 0x47
+const TXB1D2 = 0x48
+const TXB1D3 = 0x49
+const TXB1D4 = 0x4A
+const TXB1D5 = 0x4B
+const TXB1D6 = 0x4C
+const TXB1D7 = 0x4D
+
+const TXB2CTRL = 0x50
+const TXB2SIDH = 0x51
+const TXB2SIDL = 0x52
+const TXB2EID8 = 0x53
+const TXB2EID0 = 0x54
+const TXB2DLC = 0x55
+const TXB2D0 = 0x56
+const TXB2D1 = 0x57
+const TXB2D2 = 0x58
+const TXB2D3 = 0x59
+const TXB2D4 = 0x5A
+const TXB2D5 = 0x5B
+const TXB2D6 = 0x5C
+const TXB2D7 = 0x5D
+
+-- There are two receive buffers -- RXB0 and RXB1.  Note that RXB0 has 
+-- a 'higher priority' than RXB1.  Also, you can set up RXB0 such that 
+-- it can 'roll over' into RXB1, if you don't want to keep the buffers
+-- separate.
+
+-- Each receive buffer has a control register, header registers, length
+-- register and (up to ) eight bytes of payload.
+const RXB0CTRL = 0x60
+const RXB0SIDH = 0x61
+const RXB0SIDL = 0x62
+const RXB0EID8 = 0x63
+const RXB0EID0 = 0x64
+const RXB0DLC = 0x65
+const RXB0D0 = 0x66
+const RXB0D1 = 0x67
+const RXB0D2 = 0x68
+const RXB0D3 = 0x69
+const RXB0D4 = 0x6A
+const RXB0D5 = 0x6B
+const RXB0D6 = 0x6C
+const RXB0D7 = 0x6D
+
+const RXB1CTRL = 0x70
+const RXB1SIDH = 0x71
+const RXB1SIDL = 0x72
+const RXB1EID8 = 0x73
+const RXB1EID0 = 0x74
+const RXB1DLC = 0x75
+const RXB1D0 = 0x76
+const RXB1D1 = 0x77
+const RXB1D2 = 0x78
+const RXB1D3 = 0x79
+const RXB1D4 = 0x7A
+const RXB1D5 = 0x7B
+const RXB1D6 = 0x7C
+const RXB1D7 = 0x7D
+
+-- The controller has powerful MASK and FILTER registers for receiving
+-- packets/frames. Since the CAN bus is a 'broadcast' medium, you will
+-- likely want to filter out messages that are not useful. On the other
+-- hand, in some cases, like a diagnostic mode, you may want to receive
+-- any/all messages, and this can also be done via the MASK and/or FILTER
+-- registers.
+
+-- RXB0, the 'high priority' buffer, has one mask and two filters.
+-- N.B. The datasheet's naming convention for these is unfortunate and error 
+-- prone, so please be careful.
+
+-- RXB0 mask
+const RXM0SIDH = 0x20
+const RXM0SIDL = 0x21
+const RXM0EID8 = 0x22
+const RXM0EID0 = 0x23
+
+-- RXB0 filter #0
+const RXF0SIDH = 0x00
+const RXF0SIDL = 0x01
+const RXF0EID8 = 0x02
+const RXF0EID0 = 0x03
+
+-- RXB0 filter #1
+const RXF1SIDH = 0x04
+const RXF1SIDL = 0x05
+const RXF1EID8 = 0x06
+const RXF1EID0 = 0x07
+
+-- RXB1, the 'low priority' buffer, has one mask and four filters.
+-- N.B. The datasheet's naming convention for these is unfortunate and error 
+-- prone, so please be careful.
+
+-- RXB1 mask
+const RXM1SIDH = 0x24
+const RXM1SIDL = 0x25
+const RXM1EID8 = 0x26
+const RXM1EID0 = 0x27
+
+-- RXB1 filter #2
+const RXF2SIDH = 0x08
+const RXF2SIDL = 0x09
+const RXF2EID8 = 0x0A
+const RXF2EID0 = 0x0B
+
+-- RXB1 filter #3
+const RXF3SIDH = 0x10
+const RXF3SIDL = 0x11
+const RXF3EID8 = 0x12
+const RXF3EID0 = 0x13
+
+-- RXB1 filter #4
+const RXF4SIDH = 0x14
+const RXF4SIDL = 0x15
+const RXF4EID8 = 0x16
+const RXF4EID0 = 0x17
+
+-- RXB1 filter #5
+const RXF5SIDH = 0x18
+const RXF5SIDL = 0x19
+const RXF5EID8 = 0x1A
+const RXF5EID0 = 0x1B
+
+-- CANCTRL register and fields
+const CANCTRL = 0x0F
+const MODE_NORMAL = 0x00
+const MODE_SLEEP = 0x20
+const MODE_LOOPBACK = 0x40
+const MODE_LISTENONLY = 0x60
+const MODE_CONFIG = 0x80
+const MODE_POWERUP = 0xE0
+const MODE_MASK = 0xE0
+const ABORT_TX = 0x10
+const MODE_ONESHOT = 0x08
+const CLKOUT_ENABLE = 0x04
+const CLKOUT_DISABLE = 0x00
+const CLKOUT_PS1 = 0x00
+const CLKOUT_PS2 = 0x01
+const CLKOUT_PS4 = 0x02
+const CLKOUT_PS8 = 0x03
+
+-- Bit-rate and related registers and fields. Big topic. See datasheet.
+-- CNF1 register and fields
+const CNF1 = 0x2A
+const SJW1 = 0x00
+const SJW2 = 0x40
+const SJW3 = 0x80
+const SJW4 = 0xC0
+
+-- CNF2 register and fields
+const CNF2 = 0x29
+const BTLMODE = 0x80
+const SAMPLE_1X = 0x00
+const SAMPLE_3X = 0x40
+
+-- CNF3 and fields
+const CNF3 = 0x28
+const SOF_ENABLE = 0x80
+const SOF_DISABLE = 0x00
+const WAKFIL_ENABLE = 0x40
+const WAKFIL_DISABLE = 0x00
+
+-- There are 8 sources of interrupts inside the controller, and there is
+-- a single interrupt 'pin' that you may choose to wire up to your project.
+-- Alternatively you can poll using SPI commands.
+
+-- CANINTE register and fields
+const CANINTE = 0x2B
+const CAN_RX0IE = 0x01
+const CAN_RX1IE = 0x02
+const CAN_TX0IE = 0x04
+const CAN_TX1IE = 0x08
+const CAN_TX2IE = 0x10
+const CAN_ERRIE = 0x20
+const CAN_WAKIE = 0x40
+const CAN_MERRE = 0x80
+
+-- CANINTF register and fields
+const CANINTF = 0x2C
+const CAN_RX0IF = 0x01
+const CAN_RX1IF = 0x02
+const CAN_TX0IF = 0x04
+const CAN_TX1IF = 0x08
+const CAN_TX2IF = 0x10
+const CAN_ERRIF = 0x20
+const CAN_WAKIF = 0x40
+const CAN_MERRF = 0x80
+
+-- other misc registers
+const CANSTAT = 0x0E
+const TEC = 0x1C
+const REC = 0x1D
+const EFLG = 0x2D
+
+-- MCP2515 Instructions ( SPI interface )
+const CAN_WRITE_CMD = 0x02
+const CAN_READ_CMD = 0x03
+const CAN_BITMOD = 0x05
+const CAN_LOAD_TX0 = 0x40
+const CAN_LOAD_TX1 = 0x42
+const CAN_LOAD_TX2 = 0x44
+const CAN_RTS_TX0 = 0x81
+const CAN_RTS_TX1 = 0x82
+const CAN_RTS_TX2 = 0x84
+const CAN_RTS_ALL = 0x87
+const CAN_READ_RX0_DATA = 0x92
+const CAN_READ_RX1_DATA = 0x96
+const CAN_READ_STATUS_CMD = 0xA0
+const CAN_RX_STATUS_CMD = 0xB0
+const CAN_RESET_CMD = 0xC0
+
+-- mcp2515 Reset instruction.
+-- Puts the mcp2515 in Configuration Mode.
+procedure can_reset() is
+   can_sel = 0
+   spi_master_hw = CAN_RESET_CMD
+   can_sel = 1
+end procedure
+
+-- mcp2515 read status instruction
+function can_read_status() return byte is
+   var byte data, dummy
+   can_sel = 0
+   spi_master_hw = CAN_READ_STATUS_CMD
+   data = spi_master_hw
+   dummy = spi_master_hw
+   can_sel = 1
+   return data
+end function
+
+-- mcp2515 RX status instruction
+function can_rx_status() return byte is
+   var byte data, dummy
+   can_sel = 0
+   spi_master_hw = CAN_RX_STATUS_CMD
+   data = spi_master_hw
+   dummy = spi_master_hw
+   can_sel = 1
+   return data
+end function
+
+-- mcp2515 read instruction (single byte)
+-- returns the current value of the specified register
+function can_read(byte in addr) return byte is
+   var byte data
+   can_sel = 0
+   spi_master_hw = CAN_READ_CMD
+   spi_master_hw = addr
+   data = spi_master_hw
+   can_sel = 1
+   return data
+end function
+
+-- mcp2515 write instruction (single byte)
+-- writes the value to the specified register
+procedure can_write(byte in addr, byte in data) is
+   can_sel = 0
+   spi_master_hw = CAN_WRITE_CMD
+   spi_master_hw = addr
+   spi_master_hw = data
+   can_sel = 1
+end procedure
+
+-- set bit-rate and related can bus configuration.
+-- see datasheet for details.
+-- N.B. The chip must already be in 'configuration mode'.
+procedure can_set_config(byte in p1, byte in p2, byte in p3) is
+   can_write(CNF1, p1)
+   can_write(CNF2, p2)
+   can_write(CNF3, p3)
+end procedure
+
+-- set RX acceptance mask for buffer RXB0
+-- N.B. calling with 0,0,0,0 will pass all messages
+procedure can_set_rxb0_mask(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(RXM0SIDH, sidh)
+   can_write(RXM0SIDL, sidl)
+   can_write(RXM0EID8, eid8)
+   can_write(RXM0EID0, eid0)
+end procedure
+
+-- set RXB0 acceptance filter #0
+procedure can_set_rxb0_filter0(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(RXF0SIDH, sidh)
+   can_write(RXF0SIDL, sidl)
+   can_write(RXF0EID8, eid8)
+   can_write(RXF0EID0, eid0)
+end procedure
+
+-- set RXB0 acceptance filter #1
+procedure can_set_rxb0_filter1(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(RXF1SIDH, sidh)
+   can_write(RXF1SIDL, sidl)
+   can_write(RXF1EID8, eid8)
+   can_write(RXF1EID0, eid0)
+end procedure
+
+-- set RX acceptance mask for buffer RXB1
+-- N.B. calling with 0,0,0,0 will pass all messages
+procedure can_set_rxb1_mask(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(RXM1SIDH, sidh)
+   can_write(RXM1SIDL, sidl)
+   can_write(RXM1EID8, eid8)
+   can_write(RXM1EID0, eid0)
+end procedure
+
+-- set RXB1 acceptance filter #2
+procedure can_set_rxb1_filter2(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(RXF2SIDH, sidh)
+   can_write(RXF2SIDL, sidl)
+   can_write(RXF2EID8, eid8)
+   can_write(RXF2EID0, eid0)
+end procedure
+
+-- set RXB1 acceptance filter #3
+procedure can_set_rxb1_filter3(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(RXF3SIDH, sidh)
+   can_write(RXF3SIDL, sidl)
+   can_write(RXF3EID8, eid8)
+   can_write(RXF3EID0, eid0)
+end procedure
+
+-- set RXB1 acceptance filter #4
+procedure can_set_rxb1_filter4(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(RXF4SIDH, sidh)
+   can_write(RXF4SIDL, sidl)
+   can_write(RXF4EID8, eid8)
+   can_write(RXF4EID0, eid0)
+end procedure
+
+-- set RXB1 acceptance filter #5
+procedure can_set_rxb1_filter5(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(RXF5SIDH, sidh)
+   can_write(RXF5SIDL, sidl)
+   can_write(RXF5EID8, eid8)
+   can_write(RXF5EID0, eid0)
+end procedure
+
+-- send standard 11-bit CAN frame
+-- Non-blocking -- function returns immediately if buffer is busy (in-use)
+-- FIXME. this is ugly code
+function can_send(byte in buf_no, word in std_id, byte in buf[8], byte in len) return bit is
+   var bit stat
+   var byte r_base, i
+   var word sidh, sidl
+   if buf_no == 0 then
+      r_base = TXB0CTRL
+   elsif buf_no == 1 then
+      r_base = TXB1CTRL
+   elsif buf_no == 2 then
+      r_base = TXB2CTRL
+   else
+      return 0
+   end if
+   
+   -- buffer already in-use / busy?
+   stat = can_read(r_base) & 8
+   if stat == 1 then
+      return 0
+   end if
+   
+   -- FIXME this sets priority and other side-effects
+   can_write(r_base, 0)
+   
+   -- N.B. SIDH and SIDL bit-layout are weird (see datasheet)
+   sidh = std_id >> 3
+   sidl = std_id & 7
+   sidl = sidl << 5
+   
+   can_write(r_base+1, sidh)
+   can_write(r_base+2, sidl)
+   can_write(r_base+3, 0)
+   can_write(r_base+4, 0)
+   can_write(r_base+5, len)
+   for 8 using i loop
+      var byte j
+      j = r_base + i + 6
+      can_write(j, buf[i])
+   end loop
+   
+   can_write(r_base, 8) -- request TX now/soonest
+   
+   return 1
+end function
+
+-- receive standard 11-bit CAN frame
+-- Non-blocking -- function returns immediately if no message is available.
+-- FIXME. N. B. This routine will automatically discard any extended frames!
+-- FIXME. this is ugly code
+function can_receive(byte in buf_no, word out std_id, byte out buf[8], byte out len) return bit is
+   var bit rtr, ide, stat, ex
+   var byte op, i
+   var byte sidh, sidl
+   
+   -- quick check to make sure we have a message waiting
+   if buf_no == 0 then
+      stat = can_read_status() & 1
+      if stat == 0 then
+         return 0
+      end if
+   elsif buf_no == 1 then
+      stat = can_read_status() & 2
+      if stat == 0 then
+         return 0
+      end if
+   else
+      return 0 -- illegal value for buf_no
+   end if
+   
+   -- N.B. At this point we have a message. We must read it,
+   -- even if we decide to discard it later.
+   if buf_no == 0 then
+      rtr = can_read(RXB0CTRL) & 8
+      sidh = can_read(RXB0SIDH)
+      sidl = can_read(RXB0SIDL)
+      len = can_read(RXB0DLC)
+      op = CAN_READ_RX0_DATA
+      
+   elsif buf_no == 1 then
+      rtr = can_read(RXB1CTRL) & 8
+      sidh = can_read(RXB1SIDH)
+      sidl = can_read(RXB1SIDL)
+      len = can_read(RXB1DLC)
+      op = CAN_READ_RX1_DATA
+      
+   end if
+   
+   -- fast read of the buffer
+   can_sel = 0
+   spi_master_hw = op
+   for 8 using i loop
+      buf[i] = spi_master_hw
+   end loop
+   can_sel = 1
+   
+   -- Remote Request frames do not include any data
+   if rtr != 0 then
+      len = 0
+   end if
+   
+   -- discard 'extended frames'
+   -- FIXME
+   ide = sidl & 8
+   if ide != 0 then
+      return 0
+   end if
+   
+   -- form the 11-bit ID. See datasheet.
+   std_id = word(sidh)
+   std_id = std_id << 3
+   sidl = sidl >> 5
+   std_id = std_id | word(sidl)
+   
+   return 1
+end function
+

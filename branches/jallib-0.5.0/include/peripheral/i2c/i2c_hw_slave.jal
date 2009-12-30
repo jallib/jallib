@@ -1,0 +1,92 @@
+-- Title: i2c_hardware slave procedures
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by: Joep Suijs, Albert Faber
+-- Compiler: >=2.4i
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Common and useful functions and procedure to implement an I2C slave
+--
+--
+
+var byte tmpstat  ; this contains the last sspstat value, on which the user functions are
+                  ; called. i2c_hw_slave_on_error() could use this to know what happend
+
+-- setup an i2c slave, with low address (not high addresses coded with 10-bits)
+-- The passed address must be 8-bits long: it's a 7-bits address + the 8th R/W bit
+--
+-- A global "i2c_enable_start_stop_interrupts" constant can be defined to so
+-- interrupts are generated on Start/Stop signals.
+--
+-- /!\ careful: calling this procedure will enable interrupts (global, peripherals and i2c)
+procedure i2c_hw_slave_init(byte in height_bits_icaddress) is
+   -- slave 7bit address
+   SSPCON = 0b_0011_0110
+
+   -- if this constant is defined and true,  enable start/stop interrupts.
+   if defined(i2c_enable_start_stop_interrupts) == true then
+       if i2c_enable_start_stop_interrupts == true then
+           SSPCON = SSPCON | 0b_0000_1000   -- enable start/stop interrupts
+       end if
+   end if
+
+
+    -- I2C slave hardware
+    -- last 8th bits is for read/write setting.
+    -- I think it can be either 0 or 1, PIC does the job
+    SSPADD = height_bits_icaddress
+
+
+    -- init SSPSTAT
+    SSPSTAT_BF = false
+    SSPCON_WCOL = false
+    SSPCON_SSPOV = false
+    PIR1_SSPIF = false
+    -- enable interrupts
+    PIE1_SSPIE = true
+    INTCON_GIE = true
+    INTCON_PEIE = true
+
+   -- Required to enable clock stretching, currently works OK for
+   -- PIC18f devices, however, likely required for 16f PICs as
+   -- well, but requires an update of the statemachine, which I
+   -- can not test at the moment
+   if ( target_cpu == PIC_16 ) then
+      if defined( SSPCON2_SEN ) == true then
+         SSPCON2_SEN = 1
+      end if
+    end if
+
+end procedure
+
+
+-- read a byte from i2c buffer and returns it
+function i2c_hw_slave_read_i2c() return byte is
+    var byte tmpbuf
+    tmpbuf = SSPBUF
+    return tmpbuf
+end function
+
+
+-- write a byte to i2c bus
+procedure i2c_hw_slave_write_i2c(byte in what) is
+    -- wait 'til buffer is empty
+    while SSPSTAT_BF loop end loop
+    var bit dosend = true
+    while dosend
+    loop
+        SSPCON_WCOL = false
+        -- try to write into buffer, checking collision
+        SSPBUF = what
+        if ! SSPCON_WCOL
+        then
+            -- ok, done
+            dosend = false
+        end if
+        -- else continue trying
+    end loop
+    SSPCON_CKP = 1
+end procedure
+
+

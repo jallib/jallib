@@ -1,0 +1,106 @@
+<?php
+
+/**
+
+  Title: JAPP Drupal module
+  Author: Sebastien Lelong, Copyright (c) 2009, all rights reserved.
+
+  This file is part of jallib (http://jallib.googlecode.com)
+  Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+
+  Description: this module implements several hooks from mailhandler and mailsave
+  3rd party modules, in order to publish HTML document to jal website, using mails.
+
+*/
+
+/**
+  This Drupal module implements specific mailhandler & mailsave hooks,
+  to deals with document publishing from email, related to jallib project
+  (and other projects like jaluino). This is part of the
+  Jallib Automated Publishing Process (JAPP)
+
+  Specifically:
+
+    - catch "path" command to determine "nid",with hook_mailhandleri(). 
+      With basic mailhandler
+      behavior, submitting the same document, with the same URL would actually
+      create a new document, and force URL to be differen (typically add numbers).
+      In JAPP, when submitting a same document, with the same URL, document's content
+      will be updated. mailhandler can do this, you just have to specify "nid" 
+      (node ID). The problem is "nid" can't be known while submitting email. So,
+      instead we'll look at "path" command, to determine corresponding node. If 
+      a node exists, then hook adds a "nid" command, so mailhandler will tell Drupal
+      to update the node. If node does not exists, it keeps things as is, so a new 
+      node will be created.
+    
+    - implement hook_mailsave() to put all attachments to a specific location 
+      (like "/sites/default/files/japp")
+*/
+
+/**
+ * Implementation of hook_perm().
+ */
+function japp_perm() {
+  // for now, no perms
+  return array();
+}
+
+
+/**
+ * Implementation of hook_menu().
+ */
+function japp_menu() {
+
+  $items = array();
+  return $items;
+}
+
+
+/**
+ * Implementation of hook_mailhandler()
+ */
+function japp_mailhandler($node, $result, $i, $header, $mailbox) {
+  if(empty($node->path)) {
+    watchdog("japp","Submitted node %title does not have path, can't know which is corresponding node in database",
+             array("%title" => $node->title),WATCHDOG_ERROR);
+    return FALSE;
+  }
+  // The idea is to determine, given submitted node, if it's already in database.
+  // For this, we'll search according to its path (there can be only one path for a node)
+  // Note: node doesn't have a specific language set, I think this should be ok...
+  //       Still we need to use "language" column to hit table's index
+  $sql = "SELECT src FROM {url_alias} WHERE dst = '%s' AND language = ''";
+  // honor SQL rewrite by other modules, just in case
+  $result = db_result(db_query(db_rewrite_sql($sql),$node->path));
+  if($result) {
+    $node_nid = split("/",$result);
+    if(count($node_nid) != 2 || $node_nid[0] != "node") {
+      watchdog("japp","Source URL for '%path' is '%src', I expect to have something like 'node/77' in it...",
+               array("%path" => $node->path,"%src" => $node_nid),WATCHDOG_ERROR);
+      return FALSE;
+    }
+    // Set old revision number, so current content will replace old one
+    // Seb: I finally don't want to create revision, as I would need to deal
+    //      with uploads/attachments revision too. Let's consider SVN revisions
+    //      are enough (remember DITA files are under SVN...)
+    $node->nid = (int)$node_nid[1];
+    $oldnode = node_load($node->nid);
+    $node->vid = $oldnode->vid;
+    // now delete node's attachments. mailsave will add new ones.
+    // This way we're sure one file won't remain unused, and we're sure
+    // attachments are up-to-date.
+    // Note: this won't delete the node itself...
+    upload_delete($oldnode);
+    watchdog("japp","Updating node (nid:%nid, vid:%vid) %title with path %path",
+             array("%title" => $node->title,"%path" => $node->path,
+                   "%nid" => $node->nid, "%vid" => $node->vid));
+  } else {
+    // no such path, means a new node. Just let mailhandler does its job
+    watchdog("japp","Creating a new node for node %title with path %path",
+             array("%title" => $node->title,"%path" => $node->path));
+  }
+
+  return $node;
+}
+
+

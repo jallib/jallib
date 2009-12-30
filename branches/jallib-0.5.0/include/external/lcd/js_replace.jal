@@ -1,0 +1,405 @@
+-- ------------------------------------------------------
+-- Title: LCD refactoring
+--
+-- Author: Richard Zengerink, Copyright (c) 2008..2008, all rights reserved.
+--
+-- Adapted-by: Joep Suijs (refactoring)
+--
+-- Compiler: =2.4
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: LCD refactoring - this procedures are to be deprecated or removed
+--
+-- Sources:
+--
+-- Notes:
+--
+--
+-- ------------------------------------------------------
+byte lcd_maxdigit
+var byte lcd_nodigit
+
+-- -----------------------------------------------------------------------------
+-- Displays a value (byte), whith or without Decimal Point, on specified line
+-- and position , non leading zero ,with or without left alignment, signed
+-- or not signed.
+-- -----------------------------------------------------------------------------
+procedure lcd_bvalue_dp_line_pos_left_sign( word in value, byte in dp, byte in line, byte in poskar, bit in left, bit in sign ) is
+   var word digit0 = 0
+   var byte digit1 = 0
+   var byte digit2 = 0
+   var bit negative = false
+   
+   if sign then
+      if value >= 128   then
+         negative = true
+         value = 128 - (value - 128)
+      end if
+   end if
+
+   while value >= 100 loop
+      digit2 = digit2 + 1
+      value = value - 100
+   end loop
+
+   while value >= 10 loop
+      digit1 = digit1 + 1
+      value = value - 10
+   end loop
+
+   digit0 = value
+   
+   if digit2 == 0 & dp < 2 then
+      digit2 = 32
+   else
+      digit2 = digit2 + 48
+   end if
+
+   if digit1 == 0 & digit2 == 32 & dp < 1 then
+      digit1 = 32
+   else
+      digit1 = digit1 + 48
+   end if
+
+   digit0 = digit0 + 48
+
+   
+   lcd_new_line_cursor_position (line, poskar)
+   
+   var bit decp = false
+   var byte counter = 0
+   lcd_nodigit = 0
+
+         for 5 loop
+
+          if negative then
+             lcd_writechar("-")
+             negative = false
+             lcd_nodigit = lcd_nodigit + 1
+           end if
+
+          if dp > 2 & !decp  then
+             lcd_writechar(".")
+             decp = true
+             lcd_nodigit = lcd_nodigit + 1
+          else
+             if counter == 1 then
+                if !left | digit2 != 32 then
+                   lcd_writechar(digit2)
+                   lcd_nodigit = lcd_nodigit + 1
+                end if
+             end if
+             if counter == 2 then
+                if !left | digit1 != 32 then
+                   lcd_writechar(digit1)
+                   lcd_nodigit = lcd_nodigit + 1
+                end if
+             end if
+             if counter == 3 then
+                if !left | digit0 != 32 then
+                   lcd_writechar(digit0)
+                   lcd_nodigit = lcd_nodigit + 1
+                end if
+             end if
+             counter = counter + 1
+          end if
+
+          if dp != 0 then
+             dp = dp + 1
+          end if
+
+       end loop
+
+       if lcd_nodigit > lcd_maxdigit then
+          lcd_maxdigit = lcd_nodigit
+       else
+          while lcd_maxdigit > lcd_nodigit  loop
+                lcd_writechar(32)
+                lcd_maxdigit = lcd_maxdigit - 1
+          end loop
+       end if
+
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+
+--
+-- * lcd_bvalue_dp_line_pos_left_sign( byte in value, byte in dp, byte in line, byte in poskar, bit in left, bit in sign )
+--   displays a byte value with decimal point on position [dp] on line [line] on position [pos] left alignment true/false,
+--   signed value true/false
+--   byte value = 0 to 255 as value or as variable, dp = 0 means 100 dp = 1 means 10.0 dp = 2 means 1.00 and dp > than 3 means 0.100
+--
+--
+--   example1: lcd_bvalue_dp_line_pos_left_sign(25,0,1,5,true,false)
+--   result on line 1 on position 5 you get 25
+--
+--   example2: lcd_bvalue_dp_line_pos_left_sign(25,0,1,5,false,false)
+--   result on line 1 on position 5 you get [space]25 (25 starts at position 6)
+--
+--   example3: lcd_bvalue_dp_line_pos_left_sign(225,0,2,1,true,true)
+--   result on line 2 on position 1 you get -31
+--
+--   example4: lcd_bvalue_dp_line_pos_left_sign(225,0,2,1,true,false)
+--   result on line 2 on position 1 you get 225
+--
+
+
+-- -----------------------------------------------------------------------------
+-- Displays a value (word), white or without Decimal Point, on specified line
+-- and position,  non leading zero ,with or without left alignment, signed
+-- or not signed
+-- -----------------------------------------------------------------------------
+
+procedure lcd_wvalue_dp_line_pos_left_sign( word in value, byte in dp, byte in line, byte in poskar, bit in left, bit in sign ) is
+   var word digit0 = 0   ;l
+   var byte digit1 = 0   ;10
+   var byte digit2 = 0   ;100
+   var byte digit3 = 0   ;1000
+   var byte digit4 = 0   ;10000
+   var bit negative = false
+
+   if sign then
+      if value >= 32768   then
+         negative = true
+         value = 32768 - (value - 32768)
+      end if
+   end if
+
+   while value >= 10000 loop
+      digit4 = digit4 + 1
+      value = value - 10000
+   end loop
+
+   while value >= 1000 loop
+      digit3 = digit3 + 1
+      value = value - 1000
+   end loop
+
+   while value >= 100 loop
+      digit2 = digit2 + 1
+      value = value - 100
+   end loop
+
+   while value >= 10 loop
+      digit1 = digit1 + 1
+      value = value - 10
+   end loop
+
+   digit0 = value
+
+   if digit4 == 0 & dp < 4 then
+      digit4 = 32
+   else
+      digit4 = digit4 + 48
+   end if
+
+   if digit3 == 0 & digit4 == 32 & dp < 3 then
+      digit3 = 32
+   else
+      digit3 = digit3 + 48
+   end if
+
+   if digit2 == 0 & digit3 == 32 & digit4 == 32 & dp < 2 then
+      digit2 = 32
+   else
+      digit2 = digit2 + 48
+   end if
+   
+   if digit1 == 0 & digit2 == 32 & digit3 == 32 & digit4 == 32 & dp < 1 then
+      digit1 = 32
+   else
+      digit1 = digit1 + 48
+   end if
+   
+   digit0 = digit0 + 48
+   
+   lcd_new_line_cursor_position (line, poskar)
+
+   var bit decp = false
+   var byte counter = 0
+   lcd_nodigit = 0
+   
+   for 7 loop
+
+   if negative then
+      lcd_writechar("-")
+      negative = false
+      lcd_nodigit = lcd_nodigit + 1
+   end if
+
+   if dp > 5 & !decp  then
+      lcd_writechar(".")
+      decp = true
+      lcd_nodigit = lcd_nodigit + 1
+      else
+         if counter == 1 then
+            if !left | digit4 != 32 then
+               lcd_writechar(digit4)
+               lcd_nodigit = lcd_nodigit + 1
+            end if
+         end if
+         if counter == 2 then
+            if !left | digit3 != 32 then
+               lcd_writechar(digit3)
+               lcd_nodigit = lcd_nodigit + 1
+            end if
+         end if
+         if counter == 3 then
+            if !left | digit2 != 32 then
+               lcd_writechar(digit2)
+               lcd_nodigit = lcd_nodigit + 1
+            end if
+         end if
+         if counter == 4 then
+            if !left | digit1 != 32 then
+               lcd_writechar(digit1)
+               lcd_nodigit = lcd_nodigit + 1
+            end if
+         end if
+         if counter == 5 then
+            lcd_writechar(digit0)
+            lcd_nodigit = lcd_nodigit + 1
+         end if
+         counter = counter + 1
+      end if
+
+       if dp != 0 then
+          dp = dp + 1
+       end if
+
+   end loop
+   if lcd_nodigit > lcd_maxdigit then
+      lcd_maxdigit = lcd_nodigit
+   else
+      while lcd_maxdigit > lcd_nodigit  loop
+         lcd_writechar(32)
+         lcd_maxdigit = lcd_maxdigit - 1
+      end loop
+   end if
+end procedure
+-- ----------------------------------------------------------------------------
+                  
+                  
+-- -----------------------------------------------------------------------------
+-- Displays a time (byte),
+-- -----------------------------------------------------------------------------
+procedure lcd_time( byte in hrs, byte in minut, byte in second, byte in seperator ) is
+   var byte hrs_digit0 = 0   ;l
+   var byte hrs_digit1 = 0   ;10
+   var byte minut_digit0 = 0   ;1
+   var byte minut_digit1 = 0   ;10
+   var byte second_digit0 = 0   ;1
+   var byte second_digit1 = 0   ;10
+
+   while hrs >= 10 loop
+      hrs_digit1 = hrs_digit1 + 1
+      hrs = hrs - 10
+   end loop
+   hrs_digit0 = hrs + 48
+   hrs_digit1 = hrs_digit1 + 48
+   while minut >= 10 loop
+      minut_digit1 = minut_digit1 + 1
+      minut = minut - 10
+   end loop
+   minut_digit0 = minut +48
+   minut_digit1 = minut_digit1 + 48
+   while second >= 10 loop
+      second_digit1 = second_digit1 + 1
+      second = second - 10
+   end loop
+   second_digit0 = second + 48
+   second_digit1 = second_digit1 + 48
+
+   lcd_writechar(hrs_digit1  )
+   lcd_writechar(hrs_digit0)
+   lcd_writechar(seperator)
+   lcd_writechar(minut_digit1)
+   lcd_writechar(minut_digit0)
+   lcd_writechar(seperator)
+   lcd_writechar(second_digit1)
+   lcd_writechar(second_digit0)
+
+end procedure
+-- ----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- Displays a date (byte),
+-- -----------------------------------------------------------------------------
+
+procedure lcd_date( byte in day, byte in mounth, word in year, byte in seperator, bit in day_mounth_notation ) is
+   var byte day_digit0 = 0   ;l
+   var byte day_digit1 = 0   ;10
+   var byte mounth_digit0 = 0   ;1
+   var byte mounth_digit1 = 0   ;10
+   var word year_digit0 = 0   ;1
+   var byte year_digit1 = 0   ;10
+   var byte year_digit2 = 0   ;100
+   var byte year_digit3 = 0   ;1000
+   var word year_mem = year
+
+
+   while day >= 10 loop
+      day_digit1 = day_digit1 + 1
+      day = day - 10
+   end loop
+   day_digit0 = day + 48
+   day_digit1 = day_digit1 + 48
+   while mounth >= 10 loop
+      mounth_digit1 = mounth_digit1 + 1
+      mounth = mounth - 10
+   end loop
+   mounth_digit0 = mounth +48
+   mounth_digit1 = mounth_digit1 + 48
+
+   while year >= 1000 loop
+      year_digit3 = year_digit3 + 1
+      year = year - 1000
+   end loop
+
+   while year >= 100 loop
+      year_digit2 = year_digit2 + 1
+      year = year - 100
+   end loop
+
+   while year >= 10 loop
+      year_digit1 = year_digit1 + 1
+      year = year - 10
+   end loop
+   year_digit3 = year_digit3 + 48
+   year_digit2 = year_digit2 + 48
+   year_digit1 = year_digit1 + 48
+   year_digit0 = year + 48
+
+
+   if !day_mounth_notation then
+      lcd_writechar(mounth_digit1)
+      lcd_writechar(mounth_digit0)
+      lcd_writechar(seperator)
+      lcd_writechar(day_digit1  )
+      lcd_writechar(day_digit0)
+      lcd_writechar(seperator)
+   else
+      lcd_writechar(day_digit1  )
+      lcd_writechar(day_digit0)
+      lcd_writechar(seperator)
+      lcd_writechar(mounth_digit1)
+      lcd_writechar(mounth_digit0)
+      lcd_writechar(seperator)
+   end if
+
+   if year_mem > 100 then
+      lcd_writechar(year_digit3)
+      lcd_writechar(year_digit2)
+   else
+      lcd_writechar("'")
+   end if
+
+   lcd_writechar(year_digit1)
+   lcd_writechar(year_digit0)
+
+end procedure
+-- ----------------------------------------------------------------------------
+
