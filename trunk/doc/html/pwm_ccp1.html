@@ -15,7 +15,7 @@
 	</a>
 
     <div>
-		<font size="+1"><i>hardware PWM control, dedicated to register CCP1</i></font>
+		<font size="+1"><i>hardware PWM control, dedicated to module CCP1</i></font>
 	</div>
 
 	<br/>
@@ -36,7 +36,7 @@
 			<b>Adapted-by</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			Sebastien Lelong
+			Sebastien Lelong, Rob Hamerling.
 		</td>
 	</tr>
 	<tr>
@@ -44,7 +44,7 @@
 			<b>Compiler</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			>=2.4g
+			2.4l
 		</td>
 	</tr>
 	</table>
@@ -53,8 +53,9 @@
 	
 	<b>Description</b>
 	<p>
-		<pre>performs PWM operations on CCP1
-The target must support this.
+		<pre>Performs PWM operations on the CCP1 module.
+This file is automatically included by pwm_hardware.jal
+when the target PIC has a CCP1 module.
 </pre>
 
 	</p>
@@ -63,8 +64,10 @@ The target must support this.
 
 	<b>Notes</b>
 	<p>
-		<pre>this is a heavy refactoring of the original pwm_hardware.jal
-Stef's lib
+		<pre>1. This is a heavy refactoring of the original pwm_hardware.jal
+          (Stef's lib)
+       2. Partly rewritten for JalV2 version 2.4l and Jallib revision 1171.
+          Reduced memory occupation. Added procedure for lowres PWM.
 </pre>
 
 	</p>
@@ -72,9 +75,9 @@ Stef's lib
 	
 	<b>Dependencies</b>
 	<p>
-		<ul>
-			<li><a href="pwm_common.html">pwm_common</a></li>
-		</ul>
+		<i>No dependency found</i>
+	</p>
+	<br/>
 
 
 			<br/>
@@ -83,11 +86,19 @@ Stef's lib
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#668f6e6823dbbeedca70ad1cf815b784">var byte ccpr1l_shadow  = 0
+				<b><code name="code" class="python"><a href="#bcedd5d2d86f1ef6794ef828ba6791a6">var bit*2 _ccp1con_shadow_dc1b  at _ccp1con_shadow : 4    -- 2 LSbits of duty cycle
 </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#02d70528757e530044d0c1c359e1b8fe">var byte ccp1con_shadow = 0
+				<b><code name="code" class="python"><a href="#c5c7efad55fd0c15ab084fc21c765ee6">var byte  _ccpr1l_shadow  = 0                            -- 8 MSbits of duty cycle
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#0c08dfc79bdc337e230185bdab9d3e48">var bit*4 _ccp1con_shadow_ccp1m at _ccp1con_shadow : 0    -- mode pattern
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#0a8e80d140f7ff469a657245595c98c1">var byte  _ccp1con_shadow = 0b0000_0000                  -- shadow
 </a></code></b>
 		</li>
 	</ul>
@@ -96,19 +107,22 @@ Stef's lib
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
+				<b><code name="code" class="python"><a href="#539554b92db2c1296930426716eefae3">pwm1_set_percent_dutycycle(byte in percent)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#537495cacb336bf820a348d2f9ed3b0d">pwm1_on()</a></code></b>
+		</li>
+		<li>
 				<b><code name="code" class="python"><a href="#8850fb0e252d0c1b792a804141fda482">pwm1_off()</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#539554b92db2c1296930426716eefae3">pwm1_set_percent_dutycycle(byte in percent)</a></code></b>
+				<b><code name="code" class="python"><a href="#2bfcd7d67d3d637c5aa2e888aa9448b4">pwm1_set_dutycycle_lowres(byte in duty)</a></code></b>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a href="#21eab91fdfdd13a4a1fa7e1d9fe306c4">pwm1_set_dutycycle_highres(word in duty)</a></code></b>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a href="#753e466da60c5695bf985d46f24b12bd">pwm1_set_dutycycle(byte in duty)</a></code></b>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#537495cacb336bf820a348d2f9ed3b0d">pwm1_on()</a></code></b>
 		</li>
 	</ul>
 
@@ -125,12 +139,22 @@ Stef's lib
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="668f6e6823dbbeedca70ad1cf815b784" href="#summary">var byte ccpr1l_shadow  = 0
+				<b><code name="code" class="python"><a name="bcedd5d2d86f1ef6794ef828ba6791a6" href="#summary">var bit*2 _ccp1con_shadow_dc1b  at _ccp1con_shadow : 4    -- 2 LSbits of duty cycle
 </a></code></b>
 				<p><i>No documentation found</i></p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="02d70528757e530044d0c1c359e1b8fe" href="#summary">var byte ccp1con_shadow = 0
+				<b><code name="code" class="python"><a name="c5c7efad55fd0c15ab084fc21c765ee6" href="#summary">var byte  _ccpr1l_shadow  = 0                            -- 8 MSbits of duty cycle
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="0c08dfc79bdc337e230185bdab9d3e48" href="#summary">var bit*4 _ccp1con_shadow_ccp1m at _ccp1con_shadow : 0    -- mode pattern
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="0a8e80d140f7ff469a657245595c98c1" href="#summary">var byte  _ccp1con_shadow = 0b0000_0000                  -- shadow
 </a></code></b>
 				<p><i>No documentation found</i></p>
 		</li>
@@ -140,42 +164,70 @@ Stef's lib
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="8850fb0e252d0c1b792a804141fda482" href="#summary">pwm1_off()</a></code></b>
-				<p><i>No documentation found</i></p>
-		</li>
-		<li>
 				<b><code name="code" class="python"><a name="539554b92db2c1296930426716eefae3" href="#summary">pwm1_set_percent_dutycycle(byte in percent)</a></code></b>
-				<p>	<pre>This procedure set duty cycle using a percentage
-According to what has been computed by pwm_set_frequency(),
-it converts the duty percent to a value suitable for the
-selected pwm frequency.
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="21eab91fdfdd13a4a1fa7e1d9fe306c4" href="#summary">pwm1_set_dutycycle_highres(word in duty)</a></code></b>
-				<p>	<pre>sets dutycyle in high resolution mode
-the word passed to the procedure represents the high resolution value
-of the duty cycle:
- * duty1h<0:1> are the 2 LSbits
- * duty1h<2:9> are the 8 MSbits
-Because duty cycle is coded on 10 bits, the given value can't greater than 1024
-If not active yet, calling this procedure will enable PWM
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="753e466da60c5695bf985d46f24b12bd" href="#summary">pwm1_set_dutycycle(byte in duty)</a></code></b>
-				<p>	<pre>Sets dutycyle in low resolution mode.
-The 2 LSbits take their value from ccp1con_shadow, by default 0
-This means if duty1 = 0, there's no pwm, if duty1 = 255, you're closed to
-(but not at) the maximum pwm
+				<p>	<pre>Set a percentage duty cycle, allowing max 100 PWM steps.
+Allowed range: 0..100
+The duty cycle will be set to the specified percentage of the maximum
+for the current PWM frequency.
+Note: The number of available PWM steps can be lower than 100 with
+(very) high PWM frequencies.
+Note: pin_CCP1_direction should be set to output!
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="537495cacb336bf820a348d2f9ed3b0d" href="#summary">pwm1_on()</a></code></b>
-				<p><i>No documentation found</i></p>
+				<p>	<pre>PWM mode on
+Restore duty cycle from shadow registers
+Note: pin_CCP1_direction should be set to output!
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="8850fb0e252d0c1b792a804141fda482" href="#summary">pwm1_off()</a></code></b>
+				<p>	<pre>PWM mode off
+retain duty cycle setting in shadow registers
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="2bfcd7d67d3d637c5aa2e888aa9448b4" href="#summary">pwm1_set_dutycycle_lowres(byte in duty)</a></code></b>
+				<p>	<pre>Set dutycycle with 8-bits resolution allowing 255 PWM steps.
+The 'duty' argument is the 8-bits absolute value for the duty cycle:
+ * duty<1:0> are the 2 LSbits
+ * duty<7:2> are the 6 MSbits
+Allowed range: 0..255
+Beware that steps 256..1023 are not available. In other words
+the available PWM range is 25% of the highres procedure.
+This procedure is particularly suitable with higher frequencies
+whereby the PWM resolution is limited to 256 steps or less!
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="21eab91fdfdd13a4a1fa7e1d9fe306c4" href="#summary">pwm1_set_dutycycle_highres(word in duty)</a></code></b>
+				<p>	<pre>Set dutycycle with 10-bits resolution, allowing 1024 PWM steps.
+The 'duty' argument is a (max) 10-bits absolute value for the duty cycle:
+ * duty<1:0> are the 2 LSbits
+ * duty<9:2> are the 8 MSbits
+Allowed range: 0..1023
+Note: pin_CCP1_direction should be set to output!
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="753e466da60c5695bf985d46f24b12bd" href="#summary">pwm1_set_dutycycle(byte in duty)</a></code></b>
+				<p>	<pre>Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
+This procedure is equivalent to pwm1_set_dutycycle_highres(), but
+the low order 2 bits of the 10-bits duty cycle are set to 0.
+This means that only every 4th of the available 1023 steps can be selected
+and consequently max 255 PWM steps are available.
+This procedure is for user convenience, allowing to specify an 8 bits
+value for the duty cycle is for many applications satisfactory.
+Calling this procedure will also activate PWM.
+Note: pin_CCP1_direction should be set to output!
+</pre>
+</p>
 		</li>
 	</ul>
 
