@@ -11,7 +11,7 @@
 all : clean test
 
 WEEKLYBUILDCODENAME=bee
-VERSION=dev
+VERSION=0.5.0
 SAMPLIR_DIR=../sample
 TEST_DIR=../test
 INCLUDE_DIR=../include
