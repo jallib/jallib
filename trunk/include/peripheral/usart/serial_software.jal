@@ -81,70 +81,72 @@ end if
 
 
 
--- receiving is optimized for 20 Mhz, 320_400 Baud
---   Number of instructions = (3 * olval * Ilval) + (4 * olval) + 15
--- 320kB  ==>  olval = ilval = 1
--- next optimization for 20 Mhz, 115_200 Baud  olval = 1
---   olval = 1   ==>   ilval = 8
--- all other buadrates downto 1200 shouldnt be a problem now
--- because of "IF-statement" this constant must be declared as a var
+;-- receiving is optimized for 20 Mhz, 320_400 Baud
+;--   Number of instructions = (3 * olval * Ilval) + (4 * olval) + 15
+;-- 320kB  ==>  olval = ilval = 1
+;-- next optimization for 20 Mhz, 115_200 Baud  olval = 1
+;--   olval = 1   ==>   ilval = 8
+;-- all other buadrates downto 1200 shouldnt be a problem now
+;-- because of "IF-statement" this constant must be declared as a var
+;
+;var byte ilval
+;var byte olval
+;var byte ilval0
+;
+;if serial_sw_baudrate < 200_000 then
+;   const _olval  = ( _NINSTR / ( 3 * 255 )) + 1
+;   const _ilval  = ( ( _NINSTR - ( 4 * _olval ) ) - 15 ) / ( 3 * _olval )
+;   const _ilval0 = ( ( _NINSTR2 - ( 4 * _olval ) ) - 5 ) / ( 3 * _olval )
+;   
+;   
+;   ilval  = _ilval
+;   olval  = _olval
+;   ;due to rounding the next value can slightly below 1
+;   if _ilval0 > 0 then
+;      ilval0 = _ilval0
+;   else
+;      ilval0 = 1
+;   end if
+;   ilval0 = _ilval0
+;   
+;   -- test if baudrate valid for the chosen Xtal frequency
+;   if _olval > 255 then
+;      pragma error  -- baudrate too low for this Xtal
+;   end if
+;   if _olval == 0 then
+;      pragma error  -- baudrate too high for this Xtal
+;   end if
+;   
+;else
+;   const _ilval = 1
+;   const _olval = ((target_clock / (4 * serial_sw_baudrate)) - 15 ) / (4 + 3 * _ilval)
+;   ilval = _ilval
+;   olval = _olval
+;
+;end if
+;
+;-- For Xtal = 20_000_000, the following counter values are calculated (in Hex)
+;--  Baud      olcnt    ilcnt     ILcnt0      Ninstr
+;--  110       3C       FB        7C
+;--  300       16       FA        7C
+;--  600       0B       FA        7C
+;--  1200      06       E5        72
+;--  2400      03       E4        72
+;--  4800      02       A9        55
+;--  9600      01       A7        55
+;--  14_400    01       6D        38
+;--  19_200    01       50        2A
+;--  38_400    01       25        14
+;--  57_600    01       16        0D
+;--  115_200   01       08        05          43
+;--  230_400   ?        ?         ?           22    NOT TESTED
+;--
+;-- Test sequence used (Hex)
+;--    01  02  04  08  10  20  40  80  00 FF  AA  55
 
-var byte ilval
-var byte olval
-var byte ilval0
-
-if serial_sw_baudrate < 200_000 then
-   const _olval  = ( _NINSTR / ( 3 * 255 )) + 1
-   const _ilval  = ( ( _NINSTR - ( 4 * _olval ) ) - 15 ) / ( 3 * _olval )
-   const _ilval0 = ( ( _NINSTR2 - ( 4 * _olval ) ) - 5 ) / ( 3 * _olval )
-   
-   
-   ilval  = _ilval
-   olval  = _olval
-   ;due to rounding the next value can slightly below 1
-   if _ilval0 > 0 then
-      ilval0 = _ilval0
-   else
-      ilval0 = 1
-   end if
-   ilval0 = _ilval0
-   
-   -- test if baudrate valid for the chosen Xtal frequency
-   if _olval > 255 then
-      pragma error  -- baudrate too low for this Xtal
-   end if
-   if _olval == 0 then
-      pragma error  -- baudrate too high for this Xtal
-   end if
-   
-else
-   const _ilval = 1
-   const _olval = ((target_clock / (4 * serial_sw_baudrate)) - 15 ) / (4 + 3 * _ilval)
-   ilval = _ilval
-   olval = _olval
-
-end if
-
--- For Xtal = 20_000_000, the following counter values are calculated (in Hex)
---  Baud      olcnt    ilcnt     ILcnt0      Ninstr
---  110       3C       FB        7C
---  300       16       FA        7C
---  600       0B       FA        7C
---  1200      06       E5        72
---  2400      03       E4        72
---  4800      02       A9        55
---  9600      01       A7        55
---  14_400    01       6D        38
---  19_200    01       50        2A
---  38_400    01       25        14
---  57_600    01       16        0D
---  115_200   01       08        05          43
---  230_400   ?        ?         ?           22    NOT TESTED
---
--- Test sequence used (Hex)
---    01  02  04  08  10  20  40  80  00 FF  AA  55
-
-
+-- calculate instruction execution time in 10ns units
+const serial_sw_instruction_time = 400_000_000 / target_clock
+const serial_sw_bit_time = (1_000_000/serial_sw_baudrate) - ((13 * serial_sw_instruction_time) / 100)
 
 -- Waits untill a character is received.
 -- Interrupts will be disabled during this routine, but restored afterwards.
@@ -166,16 +168,16 @@ procedure serial_sw_write(byte in data) is
    
    if serial_sw_invert then
       serial_sw_tx_pin = low
-      _usec_delay((1_000_000/serial_sw_baudrate)-2)
+      _usec_delay(serial_sw_bit_time)
       for 8 loop
          -- wait a whole bittime, less some usec for other actions
          serial_sw_tx_pin = data_bit
          data = data >> 1
-         _usec_delay((1_000_000/serial_sw_baudrate)-2)
+         _usec_delay(serial_sw_bit_time)
       end loop
       -- add stop bit(s)
       serial_sw_tx_pin = high
-      _usec_delay((serial_sw_stopbits * (1_000_000/serial_sw_baudrate)))
+      _usec_delay(serial_sw_stopbits * serial_sw_bit_time)
       
    else
       -- invert the data
@@ -186,11 +188,11 @@ procedure serial_sw_write(byte in data) is
          -- wait a whole bittime, less some usec for other actions
          serial_sw_tx_pin = data_bit
          data = data >> 1
-         _usec_delay((1_000_000/serial_sw_baudrate)-2)
+         _usec_delay(serial_sw_bit_time)
       end loop
       -- add stop bit(s)
       serial_sw_tx_pin = low
-      _usec_delay((serial_sw_stopbits * (1_000_000/serial_sw_baudrate)))
+      _usec_delay(serial_sw_stopbits * serial_sw_bit_time)
    end if
    
    -- restore old interrupt status
@@ -226,14 +228,14 @@ procedure serial_sw_read_wait(byte out data) is
          while serial_sw_rx_pin loop end loop 
          
          -- wait half a bit time, less 5 usec for other actions
-         _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
+         _usec_delay(serial_sw_bit_time / 2)
          
          -- test if still startbit, otherwise restart
          if !serial_sw_rx_pin then
             -- now fetch 8 bits
             for 8 loop
                -- wait a whole bittime, less 5 usec for other actions
-               _usec_delay((1_000_000/serial_sw_baudrate)-1)
+               _usec_delay(serial_sw_bit_time)
                -- shift new bit in
                data = data >> 1
                if serial_sw_rx_pin then
@@ -255,14 +257,14 @@ procedure serial_sw_read_wait(byte out data) is
          while !serial_sw_rx_pin loop end loop 
          
          -- wait half a bit time, less 5 usec for other actions
-         _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
+         _usec_delay((serial_sw_bit_time / 2)
          
          -- test if still startbit, otherwise restart
          if serial_sw_rx_pin then
             -- now fetch 8 bits
             for 8 loop
                -- wait a whole bittime, less 5 usec for other actions
-               _usec_delay((1_000_000/serial_sw_baudrate)-1)
+               _usec_delay((serial_sw_bit_time)
                -- shift new bit in
                data = data >> 1
                if !serial_sw_rx_pin then
@@ -329,12 +331,12 @@ function serial_sw_read(byte out data) return bit is
       while serial_sw_rx_pin loop end loop 
       
       -- wait half a bit time, less 5 usec for other actions
-      _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
+      _usec_delay(serial_sw_bit_time / 2)
       
       -- now fetch 8 bits
       for 8 loop
          -- wait a whole bittime, less 5 usec for other actions
-         _usec_delay((1_000_000/serial_sw_baudrate)-1)
+         _usec_delay(serial_sw_bit_time)
          -- shift new bit in
          data = data >> 1
          if serial_sw_rx_pin then
@@ -346,12 +348,12 @@ function serial_sw_read(byte out data) return bit is
       while !serial_sw_rx_pin loop end loop 
       
       -- wait half a bit time, less 5 usec for other actions
-      _usec_delay((1_000_000/(2*serial_sw_baudrate))-1)
+      _usec_delay(serial_sw_bit_time / 2)
       
       -- now fetch 8 bits
       for 8 loop
          -- wait a whole bittime, less 5 usec for other actions
-         _usec_delay((1_000_000/serial_sw_baudrate)-1)
+         _usec_delay((serial_sw_bit_time)
          -- shift new bit in
          data = data >> 1
          if !serial_sw_rx_pin then
