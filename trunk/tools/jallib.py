@@ -880,14 +880,14 @@ def do_unittest(args):
                     if clean_files:
                         # clean tmp file !
                         os.unlink(t)
-                if oracle['failure']:
+                if oracle['failure'] or oracle['notrun']:
                     at_least_one_failed = True
                 print "Test results: %s" % oracle
 
     # or just a regular file
     else:
         oracle = unittest(filename)
-        if oracle['failure']:
+        if oracle['failure'] or oracle['notrun']:
             at_least_one_failed = True
         print "Test results: %s" % oracle
 
