@@ -13,11 +13,13 @@
 #  2. prepare HTML for publishing (htmlize.py)
 #  3. format and send an email with content & attachements
 
-source japp_config.py
+
+CONFFILE=$1
+source $CONFFILE
 
 if [ "$?" != "0" ]
 then
-   echo "Unable to source configuration file 'japp_config.py'"
+   echo "Unable to source configuration file '$CONFFILE'"
    exit 255
 fi
 
@@ -68,7 +70,7 @@ do
 		 continue
 	  fi
 	  echo "    Preparing HTML for Drupal publishing..."
-	  python $JAPP_ROOT/htmlizer.py $JAPP_TMP/$noext.html
+	  python $JAPP_ROOT/htmlizer.py $CONFFILE $JAPP_TMP/$noext.html
 	  if [ "$?" != "0" ]
 	  then
 		 echo
@@ -78,7 +80,7 @@ do
 	  fi
 	  echo "    Sending content..."
 	  pushd $JAPP_ROOT
-	  python publish.py $JAPP_TMP/topublish
+	  python publish.py $CONFFILE $JAPP_TMP/topublish
 	  if [ "$?" != "0" ]
 	  then
 		 echo
