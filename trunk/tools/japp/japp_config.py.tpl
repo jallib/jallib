@@ -22,6 +22,14 @@ JAPP_ROOT=
 # Temporary directory used to produce output files
 JAPP_TMP=
 
+# URL context. This is used to add some kind of context prefix
+# in URLs. For instance, one may publish a page for jallib tutorial.
+# Such context can be transformed in URL to "jallib/tutorials/the_tutorial".
+# In this case: JAPP_CONTEXT_URL="jallib/tutorials"
+# This is useful to prevent URL collision and segment content.
+# Note: no "/" at the begining or the end, please
+JAPP_CONTEXT_URL=
+
 
 # Email configuration
 #--------------------

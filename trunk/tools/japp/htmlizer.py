@@ -33,11 +33,17 @@ CONTENT_FILE = "content"
 TITLE_FILE = "title"
 PATH_FILE = "path"
 
+
 try:
-    hfile = sys.argv[1]    
+    conffile = sys.argv[1]
+    hfile = sys.argv[2]
 except IndexError:
-    print >> sys.stderr, "Please provide a HTML file as input"
+    print >> sys.stderr, "Please provide a config file and a HTML file as input"
     sys.exit(255)
+
+conffile = conffile.replace(".py","")
+exec("import %s as japp_config" % conffile)
+JAPP_CONTEXT_URL = japp_config.JAPP_CONTEXT_URL
 
 # prepare ouput directory
 dirn = os.path.dirname(hfile)
@@ -104,7 +110,7 @@ for a in as_:
         # also remove prefix, just keep last part of URL correspoding to XML file
         path = path.split("/")[-1]
         # add prefix for Drupal's content
-        path = DRUPAL_CONTENT_PREFIX + path
+        path = DRUPAL_CONTENT_PREFIX + JAPP_CONTEXT_URL + "/" + path
         
         # back to <a> element
         a['href'] = urlparse.urlunparse((scheme, netloc, path, params, query, fragment))
@@ -135,6 +141,6 @@ fout.write(title)
 fout.close()
 
 fout = file("%s/%s/%s" % (dirn,OUTPUT_DIR,PATH_FILE),"w")
-fout.write(noext)
+fout.write(JAPP_CONTEXT_URL + "/" + noext)
 fout.close()
 

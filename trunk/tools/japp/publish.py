@@ -9,10 +9,15 @@ import japp_config
 COMMASPACE = ', '
 
 try:
-    topublish = sys.argv[1]
+    conffile = sys.argv[1]
+    topublish = sys.argv[2]
 except IndexError:
-    print >> sys.stderr, "Please provide a readdy-to-publish directory"
+    print >> sys.stderr, "Please provide a config file and a readdy-to-publish directory"
     sys.exit(255)
+
+conffile = conffile.replace(".py","")
+exec("import %s as japp_config" % conffile)
+JAPP_CONTEXT_URL = japp_config.JAPP_CONTEXT_URL
 
 title = file("%s/title" % topublish).read().strip()
 content = file("%s/content" % topublish).read()
