@@ -87,30 +87,30 @@ var byte  _sta015_head_low                 -- holds some mp3 info
 -- write to any sta015 register
 --------------------------------------------------------------------------------
 procedure sta015_write_register(byte in reg_address, byte in data) is
-   var byte ack_ok  -- true if recieved from slave
-   
-   i2c_start()                                -- send start bit
-   ack_ok = i2c_transmit_byte (0x86)          -- transmit data & wait for ack
-   ack_ok = i2c_transmit_byte (reg_address)   -- transmit data & wait for ack
-   ack_ok = i2c_transmit_byte (data)          -- transmit data & wait for ack
-   i2c_stop()                                 -- send stop bit
+  var byte ack_ok  -- true if recieved from slave
+
+  i2c_start()                                -- send start bit
+  ack_ok = i2c_transmit_byte (0x86)          -- transmit data & wait for ack
+  ack_ok = i2c_transmit_byte (reg_address)   -- transmit data & wait for ack
+  ack_ok = i2c_transmit_byte (data)          -- transmit data & wait for ack
+  i2c_stop()                                 -- send stop bit
 end procedure
 
 --------------------------------------------------------------------------------
 -- read to any sta015 register
 --------------------------------------------------------------------------------
 procedure sta015_read_register(byte in reg_address, byte out data) is
-   var byte ack_ok            -- true if recieved from slave
-   
-   i2c_start()                                     -- send start bit
-   ack_ok = i2c_transmit_byte (0x86)               -- transmit data & wait for ack
-   ack_ok = i2c_transmit_byte (reg_address)        -- transmit data & wait for ack
-   
-   i2c_start()
-   -- send start bit
-   ack_ok = i2c_transmit_byte (0x86 + 1)           -- transmit data & wait for ack
-   data = i2c_receive_byte (0)                     -- recieve data & get nack (no ack)
-   i2c_stop()                                      -- send stop bit
+  var byte ack_ok            -- true if recieved from slave
+
+  i2c_start()                                     -- send start bit
+  ack_ok = i2c_transmit_byte (0x86)               -- transmit data & wait for ack
+  ack_ok = i2c_transmit_byte (reg_address)        -- transmit data & wait for ack
+
+  i2c_start()
+                                                  -- send start bit
+  ack_ok = i2c_transmit_byte (0x86 + 1)           -- transmit data & wait for ack
+  data = i2c_receive_byte (0)                     -- recieve data & get nack (no ack)
+  i2c_stop()                                      -- send stop bit
 end procedure
 
 --------------------------------------------------------------------------------
@@ -118,14 +118,14 @@ end procedure
 --------------------------------------------------------------------------------
 procedure sta015_send(byte in data) is
    pragma INLINE
-   
+
    if STA015_ALWAYS_SET_SPI_MODE == TRUE then
       SSPCON_CKP = 0
       SSPSTAT_CKE = 1
    end if
    
    sta015_bit_en = high   -- enable chip select
-   
+
    while sta015_data_request == low loop -- wait till data gets requested
    end loop
    
@@ -138,19 +138,20 @@ END PROCEDURE
 --------------------------------------------------------------------------------
 procedure sta015_init(byte in crystal_speed) is
 ;  sta015_clock = low    -- input clock normally now
-   sta015_crystal = crystal_speed
-   
-   
-   
-   -- hardware reset the device with reset pin
-   sta015_hw_reset = low
-   _usec_delay (20_000)
-   sta015_hw_reset = high
-   
-   -- software reset at register 0x10
-   sta015_write_register (16, 1)
-   _usec_delay (20_000)
-   
+  sta015_crystal = crystal_speed
+  
+
+  if STA015_USE_RESET_PIN == TRUE then
+     -- hardware reset the device with reset pin
+     sta015_hw_reset = low
+     _usec_delay (20_000)
+     sta015_hw_reset = high
+  end if
+  
+  -- software reset at register 0x10
+  sta015_write_register (16, 1)
+  _usec_delay (20_000)
+
    -- ADC settings for ADC device CS4334
    sta015_write_register (84, 1)  -- 0x54 PCM DIVIDER, 256X oversample, 32 bit words (allows 24 bit output)
    sta015_write_register (85, 33) -- 0x55 PCMCONF, I2S format for CS4334
@@ -185,7 +186,7 @@ procedure sta015_init(byte in crystal_speed) is
       sta015_write_register (82, 49)
       sta015_write_register (97, 15)
       sta015_write_register (100, 42)
-      sta015_write_register (101, 169)
+    sta015_write_register (101, 169)
    elsif crystal_speed == STA015_OSC_14_7456 then  -- 14.7456 mhz crystal
       sta015_write_register (7, 0)
       sta015_write_register (6, 12)
@@ -201,12 +202,12 @@ procedure sta015_init(byte in crystal_speed) is
    sta015_write_register (5, 161) -- PLLCTL
    ;sta015_write_register (16, 4)  --	SDI sampled on falling edge of SCKR
    sta015_write_register (24, 4)  -- DATA_REQ_ENABLE - enable the data request pin
-   
+
    sta015_write_register (_STA015_MUTE, 0x00) -- NO MUTE
    sta015_write_register (_STA015_RUN, 0x01)  -- Start Running
    sta015_write_register (_STA015_PLAY, 0x01) -- Start Playing
    sta015_write_register (_STA015_TONE_ATTEN, STA015_DEFAULT_ATTENUATION)
-   
+
 end procedure
 
 --------------------------------------------------------------------------------
@@ -216,86 +217,86 @@ procedure sta015_read_mp3_info() is
    sta015_read_register(0x43, _sta015_head_high)
    sta015_read_register(0x44, _sta015_head_mid)
    sta015_read_register(0x45, _sta015_head_low)
-   
+
    -- get the mpeg id
    var bit mpeg_id at _sta015_head_high : 3
-   
+
    -- get the bitrate index
    var byte bitrate_index
    bitrate_index = _sta015_head_mid >> 4
-   
+
    var byte mode
    mode = _sta015_head_low >> 6
-   
+
    -- get the bitrate
    if mpeg_id == 1 then  -- if mpeg_id = 1
-      if bitrate_index == 0 then
-         sta015_bitrate = 0
-      elsif bitrate_index == 1 then
-         sta015_bitrate = 32
-      elsif bitrate_index == 2 then
-         sta015_bitrate = 40
-      elsif bitrate_index == 3 then
-         sta015_bitrate = 48
-      elsif bitrate_index == 4 then
-         sta015_bitrate = 56
-      elsif bitrate_index == 5 then
-         sta015_bitrate = 64
-      elsif bitrate_index == 6 then
-         sta015_bitrate = 80
-      elsif bitrate_index == 7 then
-         sta015_bitrate = 96
-      elsif bitrate_index == 8 then
-         sta015_bitrate = 112
-      elsif bitrate_index == 9 then
-         sta015_bitrate = 128
-      elsif bitrate_index == 10 then
-         sta015_bitrate = 160
-      elsif bitrate_index == 11 then
-         sta015_bitrate = 192
-      elsif bitrate_index == 12 then
-         sta015_bitrate = 224
-      elsif bitrate_index == 13 then
-         sta015_bitrate = 256
-      elsif bitrate_index == 14 then
-         sta015_bitrate = 320
-      elsif bitrate_index == 15 then
-         sta015_bitrate = 0
-      end if
+     if bitrate_index == 0 then
+        sta015_bitrate = 0
+     elsif bitrate_index == 1 then
+        sta015_bitrate = 32
+     elsif bitrate_index == 2 then
+        sta015_bitrate = 40
+     elsif bitrate_index == 3 then
+        sta015_bitrate = 48
+     elsif bitrate_index == 4 then
+        sta015_bitrate = 56
+     elsif bitrate_index == 5 then
+        sta015_bitrate = 64
+     elsif bitrate_index == 6 then
+        sta015_bitrate = 80
+     elsif bitrate_index == 7 then
+        sta015_bitrate = 96
+     elsif bitrate_index == 8 then
+        sta015_bitrate = 112
+     elsif bitrate_index == 9 then
+        sta015_bitrate = 128
+     elsif bitrate_index == 10 then
+        sta015_bitrate = 160
+     elsif bitrate_index == 11 then
+        sta015_bitrate = 192
+     elsif bitrate_index == 12 then
+        sta015_bitrate = 224
+     elsif bitrate_index == 13 then
+        sta015_bitrate = 256
+     elsif bitrate_index == 14 then
+        sta015_bitrate = 320
+     elsif bitrate_index == 15 then
+        sta015_bitrate = 0
+     end if
    else -- if mpeg_id = 0
-      if bitrate_index == 0 then
-         sta015_bitrate = 0
-      elsif bitrate_index == 1 then
-         sta015_bitrate = 8
-      elsif bitrate_index == 2 then
-         sta015_bitrate = 16
-      elsif bitrate_index == 3 then
-         sta015_bitrate = 24
-      elsif bitrate_index == 4 then
-         sta015_bitrate = 32
-      elsif bitrate_index == 5 then
-         sta015_bitrate = 40
-      elsif bitrate_index == 6 then
-         sta015_bitrate = 48
-      elsif bitrate_index == 7 then
-         sta015_bitrate = 56
-      elsif bitrate_index == 8 then
-         sta015_bitrate = 64
-      elsif bitrate_index == 9 then
-         sta015_bitrate = 80
-      elsif bitrate_index == 10 then
-         sta015_bitrate = 96
-      elsif bitrate_index == 11 then
-         sta015_bitrate = 112
-      elsif bitrate_index == 12 then
-         sta015_bitrate = 128
-      elsif bitrate_index == 13 then
-         sta015_bitrate = 144
-      elsif bitrate_index == 14 then
-         sta015_bitrate = 160
-      elsif bitrate_index == 15 then
-         sta015_bitrate = 0
-      end if
+     if bitrate_index == 0 then
+        sta015_bitrate = 0
+     elsif bitrate_index == 1 then
+        sta015_bitrate = 8
+     elsif bitrate_index == 2 then
+        sta015_bitrate = 16
+     elsif bitrate_index == 3 then
+        sta015_bitrate = 24
+     elsif bitrate_index == 4 then
+        sta015_bitrate = 32
+     elsif bitrate_index == 5 then
+        sta015_bitrate = 40
+     elsif bitrate_index == 6 then
+        sta015_bitrate = 48
+     elsif bitrate_index == 7 then
+        sta015_bitrate = 56
+     elsif bitrate_index == 8 then
+        sta015_bitrate = 64
+     elsif bitrate_index == 9 then
+        sta015_bitrate = 80
+     elsif bitrate_index == 10 then
+        sta015_bitrate = 96
+     elsif bitrate_index == 11 then
+        sta015_bitrate = 112
+     elsif bitrate_index == 12 then
+        sta015_bitrate = 128
+     elsif bitrate_index == 13 then
+        sta015_bitrate = 144
+     elsif bitrate_index == 14 then
+        sta015_bitrate = 160
+     elsif bitrate_index == 15 then
+        sta015_bitrate = 0
+     end if
    end if
 end procedure
 
@@ -367,13 +368,13 @@ end procedure
 -- send volume info, bitrate info and stereo/mono info to serial port
 --------------------------------------------------------------------------------
 procedure sta015_send_volume() is -- send the current volume to the serial port
-   
+
    serial_hw_write ("V")
    serial_hw_write ("O")
    serial_hw_write ("L")
    serial_hw_write (":")
    format_word_dec(serial_hw_data,sta015_attenuation,3,0)
-   
+
    serial_hw_write (0x20)
    serial_hw_write (0x20)
    serial_hw_write ("B")
@@ -382,7 +383,7 @@ procedure sta015_send_volume() is -- send the current volume to the serial port
    serial_hw_write ("E")
    serial_hw_write (":")
    format_sword_dec(serial_hw_data,sta015_base,4,0)
-   
+
    serial_hw_write (0x20)
    serial_hw_write (0x20)
    serial_hw_write ("T")
@@ -393,7 +394,7 @@ procedure sta015_send_volume() is -- send the current volume to the serial port
    serial_hw_write ("E")
    serial_hw_write (":")
    format_sword_dec(serial_hw_data,sta015_treble,4,0)
-   
+
    serial_hw_write (0x20)
    serial_hw_write (0x20)
    serial_hw_write ("L")
@@ -402,7 +403,7 @@ procedure sta015_send_volume() is -- send the current volume to the serial port
    serial_hw_write ("T")
    serial_hw_write (":")
    format_word_dec(serial_hw_data,sta015_left,3,0)
-   
+
    serial_hw_write (0x20)
    serial_hw_write (0x20)
    serial_hw_write ("R")
@@ -412,10 +413,10 @@ procedure sta015_send_volume() is -- send the current volume to the serial port
    serial_hw_write ("T")
    serial_hw_write (":")
    format_word_dec(serial_hw_data,sta015_right,3,0)
-   
+
    serial_hw_write (13)
    serial_hw_write (10)
-   
+
    sta015_write_command (STA015_READ_INFO)
    format_word_dec(serial_hw_data,sta015_bitrate,3,0)
    serial_hw_write ("K")
@@ -466,7 +467,7 @@ procedure sta015_send_volume() is -- send the current volume to the serial port
       serial_hw_write ("N")
       serial_hw_write ("O")
    end if
-   
+
    serial_hw_write (13)
    serial_hw_write (10)
 end procedure
