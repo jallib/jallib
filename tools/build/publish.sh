@@ -13,7 +13,7 @@ export JALLIB_ROOT=`pwd`	# correct when set by buildbot
 ##export JALLIB_ROOT=`pwd`/../..	# run manually here
 export JALLIB_DITA=$JALLIB_ROOT/doc/dita
 export JALLIB_TOPUBLISH=$JALLIB_DITA/TOPUBLISH
-export JALLIB_LASTREVFILE=$JALLIB_DITA/lastrev
+###export JALLIB_LASTREVFILE=$JALLIB_DITA/lastrev
 
 JALLIB_TMP=$JALLIB_ROOT/tmp
 mkdir -p $JALLIB_TMP
