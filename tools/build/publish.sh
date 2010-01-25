@@ -9,11 +9,11 @@
 
 start_time=`date +%s`
 
-export JALLIB_ROOT=`pwd`	# correct when set by buildbot
+export JALLIB_ROOT=`pwd`/../build	# correct when set by buildbot
 ##export JALLIB_ROOT=`pwd`/../..	# run manually here
-export JALLIB_DITA=$JALLIB_ROOT/doc/dita
+export JALLIB_DITA=$JALLIB_ROOT
+export JALLIB_TOOLS=`pwd`/../tools
 export JALLIB_TOPUBLISH=$JALLIB_DITA/TOPUBLISH
-###export JALLIB_LASTREVFILE=$JALLIB_DITA/lastrev
 
 JALLIB_TMP=$JALLIB_ROOT/tmp
 mkdir -p $JALLIB_TMP
@@ -28,14 +28,17 @@ then
 fi
 
 # extracting changed lines 
-reposrev=`LANG=C svn info $JALLIB_TOPUBLISH | grep ^Revision: | sed "s#Revision:##" | sed "s# ##g"`
+svncmd="svn info $JALLIB_TOPUBLISH"
+LANG=C $svncmd
+reposrev=`LANG=C $svncmd | grep ^Revision: | sed "s#Revision:##" | sed "s# ##g"`
 lastrev=`cat $JALLIB_LASTREVFILE`
 at_least_one_failed=0
 counter=0
 # replace spaces on the fly to read whole line by whole line...
+echo svn diff -r$lastrev:$reposrev $JALLIB_TOPUBLISH
 for file in `cat <(svn diff -r$lastrev:$reposrev $JALLIB_TOPUBLISH  | grep "^+" | grep -v -e "^+#" -e "^+[[:space:]]*$" -e "^+++" | sed "s# \|\t#___#g")`
 do
-   pushd $JALLIB_ROOT/tools/japp
+   pushd $JALLIB_TOOLS/japp
 
    cmdline=`echo $file | sed "s#^+##" | sed "s#___# #g" `
    dita=`echo $cmdline | awk '{print $1}'`
