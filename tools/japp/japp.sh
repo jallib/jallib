@@ -42,6 +42,7 @@ then
    JAPP_TMP=/tmp/japptmp
 fi
 
+at_least_one_failed=0
 while read DITAFILE
 do
    [[ $DITAFILE == \#* ]] && continue
@@ -67,6 +68,7 @@ do
 		 echo
 		 echo
 		 echo "    Failed..."
+		 at_least_one_failed=1
 		 continue
 	  fi
 	  echo "    Preparing HTML for Drupal publishing..."
@@ -76,6 +78,7 @@ do
 		 echo
 		 echo
 		 echo "    Failed..."
+		 at_least_one_failed=1
 		 continue
 	  fi
 	  echo "    Sending content..."
@@ -86,7 +89,10 @@ do
 		 echo
 		 echo
 		 echo "    Failed..."
+		 at_least_one_failed=1
 	  fi
 	  popd
    fi
 done
+
+exit $at_least_one_failed
