@@ -9,11 +9,18 @@
 
 start_time=`date +%s`
 
-export JALLIB_ROOT=`pwd`/../build	# correct when set by buildbot
-##export JALLIB_ROOT=`pwd`/../..	# run manually here
-export JALLIB_DITA=$JALLIB_ROOT
-export JALLIB_TOOLS=`pwd`/../tools
+# when run by buildbot
+export JALLIB_ROOT=`pwd`
+export JALLIB_DITA=$JALLIB_ROOT/doc/dita
+export JALLIB_TOOLS=$JALLIB_ROOT/tools
 export JALLIB_TOPUBLISH=$JALLIB_DITA/TOPUBLISH
+
+### when run manually
+##export JALLIB_ROOT=`pwd`/../..
+##export JALLIB_DITA=$JALLIB_ROOT/doc/dita
+##export JALLIB_TOOLS=$JALLIB_ROOT/tools
+##export JALLIB_TOPUBLISH=$JALLIB_DITA/TOPUBLISH
+
 
 JALLIB_TMP=$JALLIB_ROOT/tmp
 mkdir -p $JALLIB_TMP
@@ -29,14 +36,17 @@ fi
 
 # extracting changed lines 
 svncmd="svn info $JALLIB_TOPUBLISH"
+echo "$svncmd"
 LANG=C $svncmd
 reposrev=`LANG=C $svncmd | grep ^Revision: | sed "s#Revision:##" | sed "s# ##g"`
 lastrev=`cat $JALLIB_LASTREVFILE`
 at_least_one_failed=0
 counter=0
 # replace spaces on the fly to read whole line by whole line...
-echo svn diff -r$lastrev:$reposrev $JALLIB_TOPUBLISH
-for file in `cat <(svn diff -r$lastrev:$reposrev $JALLIB_TOPUBLISH  | grep "^+" | grep -v -e "^+#" -e "^+[[:space:]]*$" -e "^+++" | sed "s# \|\t#___#g")`
+svncmd="svn diff -x -b -r$lastrev:$reposrev $JALLIB_TOPUBLISH"
+###svncmd="svn diff -x -b -r$lastrev $JALLIB_TOPUBLISH"
+echo $svncmd
+for file in `cat <($svncmd | grep "^+" | grep -v -e "^+#" -e "^+[[:space:]]*$" -e "^+++" | sed "s# \|\t#___#g")`
 do
    pushd $JALLIB_TOOLS/japp
 
@@ -45,16 +55,37 @@ do
    conf=`echo $cmdline | awk '{print $2}'`
    basedita=`basename $dita`
    # let's publish...
-   echo
-   echo Publishing $basedita using $conf configuration
-   echo 
-   echo $dita | ./japp.sh $conf
-   # pipe: exit code is from the right side, this is what we want
-   if [ "$?" != "0" ]
+   ismap=`echo $dita | grep -c "\.ditamap\$"`
+   if [ "$ismap" = "0" ]
    then
-	  echo "Failed to publish $basedita" >> $JALLIB_TMP/publish.failed
-	  at_least_one_failed=1
-	  counter=`expr $counter + 1`
+      echo
+      echo Publishing $basedita using $conf configuration
+      echo 
+      echo $dita | ./japp.sh $conf
+      # pipe: exit code is from the right side, this is what we want
+      if [ "$?" != "0" ]
+      then
+         echo "Failed to publish $basedita" >> $JALLIB_TMP/publish.failed
+         at_least_one_failed=1
+         counter=`expr $counter + 1`
+      fi
+   else
+      echo
+      echo Publishing ditamap $basedita using $conf configuration
+      echo
+      if ! test -s "$JAPP_DITAMAP_SCRIPT"
+      then
+         echo "Can't find script defined in JAPP_DITAMAP_SCRIPT"
+         exit 255
+      fi
+	  # black magic...
+      JAPPCONF=$conf $JAPP_DITAMAP_SCRIPT
+      if [ "$?" != "0" ]
+      then
+         echo "Failed to publish ditamap $basedita" >> $JALLIB_TMP/publish.failed
+         at_least_one_failed=1
+         counter=`expr $counter + 1`
+      fi
    fi
 
    popd
