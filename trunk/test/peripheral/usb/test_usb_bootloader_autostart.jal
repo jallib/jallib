@@ -44,6 +44,17 @@ PRAGMA OPT CONST_DETECT YES
 
 ;@jallib use bootloader
 
+-- boot timer delay (practical values between 1..10 seconds)
+const BOOT_DELAY_IN_SECONDS = 10
+
+-- timer ticks: clock / 4 / prescaler = 8  / 16 timer overflow
+const TIMER_TICKS_PER_SECOND = target_clock / 65536 / 8 / 4
+const BOOT_TIMER_TICS = BOOT_DELAY_IN_SECONDS * TIMER_TICKS_PER_SECOND
+
+if ( BOOT_TIMER_TICS > 256) then
+   pragma error "Boot delay too large"
+end if
+
 
 const byte READ_VERSION    = 0x00
 const byte READ_FLASH      = 0x01
@@ -664,9 +675,8 @@ forever loop
 		t1_count = t1_count + 1 
 		PIR1_TMR1IF = 0
 		
-		-- 22 counts per second, ~10 seconds wait => 220 ticks
 		-- if expired, then jump to user location
-		if t1_count > 220 then
+		if t1_count > BOOT_TIMER_TICS then
 			disable_boot()
 			
 			-- start user app

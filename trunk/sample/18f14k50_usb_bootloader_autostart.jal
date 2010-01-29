@@ -25,7 +25,7 @@
 --
 --
 -- This file has been generated from:
---    * board: board_18F14K50_AF.jal
+--    * board: board_18f14k50_af.jal
 --    * test : test_usb_bootloader_autostart.jal
 --
 
@@ -94,6 +94,17 @@ pragma target HFOFST        ENABLED         -- THE_SYSTEM_CLOCK_IS_HELD_OFF_UNTI
 ;@jallib section bootloader
 alias bootloader_program_pin    is pin_c4
 alias bootloader_program_pin_direction  is pin_c4_direction
+
+-- boot timer delay (practical values between 1..10 seconds)
+const BOOT_DELAY_IN_SECONDS = 10
+
+-- timer ticks: clock / 4 / prescaler = 8  / 16 timer overflow
+const TIMER_TICKS_PER_SECOND = target_clock / 65536 / 8 / 4
+const BOOT_TIMER_TICS = BOOT_DELAY_IN_SECONDS * TIMER_TICKS_PER_SECOND
+
+if ( BOOT_TIMER_TICS > 256) then
+   pragma error "Boot delay too large"
+end if
 
 
 const byte READ_VERSION    = 0x00
@@ -715,9 +726,8 @@ forever loop
 		t1_count = t1_count + 1 
 		PIR1_TMR1IF = 0
 		
-		-- 22 counts per second, ~10 seconds wait => 220 ticks
 		-- if expired, then jump to user location
-		if t1_count > 220 then
+		if t1_count > BOOT_TIMER_TICS then
 			disable_boot()
 			
 			-- start user app
