@@ -26,9 +26,9 @@ JALLIB_TMP=$JALLIB_ROOT/tmp
 mkdir -p $JALLIB_TMP
 
 # sanity check
-if ! test -s $JALLIB_LASTREVFILE
+if ! test -s "$JAPP_LASTREVFILE"
 then
-   echo "Last revision file $JALLIB_LASTREVFILE does not exist or is empty."
+   echo "Last revision file $JAPP_LASTREVFILE does not exist or is empty."
    echo "Please specify a revision from which DITA files should be considered"
    echo "in incremental publication"
    exit 255
@@ -39,11 +39,22 @@ svncmd="svn info $JALLIB_TOPUBLISH"
 echo "$svncmd"
 LANG=C $svncmd
 reposrev=`LANG=C $svncmd | grep ^Revision: | sed "s#Revision:##" | sed "s# ##g"`
-lastrev=`cat $JALLIB_LASTREVFILE`
+if [ "$?" != "0" ]
+then
+   echo "Unable to get SVN inforation with command $svncmd "
+   exit 1
+fi
+lastrev=`cat $JAPP_LASTREVFILE`
+if [ "$?" != "0" ]
+then
+   echo "Unable to retrieve last revision from file $JAPP_LASTREVFILE "
+   exit 1
+fi
+
 at_least_one_failed=0
 counter=0
 # replace spaces on the fly to read whole line by whole line...
-svncmd="svn diff -x -b -r$lastrev:$reposrev $JALLIB_TOPUBLISH"
+svncmd="svn diff -x -b -x --ignore-eol-style -r$lastrev:$reposrev $JALLIB_TOPUBLISH"
 ###svncmd="svn diff -x -b -r$lastrev $JALLIB_TOPUBLISH"
 echo $svncmd
 for file in `cat <($svncmd | grep "^+" | grep -v -e "^+#" -e "^+[[:space:]]*$" -e "^+++" | sed "s# \|\t#___#g")`
@@ -85,6 +96,8 @@ do
          echo "Failed to publish ditamap $basedita" >> $JALLIB_TMP/publish.failed
          at_least_one_failed=1
          counter=`expr $counter + 1`
+      else
+         echo "Published $basedita" >> $JALLIB_TMP/publish.success
       fi
    fi
 
@@ -94,6 +107,8 @@ done
 if [ "$counter" = "0" ]
 then
    echo "All new DITA documents published :)"
+   echo "List:"
+   cat $JALLIB_TMP/publish.success
 else
    echo "$counter DITA documents can't be published"
    echo "List:"
@@ -101,7 +116,7 @@ else
 fi
 
 rm -fr $JALLIB_TMP
-echo $reposrev > $JALLIB_LASTREVFILE
+echo $reposrev > $JAPP_LASTREVFILE
 
 end_time=`date +%s`
 seconds=`expr $end_time - $start_time`
