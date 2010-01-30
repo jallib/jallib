@@ -2,7 +2,7 @@
 #
 #
 # Title: jallib USB bootloader driver
-# Author: Albert Faber, Copyright (c) 2009, all rights reserved.
+# Author: Albert Faber, Copyright (c) 2009 - 2010, all rights reserved.
 # Adapted-by:
 # Compiler:
 #
@@ -44,9 +44,11 @@ class DeviceDescriptor:
 		  return None
 		  
 
-class UsbBootLoaderDriverError( IOError ):
-	"errors raised by UsbBootLoaderDriver, derived from IOError"
-	pass
+class UsbBootLoaderDriverError(Exception):
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
 
 
 class UsbBootLoaderDriver():
@@ -77,17 +79,13 @@ class UsbBootLoaderDriver():
 	tx_buffer = []
 	rx_buffer = []
 
-	Error_Prefix = ''
-
 	# make device descriptor
 	device_descriptor = DeviceDescriptor(VENDOR_ID, PRODUCT_ID, INTERFACE_ID )
 	
 		
 	def Raise( self, Message ):
 		"""raise a UsbBootLoaderDriver with suitable prefix"""
-		# print "RAISE EXCEPTION"	
-		#raise UsbBootLoaderDriverError, self.Error_Prefix + Message
-		raise Message
+		UsbBootLoaderDriverError( Message )
 
 
 	def __init__(self,) : 

@@ -2,7 +2,7 @@
 #
 #
 # Title: jallib USB bootloader (auto start) application
-# Author: Albert Faber, Copyright (c) 2009, all rights reserved.
+# Author: Albert Faber, Copyright (c) 2009 - 2010, all rights reserved.
 # Adapted-by:
 # Compiler:
 #
@@ -226,7 +226,7 @@ class UsbBootLoader():
 		self.flash_hex = intelhex.IntelHex()
 
 		if ( start_address == None ) :
-			start_address = 0
+			start_address = 0x800
 
 		if ( end_address == None ) :
 			end_address = self.program_flash_size
@@ -450,11 +450,17 @@ Options:
 	reset = False
 		
 	try:
+		# print "args "
+		# print sys.argv[1:]
 		opts, args = getopt.getopt(sys.argv[1:], "hceir:vx",
 		                         ["help", "configuration", "eeprom", "id-location", "range=",
 		                          "verbose","reset"])
 
+		# print opts
+		# print args
+	
 		for o, a in opts:
+			# print "o is " + o 
 			if o in ("-h", "--help"):
 				print usage
 				sys.exit(0)
@@ -485,6 +491,8 @@ Options:
 						start = int(l[0], 16)
 						if l[1] != '':
 							end = int(l[1], 16)
+					# print "start %d" & start 							
+					# print "end %d" & end 							
 				except:
 					raise getopt.GetoptError, 'Bad range value(s)'
 			elif o in ("-v", "--verbose"):
