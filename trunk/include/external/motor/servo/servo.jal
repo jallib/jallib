@@ -12,11 +12,7 @@
 -- http://www.horrorseek.com/home/halloween/wolfstone/Motors/svoint_RCServos.html
 --
 -- usage notes:
--- 1. Set your movement resolution:
---    pulse/movement resolution in increments of 10us (servo_isr speed)
---    lowest possible value is 10
---    low value requires processing power
--- 2. Set your SERVO_MIN values to restrict movement.
+-- 1. Set your SERVO_MIN values to restrict movement.
 --    This step must be completed correctly. First use code as follows
 --    directly after you call servo_init()
 --
@@ -27,7 +23,7 @@
 --    Now run your circuit and gradually change SERVO_MIN value so the servo
 --    is at the correct location on one side. Try to get the servo to be
 --    1mm from it's min location.
--- 3. Repeate step 2 with SERVO_MAX but use this:
+-- 2. Repeate step 1 with SERVO_MAX but use this:
 --
 --    servo_move(255,1)
 --    forever loop
@@ -36,161 +32,164 @@
 -- other notes:
 -- This lib uses timer0
 -- Up to 8 servos are supported, more servos = more processing power needed.
--- you must change SERVO_MIN/SERVO_MAX values each time you change the number
--- of servo's or pulse resolution.
---
--- here are some examples from my servo:
---
--- SERVO_RESOLUTION = 10
--- SERVO_MIN  - 1 servo 80, 8 servos 190
--- SERVO_MAX  - 1 servo 235, 8 servos 235
---
--- SERVO_RESOLUTION = 20
--- SERVO_MIN  - 1 servo 125
--- SERVO_MAX   - 1 servo 220
---
--- todo:
--- test other clock speeds, prescaler must be changed according to clock speed
 --
 
+var byte servo_steps_per_2_5_msec -- holds number of steps within 2.5ms
+
 -- library variables, internal use only
-var byte _servo_count_1 = 0
-var byte _servo_pulse_1
-var byte _servo_count_2 = 0
-var byte _servo_pulse_2
-var byte _servo_count_3 = 0
-var byte _servo_pulse_3
-var byte _servo_count_4 = 0
-var byte _servo_pulse_4
-var byte _servo_count_5 = 0
-var byte _servo_pulse_5
-var byte _servo_count_6 = 0
-var byte _servo_pulse_6
-var byte _servo_count_7 = 0
-var byte _servo_pulse_7
-var byte _servo_count_8 = 0
-var byte _servo_pulse_8
+var byte servo_on = 0xFF             -- All servo's on by default
+var bit servo_1_on at servo_on : 0
+var bit servo_2_on at servo_on : 1
+var bit servo_3_on at servo_on : 2
+var bit servo_4_on at servo_on : 3
+var bit servo_5_on at servo_on : 4
+var bit servo_6_on at servo_on : 5
+var bit servo_7_on at servo_on : 6
+var bit servo_8_on at servo_on : 7
+
+var byte _servo_pulse[8]
+var byte _servo_low[8]
 
 -- calculate difference between min & max
 const byte _SERVO_CALC_DIFF = SERVO_MAX - SERVO_MIN
 
+var byte _servo_isr_count = 0    -- ISR steps (high level, low level)
+var byte _servo_number_count = 0 -- ISR servo control count 0 to 7
+
+--------------------------------------------------------------------------------
+-- Sets servo level high or low. Servo numbers 0 to 7
+--------------------------------------------------------------------------------
+procedure _servo_set_level(byte in servo_num, bit in level) is
+   pragma inline
+   
+   if servo_num == 0 then
+      servo_1 = level
+   end if
+
+   if defined(servo_2) == TRUE then
+      if servo_num == 1 & servo_1_on then
+         servo_2 = level
+      end if
+   end if
+
+   if defined(servo_3) == TRUE then
+      if servo_num == 2 & servo_2_on then
+         servo_3 = level
+      end if
+   end if
+
+   if defined(servo_4) == TRUE then
+      if servo_num == 3 & servo_3_on then
+         servo_4 = level
+      end if
+   end if
+
+   if defined(servo_5) == TRUE then
+      if servo_num == 4 & servo_4_on then
+         servo_5 = level
+      end if
+   end if
+
+   if defined(servo_6) == TRUE then
+      if servo_num == 5 & servo_5_on then
+         servo_6 = level
+      end if
+   end if
+
+   if defined(servo_7) == TRUE then
+      if servo_num == 6 & servo_6_on then
+         servo_7 = level
+      end if
+   end if
+
+   if defined(servo_8) == TRUE then
+      if servo_num == 7 & servo_7_on then
+         servo_8 = level
+      end if
+   end if
+
+end procedure
+
 --------------------------------------------------------------------------------
 -- Interupt procedure to pulse servo
 --------------------------------------------------------------------------------
+
 procedure _servo_isr() is
    pragma interrupt
 
-
-   _servo_count_1 = _servo_count_1 + 1        ;increment pulse count
-   if _servo_count_1 <= _servo_pulse_1 then   ;create pulse
-      servo_1 = high
-   elsif _servo_count_1 > _servo_pulse_1 then ;end pluse
-      servo_1 = low
-   end if
-
-   if SERVO_AMOUNT >= 2 then
-      _servo_count_2 = _servo_count_2 + 1        ;increment pulse count
-      if _servo_count_2 <= _servo_pulse_2 then   ;create pulse
-         servo_2 = high
-      elsif _servo_count_2 > _servo_pulse_2 then ;end pluse
-         servo_2 = low
+   if _servo_isr_count == 0 then                     -- do pulse high width
+      INTCON_TMR0IF = off                           -- reset counter
+      tmr0 = _servo_pulse[_servo_number_count]       -- set timer to pulse high width
+      _servo_set_level (_servo_number_count,HIGH)    -- set level to high
+      _servo_isr_count = _servo_isr_count + 1         -- go to next step
+   elsif _servo_isr_count == 1 then                  -- finnish pulse low
+      INTCON_TMR0IF = off                           -- reset counter
+      tmr0 = _servo_low[_servo_number_count]
+      _servo_set_level (_servo_number_count,LOW)     -- set level to low
+      _servo_isr_count = _servo_isr_count + 1         -- go to next step
+      _servo_number_count = _servo_number_count + 1   -- change to next servo
+      if _servo_number_count == 8 then               -- change to first servo if needed
+         _servo_number_count = 0
       end if
+      _servo_isr_count = 0                           -- go to first step
    end if
-   
-   if SERVO_AMOUNT >= 3 then
-      _servo_count_3 = _servo_count_3 + 1        ;increment pulse count
-      if _servo_count_3 <= _servo_pulse_3 then   ;create pulse
-         servo_3 = high
-      elsif _servo_count_3 > _servo_pulse_3 then ;end pluse
-         servo_3 = low
-      end if
-   end if
-
-   if SERVO_AMOUNT >= 4 then
-      _servo_count_4 = _servo_count_4 + 1        ;increment pulse count
-      if _servo_count_4 <= _servo_pulse_4 then   ;create pulse
-         servo_4 = high
-      elsif _servo_count_4 > _servo_pulse_4 then ;end pluse
-         servo_4 = low
-      end if
-   end if
-
-   if SERVO_AMOUNT >= 5 then
-      _servo_count_5 = _servo_count_5 + 1        ;increment pulse count
-      if _servo_count_5 <= _servo_pulse_5 then   ;create pulse
-         servo_5 = high
-      elsif _servo_count_5 > _servo_pulse_5 then ;end pluse
-         servo_5 = low
-      end if
-   end if
-
-   if SERVO_AMOUNT >= 6 then
-      _servo_count_6 = _servo_count_6 + 1        ;increment pulse count
-      if _servo_count_6 <= _servo_pulse_6 then   ;create pulse
-         servo_6 = high
-      elsif _servo_count_6 > _servo_pulse_6 then ;end pluse
-         servo_6 = low
-      end if
-   end if
-
-   if SERVO_AMOUNT >= 7 then
-      _servo_count_7 = _servo_count_7 + 1        ;increment pulse count
-      if _servo_count_7 <= _servo_pulse_7 then   ;create pulse
-         servo_7 = high
-      elsif _servo_count_7 > _servo_pulse_7 then ;end pluse
-         servo_7 = low
-      end if
-   end if
-
-   if SERVO_AMOUNT >= 8 then
-      _servo_count_8 = _servo_count_8 + 1        ;increment pulse count
-      if _servo_count_8 <= _servo_pulse_8 then   ;create pulse
-         servo_8 = high
-      elsif _servo_count_8 > _servo_pulse_8 then ;end pluse
-         servo_8 = low
-      end if
-   end if
-
-   if INTCON_TMR0IF == true then
-      tmr0 = (255 - (SERVO_RESOLUTION / 10)) + 1           ;set timing
-      INTCON_TMR0IF = off  ;reset counter
-   end if
-
 end procedure
 
 --------------------------------------------------------------------------------
 -- Move a servo to any value from 0 to 255
 --------------------------------------------------------------------------------
 procedure servo_move(word in value, byte in servo_number) is
-   var word calc1, calc2
-   var word final
+   var dword calc1, calc2
+   var dword final
    var byte final2
 
    ;calculate the pulse length
    calc1 = (value * _SERVO_CALC_DIFF)
+   ;calc2 = calc1 / servo_steps_per_2_5_msec
    calc2 = calc1 / 255
    final = calc2 + servo_min
 
   -- change final into a byte
   var byte  val[2] at final
   final2 = val[0]
+  
+  if SERVO_CLOCK_BITS == 8 then
+        ;calculate the pulse length
+      calc1 = (final2 * servo_steps_per_2_5_msec)
+      ;calc2 = calc1 / servo_steps_per_2_5_msec
+      final = calc1 / 255
+
+     -- change final into a byte
+     var byte  val2[2] at final
+     final2 = val2[0]
+  else
+     pragma error -- 16 bit timers are not supported yet
+  end if
 
   if servo_number == 1 then
-     _servo_pulse_1 = (255 - final2) -- move servo 1 by pulse length
+     _servo_pulse[0] = (255 - final2) -- move servo 1 by pulse length
+     _servo_low[0] = (255 - _servo_pulse[0]) + (255 - servo_steps_per_2_5_msec)
   elsif servo_number == 2 then
-     _servo_pulse_2 = (255 - final2) -- move servo 2 by pulse length
+     _servo_pulse[1] = (255 - final2) -- move servo 2 by pulse length
+     _servo_low[1] = (255 - _servo_pulse[1]) + (255 - servo_steps_per_2_5_msec)
   elsif servo_number == 3 then
-     _servo_pulse_3 = (255 - final2) -- move servo 2 by pulse length
+     _servo_pulse[2] = (255 - final2) -- move servo 2 by pulse length
+     _servo_low[2] = (255 - _servo_pulse[2]) + (255 - servo_steps_per_2_5_msec)
   elsif servo_number == 4 then
-     _servo_pulse_4 = (255 - final2) -- move servo 2 by pulse length
+     _servo_pulse[3] = (255 - final2) -- move servo 2 by pulse length
+     _servo_low[3] = (255 - _servo_pulse[3]) + (255 - servo_steps_per_2_5_msec)
   elsif servo_number == 5 then
-     _servo_pulse_5 = (255 - final2) -- move servo 2 by pulse length
+     _servo_pulse[4] = (255 - final2) -- move servo 2 by pulse length
+     _servo_low[4] = (255 - _servo_pulse[4]) + (255 - servo_steps_per_2_5_msec)
   elsif servo_number == 6 then
-     _servo_pulse_6 = (255 - final2) -- move servo 2 by pulse length
+     _servo_pulse[5] = (255 - final2) -- move servo 2 by pulse length
+     _servo_low[5] = (255 - _servo_pulse[5]) + (255 - servo_steps_per_2_5_msec)
   elsif servo_number == 7 then
-     _servo_pulse_7 = (255 - final2) -- move servo 2 by pulse length
+     _servo_pulse[6] = (255 - final2) -- move servo 2 by pulse length
+     _servo_low[6] = (255 - _servo_pulse[6]) + (255 - servo_steps_per_2_5_msec)
   elsif servo_number == 8 then
-     _servo_pulse_8 = (255 - final2) -- move servo 2 by pulse length
+     _servo_pulse[7] = (255 - final2) -- move servo 2 by pulse length
+     _servo_low[7] = (255 - _servo_pulse[7]) + (255 - servo_steps_per_2_5_msec)
   end if
 end procedure
 
@@ -198,13 +197,58 @@ end procedure
 -- Initialize  the servo
 --------------------------------------------------------------------------------
 procedure servo_init() is
-   OPTION_REG_PS = 4 ; prescaler
-      
+   -- prescaler value - measured timer step widths on 20mhz
+   -- 6               - 25.6 us
+   -- 5               - 12.8 us
+   -- 4               - 6.4 us
+   -- 3               - 3.2 us
+   -- 2               - 1.6 us
+   -- 1               - 0.8 us
+
    OPTION_REG_T0CS = 0  ; internal clock
    OPTION_REG_PSA  = 0  ; assign prescaler to timer0
 
-   INTCON_TMR0IF = off
+   INTCON_TMR0IF = off  ; start the setting
    INTCON_TMR0IE = on
    INTCON_GIE  = on    ; enable global interrupts
    INTCON_PEIE = on
+
+   -- calculate number of steps available within 2.5ms
+
+   -- On 20mhz clock, this is the measured timer step
+   -- size (8us), then do 1/8us = 125000
+   const dword SERVO_TIMER_DIFF = 125000
+   --
+   const dword SERVO_CALC_1 = target_clock * 100                   -- lower number
+   const dword SERVO_CALC_2 = SERVO_CALC_1 / 20_000_000    -- compaire to 20mhz
+   const dword SERVO_CALC_3 = SERVO_CALC_2 * SERVO_TIMER_DIFF
+   const dword SERVO_CALC_4 = SERVO_CALC_3 / 100            -- higher number
+   const dword SERVO_STEP_US_X_1000 = 1_000_000_000 / SERVO_CALC_4
+   --
+   var dword servo_steps = 25000000 / SERVO_STEP_US_X_1000
+
+   -- change prescaler if using 8-bit timer
+   var byte servo_prescaler = 1
+   if SERVO_CLOCK_BITS == 8 then
+      forever loop
+         if servo_steps > 255 then
+            servo_prescaler = servo_prescaler + 1
+            servo_steps = servo_steps / 2
+         else
+            exit loop
+         end if
+      end loop
+   else
+      pragma error -- 16 bit timers are not supported yet
+   end if
+
+   option_reg_ps = servo_prescaler
+   -- servo_steps is now calculated
+
+   if SERVO_CLOCK_BITS == 8 then
+      var byte value[1] at servo_steps
+      servo_steps_per_2_5_msec = value[0]
+   else
+      pragma error -- 16 bit timers are not supported yet
+   end if
 end procedure
