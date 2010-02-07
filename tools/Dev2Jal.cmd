@@ -39,7 +39,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.89'
+   ScriptVersion   = '0.0.90'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -1250,8 +1250,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
             end
             else do                                     /* not twin name */
                field = reg'_'n.j
-               select
-                  when left(reg,5) = 'ANSEL'  &,        /* intercept ANSELx */
+               select                                   /* interceptions */
+                  when left(reg,5) = 'ANSEL'  &,
                        left(n.j,3) = 'ANS' then do
                      select
                         when reg = 'ANSELH' | reg = 'ANSEL1' then
@@ -1285,59 +1285,6 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                end
 
                select
-                  when reg = 'INTCON' then do
-                     if left(n.j,2) = 'T0' then
-                        call lineout jalfile, 'var volatile bit   ',
-                             left(reg'_TMR0'substr(n.j,3),25) 'at' reg ':' offset
-                  end
-                  when left(reg,4) = 'PORT' then do
-                     if left(n.j,1) = 'R'  &,
-                         substr(n.j,2,1) = right(reg,1) then do  /* prob. I/O pin */
-                        shadow = '_PORT'right(reg,1)'_shadow'
-                        pin = 'pin_'substr(n.j,2)
-                        call lineout jalfile, 'var volatile bit   ',
-                                              left(pin,25) 'at' reg ':' offset
-                        call insert_pin_alias reg, n.j, pin
-                        call lineout jalfile, '--'
-                        call lineout jalfile, 'procedure' pin"'put"'(bit in x',
-                                                       'at' shadow ':' offset') is'
-                        call lineout jalfile, '   pragma inline'
-                        call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
-                        call lineout jalfile, 'end procedure'
-                     end
-                     call lineout jalfile, '--'
-                  end
-                  when reg = 'GPIO' then do
-                     shadow = '_PORTA_shadow'
-                     pin = 'pin_A'right(n.j,1)
-                     call lineout jalfile, 'var volatile bit   ',
-                                          left(pin,25) 'at' reg ':' offset
-                     call insert_pin_alias 'PORTA', 'RA'right(n.j,1), pin
-                     call lineout jalfile, '--'
-                     call lineout jalfile, 'procedure' pin"'put"'(bit in x',
-                                                      'at' shadow ':' offset') is'
-                     call lineout jalfile, '   pragma inline'
-                     call lineout jalfile, '   _PORTA_flush()'
-                     call lineout jalfile, 'end procedure'
-                     call lineout jalfile, '--'
-                  end
-                  when reg = 'TRISIO' then do
-                     pin = 'pin_A'substr(n.j,7)'_direction'
-                     call lineout jalfile, 'var volatile bit   ',
-                                  left(pin,25) 'at' reg ':' offset
-                     call insert_pin_direction_alias 'TRISA', 'RA'substr(n.j,7), pin
-                     call lineout jalfile, '--'
-                  end
-                  when left(reg,4) = 'TRIS'  &,
-                       left(n.j,4) = 'TRIS'  then do
-                     pin = 'pin_'substr(n.j,5)'_direction'
-                     call lineout jalfile, 'var volatile bit   ',
-                              left('pin_'substr(n.j,5)'_direction',25) 'at' reg ':' offset
-                     if substr(n.j,5,1) = right(reg,1) then do   /* prob. I/O pin */
-                       call insert_pin_direction_alias reg, 'R'substr(n.j,5), pin
-                     end
-                     call lineout jalfile, '--'
-                  end
                   when left(reg,5) = 'ADCON'  &,        /* ADCON0/1 */
                        pos('VCFG',field) > 0  then do   /* VCFG field */
                      p = j - 1                          /* previous bit */
@@ -1374,6 +1321,59 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                      if duplicate_name(field,reg) = 0 then    /* unique */
                         call lineout jalfile, 'var volatile bit*2 ',
                                      left(field,25) 'at' reg ':' offset - s.j + 1
+                  end
+                  when reg = 'GPIO' then do
+                     shadow = '_PORTA_shadow'
+                     pin = 'pin_A'right(n.j,1)
+                     call lineout jalfile, 'var volatile bit   ',
+                                          left(pin,25) 'at' reg ':' offset
+                     call insert_pin_alias 'PORTA', 'RA'right(n.j,1), pin
+                     call lineout jalfile, '--'
+                     call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                      'at' shadow ':' offset') is'
+                     call lineout jalfile, '   pragma inline'
+                     call lineout jalfile, '   _PORTA_flush()'
+                     call lineout jalfile, 'end procedure'
+                     call lineout jalfile, '--'
+                  end
+                  when reg = 'INTCON' then do
+                     if left(n.j,2) = 'T0' then
+                        call lineout jalfile, 'var volatile bit   ',
+                             left(reg'_TMR0'substr(n.j,3),25) 'at' reg ':' offset
+                  end
+                  when left(reg,4) = 'PORT' then do
+                     if left(n.j,1) = 'R'  &,
+                         substr(n.j,2,1) = right(reg,1) then do  /* prob. I/O pin */
+                        shadow = '_PORT'right(reg,1)'_shadow'
+                        pin = 'pin_'substr(n.j,2)
+                        call lineout jalfile, 'var volatile bit   ',
+                                              left(pin,25) 'at' reg ':' offset
+                        call insert_pin_alias reg, n.j, pin
+                        call lineout jalfile, '--'
+                        call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                       'at' shadow ':' offset') is'
+                        call lineout jalfile, '   pragma inline'
+                        call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
+                        call lineout jalfile, 'end procedure'
+                     end
+                     call lineout jalfile, '--'
+                  end
+                  when reg = 'TRISIO' then do
+                     pin = 'pin_A'substr(n.j,7)'_direction'
+                     call lineout jalfile, 'var volatile bit   ',
+                                  left(pin,25) 'at' reg ':' offset
+                     call insert_pin_direction_alias 'TRISA', 'RA'substr(n.j,7), pin
+                     call lineout jalfile, '--'
+                  end
+                  when left(reg,4) = 'TRIS'  &,
+                       left(n.j,4) = 'TRIS'  then do
+                     pin = 'pin_'substr(n.j,5)'_direction'
+                     call lineout jalfile, 'var volatile bit   ',
+                              left('pin_'substr(n.j,5)'_direction',25) 'at' reg ':' offset
+                     if substr(n.j,5,1) = right(reg,1) then do   /* prob. I/O pin */
+                       call insert_pin_direction_alias reg, 'R'substr(n.j,5), pin
+                     end
+                     call lineout jalfile, '--'
                   end
                   otherwise                             /* other regs */
                      nop                                /* can be ignored */
@@ -1491,6 +1491,9 @@ do i = 1 to Dev.0
                                   left('PORT'substr(reg,5)'_direction',25) 'at' reg
             call list_tris_nibbles reg          /* nibble direction */
          end
+         when reg = 'SPBRGL' then do            /* for backward compatibility */
+            call lineout jalfile, 'alias              ' left('SPBRG',25) 'is' reg
+         end
          otherwise                              /* others */
             nop                                 /* can be ignored */
       end
@@ -1500,9 +1503,15 @@ do i = 1 to Dev.0
       if reg = 'BSR'    |,
          reg = 'FSR0L'  |,
          reg = 'FSR0H'  |,
+         reg = 'FSR1L'  |,
+         reg = 'FSR1H'  |,
          reg = 'INDF0'  |,
+         reg = 'INDF1'  |,
+         reg = 'PCL'    |,
          reg = 'PCLATH' |,
          reg = 'STATUS' then do
+         if left(reg,4) = 'INDF' then
+            reg = delstr(reg,4,1)               /* compiler wants '_ind' */
          reg = tolower(reg)                     /* to lower case */
          call lineout jalfile, 'var volatile byte  ' left('_'reg,25) memtype'at 0x'D2X(addr,3),
                                   '     -- (compiler)'
@@ -1511,6 +1520,7 @@ do i = 1 to Dev.0
       end
    end
 end
+
 return 0
 
 
@@ -1539,9 +1549,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
       parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
       offset = 7                                        /* MSbit first */
       do j = 1 to 8 while offset >= 0                   /* max 8 bits */
+
          if n.j = '-' then do                           /* bit not used */
            nop
          end
+
          else if s.j = 1 then do                        /* single bit */
             if pos('/', n.j) \= 0 then do               /* twin name */
                parse var n.j val1'/'val2 .
@@ -1562,9 +1574,17 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
             end
             else do                                     /* not twin name */
                field = reg'_'n.j
-               select
-                  when left(reg,5) = 'ANSEL'  &,        /* intercept ANSELx */
-                       left(n.j,3) = 'ANS' then do
+               select                                   /* intercept before expansion */
+                  when (left(reg,5) = 'ADCON'  &  left(n.j,3) = 'CHS')                        |,
+                       (reg = 'OPTION_REG' & (n.j = 'PS0' | n.j = 'PS1' | n.j = 'PS2'))       |,
+                       (reg = 'OSCCON'  &  left(n.j,4) = 'IRCF')                              |,
+                       (reg = 'OSCTUNE'  &  left(n.j,3) = 'TUN')                              |,
+                       (reg = 'T1CON'  &  left(n.j,6) = 'T1CKPS')                             |,
+                       (reg = 'T2CON'  & (left(n.j,7) = 'T2OUTPS' | left(n.j,6) = 'T2CKPS'))  |,
+                       (reg = 'WDTCON'  &  left(n.j,5) = 'WDTPS')                       then do
+                     nop                                /* suppress enumeration */
+                  end
+                  when left(reg,5) = 'ANSEL'  &  left(n.j,3) = 'ANS' then do
                      select
                         when reg = 'ANSELG' then
                            call lineout jalfile, 'var volatile bit   ',
@@ -1591,14 +1611,6 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                            say '  Warning: Unsupported ANSEL register:' reg
                      end
                   end
-                  when left(reg,5) = 'ADCON'  &,        /* intercept ADCON0/1 */
-                       n.j = 'CHS4'  then do            /* 'loose' 4th bit */
-                     field = reg'_CHS'                  /* compose name */
-                     call lineout jalfile, 'var volatile bit*5 ',
-                                     left(field,25) memtype'at' reg ':' offset - 4
-                     offset = offset - 4                /* compensate */
-                     j = j + 4                          /*     "      */
-                  end
                   when n.j \= '-' then do               /* bit present  */
                      if duplicate_name(field,reg) = 0 then do  /* unique */
                         call lineout jalfile, 'var volatile bit   ',
@@ -1616,6 +1628,21 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                end
 
                select
+                  when left(reg,5) = 'ADCON' &  n.j = 'CHS0' then do
+                     call lineout jalfile, 'var volatile bit*5 ',
+                          left(reg'_CHS',25) memtype'at' reg ':' offset
+                  end
+                  when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &,       /* [E]CCPxCON */
+                     ((left(n.j,3) = 'CCP' &  right(n.j,1) = 'Y') |,        /* CCPxY */
+                      (left(n.j,2) = 'DC' &  right(n.j,2) = 'B0')) then do  /* DCxB0 */
+                     if left(n.j,2) = 'DC' then
+                        field = reg'_DC'substr(n.j,3,1)'B'
+                     else
+                        field = reg'_DC'substr(n.j,4,1)'B'
+                     if duplicate_name(field,reg) = 0 then    /* unique */
+                        call lineout jalfile, 'var volatile bit*2 ',
+                                     left(field,25) memtype'at' reg ':' offset - s.j + 1
+                  end
                   when reg = 'INTCON' then do
                      if left(n.j,2) = 'T0' then
                         call lineout jalfile, 'var volatile bit   ',
@@ -1631,14 +1658,38 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                         call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                         call lineout jalfile, '--'
                      end
-                     if substr(n.j,4,1) = portletter  &,       /* port letter */
-                        datatype(pinnumber) = 'NUM' then do    /* pin number */
+                     if substr(n.j,4,1) = PortLetter  &,       /* port letter */
+                        datatype(PinNumber) = 'NUM' then do    /* pin number */
                         call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                    'at' reg ':' offset') is'
                         call lineout jalfile, '   pragma inline'
                         call lineout jalfile, 'end procedure'
                         call lineout jalfile, '--'
                      end
+                  end
+                  when reg = 'OPTION_REG' &  n.j = 'PS0' then do
+                     call lineout jalfile, 'var volatile bit*3 ',
+                          left(reg'_PS',25) memtype'at' reg ':' offset
+                  end
+                  when reg = 'OSCCON'  &  n.j = 'IRCF0' then do
+                     call lineout jalfile, 'var volatile bit*4 ',
+                          left(reg'_IRCF',25) memtype'at' reg ':' offset
+                  end
+                  when reg = 'OSCTUNE'  &  n.j = 'TUN0' then do
+                     call lineout jalfile, 'var volatile bit*6 ',
+                          left(reg'_TUN',25) memtype'at' reg ':' offset
+                  end
+                  when reg = 'T1CON'  &  n.j = 'T1CKPS0' then do
+                     call lineout jalfile, 'var volatile bit*2 ',
+                          left(reg'_T1CKPS',25) memtype'at' reg ':' offset
+                  end
+                  when reg = 'T2CON' then do
+                     if n.j = 'T2OUTPS0' then
+                        call lineout jalfile, 'var volatile bit*4 ',
+                          left(reg'_T2OUTPS',25) memtype'at' reg ':' offset
+                     else if n.j = 'T2CKPS0' then
+                        call lineout jalfile, 'var volatile bit*2 ',
+                          left(reg'_T2CKPS',25) memtype'at' reg ':' offset
                   end
                   when left(reg,4) = 'TRIS'  &,
                        left(n.j,4) = 'TRIS'  then do
@@ -1650,22 +1701,16 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                      end
                      call lineout jalfile, '--'
                   end
-                  when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &,  /* [E]CCPxCON */
-                     ((left(n.j,3) = 'CCP' &  right(n.j,1) = 'Y') |,   /* CCPxY */
-                      (left(n.j,2) = 'DC' &  right(n.j,2) = 'B0')) then do  /* DCxB0 */
-                     if left(n.j,2) = 'DC' then
-                        field = reg'_DC'substr(n.j,3,1)'B'
-                     else
-                        field = reg'_DC'substr(n.j,4,1)'B'
-                     if duplicate_name(field,reg) = 0 then    /* unique */
-                        call lineout jalfile, 'var volatile bit*2 ',
-                                     left(field,25) memtype'at' reg ':' offset - s.j + 1
+                  when reg = 'WDTCON' &  n.j = 'WDTPS0' then do
+                     call lineout jalfile, 'var volatile bit*5 ',
+                          left(reg'_WDTPS',25) memtype'at' reg ':' offset
                   end
                   otherwise                             /* other regs */
                      nop                                /* can be ignored */
                end
             end
          end
+
          else if s.j <= 8 then do                       /* multi-bit subfield */
             field = reg'_'n.j
             select
@@ -1687,6 +1732,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   end
             end
          end
+
          offset = offset - s.j
       end
    end
@@ -1787,6 +1833,7 @@ do i = 1 to Dev.0
          when reg = 'FSR0'   |,
               reg = 'FSR0L'  |,
               reg = 'FSR0H'  |,
+              reg = 'INDF0'  |,
               reg = 'PCL'    |,
               reg = 'PCLATH' |,
               reg = 'PCLATU' |,
@@ -1794,11 +1841,6 @@ do i = 1 to Dev.0
               reg = 'TBLPTR' then do
             reg = tolower(reg)                          /* to lower case */
             call lineout jalfile, 'var volatile' field left('_'reg,25),
-                                  'shared at 0x'addr '     -- (compiler)'
-         end
-
-         when reg = 'INDF0'  then do
-            call lineout jalfile, 'var volatile' field left('_ind0',25),
                                   'shared at 0x'addr '     -- (compiler)'
          end
 
@@ -1893,8 +1935,26 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
             end
             else do                                     /* not twin name */
                field = reg'_'n.j
-               select
-                  when left(reg,5) = 'ANSEL'  &,        /* intercept ANSELx */
+               select                                   /* interceptions */
+                  when left(reg,5) = 'ADCON'  &,        /* ADCON0/1 */
+                       pos('VCFG',field) > 0  then do   /* VCFG field */
+                     p = j - 1                          /* previous bit */
+                     if right(n.j,5) = 'VCFG0' & right(n.p,5) = 'VCFG1' then
+                        call lineout jalfile, 'var volatile bit*2 ',
+                           left(left(field,length(field)-1),25) memtype 'at' reg ':' offset
+                  end
+                  when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &,   /* [E]CCPxCON */
+                      ((left(n.j,3) = 'CCP' &  right(n.j,1) = 'Y') |,   /* CCPxY */
+                       (left(n.j,2) = 'DC' &  right(n.j,2) = 'B0')) then do   /* DCxB0 */
+                     if left(n.j,2) = 'DC' then
+                        field = reg'_DC'substr(n.j,3,1)'B'
+                     else
+                        field = reg'_DC'substr(n.j,4,1)'B'
+                     if duplicate_name(reg'_DC'n'B',reg) = 0 then       /* unique */
+                        call lineout jalfile, 'var volatile bit*2 ',
+                                   left(field,25) memtype 'at' reg ':' offset - s.j + 1
+                  end
+                  when left(reg,5) = 'ANSEL'  &,
                        left(n.j,3) = 'ANS' then do
                      if reg = 'ANSELH' then
                         call lineout jalfile, 'var volatile bit   ',
@@ -1929,12 +1989,31 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                                        '-- ensure default (legacy) SFR mapping'
                end
 
-                                                        /* additional declarations */
+                                                        /* special declarations */
                select
                   when reg = 'INTCON' then do
                      if left(n.j,2) = 'T0' then do
                         call lineout jalfile, 'var volatile bit   ',
                                left(reg'_TMR0'substr(n.j,3),25) memtype 'at' reg ':' offset
+                     end
+                  end
+                  when left(reg,3) = 'LAT' then do      /* LATx register */
+                     PortLetter = right(reg,1)
+                     PinNumber  = right(n.j,1)
+                     pin = 'pin_'PortLat.PortLetter.offset
+                     if PortLat.PortLetter.offset \= 0 then do  /* pin present in PORTx */
+                        call lineout jalfile, 'var volatile bit   ',
+                                left(pin,25) memtype 'at' 'PORT'portletter ':' offset
+                        call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
+                        call lineout jalfile, '--'
+                     end
+                     if substr(n.j,4,1) = portletter  &,       /* port letter */
+                        datatype(pinnumber) = 'NUM' then do    /* pin number */
+                        call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                   'at' reg ':' offset') is'
+                        call lineout jalfile, '   pragma inline'
+                        call lineout jalfile, 'end procedure'
+                        call lineout jalfile, '--'
                      end
                   end
                   when reg = 'PIE1' then do
@@ -1961,25 +2040,6 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                         end
                      end
                   end
-                  when left(reg,3) = 'LAT' then do      /* LATx register */
-                     PortLetter = right(reg,1)
-                     PinNumber  = right(n.j,1)
-                     pin = 'pin_'PortLat.PortLetter.offset
-                     if PortLat.PortLetter.offset \= 0 then do  /* pin present in PORTx */
-                        call lineout jalfile, 'var volatile bit   ',
-                                left(pin,25) memtype 'at' 'PORT'portletter ':' offset
-                        call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
-                        call lineout jalfile, '--'
-                     end
-                     if substr(n.j,4,1) = portletter  &,       /* port letter */
-                        datatype(pinnumber) = 'NUM' then do    /* pin number */
-                        call lineout jalfile, 'procedure' pin"'put"'(bit in x',
-                                                   'at' reg ':' offset') is'
-                        call lineout jalfile, '   pragma inline'
-                        call lineout jalfile, 'end procedure'
-                        call lineout jalfile, '--'
-                     end
-                  end
                   when left(reg,4) = 'TRIS' then do     /* TRISx register */
                      portletter = right(reg,1)
                      pinnumber  = right(n.j,1)
@@ -1993,24 +2053,6 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                            call lineout jalfile, '--'
                        end
                      end
-                  end
-                  when left(reg,5) = 'ADCON'  &,        /* ADCON0/1 */
-                       pos('VCFG',field) > 0  then do   /* VCFG field */
-                     p = j - 1                          /* previous bit */
-                     if right(n.j,5) = 'VCFG0' & right(n.p,5) = 'VCFG1' then
-                        call lineout jalfile, 'var volatile bit*2 ',
-                           left(left(field,length(field)-1),25) memtype 'at' reg ':' offset
-                  end
-                  when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &,   /* [E]CCPxCON */
-                      ((left(n.j,3) = 'CCP' &  right(n.j,1) = 'Y') |,   /* CCPxY */
-                       (left(n.j,2) = 'DC' &  right(n.j,2) = 'B0')) then do   /* DCxB0 */
-                     if left(n.j,2) = 'DC' then
-                        field = reg'_DC'substr(n.j,3,1)'B'
-                     else
-                        field = reg'_DC'substr(n.j,4,1)'B'
-                     if duplicate_name(reg'_DC'n'B',reg) = 0 then       /* unique */
-                        call lineout jalfile, 'var volatile bit*2 ',
-                                   left(field,25) memtype 'at' reg ':' offset - s.j + 1
                   end
                   otherwise                             /* others */
                      nop                                /* no extras */
