@@ -190,7 +190,7 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
     # No root specified ? Try env var, else defaut to cwd
     if not dirs:
         try:
-            gdirs = os.environ['JALLIB_REPOS'].split(":")
+            gdirs = os.environ['JALLIB_REPOS'].split(";")
         except KeyError:
             # no such env var, takes param from commandline, and honor
             # jalv2 compiler separator
