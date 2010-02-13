@@ -190,7 +190,12 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
     # No root specified ? Try env var, else defaut to cwd
     if not dirs:
         try:
-            gdirs = os.environ['JALLIB_REPOS'].split(";")
+            # honor way to define to different paths whether it's on *nix
+            # (using ":") or windows (using ";" like jalv2 compiler)
+            if sys.platform.lower().startswith("win"):
+                gdirs = os.environ['JALLIB_REPOS'].split(";")
+            else:
+                gdirs = os.environ['JALLIB_REPOS'].split(":")
         except KeyError:
             # no such env var, takes param from commandline, and honor
             # jalv2 compiler separator
@@ -786,8 +791,8 @@ def unittest(filename,verbose=False):
             try:
                 from picshell.console.picshell_unittest import picshell_unittest
                 oracle = picshell_unittest(jal,asm,hex)
-            except ImportError:
-                print >> sys.stderr, "Can't find PICShell libraries. Install PICShell and adjust PYTHONPATH"
+            except ImportError,e:
+                print >> sys.stderr, "Can't find PICShell libraries. Install PICShell and adjust PYTHONPATH\n%s" % e
                 sys.exit(255)
                 oracle['failure'] = 1
 
