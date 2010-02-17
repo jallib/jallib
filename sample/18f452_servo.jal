@@ -16,11 +16,11 @@
 -- see usage notes in library file servo.jal, very important!
 --
 
--- include chip
-include 18F452                   -- target picmicro
-
+include 18f452                    -- target PICmicro
+--
 -- This program assumes a 20 MHz resonator or crystal
 -- is connected to pins OSC1 and OSC2.
+-- Unspecified configuration bits may cause a different frequency!
 pragma target clock 20_000_000     -- oscillator frequency
 -- configuration memory settings (fuses)
 pragma target OSC  HS              -- HS crystal or resonator
@@ -29,17 +29,10 @@ pragma target LVP  disabled        -- no Low Voltage Programming
 
 enable_digital_io()                -- disable analog I/O (if any)
 
--- led definition
-alias led                is pin_a0
-alias led_direction      is pin_a0_direction
---
+-- LED IO definition
+alias led             is pin_a0
+alias led_direction   is pin_a0_direction
 led_direction = output
-
--- aliases timer0 for 18f PICs (remove if you are using 16f)
--- timer0 is used by servo.jal
-alias option_reg_t0cs is t0con_t0cs
-alias option_reg_psa is t0con_psa
-alias option_reg_ps IS t0con_t0ps
 
 -- setup servo pins
 alias servo_1             is pin_b0
@@ -73,18 +66,15 @@ servo_7_direction = output
 alias servo_8             is pin_b7
 alias servo_8_direction   is pin_b7_direction
 servo_8_direction = output
-
+--
 -- choose min & max servo movment / pulse size
 const byte SERVO_MIN   = 50  -- default is 50  (0.5ms min pulse)
 const byte SERVO_MAX   = 255 -- default is 255 (2.5ms max pulse)
-
--- servo lib currently only supports timer 0, an 8 bit clock
-const byte SERVO_CLOCK_BITS = 8
+--
+const byte SERVO_USE_TIMER = 3 -- use PICs internal timer (0, 1 or 3)
+--
 include servo -- include the servo library
 servo_init()
-
--- use this to turn off a servo
-;servo_1_on = False
 
 -- example center all servo's
 servo_move(127,1)
@@ -96,30 +86,28 @@ servo_move(127,6)
 servo_move(127,7)
 servo_move(127,8)
 
--- stop here (good for measurements)
-;forever loop
-;end loop
+-- use this to turn off a servo
+;servo_1_on = False
 
 -- example moving servos one and two and blink led
 forever loop
-
-   servo_move(255,1)
-   servo_move(0,2)
+   servo_move(255,1)       -- servo 1 right
+   servo_move(0,2)         -- servo 2 left
    _usec_delay (1_000_000)
    led = !led
 
-   servo_move(127,1) ;servo 1 centered
-   servo_move(127,2) ;servo 2 centered
+   servo_move(127,1)       -- servo 1 centered
+   servo_move(127,2)       -- servo 2 centered
    _usec_delay (1_000_000)
    led = !led
 
-   servo_move(0,1)
-   servo_move(255,2)
+   servo_move(0,1)         -- servo 1 left
+   servo_move(255,2)       -- servo 2 right
    _usec_delay (1_000_000)
    led = !led
 
-   servo_move(127,1) ;servo 1 centered
-   servo_move(127,2) ;servo 2 centered
+   servo_move(127,1)       -- servo 1 centered
+   servo_move(127,2)       -- servo 2 centered
    _usec_delay (1_000_000)
    led = !led
 end loop
