@@ -99,6 +99,17 @@ def find_includes(jalfile):
     return re.findall("^\s*include\s+(\w+)\s*",content,re.MULTILINE)
 
 
+def split_repos(repos):
+    # honor way to define to different paths whether it's on *nix
+    # (using ":") or windows (using ";" like jalv2 compiler)
+    if sys.platform.lower().startswith("win"):
+        gdirs = repos.split(";")
+    else:
+        gdirs = repos.split(":")
+   
+    return gdirs
+
+
 ################
 # MAIN TARGETS #
 ################
@@ -190,12 +201,7 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
     # No root specified ? Try env var, else defaut to cwd
     if not dirs:
         try:
-            # honor way to define to different paths whether it's on *nix
-            # (using ":") or windows (using ";" like jalv2 compiler)
-            if sys.platform.lower().startswith("win"):
-                gdirs = os.environ['JALLIB_REPOS'].split(";")
-            else:
-                gdirs = os.environ['JALLIB_REPOS'].split(":")
+            gdirs = split_repos(os.environ['JALLIB_REPOS'])
         except KeyError:
             # no such env var, takes param from commandline, and honor
             # jalv2 compiler separator
@@ -761,9 +767,9 @@ def do_reindent(args):
         reindent_file(filename,withchar,howmany)
 
 
-#-------------#
-# JALAPI FUNC #
-#-------------#
+#---------------#
+# UNITTEST FUNC #
+#---------------#
 
 def unittest(filename,verbose=False):
     oracle = {'success' : None, 'failure' : None, 'notrun' : None}
@@ -1102,6 +1108,27 @@ def jalapi_generate(infos,tmpl_file,sampledir,locallinks):
         return tmpl.main()
 
 
+#-----------#
+# LIST FUNC #
+#-----------#
+
+def do_list(_trash):
+    gdirs = split_repos(os.environ['JALLIB_REPOS'])
+    # first directories have precedence, so we start by the end
+    # and will override as needed
+    gdirs.reverse()
+    jalfiles = {}
+    for gdir in gdirs:
+        found = get_jal_filenames(gdir)
+        # rebuild complete path
+        for fname,path in found.items():
+            jalfiles[fname] = os.path.join(gdir,path)
+
+    # sort on filename (not using path)
+    for jalfile in sorted(jalfiles.items(),cmp=lambda a,b: cmp(a[0],b[0])):
+        print jalfile[1]
+
+
 
 #############
 # HELP FUNC #
@@ -1117,6 +1144,7 @@ Actions:
     - sample   : generate samples from board and test files
     - reindent : re-indent jal code
     - jalapi   : generate HTML documentation from jal files
+    - list     : list all JAL libraries found in JALLIB_REPOS, as resolved by compiler
     - license  : display license
 
 Use 'help' with each action for more (eg. "jallib help compile")
@@ -1284,6 +1312,20 @@ from one board file and one test file (using -b, -t and -o options).
 
 """
 
+def list_help():
+    print """
+    jallib list
+
+List JAL libraries found according to JALLIB_REPOS variable.
+JALLIB_REPOS represents the root(s) from which *.jal files are
+search, recursively. If multiple repositories are specified, first
+have precedence. So listing libraries also take into account this 
+precedence rule.
+
+Output contains one line per library.
+
+"""
+
 def do_help(action_args=[]):
     action = None
     if action_args:
@@ -1298,6 +1340,7 @@ def do_help(action_args=[]):
 ACTIONS = {
         'compile'   : {'callback' : do_compile,  'options' : 'R:E:',       'help' : compile_help},
         'validate'  : {'callback' : do_validate, 'options' : '',           'help' : validate_help},
+        'list'      : {'callback' : do_list,     'options' : '',           'help' : list_help},
         'jalapi'    : {'callback' : do_jalapi,   'options' : 'slt:d:g:o:', 'help' : jalapi_help},
         'sample'    : {'callback' : do_sample,   'options' : 'a:b:t:o:',   'help' : sample_help},
         'reindent'  : {'callback' : do_reindent, 'options' : 'c:',         'help' : reindent_help},
