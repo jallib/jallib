@@ -21,7 +21,7 @@
  *   In addition some device dependent procedures are provided              *
  *   for common operations, like enable-digital-io().                       *
  *   Also a number of pin-aliases are declared to provide device            *
- *   independent logical names for some pins.                               *
+ *   independent logical names for some pins, registers and bitfields.      *
  *                                                                          *
  * Sources:  MPLAB .dev and .lkr files                                      *
  *                                                                          *
@@ -39,12 +39,12 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.90'
+   ScriptVersion   = '0.0.91'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
 
-/* 'msglevel' controls the messages being generated                         */
+/* 'msglevel' controls the amount of messages being generated               */
 /*   1 - all: info, progress, warnings and errors                           */
 /*   2 - only warnings and errors                                           */
 /*   3 - only errors (always reported!)                                     */
@@ -918,31 +918,50 @@ return
 /* --------------------------------------------------------------- */
 list_shared_data_range: procedure expose Lkr. jalfile Core MaxSharedRAM PicName msglevel
 select                                          /* exceptions first */
-   when PicName = '12f629'  |,                  /* have only shared RAM */
+   when Left(PicName,3) = '10f' |,
+      PicName = '12f508'   then do
+      DataRange = '0x1E-0x1F'                   /* 1 bank: some pseudo shared RAM */
+      MaxSharedRAM = X2D(1F)
+   end
+   when PicName = '12f629'  |,
         PicName = '12f675'  |,
         PicName = '16f630'  |,
         PicName = '16f676' then do
-      DataRange = '0x5E-0x5F'                   /* some shared, rest unshared */
+      DataRange = '0x5E-0x5F'                   /* for _pic_accum and _pic_isr_w */
       MaxSharedRAM = X2D(5F)
-      end                                       /* .. declared as non shared */
+   end
+   when PicName = '16f73'   |,
+        PicName = '16f74'  then do
+      DataRange = '0x7E-0x7F'
+      MaxSharedRAM = X2D(7F)
+   end
+   when PicName = '16f83'  then do
+      DataRange = '0x2E-0x2F'
+      MaxSharedRAM = X2D(2F)
+   end
+   when PicName = '16f84'   |,
+        PicName = '16f84a' then do
+      DataRange = '0x4E-0x4F'
+      MaxSharedRAM = X2D(4F)
+   end
    when PicName = '16f818' then do
-      DataRange = '0x40-0x7F'                   /* shared data range */
-      MaxSharedRAM = X2D(7F)                    /* upper bound */
-      end
-   when PicName = '16f819'  |,                  /* */
+      DataRange = '0x7E-0x7F'
+      MaxSharedRAM = X2D(7F)
+   end
+   when PicName = '16f819'  |,
         PicName = '16f870'  |,
         PicName = '16f871'  |,
         PicName = '16f872' then do
       DataRange = '0x70-0x7F'
       MaxSharedRAM = X2D(7F)
-      end
-   when PicName = '16f873'  |,                  /* have no shared RAM */
+   end
+   when PicName = '16f873'  |,
         PicName = '16f873a' |,
         PicName = '16f874'  |,
         PicName = '16f874a' then do
-      DataRange = ''                            /* no shared RAM */
-      MaxSharedRAM = 0
-      end
+      DataRange = '0x7E-0x7F'
+      MaxSharedRAM = X2D(7F)
+   end
    otherwise                                    /* scan .lkr file */
       DataRange = ''                            /* set defaults */
       MaxSharedRAM = 0
@@ -972,41 +991,74 @@ return DataRange                                /* range */
 
 
 /* ------------------------------------------------------------- */
-/* procedure to list unshared RAM (gpr) ranges from .dev file    */
+/* procedure to list unshared RAM (GPR) ranges from .dev file    */
 /* input:  - nothing                                             */
 /* returns in MaxUnsharedRam highest unshared RAM addr. in bank0 */
 /* Note: Some PICs are handled 'exceptionally'                   */
 /* ------------------------------------------------------------- */
 list_unshared_data_range: procedure expose Lkr. jalfile MaxUnsharedRAM PicName Core msglevel
 select                                          /* exceptions first */
+   when PicName = '10f200'  |,
+        PicName = '10f204'  |,
+        PicName = '10f220' then do
+      DataRange = '0x10-0x1D'                   /* 1 bank: 'unshared' part */
+      MaxUnSharedRAM = X2D(1D)
+   end
+   when PicName = '10f202'  |,
+        PicName = '10f206' then do
+      DataRange = '0x08-0x1D'
+      MaxUnSharedRAM = X2D(1D)
+   end
+   when PicName = '10f222' then do
+      DataRange = '0x09-0x1D'
+      MaxUnSharedRAM = X2D(1D)
+   end
+   when PicName = '12f508' then do
+      DataRange = '0x07-0x1D'
+      MaxUnSharedRAM = X2D(1D)
+   end
    when PicName = '12f629'  |,                  /* have only shared RAM */
         PicName = '12f675'  |,
         PicName = '16f630'  |,
         PicName = '16f676' then do
-      DataRange = '0x20-0x5D'                   /* most unshared, some shared */
-      MaxUnsharedRAM = X2D(5D)                  /* bank 0 */
-      end
+      DataRange = '0x20-0x5D'                   /* 1 bank: 'unshared' part */
+      MaxUnsharedRAM = X2D(5D)
+   end
+   when PicName = '16f73'   |,
+        PicName = '16f74'  then do
+      DataRange = '0x20-0x7D,0xA0-0xFD'
+      MaxUnSharedRAM = X2D(7D)
+   end
+   when PicName = '16f83'  then do
+      DataRange = '0x0C-0x2D'
+      MaxUnSharedRAM = X2D(2D)
+   end
+   when PicName = '16f84'   |,
+        PicName = '16f84a' then do
+      DataRange = '0x0C-0x4D'
+      MaxUnSharedRAM = X2D(4D)
+   end
    when PicName = '16f818' then do
-      DataRange = '0x20-0x3F,0xA0-0xBF'         /* unshared RAM range */
-      MaxUnsharedRAM = X2D(3F)                  /* upper bound */
-      end
+      DataRange = '0x20-0x7D,0xA0-0xBF'
+      MaxUnsharedRAM = X2D(7D)
+   end
    when PicName = '16f819' then do
       DataRange = '0x20-0x6F,0xA0-0xEF,0x120-0x16F'
-      MaxUnsharedRAM = X2D(6F)                  /* bank 0 */
-      end
+      MaxUnsharedRAM = X2D(6F)
+   end
    when PicName = '16f870'  |,
         PicName = '16f871'  |,
         PicName = '16f872'  then do
       DataRange = '0x20-0x6F,0xA0-0xBF'
-      MaxUnsharedRAM = X2D(6F)                  /* bank 0 */
-      end
+      MaxUnsharedRAM = X2D(6F)
+   end
    when PicName = '16f873'  |,
         PicName = '16f873a' |,
         PicName = '16f874'  |,
         PicName = '16f874a' then do
-      DataRange = '0x20-0x7F,0xA0-0xFF'
-      MaxUnsharedRAM = X2D(7F)                  /* bank 0 */
-      end
+      DataRange = '0x20-0x7D,0xA0-0xFD'
+      MaxUnsharedRAM = X2D(7D)
+   end
    otherwise                                    /* scan .lkr file */
       DataRange = ''                            /* default  */
       MaxUnsharedRAM = 0
@@ -1418,8 +1470,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                     k = k - 1
                   end
                end
-               when left(reg,3) = 'CCP' & right(reg,3) = 'CON' &,    /* CCPxCON */
-                    pos('VCFG',field) > 0  then do      /* multibit VCFG field */
+               when left(reg,5) = 'ADCON' &,            /* ADCONx */
+                    pos('VCFG',field) > 0  then do      /* multibit VCFG present */
                   call lineout jalfile, 'var volatile bit   ',
                                left(field'1',25) 'at' reg ':' offset - 0
                   call lineout jalfile, 'var volatile bit   ',
@@ -1574,15 +1626,23 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
             end
             else do                                     /* not twin name */
                field = reg'_'n.j
-               select                                   /* intercept before expansion */
-                  when (left(reg,5) = 'ADCON'  &  left(n.j,3) = 'CHS')                        |,
-                       (reg = 'OPTION_REG' & (n.j = 'PS0' | n.j = 'PS1' | n.j = 'PS2'))       |,
-                       (reg = 'OSCCON'  &  left(n.j,4) = 'IRCF')                              |,
-                       (reg = 'OSCTUNE'  &  left(n.j,3) = 'TUN')                              |,
-                       (reg = 'T1CON'  &  left(n.j,6) = 'T1CKPS')                             |,
-                       (reg = 'T2CON'  & (left(n.j,7) = 'T2OUTPS' | left(n.j,6) = 'T2CKPS'))  |,
-                       (reg = 'WDTCON'  &  left(n.j,5) = 'WDTPS')                       then do
-                     nop                                /* suppress enumeration */
+               select                                   /* intercept */
+                  when (left(reg,5) = 'ADCON'  & left(n.j,3) = 'CHS')                       |,
+                       (left(reg,6) = 'SSPCON' & left(n.j,4) = 'SSPM')                      |,
+                       (reg = 'OPTION_REG'     & (n.j = 'PS0' | n.j = 'PS1' | n.j = 'PS2')) |,
+                       (reg = 'OSCCON'         & left(n.j,4) = 'IRCF')                      |,
+                       (reg = 'OSCTUNE'        & left(n.j,3) = 'TUN')                       |,
+                       (reg = 'WDTCON'         & left(n.j,5) = 'WDTPS')            then do
+                     nop                                /* suppress enumerated bitfields */
+                  end
+                  when left(reg,3) = 'CCP'  &  right(reg,3) = 'CON'  &,      /* CCPxCON */
+                       datatype(substr(reg,4,1)) = 'NUM'        then do
+                     nop                                /* suppress enumerated bitfields */
+                  end
+                  when left(reg,1) = 'T'  &  right(reg,3) = 'CON'  &,      /* TxCON */
+                       datatype(substr(reg,2,1)) = 'NUM'           &,
+                       (substr(n.j,3,5) = 'OUTPS' | substr(n.j,3,4) = 'CKPS')   then do
+                     nop                                /* suppress enumerated bitfields */
                   end
                   when left(reg,5) = 'ANSEL'  &  left(n.j,3) = 'ANS' then do
                      select
@@ -1632,16 +1692,17 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                      call lineout jalfile, 'var volatile bit*5 ',
                           left(reg'_CHS',25) memtype'at' reg ':' offset
                   end
-                  when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &,       /* [E]CCPxCON */
-                     ((left(n.j,3) = 'CCP' &  right(n.j,1) = 'Y') |,        /* CCPxY */
-                      (left(n.j,2) = 'DC' &  right(n.j,2) = 'B0')) then do  /* DCxB0 */
-                     if left(n.j,2) = 'DC' then
-                        field = reg'_DC'substr(n.j,3,1)'B'
-                     else
-                        field = reg'_DC'substr(n.j,4,1)'B'
-                     if duplicate_name(field,reg) = 0 then    /* unique */
+                  when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &,      /* CCPxCON */
+                       datatype(substr(reg,4,1)) = 'NUM'        then do
+                     if left(n.j,2) = 'DC' & right(n.j,1) = '0' then
                         call lineout jalfile, 'var volatile bit*2 ',
-                                     left(field,25) memtype'at' reg ':' offset - s.j + 1
+                             left(reg'_DC'substr(n.j,3,1)'B',25) memtype'at' reg ':' offset
+                     else if left(n.j,3) = 'CCP' & right(n.j,1) = '0' then
+                        call lineout jalfile, 'var volatile bit*4 ',
+                             left(reg'_CCP'substr(n.j,4,1)'M',25) memtype'at' reg ':' offset
+                     else if left(n.j,1) = 'P' & right(n.j,1) = '0' then
+                        call lineout jalfile, 'var volatile bit*2 ',
+                             left(reg'_P'substr(n.j,2,1)'M',25) memtype'at' reg ':' offset
                   end
                   when reg = 'INTCON' then do
                      if left(n.j,2) = 'T0' then
@@ -1679,17 +1740,19 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                      call lineout jalfile, 'var volatile bit*6 ',
                           left(reg'_TUN',25) memtype'at' reg ':' offset
                   end
-                  when reg = 'T1CON'  &  n.j = 'T1CKPS0' then do
-                     call lineout jalfile, 'var volatile bit*2 ',
-                          left(reg'_T1CKPS',25) memtype'at' reg ':' offset
+                  when left(reg,6) = 'SSPCON' & n.j = 'SSPM0' then do
+                     call lineout jalfile, 'var volatile bit*4 ',
+                          left(reg'_SSPM',25) memtype'at' reg ':' offset
                   end
-                  when reg = 'T2CON' then do
-                     if n.j = 'T2OUTPS0' then
+                  when left(reg,1) = 'T'  &  right(reg,3) = 'CON'  &,      /* TxCON */
+                       datatype(substr(reg,2,1)) = 'NUM'           &,
+                       (substr(n.j,3,6) = 'OUTPS0' | substr(n.j,3,5) = 'CKPS0')   then do
+                     if substr(n.j,3,5) == 'OUTPS' then
                         call lineout jalfile, 'var volatile bit*4 ',
-                          left(reg'_T2OUTPS',25) memtype'at' reg ':' offset
-                     else if n.j = 'T2CKPS0' then
+                            left(reg'_'left(n.j,7),25) memtype'at' reg ':' offset
+                     else
                         call lineout jalfile, 'var volatile bit*2 ',
-                          left(reg'_T2CKPS',25) memtype'at' reg ':' offset
+                            left(reg'_'left(n.j,6),25) memtype'at' reg ':' offset
                   end
                   when left(reg,4) = 'TRIS'  &,
                        left(n.j,4) = 'TRIS'  then do
@@ -1713,23 +1776,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
 
          else if s.j <= 8 then do                       /* multi-bit subfield */
             field = reg'_'n.j
-            select
-               when left(reg,3) = 'CCP' & right(reg,3) = 'CON' &,    /* CCPxCON */
-                    pos('VCFG',field) > 0  then do      /* multibit VCFG field */
-                  call lineout jalfile, 'var volatile bit   ',
-                               left(field'1',25) memtype'at' reg ':' offset - 0
-                  call lineout jalfile, 'var volatile bit   ',
-                               left(field'0',25) memtype'at' reg ':' offset - 1
-                  if duplicate_name(field,reg) = 0 then   /* unique */
-                     call lineout jalfile, 'var volatile bit*'s.j' ',
-                                  left(field,25) memtype'at' reg ':' offset - s.j + 1
-               end
-               otherwise                                   /* other */
-                  if \(s.j = 8  &  n.j = reg) then do      /* subfield not alias of reg */
-                     if duplicate_name(field,reg) = 0 then  /* unique */
-                        call lineout jalfile, 'var volatile bit*'s.j' ',
-                                     left(field,25) memtype'at' reg ':' offset - s.j + 1
-                  end
+            if \(s.j = 8  &  n.j = reg) then do      /* subfield not alias of reg */
+               if duplicate_name(field,reg) = 0 then  /* unique */
+                  call lineout jalfile, 'var volatile bit*'s.j' ',
+                               left(field,25) memtype'at' reg ':' offset - s.j + 1
             end
          end
 
@@ -3197,7 +3247,7 @@ do i = arg(1) + 1  while i <= dev.0  &,
          kwd = Fuse_Def.Osc.val2u
          if kwd = '?' then do
             if msglevel <= 2 then
-               say '  Warning: No mapping for fuse_def' key' keyword' kwd
+               say '  Warning: No mapping for fuse_def' key' :' val2u
             return
          end
       end
@@ -3751,7 +3801,7 @@ call lineout jalfile, '-- ---------------------------------------------------'
 call lineout jalfile, '--'
 call lineout jalfile, 'include chipdef_jallib                  -- common constants'
 call lineout jalfile, '--'
-call lineout jalfile, 'pragma  target  cpu   PIC_'Core '           -- (banks = 'Numbanks')'
+call lineout jalfile, 'pragma  target  cpu   PIC_'Core '           -- (banks='Numbanks')'
 call lineout jalfile, 'pragma  target  chip  'PicName
 call lineout jalfile, 'pragma  target  bank  0x'D2X(BANKSIZE,4)
 if core = '12' | core = '14' | core = '14H' then
@@ -3765,49 +3815,32 @@ call list_unshared_data_range                           /* MaxUnsharedRam update
 MaxSharedRAM = 0                                        /* no shared RAM */
 x = list_shared_data_range()                            /* returns range string */
 /* - - - - - - - -  temporary? - - - - - - - - - - - - - - - - - */
-if MaxUnsharedRAM = 0  &  MaxSharedRAM > 0 then do      /* no unshared RAM */
+if MaxSharedRam > 0  &  MaxUnsharedRAM = 0  then do     /* no unshared RAM */
    if msglevel <= 2 then do
       say '  Warning:' PicName 'has only shared, no unshared RAM!'
       say '            Must be handled as exceptional chip!'
    end
 end
 else if MaxSharedRAM = 0 then do                        /* no shared RAM */
-   if Core \= '12'                               &,      /* known as 'OK' */
-      PicName \= '12f629'                        &,
-      PicName \= '12f675'                        &,
-      PicName \= '16f630'                        &,
-      PicName \= '16f676'                        &,
-      PicName \= '16f73'                         &,
-      PicName \= '16f74'                         &,
-      PicName \= '16f83'                         &,
-      PicName \= '16f84'  & PicName \= '16f84a'  &,
-      PicName \= '16f873' & PicName \= '16f873a' &,
-      PicName \= '16f874' & PicName \= '16f874a'  ,
-   then do
-      if msglevel <= 2 then do
-        say '  Warning:' PicName 'has no shared RAM!'
-        say '           May have to be handled as exceptional chip!'
-      end
+   if msglevel <= 2 then do
+     say '  Warning:' PicName 'has no shared RAM!'
+     say '           Must be handled as exceptional chip!'
    end
 end
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 call lineout jalfile, '--'
 if Core = '12'  |  Core = '14' then do
-   if x \= '' then do                            /* with shared RAM */
-      call lineout jalfile, 'var volatile byte _pic_accum shared at',
-                             sfr_mirror(MaxSharedRAM-1)'   -- (compiler)'
-      call lineout jalfile, 'var volatile byte _pic_isr_w shared at',
-                             sfr_mirror(MaxSharedRAM)'   -- (compiler)'
-   end
-   else do                                       /* no shared RAM */
-      call lineout jalfile, 'var volatile byte _pic_accum at',
-                             sfr_mirror(MaxUnsharedRAM-1)'   -- (compiler)'
-      call lineout jalfile, 'var volatile byte _pic_isr_w at',
-                             sfr_mirror(MaxUnSharedRAM)'   -- (compiler)'
+   call lineout jalfile, 'var volatile byte _pic_accum shared at',
+                          '0x'D2X(MaxSharedRAM-1,2)'        -- (compiler)'
+   call lineout jalfile, 'var volatile byte _pic_isr_w shared at',
+                          '0x'D2X(MaxSharedRAM,2)'        -- (compiler)'
+   if PicName = '16f73'  | PicName = '16f74' then do
+      call lineout jalfile,,
+         '_warn "Calculations with multibyte variables are not supported for this target"'
    end
 end
 else if Core = '14H' then do
-   if x \= '' then do                            /* with shared RAM */
+   if x \= '' then do                           /* with shared RAM */
       call lineout jalfile, 'var volatile byte _pic_accum shared at',
                             '0x'D2X(MaxSharedRAM,3)'   -- (compiler)'
    end
