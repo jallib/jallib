@@ -1112,8 +1112,9 @@ def jalapi_generate(infos,tmpl_file,sampledir,locallinks):
 # LIST FUNC #
 #-----------#
 
-def do_list(_trash):
-    gdirs = split_repos(os.environ['JALLIB_REPOS'])
+
+def get_library_list():
+    gdirs = split_repos(os.environ.get('JALLIB_REPOS',""))
     # first directories have precedence, so we start by the end
     # and will override as needed
     gdirs.reverse()
@@ -1124,6 +1125,10 @@ def do_list(_trash):
         for fname,path in found.items():
             jalfiles[fname] = os.path.join(gdir,path)
 
+    return jalfiles
+
+def do_list(_trash):
+    jalfiles = get_library_list()
     # sort on filename (not using path)
     for jalfile in sorted(jalfiles.items(),cmp=lambda a,b: cmp(a[0],b[0])):
         print jalfile[1]
@@ -1133,17 +1138,18 @@ def do_list(_trash):
 # API FUNC #
 #----------#
 
-VAR_RE = re.compile("var\s+(\w+)\s+(\w+)\s+=?")
-CONST_RE = re.compile("const\s+(\w+)\s*(\w+)\s+=")
-ALIAS_RE = re.compile("alias\s+(\w+)\s+is(\w+)")
-PROC_RE = re.compile("procedure\s+(\w+)\s*\((.*)\)\s+is")
-FUNC_RE = re.compile("function\s+(\w+)\s*\((.*)\)\s+return\s+(\w+)\s+is")
-SIGN_RE = re.compile("(bit|byte|sbyte|word|sword|dword|sdword)\s+(in|out|in out)\s+(\w+),?")
-INCL_RE = re.compile("include\s+(\w+)")
+VAR_RE = re.compile("var\s+(volatile)?\s+([.\S]+)\s+([.\S]+)\s*=?")
+CONST_RE = re.compile("const\s+([.\S]+)\s*([.\S]+)\s+=")
+ALIAS_RE = re.compile("alias\s+([.\S]+)\s+is([.\S]+)")
+PROC_RE = re.compile("procedure\s+([.\S]+)\s*\((.*)\)\s+is")
+PSEU_RE = re.compile("(procedure|function)\s+([.\S]+)'(put|get)\s*(\(.*\))?\s*(return\s*.*)?\s+is")
+FUNC_RE = re.compile("function\s+([.\S]+)\s*\((.*)\)\s+return\s+([.\S]+)\s+is")
+SIGN_RE = re.compile("(bit|byte|sbyte|word|sword|dword|sdword)\s+(in|out|in out)\s+([.\S]+),?")
+INCL_RE = re.compile("include\s+([.\S]+)")
 
 def api_parse(filename):
     desc = {"include" : {}, "procedure" : {}, "function" : {},
-            "var" : {}, "const" : {}, 'alias' : {}}
+            "var" : {}, "const" : {}, 'alias' : {}, 'pseudovar' : {}}
 
     def get_params(signature):
         params = SIGN_RE.findall(signature)
@@ -1159,25 +1165,29 @@ def api_parse(filename):
     for num,content in enumerate(lines):
         content = content.strip()
         if VAR_RE.match(content):
-            type, name = VAR_RE.match(content).groups()
+            _,type, name = VAR_RE.match(content).groups()
             desc['var'][name] =  {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
         elif CONST_RE.match(content):
             type, name = CONST_RE.match(content).groups()
             desc['const'][name] = {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
         elif ALIAS_RE.match(content):
             alias, source = ALIAS_RE.match(content).groups()
-            desc['alias'][alias] = {'alias' : alias, 'source' : source, 'line' : num}#, 'content' : content}
+            desc['alias'][alias] = {'name' : alias, 'source' : source, 'line' : num}#, 'content' : content}
+        elif PSEU_RE.match(content):
+            _,name,_,_,_ = PSEU_RE.match(content).groups()
+            # line won't be accurate, as we only keep the last pseudovar def, that is either 'put or 'get
+            desc['pseudovar'][name] = {'name' : name, 'line' : num}
         elif PROC_RE.match(content):
             name,signature = PROC_RE.match(content).groups()
             params = get_params(signature)
-            desc['procedure'][name] = {'name' : name, 'params' : params}
+            desc['procedure'][name] = {'name' : name, 'params' : params, 'line' : num}
         elif FUNC_RE.match(content):
             name,signature,rettype = FUNC_RE.match(content).groups()
             params = get_params(signature)
-            desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype}
+            desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype, 'line' : num}
         elif INCL_RE.match(content):
             lib = INCL_RE.match(content).groups()[0]
-            desc['include'][lib] = {'name' : lib}
+            desc['include'][lib] = {'name' : lib, 'line' : num}
 
     # normalize: replace {} used to keep things unique by real list
     final = {}.fromkeys(desc)
@@ -1191,7 +1201,7 @@ def api2xml(py,elem=None,doc=None,libname=None):
     if not doc:
         doc = minidom.Document()
         elem = doc.appendChild(doc.createElement("api"))
-        elem.setAttribute("file",libname)
+        elem.setAttribute("name",libname.replace(".jal",""))
     if isinstance(py,pytypes.DictType):
         for k,v in py.items():
             node = doc.createElement(k)
@@ -1460,9 +1470,9 @@ include, ...
 
 Several output formats are supported:
 
-    -x: XML format (default)
+    -x: XML format
     -j: JSON format (requires simplejson library)
-    -p: python string (can be used by eval'ing it)
+    -p: python string (can be used by eval'ing it) -- default
 
 If -o option is specified, output is written in a file, else written
 on stdout.
