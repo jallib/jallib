@@ -1129,6 +1129,129 @@ def do_list(_trash):
         print jalfile[1]
 
 
+#----------#
+# API FUNC #
+#----------#
+
+VAR_RE = re.compile("var\s+(\w+)\s+(\w+)\s+=?")
+CONST_RE = re.compile("const\s+(\w+)\s*(\w+)\s+=")
+ALIAS_RE = re.compile("alias\s+(\w+)\s+is(\w+)")
+PROC_RE = re.compile("procedure\s+(\w+)\s*\((.*)\)\s+is")
+FUNC_RE = re.compile("function\s+(\w+)\s*\((.*)\)\s+return\s+(\w+)\s+is")
+SIGN_RE = re.compile("(bit|byte|sbyte|word|sword|dword|sdword)\s+(in|out|in out)\s+(\w+),?")
+INCL_RE = re.compile("include\s+(\w+)")
+
+def api_parse(filename):
+    desc = {"include" : {}, "procedure" : {}, "function" : {},
+            "var" : {}, "const" : {}, 'alias' : {}}
+
+    def get_params(signature):
+        params = SIGN_RE.findall(signature)
+        dsign = []
+        for param in params:
+            dsign.append({'type' : param[0], 'context' : param[1], 'name' : param[2]})
+        return dsign
+
+    if filename == "-":
+        lines = sys.stdin.readlines()
+    else:
+        lines = file(filename).readlines()
+    for num,content in enumerate(lines):
+        content = content.strip()
+        if VAR_RE.match(content):
+            type, name = VAR_RE.match(content).groups()
+            desc['var'][name] =  {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
+        elif CONST_RE.match(content):
+            type, name = CONST_RE.match(content).groups()
+            desc['const'][name] = {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
+        elif ALIAS_RE.match(content):
+            alias, source = ALIAS_RE.match(content).groups()
+            desc['alias'][alias] = {'alias' : alias, 'source' : source, 'line' : num}#, 'content' : content}
+        elif PROC_RE.match(content):
+            name,signature = PROC_RE.match(content).groups()
+            params = get_params(signature)
+            desc['procedure'][name] = {'name' : name, 'params' : params}
+        elif FUNC_RE.match(content):
+            name,signature,rettype = FUNC_RE.match(content).groups()
+            params = get_params(signature)
+            desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype}
+        elif INCL_RE.match(content):
+            lib = INCL_RE.match(content).groups()[0]
+            desc['include'][lib] = {'name' : lib}
+
+    # normalize: replace {} used to keep things unique by real list
+    final = {}.fromkeys(desc)
+    for k,v in desc.items():
+        final[k] = v.values()
+
+    return final
+    
+def api2xml(py,elem=None,doc=None,libname=None):
+    import xml.dom.minidom as minidom
+    if not doc:
+        doc = minidom.Document()
+        elem = doc.appendChild(doc.createElement("api"))
+        elem.setAttribute("file",libname)
+    if isinstance(py,pytypes.DictType):
+        for k,v in py.items():
+            node = doc.createElement(k)
+            elem.appendChild(node)
+            api2xml(v,node,doc)
+    if isinstance(py,pytypes.ListType):
+        for val in py:
+            node = doc.createElement("element")
+            elem.appendChild(node)
+            api2xml(val,node,doc)
+    if isinstance(py,pytypes.StringType) or isinstance(py,pytypes.IntType):
+        elem.setAttribute("value",str(py))
+    
+    return doc
+
+def api2json(py):
+    import simplejson
+    return simplejson.dumps(py)
+
+def do_api(args):
+    try:
+        opts, args = getopt.getopt(args, ACTIONS['api']['options'])
+    except getopt.error,e:
+        print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+        sys.exit(255)
+
+    # now args contain jal file
+
+    outxml = False
+    outjson = False
+    outpystr = False
+    outfile = sys.stdout
+    input = None
+    for o,v in opts:
+        if o == "-x":
+            outxml = True
+        elif o == '-j':
+            outjson = True
+        elif o == '-p':
+            outpystr = True
+        elif o == '-o':
+            outfile = file(v,"w")
+        else:
+            print >> sys.stderr, "Wrong option %s" % o
+
+    if not args:
+        print >> sys.stderr, "You must specify a JAL file as input (last argument)"
+        sys.exit(255)
+
+    pydesc = api_parse(args[0])
+    if outxml:
+        doc = api2xml(pydesc,libname=os.path.basename(args[0]))
+        outfile.write(doc.toprettyxml())
+    elif outjson:
+        json = api2json(pydesc)
+        outfile.write(json)
+    else:
+        import pprint
+        outfile.write(pprint.pformat(pydesc) + "\n")
+
 
 #############
 # HELP FUNC #
@@ -1143,6 +1266,7 @@ Actions:
     - validate : validate the given file, according to Jallib Style Guide (JSG)
     - sample   : generate samples from board and test files
     - reindent : re-indent jal code
+    - api      : generate API description from jal file
     - jalapi   : generate HTML documentation from jal files
     - list     : list all JAL libraries found in JALLIB_REPOS, as resolved by compiler
     - license  : display license
@@ -1326,6 +1450,25 @@ Output contains one line per library.
 
 """
 
+def api_help():
+    print """
+    jallib api [-x|-j|-p] [-o output] file.jal|-
+
+Takes a JAL file (or read stdin if "-" is specified), parses and
+extracts API information about const, var, procedure, function,
+include, ...
+
+Several output formats are supported:
+
+    -x: XML format (default)
+    -j: JSON format (requires simplejson library)
+    -p: python string (can be used by eval'ing it)
+
+If -o option is specified, output is written in a file, else written
+on stdout.
+
+"""
+
 def do_help(action_args=[]):
     action = None
     if action_args:
@@ -1341,6 +1484,7 @@ ACTIONS = {
         'compile'   : {'callback' : do_compile,  'options' : 'R:E:',       'help' : compile_help},
         'validate'  : {'callback' : do_validate, 'options' : '',           'help' : validate_help},
         'list'      : {'callback' : do_list,     'options' : '',           'help' : list_help},
+        'api'       : {'callback' : do_api,      'options' : 'xjpo:',        'help' : api_help},
         'jalapi'    : {'callback' : do_jalapi,   'options' : 'slt:d:g:o:', 'help' : jalapi_help},
         'sample'    : {'callback' : do_sample,   'options' : 'a:b:t:o:',   'help' : sample_help},
         'reindent'  : {'callback' : do_reindent, 'options' : 'c:',         'help' : reindent_help},
