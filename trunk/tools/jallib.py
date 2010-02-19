@@ -1147,9 +1147,7 @@ FUNC_RE = re.compile("function\s+([.\S]+)\s*\((.*)\)\s+return\s+([.\S]+)\s+is")
 SIGN_RE = re.compile("(bit|byte|sbyte|word|sword|dword|sdword)\s+(in|out|in out)\s+([.\S]+),?")
 INCL_RE = re.compile("include\s+([.\S]+)")
 
-def api_parse(filename):
-    desc = {"include" : {}, "procedure" : {}, "function" : {},
-            "var" : {}, "const" : {}, 'alias' : {}, 'pseudovar' : {}}
+def api_parse(filenames,filelist=[]):
 
     def get_params(signature):
         params = SIGN_RE.findall(signature)
@@ -1157,44 +1155,51 @@ def api_parse(filename):
         for param in params:
             dsign.append({'type' : param[0], 'context' : param[1], 'name' : param[2]})
         return dsign
+    
+    apis = {}
+    for filename in filenames + filelist:
+        desc = {"include" : {}, "procedure" : {}, "function" : {},
+                "var" : {}, "const" : {}, 'alias' : {}, 'pseudovar' : {}}
 
-    if filename == "-":
-        lines = sys.stdin.readlines()
-    else:
-        lines = file(filename).readlines()
-    for num,content in enumerate(lines):
-        content = content.strip()
-        if VAR_RE.match(content):
-            _,type, name = VAR_RE.match(content).groups()
-            desc['var'][name] =  {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
-        elif CONST_RE.match(content):
-            type, name = CONST_RE.match(content).groups()
-            desc['const'][name] = {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
-        elif ALIAS_RE.match(content):
-            alias, source = ALIAS_RE.match(content).groups()
-            desc['alias'][alias] = {'name' : alias, 'source' : source, 'line' : num}#, 'content' : content}
-        elif PSEU_RE.match(content):
-            _,name,_,_,_ = PSEU_RE.match(content).groups()
-            # line won't be accurate, as we only keep the last pseudovar def, that is either 'put or 'get
-            desc['pseudovar'][name] = {'name' : name, 'line' : num}
-        elif PROC_RE.match(content):
-            name,signature = PROC_RE.match(content).groups()
-            params = get_params(signature)
-            desc['procedure'][name] = {'name' : name, 'params' : params, 'line' : num}
-        elif FUNC_RE.match(content):
-            name,signature,rettype = FUNC_RE.match(content).groups()
-            params = get_params(signature)
-            desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype, 'line' : num}
-        elif INCL_RE.match(content):
-            lib = INCL_RE.match(content).groups()[0]
-            desc['include'][lib] = {'name' : lib, 'line' : num}
+        if filename == "-":
+            lines = sys.stdin.readlines()
+        else:
+            lines = file(filename).readlines()
+        for num,content in enumerate(lines):
+            content = content.strip()
+            if VAR_RE.match(content):
+                _,type, name = VAR_RE.match(content).groups()
+                desc['var'][name] =  {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
+            elif CONST_RE.match(content):
+                type, name = CONST_RE.match(content).groups()
+                desc['const'][name] = {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
+            elif ALIAS_RE.match(content):
+                alias, source = ALIAS_RE.match(content).groups()
+                desc['alias'][alias] = {'name' : alias, 'source' : source, 'line' : num}#, 'content' : content}
+            elif PSEU_RE.match(content):
+                _,name,_,_,_ = PSEU_RE.match(content).groups()
+                # line won't be accurate, as we only keep the last pseudovar def, that is either 'put or 'get
+                desc['pseudovar'][name] = {'name' : name, 'line' : num}
+            elif PROC_RE.match(content):
+                name,signature = PROC_RE.match(content).groups()
+                params = get_params(signature)
+                desc['procedure'][name] = {'name' : name, 'params' : params, 'line' : num}
+            elif FUNC_RE.match(content):
+                name,signature,rettype = FUNC_RE.match(content).groups()
+                params = get_params(signature)
+                desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype, 'line' : num}
+            elif INCL_RE.match(content):
+                lib = INCL_RE.match(content).groups()[0]
+                desc['include'][lib] = {'name' : lib, 'line' : num}
 
-    # normalize: replace {} used to keep things unique by real list
-    final = {}.fromkeys(desc)
-    for k,v in desc.items():
-        final[k] = v.values()
+        # normalize: replace {} used to keep things unique by real list
+        final = {}.fromkeys(desc)
+        for k,v in desc.items():
+            final[k] = v.values()
 
-    return final
+        apis[os.path.basename(filename)] = final
+
+    return apis
     
 def api2xml(py,elem=None,doc=None,libname=None):
     import xml.dom.minidom as minidom
@@ -1221,6 +1226,10 @@ def api2json(py):
     import simplejson
     return simplejson.dumps(py)
 
+def api2pickle(py):
+    import cPickle
+    return cPickle.dumps(py)
+
 def do_api(args):
     try:
         opts, args = getopt.getopt(args, ACTIONS['api']['options'])
@@ -1233,7 +1242,9 @@ def do_api(args):
     outxml = False
     outjson = False
     outpystr = False
+    outpickl = False
     outfile = sys.stdout
+    filelist = []
     input = None
     for o,v in opts:
         if o == "-x":
@@ -1242,22 +1253,30 @@ def do_api(args):
             outjson = True
         elif o == '-p':
             outpystr = True
+        elif o == '-k':
+            outpickl = True
         elif o == '-o':
             outfile = file(v,"w")
+        elif o == '-l':
+            filelist = [f.strip() for f in file(v).readlines()]
         else:
             print >> sys.stderr, "Wrong option %s" % o
 
-    if not args:
-        print >> sys.stderr, "You must specify a JAL file as input (last argument)"
+    if not args and not filelist:
+        print >> sys.stderr, "You must specify a JAL file as input (last argument) or a file list (-l option)"
+
         sys.exit(255)
 
-    pydesc = api_parse(args[0])
+    pydesc = api_parse(args,filelist)
     if outxml:
         doc = api2xml(pydesc,libname=os.path.basename(args[0]))
         outfile.write(doc.toprettyxml())
     elif outjson:
         json = api2json(pydesc)
         outfile.write(json)
+    elif outpickl:
+        pickl = api2pickle(pydesc)
+        outfile.write(pickl)
     else:
         import pprint
         outfile.write(pprint.pformat(pydesc) + "\n")
@@ -1462,16 +1481,21 @@ Output contains one line per library.
 
 def api_help():
     print """
-    jallib api [-x|-j|-p] [-o output] file.jal|-
+    jallib api [-x|-j|-p] [-o output] ([-l flist|-] | (-|f1.jal f2.jal ...)) 
 
 Takes a JAL file (or read stdin if "-" is specified), parses and
 extracts API information about const, var, procedure, function,
 include, ...
 
+If -l option is specified, a list of file is taken as input (a real file,
+or read from stdin. If jal files are also passed through the commandline,
+they'll be considered in addition to the file list.
+
 Several output formats are supported:
 
     -x: XML format
     -j: JSON format (requires simplejson library)
+    -k: pickle format (using python cPickle)
     -p: python string (can be used by eval'ing it) -- default
 
 If -o option is specified, output is written in a file, else written
@@ -1494,8 +1518,8 @@ ACTIONS = {
         'compile'   : {'callback' : do_compile,  'options' : 'R:E:',       'help' : compile_help},
         'validate'  : {'callback' : do_validate, 'options' : '',           'help' : validate_help},
         'list'      : {'callback' : do_list,     'options' : '',           'help' : list_help},
-        'api'       : {'callback' : do_api,      'options' : 'xjpo:',        'help' : api_help},
-        'jalapi'    : {'callback' : do_jalapi,   'options' : 'slt:d:g:o:', 'help' : jalapi_help},
+        'api'       : {'callback' : do_api,      'options' : 'xjkpo:l:',   'help' : api_help},
+        'jalapi'    : {'callback' : do_jalapi,   'options' : 'slt:d:g:o',  'help' : jalapi_help},
         'sample'    : {'callback' : do_sample,   'options' : 'a:b:t:o:',   'help' : sample_help},
         'reindent'  : {'callback' : do_reindent, 'options' : 'c:',         'help' : reindent_help},
         'unittest'  : {'callback' : do_unittest, 'options' : 'kvl',        'help' : unittest_help},
