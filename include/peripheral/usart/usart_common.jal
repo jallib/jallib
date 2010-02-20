@@ -1,5 +1,5 @@
 -- Title: USART common 
--- Author: Stef Mientki Copyright (c) 2002..2006, all rights reserved.
+-- Author: Stef Mientki Copyright (c) 2002..2010, all rights reserved.
 -- Adapted-by: Sebastien Lelong, Joep Suijs
 -- Compiler: >=2.4g
 -- 
@@ -42,24 +42,14 @@ end if
 procedure _calculate_and_set_baudrate() is
    const max_deviation = 5  -- maximum % deviation of the realized baudrate
 
-   if usart_hw_serial then
-      -- SPBRG = ( Fosc / ( 4 * Baudrate ) ) -1
-      -- first try high baudrate, will generate highest accuarcy
-      -- to get the right rounding (5 + 10*f(x)) /10
-      const usart_div =((5 + ( ( 10 * target_clock ) / ( 16 * serial_hw_baudrate ))  ) / 10 ) - 1
+   if usart_hw_serial then     
+      if (defined(BAUDCTL_BRG16) == true) then 
+         BAUDCTL_BRG16 = true
+         TXSTA_BRGH = true
+         
+         const usart_div =((5 + ( ( 10 * target_clock ) / ( 4 * serial_hw_baudrate ))  ) / 10 ) - 1
+         const real_baud = target_clock / 4 / ((usart_div & 0xffff) + 1)
 
-      -- special case if divider is 0,
-      -- test if deviation is not too much
-      if usart_div <= 0 then
-         if (100 * (serial_hw_baudrate - (target_clock / 16) )) / serial_hw_baudrate >= max_deviation then
-            pragma error  -- asynchronous baudrate is too high
-         end if
-      end if
-
-      -- if divider small enough,
-      -- calculate divider and set high-speed
-      const real_baud = target_clock / 16 / (usart_div + 1)
-      if usart_div <= 255 then
          if (real_baud > serial_hw_baudrate) then 
             if (100 * (real_baud - serial_hw_baudrate) / serial_hw_baudrate >= max_deviation) then
                pragma error  -- asynchronous baudrate deviation is too large
@@ -70,13 +60,45 @@ procedure _calculate_and_set_baudrate() is
             end if
          end if
 
-         if usart_div >= 0 then 
-            SPBRG = usart_div 
-         else
-            SPBRG = 0
+         SPBRG = byte(usart_div)
+         SPBRGH = byte(usart_div >> 8)
+
+      else
+         -- SPBRG = ( Fosc / ( 4 * Baudrate ) ) -1
+         -- first try high baudrate, will generate highest accuarcy
+         -- to get the right rounding (5 + 10*f(x)) /10
+         const usart_div =((5 + ( ( 10 * target_clock ) / ( 16 * serial_hw_baudrate ))  ) / 10 ) - 1
+   
+         -- special case if divider is 0,
+         -- test if deviation is not too much
+         if usart_div <= 0 then
+            if (100 * (serial_hw_baudrate - (target_clock / 16) )) / serial_hw_baudrate >= max_deviation then
+               pragma error  -- asynchronous baudrate is too high
+            end if
          end if
-         TXSTA_BRGH = true
-         -- try the low-speed mode
+   
+         -- if divider small enough,
+         -- calculate divider and set high-speed
+         const real_baud = target_clock / 16 / (usart_div + 1)
+         if usart_div <= 255 then
+            if (real_baud > serial_hw_baudrate) then 
+               if (100 * (real_baud - serial_hw_baudrate) / serial_hw_baudrate >= max_deviation) then
+                  pragma error  -- asynchronous baudrate deviation is too large
+               end if
+            else
+               if (100 * (serial_hw_baudrate - real_baud) / serial_hw_baudrate >= max_deviation) then
+                  pragma error  -- asynchronous baudrate deviation is too large 
+               end if
+            end if
+   
+            if usart_div >= 0 then 
+               SPBRG = usart_div 
+            else
+               SPBRG = 0
+            end if
+            TXSTA_BRGH = true
+            -- try the low-speed mode
+         end if
       else
            const usart_div_low = ((((10 * target_clock) / ( 64 * serial_hw_baudrate )) + 5 ) / 10) - 1
          -- here divider will never be 0
