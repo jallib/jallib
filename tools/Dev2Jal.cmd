@@ -39,7 +39,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.91'
+   ScriptVersion   = '0.0.92'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -1237,8 +1237,7 @@ do i = 1 to Dev.0
 
       call list_sfr_subfields1x i, reg          /* bit fields */
 
-      if reg = 'BSR'    |,
-         reg = 'FSR'    |,
+      if reg = 'FSR'    |,
          reg = 'INDF'   |,
          reg = 'PCL'    |,
          reg = 'PCLATH' |,
@@ -1374,6 +1373,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                         call lineout jalfile, 'var volatile bit*2 ',
                                      left(field,25) 'at' reg ':' offset - s.j + 1
                   end
+                  when reg = 'OPTION_REG' &,
+                     (n.j = 'T0CS' | n.j = 'T0SE' | n.j = 'PSA') then do
+                      call lineout jalfile, 'alias              ',
+                                     left('T0CON_'n.j,25) 'is' reg'_'n.j
+                  end
                   when reg = 'GPIO' then do
                      shadow = '_PORTA_shadow'
                      pin = 'pin_A'right(n.j,1)
@@ -1452,18 +1456,22 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                     left(reg,5) = 'ANSEL')  then do     /* ANSELx reg */
                   k = s.j - 1
                   do while k >= 0
-                    if reg = 'ANSELH' then
+                    if reg = 'ANSELH' then do
                        call lineout jalfile, 'var volatile bit   ',
                             left('JANSEL_ANS'k+8 ,25) 'at' reg ':' offset + k + 1 - s.j
-                    else if reg = 'ANSELE' then
+                    end
+                    else if reg = 'ANSELE' then do
                        call lineout jalfile, 'var volatile bit   ',
                             left('JANSEL_ANS'k+20,25) 'at' reg ':' offset + k + 1 - s.j
-                    else if reg = 'ANSELD' then
+                    end
+                    else if reg = 'ANSELD' then do
                        call lineout jalfile, 'var volatile bit   ',
                             left('JANSEL_ANS'k+12,25) 'at' reg ':' offset + k + 1 - s.j
-                    else if reg = 'ANSELB' then
+                    end
+                    else if reg = 'ANSELB' then do
                        call lineout jalfile, 'var volatile bit   ',
                             left('JANSEL_ANS'k+6 ,25) 'at' reg ':' offset + k + 1 - s.j
+                    end
                     else
                        call lineout jalfile, 'var volatile bit   ',
                             left('JANSEL_ANS'k   ,25) 'at' reg ':' offset + k + 1 - s.j
@@ -1479,6 +1487,12 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   if duplicate_name(field,reg) = 0 then   /* unique */
                      call lineout jalfile, 'var volatile bit*'s.j' ',
                                   left(field,25) 'at' reg ':' offset - s.j + 1
+               end
+               when reg = 'OPTION_REG' &  n.j = 'PS' then do
+                  call lineout jalfile, 'var volatile bit*'s.j' ',
+                                     left(field,25) 'at' reg ':' offset - s.j + 1
+                  call lineout jalfile, 'alias              ',
+                                     left('T0CON_'n.j,25) 'is' reg'_'n.j
                end
                otherwise                                   /* other */
                   if \(s.j = 8  &  n.j = reg) then do      /* subfield not alias of reg */
@@ -1558,12 +1572,11 @@ do i = 1 to Dev.0
          reg = 'FSR1L'  |,
          reg = 'FSR1H'  |,
          reg = 'INDF0'  |,
-         reg = 'INDF1'  |,
          reg = 'PCL'    |,
          reg = 'PCLATH' |,
          reg = 'STATUS' then do
-         if left(reg,4) = 'INDF' then
-            reg = delstr(reg,4,1)               /* compiler wants '_ind' */
+         if reg = 'INDF0' then
+            reg = 'IND'                         /* compiler wants '_ind' */
          reg = tolower(reg)                     /* to lower case */
          call lineout jalfile, 'var volatile byte  ' left('_'reg,25) memtype'at 0x'D2X(addr,3),
                                   '     -- (compiler)'
@@ -1728,9 +1741,19 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                         call lineout jalfile, '--'
                      end
                   end
-                  when reg = 'OPTION_REG' &  n.j = 'PS0' then do
-                     call lineout jalfile, 'var volatile bit*3 ',
-                          left(reg'_PS',25) memtype'at' reg ':' offset
+                  when reg = 'OPTION_REG' then do
+                     if n.j = 'PS0' then do
+                        call lineout jalfile, 'var volatile bit*3 ',
+                             left(reg'_PS',25) memtype'at' reg ':' offset
+                        call lineout jalfile, 'alias              ',
+                             left('T0CON_'PS,25) 'is' reg'_PS'
+                     end
+                     else if n.j = 'TMR0CS' | n.j = 'TMR0SE' then
+                        call lineout jalfile, 'alias              ',
+                             left('T0CON_'delstr(n.j,2,2),25) 'is' reg'_'n.j
+                     else if n.j = 'PSA' then
+                        call lineout jalfile, 'alias              ',
+                             left('T0CON_'n.j,25) 'is' reg'_'n.j
                   end
                   when reg = 'OSCCON'  &  n.j = 'IRCF0' then do
                      call lineout jalfile, 'var volatile bit*4 ',
@@ -1889,8 +1912,10 @@ do i = 1 to Dev.0
               reg = 'PCLATU' |,
               reg = 'TABLAT' |,
               reg = 'TBLPTR' then do
-            reg = tolower(reg)                          /* to lower case */
-            call lineout jalfile, 'var volatile' field left('_'reg,25),
+            if reg = 'INDF0' then
+               reg = 'IND'                              /* compiler wants '_ind' */
+            reg = tolower(reg)                     /* to lower case */
+            call lineout jalfile, 'var volatile' field left('_'reg, 25),
                                   'shared at 0x'addr '     -- (compiler)'
          end
 
@@ -2006,12 +2031,35 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                   end
                   when left(reg,5) = 'ANSEL'  &,
                        left(n.j,3) = 'ANS' then do
-                     if reg = 'ANSELH' then
-                        call lineout jalfile, 'var volatile bit   ',
-                                     left('JANSEL_ANS'offset+8,25) 'at' reg ':' offset
-                     else
-                        call lineout jalfile, 'var volatile bit   ',
-                                     left('JANSEL_ANS'offset,25) 'at' reg ':' offset
+                     select
+                        when reg = 'ANSELH' then
+                           call lineout jalfile, 'var volatile bit   ',
+                                      left('JANSEL_ANS'offset+8,32) 'at' reg ':' offset
+                         when reg = 'ANSELE' then
+                            call lineout jalfile, 'var volatile bit   ',
+                                 left('JANSEL_ANS'offset+5,32) memtype'at' reg ':' offset
+                         when reg = 'ANSELD' then
+                            call lineout jalfile, 'var volatile bit   ',
+                                 left('JANSEL_ANS'offset+20,32) memtype'at' reg ':' offset
+                         when reg = 'ANSELC' then
+                            call lineout jalfile, 'var volatile bit   ',
+                                 left('JANSEL_ANS'offset+12,32) memtype'at' reg ':' offset
+                         when reg = 'ANSELB' then do
+                            ansx = word('12 10 8 9 11 13', offset + 1)
+                            call lineout jalfile, 'var volatile bit   ',
+                                 left('JANSEL_ANS'ansx,32) memtype'at' reg ':' offset
+                         end
+                         when reg = 'ANSELA' then do
+                            ansx = offset
+                            if n.j = 'ANSA5' then
+                               ansx = offset - 1
+                            call lineout jalfile, 'var volatile bit   ',
+                                 left('JANSEL_ANS'ansx,32) memtype'at' reg ':' offset
+                         end
+                         otherwise
+                            call lineout jalfile, 'var volatile bit   ',
+                                     left('JANSEL_ANS'offset,32) 'at' reg ':' offset
+                     end
                   end
                   when left(reg,1) = 'T' & right(reg,3) = 'CON'   &,      /* TxCON */
                        left(n.j,1) = 'T' & right(n.j,4) = 'SYNC' then do  /* TxSYNC */
@@ -2483,6 +2531,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
             else                                        /* OPTION2 */
                call lineout jalfile, '   asm tris 7'
             call lineout jalfile, 'end procedure'
+            if reg = 'OPTION_REG'  &,
+               (n.j = 'T0CS' | n.j = 'T0SE' | n.j = 'PSA' | n.j = 'PS') then do
+               call lineout jalfile, 'alias              ',
+                                  left('T0CON_'n.j,25) 'is' reg'_'n.j
+            end
          end
          offset = offset - s.j
       end
@@ -3830,14 +3883,13 @@ end
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 call lineout jalfile, '--'
 if Core = '12'  |  Core = '14' then do
+   if PicName = '16f73'  | PicName = '16f74' then
+      call lineout jalfile,,
+         '_warn "Calculations with variables over 16 bits are not supported by this target"'
    call lineout jalfile, 'var volatile byte _pic_accum shared at',
-                          '0x'D2X(MaxSharedRAM-1,2)'        -- (compiler)'
+                             '0x'D2X(MaxSharedRAM-1,2)'        -- (compiler)'
    call lineout jalfile, 'var volatile byte _pic_isr_w shared at',
                           '0x'D2X(MaxSharedRAM,2)'        -- (compiler)'
-   if PicName = '16f73'  | PicName = '16f74' then do
-      call lineout jalfile,,
-         '_warn "Calculations with multibyte variables are not supported for this target"'
-   end
 end
 else if Core = '14H' then do
    if x \= '' then do                           /* with shared RAM */
