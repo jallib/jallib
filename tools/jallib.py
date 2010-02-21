@@ -1138,14 +1138,41 @@ def do_list(_trash):
 # API FUNC #
 #----------#
 
-VAR_RE = re.compile("var\s+(volatile)?\s+([.\S]+)\s+([.\S]+)\s*=?")
-CONST_RE = re.compile("const\s+([.\S]+)\s*([.\S]+)\s+=")
-ALIAS_RE = re.compile("alias\s+([.\S]+)\s+is([.\S]+)")
-PROC_RE = re.compile("procedure\s+([.\S]+)\s*\((.*)\)\s+is")
-PSEU_RE = re.compile("(procedure|function)\s+([.\S]+)'(put|get)\s*(\(.*\))?\s*(return\s*.*)?\s+is")
-FUNC_RE = re.compile("function\s+([.\S]+)\s*\((.*)\)\s+return\s+([.\S]+)\s+is")
-SIGN_RE = re.compile("(bit|byte|sbyte|word|sword|dword|sdword)\s+(in|out|in out)\s+([.\S]+),?")
-INCL_RE = re.compile("include\s+([.\S]+)")
+VALID_IDENTIFIER = "a-z0-9_"
+COMMENT_RE = re.compile("((--)|;).*")
+
+VAR_RE = re.compile("var\s+(volatile\s*)?([%s\*]+)\s+([%s]+)(\s*\[.*\])?\s*=?" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
+CONST_RE = re.compile("const\s+([%s]+\s+)?([%s]+)\s+=" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
+ALIAS_RE = re.compile("alias\s+([%s]+)\s+is\s+([%s]+)" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
+PROC_RE = re.compile("procedure\s+([%s]+)\s*\((.*)\)\s+is" % VALID_IDENTIFIER,re.IGNORECASE) # FIX: signature can be on multine
+PSEU_RE = re.compile("(procedure|function)\s+([%s]+)'(put|get)\s*(\(.*\))?\s*(return\s*.*)?\s+is" % VALID_IDENTIFIER,re.IGNORECASE)
+FUNC_RE = re.compile("function\s+([%s]+)\s*\((.*)\)\s+return\s+([%s]+)\s+is" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
+SIGN_RE = re.compile("(bit|byte|sbyte|word|sword|dword|sdword)\s+(in|out|in out)\s+([%s]+),?" % VALID_IDENTIFIER,re.IGNORECASE)
+INCL_RE = re.compile("include\s+([%s]+)" % VALID_IDENTIFIER)
+
+# in addition to func/proc, this will make detection out of global scope
+# thus not considered in API description (we only want real global var/const/...)
+BLOCK_RE = re.compile("(.*\s+)?block",re.IGNORECASE)
+CASE_RE = re.compile("case\s+.*\s+of",re.IGNORECASE)
+FOR_RE = re.compile("for\s*.*\s+loop",re.IGNORECASE)
+FOREVER_RE = re.compile("forever\s+loop",re.IGNORECASE)
+IF_RE = re.compile("if\s*.*(\s+then)?",re.IGNORECASE)
+REPEAT_RE = re.compile("repeat",re.IGNORECASE)
+WHILE_RE = re.compile("while\s*.*(\s+loop)?",re.IGNORECASE)
+level_up = [BLOCK_RE,CASE_RE,FOR_RE,FOREVER_RE,IF_RE,REPEAT_RE,WHILE_RE,PROC_RE,FUNC_RE,PSEU_RE]
+#
+END_PROC = re.compile("end\s+procedure",re.IGNORECASE)
+END_FUNC = re.compile("end\s+function",re.IGNORECASE)
+END_FOR = re.compile("end\s+loop",re.IGNORECASE)
+END_BLOCK = re.compile("end\s+block",re.IGNORECASE)
+END_CASE = re.compile("end\s+case",re.IGNORECASE)
+END_IF = re.compile("end\s+if",re.IGNORECASE)
+END_REPEAT = re.compile("until\s+.*",re.IGNORECASE)
+level_down = [END_PROC,END_FUNC,END_FOR,END_BLOCK,END_CASE,END_IF,END_REPEAT]
+# inline structure
+INLINE_WHILE_RE = re.compile("while\s*.*\s+end\s+loop",re.IGNORECASE)
+INLINE_IF_RE = re.compile("if\s*.*\s+then\s+.*\s+end\s+if",re.IGNORECASE)
+level_keep = [INLINE_WHILE_RE,INLINE_IF_RE]
 
 def api_parse(filenames,filelist=[]):
 
@@ -1165,39 +1192,60 @@ def api_parse(filenames,filelist=[]):
             lines = sys.stdin.readlines()
         else:
             lines = file(filename).readlines()
+
+        level = 0
         for num,content in enumerate(lines):
             content = content.strip()
-            if VAR_RE.match(content):
-                _,type, name = VAR_RE.match(content).groups()
-                desc['var'][name] =  {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
-            elif CONST_RE.match(content):
-                type, name = CONST_RE.match(content).groups()
-                desc['const'][name] = {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
-            elif ALIAS_RE.match(content):
-                alias, source = ALIAS_RE.match(content).groups()
-                desc['alias'][alias] = {'name' : alias, 'source' : source, 'line' : num}#, 'content' : content}
-            elif PSEU_RE.match(content):
-                _,name,_,_,_ = PSEU_RE.match(content).groups()
-                # line won't be accurate, as we only keep the last pseudovar def, that is either 'put or 'get
-                desc['pseudovar'][name] = {'name' : name, 'line' : num}
-            elif PROC_RE.match(content):
-                name,signature = PROC_RE.match(content).groups()
-                params = get_params(signature)
-                desc['procedure'][name] = {'name' : name, 'params' : params, 'line' : num}
-            elif FUNC_RE.match(content):
-                name,signature,rettype = FUNC_RE.match(content).groups()
-                params = get_params(signature)
-                desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype, 'line' : num}
-            elif INCL_RE.match(content):
-                lib = INCL_RE.match(content).groups()[0]
-                desc['include'][lib] = {'name' : lib, 'line' : num}
+            # clean comments
+            content = COMMENT_RE.sub("",content)
+            if level == 0:
+                if VAR_RE.match(content):
+                    _,type,name,arr = VAR_RE.match(content).groups()
+                    desc['var'][name] =  {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
+                elif CONST_RE.match(content):
+                    type, name = CONST_RE.match(content).groups()
+                    desc['const'][name] = {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
+                elif ALIAS_RE.match(content):
+                    alias, source = ALIAS_RE.match(content).groups()
+                    desc['alias'][alias] = {'name' : alias, 'source' : source, 'line' : num}#, 'content' : content}
+                elif PSEU_RE.match(content):
+                    _,name,_,_,_ = PSEU_RE.match(content).groups()
+                    # line won't be accurate, as we only keep the last pseudovar def, that is either 'put or 'get
+                    desc['pseudovar'][name] = {'name' : name, 'line' : num}
+                elif PROC_RE.match(content):
+                    name,signature = PROC_RE.match(content).groups()
+                    params = get_params(signature)
+                    desc['procedure'][name] = {'name' : name, 'params' : params, 'line' : num}
+                elif FUNC_RE.match(content):
+                    name,signature,rettype = FUNC_RE.match(content).groups()
+                    params = get_params(signature)
+                    desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype, 'line' : num}
+                elif INCL_RE.match(content):
+                    lib = INCL_RE.match(content).groups()[0]
+                    desc['include'][lib] = {'name' : lib, 'line' : num}
+
+            if [matching for matching in level_keep if matching.match(content)]:
+                ##print >> sys.stderr, "content KEEP (%s): %s " % (level,repr(content))
+                # trap
+                pass
+            # catch closing level RE before (so "end block" won't match "block")
+            elif [matching for matching in level_down if matching.match(content)]:
+                level -= 1
+                ##print >> sys.stderr, "content DOWN (%s): %s" % (level,repr(content))
+            elif [matching for matching in level_up if matching.match(content)]:
+                level += 1
+                ##print >> sys.stderr, "content UP   (%s): %s " % (level,repr(content))
 
         # normalize: replace {} used to keep things unique by real list
         final = {}.fromkeys(desc)
         for k,v in desc.items():
             final[k] = v.values()
 
-        apis[os.path.basename(filename)] = final
+        basefn = os.path.basename(filename)
+        if level != 0:
+            print >> sys.stderr, "%s: should leave file with level 0, got %s" % (basefn,level)
+
+        apis[basefn] = final
 
     return apis
     
