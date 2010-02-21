@@ -1519,7 +1519,7 @@ ACTIONS = {
         'validate'  : {'callback' : do_validate, 'options' : '',           'help' : validate_help},
         'list'      : {'callback' : do_list,     'options' : '',           'help' : list_help},
         'api'       : {'callback' : do_api,      'options' : 'xjkpo:l:',   'help' : api_help},
-        'jalapi'    : {'callback' : do_jalapi,   'options' : 'slt:d:g:o',  'help' : jalapi_help},
+        'jalapi'    : {'callback' : do_jalapi,   'options' : 'slt:d:g:o:',  'help' : jalapi_help},
         'sample'    : {'callback' : do_sample,   'options' : 'a:b:t:o:',   'help' : sample_help},
         'reindent'  : {'callback' : do_reindent, 'options' : 'c:',         'help' : reindent_help},
         'unittest'  : {'callback' : do_unittest, 'options' : 'kvl',        'help' : unittest_help},
