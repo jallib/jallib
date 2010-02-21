@@ -42,21 +42,22 @@ end if
 procedure _calculate_and_set_baudrate() is
    const max_deviation = 5  -- maximum % deviation of the realized baudrate
 
-   if usart_hw_serial then     
-      if (defined(BAUDCTL_BRG16) == true) then 
+   if usart_hw_serial then               
+      if (defined(BAUDCTL_BRG16) == true) then
+         -- use 16 bit baudrate register
          BAUDCTL_BRG16 = true
          TXSTA_BRGH = true
-         
+
          const usart_div =((5 + ( ( 10 * target_clock ) / ( 4 * serial_hw_baudrate ))  ) / 10 ) - 1
          const real_baud = target_clock / 4 / ((usart_div & 0xffff) + 1)
 
-         if (real_baud > serial_hw_baudrate) then 
+         if (real_baud > serial_hw_baudrate) then
             if (100 * (real_baud - serial_hw_baudrate) / serial_hw_baudrate >= max_deviation) then
                pragma error  -- asynchronous baudrate deviation is too large
             end if
          else
             if (100 * (serial_hw_baudrate - real_baud) / serial_hw_baudrate >= max_deviation) then
-               pragma error  -- asynchronous baudrate deviation is too large 
+               pragma error  -- asynchronous baudrate deviation is too large
             end if
          end if
 
@@ -64,6 +65,8 @@ procedure _calculate_and_set_baudrate() is
          SPBRGH = byte(usart_div >> 8)
 
       else
+         -- use classic (8 bit) baudrate register
+         
          -- SPBRG = ( Fosc / ( 4 * Baudrate ) ) -1
          -- first try high baudrate, will generate highest accuarcy
          -- to get the right rounding (5 + 10*f(x)) /10
@@ -98,28 +101,27 @@ procedure _calculate_and_set_baudrate() is
             end if
             TXSTA_BRGH = true
             -- try the low-speed mode
+         else
+              const usart_div_low = ((((10 * target_clock) / ( 64 * serial_hw_baudrate )) + 5 ) / 10) - 1
+            -- here divider will never be 0
+            -- but special case to consider,
+            -- if baudrate is just a little too low
+            if (usart_div_low > 255) & (100 * ((target_clock / (64 * 256 )) - serial_hw_baudrate)) / serial_hw_baudrate < max_deviation then
+               SPBRG = 255
+               TXSTA_BRGH = false
+               -- now calculate divider and set high-speed / low-speed bit
+              elsif usart_div_low <= 255 then
+               if usart_div_low >= 0 then
+                  SPBRG = usart_div_low 
+               else
+                  SPBRG = 0
+               end if
+               TXSTA_BRGH = false
+              else
+               pragma error -- asynchronous baudrate is too low
+              end if
          end if
-      else
-           const usart_div_low = ((((10 * target_clock) / ( 64 * serial_hw_baudrate )) + 5 ) / 10) - 1
-         -- here divider will never be 0
-         -- but special case to consider,
-         -- if baudrate is just a little too low
-         if (usart_div_low > 255) & (100 * ((target_clock / (64 * 256 )) - serial_hw_baudrate)) / serial_hw_baudrate < max_deviation then
-            SPBRG = 255
-            TXSTA_BRGH = false
-            -- now calculate divider and set high-speed / low-speed bit
-           elsif usart_div_low <= 255 then
-            if usart_div_low >= 0 then
-               SPBRG = usart_div_low 
-            else
-               SPBRG = 0
-            end if
-            TXSTA_BRGH = false
-           else
-            pragma error -- asynchronous baudrate is too low
-           end if
       end if
-
    else  -- synchronous mode
       const usart_div_sync = ( target_clock / ( 4 * serial_hw_baudrate )) - 1
       
