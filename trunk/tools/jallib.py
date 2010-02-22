@@ -1174,7 +1174,7 @@ INLINE_WHILE_RE = re.compile("while\s*.*\s+end\s+loop",re.IGNORECASE)
 INLINE_IF_RE = re.compile("if\s*.*\s+then\s+.*\s+end\s+if",re.IGNORECASE)
 level_keep = [INLINE_WHILE_RE,INLINE_IF_RE]
 
-def api_parse(filenames,filelist=[]):
+def api_parse_content(lines,strict=True):
 
     def get_params(signature):
         params = SIGN_RE.findall(signature)
@@ -1183,69 +1183,73 @@ def api_parse(filenames,filelist=[]):
             dsign.append({'type' : param[0], 'context' : param[1], 'name' : param[2]})
         return dsign
     
+    desc = {"include" : {}, "procedure" : {}, "function" : {},
+            "var" : {}, "const" : {}, 'alias' : {}, 'pseudovar' : {}}
+    level = 0
+    for num,content in enumerate(lines):
+        content = content.strip()
+        # clean comments
+        content = COMMENT_RE.sub("",content)
+        if level == 0:
+            if VAR_RE.match(content):
+                _,type,name,arr = VAR_RE.match(content).groups()
+                desc['var'][name] =  {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
+            elif CONST_RE.match(content):
+                type, name = CONST_RE.match(content).groups()
+                desc['const'][name] = {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
+            elif ALIAS_RE.match(content):
+                alias, source = ALIAS_RE.match(content).groups()
+                desc['alias'][alias] = {'name' : alias, 'source' : source, 'line' : num}#, 'content' : content}
+            elif PSEU_RE.match(content):
+                _,name,_,_,_ = PSEU_RE.match(content).groups()
+                # line won't be accurate, as we only keep the last pseudovar def, that is either 'put or 'get
+                desc['pseudovar'][name] = {'name' : name, 'line' : num}
+            elif PROC_RE.match(content):
+                name,signature = PROC_RE.match(content).groups()
+                params = get_params(signature)
+                desc['procedure'][name] = {'name' : name, 'params' : params, 'line' : num}
+            elif FUNC_RE.match(content):
+                name,signature,rettype = FUNC_RE.match(content).groups()
+                params = get_params(signature)
+                desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype, 'line' : num}
+            elif INCL_RE.match(content):
+                lib = INCL_RE.match(content).groups()[0]
+                desc['include'][lib] = {'name' : lib, 'line' : num}
+
+        if [matching for matching in level_keep if matching.match(content)]:
+            ##print >> sys.stderr, "content KEEP (%s): %s " % (level,repr(content))
+            # trap
+            pass
+        # catch closing level RE before (so "end block" won't match "block")
+        elif [matching for matching in level_down if matching.match(content)]:
+            level -= 1
+            ##print >> sys.stderr, "content DOWN (%s): %s" % (level,repr(content))
+        elif [matching for matching in level_up if matching.match(content)]:
+            level += 1
+            ##print >> sys.stderr, "content UP   (%s): %s " % (level,repr(content))
+
+    if strict and level != 0:
+        raise APIParsingError("Should reach level 0 when done parsing (level is %s)" % level)
+
+    # normalize: replace {} used to keep things unique by real list
+    final = {}.fromkeys(desc)
+    for k,v in desc.items():
+        final[k] = v.values()
+
+    return final
+
+
+def api_parse(filenames,filelist=[]):
+
     apis = {}
     for filename in filenames + filelist:
-        desc = {"include" : {}, "procedure" : {}, "function" : {},
-                "var" : {}, "const" : {}, 'alias' : {}, 'pseudovar' : {}}
-
         if filename == "-":
             lines = sys.stdin.readlines()
         else:
             lines = file(filename).readlines()
 
-        level = 0
-        for num,content in enumerate(lines):
-            content = content.strip()
-            # clean comments
-            content = COMMENT_RE.sub("",content)
-            if level == 0:
-                if VAR_RE.match(content):
-                    _,type,name,arr = VAR_RE.match(content).groups()
-                    desc['var'][name] =  {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
-                elif CONST_RE.match(content):
-                    type, name = CONST_RE.match(content).groups()
-                    desc['const'][name] = {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
-                elif ALIAS_RE.match(content):
-                    alias, source = ALIAS_RE.match(content).groups()
-                    desc['alias'][alias] = {'name' : alias, 'source' : source, 'line' : num}#, 'content' : content}
-                elif PSEU_RE.match(content):
-                    _,name,_,_,_ = PSEU_RE.match(content).groups()
-                    # line won't be accurate, as we only keep the last pseudovar def, that is either 'put or 'get
-                    desc['pseudovar'][name] = {'name' : name, 'line' : num}
-                elif PROC_RE.match(content):
-                    name,signature = PROC_RE.match(content).groups()
-                    params = get_params(signature)
-                    desc['procedure'][name] = {'name' : name, 'params' : params, 'line' : num}
-                elif FUNC_RE.match(content):
-                    name,signature,rettype = FUNC_RE.match(content).groups()
-                    params = get_params(signature)
-                    desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype, 'line' : num}
-                elif INCL_RE.match(content):
-                    lib = INCL_RE.match(content).groups()[0]
-                    desc['include'][lib] = {'name' : lib, 'line' : num}
-
-            if [matching for matching in level_keep if matching.match(content)]:
-                ##print >> sys.stderr, "content KEEP (%s): %s " % (level,repr(content))
-                # trap
-                pass
-            # catch closing level RE before (so "end block" won't match "block")
-            elif [matching for matching in level_down if matching.match(content)]:
-                level -= 1
-                ##print >> sys.stderr, "content DOWN (%s): %s" % (level,repr(content))
-            elif [matching for matching in level_up if matching.match(content)]:
-                level += 1
-                ##print >> sys.stderr, "content UP   (%s): %s " % (level,repr(content))
-
-        # normalize: replace {} used to keep things unique by real list
-        final = {}.fromkeys(desc)
-        for k,v in desc.items():
-            final[k] = v.values()
-
         basefn = os.path.basename(filename)
-        if level != 0:
-            print >> sys.stderr, "%s: should leave file with level 0, got %s" % (basefn,level)
-
-        apis[basefn] = final
+        apis[basefn] = api_parse_content(lines,strict=False)
 
     return apis
     
