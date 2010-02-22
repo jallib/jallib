@@ -1174,6 +1174,8 @@ INLINE_WHILE_RE = re.compile("while\s*.*\s+end\s+loop",re.IGNORECASE)
 INLINE_IF_RE = re.compile("if\s*.*\s+then\s+.*\s+end\s+if",re.IGNORECASE)
 level_keep = [INLINE_WHILE_RE,INLINE_IF_RE]
 
+class APIParsingError(Exception): pass
+
 def api_parse_content(lines,strict=True):
 
     def get_params(signature):
@@ -1204,17 +1206,19 @@ def api_parse_content(lines,strict=True):
                 _,name,_,_,_ = PSEU_RE.match(content).groups()
                 # line won't be accurate, as we only keep the last pseudovar def, that is either 'put or 'get
                 desc['pseudovar'][name] = {'name' : name, 'line' : num}
-            elif PROC_RE.match(content):
-                name,signature = PROC_RE.match(content).groups()
-                params = get_params(signature)
-                desc['procedure'][name] = {'name' : name, 'params' : params, 'line' : num}
-            elif FUNC_RE.match(content):
-                name,signature,rettype = FUNC_RE.match(content).groups()
-                params = get_params(signature)
-                desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype, 'line' : num}
-            elif INCL_RE.match(content):
-                lib = INCL_RE.match(content).groups()[0]
-                desc['include'][lib] = {'name' : lib, 'line' : num}
+
+        # because of conditional compile, we consider every include/proc/func, even those nested
+        if INCL_RE.match(content):
+            lib = INCL_RE.match(content).groups()[0]
+            desc['include'][lib] = {'name' : lib, 'line' : num}
+        elif PROC_RE.match(content):
+            name,signature = PROC_RE.match(content).groups()
+            params = get_params(signature)
+            desc['procedure'][name] = {'name' : name, 'params' : params, 'line' : num}
+        elif FUNC_RE.match(content):
+            name,signature,rettype = FUNC_RE.match(content).groups()
+            params = get_params(signature)
+            desc['function'][name] = {'name' : name, 'params' : params, 'return' : rettype, 'line' : num}
 
         if [matching for matching in level_keep if matching.match(content)]:
             ##print >> sys.stderr, "content KEEP (%s): %s " % (level,repr(content))
