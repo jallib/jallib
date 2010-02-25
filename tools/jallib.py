@@ -1142,7 +1142,7 @@ VALID_IDENTIFIER = "a-z0-9_"
 COMMENT_RE = re.compile("((--)|;).*")
 
 VAR_RE = re.compile("var\s+(volatile\s*)?([%s\*]+)\s+([%s]+)(\s*\[.*\])?\s*=?" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
-CONST_RE = re.compile("const\s+([%s]+\s+)?([%s]+)\s+=" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
+CONST_RE = re.compile("const\s+([%s]+\s+)?([%s]+)\s*(\[.*\])?\s*=" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
 ALIAS_RE = re.compile("alias\s+([%s]+)\s+is\s+([%s]+)" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
 PROC_RE = re.compile("procedure\s+([%s]+)\s*\((.*)\)\s+is" % VALID_IDENTIFIER,re.IGNORECASE) # FIX: signature can be on multine
 PSEU_RE = re.compile("(procedure|function)\s+([%s]+)'(put|get)\s*(\(.*\))?\s*(return\s*.*)?\s+is" % VALID_IDENTIFIER,re.IGNORECASE)
@@ -1197,7 +1197,7 @@ def api_parse_content(lines,strict=True):
                 _,type,name,arr = VAR_RE.match(content).groups()
                 desc['var'][name] =  {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
             elif CONST_RE.match(content):
-                type, name = CONST_RE.match(content).groups()
+                type,name,arr = CONST_RE.match(content).groups()
                 desc['const'][name] = {'type' : type, 'name' : name, 'line' : num}#, 'content' : content}
             elif ALIAS_RE.match(content):
                 alias, source = ALIAS_RE.match(content).groups()
