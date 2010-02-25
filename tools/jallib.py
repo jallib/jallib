@@ -425,6 +425,10 @@ def validate_code(content):
     # ...
 
 def validate(filename):
+    global errors
+    global warnings
+    errors = []
+    warnings = []
     validate_filename(filename)
     # also extract line number (enumerate from 0, count from 1)
     content = [(i + 1,l) for i,l in enumerate(open(filename,"r").readlines())]
@@ -451,15 +455,11 @@ def do_validate(args):
     # No jallib args (yet!) for validating
     # args contain jal file to validate
 
-    global errors
-    global warnings
     at_least_one_failed = False
     for filename in args:
         validate(filename)
         if report(filename):
             at_least_one_failed = True
-        errors = []
-        warnings = []
 
     if at_least_one_failed:
         sys.exit(1)
