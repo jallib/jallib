@@ -30,16 +30,15 @@
  *     eComStation (OS/2) and is executed on a specific system.             *
  *     With only a few changes it can be executed on a different system,    *
  *     or even a different platform (Linux, Windows) with the combination   *
- *     of "Regina Rexx" and "RegUtil", ref.                                 *
+ *     of "Regina Rexx" and "RegUtil", ref:                                 *
  *        - http://regina-rexx.sourceforge.net/                             *
- *        - http://www.interlog.com/~ptjm/                                  *
  *     See the embedded comments below for instructions for possibly        *
  *     required changes.                                                    *
  *   - A summary of changes of this script is maintained in 'changes.txt'   *
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.92'
+   ScriptVersion   = '0.0.93'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -179,7 +178,7 @@ do i=1 to dir.0                                 /* all relevant .dev files */
    if PicName = '16f54'   |,                    /* not supported by JalV2 compiler */
       PicName = '16f57'   |,
       PicName = '16f59'   |,
-      PicName = '16hv540' then do               /* not flash PIC */
+      PicName = '16hv540' then do               /* OTP (not flash) PIC */
       if msglevel <= 1 then
          say PicName 'Not supported by JalV2'
       iterate
@@ -215,18 +214,18 @@ do i=1 to dir.0                                 /* all relevant .dev files */
    end
 
    call load_config_info                        /* collect cfg info + core */
-   select                                       /* select core specific formatting */
-      when core = '12' then                     /* baseline */
-         rx = dev2Jal12()
-      when core = '14' then                     /* midrange */
-         rx = dev2Jal14()
-      when core = '14H' then                    /* extended midrange */
-         rx = dev2Jal14H()
-      when core = '16' then                     /* 18Fs */
-         rx = dev2Jal16()
-      otherwise                                 /* other or undetermined core */
-         say '  Error: Unsupported core:' Core  /* report detected Core */
-         leave                                  /* script error: terminate */
+   if  core = '12' then                         /* baseline */
+      rx = dev2Jal12()
+   else if core = '14' then                     /* midrange */
+      rx = dev2Jal14()
+   else if core = '14H' then                    /* extended midrange */
+      rx = dev2Jal14H()
+   else if core = '16' then                     /* 18Fs */
+      rx = dev2Jal16()
+   else do                                      /* other or undetermined core */
+      say '  Error: Unsupported core:' Core     /* report detected Core */
+      say '         Internal script error, terminating ....'
+      leave                                     /* script error: terminate */
    end
 
    call stream jalfile, 'c', 'close'            /* done */
@@ -612,16 +611,14 @@ do i = 1 to Dev.0
    if Val1 \= '' then do
       Val1 = X2D(Val1)                          /* take decimal value */
       Val2 = X2D(Val2)
-      select
-         when Val1 = X2D('FFF') then            /* 12-bits core */
-            Core = '12'
-         when Val1 = X2D('2007') then           /* 14-bits core */
-            Core = '14'
-         when Val1 = X2D('8007') then           /* extended 14-bits core */
-            Core = '14H'
-         otherwise                              /* presumably 16-bits core */
-            Core = '16'
-      end
+      if Val1 = X2D('FFF') then                 /* 12-bits core */
+         Core = '12'
+      else if Val1 = X2D('2007') then           /* 14-bits core */
+         Core = '14'
+      else if Val1 = X2D('8007') then           /* extended 14-bits core */
+         Core = '14H'
+      else                                      /* presumably 16-bits core */
+         Core = '16'
       CfgAddr.0 = Val2 - Val1 + 1               /* number of config bytes */
       do j = 1 to CfgAddr.0                     /* all config bytes */
          CfgAddr.j = Val1 + j - 1               /* address */
@@ -852,16 +849,12 @@ do i = 1 to Dev.0
    end
 end
 if DevId == '0000' then do                      /* DevID not found */
-   select
-      when PicName = '16f627' then               /* missing in MPlab */
-         Devid = '07A0'
-      when PicName = '16f628' then
-         Devid = '07C0'
-      when PicName = '16f84A' then
-         Devid = '0560'
-      otherwise
-         nop
-   end
+   if PicName = '16f627' then                   /* missing in MPlab */
+      Devid = '07A0'
+   else if PicName = '16f628' then
+      Devid = '07C0'
+   else if PicName = '16f84A' then
+      Devid = '0560'
 end
 parse upper var PicName PicNameUpper
 call lineout jalfile, 'const word DEVICE_ID   = 0x'DevID
@@ -1199,14 +1192,12 @@ do i = 1 to Dev.0
       Ram.addr = addr                           /* mark address in use */
       addr = sfr_mirror(addr)                   /* add mirror addresses */
       size = strip(val3)                        /* field size */
-      select
-         when size = 1 then
-            field = 'byte  '
-         when size = 2 then
-            field = 'word  '
-      otherwise
+      if size = 1 then
+         field = 'byte  '
+      else if size = 2 then
+         field = 'word  '
+      else
          field = 'dword '
-      end
       call lineout jalfile, '-- ------------------------------------------------'
       call lineout jalfile, 'var volatile' field left(reg,25) 'at' addr
       select
@@ -1492,7 +1483,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   call lineout jalfile, 'var volatile bit*'s.j' ',
                                      left(field,25) 'at' reg ':' offset - s.j + 1
                   call lineout jalfile, 'alias              ',
-                                     left('T0CON_'n.j,25) 'is' reg'_'n.j
+                                     left('T0CON_T0'n.j,25) 'is' reg'_'n.j    /* added 'T0' */
                end
                otherwise                                   /* other */
                   if \(s.j = 8  &  n.j = reg) then do      /* subfield not alias of reg */
@@ -1517,7 +1508,7 @@ return 0
 /* Extended 14-bit core                               */
 /* -------------------------------------------------- */
 list_sfr14h: procedure expose Dev. Ram. Name. PinMap. PicName,
-                             jalfile BANKSIZE NumBanks msglevel
+                              jalfile BANKSIZE NumBanks msglevel
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then               /* skip non SFRs */
       iterate
@@ -1528,14 +1519,12 @@ do i = 1 to Dev.0
       addr = X2D(strip(val2))                   /* decimal */
       Ram.addr = addr                           /* mark address in use */
       size = strip(val3)                        /* field size */
-      select
-         when size = 1 then
-            field = 'byte  '
-         when size = 2 then
-            field = 'word  '
-      otherwise
+      if size = 1 then
+         field = 'byte  '
+      else if size = 2 then
+         field = 'word  '
+      else
          field = 'dword '
-      end
       call lineout jalfile, '-- ------------------------------------------------'
       if addr < 12 then                         /* 'CORE' register */
          memtype = 'shared '
@@ -1643,6 +1632,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   when (left(reg,5) = 'ADCON'  & left(n.j,3) = 'CHS')                       |,
                        (left(reg,6) = 'SSPCON' & left(n.j,4) = 'SSPM')                      |,
                        (reg = 'OPTION_REG'     & (n.j = 'PS0' | n.j = 'PS1' | n.j = 'PS2')) |,
+                       (reg = 'T1CON'          & (n.j = 'TMR1CS1' | n.j = 'TMR1CS0'))       |,
                        (reg = 'OSCCON'         & left(n.j,4) = 'IRCF')                      |,
                        (reg = 'OSCTUNE'        & left(n.j,3) = 'TUN')                       |,
                        (reg = 'WDTCON'         & left(n.j,5) = 'WDTPS')            then do
@@ -1746,11 +1736,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                         call lineout jalfile, 'var volatile bit*3 ',
                              left(reg'_PS',25) memtype'at' reg ':' offset
                         call lineout jalfile, 'alias              ',
-                             left('T0CON_'PS,25) 'is' reg'_PS'
+                             left('T0CON_T0'PS,25) 'is' reg'_PS'            /* added 'T0' */
                      end
-                     else if n.j = 'TMR0CS' | n.j = 'TMR0SE' then
+                     else if n.j = 'TMR0CS'  |  n.j = 'TMR0SE' then
                         call lineout jalfile, 'alias              ',
-                             left('T0CON_'delstr(n.j,2,2),25) 'is' reg'_'n.j
+                             left('T0CON_'delstr(n.j,2,2),25) 'is' reg'_'n.j   /* TMR0xx -> T0xx */
                      else if n.j = 'PSA' then
                         call lineout jalfile, 'alias              ',
                              left('T0CON_'n.j,25) 'is' reg'_'n.j
@@ -1766,6 +1756,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   when left(reg,6) = 'SSPCON' & n.j = 'SSPM0' then do
                      call lineout jalfile, 'var volatile bit*4 ',
                           left(reg'_SSPM',25) memtype'at' reg ':' offset
+                  end
+                  when reg = 'T1CON' & n.j = 'TMR1CS0' then do
+                     call lineout jalfile, 'var volatile bit*2 ',
+                          left(reg'_TMR1CS',25) memtype'at' reg ':' offset
                   end
                   when left(reg,1) = 'T'  &  right(reg,3) = 'CON'  &,      /* TxCON */
                        datatype(substr(reg,2,1)) = 'NUM'           &,
@@ -1843,19 +1837,16 @@ do i = 1 to Dev.0
       addr = strip(val2)
       k = X2D(addr)                                     /* address decimal */
       size = strip(val3)                                /* # bytes */
-      select
-         when size = 1 then                             /* single byte */
-            field = 'byte  '
-         when size = 2 then                             /* two bytes */
-            field = 'word  '
-         otherwise                                      /* three bytes */
-            field = 'byte*3'
-      end
+      if size = 1 then                                  /* single byte */
+         field = 'byte  '
+      else if size = 2 then                             /* two bytes */
+         field = 'word  '
+      else
+         field = 'byte*3'
       Ram.k = k                                         /* mark in use */
       call lineout jalfile, '-- ------------------------------------------------'
-      if  k < AccessBankSplitOffset + X2D('F00') then do
+      if  k < AccessBankSplitOffset + X2D('F00') then
          memtype = '      '                             /* in non shared memory */
-      end
       else
          memtype = 'shared'                             /* in shared memory */
       call lineout jalfile, 'var volatile' field left(reg,25) memtype 'at 0x'addr
@@ -2078,8 +2069,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                         end
                      end
                   end
-                  otherwise                             /* others */
-                     nop                                /* can be ignored */
+                  otherwise
+                     nop                                /* others can be ignored */
                end
 
                if field = 'WDTCON_ADSHR' then do        /* NMMR mapping bit */
@@ -2157,9 +2148,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                end
             end
          end
+
          else if n.j = '-' then do                      /* bit not used */
             nop
          end
+
          else if s.j <= 8 then do                       /* multi bit sub field */
             field = reg'_'n.j
             select
@@ -2531,10 +2524,13 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
             else                                        /* OPTION2 */
                call lineout jalfile, '   asm tris 7'
             call lineout jalfile, 'end procedure'
-            if reg = 'OPTION_REG'  &,
-               (n.j = 'T0CS' | n.j = 'T0SE' | n.j = 'PSA' | n.j = 'PS') then do
-               call lineout jalfile, 'alias              ',
-                                  left('T0CON_'n.j,25) 'is' reg'_'n.j
+            if reg = 'OPTION_REG' then do
+               if n.j = 'T0CS' | n.j = 'T0SE' | n.j = 'PSA' then
+                  call lineout jalfile, 'alias              ',
+                                        left('T0CON_'n.j,25) 'is' reg'_'n.j
+               else if n.j = 'PS' then
+                  call lineout jalfile, 'alias              ',
+                                        left('T0CON_T0'n.j,25) 'is' reg'_'n.j   /* added 'T0' */
             end
          end
          offset = offset - s.j
@@ -3755,12 +3751,9 @@ if analog.ADC \= '-' then
 if analog.CMCON \= '-' then
    call lineout jalfile, '   comparator_off()'
 
-if left(PicName,3) = '10f'                 |,           /* all 10Fs */
-   PicName = '12f508' | PicName = '12f509' |,
-   PicName = '12f510' | PicName = '12f519' |,           /* other specific PICs */
-   PicName = '16f505' | PicName = '16f506' |,
-   PicName = '16f526' then
+if core = 12 then do                                    /* baseline PIC */
    call lineout jalfile, '   OPTION_REG_T0CS = OFF        -- T0CKI pin input + output'
+end
 call lineout jalfile, 'end procedure'
 return
 
