@@ -12,7 +12,19 @@
 -- 
 --
 -- Notes: 
---                                    
+--             
+
+-- ----------------------------------------------------------------------------
+-- technical (library internal) details
+-- An 128x64 graphic LCD consists of 2 controllers (KS0108_LEFT and KS0108_RIGHT),
+-- each take care of 64x64 bits.
+--
+-- A byte of data represents a column of 8 bits, so the vertical 64 bits are 
+-- represented by 8 bytes.
+-- 
+--
+-- ----------------------------------------------------------------------------
+                       
 const KS0108_LEFT          = 0              
 const KS0108_RIGHT         = 1              
 const KS0108_CMD_ON        = 0x3F    
@@ -21,9 +33,12 @@ const KS0108_CMD_PAGE      = 0xB8
 const KS0108_CMD_COLUMN    = 0x40    
 const KS0108_CMD_TOP_RAM   = 0xC0    
                                                                                                          
--- Purpose:    Write a byte of data to the specified chip
--- Inputs:     1) chipSelect - which chip to write the data to
+-- ----------------------------------------------------------------------------
+-- _ks0108_write - Write a byte of data to the specified chip
+-- ----------------------------------------------------------------------------
+-- Inputs:     1) side - which chip to write the data to
 --             2) data - the byte of data to write
+-- ----------------------------------------------------------------------------
 procedure _ks0108_write(byte in side, byte in data) is
    if side == 1 then          -- Choose which side to write to
       GLCD_CS2 = high
@@ -33,21 +48,23 @@ procedure _ks0108_write(byte in side, byte in data) is
    GLCD_RW = low        -- Set for writing
    GLCD_DATAPRT = data     -- Put the data on the port
    GLCD_DATAPRT_DIR = all_output
+
    asm nop asm nop      -- delay_cycles(1)
    GLCD_E = high        -- Pulse the enable pin
-   ;asm nop asm nop asm nop asm nop asm nop
-   ;asm nop asm nop asm nop asm nop asm nop
    delay_2us()
+
    GLCD_E = low
    GLCD_CS1 = low       -- Reset the chip select lines
    GLCD_CS2 = low
    delay_2us()
-;   asm nop asm nop asm nop asm nop asm nop
-;   asm nop asm nop asm nop asm nop asm nop
+
 end procedure
 
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 -- Purpose:    Reads a byte of data from the specified chip
 -- Ouputs:     A byte of data read from the chip
+-- ----------------------------------------------------------------------------
 function _ks0108_read(byte in side) return byte  is
    var byte data                  -- Stores the data read from the LCD
    GLCD_DATAPRT_DIR = all_input           -- Set port d to input
@@ -62,62 +79,85 @@ function _ks0108_read(byte in side) return byte  is
    asm nop  asm nop     --  delay_cycles(1)
    GLCD_E = high        -- Pulse the enable pin
    
-   asm nop asm nop asm nop asm nop asm nop
-   asm nop asm nop asm nop asm nop asm nop
+   delay_2us()
    data = GLCD_DATAPRT     -- Get the data from the display's output register
    GLCD_E = low
 
    GLCD_CS1 = low       -- Reset the chip select lines
    GLCD_CS2 = low
-   asm nop asm nop asm nop asm nop asm nop
-   asm nop asm nop asm nop asm nop asm nop
+   delay_2us()
    
    return data          -- Return the read data
 end function
 
+-- ----------------------------------------------------------------------------
 -- Purpose:    Turn the display on
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 procedure lcd_on() is
     _ks0108_write(KS0108_LEFT,  KS0108_CMD_ON)
     _ks0108_write(KS0108_RIGHT, KS0108_CMD_ON)
 end procedure
 
+-- ----------------------------------------------------------------------------
 -- Purpose:    Turn the display off
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 procedure lcd_off() is
     _ks0108_write(KS0108_LEFT,  KS0108_CMD_OFF)
     _ks0108_write(KS0108_RIGHT, KS0108_CMD_OFF)
 end procedure
 
+-- ----------------------------------------------------------------------------
 -- Purpose:    Set the page number
+-- ----------------------------------------------------------------------------
 -- Inputs:     A page number (0 - 7)
-procedure _ks0108_page(byte in side , byte in page) is
-    _ks0108_write(side, KS0108_CMD_PAGE | page)
+-- ----------------------------------------------------------------------------
+procedure _ks0108_page(byte in side , byte in page) is  
+   pragma inline
+   _ks0108_write(side, KS0108_CMD_PAGE | page)
 end procedure
 
+-- ----------------------------------------------------------------------------
 -- Purpose:    Set the column address
+-- ----------------------------------------------------------------------------
 -- Inputs:     The column address (0 - 63)
-procedure _ks0108_column(byte in side, byte in column) is
+-- ----------------------------------------------------------------------------
+procedure _ks0108_column(byte in side, byte in column) is   
+   pragma inline
    _ks0108_write(side, KS0108_CMD_COLUMN | column)
 end procedure
 
+-- ----------------------------------------------------------------------------
 -- Purpose:    Specify reads and writes are instructions
-procedure _ks0108_inst() is
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure _ks0108_inst() is     
    GLCD_DI = low
 end procedure
 
+-- ----------------------------------------------------------------------------
 -- Purpose:    Specify reads and writes are data
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 procedure  _ks0108_data() is
    GLCD_DI = high
 end procedure
 
+-- ----------------------------------------------------------------------------
 -- Purpose:    Turn a pixel on a graphic LCD on or off
+-- ----------------------------------------------------------------------------
 -- Inputs:     1) x - the x coordinate of the pixel
 --             2) y - the y coordinate of the pixel
 --             3) color - ON or OFF
-procedure lcd_write_pixel(byte in x, byte in y, bit in onoff) is
+-- ----------------------------------------------------------------------------
+procedure lcd_write_pixel(byte in x, byte in y, bit in onoff) is  
+   pragma inline 
+   
    var byte data , yy
    var byte side = KS0108_LEFT   -- Stores which chip to use on the LCD
 
-   if x > 63 then              -- Check for first or second display area
+   if x > 63 then                -- Check for first or second display area
       x = x - 64
       side = KS0108_RIGHT
    end if
@@ -144,6 +184,9 @@ procedure lcd_write_pixel(byte in x, byte in y, bit in onoff) is
    _ks0108_write(side, data)       -- Write the pixel data
 end procedure
 
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 procedure _ks0108_write_byte(byte in x, byte in y, byte in veri) is
    var byte side = KS0108_LEFT   -- Stores which chip to use on the LCD
 
@@ -160,21 +203,24 @@ procedure _ks0108_write_byte(byte in x, byte in y, byte in veri) is
     _ks0108_write(side, ! veri)   -- Write the pixel data
 end procedure
 
+-- ----------------------------------------------------------------------------
 -- Purpose:    Fill the LCD screen with the passed in color
+-- ----------------------------------------------------------------------------
 -- Inputs:     ON  - turn all the pixels on
 --             OFF - turn all the pixels off
+-- ----------------------------------------------------------------------------
 procedure lcd_fill(byte in data) is
    var byte i, j
-   i = 0                            -- Loop through the vertical pages
+   i = 0                               -- Loop through the vertical pages
    for 8 loop
       _ks0108_inst()                   -- Set for instruction
-      _ks0108_page(KS0108_LEFT,i)    -- Set page address
+      _ks0108_page(KS0108_LEFT,i)      -- Set page address
       _ks0108_page(KS0108_RIGHT,i)
-      _ks0108_column(KS0108_LEFT,0)  -- Set horizontal address to 0
+      _ks0108_column(KS0108_LEFT,0)    -- Set horizontal address to 0
       _ks0108_column(KS0108_RIGHT,0)
       _ks0108_data()                   -- Set for data
 
-      -- Loop through the horizontal sections
+      -- Loop through the horizontal sections (left to right)
       for 64 loop
           _ks0108_write(KS0108_LEFT ,data)   -- Write the byte of data
           _ks0108_write(KS0108_RIGHT,data)
@@ -183,9 +229,14 @@ procedure lcd_fill(byte in data) is
    end loop
 end procedure
 
--- Purpose:       Initialize the LCD.
---                Call before using any other LCD function.
-procedure lcd_init() is
+-- ----------------------------------------------------------------------------
+-- lcd_init - Initialize the graphic LCD.
+-- ----------------------------------------------------------------------------
+-- Call before using any other LCD function.
+-- ----------------------------------------------------------------------------
+procedure lcd_init() is      
+   pragma inline
+   
    -- Initialze some pins
 
    GLCD_DATAPRT = 0x00
@@ -215,7 +266,11 @@ procedure lcd_init() is
 end procedure
 
 
-; 91 * 5 bytes = 455
+-- ---------------------------------------------------------------------------- 
+-- _font_5x7_table[] - character table
+-- ----------------------------------------------------------------------------
+-- 91 * 5 bytes = 455
+-- ----------------------------------------------------------------------------
 const byte _font_5x7_table[] = {
    0x00, 0x00, 0x00, 0x00, 0x00,    ;; space, 32
    0x00, 0x00, 0x2f, 0x00, 0x00,    ;; !,  33
@@ -311,9 +366,13 @@ const byte _font_5x7_table[] = {
 
 }           
 
-;; Writes an inverted character to the display         
-;; note: the vertical position of chars is in 8-bit steps.
+-- ----------------------------------------------------------------------------
+-- lcd_write_char - Writes an inverted character to the display         
+-- ----------------------------------------------------------------------------
+-- note: the vertical position of chars is in 8-bit steps.
+-- ----------------------------------------------------------------------------
 procedure lcd_write_char(byte in x, byte in y, byte in ch ) is
+  pragma inline
   var word indx = 0
   var byte cx
     
