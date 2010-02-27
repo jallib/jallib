@@ -102,6 +102,8 @@ def find_includes(jalfile):
 def split_repos(repos):
     # honor way to define to different paths whether it's on *nix
     # (using ":") or windows (using ";" like jalv2 compiler)
+    if not repos:
+        return []
     if sys.platform.lower().startswith("win"):
         gdirs = repos.split(";")
     else:
