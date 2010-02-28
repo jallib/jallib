@@ -40,6 +40,7 @@ const KS0108_CMD_TOP_RAM   = 0xC0
 --             2) data - the byte of data to write
 -- ----------------------------------------------------------------------------
 procedure _ks0108_write(byte in side, byte in data) is
+   
    if side == 1 then          -- Choose which side to write to
       GLCD_CS2 = high
    else
@@ -156,7 +157,7 @@ procedure lcd_write_pixel(byte in x, byte in y, bit in onoff) is
    
    var byte data , yy
    var byte side = KS0108_LEFT   -- Stores which chip to use on the LCD
-
+   
    if x > 63 then                -- Check for first or second display area
       x = x - 64
       side = KS0108_RIGHT
@@ -166,8 +167,8 @@ procedure lcd_write_pixel(byte in x, byte in y, bit in onoff) is
    _ks0108_column(side,x)         -- Set the horizontal address
    _ks0108_page(side,(y / 8))     -- Set the page address
    _ks0108_data()                 -- Set for data
-   _ks0108_read(side)             -- Need two reads to get data at new address
-   data = _ks0108_read(side)
+   data = _ks0108_read(side)      -- ignore; need two reads to get data at new address
+   data = _ks0108_read(side)      -- actual data
 
    if onoff == 1 then
       -- bit_set(data, y%8)    -- Turn the pixel on
@@ -184,10 +185,13 @@ procedure lcd_write_pixel(byte in x, byte in y, bit in onoff) is
    _ks0108_write(side, data)       -- Write the pixel data
 end procedure
 
+-- ---------------------------------------------------------------------------- 
+-- ks0108_write_byte - write byte to display
 -- ----------------------------------------------------------------------------
+-- x = pixel column
+-- y = pixel row (will be divided by 8)
 -- ----------------------------------------------------------------------------
--- ----------------------------------------------------------------------------
-procedure _ks0108_write_byte(byte in x, byte in y, byte in veri) is
+procedure ks0108_write_byte(byte in x, byte in y, byte in veri) is
    var byte side = KS0108_LEFT   -- Stores which chip to use on the LCD
 
    if x > 63 then                -- Check for first or second display area
@@ -200,8 +204,35 @@ procedure _ks0108_write_byte(byte in x, byte in y, byte in veri) is
     _ks0108_page(side,(y / 8))    -- Set the page address
 
     _ks0108_data()                -- Set for data
-    _ks0108_write(side, ! veri)   -- Write the pixel data
+    _ks0108_write(side, veri)    -- Write the pixel data
 end procedure
+
+-- ---------------------------------------------------------------------------- 
+-- ks0108_read_byte - read byte to display
+-- ----------------------------------------------------------------------------
+-- x = pixel column
+-- y = pixel row (will be divided by 8)
+-- ----------------------------------------------------------------------------
+function ks0108_read_byte(byte in x, byte in y) return byte is
+   var byte side = KS0108_LEFT   -- Stores which chip to use on the LCD
+   var byte data
+   
+   if x > 63 then                -- Check for first or second display area
+      x = x - 64
+      side = KS0108_RIGHT
+   end if
+
+    _ks0108_inst()                -- Set for instruction
+    _ks0108_column(side,x)        -- Set the horizontal address
+    _ks0108_page(side,(y / 8))    -- Set the page address
+
+    _ks0108_data()                -- Set for data
+   data = _ks0108_read(side)      -- ignore; need two reads to get data at new address
+   data = _ks0108_read(side)      -- actual data    
+    
+   return data    
+    
+end function
 
 -- ----------------------------------------------------------------------------
 -- Purpose:    Fill the LCD screen with the passed in color
@@ -220,7 +251,7 @@ procedure lcd_fill(byte in data) is
       _ks0108_column(KS0108_RIGHT,0)
       _ks0108_data()                   -- Set for data
 
-      -- Loop through the horizontal sections (left to right)
+      -- Loop through the horizontal sections (left to right
       for 64 loop
           _ks0108_write(KS0108_LEFT ,data)   -- Write the byte of data
           _ks0108_write(KS0108_RIGHT,data)
@@ -373,22 +404,21 @@ const byte _font_5x7_table[] = {
 -- ----------------------------------------------------------------------------
 procedure lcd_write_char(byte in x, byte in y, byte in ch ) is
   pragma inline
-  var word indx = 0
-  var byte cx
+   var word indx = 0
+   var byte cx
     
-  if (ch <  32) then return end if
-  if (ch > 122) then return end if
+   if (ch <  32) then return end if
+   if (ch > 122) then return end if
   
-  indx = indx + 5 * word(ch - 32)
+   indx = indx + 5 * word(ch - 32)
+
   
    for 5 loop
       cx = _font_5x7_table[indx]
 
       _ks0108_inst()                          -- Set for instruction          
       
-      if (x < 0) then
-         -- ignore (this enables us to write partial chars on the edge)
-      elsif (x < 64) then
+      if (x < 64) then
          _ks0108_column(KS0108_LEFT,x)        -- Set the horizontal address
          _ks0108_page(KS0108_LEFT, (y / 8))   -- Set the page address
          _ks0108_data()                       -- Set for data
