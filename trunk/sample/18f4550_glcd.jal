@@ -104,7 +104,7 @@ include serial_hardware
 serial_hw_init()
 
 include print
-
+include random
 
 include delay     
 include lcd_ks0108      
@@ -118,15 +118,115 @@ lcd_box  ( 0,0, 127,63)
      
 include print
 
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- Game of Life - 
+-- ----------------------------------------------------------------------------
+-- Game of Life is a cool way to demo your graphic screen. 
+-- Note that GOL directly works on the LCD for efficency. 
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+
+var byte gol_first_column[9]
+var byte gol_prev_column[9]
+var byte gol_this_column[9]
+var byte gol_next_column[9]
+
+var byte gol_output_column[9]
+
+
+-- ----------------------------------------------------------------------------
+-- gol_randomize - Game of Life _ Randomize screen
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure gol_randomize() is
+   var byte x, y, r
+   
+   for 8 using y loop 
+      for 128 using x loop     
+         r =  random_byte()
+         ks0108_write_byte(x, y*8, r)
+      end loop
+   end loop 
+end procedure
+
+procedure gol_read_column(byte in col_nr, byte out column[9]) is
+   var byte y        
+   if (col_nr < 127) then
+      -- real read
+      for 8 using y loop
+         column[y] = ks0108_read_byte(col_nr, y * 8)
+      end loop      
+   else
+      -- get copy of first column
+      for 8 using y loop
+         column[y] = gol_first_column[y]
+      end loop      
+   end if
+
+end procedure       
+
+procedure gol_write_column(byte in col_nr) is
+   var byte y        
+   for 8 using y loop
+      ks0108_write_byte(col_nr, y * 8, gol_output_column[y])
+   end loop      
+end procedure
+
+procedure gol_copy_column(byte in in_column[9], byte out out_column[9]) is
+   var byte x
+   for 8 using x loop
+      out_column[x] = in_column[x]
+   end loop      
+end procedure
+
+procedure gol_clear_column(byte in out column[9]) is
+   var byte x
+   for 8 using x loop
+      column[x] = 0
+   end loop      
+end procedure
+
+procedure gol_gen_column() is
+end procedure
+-- ----------------------------------------------------------------------------
+-- gol_generation - live one generation
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure gol_generation() is
+   var byte x
+
+   gol_read_column(0, gol_first_column)
+   gol_copy_column(gol_first_column, gol_this_column)
+
+   for 128 using x loop
+      gol_clear_column(gol_output_column)                -- clear output
+      gol_copy_column(gol_this_column, gol_prev_column)  -- shift
+      gol_copy_column(gol_next_column, gol_this_column)  -- shift
+      gol_read_column(x+1, gol_next_column)              -- get new
+
+      gol_gen_column()
+      gol_write_column(x)            
+   end loop             
+   
+end procedure
+
+
+
+
+
 glcd_char_y_pos  = 20;  
 glcd_char_x_pos = 20
 forever loop
 
-   delay_100ms(5)
 ;    line(0, 0, 64, 64)
 ;   print_string(lcd, str1)
 ;   glcd_box  ( 0,0, 127,63)  
-    
+
+if (false) then
+   delay_100ms(5)
+
+   -- fill with chars    
    var byte x, y, char;
    char = 32 
    for 9 using y loop 
@@ -137,6 +237,14 @@ forever loop
          if (char > 122) then char = 32 end if   
       end loop
    end loop 
+end if
+   -- randomize
+   gol_randomize()
 
- 
+   
+   delay_100ms(1)
+   
+
+
+
 end loop
