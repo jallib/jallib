@@ -47,16 +47,18 @@ intcon_peie = on    ; enables all unmasked peripheral interrupts
 -- Set this to desired interval. timer3 will count up.
 -- Interupt will occur when timer_interval rolls
 -- over from 65535 to 0
-var word timer_interval = 60535 -- 1khz sign wave at 20mhz
+var word timer_interval = 65535 - 2500 -- 63035 = 1khz square wave at 20mhz,
+-- output will change every 0.5ms, full wave in 1ms.
+-- interrupt occurs every 0.5ms
 -- this value can be calculated:
--- 65535    - ( (1/1khz) / ( (1/20_000_000)*4 ) ) = 60535
--- timermax - ( (1/HZ  ) / ( (1/OSC FREQ  )*4 ) ) = timer_interval
+-- 65535    - ( (1/1khz/2) / ( (1/20_000_000)*4 ) ) = 63035
+-- timermax - ( (1/HZ/2) / ( (1/OSC FREQ  )*4 ) ) = timer_interval
 
 -- timer3 setup
-tmr3 = timer_interval -- timer interval
-t3con_tmr3cs = 0      -- use internal clock
+tmr3 = timer_interval  -- timer interval
+t3con_tmr3cs = 0       -- use internal clock
 pie2_tmr3ie  = 1       -- enable the timer3 interrupt bit
-t3con_tmr3on = 1      -- 1 = enables timer 3
+t3con_tmr3on = 1       -- 1 = enables timer 3
 pir2_tmr3if  = off     -- clear overflow to start timer
 
 -- set timer3 clock prescaler
@@ -66,15 +68,15 @@ t3con_t3ckps = 0 -- set prscal of 1:1
 -----------
 procedure timer_isr() is
    pragma interrupt          -- interupt procedure
+   PIR2_TMR3IF = off         -- clear overflow to start timer
    
    if !PIR2_TMR3IF then      -- check if this is a timer3 interupt
       return                 -- exit interupt if it is not
    end if
    
-   timer_out = !timer_out    -- change led to oposite value
+   timer_out = !timer_out    -- change timer_out pin to oposite value
 
    TMR3 = timer_interval     -- set the interval
-   PIR2_TMR3IF = off         -- clear overflow to start timer
 end procedure
 
 -- main program here
