@@ -1115,8 +1115,9 @@ def jalapi_generate(infos,tmpl_file,sampledir,locallinks):
 #-----------#
 
 
-def get_library_list():
-    gdirs = split_repos(os.environ.get('JALLIB_REPOS',""))
+def get_library_list(repos=None):
+    repos = repos or os.environ.get('JALLIB_REPOS',"")
+    gdirs = split_repos(repos)
     # first directories have precedence, so we start by the end
     # and will override as needed
     gdirs.reverse()
