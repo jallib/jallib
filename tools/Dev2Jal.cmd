@@ -26,7 +26,7 @@
  * Sources:  MPLAB .dev and .lkr files                                      *
  *                                                                          *
  * Notes:                                                                   *
- *   - This script is developed with 'classic' Rexx, as delivered with      *
+ *   - This script is developed with 'classic' Rexx as delivered with       *
  *     eComStation (OS/2) and is executed on a specific system.             *
  *     With only a few changes it can be executed on a different system,    *
  *     or even a different platform (Linux, Windows) with the combination   *
@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.93'
+   ScriptVersion   = '0.0.94'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -2391,6 +2391,7 @@ do i = 1 to Dev.0
          call lineout jalfile, '--'
          half = 'PORT'portletter'_low_direction'
          call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+         call lineout jalfile, '   pragma inline'
          call lineout jalfile, '   'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
          call lineout jalfile, '   asm movf _TRIS'portletter'_shadow,W'
          if reg = 'TRISIO' then                         /* TRISIO (small PICs) */
@@ -2401,6 +2402,7 @@ do i = 1 to Dev.0
          call lineout jalfile, '--'
          half = 'PORT'portletter'_high_direction'
          call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+         call lineout jalfile, '   pragma inline'
          call lineout jalfile, '   'shadow '= ('shadow '& 0x0F) | (x << 4)'
          call lineout jalfile, '   asm movf _TRIS'portletter'_shadow,W'
          if reg = 'TRISIO' then                         /* TRISIO (small PICs) */
@@ -2686,19 +2688,23 @@ call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_low'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   return ('reg '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_high'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'shadow '= ('shadow '& 0x0F) | (x << 4)'
 call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   return ('reg '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
@@ -2721,17 +2727,21 @@ call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_low'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'lat '= ('port '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   return ('port '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_high'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'lat '= ('port '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   return ('port '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
@@ -2748,17 +2758,21 @@ reg = arg(1)
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_low_direction'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'reg '= ('reg '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   return ('reg '& 0x0F)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_high_direction'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'reg '= ('reg '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   return ('reg '>> 4)'
 call lineout jalfile, 'end function'
 call lineout jalfile, '--'
@@ -3878,7 +3892,7 @@ call lineout jalfile, '--'
 if Core = '12'  |  Core = '14' then do
    if PicName = '16f73'  | PicName = '16f74' then
       call lineout jalfile,,
-         '_warn "Calculations with variables over 16 bits are not supported by this target"'
+         '_warn "Calculations with variables over 16 bits are not supported for a' PicName'"'
    call lineout jalfile, 'var volatile byte _pic_accum shared at',
                              '0x'D2X(MaxSharedRAM-1,2)'        -- (compiler)'
    call lineout jalfile, 'var volatile byte _pic_isr_w shared at',
