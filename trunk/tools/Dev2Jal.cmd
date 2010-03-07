@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.94'
+   ScriptVersion   = '0.0.95'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -54,7 +54,7 @@ msglevel = 1
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab843/'             /* base directory of MPLAB          */
+MPLABbase  = 'k:/mplab846/'             /* base directory of MPLAB          */
 JALLIBbase = 'k:/jallib/'               /* base directory of JALLIB (local) */
 
 /* When using 'standard' installations no other changes are needed,         */
@@ -3030,7 +3030,7 @@ do i = 1 to dev.0                                       /* scan .dev file */
                   key = 'MSSPMASK'
                when key = 'PLL_EN' | key = 'CFGPLLEN' then
                   key = 'PLLEN'
-               when key = 'PM' then
+               when key = 'MODE' | key = 'PM' then
                   key = 'PMODE'
                when key = 'PMPMX' then
                   key = 'PMPMUX'
@@ -3342,7 +3342,7 @@ do i = arg(1) + 1  while i <= dev.0  &,
       when key = 'PMODE' then do
          if pos('EXT',val2) > 0 then do
             if pos('-BIT', val2) > 0 then
-               kwd = 'B'left(word(val2,words(val2)),2)     /* 1st two chars last word */
+               kwd = 'B'substr(val2, pos('-BIT',val2)-2, 2)     /* # bits */
             else
                kwd = 'EXT'
          end
@@ -3356,9 +3356,12 @@ do i = arg(1) + 1  while i <= dev.0  &,
       end
 
       when key = 'PMPMUX' then do
-         wpos = wordpos('ON',val2)
-         if wpos > 0 then
-            kwd = left(word(val2,wpos + 1),5)           /* 'portx' behind 'ON' */
+         if wordpos('ON',val2) > 0 then                     /* contains ' ON ' */
+            kwd = left(word(val2, wordpos('ON',val2) + 1),5)
+         else if wordpos('ELSEWHERE',val2) > 0 then         /* contains ' ELSEWHERE ' */
+            kwd = 'ELSEWHERE'
+         else if wordpos('NOT',val2) = 0 then               /* does not contain ' NOT ' */
+            kwd = left(word(val2, wordpos('TO',val2) + 1),5)
          else
             kwd = val2u
       end
@@ -3385,7 +3388,7 @@ do i = arg(1) + 1  while i <= dev.0  &,
          offset1 = pos('MUX',val2)
          if offset1 > 0 then do
          /* say 'offset 1' offset1   */
-            offset2 = pos(' R',substr(val2,offset1))      /* pin */
+            offset2 = pos(' R',substr(val2,offset1))        /* pin */
          /* say 'offset 2' offset2   */
             if offset2 > 0 then
                kwd = 'pin_'substr(val2,offset1+offset2+1,2)
@@ -3829,8 +3832,8 @@ call lineout jalfile, '--      operations, like:'
 call lineout jalfile, '--      . enable_digital_io()'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Sources:'
-call lineout jalfile, '--  - "x:'substr(DevFile,3)'"'   /* dummy drive 'x' ! */
-call lineout jalfile, '--  - "x:'substr(LkrFile,3)'"'
+call lineout jalfile, '--  - x:'substr(DevFile,3)   /* dummy drive 'x' ! */
+call lineout jalfile, '--  - x:'substr(LkrFile,3)
 call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
 call lineout jalfile, '--  - Created with Dev2Jal Rexx script version' ScriptVersion
