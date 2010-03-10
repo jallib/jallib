@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
- * Title: blink-a-led.cmd - Create and compile blink-an-LED samples.       *
+ * Title: blink-a-led.cmd - Create and compile blink-a-led samples.         *
  *                                                                          *
- * Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.    *
+ * Author: Rob Hamerling, Copyright (c) 2008..2010, all rights reserved.    *
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
@@ -11,15 +11,19 @@
  * Released under the BSD license                                           *
  *                http://www.opensource.org/licenses/bsd-license.php        *
  *                                                                          *
- * Description: Rexx script to create a blink-an-LED JAL program in the     *
- *              in the current default directory for every PIC.             *
- *              The created program is validated (JSG) and submitted to     *
- *              the compiler. The console log is checked for errors and     *
- *              warnings. When both are 0 the source is copied to the SVN   *
- *              directory and all compiler but the compiler console log     *
- *              is deleted.                                                 *
+ * Description: Rexx script to create a blink-a-led sample for every        *
+ *              generated device file.                                      *
+ *              First the device file is validated, then a program is       *
+ *              created, validated and submitted to the compiler.           *
+ *              The console log is checked for errors and warnings.         *
+ *              When all OK and when the run is in 'PROD' mode the source   *
+ *              of the sample program is copied to the local SVN directory  *
+ *              and all compiler output is deleted.                         *
+ *              In TEST mode the log and jal files are retained.            *
  *                                                                          *
  * Sources:                                                                 *
+ *                                                                          *
+ * Version: 0.0.3                                                           *
  *                                                                          *
  * Notes:                                                                   *
  *  - Uses Classic Rexx.                                                    *
@@ -28,26 +32,22 @@
  * ------------------------------------------------------------------------ */
 
    ScriptAuthor    = 'Rob Hamerling'
-   CompilerVersion = '2.4l'
+   CompilerVersion = '2.4n'
 
 parse upper arg runtype selection .             /* where to store jal files */
-
-call envir 'python'                             /* set Python environment */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load Rexx utilities */
 
-JalV2 = 'k:/c/jalv2/JalV2ecs.exe'               /* latest compiler */
-Validator = 'k:/jallib/tools/jallib.py validate'  /* validation command */
+JalV2 = '\c\jalv2\bin\JalV2ecs.exe'             /* latest compiler */
+Validator = '/jallib/tools/jallib.py validate'  /* validation command */
 
 if runtype = 'TEST' then do                     /* test mode */
-  Include = '/jal/dev2jal/test/'                /* device files under test */
-  Options = '-s' Include                        /* compiler options */
+  Include = '/jal/dev2jal/test'                 /* Test device files */
   dst = './'                                    /* current directory */
 end
 else if runtype = 'PROD' then do                /* normal mode */
-  Include = '/jallib/include/device/'           /* SVN include directory */
-  Options = '-a nul -s' Include                 /* no asm output */
+  Include = '/jallib/include/device'            /* Jallib device files */
   dst = '/jallib/sample/'                       /* sample dir */
 end
 else do                                         /* normal mode */
@@ -55,15 +55,19 @@ else do                                         /* normal mode */
   return 1
 end
 
+Options = '-no-codfile -no-asm -s' Include
+
 if selection = '' then
-  call SysFileTree Include'1*.jal', pic, 'FO'   /* list of device files  */
+  call SysFileTree Include'/1*.jal', pic, 'FO'   /* list of device files  */
 else
-  call SysFileTree Include||selection'.jal', pic, 'FO'  /* list of includes  */
+  call SysFileTree Include'/'selection'.jal', pic, 'FO'  /* list of device files  */
 
 if pic.0 < 1 then do
   say 'No appropriate device files found in directory' Include
   return 1
 end
+
+call envir 'python'                             /* set Python environment */
 
 k = 0
 
@@ -72,7 +76,7 @@ do i=1 to pic.0
   parse value filespec('Name', pic.i) with PicName '.jal'
   say PicName
 
-  '@python' validator Include||PicName'.jal' '1>'PicName'.pyout' '2>'PicName'.pyerr'
+  '@python' validator Include'/'PicName'.jal' '1>'PicName'.pyout' '2>'PicName'.pyerr'
   if rc \= 0 then do
     say 'Validation of device file for' PicName 'failed, rc' rc
     leave                                       /* terminate! */
@@ -83,13 +87,12 @@ do i=1 to pic.0
   PgmName = PicName'_blink'                     /* program name */
   PgmFile = PgmName'.jal'                       /* program filespec */
 
-  if stream(PgmFile, 'c', 'query exists') \= '' then
-    '@erase' PgmFile
+  call SysFileDelete PgmFile
   call stream  PgmFile, 'c', 'open write'
   call lineout PgmFile, '-- ------------------------------------------------------'
-  call lineout PgmFile, '-- Title: Blink-an-LED of the Microchip pic'PicName
+  call lineout PgmFile, '-- Title: Blink-a-led of the Microchip pic'PicName
   call lineout PgmFile, '--'
-  call lineout PgmFile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2009, all rights reserved.'
+  call lineout PgmFile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2010, all rights reserved.'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Adapted-by:'
   call lineout PgmFile, '--'
@@ -101,7 +104,7 @@ do i=1 to pic.0
                          '(http://www.opensource.org/licenses/bsd-license.php)'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Description:'
-  call lineout PgmFile, '-- Sample blink-an-LED program for Microchip PIC'PicName'.'
+  call lineout PgmFile, '-- Sample blink-a-led program for Microchip PIC'PicName'.'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Sources:'
   call lineout PgmFile, '--'
@@ -123,10 +126,10 @@ do i=1 to pic.0
           leave
         end
       end
-      call lineout PgmFile, '-- This program assumes a 20 MHz resonator or crystal'
+      call lineout PgmFile, '-- This program assumes that a 20 MHz resonator or crystal'
       call lineout PgmFile, '-- is connected to pins OSC1 and OSC2.'
       if left(PicName,2) = '18' then
-        call lineout PgmFile, '-- Unspecified configuration bits may cause a different frequency!'
+        call lineout PgmFile, '-- (unspecified configuration bits may cause a different frequency!)('
       call lineout PgmFile, 'pragma target clock 20_000_000     -- oscillator frequency'
       call lineout PgmFile, '-- configuration memory settings (fuses)'
       call lineout PgmFile, 'pragma target OSC  'hs'              -- HS crystal or resonator'
@@ -137,11 +140,14 @@ do i=1 to pic.0
       call lineout PgmFile, 'pragma target clock 4_000_000      -- oscillator frequency'
       call lineout PgmFile, '-- configuration memory settings (fuses)'
       call SysFileSearch ' INTOSC', pic.i, osc.
-      if osc.0 > 0 then
-        call lineout PgmFile, 'pragma target OSC  'word(osc.1,1)'     -- internal oscillator'
-      else do
-        call SysFileSearch ' INTRC', pic.i, osc.
-        if osc.0 > 0 then
+      if osc.0 > 0 then do                              /* found internal oscillator */
+        do j = 1 to osc.0
+          if pos('NOCLK', osc.j) > 0 then do            /* search for noclkout */
+             call lineout PgmFile, 'pragma target OSC  'word(osc.j,1)'     -- internal oscillator'
+             leave                                      /* done! */
+          end
+        end
+        if j > osc.0 then                               /* not 'noclkout': take first */
           call lineout PgmFile, 'pragma target OSC  'word(osc.1,1)'     -- internal oscillator'
       end
       call SysFileSearch ' IOSCFS ', pic.i, ioscfs.
@@ -158,15 +164,28 @@ do i=1 to pic.0
     if ioscfs.0 > 0 then
       call lineout PgmFile, 'pragma target IOSCFS  F4MHZ        -- select 4 MHz'
   end
-  call SysFileSearch 'pragma fuse_def WDT', pic.i, wdt.
+  call SysFileSearch 'fuse_def PLLEN', pic.i, pll.
+  if pll.0 > 0 then do
+    if pos('intosc', pll.1) = 0 then                        /* PLL, not for intosc */
+      call lineout PgmFile, 'pragma target PLLEN  P1            -- PLL off'
+  end
+  call SysFileSearch 'fuse_def PLLDIV', pic.i, pll.
+  if pll.0 > 0 then do
+    call lineout PgmFile, 'pragma target PLLDIV  P1           -- PLL off'
+  end
+  call SysFileSearch 'fuse_def CPUDIV', pic.i, pll.
+  if pll.0 > 0 then do
+    call lineout PgmFile, 'pragma target CPUDIV  P2           -- no cycle divisor'
+  end
+  call SysFileSearch 'fuse_def WDT', pic.i, wdt.
   if wdt.0 > 0 then do
     call lineout PgmFile, 'pragma target WDT  disabled        -- no watchdog'
   end
-  call SysFileSearch 'pragma fuse_def LVP', pic.i, lvp.
+  call SysFileSearch 'fuse_def LVP', pic.i, lvp.
   if lvp.0 > 0 then do
     call lineout PgmFile, 'pragma target LVP  disabled        -- no Low Voltage Programming'
   end
-  call SysFileSearch 'pragma fuse_def MCLR', pic.i, mclr., 'N'
+  call SysFileSearch 'fuse_def MCLR', pic.i, mclr., 'N'
   if mclr.0 > 0 then do
     do  word(mclr.1,1)                                  /* skip lines ahead of MCLR */
       call linein pic.i
@@ -184,9 +203,9 @@ do i=1 to pic.0
   end
   call stream Pic.i, 'c', 'close'                       /* done for now */
   call lineout PgmFile, '--'
-  call lineout PgmFile, 'enable_digital_io()                -- disable analog I/O (if any)'
+  call lineout PgmFile, 'enable_digital_io()                -- make all pins digital I/O'
   call lineout PgmFile, '--'
-  call lineout PgmFile, '-- You may want to change the selected pin:'
+  call lineout PgmFile, '-- Specify the pin to which the LED (with serial resistor!) is connected:'
 
   call stream pic.i, 'c', 'close'
   port.0 = 3                                            /* ports to scan */
@@ -221,13 +240,12 @@ do i=1 to pic.0
   call lineout PgmFile, '--'
   call lineout PgmFile, 'forever loop'
   call lineout PgmFile, '   led = on'
-  call lineout PgmFile, '   _usec_delay(250000)'
+  call lineout PgmFile, '   _usec_delay(250_000)'
   call lineout PgmFile, '   led = off'
-  call lineout PgmFile, '   _usec_delay(250000)'
+  call lineout PgmFile, '   _usec_delay(250_000)'
   call lineout PgmFile, 'end loop'
   call lineout PgmFile, '--'
   call stream PgmFile, 'c', 'close'
-
 
   '@python' validator PgmFile '1>'PgmName'.pyout' '2>'PgmName'.pyerr'
   if rc \= 0 then do
@@ -244,9 +262,8 @@ do i=1 to pic.0
     if runtype = 'PROD' then
       leave                                     /* terminate */
   end
-  say '     Sample program compiled OK!'
-
-  '@erase' PgmName'.cod' PgmName'.err' PgmName'.lst' PgmName'.obj' '1>nul 2>nul'
+  else
+    say '     Sample program compiled OK!'
 
   call SysFileSearch 'WARNING', PgmName'.log', LG.    /* find warning line in log */
   if LG.0 > 0 then do
@@ -263,7 +280,9 @@ do i=1 to pic.0
             say 'Copy of' PgmFile 'to' dst 'failed'
             return rc
           end
-          '@erase' PgmName'.hex' PgmName'.asm' PgmName'.jal' PgmName'.log' '1>nul 2>nul'
+          call SysFileDelete PgmName'.log'
+          call SysFileDelete PgmName'.jal'
+          call SysFileDelete PgmName'.hex'
         end
       end
     end
@@ -276,7 +295,7 @@ do i=1 to pic.0
 
 end
 
-say 'Processed successfully' k 'of' pic.0 ' device files and blink-an-led programs!'
+say 'Processed successfully' k 'of' pic.0 ' device files and blink-a-led programs!'
 
 return 0
 

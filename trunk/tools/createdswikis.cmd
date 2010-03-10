@@ -13,9 +13,13 @@
 /*          (hpfs, jfs and others have builtin sorted file names).              */
 /* ---------------------------------------------------------------------------- */
 
+parse upper arg runtype .
+
 /* -- input files (change for other systems or platforms) -- */
-/* jaldir      = 'k:/jallib/include/device/' */     /* dir with Jallib device files */
-jaldir      = 'k:/jal/dev2jal/test/'                /* dir with Jallib test files */
+if runtype \= 'TEST' then
+   jaldir   = 'k:/jallib/include/device/'           /* dir with Jallib device files */
+else
+   jaldir      = 'k:/jal/dev2jal/test/'             /* dir with test files */
 pdfdir      = 'k:/picdatasheets/'                   /* dir with datasheets (local)  */
 PicSpecFile = 'k:/jallib/tools/devicespecific.json' /* PIC specific properties      */
 titles      = 'k:/jallib/tools/datasheet.list'      /* datasheet number/title file  */
