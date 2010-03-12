@@ -1,0 +1,75 @@
+-- Title: unittest to compare dynamic vs. static ADC libraries
+-- Author: Sebastien Lelong, Copyright (c) 2010, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: dynamic ADC libs, used for dependent analog pins like in 18F4550,
+-- is used to allow user to change ADC parameters while PIC is running. Static version
+-- allows only one setup, at startup. This test setup 3 channels for both static and
+-- dynamic version, in order to compare memory usage (though if you're sure you'll
+-- never changes the number of ADC channels at runtime, it makes no sense using the
+-- dynamic version.
+--
+
+;@jallib section pic_4550
+include 18f4550   ;@no_debug     
+
+pragma target OSC HS           
+pragma target clock 20_000_000 
+pragma target WDT  disabled
+
+
+-- force analog pin/port to be output, so we can check they are 
+-- automagically set as input when configured (else it can be optimized away)
+
+porta_direction = all_output
+portb_direction = all_output
+porte_direction = all_output
+ADCON1 = 0x00
+
+include unittest
+
+enable_digital_io()            
+
+;@jallib section adc_dynamic
+const bit ADC_DYNAMIC = true
+var byte adc_nchannel = 3
+var byte adc_nvref = 0
+var bit adc_high_resolution = high
+var word adc_rsource = 2_500
+var byte adc_temp = 40
+include adc
+adc_init()
+
+;@jallib section adc_static
+const byte adc_nchannel = 3
+const byte adc_nvref = 0
+const bit adc_high_resolution = high
+const word adc_rsource = 2_500
+const byte adc_temp = 40
+include adc
+adc_init()
+
+;@jallib section do_test
+-- check TRISA 
+test_byte(TRISA)  ;@assertEquals 0x07 channels_3_trisA
+-- check TRISB 
+test_byte(TRISB)  ;@assertEquals 0x00 channels_3_trisB
+-- check TRISE
+test_byte(TRISE)  ;@assertEquals 0x00 channels_3_trisE
+-- check ADCON1
+test_byte(ADCON1)  ;@assertEquals 0x0C channels_3_ADCON1
+
+
+;@jallib testcase test_nchannel_3_dynamic
+;@jallib use pic_4550
+;@jallib use adc_dynamic
+;@jallib use do_test
+
+;@jallib testcase test_nchannel_3_static
+;@jallib use pic_4550
+;@jallib use adc_static
+;@jallib use do_test

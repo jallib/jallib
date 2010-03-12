@@ -18,7 +18,14 @@
 -- 
 -- Notes: this is a heavy refactoring/rewriting of original library from Stef Mientki.
 -- The main changes are about ADC configuration, which are essentially handled in 
--- adc_channels.jal, adc_pindef.jal and adc_clock.jal
+-- adc_channels.jal, adc_pindef.jal and adc_clock.jal.
+-- A major trigger when using ADC libs is ADC_DYNAMIC. When declared, several parameters
+-- become dynamic and can be changed at runtime. This includes:
+--    - ADC_NCHANNEL, the number of ADC channels (when they are dependent channels, 
+--      as independent channels are always selected at runtime with set_analog_pin()
+--    - ADC_TEMP (careful, computation related to temperature very approximative
+--    - ADC_RESOLUTION (8-bits or 10-bits)
+--    - ADC_RSOURCE
 -- --
 -- The original library can be found:
 --    - Stef's: http://mientki.ruhosting.nl/pic-tools/jal/libs2/adc_hardware.jal
@@ -47,8 +54,10 @@ if defined(ADC_TEMP) == false then
 end if
 
 -- sanity check
-if ADC_HIGH_RESOLUTION & ! defined(ADRESH) then
-   _warn "This PIC does not seem to handle 10-bits ADC"
+if ADC_HIGH_RESOLUTION & ! defined(ADRESH) == true then
+   if defined(ADC_DYNAMIC) == false then
+      _warn "This PIC does not seem to handle 10-bits ADC"
+   end if
 end if
 
 -- some PICs don't handle high resolution (8bits only) *and*
@@ -212,11 +221,23 @@ procedure _adc_init_acquisition_delay() is
    -- Tc(usecs)   = (915 * (8 + Rs)) / 1000
    -- Tacq(usecs) = 2 + Tc(usecs) + (0.05usecs * T)
    -- So Tc, expressed in usecs is:
-   const byte adc_tc = ((915 * (8 + (ADC_RSOURCE/1000))) / 1000) + 1    -- Add 1 so we have value at ceil
-   const byte adc_tcoff = ((ADC_TEMP * 5) / 100) + 1    -- Let's be generous... This is very, very approximative...
-                                                   -- Even if ADC_TEMP = 0, it should be ok at 25°C to 30°C
-                                                   -- It'll give 1usec insteand of 1.25 to 1.5usecs, but since there
-                                                   -- (I even wonder if it makes sens to compute this...)
+   -- (add 1 so we have value at ceil)
+   if defined(ADC_DYNAMIC) == true then
+      var byte adc_tc = byte(((915 * (8 + (ADC_RSOURCE/1000))) / 1000) + 1)
+   else
+      const byte adc_tc = ((915 * (8 + (ADC_RSOURCE/1000))) / 1000) + 1
+   end if
+
+   -- Let's be generous... This is very, very approximative...
+   -- Even if ADC_TEMP = 0, it should be ok at 25°C to 30°C
+   -- It'll give 1usec insteand of 1.25 to 1.5usecs, but since there
+   -- (I even wonder if it makes sens to compute this...)
+   if defined(ADC_DYNAMIC) == true then
+      var byte adc_tcoff = ((ADC_TEMP * 5) / 100) + 1
+   else
+      const byte adc_tcoff = ((ADC_TEMP * 5) / 100) + 1
+   end if
+
    adc_conversion_delay = 2 + adc_tc + adc_tcoff   -- Tamp seems to be a constant: 2usecs
    -- since we'll use delay_10us, need to divide and adjust
    -- adc_conversion_delay = adc_conversion_delay / 10
@@ -224,6 +245,11 @@ procedure _adc_init_acquisition_delay() is
 end procedure
 
 
+-- Pin setup: analog as input, configure Vref, ...
+procedure _adc_setup() is
+   _adc_setup_pins()    -- conditionally defined according to PIC
+   _adc_vref()          -- conditionally defined according to PIC
+end procedure
 
 -- Initializes the PIC AD-converter,
 -- by calling the correct routine according to the number of external references
@@ -232,6 +258,8 @@ end procedure
 -- Calculates aquisition time and determines if right or 
 -- left justification is optimal
 procedure adc_init() is
+   -- TODO: check dynamic to adjust inline
+   _adc_setup()
    -- calculate aquisition delay and optimize justify
    _adc_init_justify()
    _adc_init_clock()
