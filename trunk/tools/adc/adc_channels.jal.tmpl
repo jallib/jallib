@@ -22,6 +22,11 @@
 --    3. the number of channels is set using ANS bits (18F and non-18F)
 --       => same as case 2., channels can be configured independently
 --          Vref+/Vref- are configured using VCFG bits.
+-- -- 
+-- About Vref setup:
+--   - when ADC_NVREF = 1: there's only one Vref, this is Vref+
+--   - when ADC_NVREF = 2: two Vref are used, Vref+ and Vref-
+--   - when ADC_NVREF = 3: there's only one Vref, this is Vref- (not user-friendly)
 --
 --
 -- Notes: this file is generated, don't modify it directly...
@@ -145,7 +150,7 @@
 
 
 #def pcfg_combination
-   procedure _adc_setup_independent() is
+   procedure _adc_setup_pins() is
       pragma inline
        #set bydsref = {}
        #silent [bydsref.setdefault($pic_ds[p],[]).append(p) for p in $pcfg_combination_pics]
@@ -518,7 +523,7 @@
 
    else
       -- no exception here: ANSx corresponds to analog pin n°x
-      #for i in range(23)
+      #for i in range(28)
          if defined(JANSEL_ANS$i) == true then
             alias ADC_JANSEL_ANS$i is JANSEL_ANS$i
          end if
@@ -601,6 +606,9 @@ procedure _adc_vref_vcfg() is
    if ADC_NVREF == 2 then
       vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
    end if
+   if ADC_NVREF == 3 then
+      vcfg_shadow = 2 -- 0b_10 | 0b_00 => 0b_10 => one bit per VCFG bit*2
+   end if
    
    if defined(ADCON0_VCFG) == true then
       ADCON0_VCFG = vcfg_shadow
@@ -614,21 +622,33 @@ procedure _adc_vref_vcfg() is
       elsif ADC_NVREF == 2 then
          ADCON1_VCFG0 = true
          ADCON1_VCFG1 = true
+      elsif ADC_NVREF == 3 then
+         ADCON1_VCFG1 = true
       end if
    elsif defined(ADCON0_VCFG0) == true then
       if ADC_NVREF == 1 then
-         ADCON0_PVCFG0 = true
+         ADCON0_VCFG0 = true
       elsif ADC_NVREF == 2 then
          ADCON0_VCFG0 = true
          ADCON0_VCFG1 = true
+      elsif ADC_NVREF == 3 then
+         ADCON0_VCFG1 = true
       end if
    -- Special case for PVCFG
+   -- Need to act on PVCFG and NVCFG bits
    elsif defined(ADCON1_PVCFG0) == true then
-      if ADC_NVREF > 0 then
+      if ADC_NVREF == 1 then
          -- PVCFG = 0b_01
          ADCON1_PVCFG0 = false
          ADCON1_PVCFG1 = true
       elsif ADC_NVREF == 2 then
+         -- PVCFG = 0b_01
+         ADCON1_PVCFG0 = false
+         ADCON1_PVCFG1 = true
+         -- NVCFG = 0b_01
+         ADCON1_NVCFG0 = false
+         ADCON1_NVCFG1 = true
+      elsif ADC_NVREF == 3 then
          -- NVCFG = 0b_01
          ADCON1_NVCFG0 = false
          ADCON1_NVCFG1 = true
@@ -697,11 +717,9 @@ if $pcfg_combination_condition then
    
 $pcfg_combination
 
-   -- Normalize procedure names for setup
-   alias _adc_setup_pins is _adc_setup_independent
    -- declare dummy procedure for normalization. Note Vref setup, due to some jalv2 contraints
    -- (like defining a constant but assigning its definitive value later), Vref setup is done
-   -- while discovering/setting up ADC pins. See comment within _adc_setup_independent()
+   -- while discovering/setting up ADC pins. See comment within _adc_setup_pins() for dependent pins
    procedure _adc_vref() is
    end procedure
 
@@ -719,8 +737,6 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCF
 $pcfg_18f
 $select_vref_proc
 
-   -- Normalize procedure names for setup
-   procedure _adc_setup_pins is _adc_setup_independent
 
 -- --------------------------------------------
 -- THIRD CASE: 
