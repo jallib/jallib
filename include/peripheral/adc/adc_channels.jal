@@ -21,6 +21,11 @@
 --    3. the number of channels is set using ANS bits (18F and non-18F)
 --       => same as case 2., channels can be configured independently
 --          Vref+/Vref- are configured using VCFG bits.
+-- -- 
+-- About Vref setup:
+--   - when ADC_NVREF = 1: there's only one Vref, this is Vref+
+--   - when ADC_NVREF = 2: two Vref are used, Vref+ and Vref-
+--   - when ADC_NVREF = 3: there's only one Vref, this is Vref- (not user-friendly)
 --
 --
 -- Notes: this file is generated, don't modify it directly...
@@ -41,6 +46,9 @@ procedure _adc_vref_vcfg() is
    if ADC_NVREF == 2 then
       vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
    end if
+   if ADC_NVREF == 3 then
+      vcfg_shadow = 2 -- 0b_10 | 0b_00 => 0b_10 => one bit per VCFG bit*2
+   end if
    
    if defined(ADCON0_VCFG) == true then
       ADCON0_VCFG = vcfg_shadow
@@ -54,21 +62,33 @@ procedure _adc_vref_vcfg() is
       elsif ADC_NVREF == 2 then
          ADCON1_VCFG0 = true
          ADCON1_VCFG1 = true
+      elsif ADC_NVREF == 3 then
+         ADCON1_VCFG1 = true
       end if
    elsif defined(ADCON0_VCFG0) == true then
       if ADC_NVREF == 1 then
-         ADCON0_PVCFG0 = true
+         ADCON0_VCFG0 = true
       elsif ADC_NVREF == 2 then
          ADCON0_VCFG0 = true
          ADCON0_VCFG1 = true
+      elsif ADC_NVREF == 3 then
+         ADCON0_VCFG1 = true
       end if
    -- Special case for PVCFG
+   -- Need to act on PVCFG and NVCFG bits
    elsif defined(ADCON1_PVCFG0) == true then
-      if ADC_NVREF > 0 then
+      if ADC_NVREF == 1 then
          -- PVCFG = 0b_01
          ADCON1_PVCFG0 = false
          ADCON1_PVCFG1 = true
       elsif ADC_NVREF == 2 then
+         -- PVCFG = 0b_01
+         ADCON1_PVCFG0 = false
+         ADCON1_PVCFG1 = true
+         -- NVCFG = 0b_01
+         ADCON1_NVCFG0 = false
+         ADCON1_NVCFG1 = true
+      elsif ADC_NVREF == 3 then
          -- NVCFG = 0b_01
          ADCON1_NVCFG0 = false
          ADCON1_NVCFG1 = true
@@ -107,14 +127,388 @@ end procedure
 --    combination
 -- -----------------------------------------
 
-if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_18F4455 | target_chip == PIC_18F2455 | target_chip == PIC_18F6680 | target_chip == PIC_18F6585 | target_chip == PIC_18F8585 | target_chip == PIC_18F8680 | target_chip == PIC_16F870 | target_chip == PIC_16F871 | target_chip == PIC_16F73 | target_chip == PIC_16F74 | target_chip == PIC_16F77 | target_chip == PIC_16F76 | target_chip == PIC_18F4450 | target_chip == PIC_18F2450 | target_chip == PIC_18F2553 | target_chip == PIC_18F4553 | target_chip == PIC_18F2458 | target_chip == PIC_18F4458 | target_chip == PIC_18F66J93 | target_chip == PIC_18F67J93 | target_chip == PIC_18F86J93 | target_chip == PIC_18F87J93 | target_chip == PIC_16F767 | target_chip == PIC_16F737 | target_chip == PIC_16F747 | target_chip == PIC_16F777 | target_chip == PIC_16F72 | target_chip == PIC_16F876A | target_chip == PIC_16F874A | target_chip == PIC_16F877A | target_chip == PIC_16F873A | target_chip == PIC_16F716 | target_chip == PIC_18F4439 | target_chip == PIC_18F4539 | target_chip == PIC_18F2539 | target_chip == PIC_18F2439 | target_chip == PIC_16F873 | target_chip == PIC_16F874 | target_chip == PIC_16F876 | target_chip == PIC_16F877 | target_chip == PIC_16F872 | target_chip == PIC_16F818 | target_chip == PIC_16F819 then
+if target_chip == PIC_16F72 | target_chip == PIC_16F767 | target_chip == PIC_16F777 | target_chip == PIC_16F747 | target_chip == PIC_16F737 | target_chip == PIC_16F876A | target_chip == PIC_16F873A | target_chip == PIC_16F877A | target_chip == PIC_16F874A | target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_18F4455 | target_chip == PIC_18F2455 | target_chip == PIC_16F870 | target_chip == PIC_16F871 | target_chip == PIC_18F4450 | target_chip == PIC_18F2450 | target_chip == PIC_18F6585 | target_chip == PIC_18F8680 | target_chip == PIC_18F6680 | target_chip == PIC_18F8585 | target_chip == PIC_18F2553 | target_chip == PIC_18F4553 | target_chip == PIC_18F2458 | target_chip == PIC_18F4458 | target_chip == PIC_16F73 | target_chip == PIC_16F74 | target_chip == PIC_16F77 | target_chip == PIC_16F76 | target_chip == PIC_16F872 | target_chip == PIC_16F873 | target_chip == PIC_16F874 | target_chip == PIC_16F876 | target_chip == PIC_16F877 | target_chip == PIC_18F4539 | target_chip == PIC_18F2539 | target_chip == PIC_18F2439 | target_chip == PIC_18F4439 | target_chip == PIC_18F66J93 | target_chip == PIC_18F67J93 | target_chip == PIC_18F86J93 | target_chip == PIC_18F87J93 | target_chip == PIC_16F818 | target_chip == PIC_16F819 | target_chip == PIC_16F716 then
    _debug "ADC channels config: dependent pins, via PCFG bits"
    
-   procedure _adc_setup_independent() is
+   procedure _adc_setup_pins() is
       pragma inline
    
    
-      -- Datasheet: 39632D
+      -- Datasheet: 39597
+      if target_chip == PIC_16F72 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [18] = {0b_111, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_0, 0b_0, 0b_0, 0b_000, 0b_001, 0b_0}
+         var bit*3 no_vref = 0
+         var bit*3 one_vref = 0
+         var bit*3 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+         end if
+
+      end if
+   
+   
+   
+   
+      -- Datasheet: 30498
+      if target_chip == PIC_16F777 | target_chip == PIC_16F747 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [45] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1010, 0b_0, 0b_0, 0b_1001, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0111, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0010, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 7 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 9 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 10 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 11 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 12 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 13 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN12_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 14 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN13_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN12_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         end if
+
+      end if
+   
+   
+      -- Datasheet: 30498
+      if target_chip == PIC_16F767 | target_chip == PIC_16F737 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [36] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0010, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 7 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 9 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 10 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN12_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 11 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN13_direction = input
+            pin_AN3_direction = input
+            pin_AN12_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         end if
+
+      end if
+   
+   
+   
+   
+      -- Datasheet: 39582
+      if target_chip == PIC_16F876A | target_chip == PIC_16F873A then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_1111, 0b_0, 0b_0101, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         end if
+
+      end if
+   
+   
+      -- Datasheet: 39582
+      if target_chip == PIC_16F877A | target_chip == PIC_16F874A then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_1111, 0b_0, 0b_0101, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 7 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         end if
+
+      end if
+   
+   
+   
+   
+      -- Datasheet: 39632
       if target_chip == PIC_18F2550 | target_chip == PIC_18F2455 then
    
    
@@ -199,7 +593,7 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
       end if
    
    
-      -- Datasheet: 39632D
+      -- Datasheet: 39632
       if target_chip == PIC_18F4550 | target_chip == PIC_18F4455 then
    
    
@@ -325,8 +719,754 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
    
    
    
-      -- Datasheet: 30491C
-      if target_chip == PIC_18F8585 | target_chip == PIC_18F8680 then
+      -- Datasheet: 30292
+      if target_chip == PIC_16F873 | target_chip == PIC_16F876 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         end if
+
+      end if
+   
+   
+      -- Datasheet: 30292
+      if target_chip == PIC_16F874 | target_chip == PIC_16F877 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            pin_AN5_direction = input
+            pin_AN4_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+         elsif (ADC_NCHANNEL) == 7 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN7_direction = input
+            pin_AN5_direction = input
+            pin_AN6_direction = input
+            pin_AN4_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         end if
+
+      end if
+   
+   
+   
+   
+      -- Datasheet: 30569
+      if target_chip == PIC_16F870 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         end if
+
+      end if
+   
+   
+      -- Datasheet: 30569
+      if target_chip == PIC_16F871 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            pin_AN5_direction = input
+            pin_AN4_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+         elsif (ADC_NCHANNEL) == 7 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN7_direction = input
+            pin_AN5_direction = input
+            pin_AN6_direction = input
+            pin_AN4_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         end if
+
+      end if
+   
+   
+   
+   
+      -- Datasheet: 39760
+      if target_chip == PIC_18F2450 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [33] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 7 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 9 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 10 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN12_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         end if
+
+      end if
+   
+   
+      -- Datasheet: 39760
+      if target_chip == PIC_18F4450 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [42] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1010, 0b_0, 0b_0, 0b_1001, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0111, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 7 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 9 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 10 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 11 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 12 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 13 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN12_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         end if
+
+      end if
+   
+   
+   
+   
+      -- Datasheet: 39887
+      if target_chip == PIC_18F2553 | target_chip == PIC_18F2458 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [33] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 7 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 9 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 10 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN12_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN8_direction = input
+         end if
+
+      end if
+   
+   
+      -- Datasheet: 39887
+      if target_chip == PIC_18F4553 | target_chip == PIC_18F4458 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [42] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1010, 0b_0, 0b_0, 0b_1001, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0111, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN2_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 7 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+         elsif (ADC_NCHANNEL) == 9 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 10 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 11 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 12 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         elsif (ADC_NCHANNEL) == 13 then
+            pin_AN2_direction = input
+            pin_AN4_direction = input
+            pin_AN10_direction = input
+            pin_AN11_direction = input
+            pin_AN1_direction = input
+            pin_AN7_direction = input
+            pin_AN6_direction = input
+            pin_AN3_direction = input
+            pin_AN12_direction = input
+            pin_AN0_direction = input
+            pin_AN9_direction = input
+            pin_AN5_direction = input
+            pin_AN8_direction = input
+         end if
+
+      end if
+   
+   
+   
+   
+      -- Datasheet: 30325
+      if target_chip == PIC_16F73 | target_chip == PIC_16F76 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [18] = {0b_110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_0, 0b_0, 0b_0, 0b_000, 0b_001, 0b_0}
+         var bit*3 no_vref = 0
+         var bit*3 one_vref = 0
+         var bit*3 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+         end if
+
+      end if
+   
+   
+      -- Datasheet: 30325
+      if target_chip == PIC_16F74 | target_chip == PIC_16F77 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [27] = {0b_110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_0, 0b_0, 0b_0, 0b_010, 0b_011, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_000, 0b_001, 0b_0}
+         var bit*3 no_vref = 0
+         var bit*3 one_vref = 0
+         var bit*3 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN2_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 6 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 7 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 8 then
+            pin_AN7_direction = input
+            pin_AN5_direction = input
+            pin_AN6_direction = input
+            pin_AN4_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+         end if
+
+      end if
+   
+   
+   
+   
+      -- Datasheet: 30221
+      if target_chip == PIC_16F872 then
+   
+   
+
+         -- This array stores PCFG config bits, 3 by 3, for each number of 
+         -- ADC channels, from 1 to the max:
+         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
+         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
+         var bit*4 no_vref = 0
+         var bit*4 one_vref = 0
+         var bit*4 two_vref = 0
+
+         if (ADC_NCHANNEL) == 0 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 1 then
+            pin_AN0_direction = input
+         elsif (ADC_NCHANNEL) == 2 then
+            asm nop
+         elsif (ADC_NCHANNEL) == 3 then
+            pin_AN0_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 4 then
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         elsif (ADC_NCHANNEL) == 5 then
+            pin_AN4_direction = input
+            pin_AN0_direction = input
+            pin_AN1_direction = input
+            pin_AN2_direction = input
+            pin_AN3_direction = input
+         end if
+
+      end if
+   
+   
+   
+   
+      -- Datasheet: 30491
+      if target_chip == PIC_18F8680 | target_chip == PIC_18F8585 then
    
    
 
@@ -483,8 +1623,8 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
       end if
    
    
-      -- Datasheet: 30491C
-      if target_chip == PIC_18F6680 | target_chip == PIC_18F6585 then
+      -- Datasheet: 30491
+      if target_chip == PIC_18F6585 | target_chip == PIC_18F6680 then
    
    
 
@@ -595,8 +1735,8 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
    
    
    
-      -- Datasheet: 30569B
-      if target_chip == PIC_16F870 then
+      -- Datasheet: 39598
+      if target_chip == PIC_16F818 | target_chip == PIC_16F819 then
    
    
 
@@ -624,66 +1764,9 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
             pin_AN2_direction = input
             pin_AN3_direction = input
          elsif (ADC_NCHANNEL) == 5 then
+            pin_AN0_direction = input
+            pin_AN1_direction = input
             pin_AN4_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         end if
-
-      end if
-   
-   
-      -- Datasheet: 30569B
-      if target_chip == PIC_16F871 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN4_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            pin_AN5_direction = input
-            pin_AN4_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-         elsif (ADC_NCHANNEL) == 7 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN7_direction = input
-            pin_AN5_direction = input
-            pin_AN6_direction = input
-            pin_AN4_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
             pin_AN2_direction = input
             pin_AN3_direction = input
          end if
@@ -693,192 +1776,7 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
    
    
    
-      -- Datasheet: 30325B
-      if target_chip == PIC_16F73 | target_chip == PIC_16F76 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [18] = {0b_110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_0, 0b_0, 0b_0, 0b_000, 0b_001, 0b_0}
-         var bit*3 no_vref = 0
-         var bit*3 one_vref = 0
-         var bit*3 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN4_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-         end if
-
-      end if
-   
-   
-      -- Datasheet: 30325B
-      if target_chip == PIC_16F74 | target_chip == PIC_16F77 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [27] = {0b_110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_0, 0b_0, 0b_0, 0b_010, 0b_011, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_000, 0b_001, 0b_0}
-         var bit*3 no_vref = 0
-         var bit*3 one_vref = 0
-         var bit*3 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN4_direction = input
-            pin_AN2_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 7 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN7_direction = input
-            pin_AN5_direction = input
-            pin_AN6_direction = input
-            pin_AN4_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-         end if
-
-      end if
-   
-   
-   
-   
-      -- Datasheet: 39582B
-      if target_chip == PIC_16F876A | target_chip == PIC_16F873A then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_1111, 0b_0, 0b_0101, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         end if
-
-      end if
-   
-   
-      -- Datasheet: 39582B
-      if target_chip == PIC_16F874A | target_chip == PIC_16F877A then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_1111, 0b_0, 0b_0101, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 7 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         end if
-
-      end if
-   
-   
-   
-   
-      -- Datasheet: 39948A
+      -- Datasheet: 39948
       if target_chip == PIC_18F66J93 | target_chip == PIC_18F67J93 | target_chip == PIC_18F86J93 | target_chip == PIC_18F87J93 then
    
    
@@ -990,627 +1888,7 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
    
    
    
-      -- Datasheet: 30498C
-      if target_chip == PIC_16F747 | target_chip == PIC_16F777 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [45] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1010, 0b_0, 0b_0, 0b_1001, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0111, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0010, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 7 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 9 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 10 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 11 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 12 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 13 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN12_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 14 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN13_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN12_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         end if
-
-      end if
-   
-   
-      -- Datasheet: 30498C
-      if target_chip == PIC_16F767 | target_chip == PIC_16F737 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [36] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0010, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 7 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 9 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 10 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN12_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 11 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN13_direction = input
-            pin_AN3_direction = input
-            pin_AN12_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         end if
-
-      end if
-   
-   
-   
-   
-      -- Datasheet: 39597C
-      if target_chip == PIC_16F72 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [18] = {0b_111, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_0, 0b_0, 0b_0, 0b_000, 0b_001, 0b_0}
-         var bit*3 no_vref = 0
-         var bit*3 one_vref = 0
-         var bit*3 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN4_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-         end if
-
-      end if
-   
-   
-   
-   
-      -- Datasheet: 30292C
-      if target_chip == PIC_16F873 | target_chip == PIC_16F876 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN4_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         end if
-
-      end if
-   
-   
-      -- Datasheet: 30292C
-      if target_chip == PIC_16F874 | target_chip == PIC_16F877 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [27] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_0010, 0b_0011, 0b_1100, 0b_1001, 0b_1010, 0b_1011, 0b_0, 0b_0, 0b_0, 0b_0000, 0b_0001, 0b_1000}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN4_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            pin_AN5_direction = input
-            pin_AN4_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-         elsif (ADC_NCHANNEL) == 7 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN7_direction = input
-            pin_AN5_direction = input
-            pin_AN6_direction = input
-            pin_AN4_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         end if
-
-      end if
-   
-   
-   
-   
-      -- Datasheet: 39887B
-      if target_chip == PIC_18F2553 | target_chip == PIC_18F2458 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [33] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 7 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 9 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 10 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN12_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         end if
-
-      end if
-   
-   
-      -- Datasheet: 39887B
-      if target_chip == PIC_18F4553 | target_chip == PIC_18F4458 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [42] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1010, 0b_0, 0b_0, 0b_1001, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0111, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 7 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 9 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 10 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 11 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 12 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 13 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN12_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         end if
-
-      end if
-   
-   
-   
-   
-      -- Datasheet: 41206B
-      if target_chip == PIC_16F716 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [15] = {0b_110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_000, 0b_001, 0b_0}
-         var bit*3 no_vref = 0
-         var bit*3 one_vref = 0
-         var bit*3 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-         end if
-
-      end if
-   
-   
-   
-   
-      -- Datasheet: 30485A
+      -- Datasheet: 30485
       if target_chip == PIC_18F2539 | target_chip == PIC_18F2439 then
    
    
@@ -1649,8 +1927,8 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
       end if
    
    
-      -- Datasheet: 30485A
-      if target_chip == PIC_18F4439 | target_chip == PIC_18F4539 then
+      -- Datasheet: 30485
+      if target_chip == PIC_18F4539 | target_chip == PIC_18F4439 then
    
    
 
@@ -1708,292 +1986,34 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
    
    
    
-      -- Datasheet: 39760D
-      if target_chip == PIC_18F2450 then
+      -- Datasheet: 41206
+      if target_chip == PIC_16F716 then
    
    
 
          -- This array stores PCFG config bits, 3 by 3, for each number of 
          -- ADC channels, from 1 to the max:
          -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [33] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
+         const byte ADC_PCFG_MAP [15] = {0b_110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_100, 0b_101, 0b_0, 0b_000, 0b_001, 0b_0}
+         var bit*3 no_vref = 0
+         var bit*3 one_vref = 0
+         var bit*3 two_vref = 0
 
          if (ADC_NCHANNEL) == 0 then
             asm nop
          elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 7 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 9 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 10 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN12_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN8_direction = input
-         end if
-
-      end if
-   
-   
-      -- Datasheet: 39760D
-      if target_chip == PIC_18F4450 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [42] = {0b_1111, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_1101, 0b_0, 0b_0, 0b_1100, 0b_0, 0b_0, 0b_1011, 0b_0, 0b_0, 0b_1010, 0b_0, 0b_0, 0b_1001, 0b_0, 0b_0, 0b_1000, 0b_0, 0b_0, 0b_0111, 0b_0, 0b_0, 0b_0110, 0b_0, 0b_0, 0b_0101, 0b_0, 0b_0, 0b_0100, 0b_0, 0b_0, 0b_0011, 0b_0, 0b_0, 0b_0000, 0b_0, 0b_0}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
             asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN2_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 6 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 7 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 8 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-         elsif (ADC_NCHANNEL) == 9 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 10 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 11 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 12 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         elsif (ADC_NCHANNEL) == 13 then
-            pin_AN2_direction = input
-            pin_AN4_direction = input
-            pin_AN10_direction = input
-            pin_AN11_direction = input
-            pin_AN1_direction = input
-            pin_AN7_direction = input
-            pin_AN6_direction = input
-            pin_AN3_direction = input
-            pin_AN12_direction = input
-            pin_AN0_direction = input
-            pin_AN9_direction = input
-            pin_AN5_direction = input
-            pin_AN8_direction = input
-         end if
-
-      end if
-   
-   
-   
-   
-      -- Datasheet: 30221C
-      if target_chip == PIC_16F872 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
          elsif (ADC_NCHANNEL) == 2 then
             asm nop
          elsif (ADC_NCHANNEL) == 3 then
             pin_AN0_direction = input
-            pin_AN2_direction = input
+            pin_AN1_direction = input
             pin_AN3_direction = input
          elsif (ADC_NCHANNEL) == 4 then
+            pin_AN2_direction = input
+            pin_AN3_direction = input
             pin_AN0_direction = input
             pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN4_direction = input
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         end if
-
-      end if
-   
-   
-   
-   
-      -- Datasheet: 39598E
-      if target_chip == PIC_16F818 | target_chip == PIC_16F819 then
-   
-   
-
-         -- This array stores PCFG config bits, 3 by 3, for each number of 
-         -- ADC channels, from 1 to the max:
-         -- For each 3-tuple: (no vref, 1 vref, 2 vref)
-         const byte ADC_PCFG_MAP [18] = {0b_0110, 0b_0, 0b_0, 0b_1110, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0, 0b_0100, 0b_0101, 0b_1111, 0b_0, 0b_0, 0b_1101, 0b_1001, 0b_1010, 0b_1000}
-         var bit*4 no_vref = 0
-         var bit*4 one_vref = 0
-         var bit*4 two_vref = 0
-
-         if (ADC_NCHANNEL) == 0 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 1 then
-            pin_AN0_direction = input
-         elsif (ADC_NCHANNEL) == 2 then
-            asm nop
-         elsif (ADC_NCHANNEL) == 3 then
-            pin_AN0_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 4 then
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
-         elsif (ADC_NCHANNEL) == 5 then
-            pin_AN0_direction = input
-            pin_AN1_direction = input
-            pin_AN4_direction = input
-            pin_AN2_direction = input
-            pin_AN3_direction = input
          end if
 
       end if
@@ -2031,11 +2051,9 @@ if target_chip == PIC_18F2550 | target_chip == PIC_18F4550 | target_chip == PIC_
    
 
 
-   -- Normalize procedure names for setup
-   alias _adc_setup_pins is _adc_setup_independent
    -- declare dummy procedure for normalization. Note Vref setup, due to some jalv2 contraints
    -- (like defining a constant but assigning its definitive value later), Vref setup is done
-   -- while discovering/setting up ADC pins. See comment within _adc_setup_independent()
+   -- while discovering/setting up ADC pins. See comment within _adc_setup_pins() for dependent pins
    procedure _adc_vref() is
    end procedure
 
@@ -2300,8 +2318,6 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCF
 
 
 
-   -- Normalize procedure names for setup
-   procedure _adc_setup_pins is _adc_setup_independent
 
 -- --------------------------------------------
 -- THIRD CASE: 
@@ -2437,6 +2453,21 @@ else
          end if
          if defined(JANSEL_ANS22) == true then
             alias ADC_JANSEL_ANS22 is JANSEL_ANS22
+         end if
+         if defined(JANSEL_ANS23) == true then
+            alias ADC_JANSEL_ANS23 is JANSEL_ANS23
+         end if
+         if defined(JANSEL_ANS24) == true then
+            alias ADC_JANSEL_ANS24 is JANSEL_ANS24
+         end if
+         if defined(JANSEL_ANS25) == true then
+            alias ADC_JANSEL_ANS25 is JANSEL_ANS25
+         end if
+         if defined(JANSEL_ANS26) == true then
+            alias ADC_JANSEL_ANS26 is JANSEL_ANS26
+         end if
+         if defined(JANSEL_ANS27) == true then
+            alias ADC_JANSEL_ANS27 is JANSEL_ANS27
          end if
    end if
 
