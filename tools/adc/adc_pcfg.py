@@ -1,5 +1,5 @@
 adc_pcfg = \
-{'30221C': {'0000': {'RA0': 'A',
+{'30221': {'0000': {'RA0': 'A',
 							'RA1': 'A',
 							'RA2': 'A',
 							'RA3': 'A',
@@ -74,7 +74,7 @@ adc_pcfg = \
 							'RA2': 'VREF-',
 							'RA3': 'VREF+',
 							'RA5': 'D'}},
- '30292C': {'0000': {'RA0': 'A',
+ '30292': {'0000': {'RA0': 'A',
 							'RA1': 'A',
 							'RA2': 'A',
 							'RA3': 'A',
@@ -194,7 +194,7 @@ adc_pcfg = \
 							'RE0': 'D',
 							'RE1': 'D',
 							'RE2': 'D'}},
- '30325B': {'000': {'RA0': 'A',
+ '30325': {'000': {'RA0': 'A',
 						  'RA1': 'A',
 						  'RA2': 'A',
 						  'RA3': 'A',
@@ -253,7 +253,7 @@ adc_pcfg = \
  # for 30498C, 14 analog channels can be set with PCFG bits = 0b_0000 or 0b_0001
  # keep only one config, else adc_channels.jal generation won't be good 
  # (variable defined twice)
- '30498C': {'0000': {'AN0/RA0': 'A',
+ '30498': {'0000': {'AN0/RA0': 'A',
 							'AN1/RA1': 'A',
 							'AN10/RB1': 'A',
 							'AN11/RB4': 'A',
@@ -477,7 +477,7 @@ adc_pcfg = \
 							'AN7/RE2': 'D',
 							'AN8/RB2': 'D',
 							'AN9/RB3': 'D'}},
- '30569B': {'0000': {'RA0': 'A',
+ '30569': {'0000': {'RA0': 'A',
 							'RA1': 'A',
 							'RA2': 'A',
 							'RA3': 'A',
@@ -597,7 +597,7 @@ adc_pcfg = \
 							'RE0': 'D',
 							'RE1': 'D',
 							'RE2': 'D'}},
- '39582B': {'0000': {'AN0/RA0': 'A',
+ '39582': {'0000': {'AN0/RA0': 'A',
 							'AN1/RA1': 'A',
 							'AN2/RA2': 'A',
 							'AN3/RA3': 'A',
@@ -717,7 +717,7 @@ adc_pcfg = \
 							'AN5/RE0': 'D',
 							'AN6/RE1': 'D',
 							'AN7/RE2': 'D'}},
- '39597C': {'000': {'RA0': 'A',
+ '39597': {'000': {'RA0': 'A',
 						  'RA1': 'A',
 						  'RA2': 'A',
 						  'RA3': 'A',
@@ -752,7 +752,7 @@ adc_pcfg = \
 						  'RA2': 'D',
 						  'RA3': 'D',
 						  'RA5': 'D'}},
- '39598E': {'0000': {'AN0/RA0': 'A',
+ '39598': {'0000': {'AN0/RA0': 'A',
 							'AN1/RA1': 'A',
 							'AN2/RA2': 'A',
 							'AN3/RA3': 'A',
@@ -827,12 +827,12 @@ adc_pcfg = \
 							'AN2/RA2': 'VREF-',
 							'AN3/RA3': 'VREF+',
 							'AN4/RA4': 'D'}},
- '41206B': {'0x0': {'RA0': 'A', 'RA1': 'A', 'RA2': 'A', 'RA3': 'A'},
+ '41206': {'0x0': {'RA0': 'A', 'RA1': 'A', 'RA2': 'A', 'RA3': 'A'},
 				'0x1': {'RA0': 'A', 'RA1': 'A', 'RA2': 'A', 'RA3': 'VREF'},
 				'100': {'RA0': 'A', 'RA1': 'A', 'RA2': 'D', 'RA3': 'A'},
 				'101': {'RA0': 'A', 'RA1': 'A', 'RA2': 'D', 'RA3': 'VREF'},
 				'11x': {'RA0': 'D', 'RA1': 'D', 'RA2': 'D', 'RA3': 'D'}},
- '30485A': {
+ '30485': {
 	  '0000' : {
 			'AN7/RE2' : 'A',
 			'AN6/RE1' : 'A',
@@ -984,7 +984,7 @@ adc_pcfg = \
 			'AN0/RA0' : 'A',
 	  },
 	},
- '30491C' : {
+ '30491' : {
 	  '0000' : {
 			'AN15/RH7' : 'A',
 			'AN14/RH6' : 'A',
@@ -1274,7 +1274,7 @@ adc_pcfg = \
 			'AN0/RA0' : 'D',
 	  },
  },
- '39948A': {
+ '39948': {
 	  '0000': {
 	 		'AN11/RF6': 'A',
 			'AN10/RF5': 'A',
@@ -1459,7 +1459,7 @@ adc_pcfg = \
 			'AN0/RA0' : 'D',
 	  },
  },
- '39632D': {
+ '39632': {
 	  # same config for '0001' and '0010', only keep one config
 	  # else will produce error in ADC lib generation
 	  '0000': {
@@ -1673,7 +1673,7 @@ adc_pcfg = \
 			'AN0/RA0' : 'D',
 	  },
  },
- '39760D': {
+ '39760': {
 	  # same config for '0001' and '0010', only keep one config
 	  # else will produce error in ADC lib generation
 	  '0000': {
@@ -1887,7 +1887,7 @@ adc_pcfg = \
 			'AN0/RA0' : 'D',
 	  },
  },
- '39887B': {
+ '39887': {
 	  # same config for '0001' and '0010', only keep one config
 	  # else will produce error in ADC lib generation
 	  '0000': {
