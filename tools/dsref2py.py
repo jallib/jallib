@@ -1,25 +1,12 @@
 import os
 import pprint
+import simplejson
 
-try:
-	os.unlink("DataSheets.wiki")
-except OSError:
-	# none file yet
-	pass
-os.system("wget http://jallib.googlecode.com/svn/wiki/DataSheets.wiki")
+spec = simplejson.load(file("devicespecific.json"))
 
-data = file("DataSheets.wiki").readlines()
 pic_ds = {}
-for d in data:
-	if not d.startswith("||"):
-		continue
-	if "Number" in d:
-		# header
-		continue
-	s = map(lambda x: x.strip(),d.split("||"))
-	pic = s[1]
-	ds = s[2]
-	pic_ds[pic] = ds
+for picname,info in spec.items():
+	pic_ds[picname] = info["DATASHEET"]
 
 ds_pic = {}
 for pic,ds in pic_ds.items():
