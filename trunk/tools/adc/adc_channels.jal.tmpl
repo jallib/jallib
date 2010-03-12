@@ -145,49 +145,63 @@
 
 
 #def pcfg_combination
-    #set bydsref = {}
-    #silent [bydsref.setdefault($pic_ds[p],[]).append(p) for p in $pcfg_combination_pics]
-    #for dsref, pics in bydsref.items()
-        ## Even if PICs are in the same datasheets, there can be differences
-        ## regarding the number of 
-        #set pics = $ds_pic[dsref]
-        #set pingrps = {}
-        #for p in pics
-            #silent pingrps.setdefault(tuple($adc_pins[p]),[]).append(p)
+   procedure _adc_setup_independent() is
+      pragma inline
+       #set bydsref = {}
+       #silent [bydsref.setdefault($pic_ds[p],[]).append(p) for p in $pcfg_combination_pics]
+       #for dsref, pics in bydsref.items()
+           ## Even if PICs are in the same datasheets, there can be differences
+           ## regarding the number of 
+           #set pics = $ds_pic[dsref]
+           #set pingrps = {}
+           #for p in pics
+               #silent pingrps.setdefault(tuple($adc_pins[p]),[]).append(p)
+           #end for
+   
+           #for pins,picsgrp in pingrps.items()
+               #set condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),picsgrp))
+               #set ds_refs = list(set([$pic_ds[p] for p in picsgrp]))
+               #assert len(ds_refs) == 1
+   
+      -- Datasheet: $ds_refs[0]
+      if $condition then
+   
+   $pcfg_conf($dsref,$picsgrp)
+      end if
+   
         #end for
+   
+      #end for
+   
+      -- Vref configuration via PCFG bits are directly linked to the "if" hell just above,
+      -- some variable/contant exist and are defined specifically depending on the PICs.
+      -- pin setup and vref setup can't be dissociated in the context, this is why this 
+      -- Vref setup is included in pin setup procedure
 
-        #for pins,picsgrp in pingrps.items()
-            #set condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),picsgrp))
-            #set ds_refs = list(set([$pic_ds[p] for p in picsgrp]))
-            #assert len(ds_refs) == 1
-
-   -- Datasheet: $ds_refs[0]
-   if $condition then
-
-$pcfg_conf($dsref,$picsgrp)
-   end if
-
-        #end for
-
-    #end for
-
-   -- Retrieve config bits according to selected number of ADC channels
-   -- ADC_PCFG_MAP contains all confs, from 0 analog to the max
-   const byte idx = ADC_NCHANNEL * 3
-   if ADC_NVREF == 0 then
-      no_vref = ADC_PCFG_MAP[idx]
-      ADCON1_PCFG = no_vref
-   elsif ADC_NVREF == 1 then
-      one_vref = ADC_PCFG_MAP[idx + 1]
-      ADCON1_PCFG = one_vref
-   elsif ADC_NVREF == 2 then
-      two_vref = ADC_PCFG_MAP[idx + 2]
-      ADCON1_PCFG = two_vref
-   else
-      _error "You can't have more than 2 VRef..."
-   end if
-
-
+      -- Retrieve config bits according to selected number of ADC channels
+      -- ADC_PCFG_MAP contains all confs, from 0 analog to the max
+      if defined(ADC_DYNAMIC) == true then
+         var byte idx = ADC_NCHANNEL * 3
+      else
+         const byte idx = ADC_NCHANNEL * 3
+      end if
+      if ADC_NVREF == 0 then
+         no_vref = ADC_PCFG_MAP[idx]
+         ADCON1_PCFG = no_vref
+      elsif ADC_NVREF == 1 then
+         one_vref = ADC_PCFG_MAP[idx + 1]
+         ADCON1_PCFG = one_vref
+      elsif ADC_NVREF == 2 then
+         two_vref = ADC_PCFG_MAP[idx + 2]
+         ADCON1_PCFG = two_vref
+      else
+         -- This is only valid when using constant, ie. not dynamic ADC channels
+         if defined(ADC_DYNAMIC) == false then
+            _error "You can't have more than 2 VRef..."
+         end if
+      end if
+   end procedure
+   
 #end def
 
 #def pcfg_18f
@@ -205,79 +219,84 @@ $pcfg_conf($dsref,$picsgrp)
     ## PCFG11 in         ANCON1
     ## PCFG12 in         ANCON1
 
-   -- Selecting the number of ADC channels is done using PCFG bits
-   -- User can optionally specify ADC channels number
-   if defined(ADC_NCHANNEL) == true then
-      if ADC_NCHANNEL > ADC_NTOTAL_CHANNEL then
-         _error "More ADC channels than available, adjust ADC_NCHANNEL"
+   -- This is party time, in this case, these are independent pins, user has access
+   -- to set_analog_pin()/set_digital_pin(), *AND* (that's why it's party time) also
+   -- can configure number of ADC channel with ADC_NCHANNEL !
+   procedure _adc_setup_pins() is
+      -- Selecting the number of ADC channels is done using PCFG bits
+      -- User can optionally specify ADC channels number
+      if defined(ADC_NCHANNEL) == true then
+         if ADC_NCHANNEL > ADC_NTOTAL_CHANNEL then
+            _error "More ADC channels than available, adjust ADC_NCHANNEL"
+         end if
+         -- Max 13 ADC channels
+         -- At least 1 channel
+         if ADC_NCHANNEL > 0 then
+            ANCON0_PCFG0 = false
+            pin_AN0_direction = input
+         end if
+         -- At least 2 channels
+         if ADC_NCHANNEL > 1 then
+            ANCON0_PCFG1 = false
+            pin_AN1_direction = input
+         end if
+         -- At least 3 channels
+         if ADC_NCHANNEL > 2 then
+             ANCON0_PCFG2 = false
+            pin_AN2_direction = input
+         end if
+         -- At least 4 channels
+         if ADC_NCHANNEL > 3 then
+            ANCON0_PCFG3 = false
+            pin_AN3_direction = input
+         end if
+         -- At least 5 channels
+         if ADC_NCHANNEL > 4 then
+            ANCON0_PCFG4 = false
+            pin_AN4_direction = input
+         end if
+         -- At least 6 channels
+         if ADC_NCHANNEL > 5 then
+            ANCON0_PCFG5 = false
+            pin_AN5_direction = input
+         end if
+         -- At least 7 channels
+         if ADC_NCHANNEL > 6 then
+            ANCON0_PCFG6 = false
+            pin_AN6_direction = input
+         end if
+         -- At least 8 channels
+         if ADC_NCHANNEL > 7 then
+            ANCON0_PCFG7 = false
+            pin_AN7_direction = input
+         end if
+         -- At least 9 channels
+         if ADC_NCHANNEL > 8 then
+            ANCON1_PCFG8 = false
+            pin_AN8_direction = input
+         end if
+         -- At least 10 channels
+         if ADC_NCHANNEL > 9 then
+            ANCON1_PCFG9 = false
+            pin_AN9_direction = input
+         end if
+         -- At least 11 channels
+         if ADC_NCHANNEL > 10 then
+            ANCON1_PCFG10 = false
+            pin_AN10_direction = input
+         end if
+         -- At least 12 channels
+         if ADC_NCHANNEL > 11 then
+            ANCON1_PCFG11 = false
+            pin_AN11_direction = input
+         end if
+         -- At least 13 channels
+         if ADC_NCHANNEL > 12 then
+            ANCON1_PCFG12 = false
+            pin_AN12_direction = input
+         end if
       end if
-      -- Max 13 ADC channels
-      -- At least 1 channel
-      if ADC_NCHANNEL > 0 then
-         ANCON0_PCFG0 = false
-         pin_AN0_direction = input
-      end if
-      -- At least 2 channels
-      if ADC_NCHANNEL > 1 then
-         ANCON0_PCFG1 = false
-         pin_AN1_direction = input
-      end if
-      -- At least 3 channels
-      if ADC_NCHANNEL > 2 then
-          ANCON0_PCFG2 = false
-         pin_AN2_direction = input
-      end if
-      -- At least 4 channels
-      if ADC_NCHANNEL > 3 then
-         ANCON0_PCFG3 = false
-         pin_AN3_direction = input
-      end if
-      -- At least 5 channels
-      if ADC_NCHANNEL > 4 then
-         ANCON0_PCFG4 = false
-         pin_AN4_direction = input
-      end if
-      -- At least 6 channels
-      if ADC_NCHANNEL > 5 then
-         ANCON0_PCFG5 = false
-         pin_AN5_direction = input
-      end if
-      -- At least 7 channels
-      if ADC_NCHANNEL > 6 then
-         ANCON0_PCFG6 = false
-         pin_AN6_direction = input
-      end if
-      -- At least 8 channels
-      if ADC_NCHANNEL > 7 then
-         ANCON0_PCFG7 = false
-         pin_AN7_direction = input
-      end if
-      -- At least 9 channels
-      if ADC_NCHANNEL > 8 then
-         ANCON1_PCFG8 = false
-         pin_AN8_direction = input
-      end if
-      -- At least 10 channels
-      if ADC_NCHANNEL > 9 then
-         ANCON1_PCFG9 = false
-         pin_AN9_direction = input
-      end if
-      -- At least 11 channels
-      if ADC_NCHANNEL > 10 then
-         ANCON1_PCFG10 = false
-         pin_AN10_direction = input
-      end if
-      -- At least 12 channels
-      if ADC_NCHANNEL > 11 then
-         ANCON1_PCFG11 = false
-         pin_AN11_direction = input
-      end if
-      -- At least 13 channels
-      if ADC_NCHANNEL > 12 then
-         ANCON1_PCFG12 = false
-         pin_AN12_direction = input
-      end if
-   end if
+   end procedure
 
    -- Or specify manually which pin should act as ADC
    -- Provide procedure for this (eg. for pin AN7 to be analog, set_analog_pin(7))
@@ -452,7 +471,7 @@ $pcfg_conf($dsref,$picsgrp)
    --   - bit ANSEL_ANSELx (0 <= x <= 7, or 3 <= x <= 7)
    --   - bit ANSELH_ANSx (8 <= x <= 13, or 8 <= x <= 12)
    --
-   -- There's a need for normalization...
+   -- There is a need for normalization...
    -- ANS bits are now normalized in device files :)
    -- I (Seb) keep these grep & sed rules as tools to check future changes
 
@@ -505,6 +524,12 @@ $pcfg_conf($dsref,$picsgrp)
          end if
       #end for
    end if
+
+   -- Contrary to independent ADC pins managed by PCFG bits, choosing the number
+   -- of ADC channels can only be done with set_analog_pin()/set_digital_pin().
+   -- Let's declare a dummy procedure to honor normalization
+   procedure _adc_setup_pins() is
+   end procedure
 
    -- Configure a pin to act as an analog pin.
    -- an_pin_num references the 'x' in ANx notation.
@@ -567,7 +592,7 @@ $pcfg_conf($dsref,$picsgrp)
 
 
 -- Configure Voltage reference using VCFG bits
-procedure adc_vcfg() is
+procedure _adc_vref_vcfg() is
    pragma inline
    -- Configure Voltage Reference, Vref bits
    -- This is only valid for PICs where Vref isn't part of PCFG bits combination
@@ -624,7 +649,7 @@ end procedure
 -- Found in PICs: 16f722, 16f723, 16f724, 16f726, 16f727, 16lf722, 
 --                16lf723, 16lf724, 16lf726, 16lf727,
 -- Same family, DS 41341B
-procedure adc_adref() is
+procedure _adc_vref_adref() is
 
    if defined(ADCON1_ADREF) == true then
       if ADC_NVREF == 1 then
@@ -639,26 +664,25 @@ end procedure
 #end def
 
 
-#def select_vref
+#def select_vref_proc
 
-   if defined(ADCON0_VCFG) == true | defined(ADCON1_VCFG) then
-      adc_vcfg()
+   if defined(ADCON0_VCFG) == true | defined(ADCON1_VCFG) == true then
+      alias _adc_vref is _adc_vref_vcfg
    elsif defined(ADCON1_ADREF) == true then
-      adc_adref()
+      alias _adc_vref is _adc_vref_adref
+   else
+      _warn " \n\tUnable to find how Vref is setup with this chip, selection Vref won't work\n\tPlease report !"
+      -- just create a dummy procedure, to honor normalization, but Vref setup
+      -- won't be available !
+      procedure _adc_vref() is
+      end procedure
    end if
 
 #end def
 
 
-#def main
-$header
-$deps
-
-$vcfg
-$adref
-
-#set pcfg_combination_condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),$pcfg_combination_pics))
-
+#def channels
+    #set pcfg_combination_condition = " | ".join(map(lambda x: "target_chip == PIC_%s" % x.upper(),$pcfg_combination_pics))
 -- -----------------------------------------
 -- FIRST CASE: 
 --  - PCFG bits exist, 
@@ -669,10 +693,17 @@ $adref
 
 ## Check PICs which use PCFG bits as combinations
 if $pcfg_combination_condition then
-
    _debug "ADC channels config: dependent pins, via PCFG bits"
+   
 $pcfg_combination
 
+   -- Normalize procedure names for setup
+   alias _adc_setup_pins is _adc_setup_independent
+   -- declare dummy procedure for normalization. Note Vref setup, due to some jalv2 contraints
+   -- (like defining a constant but assigning its definitive value later), Vref setup is done
+   -- while discovering/setting up ADC pins. See comment within _adc_setup_independent()
+   procedure _adc_vref() is
+   end procedure
 
 -- --------------------------------------------
 -- SECOND CASE: 
@@ -682,12 +713,14 @@ $pcfg_combination
 -- --------------------------------------------
 
 ## 18F PICs, which use PCFG bits
-elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) | defined(ANCON0_PCFG1) | defined(ANCON0_PCFG2) | defined(ANCON0_PCFG3) | defined(ANCON0_PCFG4) | defined(ANCON0_PCFG5) | defined(ANCON0_PCFG6) | defined(ANCON0_PCFG7) | defined(ANCON1_PCFG10) | defined(ANCON1_PCFG11) | defined(ANCON1_PCFG12) | defined(ANCON1_PCFG8) | defined(ANCON1_PCFG9)) then
+elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCFG1) == true | defined(ANCON0_PCFG2) == true | defined(ANCON0_PCFG3) == true | defined(ANCON0_PCFG4) == true | defined(ANCON0_PCFG5) == true | defined(ANCON0_PCFG6) == true | defined(ANCON0_PCFG7) == true | defined(ANCON1_PCFG10) == true | defined(ANCON1_PCFG11) == true | defined(ANCON1_PCFG12) == true | defined(ANCON1_PCFG8) == true | defined(ANCON1_PCFG9) == true) then
 
    _debug "ADC channels config: independent pins, via PCFG bits"
 $pcfg_18f
-$select_vref
+$select_vref_proc
 
+   -- Normalize procedure names for setup
+   procedure _adc_setup_pins is _adc_setup_independent
 
 -- --------------------------------------------
 -- THIRD CASE: 
@@ -700,10 +733,19 @@ $select_vref
 else
    _debug "ADC channels config: independent pins, via ANS bits"
 $ans
-$select_vref
-
+$select_vref_proc
 
 end if
+#end def
+
+#def main
+$header
+$deps
+
+$vcfg
+$adref
+$channels
+
 #end def
 
 $main
