@@ -29,16 +29,15 @@
  *   - This script is developed with 'classic' Rexx as delivered with       *
  *     eComStation (OS/2) and is executed on a specific system.             *
  *     With only a few changes it can be executed on a different system,    *
- *     or even a different platform (Linux, Windows) with the combination   *
- *     of "Regina Rexx" and "RegUtil", ref:                                 *
- *        - http://regina-rexx.sourceforge.net/                             *
+ *     or even a different platform (Linux, Windows) with "Regina Rexx"     *
+ *     Ref:  http://regina-rexx.sourceforge.net/                            *
  *     See the embedded comments below for instructions for possibly        *
  *     required changes.                                                    *
  *   - A summary of changes of this script is maintained in 'changes.txt'   *
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.96'
+   ScriptVersion   = '0.0.97'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -1645,24 +1644,61 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                      select
                         when reg = 'ANSELG' then
                            call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+12,25) memtype'at' reg ':' offset
+                              left('JANSEL_ANS'offset+15,25) memtype'at' reg ':' offset
                         when reg = 'ANSELF' then
                            call lineout jalfile, 'var volatile bit   ',
+                              left('JANSEL_ANS'offset+8,25) memtype'at' reg ':' offset
+                        when reg = 'ANSELE' then do
+                           if (PicName = '16f1946' | PicName = '16lf1946' |,
+                               PicName = '16f1947' | PicName = '16lf1947')  then
+                             call lineout jalfile, 'var volatile bit   ',
                                 left('JANSEL_ANS'offset+5,25) memtype'at' reg ':' offset
-                        when reg = 'ANSELE' then
-                           call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+6,25) memtype'at' reg ':' offset
+                           else
+                             call lineout jalfile, 'var volatile bit   ',
+                                left('JANSEL_ANS'offset+20,25) memtype'at' reg ':' offset
+                        end
                         when reg = 'ANSELD' then
-                           nop                          /* not related to ADC */
+                           call lineout jalfile, 'var volatile bit   ',
+                                left('JANSEL_ANS'offset+12,25) memtype'at' reg ':' offset
                         when reg = 'ANSELC' then
                            call lineout jalfile, 'var volatile bit   ',
                                 left('JANSEL_ANS'offset+4,25) memtype'at' reg ':' offset
-                        when reg = 'ANSELB' then
-                           call lineout jalfile, 'var volatile bit   ',
+                        when reg = 'ANSELB' then do
+                           if (PicName = '16f1826' | PicName = '16lf1826' |,
+                               PicName = '16f1827' | PicName = '16lf1827')  then
+                              call lineout jalfile, 'var volatile bit   ',
+                                left('JANSEL_ANS'offset+4,25) memtype'at' reg ':' offset
+                           else if (PicName = '16f1933' | PicName = '16lf1933' |,
+                                    PicName = '16f1934' | PicName = '16lf1934' |,
+                                    PicName = '16f1936' | PicName = '16lf1936' |,
+                                    PicName = '16f1937' | PicName = '16lf1937' |,
+                                    PicName = '16f1938' | PicName = '16lf1938' |,
+                                    PicName = '16f1939' | PicName = '16lf1939')  then
+                              call lineout jalfile, 'var volatile bit   ',
+                                left('JANSEL_ANS'offset+6,25) memtype'at' reg ':' offset
+                           else
+                              call lineout jalfile, 'var volatile bit   ',
                                 left('JANSEL_ANS'offset+9,25) memtype'at' reg ':' offset
-                        when reg = 'ANSELA' then
-                           call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset,25) memtype'at' reg ':' offset
+                        end
+                        when reg = 'ANSELA' then do
+                           if (PicName = '12f1822' | PicName = '12lf1822' |,
+                               PicName = '16f1823' | PicName = '16lf1823' |,
+                               PicName = '16l1824' | PicName = '16lf1824' |,
+                               PicName = '16l1825' | PicName = '16lf1825' |,
+                               PicName = '16l1828' | PicName = '16lf1828' |,
+                               PicName = '16l1829' | PicName = '16lf1829') &,
+                               n.j = 'ANSA4'  then
+                              call lineout jalfile, 'var volatile bit   ',
+                                       left('JANSEL_ANS3',25) memtype'at' reg ':' offset
+                           else if (PicName = '16f1946' | PicName = '16lf1946' |,
+                                    PicName = '16f1947' | PicName = '16lf1947')  &,
+                                    n.j = 'ANSA5'  then
+                              call lineout jalfile, 'var volatile bit   ',
+                                       left('JANSEL_ANS4',25) memtype'at' reg ':' offset
+                           else
+                              call lineout jalfile, 'var volatile bit   ',
+                                   left('JANSEL_ANS'offset,25) memtype'at' reg ':' offset
+                        end
                      otherwise
                         if msglevel <= 2 then
                            say '  Warning: Unsupported ANSEL register:' reg
