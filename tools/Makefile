@@ -19,11 +19,6 @@ JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2
 JALV2_VERSION := `${JALV2_BIN} | sed "s\#.*jal \(.*\) (.*\#\1\#"`
 
 
-t:
-	echo bla
-	echo $(JALV2_VERSION)
-	echo done
-
 clean :
 	# clean what jal produces
 	find ${SAMPLIR_DIR} -name \*.cod -exec rm {} \;
