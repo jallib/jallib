@@ -7,33 +7,33 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: This library controls up to 24 servos that are the type used in
---              radio control (RC)
+--              radio control (RC). This is the main servo library.
 --
 -- Sources:
 -- http://www.horrorseek.com/home/halloween/wolfstone/Motors/svoint_RCServos.html
 --
 -- usage notes:
--- 1. Set your SERVO_MIN values to restrict movement.
---    This step must be completed correctly. First use code as follows
---    directly after you call servo_1_to_8_init()
+-- 1. Set your servo_min values to restrict movement.
+--    This step should be completed. First use code as follows
+--    directly after you call servo_init()
 --
---    servo_1_to_8_move(0,1)
+--    servo_move(0,1)
 --    forever loop
 --    end loop
 --
---    Now run your circuit and gradually change SERVO_MIN value so the servo
+--    Now run your circuit and gradually increase servo_min value so the servo
 --    is at the correct location on one side. Try to get the servo to be
 --    1mm from it's min location.
--- 2. Repeat step 1 with SERVO_MAX but use this:
+-- 2. Repeat step 1 by decreasing servo_max but use this:
 --
---    servo_1_to_8_move(255,1)
+--    servo_move(255,1)
 --    forever loop
 --    end loop
 --
 -- other notes:
 -- This lib uses timer0, timer1 or timer3
 -- Up to 24 servos are supported
--- you may modify servo_1_to_8_steps_per_2_5_msec directly for more exact movements
+--
 
 -- check if current pic has selected timers
 if SERVO_USE_TIMER == 0 then
@@ -144,8 +144,6 @@ elsif SERVO_USE_TIMER == 3 then
    alias servo_1_to_8_ps       is T3CON_T3CKPS     -- timer prescaler select bits
 end if
 
--- calculate difference between min & max
-const byte _SERVO_1_TO_8_CALC_DIFF = SERVO_MAX - SERVO_MIN
 var bit _servo_1_to_8_isr_count = 0     -- ISR step count (0 - servo pulse / 1 - idle state)
 var byte _servo_1_to_8_number_count = 0 -- ISR servo control count 0 to 7
 
@@ -213,9 +211,6 @@ if defined(servo_9) == TRUE then
       alias servo_9_to_16_if       is PIR2_TMR3IF      -- interrupt overflow bit
       alias servo_9_to_16_ps       is T3CON_T3CKPS     -- timer prescaler select bits
    end if
-
-   -- calculate difference between min & max
-   const byte _SERVO_9_TO_16_CALC_DIFF = SERVO_MAX - SERVO_MIN
 
    var bit _servo_9_to_16_isr_count = 0     -- ISR step count (0 - servo pulse / 1 - idle state)
    var byte _servo_9_to_16_number_count = 8 -- ISR servo control count 0 to 7
@@ -285,9 +280,6 @@ if defined(servo_17) == TRUE then
       alias servo_17_to_24_if       is PIR2_TMR3IF      -- interrupt overflow bit
       alias servo_17_to_24_ps       is T3CON_T3CKPS     -- timer prescaler select bits
    end if
-
-   -- calculate difference between min & max
-   const byte _SERVO_17_TO_24_CALC_DIFF = SERVO_MAX - SERVO_MIN
 
    var bit _servo_17_to_24_isr_count = 0    -- ISR step count (0 - servo pulse / 1 - idle state)
    var byte _servo_17_to_24_number_count = 16 -- ISR servo control count 0 to 7
@@ -492,41 +484,41 @@ procedure _servo_isr() is
 
    if defined(servo_9) == TRUE then
       if servo_9_to_16_if then -- check if it is a timer interrupt
-         servo_9_to_16_if = off                                             -- reset counter
-         if _servo_9_to_16_isr_count == 0 then                              -- do the servo pulse (high)
+         servo_9_to_16_if = off                                                        -- reset counter
+         if _servo_9_to_16_isr_count == 0 then                                         -- do the servo pulse (high)
             servo_9_to_16_tmr = _servo_9_to_16_pulse[_servo_9_to_16_number_count - 8]  -- set timer to pulse high width
-            _servo_9_to_16_set_level (_servo_9_to_16_number_count,HIGH)     -- set level to high
-            _servo_9_to_16_isr_count = _servo_9_to_16_isr_count + 1         -- go to next step
-         elsif _servo_9_to_16_isr_count == 1 then                           -- do the servo idle state (low)
+            _servo_9_to_16_set_level (_servo_9_to_16_number_count,HIGH)                -- set level to high
+            _servo_9_to_16_isr_count = _servo_9_to_16_isr_count + 1                    -- go to next step
+         elsif _servo_9_to_16_isr_count == 1 then                                      -- do the servo idle state (low)
             servo_9_to_16_tmr = _servo_9_to_16_low[_servo_9_to_16_number_count - 8]    -- set timer to pulse low width
-            _servo_9_to_16_set_level (_servo_9_to_16_number_count,LOW)      -- set level to low
-            _servo_9_to_16_isr_count = _servo_9_to_16_isr_count + 1         -- go to next step
-            _servo_9_to_16_number_count = _servo_9_to_16_number_count + 1   -- change to next servo
-            if _servo_9_to_16_number_count == 16 then                       -- change to first servo if needed
-               _servo_9_to_16_number_count = 8                              -- go back to first servo
+            _servo_9_to_16_set_level (_servo_9_to_16_number_count,LOW)                 -- set level to low
+            _servo_9_to_16_isr_count = _servo_9_to_16_isr_count + 1                    -- go to next step
+            _servo_9_to_16_number_count = _servo_9_to_16_number_count + 1              -- change to next servo
+            if _servo_9_to_16_number_count == 16 then                                  -- change to first servo if needed
+               _servo_9_to_16_number_count = 8                                         -- go back to first servo
             end if
-            _servo_9_to_16_isr_count = 0                                    -- go to first step
+            _servo_9_to_16_isr_count = 0                                               -- go to first step
          end if
       end if
    end if
 
 
    if defined(servo_17) == TRUE then
-      if servo_17_to_24_if then -- check if it is a timer interrupt
-         servo_17_to_24_if = off                                 -- reset counter
-         if _servo_17_to_24_isr_count == 0 then                     -- do the servo pulse (high)
-            servo_17_to_24_tmr = _servo_17_to_24_pulse[_servo_17_to_24_number_count - 16]  -- set timer to pulse high width
-            _servo_17_to_24_set_level (_servo_17_to_24_number_count,HIGH)    -- set level to high
-            _servo_17_to_24_isr_count = _servo_17_to_24_isr_count + 1        -- go to next step
-         elsif _servo_17_to_24_isr_count == 1 then                  -- do the servo idle state (low)
-            servo_17_to_24_tmr = _servo_17_to_24_low[_servo_17_to_24_number_count - 16]    -- set timer to pulse low width
-            _servo_17_to_24_set_level (_servo_17_to_24_number_count,LOW)     -- set level to low
-            _servo_17_to_24_isr_count = _servo_17_to_24_isr_count + 1        -- go to next step
-            _servo_17_to_24_number_count = _servo_17_to_24_number_count + 1  -- change to next servo
-            if _servo_17_to_24_number_count == 24 then               -- change to first servo if needed
-               _servo_17_to_24_number_count = 16                     -- go back to first servo
+      if servo_17_to_24_if then                                                           -- check if it is a timer interrupt
+         servo_17_to_24_if = off                                                          -- reset counter
+         if _servo_17_to_24_isr_count == 0 then                                           -- do the servo pulse (high)
+            servo_17_to_24_tmr = _servo_17_to_24_pulse[_servo_17_to_24_number_count - 16] -- set timer to pulse high width
+            _servo_17_to_24_set_level (_servo_17_to_24_number_count,HIGH)                 -- set level to high
+            _servo_17_to_24_isr_count = _servo_17_to_24_isr_count + 1                     -- go to next step
+         elsif _servo_17_to_24_isr_count == 1 then                                        -- do the servo idle state (low)
+            servo_17_to_24_tmr = _servo_17_to_24_low[_servo_17_to_24_number_count - 16]   -- set timer to pulse low width
+            _servo_17_to_24_set_level (_servo_17_to_24_number_count,LOW)                  -- set level to low
+            _servo_17_to_24_isr_count = _servo_17_to_24_isr_count + 1                     -- go to next step
+            _servo_17_to_24_number_count = _servo_17_to_24_number_count + 1               -- change to next servo
+            if _servo_17_to_24_number_count == 24 then                                    -- change to first servo if needed
+               _servo_17_to_24_number_count = 16                                          -- go back to first servo
             end if
-            _servo_17_to_24_isr_count = 0                           -- go to first step
+            _servo_17_to_24_isr_count = 0                                                 -- go to first step
          end if
       end if
    end if
@@ -650,10 +642,12 @@ procedure servo_move(byte in location, byte in servo_number) is
    var dword final
    var word location2 = location -- change location to word for overflow
 
-   -- map input location to 0-255 according to SERVO_MIN/SERVO_MAX
-   calc1 = (location2 * _SERVO_1_TO_8_CALC_DIFF)
+   -- map input location to 0-255 according to servo_min/servo_max
+   -- calculate difference between min & max
+   var byte servo_calc_diff = servo_max - servo_min
+   calc1 = (location2 * servo_calc_diff)
    calc2 = calc1 / 255
-   final = calc2 + SERVO_MIN
+   final = calc2 + servo_min
 
    if servo_number < 9 then
       if SERVO_USE_TIMER == 0 then -- if 8 bit timer 0
@@ -807,8 +801,8 @@ end procedure
 --------------------------------------------------------------------------------
 procedure servo_init() is
    -- enable global interupts
-   INTCON_GIE  = on -- Enables all unmasked interrupts
-   INTCON_PEIE = on -- Enables all unmasked peripheral interrupts
+   INTCON_GIE  = on        -- Enables all unmasked interrupts
+   INTCON_PEIE = on        -- Enables all unmasked peripheral interrupts
 
    servo_1_to_8_if = off   -- clear interrupt overflow bit
    servo_1_to_8_ie = on    -- timer overflow interrupt enable
