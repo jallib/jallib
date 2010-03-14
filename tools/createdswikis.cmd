@@ -293,14 +293,8 @@ do until x = '}' | x = 0                /* end of pinmap */
     end
     do until x = '}' | x = 0            /* this PICs specs */
       ItemName = json_newstring(PicSpecFile)
-      do until x = '[' | x = 0          /* search item */
-        x = json_newchar(PicSpecFile)
-      end
-      do until x = ']' | x = 0          /* end of item */
-        value = json_newstring(PicSpecFile)
-        PicSpec.PicName.ItemName = value
-        x = json_newchar(PicSpecFile)
-      end
+      value = json_newstring(PicSpecFile)
+      PicSpec.PicName.ItemName = value
       x = json_newchar(PicSpecFile)
     end
     x = json_newchar(PicSpecFile)
