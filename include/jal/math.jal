@@ -64,3 +64,212 @@ function sqrt32(dword in x) return word is
    return word(y)
 end function
 
+
+-- Author: Michael Watterson
+
+function digitsWord(word in valu)return byte is
+var byte temp = 1
+var dword index = 9
+        while (dword(valu) > index) loop
+           index = index * 10 +9
+           temp = temp +1
+        end loop
+        return temp
+end function
+
+-- fixed point math is 8 bits for decimal in this library.
+--    approx two decimal paces, the part after "point" is 0 to 255
+--    sword fixed point numbers are thus -127.00 to +127.00 approx
+--    if you want bigger numbers replace all swords by sdwords and
+--         sdwords by sbyte*8 if the compiler can do the math still.
+function byteToFixed (byte in anInt) return sword is
+     return ((sword(anInt)) << 8)
+end function
+
+function truncFixed (sword in fixedPoint) return sbyte  is
+     return ( sbyte(fixedPoint >> 8))
+end function
+
+function roundFixed (sword in fixedPoint) return sbyte  is
+        if ((fixedPoint & 0x10) >0)  then    -- 128 and more = 0.5
+             return ( sbyte(fixedPoint >> 8) +1)
+        else
+             return ( sbyte(fixedPoint >> 8))
+        end  if
+end function
+
+-- unlike integer max is 128 * 128  *256 approx
+function multFixed (sword in a, sword in b) return sdword is
+     return ((sdword(a) * sdword(b)) >> 8) -- fix point
+end function
+
+function divFixed (sword in a, sword in b) return sword  is
+    return ( sword((sdword(a) * sdword (256)) / sdword(b)) >> 8)
+end function
+
+-- probably a better way to do this!
+function modFixed (sword in a, sword in b) return sword is
+    return ( a - sword(sdword(b)*((sdword(a) * sdword (256)) / sdword(b)) >> 8))
+end function
+
+-- sin values scaled to (256 * 1.0) -1 for values above Zero
+-- (i.e. add one to lookup if using table directly for other than Zeroth Element)
+-- apart from zero, all values are 1 less than actual
+-- to allow storage in 1 byte each
+const byte SINLOOKUP[] = {0, 3, 8, 12, 17, 21, 26, 30, 35, 39, 43, 48, 52, 57,
+    61, 65, 70, 74, 78, 82, 87, 91, 95, 99, 103, 107, 111, 115, 119, 123, 127,
+    131, 135, 138, 142, 146, 149, 153, 157, 160, 164, 167, 170, 174, 177, 180,
+    183, 186, 189, 192, 195, 198, 201, 203, 206, 209, 211, 214, 216, 218, 221,
+    223, 225, 227, 229, 231, 233, 235, 236, 238, 240, 241, 242, 244, 245, 246,
+    247, 248, 249, 250, 251, 252, 253, 253, 254, 254, 254, 255, 255, 255, 255 }
+-- 0 to 90 degrees in 1 degree steps
+
+-- 8bit resolution sin function R x Sin (angle) in degrees -32767 to +32767
+-- result can be same magnitude and opposite sign
+
+-- use to generate audio waves by changing angle at a fixed speed.
+-- if using all 360 degrees in one degree steps, then frequency is step rate / 360
+-- at nyquist frequency you only need 0 and 180 degrees, i.e. 1/2 sample rate.
+-- if sample rate is 48kHz then for 12kHz you have only 4 samples, i.e. 90 degree steps
+-- at 1.2kHz thus you use 9 degree steps.
+-- 1 degree steps is thus  133.33  Hz if step speed is 48KHz
+-- PWM can be loaded via this lookup
+-- use 128 and add 127 to answer for 8 bit PWM
+-- use 512 and add 511 to answer for 10bit PWM
+-- if summing two frequencies, peak value is twice, so add as swords < 16383 and
+-- divide sum by 2!
+-- Author: Michael Watterson
+
+-- works with fixed point numbers 256 = 1.0
+function rSin8( sword in radius, sword in angle ) return sword is
+var sword yPos
+    --make sure works for ANY angle ...
+    While (angle < 0)   loop
+        angle = angle + 360
+    end Loop
+    While (angle >= 360)   loop
+        angle = angle - 360
+    end Loop
+    Case angle of
+    0:  yPos = 0
+    90: yPos = radius
+    180: yPos =0
+    270: yPos = -radius
+    otherwise
+        block
+            -- add or subtract one as lookups above zero have -1 so 256x 1.0
+            -- fits in one byte
+            If (angle > 0) & (angle < 90) Then
+                yPos = sword(SINLOOKUP[angle]) + 1
+             elsif (angle > 90) & (angle < 180) Then
+                angle = angle - 90
+                yPos = sword(SINLOOKUP[(90 - angle)]) + 1
+            elsif (angle > 180) & (angle < 270) Then
+                angle = angle - 180
+                yPos = -sword(SINLOOKUP[angle]) - 1
+            elsif (angle > 270) & (angle < 360) Then
+                angle = angle - 270
+                yPos = -sword(SINLOOKUP[(90 - angle)]) - 1
+            End If
+            yPos = yPos * radius / 256
+        end block
+    End case
+    return (yPos)
+end function
+
+-- Author: Michael Watterson
+function rCos8( sword in radius, sword in angle ) return sword is
+var sword xPos
+    --make sure works for ANY angle ...
+    While (angle < 0)   loop
+        angle = angle + 360
+    end Loop
+    While (angle >= 360)   loop
+        angle = angle - 360
+    end Loop
+    Case angle of
+    0:  xPos = radius
+    90: xPos = 0
+    180: xPos = -radius
+    270: xPos = 0
+    otherwise
+        block
+            -- add or subtract one as lookups above zero have -1 so 256x 1.0
+            -- fits in one byte
+            If (angle > 0) & (angle < 90) Then
+                xPos = sword(SINLOOKUP[(90 - angle)]) + 1
+             elsif (angle > 90) & (angle < 180) Then
+                angle = angle - 90
+                xPos = -sword(SINLOOKUP[angle]) - 1
+            elsif (angle > 180) & (angle < 270) Then
+                angle = angle - 180
+                xPos = -sword(SINLOOKUP[(90 - angle)]) - 1
+            elsif (angle > 270) & (angle < 360) Then
+                angle = angle - 270
+                xPos = sword(SINLOOKUP[angle]) + 1
+            End If
+            xPos = xPos * radius / 256
+        end block
+    End case
+    return (xPos)
+end function
+
+-- use to rotate angle of a line by calculating endpoints
+-- use to generate quadrature waves by changing angle at a fixed speed.
+-- if using all 360 degrees in one degree steps, then frequency is step rate / 360
+-- Author: Michael Watterson
+procedure PolarToCartesian(sword in radius, sword in angle, sword out xPos, sword out yPos) is
+    --make sure works for ANY angle ...
+    While (angle < 0)   loop
+        angle = angle + 360
+    end Loop
+    While (angle >= 360)   loop
+        angle = angle - 360
+    end Loop
+    Case angle of
+    0:
+         block
+         xPos = radius
+         yPos = 0
+         end block
+    90:
+       Block
+        xPos = 0
+        yPos = radius
+        end block
+    180:
+        block
+        xPos = -radius
+        yPos = 0
+        end block
+    270:
+         block
+         xPos = 0
+         yPos = -radius
+         end block
+    otherwise
+        block
+             -- add or subtract one as lookups above zero have -1 so 256 x 1.0
+            -- fits in one byte
+           If (angle > 0) & (angle < 90) Then
+                yPos = sword(SINLOOKUP[angle]) + 1
+                xPos = sword(SINLOOKUP[(90 - angle)]) + 1
+            elsif (angle > 90) & (angle < 180) Then
+                angle = angle - 90
+                xPos = -sword(SINLOOKUP[angle]) - 1
+                yPos = sword(SINLOOKUP[(90 - angle)]) + 1
+            elsif (angle > 180) & (angle < 270) Then
+                angle = angle - 180
+                xPos = -sword(SINLOOKUP[(90 - angle)]) - 1
+                yPos = -sword(SINLOOKUP[angle]) - 1
+            elsif (angle > 270) & (angle < 360) Then
+                angle = angle - 270
+                xPos = sword(SINLOOKUP[angle]) + 1
+                yPos = -sword(SINLOOKUP[(90 - angle)]) - 1
+            End If
+            xPos = xPos * radius / 256
+            yPos = yPos * radius / 256
+        end block
+    End case
+End procedure
+
