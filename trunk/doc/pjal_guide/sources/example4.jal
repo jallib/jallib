@@ -1,0 +1,126 @@
+-- This must be in first line
+include c16f877
+
+-- config fuses
+pragma target protection off
+pragma target debug off
+pragma target cdp off
+pragma target lvp off
+pragma target bor off
+pragma target powerup on
+pragma target watchdog off
+pragma target osc xt
+
+-- Fosc definition
+pragma target clock 4_000_000
+
+-- PORTB and TRISB definitions
+var volatile byte PORTB at {0x06,0x106}
+var volatile byte TRISB at {0x86,0x186}
+
+-- B0 pin definition
+var volatile bit pin_b0 at PORTB : 0
+
+-- B4 pin definition
+var volatile bit pin_b4 at PORTB : 4
+
+
+-- Button at pin_b0
+var volatile bit Button is pin_b0
+
+-- Led at pin_b4
+var volatile bit LED is pin_b4
+
+
+-- 0.6 second => 0.001 sec x 600
+-- 
+-- TMR0_delay = ( 256 - InitTMR0 ) * 4 * prescaler / Fosc
+-- TMR0_delay = ( 256 - 6 ) * 4 * 4 / 4_000_000 = 0.001 = 1 msec.
+--
+-- InitTMR0 = 6
+-- Prescaler = 1:4
+-- Fosc = 4_000_000
+-- Delay = 0.001 secs
+--
+-- 600 counts
+
+-- RB0INT falling edge, Init TMR0, free run mode, int osc, prescaler 1:4
+var volatile byte TMR0 at {0x01,0x101}
+var volatile byte OPTION_REG at {0x81,0x181}
+OPTION_REG = 0b_1000_0001
+
+-- Enable TMR0 interrupt, RB0INT interrupt, reset RB0INT and TMR0 flag
+var volatile byte INTCON at {0x0B,0x8B,0x10B,0x18B}
+var volatile bit T0if at INTCON : 2
+var volatile bit INTf at INTCON : 1
+var volatile bit INTE at INTCON : 4
+var volatile bit T0IE at INTCON : 5
+INTCON = 0B_1011_0000
+
+var volatile bit Enable_Button is INTE
+var volatile bit Enable_Timmer is T0IE
+
+Enable_Timmer = on
+Enable_Button = on
+
+-- declare vars
+var word milisec_count
+var byte pulse_count, pulse_count_temp
+var bit Flag_tmr0 = false
+
+-- TMR0 interrupt
+procedure TMR0_ISR is
+pragma interrupt
+   if T0if then
+      -- Reset TMR0IF
+      T0if = low
+      -- Reset InitTMR0
+      TMR0 = 6
+      -- add one count
+      milisec_count = milisec_count + 1
+      -- Check count 600
+      if milisec_count == 600 then
+         -- if 600 msecs. => Activate flag
+         Flag_tmr0 = true
+         -- reset counter
+         milisec_count = 0 
+         -- store pulse count
+         pulse_count = pulse_count_temp
+         -- reset pulse_count
+         pulse_count_temp = 0
+      end if
+   end if
+end procedure
+
+-- RB0INT interrupt
+procedure RB0INT_ISR is
+pragma interrupt
+   if INTf then
+      -- Reset RB0IF
+      INTf = low
+      -- add pulse_count
+      pulse_count_temp = pulse_count_temp + 1
+   end if
+end procedure
+
+
+-- Reset PORTB
+PORTB = 0b_0000_0000
+
+-- PORTB => B0 input, B1..B7 output
+TRISB = 0b_0000_0001
+PORTB = 0b_0000_0001
+
+-- final store of rpm
+var volatile word x
+
+
+-- main loop
+forever loop
+   if Flag_tmr0 then   ; Check if end of count
+      -- Clear flag
+      Flag_tmr0 = low
+      -- compute rpm
+      x = pulse_count * 100
+   end if
+end loop   
