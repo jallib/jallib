@@ -79,6 +79,8 @@ do
          echo "Failed to publish $basedita" >> $JALLIB_TMP/publish.failed
          at_least_one_failed=1
          counter=`expr $counter + 1`
+      else
+         echo "Published $basedita" >> $JALLIB_TMP/publish.success
       fi
    else
       echo
