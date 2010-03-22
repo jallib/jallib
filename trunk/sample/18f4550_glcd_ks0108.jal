@@ -1,7 +1,7 @@
 -- Title: Test program for i2c hardware slave, message interface implementation
 -- Author: Joep Suijs, Copyright (c) 2008-2009, all rights reserved.
 -- Adapted-by: 
--- Compiler: >=2.4i
+-- Compiler: >=2.4m
 --
 -- This file is part of jallib  (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
@@ -134,6 +134,40 @@ var byte gol_next_column[9]
 
 var byte gol_output_column[9]
 
+-- ----------------------------------------------------------------------------
+const byte power[] = { 1, 2, 4, 8, 16, 32, 64, 128 }
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------  
+-- gol_get_bit - get one bit from a colomn
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+function gol_get_bit(byte in row_nr, byte in column[9]) return bit is
+   
+   var byte byte_nr = (row_nr >> 3) & 0x07
+   var byte bit_nr  = row_nr & 0x07
+   
+   return ((column[byte_nr] & power[bit_nr]) != 0)
+   
+end function
+
+-- ----------------------------------------------------------------------------
+-- gol_set_outbit - set one bit in gol_output_column
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure gol_set_outbit(byte in row_nr) is
+   
+   var byte byte_nr = (row_nr >> 3) & 0x07
+   var byte bit_nr  = row_nr & 0x07
+
+;   var bit*3 byte_nr at row_nr : 3
+;   var bit*3 bit_nr  at row_nr : 0
+
+   gol_output_column[byte_nr] = gol_output_column[byte_nr] | power[bit_nr]
+            
+end procedure
+
+
 
 -- ----------------------------------------------------------------------------
 -- gol_randomize - Game of Life _ Randomize screen
@@ -150,6 +184,10 @@ procedure gol_randomize() is
    end loop 
 end procedure
 
+-- ----------------------------------------------------------------------------
+-- gol_read_column - read the designated column from display memeory
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 procedure gol_read_column(byte in col_nr, byte out column[9]) is
    var byte y        
    if (col_nr < 127) then
@@ -166,6 +204,25 @@ procedure gol_read_column(byte in col_nr, byte out column[9]) is
 
 end procedure       
 
+
+procedure gol_print_column(byte in column[9]) is
+   var byte i  
+   var bit b
+   
+   for 64 using i loop
+      b = gol_get_bit(i, column)
+      if (b) then
+         serial_hw_data = "*"
+      else
+         serial_hw_data = "."
+      end if
+   end loop 
+   print_crlf(serial_hw_data)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 procedure gol_write_column(byte in col_nr) is
    var byte y        
    for 8 using y loop
@@ -173,6 +230,9 @@ procedure gol_write_column(byte in col_nr) is
    end loop      
 end procedure
 
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 procedure gol_copy_column(byte in in_column[9], byte out out_column[9]) is
    var byte x
    for 8 using x loop
@@ -180,6 +240,9 @@ procedure gol_copy_column(byte in in_column[9], byte out out_column[9]) is
    end loop      
 end procedure
 
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 procedure gol_clear_column(byte in out column[9]) is
    var byte x
    for 8 using x loop
@@ -187,8 +250,82 @@ procedure gol_clear_column(byte in out column[9]) is
    end loop      
 end procedure
 
-procedure gol_gen_column() is
+-- nbs - NumberofBitsSet     
+--                  0  1  2  3  4  5  6  7
+const byte nbs[] = {0, 1, 1, 2, 1, 2, 2, 3}
+
+-- ----------------------------------------------------------------------------
+-- gol_gen_column() - live a generation on a column
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure gol_gen_column() is        
+   var byte i
+   var byte neighbours
+   
+   var byte bottom = 0
+   var byte middle = 0
+   var byte top    = 0
+
+   var bit bottom_p at bottom : 0   
+   var bit bottom_t at bottom : 1   
+   var bit bottom_n at bottom : 2   
+
+   var bit middle_p at middle : 0   
+   var bit middle_t at middle : 1   
+   var bit middle_n at middle : 2   
+
+   var bit top_p at top : 0   
+   var bit top_t at top : 1   
+   var bit top_n at top : 2   
+
+   middle_p = gol_get_bit(255, gol_prev_column)
+   middle_t = gol_get_bit(255, gol_this_column)
+   middle_n = gol_get_bit(255, gol_next_column)
+
+   top_p = gol_get_bit(0, gol_prev_column)
+   top_t = gol_get_bit(0, gol_this_column)
+   top_n = gol_get_bit(0, gol_next_column)
+
+   i = 1
+   repeat
+      -- shift one up
+      bottom = middle
+      middle = top   
+
+      -- get new row
+      top_p = gol_get_bit(i, gol_prev_column)
+      top_t = gol_get_bit(i, gol_this_column)
+      top_n = gol_get_bit(i, gol_next_column)
+
+      neighbours = nbs[bottom] + nbs[(middle & 5)] + nbs[top]      
+;print_byte_dec(serial_hw_data, neighbours)
+;serial_hw_data = " "
+      if (neighbours == 2) then
+         -- remain the same
+;         gol_set_outbit(i-1, (middle & 2) == 2)      
+         if ((middle & 2) == 2) then
+            gol_set_outbit(i-1)      
+         end if
+      elsif (neighbours == 3) then        
+         -- become alive
+         gol_set_outbit(i-1)       
+      else              
+         -- less then 2 or more then 3 = die
+;         gol_set_outbit(i-1, false)                
+      end if                 
+      i = i + 1
+   until i > 64
+
+;   print_crlf(serial_hw_data)
+;   gol_print_column(gol_prev_column)
+;   gol_print_column(gol_this_column)
+;   gol_print_column(gol_next_column)
+;   gol_print_column(gol_output_column)
+;   print_crlf(serial_hw_data)
+
+   
 end procedure
+
 -- ----------------------------------------------------------------------------
 -- gol_generation - live one generation
 -- ----------------------------------------------------------------------------
@@ -217,6 +354,9 @@ end procedure
 
 glcd_char_y_pos  = 20;  
 glcd_char_x_pos = 20
+
+   gol_randomize()
+
 forever loop
 
 ;    line(0, 0, 64, 64)
@@ -239,12 +379,11 @@ if (false) then
    end loop 
 end if
    -- randomize
-   gol_randomize()
 
+   gol_generation()   
+;   delay_100ms(1)
    
-   delay_100ms(1)
-   
 
-
+   serial_hw_data = "+"
 
 end loop
