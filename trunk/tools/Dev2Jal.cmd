@@ -37,7 +37,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.97'
+   ScriptVersion   = '0.0.98'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -1169,7 +1169,7 @@ return
 /* Note: name is stored but not checked on duplicates */
 /* 12-bit and 14-bit core                             */
 /* -------------------------------------------------- */
-list_sfr1x: procedure expose Dev. Ram. Name. PinMap. PicName,
+list_sfr1x: procedure expose Dev. Ram. Name. PinMap. Core PicName,
                              jalfile BANKSIZE NumBanks msglevel
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then               /* skip non SFRs */
@@ -1246,7 +1246,7 @@ return 0
 /* Generates names for pins or bit fields            */
 /* 12-bit and 14-bit core                            */
 /* ------------------------------------------------- */
-list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PicName jalfile msglevel
+list_sfr_subfields1x: procedure expose Dev. Name. PinMap. Core PicName jalfile msglevel
 i = arg(1) + 1                                          /* first after reg */
 reg = arg(2)                                            /* register (name) */
 PicUpper = toupper(PicName)                             /* for alias handling */
@@ -1283,28 +1283,18 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                   end
                end
             end
-            else do                                     /* not twin name */
+            else do                                         /* not twin name */
                field = reg'_'n.j
-               select                                   /* interceptions */
+               select                                       /* interceptions */
                   when left(reg,5) = 'ANSEL'  &,
                        left(n.j,3) = 'ANS' then do
-                     select
-                        when reg = 'ANSELH' | reg = 'ANSEL1' then
-                           call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+8,25) 'at' reg ':' offset
-                        when reg = 'ANSELB' then
-                           call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+6,25) 'at' reg ':' offset
-                        when reg = 'ANSELE' then
-                           call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+12,25) 'at' reg ':' offset
-                        otherwise
-                           call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset,25) 'at' reg ':' offset
-                     end
+                     ansx = ansel2j(reg, n.j)
+                     if ansx < 99 then                      /* valid number */
+                        call lineout jalfile, 'var volatile bit   ',
+                                     left('JANSEL_ANS'ansx,25) 'at' reg ':' offset
                   end
                   when reg = 'T1CON' & n.j = 'T1SYNC' then do
-                     field = reg'_N'n.j                 /* insert 'not' prefix */
+                     field = reg'_N'n.j                     /* insert 'not' prefix */
                      call lineout jalfile, 'var volatile bit   ',
                                   left(field,25) 'at' reg ':' offset
                   end
@@ -1435,30 +1425,15 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                      call lineout jalfile, 'var volatile bit*'s.j' ',
                                            left(field,25) 'at' reg ':' offset - s.j + 1
                end
-               when (left(n.j,3) = 'ANS')   &,          /* ANS subfield */
+               when (left(n.j,2) = 'AN')    &,          /* AN(S) subfield */
                     (left(reg,5) = 'ADCON'  |,          /* ADCON* reg */
-                    left(reg,5) = 'ANSEL')  then do     /* ANSELx reg */
+                     left(reg,5) = 'ANSEL')  then do    /* ANSELx reg */
                   k = s.j - 1
                   do while k >= 0
-                    if reg = 'ANSELH' then do
+                    ansx = ansel2j(reg,n.j||k)
+                    if ansx < 99 then
                        call lineout jalfile, 'var volatile bit   ',
-                            left('JANSEL_ANS'k+8 ,25) 'at' reg ':' offset + k + 1 - s.j
-                    end
-                    else if reg = 'ANSELE' then do
-                       call lineout jalfile, 'var volatile bit   ',
-                            left('JANSEL_ANS'k+20,25) 'at' reg ':' offset + k + 1 - s.j
-                    end
-                    else if reg = 'ANSELD' then do
-                       call lineout jalfile, 'var volatile bit   ',
-                            left('JANSEL_ANS'k+12,25) 'at' reg ':' offset + k + 1 - s.j
-                    end
-                    else if reg = 'ANSELB' then do
-                       call lineout jalfile, 'var volatile bit   ',
-                            left('JANSEL_ANS'k+6 ,25) 'at' reg ':' offset + k + 1 - s.j
-                    end
-                    else
-                       call lineout jalfile, 'var volatile bit   ',
-                            left('JANSEL_ANS'k   ,25) 'at' reg ':' offset + k + 1 - s.j
+                                    left('JANSEL_ANS'ansx,25) 'at' reg ':' offset + k + 1 - s.j
                     k = k - 1
                   end
                end
@@ -1500,7 +1475,7 @@ return 0
 /* Note: name is stored but not checked on duplicates */
 /* Extended 14-bit core                               */
 /* -------------------------------------------------- */
-list_sfr14h: procedure expose Dev. Ram. Name. PinMap. PicName,
+list_sfr14h: procedure expose Dev. Ram. Name. PinMap. Core PicName,
                               jalfile BANKSIZE NumBanks msglevel
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then               /* skip non SFRs */
@@ -1579,7 +1554,7 @@ return 0
 /* Extended 14-bit core                              */
 /* ------------------------------------------------- */
 list_sfr_subfields14h: procedure expose Dev. Name. PinMap. PortLat. ,
-                       PicName jalfile msglevel
+                       Core PicName jalfile msglevel
 i = arg(1) + 1                                          /* first after reg */
 reg = arg(2)                                            /* register (name) */
 memtype = arg(3)                                        /* shared/blank */
@@ -1641,68 +1616,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
                      nop                                /* suppress enumerated bitfields */
                   end
                   when left(reg,5) = 'ANSEL'  &  left(n.j,3) = 'ANS' then do
-                     select
-                        when reg = 'ANSELG' then
-                           call lineout jalfile, 'var volatile bit   ',
-                              left('JANSEL_ANS'offset+15,25) memtype'at' reg ':' offset
-                        when reg = 'ANSELF' then
-                           call lineout jalfile, 'var volatile bit   ',
-                              left('JANSEL_ANS'offset+8,25) memtype'at' reg ':' offset
-                        when reg = 'ANSELE' then do
-                           if (PicName = '16f1946' | PicName = '16lf1946' |,
-                               PicName = '16f1947' | PicName = '16lf1947')  then
-                             call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+5,25) memtype'at' reg ':' offset
-                           else
-                             call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+20,25) memtype'at' reg ':' offset
-                        end
-                        when reg = 'ANSELD' then
-                           call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+12,25) memtype'at' reg ':' offset
-                        when reg = 'ANSELC' then
-                           call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+4,25) memtype'at' reg ':' offset
-                        when reg = 'ANSELB' then do
-                           if (PicName = '16f1826' | PicName = '16lf1826' |,
-                               PicName = '16f1827' | PicName = '16lf1827')  then
-                              call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+4,25) memtype'at' reg ':' offset
-                           else if (PicName = '16f1933' | PicName = '16lf1933' |,
-                                    PicName = '16f1934' | PicName = '16lf1934' |,
-                                    PicName = '16f1936' | PicName = '16lf1936' |,
-                                    PicName = '16f1937' | PicName = '16lf1937' |,
-                                    PicName = '16f1938' | PicName = '16lf1938' |,
-                                    PicName = '16f1939' | PicName = '16lf1939')  then
-                              call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+6,25) memtype'at' reg ':' offset
-                           else
-                              call lineout jalfile, 'var volatile bit   ',
-                                left('JANSEL_ANS'offset+9,25) memtype'at' reg ':' offset
-                        end
-                        when reg = 'ANSELA' then do
-                           if (PicName = '12f1822' | PicName = '12lf1822' |,
-                               PicName = '16f1823' | PicName = '16lf1823' |,
-                               PicName = '16l1824' | PicName = '16lf1824' |,
-                               PicName = '16l1825' | PicName = '16lf1825' |,
-                               PicName = '16l1828' | PicName = '16lf1828' |,
-                               PicName = '16l1829' | PicName = '16lf1829') &,
-                               n.j = 'ANSA4'  then
-                              call lineout jalfile, 'var volatile bit   ',
-                                       left('JANSEL_ANS3',25) memtype'at' reg ':' offset
-                           else if (PicName = '16f1946' | PicName = '16lf1946' |,
-                                    PicName = '16f1947' | PicName = '16lf1947')  &,
-                                    n.j = 'ANSA5'  then
-                              call lineout jalfile, 'var volatile bit   ',
-                                       left('JANSEL_ANS4',25) memtype'at' reg ':' offset
-                           else
-                              call lineout jalfile, 'var volatile bit   ',
-                                   left('JANSEL_ANS'offset,25) memtype'at' reg ':' offset
-                        end
-                     otherwise
-                        if msglevel <= 2 then
-                           say '  Warning: Unsupported ANSEL register:' reg
-                     end
+                     ansx = ansel2j(reg,n.j)
+                     if ansx < 99 then
+                        call lineout jalfile, 'var volatile bit   ',
+                                     left('JANSEL_ANS'ansx,25) memtype'at' reg ':' offset
                   end
                   when n.j \= '-' then do               /* bit present  */
                      if duplicate_name(field,reg) = 0 then do  /* unique */
@@ -1846,7 +1763,7 @@ return 0
 /* 16-bit core                                              */
 /* -------------------------------------------------------  */
 list_sfr16: procedure expose Dev. Ram. Name. PinMap. jalfile,
-            BANKSIZE NumBanks PicName AccessBankSplitOffset msglevel
+            BANKSIZE NumBanks Core PicName AccessBankSplitOffset msglevel
 multi_usart = 0                                         /* max 1 USART */
 do i = 1 to Dev.0
   if pos('RCSTA2',Dev.i) > 0 then do
@@ -1893,7 +1810,7 @@ do i = 1 to Dev.0
          end
          when left(reg,4) = 'TRIS' then do              /* TRISx */
             call lineout jalfile, 'var volatile byte  ',
-                         left('PORT'substr(reg,5)'_direction',25) 'shared at' reg
+                         left('PORT'substr(reg,5)'_direction',25) memtype 'at' reg
             call list_tris_nibbles reg                  /* nibble directions */
          end
          when left(reg,4) = 'ECCP'  &,                  /* enhanced CCP register */
@@ -1994,10 +1911,10 @@ return 0
 /* Fixes some errors in MPLAB              */
 /* 16-bit core                             */
 /* --------------------------------------- */
-list_sfr_subfields16: procedure expose Dev. Name. PinMap. PortLat. PicName,
+list_sfr_subfields16: procedure expose Dev. Name. PinMap. PortLat. Core PicName,
                                        jalfile msglevel multi_usart
 i = arg(1) + 1                                          /* 1st after reg */
-reg = arg(2)                                            /* register (name) */
+reg = strip(arg(2))                                     /* register (name) */
 memtype = arg(3)                                        /* shared/blank */
 do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                      word(Dev.i,1) \= 'NMMR')           /* other register */
@@ -2052,35 +1969,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                   end
                   when left(reg,5) = 'ANSEL'  &,
                        left(n.j,3) = 'ANS' then do
-                     select
-                        when reg = 'ANSELH' then
-                           call lineout jalfile, 'var volatile bit   ',
-                                      left('JANSEL_ANS'offset+8,32) 'at' reg ':' offset
-                         when reg = 'ANSELE' then
-                            call lineout jalfile, 'var volatile bit   ',
-                                 left('JANSEL_ANS'offset+5,32) memtype'at' reg ':' offset
-                         when reg = 'ANSELD' then
-                            call lineout jalfile, 'var volatile bit   ',
-                                 left('JANSEL_ANS'offset+20,32) memtype'at' reg ':' offset
-                         when reg = 'ANSELC' then
-                            call lineout jalfile, 'var volatile bit   ',
-                                 left('JANSEL_ANS'offset+12,32) memtype'at' reg ':' offset
-                         when reg = 'ANSELB' then do
-                            ansx = word('12 10 8 9 11 13', offset + 1)
-                            call lineout jalfile, 'var volatile bit   ',
-                                 left('JANSEL_ANS'ansx,32) memtype'at' reg ':' offset
-                         end
-                         when reg = 'ANSELA' then do
-                            ansx = offset
-                            if n.j = 'ANSA5' then
-                               ansx = offset - 1
-                            call lineout jalfile, 'var volatile bit   ',
-                                 left('JANSEL_ANS'ansx,32) memtype'at' reg ':' offset
-                         end
-                         otherwise
-                            call lineout jalfile, 'var volatile bit   ',
-                                     left('JANSEL_ANS'offset,32) 'at' reg ':' offset
-                     end
+                     ansx = ansel2j(reg,n.j)
+                     if ansx < 99 then
+                        call lineout jalfile, 'var volatile bit   ',
+                                     left('JANSEL_ANS'ansx,25) memtype 'at' reg ':' offset
                   end
                   when left(reg,1) = 'T' & right(reg,3) = 'CON'   &,      /* TxCON */
                        left(n.j,1) = 'T' & right(n.j,4) = 'SYNC' then do  /* TxSYNC */
@@ -2202,12 +2094,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
                     left(reg,5) = 'ANSEL')    then do   /* ANSELx reg */
                   k = s.j - 1
                   do while k >= 0
-                     if reg = 'ANSELH' then
+                     ansx = ansel2j(reg,n.j||k)
+                     if ansx < 99 then
                         call lineout jalfile, 'var volatile bit   ',
-                             left('JANSEL_ANS'k+8,25) 'at' reg ':' offset + k + 1 - s.j
-                     else
-                        call lineout jalfile, 'var volatile bit   ',
-                             left('JANSEL_ANS'k  ,25) 'at' reg ':' offset + k + 1 - s.j
+                                     left('JANSEL_ANS'ansx,25) 'at' reg ':' offset + k + 1 - s.j
                      k = k - 1
                   end
                end
@@ -2314,7 +2204,7 @@ return 0
 /* 16-bit core                             */
 /* applies to USART registers             */
 /* --------------------------------------- */
-list_sfr_subfields16_aliases: procedure expose Dev. Name. PinMap. PortLat. PicName,
+list_sfr_subfields16_aliases: procedure expose Dev. Name. PinMap. PortLat. Core PicName,
                                                jalfile msglevel
 i = arg(1) + 1                                          /* 1st after reg */
 reg_alias = arg(2)                                      /* register */
@@ -2335,9 +2225,9 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
          if s.j < 8 then do                             /* sub field */
             field = reg_alias'_'n.j
             if n.j \= '-' then do                       /* bit present  */
-               if duplicate_name(field,reg_alias) = 0 then do    /* unique */
+               if duplicate_name(field, reg_alias) = 0 then do    /* unique */
                   call lineout jalfile, 'alias              ',
-                               left(field,32) 'is'  reg'_'n.j
+                               left(field, 32) 'is'  reg'_'n.j
                end
             end
          end
@@ -2692,6 +2582,175 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,         /* max # of records */
    i = i + 1                                            /* next record */
 end
 return 0
+
+
+/* --------------------------------------- */
+/* convert ANSEL-bit to JANSEL_number      */
+/* input: - core (12,14,14h,16)            */
+/*        - register  (ANSEL,ADCON)        */
+/*        - ANS number                     */
+/* --------------------------------------- */
+ansel2j: procedure expose Core PicName PinMap.
+parse upper arg reg, ans .                                  /* ans is name of bitfield! */
+
+if datatype(right(ans,2),'W') = 1 then                      /* 2 digits seq. nbr. */
+  ansx = right(ans,2)                                       /* number */
+else
+  ansx = right(ans,1)                                       /* single digit seq. nbr. */
+
+if core = '12' | core = '14' then do                        /* baseline, midrange */
+  select
+    when reg = 'ANSELH' | reg = 'ANSEL1' then do
+      if ansx < 8 then                                      /* seperate enumeration */
+        ansx = ansx + 8
+    end
+    when reg = 'ANSELE' then do
+      if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
+        ansx = ansx + 5
+      else
+        ansx = ansx + 20
+    end
+    when reg = 'ANSELD' then do
+      if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
+        ansx = 99                                           /* not for ADC */
+      else
+        ansx = ansx + 12
+    end
+    when reg = 'ANSELC' then do
+      ansx = ansx + 12
+    end
+    when reg = 'ANSELB' then do
+      if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
+        ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
+      else
+        ansx = ansx + 6
+    end
+    when reg = 'ANSELA' | reg = 'ANSEL' | reg = 'ANSEL0' | reg = 'ADCON0' then do
+      if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then do
+        if ansx = 4 then
+          ansx = 99
+        else if ansx = 5 then
+          ansx = 4
+      end
+    end
+    otherwise
+      say 'ANSEL2J: Unsupported register for' PicName ':' reg
+      ansx = 99
+  end
+end
+
+else if core = '14H' then do                                /* extended midrange */
+  select
+    when reg = 'ANSELG' then do
+      ansx = word('99 15 14 13 12 99 99 99', ansx + 1)
+    end
+    when reg = 'ANSELF' then do
+      ansx = word('16 6 7 8 9 10 11 5', ansx + 1)
+    end
+    when reg = 'ANSELE' then do
+      if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
+        ansx = ansx + 5
+      else if left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
+        ansx = 99
+      else
+        ansx = ansx + 20
+    end
+    when reg = 'ANSELD' then do
+      ansx = 99
+    end
+    when reg = 'ANSELC' then do
+      if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
+        ansx = word('4 5 6 7 99 99 8 9', ansx + 1)
+    end
+    when reg = 'ANSELB' then do
+      if PicName = '16f1826' | PicName = '16lf1826' |,
+         PicName = '16f1827' | PicName = '16lf1827' then
+        ansx = word('99 11 10 9 8 7 5 6', ansx + 1)
+      else if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
+        ansx = word('99 99 99 99 10 11 99 99 ', ansx + 1)
+      else if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
+        ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
+    end
+    when reg = 'ANSELA' then do
+      if PicName = '16f1826' | PicName = '16lf1826' |,
+         PicName = '16f1827' | PicName = '16lf1827' then do
+        ansx = ansx + 0
+      end
+      else if left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
+              left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then do
+        if ansx = 3  then
+          ansx = 99
+        else if ansx = 4  then
+          ansx = 3
+      end
+      else if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' |,
+              left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then do
+        if ansx = 4 then
+          ansx = 99
+        else if ansx = 5 then
+          ansx = 4
+      end
+    end
+    otherwise
+      say 'ANSEL2J: Unsupported register for' PicName ':' reg
+      ansx = 99
+  end
+end
+
+else if core = '16' then do                                 /* 18F series */
+  select
+    when reg = 'ANCON2' then do
+      if ansx < 8 then
+        ansx = ansx + 16
+    end
+    when reg = 'ANCON1' then do
+      if ansx < 8 then
+        ansx = ansx + 8
+    end
+    when reg = 'ANCON0' then do
+      if ansx < 8 then
+        ansx = ansx + 0
+    end
+    when reg = 'ANSELH' | reg = 'ANSEL1' then do
+      if ansx < 8 then
+        ansx = ansx + 8
+    end
+    when reg = 'ANSELE' then do
+      ansx = ansx + 5
+    end
+    when reg = 'ANSELD' then do
+      ansx = ansx + 20
+    end
+    when reg = 'ANSELC' then do
+      ansx = ansx + 12
+    end
+    when reg = 'ANSELB' then do
+      ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
+    end
+    when reg = 'ANSELA' | reg = 'ANSEL' | reg = 'ANSEL0' then do
+      if PicName = '18f13k22' | PicName = '18lf13k22' |,
+         PicName = '18f14k22' | PicName = '18lf14k22' then
+        nop                                                 /* consecutive */
+      else if right(PicName,3) = 'k22' & ansx = 5 then
+        ansx = 4                                            /* jump */
+    end
+    otherwise
+      say 'ANSEL2J: Unsupported register for' PicName ':' reg
+      ansx = 99
+  end
+end
+
+else do
+  say 'ANSEL2J: Unsupported core:' core
+  ansx = 99
+end
+
+aliasname = 'AN'ansx
+if ansx \= 99  & PinMap.PIC.aliasname = '---' then do
+  say '  ANSEL2J: No alias found for pin_AN'ansx
+  ansx = 99
+end
+return ansx
 
 
 /* ---------------------------------------------- */
