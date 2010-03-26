@@ -37,7 +37,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.98'
+   ScriptVersion   = '0.0.99'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -134,7 +134,8 @@ signal on error  name catch_error               /* catch execution errors */
 PicSpec. = '?'                                  /* PIC specific data */
 call file_read_picspec                          /* read device specific data */
 
-PinMap.  = '?'                                  /* pin mapping data */
+PinMap.   = '?'                                 /* pin mapping data */
+PinANMap. = '---'                               /* pin_ANx -> RXy mapping */
 call file_read_pinmap                           /* read pin alias names */
 
 Fuse_Def. = '?'                                 /* Fuse_Def name mapping */
@@ -257,7 +258,7 @@ dev2jal12: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             Core PicName JalFile ChipDef DevFile LkrFile,
                             msglevel,
                             Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
-                            PicSpec. PinMap. Fuse_Def.
+                            PicSpec. PinMap. PinANMap. Fuse_Def.
 
 MAXRAM     = 128                                /* range 0..0x7F */
 BANKSIZE   = 32                                 /* 0x0020 */
@@ -285,7 +286,7 @@ dev2jal14: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             Core PicName JalFile ChipDef DevFile LkrFile,
                             msglevel,
                             Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
-                            PicSpec. PinMap. Fuse_Def.
+                            PicSpec. PinMap. PinANMap. Fuse_Def.
 
 MAXRAM     = 512                                /* range 0..0x1FF */
 BANKSIZE   = 128                                /* 0x0080 */
@@ -313,7 +314,7 @@ dev2jal14h: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                              Core PicName JalFile ChipDef DevFile LkrFile,
                              msglevel,
                              Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
-                             PicSpec. PinMap. Fuse_Def.
+                             PicSpec. PinMap. PinANMap. Fuse_Def.
 
 MAXRAM     = 4096                               /* range 0..0xFFF */
 BANKSIZE   = 128                                /* 0x0080 */
@@ -341,7 +342,7 @@ dev2jal16: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
                             Core PicName JalFile ChipDef DevFile LkrFile,
                             msglevel,
                             Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
-                            PicSpec. PinMap. Fuse_Def.
+                            PicSpec. PinMap. PinANMap. Fuse_Def.
 
 MAXRAM     = 4096                               /* range 0..0x0xFFF */
 BANKSIZE   = 256                                /* 0x0100 */
@@ -486,9 +487,9 @@ return
 
 /* --------------------------------------------------- */
 /* Read file with pin alias information (JSON format)  */
-/* Fill compound variable PinMap.                      */
+/* Fill compound variable PinMap. and PinANMap.        */
 /* --------------------------------------------------- */
-file_read_pinmap: procedure expose PinMapFile PinMap. msglevel
+file_read_pinmap: procedure expose PinMapFile PinMap. PinANMap. msglevel
 if stream(PinMapFile, 'c', 'open read') \= 'READY:' then do
    Say '  Error: could not open file with Pin Alias information' PinMapFile
    exit 1                                       /* zero records */
@@ -524,8 +525,12 @@ do until x = '}' | x = 0                        /* end of pinmap */
                aliasname = strip(aliasname,'T','+')'_POS'
             i = i + 1
             PinMap.PicName.pinname.i = aliasname
-            if left(aliasname,2) = 'AN' & datatype(substr(aliasname,3)) = 'NUM' then
+            if left(aliasname,2) = 'AN' & datatype(substr(aliasname,3)) = 'NUM' then do
                ANcount = ANcount + 1
+               PinANMap.PicName.aliasname = PinName     /* pin_ANx -> RXy */
+           /*  say 'file_read_pinmap:' PicName 'aliasname='aliasname 'mapped to' PinANMap.PicName.aliasname
+             */
+            end
             x = json_newchar(PinMapFile)
          end
          PinMap.PicName.pinname.0 = i
@@ -1169,7 +1174,7 @@ return
 /* Note: name is stored but not checked on duplicates */
 /* 12-bit and 14-bit core                             */
 /* -------------------------------------------------- */
-list_sfr1x: procedure expose Dev. Ram. Name. PinMap. Core PicName,
+list_sfr1x: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
                              jalfile BANKSIZE NumBanks msglevel
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then               /* skip non SFRs */
@@ -1246,7 +1251,7 @@ return 0
 /* Generates names for pins or bit fields            */
 /* 12-bit and 14-bit core                            */
 /* ------------------------------------------------- */
-list_sfr_subfields1x: procedure expose Dev. Name. PinMap. Core PicName jalfile msglevel
+list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. Core PicName jalfile msglevel
 i = arg(1) + 1                                          /* first after reg */
 reg = arg(2)                                            /* register (name) */
 PicUpper = toupper(PicName)                             /* for alias handling */
@@ -1475,7 +1480,7 @@ return 0
 /* Note: name is stored but not checked on duplicates */
 /* Extended 14-bit core                               */
 /* -------------------------------------------------- */
-list_sfr14h: procedure expose Dev. Ram. Name. PinMap. Core PicName,
+list_sfr14h: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
                               jalfile BANKSIZE NumBanks msglevel
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then               /* skip non SFRs */
@@ -1553,7 +1558,7 @@ return 0
 /* Generates names for pins or bit fields            */
 /* Extended 14-bit core                              */
 /* ------------------------------------------------- */
-list_sfr_subfields14h: procedure expose Dev. Name. PinMap. PortLat. ,
+list_sfr_subfields14h: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
                        Core PicName jalfile msglevel
 i = arg(1) + 1                                          /* first after reg */
 reg = arg(2)                                            /* register (name) */
@@ -1762,7 +1767,7 @@ return 0
 /*       - generates some midrange aliases                  */
 /* 16-bit core                                              */
 /* -------------------------------------------------------  */
-list_sfr16: procedure expose Dev. Ram. Name. PinMap. jalfile,
+list_sfr16: procedure expose Dev. Ram. Name. PinMap. PinANMap. jalfile,
             BANKSIZE NumBanks Core PicName AccessBankSplitOffset msglevel
 multi_usart = 0                                         /* max 1 USART */
 do i = 1 to Dev.0
@@ -1911,7 +1916,7 @@ return 0
 /* Fixes some errors in MPLAB              */
 /* 16-bit core                             */
 /* --------------------------------------- */
-list_sfr_subfields16: procedure expose Dev. Name. PinMap. PortLat. Core PicName,
+list_sfr_subfields16: procedure expose Dev. Name. PinMap. PinANMap. PortLat. Core PicName,
                                        jalfile msglevel multi_usart
 i = arg(1) + 1                                          /* 1st after reg */
 reg = strip(arg(2))                                     /* register (name) */
@@ -2204,7 +2209,7 @@ return 0
 /* 16-bit core                             */
 /* applies to USART registers             */
 /* --------------------------------------- */
-list_sfr_subfields16_aliases: procedure expose Dev. Name. PinMap. PortLat. Core PicName,
+list_sfr_subfields16_aliases: procedure expose Dev. Name. PinMap. PinANMap. PortLat. Core PicName,
                                                jalfile msglevel
 i = arg(1) + 1                                          /* 1st after reg */
 reg_alias = arg(2)                                      /* register */
@@ -2281,7 +2286,7 @@ return  reg                                             /* return normalized nam
 /* Note: name is stored but not checked on duplicates */
 /* 12-bit core                                        */
 /* -------------------------------------------------- */
-list_nmmr12: procedure expose Dev. Ram. Name. PinMap. PicName,
+list_nmmr12: procedure expose Dev. Ram. Name. PinMap.  PicName,
                               jalfile BANKSIZE NumBanks msglevel
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'NMMR' then                      /* not 'nmmr' */
@@ -2590,165 +2595,172 @@ return 0
 /*        - register  (ANSEL,ADCON)        */
 /*        - ANS number                     */
 /* --------------------------------------- */
-ansel2j: procedure expose Core PicName PinMap.
+ansel2j: procedure expose Core PicName PinMap. PinANMap. msglevel
 parse upper arg reg, ans .                                  /* ans is name of bitfield! */
 
 if datatype(right(ans,2),'W') = 1 then                      /* 2 digits seq. nbr. */
-  ansx = right(ans,2)                                       /* number */
+   ansx = right(ans,2)                                      /* number */
 else
-  ansx = right(ans,1)                                       /* single digit seq. nbr. */
+   ansx = right(ans,1)                                      /* single digit seq. nbr. */
 
 if core = '12' | core = '14' then do                        /* baseline, midrange */
-  select
-    when reg = 'ANSELH' | reg = 'ANSEL1' then do
-      if ansx < 8 then                                      /* seperate enumeration */
-        ansx = ansx + 8
-    end
-    when reg = 'ANSELE' then do
-      if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
-        ansx = ansx + 5
-      else
-        ansx = ansx + 20
-    end
-    when reg = 'ANSELD' then do
-      if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
-        ansx = 99                                           /* not for ADC */
-      else
-        ansx = ansx + 12
-    end
-    when reg = 'ANSELC' then do
-      ansx = ansx + 12
-    end
-    when reg = 'ANSELB' then do
-      if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
-        ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
-      else
-        ansx = ansx + 6
-    end
-    when reg = 'ANSELA' | reg = 'ANSEL' | reg = 'ANSEL0' | reg = 'ADCON0' then do
-      if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then do
-        if ansx = 4 then
-          ansx = 99
-        else if ansx = 5 then
-          ansx = 4
+   select
+      when reg = 'ANSELH' | reg = 'ANSEL1' then do
+         if ansx < 8 then                                   /* seperate enumeration */
+            ansx = ansx + 8
       end
-    end
-    otherwise
-      say 'ANSEL2J: Unsupported register for' PicName ':' reg
-      ansx = 99
-  end
+      when reg = 'ANSELE' then do
+         if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
+            ansx = ansx + 5
+         else
+            ansx = ansx + 20
+      end
+      when reg = 'ANSELD' then do
+         if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
+            ansx = 99                                       /* not for ADC */
+         else
+            ansx = ansx + 12
+      end
+      when reg = 'ANSELC' then do
+         ansx = ansx + 12
+      end
+      when reg = 'ANSELB' then do
+         if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
+            ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
+         else
+            ansx = ansx + 6
+      end
+      when reg = 'ANSELA' | reg = 'ANSEL' | reg = 'ANSEL0' | reg = 'ADCON0' then do
+         if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then do
+            if ansx = 4 then
+               ansx = 99
+            else if ansx = 5 then
+               ansx = 4
+         end
+      end
+      otherwise
+         if msglevel < 3 then
+            say 'ANSEL2J: Unsupported register for' PicName ':' reg
+         ansx = 99
+   end
 end
 
 else if core = '14H' then do                                /* extended midrange */
-  select
-    when reg = 'ANSELG' then do
-      ansx = word('99 15 14 13 12 99 99 99', ansx + 1)
-    end
-    when reg = 'ANSELF' then do
-      ansx = word('16 6 7 8 9 10 11 5', ansx + 1)
-    end
-    when reg = 'ANSELE' then do
-      if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
-        ansx = ansx + 5
-      else if left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
-        ansx = 99
-      else
-        ansx = ansx + 20
-    end
-    when reg = 'ANSELD' then do
-      ansx = 99
-    end
-    when reg = 'ANSELC' then do
-      if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
-        ansx = word('4 5 6 7 99 99 8 9', ansx + 1)
-    end
-    when reg = 'ANSELB' then do
-      if PicName = '16f1826' | PicName = '16lf1826' |,
-         PicName = '16f1827' | PicName = '16lf1827' then
-        ansx = word('99 11 10 9 8 7 5 6', ansx + 1)
-      else if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
-        ansx = word('99 99 99 99 10 11 99 99 ', ansx + 1)
-      else if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
-        ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
-    end
-    when reg = 'ANSELA' then do
-      if PicName = '16f1826' | PicName = '16lf1826' |,
-         PicName = '16f1827' | PicName = '16lf1827' then do
-        ansx = ansx + 0
+   select
+      when reg = 'ANSELG' then do
+         ansx = word('99 15 14 13 12 99 99 99', ansx + 1)
       end
-      else if left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
-              left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then do
-        if ansx = 3  then
-          ansx = 99
-        else if ansx = 4  then
-          ansx = 3
+      when reg = 'ANSELF' then do
+         ansx = word('16 6 7 8 9 10 11 5', ansx + 1)
       end
-      else if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' |,
-              left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then do
-        if ansx = 4 then
-          ansx = 99
-        else if ansx = 5 then
-          ansx = 4
+      when reg = 'ANSELE' then do
+         if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
+            ansx = ansx + 5
+         else if left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
+            ansx = 99
+         else
+            ansx = ansx + 20
       end
-    end
-    otherwise
-      say 'ANSEL2J: Unsupported register for' PicName ':' reg
-      ansx = 99
-  end
+      when reg = 'ANSELD' then do
+         ansx = 99
+      end
+      when reg = 'ANSELC' then do
+         if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
+            ansx = word('4 5 6 7 99 99 8 9', ansx + 1)
+      end
+      when reg = 'ANSELB' then do
+         if PicName = '16f1826' | PicName = '16lf1826' |,
+             PicName = '16f1827' | PicName = '16lf1827' then
+            ansx = word('99 11 10 9 8 7 5 6', ansx + 1)
+         else if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
+            ansx = word('99 99 99 99 10 11 99 99 ', ansx + 1)
+         else if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
+            ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
+      end
+      when reg = 'ANSELA' then do
+         if PicName = '16f1826' | PicName = '16lf1826' |,
+            PicName = '16f1827' | PicName = '16lf1827' then do
+            ansx = ansx + 0
+         end
+         else if left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
+                 left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then do
+            if ansx = 3  then
+               ansx = 99
+            else if ansx = 4  then
+               ansx = 3
+         end
+         else if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' |,
+                 left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then do
+            if ansx = 4 then
+               ansx = 99
+            else if ansx = 5 then
+               ansx = 4
+         end
+      end
+      otherwise
+         if msglevel < 3 then
+            say 'ANSEL2J: Unsupported register for' PicName ':' reg
+         ansx = 99
+   end
 end
 
 else if core = '16' then do                                 /* 18F series */
-  select
-    when reg = 'ANCON2' then do
-      if ansx < 8 then
-        ansx = ansx + 16
+   select
+      when reg = 'ANCON2' then do
+         if ansx < 8 then
+            ansx = ansx + 16
+      end
+      when reg = 'ANCON1' then do
+         if ansx < 8 then
+            ansx = ansx + 8
+      end
+      when reg = 'ANCON0' then do
+         if ansx < 8 then
+            ansx = ansx + 0
+      end
+      when reg = 'ANSELH' | reg = 'ANSEL1' then do
+         if ansx < 8 then
+            ansx = ansx + 8
+      end
+      when reg = 'ANSELE' then do
+         ansx = ansx + 5
+      end
+      when reg = 'ANSELD' then do
+         ansx = ansx + 20
+      end
+      when reg = 'ANSELC' then do
+         ansx = ansx + 12
+      end
+      when reg = 'ANSELB' then do
+         ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
+      end
+      when reg = 'ANSELA' | reg = 'ANSEL' | reg = 'ANSEL0' then do
+         if PicName = '18f13k22' | PicName = '18lf13k22' |,
+            PicName = '18f14k22' | PicName = '18lf14k22' then
+            nop                                                 /* consecutive */
+         else if right(PicName,3) = 'k22' & ansx = 5 then
+            ansx = 4                                            /* jump */
+      end
+      otherwise
+         if msglevel < 3 then
+            say 'ANSEL2J: Unsupported register for' PicName ':' reg
+         ansx = 99
     end
-    when reg = 'ANCON1' then do
-      if ansx < 8 then
-        ansx = ansx + 8
-    end
-    when reg = 'ANCON0' then do
-      if ansx < 8 then
-        ansx = ansx + 0
-    end
-    when reg = 'ANSELH' | reg = 'ANSEL1' then do
-      if ansx < 8 then
-        ansx = ansx + 8
-    end
-    when reg = 'ANSELE' then do
-      ansx = ansx + 5
-    end
-    when reg = 'ANSELD' then do
-      ansx = ansx + 20
-    end
-    when reg = 'ANSELC' then do
-      ansx = ansx + 12
-    end
-    when reg = 'ANSELB' then do
-      ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
-    end
-    when reg = 'ANSELA' | reg = 'ANSEL' | reg = 'ANSEL0' then do
-      if PicName = '18f13k22' | PicName = '18lf13k22' |,
-         PicName = '18f14k22' | PicName = '18lf14k22' then
-        nop                                                 /* consecutive */
-      else if right(PicName,3) = 'k22' & ansx = 5 then
-        ansx = 4                                            /* jump */
-    end
-    otherwise
-      say 'ANSEL2J: Unsupported register for' PicName ':' reg
-      ansx = 99
-  end
 end
 
 else do
-  say 'ANSEL2J: Unsupported core:' core
-  ansx = 99
+   if msglevel < 3 then
+      say 'ANSEL2J: Unsupported core:' core
+   ansx = 99
 end
 
-aliasname = 'AN'ansx
-if ansx \= 99  & PinMap.PIC.aliasname = '---' then do
-  say '  ANSEL2J: No alias found for pin_AN'ansx
-  ansx = 99
+
+PicNameUpper = toupper(PicName)
+aliasname    = 'AN'ansx
+if ansx < 99  & PinANMap.PicNameUpper.aliasname = '---' then do
+   if msglevel < 3 then
+      say '  ANSEL2J: pin_AN'ansx 'is probably not an ADC channel'
+   ansx = 99
 end
 return ansx
 
