@@ -1,0 +1,90 @@
+-- Title: mcp9800
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2010
+-- Compiler: =2.4m
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library works with the MCP9800 temperature sensor form microchip
+-- The MCP9800 can do 9 to 12 bit temperature measurement resolution
+-- in the 12bit mode, the LSb represents 1/16ºC
+-- only 12 bit routines are given here
+
+-- Uses: i2c_hardware and i2c_level1 I2C libraries
+
+-- Datasheet: DS21909B
+
+
+-- MCP9800 I2C sensor
+-- part used is MCP9800/02A0 with internal adress set to 0b1001_0000, last bit is read /write
+-- register pointer map:
+-- 0b0000_0000    temperature   register (16 bits)
+-- 0b0000_0001    configuration register ( 8 bits)
+-- 0b0000_0010    temperature Hysteresis register (8 bits)
+-- 0b0000_0011    temperature Limit-set  register (8 bits)
+
+alias i2c_scl            is pin_c3
+alias i2c_scl_direction  is pin_c3_direction
+alias i2c_sda            is pin_c4
+alias i2c_sda_direction  is pin_c4_direction
+
+-- i2c setup
+const word _i2c_bus_speed = 1 ; * 100kHz
+const bit _i2c_level = true   ; i2c levels (not SMB)
+
+include i2c_hardware
+
+i2c_initialize()
+
+var byte i2c_tx_buffer[10]
+var byte i2c_rx_buffer[10]
+
+include i2c_level1            -- send_receive functions
+
+
+
+const byte mcp9800_addr    = 0b1001_0000  -- read/write is done by i2c library
+
+
+function mcp9800_set_12_bits_temperature() return bit is       
+   var bit tx_ok 
+                   i2c_start()
+   tx_ok =         i2c_transmit_byte(mcp9800_addr)
+   tx_ok = tx_ok & i2c_transmit_byte(0b0000_0001)     -- config register address
+   tx_ok = tx_ok & i2c_transmit_byte(0b0_11_00_000)   -- config register value
+                   i2c_stop()
+   return tx_ok
+end function
+
+function mcp9800_celsius() return sbyte is
+   var sdword temp
+   var byte shift_h, shift_l
+   var bit tx_ok
+   tx_ok = i2c_send_receive(mcp9800_addr, 1, 2)
+   temp = sdword(i2c_rx_buffer[0]) * 256 + i2c_rx_buffer[1]
+   temp = temp >> 4              -- last 4 bits are zero
+   temp = temp * 625
+   return sbyte(temp/10_000)      -- 625/0.0625 = 10.000, works below zero too
+end function
+
+
+function mcp9800_centicelsius() return sword is
+   var sdword temp
+   var bit tx_ok
+   var bit sign at i2c_rx_buffer[0] : 7
+   tx_ok = i2c_send_receive(mcp9800_addr, 1, 2)
+   temp = sdword(i2c_rx_buffer[0]) * 256 + i2c_rx_buffer[1]
+   if sign then 
+      temp = 65536 - temp        -- negative numbers in JALV2 are still a mystery to me
+   end if     
+   temp = temp >> 4              -- last 4 bits are zero
+   temp = temp * 625
+   
+   if sign then 
+      return -sword(temp / 100)      -- 625/0.0625 = 10.000, div by 100 gives centicelsius
+   else
+      return  sword(temp / 100)      
+   end if
+   
+end function
+
