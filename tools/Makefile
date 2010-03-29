@@ -220,4 +220,8 @@ release: export prepare jallib-pack archive check
 bee: clean export prepare jallib-pack bee-archive bee-check bee-upload
 
 pdfbooks:
+	# Tutorial book
 	ant -f $$DITA_HOME/build_demo.xml -Dprompt.ditamap.filename=`pwd`/../doc/dita/tutorials/tutorials.ditamap -Dprompt.output.type=pdf -Dprompt.output.directory=$$HOME/tmp/pdfbooks_${VERSION} -Dprompt.output.confirm=y
+	# Stater guide
+	cp distrib/jallib-export/doc/pdf/jallib_starters_guide_a4.pdf $$HOME/tmp/pdfbooks_${VERSION}/
+	cp distrib/jallib-export/doc/pdf/jallib_starters_guide_letter.pdf $$HOME/tmp/pdfbooks_${VERSION}/
