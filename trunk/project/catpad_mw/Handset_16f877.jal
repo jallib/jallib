@@ -1,0 +1,224 @@
+-- Title: Test JE-AN1286404 panel
+-- Author: Michael Watterson Copyright (c) 2010, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+--
+
+include 16f877
+-- Also could be 16F887 for re-ordering as 877 is obsolete
+
+pragma target clock 20_000_000                  -- xtal frequency
+pragma target OSC        hs
+pragma target LVP        disabled
+pragma target WDT        disabled
+pragma target PWRTE      enabled
+pragma target BROWNOUT   disabled
+pragma target CP         disabled
+pragma target WRT        NO_PROTECTION
+
+
+enable_digital_io()
+
+-- ---------------------------- LIBRARIES -----------------------------
+--Serial before all so we can debug
+-- ok, now setup serial;@jallib section serial
+--const serial_hw_baudrate = 9_600
+--include serial_hardware
+
+-- 400kHz Bus
+-- Use B0 as SDA and B1 as SCL
+--Const _i2c_bus_speed = 4
+
+--Alias   i2c_scl_direction is pin_C3_direction
+--Alias   i2c_sda_direction is pin_C4_direction
+--Alias _i2c_level is true
+
+--18F4550
+--Alias   i2c_scl_direction is pin_b1_direction
+--Alias   i2c_sda_direction is pin_b0_direction
+--Alias _i2c_level is pin_b0
+--include I2c_software
+--includes I2C_hardware
+
+-- ---------------------------- LIBRARIES -----------------------------
+-- include math_int
+
+const byte  LCD_ROWS = 2
+const byte  LCD_CHARS = 16
+
+alias LCD_EN  is pin_e2       -- LCD data trigger
+pin_e2_direction = output
+--alias LCD_dataport     is portd_low    -- LCD data nibble
+-- alias LCD_dataport     is portd    -- LCD data nibble
+alias lcd_d4        is pin_D0      -- databit d4 pin
+alias lcd_d5        is pin_D1      -- databit d5 pin
+alias lcd_d6        is pin_D2      -- databit d6 pin
+alias lcd_d7        is pin_D3      -- databit d7 pin
+alias LCD_RS        is pin_d4       -- LCD command/data select.
+--
+portd_direction      = all_output    -- LCD data is portb_low
+include dev_lcd_hd44780_4                  -- LCD library with 4 data lines
+lcd_init()
+
+-- 5x5 Keypad setup
+-- keyboard map (4x4, col4 is left out with 4x3 keyboard)
+-- --
+--      1 2 3 A   ^  row1
+--      4 5 6 B   v  row2
+--      7 8 9 C   >  row3
+--      * 0 # D   <  row4
+--      R G Y B   E
+-- --
+--  col 1 2 3 4   5
+-- ------------------ Media Player version  ----------------------------------
+
+-- 		 >		 ||		 []		 |<		 <<		 >>		 >|		 |>
+--		Play 	Pause	Stop	Prev	Rev		Fwd		Next	Step 
+-- (code) A		B		C 		D		r		g		y		b
+--keypad layout (4 X 3 HAS 7 PINS)
+;pin numbers of keypad shown in <> brackets
+;	   col1  2   3
+;		<3>	<1>	<5>	  	Col4	Col5
+;	<2>	1	2	3	  A Play 	Up		(1)
+;	<7>	4	5	6	  B Pause	Down	(2)
+;	<6>	7	8	9	  C Stop	Right	(3)
+;	<4>	*	0	#	  D	Prev	Left	(4)
+--    Rev  Fwd  Next	Step	Enter	(3)
+--	  (r)  (g)   (y)     (b) 
+
+; *top view* of keypad pins: 1,2,3,4,5,6,7
+; pin 1 is near * key. Buttons A to D not fitted
+--
+-------------------  for reference  -----------------------------
+-- 4x4 pad
+;pin numbers of keypad shown in <> brackets
+;
+;	   <1> <2> <3> <4>
+;	<5>	1	2	3	A
+;	<6>	4	5	6	B
+;	<7>	7	8	9	C
+;	<8>	*	0	#	D
+
+; *top view* of keypad pins: 1,2,3,4,5,6,7,8
+; pin 1 is near * key.
+--
+alias keyscan  is portb      -- rows of keyboard
+alias keyscan_direction is portb_direction
+alias keydrive is portd      -- columns of keyboard
+alias keydrive_direction is portd_direction
+
+include dev_keypad5x5
+
+--include terminal
+
+
+
+include delay
+
+-- set all IO as digital
+enable_digital_io()
+
+
+--serial_hw_init()
+
+--
+include terminal
+var byte dummy
+
+-- 0,0--------------------------------15,0
+-- 0,1--------------------------------15,1
+
+
+
+const byte str1[] = "Hello"
+const byte str2[] = "Laurel Park"
+var byte press
+--
+lcd_init()
+
+
+-- let's build our loop
+var byte char	-- will store received char
+var byte lastPress = 255
+var byte counter = 1
+  lcd_setcursor(4,0)
+  print_string(lcd, str1)
+  lcd_setcursor(0,1)
+  print_string(lcd, str2)
+  
+  for 5_000 loop
+      _usec_delay(1000)
+  end loop
+  lcd_clear_screen()
+  counter = 1
+forever loop
+
+
+  for 100 loop
+      _usec_delay(100)
+  end loop
+
+
+   press = getkey_once()
+   if (press == 254) Then
+         if (lastkey != lastpress)  then
+            if (counter > 11)  then
+
+               lcd_shift_left(counter -11)
+               counter = counter -1
+            elsif (lastkey > 31) & (lastkey < 128) then
+               counter = counter +1
+            end if
+            case lastkey of
+            "E" : block
+                lcd_clear_screen()
+                counter = 1
+                end block
+            "A": block
+                 lcd = ">"    lcd = " "
+                 counter = counter +1
+            end block
+            "B": block
+                 lcd = "|"  lcd = "|"
+                 counter = counter +1
+            end block
+            "C": block
+                 lcd = "["  lcd = "]"
+                 counter = counter +1
+            end block
+            "D": block
+                 lcd = "|"  lcd = "<"
+                 counter = counter +1
+            end block
+            "r": block
+                 lcd = "<"  lcd = "<"
+                 counter = counter +1
+            end block
+            "g": block
+                 lcd = ">"  lcd = ">"
+                 counter = counter +1
+            end block
+            "y": block
+                 lcd = ">"  lcd = "|"
+                 counter = counter +1
+            end block
+            "b": block
+                 lcd = "|"  lcd = ">"
+                 counter = counter +1
+            end block
+            otherwise
+                block
+                if lastkey < 127 then
+                    lcd = lastkey
+                end if
+                end block
+            end case
+            --counter = counter +1
+
+            -- serial_hw_write(lastkey)
+            lastpress = lastkey
+         end if
+   end if
+   
+end loop
+
