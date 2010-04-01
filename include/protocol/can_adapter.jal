@@ -19,6 +19,16 @@
 
 var bit can_adapter_is_open = 0
 
+procedure _can_pdec8(volatile byte out device, byte in n) is
+   device = "0" + n / 100
+   n = n % 100
+   
+   device = "0" + n / 10
+   n = n % 10
+   
+   device = "0" + n
+end procedure
+
 -- these commands are always available
 -- this routine is primarily for internal use.
 function can_modeless_cmd(volatile byte out device, byte in ascii_buf[32]) return bit is
@@ -27,12 +37,20 @@ function can_modeless_cmd(volatile byte out device, byte in ascii_buf[32]) retur
    
    -- FIXME version
    if cmd == "V" then
-      device = "V"
-      device = "0"
-      device = "1"
-      device = "0"
-      device = "1"
-      device = 13
+      if defined(version_h) == true then
+         device = "V"
+         _can_pdec8(device, version_h)
+         device = "."
+         _can_pdec8(device, version_l)
+         device = 13
+      else
+         device = "V"
+         device = "0"
+         device = "1"
+         device = "0"
+         device = "1"
+         device = 13
+      end if
       return 1
       
       -- FIXME Serial #
@@ -47,19 +65,26 @@ function can_modeless_cmd(volatile byte out device, byte in ascii_buf[32]) retur
       -- FIXME 'extra information'. Seems like we can
       -- return whatever we want here???
    elsif cmd == "I" then
-      var byte a, b, c, d
+      var byte a, b, c, d, e, f
       a = CANSTAT
       b = COMSTAT
       c = RXB0CON
       d = RXB1CON
+      e = RXERRCNT
+      f = TXERRCNT
       device = "I"
+      device = 32
       print_byte_hex(device, a)
       device = 32
       print_byte_hex(device, b)
       device = 32
       print_byte_hex(device, c)
       device = 32
-      print_byte_hex(device, c)
+      print_byte_hex(device, d)
+      device = 32
+      print_byte_hex(device, e)
+      device = 32
+      print_byte_hex(device, f)
       device = 13
       return 1
       
@@ -173,6 +198,7 @@ function can_open_cmd(volatile byte out device, byte in ascii_buf[32]) return bi
       if defined(display_can_msg) == true then
          display_can_msg(can_id, can_data, data_len)
       end if
+      -- FIXME: how to report error if we loop 100 times?
       for 100 loop
          if can_send(0, can_id, can_data, data_len) then
             exit loop
@@ -253,8 +279,7 @@ end procedure
 -- device: uart device, e.g. serial_hw_data
 function can_check_can_rx(volatile byte out device, dword in out can_id, byte in out can_data[8], byte in out data_len) return bit is
    var bit got_msg
-   var byte i, c
-   var byte ascii_txcnt, ascii_txbuf[32]
+   var byte i, ascii_txcnt, ascii_txbuf[32]
    
    -- always read the CAN msg. this will flush old/stale msgs.
    got_msg = can_receive(1, can_id, can_data, data_len)
@@ -266,6 +291,7 @@ function can_check_can_rx(volatile byte out device, dword in out can_id, byte in
    if can_adapter_is_open then
       ascii_txcnt = can_to_ascii(can_id, can_data, data_len, ascii_txbuf)
       for ascii_txcnt using i loop
+         -- FIXME: we could hang forever here, if UART has a problem...
          device = ascii_txbuf[i]
       end loop
    end if
