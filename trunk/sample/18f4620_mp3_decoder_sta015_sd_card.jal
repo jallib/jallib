@@ -17,37 +17,42 @@
 -- http://www.pjrc.com/mp3/sta013.html
 --
 -- include chip
-include 18F452                   -- target picmicro
+include 18F4620                   -- target picmicro
 -- this program assumes a 20 mhz resonator or crystal
 -- is connected to pins osc1 and osc2.
+;pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
 pragma target osc hs              -- hs crystal or resonator
 pragma target clock 20_000_000    -- oscillator frequency
+;pragma target clock 32_000_000    -- oscillator frequency
 --
 pragma target wdt  disabled
 pragma target lvp  disabled
---
+pragma target MCLR external        -- reset externally
+--;
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+;--
 
 enable_digital_io() -- disable all analog pins if any
 _usec_delay (100_000) -- wait for power to stablilize
 
 -- setup uart for communication
-const serial_hw_baudrate  = 38400   -- set the baudrate
+const serial_hw_baudrate  = 115200   -- set the baudrate
 include serial_hardware
 serial_hw_init()
 
--- setup spi for the sd card
--- spi chip select pin
-ALIAS sd_chip_select_direction   is pin_SS_direction
-ALIAS sd_chip_select             is pin_SS
-sd_chip_select_direction = output    -- chip select/slave select pin
 include spi_master_hw         -- includes the spi library
 -- define spi inputs/outputs
 pin_sdi_direction = input    -- spi input
 pin_sdo_direction = output   -- spi output
 pin_sck_direction = output   -- spi clock
-sd_chip_select = high  -- disable the sd card
 --
 spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+
+alias sd_chip_select is pin_a5
+alias sd_chip_select_direction is pin_a5_direction
+sd_chip_select_direction = output
 
 -- setup the sd card
 const bit SD_ALWAYS_SET_SPI_MODE = TRUE
@@ -55,12 +60,24 @@ const bit SD_DELAY_AFTER_WRITE = TRUE
 include sd_card              -- include the sd card ide hard disk library
 sd_init()                    -- initialize startup settings
 
+-- spi is required by sta015, so set it up.
+-- if we are using an sd card, we already initilized the SPI bus, so skip this.
+if defined(spi_init) == false then
+   include spi_master_hw         -- includes the spi library
+   -- define spi inputs/outputs
+   pin_sdi_direction = input    -- spi input
+   pin_sdo_direction = output   -- spi output
+   pin_sck_direction = output   -- spi clock
+   --
+   spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+end if
+
 -- setup fat32 --
 -- include the required files
 include pic_data_eeprom
 include format  -- include format library (required by some fat32 procedures)
 -- change these vaues to save memory
-const word FAT32_FILES_MAX = 40            -- the max number of files allowed in a directory
+const word FAT32_FILES_MAX = 50            -- the max number of files allowed in a directory
 const byte FAT32_FILENAME_SIZE = 100        -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
 const FAT32_DIR_FRAGMENTS_TO_ALLOW = 10     -- (0 = you must have a defragmented media), usually directories are fragmented.
 --                                          -- uses 6 bytes memory per fragment allowed
@@ -85,9 +102,21 @@ IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
    ALIAS entry_location is large_array_2
 elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
    -- put your own code here if you wish to allow massive amounts of files per directory
-   
+
    -- example usage of 23k256 for external memory
-   
+
+   -- spi is required by 23k256, so set it up.
+   -- if we are using an sd card, we already initilized the SPI bus, so skip this.
+   if defined(sd_init) == false then  -- if we are using an sd card, we already did this step
+      include spi_master_hw        -- includes the spi library
+      -- define spi inputs/outputs
+      pin_sdi_direction = input    -- spi input
+      pin_sdo_direction = output   -- spi output
+      pin_sck_direction = output   -- spi clock
+      --
+      spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+   end if
+
    -- setup 23k256 for external memory
    -- setup chip select pin
    ALIAS sram_23k256_chip_select             is pin_a2
@@ -98,12 +127,13 @@ elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
    -- initalize 23k256 in byte mode
    include sram_23k256 -- setup Microchip 23k256 sram
    sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
-   
-   -- alias the 23k256 device word array
-   ;alias entry_location is sram_23k256_byte  -- highest file entry address can be 256
+
+  -- alias the 23k256 device word array
+  ;alias entry_location is sram_23k256_byte  -- highest file entry address can be 256
    alias entry_location is sram_23k256_word   -- highest file entry address can be 65535
 END IF
 --
+
 include fat32   -- include fat32 library -- include fat32
 
 -- CHOOSE FILE ATTRIBUTES TO FILTER OUT
@@ -152,22 +182,22 @@ sta015_data_request_direction = input
 -- base & treble can not go higher then max volume, see notes in mp3_decoder_sta015.jal
 const byte STA015_DEFAULT_ATTENUATION = 0
 const byte STA015_ALWAYS_SET_SPI_MODE = TRUE
-const byte STA015_USE_RESET_PIN = FALSE
 --
+const bit STA015_USE_RESET_PIN = FALSE
 include mp3_decoder_sta015 -- include the sta015 library
 sta015_init(STA015_OSC_20) -- setup sta015 with 20mhz crystal
 
 include random -- include random number generator to play random files
 function random_byte_choose(byte in low_data, byte in high_data) return byte is
    pragma inline
-   
+
    var byte randome_byte
    randome_byte = byte(random_word())
    
    while (randome_byte < low_data) | (randome_byte > high_data) loop
       randome_byte = byte(random_word())
    end loop
-   
+
    return randome_byte
 end function
 
@@ -185,7 +215,6 @@ procedure next() is
 end procedure
 
 -- start of main program
-
 fat32_init(1)       -- initialize fat32, go to 1st primary partition's root dir "\"
 
 ------------------------------------------------------------
@@ -199,7 +228,7 @@ fat32_list_dir() -- see the procedure, sends dir listing via serial port
 -- if directory selected go into it and list it
 -- if file selected go into a mp3 file and play it
 --
--- see "enable_user_interaction = FALSE" in this example
+-- see enable_user_interaction = FALSE in this example
 ------------------------------------------------------------
 
 var byte file_number = 0
@@ -210,31 +239,31 @@ var byte x
 forever loop
    
    next() -- send "-----" then loop and wait for user input
-   
+
    -- wait for user to send serial data (file selection)
    while !serial_hw_data_available loop
    end loop
    file_number = serial_hw_data
-   
+
    -- display the filename chosen
    format_word_dec(serial_hw_data,file_number,6,0) -- send the file number
    serial_hw_write (".")
    serial_hw_write (" ")
    fat32_read_file_info(file_number) -- read file's name, location, size, attributes into memory
    fat32_read_filename()             -- send the file name via serial port
-   
+
    next() -- send "-----" then loop and wait for user input
-   
+      
    -- choose a file for reading or dir for opening
    if fat32_cd(file_number) then            -- if change directory is successful
       fat32_list_dir()                      -- sends dir listing via serial port
    elsif fat32_file_open(file_number) then  -- if go into file is successful
-      
+
       -------------------------------------------------------------------------
       -- use more functions of the lib, see the advance example below
       var byte enable_user_interaction = FALSE
       -------------------------------------------------------------------------
-      
+
       -- basic example if enable_user_interaction = TRUE  (slower data transfer)
       if enable_user_interaction == TRUE then
          count8 = 0
@@ -250,10 +279,10 @@ forever loop
             end loop
             count8 = count8 + 1
          end loop
-         
-         
-         
-         -- advanced example if enable_user_interaction = FALSE   (faster data transfer)
+
+
+
+      -- advanced example if enable_user_interaction = FALSE   (faster data transfer)
       elsif enable_user_interaction == FALSE then
          count8 = 0
          for (fat32_file_size / 512) loop
@@ -272,7 +301,7 @@ forever loop
             var word count1 = 0                      -- sector data count
             for 512 loop                             -- loop till end of sector read
                while sta015_data_request == low loop -- wait till data gets requested
-                  
+               
                   -- time to do stuff here, but don't take too long
                   if serial_hw_data_available then   -- check for user input
                      x = serial_hw_data
@@ -289,12 +318,12 @@ forever loop
                      
                   end if
                end loop
-               
+
                if play == false then             -- user choose to stop playing, exit loop
                   fat32_list_dir()
                   exit loop
                end if
-               
+
                
                spi_master_hw = (fat32_sector_buffer[count1])  -- send data to sta015 via spi
                
@@ -305,17 +334,17 @@ forever loop
                count1 = count1 + 1
             end loop
             
-            
+
             if play == false then                -- stop playing and exit loop
                play = true
                exit loop
             end if
             
             sta015_bit_en = low   -- enable chip select
-            
+
             count8 = count8 + 1
          end loop
-         
+
       end if
    end if
 end loop
