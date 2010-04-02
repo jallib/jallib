@@ -20,46 +20,45 @@
 --
 
 -- include chip
-;include 16f877                    -- target picmicro
-;include 16f877a                  -- target picmicro
 include 18F452                   -- target picmicro
-
 -- this program assumes a 20 mhz resonator or crystal
 -- is connected to pins osc1 and osc2.
 pragma target osc hs              -- hs crystal or resonator
 pragma target clock 20_000_000    -- oscillator frequency
---
 pragma target wdt  disabled
 pragma target lvp  disabled
---
 
 enable_digital_io() -- disable all analog pins if any
 
 include delay       -- include the delay library
 
 -- setup uart for communication
-const serial_hw_baudrate  = 38400   -- set the baudrate
+const serial_hw_baudrate  = 115200   -- set the baudrate
 include serial_hardware
 serial_hw_init()
 
 -- setup hard disk library
 CONST BYTE PATA_HD_USE_CS0_CS1_PINS = FALSE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
 const bit PATA_HD_NO_INVERTER = TRUE -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
+
 -- pin assignments
 alias     pata_hd_data_low              is portb   -- data port (low bits)
 alias     pata_hd_data_low_direction    is portb_direction
 alias     pata_hd_data_high             is portd   -- data port (high bits)
 alias     pata_hd_data_high_direction   is portd_direction
-alias     pata_hd_a0                    is pin_a0
-alias     pata_hd_a0_direction          is pin_a0_direction
+
+alias     pata_hd_a0                    is pin_a3
+alias     pata_hd_a0_direction          is pin_a3_direction
 alias     pata_hd_a1                    is pin_a1
 alias     pata_hd_a1_direction          is pin_a1_direction
-alias     pata_hd_a2                    is pin_a2
-alias     pata_hd_a2_direction          is pin_a2_direction
-alias     pata_hd_iowr                  is pin_c2
-alias     pata_hd_iowr_direction        is pin_c2_direction
-alias     pata_hd_iord                  is pin_c1
-alias     pata_hd_iord_direction        is pin_c1_direction
+alias     pata_hd_a2                    is pin_a0
+alias     pata_hd_a2_direction          is pin_a0_direction
+
+alias     pata_hd_iowr                  is pin_e0
+alias     pata_hd_iowr_direction        is pin_e0_direction
+alias     pata_hd_iord                  is pin_a4
+alias     pata_hd_iord_direction        is pin_a4_direction
+
 ;alias     pata_hd_cs1                   is pin_a3
 ;alias     pata_hd_cs1_direction         is pin_a3_direction
 ;alias     pata_hd_cs0                   is pin_a4
@@ -68,8 +67,10 @@ alias     pata_hd_iord_direction        is pin_c1_direction
 pata_hd_a0_direction = output    -- register select pin
 pata_hd_a1_direction = output    -- register select pin
 pata_hd_a2_direction = output    -- register select pin
+
 pata_hd_iowr_direction = output  -- used for write pulse
 pata_hd_iord_direction = output  -- used for read pulse
+
 ;pata_hd_cs1_direction = output   -- register select pin
 ;pata_hd_cs0_direction = output   -- register select pin
 
@@ -97,24 +98,6 @@ send_word("T", 0x20)
 send_word(13, 10)
 send_word(13, 10)
 
------------------
-
----------------
-;-- read one full sector into sd_sector_buffer (512 byte array)
-pata_hd_start_read(0)                      -- get sd card ready for read at sector 0
-pata_hd_read_sector()
-pata_hd_stop_read()                        -- tell sd card you are done reading
-
--- now send it to the pc
-var word count1 = 0
-for 512 loop                          -- read 1 sector (512 bytes)
-  serial_hw_write (pata_hd_sector_buffer[count1])          -- send byte via serial port
-  count1 = count1 + 1
-end loop
----------------
-
-forever loop
-end loop
 -- ----------------------------------------------------------------------------
 -- Example spin up & spin down drive command
 -- ----------------------------------------------------------------------------
@@ -183,7 +166,7 @@ _usec_delay(10_000_000) -- wait 10 seconds before next example
 -- note: this will over write data currently on your drive
 -- ----------------------------------------------------------------------------
 
-pata_hd_start_write(200) -- tell hd to get ready for reading
+pata_hd_start_write(20) -- tell hd to get ready for writing
 
 -- now write 1 sector + most of 2nd sector, data will not be written unless 512 bytes are sent
 for 256 + 250 loop
@@ -197,7 +180,7 @@ pata_hd_write_to_sector_end(0xFF)
 pata_hd_stop_write()     -- tell hd we are done writing
 
 -- Now read the 1st sector you just wrote, should get 0xCC, 0xDD over and over
-pata_hd_start_read(200)                 -- get drive ready for reading
+pata_hd_start_read(20)                 -- get drive ready for reading
 for 256 + 250 loop                      -- read 512 bytes + 500 bytes
    pata_hd_read_data(in_b, in_a)        -- read data
    send_word(in_b, in_a)            -- send data via serial port
@@ -214,4 +197,18 @@ pata_hd_stop_read()                     -- tell drive we are done reading
 -- We're done, lets turn off the hd motor
 pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_SPIN_DOWN)
 
+---------------
+;-- read one full sector into sd_sector_buffer (512 byte array)
+;pata_hd_start_read(0)                      -- get sd card ready for read at sector 0
+;pata_hd_read_sector()
+;pata_hd_stop_read()                        -- tell sd card you are done reading
+;
+;-- now send it to the pc
+;var word count1 = 0
+;for 512 loop                          -- read 1 sector (512 bytes)
+;  serial_hw_write (pata_hd_sector_buffer[count1])          -- send byte via serial port
+;  count1 = count1 + 1
+;end loop
+
+---------------
 
