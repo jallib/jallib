@@ -654,4 +654,78 @@ var byte carry, hia, hib, index, loopCount
     
 
 end procedure
+;You can see the result at http://www.embedinc.com/temp/dtmf.gif.  The input
+;> is bursts of the DTMF tones 697, 770, and 853 Hz.  Each burst and the gaps
+;> between the bursts are 50mS long, which is the time you are supposed to be
+;> able to detect a DTMF tone within.  The blue trace is the square of the
+;> magnitude of the detected tone.  The algorithm was set up to detect 770Hz,
+;> which is the frequency of the center burst.
+;>
+;> As you can see, this worked very well.  The blue trace would have eventually
+;> reached 1.0 if the center burst persisted.  But clearly the center burst was
+;> well detected and the other two were not, even though the frequencies
+;> between adjacent tones differ by less than 11%.
+;>
+;> Below is the core code of the simulation.  The complete code contains too
+;> many distractions to show here, like CSV file writing and other logistics.
+;>
+;>  for sampn := 0 to nsamp do begin     {once for each input sample}
+;>    t := sampn * sampdt;               {make time of this sample}
+;>    samp := getsamp (t);               {get input sample}
+;>    r := t * freq;                     {make reference frequency phase}
+;>    ii := trunc(r);
+;>    r := r - ii;
+;>    r := r * pi2;
+;>    prods := samp * sin(r);            {mix by ref freq sine and cosine}
+;>    prodc := samp * cos(r);
+;>    filter (filts, prods);             {low pass filter mixer results}
+;>    filter (filtc, prodc);
+;>    magsq := sqr(filts.val) + sqr(filtc.val); {make square of magnitude}
+;>    magsq := magsq * 4.0;              {normalize}
+;>
+;> Obviously you wouldn't normalize the result in the PIC, you'd adjust the
+;> detection threshold instead.  The FILTER subroutine does a two pole low pass
+;> filter.  Each pole has a filter fraction of 1/128, which means it can be
+;> realized inside a PIC with a right shift of 7 bits.  The input was sampled
+;> and processed every 100uS.
+;Each filter pole uses the standard algorithm of
+;
+;  FILT <-- FILT + FF(NEW - FILT)
+;
+;Where NEW is the input value being added to the filter, FILT is the filter
+;being updated, and FF is the filter fraction.  My filter used two such
+;poles, each with a filter fraction of 1/128.
+
+;Here's the equivalent in matlab:
+;
+;dt = 100e-6;    %time interval
+;t = 0:dt:250e-3;         %sample steps
+;freq1 = 697; freq2 = 770; freq3 = 853;   %frequencies
+;
+;%below we generate the input signal in five steps
+;sig(1:length(t)) = 0;
+;sig(1:50e-3 / dt) = sin( 2*pi/freq1 * t(1:50e-3 / dt) );
+;sig(50e-3/dt : 100e-3/dt) = 0;
+;sig(100e-3/dt : 150e-3/dt) = sin( 2*pi/freq2 * t(100e-3/dt : 150e-3/dt));
+;sig(150e-3/dt : 200e-3/dt) = 0;
+;sig(200e-3/dt : 250e-3/dt) = sin( 2*pi/freq3 * t(200e-3/dt : 250e-3/dt));
+;
+;k = 1/128;   % filter constant
+;f_a = [1 -2*(k-1) 1 ]; f_b = [ k^2 ];  %standardized filter
+;coefficients for 2-pole filter
+;
+;mix_sin_in = sin(2*pi*freq2*t);  %mixer input signals
+;mix_cos_in = cos(2*pi*freq2*t);
+;
+;mixed_sin = mix_sin_in .* sig;    %mixed signals
+;mixed_cos = mix_cos_in .* sig;
+;
+;ff_sin = filter(f_b, f_a, mixed_sin);     %do the filtering
+;ff_cos = filter(f_b, f_a, mixed_cos);
+;
+;magsq = 4* ( ff_cos .^ 2 + ff_sin .^ 2; )
+;hold on
+;plot(t, sig, 'r-');
+;plot(t, magsq, 'b-');
+
 
