@@ -1,6 +1,6 @@
--- Title: CAN bus monitor for STERM or other LCD display
+-- Title: CAN bus monitor with Sterm LCD
 -- Author: William Welch Copyright (c) 2009, all rights reserved.
--- Sponsored by: Fiwihex www.fiwihex.com
+-- adapted by Eur van Andel, eur@fiwihex.nl
 -- Compiler: 2.4
 -- 
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -10,13 +10,21 @@
 -- 
 -- Our monitor can be configured to either participate with ACKs
 -- (normal mode), or operate in 'listen-only' mode.
+-- EUR: I think listen-only mode is best here.
 --
 -- In order for CAN bus hardware to work properly, there must
 -- be at least two active nodes on the bus.
 --
 -- So, in listen-only mode, you will need at least two other nodes
 -- or the CAN bus will not operate.
---
+
+const byte version_h = 1
+const byte version_l = 06
+
+--1.04 only monitor now, no resending
+-- 1.03 now with 4 lines on LCD, since can_id can be 4 as well
+-- 1.02 modifed to combine bus monitor and PC adapter
+-- 1.01 first version compiled by Eur
 
 include 18f4585
 pragma target clock 20_000_000
@@ -29,7 +37,7 @@ include delay
 include format
 include print
 
-const byte banner[] = "  MON: 4 CAN-IDs"
+const byte banner[] = " CAN Listener"
 
 enable_digital_io()
 
@@ -37,29 +45,23 @@ const down  = 0
 const green = 1
 const red   = 2
 
-var bit led      is pin_b1		-- on CAN daughterboard
+var bit led      is pin_b1
 var bit led_dir  is pin_b1_direction
 
-led_dir = output
-led = high 
-
-procedure leds(byte in x) is
-   if x == down then 
-      led_dir  = input
-   elsif x == red then 
-      led_dir  = output
-      led      = low
-   elsif x == green then
-      led_dir  = output
-      led     = high
-   end if
-end procedure
+led_dir = input
+led = low
 
 const byte LCD_ROWS = 4
 const byte LCD_CHARS = 20
-var bit lcd_sterm_pin is pin_A0
-var bit lcd_sterm_pin_dir is pin_A0_direction
+var bit lcd_sterm_pin is pin_C0
+var bit lcd_sterm_pin_dir is pin_C0_direction
 include lcd_sterm_master
+
+var bit toggle
+var bit got_msg
+var byte a,b,c,d, i, len
+var byte rxdata[8]
+var dword can_id
 
 -- ECAN controller is built-in to 18F2585
 -- but we will operate in 'legacy' mode 0.
@@ -71,7 +73,6 @@ include can_ascii
 
 can_reset()
 
--- FIXME: use EEprom instead.
 -- 125K bps
 can_set_config(4, 0x9E, 3)
 CIOCON = 0x20; -- TXCAN, high when recessive
@@ -80,7 +81,6 @@ CIOCON = 0x20; -- TXCAN, high when recessive
 RXB0CON = 0x04 -- rollover/ double-buffer
 RXB1CON = 0x00 -- all valid frames go to buffer #1.
 
--- FIXME: use EEprom instead.
 -- RXB0 will match all msgs by default
 can_set_rxb0_mask(0,0,0,0)
 can_set_rxb0_filter0(0xff, 0xff, 0xff, 0xff)
@@ -97,8 +97,33 @@ TXB0CON = 0;
 TXB1CON = 0;
 TXB2CON = 0;
 
--- FIXME: use EEprom instead.
-CANCON = 0; -- normal mode
+CANCON = 0x60; -- listen-only mode
+
+-- start of procedure block --------------------------------------------------
+
+procedure pdec8(volatile byte out device, byte in n) is
+   device = "0" + n / 100
+   n = n % 100
+   
+   device = "0" + n / 10
+   n = n % 10
+   
+   device = "0" + n
+end procedure
+
+procedure leds(byte in x) is
+   if x == down then 
+      led_dir  = input
+   elsif x == red then 
+      led_dir  = output
+      led      = low
+   elsif x == green then
+      led_dir  = output
+      led     = high
+   end if
+end procedure
+
+-- end of procedure block --------------------------------------------------
 
 -- wait for STERM Slave to power-up and initialize.
 for 10 loop
@@ -113,6 +138,12 @@ lcd_home()
 lcd_clear_screen()
 lcd_home()
 print_string(lcd, banner)
+const byte str2[]="Version "
+lcd_cursor_position(2,0)
+print_string(lcd, str2)
+pdec8(lcd,version_h)
+lcd = "."
+pdec8(lcd,version_l)
 
 -- leave banner up for a while
 for 25 loop
@@ -155,11 +186,7 @@ forever loop
    -- lcd = " "
    
    -- check for a message
-   if toggle then
-      got_msg = can_receive(0, can_id, rxdata, len)
-   else 
-      got_msg = can_receive(1, can_id, rxdata, len)
-   end if
+   got_msg = can_receive(1, can_id, rxdata, len)
    
    if got_msg then
       var byte row
