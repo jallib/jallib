@@ -1,21 +1,18 @@
--- Title: CAN to UART adapter example
+-- Title: CAN bus translator from 3 wire CAN bus to RS232
 -- Author: William Welch Copyright (c) 2009, all rights reserved.
--- Sponsored by: Fiwihex www.fiwihex.com
+-- adapted by Eur van Andel, eur@fiwihex.nl
 -- Compiler: 2.4m
 -- 
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: bridge/gateway between RS232 and CAN bus. Uses ASCII encapsulation, 
---          compatible with the Socket-CAN SLCAN API, and adapters such as
---          LAWICEL and VScom USB-CAN.
+-- Description: -- Implements bridge/gateway between RS232 and CAN bus.
 -- 
--- Sources: Socket-CAN, in particular the SLCAN API. http://developer.berlios.de/projects/socketcan/ 
---          also, the LAWICEL CAN-USB and Easylink adapter manuals.
---
--- Compatibility testing has been done using the CANHACKER tool.
--- See http://www.canhack.de/
---
+const byte version_h = 1
+const byte version_l = 04
+
+const serial_hw_baudrate = 57600
+-- const serial_hw_baudrate = 115200
 
 include 18f2585
 pragma target clock 20_000_000
@@ -28,29 +25,46 @@ include delay
 include format
 include print
 
-const byte banner[] = "  USB-CAN Bridge"
+const byte banner[] = "Bus translator"
+const byte baudstr[] = " baud"
 
 enable_digital_io()
 
-var bit led is pin_A0
-pin_A0_direction =  output
+const down  = 0
+const green = 1
+const red   = 2
+
+var bit led      is pin_b1
+var bit led_dir  is pin_b1_direction
+
+led_dir = input
+led = low
+
+procedure leds(byte in x) is
+   if x == down then 
+      led_dir  = input
+   elsif x == red then 
+      led_dir  = output
+      led      = low
+   elsif x == green then
+      led_dir  = output
+      led     = high
+   end if
+end procedure
+
+var bit toggle
+
+const byte LCD_ROWS = 4
+const byte LCD_CHARS = 20
+var bit lcd_sterm_pin is pin_C0
+var bit lcd_sterm_pin_dir is pin_C0_direction
+include lcd_sterm_master
 
 const usart_hw_serial = true
-const serial_hw_baudrate = 115200
-
 var bit serial_ctsinv
 var  bit serial_overflow_discard = false
 include serial_hw_int_cts
 serial_hw_init()
-
--- The LCD is not required. It is just for development/debugging.
-const byte LCD_ROWS = 4
-const byte LCD_CHARS = 20
--- var bit lcd_sterm_pin is pin_C0
--- var bit lcd_sterm_pin_dir is pin_C0_direction
-var bit lcd_sterm_pin is pin_A4
-var bit lcd_sterm_pin_dir is pin_A4_direction
-include lcd_sterm_master
 
 -- ECAN controller is built-in to 18F2585
 -- but we will operate in 'legacy' mode 0.
@@ -88,272 +102,79 @@ TXB0CON = 0;
 TXB1CON = 0;
 TXB2CON = 0;
 
--- FIXME: use EEprom instead.
 CANCON = 0; -- normal mode
+
+include can_adapter
+
+-- start of procedure block --------------------------------------------------
+
+procedure pdec8(volatile byte out device, byte in n) is
+   device = "0" + n / 100
+   n = n % 100
+   
+   device = "0" + n / 10
+   n = n % 10
+   
+   device = "0" + n
+end procedure
+
+-- end of procedure block --------------------------------------------------
 
 -- wait for STERM Slave to power-up and initialize.
 for 10 loop
-   led = led ^ 1
-   delay_100ms(5)
+   leds(green)
+   delay_100ms(2)
+   leds(red)
+   delay_100ms(2)
 end loop
+leds(down)
 
 lcd_home()
 lcd_clear_screen()
 lcd_home()
 print_string(lcd, banner)
+const byte str2[]="Version "
+lcd_cursor_position(2,0)
+print_string(lcd, str2)
+pdec8(lcd,version_h)
+lcd = "."
+pdec8(lcd,version_l)
+lcd_cursor_position(3,0)
+print_word_dec(lcd, serial_hw_baudrate)
+print_string(lcd, baudstr)
 
 -- leave banner up for a while
 for 25 loop
-   led = led ^ 1
+   leds(green)
+   delay_100ms(2)
+   leds(down)
    delay_100ms(2)
 end loop
 
-var bit is_open = 0
-
--- these commands are always available
-function modeless_cmd(volatile byte out device, byte in ascii_buf[32]) return bit is
-   var byte cmd
-   cmd = ascii_buf[0]
-   
-   -- FIXME version
-   if cmd == "V" then
-      device = "V"
-      device = "0"
-      device = "1"
-      device = "0"
-      device = "1"
-      device = 13
-      return 1
-      
-      -- FIXME Serial #
-   elsif cmd == "N" then
-      device = "N"
-      for 8 loop
-         device = "9"
-      end loop
-      device = 13
-      return 1
-      
-      -- FIXME 'extra information'. Seems like we can
-      -- return whatever we want here???
-   elsif cmd == "I" then
-      var byte a, b, c, d
-      a = CANSTAT
-      b = COMSTAT
-      c = RXB0CON
-      d = RXB1CON
-      device = "I"
-      print_byte_hex(device, a)
-      device = 32
-      print_byte_hex(device, b)
-      device = 32
-      print_byte_hex(device, c)
-      device = 32
-      print_byte_hex(device, c)
-      device = 13
-      return 1
-      
-      -- CLOSE
-   elsif cmd == "C" then
-      is_open = 0
-      device = 13
-      return 1
-      
-   end if
-   
-   return 0
-end function
-
--- these commands are only valid while the bridge is 'closed'
-function closed_cmd(volatile byte out device, byte in ascii_buf[32]) return bit is
-   var byte cmd
-   cmd = ascii_buf[0]
-   
-   -- FIXME speed
-   if cmd == "S" then
-      device = 13
-      return 1
-      
-      -- FIXME advanced speed
-   elsif cmd == "s" then
-      device = 13
-      return 1
-      
-      -- filter/acceptance mask
-      -- m12345678
-   elsif cmd == "m" then
-      var byte sidh, sidl, eidh, eidl
-      sidh = _ascii2bin(ascii_buf[1]) << 4
-      sidh = sidh | _ascii2bin(ascii_buf[2])
-      sidl = _ascii2bin(ascii_buf[3]) << 4
-      sidl = sidl | _ascii2bin(ascii_buf[4])
-      eidh = _ascii2bin(ascii_buf[5]) << 4
-      eidh = eidh | _ascii2bin(ascii_buf[6])
-      eidl = _ascii2bin(ascii_buf[7]) << 4
-      eidl = eidl | _ascii2bin(ascii_buf[8])
-      can_set_rxb0_mask(sidh, sidl, eidh, eidl)
-      device = 13
-      return 1
-      
-      -- filter/acceptance code/value
-      -- M12345678
-   elsif cmd == "M" then
-      var byte sidh, sidl, eidh, eidl
-      sidh = _ascii2bin(ascii_buf[1]) << 4
-      sidh = sidh | _ascii2bin(ascii_buf[2])
-      sidl = _ascii2bin(ascii_buf[3]) << 4
-      sidl = sidl | _ascii2bin(ascii_buf[4])
-      eidh = _ascii2bin(ascii_buf[5]) << 4
-      eidh = eidh | _ascii2bin(ascii_buf[6])
-      eidl = _ascii2bin(ascii_buf[7]) << 4
-      eidl = eidl | _ascii2bin(ascii_buf[8])
-      can_set_rxb0_filter0(sidh, sidl, eidh, eidl)
-      device = 13
-      return 1
-      
-      -- FIXME timestamp
-   elsif cmd == "Z" then
-      device = 13
-      return 1
-      
-      -- OPEN
-   elsif cmd == "O" then
-      is_open = 1
-      device = 13
-      return 1
-      
-      -- FIXME: need to really support this.
-      -- LISTEN
-   elsif cmd == "L" then
-      is_open = 1
-      device = 13
-      return 1
-      
-      -- BOOT (software reset)
-   elsif cmd == "B" then
-      asm reset
-      -- never gets here
-      return 0
-   end if
-   
-   return 0
-end function
-
--- these commands are only valid while the bridge is 'open'
-function open_cmd(volatile byte out device, byte in ascii_buf[32]) return bit is
-   var byte cmd, data_len
-   var byte can_data[8]
+-- monitor loop
+forever loop
+   var bit got_ch, got_msg
+   var byte ch,i,len
+   var byte rxdata[8]
    var dword can_id
    
-   cmd = ascii_buf[0]
-   
-   -- STATUS
-   if cmd == "F" then
-      var byte v
-      v = COMSTAT
-      device = "F"
-      print_byte_hex(device, v)
-      device = 13
-      return 1
-      
-      -- bridge CAN message
-   elsif ascii_to_can(ascii_buf, can_id, can_data, data_len) then
-      while can_send(0, can_id, can_data, data_len) == 0 loop end loop
-      -- if can_is_ext_id(can_id) then
-      --    device = "Z"
-      -- else
-      --    device = "z"
-      -- end if
-      device = 13
-      return 1
-   end if
-   
-   return 0
-end function
-
-var byte ascii_rxbuf[32]
-var byte ascii_rxcnt = 0
-
-procedure check_uart_rx() is
-   var byte i, data_len, ch
-   
-   if serial_hw_read(ch) == 0 then
-      return 
-   end if
-   
-   ascii_rxbuf[ascii_rxcnt] = ch
-   ascii_rxcnt = ascii_rxcnt + 1
-   if ascii_rxcnt >= 32 then
-      ascii_rxcnt = 0
-   end if
-   if ch != 13 then
-      return
-   end if
-   
-   -- at this point we have a complete
-   -- ASCII string in the buffer.
-   
-   lcd_cursor_position(2,0)
-   for 20 using i loop
-      if i < (ascii_rxcnt - 1) then
-         lcd = ascii_rxbuf[i]
-      else
-         lcd = " "
-      end if
+   -- check for a msg from PC/UART
+   got_ch = serial_hw_read(ch)
+   while got_ch loop
+      can_check_uart_rx(serial_hw_data, ch)
+      got_ch = serial_hw_read(ch)
    end loop
    
-   if modeless_cmd(serial_hw_data, ascii_rxbuf) then
-      ascii_rxcnt = 0
-      led = led ^ 1
-      return
+   -- check for CAN message and handle it.
+   got_msg = can_check_can_rx(serial_hw_data, can_id, rxdata, len)
+   
+   toggle = ! toggle 
+   if toggle then
+      leds(green)
+   else
+      leds(down)
    end if
    
-   if (is_open == 0) then
-      if (closed_cmd(serial_hw_data, ascii_rxbuf) == 1) then
-         ascii_rxcnt = 0
-         led = led ^ 1
-         return
-      end if
-   end if
-   
-   if (is_open == 1) then
-      if (open_cmd(serial_hw_data, ascii_rxbuf) == 1) then
-         ascii_rxcnt = 0
-         led = led ^ 1
-         return
-      end if
-   end if
-   
-   -- discard unknown command
-   lcd_cursor_position(3,0)
-   lcd = "?"
-   lcd = ascii_rxbuf[0]
-   ascii_rxcnt = 0
-end procedure
-
-procedure check_can_rx() is
-   var bit got_msg
-   var byte i, data_len, c
-   var byte can_data[8]
-   var dword can_id
-   var byte ascii_txcnt, ascii_txbuf[32]
-   
-   -- always read the CAN msg. this will flush old/stale msgs.
-   got_msg = can_receive(1, can_id, can_data, data_len)
-   
-   if ( (got_msg == 1) & (is_open == 1) ) then
-      ascii_txcnt = can_to_ascii(can_id, can_data, data_len, ascii_txbuf)
-      for ascii_txcnt using i loop
-         serial_hw_data = ascii_txbuf[i]
-      end loop
-      led = led ^ 1
-   end if
-   
-end procedure
-
--- main loop
-forever loop
-   check_can_rx()
-   check_uart_rx()
+   delay_100ms(1) -- slow down blinking leds
 end loop
 
