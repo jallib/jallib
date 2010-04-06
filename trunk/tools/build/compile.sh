@@ -19,8 +19,17 @@ echo "" > /tmp/compile.failed
 
 for sample in $jalsamples
 do
-	$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile $sample > /tmp/tmpcomp.out 2>&1 
-	if [ "$?" != "0" ]
+	if grep -i "^include[[:space:]]\+18l\?f" $sample > /dev/null 2>&1
+	then
+		$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile -no-variable-reuse $sample > /tmp/tmpcomp.out 2>&1 
+		status=$?
+	else
+		$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile $sample > /tmp/tmpcomp.out 2>&1
+		status=$?
+	fi
+
+
+	if [ "$status" != "0" ]
 	then
 		echo sample: $sample ... Failed >> /tmp/compile.out
 		echo -- jalv2 output -- >> /tmp/compile.out
