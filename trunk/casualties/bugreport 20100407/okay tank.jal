@@ -1,0 +1,141 @@
+-- Title: tank.jal
+--
+-- Author: Joep Suijs, Copyright (c) 2008-2010, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4g
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: -
+-- 
+-- Notes:
+--          
+--
+include 16f877
+
+pragma target  clock 20_000_000     
+pragma target  OSC        hs
+pragma target  LVP disabled
+pragma target  WDT disabled
+
+include delay
+include print
+
+-- serial port voor debug
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+
+-- Configure PWM
+pin_ccp1_direction = output
+pin_ccp2_direction = output
+include pwm_hardware
+pwm_max_resolution(16)
+pwm1_on()
+pwm2_on()
+
+-- setup the timer0_isr_interval library
+const timer0_isr_rate = 1000  -- 1 kHz isr rate
+const DELAY_SLOTS = 2         -- support 2 delays at the same time
+include timer0_isr_interval
+timer0_isr_init()             -- init timer0 isr
+
+-- setup ADC
+const bit ADC_HIGH_RESOLUTION = high
+const byte ADC_NCHANNEL = 2
+const byte ADC_NVREF = 0
+include adc
+adc_init()
+
+
+; h-brigde control    
+var byte PwmL        = 0 ; pwm setpoint
+var byte PwmR        = 0 ; pwm setpoint
+var bit MotorL_fwd   = true
+var bit MotorR_fwd   = true
+
+-- IO pins motor
+var bit MotorH1 is 	pin_d1
+var bit MotorH2 is   pin_d0
+var bit MotorH3 is   pin_d2
+var bit MotorH4 is   pin_d3
+
+PORTD_low_direction = all_output
+
+var word prev_isr_counter
+var word LeftEye, RightEye
+
+var word temp
+
+-- main loop
+forever loop       
+
+   -- ---------------------------------------------------------------------
+   -- fast loop
+   -- ---------------------------------------------------------------------
+
+   if (isr_counter != prev_isr_counter) then
+      prev_isr_counter = isr_counter
+      -- ------------------------------------------------------------------
+      -- 1 ms one-shot
+      -- ------------------------------------------------------------------
+
+
+   end if ; 1 kHz loop   
+        
+   if (check_delay(0)) then
+      set_delay(0, 100) --  20 ticks on delay-slot 0
+      -- ---------------------------------------------------------------
+      -- 20 ms loop 
+      -- ---------------------------------------------------------------
+
+      -- lees sensoren
+      LeftEye  = 30000 / adc_read(0)
+      RightEye = 30000 / adc_read(1)      
+      
+      
+      if (RightEye > 200) then
+         -- rechts is vrij => volg de wand
+         temp = LeftEye
+         if (temp > 255) then temp = 255 end if
+            
+         if (temp > 127) then 
+;            PwmL = 255
+;            PwmR = byte(511 - 2 * temp)
+;         else
+;            PwmL = byte(2 * temp)
+;            PwmR = 0
+         end if
+      else  
+         PwmL = 0
+         PwmR = 0
+      end if
+
+
+      -- stuur motoren aan      
+		MotorH1 = MotorL_fwd
+		MotorH2 = !MotorH1
+      pwm1_set_dutycycle(PwmL)	
+      		
+		MotorH3 = MotorR_fwd
+		MotorH4 = !MotorH3
+   	pwm2_set_dutycycle(PwmR)			
+
+
+      
+      
+      
+      
+      
+      
+      print_word_dec(serial_hw_data, LeftEye)      
+      serial_hw_data = " "
+      print_word_dec(serial_hw_data, RightEye)      
+      serial_hw_data = 13
+      serial_hw_data = 10
+   end if
+   
+end loop -- fastest & forever loop
+
+-- end of main
