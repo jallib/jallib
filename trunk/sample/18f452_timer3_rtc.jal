@@ -1,0 +1,144 @@
+-- Title: second counter using timer3
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: counts seconds with timer3
+--
+-- Sources:
+--
+-- notes:
+--
+
+-- include chip
+include 18F452                   -- target picmicro
+
+-- This program assumes a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target clock 20_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target WDT  disabled        -- no watchdog
+pragma target LVP  disabled        -- no Low Voltage Programming
+
+-- set all IO as digital
+enable_digital_io()
+
+-- led def
+alias led             is pin_a1
+alias led_direction   is pin_a1_direction
+--
+led_direction = output
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200  -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+serial_hw_data = 0xAA
+serial_hw_data = 0xAA
+serial_hw_data = 0xAA
+serial_hw_data = 0xAA
+
+include print
+
+-- init pic interrupt settings
+intcon_gie  = on    ; enables all unmasked interrupts
+intcon_peie = on    ; enables all unmasked peripheral interrupts
+
+-- Set this to desired interval. timer3 will count up.
+-- Interupt will occur when timer_interval rolls
+-- over from 65535 to 0
+var word timer_interval = 0
+
+-- timer3 setup
+tmr3 = timer_interval  -- timer interval
+t3con_tmr3cs = 0       -- use internal clock
+pie2_tmr3ie  = 1       -- enable the timer3 interrupt bit
+t3con_tmr3on = 1       -- 1 = enables timer 3
+pir2_tmr3if  = off     -- clear overflow to start timer
+
+-- set timer3 clock prescaler
+t3con_t3ckps = 1 -- set prscal of 1:2
+
+-- define a rollover of 1 second
+-- holds 1 second: 1.00000000000 or 0x174876E800
+var byte*6 one_sec
+var byte one_sec_array[6] at one_sec
+one_sec_array[5] = 0x00
+one_sec_array[4] = 0x17
+one_sec_array[3] = 0x48
+one_sec_array[2] = 0x76
+one_sec_array[1] = 0xE8
+one_sec_array[0] = 0x00
+
+-- counter will roll over 38.14697265625 times in one second for 20mhz clock
+-- (1sec / ( (timer freq    ) * clock increments ) / prescaller 1:2  = interrupts per sec
+-- (1    / ( (1/20_000_000*4) * 65536            ) / 2               = 38.14697265625
+-- holds 0.14697265625 or 36C0679D9 (the remainder)
+var byte*6 num_add
+var byte num_add_array[6] at num_add
+num_add_array[5] = 0x00
+num_add_array[4] = 0x03
+num_add_array[3] = 0x6c
+num_add_array[2] = 0x06
+num_add_array[1] = 0x79
+num_add_array[0] = 0xD9
+
+-- counts the remainder up to one second
+-- after count is > 1 second, we will minus 1 second within interrupt.
+var byte*6 remainder_count = 0
+var byte remainder_count_array[6] at remainder_count
+
+-- seconds counter, allow it to roll over to 0
+var byte second_count = 255
+-----------
+
+var byte count1 = 0 -- counts up to 38 (interupt every 38.14697265625 sec)
+procedure timer_isr() is
+   pragma interrupt          -- interupt procedure
+   
+   if !PIR2_TMR3IF then      -- check if this is a timer3 interupt
+      return                 -- exit interupt if it is not
+   end if
+
+   PIR2_TMR3IF = off         -- clear timer overflow
+
+   count1 = count1 + 1       -- count the number of times an interrupt occurs
+   if count1 == 38 then      -- if timer is at 1 sec
+   
+      -- if remainder_count is > 1 sec
+      if remainder_count > one_sec then
+      
+         -- remove one second from remainder_count
+         remainder_count = remainder_count - one_sec
+         
+         -- remove one second from actual timing
+         count1 = count1 + 1
+      else
+         -- add 0.14697265625 (the remainder) to remainder_count
+         remainder_count = remainder_count + num_add
+      end if
+      
+      second_count = second_count + 1 -- increment the seconds
+      if second_count == 60 then      -- reset seconds to 0 each min
+         second_count = 0
+      end if
+      
+      -- send seconds to serial port
+      print_byte_dec (serial_hw_data,second_count)
+      serial_hw_data = 0x0D
+      serial_hw_data = 0x0A
+      
+      led = !led -- switch led on/off each second
+      count1 = 0
+   end if
+end procedure
+
+-- main program here
+forever loop
+end loop
+
