@@ -1,0 +1,150 @@
+-- Title: timer0 poll interval
+-- Author: Joep Suijs, Copyright (C) 2008 Joep Suijs
+-- Adapted-by: Rob Hamerling, William Welch
+-- Compiler: >=2.4m
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Fixed interval support for non-blocking delays, but without using
+--              an interrupt.
+-- 
+-- Note: In many (possibly most) cases, you would be wise to choose the ISR
+--       version of this library-- it will be much more accurate.
+--
+-- The setup of this library is straight-forward. First you define the overflow
+-- rate for the timer. You'll have to make some trade-offs as to accuracy, frequency
+-- of polling, etc.
+--
+-- >>> const timer0_overflow_rate = 1000 -- 1 kHz overflow rate 
+-- 
+-- Next, you need to specify the number of slots. A slot is used to store the 
+-- end-time of a delay-period so you need one slot for each concurrent delay.
+-- 
+-- >>> const DELAY_SLOTS = 2 -- support 2 delays at the same time
+-- 
+-- Now, include the library and call it's init function:
+-- 
+-- >>> include timer0_poll_interval
+-- >>> timer0_poll_init() -- init timer0
+-- 
+-- Now we are ready to use the delay functions. To demonstrate it's use, we take 
+-- two LEDs and let them blink at their own interval:
+-- 
+-- >> forever loop 
+-- >> if (check_delay(0)) then 
+-- >> set_delay(0, 409) -- 409 ticks on delay-slot 0
+-- >> led = !led 
+-- >> end if 
+-- >> if (check_delay(1)) then 
+-- >> set_delay(1, 619) -- 619 ticks on delay-slot 1
+-- >> led2 = !led2
+-- >> end if
+-- >> end loop
+-- 
+
+var word timer0_interval_counter
+var word timer0_countdown[DELAY_SLOTS]
+var byte timer0_load
+
+function interval_counter'get() return word is
+   return timer0_interval_counter
+end function
+
+procedure _timer0_poll() is
+   pragma inline
+   
+   if INTCON_TMR0IF == true then
+      tmr0 = timer0_load
+      
+      -- counters
+      timer0_interval_counter = timer0_interval_counter + 1
+      
+      var byte index
+      for DELAY_SLOTS using index loop
+         if (timer0_countdown[index] != 0) then
+            timer0_countdown[index] = timer0_countdown[index] - 1
+         end if
+      end loop
+      
+      -- if user defined wedge procedure, call it.
+      if (defined(timer0_poll_wedge) == true) then
+         timer0_poll_wedge()
+      end if
+      
+      INTCON_TMR0IF = off
+   end if
+end procedure
+
+procedure set_delay(byte in slot, word in ticks) is
+   
+   if (slot >= DELAY_SLOTS) then return end if
+   
+   timer0_countdown[slot] = ticks
+   
+end procedure
+
+function check_delay(byte in slot) return bit is
+   
+   if (slot >= DELAY_SLOTS) then return true end if
+   
+   _timer0_poll()
+   
+   if (timer0_countdown[slot] == 0) then
+      return true    -- delay passed
+   end if
+   
+   return false -- still waiting
+   
+end function
+
+procedure timer0_poll_init() is
+   
+   const dword timer0_div = (target_clock / 4 / timer0_overflow_rate) - 1
+   
+   if (timer0_div > ((256 * 256) - 1)) then
+      pragma error  -- requested overflow rate is too low
+      
+   elsif (timer0_div > ((128 * 256) - 1)) then
+      T0CON_T0PS = 7 ; prescaler 256
+      timer0_load = 255 - timer0_div / 256
+      
+   elsif (timer0_div > ((64 * 256) - 1)) then
+      T0CON_T0PS = 6 ; prescaler 128
+      timer0_load = 255 - timer0_div / 128
+      
+   elsif (timer0_div > ((32 * 256) - 1)) then
+      T0CON_T0PS = 5 ; prescaler 64
+      timer0_load = 255 - byte(timer0_div / 64)
+      
+   elsif (timer0_div > ((16 * 256) - 1)) then
+      T0CON_T0PS = 4 ; prescaler 32
+      timer0_load = 255 - byte(timer0_div / 32)
+      
+   elsif (timer0_div > ((8 * 256) - 1)) then
+      T0CON_T0PS = 3 ; prescaler 16
+      timer0_load = 255 - byte(timer0_div / 16)
+      
+   elsif (timer0_div > ((4 * 256) - 1)) then
+      T0CON_T0PS = 2 ; prescaler 8
+      timer0_load = 255 - byte(timer0_div / 8)
+      
+   elsif (timer0_div > ((2 * 256) - 1)) then
+      T0CON_T0PS = 1 ; prescaler 4
+      timer0_load = 255 - byte(timer0_div / 4)
+      
+   else
+      T0CON_T0PS = 0 ; prescaler 2
+      timer0_load = 255 - timer0_div / 2
+   end if
+   
+   T0CON_T0CS = 0  ; internal clock
+   T0CON_PSA  = 0  ; assign prescaler to timer0
+   
+   var byte i
+   for DELAY_SLOTS using i loop
+      timer0_countdown[i] = 0
+   end loop
+   
+end procedure
+
