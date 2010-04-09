@@ -21,7 +21,7 @@ options {
 program : ( statement {print $statement.tree.toStringTree();} )+ ;
 
 statement :	
-        block_stmt | for_stmt | forever_stmt if_stmt 
+        block_stmt | for_stmt | forever_stmt | if_stmt 
         | repeat_stmt | while_stmt | case_stmt
         | var_def | const_def | alias_def
         | proc_def | pseudo_proc_def
@@ -69,7 +69,7 @@ repeat_stmt : 'repeat'
 if_stmt : 'if' expr 'then' statement+
             ('elsif' expr 'then' statement+ )*
             ('else' statement+ )*
-            'end if'
+            'end' 'if'
         ;
 
 case_stmt : 'case' expr 'of'
@@ -81,20 +81,20 @@ case_stmt : 'case' expr 'of'
 
 block_stmt : 'block' statement+ 'end' 'block' ;
 
-proc_def : 'procedure' IDENTIFIER '(' proc_parm (',' proc_parm)* ')' 
+proc_def : 'procedure' IDENTIFIER '(' proc_parm (',' proc_parm)* ')' 'is'
                 statement+
             'end' 'procedure'
     ;
 
-func_def : 'function' IDENTIFIER '(' proc_parm (',' proc_parm)* ')' 
+func_def : 'function' IDENTIFIER '(' proc_parm (',' proc_parm)* ')' 'is'
                 statement+
             'end' 'function'
     ;
 
-proc_parm : 'volatile'* type ('in' 'out' | 'in' | 'out')
+proc_parm : 'volatile'* type ( IN | 'out' | IN 'out' ) IDENTIFIER
     ;
 
-pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' '(' type 'in' IDENTIFIER ')' 'is'
+pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' '(' type IN IDENTIFIER ')' 'is'
                 statement+
             'end' 'procedure'
     ;
@@ -103,6 +103,8 @@ pseudo_func_def : 'function' IDENTIFIER '\'' 'get' 'return' type 'is'
                 statement+
             'end' 'function'
     ;
+
+IN : 'in' ;
 
 alias_def : 'alias' IDENTIFIER 'is' IDENTIFIER
         ;
