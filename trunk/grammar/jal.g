@@ -81,8 +81,8 @@ case_stmt : 'case' expr 'of'
 
 block_stmt : 'block' statement+ 'end' 'block' ;
 
-proc_def : 'procedure' IDENTIFIER '(' proc_parm (',' proc_parm)* ')' 'is'
-                statement+
+proc_def : 'procedure' IDENTIFIER ( '(' ( proc_parm (',' proc_parm)* )? ')' )? 'is'
+                statement*
             'end' 'procedure'
     ;
 
