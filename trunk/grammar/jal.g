@@ -16,6 +16,7 @@ options {
 	language=Python;
 	output=AST;
 	ASTLabelType=CommonTree;
+    	backtrack	= true;
 }
 
 program : ( statement {print $statement.tree.toStringTree();} )+ ;
@@ -33,13 +34,14 @@ statement :
         | '_error' STRING_LITERAL
         | '_warn' STRING_LITERAL
 	| IDENTIFIER '=' expr
+	| proc_func_call
 	;
 
 // FIXME
 cexpr   :   constant
         ;
 
-cexpr_list : '{' cexpr ( ',' cexpr ) '}'
+cexpr_list : '{' cexpr ( ',' cexpr )* '}'
 	;
 	
 for_stmt : 'for' expr ( 'using' IDENTIFIER )* 'loop' 
@@ -87,20 +89,20 @@ proc_def : 'procedure' IDENTIFIER ( '(' ( proc_parm (',' proc_parm)* )? ')' )? '
     ;
 
 func_def : 'function' IDENTIFIER '(' proc_parm (',' proc_parm)* ')' 'is'
-                statement+
+                statement*
             'end' 'function'
     ;
 
-proc_parm : 'volatile'* type ( IN | 'out' | IN 'out' ) IDENTIFIER
+proc_parm : 'volatile'* type ( IN | 'out' | IN 'out' ) IDENTIFIER at_decl?
     ;
 
-pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' '(' type IN IDENTIFIER ')' 'is'
-                statement+
+pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' '(' proc_parm? (',' proc_parm)* ')' 'is'
+                statement*
             'end' 'procedure'
     ;
 
-pseudo_func_def : 'function' IDENTIFIER '\'' 'get' 'return' type 'is'
-                statement+
+pseudo_func_def : 'function' IDENTIFIER '\'' 'get' '(' proc_parm? (',' proc_parm)* ')' 'return' type 'is'
+                statement*
             'end' 'function'
     ;
 
@@ -141,7 +143,8 @@ bitloc  : ':' constant
         ;
 
 //FIXME: this is wrong-- add proc/func calls to the expr handler instead
-proc_func_call   : IDENTIFIER '(' IDENTIFIER* ')'
+//proc_func_call   : IDENTIFIER ('(' IDENTIFIER* ')') ? // jal permits procedure call without parenthesis, but this can't be distinquished from the start of an assignment...
+proc_func_call   : IDENTIFIER ('(' IDENTIFIER* ')')?
         ;
 
 var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | IDENTIFIER
@@ -173,13 +176,17 @@ PRAGMA
 //comp_op : '<' | '>' | '==' | '>=' | '<=' | '!='
 //        ;
 //
-expr : xor_expr ('|' xor_expr)*
+
+     
+expr :  xor_expr ('|' xor_expr)*
      ;
 
 xor_expr : and_expr ('^' and_expr)*
+	 | '(' xor_expr ')' 
          ;
 
-and_expr : shift_expr ('&' shift_expr)*
+and_expr : shift_expr ('&' shift_expr)* 
+	 | '(' and_expr ')' 
          ;
 
 shift_expr : arith_expr (('<<'|'>>') arith_expr)*
