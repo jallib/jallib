@@ -13,13 +13,13 @@
 grammar jal;
 
 options {
-	language=Python;
+	language=C;
 	output=AST;
-	ASTLabelType=CommonTree;
+	ASTLabelType=pANTLR3_BASE_TREE;
     	backtrack	= true;
 }
 
-program : ( statement {print $statement.tree.toStringTree();} )+ ;
+program : ( statement )+ ;
 
 statement :	
         block_stmt | for_stmt | forever_stmt | if_stmt 
@@ -93,7 +93,7 @@ func_def : 'function' IDENTIFIER '(' proc_parm (',' proc_parm)* ')' 'is'
             'end' 'function'
     ;
 
-proc_parm : 'volatile'* type ( IN | 'out' | IN 'out' ) IDENTIFIER at_decl?
+proc_parm : 'volatile'* type ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER at_decl?
     ;
 
 pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' '(' proc_parm? (',' proc_parm)* ')' 'is'
@@ -105,8 +105,6 @@ pseudo_func_def : 'function' IDENTIFIER '\'' 'get' '(' proc_parm? (',' proc_parm
                 statement*
             'end' 'function'
     ;
-
-IN : 'in' ;
 
 alias_def : 'alias' IDENTIFIER 'is' IDENTIFIER
         ;
