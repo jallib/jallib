@@ -1,0 +1,216 @@
+-- Title: vs1053b mp3 decoder sample
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: example usage of the vs1053 mp3 decoder. plays .mp3 files from
+--              a fat32 formatted sd card
+--
+-- Sources:
+-- www.vlsi.fi/fileadmin/datasheets/vlsi/vs1053.pdf
+--
+
+;This is the default playback mode.
+;1. Send an audio file to VS1053b.
+;2. Read extra parameter value endFillByte (Chapter 9.11).
+;3. Send at least 2052 bytes of endFillByte[7:0].
+;4. Set SCI MODE bit SM CANCEL.
+;5. Send at least 32 bytes of endFillByte[7:0].
+;6. Read SCI MODE. If SM CANCEL is still set, go to 5. If SM CANCEL hasn’t cleared after
+;sending 2048 bytes, do a software reset (this should be extremely rare).
+;7. The song has now been successfully sent. HDAT0 and HDAT1 should now both contain 0 to
+;indicate that no format is being decoded. Return to 1.
+
+
+
+;So what exactly do I have to do to play a song?
+;If hardware reset (pin XRESET) is active, deactivate it. Wait for at least 1 millisecond.
+
+;1 Activate software reset (bit SM_RESET in SCI register MODE).
+
+;2 Wait for at least 5 microseconds.
+
+;3 Read the DREQ pin and wait until it has activated. If activation seems to take more than 1 millisecond, activate hardware reset (pin XRESET), wait at least 1 microsecond, and go back to square one.
+
+;4 Set all the SCI registers you want to: MODE, VOL, CLOCKF, etc.
+
+;5 Send at least one (preferably two) byte containing zero to SDI.
+
+;6 Send the MP3 file to SDI.
+
+;7 Send 2048 bytes containing zero to SDI (respect the DREQ pin just as with MP3 data).
+
+;8 Wait 50 milliseconds to make it absolutely sure that audio buffers have been cleared even if the sample rate is only 8 kHz. (Usually this step doesn't need to be implemented.)
+
+;9 For the next MP3 file, go back to 1.
+
+const byte VS_REG_MODE         = 0x00 -- mode control default is 0x0800 (only "VS1002 native SPI modes" is set)
+const byte VS_REG_STATUS       = 0x01
+const byte VS_REG_BASS         = 0x02
+const byte VS_REG_CLOCKF       = 0x03
+const byte VS_REG_DECODE_TIME  = 0x04
+const byte VS_REG_AUDATA       = 0x05
+const byte VS_REG_WRAM         = 0x06
+const byte VS_REG_WRAMADDR     = 0x07
+const byte VS_REG_HDAT0        = 0x08
+const byte VS_REG_HDAT1        = 0x09
+const byte VS_REG_AIADDR       = 0x0A
+const byte VS_REG_VOL          = 0x0B
+const byte VS_REG_AICTRL0      = 0x0C
+const byte VS_REG_AICTRL1      = 0x0D
+const byte VS_REG_AICTRL2      = 0x0E
+const byte VS_REG_AICTRL3      = 0x0F
+
+procedure vs_register_read(byte in address,word out data) is
+	vs_cs_xcs = LOW -- activate command register
+
+   var byte data_val[2] at data
+
+	spi_master_hw = 3            -- send read command
+	_usec_delay(12);
+	spi_master_hw = address;	  -- send addresss
+	_usec_delay(12);
+	data_val[1] = spi_master_hw    -- get first data byte
+	_usec_delay(12);
+	data_val[0] = spi_master_hw     -- get 2nd data byte
+
+	_usec_delay(100_000);         -- wait (not needed?)
+		
+	vs_cs_xcs = HIGH -- disable command register
+end procedure
+
+procedure vs_register_write(byte in address, word in data) is
+
+;  -- check if device is busy ?? see datasheet page 22
+;	while vs_dreq == low loop
+;	end loop
+
+   var byte data_val[2] at data
+
+	vs_cs_xcs = LOW
+
+	spi_master_hw = 0x02       -- send write instruction
+	_usec_delay(12);
+	spi_master_hw = address;	-- send address
+	_usec_delay(12);
+	spi_master_hw = data_val[1]  -- send first data byte
+	_usec_delay(12);
+	spi_master_hw = data_val[0]   -- send second data byte	
+	_usec_delay(24);
+	
+	-- should wait till data request is high before continuing
+;	while vs_dreq == low loop
+;	end loop
+	_usec_delay(100_000)
+	
+	vs_cs_xcs = HIGH
+end procedure
+
+;wait for dreq to be high before sending
+procedure send_data(byte in data) is
+  vs_cs_dcs = LOW  ;don't know if this is active high or active low
+  spi_master_hw = data
+  vs_cs_dcs = HIGH
+end procedure
+
+procedure vs_send_pulses(byte in x) is
+  vs_cs_dcs = LOW
+  for x loop
+    spi_master_hw = 0
+  end loop
+  vs_cs_dcs = HIGH
+end procedure
+
+procedure vs_init() is
+;   var byte data = 0x800
+;   var bit SM_CANCEL at data : 3
+;   sm_cancel = 1
+
+;   vs_reg_write(0x00, 0x800 + 100) -- soft reset
+;   _usec_delay(5_000)
+
+;   vs_send_pulses(2048)
+
+   -- Set SCI MODE bit SM CANCEL
+;   spi_register_write(VS_REG_SCI_MODE,data)
+
+;   vs_send_pulses(32)
+   
+   -- read SM_CANCEL untill cleared
+;   spi_register_read(VS_REG_SCI_MODE,data)
+   
+   ;sm_cancel should = 0 now, otherwise reset again
+
+end procedure
+
+-------------
+
+--------------------------------------------------------------------------------
+-- Send mp3 data to vs1053b. This is only an example and should not be used
+-- to test. You should send 32 bytes at a time after when vs_drq goes high.
+-- vs_cs_dcs must be low for the entire transfer, but you can put it high
+-- once in a while for bit sync.
+--------------------------------------------------------------------------------
+procedure _vs_send_mp3(byte in data) is
+   -- set spi mode before sending data
+   if VS_ALWAYS_SET_SPI_MODE == TRUE then
+      -- set correct spi mode
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   end if
+   
+   -- wait for data request line to go high
+   while vs_dreq == low loop
+   end loop
+   
+
+	vs_cs_dcs = low -- activate vs1053
+	spi_master_hw = data -- send data
+	vs_cs_dcs = high -- disable vs1053
+end procedure
+
+procedure vs_sdi_test(bit in start_stop) is
+   vs_cs_dcs = LOW
+   if start_stop == TRUE then  -- select sign wave (5168hz)
+      spi_master_hw = 0x53
+      spi_master_hw = 0xEF
+      spi_master_hw = 0x6e
+      spi_master_hw = 126
+      spi_master_hw = 0x0
+      spi_master_hw = 0x0
+      spi_master_hw = 0x0
+      spi_master_hw = 0x0
+   else
+      spi_master_hw = 0x45
+      spi_master_hw = 0x78
+      spi_master_hw = 0x69
+      spi_master_hw = 0x74
+      spi_master_hw = 0x0
+      spi_master_hw = 0x0
+      spi_master_hw = 0x0
+      spi_master_hw = 0x0
+   end if
+   vs_cs_dcs = HIGH
+end procedure
+
+procedure vs_sci_test(bit in start_stop) is
+
+;Example: if n is 48, contents of SCI register 0 (SCI MODE) is copied to SCI HDAT0
+;sci mode defaults to 0x0800
+   vs_cs_xcs = LOW
+   if start_stop == TRUE then
+      spi_master_hw = 0x53
+      spi_master_hw = 0x70
+      spi_master_hw = 0xee
+      spi_master_hw = 48       -- register num to test
+      spi_master_hw = 0x0
+      spi_master_hw = 0x0
+      spi_master_hw = 0x0
+      spi_master_hw = 0x0
+   else
+   end if
+   vs_cs_xcs = HIGH
+end procedure
