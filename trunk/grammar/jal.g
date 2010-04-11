@@ -40,7 +40,7 @@ statement :
         | func_def | pseudo_func_def
         | 'return' expr
         | 'assert' expr
-        | 'include' IDENTIFIER
+        | 'include' (IDENTIFIER|constant|'/')+
         | '_debug' STRING_LITERAL
         | '_error' STRING_LITERAL
         | '_warn' STRING_LITERAL
@@ -167,7 +167,7 @@ type    :       'bit' | 'byte' | 'word' | 'dword'
 
 pragma
     : 'pragma' (
-	( 'target' IDENTIFIER IDENTIFIER ) // note: 16f877 does not qualify as identifier
+	( 'target' IDENTIFIER (IDENTIFIER|constant)+ ) // note: 16f877 does not qualify as identifier
 	| ( 'inline' ) 	
 	| ( 'stack' constant ) 	
 	| ( 'code' constant ) 	
