@@ -1,12 +1,23 @@
-// bvwelch 23 jan, '10
-
+// Title: jal.g
+// Author:  William Welch, Copyright (C) 2010  William Welch
+// Adapted-by: Joep Suijs
+// Compiler: >=2.4m
+//
+// This file is part of jallib (http://jallib.googlecode.com)
+// Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+//
+// Description: antlr3 grammar definition of JAL
+//
+//
+// 
 // you may prefer to view this file from the 'ANTLRWorks' GUI tool, 
 // which is a single Java 'jar' file, from here: http://www.antlr.org/works/index.html
-
+//
 // If you want to run the test program, jaltest.py, then you need to 
 // generate the lexer and parser first, like this:
 //    java -cp antlr-3.1.2.jar org.antlr.Tool jal.g 
-
+// js: note grammar is for c client now, so you need to change 'options' to use Python
+//
 // this first cut of JAL grammar was derived from an example found 
 // here: http://www.antlr.org/wiki/display/ANTLR3/Example
 
@@ -33,6 +44,7 @@ statement :
         | '_debug' STRING_LITERAL
         | '_error' STRING_LITERAL
         | '_warn' STRING_LITERAL
+        | pragma 
 	| IDENTIFIER '=' expr
 	| proc_func_call
 	;
@@ -116,6 +128,7 @@ const_def : 'const' vtype* IDENTIFIER ( '[' cexpr* ']' )* '='
 var_def : var_decl1 var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
         ;
 
+fragment
 var_multi : ',' var_decl2
         ;
 
@@ -152,9 +165,23 @@ type    :       'bit' | 'byte' | 'word' | 'dword'
         | 'sbyte' | 'sword' | 'sdword'
         ;
 
-PRAGMA
-    : 'pragma' ~('\n'|'\r')* '\r'? '\n' {$channel=HIDDEN;}
+pragma
+    : 'pragma' (
+	( 'target' IDENTIFIER IDENTIFIER ) // note: 16f877 does not qualify as identifier
+	| ( 'inline' ) 	
+	| ( 'stack' constant ) 	
+	| ( 'code' constant ) 	
+	| ( 'eeprom' constant ',' constant ) 	
+	| ( 'ID' constant ',' constant ) 	
+	| ( 'data' constant '-' constant (',' constant '-' constant)* ) 	
+	| ( 'shared' constant '-' constant) 	
+	| ( 'fuse_def' IDENTIFIER  constant '{' pragma_fusedef+ '}')
+    ) 
     ;
+
+pragma_fusedef
+	: IDENTIFIER '=' constant
+	;
 
 // all below-- borrowed/derived from Antlr C.g and Python.g examples.
 
