@@ -19,6 +19,8 @@
 #include    "jalLexer.h"
 #include    "jalParser.h"
 
+void TreeWalk(pANTLR3_BASE_TREE p);
+
 // Main entry point for this example
 //
 int ANTLR3_CDECL
@@ -181,25 +183,27 @@ main	(int argc, char *argv[])
    } else { 
       ANTLR3_UINT32 Child;
             
-//      printf("Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree
+      printf("Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree
       printf("-- ChildCount : %ld\n", r.tree->getChildCount(r.tree)); 
 //      printf("ChildIndex : %ld\n", r.tree->getChildIndex(r.tree)); 
 //      printf("Child : %ld\n",  Child = r.tree->getChild(r.tree, 1));        
 //      printf("Child : %ld\n",  Child = r.tree->getChild(r.tree, 2));        
 //      printf("Child : %ld\n",  Child = r.tree->getChild(r.tree, 4914));        
 //      printf("ChildIndex : %ld\n", r.tree->getChildIndex(r.tree)); 
-  
-     	ANTLR3_UINT32   n, c;
-      pANTLR3_BASE_TREE p = r.tree      ;
 
-   	n = p->getChildCount(p);
-   
-   	for	(c = 0; c<n ; c++) {
-   		pANTLR3_BASE_TREE   child;
-   		child = p->getChild(p, c);
-//         printf(" %s\n",child->toString(child)->chars);      
-         printf(" %s (%d)\n",child->toString(child)->chars, child->getChildCount(child));      
-   	}
+      TreeWalk(r.tree);
+  
+//     	ANTLR3_UINT32   n, c;
+//      pANTLR3_BASE_TREE p = r.tree      ;
+//
+//   	n = p->getChildCount(p);
+//   
+//   	for	(c = 0; c<n ; c++) {
+//   		pANTLR3_BASE_TREE   child;
+//   		child = p->getChild(p, c);
+////         printf(" %s\n",child->toString(child)->chars);      
+//         printf(" %s (%d)\n",child->toString(child)->chars, child->getChildCount(child));      
+//   	}
    } 
 
    if (psr) { 
@@ -230,3 +234,63 @@ main	(int argc, char *argv[])
    return 0;
 }
 
+// walker based on anrlr3basetree.c, 
+// static pANTLR3_STRING toStringTree	(pANTLR3_BASE_TREE tree)
+// of toch niet???                                                                                               
+// antlr3commontree: 
+//static pANTLR3_STRING	    toString			(pANTLR3_BASE_TREE tree)
+
+
+// 	return	((pANTLR3_COMMON_TREE)(tree->super))->token->getText(((pANTLR3_COMMON_TREE)(tree->super))->token);
+void Indent(int Level)
+{   int i;
+   Level += 2;
+   
+   for (i=0; i<Level; i++) printf("   ");
+}
+
+extern pANTLR3_UINT8   jalParserTokenNames[];
+
+void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
+{  ANTLR3_UINT32   n, c;
+
+	if  (p->isNilNode(p) == ANTLR3_TRUE) {
+	   printf("nil-node\n");
+//	   return;
+	}
+   
+   n = p->getChildCount(p);
+   
+   for	(c = 0; c<n ; c++) {
+      pANTLR3_BASE_TREE   child;
+      child = p->getChild(p, c);
+      //         printf(" %s\n",child->toString(child)->chars);      
+      int ChildCount = child->getChildCount(child);                     
+      pANTLR3_COMMON_TOKEN Token;
+      if (child->getToken == NULL) {
+         printf("getToken null\n");
+         Token = 0; 
+      } else {
+         Token = child->getToken(child);
+      }
+
+
+//      pANTLR3_COMMON_TOKEN Token = 0; //child->getToken(child);
+      Indent(Level);            
+//      printf("@ %s %d\n", child->toString(child)->chars, Token->getTokenIndex(Token)); // tokenindex = plaat is ??
+//      printf(" %s (%d %d)\n",child->toString(child)->chars, ChildCount, child->getType(child));   
+
+      ANTLR3_UINT32 TokenType = child->getType(child);
+      printf(" %s (%d, %s)\n",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
+//      printf("%s\n",child->toString(child)->chars);  
+      if (ChildCount > 0) {
+         TreeWalkWorker(child, Level+1);   
+      }
+   }
+
+}
+
+void TreeWalk(pANTLR3_BASE_TREE p)
+{   
+   TreeWalkWorker(p, 0);
+}

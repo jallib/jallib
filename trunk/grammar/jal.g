@@ -40,12 +40,12 @@ statement :
         | func_def | pseudo_func_def
         | 'return' expr
         | 'assert' expr
-        | 'include' (IDENTIFIER|constant|'/')+
+        | 'include'^ (IDENTIFIER|constant|'/')+
         | '_debug' STRING_LITERAL
         | '_error' STRING_LITERAL
         | '_warn' STRING_LITERAL
         | pragma 
-	| IDENTIFIER '=' expr
+	| IDENTIFIER^ '=' expr
 	| proc_func_call
 	;
 
@@ -56,13 +56,13 @@ cexpr   :   expr
 cexpr_list : '{' cexpr ( ',' cexpr )* '}'
 	;
 	
-for_stmt : 'for' expr ( 'using' IDENTIFIER )* 'loop' 
+for_stmt : 'for'^ expr ( 'using' IDENTIFIER )* 'loop' 
                 statement+
                 ( 'exit' 'loop' )*
             'end' 'loop'
         ;
 
-forever_stmt : 'forever' 'loop' 
+forever_stmt : 'forever'^ 'loop' 
                 statement+
                 ( 'exit' 'loop' )*
             'end' 'loop'
@@ -118,10 +118,10 @@ pseudo_func_def : 'function' IDENTIFIER '\'' 'get' '(' proc_parm? (',' proc_parm
             'end' 'function'
     ;
 
-alias_def : 'alias' IDENTIFIER 'is' IDENTIFIER
+alias_def : 'alias'^ IDENTIFIER 'is' IDENTIFIER
         ;
 
-const_def : 'const' vtype* IDENTIFIER ( '[' cexpr* ']' )* '='
+const_def : 'const'^ vtype* IDENTIFIER ( '[' cexpr* ']' )* '='
             ( cexpr | cexpr_list | IDENTIFIER | STRING_LITERAL )
         ;
 
@@ -135,7 +135,7 @@ var_multi : ',' var_decl2
 var_with_init : '=' var_init
         ;
 
-var_decl1 : 'var' 'volatile'* vtype
+var_decl1 : 'var'^ 'volatile'* vtype
         ;
 
 var_decl2 : IDENTIFIER ( '[' cexpr* ']' )*
@@ -155,7 +155,7 @@ bitloc  : ':' constant
 
 //FIXME: this is wrong-- add proc/func calls to the expr handler instead
 //proc_func_call   : IDENTIFIER ('(' IDENTIFIER* ')') ? // jal permits procedure call without parenthesis, but this can't be distinquished from the start of an assignment...
-proc_func_call   : IDENTIFIER ('(' IDENTIFIER* ')')?
+proc_func_call   : IDENTIFIER^ ('(' expr* ')')?
         ;
 
 var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | IDENTIFIER
@@ -167,7 +167,7 @@ type    :       'bit' | 'byte' | 'word' | 'dword'
 
 pragma
     : 'pragma'^ (
-	( 'target' IDENTIFIER (IDENTIFIER|constant)+ ) // note: 16f877 does not qualify as identifier
+	( 'target' pragma_target )
 	| ( 'inline' ) 	
 	| ( 'stack' constant ) 	
 	| ( 'code' constant ) 	
@@ -178,6 +178,13 @@ pragma
 	| ( 'fuse_def' IDENTIFIER bitloc? constant '{' pragma_fusedef+ '}')
     ) 
     ;
+
+pragma_target 
+	:	
+	( 'chip' constant IDENTIFIER ) // note: 16f877 does not qualify as identifier
+	| (IDENTIFIER IDENTIFIER)
+	| (IDENTIFIER constant)
+	;
 
 pragma_fusedef
 	: IDENTIFIER '=' constant
@@ -245,7 +252,7 @@ constant :  BIN_LITERAL | HEX_LITERAL | OCTAL_LITERAL | DECIMAL_LITERAL ;
 
 BIN_LITERAL : '0' ('b'|'B') ('0' | '1' | '_')+ ;
 
-DECIMAL_LITERAL : ('0' | '1'..'9' '0'..'9'*) ;
+DECIMAL_LITERAL : ('0' | '1'..'9' ('0'..'9' | '_')*) ;
 
 HEX_LITERAL : '0' ('x'|'X') HexDigit+ ;
 
