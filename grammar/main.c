@@ -1,37 +1,20 @@
+// Title: main.g
+//
 // Example of a grammar for parsing C sources,
 // Adapted from Java equivalent example, by Terence Parr
 // Author: Jim Idle - April 2007
 // Permission is granted to use this example code in any way you want, so long as
 // all the original authors are cited.
 //
-
-// set ts=4,sw=4
-// Tab size is 4 chars, indent is 4 chars
-
-// Notes: Although all the examples provided are configured to be built
-//        by Visual Studio 2005, based on the custom build rules
-//        provided in $(ANTLRSRC)/code/antlr/main/runtime/C/vs2005/rulefiles/antlr3.rules
-//        there is no reason that this MUST be the case. Provided that you know how
-//        to run the antlr tool, then just compile the resulting .c files and this
-//	  file together, using say gcc or whatever: gcc *.c -I. -o XXX
-//	  The C code is generic and will compile and run on all platforms (please
-//        report any warnings or errors to the antlr-interest newsgroup (see www.antlr.org)
-//        so that they may be corrected for any platform that I have not specifically tested.
+// Adapted-by: Joep Suijs
+// Compiler: >=2.4m
 //
-//	  The project settings such as additional library paths and include paths have been set
-//        relative to the place where this source code sits on the ANTLR perforce system. You
-//        may well need to change the settings to locate the includes and the lib files. UNIX
-//        people need -L path/to/antlr/libs -lantlr3c (release mode) or -lantlr3cd (debug)
+// This file is part of jallib (http://jallib.googlecode.com)
+// Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 //
-//        Jim Idle (jimi cut-this at idle ws)
+// Description: test main for antlr3 grammar definition of JAL
 //
 
-// You may adopt your own practices by all means, but in general it is best
-// to create a single include for your project, that will include the ANTLR3 C
-// runtime header files, the generated header files (all of which are safe to include
-// multiple times) and your own project related header files. Use <> to include and
-// -I on the compile line (which vs2005 now handles, where vs2003 did not).
-//                       
 #include <stdio.h>
 #include    "jalLexer.h"
 #include    "jalParser.h"
@@ -214,15 +197,36 @@ main	(int argc, char *argv[])
    	for	(c = 0; c<n ; c++) {
    		pANTLR3_BASE_TREE   child;
    		child = p->getChild(p, c);
-         printf(" %s\n",child->toString(child)->chars);      
+//         printf(" %s\n",child->toString(child)->chars);      
+         printf(" %s (%d)\n",child->toString(child)->chars, child->getChildCount(child));      
    	}
    } 
-  
-    psr	    ->free  (psr);	    psr = NULL;
-    tstream ->free  (tstream);	    tstream = NULL;
-    lxr	    ->free  (lxr);	    lxr = NULL;
-    input   ->close (input);	    input = NULL;
 
+   if (psr) { 
+      psr->free(psr);	    
+      psr = NULL;
+   } else {
+      printf("psr is null at close\n");
+   }
+   if (tstream) { 
+    tstream ->free(tstream);
+    tstream = NULL;
+   } else {
+      printf("tstream is null at close\n");
+   }                 
+   if (lxr) { 
+   lxr->free(lxr);
+   lxr = NULL;
+   } else {
+      printf("lxr is null at close\n");
+   }                 
+   if (input) { 
+    input ->free(input);
+    input = NULL;
+   } else {
+      printf("input is null at close\n");
+   }                 
+   
    return 0;
 }
 
