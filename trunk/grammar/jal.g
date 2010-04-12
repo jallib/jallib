@@ -50,7 +50,7 @@ statement :
 	;
 
 // FIXME
-cexpr   :   constant
+cexpr   :   expr
         ;
 
 cexpr_list : '{' cexpr ( ',' cexpr )* '}'
@@ -144,7 +144,7 @@ var_decl2 : IDENTIFIER ( '[' cexpr* ']' )*
 vtype   :   type ('*' constant)*
         ;
 
-at_decl : ('shared')* 'at' ( ( cexpr bitloc* ) | (  IDENTIFIER bitloc* ) | cexpr_list )
+at_decl : ('shared')? 'at' ( ( cexpr bitloc? ) | (  IDENTIFIER bitloc? ) | cexpr_list )
         ;
 
 is_decl : 'is' IDENTIFIER
@@ -166,7 +166,7 @@ type    :       'bit' | 'byte' | 'word' | 'dword'
         ;
 
 pragma
-    : 'pragma' (
+    : 'pragma'^ (
 	( 'target' IDENTIFIER (IDENTIFIER|constant)+ ) // note: 16f877 does not qualify as identifier
 	| ( 'inline' ) 	
 	| ( 'stack' constant ) 	
@@ -175,7 +175,7 @@ pragma
 	| ( 'ID' constant ',' constant ) 	
 	| ( 'data' constant '-' constant (',' constant '-' constant)* ) 	
 	| ( 'shared' constant '-' constant) 	
-	| ( 'fuse_def' IDENTIFIER  constant '{' pragma_fusedef+ '}')
+	| ( 'fuse_def' IDENTIFIER bitloc? constant '{' pragma_fusedef+ '}')
     ) 
     ;
 
@@ -207,11 +207,11 @@ expr :  xor_expr ('|' xor_expr)*
      ;
 
 xor_expr : and_expr ('^' and_expr)*
-	 | '(' xor_expr ')' 
+//	 | '(' xor_expr ')' 
          ;
 
 and_expr : shift_expr ('&' shift_expr)* 
-	 | '(' and_expr ')' 
+//	 | '(' and_expr ')' 
          ;
 
 shift_expr : arith_expr (('<<'|'>>') arith_expr)*
@@ -233,6 +233,7 @@ atom	:       CHARACTER_LITERAL
         |       STRING_LITERAL
         |       constant
 	|	IDENTIFIER
+	| '(' expr ')'
 	;
 
 IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
