@@ -27,17 +27,18 @@
  *                                                                          *
  * Notes:                                                                   *
  *   - This script is developed with 'classic' Rexx as delivered with       *
- *     eComStation (OS/2) and is executed on a specific system.             *
+ *     eComStation (OS/2) and is executed on a system with eCS 2.0.         *
  *     With only a few changes it can be executed on a different system,    *
  *     or even a different platform (Linux, Windows) with "Regina Rexx"     *
  *     Ref:  http://regina-rexx.sourceforge.net/                            *
  *     See the embedded comments below for instructions for possibly        *
- *     required changes.                                                    *
+ *     required changes, you don't have to look further than the line which *
+ *     says "Here the device file generation actually starts" (approx 125). *
  *   - A summary of changes of this script is maintained in 'changes.txt'   *
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.99'
+   ScriptVersion   = '0.1.00'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -118,7 +119,10 @@ select
       return 1                                  /* unrecoverable: terminate */
 end
 
-/* Now the generation of device files is actually started!!                 */
+
+/* ------------------------------------------------------------------------ */
+/* Here the device file generation actually starts!                         */
+/* ------------------------------------------------------------------------ */
 
 call time 'R'                                   /* reset 'elapsed' timer    */
 
@@ -528,8 +532,6 @@ do until x = '}' | x = 0                        /* end of pinmap */
             if left(aliasname,2) = 'AN' & datatype(substr(aliasname,3)) = 'NUM' then do
                ANcount = ANcount + 1
                PinANMap.PicName.aliasname = PinName     /* pin_ANx -> RXy */
-           /*  say 'file_read_pinmap:' PicName 'aliasname='aliasname 'mapped to' PinANMap.PicName.aliasname
-             */
             end
             x = json_newchar(PinMapFile)
          end
@@ -2591,9 +2593,9 @@ return 0
 
 /* --------------------------------------- */
 /* convert ANSEL-bit to JANSEL_number      */
-/* input: - core (12,14,14h,16)            */
-/*        - register  (ANSEL,ADCON)        */
+/* input: - register  (ANSEL,ADCON)        */
 /*        - ANS number                     */
+/* All cores                               */
 /* --------------------------------------- */
 ansel2j: procedure expose Core PicName PinMap. PinANMap. msglevel
 parse upper arg reg, ans .                                  /* ans is name of bitfield! */
@@ -2640,7 +2642,7 @@ if core = '12' | core = '14' then do                        /* baseline, midrang
       end
       otherwise
          if msglevel < 3 then
-            say 'ANSEL2J: Unsupported register for' PicName ':' reg
+            say '  Unsupported ADC register for' PicName ':' reg
          ansx = 99
    end
 end
@@ -2699,7 +2701,7 @@ else if core = '14H' then do                                /* extended midrange
       end
       otherwise
          if msglevel < 3 then
-            say 'ANSEL2J: Unsupported register for' PicName ':' reg
+            say '  Unsupported ADC register for' PicName ':' reg
          ansx = 99
    end
 end
@@ -2743,24 +2745,17 @@ else if core = '16' then do                                 /* 18F series */
       end
       otherwise
          if msglevel < 3 then
-            say 'ANSEL2J: Unsupported register for' PicName ':' reg
+            say '  Unsupported ADC register for' PicName ':' reg
          ansx = 99
     end
 end
 
-else do
-   if msglevel < 3 then
-      say 'ANSEL2J: Unsupported core:' core
-   ansx = 99
-end
-
-
 PicNameUpper = toupper(PicName)
 aliasname    = 'AN'ansx
-if ansx < 99  & PinANMap.PicNameUpper.aliasname = '---' then do
+if ansx < 99 & PinANMap.PicNameUpper.aliasname = '---' then do       /* no match */
    if msglevel < 3 then
-      say '  ANSEL2J: pin_AN'ansx 'is probably not an ADC channel'
-   ansx = 99
+      say '  No "pin_AN'ansx'" alias in pinmap'
+   ansx = 99                                                /* error indication */
 end
 return ansx
 
@@ -3705,27 +3700,31 @@ return
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - *
  * PICs are classified in groups for ADC module settings.                        *
  * Below the register settings for all-digital I/O:                              *
- * ADC_V0   ADCON0 = 0b0000_0000 [ADCON1 = 0b0000_0000]                          *
- *          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000  (or ANSEL_/H,A/B/D/E)    *
- * ADC_V1   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0111                           *
- * ADC_V2   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
- * ADC_V3   ADCON0 = 0b0000_0000  ADCON1 = 0b0111_1111                           *
- * ADC_V4   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
- * ADC_V5   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
- * ADC_V6   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                           *
- * ADC_V7   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     *
- *          ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000                           *
- * ADC_V7_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     *
- *          ANSEL  = 0b0000_0000 [ANSELH = 0b0000_0000]                          *
- * ADC_V8   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000     *
- *          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           *
- * ADC_V9   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           *
- *          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           *
- * ADC_V10  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           *
- *          ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                           *
- * ADC_V11  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                           *
- *          ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                           *
- * ADC_V12  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000     *
+ * ADC_V0    ADCON0 = 0b0000_0000 [ADCON1 = 0b0000_0000]                         *
+ *           ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000  (or ANSEL_/H,A/B/D/E)   *
+ * ADC_V1    ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0111                          *
+ * ADC_V2    ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                          *
+ * ADC_V3    ADCON0 = 0b0000_0000  ADCON1 = 0b0111_1111                          *
+ * ADC_V4    ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                          *
+ * ADC_V5    ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                          *
+ * ADC_V6    ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111                          *
+ * ADC_V7    ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000    *
+ *           ANSEL0 = 0b0000_0000  ANSEL1 = 0b0000_0000                          *
+ * ADC_V7_1  ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000    *
+ *           ANSEL  = 0b0000_0000 [ANSELH = 0b0000_0000]                         *
+ * ADC_V8    ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000  ADCON2 = 0b0000_0000    *
+ *           ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                          *
+ * ADC_V9    ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                          *
+ *           ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                          *
+ * ADC_V10   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                          *
+ *           ANSEL  = 0b0000_0000  ANSELH = 0b0000_0000                          *
+ * ADC_V11   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                          *
+ *           ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                          *
+ * ADC_V11_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_0000                          *
+ *           ANCON0 = 0b1111_1111  ANCON1 = 0b1111_1111                          *
+ * ADC_V12   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
+ * ADC_V13   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
+ * ADC_V13_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
  * ----------------------------------------------------------------------------- */
 list_analog_functions: procedure expose jalfile Name. Core PicSpec. PinMap. PicName msglevel
 PicNameCaps = toupper(PicName)
@@ -4073,7 +4072,10 @@ call lineout chipdef, 'const       ADC_V8            = 0x_ADC_8'
 call lineout chipdef, 'const       ADC_V9            = 0x_ADC_9'
 call lineout chipdef, 'const       ADC_V10           = 0x_ADC_10'
 call lineout chipdef, 'const       ADC_V11           = 0x_ADC_11'
+call lineout chipdef, 'const       ADC_V11_1         = 0x_ADC_11_1'
 call lineout chipdef, 'const       ADC_V12           = 0x_ADC_12'
+call lineout chipdef, 'const       ADC_V13           = 0x_ADC_13'
+call lineout chipdef, 'const       ADC_V13_1         = 0x_ADC_13_1'
 call lineout chipdef, '--'
 call lineout chipdef, '-- =================================================================='
 call lineout chipdef, '--'
