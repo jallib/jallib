@@ -180,6 +180,7 @@ main	(int argc, char *argv[])
     // 
    if (psr->pParser->rec->state->errorCount > 0) { 
       fprintf(stderr, "The parser returned %d errors, tree walking aborted.\n", psr->pParser->rec->state->errorCount); 
+      exit(1);
    } else { 
       ANTLR3_UINT32 Child;
             
@@ -224,12 +225,17 @@ main	(int argc, char *argv[])
    } else {
       printf("lxr is null at close\n");
    }                 
+
    if (input) { 
     input ->free(input);
     input = NULL;
    } else {
       printf("input is null at close\n");
    }                 
+
+
+//exit(0);
+
    
    return 0;
 }
@@ -242,6 +248,11 @@ main	(int argc, char *argv[])
 
 
 // 	return	((pANTLR3_COMMON_TREE)(tree->super))->token->getText(((pANTLR3_COMMON_TREE)(tree->super))->token);
+
+//-----------------------------------------------------------------------------
+// Indent - print indent for screen dump / treewalk
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 void Indent(int Level)
 {   int i;
    Level += 2;
@@ -251,6 +262,10 @@ void Indent(int Level)
 
 extern pANTLR3_UINT8   jalParserTokenNames[];
 
+//-----------------------------------------------------------------------------
+// TreeWalkWorker -
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
 {  ANTLR3_UINT32   n, c;
 
@@ -290,7 +305,11 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
 
 }
 
+//-----------------------------------------------------------------------------
+// TreeWalk -
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 void TreeWalk(pANTLR3_BASE_TREE p)
 {   
-   TreeWalkWorker(p, 0);
+   TreeWalkWorker(p, 0);       
 }
