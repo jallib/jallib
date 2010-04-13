@@ -33,7 +33,7 @@ options {
 program : ( statement )+ ;
 
 statement :	
-        block_stmt | for_stmt | forever_stmt | if_stmt 
+        asm_stmt | block_stmt | for_stmt | forever_stmt | if_stmt 
         | repeat_stmt | while_stmt | case_stmt
         | var_def | const_def | alias_def
         | proc_def | pseudo_proc_def
@@ -47,6 +47,11 @@ statement :
         | pragma 
 	| IDENTIFIER^ '=' expr
 	| proc_func_call
+	;
+
+
+asm_stmt 
+	: 'asm' IDENTIFIER (cexpr ( ',' cexpr )*)?
 	;
 
 // FIXME
@@ -105,7 +110,7 @@ func_def : 'function' IDENTIFIER '(' proc_parm (',' proc_parm)* ')' 'is'
             'end' 'function'
     ;
 
-proc_parm : 'volatile'* type ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER at_decl?
+proc_parm : 'volatile'* vtype ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER at_decl?
     ;
 
 pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' '(' proc_parm? (',' proc_parm)* ')' 'is'
@@ -125,7 +130,9 @@ const_def : 'const'^ vtype* IDENTIFIER ( '[' cexpr* ']' )* '='
             ( cexpr | cexpr_list | IDENTIFIER | STRING_LITERAL )
         ;
 
-var_def : var_decl1 var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
+//var_def : var_decl1 var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
+//        ;
+var_def : 'var'^ 'volatile'* vtype var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
         ;
 
 fragment
@@ -134,9 +141,11 @@ var_multi : ',' var_decl2
 
 var_with_init : '=' var_init
         ;
-
-var_decl1 : 'var'^ 'volatile'* vtype
-        ;
+// removing the part below generates an error while parsing... don't understand why
+//fragment
+//var_decl1a : 'var'^ 'volatile'* vtype
+//        ;
+// removing        
 
 var_decl2 : IDENTIFIER ( '[' cexpr* ']' )*
         ;
