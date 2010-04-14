@@ -54,7 +54,9 @@ asm_stmt
 	: 'asm' IDENTIFIER (cexpr ( ',' cexpr )*)?
 	;
 
-// FIXME
+// cexpr is a constant expression at compile time. It can contain constant IDENTIFIERS,
+// so at this point, it's not possible to determine the difference between expr and cexpr.
+// cexpr is used in this grammar conform the actual language specification.
 cexpr   :   expr
         ;
 
@@ -80,45 +82,47 @@ while_stmt : 'while' expr 'loop'
         ;
 
 repeat_stmt : 'repeat'
-                statement+
-                ( 'exit' 'loop' )*
+                (statement | ( 'exit' 'loop' ))*
             'until' expr
         ;
 
-if_stmt : 'if' expr 'then' statement+
-            ('elsif' expr 'then' statement+ )*
-            ('else' statement+ )*
+if_stmt : 'if' expr 'then' statement*
+            ('elsif' expr 'then' statement* )*
+            ('else' statement* )?
             'end' 'if'
         ;
 
 case_stmt : 'case' expr 'of'
-                cexpr (',' cexpr)* ':' statement
                 ( cexpr (',' cexpr)* ':' statement )*
-                ('otherwise' statement)*
+                ('otherwise' statement)?
             'end' 'case'
         ;
 
-block_stmt : 'block' statement+ 'end' 'block' ;
+block_stmt : 'block' statement* 'end' 'block' ;
 
-proc_def : 'procedure' IDENTIFIER ( '(' ( proc_parm (',' proc_parm)* )? ')' )? 'is'
+proc_params 
+	: ( '(' ( proc_parm (',' proc_parm)* )? ')' )?	
+	;
+
+proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER at_decl?
+    ;
+    	
+proc_def : 'procedure' IDENTIFIER proc_params 'is'
                 statement*
             'end' 'procedure'
     ;
 
-func_def : 'function' IDENTIFIER '(' proc_parm (',' proc_parm)* ')' 'is'
+func_def : 'function'  IDENTIFIER  proc_params 'return' type 'is'
                 statement*
             'end' 'function'
     ;
 
-proc_parm : 'volatile'* vtype ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER at_decl?
-    ;
-
-pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' '(' proc_parm? (',' proc_parm)* ')' 'is'
+pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' proc_params 'is'
                 statement*
             'end' 'procedure'
     ;
 
-pseudo_func_def : 'function' IDENTIFIER '\'' 'get' '(' proc_parm? (',' proc_parm)* ')' 'return' type 'is'
+pseudo_func_def : 'function'  IDENTIFIER '\'' 'get' proc_params 'return' type 'is'
                 statement*
             'end' 'function'
     ;
@@ -135,13 +139,12 @@ const_def : 'const'^ vtype* IDENTIFIER ( '[' cexpr* ']' )* '='
 var_def : 'var'^ 'volatile'* vtype var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
         ;
 
-fragment
-var_multi : ',' var_decl2
+fragment var_multi : ',' var_decl2
         ;
 
 var_with_init : '=' var_init
         ;
-// removing the part below generates an error while parsing... don't understand why
+// removing the part below generates an error at runtime parsing... don't understand why
 //fragment
 //var_decl1a : 'var'^ 'volatile'* vtype
 //        ;
@@ -190,7 +193,7 @@ pragma
 
 pragma_target 
 	:	
-	( 'chip' constant IDENTIFIER ) // note: 16f877 does not qualify as identifier
+	( 'chip' constant IDENTIFIER ) // note: 16f877 does not qualify as constant or identifier, but the two
 	| (IDENTIFIER IDENTIFIER)
 	| (IDENTIFIER constant)
 	;
@@ -254,8 +257,7 @@ atom	:       CHARACTER_LITERAL
 
 IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
 
-fragment
-LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
+fragment LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
 
 constant :  BIN_LITERAL | HEX_LITERAL | OCTAL_LITERAL | DECIMAL_LITERAL ;
 
@@ -263,24 +265,23 @@ BIN_LITERAL : '0' ('b'|'B') ('0' | '1' | '_')+ ;
 
 DECIMAL_LITERAL : ('0' | '1'..'9' ('0'..'9' | '_')*) ;
 
-HEX_LITERAL : '0' ('x'|'X') HexDigit+ ;
+HEX_LITERAL : '0' ('x'|'X') HEX_DIGIT+ ;
 
 OCTAL_LITERAL : '0' ('0'..'7')+ ;
 
-CHARACTER_LITERAL :   '"' ( EscapeSequence | ~('\''|'\\') ) '"'
+CHARACTER_LITERAL :   '"' ( ESCAPE_SEQUENCE | ~('\''|'\\') ) '"'
     ;
 
-STRING_LITERAL :  '"' ( EscapeSequence | ~('\\'|'"') )* '"'
+STRING_LITERAL :  '"' ( ESCAPE_SEQUENCE | ~('\\'|'"') )* '"'
     ;
 
-fragment
-HexDigit : ('0'..'9'|'a'..'f'|'A'..'F'|'_') ;
+fragment HEX_DIGIT : ('0'..'9'|'a'..'f'|'A'..'F'|'_') ;
 
-fragment EscapeSequence :   '\\' ('b'|'t'|'n'|'f'|'r'|'\"'|'\''|'\\')
-    |   OctalEscape
+fragment ESCAPE_SEQUENCE :   '\\' ('b'|'t'|'n'|'f'|'r'|'\"'|'\''|'\\')
+    |   OCTAL_ESCAPE
     ;
 
-fragment OctalEscape :   '\\' ('0'..'3') ('0'..'7') ('0'..'7')
+fragment OCTAL_ESCAPE :   '\\' ('0'..'3') ('0'..'7') ('0'..'7')
     |   '\\' ('0'..'7') ('0'..'7')
     |   '\\' ('0'..'7')
     ;

@@ -64,8 +64,9 @@ command clean
 }
 
 command test {
-   exec "($avr-root)avr-gcc  -mmcu=atxmega128a1 -Wall -gdwarf-2 -Os -std=gnu99 -funsigned-char 
-                  -funsigned-bitfields -fpack-struct -fshort-enums -MD -MP -MT xmegafirst.o -c  ($_) "
+   set cmd    "rem part of command"
+   append cmd " * this appends to prev part *" # note: first char in line is space, to get 'command *' and not 'command*'
+   exec ($cmd)
 }
 
 
