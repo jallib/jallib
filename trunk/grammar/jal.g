@@ -24,9 +24,11 @@
 grammar jal;
 
 options {
+//	language=Java;
 	language=C;
+	ASTLabelType=pANTLR3_BASE_TREE;  // C code
 	output=AST;
-	ASTLabelType=pANTLR3_BASE_TREE;
+
     	backtrack	= true;
 }
 
@@ -45,8 +47,8 @@ statement :
         | '_error' STRING_LITERAL
         | '_warn' STRING_LITERAL
         | pragma 
-	| IDENTIFIER^ '=' expr
 	| proc_func_call
+	| IDENTIFIER ('[' expr ']')? '=' expr
 	;
 
 
@@ -86,7 +88,7 @@ repeat_stmt : 'repeat'
             'until' expr
         ;
 
-if_stmt : 'if' expr 'then' statement*
+if_stmt : 'if'^ expr 'then' statement*
             ('elsif' expr 'then' statement* )*
             ('else' statement* )?
             'end' 'if'
@@ -104,7 +106,7 @@ proc_params
 	: ( '(' ( proc_parm (',' proc_parm)* )? ')' )?	
 	;
 
-proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER ('[' cexpr ']')? at_decl?
+proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER ('[' expr ']')? at_decl?
     ;
     	
 proc_def : 'procedure' IDENTIFIER proc_params 'is'
@@ -160,9 +162,8 @@ is_decl : 'is' IDENTIFIER
 bitloc  : ':' constant
         ;
 
-//FIXME: this is wrong-- add proc/func calls to the expr handler instead
-//proc_func_call   : IDENTIFIER ('(' IDENTIFIER* ')') ? // jal permits procedure call without parenthesis, but this can't be distinquished from the start of an assignment...
 proc_func_call   : IDENTIFIER ('(' expr? (',' expr) * ')')?
+//proc_func_call   : IDENTIFIER ('(' expr? (',' expr) * ')') // parenthesis are mandatory, otherwise parsed as IDENTIFIER
         ;
 
 var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | IDENTIFIER
@@ -252,9 +253,10 @@ factor : '+' factor
 atom	:  CHARACTER_LITERAL
         |  STRING_LITERAL
         |  constant
-	|  IDENTIFIER
 	| '(' expr ')'
+	|  IDENTIFIER ('[' expr ']')
 	| proc_func_call
+	|  IDENTIFIER
 	;
 
 IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
