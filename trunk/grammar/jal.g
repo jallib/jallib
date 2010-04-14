@@ -104,7 +104,7 @@ proc_params
 	: ( '(' ( proc_parm (',' proc_parm)* )? ')' )?	
 	;
 
-proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER at_decl?
+proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER ('[' cexpr ']')? at_decl?
     ;
     	
 proc_def : 'procedure' IDENTIFIER proc_params 'is'
@@ -136,24 +136,19 @@ const_def : 'const'^ vtype* IDENTIFIER ( '[' cexpr* ']' )* '='
 
 //var_def : var_decl1 var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
 //        ;
-var_def : 'var'^ 'volatile'* vtype var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
+var_def : 'var'^ 'volatile'? vtype var_decl2 (',' var_decl2)*
         ;
 
-fragment var_multi : ',' var_decl2
-        ;
+//fragment var_multi : ',' var_decl2
+//        ;
 
 var_with_init : '=' var_init
         ;
-// removing the part below generates an error at runtime parsing... don't understand why
-//fragment
-//var_decl1a : 'var'^ 'volatile'* vtype
-//        ;
-// removing        
-
-var_decl2 : IDENTIFIER ( '[' cexpr* ']' )*
+ 
+fragment var_decl2 : IDENTIFIER ( '[' cexpr? ']' )? ( at_decl | is_decl | var_with_init)?
         ;
 
-vtype   :   type ('*' constant)*
+vtype   :   type ('*' constant)?
         ;
 
 at_decl : ('shared')? 'at' ( ( cexpr bitloc? ) | (  IDENTIFIER bitloc? ) | cexpr_list )
@@ -167,7 +162,7 @@ bitloc  : ':' constant
 
 //FIXME: this is wrong-- add proc/func calls to the expr handler instead
 //proc_func_call   : IDENTIFIER ('(' IDENTIFIER* ')') ? // jal permits procedure call without parenthesis, but this can't be distinquished from the start of an assignment...
-proc_func_call   : IDENTIFIER^ ('(' expr* ')')?
+proc_func_call   : IDENTIFIER ('(' expr? (',' expr) * ')')?
         ;
 
 var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | IDENTIFIER
@@ -176,10 +171,9 @@ var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITE
 type    :       'bit' | 'byte' | 'word' | 'dword' 
         | 'sbyte' | 'sword' | 'sdword'
         ;
-
 pragma
     : 'pragma'^ (
-	( 'target' pragma_target )
+	(   'target' pragma_target )
 	| ( 'inline' ) 	
 	| ( 'stack' constant ) 	
 	| ( 'code' constant ) 	
@@ -193,7 +187,7 @@ pragma
 
 pragma_target 
 	:	
-	( 'chip' constant IDENTIFIER ) // note: 16f877 does not qualify as constant or identifier, but the two
+	( 'c' 'h' 'i' 'p' constant IDENTIFIER ) // note: 16f877 does not qualify as constant or identifier, but the two
 	| (IDENTIFIER IDENTIFIER)
 	| (IDENTIFIER constant)
 	;
@@ -243,20 +237,24 @@ relational_expr :arith_expr (('<<'|'>>') arith_expr)*
 arith_expr: term (('+'|'-') term)*
           ;
 
-term : factor (('*' | '/' | '%' ) factor)*
+term : pling (('*' | '/' | '%' ) pling)*
      ;
+
+pling 	: '!'? factor	
+	;
 
 factor : '+' factor
        | '-' factor
-       | '~' factor
+//       | '~' factor
        | atom
        ;
 
-atom	:       CHARACTER_LITERAL
-        |       STRING_LITERAL
-        |       constant
-	|	IDENTIFIER
+atom	:  CHARACTER_LITERAL
+        |  STRING_LITERAL
+        |  constant
+	|  IDENTIFIER
 	| '(' expr ')'
+	| proc_func_call
 	;
 
 IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
@@ -293,6 +291,7 @@ fragment OCTAL_ESCAPE :   '\\' ('0'..'3') ('0'..'7') ('0'..'7')
 WS  :  (' '|'\r'|'\t'|'\u000C'|'\n') {$channel=HIDDEN;}
     ;
 
+// todo: line comment to end of file (no cr/lf at the end)
 LINE_COMMENT
     : ('--' | ';') ~('\n'|'\r')* '\r'? '\n' {$channel=HIDDEN;}
     ;
