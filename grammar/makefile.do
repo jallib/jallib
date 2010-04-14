@@ -64,8 +64,8 @@ command clean
 }
 
 command test {
-   set cmd    "rem part of command"
-   append cmd " * this appends to prev part *" # note: first char in line is space, to get 'command *' and not 'command*'
+   set cmd    "jalparser"
+   append cmd " C:\jallib\include\external\lcd\lcd_backlight.jal"
    exec ($cmd)
 }
 
