@@ -112,7 +112,7 @@ proc_def : 'procedure' IDENTIFIER proc_params 'is'
             'end' 'procedure'
     ;
 
-func_def : 'function'  IDENTIFIER  proc_params 'return' type 'is'
+func_def : 'function'  IDENTIFIER  proc_params 'return' vtype 'is'
                 statement*
             'end' 'function'
     ;
@@ -122,7 +122,7 @@ pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' proc_params 'is'
             'end' 'procedure'
     ;
 
-pseudo_func_def : 'function'  IDENTIFIER '\'' 'get' proc_params 'return' type 'is'
+pseudo_func_def : 'function'  IDENTIFIER '\'' 'get' proc_params 'return' vtype 'is'
                 statement*
             'end' 'function'
     ;
@@ -222,18 +222,22 @@ pragma_fusedef
 //
 
      
-expr :  xor_expr ('|' xor_expr)*
+expr :  or_expr ('|' or_expr)*
      ;
 
-xor_expr : and_expr ('^' and_expr)*
-//	 | '(' xor_expr ')' 
+or_expr :  xor_expr ('^' xor_expr)*
+     ;
+
+xor_expr : and_expr ('&' and_expr)*
          ;
 
-and_expr : shift_expr ('&' shift_expr)* 
-//	 | '(' and_expr ')' 
+and_expr : qualitly_expr (('==' | '!=' )qualitly_expr)* 
          ;
 
-shift_expr : arith_expr (('<<'|'>>') arith_expr)*
+qualitly_expr : relational_expr (('<' | '>' | '<=' | '>=' ) relational_expr)* 
+         ;
+
+relational_expr :arith_expr (('<<'|'>>') arith_expr)*
            ;
 
 arith_expr: term (('+'|'-') term)*
