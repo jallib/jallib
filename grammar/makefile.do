@@ -65,7 +65,7 @@ command clean
 
 command test {
    set cmd    "jalparser"
-   append cmd " C:\jallib\include\external\lcd\lcd_backlight.jal"
+   append cmd " C:\jallib\include\external\lcd\glcd_ks0108.jal"
    exec ($cmd)
 }
 
