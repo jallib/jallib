@@ -32,7 +32,7 @@ options {
     	backtrack	= true;
 }
 
-program : ( statement )+ ;
+program : ( statement )+ ; 
 
 statement :	
         asm_stmt | block_stmt | for_stmt | forever_stmt | if_stmt 
@@ -108,6 +108,9 @@ proc_params
 
 proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER ('[' expr ']')? at_decl?
     ;
+
+//proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) ('data' | IDENTIFIER) ('[' expr ']')? at_decl?
+//    ;
     	
 proc_def : 'procedure' IDENTIFIER proc_params 'is'
                 statement*
@@ -197,25 +200,9 @@ pragma_fusedef
 	: IDENTIFIER '=' constant
 	;
 
-// all below-- borrowed/derived from Antlr C.g and Python.g examples.
-
-//or_test : and_test ('|' and_test)*
-//        ;
-//
-//and_test : not_test ('&' not_test)*
-//         ;
-//
-//not_test : '!' not_test
-//         | comparison
-//         ;
-//
-//comparison: expr (comp_op expr)*
-//          ;
-//
-//comp_op : '<' | '>' | '==' | '>=' | '<=' | '!='
-//        ;
-//
-
+//-----------------------------------------------------------------------------
+// expressions
+//-----------------------------------------------------------------------------
      
 expr :  or_expr ('|' or_expr)*
      ;
@@ -252,6 +239,7 @@ factor : '+' factor
 
 atom	:  CHARACTER_LITERAL
         |  STRING_LITERAL
+	| vtype '(' expr ')' // cast
         |  constant
 	| '(' expr ')'
 	|  IDENTIFIER ('[' expr ']')
