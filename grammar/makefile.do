@@ -69,7 +69,7 @@ command clean
 
 command test {
    set cmd    "jalparser "
-   append cmd " C:\jallib\include\external\motor\servo\servo_rc_master.jal"
+   append cmd " a.jal"
    exec ($cmd)
 }
 

@@ -16,7 +16,7 @@
 // If you want to run the test program, jaltest.py, then you need to 
 // generate the lexer and parser first, like this:
 //    java -cp antlr-3.1.2.jar org.antlr.Tool jal.g 
-// js: note grammar is for c client now, so you need to change 'options' to use Python
+// js: note grammar is for Java client now, so you need to change 'options' to use Python
 //
 // this first cut of JAL grammar was derived from an example found 
 // here: http://www.antlr.org/wiki/display/ANTLR3/Example
@@ -31,7 +31,7 @@ grammar jal;
 options {
 	language=Java;
 //	language=C;	ASTLabelType=pANTLR3_BASE_TREE;  // C code
-//	output=AST;
+	output=AST;
 
     	backtrack	= true;
 }
@@ -45,21 +45,24 @@ statement
         | var_def | const_def | alias_def
         | proc_def | pseudo_proc_def
         | func_def | pseudo_func_def
-        | ( L_EXIT L_LOOP )
-        | L_RETURN expr?
+        | ( L_EXIT^ L_LOOP )
+        | L_RETURN^ expr?
         | L_ASSERT expr
         | INCLUDE_STMT
-        | L__DEBUG STRING_LITERAL
-        | L__ERROR STRING_LITERAL
-        | L__WARN STRING_LITERAL
+        | L__DEBUG^ STRING_LITERAL
+        | L__ERROR^ STRING_LITERAL
+        | L__WARN^ STRING_LITERAL
         | pragma 
 	| proc_func_call
-	| identifier ('[' expr ']')? '=' expr
+	| variable '='^ expr
 	;
 
-include_stmt 
-	: L_INCLUDE^ (identifier|constant|'/')+	 
-	;
+variable 
+	: identifier^ ('[' expr ']')?	;
+
+//include_stmt 
+//	: L_INCLUDE^ (identifier|constant|'/')+	 
+//	;
 	
 asm_stmt 
 	: L_ASM (L_NOP | (identifier (cexpr ( ',' cexpr )*)?))
@@ -78,15 +81,15 @@ cexpr   :   expr
 cexpr_list : '{' cexpr ( ',' cexpr )* '}'
 	;
 	
-for_stmt : L_FOR^ expr ( L_USING identifier )* L_LOOP 
-                statement*
-            L_END L_LOOP
-        ;
+for_stmt : L_FOR^ expr ( L_USING identifier )? loop_stmt ;
 
-forever_stmt : L_FOREVER^ L_LOOP 
+loop_stmt 
+	:   L_LOOP^  
                 statement*
-            L_END L_LOOP
-        ;
+            L_END! L_LOOP!
+	;
+
+forever_stmt : L_FOREVER^ loop_stmt ;  
 
 while_stmt : L_WHILE expr L_LOOP 
                 statement*
@@ -220,35 +223,35 @@ pragma_fusedef
 // expressions
 //-----------------------------------------------------------------------------
      
-expr :  or_expr ('|' or_expr)*
+expr :  or_expr ('|'^ or_expr)*
      ;
 
-or_expr :  xor_expr ('^' xor_expr)*
+or_expr :  xor_expr ('^'^ xor_expr)*
      ;
 
-xor_expr : and_expr ('&' and_expr)*
+xor_expr : and_expr ('&'^ and_expr)*
          ;
 
-and_expr : qualitly_expr (('==' | '!=' )qualitly_expr)* 
+and_expr : qualitly_expr (('==' | '!=' )^ qualitly_expr)* 
          ;
 
-qualitly_expr : relational_expr (('<' | '>' | '<=' | '>=' ) relational_expr)* 
+qualitly_expr : relational_expr (('<' | '>' | '<=' | '>=' )^ relational_expr)* 
          ;
 
-relational_expr :arith_expr (('<<'|'>>') arith_expr)*
+relational_expr :arith_expr (('<<'|'>>')^ arith_expr)*
            ;
 
-arith_expr: term (('+'|'-') term)*
+arith_expr: term (('+'|'-')^ term)*
           ;
 
-term : pling (('*' | '/' | '%' ) pling)*
+term : pling (('*' | '/' | '%' )^ pling)*
      ;
 
-pling 	: '!'? factor	
+pling 	: '!'^? factor	
 	;
 
-factor : '+' factor
-       | '-' factor
+factor : '+'^ factor
+       | '-'^ factor
 //       | '~' factor
        | atom
        ;
@@ -306,7 +309,7 @@ INCLUDE_STMT
 
 // todo: line comment to end of file (no cr/lf at the end)
 LINE_COMMENT
-    : ('--' | ';') ~('\n'|'\r')* '\r'? '\n' {$channel=HIDDEN;}
+    : ('--' | ';') ~('\n'|'\r')* {$channel=HIDDEN;}
     ;
 
 
