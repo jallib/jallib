@@ -29,9 +29,9 @@
 grammar jal;
 
 options {
-//	language=Java;
-	language=C;	ASTLabelType=pANTLR3_BASE_TREE;  // C code
-	output=AST;
+	language=Java;
+//	language=C;	ASTLabelType=pANTLR3_BASE_TREE;  // C code
+//	output=AST;
 
     	backtrack	= true;
 }
@@ -39,11 +39,12 @@ options {
 program : ( statement )+ ; 
 
 statement :	
-        asm_stmt | block_stmt | for_stmt | forever_stmt | if_stmt 
+        asm_block | asm_stmt | block_stmt | for_stmt | forever_stmt | if_stmt 
         | repeat_stmt | while_stmt | case_stmt
         | var_def | const_def | alias_def
         | proc_def | pseudo_proc_def
         | func_def | pseudo_func_def
+        | ( L_EXIT L_LOOP )
         | L_RETURN expr?
         | L_ASSERT expr
         | L_INCLUDE^ (identifier|constant|'/')+
@@ -60,6 +61,10 @@ asm_stmt
 	: L_ASM (L_NOP | (identifier (cexpr ( ',' cexpr )*)?))
 	;
 
+asm_block 
+	: L_ASSEMBLER (identifier | expr | constant | ',' | ':') * L_END L_ASSEMBLER
+	;
+
 // cexpr is a constant expression at compile time. It can contain constant identifierS,
 // so at this point, it's not possible to determine the difference between expr and cexpr.
 // cexpr is used in this grammar conform the actual language specification.
@@ -71,24 +76,21 @@ cexpr_list : '{' cexpr ( ',' cexpr )* '}'
 	
 for_stmt : L_FOR^ expr ( L_USING identifier )* L_LOOP 
                 statement*
-                ( L_EXIT L_LOOP )*
             L_END L_LOOP
         ;
 
 forever_stmt : L_FOREVER^ L_LOOP 
                 statement*
-                ( L_EXIT L_LOOP )*
             L_END L_LOOP
         ;
 
 while_stmt : L_WHILE expr L_LOOP 
                 statement*
-                ( L_EXIT L_LOOP )*
             L_END L_LOOP
         ;
 
 repeat_stmt : L_REPEAT
-                (statement | ( L_EXIT L_LOOP ))*
+                statement*
             L_UNTIL expr
         ;
 
@@ -115,10 +117,14 @@ proc_parm : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier ('[' expr
 
 //proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) ('data' | identifier) ('[' expr ']')? at_decl?
 //    ;
+
     	
-proc_def : 'procedure' identifier proc_params L_IS
+
+// the optional part from L_IS is for the real definition, the first part only is a prototype
+proc_def : 'procedure' identifier proc_params
+	(	 L_IS
                 statement*
-            L_END 'procedure'
+            L_END 'procedure' )?
     ;
 
 func_def : 'function'  identifier  proc_params L_RETURN vtype L_IS
@@ -154,10 +160,10 @@ var_def : 'var'^ L_VOLATILE? vtype var_decl2 (',' var_decl2)*
 var_with_init : '=' var_init
         ;
  
-fragment var_decl2 : identifier ( '[' cexpr? ']' )? ( at_decl | is_decl | var_with_init)?
+fragment var_decl2 : identifier ( '[' cexpr? ']' )? ( at_decl | is_decl | var_with_init)*
         ;
 
-vtype   :   type ('*' constant)?
+vtype   :   type ('*' cexpr)?
         ;
 
 at_decl : (L_SHARED)? L_AT ( ( cexpr bitloc? ) | (  identifier bitloc? ) | cexpr_list )
@@ -173,7 +179,8 @@ proc_func_call   : identifier ('(' expr? (',' expr) * ')')?
 //proc_func_call   : identifier ('(' expr? (',' expr) * ')') // parenthesis are mandatory, otherwise parsed as identifier
         ;
 
-var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | identifier
+//var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | identifier
+var_init : cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | identifier
         ;
 
 type    :       L_BIT | L_BYTE | L_WORD | L_DWORD 
@@ -310,6 +317,7 @@ L_USING		:	'using'		;
 L_LOOP		:	'loop'		;
 L_EXIT		:	'exit'		;
 L_END		:	'end'		;
+L_ASSEMBLER	:	'assembler'	;
 L_FOREVER	:	'forever'	;
 L_WHILE		:	'while'		;
 L_REPEAT	:	'repeat'	;
@@ -355,6 +363,8 @@ L_NOP		:	'nop'		;
 IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
 
 fragment LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
+
+
 
 
 
