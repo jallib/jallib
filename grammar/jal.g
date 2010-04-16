@@ -1,6 +1,6 @@
 // Title: jal.g
-// Author:  William Welch, Copyright (C) 2010  William Welch
-// Adapted-by: Joep Suijs
+// Author:  Joep Suijs, William Welch, Copyright (C) 2010  
+// Adapted-by:
 // Compiler: >=2.4m
 //
 // This file is part of jallib (http://jallib.googlecode.com)
@@ -38,7 +38,8 @@ options {
 
 program : ( statement )+ ; 
 
-statement :	
+statement 
+	:	
         asm_block | asm_stmt | block_stmt | for_stmt | forever_stmt | if_stmt 
         | repeat_stmt | while_stmt | case_stmt
         | var_def | const_def | alias_def
@@ -47,7 +48,7 @@ statement :
         | ( L_EXIT L_LOOP )
         | L_RETURN expr?
         | L_ASSERT expr
-        | L_INCLUDE^ (identifier|constant|'/')+
+        | INCLUDE_STMT
         | L__DEBUG STRING_LITERAL
         | L__ERROR STRING_LITERAL
         | L__WARN STRING_LITERAL
@@ -56,7 +57,10 @@ statement :
 	| identifier ('[' expr ']')? '=' expr
 	;
 
-
+include_stmt 
+	: L_INCLUDE^ (identifier|constant|'/')+	 
+	;
+	
 asm_stmt 
 	: L_ASM (L_NOP | (identifier (cexpr ( ',' cexpr )*)?))
 	;
@@ -172,7 +176,7 @@ at_decl : (L_SHARED)? L_AT ( ( cexpr bitloc? ) | (  identifier bitloc? ) | cexpr
 is_decl : L_IS identifier
         ;
 
-bitloc  : ':' constant
+bitloc  : ':' cexpr // constant
         ;
 
 proc_func_call   : identifier ('(' expr? (',' expr) * ')')?
@@ -292,6 +296,12 @@ fragment OCTAL_ESCAPE :   '\\' ('0'..'3') ('0'..'7') ('0'..'7')
     ;
 
 WS  :  (' '|'\r'|'\t'|'\u000C'|'\n') {$channel=HIDDEN;}
+    ;
+
+
+
+INCLUDE_STMT
+    : 'include' ~('\n'|'\r')* '\r'? '\n' 
     ;
 
 // todo: line comment to end of file (no cr/lf at the end)
