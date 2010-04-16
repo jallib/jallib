@@ -20,13 +20,17 @@
 //
 // this first cut of JAL grammar was derived from an example found 
 // here: http://www.antlr.org/wiki/display/ANTLR3/Example
+//
+// Conventions:
+// - identifiers names are single case (upper case for lex, lower case for parser rules).
+// - lex litterals have 'L_' prefix, so 'foo' is named L_FOO.
+
 
 grammar jal;
 
 options {
 //	language=Java;
-	language=C;
-	ASTLabelType=pANTLR3_BASE_TREE;  // C code
+	language=C;	ASTLabelType=pANTLR3_BASE_TREE;  // C code
 	output=AST;
 
     	backtrack	= true;
@@ -40,23 +44,23 @@ statement :
         | var_def | const_def | alias_def
         | proc_def | pseudo_proc_def
         | func_def | pseudo_func_def
-        | 'return' expr
-        | 'assert' expr
-        | 'include'^ (IDENTIFIER|constant|'/')+
-        | '_debug' STRING_LITERAL
-        | '_error' STRING_LITERAL
-        | '_warn' STRING_LITERAL
+        | L_RETURN expr?
+        | L_ASSERT expr
+        | L_INCLUDE^ (identifier|constant|'/')+
+        | L__DEBUG STRING_LITERAL
+        | L__ERROR STRING_LITERAL
+        | L__WARN STRING_LITERAL
         | pragma 
 	| proc_func_call
-	| IDENTIFIER ('[' expr ']')? '=' expr
+	| identifier ('[' expr ']')? '=' expr
 	;
 
 
 asm_stmt 
-	: 'asm' IDENTIFIER (cexpr ( ',' cexpr )*)?
+	: L_ASM (L_NOP | (identifier (cexpr ( ',' cexpr )*)?))
 	;
 
-// cexpr is a constant expression at compile time. It can contain constant IDENTIFIERS,
+// cexpr is a constant expression at compile time. It can contain constant identifierS,
 // so at this point, it's not possible to determine the difference between expr and cexpr.
 // cexpr is used in this grammar conform the actual language specification.
 cexpr   :   expr
@@ -65,83 +69,83 @@ cexpr   :   expr
 cexpr_list : '{' cexpr ( ',' cexpr )* '}'
 	;
 	
-for_stmt : 'for'^ expr ( 'using' IDENTIFIER )* 'loop' 
+for_stmt : L_FOR^ expr ( L_USING identifier )* L_LOOP 
                 statement+
-                ( 'exit' 'loop' )*
-            'end' 'loop'
+                ( L_EXIT L_LOOP )*
+            L_END L_LOOP
         ;
 
-forever_stmt : 'forever'^ 'loop' 
+forever_stmt : L_FOREVER^ L_LOOP 
                 statement+
-                ( 'exit' 'loop' )*
-            'end' 'loop'
+                ( L_EXIT L_LOOP )*
+            L_END L_LOOP
         ;
 
-while_stmt : 'while' expr 'loop' 
+while_stmt : L_WHILE expr L_LOOP 
                 statement+
-                ( 'exit' 'loop' )*
-            'end' 'loop'
+                ( L_EXIT L_LOOP )*
+            L_END L_LOOP
         ;
 
-repeat_stmt : 'repeat'
-                (statement | ( 'exit' 'loop' ))*
-            'until' expr
+repeat_stmt : L_REPEAT
+                (statement | ( L_EXIT L_LOOP ))*
+            L_UNTIL expr
         ;
 
-if_stmt : 'if'^ expr 'then' statement*
-            ('elsif' expr 'then' statement* )*
-            ('else' statement* )?
-            'end' 'if'
+if_stmt : L_IF^ expr L_THEN statement*
+            (L_ELSEIF expr L_THEN statement* )*
+            (L_ELSE statement* )?
+            L_END L_IF
         ;
 
-case_stmt : 'case' expr 'of'
+case_stmt : L_CASE expr 'of'
                 ( cexpr (',' cexpr)* ':' statement )*
-                ('otherwise' statement)?
-            'end' 'case'
+                (L_OTHERWISE statement)?
+            L_END L_CASE
         ;
 
-block_stmt : 'block' statement* 'end' 'block' ;
+block_stmt : L_BLOCK statement* L_END L_BLOCK ;
 
 proc_params 
 	: ( '(' ( proc_parm (',' proc_parm)* )? ')' )?	
 	;
 
-proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) IDENTIFIER ('[' expr ']')? at_decl?
+proc_parm : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier ('[' expr ']')? at_decl?
     ;
 
-//proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) ('data' | IDENTIFIER) ('[' expr ']')? at_decl?
+//proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) ('data' | identifier) ('[' expr ']')? at_decl?
 //    ;
     	
-proc_def : 'procedure' IDENTIFIER proc_params 'is'
+proc_def : 'procedure' identifier proc_params L_IS
                 statement*
-            'end' 'procedure'
+            L_END 'procedure'
     ;
 
-func_def : 'function'  IDENTIFIER  proc_params 'return' vtype 'is'
+func_def : 'function'  identifier  proc_params L_RETURN vtype L_IS
                 statement*
-            'end' 'function'
+            L_END 'function'
     ;
 
-pseudo_proc_def : 'procedure' IDENTIFIER '\'' 'put' proc_params 'is'
+pseudo_proc_def : 'procedure' identifier '\'' 'put' proc_params L_IS
                 statement*
-            'end' 'procedure'
+            L_END 'procedure'
     ;
 
-pseudo_func_def : 'function'  IDENTIFIER '\'' 'get' proc_params 'return' vtype 'is'
+pseudo_func_def : 'function'  identifier '\'' 'get' proc_params L_RETURN vtype L_IS
                 statement*
-            'end' 'function'
+            L_END 'function'
     ;
 
-alias_def : 'alias'^ IDENTIFIER 'is' IDENTIFIER
+alias_def : 'alias'^ identifier L_IS identifier
         ;
 
-const_def : 'const'^ vtype* IDENTIFIER ( '[' cexpr* ']' )* '='
-            ( cexpr | cexpr_list | IDENTIFIER | STRING_LITERAL )
+const_def : 'const'^ vtype* identifier ( '[' cexpr* ']' )* '='
+            ( cexpr | cexpr_list | identifier | STRING_LITERAL )
         ;
 
 //var_def : var_decl1 var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
 //        ;
-var_def : 'var'^ 'volatile'? vtype var_decl2 (',' var_decl2)*
+var_def : 'var'^ L_VOLATILE? vtype var_decl2 (',' var_decl2)*
         ;
 
 //fragment var_multi : ',' var_decl2
@@ -150,54 +154,54 @@ var_def : 'var'^ 'volatile'? vtype var_decl2 (',' var_decl2)*
 var_with_init : '=' var_init
         ;
  
-fragment var_decl2 : IDENTIFIER ( '[' cexpr? ']' )? ( at_decl | is_decl | var_with_init)?
+fragment var_decl2 : identifier ( '[' cexpr? ']' )? ( at_decl | is_decl | var_with_init)?
         ;
 
 vtype   :   type ('*' constant)?
         ;
 
-at_decl : ('shared')? 'at' ( ( cexpr bitloc? ) | (  IDENTIFIER bitloc? ) | cexpr_list )
+at_decl : (L_SHARED)? L_AT ( ( cexpr bitloc? ) | (  identifier bitloc? ) | cexpr_list )
         ;
 
-is_decl : 'is' IDENTIFIER
+is_decl : L_IS identifier
         ;
 
 bitloc  : ':' constant
         ;
 
-proc_func_call   : IDENTIFIER ('(' expr? (',' expr) * ')')?
-//proc_func_call   : IDENTIFIER ('(' expr? (',' expr) * ')') // parenthesis are mandatory, otherwise parsed as IDENTIFIER
+proc_func_call   : identifier ('(' expr? (',' expr) * ')')?
+//proc_func_call   : identifier ('(' expr? (',' expr) * ')') // parenthesis are mandatory, otherwise parsed as identifier
         ;
 
-var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | IDENTIFIER
+var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | identifier
         ;
 
-type    :       'bit' | 'byte' | 'word' | 'dword' 
-        | 'sbyte' | 'sword' | 'sdword'
+type    :       L_BIT | L_BYTE | L_WORD | L_DWORD 
+        | L_SBYTE | L_SWORD | L_SDWORD
         ;
 pragma
-    : 'pragma'^ (
-	(   'target' pragma_target )
-	| ( 'inline' ) 	
-	| ( 'stack' constant ) 	
-	| ( 'code' constant ) 	
-	| ( 'eeprom' constant ',' constant ) 	
-	| ( 'ID' constant ',' constant ) 	
-	| ( 'data' constant '-' constant (',' constant '-' constant)* ) 	
-	| ( 'shared' constant '-' constant) 	
-	| ( 'fuse_def' IDENTIFIER bitloc? constant '{' pragma_fusedef+ '}')
+    : L_PRAGMA^ (
+	(   L_TARGET pragma_target )
+	| ( L_INLINE ) 	
+	| ( L_STACK constant ) 	
+	| ( L_CODE constant ) 	
+	| ( L_EEPROM constant ',' constant ) 	
+	| ( L_ID constant ',' constant ) 	
+	| ( L_DATA constant '-' constant (',' constant '-' constant)* ) 	
+	| ( L_SHARED constant '-' constant) 	
+	| ( L_FUSEDEF identifier bitloc? constant '{' pragma_fusedef+ '}')
     ) 
     ;
 
 pragma_target 
 	:	
-	( 'c' 'h' 'i' 'p' constant IDENTIFIER ) // note: 16f877 does not qualify as constant or identifier, but the two
-	| (IDENTIFIER IDENTIFIER)
-	| (IDENTIFIER constant)
+	( L_CHIP constant identifier ) // note: 16f877 does not qualify as constant or identifier, but the two
+	| (identifier identifier)
+	| (identifier constant)
 	;
 
 pragma_fusedef
-	: IDENTIFIER '=' constant
+	: identifier '=' constant
 	;
 
 //-----------------------------------------------------------------------------
@@ -242,14 +246,15 @@ atom	:  CHARACTER_LITERAL
 	| vtype '(' expr ')' // cast
         |  constant
 	| '(' expr ')'
-	|  IDENTIFIER ('[' expr ']')
+	|  identifier ('[' expr ']')
 	| proc_func_call
-	|  IDENTIFIER
+	|  identifier
 	;
-
-IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
-
-fragment LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
+          
+identifier : IDENTIFIER
+            | L_DATA
+            ;          
+          
 
 constant :  BIN_LITERAL | HEX_LITERAL | OCTAL_LITERAL | DECIMAL_LITERAL ;
 
@@ -285,4 +290,104 @@ WS  :  (' '|'\r'|'\t'|'\u000C'|'\n') {$channel=HIDDEN;}
 LINE_COMMENT
     : ('--' | ';') ~('\n'|'\r')* '\r'? '\n' {$channel=HIDDEN;}
     ;
+
+
+L_RETURN	:	'return'	;
+
+L_ASSERT	:	'assert'	;
+
+L_INCLUDE	:	'include'	;
+
+L__DEBUG	:	'_debug'	;
+
+L__ERROR	:	'_error'	;
+
+L__WARN		:	'_warn'		;
+
+L_ASM		:	'asm'		;
+
+L_FOR		:	'for'		;
+
+L_USING		:	'using'		;
+
+L_LOOP		:	'loop'		;
+
+L_EXIT		:	'exit'		;
+
+L_END		:	'end'		;
+
+L_FOREVER	:	'forever'	;
+
+L_WHILE		:	'while'		;
+
+L_REPEAT	:	'repeat'	;
+
+L_UNTIL		:	'until'		;
+
+L_IF		:	'if'		;
+
+L_THEN		:	'then'		;
+
+L_ELSEIF	:	'elsif'		;
+
+L_ELSE		:	'else'		;
+
+L_CASE		:	'case'		;
+
+L_OTHERWISE	:	'otherwise'	;
+
+L_BLOCK		:	'block'		;
+
+L_VOLATILE	:	'volatile'	;
+
+L_IN		:	'in'		;
+
+L_OUT		:	'out'		;
+
+L_SHARED	:	'shared'	;
+
+L_AT		:	'at'		;
+
+L_IS		:	'is'		;
+
+L_BIT		:	'bit'		;
+
+L_BYTE		:	'byte'		;
+
+L_WORD		:	'word'		;
+
+L_DWORD		:	'dword'		;
+
+L_SBYTE		:	'sbyte'		;
+
+L_SWORD		:	'sword'		;
+
+L_SDWORD	:	'sdword'	;
+
+L_PRAGMA	:	'pragma'	;
+
+L_TARGET	:	'target'	;
+
+L_INLINE	:	'inline'	;
+
+L_STACK		:	'stack'		;
+
+L_CODE		:	'code'		;
+
+L_EEPROM	:	'eeprom'	;
+
+L_ID		:	'ID'		;
+
+L_DATA		:	'data'		;
+
+L_FUSEDEF	:	'fuse_def'	;
+
+L_CHIP		:	'chip'		;
+L_NOP		:	'nop'		;
+
+
+IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
+
+fragment LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
+
 
