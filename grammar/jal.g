@@ -70,19 +70,19 @@ cexpr_list : '{' cexpr ( ',' cexpr )* '}'
 	;
 	
 for_stmt : L_FOR^ expr ( L_USING identifier )* L_LOOP 
-                statement+
+                statement*
                 ( L_EXIT L_LOOP )*
             L_END L_LOOP
         ;
 
 forever_stmt : L_FOREVER^ L_LOOP 
-                statement+
+                statement*
                 ( L_EXIT L_LOOP )*
             L_END L_LOOP
         ;
 
 while_stmt : L_WHILE expr L_LOOP 
-                statement+
+                statement*
                 ( L_EXIT L_LOOP )*
             L_END L_LOOP
         ;
@@ -110,7 +110,7 @@ proc_params
 	: ( '(' ( proc_parm (',' proc_parm)* )? ')' )?	
 	;
 
-proc_parm : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier ('[' expr ']')? at_decl?
+proc_parm : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier ('[' expr? ']')? at_decl?
     ;
 
 //proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) ('data' | identifier) ('[' expr ']')? at_decl?
@@ -183,6 +183,7 @@ pragma
     : L_PRAGMA^ (
 	(   L_TARGET pragma_target )
 	| ( L_INLINE ) 	
+	| ( L_INTERRUPT ) 	
 	| ( L_STACK constant ) 	
 	| ( L_CODE constant ) 	
 	| ( L_EEPROM constant ',' constant ) 	
@@ -299,95 +300,62 @@ L_ASSERT	:	'assert'	;
 L_INCLUDE	:	'include'	;
 
 L__DEBUG	:	'_debug'	;
-
 L__ERROR	:	'_error'	;
-
 L__WARN		:	'_warn'		;
 
 L_ASM		:	'asm'		;
 
 L_FOR		:	'for'		;
-
 L_USING		:	'using'		;
-
 L_LOOP		:	'loop'		;
-
 L_EXIT		:	'exit'		;
-
 L_END		:	'end'		;
-
 L_FOREVER	:	'forever'	;
-
 L_WHILE		:	'while'		;
-
 L_REPEAT	:	'repeat'	;
-
 L_UNTIL		:	'until'		;
-
 L_IF		:	'if'		;
-
 L_THEN		:	'then'		;
-
 L_ELSEIF	:	'elsif'		;
-
 L_ELSE		:	'else'		;
-
 L_CASE		:	'case'		;
-
 L_OTHERWISE	:	'otherwise'	;
-
 L_BLOCK		:	'block'		;
 
 L_VOLATILE	:	'volatile'	;
-
 L_IN		:	'in'		;
-
 L_OUT		:	'out'		;
-
 L_SHARED	:	'shared'	;
-
 L_AT		:	'at'		;
-
 L_IS		:	'is'		;
 
 L_BIT		:	'bit'		;
-
 L_BYTE		:	'byte'		;
-
 L_WORD		:	'word'		;
-
 L_DWORD		:	'dword'		;
-
 L_SBYTE		:	'sbyte'		;
-
 L_SWORD		:	'sword'		;
-
 L_SDWORD	:	'sdword'	;
 
 L_PRAGMA	:	'pragma'	;
-
 L_TARGET	:	'target'	;
-
 L_INLINE	:	'inline'	;
-
 L_STACK		:	'stack'		;
-
 L_CODE		:	'code'		;
-
 L_EEPROM	:	'eeprom'	;
-
 L_ID		:	'ID'		;
-
 L_DATA		:	'data'		;
-
 L_FUSEDEF	:	'fuse_def'	;
-
 L_CHIP		:	'chip'		;
+L_INTERRUPT	:	'interrupt'	;
+
+
 L_NOP		:	'nop'		;
-
-
+	
 IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
 
 fragment LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
+
+
 
 
