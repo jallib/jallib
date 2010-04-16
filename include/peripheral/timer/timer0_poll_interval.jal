@@ -50,18 +50,24 @@
 
 var word timer0_interval_counter
 var word timer0_countdown[DELAY_SLOTS]
+
+-- preload value for timer0
 var word timer0_load
 
+-- returns the current value of the interval timer
 function interval_counter'get() return word is
    return timer0_interval_counter
 end function
 
+-- for internal use only. roughly equivalent to timer0 ISR
 procedure _timer0_poll() is
    pragma inline
    
    if INTCON_TMR0IF == true then
       
       if target_cpu == PIC_16 then
+         -- N.B. the device requires loading in this
+         -- order, see datasheet for details.
          tmr0h = byte(timer0_load >> 8)
          tmr0l = byte(timer0_load)
       else
@@ -87,6 +93,7 @@ procedure _timer0_poll() is
    end if
 end procedure
 
+-- setup the delay for the specified slot.
 procedure set_delay(byte in slot, word in ticks) is
    
    if (slot >= DELAY_SLOTS) then return end if
@@ -95,6 +102,9 @@ procedure set_delay(byte in slot, word in ticks) is
    
 end procedure
 
+-- returns "true" when the delay has been achieved.
+-- be sure to call this routine fairly often if you
+-- care about fairly accurate delays.
 function check_delay(byte in slot) return bit is
    
    if (slot >= DELAY_SLOTS) then return true end if
@@ -109,6 +119,7 @@ function check_delay(byte in slot) return bit is
    
 end function
 
+-- for internal use only
 procedure _timer0_poll_init_rate(dword in overflow_rate) is
    pragma inline
    
@@ -163,6 +174,9 @@ procedure _timer0_poll_init_rate(dword in overflow_rate) is
    
 end procedure
 
+-- initialize the timer and related variables.
+-- automatically detects and makes use of 16-bit
+-- timer0 if present.
 procedure timer0_poll_init() is
    
    if defined(timer0_preload_value) == true then
