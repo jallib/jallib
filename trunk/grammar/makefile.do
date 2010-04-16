@@ -37,8 +37,12 @@ filelist {
    libantlr3c-3.2\src\antlr3ucs2inputstream.c
 }
 
-transform .g .c  {  
-   exec "java -cp antlr-3.2.jar org.antlr.Tool ($_)"   
+transform .g .c  {                   
+   exec_i "md tmp_g"
+   exec "perl changeoptions.pl jal.g >tmp_g\jal.g"   
+   exec "java -cp antlr-3.2.jar org.antlr.Tool tmp_g\jal.g"   
+   exec "copy /y tmp_g\*.c ."   
+   exec "copy /y tmp_g\*.h ."   
    clear suffix
    exec "echo // timestamp dummy >($_).c"
 }
@@ -64,8 +68,8 @@ command clean
 }
 
 command test {
-   set cmd    "jalparser"
-   append cmd " C:\jallib\include\external\lcd\glcd_ks0108.jal"
+   set cmd    "jalparser "
+   append cmd " C:\jallib\include\external\motor\servo\servo_rc_master.jal"
    exec ($cmd)
 }
 

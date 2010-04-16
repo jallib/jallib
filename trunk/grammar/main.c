@@ -207,6 +207,8 @@ main	(int argc, char *argv[])
 //   	}
    } 
 
+   return 0;
+
    if (psr) { 
       psr->free(psr);	    
       psr = NULL;
