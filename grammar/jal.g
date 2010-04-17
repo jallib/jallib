@@ -232,10 +232,10 @@ or_expr :  xor_expr ('^'^ xor_expr)*
 xor_expr : and_expr ('&'^ and_expr)*
          ;
 
-and_expr : qualitly_expr (('==' | '!=' )^ qualitly_expr)* 
+and_expr : equality_expr (('==' | '!=' )^ equality_expr)* 
          ;
 
-qualitly_expr : relational_expr (('<' | '>' | '<=' | '>=' )^ relational_expr)* 
+equality_expr : relational_expr (('<' | '>' | '<=' | '>=' )^ relational_expr)* 
          ;
 
 relational_expr :arith_expr (('<<'|'>>')^ arith_expr)*
