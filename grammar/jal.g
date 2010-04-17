@@ -54,7 +54,7 @@ statement
         | L__WARN^ STRING_LITERAL
         | pragma 
 	| proc_func_call
-	| variable '='^ expr
+	| variable ASSIGN^ expr
 	;
 
 variable 
@@ -152,7 +152,7 @@ pseudo_func_def : 'function'  identifier '\'' 'get' proc_params L_RETURN vtype L
 alias_def : 'alias'^ identifier L_IS identifier
         ;
 
-const_def : 'const'^ vtype* identifier ( '[' cexpr* ']' )* '='
+const_def : 'const'^ vtype* identifier ( '[' cexpr* ']' )* ASSIGN
             ( cexpr | cexpr_list | identifier | STRING_LITERAL )
         ;
 
@@ -164,7 +164,7 @@ var_def : 'var'^ L_VOLATILE? vtype var_decl2 (',' var_decl2)*
 //fragment var_multi : ',' var_decl2
 //        ;
 
-var_with_init : '=' var_init
+var_with_init : ASSIGN var_init
         ;
  
 fragment var_decl2 : identifier ( '[' cexpr? ']' )? ( at_decl | is_decl | var_with_init)*
@@ -202,8 +202,8 @@ pragma
 	| ( L_CODE constant ) 	
 	| ( L_EEPROM constant ',' constant ) 	
 	| ( L_ID constant ',' constant ) 	
-	| ( L_DATA constant '-' constant (',' constant '-' constant)* ) 	
-	| ( L_SHARED constant '-' constant) 	
+	| ( L_DATA constant MINUS constant (',' constant MINUS constant)* ) 	
+	| ( L_SHARED constant MINUS constant) 	
 	| ( L_FUSEDEF identifier bitloc? constant '{' pragma_fusedef+ '}')
     ) 
     ;
@@ -216,7 +216,7 @@ pragma_target
 	;
 
 pragma_fusedef
-	: identifier '=' constant
+	: identifier ASSIGN constant
 	;
 
 //-----------------------------------------------------------------------------
@@ -241,7 +241,7 @@ equality_expr : relational_expr (('<' | '>' | '<=' | '>=' )^ relational_expr)*
 relational_expr :arith_expr (('<<'|'>>')^ arith_expr)*
            ;
 
-arith_expr: term (('+'|'-')^ term)*
+arith_expr: term ((PLUS|MINUS)^ term)* //			-> ^(OPERATOR[('+'|'-')])
           ;
 
 term : pling (('*' | '/' | '%' )^ pling)*
@@ -250,8 +250,8 @@ term : pling (('*' | '/' | '%' )^ pling)*
 pling 	: '!'^? factor	
 	;
 
-factor : '+'^ factor
-       | '-'^ factor
+factor : PLUS^ factor
+       | MINUS^ factor
 //       | '~' factor
        | atom
        ;
@@ -382,3 +382,15 @@ fragment LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
 
 
 
+
+ASSIGN
+	:	'='
+	;
+
+PLUS
+	:	'+'
+	;
+
+MINUS
+	:	'-'
+	;
