@@ -6,7 +6,8 @@ set projectname      jalparser
 filelist {     
    jal.g
 
-   main.c        
+   main.c    
+   codegen.c    
    jalLexer.c 
    jalParser.c                      
 

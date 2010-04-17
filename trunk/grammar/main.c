@@ -19,6 +19,9 @@
 #include    "jalLexer.h"
 #include    "jalParser.h"
 
+
+void CodeGenerate(pANTLR3_BASE_TREE p);
+
 void TreeWalk(pANTLR3_BASE_TREE p);
 
 // Main entry point for this example
@@ -193,6 +196,8 @@ main	(int argc, char *argv[])
 //      printf("ChildIndex : %ld\n", r.tree->getChildIndex(r.tree)); 
 
       TreeWalk(r.tree);
+  
+      CodeGenerate(r.tree);
   
 //     	ANTLR3_UINT32   n, c;
 //      pANTLR3_BASE_TREE p = r.tree      ;
