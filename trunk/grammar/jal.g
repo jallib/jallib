@@ -36,6 +36,10 @@ options {
     	backtrack	= true;
 }
 
+tokens {
+	VAR;
+}
+
 program : ( statement )+ ; 
 
 statement 
@@ -49,6 +53,7 @@ statement
         | L_RETURN^ expr?
         | L_ASSERT expr
         | INCLUDE_STMT
+        | J2C_COMMENT
         | L__DEBUG^ STRING_LITERAL
         | L__ERROR^ STRING_LITERAL
         | L__WARN^ STRING_LITERAL
@@ -158,7 +163,7 @@ const_def : 'const'^ vtype* identifier ( '[' cexpr* ']' )* ASSIGN
 
 //var_def : var_decl1 var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
 //        ;
-var_def : 'var'^ L_VOLATILE? vtype var_decl2 (',' var_decl2)*
+var_def : 'var' L_VOLATILE? vtype var_decl2 (',' var_decl2)* -> ^(VAR L_VOLATILE  vtype var_decl2 )
         ;
 
 //fragment var_multi : ',' var_decl2
@@ -307,7 +312,11 @@ INCLUDE_STMT
     : 'include' ~('\n'|'\r')* '\r'? '\n' 
     ;
 
-// todo: line comment to end of file (no cr/lf at the end)
+// j2c comment is a special case that is passed to the Jal2C convertor
+J2C_COMMENT
+    : (';@j2c') ~('\n'|'\r')*
+    ;
+
 LINE_COMMENT
     : ('--' | ';') ~('\n'|'\r')* {$channel=HIDDEN;}
     ;
