@@ -319,4 +319,47 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
 void TreeWalk(pANTLR3_BASE_TREE p)
 {   
    TreeWalkWorker(p, 0);       
-}
+}             
+
+
+
+
+// from C.g:
+//
+//LINE_COMMAND 
+//    : '#' (' ' | '\t')*
+//		(
+//			'include' (' ' | '\t')+ '"' file = STRING_GUTS '"' (' ' | '\t')* '\r'? '\n'
+//			{
+//				pANTLR3_STRING			fName;
+//				pANTLR3_INPUT_STREAM    in;
+//
+//				// Create an initial string, then take a substring
+//				// We can do this by messing with the start and end
+//				// pointers of tokens and so on. This shows a reasonable way to
+//				// manipulate strings.
+//				//
+//				fName = $file.text;
+//				printf("Including file '\%s'\n", fName->chars);
+//
+//				// Create a new input stream and take advantage of built in stream stacking
+//				// in C target runtime.
+//				//
+//				in = antlr3AsciiFileStreamNew(fName->chars);
+//				PUSHSTREAM(in);
+//
+//				// Note that the input stream is not closed when it EOFs, I don't bother
+//				// to do it here (hence this is leaked at the program end), 
+//				// but it is up to you to track streams created like this
+//				// and destroy them when the whole parse session is complete. Remember that you
+//				// don't want to do this until all tokens have been manipulated all the way through 
+//				// your tree parsers etc as the token does not store the text it just refers
+//				// back to the input stream and trying to get the text for it will abort if you
+//				// close the input stream too early.
+//				//
+//
+//			}
+//            | (('0'..'9')=>('0'..'9'))+ ~('\n'|'\r')* '\r'? '\n'
+//	    )
+//	 {$channel=HIDDEN;}
+//    ;

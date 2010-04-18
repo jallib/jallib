@@ -113,7 +113,7 @@ case_stmt : L_CASE expr 'of'
             L_END L_CASE
         ;
 
-block_stmt : L_BLOCK statement* L_END L_BLOCK ;
+block_stmt : L_BLOCK statement* L_END L_BLOCK 			-> ^(L_BLOCK statement*);
 
 proc_params 
 	: ( '(' ( proc_parm (',' proc_parm)* )? ')' )?	
