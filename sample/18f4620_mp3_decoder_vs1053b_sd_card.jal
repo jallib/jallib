@@ -6,35 +6,45 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: example usage of the vs1053 mp3 decoder. plays .mp3 files from
---              a fat32 formatted sd card
+-- Description: Example usage of the vs1053 mp3 decoder. plays .mp3 files from
+--              a fat32 formatted sd card. Full control of play speed, volume,
+--              right/left speaker, bass, treble, mute via serial port.
+--
+-- Notes:
+-- vs1053 uses SPI mode 0,0
+-- must use 12.288mhz crystal for vs1053b
 --
 -- Sources:
--- www.vlsi.fi/fileadmin/datasheets/vlsi/vs1053.pdf
+-- VLSI Solutions Datasheet - www.vlsi.fi/fileadmin/datasheets/vlsi/vs1053.pdf
 --
 
-include 18f4620                    -- target PICmicro
+-- include chip
+include 18F4620                   -- target picmicro
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
+;pragma target osc hs              -- hs crystal or resonator
+;pragma target clock 20_000_000    -- oscillator frequency
+pragma target clock 32_000_000    -- oscillator frequency
 --
--- This program assumes that a 20 MHz resonator or crystal
--- is connected to pins OSC1 and OSC2.
--- (unspecified configuration bits may cause a different frequency!)(
-pragma target clock 20_000_000     -- oscillator frequency
--- configuration memory settings (fuses)
-pragma target OSC  HS              -- HS crystal or resonator
-pragma target WDT  disabled        -- no watchdog
-pragma target LVP  disabled        -- no Low Voltage Programming
+pragma target wdt  disabled
+pragma target lvp  disabled
 pragma target MCLR external        -- reset externally
---
-enable_digital_io()                -- make all pins digital I/O
---
+--;
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+;--
 
--- include the delay library
-include delay
+_usec_delay(100_000) -- wait for power to settle
 
 -- setup uart for communication
-const serial_hw_baudrate  = 115200    -- set the baudrate
+const serial_hw_baudrate  = 115200    -- set the baud rate
 include serial_hardware
 serial_hw_init()
+
+include print
+const byte return[] = "\r\n"
 
 include spi_master_hw         -- includes the spi library
 -- define spi inputs/outputs
@@ -54,8 +64,8 @@ const bit SD_DELAY_AFTER_WRITE = TRUE
 include sd_card              -- include the sd card ide hard disk library
 sd_init()                    -- initialize startup settings
 
--- spi is required by sta015, so set it up.
--- if we are using an sd card, we already initilized the SPI bus, so skip this.
+-- spi is required by vs1053b, so set it up.
+-- if we are using an sd card, we already initialized the SPI bus, so skip this.
 if defined(spi_init) == false then
    include spi_master_hw         -- includes the spi library
    -- define spi inputs/outputs
@@ -100,7 +110,7 @@ elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
    -- example usage of 23k256 for external memory
 
    -- spi is required by 23k256, so set it up.
-   -- if we are using an sd card, we already initilized the SPI bus, so skip this.
+   -- if we are using an sd card, we already initialized the SPI bus, so skip this.
    if defined(sd_init) == false then  -- if we are using an sd card, we already did this step
       include spi_master_hw        -- includes the spi library
       -- define spi inputs/outputs
@@ -117,7 +127,7 @@ elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
    ALIAS sram_23k256_chip_select_direction   is pin_a2_direction
    -- initial settings
    sram_23k256_chip_select_direction = output    -- chip select/slave select pin
-   sram_23k256_chip_select = high                -- start chip slect high (chip disabled)
+   sram_23k256_chip_select = high                -- start chip select high (chip disabled)
    -- initalize 23k256 in byte mode
    include sram_23k256 -- setup Microchip 23k256 sram
    sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
@@ -137,73 +147,65 @@ fat32_filter_is_volume_id  = FALSE
 fat32_filter_is_directory  = FALSE
 fat32_filter_is_archive    = FALSE
 
+
 -- setup vs1053(b)
-alias vs_cs_xcs                 is pin_e1                     -- command chip select pin
-alias vs_cs_xcs_direction       is pin_e1_direction
-alias vs_cs_dcs                 is pin_c0                     -- data chip select pin
-alias vs_cs_dcs_direction       is pin_c0_direction
-alias vs_dreq                   is pin_e2                     -- data request pin
-alias vs_dreq_direction         is pin_e2
+const byte str1[] = "INITIALIZING VS1053B\r\n"
+print_string(serial_hw_data, str1)
 --
-vs_cs_xcs_direction = output
-vs_cs_dcs_direction = output
+alias vs_command_chip_select              is pin_e1                     -- command chip select pin
+alias vs_command_chip_select_direction    is pin_e1_direction
+alias vs_data_chip_select                 is pin_e2                     -- data chip select pin
+alias vs_data_chip_select_direction       is pin_e2_direction
+alias vs_dreq                             is pin_c0                     -- data request pin
+alias vs_dreq_direction                   is pin_c0
+--
+vs_command_chip_select_direction = output
+vs_data_chip_select_direction = output
 vs_dreq_direction = input
 --
-vs_cs_xcs = high -- disable command chip select
-vs_cs_dcs = high -- disable data chip select
+vs_command_chip_select = high -- disable command chip select
+vs_data_chip_select = high -- disable data chip select
 --
 -- select weather or not to switch SPI modes before every read/write
 -- needed if using more then one component on the SPI bus.
 const byte VS_ALWAYS_SET_SPI_MODE = TRUE
 --
+-- 3.5x pll (interal clock runs at 12.288mhz * 3.5 = 43mhz)
+const byte VS_PLL = 3_5 -- choose 1x, 3.5x, or 5.0x
+--
 include mp3_decoder_vs1053b
 vs_init()
+--
+-- check if vs1053 initialization is ok, send result to serial port
+if vs_init_ok then
+   const byte str1[] = "VS1053B INITIALIZED OK"
+   print_string(serial_hw_data, str1)
+   vs_patch_vs1053b() -- patch for vs1053b only page 54 of datasheet
+else
+   const byte str2[] = "VS1053B INITIALIZATION ERROR"
+   print_string(serial_hw_data, str2)
+end if
+--
 
-include random -- include random number generator to play random files
-function random_byte_choose(byte in low_data, byte in high_data) return byte is
-   pragma inline
-
-   var byte randome_byte
-   randome_byte = byte(random_word())
-
-   while (randome_byte < low_data) | (randome_byte > high_data) loop
-      randome_byte = byte(random_word())
-   end loop
-
-   return randome_byte
-end function
 
 -- user procedures
 
 -- procedure for sending 80 "-----------------" via serial port
-procedure next() is
-   serial_hw_write (13)-- send (carriage return, line feed) characters to serial port
-   serial_hw_write (10)
-   for 80 loop
-      serial_hw_write ("-")
-   end loop
-   serial_hw_write (13)-- send (carriage return, line feed) characters to serial port
-   serial_hw_write (10)
+procedure seperator() is
+   const byte str3[] = "\r\n--------------------------------------------------------------------------------\r\n"
+   print_string(serial_hw_data, str3)
 end procedure
-
-next()
-
-spi_init(SPI_MODE_00,SPI_RATE_FOSC_16) -- init spi, choose mode and speed
-
-include print
-var word junk
-vs_register_read(VS_REG_MODE,junk)
-print_word_dec(serial_hw_data, junk)
-serial_hw_write (13)-- send (carriage return, line feed) characters to serial port
-serial_hw_write (10)
-
-;forever loop
-;end loop
-
 
 
 -- start of main program
-fat32_init(1)       -- initialize fat32, go to 1st primary partition's root dir "\"
+vs_volume = 240 -- set startup volume
+
+-- some vars
+var sword db_level  -- will hold volume db (decibel) level
+
+seperator()-- send "----"
+
+fat32_init(1) -- initialize fat32, go to 1st primary partition's root dir "\"
 
 ------------------------------------------------------------
 -- list a directory, send it via serial port
@@ -221,12 +223,9 @@ fat32_list_dir() -- see the procedure, sends dir listing via serial port
 
 var byte file_number = 0
 var dword count8 = 0
-var bit play = true
-var byte sta_command
-var byte x
-forever loop
 
-   next() -- send "-----" then loop and wait for user input
+forever loop
+   seperator() -- send "-----"
 
    -- wait for user to send serial data (file selection)
    while !serial_hw_data_available loop
@@ -240,72 +239,165 @@ forever loop
    fat32_read_file_info(file_number) -- read file's name, location, size, attributes into memory
    fat32_read_filename()             -- send the file name via serial port
 
-   next() -- send "-----" then loop and wait for user input
+   seperator() -- send "-----"
 
-   -- choose a file for reading or dir for opening
+   -- do something with the chosen file number
    if fat32_cd(file_number) then            -- if change directory is successful
       fat32_list_dir()                      -- sends dir listing via serial port
+
    elsif fat32_file_open(file_number) then  -- if go into file is successful
+      count8 = 0
+      for (fat32_file_size / 512) loop
+         fat32_start_read (fat32_file_location + count8)  -- go in the file, get ready to read
+         fat32_read_sector()  -- read one sector
+         fat32_stop_read ()   -- end of file, set media idle
 
-      -------------------------------------------------------------------------
-      -- use more functions of the lib, see the advance example below
-      var byte enable_user_interaction = FALSE
-      -------------------------------------------------------------------------
+         -- now send it to vs1053b
+         -- set 0,1
+         SSPCON_CKP = 0
+         SSPSTAT_CKE = 1
 
-      -- basic example if enable_user_interaction = TRUE  (slower data transfer)
-      if enable_user_interaction == TRUE then
-         count8 = 0
-         for (fat32_file_size / 512) loop
-            fat32_start_read (fat32_file_location + count8)  -- go in the file, get ready to read
-            fat32_read_sector()   -- read one sector of the file
-            fat32_stop_read ()    -- end of file, set media idle
-            -- now send it to sta015
-            var word count1 = 0                         -- sector data count
-            for 512 loop                                -- loop till end of sector read
-               ;sdi_send(fat32_sector_buffer[count1]) -- send data to sta015
+
+         vs_data_chip_select = low -- enable vs1053b
+
+         var word count1 = 0                     -- sector data count
+         for 16 loop                             -- loop till end of sector read
+
+            -- wait till data gets requested
+            while vs_dreq == low loop
+            end loop
+
+            -- vs1053b can take up to 32 bytes when vs_dreq is low
+            for 32 loop
+               spi_master_hw = (fat32_sector_buffer[count1])
                count1 = count1 + 1
             end loop
-            count8 = count8 + 1
          end loop
 
+         -- get users input via serial port to control music (volume, play speed, stop, etc.)
+         if serial_hw_data_available == TRUE then
+            var byte serial_data = serial_hw_data
+            if serial_data == 0 then                    -- stop
+               vs_stop()
+               vs_data_chip_select =low
+               exit loop
+            elsif serial_data == 50 then                -- volume down
+               if vs_volume != 0 then
+                  vs_volume = vs_volume - 1
+               end if
+               print_byte_dec(serial_hw_data, vs_volume)
+               -- invert to negitive word value for volume in db (decibels)
+               db_level = sword(255 - vs_volume)
+               db_level = !(db_level * 5) + 1
+               -- send volume to serial port
+               format_sword_dec(serial_hw_data, db_level,6,1)
+               serial_hw_data = "d"
+               serial_hw_data = "b"
+            elsif serial_data == 51 then                -- volume up
+               if vs_volume != 255 then
+                  vs_volume = vs_volume + 1
+               end if
+               print_byte_dec(serial_hw_data, vs_volume)
+               -- invert to negitive word value for volume in db (decibels)
+               db_level = sword(255 - vs_volume)
+               db_level = !(db_level * 5) + 1
+               -- send volume to serial port
+               format_sword_dec(serial_hw_data, db_level,6,1)
+               serial_hw_data = "d"
+               serial_hw_data = "b"
+            elsif serial_data == 52 then                -- volume down right only
+               if vs_volume_right != -127 then
+                  vs_volume_right = vs_volume_right - 1
+               end if
+               print_sbyte_dec(serial_hw_data, vs_volume_right)
+            elsif serial_data == 53 then                -- volume up right only
+               if vs_volume_right != 127 then
+                  vs_volume_right = vs_volume_right + 1
+               end if
+               print_sbyte_dec(serial_hw_data, vs_volume_right)
+            elsif serial_data == 54 then                -- volume down left only
+               if vs_volume_left != -127 then
+                  vs_volume_left = vs_volume_left - 1
+               end if
+               print_sbyte_dec(serial_hw_data, vs_volume_left)
+            elsif serial_data == 55 then                -- volume up left only
+               if vs_volume_left != 127 then
+                  vs_volume_left = vs_volume_left + 1
+               end if
+               print_sbyte_dec(serial_hw_data, vs_volume_left)
+            elsif serial_data == 56 then                -- move volume right to left
+               if vs_volume_left != 127 then
+                  vs_volume_left = vs_volume_left + 1
+               end if
+               print_sbyte_dec(serial_hw_data, vs_volume_left)
+               serial_hw_data = " "
+               if vs_volume_right != -127 then
+                  vs_volume_right = vs_volume_right - 1
+               end if
+               print_sbyte_dec(serial_hw_data, vs_volume_right)
+            elsif serial_data == 57 then                -- move volume left to right
+               if vs_volume_left != -127 then
+                  vs_volume_left = vs_volume_left - 1
+               end if
+               print_sbyte_dec(serial_hw_data, vs_volume_left)
+               serial_hw_data = " "
+               if vs_volume_right != 127 then
+                  vs_volume_right = vs_volume_right + 1
+               end if
+               print_sbyte_dec(serial_hw_data, vs_volume_right)
+            elsif serial_data == 58 then                -- slower play speed
+               if !(vs_play_speed == 1) then
+                  vs_play_speed = vs_play_speed - 1
+               end if
+               print_word_dec(serial_hw_data, vs_play_speed)
+               print_string(serial_hw_data, return)
+            elsif serial_data == 59 then                -- faster play speed (fast-forward)
+               if !(vs_play_speed == 10) then
+                  vs_play_speed = vs_play_speed + 1
+               end if
+               print_word_dec(serial_hw_data, vs_play_speed)
+               print_string(serial_hw_data, return)
+            elsif serial_data == 60 then                -- get file info, so far
+               vs_file_info()                           -- only file type " MP3", "MIDI", etc.
+               print_string(serial_hw_data,vs_current_file_type)
+               print_string(serial_hw_data, return)
+            elsif serial_data == 61 then                -- MUTE
+               vs_mute = TRUE
+               print_byte_dec(serial_hw_data, 1)
+            elsif serial_data == 62 then                -- NO MUTE
+               vs_mute = FALSE
+               print_byte_dec(serial_hw_data, vs_mute)
+            elsif serial_data == 63 then                -- bass down
+               if vs_bass != 0 then
+                  vs_bass = vs_bass - 1
+               end if
+               print_word_dec(serial_hw_data, vs_bass)
+            elsif serial_data == 64 then                -- bass up
+               if vs_bass != 15 then
+                  vs_bass = vs_bass + 1
+               end if
+               print_word_dec(serial_hw_data, vs_bass)
+            elsif serial_data == 65 then                -- treble down
+               if vs_treble != -8 then
+                  vs_treble = vs_treble - 1
+               end if
+               print_sword_dec(serial_hw_data, vs_treble)
+            elsif serial_data == 66 then                -- treble up
+               if vs_treble != 7 then
+                  vs_treble = vs_treble + 1
+               end if
+               print_sword_dec(serial_hw_data, vs_treble)
+            end if
 
+            -- send return char
+            serial_hw_data = 13
+            serial_hw_data = 10
+         end if
 
-      -- advanced example if enable_user_interaction = FALSE   (faster data transfer)
-      elsif enable_user_interaction == FALSE then
-         count8 = 0
-         for (fat32_file_size / 512) loop
-            fat32_start_read (fat32_file_location + count8)  -- go in the file, get ready to read
-            fat32_read_sector()  -- read one sector
-            fat32_stop_read ()   -- end of file, set media idle
+         vs_data_chip_select = high -- disable vs1053b
 
-            -- now send it to vs1053b
-            -- set 0,1
-            SSPCON_CKP = 0
-            SSPSTAT_CKE = 1
-
-            -- enable chip select on sta015
-;            sta015_bit_en = high
-            vs_cs_dcs = low
-            
-            var word count1 = 0                      -- sector data count
-            for 16 loop                             -- loop till end of sector read
-               while vs_dreq == low loop -- wait till data gets requested
-               end loop
-
-               for 32 loop
-                  spi_master_hw = (fat32_sector_buffer[count1])
-                  count1 = count1 + 1
-               end loop
-            end loop
-
-
-            vs_cs_dcs = high
-
-;            sta015_bit_en = low   -- enable chip select
-
-            count8 = count8 + 1
-         end loop
-
-      end if
+         count8 = count8 + 1
+      end loop
    end if
 end loop
+
