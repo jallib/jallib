@@ -79,7 +79,7 @@ void static Indent(int Level)
 int CgExpression(pANTLR3_BASE_TREE p, int Level)
 {  char *ThisFuncName = "CgExpression";
    CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
-      
+       
    switch(TokenType) {
       case IDENTIFIER :
       case DECIMAL_LITERAL :
@@ -174,7 +174,51 @@ void CgFor(pANTLR3_BASE_TREE p, int Level)
       }
    }                
 }
+ 
+//-----------------------------------------------------------------------------
+// CgVar - 
+//-----------------------------------------------------------------------------
+// A var node has child for it's options
+//-----------------------------------------------------------------------------
+void CgVar(pANTLR3_BASE_TREE p, int Level)
+{  char *ThisFuncName = "CgVar";
+   CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
+      
+   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+      Child = p->getChild(p, ChildIx);
+      if (Child->getToken == NULL) {
+         printf("Error: getToken null\n");
+         return;
+      }
 
+      /* get data of child */      
+      Token = Child->getToken(Child);                
+      TokenType = Child->getType(Child);             
+
+      switch(TokenType) {
+         case L_BYTE : {
+            Indent(Level);            
+            printf(" unsigned char \n");
+            break;
+         }
+         case L_SBYTE : {
+            Indent(Level);            
+            printf(" char \n");
+            break;
+         }
+         case IDENTIFIER : {
+            Indent(Level);            
+            printf(" %s; \n", Child->toString(Child)->chars);
+            break;
+         }
+         default: {            
+            REPORT_NODE("unexpected token", Child);
+            break;
+         }
+      }
+   }                
+} 
+ 
 //-----------------------------------------------------------------------------
 // CgForever - 
 //-----------------------------------------------------------------------------
@@ -246,16 +290,24 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level)
          CgForever(p, Level+1); // process nodes of child            
          break;   
       }
+      case VAR : {
+         CgVar(p, Level+1); // process nodes of child            
+         break;   
+      }
       case ASSIGN : {
          CgAssign(p, Level+1); // process nodes of child            
          Indent(Level);            
          printf("; // end of assign \n"); // end statement
          break;   
       }
+      case J2C_COMMENT : {
+         Indent(Level);            
+         printf(" %s\n", p->toString(p)->chars + 5 ); // c statement
+         break;   
+      }
       
    }
 
-      
 //      printf("%s\n",child->toString(child)->chars);  
 //      if (ChildCount > 0) {
 //         CgStatement(Child, 0, Level+1);   
@@ -302,6 +354,7 @@ void CodeGenerate(pANTLR3_BASE_TREE p)
 {  int Level;
    
    printf("// Jal -> C code converter\n");                       
+   printf("#include <stdio.h>\n\n");                       
    printf("int main(int argc, int **argv) {\n");                       
    Level = 0;
 
