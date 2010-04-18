@@ -7,47 +7,27 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: example usage of the vs1053 mp3 decoder. plays .mp3 files from
---              a fat32 formatted sd card
+--              a fat32 formatted sd card. Full control of play speed, volume,
+--              right/left speaker, bass, treble, mute.
+--
+-- Notes:
+-- vs1053 uses SPI mode 0,0
+-- must use 12.288mhz crystal for vs1053b
 --
 -- Sources:
--- www.vlsi.fi/fileadmin/datasheets/vlsi/vs1053.pdf
+-- VLSI Solutions Datasheet - www.vlsi.fi/fileadmin/datasheets/vlsi/vs1053.pdf
 --
 
-;This is the default playback mode.
-;1. Send an audio file to VS1053b.
-;2. Read extra parameter value endFillByte (Chapter 9.11).
-;3. Send at least 2052 bytes of endFillByte[7:0].
-;4. Set SCI MODE bit SM CANCEL.
-;5. Send at least 32 bytes of endFillByte[7:0].
-;6. Read SCI MODE. If SM CANCEL is still set, go to 5. If SM CANCEL hasn’t cleared after
-;sending 2048 bytes, do a software reset (this should be extremely rare).
-;7. The song has now been successfully sent. HDAT0 and HDAT1 should now both contain 0 to
-;indicate that no format is being decoded. Return to 1.
+-- if initialization was ok, this will change to TRUE
+var bit vs_init_ok = FALSE
 
+-- holds current file type after vs_file_info()
+var byte vs_current_file_type[4]
+var byte*4 vs_current_bit_rate = 0
+var byte*4 vs_current_sample_rate = 0
 
-
-;So what exactly do I have to do to play a song?
-;If hardware reset (pin XRESET) is active, deactivate it. Wait for at least 1 millisecond.
-
-;1 Activate software reset (bit SM_RESET in SCI register MODE).
-
-;2 Wait for at least 5 microseconds.
-
-;3 Read the DREQ pin and wait until it has activated. If activation seems to take more than 1 millisecond, activate hardware reset (pin XRESET), wait at least 1 microsecond, and go back to square one.
-
-;4 Set all the SCI registers you want to: MODE, VOL, CLOCKF, etc.
-
-;5 Send at least one (preferably two) byte containing zero to SDI.
-
-;6 Send the MP3 file to SDI.
-
-;7 Send 2048 bytes containing zero to SDI (respect the DREQ pin just as with MP3 data).
-
-;8 Wait 50 milliseconds to make it absolutely sure that audio buffers have been cleared even if the sample rate is only 8 kHz. (Usually this step doesn't need to be implemented.)
-
-;9 For the next MP3 file, go back to 1.
-
-const byte VS_REG_MODE         = 0x00 -- mode control default is 0x0800 (only "VS1002 native SPI modes" is set)
+-- vs1053b registers for use with vs_register_read / vs_register_write procedures
+const byte VS_REG_MODE         = 0x00
 const byte VS_REG_STATUS       = 0x01
 const byte VS_REG_BASS         = 0x02
 const byte VS_REG_CLOCKF       = 0x03
@@ -64,153 +44,512 @@ const byte VS_REG_AICTRL1      = 0x0D
 const byte VS_REG_AICTRL2      = 0x0E
 const byte VS_REG_AICTRL3      = 0x0F
 
+-- data variables for internal use only
+var byte _vs_play_speed_data = 1
+var bit _vs_mute_data = FALSE
+
+--------------------------------------------------------------------------------
+-- Read from a register
+--------------------------------------------------------------------------------
 procedure vs_register_read(byte in address,word out data) is
-	vs_cs_xcs = LOW -- activate command register
+   -- set spi mode
+   if VS_ALWAYS_SET_SPI_MODE == TRUE then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   end if
+
+   -- wait till device is ready for a command
+   while vs_dreq == low loop
+	end loop
+
+   -- get current state of data chip select
+   var bit vs_data_chip_select_level = vs_data_chip_select
+
+   vs_data_chip_select = high    -- disable data chip select
+	vs_command_chip_select = LOW  -- activate command chip select
 
    var byte data_val[2] at data
 
-	spi_master_hw = 3            -- send read command
+	spi_master_hw = 3             -- send read command
 	_usec_delay(12);
-	spi_master_hw = address;	  -- send addresss
+	spi_master_hw = address;	   -- send address
 	_usec_delay(12);
-	data_val[1] = spi_master_hw    -- get first data byte
+	data_val[1] = spi_master_hw   -- get first data byte
 	_usec_delay(12);
-	data_val[0] = spi_master_hw     -- get 2nd data byte
-
-	_usec_delay(100_000);         -- wait (not needed?)
-		
-	vs_cs_xcs = HIGH -- disable command register
+	data_val[0] = spi_master_hw   -- get 2nd data byte
+	
+	-- wait till device is ready to continue
+	while vs_dreq == low loop
+	end loop
+   	
+	vs_command_chip_select = HIGH -- disable command chip select
+   	
+   -- put data chip select back to it's original state	
+	vs_data_chip_select = vs_data_chip_select_level
+	
 end procedure
 
+--------------------------------------------------------------------------------
+-- Write to a register
+--------------------------------------------------------------------------------
 procedure vs_register_write(byte in address, word in data) is
-
-;  -- check if device is busy ?? see datasheet page 22
-;	while vs_dreq == low loop
-;	end loop
-
    var byte data_val[2] at data
 
-	vs_cs_xcs = LOW
+   -- set spi mode
+   if VS_ALWAYS_SET_SPI_MODE == TRUE then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   end if
 
-	spi_master_hw = 0x02       -- send write instruction
+   -- wait till device is ready for a command
+	while vs_dreq == low loop
+	end loop
+	
+   -- get current state of data chip select
+   var bit vs_data_chip_select_level = vs_data_chip_select
+
+   vs_data_chip_select = high    -- disable data chip select
+	vs_command_chip_select = LOW  -- enable command chip select
+
+	spi_master_hw = 0x02          -- send write instruction
 	_usec_delay(12);
-	spi_master_hw = address;	-- send address
+	spi_master_hw = address;	   -- send address
 	_usec_delay(12);
-	spi_master_hw = data_val[1]  -- send first data byte
+	spi_master_hw = data_val[1]   -- send first data byte
 	_usec_delay(12);
 	spi_master_hw = data_val[0]   -- send second data byte	
 	_usec_delay(24);
 	
-	-- should wait till data request is high before continuing
-;	while vs_dreq == low loop
-;	end loop
-	_usec_delay(100_000)
+	-- wait till device is ready to continue
+	while vs_dreq == low loop
+	end loop
 	
-	vs_cs_xcs = HIGH
+	vs_command_chip_select = HIGH -- disable command chip select
+		
+   -- put dcs back to it's original state	
+	vs_data_chip_select = vs_data_chip_select_level
 end procedure
 
-;wait for dreq to be high before sending
-procedure send_data(byte in data) is
-  vs_cs_dcs = LOW  ;don't know if this is active high or active low
-  spi_master_hw = data
-  vs_cs_dcs = HIGH
+--------------------------------------------------------------------------------
+-- print the contents of a register to the serial port in decimal
+--------------------------------------------------------------------------------
+procedure vs_reg_read_to_serial(byte in register) is
+   var word x
+   vs_register_read(register,x)
+
+   const byte str1[] = "\r\n--\r\n"
+   print_string(serial_hw_data, str1)
+   print_word_dec(serial_hw_data,x)
+   print_string(serial_hw_data, str1)
 end procedure
 
-procedure vs_send_pulses(byte in x) is
-  vs_cs_dcs = LOW
-  for x loop
-    spi_master_hw = 0
-  end loop
-  vs_cs_dcs = HIGH
+--------------------------------------------------------------------------------
+-- clears vs_1053b data input buffer. This should be done after
+-- sending mp3 data, otherwise you will get some unwanted sound from the
+-- previous file played.
+--------------------------------------------------------------------------------
+procedure vs_stop() is
+   -- set spi mode
+   if VS_ALWAYS_SET_SPI_MODE == TRUE then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   end if
+
+   for 2048 loop           -- vs1053 buffer is 2048 bytes
+      spi_master_hw = 0    -- send "0" via spi port
+   end loop
 end procedure
 
-procedure vs_init() is
-;   var byte data = 0x800
-;   var bit SM_CANCEL at data : 3
-;   sm_cancel = 1
+--------------------------------------------------------------------------------
+-- Perform soft reset.
+--------------------------------------------------------------------------------
+procedure vs_soft_reset() is
+   var byte mode
+   var byte reset at mode : 2
 
-;   vs_reg_write(0x00, 0x800 + 100) -- soft reset
-;   _usec_delay(5_000)
+   -- get the current mode
+   vs_register_read(VS_REG_MODE,mode)
 
-;   vs_send_pulses(2048)
+   reset = 1 -- set the mode reset bit
+   vs_register_write(VS_REG_MODE,0x4804) -- write new the mode data
 
-   -- Set SCI MODE bit SM CANCEL
-;   spi_register_write(VS_REG_SCI_MODE,data)
+   _usec_delay(2) -- wait 2us
 
-;   vs_send_pulses(32)
-   
-   -- read SM_CANCEL untill cleared
-;   spi_register_read(VS_REG_SCI_MODE,data)
-   
-   ;sm_cancel should = 0 now, otherwise reset again
-
+   -- data request pin should go high after reset (hardware reset takes 1.8 ms)
+   while vs_dreq == low loop
+   end loop
 end procedure
 
--------------
+--------------------------------------------------------------------------------
+-- fast forward a playing audio file (pseudo variable). (0 or 1) = normal
+-- play speed. 2 = 2x play speed, 3 = 3x play speed, etc.
+--------------------------------------------------------------------------------
+procedure vs_play_speed'put(byte in data) is
+   _vs_play_speed_data = data
+   vs_register_write(VS_REG_WRAMADDR,0x1e04)           -- write the wram address
+   vs_register_write(VS_REG_WRAM, _vs_play_speed_data) -- write speed data to wram
+end procedure
+
+function vs_play_speed'get() return byte is
+   return _vs_play_speed_data       -- return play speed to user
+end function
 
 --------------------------------------------------------------------------------
 -- Send mp3 data to vs1053b. This is only an example and should not be used
 -- to test. You should send 32 bytes at a time after when vs_drq goes high.
--- vs_cs_dcs must be low for the entire transfer, but you can put it high
+-- vs_data_chip_select must be low for the entire transfer, but you can put it high
 -- once in a while for bit sync.
 --------------------------------------------------------------------------------
 procedure _vs_send_mp3(byte in data) is
-   -- set spi mode before sending data
+   -- set spi mode
    if VS_ALWAYS_SET_SPI_MODE == TRUE then
-      -- set correct spi mode
       SSPCON_CKP = 0
       SSPSTAT_CKE = 1
    end if
-   
+
    -- wait for data request line to go high
    while vs_dreq == low loop
    end loop
-   
 
-	vs_cs_dcs = low -- activate vs1053
+
+	vs_data_chip_select = low -- activate vs1053
 	spi_master_hw = data -- send data
-	vs_cs_dcs = high -- disable vs1053
+	vs_data_chip_select = high -- disable vs1053
 end procedure
 
-procedure vs_sdi_test(bit in start_stop) is
-   vs_cs_dcs = LOW
-   if start_stop == TRUE then  -- select sign wave (5168hz)
-      spi_master_hw = 0x53
-      spi_master_hw = 0xEF
-      spi_master_hw = 0x6e
-      spi_master_hw = 126
-      spi_master_hw = 0x0
-      spi_master_hw = 0x0
-      spi_master_hw = 0x0
-      spi_master_hw = 0x0
-   else
-      spi_master_hw = 0x45
-      spi_master_hw = 0x78
-      spi_master_hw = 0x69
-      spi_master_hw = 0x74
-      spi_master_hw = 0x0
-      spi_master_hw = 0x0
-      spi_master_hw = 0x0
-      spi_master_hw = 0x0
+--------------------------------------------------------------------------------
+-- Get info about music that is currently playing. So far only gets file type
+-- (MP3, WAV, AAC, WMA, MIDI, OGG)
+--------------------------------------------------------------------------------
+procedure vs_file_info() is
+   var word data_array[2]
+
+   var byte vs_current_file_type_array[4] at vs_current_file_type = "    "
+   ;vs_current_bit_rate = 0
+
+   -- get file info words (bitrate and type)
+   vs_register_read(VS_REG_HDAT0, data_array[0])
+   vs_register_read(VS_REG_HDAT1, data_array[1])
+
+   -- decode file info words
+   if data_array[1] == 0x7665 then                -- ve
+      vs_current_file_type[0] = " "
+      vs_current_file_type[1] = "W"
+      vs_current_file_type[2] = "A"
+      vs_current_file_type[3] = "V"
+      vs_current_bit_rate = data_array[0] * word(8)
+   elsif data_array[1] == 0x4154 | data_array[1] == 0x4144 | data_array[1] == 0x4d34 then     -- AT AD M4
+      vs_current_file_type[0] = " "
+      vs_current_file_type[1] = "A"
+      vs_current_file_type[2] = "A"
+      vs_current_file_type[3] = "C"
+      vs_current_bit_rate = data_array[0] * word(8)
+   elsif data_array[1] == 0x574D then             -- WM
+      vs_current_file_type[0] = " "
+      vs_current_file_type[1] = "W"
+      vs_current_file_type[2] = "M"
+      vs_current_file_type[3] = "A"
+      vs_current_bit_rate = data_array[0] * word(8)
+   elsif data_array[1] == 0x4D54 then             -- MT
+      vs_current_file_type[0] = "M"
+      vs_current_file_type[1] = "I"
+      vs_current_file_type[2] = "D"
+      vs_current_file_type[3] = "I"
+      vs_current_bit_rate = data_array[0] * word(8)
+   elsif data_array[1] == 0x4F67 then             -- Og
+      vs_current_file_type[0] = " "
+      vs_current_file_type[1] = "O"
+      vs_current_file_type[2] = "g"
+      vs_current_file_type[3] = "g"
+      vs_current_bit_rate = data_array[0] * word(8)
+   else ; mp3
+      var word valid = data_array[1] >> 5
+      if valid == 2047 then
+         vs_current_file_type[0] = " "
+         vs_current_file_type[1] = "M"
+         vs_current_file_type[2] = "P"
+         vs_current_file_type[3] = "3"
+
+         -- tried to get bit rate but doesn't make since to me
+         ;var byte layer = (0x110 & byte(data_array[1])) >> 1   -- get bits 2 & 1 of VS_REG_HDAT1
+         ;var word vs_sample = (0b1100_00000000 & data_array[0]) -- get bits 10 & 11 VS_REG_HDAT0
+
+         ;print_dword_dec (serial_hw_data,vs_sample)
+
+         ;var dword y
+         ;vs_register_write(VS_REG_WRAMADDR,0x1e05)
+         ;vs_register_read(VS_REG_WRAM,y)
+         ;print_dword_dec (serial_hw_data,y * 8)
+
+         ;const byte str1[] = "\r\n"
+         ;print_word_dec(serial_hw_data, str1)
+
+      else
+         vs_current_file_type[3] = "-"
+         vs_current_file_type[2] = "-"
+         vs_current_file_type[1] = "-"
+         vs_current_file_type[0] = "-"
+      end if
+
+
    end if
-   vs_cs_dcs = HIGH
+
 end procedure
 
-procedure vs_sci_test(bit in start_stop) is
+--------------------------------------------------------------------------------
+-- Writes calculated volume data to volume register (internal use only)
+--------------------------------------------------------------------------------
+var byte _vs_current_volume = 0
+var sbyte _vs_current_volume_right = 0
+var sbyte _vs_current_volume_left = 0
+var byte*2 _vs_volume_data= 0
+var byte _vs_volume_data_both[2] at _vs_volume_data
+var byte _vs_left_data at  _vs_volume_data_both[0]
+var byte _vs_right_data at _vs_volume_data_both[1]
 
-;Example: if n is 48, contents of SCI register 0 (SCI MODE) is copied to SCI HDAT0
-;sci mode defaults to 0x0800
-   vs_cs_xcs = LOW
-   if start_stop == TRUE then
-      spi_master_hw = 0x53
-      spi_master_hw = 0x70
-      spi_master_hw = 0xee
-      spi_master_hw = 48       -- register num to test
-      spi_master_hw = 0x0
-      spi_master_hw = 0x0
-      spi_master_hw = 0x0
-      spi_master_hw = 0x0
-   else
+procedure _vs_volume_set() is
+   var word volume_check_right = word (_vs_current_volume_right) + word(_vs_current_volume)
+   var word volume_check_left =  word (_vs_current_volume_left)  + word(_vs_current_volume)
+
+   -- make sure volume right is in range
+   if volume_check_right == 0xFFFF then
+      volume_check_right = 0
+      _vs_right_data = 0
+   elsif volume_check_right > 255 then
+      volume_check_right = 255
+      _vs_right_data = 255
    end if
-   vs_cs_xcs = HIGH
+
+   -- make sure volume left is in range
+   if volume_check_left == 0xFFFF then
+      volume_check_left = 0
+      _vs_left_data = 0
+   elsif volume_check_left > 255 then
+      volume_check_left = 255
+      _vs_left_data = 255
+   end if
+
+   -- invert the values for vol register
+   _vs_right_data = 0xFF - byte(volume_check_right)
+   _vs_left_data  = 0xFF - byte(volume_check_left)
+
+   -- mute if 0 volume
+   if _vs_current_volume == 0 then
+      _vs_volume_data= 0xFFFF
+   end if
+
+   -- write the data to the vol register
+   vs_register_write(VS_REG_VOL,_vs_volume_data)
 end procedure
+
+--------------------------------------------------------------------------------
+-- Volume control (pseudo variable). Sets volume by -0.5db per step down from 255.
+-- "vs_volume = 253" will give 20 * -0.5 = -10db
+-- "vs_volume = 255" will be 0db (max volume)
+-- "vs_volume = 0" will be (min volume/no sound)
+--------------------------------------------------------------------------------
+procedure vs_volume'put(byte in data) is
+   _vs_current_volume = data -- save volume from user
+   _vs_volume_set()
+end procedure
+
+function vs_volume'get() return byte is
+   return _vs_current_volume -- return volume to user
+end function
+
+--------------------------------------------------------------------------------
+-- Right speaker volume control (pseudo variable) (-127 to 127) in steps of 0.5db.
+-- Max volume is 255, so if vs_volume = 250, you may only add 5 more to the
+-- right speaker (vs_volume_right = 5). Higher values are allowed but will be
+-- limited by the max volume.
+--------------------------------------------------------------------------------
+procedure vs_volume_right'put(sbyte in data) is
+   _vs_current_volume_right = data -- save volume from user
+   _vs_volume_set()
+end procedure
+
+function vs_volume_right'get() return sbyte is
+   return _vs_current_volume_right -- return volume to user
+end function
+
+--------------------------------------------------------------------------------
+-- Left speaker volume control (pseudo variable) (-127 to 127) in steps of 0.5db.
+-- Max volume is 255, so if vs_volume = 250, you may only add 5 more to the
+-- left speaker (vs_volume_left = 5). Higher values are allowed but will be
+-- limited by the max volume.
+--------------------------------------------------------------------------------
+procedure vs_volume_left'put(sbyte in data) is
+   _vs_current_volume_left = data -- save volume from user
+   _vs_volume_set()
+end procedure
+
+function vs_volume_left'get() return sbyte is
+   return _vs_current_volume_left -- return volume to user
+end function
+
+--------------------------------------------------------------------------------
+-- Mute volume (pseudo variable) vs_mute = TRUE or FALSE
+--------------------------------------------------------------------------------
+procedure vs_mute'put(bit in data) is
+   _vs_mute_data = data
+   if data == TRUE then
+      vs_register_write(VS_REG_VOL,0xFFFF) -- turn volume off
+   else
+      _vs_volume_set()                     -- turn volume on (back to original)
+   end if
+end procedure
+
+function vs_mute'get() return bit is
+   return _vs_mute_data                    -- return if muted
+end function
+
+
+--------------------------------------------------------------------------------
+-- Writes calculated bass and treble data to base/treble register (internal use only)
+--------------------------------------------------------------------------------
+var byte vs_current_bass     = 0
+var sbyte vs_current_treble  = 0
+procedure _vs_set_bass_treble_set() is
+   var word _vs_bass_treble_data = 0
+   var byte _vs_treble_data
+   var byte _vs_bass_data
+
+   -- get the base into 4 bits
+   _vs_bass_data = vs_current_bass & 0b1111
+
+   -- get the treble into 4 bits (signed)
+   _vs_treble_data = byte(vs_current_treble + 8) & 0b1111
+   var bit vs_treble_sign at _vs_treble_data : 3
+   vs_treble_sign = !vs_treble_sign
+
+   -- create the data word that will be put into VS_REG_BASS register
+   -- treble at bits 12-15, bass at bits 4-7
+   _vs_bass_treble_data = _vs_treble_data
+   _vs_bass_treble_data = _vs_bass_treble_data << 8
+   _vs_bass_treble_data = _vs_bass_treble_data + _vs_bass_data
+   _vs_bass_treble_data = _vs_bass_treble_data << 4
+
+    -- write to VS_REG_BASS register
+   vs_register_write(VS_REG_BASS,_vs_bass_treble_data)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Bass enhance/boost (pseudo variable). vs_bass = 0 to 15, 1db per step
+-- Normal level is vs_bass = 0
+--------------------------------------------------------------------------------
+procedure vs_bass'put(byte in data) is
+   vs_current_bass = data    -- save base from user
+   _vs_set_bass_treble_set() -- set base/treble
+end procedure
+
+function vs_bass'get() return byte is
+   return vs_current_bass    -- return base to user
+end function
+
+--------------------------------------------------------------------------------
+-- Treble control (pseudo variable). vs_treble = -8 to +7, 1.5db per step.
+-- Normal level is vs_treble = 0. Don't ask me why this is does not work the
+-- same as bass control, see datasheet and ask the manufacturer!
+--------------------------------------------------------------------------------
+procedure vs_treble'put(sbyte in data) is
+   vs_current_treble = data -- save base from user
+   _vs_set_bass_treble_set() -- set base/treble
+end procedure
+
+function vs_treble'get() return sbyte is
+   return vs_current_treble -- return base to user
+end function
+
+--------------------------------------------------------------------------------
+-- patch for vs1053b only (don't know what it fixes)
+--------------------------------------------------------------------------------
+procedure vs_patch_vs1053b() is
+   vs_register_write(VS_REG_WRAMADDR,0x8010)
+   vs_register_write(VS_REG_WRAM,0x3e12)
+   vs_register_write(VS_REG_WRAM,0xb817)
+   vs_register_write(VS_REG_WRAM,0x3e14)
+   vs_register_write(VS_REG_WRAM,0xf812)
+   vs_register_write(VS_REG_WRAM,0x3e01)
+   vs_register_write(VS_REG_WRAM,0xb811)
+   vs_register_write(VS_REG_WRAM,0x0007)
+   vs_register_write(VS_REG_WRAM,0x9717)
+   vs_register_write(VS_REG_WRAM,0x0020)
+   vs_register_write(VS_REG_WRAM,0xffd2)
+   vs_register_write(VS_REG_WRAM,0x0030)
+   vs_register_write(VS_REG_WRAM,0x11d1)
+   vs_register_write(VS_REG_WRAM,0x3111)
+   vs_register_write(VS_REG_WRAM,0x8024)
+   vs_register_write(VS_REG_WRAM,0x3704)
+   vs_register_write(VS_REG_WRAM,0xc024)
+   vs_register_write(VS_REG_WRAM,0x3b81)
+   vs_register_write(VS_REG_WRAM,0x8024)
+   vs_register_write(VS_REG_WRAM,0x3101)
+   vs_register_write(VS_REG_WRAM,0x8024)
+   vs_register_write(VS_REG_WRAM,0x3b81)
+   vs_register_write(VS_REG_WRAM,0x8024)
+   vs_register_write(VS_REG_WRAM,0x3f04)
+   vs_register_write(VS_REG_WRAM,0xc024)
+   vs_register_write(VS_REG_WRAM,0x2808)
+   vs_register_write(VS_REG_WRAM,0x4800)
+   vs_register_write(VS_REG_WRAM,0x36f1)
+   vs_register_write(VS_REG_WRAM,0x9811)
+   vs_register_write(VS_REG_WRAMADDR,0x8028)
+   vs_register_write(VS_REG_WRAM,0x2a00)
+   vs_register_write(VS_REG_WRAM,0x040e)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Initialize vs1053b and set volume to max. User should lower volume after
+-- init(). After init() vs_reg_mode_data should be equal to 0x4800 or 0x800
+--------------------------------------------------------------------------------
+procedure vs_init() is
+   var word vs_reg_mode_data = 0
+
+   -- set spi mode
+   SSPCON_CKP = 0
+   SSPSTAT_CKE = 1
+
+   -- data request pin should go high after reset (hardware reset takes 1.8 ms)
+   _usec_delay(100)          -- allow time for vs_dreq to go low at startup
+   while vs_dreq == low loop -- now wait for it to go high again
+   end loop
+
+   -- check if communication is ok
+   for 10 loop -- try communication 10 times
+      vs_register_read(VS_REG_MODE,vs_reg_mode_data) -- get mode data
+
+      -- mode data should = 0x4800 or 0x0800
+      if (vs_reg_mode_data == 0x4800) | (vs_reg_mode_data == 0x0800) then
+         vs_init_ok = TRUE         -- set init is ok
+      end if
+
+      -- exit loop if ok
+      if vs_init_ok == TRUE then
+         exit loop
+      end if
+   end loop
+
+   -- mode data can be sent to serial port
+   ;print_dword_dec (serial_hw_data,vs_reg_mode_data)
+   ;serial_hw_data = 13
+   ;serial_hw_data = 10
+
+   -- if communication is ok, init some settings.
+   if vs_init_ok == TRUE then
+
+      -- enable PLL for high internal clock
+      if VS_PLL == 3_5 then
+         vs_register_write(VS_REG_CLOCKF,0x9800) -- 43.008mhz
+      elsif VS_PLL == 5 then
+         vs_register_write(VS_REG_CLOCKF,0xE000) -- 61.44mhz
+      end if
+
+      -- reset volume and bass registers
+      vs_register_write(VS_REG_VOL,0)
+      vs_register_write(VS_REG_BASS,0)
+
+      -- do not fast-forward
+      vs_play_speed = 1
+   end if
+end procedure
+
