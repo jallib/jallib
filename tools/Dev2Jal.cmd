@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.00'
+   ScriptVersion   = '0.1.01'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -54,7 +54,7 @@ msglevel = 1
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab846/'             /* base directory of MPLAB          */
+MPLABbase  = 'k:/mplab850/'             /* base directory of MPLAB          */
 JALLIBbase = 'k:/jallib/'               /* base directory of JALLIB (local) */
 
 /* When using 'standard' installations no other changes are needed,         */
@@ -2196,6 +2196,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,        /* max # of records */
          offset = offset - s.j                            /* next offset */
 
       end
+/* ??? */ leave                     /* only 1 bit line to process */
    end
    i = i + 1                                             /* next record */
 end
@@ -3118,8 +3119,6 @@ do i = 1 to dev.0                                       /* scan .dev file */
                   key = 'FLTAMUX'
                when key = 'FOSC' then
                   key = 'OSC'
-               when key = 'IOFSCS' then                 /* typo in .dev files */
-                  key = 'IOSCFS'
                when key = 'MCLRE' then
                   key = 'MCLR'
                when key = 'MSSP7B_EN' | key = 'MSSPMSK' then
@@ -3239,13 +3238,13 @@ do i = arg(1) + 1  while i <= dev.0  &,
       end
 
       when key = 'BROWNOUT' then do
-         if pos('SLEEP',val2) > 0  &  pos('DEEP SLEEP',val2) = 0 then
+         if  pos('SLEEP',val2) > 0 & pos('DEEP SLEEP',val2) = 0 then
             kwd = 'RUNONLY'
-         else if pos('ENABLE',val2) \= 0  | val2 = 'ON' then do
+         else if pos('ENABLE',val2) > 0  | val2 = 'ON' then do
             kwd = 'ENABLED'
             flag_enabled = flag_enabled + 1
          end
-         else if pos('CONTROL',val2) \= 0 then
+         else if pos('CONTROL',val2) > 0 then
             kwd = 'CONTROL'
          else do
             kwd = 'DISABLED'
@@ -3454,7 +3453,8 @@ do i = arg(1) + 1  while i <= dev.0  &,
       when key = 'PMPMUX' then do
          if wordpos('ON',val2) > 0 then                     /* contains ' ON ' */
             kwd = left(word(val2, wordpos('ON',val2) + 1),5)
-         else if wordpos('ELSEWHERE',val2) > 0 then         /* contains ' ELSEWHERE ' */
+         else if wordpos('ELSEWHERE',val2) > 0  |,          /* contains ' ELSEWHERE ' */
+                 wordpos(' NOT ',val2) > 0 then             /* contains ' NOT ' */
             kwd = 'ELSEWHERE'
          else if wordpos('NOT',val2) = 0 then               /* does not contain ' NOT ' */
             kwd = left(word(val2, wordpos('TO',val2) + 1),5)
