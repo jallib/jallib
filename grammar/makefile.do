@@ -70,13 +70,13 @@ command clean
 
 command test {
    set cmd    "jalparser "
-   append cmd " a.jal"
-   append cmd " >out.txt"
+   append cmd " test.jal"
+   append cmd " >test.txt"
    exec ($cmd)
 
-   exec "cat out.txt"   
-   exec "perl cfilter.pl out.txt >out.c"
-   exec "gcc out.c -oout.exe"
+   exec "cat test.txt"   
+   exec "perl cfilter.pl test.txt >test.c"
+   exec "gcc test.c -otest.exe"
  
 }
 
