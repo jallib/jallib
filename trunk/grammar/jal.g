@@ -65,10 +65,6 @@ statement
 variable 
 	: identifier^ (LBRACKET expr RBRACKET)?	;
 
-//include_stmt 
-//	: L_INCLUDE^ (identifier|constant|'/')+	 
-//	;
-	
 asm_stmt 
 	: L_ASM (L_NOP | (identifier (cexpr ( COMMA cexpr )*)?))
 	;
@@ -127,21 +123,18 @@ proc_params
 proc_parm : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier (LBRACKET expr? RBRACKET)? at_decl?
     ;
 
-//proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) ('data' | identifier) ('[' expr ']')? at_decl?
-//    ;
-
-    	
-
-// the optional part from L_IS is for the real definition, the first part only is a prototype
+// the optional part starting with L_IS is for the procedure body definition, the first part only is a prototype
 proc_def : L_PROCEDURE identifier proc_params
 	(	 L_IS
                 statement*
             L_END L_PROCEDURE )?
     ;
 
-func_def : L_FUNCTION  identifier  proc_params L_RETURN vtype L_IS
+// the optional part starting with  L_IS is for the function body definition, the first part only is a prototype
+func_def : L_FUNCTION  identifier  proc_params L_RETURN vtype 
+	(	L_IS
                 statement*
-            L_END L_FUNCTION
+            L_END L_FUNCTION )?
     ;
 
 pseudo_proc_def : L_PROCEDURE identifier APOSTROPHE L_PUT proc_params L_IS
@@ -161,18 +154,13 @@ const_def : L_CONST^ vtype* identifier ( LBRACKET cexpr* RBRACKET )* ASSIGN
             ( cexpr | cexpr_list | identifier | STRING_LITERAL )
         ;
 
-//var_def : var_decl1 var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
-//        ;
 var_def : L_VAR L_VOLATILE? vtype var_decl2 (COMMA var_decl2)* -> ^(VAR L_VOLATILE  vtype var_decl2 )
         ;
-
-//fragment var_multi : ',' var_decl2
-//        ;
 
 var_with_init : ASSIGN var_init
         ;
  
-fragment var_decl2 : identifier ( LBRACKET cexpr? RBRACKET )? ( at_decl | is_decl | var_with_init)*
+var_decl2 : identifier ( LBRACKET cexpr? RBRACKET )? ( at_decl | is_decl | var_with_init)*
         ;
 
 vtype   :   type (ASTERIX cexpr)?
