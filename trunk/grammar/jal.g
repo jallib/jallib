@@ -63,18 +63,18 @@ statement
 	;
 
 variable 
-	: identifier^ ('[' expr ']')?	;
+	: identifier^ (LBRACKET expr RBRACKET)?	;
 
 //include_stmt 
 //	: L_INCLUDE^ (identifier|constant|'/')+	 
 //	;
 	
 asm_stmt 
-	: L_ASM (L_NOP | (identifier (cexpr ( ',' cexpr )*)?))
+	: L_ASM (L_NOP | (identifier (cexpr ( COMMA cexpr )*)?))
 	;
 
 asm_block 
-	: L_ASSEMBLER (identifier | expr | constant | ',' | ':') * L_END L_ASSEMBLER
+	: L_ASSEMBLER (identifier | expr | constant | COMMA | COLON) * L_END L_ASSEMBLER
 	;
 
 // cexpr is a constant expression at compile time. It can contain constant identifierS,
@@ -83,7 +83,7 @@ asm_block
 cexpr   :   expr
         ;
 
-cexpr_list : '{' cexpr ( ',' cexpr )* '}'
+cexpr_list : LCURLY cexpr ( COMMA cexpr )* RCURLY
 	;
 	
 for_stmt : L_FOR^ expr ( L_USING identifier )? loop_stmt ;
@@ -112,8 +112,8 @@ if_stmt : L_IF^ expr L_THEN statement*
             L_END L_IF
         ;
 
-case_stmt : L_CASE expr 'of'
-                ( cexpr (',' cexpr)* ':' statement )*
+case_stmt : L_CASE expr L_OF
+                ( cexpr (COMMA cexpr)* COLON statement )*
                 (L_OTHERWISE statement)?
             L_END L_CASE
         ;
@@ -121,10 +121,10 @@ case_stmt : L_CASE expr 'of'
 block_stmt : L_BLOCK statement* L_END L_BLOCK 			-> ^(L_BLOCK statement*);
 
 proc_params 
-	: ( '(' ( proc_parm (',' proc_parm)* )? ')' )?	
+	: ( LPAREN ( proc_parm (COMMA proc_parm)* )? RPAREN )?	
 	;
 
-proc_parm : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier ('[' expr? ']')? at_decl?
+proc_parm : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier (LBRACKET expr? RBRACKET)? at_decl?
     ;
 
 //proc_parm : 'volatile'? vtype ( 'in' | 'out' | 'in' 'out' ) ('data' | identifier) ('[' expr ']')? at_decl?
@@ -133,37 +133,37 @@ proc_parm : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier ('[' expr
     	
 
 // the optional part from L_IS is for the real definition, the first part only is a prototype
-proc_def : 'procedure' identifier proc_params
+proc_def : L_PROCEDURE identifier proc_params
 	(	 L_IS
                 statement*
-            L_END 'procedure' )?
+            L_END L_PROCEDURE )?
     ;
 
-func_def : 'function'  identifier  proc_params L_RETURN vtype L_IS
+func_def : L_FUNCTION  identifier  proc_params L_RETURN vtype L_IS
                 statement*
-            L_END 'function'
+            L_END L_FUNCTION
     ;
 
-pseudo_proc_def : 'procedure' identifier '\'' 'put' proc_params L_IS
+pseudo_proc_def : L_PROCEDURE identifier APOSTROPHE 'put' proc_params L_IS
                 statement*
-            L_END 'procedure'
+            L_END L_PROCEDURE
     ;
 
-pseudo_func_def : 'function'  identifier '\'' 'get' proc_params L_RETURN vtype L_IS
+pseudo_func_def : L_FUNCTION  identifier APOSTROPHE 'get' proc_params L_RETURN vtype L_IS
                 statement*
-            L_END 'function'
+            L_END L_FUNCTION
     ;
 
-alias_def : 'alias'^ identifier L_IS identifier
+alias_def : L_ALIAS^ identifier L_IS identifier
         ;
 
-const_def : 'const'^ vtype* identifier ( '[' cexpr* ']' )* ASSIGN
+const_def : L_CONST^ vtype* identifier ( LBRACKET cexpr* RBRACKET )* ASSIGN
             ( cexpr | cexpr_list | identifier | STRING_LITERAL )
         ;
 
 //var_def : var_decl1 var_decl2 (var_multi* | at_decl | is_decl | var_with_init)
 //        ;
-var_def : 'var' L_VOLATILE? vtype var_decl2 (',' var_decl2)* -> ^(VAR L_VOLATILE  vtype var_decl2 )
+var_def : L_VAR L_VOLATILE? vtype var_decl2 (COMMA var_decl2)* -> ^(VAR L_VOLATILE  vtype var_decl2 )
         ;
 
 //fragment var_multi : ',' var_decl2
@@ -172,10 +172,10 @@ var_def : 'var' L_VOLATILE? vtype var_decl2 (',' var_decl2)* -> ^(VAR L_VOLATILE
 var_with_init : ASSIGN var_init
         ;
  
-fragment var_decl2 : identifier ( '[' cexpr? ']' )? ( at_decl | is_decl | var_with_init)*
+fragment var_decl2 : identifier ( LBRACKET cexpr? RBRACKET )? ( at_decl | is_decl | var_with_init)*
         ;
 
-vtype   :   type ('*' cexpr)?
+vtype   :   type (ASTERIX cexpr)?
         ;
 
 at_decl : (L_SHARED)? L_AT ( ( cexpr bitloc? ) | (  identifier bitloc? ) | cexpr_list )
@@ -184,10 +184,10 @@ at_decl : (L_SHARED)? L_AT ( ( cexpr bitloc? ) | (  identifier bitloc? ) | cexpr
 is_decl : L_IS identifier
         ;
 
-bitloc  : ':' cexpr // constant
+bitloc  : COLON cexpr // constant
         ;
 
-proc_func_call   : identifier ('(' expr? (',' expr) * ')')?
+proc_func_call   : identifier (LPAREN expr? (COMMA expr) * RPAREN)?
 //proc_func_call   : identifier ('(' expr? (',' expr) * ')') // parenthesis are mandatory, otherwise parsed as identifier
         ;
 
@@ -205,11 +205,11 @@ pragma
 	| ( L_INTERRUPT ) 	
 	| ( L_STACK constant ) 	
 	| ( L_CODE constant ) 	
-	| ( L_EEPROM constant ',' constant ) 	
-	| ( L_ID constant ',' constant ) 	
-	| ( L_DATA constant MINUS constant (',' constant MINUS constant)* ) 	
+	| ( L_EEPROM constant COMMA constant ) 	
+	| ( L_ID constant COMMA constant ) 	
+	| ( L_DATA constant MINUS constant (COMMA constant MINUS constant)* ) 	
 	| ( L_SHARED constant MINUS constant) 	
-	| ( L_FUSEDEF identifier bitloc? constant '{' pragma_fusedef+ '}')
+	| ( L_FUSEDEF identifier bitloc? constant LCURLY pragma_fusedef+ RCURLY)
     ) 
     ;
 
@@ -228,31 +228,31 @@ pragma_fusedef
 // expressions
 //-----------------------------------------------------------------------------
      
-expr :  or_expr ('|'^ or_expr)*
+expr :  or_expr (OR^ or_expr)*
      ;
 
-or_expr :  xor_expr ('^'^ xor_expr)*
+or_expr :  xor_expr (CARET^ xor_expr)*
      ;
 
-xor_expr : and_expr ('&'^ and_expr)*
+xor_expr : and_expr (AMP^ and_expr)*
          ;
 
-and_expr : equality_expr (('==' | '!=' )^ equality_expr)* 
+and_expr : equality_expr ((EQUAL | NOT_EQUAL )^ equality_expr)* 
          ;
 
-equality_expr : relational_expr (('<' | '>' | '<=' | '>=' )^ relational_expr)* 
+equality_expr : relational_expr ((LESS | GREATER | LESS_EQUAL | GREATER_EQUAL )^ relational_expr)* 
          ;
 
-relational_expr :arith_expr (('<<'|'>>')^ arith_expr)*
+relational_expr :arith_expr ((LEFT_SHIFT|RIGHT_SHIFT)^ arith_expr)*
            ;
 
 arith_expr: term ((PLUS|MINUS)^ term)* //			-> ^(OPERATOR[('+'|'-')])
           ;
 
-term : pling (('*' | '/' | '%' )^ pling)*
+term : pling ((ASTERIX | SLASH | PERCENT )^ pling)*
      ;
 
-pling 	: '!'^? factor	
+pling 	: BANG^? factor	
 	;
 
 factor : PLUS^ factor
@@ -263,10 +263,10 @@ factor : PLUS^ factor
 
 atom	:  CHARACTER_LITERAL
         |  STRING_LITERAL
-	| vtype '(' expr ')' // cast
+	| vtype LPAREN expr RPAREN // cast
         |  constant
-	| '(' expr ')'
-	|  identifier ('[' expr ']')
+	| LPAREN expr RPAREN
+	|  identifier (LBRACKET expr RBRACKET)
 	| proc_func_call
 	|  identifier
 	;
@@ -274,7 +274,6 @@ atom	:  CHARACTER_LITERAL
 identifier : IDENTIFIER
             | L_DATA
             ;          
-          
 
 constant :  BIN_LITERAL | HEX_LITERAL | OCTAL_LITERAL | DECIMAL_LITERAL ;
 
@@ -286,7 +285,7 @@ HEX_LITERAL : '0' ('x'|'X') HEX_DIGIT+ ;
 
 OCTAL_LITERAL : '0' ('0'..'7')+ ;
 
-CHARACTER_LITERAL :   '"' ( ESCAPE_SEQUENCE | ~('\''|'\\') ) '"'
+CHARACTER_LITERAL :   '"' ( ESCAPE_SEQUENCE | ~(APOSTROPHE|'\\') ) '"'
     ;
 
 STRING_LITERAL :  '"' ( ESCAPE_SEQUENCE | ~('\\'|'"') )* '"'
@@ -294,7 +293,7 @@ STRING_LITERAL :  '"' ( ESCAPE_SEQUENCE | ~('\\'|'"') )* '"'
 
 fragment HEX_DIGIT : ('0'..'9'|'a'..'f'|'A'..'F'|'_') ;
 
-fragment ESCAPE_SEQUENCE :   '\\' ('b'|'t'|'n'|'f'|'r'|'\"'|'\''|'\\')
+fragment ESCAPE_SEQUENCE :   '\\' ('b'|'t'|'n'|'f'|'r'|'\"'|APOSTROPHE|'\\')
     |   OCTAL_ESCAPE
     ;
 
@@ -305,8 +304,6 @@ fragment OCTAL_ESCAPE :   '\\' ('0'..'3') ('0'..'7') ('0'..'7')
 
 WS  :  (' '|'\r'|'\t'|'\u000C'|'\n') {$channel=HIDDEN;}
     ;
-
-
 
 INCLUDE_STMT
     : 'include' ~('\n'|'\r')* '\r'? '\n' 
@@ -322,84 +319,96 @@ LINE_COMMENT
     ;
 
 
-L_RETURN	:	'return'	;
-
-L_ASSERT	:	'assert'	;
-
-L_INCLUDE	:	'include'	;
-
-L__DEBUG	:	'_debug'	;
-L__ERROR	:	'_error'	;
+L__DEBUG	:	'_debug'	;		
+L__ERROR	:	'_error'	;		
 L__WARN		:	'_warn'		;
-
+L_ALIAS		:	'alias'		;
 L_ASM		:	'asm'		;
-
-L_FOR		:	'for'		;
-L_USING		:	'using'		;
-L_LOOP		:	'loop'		;
-L_EXIT		:	'exit'		;
-L_END		:	'end'		;
-L_ASSEMBLER	:	'assembler'	;
-L_FOREVER	:	'forever'	;
-L_WHILE		:	'while'		;
-L_REPEAT	:	'repeat'	;
-L_UNTIL		:	'until'		;
-L_IF		:	'if'		;
-L_THEN		:	'then'		;
-L_ELSEIF	:	'elsif'		;
-L_ELSE		:	'else'		;
-L_CASE		:	'case'		;
-L_OTHERWISE	:	'otherwise'	;
-L_BLOCK		:	'block'		;
-
-L_VOLATILE	:	'volatile'	;
-L_IN		:	'in'		;
-L_OUT		:	'out'		;
-L_SHARED	:	'shared'	;
+L_ASSEMBLER	:	'assembler'	;		
+L_ASSERT	:	'assert'	;		
 L_AT		:	'at'		;
-L_IS		:	'is'		;
-
 L_BIT		:	'bit'		;
+L_BLOCK		:	'block'		;
 L_BYTE		:	'byte'		;
-L_WORD		:	'word'		;
-L_DWORD		:	'dword'		;
-L_SBYTE		:	'sbyte'		;
-L_SWORD		:	'sword'		;
-L_SDWORD	:	'sdword'	;
-
-L_PRAGMA	:	'pragma'	;
-L_TARGET	:	'target'	;
-L_INLINE	:	'inline'	;
-L_STACK		:	'stack'		;
-L_CODE		:	'code'		;
-L_EEPROM	:	'eeprom'	;
-L_ID		:	'ID'		;
-L_DATA		:	'data'		;
-L_FUSEDEF	:	'fuse_def'	;
+L_CASE		:	'case'		;
 L_CHIP		:	'chip'		;
-L_INTERRUPT	:	'interrupt'	;
-
-
+L_CODE		:	'code'		;
+L_CONST		:	'const'		;
+L_DATA		:	'data'		;
+L_DWORD		:	'dword'		;
+L_EEPROM	:	'eeprom'	;		
+L_ELSE		:	'else'		;
+L_ELSEIF	:	'elsif'		;	
+L_END		:	'end'		;
+L_EXIT		:	'exit'		;
+L_FOR		:	'for'		;
+L_FOREVER	:	'forever'	;		
+L_FUNCTION	:	'function'	;		
+L_FUSEDEF	:	'fuse_def'	;		
+L_ID		:	'ID'		;
+L_IF		:	'if'		;
+L_IN		:	'in'		;
+L_INCLUDE	:	'include'	;		
+L_INLINE	:	'inline'	;		
+L_INTERRUPT	:	'interrupt'	;		
+L_IS		:	'is'		;
+L_LOOP		:	'loop'		;
 L_NOP		:	'nop'		;
+L_OF		:	'of'		;
+L_OTHERWISE	:	'otherwise'	;		
+L_OUT		:	'out'		;
+L_PRAGMA	:	'pragma'	;		
+L_PROCEDURE	:	'procedure'	;		
+L_REPEAT	:	'repeat'	;		
+L_RETURN	:	'return'	;		
+L_SBYTE		:	'sbyte'		;
+L_SDWORD	:	'sdword'	;		
+L_SHARED	:	'shared'	;		
+L_STACK		:	'stack'		;
+L_SWORD		:	'sword'		;
+L_TARGET	:	'target'	;		
+L_THEN		:	'then'		;
+L_UNTIL		:	'until'		;
+L_USING		:	'using'		;
+L_VAR		:	'var'		;
+L_VOLATILE	:	'volatile'	;		
+L_WHILE		:	'while'		;
+L_WORD		:	'word'		;
+
 	
+
+ASSIGN		:	'='	;
+PLUS		:	'+'	;
+MINUS		:	'-'	;
+CARET		:	'^'	;
+AMP		:	'&'	;
+EQUAL		:	'=='	;
+NOT_EQUAL	:	'!='	;
+LESS		:	'<'	;
+GREATER		:	'>'	;
+LESS_EQUAL	:	'<='	;
+GREATER_EQUAL	:	'>='	;
+LEFT_SHIFT	:	'<<'	;
+RIGHT_SHIFT	:	'>>'	;
+LBRACKET	:	'['	;
+RBRACKET	:	']'	;
+COMMA		:	','	;
+COLON		:	':'	;
+LCURLY		:	'{'	;
+RCURLY		:	'}'	;
+LPAREN		:	'('	;
+RPAREN		:	')'	;
+APOSTROPHE	:	'\''	;
+ASTERIX		:	'*'	;
+OR		:	'|'	;
+SLASH		:	'/'	;
+PERCENT		:	'%'	;
+BANG		:	'!'	;
+
+
+// note: some identifiers may be matched as tokens before...
 IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
 
 fragment LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
-
-
-
-
-
-
-
-ASSIGN
-	:	'='
-	;
-
-PLUS
-	:	'+'
-	;
-
-MINUS
-	:	'-'
-	;
+	
+	
