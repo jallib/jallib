@@ -36,9 +36,9 @@ options {
     	backtrack	= true;
 }
 
-tokens {
-	VAR;
-}
+//tokens {
+//	VAR;
+//}
 
 program : ( statement )+ ; 
 
@@ -154,7 +154,7 @@ const_def : L_CONST^ vtype* identifier ( LBRACKET cexpr* RBRACKET )* ASSIGN
             ( cexpr | cexpr_list | identifier | STRING_LITERAL )
         ;
 
-var_def : L_VAR L_VOLATILE? vtype var_decl2 (COMMA var_decl2)* -> ^(VAR L_VOLATILE  vtype var_decl2 )
+var_def : L_VAR^ L_VOLATILE? vtype var_decl2 (COMMA var_decl2)* 
         ;
 
 var_with_init : ASSIGN var_init
@@ -234,7 +234,7 @@ equality_expr : relational_expr ((LESS | GREATER | LESS_EQUAL | GREATER_EQUAL )^
 relational_expr :arith_expr ((LEFT_SHIFT|RIGHT_SHIFT)^ arith_expr)*
            ;
 
-arith_expr: term ((PLUS|MINUS)^ term)* //			-> ^(OPERATOR[('+'|'-')])
+arith_expr: term ((PLUS|MINUS)^ term)* 
           ;
 
 term : pling ((ASTERIX | SLASH | PERCENT )^ pling)*

@@ -87,8 +87,24 @@ int CgExpression(pANTLR3_BASE_TREE p, int Level)
          printf("%s // constant or identifier \n", p->toString(p)->chars);
          break;
 
-      case PLUS :
-      case MINUS :                    
+      case AMP           :
+      case ASTERIX       :
+      case BANG          :
+      case CARET         :
+      case EQUAL         :
+      case GREATER       :
+      case GREATER_EQUAL :
+      case LEFT_SHIFT    :
+      case LESS          :
+      case LESS_EQUAL    :
+      case MINUS         :
+      case NOT_EQUAL     :
+      case OR            :
+      case PERCENT       :
+      case PLUS          :
+      case RIGHT_SHIFT   :
+      case SLASH         :
+                         
          if (n == 2) {
             Indent(Level);            
             printf("( // start subexpr\n");
@@ -208,7 +224,12 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
          }
          case IDENTIFIER : {
             Indent(Level);            
-            printf(" %s; \n", Child->toString(Child)->chars);
+            printf(" %s \n", Child->toString(Child)->chars);
+            break;
+         }
+         case COMMA : {
+            Indent(Level);            
+            printf(",\n", Child->toString(Child)->chars);
             break;
          }
          default: {            
@@ -216,7 +237,8 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
             break;
          }
       }
-   }                
+   }
+   printf(";\n");                
 } 
  
 //-----------------------------------------------------------------------------
@@ -290,7 +312,7 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level)
          CgForever(p, Level+1); // process nodes of child            
          break;   
       }
-      case VAR : {
+      case L_VAR : {
          CgVar(p, Level+1); // process nodes of child            
          break;   
       }
