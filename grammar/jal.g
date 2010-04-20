@@ -144,12 +144,12 @@ func_def : L_FUNCTION  identifier  proc_params L_RETURN vtype L_IS
             L_END L_FUNCTION
     ;
 
-pseudo_proc_def : L_PROCEDURE identifier APOSTROPHE 'put' proc_params L_IS
+pseudo_proc_def : L_PROCEDURE identifier APOSTROPHE L_PUT proc_params L_IS
                 statement*
             L_END L_PROCEDURE
     ;
 
-pseudo_func_def : L_FUNCTION  identifier APOSTROPHE 'get' proc_params L_RETURN vtype L_IS
+pseudo_func_def : L_FUNCTION  identifier APOSTROPHE L_GET proc_params L_RETURN vtype L_IS
                 statement*
             L_END L_FUNCTION
     ;
@@ -345,6 +345,7 @@ L_FOR		:	'for'		;
 L_FOREVER	:	'forever'	;		
 L_FUNCTION	:	'function'	;		
 L_FUSEDEF	:	'fuse_def'	;		
+L_GET		:	'get'		;
 L_ID		:	'ID'		;
 L_IF		:	'if'		;
 L_IN		:	'in'		;
@@ -359,6 +360,7 @@ L_OTHERWISE	:	'otherwise'	;
 L_OUT		:	'out'		;
 L_PRAGMA	:	'pragma'	;		
 L_PROCEDURE	:	'procedure'	;		
+L_PUT		:	'put'		;
 L_REPEAT	:	'repeat'	;		
 L_RETURN	:	'return'	;		
 L_SBYTE		:	'sbyte'		;
@@ -412,3 +414,4 @@ IDENTIFIER : LETTER (LETTER|'0'..'9')* ;
 fragment LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
 	
 	
+
