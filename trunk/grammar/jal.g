@@ -36,9 +36,9 @@ options {
     	backtrack	= true;
 }
 
-//tokens {
-//	VAR;
-//}
+tokens {
+	FUNC_PROC_CALL;
+}
 
 program : ( statement )+ ; 
 
@@ -47,8 +47,8 @@ statement
         asm_block | asm_stmt | block_stmt | for_stmt | forever_stmt | if_stmt 
         | repeat_stmt | while_stmt | case_stmt
         | var_def | const_def | alias_def
-        | proc_def | pseudo_proc_def
-        | func_def | pseudo_func_def
+        | proc_def //| pseudo_proc_def
+        | func_def //| pseudo_func_def
         | ( L_EXIT^ L_LOOP )
         | L_RETURN^ expr?
         | L_ASSERT expr
@@ -58,8 +58,9 @@ statement
         | L__ERROR^ STRING_LITERAL
         | L__WARN^ STRING_LITERAL
         | pragma 
-	| proc_func_call
 	| variable ASSIGN^ expr
+	| proc_func_call
+	| identifier
 	;
 
 variable 
@@ -117,35 +118,40 @@ case_stmt : L_CASE expr L_OF
 block_stmt : L_BLOCK statement* L_END L_BLOCK 			-> ^(L_BLOCK statement*);
 
 proc_params 
-	: ( LPAREN ( proc_parm (COMMA proc_parm)* )? RPAREN )?	
+	:  LPAREN ( proc_parm (COMMA proc_parm)* )? RPAREN 	
 	;
+//proc_params 
+//	: ( LPAREN ( proc_parm (COMMA proc_parm)* )? RPAREN )?	
+//	;
 
 proc_parm : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier (LBRACKET expr? RBRACKET)? at_decl?
     ;
 
 // the optional part starting with L_IS is for the procedure body definition, the first part only is a prototype
-proc_def : L_PROCEDURE identifier proc_params
-	(	 L_IS
+proc_def : L_PROCEDURE identifier (APOSTROPHE L_PUT)? proc_params
+	(	L_IS
                 statement*
             L_END L_PROCEDURE )?
     ;
 
 // the optional part starting with  L_IS is for the function body definition, the first part only is a prototype
-func_def : L_FUNCTION  identifier  proc_params L_RETURN vtype 
+func_def : L_FUNCTION  identifier (APOSTROPHE L_GET)? proc_params L_RETURN vtype 
 	(	L_IS
                 statement*
             L_END L_FUNCTION )?
     ;
 
-pseudo_proc_def : L_PROCEDURE identifier APOSTROPHE L_PUT proc_params L_IS
-                statement*
-            L_END L_PROCEDURE
-    ;
+//pseudo_proc_def : L_PROCEDURE identifier APOSTROPHE L_PUT proc_params
+//	( 	L_IS
+//                statement*
+//            L_END L_PROCEDURE )?
+//    ;
 
-pseudo_func_def : L_FUNCTION  identifier APOSTROPHE L_GET proc_params L_RETURN vtype L_IS
-                statement*
-            L_END L_FUNCTION
-    ;
+//pseudo_func_def : L_FUNCTION  identifier APOSTROPHE L_GET proc_params L_RETURN vtype 
+//	(	L_IS
+//                statement*
+//            L_END L_FUNCTION )?
+//    ;
 
 alias_def : L_ALIAS^ identifier L_IS identifier
         ;
@@ -175,9 +181,9 @@ is_decl : L_IS identifier
 bitloc  : COLON cexpr // constant
         ;
 
-proc_func_call   : identifier (LPAREN expr? (COMMA expr) * RPAREN)?
-//proc_func_call   : identifier ('(' expr? (',' expr) * ')') // parenthesis are mandatory, otherwise parsed as identifier
-        ;
+// parenthesis are mandaatory for this rule. JAL allows procedure/function calls without parenthesis
+// which are matched as 'identifiers' and must be handled by the code genarator
+proc_func_call   : identifier (LPAREN expr? (COMMA expr) * RPAREN) -> ^(FUNC_PROC_CALL identifier expr*) ;
 
 //var_init : proc_func_call | cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | identifier
 var_init : cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | identifier
@@ -253,7 +259,7 @@ atom	:  CHARACTER_LITERAL
         |  STRING_LITERAL
 	| vtype LPAREN expr RPAREN // cast
         |  constant
-	| LPAREN expr RPAREN
+	| LPAREN! expr RPAREN!
 	|  identifier (LBRACKET expr RBRACKET)
 	| proc_func_call
 	|  identifier
