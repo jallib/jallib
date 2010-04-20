@@ -222,6 +222,26 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
             printf(" char \n");
             break;
          }
+         case L_WORD : {
+            Indent(Level);            
+            printf(" unsigned short int \n");
+            break;
+         }
+         case L_SWORD : {
+            Indent(Level);            
+            printf(" short int \n");
+            break;
+         }
+         case L_DWORD : {
+            Indent(Level);            
+            printf(" unsigned long int \n");
+            break;
+         }
+         case L_SDWORD : {
+            Indent(Level);            
+            printf(" long int \n");
+            break;
+         }
          case IDENTIFIER : {
             Indent(Level);            
             printf(" %s \n", Child->toString(Child)->chars);
@@ -238,6 +258,7 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
          }
       }
    }
+   Indent(Level);            
    printf(";\n");                
 } 
  
@@ -319,7 +340,7 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level)
       case ASSIGN : {
          CgAssign(p, Level+1); // process nodes of child            
          Indent(Level);            
-         printf("; // end of assign \n"); // end statement
+         printf("; // end of assign \n");
          break;   
       }
       case J2C_COMMENT : {

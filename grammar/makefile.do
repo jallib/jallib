@@ -45,7 +45,8 @@ transform .g .c  {
    exec "copy /y tmp_g\*.c ."   
    exec "copy /y tmp_g\*.h ."   
    clear suffix
-   exec "echo // timestamp dummy >($_).c"
+   exec "echo // timestamp dummy >($_).c"   
+   exec "del *.o"
 }
 
 transform .c .o {  
