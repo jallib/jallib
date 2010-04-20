@@ -105,4 +105,17 @@
         <xsl:attribute name="start-indent">0pt</xsl:attribute>
     </xsl:attribute-set>
 
+    <xsl:attribute-set name="screen">
+        <xsl:attribute name="space-before">1.2em</xsl:attribute>
+        <xsl:attribute name="space-after">0.8em</xsl:attribute>
+        <xsl:attribute name="white-space-treatment">preserve</xsl:attribute>
+        <xsl:attribute name="white-space-collapse">false</xsl:attribute>
+        <xsl:attribute name="linefeed-treatment">preserve</xsl:attribute>
+        <xsl:attribute name="wrap-option">wrap</xsl:attribute>
+        <xsl:attribute name="background-color">#f0f0f0</xsl:attribute>
+        <xsl:attribute name="font-family">Monospaced</xsl:attribute>
+        <xsl:attribute name="line-height">106%</xsl:attribute>
+        <xsl:attribute name="font-size">8pt</xsl:attribute>
+    </xsl:attribute-set>
+
 </xsl:stylesheet>
