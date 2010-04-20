@@ -190,6 +190,41 @@ void CgFor(pANTLR3_BASE_TREE p, int Level)
       }
    }                
 }
+
+//-----------------------------------------------------------------------------
+// CgFuncProcCall - 
+//-----------------------------------------------------------------------------
+// A FuncProc node has child for it's name and one for each parameter (expression)
+//-----------------------------------------------------------------------------
+void CgFuncProcCall(pANTLR3_BASE_TREE p, int Level)
+{  char *ThisFuncName = "CgFuncProcCall";
+   CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
+      
+   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+      Child = p->getChild(p, ChildIx);
+      if (Child->getToken == NULL) {
+         printf("Error: getToken null\n");
+         return;
+      }
+
+      /* get data of child */      
+      Token = Child->getToken(Child);                
+      TokenType = Child->getType(Child);             
+
+      if (ChildIx == 0) {
+         // function/procedure name
+         Indent(Level);            
+         printf(" %s(\n", Child->toString(Child)->chars);         
+         continue;
+      }
+
+      CgExpression(Child, Level + 1);
+      
+   }                
+   Indent(Level);            
+   printf("); // end of proc/func call\n");
+
+}
  
 //-----------------------------------------------------------------------------
 // CgVar - 
@@ -341,6 +376,10 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level)
          CgAssign(p, Level+1); // process nodes of child            
          Indent(Level);            
          printf("; // end of assign \n");
+         break;   
+      }
+      case FUNC_PROC_CALL : {
+         CgFuncProcCall(p, Level+1); // process nodes of child            
          break;   
       }
       case J2C_COMMENT : {
