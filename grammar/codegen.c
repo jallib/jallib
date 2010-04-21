@@ -5,6 +5,7 @@
 #include    "jalParser.h"
 extern pANTLR3_UINT8   jalParserTokenNames[];
 
+static int Pass;
 
 // my prototypes
 void CodeGenerate(pANTLR3_BASE_TREE p);
@@ -54,6 +55,20 @@ void CgStatements(pANTLR3_BASE_TREE p, int StartIx, int Level);
 // end of code blocks
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
+
+char *VarTypeString(int TokenType)
+{
+   switch(TokenType) {
+      case L_BYTE    : { return "unsigned char";         }
+      case L_SBYTE   : { return "char";                  }
+      case L_WORD    : { return "unsigned short int";    }
+      case L_SWORD   : { return "short intn";            }
+      case L_DWORD   : { return "unsigned long int";     }
+      case L_SDWORD  : { return "long int";              }
+      default        : { return "unexpected token";      }
+   }
+}
+
 
 
 //-----------------------------------------------------------------------------
@@ -199,6 +214,8 @@ void CgFor(pANTLR3_BASE_TREE p, int Level)
 void CgFuncProcCall(pANTLR3_BASE_TREE p, int Level)
 {  char *ThisFuncName = "CgFuncProcCall";
    CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
+
+   int GotFirstParam = 0;
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       Child = p->getChild(p, ChildIx);
@@ -217,8 +234,12 @@ void CgFuncProcCall(pANTLR3_BASE_TREE p, int Level)
          printf(" %s(\n", Child->toString(Child)->chars);         
          continue;
       }
-
+      
+      if (GotFirstParam) printf(",");
+      GotFirstParam = 1;
+      
       CgExpression(Child, Level + 1);
+      
       
    }                
    Indent(Level);            
@@ -247,34 +268,14 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
       TokenType = Child->getType(Child);             
 
       switch(TokenType) {
-         case L_BYTE : {
-            Indent(Level);            
-            printf(" unsigned char \n");
-            break;
-         }
-         case L_SBYTE : {
-            Indent(Level);            
-            printf(" char \n");
-            break;
-         }
-         case L_WORD : {
-            Indent(Level);            
-            printf(" unsigned short int \n");
-            break;
-         }
-         case L_SWORD : {
-            Indent(Level);            
-            printf(" short int \n");
-            break;
-         }
-         case L_DWORD : {
-            Indent(Level);            
-            printf(" unsigned long int \n");
-            break;
-         }
+         case L_BYTE   : 
+         case L_SBYTE  : 
+         case L_WORD   : 
+         case L_SWORD  : 
+         case L_DWORD  : 
          case L_SDWORD : {
             Indent(Level);            
-            printf(" long int \n");
+            printf(" %s \n", VarTypeString(TokenType));
             break;
          }
          case IDENTIFIER : {
@@ -284,7 +285,7 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
          }
          case COMMA : {
             Indent(Level);            
-            printf(",\n", Child->toString(Child)->chars);
+            printf(",\n");
             break;
          }
          default: {            
@@ -295,6 +296,154 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
    }
    Indent(Level);            
    printf(";\n");                
+} 
+
+
+//-----------------------------------------------------------------------------
+// CgParamChilds - 
+//-----------------------------------------------------------------------------
+// A ParamChilds node
+//-----------------------------------------------------------------------------
+void CgParamChilds(pANTLR3_BASE_TREE p, int Level)
+{  char *ThisFuncName = "CgParamChilds";
+   CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
+     
+   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+      Child = p->getChild(p, ChildIx);
+      if (Child->getToken == NULL) {
+         printf("Error: getToken null\n");
+         return;
+      }
+
+      /* get data of child */      
+      Token = Child->getToken(Child);                
+      TokenType = Child->getType(Child);             
+
+      switch(TokenType) {
+         case L_IN : {
+            break;
+         }
+         case L_OUT : {
+            break;
+         }
+         case IDENTIFIER : {
+            Indent(Level);            
+            printf(" %s \n", Child->toString(Child)->chars);
+            break;
+         }
+         default: {            
+            REPORT_NODE("unexpected token", Child);
+            break;
+         }
+      }
+   }
+} 
+
+//-----------------------------------------------------------------------------
+// CgParams - 
+//-----------------------------------------------------------------------------
+// A Param node
+//-----------------------------------------------------------------------------
+void CgParams(pANTLR3_BASE_TREE p, int Level)
+{  char *ThisFuncName = "CgParams";
+   CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
+
+   int GotFirstParam = 0;
+     
+   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+      Child = p->getChild(p, ChildIx);
+      if (Child->getToken == NULL) {
+         printf("Error: getToken null\n");
+         return;
+      }
+
+      /* get data of child */      
+      Token = Child->getToken(Child);                
+      TokenType = Child->getType(Child);             
+
+      if (GotFirstParam) {           
+         Indent(Level);
+         printf(", // next param\n");
+      }
+      GotFirstParam = 1;
+
+      switch(TokenType) {
+         case L_BYTE   : 
+         case L_SBYTE  : 
+         case L_WORD   : 
+         case L_SWORD  : 
+         case L_DWORD  : 
+         case L_SDWORD : {
+            Indent(Level);            
+            printf(" %s \n", VarTypeString(TokenType));
+            CgParamChilds(Child, Level+1);
+            break;
+         }
+         default: {            
+            REPORT_NODE("unexpected token", Child);
+            break;
+         }
+      }
+   }
+} 
+ 
+//-----------------------------------------------------------------------------
+// CgProcedureDef - 
+//-----------------------------------------------------------------------------
+// A procedure def node
+//-----------------------------------------------------------------------------
+void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
+{  char *ThisFuncName = "CgProcedureDef";
+   CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
+
+   int GotReturnType = 0;
+   pANTLR3_BASE_TREE cc;
+      
+   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+      Child = p->getChild(p, ChildIx);
+      if (Child->getToken == NULL) {
+         printf("Error: getToken null\n");
+         return;
+      }
+
+      /* get data of child */      
+      Token = Child->getToken(Child);                
+      TokenType = Child->getType(Child);             
+
+      switch(TokenType) {
+         case L_RETURN : {
+            Indent(Level);            
+            cc = p->getChild(Child, 0);
+            printf(" %s // return type\n", VarTypeString(cc->getType(cc)));
+            GotReturnType = 1;
+            break;
+         }
+         case IDENTIFIER : {
+            Indent(Level);    
+            if (!GotReturnType) printf("void ");        
+            printf(" %s ( // proc/func name\n", Child->toString(Child)->chars);
+            break;
+         }
+         case PARAMS : {
+            Indent(Level);             
+            CgParams(Child, Level+1);
+            printf("// param,\n", Child->toString(Child)->chars);
+            break;
+         }
+         case BODY : {
+            Indent(Level);            
+            printf(") { // body\n");
+            CgStatements(Child, 0, Level+1);
+            Indent(Level);            
+            printf("} // end body\n");
+            break;
+         }
+         default: {            
+            REPORT_NODE("unexpected token", Child);
+            break;
+         }
+      }
+   }
 } 
  
 //-----------------------------------------------------------------------------
@@ -334,7 +483,9 @@ void CgForever(pANTLR3_BASE_TREE p, int Level)
    }                
 }
 
-
+#define PASS1 if ((Level == 1) & (Pass != 1)) break;
+#define PASS2 if ((Level == 1) & (Pass != 2)) break;
+   
 //-----------------------------------------------------------------------------
 // CgStatement - Generate code for this single statement
 //-----------------------------------------------------------------------------   
@@ -343,12 +494,13 @@ void CgForever(pANTLR3_BASE_TREE p, int Level)
 void CgStatement(pANTLR3_BASE_TREE p, int Level)
 {  char *ThisFuncName = "CgStatement";
    CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
-         
+       
    Indent(Level);            
    printf("// %s (%d, %s)\n",p->toString(p)->chars, TokenType, jalParserTokenNames[TokenType]);   
 
    switch(TokenType) {
       case L_BLOCK : {
+         PASS2;
          Indent(Level);            
          printf("{ // start of block \n"); 
          CgStatements(p, 0, Level+1); // process nodes of child            
@@ -357,32 +509,40 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level)
          break;   
       }
       case L_FOR : {
+         PASS2;
          CgFor(p, Level+1); // process nodes of child            
-         Indent(Level);            
-         printf("for(;;){ // start of loop \n"); 
-         Indent(Level);            
-         printf("} // end of loop \n"); 
          break;   
       }
       case L_FOREVER : {
+         PASS2;
          CgForever(p, Level+1); // process nodes of child            
          break;   
       }
       case L_VAR : {
+         PASS1;
          CgVar(p, Level+1); // process nodes of child            
          break;   
       }
+      case L_FUNCTION  : 
+      case L_PROCEDURE : {
+         PASS1;
+         CgProcedureDef(p, Level+1); // process nodes of child            
+         break;   
+      }
       case ASSIGN : {
+         PASS2;
          CgAssign(p, Level+1); // process nodes of child            
          Indent(Level);            
          printf("; // end of assign \n");
          break;   
       }
       case FUNC_PROC_CALL : {
+         PASS2;
          CgFuncProcCall(p, Level+1); // process nodes of child            
          break;   
       }
       case J2C_COMMENT : {
+         PASS2;
          Indent(Level);            
          printf(" %s\n", p->toString(p)->chars + 5 ); // c statement
          break;   
@@ -437,15 +597,26 @@ void CodeGenerate(pANTLR3_BASE_TREE p)
    
    printf("// Jal -> C code converter\n");                       
    printf("#include <stdio.h>\n\n");                       
-   printf("int main(int argc, int **argv) {\n");                       
-   Level = 0;
 
+   Pass = 1;   // generate functions, global vars etc.
+   Level = 0;
 	if  (p->isNilNode(p) == ANTLR3_TRUE) { 
 	   // a nill-node at root level means there are multiple statements to be processed
       CgStatements(p, 0, Level); // Proces childs of p,  start at child 0
 	} else {
 	   // the root node is a statement itself (this means we have a program with only
 	   // one statement. Not common in a real program, but possible and usefull while testing).
+      CgStatement(p, Level); // process statement of node p
+   }      
+   
+
+   Pass = 2;   // generate main function
+   Level = 0;
+   printf("int main(int argc, int **argv) {\n");                       
+
+	if  (p->isNilNode(p) == ANTLR3_TRUE) { 
+      CgStatements(p, 0, Level); // Proces childs of p,  start at child 0
+	} else {
       CgStatement(p, Level); // process statement of node p
    }      
    printf("} // end of main\n"); 
