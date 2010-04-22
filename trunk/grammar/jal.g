@@ -85,12 +85,12 @@ cexpr   :   expr
 cexpr_list : LCURLY cexpr ( COMMA cexpr )* RCURLY
 	;
 	
-for_stmt : L_FOR^ expr ( L_USING identifier )? loop_stmt ;
+for_stmt : L_FOR expr ( L_USING identifier )? loop_stmt 
+	-> ^(L_FOR ^(L_USING identifier)? ^(CONDITION expr) loop_stmt ) 
+	;
 
-loop_stmt 
-	:   L_LOOP^  
-                statement*
-            L_END! L_LOOP!
+loop_stmt : L_LOOP statement* L_END L_LOOP
+            -> ^(BODY statement*) 
 	;
 
 forever_stmt : L_FOREVER^ loop_stmt ;  
