@@ -38,6 +38,7 @@ options {
 
 tokens {
 	BODY;
+	CONDITION;
 	FUNC_PROC_CALL;
 	PARAMS;
 }
@@ -104,10 +105,16 @@ repeat_stmt : L_REPEAT
             L_UNTIL expr
         ;
 
-if_stmt : L_IF^ expr L_THEN statement*
-            (L_ELSEIF expr L_THEN statement* )*
-            (L_ELSE statement* )?
-            L_END L_IF
+if_stmt : L_IF expr L_THEN statement* if_elsif* if_else? L_END L_IF
+		-> ^(L_IF ^(CONDITION expr) ^(BODY statement*) if_elsif* if_else?) 
+        ;
+
+if_else : L_ELSE statement* 
+	-> ^(L_ELSE ^(BODY statement*))
+        ;
+
+if_elsif : L_ELSIF expr L_THEN statement*
+	-> ^(L_ELSIF ^(CONDITION expr) ^(BODY statement*)) 
         ;
 
 case_stmt : L_CASE expr L_OF
@@ -320,7 +327,7 @@ L_DATA		:	'data'		;
 L_DWORD		:	'dword'		;
 L_EEPROM	:	'eeprom'	;		
 L_ELSE		:	'else'		;
-L_ELSEIF	:	'elsif'		;	
+L_ELSIF		:	'elsif'		;	
 L_END		:	'end'		;
 L_EXIT		:	'exit'		;
 L_FOR		:	'for'		;
