@@ -51,7 +51,7 @@ statement
         | repeat_stmt | while_stmt | case_stmt
         | var_def | const_def | alias_def
         | proc_def | func_def 
-        | ( L_EXIT^ L_LOOP )
+        | ( L_EXIT L_LOOP ) ->^(L_EXIT)
         | L_RETURN^ expr?
         | L_ASSERT expr
         | INCLUDE_STMT

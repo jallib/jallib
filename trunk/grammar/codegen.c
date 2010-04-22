@@ -597,6 +597,12 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level)
          CgFor(p, Level+1); // process nodes of child            
          break;   
       }
+      case L_EXIT : {
+         PASS2;
+         Indent(Level);
+         printf("break; // exit\n");
+         break;   
+      }
       case L_FOREVER : {
          PASS2;
          CgForever(p, Level+1); // process nodes of child            
