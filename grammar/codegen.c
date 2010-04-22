@@ -26,18 +26,31 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level);
 //   subnodes, of course). There is no return value.
 //-----------------------------------------------------------------------------
 
-#define CODE_GENERATOR_FUNCT_HEADER       \
-   ANTLR3_UINT32   n, ChildIx, TokenType; \
-   pANTLR3_BASE_TREE   Child, cc;         \
-   pANTLR3_COMMON_TOKEN Token;            \
-   Indent(Level);                         \
-   printf("// %s\n", ThisFuncName);       \
-                                          \
-   n = p->getChildCount(p);               \
-                                          \
-   /* get data of supplied node */        \
-   Token = p->getToken(p);                \
-   TokenType = p->getType(p);             \
+#define CODE_GENERATOR_FUNCT_HEADER                               \
+   ANTLR3_UINT32   n, ChildIx, TokenType;                         \
+   pANTLR3_BASE_TREE   c;  /* child (assigned below) */           \
+   pANTLR3_BASE_TREE   cc; /* 'child of child (not assigned!) */  \
+   pANTLR3_COMMON_TOKEN Token;                                    \
+   Indent(Level);                                                 \
+   printf("// %s\n", ThisFuncName);                               \
+                                                                  \
+   n = p->getChildCount(p);                                       \
+                                                                  \
+   /* get data of supplied node */                                \
+   Token = p->getToken(p);                                        \
+   TokenType = p->getType(p);                                     \
+                                                                  
+#define CODE_GENERATOR_GET_CHILD_INFO           \
+      c = p->getChild(p, ChildIx);              \
+      if (c->getToken == NULL) {                \
+         printf("Error: getToken null\n");      \
+         return;                                \
+      }                                         \
+                                                \
+      /* get data of child */                   \
+      Token = c->getToken(c);                   \
+      TokenType = c->getType(c);                \
+
 
 
 #define REPORT_NODE(string, node) {                   \
@@ -147,22 +160,21 @@ void CgAssign(pANTLR3_BASE_TREE p, int Level)
 {  char *ThisFuncName = "CgAssign";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
-   // first node is identifier to assign to.
-   Child = p->getChild(p, 0);  
-   Token = Child->getToken(Child);
-   TokenType = Child->getType(Child);
-
+   // first node is identifier to assign to. 
+   ChildIx = 0;
+   CODE_GENERATOR_GET_CHILD_INFO
+   
    if (TokenType == IDENTIFIER) {   
       Indent(Level);            
-      printf("%s  = // %s identifier\n", Child->toString(Child)->chars, ThisFuncName);
+      printf("%s  = // %s identifier\n", c->toString(c)->chars, ThisFuncName);
    } else {
-      printf("%s error: token %s \n", ThisFuncName, Child->toString(Child)->chars);
+      printf("%s error: token %s \n", ThisFuncName, c->toString(c)->chars);
    }                
    
    // second node is expr
-   Child = p->getChild(p, 1);  
+   c = p->getChild(p, 1);  
 
-   CgExpression(Child, Level + 1);      
+   CgExpression(c, Level + 1);      
 } 
 
 //-----------------------------------------------------------------------------
@@ -175,21 +187,14 @@ void CgCaseValue(pANTLR3_BASE_TREE p, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
 
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      CODE_GENERATOR_GET_CHILD_INFO
 
       switch(TokenType) {
          case CONDITION : {
             Indent(Level);  
             printf("case ");
-            CgExpression(Child->getChild(Child, 0), Level+1);
+            CgExpression(c->getChild(c, 0), Level+1);
             Indent(Level);  
             printf(" : // case_condition \n");
             break;
@@ -197,14 +202,14 @@ void CgCaseValue(pANTLR3_BASE_TREE p, int Level)
          case BODY : {
             Indent(Level);  
             printf("{ // case body\n");
-            cc = p->getChild(Child, 0);
+            cc = p->getChild(c, 0);
             CgStatement(cc, Level+1);
             Indent(Level);  
             printf("break; } // case body\n");
             break;  
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -220,40 +225,33 @@ void CgCase(pANTLR3_BASE_TREE p, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
-
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      
+      CODE_GENERATOR_GET_CHILD_INFO
 
       switch(TokenType) {
          case CONDITION : {
             Indent(Level);   
             printf("switch( // case\n");         
-            CgExpression(Child->getChild(Child, 0), Level+1);
+            CgExpression(c->getChild(c, 0), Level+1);
             Indent(Level);            
             printf(") { // case\n");         
             break;
          }
          case CASE_VALUE : {
-            CgCaseValue(Child, Level+1);
+            CgCaseValue(c, Level+1);
             break;  
          }
          case L_OTHERWISE : {  
             Indent(Level);   
             printf("default : { // case\n");                     
-            cc = p->getChild(Child, 0);
+            cc = c->getChild(c, 0);
             CgStatement(cc, Level+1);   
             Indent(Level);  
             printf("break; } // case body\n");            
             break;  
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -273,23 +271,15 @@ void CgFor(pANTLR3_BASE_TREE p, int Level)
 {  char *ThisFuncName = "CgFor";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
-
    char *Ident = NULL;
      
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
-
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      
+      CODE_GENERATOR_GET_CHILD_INFO
 
       switch(TokenType) {
          case L_USING : {  
-            cc = p->getChild(Child, 0);
+            cc = p->getChild(c, 0);
             Ident = cc->toString(cc)->chars;         
             printf("// Using var %s\n", Ident);
             break;
@@ -301,7 +291,7 @@ void CgFor(pANTLR3_BASE_TREE p, int Level)
             } 
             Indent(Level);            
             printf(" for (%s=0;%s<\n", Ident, Ident);
-            CgExpression(Child->getChild(Child, 0), Level+1);
+            CgExpression(c->getChild(c, 0), Level+1);
             Indent(Level);            
             printf(";%s++) // End of for condition\n", Ident);
             break;
@@ -309,14 +299,14 @@ void CgFor(pANTLR3_BASE_TREE p, int Level)
          case BODY : {
             Indent(Level);            
             printf("{ // for body\n");
-            CgStatements(Child, Level+1);
+            CgStatements(c, Level+1);
             Indent(Level);            
             printf("} // for body\n");
 //            GotBody = 1;
             break;  
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -333,21 +323,21 @@ void CgWhile(pANTLR3_BASE_TREE p, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
+      c = p->getChild(p, ChildIx);
+      if (c->getToken == NULL) {
          printf("Error: getToken null\n");
          return;
       }
 
       /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      Token = c->getToken(c);                
+      TokenType = c->getType(c);             
 
       switch(TokenType) {
          case CONDITION : {
             Indent(Level);            
             printf(" while ( // condition start\n");
-            CgExpression(Child->getChild(Child,0), Level+1);
+            CgExpression(c->getChild(c,0), Level+1);
             Indent(Level);            
             printf(") \n // while condition end\n");
             break;
@@ -355,14 +345,14 @@ void CgWhile(pANTLR3_BASE_TREE p, int Level)
          case BODY : {
             Indent(Level);            
             printf("{ // while body\n");
-            CgStatements(Child, Level+1);
+            CgStatements(c, Level+1);
             Indent(Level);            
             printf("} // while body\n");
 //            GotBody = 1;
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -379,21 +369,14 @@ void CgRepeat(pANTLR3_BASE_TREE p, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
-
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      
+      CODE_GENERATOR_GET_CHILD_INFO
 
       switch(TokenType) {
          case BODY : {
             Indent(Level);            
             printf("do { // repeat body\n");
-            CgStatements(Child, Level+1);
+            CgStatements(c, Level+1);
             Indent(Level);            
             printf("} // repeat body\n");
 //            GotBody = 1;
@@ -402,14 +385,14 @@ void CgRepeat(pANTLR3_BASE_TREE p, int Level)
          case CONDITION : {
             Indent(Level);            
             printf(" while ( // repeat condition start\n");
-            CgExpression(Child->getChild(Child,0), Level+1);
+            CgExpression(c->getChild(c,0), Level+1);
             Indent(Level);            
             printf("); \n // repeat condition end\n");
             break;
          }
          
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -429,27 +412,20 @@ void CgFuncProcCall(pANTLR3_BASE_TREE p, int Level)
    int GotFirstParam = 0;
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
 
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      CODE_GENERATOR_GET_CHILD_INFO
 
       if (ChildIx == 0) {
          // function/procedure name
          Indent(Level);            
-         printf(" %s(\n", Child->toString(Child)->chars);         
+         printf(" %s(\n", c->toString(c)->chars);         
          continue;
       }
       
       if (GotFirstParam) printf(",");
       GotFirstParam = 1;
       
-      CgExpression(Child, Level + 1);      
+      CgExpression(c, Level + 1);      
    }                
    Indent(Level);            
    printf("); // end of proc/func call\n");
@@ -466,16 +442,9 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
-
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
-
+      
+      CODE_GENERATOR_GET_CHILD_INFO
+      
       switch(TokenType) {
          case L_BYTE   : 
          case L_SBYTE  : 
@@ -489,7 +458,7 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
          }
          case IDENTIFIER : {
             Indent(Level);            
-            printf(" %s \n", Child->toString(Child)->chars);
+            printf(" %s \n", c->toString(c)->chars);
             break;
          }
          case COMMA : {
@@ -498,7 +467,7 @@ void CgVar(pANTLR3_BASE_TREE p, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -518,15 +487,8 @@ void CgParamChilds(pANTLR3_BASE_TREE p, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
      
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
 
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      CODE_GENERATOR_GET_CHILD_INFO
 
       switch(TokenType) {
          case L_IN : {
@@ -537,11 +499,11 @@ void CgParamChilds(pANTLR3_BASE_TREE p, int Level)
          }
          case IDENTIFIER : {
             Indent(Level);            
-            printf(" %s \n", Child->toString(Child)->chars);
+            printf(" %s \n", c->toString(c)->chars);
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -560,15 +522,8 @@ void CgParams(pANTLR3_BASE_TREE p, int Level)
    int GotFirstParam = 0;
      
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
 
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      CODE_GENERATOR_GET_CHILD_INFO
 
       if (GotFirstParam) {           
          Indent(Level);
@@ -585,11 +540,11 @@ void CgParams(pANTLR3_BASE_TREE p, int Level)
          case L_SDWORD : {
             Indent(Level);            
             printf(" %s \n", VarTypeString(TokenType));
-            CgParamChilds(Child, Level+1);
+            CgParamChilds(c, Level+1);
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -609,20 +564,13 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
    int GotBody = 0;
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
-
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      
+      CODE_GENERATOR_GET_CHILD_INFO
 
       switch(TokenType) {
          case L_RETURN : {
             Indent(Level);            
-            cc = p->getChild(Child, 0);
+            cc = p->getChild(c, 0);
             printf(" %s // return type\n", VarTypeString(cc->getType(cc)));
             GotReturnType = 1;
             break;
@@ -630,26 +578,26 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
          case IDENTIFIER : {
             Indent(Level);    
             if (!GotReturnType) printf("void ");        
-            printf(" %s ( // proc/func name\n", Child->toString(Child)->chars);
+            printf(" %s ( // proc/func name\n", c->toString(c)->chars);
             break;
          }
          case PARAMS : {
             Indent(Level);             
-            CgParams(Child, Level+1);
-            printf("// param,\n", Child->toString(Child)->chars);
+            CgParams(c, Level+1);
+            printf("// param,\n", c->toString(c)->chars);
             break;
          }
          case BODY : {
             Indent(Level);            
             printf(") { // body\n");
-            CgStatements(Child, Level+1);
+            CgStatements(c, Level+1);
             Indent(Level);            
             printf("} // end body\n");
             GotBody = 1;
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -685,21 +633,14 @@ void CgIf(pANTLR3_BASE_TREE p, int Level)
    }
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
 
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      CODE_GENERATOR_GET_CHILD_INFO
 
       switch(TokenType) {
          case CONDITION : {
             Indent(Level);            
             printf("( // condition\n");
-            CgExpression(Child->getChild(Child, 0), Level+1);
+            CgExpression(c->getChild(c, 0), Level+1);
             Indent(Level);            
             printf(") // end condition\n");
             GotBody = 1;
@@ -708,7 +649,7 @@ void CgIf(pANTLR3_BASE_TREE p, int Level)
          case BODY : {
             Indent(Level);            
             printf("{ // body\n");
-            CgStatements(Child, Level+1);
+            CgStatements(c, Level+1);
             Indent(Level);            
             printf("} // end body\n");
             GotBody = 1;
@@ -718,12 +659,12 @@ void CgIf(pANTLR3_BASE_TREE p, int Level)
          case L_ELSIF : {
             Indent(Level);            
             printf("  // else / elsif\n");
-            CgIf(Child, Level+1);
+            CgIf(c, Level+1);
             GotBody = 1;
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
@@ -744,27 +685,20 @@ void CgForever(pANTLR3_BASE_TREE p, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
-      Child = p->getChild(p, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }
 
-      /* get data of child */      
-      Token = Child->getToken(Child);                
-      TokenType = Child->getType(Child);             
+      CODE_GENERATOR_GET_CHILD_INFO
 
       switch(TokenType) {
          case BODY : {
             Indent(Level);            
             printf(" for (;;) {\n");
-            CgStatements(Child, Level+1);
+            CgStatements(c, Level+1);
             Indent(Level);            
             printf("}\n");
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", Child);
+            REPORT_NODE("unexpected token", c);
             break;
          }
       }
