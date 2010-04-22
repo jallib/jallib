@@ -189,27 +189,10 @@ main	(int argc, char *argv[])
             
       printf("Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree
       printf("-- ChildCount : %ld\n", r.tree->getChildCount(r.tree)); 
-//      printf("ChildIndex : %ld\n", r.tree->getChildIndex(r.tree)); 
-//      printf("Child : %ld\n",  Child = r.tree->getChild(r.tree, 1));        
-//      printf("Child : %ld\n",  Child = r.tree->getChild(r.tree, 2));        
-//      printf("Child : %ld\n",  Child = r.tree->getChild(r.tree, 4914));        
-//      printf("ChildIndex : %ld\n", r.tree->getChildIndex(r.tree)); 
 
       TreeWalk(r.tree);
 
-      CodeGenerate(r.tree);
-  
-//     	ANTLR3_UINT32   n, c;
-//      pANTLR3_BASE_TREE p = r.tree      ;
-//
-//   	n = p->getChildCount(p);
-//   
-//   	for	(c = 0; c<n ; c++) {
-//   		pANTLR3_BASE_TREE   child;
-//   		child = p->getChild(p, c);
-////         printf(" %s\n",child->toString(child)->chars);      
-//         printf(" %s (%d)\n",child->toString(child)->chars, child->getChildCount(child));      
-//   	}
+      CodeGenerate(r.tree);  
    } 
 
    return 0;
@@ -246,15 +229,6 @@ main	(int argc, char *argv[])
    
    return 0;
 }
-
-// walker based on anrlr3basetree.c, 
-// static pANTLR3_STRING toStringTree	(pANTLR3_BASE_TREE tree)
-// of toch niet???                                                                                               
-// antlr3commontree: 
-//static pANTLR3_STRING	    toString			(pANTLR3_BASE_TREE tree)
-
-
-// 	return	((pANTLR3_COMMON_TREE)(tree->super))->token->getText(((pANTLR3_COMMON_TREE)(tree->super))->token);
 
 //-----------------------------------------------------------------------------
 // Indent - print indent for screen dump / treewalk
@@ -309,7 +283,6 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
          TreeWalkWorker(child, Level+1);   
       }
    }
-
 }
 
 //-----------------------------------------------------------------------------
@@ -320,9 +293,6 @@ void TreeWalk(pANTLR3_BASE_TREE p)
 {   
    TreeWalkWorker(p, 0);       
 }             
-
-
-
 
 // from C.g:
 //

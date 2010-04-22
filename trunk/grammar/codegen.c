@@ -397,6 +397,7 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
    CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
 
    int GotReturnType = 0;
+   int GotBody = 0;
    pANTLR3_BASE_TREE cc;
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
@@ -436,6 +437,7 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
             CgStatements(Child, 0, Level+1);
             Indent(Level);            
             printf("} // end body\n");
+            GotBody = 1;
             break;
          }
          default: {            
@@ -443,6 +445,9 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
             break;
          }
       }
+   }
+   if (!GotBody) {
+      printf("); // Add closing parenthesis + semicolon of prototype\n");
    }
 } 
  
