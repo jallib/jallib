@@ -19,6 +19,7 @@
 #include    "jalLexer.h"
 #include    "jalParser.h"
 
+int verbose = 1;
 
 void CodeGenerate(pANTLR3_BASE_TREE p);
 
@@ -184,16 +185,18 @@ main	(int argc, char *argv[])
    if (psr->pParser->rec->state->errorCount > 0) { 
       fprintf(stderr, "The parser returned %d errors, tree walking aborted.\n", psr->pParser->rec->state->errorCount); 
       exit(1);
-   } else { 
-      ANTLR3_UINT32 Child;
-            
-      printf("Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree
-      printf("-- ChildCount : %ld\n", r.tree->getChildCount(r.tree)); 
+   }
+
+   ANTLR3_UINT32 Child;
+
+   if (verbose > 0) {
+      printf("// Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree
+      printf("// -- ChildCount : %ld\n", r.tree->getChildCount(r.tree)); 
 
       TreeWalk(r.tree);
-
-      CodeGenerate(r.tree);  
-   } 
+   }
+   
+   CodeGenerate(r.tree);  
 
    return 0;
 
@@ -251,7 +254,7 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
 {  ANTLR3_UINT32   n, c;
 
 	if  (p->isNilNode(p) == ANTLR3_TRUE) {
-	   printf("nil-node\n");
+	   printf("// nil-node\n");
 //	   return;
 	}
    
@@ -264,20 +267,17 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
       int ChildCount = child->getChildCount(child);                     
       pANTLR3_COMMON_TOKEN Token;
       if (child->getToken == NULL) {
-         printf("getToken null\n");
+         printf("// getToken null\n");
          Token = 0; 
       } else {
          Token = child->getToken(child);
       }
 
 
-//      pANTLR3_COMMON_TOKEN Token = 0; //child->getToken(child);
-      Indent(Level);            
-//      printf("@ %s %d\n", child->toString(child)->chars, Token->getTokenIndex(Token)); // tokenindex = plaat is ??
-//      printf(" %s (%d %d)\n",child->toString(child)->chars, ChildCount, child->getType(child));   
-
       ANTLR3_UINT32 TokenType = child->getType(child);
-      printf(" %s (%d, %s)\n",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
+      printf("//");
+      Indent(Level);            
+      printf("%s (%d, %s)\n",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
 //      printf("%s\n",child->toString(child)->chars);  
       if (ChildCount > 0) {
          TreeWalkWorker(child, Level+1);   

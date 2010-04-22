@@ -551,7 +551,7 @@ void CgForever(pANTLR3_BASE_TREE p, int Level)
       TokenType = Child->getType(Child);             
 
       switch(TokenType) {
-         case L_LOOP : {
+         case BODY : {
             Indent(Level);            
             printf(" for (;;) {\n");
             CgStatements(Child, 0, Level+1);
@@ -699,7 +699,7 @@ void CgStatements(pANTLR3_BASE_TREE p, int StartIx, int Level)
 void CodeGenerate(pANTLR3_BASE_TREE p)
 {  int Level;
    
-   printf("// Jal -> C code converter\n");                       
+   printf("\n\n// Jal -> C code converter\n");                       
    printf("#include <stdio.h>\n\n");                       
 
    Pass = 1;   // generate functions, global vars etc.
@@ -716,7 +716,7 @@ void CodeGenerate(pANTLR3_BASE_TREE p)
 
    Pass = 2;   // generate main function
    Level = 0;
-   printf("int main(int argc, int **argv) {\n");                       
+   printf("int main(int argc, char **argv) {\n");                       
 
 	if  (p->isNilNode(p) == ANTLR3_TRUE) { 
       CgStatements(p, 0, Level); // Proces childs of p,  start at child 0
