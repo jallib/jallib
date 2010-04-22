@@ -10,6 +10,7 @@ static int Pass;
 // my prototypes
 void CodeGenerate(pANTLR3_BASE_TREE p);
 void CgStatements(pANTLR3_BASE_TREE p, int StartIx, int Level);
+void CgFuncProcCall(pANTLR3_BASE_TREE p, int Level);
 
 
 //-----------------------------------------------------------------------------
@@ -134,8 +135,12 @@ int CgExpression(pANTLR3_BASE_TREE p, int Level)
          }
          break;
 
+      case FUNC_PROC_CALL :
+         CgFuncProcCall(p, Level+1);
+         break;
+
       default :
-         printf("// %s unknown token %s type %d %s // tostring \n", ThisFuncName, p->toString(p)->chars, TokenType, jalParserTokenNames[TokenType]);
+         printf("// %s unknown token %s type %d %s\n", ThisFuncName, p->toString(p)->chars, TokenType, jalParserTokenNames[TokenType]);
          break;      
    }
 }
@@ -624,6 +629,15 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level)
          CgAssign(p, Level+1); // process nodes of child            
          Indent(Level);            
          printf("; // end of assign \n");
+         break;   
+      }
+      case L_RETURN : {
+         PASS2;
+         Indent(Level);            
+         printf("return\n");
+         CgExpression(p->getChild(p,0), Level+1); // process nodes of child            
+         Indent(Level);            
+         printf("; // end of return \n");
          break;   
       }
       case FUNC_PROC_CALL : {
