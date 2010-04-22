@@ -38,6 +38,7 @@ options {
 
 tokens {
 	BODY;
+	CASE_VALUE;
 	CONDITION;
 	FUNC_PROC_CALL;
 	PARAMS;
@@ -95,14 +96,12 @@ loop_stmt : L_LOOP statement* L_END L_LOOP
 
 forever_stmt : L_FOREVER^ loop_stmt ;  
 
-while_stmt : L_WHILE expr L_LOOP 
-                statement*
-            L_END L_LOOP
+while_stmt : L_WHILE expr loop_stmt
+	-> ^(L_WHILE ^(CONDITION expr) loop_stmt ) 
         ;
 
-repeat_stmt : L_REPEAT
-                statement*
-            L_UNTIL expr
+repeat_stmt : L_REPEAT statement* L_UNTIL expr
+	-> ^(L_REPEAT ^(BODY statement*) ^(CONDITION expr)) 
         ;
 
 if_stmt : L_IF expr L_THEN statement* if_elsif* if_else? L_END L_IF
@@ -117,10 +116,12 @@ if_elsif : L_ELSIF expr L_THEN statement*
 	-> ^(L_ELSIF ^(CONDITION expr) ^(BODY statement*)) 
         ;
 
-case_stmt : L_CASE expr L_OF
-                ( cexpr (COMMA cexpr)* COLON statement )*
-                (L_OTHERWISE statement)?
-            L_END L_CASE
+case_value :	cexpr (COMMA cexpr)* COLON statement
+		-> ^(CASE_VALUE ^(CONDITION cexpr)* ^(BODY statement)) 
+        ;
+
+case_stmt : L_CASE expr L_OF case_value* (L_OTHERWISE statement)? L_END L_CASE
+	-> ^(L_CASE ^(CONDITION expr) case_value* ^(L_OTHERWISE statement)?) 
         ;
 
 block_stmt : L_BLOCK statement* L_END L_BLOCK 			-> ^(L_BLOCK statement*);
