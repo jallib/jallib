@@ -42,6 +42,7 @@ tokens {
 	CONDITION;
 	FUNC_PROC_CALL;
 	PARAMS;
+	VAR;
 }
 
 program : ( statement )+ ; 
@@ -84,6 +85,7 @@ cexpr   :   expr
         ;
 
 cexpr_list : LCURLY cexpr ( COMMA cexpr )* RCURLY
+		-> ^(LCURLY cexpr*)
 	;
 	
 for_stmt : L_FOR expr ( L_USING identifier )? loop_stmt 
@@ -149,31 +151,45 @@ func_body : L_IS statement* L_END L_FUNCTION -> ^(BODY statement*)
 // the optional part starting with  L_IS is for the function body definition, the first part only is a prototype
 func_def : L_FUNCTION  identifier (APOSTROPHE L_GET)? proc_params L_RETURN vtype func_body?
 	-> ^( L_FUNCTION ^(L_RETURN vtype) identifier proc_params func_body?)
-    ;
+    	;
 
-alias_def : L_ALIAS^ identifier L_IS identifier
-        ;
-
-const_def : L_CONST^ vtype* identifier ( LBRACKET cexpr* RBRACKET )* ASSIGN
-            ( cexpr | cexpr_list | identifier | STRING_LITERAL )
+alias_def : L_ALIAS identifier L_IS identifier
+	-> ^(L_ALIAS identifier*)
         ;
 
-var_def : L_VAR^ L_VOLATILE? vtype var_decl2 (COMMA var_decl2)* 
+// note: next *is* constant, but makes use of var rules and sub-structure.
+const_def2 : identifier ( LBRACKET cexpr? RBRACKET )? var_init?
+	-> ^(VAR identifier ^(cexpr)?  var_init? )
+	;
+
+const_def : L_CONST vtype? const_def2 (COMMA const_def2)* 
+	-> ^(L_CONST vtype? const_def2*)
         ;
 
-var_with_init : ASSIGN var_init
-        ;
- 
-var_decl2 : identifier ( LBRACKET cexpr? RBRACKET )? ( at_decl | is_decl | var_with_init)*
+//identifier ( LBRACKET cexpr* RBRACKET )* ASSIGN
+//            ( cexpr | cexpr_list | identifier | STRING_LITERAL )
+
+var_init : ASSIGN^ (cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | identifier) ;
+
+//var_with_init : ASSIGN^ var_init;
+
+var_def2 : identifier ( LBRACKET cexpr? RBRACKET )? ( at_decl | is_decl | var_init)*
+	-> ^(VAR identifier ^(cexpr)?  at_decl*  is_decl* var_init? )
+	;
+
+var_def : L_VAR L_VOLATILE? vtype var_def2 (COMMA var_def2)* 
+	-> ^(L_VAR L_VOLATILE? vtype var_def2*)
         ;
 
-vtype   :   type^ (ASTERIX cexpr)?
-        ;
+vtype   :   type^ (ASTERIX cexpr)? ;
+
+type    :   L_BIT | L_BYTE | L_WORD | L_DWORD  | L_SBYTE | L_SWORD | L_SDWORD ;
 
 at_decl : (L_SHARED)? L_AT ( ( cexpr bitloc? ) | (  identifier bitloc? ) | cexpr_list )
+	-> ^(L_AT L_SHARED? cexpr? identifier? bitloc? cexpr_list?)
         ;
 
-is_decl : L_IS identifier
+is_decl : L_IS^ identifier
         ;
 
 bitloc  : COLON cexpr // constant
@@ -183,12 +199,6 @@ bitloc  : COLON cexpr // constant
 // which are matched as 'identifiers' and must be handled by the code genarator.
 proc_func_call   : identifier (LPAREN expr? (COMMA expr) * RPAREN) -> ^(FUNC_PROC_CALL identifier expr*) ;
 
-var_init : cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | identifier
-        ;
-
-type    :       L_BIT | L_BYTE | L_WORD | L_DWORD 
-        | L_SBYTE | L_SWORD | L_SDWORD
-        ;
 pragma
     : L_PRAGMA^ (
 	(   L_TARGET pragma_target )
