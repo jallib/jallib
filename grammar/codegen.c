@@ -238,9 +238,7 @@ void CgFuncProcCall(pANTLR3_BASE_TREE p, int Level)
       if (GotFirstParam) printf(",");
       GotFirstParam = 1;
       
-      CgExpression(Child, Level + 1);
-      
-      
+      CgExpression(Child, Level + 1);      
    }                
    Indent(Level);            
    printf("); // end of proc/func call\n");
@@ -450,6 +448,82 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
       printf("); // Add closing parenthesis + semicolon of prototype\n");
    }
 } 
+
+
+//-----------------------------------------------------------------------------
+// CgIf - 
+//-----------------------------------------------------------------------------
+// A procedure def node
+//-----------------------------------------------------------------------------
+void CgIf(pANTLR3_BASE_TREE p, int Level)
+{  char *ThisFuncName = "CgIf";
+   CG_HEADER_NO_STARTIX  // declare vars, print debug, get n, Token and TokenType of 'p'
+
+//   int GotReturnType = 0;
+   int GotBody = 0;
+//   pANTLR3_BASE_TREE cc;
+
+      Indent(Level);
+   switch (TokenType) {
+      case L_IF   :  printf("if        // %s\n", ThisFuncName);    
+         break;
+      case L_ELSIF : printf("else if   // %s\n", ThisFuncName);    
+         break;
+      case L_ELSE :  printf("else      // %s\n", ThisFuncName);    
+         break;
+      default     :  REPORT_NODE("unexpected token", p);
+         break;
+   }
+      
+   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+      Child = p->getChild(p, ChildIx);
+      if (Child->getToken == NULL) {
+         printf("Error: getToken null\n");
+         return;
+      }
+
+      /* get data of child */      
+      Token = Child->getToken(Child);                
+      TokenType = Child->getType(Child);             
+
+      switch(TokenType) {
+         case CONDITION : {
+            Indent(Level);            
+            printf("( // condition\n");
+            CgExpression(Child->getChild(Child, 0), Level+1);
+            Indent(Level);            
+            printf(") // end condition\n");
+            GotBody = 1;
+            break;
+         }
+         case BODY : {
+            Indent(Level);            
+            printf("{ // body\n");
+            CgStatements(Child, 0, Level+1);
+            Indent(Level);            
+            printf("} // end body\n");
+            GotBody = 1;
+            break;
+         }
+         case L_ELSE: 
+         case L_ELSIF : {
+            Indent(Level);            
+            printf("  // else / elsif\n");
+            CgIf(Child, Level+1);
+            GotBody = 1;
+            break;
+         }
+         default: {            
+            REPORT_NODE("unexpected token", Child);
+            break;
+         }
+      }
+   }
+   if (!GotBody) {
+      printf("); // Add closing parenthesis + semicolon of prototype\n");
+   }
+} 
+ 
  
 //-----------------------------------------------------------------------------
 // CgForever - 
@@ -511,6 +585,11 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level)
          CgStatements(p, 0, Level+1); // process nodes of child            
          Indent(Level);            
          printf("} // end of block \n"); 
+         break;   
+      }
+      case L_IF : {
+         PASS2;
+         CgIf(p, Level+1); // process nodes of child            
          break;   
       }
       case L_FOR : {
