@@ -75,13 +75,13 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level);
 char *VarTypeString(int TokenType)
 {
    switch(TokenType) {
-      case L_BYTE    : { return "unsigned char";         }
-      case L_SBYTE   : { return "char";                  }
-      case L_WORD    : { return "unsigned short int";    }
-      case L_SWORD   : { return "short intn";            }
-      case L_DWORD   : { return "unsigned long int";     }
-      case L_SDWORD  : { return "long int";              }
-      default        : { return "unexpected token";      }
+      case L_BYTE    : { return "uint8_t";            }
+      case L_SBYTE   : { return "int8_t";             }
+      case L_WORD    : { return "uint16_t";           }
+      case L_SWORD   : { return "int8_t";             }
+      case L_DWORD   : { return "uint32_t";           }
+      case L_SDWORD  : { return "int32_t";            }
+      default        : { return "unexpected token";   }
    }
 }
 
@@ -937,6 +937,7 @@ void CodeGenerate(pANTLR3_BASE_TREE p)
    
    printf("\n\n// Jal -> C code converter\n");                       
    printf("#include <stdio.h>\n\n");                       
+   printf("#include <stdint.h>\n\n");                       
 
    Pass = 1;   // generate functions, global vars etc.
    Level = 0;
