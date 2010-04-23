@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.01'
+   ScriptVersion   = '0.1.02'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -2609,36 +2609,45 @@ else
 if core = '12' | core = '14' then do                        /* baseline, midrange */
    select
       when reg = 'ANSELH' | reg = 'ANSEL1' then do
-         if ansx < 8 then                                   /* seperate enumeration */
+         if ansx < 8 then                                   /* separate enumeration */
             ansx = ansx + 8
       end
       when reg = 'ANSELE' then do
-         if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
+         if left(PicName,5) = '16f70' | left(PicName,6) = '16lf70' |,
+            left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
             ansx = ansx + 5
          else
             ansx = ansx + 20
       end
       when reg = 'ANSELD' then do
-         if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
+         if left(PicName,5) = '16f70' | left(PicName,6) = '16lf70' |,
+            left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
             ansx = 99                                       /* not for ADC */
          else
             ansx = ansx + 12
       end
       when reg = 'ANSELC' then do
-         ansx = ansx + 12
+         if left(PicName,5) = '16f70' | left(PicName,6) = '16lf70' then
+            ansx = 99
+         else
+            ansx = ansx + 12
       end
       when reg = 'ANSELB' then do
-         if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
+         if left(PicName,5) = '16f70' | left(PicName,6) = '16lf70' |,
+            left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
             ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
          else
             ansx = ansx + 6
       end
       when reg = 'ANSELA' | reg = 'ANSEL' | reg = 'ANSEL0' | reg = 'ADCON0' then do
-         if left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then do
+         if left(PicName,5) = '16f70' | left(PicName,6) = '16lf70' |,
+            left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then do
             if ansx = 4 then
                ansx = 99
             else if ansx = 5 then
                ansx = 4
+            else if ansx > 5 then
+               ansx = 99
          end
       end
       otherwise
@@ -2952,8 +2961,8 @@ do k = 0 to 4 while word(Dev.i, 1) \= 'SFR'             /* max 5 records */
            offset = offset - 1
          end
          else if datatype(s.i) = 'NUM' then do          /* field size */
+            n.i = tolower(n.i)                          /* to lower case */
             if s.i = 1 then do                          /* single bit */
-               n.i = tolower(n.i)                       /* to lower case */
                if n.i = 'nto' then do
                   call lineout jalfile, 'const        byte  ',
                        left('_not_to',25) '= ' offset '     -- (compiler)'
@@ -4079,7 +4088,7 @@ call lineout chipdef, 'const       ADC_V13_1         = 0x_ADC_13_1'
 call lineout chipdef, '--'
 call lineout chipdef, '-- =================================================================='
 call lineout chipdef, '--'
-call lineout chipdef, '-- Values assigned to const "target_chip" by"'
+call lineout chipdef, '-- Values assigned to const "target_chip" by'
 call lineout chipdef, '--    "pragma target chip" in device files'
 call lineout chipdef, '-- can be used for conditional compilation, for example:'
 call lineout chipdef, '--    if (target_chip == PIC_16F88) then'
