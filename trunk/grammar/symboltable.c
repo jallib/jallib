@@ -35,21 +35,34 @@ Symbol *AddSymbol()
 
    return s;
 }
-
+  
+  
+Symbol *GetSymbolPointer  (char *SymbolName)
+{  Symbol *s;
+   
+   for(s = SymbolHead; s != NULL; s = s->Next) {
+      if (strcmp(SymbolName, s->Name) == 0) {
+         // match
+         return s;
+      }
+   }       
+   
+   return NULL;
+}
+  
 void DumpSymbol(Symbol *s)
 {  int i;
       
-   printf("//Symbol name: %s return: %s, Params: %d\n", s->Name, jalParserTokenNames[s->ReturnType], s->NrOfParams);
+   printf("//Symbol name: '%s', return: %s, Params: %d\n", s->Name, jalParserTokenNames[s->ReturnType], s->NrOfParams);
    for (i=0; i<s->NrOfParams; i++) {
-      printf("//   param %d Name: %s, Type: %s (%d), Ref: %d\n",
-            i, s->Param[i].Name, jalParserTokenNames[s->Param[i].Type], s->Param[i].Type, s->Param[i].IsReference);
+      printf("//   param %d Name: '%s', Type: %s (%d), CallBy: %c\n",
+            i, s->Param[i].Name, jalParserTokenNames[s->Param[i].Type], s->Param[i].Type, s->Param[i].CallMethod);
    }
 }
 
 
 void DumpSymbolTable()
 {  Symbol *s;
-   int i;
       
    for(s = SymbolHead; s != NULL; s = s->Next) {
       DumpSymbol(s);

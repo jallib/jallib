@@ -9,7 +9,7 @@
 //extern pANTLR3_UINT8   jalParserTokenNames[];
 #include "symboltable.h"
 
-
+Symbol *ActiveProcedureDefintion = NULL; // used for dereferencing procedure params within procedure body
 
 // Pass 1 collects all global variables and all function/procedure defs
 // Pass 2 collects the rest, all 'loose' code and puts it into main.
@@ -103,6 +103,56 @@ char *GetUniqueIdentifier()
    
    return Ident;
 }
+
+
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+// 0 = not found, else value of CallMethod
+//-----------------------------------------------------------------------------
+char GetCallMethod(char *ParamName)
+{  Symbol *s; 
+   int i;
+   
+   if (ActiveProcedureDefintion == NULL) return 0;      
+   s = ActiveProcedureDefintion; // use short name...
+   
+   for (i=0; i<s->NrOfParams; i++) {
+//      printf("// Check %s\n", s->Param[i].Name);           
+      if (strcmp(ParamName, s->Param[i].Name) == 0) { 
+         // match
+//         printf("// match %c\n", s->Param[i].CallMethod);           
+         return s->Param[i].CallMethod;
+      }
+   }   
+   return 0;   
+}
+
+                    
+char DeRefString[100];                    
+char *DeRefSub(char *InString, char CallMethod)
+{ 
+   if (CallMethod == 0) return InString;
+
+   if (CallMethod == 'r') {
+      // call by reference, so dereference before use
+      sprintf(DeRefString, "(*%s)", InString);
+      return DeRefString;   
+   }
+   if (CallMethod == 'c') {
+      // call by code
+      printf("Error: call by code (void, pseudo-vars) not supported, param:");
+   }
+   return InString;
+}
+
+
+char *DeReference(char *InString)
+{  char cm; 
+
+   cm = GetCallMethod(InString);
+
+   return DeRefSub(InString, cm);
+}
                
 //-----------------------------------------------------------------------------
 // CgExpression - Generate code for an Expression node
@@ -116,9 +166,12 @@ int CgExpression(pANTLR3_BASE_TREE p, int Level)
        
    switch(TokenType) {
       case IDENTIFIER :
+         Indent(Level);            
+         printf("%s // identifier\n", DeReference(p->toString(p)->chars));
+         break;
       case DECIMAL_LITERAL :
          Indent(Level);            
-         printf("%s // constant or identifier \n", p->toString(p)->chars);
+         printf("%s // constant\n", p->toString(p)->chars);
          break;
 
       case AMP           :
@@ -179,7 +232,7 @@ void CgAssign(pANTLR3_BASE_TREE p, int Level)
    
    if (TokenType == IDENTIFIER) {   
       Indent(Level);            
-      printf("%s  = // %s identifier\n", c->toString(c)->chars, ThisFuncName);
+      printf("%s  = // %s identifier\n", DeReference(c->toString(c)->chars), ThisFuncName);
    } else {
       printf("%s error: token %s \n", ThisFuncName, c->toString(c)->chars);
    }                
@@ -419,6 +472,7 @@ void CgFuncProcCall(pANTLR3_BASE_TREE p, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
    int GotFirstParam = 0;
+   Symbol *s = NULL;
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
 
@@ -428,13 +482,25 @@ void CgFuncProcCall(pANTLR3_BASE_TREE p, int Level)
          // function/procedure name
          Indent(Level);            
          printf(" %s(\n", c->toString(c)->chars);         
+         s = GetSymbolPointer(c->toString(c)->chars);
          continue;
       }
       
       if (GotFirstParam) printf(",");
       GotFirstParam = 1;
-      
-      CgExpression(c, Level + 1);      
+
+      if ((s != NULL) && (s->Param[ChildIx-1].CallMethod == 'r')) {
+         // call by reference
+         if (TokenType == IDENTIFIER) {
+            Indent(Level);            
+            printf("&%s // identifier by reference\n", DeReference(c->toString(c)->chars));
+         } else {
+            printf("Error: can't use this parameter to call by reference.\n");
+         }         
+      } else {
+         // call by value
+         CgExpression(c, Level + 1);      
+      }
    }                
    Indent(Level);            
    printf("); // end of proc/func call\n");
@@ -580,7 +646,6 @@ void CgParamChilds(pANTLR3_BASE_TREE p, int Level)
 {  char *ThisFuncName = "CgParamChilds";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
           
-   
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
 
       CODE_GENERATOR_GET_CHILD_INFO
@@ -589,14 +654,23 @@ void CgParamChilds(pANTLR3_BASE_TREE p, int Level)
          case L_IN : {
             break;
          }
-         case L_OUT : {
-            SymbolTail->Param[SymbolTail->NrOfParams-1].IsReference = 1;
+         case L_OUT : {                                                 
+            if (SymbolTail->Param[SymbolTail->NrOfParams-1].CallMethod != 'c') {  // Call by code
+               SymbolTail->Param[SymbolTail->NrOfParams-1].CallMethod = 'r';     // Call by reference
+            }
+            break;
+         }
+         case L_VOLATILE : {                                                 
+            SymbolTail->Param[SymbolTail->NrOfParams-1].CallMethod = 'c';     // Call by code
             break;
          }
          case IDENTIFIER : {
             Indent(Level);            
-            printf(" %s \n", c->toString(c)->chars);  
+            // store procedure param name
             strcpy(SymbolTail->Param[(SymbolTail->NrOfParams)-1].Name, c->toString(c)->chars);
+            // deref if called by reference
+            printf(" %s \n", DeRefSub(c->toString(c)->chars, 
+                  SymbolTail->Param[(SymbolTail->NrOfParams)-1].CallMethod));  
             break;
          }
          default: {            
@@ -637,12 +711,12 @@ void CgParams(pANTLR3_BASE_TREE p, int Level)
          case L_DWORD  : 
          case L_SDWORD : {     
             Indent(Level);            
-            printf(" %s // %d\n", VarTypeString(TokenType), TokenType); 
-            printf("// set ParamType\n");
+            printf(" %s // TokenType: %d (Add param to SymbolTable\n", VarTypeString(TokenType), TokenType); 
 
             // add new parameter to current symbol
             SymbolTail->NrOfParams ++;
             SymbolTail->Param[SymbolTail->NrOfParams-1].Type = TokenType;
+            SymbolTail->Param[SymbolTail->NrOfParams-1].CallMethod = 'v'; // default call by value
 
             CgParamChilds(c, Level+1);
             break;
@@ -690,15 +764,17 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
             break;
          }
          case PARAMS : {
-            Indent(Level);             
             CgParams(c, Level+1);
-            printf("// param,\n", c->toString(c)->chars);
+//            Indent(Level);             
+//            printf("// param\n");
             break;
          }
          case BODY : {
             Indent(Level);            
-            printf(") { // body\n");
+            printf(") { // body\n");         
+            ActiveProcedureDefintion = SymbolTail; // activate dereferencing for relevant parameters.
             CgStatements(c, Level+1);
+            ActiveProcedureDefintion = NULL; // deactivate parameter dereferencing.
             Indent(Level);            
             printf("} // end body\n");
             GotBody = 1;
