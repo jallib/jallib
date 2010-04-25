@@ -317,15 +317,13 @@ INCLUDE_STMT
     : 'include' line = NEOL
 	{   	pANTLR3_INPUT_STREAM    in;
 
-		pANTLR3_STRING	fName;
-		fName = $line.text;
-//		printf("Including file '\%s'\n", fName->chars);
+//		pANTLR3_STRING	fName;
+//		fName = $line.text;
+
+		in = (pANTLR3_INPUT_STREAM)JalOpenInclude((char *)($line.text)->chars);
 		
-		in = antlr3AsciiFileStreamNew((char *)JalExtractIncludeFileName((char *)fName->chars));
-		
-		if (in == NULL) {
-			printf("//Error opening file \%s\n", (char *)fName->chars);
-		} else {
+		if (in != NULL) {
+			// note: error handling done in JalOpenInclude
 			PUSHSTREAM(in);
 		}
 	}	
