@@ -1,9 +1,14 @@
 // codegen.c
 
 #include <stdio.h>
+
+// antlr generate
 #include    "jalLexer.h"
 #include    "jalParser.h"
-extern pANTLR3_UINT8   jalParserTokenNames[];
+
+//extern pANTLR3_UINT8   jalParserTokenNames[];
+#include "symboltable.h"
+
 
 
 // Pass 1 collects all global variables and all function/procedure defs
@@ -574,7 +579,8 @@ void CgConst(pANTLR3_BASE_TREE p, int Level)
 void CgParamChilds(pANTLR3_BASE_TREE p, int Level)
 {  char *ThisFuncName = "CgParamChilds";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
-     
+          
+   
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
 
       CODE_GENERATOR_GET_CHILD_INFO
@@ -584,11 +590,13 @@ void CgParamChilds(pANTLR3_BASE_TREE p, int Level)
             break;
          }
          case L_OUT : {
+            SymbolTail->Param[SymbolTail->NrOfParams-1].IsReference = 1;
             break;
          }
          case IDENTIFIER : {
             Indent(Level);            
-            printf(" %s \n", c->toString(c)->chars);
+            printf(" %s \n", c->toString(c)->chars);  
+            strcpy(SymbolTail->Param[(SymbolTail->NrOfParams)-1].Name, c->toString(c)->chars);
             break;
          }
          default: {            
@@ -600,7 +608,7 @@ void CgParamChilds(pANTLR3_BASE_TREE p, int Level)
 } 
 
 //-----------------------------------------------------------------------------
-// CgParams - 
+// CgParams - process params of procedure / function definition or prototype
 //-----------------------------------------------------------------------------
 // A Param node
 //-----------------------------------------------------------------------------
@@ -608,8 +616,9 @@ void CgParams(pANTLR3_BASE_TREE p, int Level)
 {  char *ThisFuncName = "CgParams";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
+
    int GotFirstParam = 0;
-     
+
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
 
       CODE_GENERATOR_GET_CHILD_INFO
@@ -626,9 +635,15 @@ void CgParams(pANTLR3_BASE_TREE p, int Level)
          case L_WORD   : 
          case L_SWORD  : 
          case L_DWORD  : 
-         case L_SDWORD : {
+         case L_SDWORD : {     
             Indent(Level);            
-            printf(" %s \n", VarTypeString(TokenType));
+            printf(" %s // %d\n", VarTypeString(TokenType), TokenType); 
+            printf("// set ParamType\n");
+
+            // add new parameter to current symbol
+            SymbolTail->NrOfParams ++;
+            SymbolTail->Param[SymbolTail->NrOfParams-1].Type = TokenType;
+
             CgParamChilds(c, Level+1);
             break;
          }
@@ -651,8 +666,10 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
 
    int GotReturnType = 0;
    int GotBody = 0;
+
+   AddSymbol(); // ignore pointer, use SymbolTail
       
-   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+   for (ChildIx = 0; ChildIx<n; ChildIx++) {
       
       CODE_GENERATOR_GET_CHILD_INFO
 
@@ -661,6 +678,7 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
             Indent(Level);            
             cc = p->getChild(c, 0);
             printf(" %s // return type\n", VarTypeString(cc->getType(cc)));
+            SymbolTail->ReturnType = cc->getType(cc); // add to symbol table.
             GotReturnType = 1;
             break;
          }
@@ -668,6 +686,7 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
             Indent(Level);    
             if (!GotReturnType) printf("void ");        
             printf(" %s ( // proc/func name\n", c->toString(c)->chars);
+            strcpy(SymbolTail->Name, c->toString(c)->chars); // add to symbol table.
             break;
          }
          case PARAMS : {
