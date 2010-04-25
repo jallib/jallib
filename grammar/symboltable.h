@@ -9,7 +9,7 @@
 struct SymbolParam{
    int      Type;	                                                            
 	char     Name[SYMBOL_NAME_SIZE];
-   char     IsReference;
+   char     CallMethod; // v = value, r = reference, c = code
 };
 
 typedef struct Symbol_type{
@@ -31,7 +31,9 @@ extern pANTLR3_UINT8   jalParserTokenNames[];
                            
 void DumpSymbolTable();
 Symbol *AddSymbol();                           
+Symbol *GetSymbolPointer  (char *SymbolName);
 
 
 extern Symbol *SymbolTail;  // points to most recent symbol
 extern Symbol *SymbolHead;  // points to oldest symbol
+
