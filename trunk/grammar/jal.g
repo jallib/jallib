@@ -43,6 +43,7 @@ tokens {
 	FUNC_PROC_CALL;
 	PARAMS;
 	VAR;
+	L_VOID;  // used in translator as return type for procedures
 }
 
 program : ( statement )+ ; 
@@ -56,7 +57,7 @@ statement
         | ( L_EXIT L_LOOP ) ->^(L_EXIT)
         | L_RETURN^ expr?
         | L_ASSERT expr
-        | INCLUDE_STMT
+        | INCLUDE_STMT 
         | J2C_COMMENT
         | L__DEBUG^ STRING_LITERAL
         | L__ERROR^ STRING_LITERAL
@@ -66,6 +67,9 @@ statement
 	| proc_func_call
 	| identifier
 	;
+
+
+
 
 variable 
 	: identifier^ (LBRACKET expr RBRACKET)?	;
@@ -141,7 +145,7 @@ proc_body : L_IS statement* L_END L_PROCEDURE -> ^(BODY statement*)
 
 // the optional part starting with L_IS is for the procedure body definition, the first part only is a prototype
 proc_def : L_PROCEDURE identifier (APOSTROPHE L_PUT)? proc_params proc_body?
-	 -> ^( L_PROCEDURE identifier proc_params proc_body?)
+	 -> ^( L_PROCEDURE identifier L_PUT? proc_params proc_body?)
     ;
 
 // the optional part starting with L_IS is for the procedure body definition, the first part only is a prototype
@@ -150,7 +154,7 @@ func_body : L_IS statement* L_END L_FUNCTION -> ^(BODY statement*)
 
 // the optional part starting with  L_IS is for the function body definition, the first part only is a prototype
 func_def : L_FUNCTION  identifier (APOSTROPHE L_GET)? proc_params L_RETURN vtype func_body?
-	-> ^( L_FUNCTION ^(L_RETURN vtype) identifier proc_params func_body?)
+	-> ^( L_FUNCTION ^(L_RETURN vtype) identifier L_GET? proc_params func_body?)
     	;
 
 alias_def : L_ALIAS identifier L_IS identifier
@@ -306,17 +310,34 @@ fragment OCTAL_ESCAPE :   '\\' ('0'..'3') ('0'..'7') ('0'..'7')
 WS  :  (' '|'\r'|'\t'|'\u000C'|'\n') {$channel=HIDDEN;}
     ;
 
+fragment NEOL 
+	: ~('\n'|'\r')* ;	 
+
 INCLUDE_STMT
-    : 'include' ~('\n'|'\r')* '\r'? '\n' 
-    ;
+    : 'include' line = NEOL
+	{   	pANTLR3_INPUT_STREAM    in;
+
+		pANTLR3_STRING	fName;
+		fName = $line.text;
+//		printf("Including file '\%s'\n", fName->chars);
+		
+		in = antlr3AsciiFileStreamNew((char *)JalExtractIncludeFileName((char *)fName->chars));
+		
+		if (in == NULL) {
+			printf("//Error opening file \%s\n", (char *)fName->chars);
+		} else {
+			PUSHSTREAM(in);
+		}
+	}	
+	;
 
 // j2c comment is a special case that is passed to the Jal2C convertor
 J2C_COMMENT
-    : (';@j2c') ~('\n'|'\r')*
+    : (';@j2c') NEOL
     ;
 
 LINE_COMMENT
-    : ('--' | ';') ~('\n'|'\r')* {$channel=HIDDEN;}
+    : ('--' | ';') NEOL {$channel=HIDDEN;}
     ;
 
 L__DEBUG	:	'_debug'	;		
@@ -349,7 +370,7 @@ L_GET		:	'get'		;
 L_ID		:	'ID'		;
 L_IF		:	'if'		;
 L_IN		:	'in'		;
-L_INCLUDE	:	'include'	;		
+//L_INCLUDE	:	'include'	;		
 L_INLINE	:	'inline'	;		
 L_INTERRUPT	:	'interrupt'	;		
 L_IS		:	'is'		;
