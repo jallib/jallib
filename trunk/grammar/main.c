@@ -1,11 +1,5 @@
 // Title: main.g
 //
-// Example of a grammar for parsing C sources,
-// Adapted from Java equivalent example, by Terence Parr
-// Author: Jim Idle - April 2007
-// Permission is granted to use this example code in any way you want, so long as
-// all the original authors are cited.
-//
 // Adapted-by: Joep Suijs
 // Compiler: >=2.4m
 //
@@ -15,7 +9,7 @@
 // Description: test main for antlr3 grammar definition of JAL
 //
 
-#include <stdio.h>
+#include <stdio.h>  
 
 // antlr generated
 #include    "jalLexer.h"
@@ -35,28 +29,26 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
 
 // Main entry point for this example
 //
-int ANTLR3_CDECL
-main	(int argc, char *argv[])
+int main (int argc, char *argv[])
 {  jalParser_program_return r;
-   ANTLR3_UINT32 Child;
-
 
    if (argc < 2 || argv[1] == NULL) {
       printf("Use: %s jal-file\n", argv[0]);
       exit(0);
    }
-   
+
+   // read, LEX and PARSE source tree   
    r= ParseSource(argv[1]);
    
    if (verbose > 0) {
+      
+      printf("// Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree on one line
 
-      printf("// Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree
-
-      printf("// -- ChildCount : %ld\n", r.tree->getChildCount(r.tree)); 
-
+      // print tree elements with indent
       TreeWalk(r.tree);
    }
-   
+
+   // call code generator   
    CodeGenerate(r.tree);  
 
 
@@ -69,41 +61,41 @@ main	(int argc, char *argv[])
 //   
 //   s = AddSymbol();   
 //   strcpy(s->Name, "drie");
-   
+
+    
    DumpSymbolTable();
 
    return 0;
-
-//   if (psr) { 
-//      psr->free(psr);	    
-//      psr = NULL;
-//   } else {
-//      printf("psr is null at close\n");
-//   }
-//   if (tstream) { 
-//    tstream ->free(tstream);
-//    tstream = NULL;
-//   } else {
-//      printf("tstream is null at close\n");
-//   }                 
-//   if (lxr) { 
-//   lxr->free(lxr);
-//   lxr = NULL;
-//   } else {
-//      printf("lxr is null at close\n");
-//   }                 
-//
-//   if (input) { 
-//    input ->free(input);
-//    input = NULL;
-//   } else {
-//      printf("input is null at close\n");
-//   }                 
-//
-
-//exit(0);
-
-   
+ 
+   // below is memory cleanup, which sometimes causes 0-pointer exceptions. 
+   // Should be fixed one day... 
+   //   if (psr) { 
+   //      psr->free(psr);	    
+   //      psr = NULL;
+   //   } else {
+   //      printf("psr is null at close\n");
+   //   }
+   //   if (tstream) { 
+   //    tstream ->free(tstream);
+   //    tstream = NULL;
+   //   } else {
+   //      printf("tstream is null at close\n");
+   //   }                 
+   //   if (lxr) { 
+   //   lxr->free(lxr);
+   //   lxr = NULL;
+   //   } else {
+   //      printf("lxr is null at close\n");
+   //   }                 
+   //
+   //   if (input) { 
+   //    input ->free(input);
+   //    input = NULL;
+   //   } else {
+   //      printf("input is null at close\n");
+   //   }                 
+   //
+  
    return 0;
 }
 
@@ -168,10 +160,11 @@ void TreeWalk(pANTLR3_BASE_TREE p)
    TreeWalkWorker(p, 0);       
 }             
 
-char *JalExtractIncludeFileName(char *Line) 
+pANTLR3_INPUT_STREAM JalOpenInclude(char *Line) 
 {  int State, i;
-   char *FileName;
-//   pANTLR3_INPUT_STREAM    in;
+   char *BaseName;                       
+   char FileName[256];
+   pANTLR3_INPUT_STREAM    in;
    
 //   printf("// JalInclude line: %s\n", Line);
 
@@ -186,15 +179,15 @@ char *JalExtractIncludeFileName(char *Line)
          }          
          case 1 : { // search for non-whitespace, which is start of filename/path
             if ((Line[i] != ' ') & (Line[i] != '\t')) {
-               FileName = &Line[i];
+               BaseName = &Line[i];
                State = 2;
             }
             break;  
          }          
          case 2 : { // search for first whitespace, which is end of filename/path
-            if (Line[i] == '/') {
-               Line[i] = '\\';  // for windows only...            
-            }
+//            if (Line[i] == '/') {
+//               Line[i] = '\\';  // seems not required in windows...
+//            }
             if ((Line[i] == ' ') | (Line[i] == '\t') | (Line[i] == '\r') | (Line[i] == '\n')) {
                Line[i] = 0; // terminate string
                State = 3;
@@ -207,17 +200,23 @@ char *JalExtractIncludeFileName(char *Line)
          }
       }
    }
-   printf("// include FileName: _%s_\n", FileName);   
+   printf("// include BaseName: _%s_\n", BaseName);   
 
+   sprintf(FileName, "%s.jal", BaseName);
 // TODO:
 //
 // walk include path to find file.                                  
-// It is probably best to use antlr3AsciiFileStreamNew() for this
-// and pass 'in' on succes, rather then the filename.
-// PUSHSTREAM only works in lex context, so leave that in gramar-file.
 
-//   in = antlr3AsciiFileStreamNew(FileName);
-//   PUSHSTREAM(in);
-   return FileName;
+   in = antlr3AsciiFileStreamNew(FileName);
+
+   if (in == NULL) {
+      printf("Error opening include file %s\n", FileName);
+      fprintf(stderr, "Error opening include file %s\n", FileName);
+      exit(1);
+   }
+
+   // note: PUSHSTREAM only works in LEX context (not this code, nor PARSER context).
+   // So leave it in the gramar-file.
+   return in;
 }
 
