@@ -58,6 +58,7 @@ statement
         | L_RETURN^ expr?
         | L_ASSERT expr
         | INCLUDE_STMT 
+        | J2CG_COMMENT
         | J2C_COMMENT
         | L__DEBUG^ STRING_LITERAL
         | L__ERROR^ STRING_LITERAL
@@ -310,7 +311,7 @@ fragment OCTAL_ESCAPE :   '\\' ('0'..'3') ('0'..'7') ('0'..'7')
 WS  :  (' '|'\r'|'\t'|'\u000C'|'\n') {$channel=HIDDEN;}
     ;
 
-fragment NEOL 
+fragment NEOL // no-end-of-line (all chars up to end of line)
 	: ~('\n'|'\r')* ;	 
 
 INCLUDE_STMT
@@ -328,6 +329,13 @@ INCLUDE_STMT
 		}
 	}	
 	;
+
+// j2cG comment is a special case that is passed to the Jal2C convertor
+J2CG_COMMENT
+    : (';@j2cg') NEOL
+    ;
+
+
 
 // j2c comment is a special case that is passed to the Jal2C convertor
 J2C_COMMENT

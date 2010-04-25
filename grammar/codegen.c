@@ -899,7 +899,22 @@ void CgStatement(pANTLR3_BASE_TREE p, int Level)
          PASS2;
          CgFuncProcCall(p, Level+1);             
          break;   
-      }
+      }   
+      
+      // note: j2cg vs j2c is only relevant at root level. 
+      // - Code within a function definition, you can use either one and j2c is 
+      //   probably the best (less-confusing) choice.
+      // - Init code, e.g. a call to init-libs (root-level, so outside a 
+      //   function) must use j2c so it gets placed into main()
+      // - Global C code (e.g. #include statements, macro's, constant 
+      //   definitions used in functions) uses j2cg
+      
+      case J2CG_COMMENT : {
+         PASS1;
+         Indent(Level);            
+         printf(" %s\n", p->toString(p)->chars + 6 ); // c statement
+         break;   
+      }        
       case J2C_COMMENT : {
          PASS2;
          Indent(Level);            
