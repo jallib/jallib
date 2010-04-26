@@ -19,7 +19,8 @@
                 xmlns:dita2html="http://dita-ot.sourceforge.net/ns/200801/dita2html"
                 xmlns:ditamsg="http://dita-ot.sourceforge.net/ns/200704/ditamsg"
                 xmlns:exsl="http://exslt.org/common"
-                exclude-result-prefixes="dita2html ditamsg exsl">
+                exclude-result-prefixes="dita2html ditamsg exsl java"
+                xmlns:java="org.dita.dost.util.ImgUtils">
 
 
 
@@ -47,6 +48,9 @@
 <xsl:param name="CSS"/>
 <xsl:param name="dita-css" select="'commonltr.css'"/> <!-- left to right languages -->
 <xsl:param name="bidi-dita-css" select="'commonrtl.css'"/> <!-- bidirectional languages -->
+
+<!-- Transform type, such as 'xhtml', 'htmlhelp', or 'eclipsehelp' -->
+<xsl:param name="TRANSTYPE" select="'xhtml'"/>
 
 <!-- default CSS path parameter (null)-->
 <xsl:param name="CSSPATH"/>
@@ -119,6 +123,36 @@
 
 <!-- Name of the keyref file that contains key definitions -->
 <xsl:param name="KEYREF-FILE" select="concat($WORKDIR,$PATH2PROJ,'keydef.xml')"/>
+<!-- added by William on 2009-09-03 for keyref bug:2849078 start-->
+<xsl:param name="BASEDIR"/>
+  
+<xsl:param name="OUTPUTDIR"/>
+  <!-- get destination dir with BASEDIR and OUTPUTDIR-->
+  <xsl:variable name="desDir">
+    <xsl:choose>
+      <xsl:when test="not($BASEDIR)"/> <!-- If no filterfile leave empty -->
+      <xsl:when test="starts-with($BASEDIR,'file:')">
+        <xsl:value-of select="translate(concat($BASEDIR, '/', $OUTPUTDIR, '/'), '\', '/')"/>
+      </xsl:when>
+      <xsl:otherwise>
+        <xsl:choose>
+          <xsl:when test="contains($OUTPUTDIR, ':\') or contains($OUTPUTDIR, ':/')">
+            <xsl:value-of select="'file:/'"/><xsl:value-of select="concat($OUTPUTDIR, '/')"/>
+          </xsl:when>
+          <xsl:when test="starts-with($OUTPUTDIR, '/')">
+            <xsl:value-of select="'file://'"/><xsl:value-of select="concat($OUTPUTDIR, '/')"/>
+          </xsl:when>
+          <xsl:when test="starts-with($BASEDIR,'/')">
+            <xsl:text>file://</xsl:text><xsl:value-of select="concat($BASEDIR, '/', $OUTPUTDIR, '/')"/>
+          </xsl:when>
+          <xsl:otherwise>
+            <xsl:text>file:/</xsl:text><xsl:value-of select="concat($BASEDIR, '/', $OUTPUTDIR, '/')"/>
+          </xsl:otherwise>
+        </xsl:choose>
+      </xsl:otherwise>
+    </xsl:choose>
+  </xsl:variable>
+<!-- added by William on 2009-09-03 for keyref bug:2849078 end-->
 
 <!-- =========== "GLOBAL" DECLARATIONS (see 35) =========== -->
 
@@ -283,7 +317,7 @@
 <!-- 1st level - topic/title -->
 <!-- Condensed topic title into single template without priorities; use $headinglevel to set heading.
      If desired, somebody could pass in the value to manually set the heading level -->
-<xsl:template match="//topic/title">
+<xsl:template match="*[contains(@class,' topic/topic ')]/*[contains(@class,' topic/title ')]">
   <xsl:param name="headinglevel">
       <xsl:choose>
           <xsl:when test="count(ancestor::*[contains(@class,' topic/topic ')]) > 6">6</xsl:when>
@@ -298,40 +332,7 @@
       <xsl:apply-templates/>
   </xsl:element>
   <xsl:value-of select="$newline"/>
-  <xsl:if test="$headinglevel = 1">
-  <div class="jalweb-authoring">
-    <xsl:value-of select="$newline"/>
-    <xsl:apply-templates select="//topic/prolog/author"/>
-    <xsl:value-of select="$newline"/>
-    <xsl:apply-templates select="//topic/prolog/publisher"/>
-    <xsl:value-of select="$newline"/>
-  </div>
-  </xsl:if>
 </xsl:template>
-
-
-
-<!-- Seb: while producing HTML, makes author as part of visible
-     content, not just metadata headers
-	 This code is taken from get-meta.xsl...
--->
-<xsl:template name="jallib.author" match="*[contains(@class,' topic/author ')]">
-  <xsl:choose>
-    <xsl:when test="@type= 'contributor'">
-      <!--div class="jalweb-contributor">Contributor: <xsl:value-of select="."/></div-->
-    </xsl:when>
-    <xsl:otherwise>
-	  <span class="jalweb-creator">Author: <xsl:value-of select="."/> |</span>
-    </xsl:otherwise>
-  </xsl:choose>
-</xsl:template>
-
-<xsl:template name="jallib.publisher" match="*[contains(@class,' topic/publisher ')]">
-	  <span class="jalweb-publisher"><xsl:value-of select="."/></span>
-</xsl:template>
-
-
-
 
 <!-- Hide titlealts - they need to get pulled into the proper places -->
 <xsl:template match="*[contains(@class,' topic/titlealts ')]"/>
@@ -2280,7 +2281,7 @@
   <xsl:if test="$ARTLBL='yes'"> [<xsl:value-of select="@href"/>] </xsl:if>
 </xsl:template>
 
-<xsl:template name="common-topic-image">
+<xsl:template name="my-topic-image">
   <!-- now invoke the actual content and its alt text -->
   <xsl:element name="img">
     <xsl:call-template name="commonattributes">
@@ -2304,6 +2305,9 @@
       </xsl:otherwise>
     </xsl:choose>
     <xsl:apply-templates select="@href|@height|@width"/>
+    <!-- Add by Alan for Bug:#2900417 on Date: 2009-11-23 begin -->
+    <xsl:apply-templates select="@scale"/>
+    <!-- Add by Alan for Bug:#2900417 on Date: 2009-11-23 end   -->
     <xsl:choose>
       <xsl:when test="*[contains(@class,' topic/alt ')]">
         <xsl:variable name="alt-content"><xsl:apply-templates select="*[contains(@class,' topic/alt ')]" mode="text-only"/></xsl:variable>
@@ -2317,15 +2321,16 @@
 </xsl:template>
 
 <xsl:template name="topic-image">
+  <!-- Seb: make image clickable as needed -->
   <xsl:choose>
     <xsl:when test="@otherprops = 'clickable'">
-      <a href="{@href}" target="_blank">
-        <xsl:call-template name="common-topic-image"/>
-      </a>
+        <a href="{@href}">
+            <xsl:call-template name="my-topic-image"/>
+        </a>
     </xsl:when>
-    <xsl:otherwise>
-      <xsl:call-template name="common-topic-image"/>
-    </xsl:otherwise>
+    <xsl:otherwise> 
+        <xsl:call-template name="my-topic-image"/>
+    </xsl:otherwise>   
   </xsl:choose>
 </xsl:template>
 
@@ -2338,6 +2343,39 @@
 <xsl:template match="*[contains(@class,' topic/image ')]/@href">
   <xsl:attribute name="src"><xsl:value-of select="."/></xsl:attribute>
 </xsl:template>
+
+<!-- Add by Alan for Bug:#2900417 on Date: 2009-11-23 begin -->
+<!-- AM: handling for scale attribute -->
+<xsl:template match="*[contains(@class,' topic/image ')]/@scale">
+    <xsl:variable name="height">
+      <xsl:choose>
+        <xsl:when test="not(contains(../@href,'://'))">
+          <!-- AM: currently dost.jar returns the height in function getWidth instead of width -->
+          <xsl:value-of select="java:getWidth($OUTPUTDIR, string(../@href))"/>
+        </xsl:when>
+        <xsl:otherwise/>
+      </xsl:choose>
+    </xsl:variable>
+    <xsl:variable name="width">
+      <xsl:choose>
+        <xsl:when test="not(contains(../@href,'://'))">
+          <!-- AM: currently dost.jar returns the width in function getHeight instead of height -->
+          <xsl:value-of select="java:getHeight($OUTPUTDIR, string(../@href))"/>
+        </xsl:when>
+        <xsl:otherwise/>
+      </xsl:choose>
+    </xsl:variable>
+    <xsl:if test="not(../@width) and not(../@height)">
+      <xsl:attribute name="height">
+        <xsl:value-of select="number($height) * number(.) div 100"/>
+      </xsl:attribute>
+      <xsl:attribute name="width">
+        <xsl:value-of select="number($width) * number(.) div 100"/>
+      </xsl:attribute>
+    </xsl:if>
+</xsl:template>
+<!-- Add by Alan for Bug:#2900417 on Date: 2009-11-23 end -->
+
 <xsl:template match="*[contains(@class,' topic/image ')]/@height">
   <xsl:variable name="height-in-pixel">
     <xsl:call-template name="length-to-pixels">
@@ -2346,14 +2384,16 @@
   </xsl:variable>
   <xsl:if test="not($height-in-pixel='100%')">
     <xsl:attribute name="height">
-      <xsl:choose>
+      <!-- Edit by Alan for Bug:#2900417 on Date: 2009-11-23 begin -->
+      <!--xsl:choose>
         <xsl:when test="../@scale and string(number(../@scale))!='NaN'">          
           <xsl:value-of select="number($height-in-pixel) * number(../@scale)"/>
         </xsl:when>
-        <xsl:otherwise>
+        <xsl:otherwise-->
           <xsl:value-of select="number($height-in-pixel)"/>
-        </xsl:otherwise>
-      </xsl:choose>
+        <!--/xsl:otherwise>
+      </xsl:choose-->
+      <!-- Edit by Alan for Bug:#2900417 on Date: 2009-11-23 end -->
     </xsl:attribute>
   </xsl:if>  
 </xsl:template>
@@ -2366,14 +2406,16 @@
   </xsl:variable>
   <xsl:if test="not($width-in-pixel = '100%')">
     <xsl:attribute name="width">
-      <xsl:choose>
+      <!-- Edit by Alan for Bug:#2900417 on Date: 2009-11-23 begin -->
+      <!--xsl:choose>
         <xsl:when test="../@scale and string(number(../@scale))!='NaN'">          
           <xsl:value-of select="number($width-in-pixel) * number(../@scale)"/>
         </xsl:when>
-        <xsl:otherwise>
+        <xsl:otherwise-->
           <xsl:value-of select="number($width-in-pixel)"/>
-        </xsl:otherwise>
-      </xsl:choose>
+        <!--/xsl:otherwise>
+      </xsl:choose-->
+      <!-- Edit by Alan for Bug:#2900417 on Date: 2009-11-23 end -->
     </xsl:attribute>
   </xsl:if>  
 </xsl:template>
@@ -3342,7 +3384,10 @@
       <xsl:with-param name="flagrules" select="$flagrules"></xsl:with-param>
     </xsl:call-template>
     <xsl:call-template name="setscale"/>
-    <xsl:apply-templates>     <!-- width-multiplier will be used in the first row to set widths. -->
+    <xsl:apply-templates select="." mode="dita2html:simpletable-heading">
+      <xsl:with-param name="width-multiplier"><xsl:value-of select="$width-multiplier"/></xsl:with-param>
+    </xsl:apply-templates>
+    <xsl:apply-templates select="*[contains(@class,' topic/strow ')]|processing-instruction()">     <!-- width-multiplier will be used in the first row to set widths. -->
       <xsl:with-param name="width-multiplier"><xsl:value-of select="$width-multiplier"/></xsl:with-param>
     </xsl:apply-templates>
   </table>
@@ -3378,6 +3423,15 @@
       </xsl:otherwise>
     </xsl:choose>
   </tr><xsl:value-of select="$newline"/>
+</xsl:template>
+
+<!-- Specialized simpletables may match this rule to create default column 
+     headings. By default, process the sthead if available. -->
+<xsl:template match="*" mode="dita2html:simpletable-heading">
+  <xsl:param name="width-multiplier"/>
+  <xsl:apply-templates select="*[contains(@class,' topic/sthead ')]">
+    <xsl:with-param name="width-multiplier"><xsl:value-of select="$width-multiplier"/></xsl:with-param>
+  </xsl:apply-templates>
 </xsl:template>
 
 <xsl:template match="*[contains(@class,' topic/sthead ')]" name="topic.sthead">
@@ -4358,7 +4412,7 @@
   <xsl:variable name="flagrules">
     <xsl:call-template name="getrules"/>
   </xsl:variable>
-  <div class="fn">
+  <div class="p">
     <xsl:variable name="fnid"><xsl:number from="/" level="any"/></xsl:variable>
     <xsl:variable name="callout"><xsl:value-of select="@callout"/></xsl:variable>
     <xsl:variable name="convergedcallout">
@@ -4706,16 +4760,11 @@
 
   <xsl:template name="setTopicLanguage">
     <xsl:variable name="childlang">
-      <xsl:choose>
-        <xsl:when test="self::dita">
-          <xsl:for-each select="*[1]"><xsl:call-template name="getLowerCaseLang"/></xsl:for-each>
-        </xsl:when>
-        <xsl:otherwise><xsl:call-template name="getLowerCaseLang"/></xsl:otherwise>
-      </xsl:choose>
+      <xsl:apply-templates select="/*" mode="get-first-topic-lang"/>
     </xsl:variable>
     <xsl:variable name="direction">
       <xsl:call-template name="bidi-area">
-        <xsl:with-param name="parentLang" select="$childlang"/>
+        <xsl:with-param name="parentlang" select="$childlang"/>
       </xsl:call-template>
     </xsl:variable>
     <xsl:attribute name="lang"><xsl:value-of select="$childlang"/></xsl:attribute>
@@ -5036,10 +5085,13 @@
         <xsl:value-of select="$target"/>
       </xsl:when>
       <xsl:when test="contains($target,'#')">
-        <xsl:value-of select="concat(substring-before(substring-before($target,'#'),'.'),$OUTEXT,'#',substring-after($target,'#'))"/>
+        <xsl:value-of select="concat($desDir, substring-before(substring-before($target,'#'),'.'),$OUTEXT,'#',substring-after($target,'#'))"/>
+      </xsl:when>
+      <xsl:when test="$target = ''">
+        <xsl:value-of select="$OUTEXT"/>
       </xsl:when>
       <xsl:otherwise>
-        <xsl:value-of select="concat(substring-before($target,'.'),$OUTEXT)"/>
+        <xsl:value-of select="concat($desDir, substring-before($target,'.'),$OUTEXT)"/>
       </xsl:otherwise>
     </xsl:choose>
   </xsl:template>
@@ -5066,7 +5118,7 @@
             </xsl:choose>
           </xsl:if>
         </xsl:variable>
-        <xsl:if test="not($target='' or contains($target, '://') or $target=$DITAEXT)">
+        <xsl:if test="not($target='' or contains($target, '://'))">
           <xsl:value-of select="document(concat($WORKDIR, $PATH2PROJ, $target))//*[contains(@class, ' topic/title ')][normalize-space(text())!=''][1]"/>
         </xsl:if>
       </xsl:when>
