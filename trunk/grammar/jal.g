@@ -140,22 +140,20 @@ proc_params
 proc_param : L_VOLATILE? vtype^ ( L_IN | L_OUT | L_IN L_OUT ) identifier (LBRACKET expr? RBRACKET)? at_decl?
     ;
 
-// the optional part starting with L_IS is for the procedure body definition, the first part only is a prototype
 proc_body : L_IS statement* L_END L_PROCEDURE -> ^(BODY statement*)
     ;
 
-// the optional part starting with L_IS is for the procedure body definition, the first part only is a prototype
+// the optional part proc_body is for the procedure body definition, the first part only is a prototype
 proc_def : L_PROCEDURE identifier (APOSTROPHE L_PUT)? proc_params proc_body?
-	 -> ^( L_PROCEDURE identifier L_PUT? proc_params proc_body?)
+	 -> ^( L_PROCEDURE L_PUT? identifier  proc_params proc_body?)
     ;
 
-// the optional part starting with L_IS is for the procedure body definition, the first part only is a prototype
 func_body : L_IS statement* L_END L_FUNCTION -> ^(BODY statement*)
     ;
 
-// the optional part starting with  L_IS is for the function body definition, the first part only is a prototype
+// the optional part func_body is for the function body definition, the first part only is a prototype
 func_def : L_FUNCTION  identifier (APOSTROPHE L_GET)? proc_params L_RETURN vtype func_body?
-	-> ^( L_FUNCTION ^(L_RETURN vtype) identifier L_GET? proc_params func_body?)
+	-> ^( L_FUNCTION L_GET? ^(L_RETURN vtype) identifier proc_params func_body?)
     	;
 
 alias_def : L_ALIAS identifier L_IS identifier

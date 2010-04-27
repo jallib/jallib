@@ -9,7 +9,8 @@ filelist {
    main.c
    parser.c    
    codegen.c    
-   symboltable.c
+   symboltable.c  
+   pvartable.c
    
    jalLexer.c 
    jalParser.c                      
