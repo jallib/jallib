@@ -1,5 +1,6 @@
+//-----------------------------------------------------------------------------
 // codegen.c
-
+//-----------------------------------------------------------------------------
 #include <stdio.h>
 
 // antlr generate
@@ -11,7 +12,7 @@
 
 Symbol *ActiveProcedureDefintion = NULL; // used for dereferencing procedure params within procedure body
 
-// Pass 1 collects all global variables and all function/procedure defs
+// Pass 1 collects global variables, constants and function/procedure defs
 // Pass 2 collects the rest, all 'loose' code and puts it into main.
 static int Pass;
 
@@ -105,9 +106,14 @@ char *GetUniqueIdentifier()
 }
 
 
+//----------------------------------------------------------------------------- 
+// GetCallMethod - Return CallMethtod if this is a proc/func param, else 0
 //-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-// 0 = not found, else value of CallMethod
+// This function is used within a procedure body to determine if an
+// identifier is a parameter of this procedure and - if  so - what method
+// is used when calling.
+//
+// 0 = not found, else value of CallMethod (Value, Reference, Code)
 //-----------------------------------------------------------------------------
 char GetCallMethod(char *ParamName)
 {  Symbol *s; 
@@ -524,6 +530,9 @@ void CgSingleVar(pANTLR3_BASE_TREE p, int Level)
          case IDENTIFIER : {
             Indent(Level);            
             printf(" %s \n", c->toString(c)->chars);
+            if (Level == 3) { // this is a tricky one; indent may change...
+               AddPvarDATA(c->toString(c)->chars, c->toString(c)->chars);
+            }
             break;
          }
          case ASSIGN : {
@@ -740,7 +749,10 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
 
    int GotReturnType = 0;
    int GotBody = 0;
+   char PvPut = 0;
+   char PvGet = 0; 
 
+   
    AddSymbol(); // ignore pointer, use SymbolTail
       
    for (ChildIx = 0; ChildIx<n; ChildIx++) {
@@ -748,19 +760,55 @@ void CgProcedureDef(pANTLR3_BASE_TREE p, int Level)
       CODE_GENERATOR_GET_CHILD_INFO
 
       switch(TokenType) {
+
+         // L_PUT or L_GET are the first childs if they exist. The flags influence further processing.
+         case L_PUT : { PvPut = 1; break; }
+         case L_GET : { PvGet = 1; break; }
+
          case L_RETURN : {
-            Indent(Level);            
-            cc = p->getChild(c, 0);
-            printf(" %s // return type\n", VarTypeString(cc->getType(cc)));
-            SymbolTail->ReturnType = cc->getType(cc); // add to symbol table.
-            GotReturnType = 1;
+            if (PvGet == 0) {
+               // normal function return processing
+               Indent(Level);            
+               cc = p->getChild(c, 0);
+               printf(" %s // return type\n", VarTypeString(cc->getType(cc)));
+               SymbolTail->ReturnType = cc->getType(cc); // add to symbol table.
+               GotReturnType = 1;
+            } else {
+               // pseudo-var function return processing
+               Indent(Level);            
+               cc = p->getChild(c, 0);
+               printf(" void // PV return type\n"); //, VarTypeString(cc->getType(cc)));
+               SymbolTail->ReturnType = cc->getType(cc); // add to symbol table.
+               GotReturnType = 1;
+            }
             break;
          }
          case IDENTIFIER : {
+            char String[SYMBOL_NAME_SIZE];
+
             Indent(Level);    
             if (!GotReturnType) printf("void ");        
-            printf(" %s ( // proc/func name\n", c->toString(c)->chars);
-            strcpy(SymbolTail->Name, c->toString(c)->chars); // add to symbol table.
+               
+            strcpy(String, c->toString(c)->chars);
+            if (PvPut) {
+               strcat(String, "__put");
+               AddPvarPUT(c->toString(c)->chars, String);
+            }               
+            if (PvGet) {
+               strcat(String, "__get");
+               AddPvarGET(c->toString(c)->chars, String);
+            }               
+            
+            printf(" %s ( // proc/func name\n", String);
+            strcpy(SymbolTail->Name, c->toString(c)->chars); // add to symbol table.  
+            
+            if (PvPut) {  
+               printf("ByCall *__s, // pvPut stuct\n");
+            }
+            if (PvGet) {  
+               printf("ByCall *__s // pvGet stuct\n");
+            }
+            
             break;
          }
          case PARAMS : {
@@ -1046,8 +1094,9 @@ void CodeGenerate(pANTLR3_BASE_TREE p)
 {  int Level;
    
    printf("\n\n// Jal -> C code converter\n");                       
-   printf("#include <stdio.h>\n\n");                       
+   printf("#include <stdio.h>\n");                       
    printf("#include <stdint.h>\n\n");                       
+   printf("#include \"bycall.h\"\n\n");                       
 
    Pass = 1;   // generate functions, global vars etc.
    Level = 0;
@@ -1059,10 +1108,12 @@ void CodeGenerate(pANTLR3_BASE_TREE p)
 	   // one statement. Not common in a real program, but possible and usefull while testing).
       CgStatement(p, Level); // process statement of node p
    }      
+
+   PrintPvarTable();
    
    Pass = 2;   // generate main function
    Level = 0;
-   printf("int main(int argc, char **argv) {\n");                       
+   printf("\nint main(int argc, char **argv) {\n");                       
 
 	if  (p->isNilNode(p) == ANTLR3_TRUE) { 
       CgStatements(p, Level); // Proces childs of p,  start at child 0

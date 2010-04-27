@@ -18,6 +18,8 @@
 #include    "symboltable.h"
 
 
+
+
 int verbose = 1;
 
 void CodeGenerate(pANTLR3_BASE_TREE p);
@@ -39,7 +41,12 @@ int main (int argc, char *argv[])
 
    // read, LEX and PARSE source tree   
    r= ParseSource(argv[1]);
-   
+
+//    pjalParser				psr
+//extern pjalParser psr;
+//   printf("// Nr of syntax errors in parser: %d\n", psr.getNumberOfSyntaxErrors()   );
+// (niet werkend, zou moeten werken op zowel lexer als parser object... een keer uitzoeken.)
+
    if (verbose > 0) {
       
       printf("// Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree on one line
@@ -64,7 +71,9 @@ int main (int argc, char *argv[])
 
     
    DumpSymbolTable();
-
+     
+   DumpPvarTable();
+   
    return 0;
  
    // below is memory cleanup, which sometimes causes 0-pointer exceptions. 

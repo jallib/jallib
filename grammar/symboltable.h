@@ -18,12 +18,13 @@ typedef struct Symbol_type{
 	
 	char     Name[SYMBOL_NAME_SIZE];
 	int      Type;    // function, procedure, variable, constant
-	                                                            
-   int      ReturnType;
-   
-   int      NrOfParams;     
-   
+
+   // function / procedure related	                                                            
+   int      ReturnType;   
+   int      NrOfParams;        
    struct SymbolParam Param[MAX_NR_PARAMS];
+   
+   
 } Symbol;
 
 extern pANTLR3_UINT8   jalParserTokenNames[];
