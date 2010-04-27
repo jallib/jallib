@@ -10,7 +10,7 @@ filelist {
    parser.c    
    codegen.c    
    symboltable.c  
-   pvartable.c
+
    
    jalLexer.c 
    jalParser.c                      
@@ -55,7 +55,7 @@ transform .g .c  {
 
 transform .c .o {  
    clear suffix
-   exec "gcc -Blibantlr3c-3.2\ -c ($_).c -o ($_).o"
+   exec "gcc -Wmissing-prototypes -Blibantlr3c-3.2\ -c ($_).c -o ($_).o"
 }
 
 merge .o .exe {

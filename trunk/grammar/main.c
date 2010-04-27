@@ -9,15 +9,7 @@
 // Description: test main for antlr3 grammar definition of JAL
 //
 
-#include <stdio.h>  
-
-// antlr generated
-#include    "jalLexer.h"
-#include    "jalParser.h"
-
-#include    "symboltable.h"
-
-
+#include "jat.h"
 
 
 int verbose = 1;
@@ -71,9 +63,7 @@ int main (int argc, char *argv[])
 
     
    DumpSymbolTable();
-     
-   DumpPvarTable();
-   
+       
    return 0;
  
    // below is memory cleanup, which sometimes causes 0-pointer exceptions. 
