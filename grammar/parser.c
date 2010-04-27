@@ -17,11 +17,13 @@
 // all the original authors are cited.
 //
 
-#include <stdio.h>
+#include "jat.h"
 
-// antlr generated
-#include    "jalLexer.h"
-#include    "jalParser.h"
+//#include <stdio.h>
+//
+//// antlr generated
+//#include    "jalLexer.h"
+//#include    "jalParser.h"
 
 jalParser_program_return ParseSource(pANTLR3_UINT8 fName)
 {
