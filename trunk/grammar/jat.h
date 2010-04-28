@@ -1,4 +1,4 @@
-
+// jat.h - Just Another Translator - 
 
 #include <stdio.h>  
 
@@ -8,6 +8,8 @@
 
 #include    "symboltable.h"
 
+#define DEBUG 1
+extern int Debug;
 
 // main function prototypes
 void Indent(int Level);

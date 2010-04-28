@@ -13,6 +13,7 @@
 
 
 int verbose = 1;
+int Debug = 1;
 
 void CodeGenerate(pANTLR3_BASE_TREE p);
 

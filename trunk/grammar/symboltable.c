@@ -1,10 +1,7 @@
 // symboltable.c
 
-#include <stdio.h>
-#include "jalLexer.h"
-#include "jalParser.h"
+#include "jat.h"
 
-#include "symboltable.h"
 
 Symbol *SymbolTail= NULL;  // points to most recent symbol
 Symbol *SymbolHead = NULL; // points to oldest symbol
@@ -57,7 +54,8 @@ SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType)
       x->next = p;
    }              
 
-   // init    
+   // init                
+   p->next = NULL;
    p->Type = TokenType; 
    p->Name = NULL;
    p->CallMethod = 'v'; // default call by value
@@ -72,9 +70,7 @@ SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType)
 static Symbol *AddSymbol()
 {  Symbol *s;
 
-   #ifdef DEBUG 
-   printf("//AddSymbol\n");
-   #endif          
+   if (Debug) printf("//AddSymbol\n");
    s = malloc(sizeof(Symbol));
    if (s == NULL) {
       printf("Out of memory error\n");
@@ -85,6 +81,8 @@ static Symbol *AddSymbol()
 
 	s->Name = NULL;
 	s->Type = 0;    // function, procedure, variable, constant
+
+   if (Debug) printf("//AddSymbol added %x\n", s);
 
    return s;
 }
@@ -129,14 +127,16 @@ Symbol *GetSymbolPointer  (char *SymbolName)
 void DumpSymbol(Symbol *s)
 {  int i;
       
-   printf("//Symbol name: '%s', Type: %d\n", s->Name, s->Type);
+   printf("//\n//Symbol name: '%s' at %x, Type: %d ", s->Name, s, s->Type);
    switch (s->Type) {
-      case S_FUNCTION : {
+      case S_FUNCTION : {                
+         printf("(Function)\n");
          SymbolFunction *f = s->details;
+         if (f == NULL) { printf("error: function struct missing\n"); exit(1);}
          printf("//   Function returns %s (%d)\n", VarTypeString(f->ReturnType), f->ReturnType);         
          SymbolParam *p = f->Param;
          for (;;) {
-            if (p != NULL) break;
+            if (p == NULL) break;
             printf("//   param Name: '%s', Type: %s (%d), CallBy: %c\n",
                   p->Name, jalParserTokenNames[p->Type], p->Type, p->CallMethod);
             p = p->next;    
@@ -144,10 +144,24 @@ void DumpSymbol(Symbol *s)
          break;
       }        
       case S_PVAR : {
+         printf("(Pvar)\n");
+         Pvar *v = s->details;
+         if (v == NULL) { printf("error: var struct missing\n"); exit(1);}
+
+         if ((v->put == NULL) & (v->get == NULL)) {
+            printf("//   Regular VAR ");
+         } else {
+            printf("//   Put: %s, Get: %s, ",
+               (v->put  != NULL) ? v->put  : "NULL",   
+               (v->get  != NULL) ? v->get  : "NULL");   
+         }
+         printf(" Data: %s, Size: %d, P1: %d, P2: %d\n",
+            (v->data != NULL) ? v->data : "NULL",   
+            v->size, v->p1, v->p2); 
          break;
       }
       default : {
-         printf("//    Unknown type\n");
+         printf("!! Unknown type !!\n");
          break;
       }
    }                 
@@ -160,7 +174,7 @@ void DumpSymbolTable()
       
    for(s = SymbolHead; s != NULL; s = s->Next) {
       if (s== NULL) break;
-      printf("DumpSymbolTable %x\n", s);
+      //printf("DumpSymbolTable %x\n", s);
       DumpSymbol(s);
    }
 }
@@ -231,8 +245,8 @@ void SymbolPrintPvarTable()
    for(s = SymbolHead; s != NULL; s = s->Next) {
       if (s->Type != S_PVAR) continue;
       v = s->details;   
-
-      if ((v->put != 0) | (v->get != 0)) {
+      if (v == NULL) { printf("error: var struct missing\n"); exit(1);}
+      if ((v->put != NULL) | (v->get != NULL)) {
          printf("   const ByCall __%s = { (void *)&%s, (void *)&%s, &%s, %d, %d, %d};\n",
             s->Name, v->put, v->get, v->data, v->size, v->p1, v->p2); 
       }
@@ -278,9 +292,16 @@ Pvar *SymbolGetPvar(char *SymbolName)
 {  Symbol *s;
    Pvar *p;
 
-   for(s = SymbolHead; s != NULL; s = s->Next) {
-      if (strcmp(SymbolName, s->Name) != 0) continue;
+   if (Debug) printf("// SymbolGetPvar Name: %s\n", SymbolName);
 
+   for(s = SymbolHead; s != NULL; s = s->Next) {
+//printf("boom %x %x\n", s, s->Name);
+      if (s == NULL) { break; }
+      if (s->Name == NULL) { break; }  // unnamed identiefier (valid while ad in progress)
+      if (Debug) printf("// SymbolGetPvar check Name: %s at %x\n", s->Name, s);
+         
+      if (strcmp(SymbolName, s->Name) != 0) continue;
+//printf("roos\n");
       // name match                            
       if (s->Type == S_PVAR) {
          p = s->details;
@@ -292,7 +313,8 @@ Pvar *SymbolGetPvar(char *SymbolName)
    return NULL;
 }
 
-//-----------------------------------------------------------------------------
+//----------------------------------------------------------------------------- 
+// SymbolGetOrAddPvar - Find Pvar record, create if it does not exist.
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 Pvar *SymbolGetOrAddPvar(char *Name)
@@ -306,25 +328,34 @@ Pvar *SymbolGetOrAddPvar(char *Name)
    
    if (p == NULL) {
       p = AddPvar(Name);
-//      printf("SymbolGetOrAddPvar new %d\n", p);
+      #ifdef DEBUG
+      printf("// SymbolGetOrAddPvar new %x\n", p);
+      #endif
    } else {
-//      printf("SymbolGetOrAddPvar found %d\n", p);
+      #ifdef DEBUG
+      printf("// SymbolGetOrAddPvar found %x\n", p);
+      #endif
    }
       
    return p;   
 }
 
 //-----------------------------------------------------------------------------
+// SymbolPvarAdd_PutName - set PutName value of pseudo-var
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void SymbolPvarAdd_PutName(char *BaseName, char *PutName)
 {  Pvar *p;
 
-   p = SymbolGetOrAddPvar(BaseName);
-   p->put = CreateName(PutName);
-   
-}
+   #ifdef DEBUG
+   printf("// SymbolPvarAdd_PutName BaseName: %s, PutName: %s\n", BaseName, PutName);
+   #endif
 
+   p = SymbolGetOrAddPvar(BaseName);                                              
+   if (p == NULL) { printf("Error: PutName pointer p is NULL\n"); exit(1); }
+   
+   p->put = CreateName(PutName);   
+}
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
