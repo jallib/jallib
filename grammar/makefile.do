@@ -82,7 +82,9 @@ command test {
 #   exec "cat test.txt"   
 #   exec "perl cfilter.pl test.txt >test.c"
    exec "gcc test.c -otest.exe"
- 
+   
+   exec "perl uncomment.pl test.c  1>testu.c"
+   exec "indent -kr -bad -bap testu.c"
 }
 
 

@@ -490,7 +490,7 @@ void CgFuncProcCall(pANTLR3_BASE_TREE t, int Level)
       if (ChildIx == 0) {
          // function/procedure name
          Indent(Level);            
-         printf(" %s(\n", c->toString(c)->chars);         
+         printf(" %s( // \n", c->toString(c)->chars);         
          s = GetSymbolPointer(c->toString(c)->chars);
          if (s != NULL) {
             #ifdef DEBUG 
@@ -538,7 +538,7 @@ void CgFuncProcCall(pANTLR3_BASE_TREE t, int Level)
       if (p != NULL) p = p->next;
    }                
    Indent(Level);            
-   printf("); // end of proc/func call\n");
+   printf("); //n end of proc/func call\n");
 }
  
 //-----------------------------------------------------------------------------
@@ -558,7 +558,7 @@ void CgSingleVar(pANTLR3_BASE_TREE t, int Level)
       switch(TokenType) {
          case IDENTIFIER : {
             Indent(Level);            
-            printf(" %s \n", c->toString(c)->chars);
+            printf(" %s // \n", c->toString(c)->chars);
             if (Level == 3) { // this is a tricky one; indent may change...
 //               printf("CgSingleVar p1\n");
                SymbolPvarAdd_DataName(c->toString(c)->chars, c->toString(c)->chars);   
@@ -606,7 +606,7 @@ void CgVar(pANTLR3_BASE_TREE t, int Level)
          case L_DWORD  : 
          case L_SDWORD : {
             Indent(Level);            
-            printf(" %s \n", VarTypeString(TokenType));
+            printf(" %s // \n", VarTypeString(TokenType));
             break;
          }
          case VAR : {
@@ -710,7 +710,7 @@ void CgParamChilds(pANTLR3_BASE_TREE t, int Level, SymbolParam *p)
 //            strcpy(SymbolTail->Param[(SymbolTail->NrOfParams)-1].Name, c->toString(c)->chars);
             SymbolParamSetName(p, c->toString(c)->chars);
             // deref if called by reference
-            printf(" %s \n", DeRefSub(c->toString(c)->chars, p->CallMethod));  
+            printf(" %s // ident\n", DeRefSub(c->toString(c)->chars, p->CallMethod));  
             break;
          }
          default: {            
@@ -874,12 +874,12 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
          }
          case BODY : {
             Indent(Level);            
-            printf(") { // body\n");         
+            printf(") { //n body\n");         
             ActiveProcedureDefintion = f; // activate dereferencing for relevant parameters.
             CgStatements(c, Level+1);
             ActiveProcedureDefintion = NULL; // deactivate parameter dereferencing.
             Indent(Level);            
-            printf("} // end body\n");
+            printf("} //n end body\n");
             GotBody = 1;
             break;
          }
@@ -890,8 +890,9 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
       }
    }
    if (!GotBody) {
-      printf("); // Add closing parenthesis + semicolon of prototype\n");
+      printf("); // Add closing parenthesis + semicolon of prototype\n");      
    }
+    printf("//n empty line\n");                       
 } 
 
 //-----------------------------------------------------------------------------
@@ -1062,7 +1063,7 @@ void CgStatement(pANTLR3_BASE_TREE t, int Level)
          PASS2;
          CgAssign(t, Level+1);             
          Indent(Level);            
-         printf("; // end of assign \n");
+         printf("; //n end of assign \n");
          break;   
       }
       case L_RETURN : {
@@ -1152,6 +1153,7 @@ void CodeGenerate(pANTLR3_BASE_TREE t)
    printf("#include <stdio.h>\n");                       
    printf("#include <stdint.h>\n\n");                       
    printf("#include \"jaltarget.h\"\n\n");                       
+   printf("//n empty line\n");                       
 
    Pass = 1;   // generate functions, global vars etc.
    Level = 0;
