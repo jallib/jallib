@@ -773,7 +773,18 @@ void CgParams(pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
 //-----------------------------------------------------------------------------
 // CgProcedureDef - 
 //-----------------------------------------------------------------------------
-// A procedure def node
+// A procedure def node      
+//
+// For 'put and 'get procedures, there are two relevant records in the 
+// symboltable:
+// - One is pvar, that may or may not exist prior to this call. If it does
+//   not exist, it is created. In any case, the function name will be 
+//   registered as 'put' or 'get' value.                                        
+//
+// - Next a record is created, as for each function, that describe the 
+//   function call. This record holds the function name, which is appended 
+//   with __put or __get in the case of put or get.
+// 
 //-----------------------------------------------------------------------------
 void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgProcedureDef";
@@ -826,19 +837,25 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
                printf("Error: proc/func name %s is too long to handle\n", c->toString(c)->chars);
                exit(1);
             }
-               
+//printf("een\n");               
             strcpy(String, c->toString(c)->chars);
+//printf("vijf\n");               
             if (PvPut) {
+//printf("zes\n");               
                strcat(String, "__put");
+//printf("zeven\n");               
+               
                SymbolPvarAdd_PutName(c->toString(c)->chars, String);
             }               
+//printf("twee\n");               
             if (PvGet) {
                strcat(String, "__get");
                SymbolPvarAdd_GetName(c->toString(c)->chars, String);
             }               
+//printf("drie\n");               
             
             printf(" %s ( // proc/func name\n", String);
-            SymbolTail->Name = CreateName(c->toString(c)->chars); // add to symbol table.  
+            s->Name = CreateName(String); // add to symbol table.  
             
             if (PvPut) {  
                printf("ByCall *__s, // pvPut stuct\n");
