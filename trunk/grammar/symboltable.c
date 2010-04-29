@@ -247,8 +247,11 @@ void SymbolPrintPvarTable()
       v = s->details;   
       if (v == NULL) { printf("error: var struct missing\n"); exit(1);}
       if ((v->put != NULL) | (v->get != NULL)) {
-         printf("   const ByCall __%s = { (void *)&%s, (void *)&%s, &%s, %d, %d, %d};\n",
-            s->Name, v->put, v->get, v->data, v->size, v->p1, v->p2); 
+         printf("   const ByCall __%s = { ",s->Name);
+         if (v->put ) printf("(void *)&%s, ", v->put ); else printf("NULL, "); 
+         if (v->get ) printf("(void *)&%s, ", v->get ); else printf("NULL, "); 
+         if (v->data) printf("(void *)&%s, ", v->data); else printf("NULL, "); 
+         printf("%d, %d, %d};\n", v->size, v->p1, v->p2); 
       }
    }              
 }
@@ -259,7 +262,7 @@ void SymbolPrintPvarTable()
 //-----------------------------------------------------------------------------
 static Pvar *AddPvar(char *Name)
 {  Symbol *s;
-   Pvar *p;
+   Pvar *v;
 //   static int ID = 0;
    
    if (Verbose > 1) printf("// AddPvar Name: %s\n", Name);
@@ -268,19 +271,19 @@ static Pvar *AddPvar(char *Name)
    s->Name = CreateName(Name);
    s->Type = S_PVAR;
 
-   p = malloc(sizeof(Pvar));
-   s->details = p;
+   v = malloc(sizeof(Pvar));
+   s->details = v;
    
 //   p->ID    = ID++;
    
-   p->put      = NULL;   
-   p->get      = NULL;   
-   p->data     = NULL;   
-   p->size     = 1;
-   p->p1       = 0;
-   p->p2       = 0;
+   v->put      = NULL;   
+   v->get      = NULL;   
+   v->data     = NULL;   
+   v->size     = 1;
+   v->p1       = 0;
+   v->p2       = 0;
 
-   return p;
+   return v;
 }
 
 //-----------------------------------------------------------------------------
@@ -288,7 +291,7 @@ static Pvar *AddPvar(char *Name)
 //-----------------------------------------------------------------------------
 Pvar *SymbolGetPvar(char *SymbolName)
 {  Symbol *s;
-   Pvar *p;
+   Pvar *v;
 
    if (Verbose > 1) printf("// SymbolGetPvar Name: %s\n", SymbolName);
 
@@ -302,8 +305,8 @@ Pvar *SymbolGetPvar(char *SymbolName)
 //printf("roos\n");
       // name match                            
       if (s->Type == S_PVAR) {
-         p = s->details;
-         return p;
+         v = s->details;
+         return v;
       } else {
          printf("// GetPvar: name found with non-pvar type\n");
       }
@@ -316,20 +319,20 @@ Pvar *SymbolGetPvar(char *SymbolName)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 Pvar *SymbolGetOrAddPvar(char *Name)
-{  Pvar *p;
+{  Pvar *v;
 
    if (Verbose > 1) printf("// SymbolGetOrAddPvar Name: %s\n", Name);
    
-   p = SymbolGetPvar(Name);
+   v = SymbolGetPvar(Name);
    
-   if (p == NULL) {
-      p = AddPvar(Name);
-      if (Verbose > 1) printf("// SymbolGetOrAddPvar new %x\n", p);
+   if (v == NULL) {
+      v = AddPvar(Name);
+      if (Verbose > 1) printf("// SymbolGetOrAddPvar new %x\n", v);
    } else {
-      if (Verbose > 1) printf("// SymbolGetOrAddPvar found %x\n", p);
+      if (Verbose > 1) printf("// SymbolGetOrAddPvar found %x\n", v);
    }
       
-   return p;   
+   return v;   
 }
 
 //-----------------------------------------------------------------------------
@@ -337,24 +340,24 @@ Pvar *SymbolGetOrAddPvar(char *Name)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void SymbolPvarAdd_PutName(char *BaseName, char *PutName)
-{  Pvar *p;
+{  Pvar *v;
 
    if (Verbose > 1) printf("// SymbolPvarAdd_PutName BaseName: %s, PutName: %s\n", BaseName, PutName);
 
-   p = SymbolGetOrAddPvar(BaseName);                                              
-   if (p == NULL) { printf("Error: PutName pointer p is NULL\n"); exit(1); }
+   v = SymbolGetOrAddPvar(BaseName);                                              
+   if (v == NULL) { printf("Error: PutName pointer v is NULL\n"); exit(1); }
    
-   p->put = CreateName(PutName);   
+   v->put = CreateName(PutName);   
 }
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void SymbolPvarAdd_GetName(char *BaseName, char *GetName)
-{  Pvar *p;
+{  Pvar *v;
 
-   p = SymbolGetOrAddPvar(BaseName);
-   p->get = CreateName(GetName);
+   v = SymbolGetOrAddPvar(BaseName);
+   v->get = CreateName(GetName);
    
 }
 
@@ -362,11 +365,10 @@ void SymbolPvarAdd_GetName(char *BaseName, char *GetName)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void SymbolPvarAdd_DataName(char *BaseName, char *DataName)
-{  Pvar *p;
+{  Pvar *v;
 //   printf("SymbolPvarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
 
-   p = SymbolGetOrAddPvar(BaseName);
+   v = SymbolGetOrAddPvar(BaseName);
 
-   p->data =CreateName(DataName);
-   
+   v->data =CreateName(DataName);
 }

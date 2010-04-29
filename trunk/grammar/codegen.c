@@ -239,22 +239,47 @@ void CgAssign(pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgAssign";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
+   Pvar *v;
+
    // first node is identifier to assign to. 
    ChildIx = 0;
    CODE_GENERATOR_GET_CHILD_INFO
    
-   if (TokenType == IDENTIFIER) {   
-      Indent(Level);  // this one always!
-      printf("%s  = ", DeReference(c->toString(c)->chars));
-      if (Verbose) printf(" // %s identifier", ThisFuncName);
-   } else {
+   if (TokenType != IDENTIFIER) {   
       printf("%s error: token %s \n", ThisFuncName, c->toString(c)->chars);
+      return;
    }                
-   
+          
+   v= SymbolGetPvar(c->toString(c)->chars);
+
+   if (v) {
+      // there is a pvar record.
+      if (v->put != NULL) {
+         // we have a put function, so call in stead of assing
+         Indent(Level);
+         printf("%s(", v->put);         
+         if (Verbose) printf(" // %s call pseudovar put", ThisFuncName);
+
+         // second node is expr
+         c = t->getChild(t, 1);  
+         CgExpression(c, Level + 1);      
+
+         if (Verbose) Indent(Level);
+         printf(")");
+         if (Verbose) printf(" // %s pvar__put call", ThisFuncName);
+                                 
+         return;
+      }
+   }
+   // normal var
+   Indent(Level);  // this one always!
+   printf("%s  = ", DeReference(c->toString(c)->chars));
+   if (Verbose) printf(" // %s identifier", ThisFuncName);
+
    // second node is expr
    c = t->getChild(t, 1);  
-
    CgExpression(c, Level + 1);      
+
 } 
 
 //-----------------------------------------------------------------------------
@@ -716,6 +741,7 @@ void CgParamChilds(pANTLR3_BASE_TREE t, int Level, SymbolParam *p)
             p->CallMethod = 'c';     // Call by code
             break;
          }
+         case L_DATA     : // L_DATA is also identifier
          case IDENTIFIER : {
             if (Verbose) Indent(Level);            
             // store procedure param name
@@ -913,7 +939,6 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
       printf(");\n");      
       if (Verbose) printf("// Add closing parenthesis + semicolon of prototype");      
    }
-//    if (printf("//n empty line\n");                       
 } 
 
 //-----------------------------------------------------------------------------
@@ -927,7 +952,7 @@ void CgIf(pANTLR3_BASE_TREE t, int Level)
 
    int GotBody = 0;
 
-      Indent(Level);
+   Indent(Level);
    switch (TokenType) {
       case L_IF   :  printf("if        // %s\n", ThisFuncName);    
          break;
@@ -1097,7 +1122,9 @@ void CgStatement(pANTLR3_BASE_TREE t, int Level)
          PASS2;
          Indent(Level);            
          printf("return ");
-         CgExpression(t->getChild(t,0), Level+1);             
+         if (t->getChildCount(t)) {
+            CgExpression(t->getChild(t,0), Level+1);             
+         }
          if (Verbose) Indent(Level);            
          printf(";");
          if (Verbose) printf("// end of return \n");
@@ -1180,11 +1207,10 @@ void CgStatements(pANTLR3_BASE_TREE t, int Level)
 void CodeGenerate(pANTLR3_BASE_TREE t)
 {  int Level;
    
-   printf("\n\n// Jal -> C code converter\n");                       
+   printf("\n\n//----- JAT code start --------------------------------------------------------\n");                       
    printf("#include <stdio.h>\n");                       
    printf("#include <stdint.h>\n\n");                       
    printf("#include \"jaltarget.h\"\n\n");                       
-   printf("//n empty line\n");                       
 
    Pass = 1;   // generate functions, global vars etc.
    Level = 0;
@@ -1209,5 +1235,5 @@ void CodeGenerate(pANTLR3_BASE_TREE t)
       CgStatement(t, Level); // process statement of node p
    }      
    printf("} // end of main\n"); 
-   printf("// Jal -> C END\n\n"); 
+   printf("//----- JAT code end ----------------------------------------------------------\n\n");
 }
