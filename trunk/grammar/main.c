@@ -12,8 +12,8 @@
 #include "jat.h"
 
 
-int verbose = 1;
-int Debug = 1;
+int Verbose = 0;
+
 
 void CodeGenerate(pANTLR3_BASE_TREE p);
 
@@ -27,20 +27,55 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
 int main (int argc, char *argv[])
 {  jalParser_program_return r;
 
-   if (argc < 2 || argv[1] == NULL) {
+   int i;
+   char *Filename = NULL;
+   char *IncludePath = NULL;
+
+   for (i=1; i<argc; i++) {   
+      if (strcmp(argv[i], "-s") == 0) {
+         // include path
+         i++;
+         if (IncludePath != NULL) {
+            printf("Error: second include path %s\n", argv[i]);
+            printf("First one: %s\n", IncludePath);
+            exit(1);
+         }                   
+         IncludePath = argv[i];
+         continue;
+      }                 
+      
+      if (strcmp(argv[i], "-v") == 0) {
+         // verbose (use multiple times
+         Verbose ++;
+         continue;
+      }
+
+      // default = filename
+      if (Filename != NULL) {
+         printf("Error: second Filename %s\n", argv[i]);
+         printf("First one: %s\n", Filename);
+         exit(1);
+      }                   
+      Filename = argv[i];
+
+   }
+   
+
+
+   if (argc < 2 || Filename == NULL) {
       printf("Use: %s jal-file\n", argv[0]);
       exit(0);
    }
 
    // read, LEX and PARSE source tree   
-   r= ParseSource(argv[1]);
+   r= ParseSource(Filename);
 
 //    pjalParser				psr
 //extern pjalParser psr;
 //   printf("// Nr of syntax errors in parser: %d\n", psr.getNumberOfSyntaxErrors()   );
 // (niet werkend, zou moeten werken op zowel lexer als parser object... een keer uitzoeken.)
 
-   if (verbose > 0) {
+   if (Verbose > 0) {
       
       printf("// Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree on one line
 
@@ -63,7 +98,7 @@ int main (int argc, char *argv[])
 //   strcpy(s->Name, "drie");
 
     
-   DumpSymbolTable();
+   if (Verbose) DumpSymbolTable();
        
    return 0;
  
@@ -106,7 +141,18 @@ int main (int argc, char *argv[])
 void Indent(int Level)
 {   int i;
    Level += 2;
-   
+   printf("\n");   
+   for (i=0; i<Level; i++) printf("   ");
+}
+
+//-----------------------------------------------------------------------------
+// CIndent - print comment-indent for treewalk
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CIndent(int Level)
+{   int i;
+   Level += 2;
+   printf("\n//");   
    for (i=0; i<Level; i++) printf("   ");
 }
 
@@ -133,7 +179,7 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
       int ChildCount = child->getChildCount(child);                     
       pANTLR3_COMMON_TOKEN Token;
       if (child->getToken == NULL) {
-         printf("// getToken null\n");
+         printf("\n// getToken null");
          Token = 0; 
       } else {
          Token = child->getToken(child);
@@ -141,9 +187,8 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
 
 
       ANTLR3_UINT32 TokenType = child->getType(child);
-      printf("//");
-      Indent(Level);            
-      printf("%s (%d, %s)\n",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
+      CIndent(Level);            
+      printf("%s (%d, %s)",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
 //      printf("%s\n",child->toString(child)->chars);  
       if (ChildCount > 0) {
          TreeWalkWorker(child, Level+1);   
