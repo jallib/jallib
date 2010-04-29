@@ -70,7 +70,7 @@ SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType)
 static Symbol *AddSymbol()
 {  Symbol *s;
 
-   if (Debug) printf("//AddSymbol\n");
+   if (Verbose > 1) printf("//AddSymbol\n");
    s = malloc(sizeof(Symbol));
    if (s == NULL) {
       printf("Out of memory error\n");
@@ -82,7 +82,7 @@ static Symbol *AddSymbol()
 	s->Name = NULL;
 	s->Type = 0;    // function, procedure, variable, constant
 
-   if (Debug) printf("//AddSymbol added %x\n", s);
+   if (Verbose > 1) printf("//AddSymbol added %x\n", s);
 
    return s;
 }
@@ -262,9 +262,7 @@ static Pvar *AddPvar(char *Name)
    Pvar *p;
 //   static int ID = 0;
    
-   #ifdef DEBUG
-   printf("// AddPvar Name: %s\n", Name);
-   #endif
+   if (Verbose > 1) printf("// AddPvar Name: %s\n", Name);
    
    s = AddSymbol();
    s->Name = CreateName(Name);
@@ -292,13 +290,13 @@ Pvar *SymbolGetPvar(char *SymbolName)
 {  Symbol *s;
    Pvar *p;
 
-   if (Debug) printf("// SymbolGetPvar Name: %s\n", SymbolName);
+   if (Verbose > 1) printf("// SymbolGetPvar Name: %s\n", SymbolName);
 
    for(s = SymbolHead; s != NULL; s = s->Next) {
 //printf("boom %x %x\n", s, s->Name);
       if (s == NULL) { break; }
       if (s->Name == NULL) { break; }  // unnamed identiefier (valid while ad in progress)
-      if (Debug) printf("// SymbolGetPvar check Name: %s at %x\n", s->Name, s);
+      if (Verbose > 1) printf("// SymbolGetPvar check Name: %s at %x\n", s->Name, s);
          
       if (strcmp(SymbolName, s->Name) != 0) continue;
 //printf("roos\n");
@@ -320,21 +318,15 @@ Pvar *SymbolGetPvar(char *SymbolName)
 Pvar *SymbolGetOrAddPvar(char *Name)
 {  Pvar *p;
 
-   #ifdef DEBUG
-   printf("// SymbolGetOrAddPvar Name: %s\n", Name);
-   #endif
+   if (Verbose > 1) printf("// SymbolGetOrAddPvar Name: %s\n", Name);
    
    p = SymbolGetPvar(Name);
    
    if (p == NULL) {
       p = AddPvar(Name);
-      #ifdef DEBUG
-      printf("// SymbolGetOrAddPvar new %x\n", p);
-      #endif
+      if (Verbose > 1) printf("// SymbolGetOrAddPvar new %x\n", p);
    } else {
-      #ifdef DEBUG
-      printf("// SymbolGetOrAddPvar found %x\n", p);
-      #endif
+      if (Verbose > 1) printf("// SymbolGetOrAddPvar found %x\n", p);
    }
       
    return p;   
@@ -347,9 +339,7 @@ Pvar *SymbolGetOrAddPvar(char *Name)
 void SymbolPvarAdd_PutName(char *BaseName, char *PutName)
 {  Pvar *p;
 
-   #ifdef DEBUG
-   printf("// SymbolPvarAdd_PutName BaseName: %s, PutName: %s\n", BaseName, PutName);
-   #endif
+   if (Verbose > 1) printf("// SymbolPvarAdd_PutName BaseName: %s, PutName: %s\n", BaseName, PutName);
 
    p = SymbolGetOrAddPvar(BaseName);                                              
    if (p == NULL) { printf("Error: PutName pointer p is NULL\n"); exit(1); }

@@ -74,18 +74,13 @@ command clean
 }
 
 command test {
-   set cmd    "jalparser "
+   set cmd    "jalparser -v"
    append cmd " test.jal"
    append cmd " >test.c"
    exec ($cmd)
 
-#   exec "cat test.txt"   
-#   exec "perl cfilter.pl test.txt >test.c"
    exec "gcc test.c -otest.exe"
-   
-   exec "perl uncomment.pl test.c  1>testu.c"
-   exec "indent -kr -bad -bap testu.c"
-}
+   }
 
 
 command terminal { 

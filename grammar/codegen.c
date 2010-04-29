@@ -35,9 +35,10 @@ static int Pass;
    pANTLR3_BASE_TREE   c;  /* child (assigned below) */           \
    pANTLR3_BASE_TREE   cc; /* 'child of child (not assigned!) */  \
    pANTLR3_COMMON_TOKEN Token;                                    \
-   Indent(Level);                                                 \
-   printf("// %s\n", ThisFuncName);                               \
-                                                                  \
+   if (Verbose) {                                                 \
+      Indent(Level);                                              \
+      printf("// %s", ThisFuncName);                            \
+   }                                                              \
    n = t->getChildCount(t);                                       \
                                                                   \
    /* get data of supplied node */                                \
@@ -142,7 +143,7 @@ char *DeRefSub(char *InString, char CallMethod)
 
    if (CallMethod == 'r') {
       // call by reference, so dereference before use
-      sprintf(DeRefString, "(*%s)", InString);
+      sprintf(DeRefString, "*%s", InString);
       return DeRefString;   
    }
    if (CallMethod == 'c') {
@@ -173,12 +174,14 @@ int CgExpression(pANTLR3_BASE_TREE t, int Level)
        
    switch(TokenType) {
       case IDENTIFIER :
-         Indent(Level);            
-         printf("%s // identifier\n", DeReference(t->toString(t)->chars));
+         if (Verbose) Indent(Level);            
+         printf("%s ", DeReference(t->toString(t)->chars));
+         if (Verbose) printf("// identifier");
          break;
       case DECIMAL_LITERAL :
-         Indent(Level);            
-         printf("%s // constant\n", t->toString(t)->chars);
+         if (Verbose) Indent(Level);            
+         printf("%s ", t->toString(t)->chars);
+         if (Verbose) printf("// constant");
          break;
 
       case AMP           :
@@ -200,14 +203,17 @@ int CgExpression(pANTLR3_BASE_TREE t, int Level)
       case SLASH         :
                          
          if (n == 2) {
-            Indent(Level);            
-            printf("( // start subexpr\n");
+            if (Verbose) Indent(Level);            
+            printf("( ");
+            if (Verbose) printf(" // start subexpr");
             CgExpression(t->getChild(t, 0), Level + 1);
-            Indent(Level);            
-            printf(")%s( // expression\n", t->toString(t)->chars);
+            if (Verbose) Indent(Level);            
+            printf("%s ", t->toString(t)->chars);
+            if (Verbose) printf(" // expression");
             CgExpression(t->getChild(t, 1), Level + 1);
-            Indent(Level);            
-            printf(") // end subexpr\n");
+            if (Verbose) Indent(Level);            
+            printf(") ");
+            if (Verbose) printf(" // end subexpr");
          } else {
             printf("%s Error: not two subnodes\n", ThisFuncName);
          }
@@ -238,8 +244,9 @@ void CgAssign(pANTLR3_BASE_TREE t, int Level)
    CODE_GENERATOR_GET_CHILD_INFO
    
    if (TokenType == IDENTIFIER) {   
-      Indent(Level);            
-      printf("%s  = // %s identifier\n", DeReference(c->toString(c)->chars), ThisFuncName);
+      Indent(Level);  // this one always!
+      printf("%s  = ", DeReference(c->toString(c)->chars));
+      if (Verbose) printf(" // %s identifier", ThisFuncName);
    } else {
       printf("%s error: token %s \n", ThisFuncName, c->toString(c)->chars);
    }                
@@ -268,17 +275,25 @@ void CgCaseValue(pANTLR3_BASE_TREE t, int Level)
             Indent(Level);  
             printf("case ");
             CgExpression(c->getChild(c, 0), Level+1);
-            Indent(Level);  
-            printf(" : // case_condition \n");
+            if (Verbose) Indent(Level);  
+            printf(" : ");
+            if (Verbose) printf("// case_condition");
             break;
          }
          case BODY : {
             Indent(Level);  
-            printf("{ // case body\n");
+            printf("{ ");
+            Level ++;
+            Indent(Level);  
+            if (Verbose) printf("// start case body");
             cc = c->getChild(c, 0);
             CgStatement(cc, Level+1);
             Indent(Level);  
-            printf("break; } // case body\n");
+            printf("break;\n");
+            Level --;
+            Indent(Level);  
+            printf("} ");
+            if (Verbose) printf("// end case body");
             break;  
          }
          default: {            
@@ -489,21 +504,15 @@ void CgFuncProcCall(pANTLR3_BASE_TREE t, int Level)
 
       if (ChildIx == 0) {
          // function/procedure name
-         Indent(Level);            
-         printf(" %s( // \n", c->toString(c)->chars);         
+         if (Verbose) Indent(Level); 
+         printf(" %s( ", c->toString(c)->chars);         
          s = GetSymbolPointer(c->toString(c)->chars);
          if (s != NULL) {
-            #ifdef DEBUG 
-            printf("// CgFuncProcCall s: %x\n", s);
-            #endif       
+            if (Verbose > 1) printf("// CgFuncProcCall s: %x\n", s);
             f = (SymbolFunction *) s->details;
-            #ifdef DEBUG 
-            printf("// CgFuncProcCall f: %x\n", f);
-            #endif       
+            if (Verbose > 1) printf("// CgFuncProcCall f: %x\n", f);
             p =                f->Param;
-            #ifdef DEBUG 
-            printf("// CgFuncProcCall p: %x\n", p);
-            #endif       
+            if (Verbose > 1) printf("// CgFuncProcCall p: %x\n", p);
          } else {
             p = NULL;
          }
@@ -514,20 +523,17 @@ void CgFuncProcCall(pANTLR3_BASE_TREE t, int Level)
       GotFirstParam = 1;
 
       if ((p != NULL) && (p->CallMethod == 'r')) {
-         #ifdef DEBUG 
-         printf("// call by reference\n"); 
-         #endif
+         if (Verbose > 1) printf("// call by reference\n"); 
          // call by reference
          if (TokenType == IDENTIFIER) {
-            Indent(Level);            
-            printf("&%s // identifier by reference\n", DeReference(c->toString(c)->chars));
+            if (Verbose) Indent(Level);            
+            printf("&%s ", DeReference(c->toString(c)->chars));
+            if (Verbose) printf("// identifier by reference");
          } else {
             printf("Error: can't use this parameter to call by reference.\n");
          }         
       } else {
-         #ifdef DEBUG 
-         printf("// call by value\n");
-         #endif
+         if (Verbose > 1) printf("// call by value\n");
          // call by value
          CgExpression(c, Level + 1);      
       }              
@@ -537,8 +543,9 @@ void CgFuncProcCall(pANTLR3_BASE_TREE t, int Level)
       // In both cases the (remaining) parameters are concidered pass by value.
       if (p != NULL) p = p->next;
    }                
-   Indent(Level);            
-   printf("); //n end of proc/func call\n");
+   if (Verbose) Indent(Level);            
+   printf(")");
+   if (Verbose) printf(" // end of proc/func call");
 }
  
 //-----------------------------------------------------------------------------
@@ -557,18 +564,20 @@ void CgSingleVar(pANTLR3_BASE_TREE t, int Level)
       
       switch(TokenType) {
          case IDENTIFIER : {
-            Indent(Level);            
-            printf(" %s // \n", c->toString(c)->chars);
+            if (Verbose) Indent(Level);            
+            printf(" %s ", c->toString(c)->chars);
             if (Level == 3) { // this is a tricky one; indent may change...
 //               printf("CgSingleVar p1\n");
+               // add var to store.
                SymbolPvarAdd_DataName(c->toString(c)->chars, c->toString(c)->chars);   
 //               printf("CgSingleVar p2\n");
             }
             break;
          }
          case ASSIGN : {
-            Indent(Level);            
-            printf("= // assign\n");
+            if (Verbose) Indent(Level);            
+            printf("= ");
+            if (Verbose) printf("// assign");
             cc = c->getChild(c, 0);
             CgExpression(cc, Level+1);
             break;
@@ -579,7 +588,7 @@ void CgSingleVar(pANTLR3_BASE_TREE t, int Level)
          }
       }
    }
-   Indent(Level);                           
+   if (Verbose) Indent(Level);                           
 } 
 
 //-----------------------------------------------------------------------------
@@ -606,12 +615,15 @@ void CgVar(pANTLR3_BASE_TREE t, int Level)
          case L_DWORD  : 
          case L_SDWORD : {
             Indent(Level);            
-            printf(" %s // \n", VarTypeString(TokenType));
+            printf("%s ", VarTypeString(TokenType));
             break;
          }
          case VAR : {
-            Indent(Level);            
-            if (GotFirstSingleVar) printf(", ");
+            if (Verbose) Indent(Level);            
+            if (GotFirstSingleVar) {
+               printf(", ");           
+               Indent(Level);
+            }
             CgSingleVar(c, Level + 1);
             GotFirstSingleVar = 1;
             break;
@@ -622,8 +634,8 @@ void CgVar(pANTLR3_BASE_TREE t, int Level)
          }
       }
    }
-   Indent(Level);            
-   printf(";\n");                
+   if (Verbose) Indent(Level);            
+   printf(";");                
 }        
 
 //-----------------------------------------------------------------------------
@@ -705,12 +717,13 @@ void CgParamChilds(pANTLR3_BASE_TREE t, int Level, SymbolParam *p)
             break;
          }
          case IDENTIFIER : {
-            Indent(Level);            
+            if (Verbose) Indent(Level);            
             // store procedure param name
 //            strcpy(SymbolTail->Param[(SymbolTail->NrOfParams)-1].Name, c->toString(c)->chars);
             SymbolParamSetName(p, c->toString(c)->chars);
             // deref if called by reference
-            printf(" %s // ident\n", DeRefSub(c->toString(c)->chars, p->CallMethod));  
+            printf(" %s ", DeRefSub(c->toString(c)->chars, p->CallMethod));  
+            if (Verbose)printf(" // ident");  
             break;
          }
          default: {            
@@ -738,8 +751,9 @@ void CgParams(pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
       CODE_GENERATOR_GET_CHILD_INFO
 
       if (GotFirstParam) {           
-         Indent(Level);
-         printf(", // next param\n");
+         if (Verbose) Indent(Level);
+         printf(", ");
+         if (Verbose) printf("// next param");
       }
       GotFirstParam = 1;
 
@@ -750,8 +764,9 @@ void CgParams(pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
          case L_SWORD  : 
          case L_DWORD  : 
          case L_SDWORD : {     
-            Indent(Level);            
-            printf(" %s // TokenType: %d (Add param to SymbolTable\n", VarTypeString(TokenType), TokenType); 
+            if (Verbose) Indent(Level);            
+            printf("%s", VarTypeString(TokenType)); 
+            if (Verbose) printf(" // TokenType: %d (Add param to SymbolTable", TokenType); 
 
             // add new parameter to current symbol  
             SymbolParam *p = SymbolFunctionAddParam(f, TokenType);
@@ -812,16 +827,18 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
          case L_RETURN : {
             if (PvGet == 0) {
                // normal function return processing
-               Indent(Level);            
+               if (Verbose) Indent(Level);            
                cc = c->getChild(c, 0);
-               printf(" %s // return type\n", VarTypeString(cc->getType(cc)));
+               printf(" %s ", VarTypeString(cc->getType(cc)));
+               if (Verbose) printf("// return type\n");
                f->ReturnType = cc->getType(cc); // add to symbol table.
                GotReturnType = 1;
             } else {
                // pseudo-var function return processing
-               Indent(Level);            
+               if (Verbose) Indent(Level);            
                cc = c->getChild(c, 0);
-               printf(" void // PV return type\n"); //, VarTypeString(cc->getType(cc)));
+               printf(" void ");
+               if (Verbose) printf(" // PV return type\n"); 
                f->ReturnType = cc->getType(cc); // add to symbol table.
                GotReturnType = 1;
             }
@@ -830,56 +847,59 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
          case IDENTIFIER : {
             char String[100]; // symbol name length...
 
-            Indent(Level);    
+            if (Verbose) Indent(Level);    
             if (!GotReturnType) printf("void ");        
 
             if (strlen(c->toString(c)->chars) > 80) {
                printf("Error: proc/func name %s is too long to handle\n", c->toString(c)->chars);
                exit(1);
             }
-//printf("een\n");               
             strcpy(String, c->toString(c)->chars);
-//printf("vijf\n");               
             if (PvPut) {
-//printf("zes\n");               
                strcat(String, "__put");
-//printf("zeven\n");               
                
                SymbolPvarAdd_PutName(c->toString(c)->chars, String);
             }               
-//printf("twee\n");               
             if (PvGet) {
                strcat(String, "__get");
                SymbolPvarAdd_GetName(c->toString(c)->chars, String);
             }               
-//printf("drie\n");               
             
-            printf(" %s ( // proc/func name\n", String);
+            printf(" %s ( ", String);
+            if (Verbose) printf("// proc/func name");
             s->Name = CreateName(String); // add to symbol table.  
             
             if (PvPut) {  
-               printf("ByCall *__s, // pvPut stuct\n");
+               printf("ByCall *__s, ");
+               if (Verbose) printf(" // pvPut stuct");
             }
             if (PvGet) {  
-               printf("ByCall *__s // pvGet stuct\n");
+               printf("ByCall *__s, ");
+               if (Verbose) printf(" // pvGet stuct");
             }
             
             break;
          }
          case PARAMS : {
             CgParams(c, Level+1, f);
-//            Indent(Level);             
-//            printf("// param\n");
             break;
          }
          case BODY : {
-            Indent(Level);            
-            printf(") { //n body\n");         
+            if (Verbose) Indent(Level);            
+            printf(") { \n");         
+            if (Verbose) {
+               Indent(Level);            
+               printf("// start body");         
+            }
             ActiveProcedureDefintion = f; // activate dereferencing for relevant parameters.
             CgStatements(c, Level+1);
             ActiveProcedureDefintion = NULL; // deactivate parameter dereferencing.
             Indent(Level);            
-            printf("} //n end body\n");
+            printf("}\n");
+            if (Verbose) {
+               Indent(Level);            
+               printf("// end body");
+            }
             GotBody = 1;
             break;
          }
@@ -890,9 +910,10 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
       }
    }
    if (!GotBody) {
-      printf("); // Add closing parenthesis + semicolon of prototype\n");      
+      printf(");\n");      
+      if (Verbose) printf("// Add closing parenthesis + semicolon of prototype");      
    }
-    printf("//n empty line\n");                       
+//    if (printf("//n empty line\n");                       
 } 
 
 //-----------------------------------------------------------------------------
@@ -998,18 +1019,23 @@ void CgForever(pANTLR3_BASE_TREE t, int Level)
 void CgStatement(pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgStatement";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
-       
-   Indent(Level);            
-   printf("// %s (%d, %s)\n",t->toString(t)->chars, TokenType, jalParserTokenNames[TokenType]);   
-
+ 
+   if (Verbose) {      
+      Indent(Level);            
+      printf("// %s (%d, %s)",t->toString(t)->chars, TokenType, jalParserTokenNames[TokenType]);   
+   }
+   
    switch(TokenType) {
       case L_BLOCK : {
          PASS2;
          Indent(Level);            
-         printf("{ // start of block \n"); 
+         printf("{\n");
+         if (Verbose) printf(" // start of block \n"); 
          CgStatements(t, Level+1);             
+         printf("\n"); 
          Indent(Level);            
-         printf("} // end of block \n"); 
+         printf("} \n"); 
+         if (Verbose) printf("// end of block \n"); 
          break;   
       }
       case L_CASE : {
@@ -1062,23 +1088,28 @@ void CgStatement(pANTLR3_BASE_TREE t, int Level)
       case ASSIGN : {
          PASS2;
          CgAssign(t, Level+1);             
-         Indent(Level);            
-         printf("; //n end of assign \n");
+         if (Verbose) Indent(Level);            
+         printf(";\n");
+         if (Verbose) printf("// end of assign \n");
          break;   
       }
       case L_RETURN : {
          PASS2;
          Indent(Level);            
-         printf("return\n");
+         printf("return ");
          CgExpression(t->getChild(t,0), Level+1);             
-         Indent(Level);            
-         printf("; // end of return \n");
+         if (Verbose) Indent(Level);            
+         printf(";");
+         if (Verbose) printf("// end of return \n");
          break;   
       }
       case FUNC_PROC_CALL : {
          PASS2;
-         CgFuncProcCall(t, Level+1);             
-         break;   
+         Indent(Level); 
+         CgFuncProcCall(t, Level+1);      
+         if (Verbose) Indent(Level); 
+         printf(";");       
+         break;    
       }   
       
       // note: j2cg vs j2c is only relevant at root level. 

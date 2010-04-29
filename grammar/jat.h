@@ -8,8 +8,7 @@
 
 #include    "symboltable.h"
 
-#define DEBUG 1
-extern int Debug;
+extern int Verbose;
 
 // main function prototypes
 void Indent(int Level);
