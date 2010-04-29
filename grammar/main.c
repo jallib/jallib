@@ -20,16 +20,19 @@ void CodeGenerate(pANTLR3_BASE_TREE p);
 void TreeWalk(pANTLR3_BASE_TREE p);    
 jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
 
-
+// command line option - vars
+char *Filename = NULL;
+char *IncludePath = NULL;
+int   NoInclude = 0;
 
 // Main entry point for this example
 //
 int main (int argc, char *argv[])
 {  jalParser_program_return r;
 
+   printf("// JAT V0.1 - Just Another Translator (Jal -> C code converter)\n");                       
+
    int i;
-   char *Filename = NULL;
-   char *IncludePath = NULL;
 
    for (i=1; i<argc; i++) {   
       if (strcmp(argv[i], "-s") == 0) {
@@ -45,8 +48,14 @@ int main (int argc, char *argv[])
       }                 
       
       if (strcmp(argv[i], "-v") == 0) {
-         // verbose (use multiple times
+         // verbose (use two times for more verbose)
          Verbose ++;
+         continue;
+      }
+
+      if (strcmp(argv[i], "-noinclude") == 0) {
+         // no-include - disable include function
+         NoInclude = 1;
          continue;
       }
 
@@ -166,7 +175,7 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
 {  ANTLR3_UINT32   n, c;
 
 	if  (p->isNilNode(p) == ANTLR3_TRUE) {
-	   printf("// nil-node\n");
+	   printf("// nil-node");
 //	   return;
 	}
    
@@ -210,6 +219,11 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line)
    char *BaseName;                       
    char FileName[256];
    pANTLR3_INPUT_STREAM    in;
+
+   if (NoInclude) {
+      printf("// Ignore include line %s\n", Line);
+      return NULL;
+   }
    
 //   printf("// JalInclude line: %s\n", Line);
 
@@ -260,8 +274,8 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line)
       exit(1);
    }
 
-   // note: PUSHSTREAM only works in LEX context (not this code, nor PARSER context).
-   // So leave it in the gramar-file.
+   // note: PUSHSTREAM macro only works in LEX context (not in this code, nor PARSER context).
+   // So leave PUSHSTREAM in the gramar-file.
    return in;
 }
 
