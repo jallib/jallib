@@ -171,12 +171,25 @@ char *DeReference(char *InString)
 int CgExpression(pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgExpression";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
+
+   Pvar *v;
        
    switch(TokenType) {
       case IDENTIFIER :
-         if (Verbose) Indent(Level);            
-         printf("%s ", DeReference(t->toString(t)->chars));
-         if (Verbose) printf("// identifier");
+
+         v= SymbolGetPvar(t->toString(t)->chars);
+      
+         if ((v) && (v->get != NULL)) {
+            // there is a pvar record.
+            // we have a get function, so call to get value
+            if (Verbose) Indent(Level);
+            printf("%s() ", v->get);         
+            if (Verbose) printf(" // %s call pseudovar put", ThisFuncName);
+         } else {
+            if (Verbose) Indent(Level);            
+            printf("%s ", DeReference(t->toString(t)->chars));
+            if (Verbose) printf("// identifier");
+         }
          break;
       case DECIMAL_LITERAL :
          if (Verbose) Indent(Level);            
@@ -851,7 +864,7 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
          case L_GET : { PvGet = 1; break; }
 
          case L_RETURN : {
-            if (PvGet == 0) {
+            if (PvPut == 0) {
                // normal function return processing
                if (Verbose) Indent(Level);            
                cc = c->getChild(c, 0);
@@ -896,12 +909,12 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
             s->Name = CreateName(String); // add to symbol table.  
             
             if (PvPut) {  
-               printf("ByCall *__s, ");
-               if (Verbose) printf(" // pvPut stuct");
+//               printf("ByCall *__s, ");
+//               if (Verbose) printf(" // pvPut stuct");
             }
             if (PvGet) {  
-               printf("ByCall *__s, ");
-               if (Verbose) printf(" // pvGet stuct");
+//               printf("ByCall *__s, ");
+//               if (Verbose) printf(" // pvGet stuct");
             }
             
             break;
