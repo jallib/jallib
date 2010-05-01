@@ -1,0 +1,53 @@
+(Note: this bug report might be covered by others. The report is here to verify when
+it is fixed)
+
+code with 33-bit constant:
+
+var volatile byte mies
+
+for 7_000_000_000 loop
+   mies = mies + 1
+end loop
+
+compiles without a warning on 
+
+; compiler: jal 2.4n-beta (compiled Mar 13 2010)
+
+but creates a loop with a 32-bit counter.       
+(This might be related to bugreport 'operand size mismatch not always reported')
+
+
+;   94 for 7_000_000_000 loop
+                               clrf     v__floop1
+                               clrf     v__floop1+1
+                               clrf     v__floop1+2
+                               clrf     v__floop1+3
+l__l222
+;   95    mies = mies + 1
+                               incf     v_mies,f
+;   96 end loop
+                               incf     v__floop1,f
+                               btfsc    v__status, v__z
+                               incf     v__floop1+1,f
+                               btfsc    v__status, v__z
+                               incf     v__floop1+2,f
+                               btfsc    v__status, v__z
+                               incf     v__floop1+3,f
+                               movlw    0
+                               subwf    v__floop1,w
+                               movwf    v__pic_temp
+                               movlw    134
+                               subwf    v__floop1+1,w
+                               iorwf    v__pic_temp,f
+                               movlw    59
+                               subwf    v__floop1+2,w
+                               iorwf    v__pic_temp,f
+                               movlw    161
+                               subwf    v__floop1+3,w
+                               iorwf    v__pic_temp,w
+                               btfss    v__status, v__z
+                               goto     l__l222
+l__l226
+                               sleep    
+                               goto     l__l226
+                               end
