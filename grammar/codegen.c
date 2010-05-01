@@ -701,17 +701,17 @@ void CgConst(pANTLR3_BASE_TREE t, int Level)
          case L_DWORD  : 
          case L_SDWORD : {
             Indent(Level);            
-            printf(" const %s \n", VarTypeString(TokenType));
+            printf("const %s ", VarTypeString(TokenType));
             GotType = 1;
             break;
          }
          case VAR : {   
+            if (Verbose) Indent(Level);            
             if (GotType == 0) {
-               Indent(Level);            
-               printf(" const long // default const type\n");
+               printf(" const long");
+               if (Verbose) printf(" // default const type\n");
                GotType = 1;        
             }
-            Indent(Level);            
             if (GotFirstSingleVar) printf(", ");
             CgSingleVar(c, Level + 1);
             GotFirstSingleVar = 1;
@@ -723,8 +723,8 @@ void CgConst(pANTLR3_BASE_TREE t, int Level)
          }
       }
    }
-   Indent(Level);            
-   printf(";\n");                
+   if (Verbose) Indent(Level);            
+   printf(";");                
 } 
 
 //-----------------------------------------------------------------------------

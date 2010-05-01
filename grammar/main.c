@@ -197,7 +197,30 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
 
       ANTLR3_UINT32 TokenType = child->getType(child);
       CIndent(Level);            
-      printf("%s (%d, %s)",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
+      printf("%s (%d, %s from ",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
+  
+      ANTLR3_INPUT_STREAM *is = Token->input;
+//      printf("input stream %x,",is);
+//      printf("input stream %d,",is->fileName);
+      printf("Line %d:%d)",Token->getLine(Token), Token->getCharPositionInLine(Token));
+      
+
+
+// error reporting stuff
+//    ex->streamName		= ((pANTLR3_COMMON_TOKEN)(ex->token))->input->fileName
+//
+//    if	(token->getChannel(token) > ANTLR3_TOKEN_DEFAULT_CHANNEL)
+//     {
+//	   outtext->append8(outtext, "(channel = ");
+//	   outtext->addi	(outtext, (ANTLR3_INT32)token->getChannel(token));
+//	   outtext->append8(outtext, ") ");
+//    }
+//
+//    outtext->addi   (outtext, (ANTLR3_INT32)token->getLine(token));
+//    outtext->append8(outtext, " LinePos:");
+//    outtext->addi   (outtext, token->getCharPositionInLine(token));
+
+
 //      printf("%s\n",child->toString(child)->chars);  
       if (ChildCount > 0) {
          TreeWalkWorker(child, Level+1);   
@@ -279,3 +302,17 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line)
    return in;
 }
 
+
+// error reporting stuff
+//    ex->streamName		= ((pANTLR3_COMMON_TOKEN)(ex->token))->input->fileName
+//
+//    if	(token->getChannel(token) > ANTLR3_TOKEN_DEFAULT_CHANNEL)
+//     {
+//	   outtext->append8(outtext, "(channel = ");
+//	   outtext->addi	(outtext, (ANTLR3_INT32)token->getChannel(token));
+//	   outtext->append8(outtext, ") ");
+//    }
+//
+//    outtext->addi   (outtext, (ANTLR3_INT32)token->getLine(token));
+//    outtext->append8(outtext, " LinePos:");
+//    outtext->addi   (outtext, token->getCharPositionInLine(token));
