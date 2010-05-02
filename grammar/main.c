@@ -203,7 +203,7 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
       printf("%s (%d, %s from ",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
   
       ANTLR3_INPUT_STREAM *is = Token->input;
-//      printf("input stream %x,",is);
+      printf("input stream %x,",is);
 //      printf("input stream %d,",is->fileName);
       printf("Line %d:%d)",Token->getLine(Token), Token->getCharPositionInLine(Token));
       
@@ -240,70 +240,6 @@ void TreeWalk(pANTLR3_BASE_TREE p)
    TreeWalkWorker(p, 0);       
 }             
 
-pANTLR3_INPUT_STREAM JalOpenInclude(char *Line) 
-{  int State, i;
-   char *BaseName;                       
-   char FileName[256];
-   pANTLR3_INPUT_STREAM    in;
-
-   if (NoInclude) {
-      printf("// Ignore include line %s\n", Line);
-      return NULL;
-   }
-   
-//   printf("// JalInclude line: %s\n", Line);
-
-   State = 0;
-   for (i=0; ((Line[i] != 0)&(State != 3)); i++) {
-      switch(State) {
-         case 0 : { // search for first whitespace
-            if ((Line[i] == ' ') | (Line[i] == '\t')) {
-               State = 1;
-            }
-            break;  
-         }          
-         case 1 : { // search for non-whitespace, which is start of filename/path
-            if ((Line[i] != ' ') & (Line[i] != '\t')) {
-               BaseName = &Line[i];
-               State = 2;
-            }
-            break;  
-         }          
-         case 2 : { // search for first whitespace, which is end of filename/path
-//            if (Line[i] == '/') {
-//               Line[i] = '\\';  // seems not required in windows...
-//            }
-            if ((Line[i] == ' ') | (Line[i] == '\t') | (Line[i] == '\r') | (Line[i] == '\n')) {
-               Line[i] = 0; // terminate string
-               State = 3;
-            }
-            break;  
-         }               
-         default : {
-            printf("Error state: %d, i: %d\n", State, i);     
-            break;
-         }
-      }
-   }
-   printf("// include BaseName: _%s_\n", BaseName);   
-
-   sprintf(FileName, "%s.jal", BaseName);
-// TODO:
-//
-// walk include path to find file.                                  
-
-   in = antlr3AsciiFileStreamNew(FileName);
-
-   if (in == NULL) {
-      printf("Error opening include file %s\n", FileName);
-      fprintf(stderr, "Error opening include file %s\n", FileName);
-      exit(1);
-   }
-
-   // note: PUSHSTREAM macro only works in LEX context (not in this code, nor PARSER context).
-   // So leave PUSHSTREAM in the gramar-file.
-   return in;
-}
 
 
 // error reporting stuff

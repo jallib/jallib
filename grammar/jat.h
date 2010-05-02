@@ -9,11 +9,15 @@
 #include    "symboltable.h"
 
 extern int Verbose;
+extern int NoInclude;
 
 // main function prototypes
 void Indent(int Level);
 void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level);
 pANTLR3_INPUT_STREAM JalOpenInclude(char *Line);
+
+
+
 
 // parser.c
 jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
