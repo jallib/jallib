@@ -172,15 +172,15 @@ int CgExpression(pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgExpression";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
-   Pvar *v;
+   Var *v;
        
    switch(TokenType) {
       case IDENTIFIER :
 
-         v= SymbolGetPvar(t->toString(t)->chars);
+         v= SymbolGetVar(GlobalContext, t->toString(t)->chars);
       
          if ((v) && (v->get != NULL)) {
-            // there is a pvar record.
+            // there is a var record.
             // we have a get function, so call to get value
             if (Verbose) Indent(Level);
             printf("%s() ", v->get);         
@@ -252,7 +252,7 @@ void CgAssign(pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgAssign";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
-   Pvar *v;
+   Var *v;
 
    // first node is identifier to assign to. 
    ChildIx = 0;
@@ -263,10 +263,10 @@ void CgAssign(pANTLR3_BASE_TREE t, int Level)
       return;
    }                
           
-   v= SymbolGetPvar(c->toString(c)->chars);
+   v= SymbolGetVar(GlobalContext, c->toString(c)->chars);
 
    if (v) {
-      // there is a pvar record.
+      // there is a var record.
       if (v->put != NULL) {
          // we have a put function, so call in stead of assing
          Indent(Level);
@@ -279,7 +279,7 @@ void CgAssign(pANTLR3_BASE_TREE t, int Level)
 
          if (Verbose) Indent(Level);
          printf(")");
-         if (Verbose) printf(" // %s pvar__put call", ThisFuncName);
+         if (Verbose) printf(" // %s var__put call", ThisFuncName);
                                  
          return;
       }
@@ -544,7 +544,7 @@ void CgFuncProcCall(pANTLR3_BASE_TREE t, int Level)
          // function/procedure name
          if (Verbose) Indent(Level); 
          printf(" %s( ", c->toString(c)->chars);         
-         s = GetSymbolPointer(c->toString(c)->chars);
+         s = GetSymbolPointer(GlobalContext, c->toString(c)->chars);
          if (s != NULL) {
             if (Verbose > 1) printf("// CgFuncProcCall s: %x\n", s);
             f = (SymbolFunction *) s->details;
@@ -607,7 +607,7 @@ void CgSingleVar(pANTLR3_BASE_TREE t, int Level)
             if (Level == 3) { // this is a tricky one; indent may change...
 //               printf("CgSingleVar p1\n");
                // add var to store.
-               SymbolPvarAdd_DataName(c->toString(c)->chars, c->toString(c)->chars);   
+               SymbolVarAdd_DataName(GlobalContext, c->toString(c)->chars, c->toString(c)->chars);   
 //               printf("CgSingleVar p2\n");
             }
             break;
@@ -831,7 +831,7 @@ void CgParams(pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
 //
 // For 'put and 'get procedures, there are two relevant records in the 
 // symboltable:
-// - One is pvar, that may or may not exist prior to this call. If it does
+// - One is var, that may or may not exist prior to this call. If it does
 //   not exist, it is created. In any case, the function name will be 
 //   registered as 'put' or 'get' value.                                        
 //
@@ -850,7 +850,7 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
    char PvGet = 0; 
 
    
-   Symbol *s = NewSymbolFunction(); 
+   Symbol *s = NewSymbolFunction(GlobalContext); 
    SymbolFunction *f = s->details;
       
    for (ChildIx = 0; ChildIx<n; ChildIx++) {
@@ -897,11 +897,11 @@ void CgProcedureDef(pANTLR3_BASE_TREE t, int Level)
             if (PvPut) {
                strcat(String, "__put");
                
-               SymbolPvarAdd_PutName(c->toString(c)->chars, String);
+               SymbolVarAdd_PutName(GlobalContext, c->toString(c)->chars, String);
             }               
             if (PvGet) {
                strcat(String, "__get");
-               SymbolPvarAdd_GetName(c->toString(c)->chars, String);
+               SymbolVarAdd_GetName(GlobalContext, c->toString(c)->chars, String);
             }               
             
             printf(" %s ( ", String);
@@ -1219,6 +1219,8 @@ void CgStatements(pANTLR3_BASE_TREE t, int Level)
 //-----------------------------------------------------------------------------
 void CodeGenerate(pANTLR3_BASE_TREE t)
 {  int Level;
+
+   CreateGlobalContext(); 
    
    printf("\n\n//----- JAT code start --------------------------------------------------------\n");                       
    printf("#include <stdio.h>\n");                       
@@ -1236,7 +1238,7 @@ void CodeGenerate(pANTLR3_BASE_TREE t)
       CgStatement(t, Level); // process statement of node p
    }      
 
-   SymbolPrintPvarTable();
+   SymbolPrintVarTable(GlobalContext);
    
    Pass = 2;   // generate main function
    Level = 0;

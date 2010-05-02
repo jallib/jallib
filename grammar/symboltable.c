@@ -2,30 +2,38 @@
 
 #include "jat.h"
 
-
-Symbol *SymbolTail= NULL;  // points to most recent symbol
-Symbol *SymbolHead = NULL; // points to oldest symbol
+Context *GlobalContext = NULL;
 
 // static prototypes
-static void append_node(Symbol *lnode);
-static void remove_node(Symbol *lnode);
-static void insert_node(Symbol *lnode, Symbol *after); 
+static void _AddSymbolToContext(Context *co, Symbol *s);
+//static void append_node(Symbol *lnode);
+//static void remove_node(Symbol *lnode);
+//static void insert_node(Symbol *lnode, Symbol *after); 
 
-static Symbol *AddSymbol(void);                           
+static Symbol *NewSymbol(Context *co);                           
+
+#define CHECK_NULL(n)                     \
+   if (n == NULL) {                       \
+      printf("Out of memory error\n");    \
+      exit(1);                            \
+   }                                      \
 
 
+//----------------------------------------------------------------------------- 
+// NewSymbolFunction - add function record to symbol table
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-Symbol *NewSymbolFunction(void)
+Symbol *NewSymbolFunction(Context *co)
 {  Symbol *s;
    SymbolFunction *f;
    
-   s = AddSymbol();
+   s = NewSymbol(co);
    s->Name = NULL; //CreateName(Name);
    s->Type = S_FUNCTION;
             
    f = malloc(sizeof(SymbolFunction));
+   CHECK_NULL(f);
+   
    s->details = f;
    
    f->ReturnType = L_VOID;   
@@ -42,6 +50,7 @@ SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType)
    
    // create record   
    p = malloc(sizeof(SymbolParam));
+   CHECK_NULL(p);
 
    // add to list
    if(f->Param == NULL) {
@@ -63,29 +72,6 @@ SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType)
    return p;
 }
 
-//-----------------------------------------------------------------------------
-// AddSymbol - malloc memory for Symbol stuct & add to chain
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-static Symbol *AddSymbol()
-{  Symbol *s;
-
-   if (Verbose > 1) printf("//AddSymbol\n");
-   s = malloc(sizeof(Symbol));
-   if (s == NULL) {
-      printf("Out of memory error\n");
-      exit(1);
-   }
-
-   append_node(s);
-
-	s->Name = NULL;
-	s->Type = 0;    // function, procedure, variable, constant
-
-   if (Verbose > 1) printf("//AddSymbol added %x\n", s);
-
-   return s;
-}
 
 //-----------------------------------------------------------------------------
 // CreateName - malloc memory, copy name and return pointer
@@ -95,6 +81,8 @@ char *CreateName(char *Name)
 {  char *n;
    
    n = malloc(strlen(Name) + 1);
+   CHECK_NULL(n);
+
    strcpy(n, Name);
    
    return n;
@@ -111,10 +99,14 @@ void SymbolParamSetName(SymbolParam *p, char *Name)
   
 
   
-Symbol *GetSymbolPointer  (char *SymbolName)
+//-----------------------------------------------------------------------------
+// GetSymbolPointer - 
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+Symbol *GetSymbolPointer  (Context *co, char *SymbolName)
 {  Symbol *s;
    
-   for(s = SymbolHead; s != NULL; s = s->Next) {
+   for(s = co->Head; s != NULL; s = s->Next) {
       if (strcmp(SymbolName, s->Name) != 0) continue;
 
       // match
@@ -143,9 +135,9 @@ void DumpSymbol(Symbol *s)
          }
          break;
       }        
-      case S_PVAR : {
-         printf("(Pvar)\n");
-         Pvar *v = s->details;
+      case S_VAR : {
+         printf("(Var)\n");
+         Var *v = s->details;
          if (v == NULL) { printf("error: var struct missing\n"); exit(1);}
 
          if ((v->put == NULL) & (v->get == NULL)) {
@@ -169,81 +161,31 @@ void DumpSymbol(Symbol *s)
 
 
 
-void DumpSymbolTable()
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void DumpSymbolTable(Context *co)
 {  Symbol *s;
       
-   for(s = SymbolHead; s != NULL; s = s->Next) {
+   for(s = co->Head; s != NULL; s = s->Next) {
       if (s== NULL) break;
       //printf("DumpSymbolTable %x\n", s);
       DumpSymbol(s);
    }
 }
 
-// /* destroy the dll list */
-// while(head != NULL)
-//  remove_node(head);
 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-static void append_node(Symbol *lnode) {
-   if(SymbolHead == NULL) {
-      SymbolHead = lnode;
-      lnode->Prev = NULL;
-   } else {
-      SymbolTail->Next = lnode;
-      lnode->Prev = SymbolTail;
-   }
-
-   SymbolTail = lnode;
-   lnode->Next = NULL;
-}
-
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-static void insert_node(Symbol *lnode, Symbol *after) 
-{
-   lnode->Next = after->Next;
-   lnode->Prev = after;
-
-   if(after->Next != NULL) {
-      after->Next->Prev = lnode;
-   } else {
-     SymbolTail = lnode;
-   }
-   after->Next = lnode;
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-static void remove_node(Symbol *lnode) 
-{
-   if(lnode->Prev == NULL) {
-      SymbolHead = lnode->Next;
-   } else {
-      lnode->Prev->Next = lnode->Next;
-   }
-   if(lnode->Next == NULL) {
-      SymbolTail = lnode->Prev;
-   } else {
-      lnode->Next->Prev = lnode->Prev;
-   }
-}
-
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void SymbolPrintPvarTable()
+void SymbolPrintVarTable(Context *co)
 {  Symbol *s;
-   Pvar   *v;
+   Var   *v;
 
    printf("\n\n   // Pseudo Var table\n");   
 
-   for(s = SymbolHead; s != NULL; s = s->Next) {
-      if (s->Type != S_PVAR) continue;
+   for(s = co->Head; s != NULL; s = s->Next) {
+      if (s->Type != S_VAR) continue;
       v = s->details;   
       if (v == NULL) { printf("error: var struct missing\n"); exit(1);}
       if ((v->put != NULL) | (v->get != NULL)) {
@@ -257,21 +199,24 @@ void SymbolPrintPvarTable()
 }
 
 
+//-----------------------------------------------------------------------------  
+// NewSymbolVar - Add new var to current context.
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-static Pvar *AddPvar(char *Name)
+static Var *NewSymbolVar(Context *co, char *Name)
 {  Symbol *s;
-   Pvar *v;
+   Var *v;
 //   static int ID = 0;
    
-   if (Verbose > 1) printf("// AddPvar Name: %s\n", Name);
+   if (Verbose > 1) printf("// NewSymbolVar Name: %s\n", Name);
    
-   s = AddSymbol();
+   s = NewSymbol(co);
    s->Name = CreateName(Name);
-   s->Type = S_PVAR;
+   s->Type = S_VAR;
 
-   v = malloc(sizeof(Pvar));
+   v = malloc(sizeof(Var));
+   CHECK_NULL(v);
+
    s->details = v;
    
 //   p->ID    = ID++;
@@ -289,62 +234,62 @@ static Pvar *AddPvar(char *Name)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-Pvar *SymbolGetPvar(char *SymbolName)
+Var *SymbolGetVar(Context *co, char *SymbolName)
 {  Symbol *s;
-   Pvar *v;
+   Var *v;
 
-   if (Verbose > 1) printf("// SymbolGetPvar Name: %s\n", SymbolName);
+   if (Verbose > 1) printf("// SymbolGetVar Name: %s\n", SymbolName);
 
-   for(s = SymbolHead; s != NULL; s = s->Next) {
+   for(s = co->Head; s != NULL; s = s->Next) {
 //printf("boom %x %x\n", s, s->Name);
       if (s == NULL) { break; }
       if (s->Name == NULL) { break; }  // unnamed identiefier (valid while ad in progress)
-      if (Verbose > 1) printf("// SymbolGetPvar check Name: %s at %x\n", s->Name, s);
+      if (Verbose > 1) printf("// SymbolGetVar check Name: %s at %x\n", s->Name, s);
          
       if (strcmp(SymbolName, s->Name) != 0) continue;
 //printf("roos\n");
       // name match                            
-      if (s->Type == S_PVAR) {
+      if (s->Type == S_VAR) {
          v = s->details;
          return v;
       } else {
-         printf("// GetPvar: name found with non-pvar type\n");
+         printf("// GetVar: name found with non-var type\n");
       }
    }          
    return NULL;
 }
 
 //----------------------------------------------------------------------------- 
-// SymbolGetOrAddPvar - Find Pvar record, create if it does not exist.
+// SymbolGetOrNewVar - Find Var record, create if it does not exist.
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-Pvar *SymbolGetOrAddPvar(char *Name)
-{  Pvar *v;
+Var *SymbolGetOrNewVar(Context *co, char *Name)
+{  Var *v;
 
-   if (Verbose > 1) printf("// SymbolGetOrAddPvar Name: %s\n", Name);
+   if (Verbose > 1) printf("// SymbolGetOrNewVar Name: %s\n", Name);
    
-   v = SymbolGetPvar(Name);
+   v = SymbolGetVar(GlobalContext, Name);
    
    if (v == NULL) {
-      v = AddPvar(Name);
-      if (Verbose > 1) printf("// SymbolGetOrAddPvar new %x\n", v);
+      v = NewSymbolVar(co, Name);
+      if (Verbose > 1) printf("// SymbolGetOrAddVar new %x\n", v);
    } else {
-      if (Verbose > 1) printf("// SymbolGetOrAddPvar found %x\n", v);
+      if (Verbose > 1) printf("// SymbolGetOrAddVar found %x\n", v);
    }
       
    return v;   
 }
 
 //-----------------------------------------------------------------------------
-// SymbolPvarAdd_PutName - set PutName value of pseudo-var
+// SymbolVarAdd_PutName - set PutName value of pseudo-var
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void SymbolPvarAdd_PutName(char *BaseName, char *PutName)
-{  Pvar *v;
+void SymbolVarAdd_PutName(Context *co, char *BaseName, char *PutName)
+{  Var *v;
 
-   if (Verbose > 1) printf("// SymbolPvarAdd_PutName BaseName: %s, PutName: %s\n", BaseName, PutName);
+   if (Verbose > 1) printf("// SymbolVarAdd_PutName BaseName: %s, PutName: %s\n", BaseName, PutName);
 
-   v = SymbolGetOrAddPvar(BaseName);                                              
+   v = SymbolGetOrNewVar(co, BaseName);                                              
    if (v == NULL) { printf("Error: PutName pointer v is NULL\n"); exit(1); }
    
    v->put = CreateName(PutName);   
@@ -353,10 +298,10 @@ void SymbolPvarAdd_PutName(char *BaseName, char *PutName)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void SymbolPvarAdd_GetName(char *BaseName, char *GetName)
-{  Pvar *v;
+void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName)
+{  Var *v;
 
-   v = SymbolGetOrAddPvar(BaseName);
+   v = SymbolGetOrNewVar(co, BaseName);
    v->get = CreateName(GetName);
    
 }
@@ -364,11 +309,83 @@ void SymbolPvarAdd_GetName(char *BaseName, char *GetName)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void SymbolPvarAdd_DataName(char *BaseName, char *DataName)
-{  Pvar *v;
-//   printf("SymbolPvarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
+void SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName)
+{  Var *v;
+//   printf("SymbolVarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
 
-   v = SymbolGetOrAddPvar(BaseName);
+   v = SymbolGetOrNewVar(co, BaseName);                       
 
    v->data =CreateName(DataName);
+} 
+
+//-----------------------------------------------------------------------------
+// CreateGlobalContext - create the basis of the global context
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void CreateGlobalContext(void)
+{ 
+   if (GlobalContext) {
+      printf("Serious warning: re-create global context\n");
+   }
+   GlobalContext = NewContext(NULL);
+   CHECK_NULL(GlobalContext);
+   
+   GlobalContext->IsGlobal = 1;  // set global flag in struct
 }
+
+
+//-----------------------------------------------------------------------------
+// _AddSymbolToContext - add node to context list
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+static void _AddSymbolToContext(Context *co, Symbol *s) {
+   if(co->Head == NULL) {
+      co->Head = s;
+   } else {
+      co->Last->Next = s;
+   }
+
+   co->Last = s; // save last for easy append
+   s->Next = NULL;
+}
+
+
+
+//-----------------------------------------------------------------------------
+// NewContext - 
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+Context *NewContext(Context *WiderContext)
+{  Context *co;
+
+   co = malloc(sizeof(Context));     
+   CHECK_NULL(co);
+
+	co->Head       = NULL;  // list of symbols
+	co->Last       = NULL;  // end list of symbols
+   co->Wider      = WiderContext; 
+   
+   co->IsGlobal   = 0;     // No global context (default)
+}
+
+//-----------------------------------------------------------------------------
+// NewSymbol - malloc memory for Symbol stuct & add to chain
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+static Symbol *NewSymbol(Context *co)
+{  Symbol *s;
+
+   if (Verbose > 1) printf("//NewSymbol\n");
+   s = malloc(sizeof(Symbol));
+   CHECK_NULL(s);
+
+   _AddSymbolToContext(co, s);
+
+	s->Name = NULL;
+	s->Type = 0;    // function, procedure, variable, constant
+
+   if (Verbose > 1) printf("//AddSymbol added %x\n", s);
+
+   return s;
+}
+

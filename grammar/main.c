@@ -16,6 +16,9 @@ int Verbose = 0;
 
 
 void CodeGenerate(pANTLR3_BASE_TREE p);
+void CIndent(int Level);
+
+
 
 void TreeWalk(pANTLR3_BASE_TREE p);    
 jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
@@ -107,7 +110,7 @@ int main (int argc, char *argv[])
 //   strcpy(s->Name, "drie");
 
     
-   if (Verbose) DumpSymbolTable();
+   if (Verbose) DumpSymbolTable(GlobalContext);
        
    return 0;
  
