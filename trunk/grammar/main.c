@@ -110,7 +110,7 @@ int main (int argc, char *argv[])
 //   strcpy(s->Name, "drie");
 
     
-   if (Verbose) DumpSymbolTable(GlobalContext);
+   if (Verbose) DumpContext(GlobalContext);
        
    return 0;
  
@@ -146,16 +146,7 @@ int main (int argc, char *argv[])
    return 0;
 }
 
-//-----------------------------------------------------------------------------
-// Indent - print indent for screen dump / treewalk
-//-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-void Indent(int Level)
-{   int i;
-   Level += 2;
-   printf("\n");   
-   for (i=0; i<Level; i++) printf("   ");
-}
+
 
 //-----------------------------------------------------------------------------
 // CIndent - print comment-indent for treewalk
@@ -204,9 +195,17 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
   
       ANTLR3_INPUT_STREAM *is = Token->input;
       printf("input stream %x,",is);
-//      printf("input stream %d,",is->fileName);
+//      printf("input stream %x,", is->fileName);
+//      printf("input stream %d,", (int)&is->data);
       printf("Line %d:%d)",Token->getLine(Token), Token->getCharPositionInLine(Token));
-      
+
+
+
+// works but only prints root file name.      
+// Need to initialize lexer somehow    
+//extern pjalLexer lxr;
+//printf("file name %s,",lxr->pLexer->input->fileName->chars);
+
 
 
 // error reporting stuff

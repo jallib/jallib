@@ -119,17 +119,17 @@ Symbol *GetSymbolPointer  (Context *co, char *SymbolName)
 void DumpSymbol(Symbol *s)
 {  int i;
       
-   printf("//\n//Symbol name: '%s' at %x, Type: %d ", s->Name, s, s->Type);
+   printf("//\n//   Symbol name: '%s' at %x, Type: %d ", s->Name, s, s->Type);
    switch (s->Type) {
       case S_FUNCTION : {                
          printf("(Function)\n");
          SymbolFunction *f = s->details;
          if (f == NULL) { printf("error: function struct missing\n"); exit(1);}
-         printf("//   Function returns %s (%d)\n", VarTypeString(f->ReturnType), f->ReturnType);         
+         printf("//      Function returns %s (%d)\n", VarTypeString(f->ReturnType), f->ReturnType);         
          SymbolParam *p = f->Param;
          for (;;) {
             if (p == NULL) break;
-            printf("//   param Name: '%s', Type: %s (%d), CallBy: %c\n",
+            printf("//      param Name: '%s', Type: %s (%d), CallBy: %c\n",
                   p->Name, jalParserTokenNames[p->Type], p->Type, p->CallMethod);
             p = p->next;    
          }
@@ -141,9 +141,15 @@ void DumpSymbol(Symbol *s)
          if (v == NULL) { printf("error: var struct missing\n"); exit(1);}
 
          if ((v->put == NULL) & (v->get == NULL)) {
-            printf("//   Regular VAR ");
+            if (v->CallMethod == 0) {
+               printf("//      Regular VAR ");
+            } else {
+               printf("//      Procedure/Function parameter, Type: %s, CallMethod: %c\n",
+                     jalParserTokenNames[v->Type], v->CallMethod );
+               printf("//         ");
+            }               
          } else {
-            printf("//   Put: %s, Get: %s, ",
+            printf("//      Put: %s, Get: %s, ",
                (v->put  != NULL) ? v->put  : "NULL",   
                (v->get  != NULL) ? v->get  : "NULL");   
          }
@@ -161,17 +167,29 @@ void DumpSymbol(Symbol *s)
 
 
 
+
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void DumpSymbolTable(Context *co)
+void DumpContext(Context *co)
 {  Symbol *s;
+   
+   printf("//DumpContext -------------------------------\n");
+
+   for (;;) {
+
+      if (co == NULL) break;
+
+      printf("//\n//Context %x, IsGlobal: %d\n", co, co->IsGlobal);
       
-   for(s = co->Head; s != NULL; s = s->Next) {
-      if (s== NULL) break;
-      //printf("DumpSymbolTable %x\n", s);
-      DumpSymbol(s);
-   }
+      for(s = co->Head; s != NULL; s = s->Next) {
+         if (s== NULL) break;
+         //printf("DumpSymbolTable %x\n", s);
+         DumpSymbol(s);
+      }
+
+      co = co->Wider;
+   }         
 }
 
 
@@ -220,13 +238,16 @@ static Var *NewSymbolVar(Context *co, char *Name)
    s->details = v;
    
 //   p->ID    = ID++;
+
+   v->Type        = 0;     // undetermined type
+   v->CallMethod  = 0;     // 0 = not a param, 'v' = value, 'r' = reference, 'c' = code
    
-   v->put      = NULL;   
-   v->get      = NULL;   
-   v->data     = NULL;   
-   v->size     = 1;
-   v->p1       = 0;
-   v->p2       = 0;
+   v->put         = NULL;   
+   v->get         = NULL;   
+   v->data        = NULL;   
+   v->size        = 1;     // size in bytes, bit values are rounded up.
+   v->p1          = 0;
+   v->p2          = 0;
 
    return v;
 }
@@ -295,7 +316,8 @@ void SymbolVarAdd_PutName(Context *co, char *BaseName, char *PutName)
    v->put = CreateName(PutName);   
 }
 
-//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------    
+// SymbolVarAdd_GetName -
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName)
@@ -306,7 +328,8 @@ void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName)
    
 }
 
-//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------   
+// SymbolVarAdd_DataName - 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName)
@@ -352,7 +375,7 @@ static void _AddSymbolToContext(Context *co, Symbol *s) {
 
 
 //-----------------------------------------------------------------------------
-// NewContext - 
+// NewContext - Create a new context level
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 Context *NewContext(Context *WiderContext)
