@@ -6,8 +6,8 @@ typedef struct ByCall_stuct {
 //   int  (*get)(struct ByCall_stuct *s, int Param) ;       
 
 
-   void (*put)(struct ByCall_stuct *s, int Value) ;
-   int  (*get)(struct ByCall_stuct *s) ;
+   void (*put)(const struct ByCall_stuct *s, char* Addr, int Value) ;
+   int  (*get)(const struct ByCall_stuct *s, char* Addr) ;
    void *data;
    int   Size; // size of type in bytes (round up)
    char  v1;     // var1, implementation-dependent
@@ -15,14 +15,11 @@ typedef struct ByCall_stuct {
 } ByCall;
 
 
+void     byte__put(ByCall *bc, char *Addr, char Byte)   { *Addr = Byte; }
+uint32_t byte__get(ByCall *bc, char *Addr)              { return *Addr; }
 
 
-// macro's
-// add_put naam, type
-// add_get
-// -- beide -- instantieer als nodig
-//          -- stop translate-time in lijstje en stop dit aan het begin van main.
-
+const ByCall bc_byte = { (void *)&byte__put, (void *)&byte__get, NULL, 1, 0, 0};
 
 
 //// http://www.newty.de/fpt/fpt.html#defi

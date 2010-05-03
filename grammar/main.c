@@ -193,8 +193,8 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
       CIndent(Level);            
       printf("%s (%d, %s from ",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
   
-      ANTLR3_INPUT_STREAM *is = Token->input;
-      printf("input stream %x,",is);
+//      ANTLR3_INPUT_STREAM *is = Token->input;
+//      printf("input stream %x,",is);
 //      printf("input stream %x,", is->fileName);
 //      printf("input stream %d,", (int)&is->data);
       printf("Line %d:%d)",Token->getLine(Token), Token->getCharPositionInLine(Token));
