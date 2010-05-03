@@ -102,18 +102,43 @@ void SymbolParamSetName(SymbolParam *p, char *Name)
 //-----------------------------------------------------------------------------
 // GetSymbolPointer - 
 //-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-Symbol *GetSymbolPointer  (Context *co, char *SymbolName)
-{  Symbol *s;
-   
-   for(s = co->Head; s != NULL; s = s->Next) {
-      if (strcmp(SymbolName, s->Name) != 0) continue;
+// from current context or wider.
 
-      // match
-      return s;
-   }       
-   
-   return NULL;
+//-----------------------------------------------------------------------------
+Symbol *GetSymbolPointer(Context *co, char *SymbolName, int SymbolType, int IncludeGlobal)
+{  Symbol *s;
+
+   if (Verbose > 1) printf("\n// GetSymbolPointer co: %x, SymbolName: %s, Type: %d, IncludeGolbal: %d\n", 
+                                   co, SymbolName, SymbolType, IncludeGlobal);
+
+   for (;co != NULL; co=co->Wider) {  
+
+      if (Verbose > 2) printf("\n// GetSymbolPointer co %x\n", co);
+                        
+      // return if Global scope is not included.   
+      if ((co->IsGlobal) && (IncludeGlobal == 0)) return NULL; 
+
+      if (Verbose > 2) printf("// GetSymbolPointer mark 1\n");
+         
+      for(s = co->Head; s != NULL; s = s->Next) {       
+
+         if (Verbose > 2) printf("\n//    GetSymbolPointer s %x\n", s);
+         
+         // check name
+         if (strcmp(SymbolName, s->Name) != 0) continue;
+         if (Verbose > 2) printf("//    GetSymbolPointer mark 2\n");
+
+         // check Type
+         if ((s->Type & SymbolType) == 0)  continue;
+         if (Verbose > 2) printf("//    GetSymbolPointer mark 3\n");
+
+         // -----         
+         // match
+         // -----         
+         return s;
+      }       
+   }
+   return NULL;  // no match
 }
   
 void DumpSymbol(Symbol *s)
@@ -252,7 +277,8 @@ static Var *NewSymbolVar(Context *co, char *Name)
    return v;
 }
 
-//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------  
+// OBSOLETE?? See Symbol *GetSymbolPointer  (Context *co, char *SymbolName, int SymbolType, int IncludeGlobal)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 Var *SymbolGetVar(Context *co, char *SymbolName)

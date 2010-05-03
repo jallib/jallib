@@ -13,11 +13,9 @@
 ////extern pANTLR3_UINT8   jalParserTokenNames[];
 //#include "symboltable.h"
 
-SymbolFunction *ActiveProcedureDefintion = NULL; // used for dereferencing procedure params within procedure body
-
 // Pass 1 collects global variables, constants and function/procedure defs
 // Pass 2 collects the rest, all 'loose' code and puts it into main.
-static int Pass;
+int Pass;
 
 
 
@@ -60,11 +58,15 @@ static int Pass;
 
 #define REPORT_NODE(string, node) {                   \
    Indent(Level);                                     \
-   printf("// %s %s %s (%d, %s)\n",                   \
+   printf("// %s %s %s (%d, %s) from",                \
          ThisFuncName, string,                        \
          node->toString(node)->chars,                 \
          node->getType(node),                         \
          jalParserTokenNames[TokenType]);             \
+   printf("Line %d:%d)\n",                            \
+         Token->getLine(Token),                       \
+         Token->getCharPositionInLine(Token));        \
+                                                      \
 }                                                     \
 
 #define PASS1 if ((Level == 1) & (Pass != 1)) break;
@@ -159,24 +161,23 @@ char *GetUniqueIdentifier()
 //
 // 0 = not found, else value of CallMethod (Value, Reference, Code)
 //-----------------------------------------------------------------------------
-char GetCallMethod(char *ParamName)
+char GetCallMethod(Context *co, char *ParamName)
 {  SymbolFunction *f; 
    SymbolParam *p;
    int i;
+
+
+   Symbol *s = GetSymbolPointer(co, ParamName, S_VAR, 0); // search for var, exclude global context. 
+
+   if (s == NULL) return 0;   // symbol not found
+      
+   Var *v = s->details;
    
-   if (ActiveProcedureDefintion == NULL) return 0;      
-   f = ActiveProcedureDefintion; // use short name...
-    
-    
-   for (p = f->Param; p != NULL; p=p->next) {
-//      printf("// Check %s\n", s->Param[i].Name);           
-      if (strcmp(ParamName, p->Name) == 0) { 
-         // match
-//         printf("// match %c\n", s->Param[i].CallMethod);           
-         return p->CallMethod;
-      }
-   }   
-   return 0;   
+   if (v->CallMethod == 0) {
+      if (Verbose) printf("\n// GetCallMethod - found var without call-method (var is not param)");
+   }
+      
+   return v->CallMethod;
 }
 
                     
@@ -191,17 +192,18 @@ char *DeRefSub(char *InString, char CallMethod)
       return DeRefString;   
    }
    if (CallMethod == 'c') {
-      // call by code
-      printf("Error: call by code (void, pseudo-vars) not supported, param:");
+      // call by reference, so dereference before use
+      sprintf(DeRefString, "*%s", InString);
+      return DeRefString;   
    }
    return InString;
 }
 
 
-char *DeReference(char *InString)
+char *DeReference(Context *co, char *InString)
 {  char cm; 
 
-   cm = GetCallMethod(InString);
+   cm = GetCallMethod(co, InString);
 
    return DeRefSub(InString, cm);
 }
@@ -217,23 +219,47 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
    Var *v;
-       
+   Symbol *s;
+
    switch(TokenType) {
       case IDENTIFIER :
 
-         v= SymbolGetVar(GlobalContext, t->toString(t)->chars);
-      
+         // lookup indentifier in context
+         s = GetSymbolPointer(co, t->toString(t)->chars, S_VAR, 1); // search for var, in local and global context
+         v = NULL;
+         if (s != NULL) v = s->details;
+//         v= SymbolGetVar(GlobalContext, t->toString(t)->chars);
+
          if ((v) && (v->get != NULL)) {
             // there is a var record.
             // we have a get function, so call to get value
             if (Verbose) Indent(Level);
             printf("%s()", v->get);         
-            if (Verbose) printf(" // %s call pseudovar put", ThisFuncName);
-         } else {
+            if (Verbose) printf(" // %s call pseudovar put", ThisFuncName); 
+            break;
+         } 
+            
+         if ((v) && (v->CallMethod == 'r')) {
+            // a procedure parameter, passed as reference
             if (Verbose) Indent(Level);            
-            printf("%s", DeReference(t->toString(t)->chars));
-            if (Verbose) printf("// identifier");
+            printf("*%s", t->toString(t)->chars);
+            if (Verbose) printf("// %s identifier - dereferenced param", ThisFuncName);
+            break;
          }
+
+         if ((v) && (v->CallMethod == 'c') ) {
+            // a procedure parameter, passed by call
+            if (Verbose) Indent(Level);            
+            printf("(*%s__bc->get)(%s__bc, %s__p)", t->toString(t)->chars, t->toString(t)->chars, t->toString(t)->chars);
+            if (Verbose) printf(" // %s identifier - ByCall param", ThisFuncName);
+            break;
+         }
+
+         // default - call by value, unknown call-methode or unknown identifier
+         if (Verbose) Indent(Level);            
+         printf("%s", t->toString(t)->chars);
+         if (Verbose) printf("// %s identifier (default)", ThisFuncName);   
+            
          break;
       case DECIMAL_LITERAL :
          if (Verbose) Indent(Level);            
@@ -277,7 +303,7 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          break;
 
       case FUNC_PROC_CALL :
-         CgFuncProcCall(co, t, Level+VLEVEL);
+         CgProcFuncCall(co, t, Level+VLEVEL);
          break;
 
       default :
@@ -296,7 +322,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgAssign";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
-   Var *v;
+   Var *v = NULL;
 
    // first node is identifier to assign to. 
    ChildIx = 0;
@@ -306,32 +332,70 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
       printf("%s error: token %s \n", ThisFuncName, c->toString(c)->chars);
       return;
    }                
-          
-   v= SymbolGetVar(GlobalContext, c->toString(c)->chars);
 
-   if (v) {
-      // there is a var record.
-      if (v->put != NULL) {
-         // we have a put function, so call in stead of assing
-         Indent(Level);
-         printf("%s(", v->put);         
-         if (Verbose) printf(" // %s call pseudovar put", ThisFuncName);
+   // lookup indentifier in context
+   Symbol *s = GetSymbolPointer(co, c->toString(c)->chars, S_VAR, 1); // search for var, in local and global context
+   if (s != NULL) v= s->details;
+                
+   if ((v != NULL) && (v->put != NULL)) {
+      // we have a put function, so call in stead of assing
+      // (this is the use of a global defined put function within an assignment)
+      Indent(Level);
+      printf("%s(", v->put);         
+      if (Verbose) printf(" // %s call pseudovar put", ThisFuncName);
 
-         // second node is expr
-         c = t->getChild(t, 1);  
-         CgExpression(co, c, Level + 1);      
+      // second node is expr
+      c = t->getChild(t, 1);  
+      CgExpression(co, c, Level + 1);      
 
-         if (Verbose) Indent(Level);
-         printf(")");
-         if (Verbose) printf(" // %s var__put call", ThisFuncName);
-                                 
-         return;
+      if (Verbose) Indent(Level);
+      printf(")");
+      if (Verbose) printf(" // %s var__put call", ThisFuncName);
+                              
+      return;
+   }
+   
+   if (v != NULL) {
+      switch (v->CallMethod) {
+         case 'r' : {
+            // call by reference (so it is a procedure parameter)
+            Indent(Level);  // this one always!
+            printf("*%s  = ", c->toString(c)->chars);
+            if (Verbose) printf(" // %s identifier call by reference", ThisFuncName);
+
+            // second node is expr
+            c = t->getChild(t, 1);  
+            CgExpression(co, c, Level + 1);      
+
+            return;                        
+         }
+         case 'c' : {
+            // call by code (so it is a procedure parameter)
+            Indent(Level);  // this one always!
+            printf("(*%s__bc->put)(%s__bc, %s__p, ", c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars);
+            if (Verbose) printf(" // %s identifier call by code", ThisFuncName);
+
+            // second node is expr
+            c = t->getChild(t, 1);  
+            CgExpression(co, c, Level + 1);      
+            if (Verbose) Indent(Level);
+            printf(")");
+            if (Verbose) printf(" // %s identifier call by code closure", ThisFuncName);
+
+            return;
+         } 
+         default : {
+            // 'v' or 0 -> call by value
+            break;
+         }
       }
    }
-   // normal var
+
+   
+   // 'v' or 0 or not found -> default = call by value
    Indent(Level);  // this one always!
-   printf("%s  = ", DeReference(c->toString(c)->chars));
-   if (Verbose) printf(" // %s identifier", ThisFuncName);
+   printf("%s  = ", DeReference(co, c->toString(c)->chars));
+   if (Verbose) printf(" // %s identifier call by value", ThisFuncName);
 
    // second node is expr
    c = t->getChild(t, 1);  
@@ -441,7 +505,7 @@ void CgFor(Context *co, pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgFor";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
-   char *Ident = NULL;
+   char *LoopVar = NULL;
      
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       
@@ -450,20 +514,21 @@ void CgFor(Context *co, pANTLR3_BASE_TREE t, int Level)
       switch(TokenType) {
          case L_USING : {  
             cc = c->getChild(c, 0);
-            Ident = cc->toString(cc)->chars;         
-            printf("// Using var %s\n", Ident);
+            LoopVar = cc->toString(cc)->chars;         
+            printf("// Using var %s\n", LoopVar);
             break;
          }
          case CONDITION : {
-            if (Ident == NULL) {
-               Ident = GetUniqueIdentifier();   
-               printf("unsigned char %s;\n", Ident);
+            if (LoopVar == NULL) {
+               LoopVar = GetUniqueIdentifier();   
+               Indent(Level);
+               printf("unsigned char %s;\n", LoopVar);
             } 
             Indent(Level);            
-            printf(" for (%s=0;%s<\n", Ident, Ident);
+            printf(" for (%s=0;%s<\n", LoopVar, LoopVar);
             CgExpression(co, c->getChild(c, 0), Level+VLEVEL);
             Indent(Level);            
-            printf(";%s++) // End of for condition\n", Ident);
+            printf(";%s++) // End of for condition\n", LoopVar);
             break;
          }
          case BODY : {
@@ -567,12 +632,12 @@ void CgRepeat(Context *co, pANTLR3_BASE_TREE t, int Level)
 }
 
 //-----------------------------------------------------------------------------
-// CgFuncProcCall - 
+// CgProcFuncCall - 
 //-----------------------------------------------------------------------------
 // A FuncProc node has child for it's name and one for each parameter (expression)
 //-----------------------------------------------------------------------------
-void CgFuncProcCall(Context *co, pANTLR3_BASE_TREE t, int Level)
-{  char *ThisFuncName = "CgFuncProcCall";
+void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
+{  char *ThisFuncName = "CgProcFuncCall";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
    int GotFirstParam = 0;
@@ -588,13 +653,13 @@ void CgFuncProcCall(Context *co, pANTLR3_BASE_TREE t, int Level)
          // function/procedure name
          if (Verbose) Indent(Level); 
          printf(" %s(", c->toString(c)->chars);         
-         s = GetSymbolPointer(GlobalContext, c->toString(c)->chars);
+         s = GetSymbolPointer(GlobalContext, c->toString(c)->chars, S_FUNCTION, 1);
          if (s != NULL) {
-            if (Verbose > 1) printf("// CgFuncProcCall s: %x\n", s);
+            if (Verbose > 1) printf("// CgProcFuncCall s: %x\n", s);
             f = (SymbolFunction *) s->details;
-            if (Verbose > 1) printf("// CgFuncProcCall f: %x\n", f);
+            if (Verbose > 1) printf("// CgProcFuncCall f: %x\n", f);
             p =                f->Param;
-            if (Verbose > 1) printf("// CgFuncProcCall p: %x\n", p);
+            if (Verbose > 1) printf("// CgProcFuncCall p: %x\n", p);
          } else {
             p = NULL;
          }
@@ -604,21 +669,55 @@ void CgFuncProcCall(Context *co, pANTLR3_BASE_TREE t, int Level)
       if (GotFirstParam) printf(",");
       GotFirstParam = 1;
 
-      if ((p != NULL) && (p->CallMethod == 'r')) {
-         if (Verbose > 1) printf("// call by reference\n"); 
-         // call by reference
-         if (TokenType == IDENTIFIER) {
-            if (Verbose) Indent(Level);            
-            printf("&%s ", DeReference(c->toString(c)->chars));
-            if (Verbose) printf("// identifier by reference");
-         } else {
-            printf("Error: can't use this parameter to call by reference.\n");
-         }         
-      } else {
-         if (Verbose > 1) printf("// call by value\n");
-         // call by value
-         CgExpression(co, c, Level + 1);      
-      }              
+      char CallMethod = 0;
+      if (p != NULL) CallMethod = p->CallMethod;
+
+      switch(CallMethod) {
+         case  0 :
+         case 'v': {
+            // call by value
+            if (Verbose > 1) printf("// call by value\n");
+            // call by value
+            CgExpression(co, c, Level + 1);      
+            break;          
+         }
+         case 'r': {
+            // call by reference
+            if (TokenType == IDENTIFIER) {
+               if (Verbose) Indent(Level);            
+               printf("&%s ", DeReference(co, c->toString(c)->chars));
+               if (Verbose) printf("// identifier by reference");
+            } else {
+               printf("Error: can't use this parameter to call by reference.\n");
+            }         
+            break;          
+         }
+         case 'c': {
+            // call by code
+            if (TokenType == IDENTIFIER) {
+               if (Verbose) Indent(Level);            
+               printf("&bc_byte, &%s ", DeReference(co, c->toString(c)->chars)); // &bc_byte = bycall stuct pointer, todo: determine actual type of param (not target, source param)
+               if (Verbose) printf("// identifier by reference");
+            } else {
+               printf("Error: can't use this parameter to call by code.\n");
+            }         
+            break;          
+         }
+      }
+         
+
+//      if ((p != NULL) && (p->CallMethod == 'r')) {
+//         if (Verbose > 1) printf("// call by reference\n"); 
+//         // call by reference
+//         if (TokenType == IDENTIFIER) {
+//            if (Verbose) Indent(Level);            
+//            printf("&%s ", DeReference(co, c->toString(c)->chars));
+//            if (Verbose) printf("// identifier by reference");
+//         } else {
+//            printf("Error: can't use this parameter to call by reference.\n");
+//         }         
+//      } else {
+//      }              
       
       // note: p can be zero if the function name is unknown (in other words,
       // we don't have a prototype) or when we run out of parameters.
@@ -777,14 +876,15 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
 } 
 
 //-----------------------------------------------------------------------------
-// CgParamChilds - 
+// CgParamChilds - process childs of a procedure param at definition/prototype time 
 //-----------------------------------------------------------------------------
 // A ParamChilds node
 //-----------------------------------------------------------------------------
-void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p)
+void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, int VarType)
 {  char *ThisFuncName = "CgParamChilds";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
           
+//            printf("%s", VarTypeString(VarType));           
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
 
       CODE_GENERATOR_GET_CHILD_INFO
@@ -808,9 +908,28 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p)
             if (Verbose) Indent(Level);            
             // store procedure param name
 //            strcpy(SymbolTail->Param[(SymbolTail->NrOfParams)-1].Name, c->toString(c)->chars);
-            SymbolParamSetName(p, c->toString(c)->chars);
-            // deref if called by reference
-            printf(" %s ", DeRefSub(c->toString(c)->chars, p->CallMethod));  
+            SymbolParamSetName(p, c->toString(c)->chars);      
+            
+            switch(p->CallMethod) {
+               case  0 :
+               case 'v': {
+                  // call by value
+                  printf("%s %s", VarTypeString(VarType), c->toString(c)->chars);
+                  break;          
+               }
+               case 'r': {
+                  // call by reference
+                  printf("%s *%s", VarTypeString(VarType), c->toString(c)->chars);
+                  break;          
+               }
+               case 'c': {
+                  // call by reference
+                  printf("const ByCall *%s__bc, char *%s__p", c->toString(c)->chars, c->toString(c)->chars);
+                  break;          
+               }
+            }
+//            // deref if called by reference
+//            printf(" %s ", DeRefSub(c->toString(c)->chars, p->CallMethod));  
             if (Verbose)printf(" // ident");  
             break;
          }
@@ -853,13 +972,14 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
          case L_DWORD  : 
          case L_SDWORD : {     
             if (Verbose) Indent(Level);            
-            printf("%s", VarTypeString(TokenType)); 
-            if (Verbose) printf(" // TokenType: %d (Add param to SymbolTable", TokenType); 
+//            printf("%s", VarTypeString(TokenType)); 
 
             // add new parameter to current symbol  
+            if (Verbose) printf(" // TokenType: %d (Add param to SymbolTable", TokenType); 
             SymbolParam *p = SymbolFunctionAddParam(f, TokenType);
-
-            CgParamChilds(co, c, Level+VLEVEL, p);
+             
+            // process childs (identifier, volatile, in, out)
+            CgParamChilds(co, c, Level+VLEVEL, p, TokenType);
             
             // *copy* param info to context
             // (  We could add the pointer to p. But some day, we will free()
@@ -995,11 +1115,9 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
                printf("// start body");         
             }
             
-            if (Verbose) DumpContext(co);
-            
-            ActiveProcedureDefintion = f; // activate dereferencing for relevant parameters.
+            if (Verbose) DumpContext(co);            
+
             CgStatements(co, c, Level+1); // real level!
-            ActiveProcedureDefintion = NULL; // deactivate parameter dereferencing.
             Indent(Level);            
             printf("}\n");
             if (Verbose) {
@@ -1127,7 +1245,13 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
  
    if (Verbose) {      
       Indent(Level);            
-      printf("// %s (%d, %s)",t->toString(t)->chars, TokenType, jalParserTokenNames[TokenType]);   
+      printf("// %s (%d, %s from Line %d:%d)",
+            t->toString(t)->chars, 
+            TokenType, 
+            jalParserTokenNames[TokenType],
+            Token->getLine(Token), 
+            Token->getCharPositionInLine(Token));
+
    }
    
    switch(TokenType) {
@@ -1213,7 +1337,7 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
       case FUNC_PROC_CALL : {
          PASS2;
          Indent(Level); 
-         CgFuncProcCall(co, t, Level+VLEVEL);      
+         CgProcFuncCall(co, t, Level+VLEVEL);      
          if (Verbose) Indent(Level); 
          printf(";");       
          break;    

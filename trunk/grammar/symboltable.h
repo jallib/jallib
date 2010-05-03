@@ -85,6 +85,7 @@ typedef struct Context_type{
 // Types of symbol details
 #define S_FUNCTION 1
 #define S_VAR      2
+#define S_ALL      255
 
 
 // external vars & prototypes
@@ -97,7 +98,7 @@ char *CreateName(char *Name);
                            
 void DumpContext(Context *co);
                            
-Symbol *GetSymbolPointer  (Context *co, char *SymbolName);
+Symbol *GetSymbolPointer  (Context *co, char *SymbolName, int SymbolType, int IncludeGlobal);
 
 SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType);
 void SymbolParamSetName(SymbolParam *p, char *Name);
