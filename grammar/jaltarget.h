@@ -15,11 +15,19 @@ typedef struct ByCall_stuct {
 } ByCall;
 
 
-void     byte__put(ByCall *bc, char *Addr, char Byte)   { *Addr = Byte; }
-uint32_t byte__get(ByCall *bc, char *Addr)              { return *Addr; }
+void     byte__put(ByCall *bc, void *Addr, uint32_t Data)   { *(uint8_t  *)Addr = (uint8_t)   Data; }
+uint32_t byte__get(ByCall *bc, void *Addr)                  { return (uint32_t)  *(uint8_t  *)Addr; }
+
+void     word__put(ByCall *bc, void *Addr, uint32_t Data)   { *(uint16_t *)Addr = (uint16_t)  Data; }
+uint32_t word__get(ByCall *bc, void *Addr)                  { return (uint32_t)  *(uint16_t *)Addr; }
+
+void     dword__put(ByCall *bc, void *Addr, uint32_t Data)  { *(uint32_t *)Addr = (uint32_t)  Data; }
+uint32_t dword__get(ByCall *bc, void *Addr)                 { return (uint32_t)  *(uint32_t *)Addr; }
 
 
-const ByCall bc_byte = { (void *)&byte__put, (void *)&byte__get, NULL, 1, 0, 0};
+const ByCall bc_byte  = { (void *) &byte__put, (void *) &byte__get, NULL, 1, 0, 0};
+const ByCall bc_word  = { (void *) &word__put, (void *) &word__get, NULL, 2, 0, 0};
+const ByCall bc_dword = { (void *)&dword__put, (void *)&dword__get, NULL, 4, 0, 0};
 
 
 //// http://www.newty.de/fpt/fpt.html#defi

@@ -11,35 +11,8 @@ filelist {
    codegen.c    
    symboltable.c  
 
-   
    jalLexer.c 
    jalParser.c                      
-
-   libantlr3c-3.2\src\antlr3baserecognizer.c
-   libantlr3c-3.2\src\antlr3basetree.c
-   libantlr3c-3.2\src\antlr3basetreeadaptor.c
-   libantlr3c-3.2\src\antlr3bitset.c
-   libantlr3c-3.2\src\antlr3collections.c
-   libantlr3c-3.2\src\antlr3commontoken.c
-   libantlr3c-3.2\src\antlr3commontree.c
-   libantlr3c-3.2\src\antlr3commontreeadaptor.c
-   libantlr3c-3.2\src\antlr3commontreenodestream.c
-   libantlr3c-3.2\src\antlr3convertutf.c
-   libantlr3c-3.2\src\antlr3cyclicdfa.c
-#  libantlr3c-3.2\src\antlr3debughandlers.c
-   libantlr3c-3.2\src\antlr3encodings.c
-   libantlr3c-3.2\src\antlr3exception.c
-   libantlr3c-3.2\src\antlr3filestream.c
-   libantlr3c-3.2\src\antlr3inputstream.c
-   libantlr3c-3.2\src\antlr3intstream.c
-   libantlr3c-3.2\src\antlr3lexer.c
-   libantlr3c-3.2\src\antlr3parser.c
-   libantlr3c-3.2\src\antlr3rewritestreams.c
-   libantlr3c-3.2\src\antlr3string.c
-   libantlr3c-3.2\src\antlr3stringstream.c
-   libantlr3c-3.2\src\antlr3tokenstream.c
-   libantlr3c-3.2\src\antlr3treeparser.c
-   libantlr3c-3.2\src\antlr3ucs2inputstream.c
 }
 
 transform .g .c  {                   
@@ -60,7 +33,7 @@ transform .c .o {
 
 merge .o .exe {
 
-   exec "gcc -Wl,-Map=($projectname).map ($_) -o ($projectname).exe"
+   exec "gcc -Wl,-Map=($projectname).map ($_) .\libantlr3c-3.2\antlr3.lib -o ($projectname).exe"
 }
 
 command all { clean .exe }
@@ -74,14 +47,13 @@ command clean
 }
 
 command test {
-   set cmd    "jalparser "
+   set cmd    "jalparser  "
    append cmd " test.jal"
    append cmd " >test.c"
    exec ($cmd)
 
    exec "gcc test.c -otest.exe"
-   }
-
+}
 
 command terminal { 
   exec "c:\myrobot\jal\bootloader\pdload.exe port ($avr_comport) termspeed ($term_baudrate) TERM_RTSON TERMINAL"

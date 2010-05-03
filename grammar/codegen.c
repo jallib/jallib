@@ -250,7 +250,7 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          if ((v) && (v->CallMethod == 'c') ) {
             // a procedure parameter, passed by call
             if (Verbose) Indent(Level);            
-            printf("(*%s__bc->get)(%s__bc, %s__p)", t->toString(t)->chars, t->toString(t)->chars, t->toString(t)->chars);
+            printf("(%s)(*%s__bc->get)(%s__bc, %s__p)", VarTypeString(v->Type), t->toString(t)->chars, t->toString(t)->chars, t->toString(t)->chars);
             if (Verbose) printf(" // %s identifier - ByCall param", ThisFuncName);
             break;
          }
@@ -394,7 +394,8 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    
    // 'v' or 0 or not found -> default = call by value
    Indent(Level);  // this one always!
-   printf("%s  = ", DeReference(co, c->toString(c)->chars));
+//   printf("%s  = ", DeReference(co, c->toString(c)->chars));
+   printf("%s  = ", c->toString(c)->chars);
    if (Verbose) printf(" // %s identifier call by value", ThisFuncName);
 
    // second node is expr
@@ -561,6 +562,7 @@ void CgWhile(Context *co, pANTLR3_BASE_TREE t, int Level)
       c = t->getChild(t, ChildIx);
       if (c->getToken == NULL) {
          printf("Error: getToken null\n");
+// todo: add proper bc struct                     
          return;
       }
 
@@ -669,7 +671,7 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
       if (GotFirstParam) printf(",");
       GotFirstParam = 1;
 
-      char CallMethod = 0;
+      char CallMethod = 0; // method required by function
       if (p != NULL) CallMethod = p->CallMethod;
 
       switch(CallMethod) {
@@ -684,10 +686,35 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
          case 'r': {
             // call by reference
             if (TokenType == IDENTIFIER) {
-               if (Verbose) Indent(Level);            
-               printf("&%s ", DeReference(co, c->toString(c)->chars));
-               if (Verbose) printf("// identifier by reference");
-            } else {
+               if (Verbose) Indent(Level);             
+                  
+               // cm = call-method of identifier   
+               char cm = GetCallMethod(co, c->toString(c)->chars);
+               switch (cm) {
+                  case 0 :
+                  case 'v' : { // by value or unknown => create pointer
+                     printf("&%s ", c->toString(c)->chars);
+                     if (Verbose) printf("// identifier by reference, from value");
+                     break;
+                  }                     
+                  case 'r' : { // by reference => just pass pointer
+                     printf("%s ", c->toString(c)->chars);
+                     if (Verbose) printf("// identifier by reference, from reference");
+                     break;
+                  }                     
+                  case 'c' : { // by code       
+                     // here we need to create a var, get the value and pass the parameter.
+                     // and... we can't do this - create a var within a procedure call - can we?
+                     // so we need a scan of parameters before the actual call...
+                     printf("not supported yet: %s ", c->toString(c)->chars);
+                     if (Verbose) printf("// identifier by reference, from call");
+                     break;
+                  }                     
+               }                  
+//               printf("&%s ", DeReference(co, c->toString(c)->chars));
+               if (Verbose) printf("// identifier by reference default..");
+            } else {                     
+               // constants etc.
                printf("Error: can't use this parameter to call by reference.\n");
             }         
             break;          
@@ -696,28 +723,38 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
             // call by code
             if (TokenType == IDENTIFIER) {
                if (Verbose) Indent(Level);            
-               printf("&bc_byte, &%s ", DeReference(co, c->toString(c)->chars)); // &bc_byte = bycall stuct pointer, todo: determine actual type of param (not target, source param)
-               if (Verbose) printf("// identifier by reference");
+
+               // cm = call-method of identifier   
+               char cm = GetCallMethod(co, c->toString(c)->chars);
+               switch (cm) {
+                  case 0 :
+                  case 'v' : { // by value or unknown => create pointer
+// todo: add proper bc struct                     
+                     printf("&bc_byte, &%s", c->toString(c)->chars);
+                     if (Verbose) printf("// identifier by code, from value");
+                     break;
+                  }                     
+                  case 'r' : { // by reference 
+// todo: add proper bc struct                     
+                     printf("&bc_byte, %s ", c->toString(c)->chars);
+                     if (Verbose) printf("// identifier by code, from reference");
+                     break;
+                  }                     
+                  case 'c' : { // by code => just pass received params
+                     printf("%s__bc, %s__p ", c->toString(c)->chars, c->toString(c)->chars);
+                     if (Verbose) printf("// identifier by code, from code");
+                     break;
+                  }                     
+               }               
+
+               if (Verbose) printf("// identifier by reference qq");
             } else {
+               // constants etc
                printf("Error: can't use this parameter to call by code.\n");
             }         
             break;          
          }
       }
-         
-
-//      if ((p != NULL) && (p->CallMethod == 'r')) {
-//         if (Verbose > 1) printf("// call by reference\n"); 
-//         // call by reference
-//         if (TokenType == IDENTIFIER) {
-//            if (Verbose) Indent(Level);            
-//            printf("&%s ", DeReference(co, c->toString(c)->chars));
-//            if (Verbose) printf("// identifier by reference");
-//         } else {
-//            printf("Error: can't use this parameter to call by reference.\n");
-//         }         
-//      } else {
-//      }              
       
       // note: p can be zero if the function name is unknown (in other words,
       // we don't have a prototype) or when we run out of parameters.
@@ -1041,6 +1078,7 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
       
       CODE_GENERATOR_GET_CHILD_INFO
 
+      if (Verbose > 1) REPORT_NODE("\n//CgProcedureDef childs", c)
       switch(TokenType) {
 
          // L_PUT or L_GET are the first childs if they exist. The flags influence further processing.
