@@ -25,6 +25,9 @@
 //#include    "jalLexer.h"
 //#include    "jalParser.h"
 
+pjalLexer		    lxr;
+
+
 jalParser_program_return ParseSource(pANTLR3_UINT8 fName)
 {
        // Now we declare the ANTLR related local variables we need.
@@ -63,7 +66,7 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName)
     // The lexer is supplied with a pANTLR3_INPUT_STREAM from whence it consumes its
     // input and generates a token stream as output.
     //
-    pjalLexer		    lxr;
+//    pjalLexer		    lxr;
 
     // The token stream is produced by the ANTLR3 generated lexer. Again it is a structure based
     // API/Object, which you can customise and override methods of as you wish. a Token stream is
@@ -257,4 +260,3 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line)
    // So leave PUSHSTREAM in the gramar-file.
    return in;
 }
-            

@@ -8,11 +8,13 @@
 
 #include    "symboltable.h"
 
+// command line switches
 extern int Verbose;
 extern int NoInclude;
 
+#define VLEVEL (Verbose > 0 ? 1 : 0) 
+
 // main function prototypes
-void Indent(int Level);
 void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level);
 pANTLR3_INPUT_STREAM JalOpenInclude(char *Line);
 
@@ -29,27 +31,29 @@ char *GetUniqueIdentifier(void);
 char GetCallMethod(char *ParamName);
 char *DeRefSub(char *InString, char CallMethod);
 char *DeReference(char *InString);
+void PrintJ2cString(char *String);
+void Indent(int Level);
 
 void CodeGenerate(pANTLR3_BASE_TREE t);
 
-int CgExpression(pANTLR3_BASE_TREE t, int Level);
-void CgAssign(pANTLR3_BASE_TREE t, int Level);
-void CgCaseValue(pANTLR3_BASE_TREE t, int Level);
-void CgCase(pANTLR3_BASE_TREE t, int Level);
-void CgFor(pANTLR3_BASE_TREE t, int Level);
-void CgWhile(pANTLR3_BASE_TREE t, int Level);
-void CgRepeat(pANTLR3_BASE_TREE t, int Level);
-void CgSingleVar(pANTLR3_BASE_TREE t, int Level);
-void CgVar(pANTLR3_BASE_TREE t, int Level);
-void CgParamChilds(pANTLR3_BASE_TREE t, int Level, SymbolParam *p);
-void CgParams(pANTLR3_BASE_TREE t, int Level, SymbolFunction *f);
-void CgProcedureDef(pANTLR3_BASE_TREE t, int Level);
-void CgConst(pANTLR3_BASE_TREE t, int Level);
-void CgIf(pANTLR3_BASE_TREE t, int Level);
-void CgForever(pANTLR3_BASE_TREE t, int Level);
-void CgStatements(pANTLR3_BASE_TREE t, int Level);
-void CgFuncProcCall(pANTLR3_BASE_TREE t, int Level);
-void CgStatement(pANTLR3_BASE_TREE t, int Level);
+int CgExpression     (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgAssign        (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgCaseValue     (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgCase          (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgFor           (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgWhile         (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgRepeat        (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgSingleVar     (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgVar           (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgParamChilds   (Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p);
+void CgParams        (Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f);
+void CgProcedureDef  (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgConst         (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgIf            (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgForever       (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgStatements    (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgFuncProcCall  (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgStatement     (Context *co, pANTLR3_BASE_TREE t, int Level);
 
 
 

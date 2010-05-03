@@ -42,6 +42,11 @@ typedef struct SymbolFunction_struct{
 // Variable struct 
 //-----------------------------------------------------------------------------
 typedef struct Var_stuct {          
+
+   // param-related
+   int      Type;	                                                            
+   char     CallMethod; // 0 = no param, 'v' = value, 'r' = reference, 'c' = code
+
    char *put;     // put function name
    char *get;     // get function name
    char *data;    // data field name 
@@ -89,7 +94,9 @@ extern Context *GlobalContext;
 
 char *CreateName(char *Name);
                            
-void DumpSymbolTable(Context *co);
+                           
+void DumpContext(Context *co);
+                           
 Symbol *GetSymbolPointer  (Context *co, char *SymbolName);
 
 SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType);
