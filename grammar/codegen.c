@@ -16,6 +16,8 @@
 // Pass 1 collects global variables, constants and function/procedure defs
 // Pass 2 collects the rest, all 'loose' code and puts it into main.
 int Pass;
+#define PASS1 if ((Level == 1) & (Pass != 1)) break;
+#define PASS2 if ((Level == 1) & (Pass != 2)) break;
 
 
 
@@ -45,10 +47,7 @@ int Pass;
                                                                   
 #define CODE_GENERATOR_GET_CHILD_INFO           \
       c = t->getChild(t, ChildIx);              \
-      if (c->getToken == NULL) {                \
-         printf("Error: getToken null\n");      \
-         return;                                \
-      }                                         \
+      assert (c->getToken != NULL);             \
                                                 \
       /* get data of child */                   \
       Token = c->getToken(c);                   \
@@ -69,8 +68,6 @@ int Pass;
                                                       \
 }                                                     \
 
-#define PASS1 if ((Level == 1) & (Pass != 1)) break;
-#define PASS2 if ((Level == 1) & (Pass != 2)) break;
 
 
 //-----------------------------------------------------------------------------
@@ -360,7 +357,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
          case 'r' : {
             // call by reference (so it is a procedure parameter)
             Indent(Level);  // this one always!
-            printf("*%s  = ", c->toString(c)->chars);
+            printf("*%s = ", c->toString(c)->chars);
             if (Verbose) printf(" // %s identifier call by reference", ThisFuncName);
 
             // second node is expr
@@ -395,7 +392,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    // 'v' or 0 or not found -> default = call by value
    Indent(Level);  // this one always!
 //   printf("%s  = ", DeReference(co, c->toString(c)->chars));
-   printf("%s  = ", c->toString(c)->chars);
+   printf("%s = ", c->toString(c)->chars);
    if (Verbose) printf(" // %s identifier call by value", ThisFuncName);
 
    // second node is expr
@@ -428,18 +425,18 @@ void CgCaseValue(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          case BODY : {
-            Indent(Level);  
+            if (Verbose) Indent(Level);  
             printf("{ ");
             Level ++;
-            Indent(Level);  
+            if (Verbose) Indent(Level);  
             if (Verbose) printf("// start case body");
             cc = c->getChild(c, 0);
-            CgStatement(co, cc, Level+1); // real level
+            CgStatement(co, cc, Level); // real level, but already raised in code above
             Indent(Level);  
-            printf("break;\n");
+            printf("break;");
             Level --;
             Indent(Level);  
-            printf("} ");
+            printf("}");
             if (Verbose) printf("// end case body");
             break;  
          }
@@ -467,10 +464,12 @@ void CgCase(Context *co, pANTLR3_BASE_TREE t, int Level)
       switch(TokenType) {
          case CONDITION : {
             Indent(Level);   
-            printf("switch( // case\n");         
+            printf("switch(");         
+            if (Verbose) printf(" // case");         
             CgExpression(co, c->getChild(c, 0), Level+VLEVEL);
-            Indent(Level);            
-            printf(") { // case\n");         
+            if (Verbose) Indent(Level);            
+            printf(") {");         
+            if (Verbose) printf("// case");         
             break;
          }
          case CASE_VALUE : {
@@ -479,11 +478,15 @@ void CgCase(Context *co, pANTLR3_BASE_TREE t, int Level)
          }
          case L_OTHERWISE : {  
             Indent(Level);   
-            printf("default : { // case\n");                     
+            printf("default : {");                     
+            if (Verbose) printf(" // case");                     
             cc = c->getChild(c, 0);
             CgStatement(co, cc, Level+1); //real level   
+            Indent(Level+1);  
+            printf("break;");            
             Indent(Level);  
-            printf("break; } // case body\n");            
+            printf("}");            
+            if (Verbose) printf("// case body");                     
             break;  
          }
          default: {            
@@ -493,7 +496,8 @@ void CgCase(Context *co, pANTLR3_BASE_TREE t, int Level)
       }
    }                
    Indent(Level);            
-   printf("} // case\n");         
+   printf("}");         
+   if (Verbose) printf("// case/switch body\n");         
 }
 
 //-----------------------------------------------------------------------------
@@ -523,21 +527,24 @@ void CgFor(Context *co, pANTLR3_BASE_TREE t, int Level)
             if (LoopVar == NULL) {
                LoopVar = GetUniqueIdentifier();   
                Indent(Level);
-               printf("unsigned char %s;\n", LoopVar);
+               printf("uint32_t %s;\n", LoopVar);
             } 
             Indent(Level);            
-            printf(" for (%s=0;%s<\n", LoopVar, LoopVar);
+            printf("for (%s=0;%s<", LoopVar, LoopVar);
             CgExpression(co, c->getChild(c, 0), Level+VLEVEL);
-            Indent(Level);            
-            printf(";%s++) // End of for condition\n", LoopVar);
+            if (Verbose) Indent(Level);            
+            printf(";%s++) ", LoopVar);
+            if (Verbose) printf(" // End of for condition\n");
             break;
          }
          case BODY : {
-            Indent(Level);            
-            printf("{ // for body\n");
+            if (Verbose) Indent(Level);            
+            printf("{");
+            if (Verbose) printf(" // for body\n");
             CgStatements(co, c, Level+1); // real level
             Indent(Level);            
-            printf("} // for body\n");
+            printf("}");
+            if (Verbose) printf("// for body\n");
 //            GotBody = 1;
             break;  
          }
@@ -560,11 +567,7 @@ void CgWhile(Context *co, pANTLR3_BASE_TREE t, int Level)
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       c = t->getChild(t, ChildIx);
-      if (c->getToken == NULL) {
-         printf("Error: getToken null\n");
-// todo: add proper bc struct                     
-         return;
-      }
+      assert(c->getToken != NULL);
 
       /* get data of child */      
       Token = c->getToken(c);                
@@ -573,18 +576,22 @@ void CgWhile(Context *co, pANTLR3_BASE_TREE t, int Level)
       switch(TokenType) {
          case CONDITION : {
             Indent(Level);            
-            printf(" while ( // condition start\n");
+            printf("while(");
+            if (Verbose) printf("// condition start");
             CgExpression(co, c->getChild(c,0), Level+VLEVEL);
-            Indent(Level);            
-            printf(") \n // while condition end\n");
+            if (Verbose) Indent(Level);            
+            printf(") ");
+            if (Verbose) printf(" // while condition end");
             break;
          }
          case BODY : {
-            Indent(Level);            
-            printf("{ // while body\n");
+            if (Verbose) Indent(Level);            
+            printf("{");
+            if (Verbose) printf(" // while body");
             CgStatements(co, c, Level+1); // real level
             Indent(Level);            
-            printf("} // while body\n");
+            printf("}");
+            if (Verbose) printf("// while body");
             break;
          }
          default: {            
@@ -611,18 +618,22 @@ void CgRepeat(Context *co, pANTLR3_BASE_TREE t, int Level)
       switch(TokenType) {
          case BODY : {
             Indent(Level);            
-            printf("do { // repeat body\n");
+            printf("do { ");
+            if (Verbose) printf(" // repeat body");
             CgStatements(co, c, Level+1); // real level
-            Indent(Level);            
-            printf("} // repeat body\n");
+            if (Verbose) Indent(Level);            
+            printf("} ");
+            if (Verbose) printf("// repeat body");
             break;
          }       
          case CONDITION : {
             Indent(Level);            
-            printf(" while ( // repeat condition start\n");
+            printf("while ((");
+            if (Verbose)printf("// repeat condition start\n");
             CgExpression(co, c->getChild(c,0), Level+VLEVEL);
-            Indent(Level);            
-            printf("); \n // repeat condition end\n");
+            if (Verbose) Indent(Level);            
+            printf(") == 0);");
+            if (Verbose) printf(" // repeat-until condition end");
             break;
          }         
          default: {            
@@ -654,7 +665,7 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
       if (ChildIx == 0) {
          // function/procedure name
          if (Verbose) Indent(Level); 
-         printf(" %s(", c->toString(c)->chars);         
+         printf("%s(", c->toString(c)->chars);         
          s = GetSymbolPointer(GlobalContext, c->toString(c)->chars, S_FUNCTION, 1);
          if (s != NULL) {
             if (Verbose > 1) printf("// CgProcFuncCall s: %x\n", s);
@@ -783,7 +794,7 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level)
       switch(TokenType) {
          case IDENTIFIER : {
             if (Verbose) Indent(Level);            
-            printf(" %s ", c->toString(c)->chars);       
+            printf("%s ", c->toString(c)->chars);       
 //printf("\n// %d\n", Level);
 //            if (Level == 3) { // this is a tricky one; indent may change...
 //               printf("CgSingleVar p1\n");
@@ -893,7 +904,7 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
          case VAR : {   
             if (Verbose) Indent(Level);            
             if (GotType == 0) {
-               printf(" const long");
+               printf("const long ");
                if (Verbose) printf(" // default const type\n");
                GotType = 1;        
             }
@@ -1190,11 +1201,17 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
 
    Indent(Level);
    switch (TokenType) {
-      case L_IF   :  printf("if        // %s\n", ThisFuncName);    
+      case L_IF   :
+         printf("if");    
+         if (Verbose) printf(" // %s", ThisFuncName);    
          break;
-      case L_ELSIF : printf("else if   // %s\n", ThisFuncName);    
+      case L_ELSIF : 
+         printf("else if");    
+         if (Verbose) printf(" // %s", ThisFuncName);    
          break;
-      case L_ELSE :  printf("else      // %s\n", ThisFuncName);    
+      case L_ELSE :  
+         printf("else");    
+         if (Verbose) printf(" // %s", ThisFuncName);    
          break;
       default     :  REPORT_NODE("unexpected token", t);
          break;
@@ -1206,28 +1223,32 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
 
       switch(TokenType) {
          case CONDITION : {
-            Indent(Level);            
-            printf("( // condition\n");
+            if (Verbose) Indent(Level);            
+            printf("( ");
+            if (Verbose) printf("// condition");
             CgExpression(co, c->getChild(c, 0), Level+VLEVEL);
-            Indent(Level);            
-            printf(") // end condition\n");
+            if (Verbose) Indent(Level);            
+            printf(") ");
+            if (Verbose) printf("// end condition");
             GotBody = 1;
             break;
          }
          case BODY : {
-            Indent(Level);            
-            printf("{ // body\n");
+            if (Verbose) Indent(Level);            
+            printf("{ ");
+            if (Verbose) printf("// body");
             CgStatements(co, c, Level+1); // real level
             Indent(Level);            
-            printf("} // end body\n");
+            printf("}");
+            if (Verbose) printf("// end body");
             GotBody = 1;
             break;
          }
          case L_ELSE: 
          case L_ELSIF : {
-            Indent(Level);            
-            printf("  // else / elsif\n");
-            CgIf(co, c, Level+1); // real level
+            if (Verbose) Indent(Level);            
+            if (Verbose) printf("  // else / elsif");
+            CgIf(co, c, Level+VLEVEL); // real level
             GotBody = 1;
             break;
          }
@@ -1238,7 +1259,8 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
       }
    }
    if (!GotBody) {
-      printf("); // Add closing parenthesis + semicolon of if\n");
+      printf(");");
+      if (Verbose) printf(" // Add closing parenthesis + semicolon of if");
    }
 } 
  
@@ -1258,7 +1280,7 @@ void CgForever(Context *co, pANTLR3_BASE_TREE t, int Level)
       switch(TokenType) {
          case BODY : {
             Indent(Level);            
-            printf(" for (;;) {\n");
+            printf("for (;;) {");
             CgStatements(co, c, Level+1); // real level
             Indent(Level);            
             printf("}\n");
@@ -1296,13 +1318,12 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
       case L_BLOCK : {
          PASS2;
          Indent(Level);            
-         printf("{\n");
-         if (Verbose) printf(" // start of block \n"); 
+         printf("{");
+         if (Verbose) printf(" // start of block"); 
          CgStatements(co, t, Level+1); // real level             
-         printf("\n"); 
          Indent(Level);            
-         printf("} \n"); 
-         if (Verbose) printf("// end of block \n"); 
+         printf("}"); 
+         if (Verbose) printf("// end of block "); 
          break;   
       }
       case L_CASE : {
@@ -1328,7 +1349,8 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
       case L_EXIT : {
          PASS2;
          Indent(Level);
-         printf("break; // exit\n");
+         printf("break;");
+         if (Verbose) printf("break; // exit %s \n", ThisFuncName);
          break;   
       }
       case L_FOREVER : {
@@ -1348,15 +1370,18 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
       }
       case L_FUNCTION  : 
       case L_PROCEDURE : {
-         PASS1;
-         CgProcedureDef(co, t, Level+VLEVEL);             
+         PASS1;           
+         if (Pass == 1) {
+            // proc/func defs only in the first pass.
+            CgProcedureDef(co, t, Level+VLEVEL);             
+         }
          break;   
       }
       case ASSIGN : {
          PASS2;
          CgAssign(co, t, Level+VLEVEL);             
          if (Verbose) Indent(Level);            
-         printf(";\n");
+         printf(";");
          if (Verbose) printf("// end of assign \n");
          break;   
       }
@@ -1438,10 +1463,7 @@ void CgStatements(Context *co, pANTLR3_BASE_TREE t, int Level)
    
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       Child = t->getChild(t, ChildIx);
-      if (Child->getToken == NULL) {
-         printf("Error: getToken null\n");
-         return;
-      }                                   
+      assert(Child->getToken != NULL);
       if (Level == 0) { 
          // To determine which tree to travel in pass1 and pass2, it is
          // required to know if we are at Level=0 or higher. So
