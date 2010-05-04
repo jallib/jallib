@@ -12,13 +12,6 @@ static void _AddSymbolToContext(Context *co, Symbol *s);
 
 static Symbol *NewSymbol(Context *co);                           
 
-#define CHECK_NULL(n)                     \
-   if (n == NULL) {                       \
-      printf("Out of memory error\n");    \
-      exit(1);                            \
-   }                                      \
-
-
 //----------------------------------------------------------------------------- 
 // NewSymbolFunction - add function record to symbol table
 //-----------------------------------------------------------------------------
@@ -32,7 +25,7 @@ Symbol *NewSymbolFunction(Context *co)
    s->Type = S_FUNCTION;
             
    f = malloc(sizeof(SymbolFunction));
-   CHECK_NULL(f);
+   assert(f != NULL);
    
    s->details = f;
    
@@ -50,7 +43,7 @@ SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType)
    
    // create record   
    p = malloc(sizeof(SymbolParam));
-   CHECK_NULL(p);
+   assert(p != NULL);
 
    // add to list
    if(f->Param == NULL) {
@@ -81,7 +74,7 @@ char *CreateName(char *Name)
 {  char *n;
    
    n = malloc(strlen(Name) + 1);
-   CHECK_NULL(n);
+   assert(n != NULL);
 
    strcpy(n, Name);
    
@@ -148,8 +141,8 @@ void DumpSymbol(Symbol *s)
    switch (s->Type) {
       case S_FUNCTION : {                
          printf("(Function)\n");
-         SymbolFunction *f = s->details;
-         if (f == NULL) { printf("error: function struct missing\n"); exit(1);}
+         SymbolFunction *f = s->details; 
+         assert(f != NULL); // error: function struct missing
          printf("//      Function returns %s (%d)\n", VarTypeString(f->ReturnType), f->ReturnType);         
          SymbolParam *p = f->Param;
          for (;;) {
@@ -163,7 +156,7 @@ void DumpSymbol(Symbol *s)
       case S_VAR : {
          printf("(Var)\n");
          Var *v = s->details;
-         if (v == NULL) { printf("error: var struct missing\n"); exit(1);}
+         assert(v != NULL); // error: var struct missing
 
          if ((v->put == NULL) & (v->get == NULL)) {
             if (v->CallMethod == 0) {
@@ -230,7 +223,7 @@ void SymbolPrintVarTable(Context *co)
    for(s = co->Head; s != NULL; s = s->Next) {
       if (s->Type != S_VAR) continue;
       v = s->details;   
-      if (v == NULL) { printf("error: var struct missing\n"); exit(1);}
+      assert(v != NULL); // error: var struct missing
       if ((v->put != NULL) | (v->get != NULL)) {
          printf("   const ByCall __%s = { ",s->Name);
          if (v->put ) printf("(void *)&%s, ", v->put ); else printf("NULL, "); 
@@ -258,7 +251,7 @@ static Var *NewSymbolVar(Context *co, char *Name)
    s->Type = S_VAR;
 
    v = malloc(sizeof(Var));
-   CHECK_NULL(v);
+   assert(v != NULL);
 
    s->details = v;
    
@@ -337,7 +330,7 @@ void SymbolVarAdd_PutName(Context *co, char *BaseName, char *PutName)
    if (Verbose > 1) printf("// SymbolVarAdd_PutName BaseName: %s, PutName: %s\n", BaseName, PutName);
 
    v = SymbolGetOrNewVar(co, BaseName);                                              
-   if (v == NULL) { printf("Error: PutName pointer v is NULL\n"); exit(1); }
+   assert(v != NULL); // Error: PutName pointer v is NULL
    
    v->put = CreateName(PutName);   
 }
@@ -377,7 +370,7 @@ void CreateGlobalContext(void)
       printf("Serious warning: re-create global context\n");
    }
    GlobalContext = NewContext(NULL);
-   CHECK_NULL(GlobalContext);
+   assert(GlobalContext != NULL);
    
    GlobalContext->IsGlobal = 1;  // set global flag in struct
 }
@@ -408,7 +401,7 @@ Context *NewContext(Context *WiderContext)
 {  Context *co;
 
    co = malloc(sizeof(Context));     
-   CHECK_NULL(co);
+   assert(co != NULL);
 
 	co->Head       = NULL;  // list of symbols
 	co->Last       = NULL;  // end list of symbols
@@ -426,7 +419,7 @@ static Symbol *NewSymbol(Context *co)
 
    if (Verbose > 1) printf("//NewSymbol\n");
    s = malloc(sizeof(Symbol));
-   CHECK_NULL(s);
+   assert(s != NULL);
 
    _AddSymbolToContext(co, s);
 

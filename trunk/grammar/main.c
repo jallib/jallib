@@ -42,7 +42,7 @@ int main (int argc, char *argv[])
          // include path
          i++;
          if (IncludePath != NULL) {
-            printf("Error: second include path %s\n", argv[i]);
+            printf("Error: second include path %s specified, while only one is supported\n", argv[i]);
             printf("First one: %s\n", IncludePath);
             exit(1);
          }                   
@@ -64,7 +64,7 @@ int main (int argc, char *argv[])
 
       // default = filename
       if (Filename != NULL) {
-         printf("Error: second Filename %s\n", argv[i]);
+         printf("Error: second Filename %s specified, while only one is supported\n", argv[i]);
          printf("First one: %s\n", Filename);
          exit(1);
       }                   

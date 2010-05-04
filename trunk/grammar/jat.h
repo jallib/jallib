@@ -1,6 +1,8 @@
 // jat.h - Just Another Translator - 
 
 #include <stdio.h>  
+#include <assert.h>
+
 
 // antlr generated
 #include    "jalLexer.h"
