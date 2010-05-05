@@ -214,7 +214,7 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line)
          }
       }
    }
-   printf("// include BaseName: _%s_\n", BaseName);   
+   if (Verbose) printf("// include BaseName: _%s_\n", BaseName);   
 
    sprintf(FileName, "%s.jal", BaseName);
 // TODO:
