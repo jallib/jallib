@@ -15,18 +15,43 @@ FILE *CODE = NULL;
 int CodeOutputFlag = 1;
 
 //-----------------------------------------------------------------------------
+// OpenCodeOut - change extension from .jal to .c and open file for write
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-int OpenCodeOut(char *Filename) 
-{
-   CODE = fopen(Filename, "w");     
+int OpenCodeOut(char *Filename)    
+{  char String[202];  
+   int i;
+
+   printf("Open1 _%s_\n", Filename);
+
+   // determine lenght
+   for (i=0; Filename[i]; i++);
+   if (i > 200) {
+      printf("Error: filename too long to process\n");
+      exit(1);
+   }                  
+   
+   // valid (not to short and with '.' at right place)?
+   if ((i<5) || (Filename[i-4] != '.')){
+      printf("Error: invalid filename\n");
+      exit(1);
+   }
+
+   // change from '.jal' to '.c'
+   strcpy(String, Filename);
+   String[i-3] = 'c';
+   String[i-2] = 0;   
+
+                        
+   CODE = fopen(String, "w");     
 
    if (CODE == NULL) return 0;
 
    return 1;
 }
 
-//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------    
+// CodeOutputEnable - enable and disable code, printed through CodeOutput
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void CodeOutputEnable(int Flag)

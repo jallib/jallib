@@ -101,29 +101,29 @@ void SymbolParamSetName(SymbolParam *p, char *Name)
 Symbol *GetSymbolPointer(Context *co, char *SymbolName, int SymbolType, int IncludeGlobal)
 {  Symbol *s;
 
-   if (Verbose > 1) printf("\n// GetSymbolPointer co: %x, SymbolName: %s, Type: %d, IncludeGolbal: %d\n", 
+   CodeOutput(VERBOSE_L, "\n// GetSymbolPointer co: %x, SymbolName: %s, Type: %d, IncludeGolbal: %d\n", 
                                    co, SymbolName, SymbolType, IncludeGlobal);
 
    for (;co != NULL; co=co->Wider) {  
 
-      if (Verbose > 2) printf("\n// GetSymbolPointer co %x\n", co);
+      CodeOutput(VERBOSE_XL, "\n// GetSymbolPointer co %x\n", co);
                         
       // return if Global scope is not included.   
       if ((co->IsGlobal) && (IncludeGlobal == 0)) return NULL; 
 
-      if (Verbose > 2) printf("// GetSymbolPointer mark 1\n");
+      CodeOutput(VERBOSE_XL, "// GetSymbolPointer mark 1\n");
          
       for(s = co->Head; s != NULL; s = s->Next) {       
 
-         if (Verbose > 2) printf("\n//    GetSymbolPointer s %x\n", s);
+         CodeOutput(VERBOSE_XL, "\n//    GetSymbolPointer s %x\n", s);
          
          // check name
          if (strcmp(SymbolName, s->Name) != 0) continue;
-         if (Verbose > 2) printf("//    GetSymbolPointer mark 2\n");
+         CodeOutput(VERBOSE_XL, "//    GetSymbolPointer mark 2\n");
 
          // check Type
          if ((s->Type & SymbolType) == 0)  continue;
-         if (Verbose > 2) printf("//    GetSymbolPointer mark 3\n");
+         CodeOutput(VERBOSE_XL, "//    GetSymbolPointer mark 3\n");
 
          // -----         
          // match
@@ -137,47 +137,47 @@ Symbol *GetSymbolPointer(Context *co, char *SymbolName, int SymbolType, int Incl
 void DumpSymbol(Symbol *s)
 {  int i;
       
-   printf("//\n//   Symbol name: '%s' at %x, Type: %d ", s->Name, s, s->Type);
+   CodeOutput(VERBOSE_ALL,"//\n//   Symbol name: '%s' at %x, Type: %d ", s->Name, s, s->Type);
    switch (s->Type) {
       case S_FUNCTION : {                
-         printf("(Function)\n");
+         CodeOutput(VERBOSE_ALL, "(Function)\n");
          SymbolFunction *f = s->details; 
          assert(f != NULL); // error: function struct missing
-         printf("//      Function returns %s (%d)\n", VarTypeString(f->ReturnType), f->ReturnType);         
+         CodeOutput(VERBOSE_ALL, "//      Function returns %s (%d)\n", VarTypeString(f->ReturnType), f->ReturnType);         
          SymbolParam *p = f->Param;
          for (;;) {
             if (p == NULL) break;
-            printf("//      param Name: '%s', Type: %s (%d), CallBy: %c\n",
+            CodeOutput(VERBOSE_ALL, "//      param Name: '%s', Type: %s (%d), CallBy: %c\n",
                   p->Name, jalParserTokenNames[p->Type], p->Type, p->CallMethod);
             p = p->next;    
          }
          break;
       }        
       case S_VAR : {
-         printf("(Var)\n");
+         CodeOutput(VERBOSE_ALL, "(Var)\n");
          Var *v = s->details;
          assert(v != NULL); // error: var struct missing
 
          if ((v->put == NULL) & (v->get == NULL)) {
             if (v->CallMethod == 0) {
-               printf("//      Regular VAR ");
+               CodeOutput(VERBOSE_ALL, "//      Regular VAR ");
             } else {
-               printf("//      Procedure/Function parameter, Type: %s, CallMethod: %c\n",
+               CodeOutput(VERBOSE_ALL, "//      Procedure/Function parameter, Type: %s, CallMethod: %c\n",
                      jalParserTokenNames[v->Type], v->CallMethod );
-               printf("//         ");
+               CodeOutput(VERBOSE_ALL, "//         ");
             }               
          } else {
-            printf("//      Put: %s, Get: %s, ",
+            CodeOutput(VERBOSE_ALL, "//      Put: %s, Get: %s, ",
                (v->put  != NULL) ? v->put  : "NULL",   
                (v->get  != NULL) ? v->get  : "NULL");   
          }
-         printf(" Data: %s, Size: %d, P1: %d, P2: %d\n",
+         CodeOutput(VERBOSE_ALL, " Data: %s, Size: %d, P1: %d, P2: %d\n",
             (v->data != NULL) ? v->data : "NULL",   
             v->size, v->p1, v->p2); 
          break;
       }
       default : {
-         printf("!! Unknown type !!\n");
+         CodeOutput(VERBOSE_ALL, "!! Unknown type !!\n");
          break;
       }
    }                 
@@ -192,17 +192,17 @@ void DumpSymbol(Symbol *s)
 void DumpContext(Context *co)
 {  Symbol *s;
    
-   printf("//DumpContext -------------------------------\n");
+   CodeOutput(VERBOSE_ALL, "//DumpContext -------------------------------\n");
 
    for (;;) {
 
       if (co == NULL) break;
 
-      printf("//\n//Context %x, IsGlobal: %d\n", co, co->IsGlobal);
+      CodeOutput(VERBOSE_ALL, "//\n//Context %x, IsGlobal: %d\n", co, co->IsGlobal);
       
       for(s = co->Head; s != NULL; s = s->Next) {
          if (s== NULL) break;
-         //printf("DumpSymbolTable %x\n", s);
+         //CodeOutput(VERBOSE_ALL, "DumpSymbolTable %x\n", s);
          DumpSymbol(s);
       }
 
@@ -247,7 +247,7 @@ static Var *NewSymbolVar(Context *co, char *Name)
    Var *v;
 //   static int ID = 0;
    
-   if (Verbose > 1) printf("// NewSymbolVar Name: %s\n", Name);
+   CodeOutput(VERBOSE_L, "// NewSymbolVar Name: %s\n", Name);
    
    s = NewSymbol(co);
    s->Name = CreateName(Name);
@@ -281,22 +281,22 @@ Var *SymbolGetVar(Context *co, char *SymbolName)
 {  Symbol *s;
    Var *v;
 
-   if (Verbose > 1) printf("// SymbolGetVar Name: %s\n", SymbolName);
+   CodeOutput(VERBOSE_L, "// SymbolGetVar Name: %s\n", SymbolName);
 
    for(s = co->Head; s != NULL; s = s->Next) {
-//printf("boom %x %x\n", s, s->Name);
+
       if (s == NULL) { break; }
       if (s->Name == NULL) { break; }  // unnamed identiefier (valid while ad in progress)
-      if (Verbose > 1) printf("// SymbolGetVar check Name: %s at %x\n", s->Name, s);
+      CodeOutput(VERBOSE_L, "// SymbolGetVar check Name: %s at %x\n", s->Name, s);
          
       if (strcmp(SymbolName, s->Name) != 0) continue;
-//printf("roos\n");
+
       // name match                            
       if (s->Type == S_VAR) {
          v = s->details;
          return v;
       } else {
-         printf("// GetVar: name found with non-var type\n");
+         CodeOutput(VERBOSE_ALL, "// GetVar: name found with non-var type\n");
       }
    }          
    return NULL;
@@ -309,15 +309,15 @@ Var *SymbolGetVar(Context *co, char *SymbolName)
 Var *SymbolGetOrNewVar(Context *co, char *Name)
 {  Var *v;
 
-   if (Verbose > 1) printf("// SymbolGetOrNewVar Name: %s\n", Name);
+   CodeOutput(VERBOSE_L, "// SymbolGetOrNewVar Name: %s\n", Name);
    
    v = SymbolGetVar(GlobalContext, Name);
    
    if (v == NULL) {
       v = NewSymbolVar(co, Name);
-      if (Verbose > 1) printf("// SymbolGetOrAddVar new %x\n", v);
+      CodeOutput(VERBOSE_L, "// SymbolGetOrAddVar new %x\n", v);
    } else {
-      if (Verbose > 1) printf("// SymbolGetOrAddVar found %x\n", v);
+      CodeOutput(VERBOSE_L, "// SymbolGetOrAddVar found %x\n", v);
    }
       
    return v;   
@@ -330,7 +330,7 @@ Var *SymbolGetOrNewVar(Context *co, char *Name)
 void SymbolVarAdd_PutName(Context *co, char *BaseName, char *PutName)
 {  Var *v;
 
-   if (Verbose > 1) printf("// SymbolVarAdd_PutName BaseName: %s, PutName: %s\n", BaseName, PutName);
+   CodeOutput(VERBOSE_L, "// SymbolVarAdd_PutName BaseName: %s, PutName: %s\n", BaseName, PutName);
 
    v = SymbolGetOrNewVar(co, BaseName);                                              
    assert(v != NULL); // Error: PutName pointer v is NULL
@@ -356,7 +356,8 @@ void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName)
 //-----------------------------------------------------------------------------
 void SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName)
 {  Var *v;
-//   printf("SymbolVarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
+
+   CodeOutput(VERBOSE_L, "SymbolVarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
 
    v = SymbolGetOrNewVar(co, BaseName);                       
 
@@ -370,7 +371,7 @@ void SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName)
 void CreateGlobalContext(void)
 { 
    if (GlobalContext) {
-      printf("Serious warning: re-create global context\n");
+      CodeOutput(VERBOSE_ALL, "Serious warning: re-create global context\n");
    }
    GlobalContext = NewContext(NULL);
    assert(GlobalContext != NULL);
@@ -420,7 +421,7 @@ Context *NewContext(Context *WiderContext)
 static Symbol *NewSymbol(Context *co)
 {  Symbol *s;
 
-   if (Verbose > 1) printf("//NewSymbol\n");
+   CodeOutput(VERBOSE_L, "//NewSymbol\n");
    s = malloc(sizeof(Symbol));
    assert(s != NULL);
 
@@ -429,7 +430,7 @@ static Symbol *NewSymbol(Context *co)
 	s->Name = NULL;
 	s->Type = 0;    // function, procedure, variable, constant
 
-   if (Verbose > 1) printf("//AddSymbol added %x\n", s);
+   CodeOutput(VERBOSE_L, "//AddSymbol added %x\n", s);
 
    return s;
 }
