@@ -13,6 +13,7 @@ if exist all.ref        del all.ref
 call %0 test_001
 call %0 test_002
 call %0 test_003
+call %0 test_004
 
 
 rem ---------------------------------------------------------------------------
