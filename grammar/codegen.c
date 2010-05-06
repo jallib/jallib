@@ -36,8 +36,8 @@ int Pass;
    pANTLR3_BASE_TREE   cc; /* 'child of child (not assigned!) */  \
    pANTLR3_COMMON_TOKEN Token;                                    \
                                                                   \
-   CodeIndent(VERBOSE_M, Level);                                  \
-   CodeOutput(VERBOSE_M, "// %s", ThisFuncName);                    \
+   CodeIndent(VERBOSE_M,   Level);                                  \
+   CodeOutput(VERBOSE_M,   "// %s", ThisFuncName);                    \
                                                                   \
    n = t->getChildCount(t);                                       \
                                                                   \
@@ -158,7 +158,7 @@ char GetCallMethod(Context *co, char *ParamName)
    Var *v = s->details;
    
    if (v->CallMethod == 0) {
-      CodeOutput(VERBOSE_M, "\n// GetCallMethod - found var without call-method (var is not param)");
+      CodeOutput(VERBOSE_M,   "\n// GetCallMethod - found var without call-method (var is not param)");
    }
       
    return v->CallMethod;
@@ -217,38 +217,38 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          if ((v) && (v->get != NULL)) {
             // there is a var record.
             // we have a get function, so call to get value
-            CodeIndent(VERBOSE_M, Level);
+            CodeIndent(VERBOSE_M,   Level);
             CodeOutput(VERBOSE_ALL, "%s()", v->get);         
-            CodeOutput(VERBOSE_M, " // %s call pseudovar put", ThisFuncName); 
+            CodeOutput(VERBOSE_M,   " // %s call pseudovar put", ThisFuncName); 
             break;
          } 
             
          if ((v) && (v->CallMethod == 'r')) {
             // a procedure parameter, passed as reference
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "*%s", t->toString(t)->chars);
-            CodeOutput(VERBOSE_M, "// %s identifier - dereferenced param", ThisFuncName);
+            CodeOutput(VERBOSE_M,   "// %s identifier - dereferenced param", ThisFuncName);
             break;
          }
 
          if ((v) && (v->CallMethod == 'c') ) {
             // a procedure parameter, passed by call
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "(%s)(*%s__bc->get)(%s__bc, %s__p)", VarTypeString(v->Type), t->toString(t)->chars, t->toString(t)->chars, t->toString(t)->chars);
-            CodeOutput(VERBOSE_M, " // %s identifier - ByCall param", ThisFuncName);
+            CodeOutput(VERBOSE_M,   " // %s identifier - ByCall param", ThisFuncName);
             break;
          }
 
          // default - call by value, unknown call-methode or unknown identifier
-         CodeIndent(VERBOSE_M, Level);            
+         CodeIndent(VERBOSE_M,   Level);            
          CodeOutput(VERBOSE_ALL, "%s", t->toString(t)->chars);
-         CodeOutput(VERBOSE_M, "// %s identifier (default)", ThisFuncName);   
+         CodeOutput(VERBOSE_M,   "// %s identifier (default)", ThisFuncName);   
             
          break;
       case DECIMAL_LITERAL :
-         CodeIndent(VERBOSE_M, Level);            
+         CodeIndent(VERBOSE_M,   Level);            
          CodeOutput(VERBOSE_ALL, "%s", t->toString(t)->chars);
-         CodeOutput(VERBOSE_M, "// constant");
+         CodeOutput(VERBOSE_M,   "// constant");
          break;
 
       case AMP           :
@@ -270,17 +270,17 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
       case SLASH         :
                          
          if (n == 2) {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "(");
-            CodeOutput(VERBOSE_M, " // start subexpr");
+            CodeOutput(VERBOSE_M,   " // start subexpr");
             CgExpression(co, t->getChild(t, 0), Level + 1);
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, " %s ", t->toString(t)->chars);
-            CodeOutput(VERBOSE_M, " // expression");
+            CodeOutput(VERBOSE_M,   " // expression");
             CgExpression(co, t->getChild(t, 1), Level + 1);
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, ")");
-            CodeOutput(VERBOSE_M, " // end subexpr");
+            CodeOutput(VERBOSE_M,   " // end subexpr");
          } else {
             printf("%s Error: not two subnodes\n", ThisFuncName);
          }
@@ -326,15 +326,15 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
       // (this is the use of a global defined put function within an assignment)
       CodeIndent(VERBOSE_ALL, Level);
       CodeOutput(VERBOSE_ALL, "%s(", v->put);         
-      CodeOutput(VERBOSE_M, " // %s call pseudovar put", ThisFuncName);
+      CodeOutput(VERBOSE_M,   " // %s call pseudovar put", ThisFuncName);
 
       // second node is expr
       c = t->getChild(t, 1);  
       CgExpression(co, c, Level + 1);      
 
-      CodeIndent(VERBOSE_M, Level);
+      CodeIndent(VERBOSE_M,   Level);
       CodeOutput(VERBOSE_ALL, ")");
-      CodeOutput(VERBOSE_M, " // %s var__put call", ThisFuncName);
+      CodeOutput(VERBOSE_M,   " // %s var__put call", ThisFuncName);
                               
       return;
    }
@@ -345,7 +345,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
             // call by reference (so it is a procedure parameter)
             CodeIndent(VERBOSE_ALL, Level);  // this one always!
             CodeOutput(VERBOSE_ALL, "*%s = ", c->toString(c)->chars);
-            CodeOutput(VERBOSE_M, " // %s identifier call by reference", ThisFuncName);
+            CodeOutput(VERBOSE_M,   " // %s identifier call by reference", ThisFuncName);
 
             // second node is expr
             c = t->getChild(t, 1);  
@@ -357,14 +357,14 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
             // call by code (so it is a procedure parameter)
             CodeIndent(VERBOSE_ALL, Level);  // this one always!
             CodeOutput(VERBOSE_ALL, "(*%s__bc->put)(%s__bc, %s__p, ", c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars);
-            CodeOutput(VERBOSE_M, " // %s identifier call by code", ThisFuncName);
+            CodeOutput(VERBOSE_M,   " // %s identifier call by code", ThisFuncName);
 
             // second node is expr
             c = t->getChild(t, 1);  
             CgExpression(co, c, Level + 1);      
-            CodeIndent(VERBOSE_M, Level);
+            CodeIndent(VERBOSE_M,   Level);
             CodeOutput(VERBOSE_ALL, ")");
-            CodeOutput(VERBOSE_M, " // %s identifier call by code closure", ThisFuncName);
+            CodeOutput(VERBOSE_M,   " // %s identifier call by code closure", ThisFuncName);
 
             return;
          } 
@@ -380,7 +380,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    CodeIndent(VERBOSE_ALL, Level);  // this one always!
 //   CodeOutput(VERBOSE_ALL, "%s  = ", DeReference(co, c->toString(c)->chars));
    CodeOutput(VERBOSE_ALL, "%s = ", c->toString(c)->chars);
-   CodeOutput(VERBOSE_M, " // %s identifier call by value", ThisFuncName);
+   CodeOutput(VERBOSE_M,   " // %s identifier call by value", ThisFuncName);
 
    // second node is expr
    c = t->getChild(t, 1);  
@@ -406,17 +406,17 @@ void CgCaseValue(Context *co, pANTLR3_BASE_TREE t, int Level)
             CodeIndent(VERBOSE_ALL, Level);  
             CodeOutput(VERBOSE_ALL, "case ");
             CgExpression(co, c->getChild(c, 0), Level+VLEVEL);
-            CodeIndent(VERBOSE_M, Level);  
+            CodeIndent(VERBOSE_M,   Level);  
             CodeOutput(VERBOSE_ALL, " : ");
-            CodeOutput(VERBOSE_M, "// case_condition");
+            CodeOutput(VERBOSE_M,   "// case_condition");
             break;
          }
          case BODY : {
-            CodeIndent(VERBOSE_M, Level);  
+            CodeIndent(VERBOSE_M,   Level);  
             CodeOutput(VERBOSE_ALL, "{ ");
             Level ++;
-            CodeIndent(VERBOSE_M, Level);  
-            CodeOutput(VERBOSE_M, "// start case body");
+            CodeIndent(VERBOSE_M,   Level);  
+            CodeOutput(VERBOSE_M,   "// start case body");
             cc = c->getChild(c, 0);
             CgStatement(co, cc, Level); // real level, but already raised in code above
             CodeIndent(VERBOSE_ALL, Level);  
@@ -424,7 +424,7 @@ void CgCaseValue(Context *co, pANTLR3_BASE_TREE t, int Level)
             Level --;
             CodeIndent(VERBOSE_ALL, Level);  
             CodeOutput(VERBOSE_ALL, "}");
-            CodeOutput(VERBOSE_M, "// end case body");
+            CodeOutput(VERBOSE_M,   "// end case body");
             break;  
          }
          default: {            
@@ -452,11 +452,11 @@ void CgCase(Context *co, pANTLR3_BASE_TREE t, int Level)
          case CONDITION : {
             CodeIndent(VERBOSE_ALL, Level);   
             CodeOutput(VERBOSE_ALL, "switch(");         
-            CodeOutput(VERBOSE_M, " // case");         
+            CodeOutput(VERBOSE_M,   " // case");         
             CgExpression(co, c->getChild(c, 0), Level+VLEVEL);
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, ") {");         
-            CodeOutput(VERBOSE_M, "// case");         
+            CodeOutput(VERBOSE_M,   "// case");         
             break;
          }
          case CASE_VALUE : {
@@ -466,14 +466,14 @@ void CgCase(Context *co, pANTLR3_BASE_TREE t, int Level)
          case L_OTHERWISE : {  
             CodeIndent(VERBOSE_ALL, Level);   
             CodeOutput(VERBOSE_ALL, "default : {");                     
-            CodeOutput(VERBOSE_M, " // case");                     
+            CodeOutput(VERBOSE_M,   " // case");                     
             cc = c->getChild(c, 0);
             CgStatement(co, cc, Level+1); //real level   
             CodeIndent(VERBOSE_ALL, Level+1);  
             CodeOutput(VERBOSE_ALL, "break;");            
             CodeIndent(VERBOSE_ALL, Level);  
             CodeOutput(VERBOSE_ALL, "}");            
-            CodeOutput(VERBOSE_M, "// case body");                     
+            CodeOutput(VERBOSE_M,   "// case body");                     
             break;  
          }
          default: {            
@@ -484,7 +484,7 @@ void CgCase(Context *co, pANTLR3_BASE_TREE t, int Level)
    }                
    CodeIndent(VERBOSE_ALL, Level);            
    CodeOutput(VERBOSE_ALL, "}");         
-   CodeOutput(VERBOSE_M, "// case/switch body\n");         
+   CodeOutput(VERBOSE_M,   "// case/switch body\n");         
 }
 
 //-----------------------------------------------------------------------------
@@ -519,19 +519,19 @@ void CgFor(Context *co, pANTLR3_BASE_TREE t, int Level)
             CodeIndent(VERBOSE_ALL, Level);            
             CodeOutput(VERBOSE_ALL, "for (%s=0;%s<", LoopVar, LoopVar);
             CgExpression(co, c->getChild(c, 0), Level+VLEVEL);
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, ";%s++) ", LoopVar);
-            CodeOutput(VERBOSE_M, " // End of for condition\n");
+            CodeOutput(VERBOSE_M,   " // End of for condition\n");
             break;
          }
          case BODY : {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "{");
-            CodeOutput(VERBOSE_M, " // for body\n");
+            CodeOutput(VERBOSE_M,   " // for body\n");
             CgStatements(co, c, Level+1); // real level
             CodeIndent(VERBOSE_ALL, Level);            
             CodeOutput(VERBOSE_ALL, "}");
-            CodeOutput(VERBOSE_M, "// for body\n");
+            CodeOutput(VERBOSE_M,   "// for body\n");
 //            GotBody = 1;
             break;  
          }
@@ -564,21 +564,21 @@ void CgWhile(Context *co, pANTLR3_BASE_TREE t, int Level)
          case CONDITION : {
             CodeIndent(VERBOSE_ALL, Level);            
             CodeOutput(VERBOSE_ALL, "while(");
-            CodeOutput(VERBOSE_M, "// condition start");
+            CodeOutput(VERBOSE_M,   "// condition start");
             CgExpression(co, c->getChild(c,0), Level+VLEVEL);
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, ") ");
-            CodeOutput(VERBOSE_M, " // while condition end");
+            CodeOutput(VERBOSE_M,   " // while condition end");
             break;
          }
          case BODY : {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "{");
-            CodeOutput(VERBOSE_M, " // while body");
+            CodeOutput(VERBOSE_M,   " // while body");
             CgStatements(co, c, Level+1); // real level
             CodeIndent(VERBOSE_ALL, Level);            
             CodeOutput(VERBOSE_ALL, "}");
-            CodeOutput(VERBOSE_M, "// while body");
+            CodeOutput(VERBOSE_M,   "// while body");
             break;
          }
          default: {            
@@ -606,21 +606,21 @@ void CgRepeat(Context *co, pANTLR3_BASE_TREE t, int Level)
          case BODY : {
             CodeIndent(VERBOSE_ALL, Level);            
             CodeOutput(VERBOSE_ALL, "do { ");
-            CodeOutput(VERBOSE_M, " // repeat body");
+            CodeOutput(VERBOSE_M,   " // repeat body");
             CgStatements(co, c, Level+1); // real level
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "} ");
-            CodeOutput(VERBOSE_M, "// repeat body");
+            CodeOutput(VERBOSE_M,   "// repeat body");
             break;
          }       
          case CONDITION : {
             CodeIndent(VERBOSE_ALL, Level);            
             CodeOutput(VERBOSE_ALL, "while ((");
-            CodeOutput(VERBOSE_M, "// repeat condition start\n");
+            CodeOutput(VERBOSE_M,   "// repeat condition start\n");
             CgExpression(co, c->getChild(c,0), Level+VLEVEL);
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, ") == 0);");
-            CodeOutput(VERBOSE_M, " // repeat-until condition end");
+            CodeOutput(VERBOSE_M,   " // repeat-until condition end");
             break;
          }         
          default: {            
@@ -651,7 +651,7 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
 
       if (ChildIx == 0) {
          // function/procedure name
-         CodeIndent(VERBOSE_M, Level); 
+         CodeIndent(VERBOSE_M,   Level); 
          CodeOutput(VERBOSE_ALL, "%s(", c->toString(c)->chars);         
          s = GetSymbolPointer(GlobalContext, c->toString(c)->chars, S_FUNCTION, 1);
          if (s != NULL) {
@@ -684,7 +684,7 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
          case 'r': {
             // call by reference
             if (TokenType == IDENTIFIER) {
-               CodeIndent(VERBOSE_M, Level);             
+               CodeIndent(VERBOSE_M,   Level);             
                   
                // cm = call-method of identifier   
                char cm = GetCallMethod(co, c->toString(c)->chars);
@@ -692,12 +692,12 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                   case 0 :
                   case 'v' : { // by value or unknown => create pointer
                      CodeOutput(VERBOSE_ALL, "&%s ", c->toString(c)->chars);
-                     CodeOutput(VERBOSE_M, "// identifier by reference, from value");
+                     CodeOutput(VERBOSE_M,   "// identifier by reference, from value");
                      break;
                   }                     
                   case 'r' : { // by reference => just pass pointer
                      CodeOutput(VERBOSE_ALL, "%s ", c->toString(c)->chars);
-                     CodeOutput(VERBOSE_M, "// identifier by reference, from reference");
+                     CodeOutput(VERBOSE_M,   "// identifier by reference, from reference");
                      break;
                   }                     
                   case 'c' : { // by code       
@@ -705,12 +705,12 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                      // and... we can't do this - create a var within a procedure call - can we?
                      // so we need a scan of parameters before the actual call...
                      CodeOutput(VERBOSE_ALL, "not supported yet: %s ", c->toString(c)->chars);
-                     CodeOutput(VERBOSE_M, "// identifier by reference, from call");
+                     CodeOutput(VERBOSE_M,   "// identifier by reference, from call");
                      break;
                   }                     
                }                  
 //               CodeOutput(VERBOSE_ALL, "&%s ", DeReference(co, c->toString(c)->chars));
-               CodeOutput(VERBOSE_M, "// identifier by reference default..");
+               CodeOutput(VERBOSE_M,   "// identifier by reference default..");
             } else {                     
                // constants etc.
                printf("Error: can't use this parameter to call by reference.\n");
@@ -720,7 +720,7 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
          case 'c': {
             // call by code
             if (TokenType == IDENTIFIER) {
-               CodeIndent(VERBOSE_M, Level);            
+               CodeIndent(VERBOSE_M,   Level);            
 
                // cm = call-method of identifier   
                char cm = GetCallMethod(co, c->toString(c)->chars);
@@ -729,23 +729,23 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                   case 'v' : { // by value or unknown => create pointer
 // todo: add proper bc struct                     
                      CodeOutput(VERBOSE_ALL, "&bc_byte, &%s", c->toString(c)->chars);
-                     CodeOutput(VERBOSE_M, "// identifier by code, from value");
+                     CodeOutput(VERBOSE_M,   "// identifier by code, from value");
                      break;
                   }                     
                   case 'r' : { // by reference 
 // todo: add proper bc struct                     
                      CodeOutput(VERBOSE_ALL, "&bc_byte, %s ", c->toString(c)->chars);
-                     CodeOutput(VERBOSE_M, "// identifier by code, from reference");
+                     CodeOutput(VERBOSE_M,   "// identifier by code, from reference");
                      break;
                   }                     
                   case 'c' : { // by code => just pass received params
                      CodeOutput(VERBOSE_ALL, "%s__bc, %s__p ", c->toString(c)->chars, c->toString(c)->chars);
-                     CodeOutput(VERBOSE_M, "// identifier by code, from code");
+                     CodeOutput(VERBOSE_M,   "// identifier by code, from code");
                      break;
                   }                     
                }               
 
-               CodeOutput(VERBOSE_M, "// identifier by reference qq");
+               CodeOutput(VERBOSE_M,   "// identifier by reference qq");
             } else {
                // constants etc
                CodeOutput(VERBOSE_ALL, "Error: can't use this parameter to call by code.\n");
@@ -759,9 +759,9 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
       // In both cases the (remaining) parameters are concidered pass by value.
       if (p != NULL) p = p->next;
    }                
-   CodeIndent(VERBOSE_M, Level);            
+   CodeIndent(VERBOSE_M,   Level);            
    CodeOutput(VERBOSE_ALL, ")");
-   CodeOutput(VERBOSE_M, " // end of proc/func call");
+   CodeOutput(VERBOSE_M,   " // end of proc/func call");
 }
  
 //-----------------------------------------------------------------------------
@@ -780,7 +780,7 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level)
       
       switch(TokenType) {
          case IDENTIFIER : {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "%s ", c->toString(c)->chars);       
 //CodeOutput(VERBOSE_ALL, "\n// %d\n", Level);
 //            if (Level == 3) { // this is a tricky one; indent may change...
@@ -796,9 +796,9 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          case ASSIGN : {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "= ");
-            CodeOutput(VERBOSE_M, "// assign");
+            CodeOutput(VERBOSE_M,   "// assign");
             cc = c->getChild(c, 0);
             CgExpression(co, cc, Level+VLEVEL);
             break;
@@ -809,7 +809,7 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level)
          }
       }
    }
-   CodeIndent(VERBOSE_M, Level);                           
+   CodeIndent(VERBOSE_M,   Level);                           
 } 
 
 //-----------------------------------------------------------------------------
@@ -840,7 +840,7 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          case VAR : {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             if (GotFirstSingleVar) {
                CodeOutput(VERBOSE_ALL, ", ");           
               CodeIndent(VERBOSE_ALL, Level);
@@ -855,7 +855,7 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
          }
       }
    }
-   CodeIndent(VERBOSE_M, Level);            
+   CodeIndent(VERBOSE_M,   Level);            
    CodeOutput(VERBOSE_ALL, ";");                
 }        
 
@@ -889,10 +889,10 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          case VAR : {   
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             if (GotType == 0) {
                CodeOutput(VERBOSE_ALL, "const long ");
-               CodeOutput(VERBOSE_M, " // default const type\n");
+               CodeOutput(VERBOSE_M,   " // default const type\n");
                GotType = 1;        
             }
             if (GotFirstSingleVar) CodeOutput(VERBOSE_ALL, ", ");
@@ -906,7 +906,7 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
          }
       }
    }
-   CodeIndent(VERBOSE_M, Level);            
+   CodeIndent(VERBOSE_M,   Level);            
    CodeOutput(VERBOSE_ALL, ";");                
 } 
 
@@ -940,7 +940,7 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
          }
          case L_DATA     : // L_DATA is also identifier
          case IDENTIFIER : {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             // store procedure param name
 //            strcpy(SymbolTail->Param[(SymbolTail->NrOfParams)-1].Name, c->toString(c)->chars);
             SymbolParamSetName(p, c->toString(c)->chars);      
@@ -965,7 +965,7 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
             }
 //            // deref if called by reference
 //            CodeOutput(VERBOSE_ALL, " %s ", DeRefSub(c->toString(c)->chars, p->CallMethod));  
-            CodeOutput(VERBOSE_M, " // ident");  
+            CodeOutput(VERBOSE_M,   " // ident");  
             break;
          }
          default: {            
@@ -993,9 +993,9 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
       CODE_GENERATOR_GET_CHILD_INFO
 
       if (GotFirstParam) {           
-         CodeIndent(VERBOSE_M, Level);
+         CodeIndent(VERBOSE_M,   Level);
          CodeOutput(VERBOSE_ALL, ", ");
-         CodeOutput(VERBOSE_M, "// next param");
+         CodeOutput(VERBOSE_M,   "// next param");
       }
       GotFirstParam = 1;
 
@@ -1006,11 +1006,11 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
          case L_SWORD  : 
          case L_DWORD  : 
          case L_SDWORD : {     
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
 //            CodeOutput(VERBOSE_ALL, "%s", VarTypeString(TokenType)); 
 
             // add new parameter to current symbol  
-            CodeOutput(VERBOSE_M, " // TokenType: %d (Add param to SymbolTable", TokenType); 
+            CodeOutput(VERBOSE_M,   " // TokenType: %d (Add param to SymbolTable", TokenType); 
             SymbolParam *p = SymbolFunctionAddParam(f, TokenType);
              
             // process childs (identifier, volatile, in, out)
@@ -1086,18 +1086,18 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
          case L_RETURN : {
             if (PvPut == 0) {
                // normal function return processing
-               CodeIndent(VERBOSE_M, Level);            
+               CodeIndent(VERBOSE_M,   Level);            
                cc = c->getChild(c, 0);
                CodeOutput(VERBOSE_ALL, "%s ", VarTypeString(cc->getType(cc)));
-               CodeOutput(VERBOSE_M, "// return type\n");
+               CodeOutput(VERBOSE_M,   "// return type\n");
                f->ReturnType = cc->getType(cc); // add to symbol table.
                GotReturnType = 1;
             } else {
                // pseudo-var function return processing
-               CodeIndent(VERBOSE_M, Level);            
+               CodeIndent(VERBOSE_M,   Level);            
                cc = c->getChild(c, 0);
                CodeOutput(VERBOSE_ALL, "void ");
-               CodeOutput(VERBOSE_M, " // PV return type\n"); 
+               CodeOutput(VERBOSE_M,   " // PV return type\n"); 
                f->ReturnType = cc->getType(cc); // add to symbol table.
                GotReturnType = 1;
             }
@@ -1106,7 +1106,7 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
          case IDENTIFIER : {
             char String[100]; // symbol name length...
 
-            CodeIndent(VERBOSE_M, Level);    
+            CodeIndent(VERBOSE_M,   Level);    
             if (!GotReturnType) CodeOutput(VERBOSE_ALL, "void ");        
 
             if (strlen(c->toString(c)->chars) > 80) {
@@ -1125,16 +1125,16 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
             }               
             
             CodeOutput(VERBOSE_ALL, "%s( ", String);
-            CodeOutput(VERBOSE_M, "// proc/func name");
+            CodeOutput(VERBOSE_M,   "// proc/func name");
             s->Name = CreateName(String); // add to symbol table.  
             
             if (PvPut) {  
 //               CodeOutput(VERBOSE_ALL, "ByCall *__s, ");
-//               CodeOutput(VERBOSE_M, " // pvPut stuct");
+//               CodeOutput(VERBOSE_M,   " // pvPut stuct");
             }
             if (PvGet) {  
 //               CodeOutput(VERBOSE_ALL, "ByCall *__s, ");
-//               CodeOutput(VERBOSE_M, " // pvGet stuct");
+//               CodeOutput(VERBOSE_M,   " // pvGet stuct");
             }
             
             break;
@@ -1144,18 +1144,18 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          case BODY : {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, ") { \n");         
-            CodeIndent(VERBOSE_M, Level);            
-            CodeOutput(VERBOSE_M, "// start body");         
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_M,   "// start body");         
             
             if (Verbose) DumpContext(co);            
 
             CgStatements(co, c, Level+1); // real level!
             CodeIndent(VERBOSE_ALL, Level);            
             CodeOutput(VERBOSE_ALL, "}\n");
-            CodeIndent(VERBOSE_M, Level);            
-            CodeOutput(VERBOSE_M, "// end body");         
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_M,   "// end body");         
 
             GotBody = 1;
             break;
@@ -1168,7 +1168,7 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
    }
    if (!GotBody) {
       CodeOutput(VERBOSE_ALL, ");\n");      
-      CodeOutput(VERBOSE_M, "// Add closing parenthesis + semicolon of prototype");      
+      CodeOutput(VERBOSE_M,   "// Add closing parenthesis + semicolon of prototype");      
    }
 } 
 
@@ -1187,15 +1187,15 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
    switch (TokenType) {
       case L_IF   :
          CodeOutput(VERBOSE_ALL, "if");    
-         CodeOutput(VERBOSE_M, " // %s", ThisFuncName);    
+         CodeOutput(VERBOSE_M,   " // %s", ThisFuncName);    
          break;
       case L_ELSIF : 
          CodeOutput(VERBOSE_ALL, "else if");    
-         CodeOutput(VERBOSE_M, " // %s", ThisFuncName);    
+         CodeOutput(VERBOSE_M,   " // %s", ThisFuncName);    
          break;
       case L_ELSE :  
          CodeOutput(VERBOSE_ALL, "else");    
-         CodeOutput(VERBOSE_M, " // %s", ThisFuncName);    
+         CodeOutput(VERBOSE_M,   " // %s", ThisFuncName);    
          break;
       default     :  REPORT_NODE("unexpected token", t);
          break;
@@ -1207,31 +1207,31 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
 
       switch(TokenType) {
          case CONDITION : {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "( ");
-            CodeOutput(VERBOSE_M, "// condition");
+            CodeOutput(VERBOSE_M,   "// condition");
             CgExpression(co, c->getChild(c, 0), Level+VLEVEL);
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, ") ");
-            CodeOutput(VERBOSE_M, "// end condition");
+            CodeOutput(VERBOSE_M,   "// end condition");
             GotBody = 1;
             break;
          }
          case BODY : {
-            CodeIndent(VERBOSE_M, Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "{ ");
-            CodeOutput(VERBOSE_M, "// body");
+            CodeOutput(VERBOSE_M,   "// body");
             CgStatements(co, c, Level+1); // real level
            CodeIndent(VERBOSE_ALL, Level);            
             CodeOutput(VERBOSE_ALL, "}");
-            CodeOutput(VERBOSE_M, "// end body");
+            CodeOutput(VERBOSE_M,   "// end body");
             GotBody = 1;
             break;
          }
          case L_ELSE: 
          case L_ELSIF : {
-            CodeIndent(VERBOSE_M, Level);            
-            CodeOutput(VERBOSE_M, "  // else / elsif");
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_M,   "  // else / elsif");
             CgIf(co, c, Level+VLEVEL); // real level
             GotBody = 1;
             break;
@@ -1244,7 +1244,7 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
    }
    if (!GotBody) {
       CodeOutput(VERBOSE_ALL, ");");
-      CodeOutput(VERBOSE_M, " // Add closing parenthesis + semicolon of if");
+      CodeOutput(VERBOSE_M,   " // Add closing parenthesis + semicolon of if");
    }
 } 
  
@@ -1287,8 +1287,8 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgStatement";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
  
-   CodeIndent(VERBOSE_M, Level);            
-   CodeOutput(VERBOSE_M, "// %s (%d, %s from Line %d:%d)",
+   CodeIndent(VERBOSE_M,   Level);            
+   CodeOutput(VERBOSE_M,   "// %s (%d, %s from Line %d:%d)",
             t->toString(t)->chars, 
             TokenType, 
             jalParserTokenNames[TokenType],
@@ -1301,11 +1301,11 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
          PASS2;
         CodeIndent(VERBOSE_ALL, Level);            
          CodeOutput(VERBOSE_ALL, "{");
-         CodeOutput(VERBOSE_M, " // start of block"); 
+         CodeOutput(VERBOSE_M,   " // start of block"); 
          CgStatements(co, t, Level+1); // real level             
         CodeIndent(VERBOSE_ALL, Level);            
          CodeOutput(VERBOSE_ALL, "}"); 
-         CodeOutput(VERBOSE_M, "// end of block "); 
+         CodeOutput(VERBOSE_M,   "// end of block "); 
          break;   
       }
       case L_CASE : {
@@ -1332,7 +1332,7 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
          PASS2;
         CodeIndent(VERBOSE_ALL, Level);
          CodeOutput(VERBOSE_ALL, "break;");
-         CodeOutput(VERBOSE_M, "break; // exit %s \n", ThisFuncName);
+         CodeOutput(VERBOSE_M,   "break; // exit %s \n", ThisFuncName);
          break;   
       }
       case L_FOREVER : {
@@ -1362,9 +1362,9 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
       case ASSIGN : {
          PASS2;
          CgAssign(co, t, Level+VLEVEL);             
-         CodeIndent(VERBOSE_M, Level);            
+         CodeIndent(VERBOSE_M,   Level);            
          CodeOutput(VERBOSE_ALL, ";");
-         CodeOutput(VERBOSE_M, "// end of assign \n");
+         CodeOutput(VERBOSE_M,   "// end of assign \n");
          break;   
       }
       case L_RETURN : {
@@ -1374,16 +1374,16 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
          if (t->getChildCount(t)) {
             CgExpression(co, t->getChild(t,0), Level+VLEVEL);             
          }
-         CodeIndent(VERBOSE_M, Level);            
+         CodeIndent(VERBOSE_M,   Level);            
          CodeOutput(VERBOSE_ALL, ";");
-         CodeOutput(VERBOSE_M, "// end of return \n");
+         CodeOutput(VERBOSE_M,   "// end of return \n");
          break;   
       }
       case FUNC_PROC_CALL : {
          PASS2;
         CodeIndent(VERBOSE_ALL, Level); 
          CgProcFuncCall(co, t, Level+VLEVEL);      
-         CodeIndent(VERBOSE_M, Level); 
+         CodeIndent(VERBOSE_M,   Level); 
          CodeOutput(VERBOSE_ALL, ";");       
          break;    
       }   
@@ -1495,6 +1495,6 @@ void CodeGenerate(pANTLR3_BASE_TREE t)
       CgStatement(GlobalContext, t, Level); // process statement of node p
    }      
    CodeOutput(VERBOSE_ALL, "\n} "); 
-   CodeOutput(VERBOSE_M,   "// end of main"); 
+   CodeOutput(VERBOSE_M,     "// end of main"); 
    CodeOutput(VERBOSE_ALL, "\n//----- JAT code end ----------------------------------------------------------\n\n");
 }

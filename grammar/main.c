@@ -81,25 +81,9 @@ int main (int argc, char *argv[])
       exit(0);
    }
 
-   // open output file & print start message.      
-   char String[202];
-
-   for (i=0; Filename[i]; i++);
-   if (i > 200) {
-      printf("Error: filename too long to process\n");
-      exit(1);
-   }
-   if ((i<5) || (Filename[i-4] != '.')){
-      printf("Error: invalid filename\n");
-      exit(1);
-   }
-
-   // change from '.jal' to '.c'
-   strcpy(String, Filename);
-   String[i-3] = 'c';
-   String[i-2] = 0;   
-
-   if (OpenCodeOut(String) == 0) {
+   // open output file & print start message. 
+   // note: OpenCodeOut() changes extension from '.jal' to '.c'     
+   if (OpenCodeOut(Filename) == 0) {
       printf("Error opening output\n");
       exit(1);
    }
@@ -116,7 +100,7 @@ int main (int argc, char *argv[])
 
    if (Verbose > 0) {
       
-      printf("// Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree on one line
+      CodeOutput(VERBOSE_ALL, "// Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree on one line
 
       // print tree elements with indent
       TreeWalk(r.tree);
@@ -182,7 +166,7 @@ int main (int argc, char *argv[])
 void CIndent(int Level)
 {   int i;
    Level += 2;
-   printf("\n//");   
+   CodeOutput(VERBOSE_ALL, "\n//");   
    for (i=0; i<Level; i++) printf("   ");
 }
 
@@ -196,7 +180,7 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
 {  ANTLR3_UINT32   n, c;
 
 	if  (p->isNilNode(p) == ANTLR3_TRUE) {
-	   printf("// nil-node");
+	   CodeOutput(VERBOSE_ALL, "// nil-node");
 //	   return;
 	}
    
@@ -209,7 +193,7 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
       int ChildCount = child->getChildCount(child);                     
       pANTLR3_COMMON_TOKEN Token;
       if (child->getToken == NULL) {
-         printf("\n// getToken null");
+         CodeOutput(VERBOSE_ALL, "\n// getToken null");
          Token = 0; 
       } else {
          Token = child->getToken(child);
@@ -218,13 +202,13 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
 
       ANTLR3_UINT32 TokenType = child->getType(child);
       CIndent(Level);            
-      printf("%s (%d, %s from ",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
+      CodeOutput(VERBOSE_ALL, "%s (%d, %s from ",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
   
 //      ANTLR3_INPUT_STREAM *is = Token->input;
 //      printf("input stream %x,",is);
 //      printf("input stream %x,", is->fileName);
 //      printf("input stream %d,", (int)&is->data);
-      printf("Line %d:%d)",Token->getLine(Token), Token->getCharPositionInLine(Token));
+      CodeOutput(VERBOSE_ALL, "Line %d:%d)",Token->getLine(Token), Token->getCharPositionInLine(Token));
 
 
 

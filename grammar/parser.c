@@ -97,6 +97,7 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName)
    // memory and the file exists etc
    //
    if ( input == NULL) {
+      CodeOutput(VERBOSE_M, "Failed to open file %s\n", (char *)fName);
       fprintf(stderr, "Failed to open file %s\n", (char *)fName);
       exit(1);
    }
@@ -176,7 +177,7 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line)
    pANTLR3_INPUT_STREAM    in;
 
    if (NoInclude) {
-      printf("// Ignore include line %s\n", Line);
+      CodeOutput(VERBOSE_M, "// Ignore include line %s\n", Line);
       return NULL;
    }
    
@@ -209,12 +210,12 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line)
             break;  
          }               
          default : {
-            printf("Error state: %d, i: %d\n", State, i);     
+            CodeOutput(VERBOSE_ALL, "Error state: %d, i: %d\n", State, i);     
             break;
          }
       }
    }
-   if (Verbose) printf("// include BaseName: _%s_\n", BaseName);   
+   CodeOutput(VERBOSE_M, "// include BaseName: _%s_\n", BaseName);   
 
    sprintf(FileName, "%s.jal", BaseName);
 // TODO:
@@ -224,7 +225,7 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line)
    in = antlr3AsciiFileStreamNew(FileName);
 
    if (in == NULL) {
-      printf("Error opening include file %s\n", FileName);
+      CodeOutput(VERBOSE_ALL, "Error opening include file %s\n", FileName);
       fprintf(stderr, "Error opening include file %s\n", FileName);
       exit(1);
    }

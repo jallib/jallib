@@ -48,7 +48,7 @@ command clean
 }
 
 command test {
-   set cmd    "jalparser  "
+   set cmd    "jalparser -v "
    append cmd " test.jal"
    exec ($cmd)
 
