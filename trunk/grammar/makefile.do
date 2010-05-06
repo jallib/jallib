@@ -9,7 +9,8 @@ filelist {
    main.c
    parser.c    
    codegen.c    
-   symboltable.c  
+   symboltable.c 
+   output.c 
 
    jalLexer.c 
    jalParser.c                      
@@ -49,7 +50,6 @@ command clean
 command test {
    set cmd    "jalparser  "
    append cmd " test.jal"
-   append cmd " >test.c"
    exec ($cmd)
 
    exec "gcc test.c -otest.exe"

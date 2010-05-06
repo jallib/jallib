@@ -218,18 +218,21 @@ void SymbolPrintVarTable(Context *co)
 {  Symbol *s;
    Var   *v;
 
-   printf("\n\n   // Pseudo Var table\n");   
+   CodeOutput(VERBOSE_M, "\n\n   // Pseudo Var table");   
 
+   CodeIndent(VERBOSE_ALL, 1); // yes, VERBOSE_ALL.
+   
    for(s = co->Head; s != NULL; s = s->Next) {
       if (s->Type != S_VAR) continue;
       v = s->details;   
       assert(v != NULL); // error: var struct missing
       if ((v->put != NULL) | (v->get != NULL)) {
-         printf("   const ByCall __%s = { ",s->Name);
-         if (v->put ) printf("(void *)&%s, ", v->put ); else printf("NULL, "); 
-         if (v->get ) printf("(void *)&%s, ", v->get ); else printf("NULL, "); 
-         if (v->data) printf("(void *)&%s, ", v->data); else printf("NULL, "); 
-         printf("%d, %d, %d};\n", v->size, v->p1, v->p2); 
+         CodeIndent(VERBOSE_ALL, 1);
+         CodeOutput(VERBOSE_ALL, "   const ByCall __%s = { ",s->Name);
+         if (v->put ) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->put ); else CodeOutput(VERBOSE_ALL, "NULL, "); 
+         if (v->get ) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->get ); else CodeOutput(VERBOSE_ALL, "NULL, "); 
+         if (v->data) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->data); else CodeOutput(VERBOSE_ALL, "NULL, "); 
+         CodeOutput(VERBOSE_ALL, "%d, %d, %d};\n", v->size, v->p1, v->p2); 
       }
    }              
 }
