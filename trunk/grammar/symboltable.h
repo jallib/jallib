@@ -110,7 +110,7 @@ Var *SymbolGetVar(Context *co, char *SymbolName);
 Var *SymbolGetOrNewVar(Context *co, char *Name);
 void SymbolVarAdd_PutName(Context *co, char *BaseName, char *PutName);
 void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName);
-void SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName);
+Var *SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName);
 
 
 void CreateGlobalContext(void);

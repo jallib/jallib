@@ -101,7 +101,7 @@ void SymbolParamSetName(SymbolParam *p, char *Name)
 Symbol *GetSymbolPointer(Context *co, char *SymbolName, int SymbolType, int IncludeGlobal)
 {  Symbol *s;
 
-   CodeOutput(VERBOSE_L, "\n// GetSymbolPointer co: %x, SymbolName: %s, Type: %d, IncludeGolbal: %d\n", 
+   CodeOutput(VERBOSE_L, "\n// GetSymbolPointer params co: %x, SymbolName: %s, Type: %d, IncludeGolbal: %d\n", 
                                    co, SymbolName, SymbolType, IncludeGlobal);
 
    for (;co != NULL; co=co->Wider) {  
@@ -160,16 +160,18 @@ void DumpSymbol(Symbol *s)
 
          if ((v->put == NULL) & (v->get == NULL)) {
             if (v->CallMethod == 0) {
-               CodeOutput(VERBOSE_ALL, "//      Regular VAR ");
+               // no put, no get, no call method => regular var
+               CodeOutput(VERBOSE_ALL, "//      Regular VAR, type %s", jalParserTokenNames[v->Type]);
             } else {
                CodeOutput(VERBOSE_ALL, "//      Procedure/Function parameter, Type: %s, CallMethod: %c\n",
                      jalParserTokenNames[v->Type], v->CallMethod );
                CodeOutput(VERBOSE_ALL, "//         ");
             }               
          } else {
-            CodeOutput(VERBOSE_ALL, "//      Put: %s, Get: %s, ",
+            CodeOutput(VERBOSE_ALL, "//      Put: %s, Get: %s, Type: %s",
                (v->put  != NULL) ? v->put  : "NULL",   
-               (v->get  != NULL) ? v->get  : "NULL");   
+               (v->get  != NULL) ? v->get  : "NULL",
+               jalParserTokenNames[v->Type]);   
          }
          CodeOutput(VERBOSE_ALL, " Data: %s, Size: %d, P1: %d, P2: %d\n",
             (v->data != NULL) ? v->data : "NULL",   
@@ -192,7 +194,7 @@ void DumpSymbol(Symbol *s)
 void DumpContext(Context *co)
 {  Symbol *s;
    
-   CodeOutput(VERBOSE_ALL, "//DumpContext -------------------------------\n");
+   CodeOutput(VERBOSE_ALL, "\n//DumpContext -------------------------------\n");
 
    for (;;) {
 
@@ -220,21 +222,28 @@ void SymbolPrintVarTable(Context *co)
 
    CodeOutput(VERBOSE_M, "\n\n   // Pseudo Var table");   
 
-   CodeIndent(VERBOSE_ALL, 1); // yes, VERBOSE_ALL.
-   
    for(s = co->Head; s != NULL; s = s->Next) {
       if (s->Type != S_VAR) continue;
       v = s->details;   
       assert(v != NULL); // error: var struct missing
       if ((v->put != NULL) | (v->get != NULL)) {
          CodeIndent(VERBOSE_ALL, 1);
-         CodeOutput(VERBOSE_ALL, "   const ByCall __%s = { ",s->Name);
+         CodeOutput(VERBOSE_ALL, "   const ByCall %s__bcs = { ",s->Name);
          if (v->put ) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->put ); else CodeOutput(VERBOSE_ALL, "NULL, "); 
          if (v->get ) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->get ); else CodeOutput(VERBOSE_ALL, "NULL, "); 
          if (v->data) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->data); else CodeOutput(VERBOSE_ALL, "NULL, "); 
-         CodeOutput(VERBOSE_ALL, "%d, %d, %d};\n", v->size, v->p1, v->p2); 
+         CodeOutput(VERBOSE_ALL, "%d, %d, %d};", v->size, v->p1, v->p2); 
+
+         CodeIndent(VERBOSE_ALL, 1);
+         CodeOutput(VERBOSE_ALL, "   const ByCall *%s__bc = &%s__bcs; ",s->Name ,s->Name);
+
+
+         CodeIndent(VERBOSE_ALL, 1);
+         CodeOutput(VERBOSE_ALL, "   char *%s__p = NULL;", s->Name);
+         CodeOutput(VERBOSE_M,   " // pointer needs to be here to pass when the pv is called indirect, but its value is not used");
       }
    }              
+   CodeIndent(VERBOSE_ALL, 1);
 }
 
 
@@ -354,14 +363,16 @@ void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName)
 // SymbolVarAdd_DataName - 
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName)
+Var *SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName)
 {  Var *v;
 
    CodeOutput(VERBOSE_L, "SymbolVarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
 
    v = SymbolGetOrNewVar(co, BaseName);                       
-
+   
    v->data =CreateName(DataName);
+   
+   return v;
 } 
 
 //-----------------------------------------------------------------------------

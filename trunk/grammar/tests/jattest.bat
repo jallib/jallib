@@ -12,6 +12,10 @@ rem ---------------------------------------------------------------------------
 call %0 test_001
 call %0 test_002
 call %0 test_003
+call %0 test_004
+
+rem non JAL-compliant tests:
+call %0 test_100
 
 
 rem ---------------------------------------------------------------------------
@@ -51,6 +55,7 @@ goto diff_done
 echo TEST %1 FAILED          
 
 :diff_done
+echo. 
 rem ----------------- END message of SUCCES or FAILED
 
 type test.diff                  >>all.diff

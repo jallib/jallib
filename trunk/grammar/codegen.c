@@ -36,8 +36,8 @@ int Pass;
    pANTLR3_BASE_TREE   cc; /* 'child of child (not assigned!) */  \
    pANTLR3_COMMON_TOKEN Token;                                    \
                                                                   \
-   CodeIndent(VERBOSE_M,   Level);                                  \
-   CodeOutput(VERBOSE_M,   "// %s", ThisFuncName);                    \
+   CodeIndent(VERBOSE_M,   Level);                                \
+   CodeOutput(VERBOSE_M,   "// %s", ThisFuncName);                \
                                                                   \
    n = t->getChildCount(t);                                       \
                                                                   \
@@ -45,28 +45,28 @@ int Pass;
    Token = t->getToken(t);                                        \
    TokenType = t->getType(t);                                     \
                                                                   
-#define CODE_GENERATOR_GET_CHILD_INFO           \
-      c = t->getChild(t, ChildIx);              \
-      assert (c->getToken != NULL);             \
-                                                \
-      /* get data of child */                   \
-      Token = c->getToken(c);                   \
-      TokenType = c->getType(c);                \
+#define CODE_GENERATOR_GET_CHILD_INFO                             \
+      c = t->getChild(t, ChildIx);                                \
+      assert (c->getToken != NULL);                               \
+                                                                  \
+      /* get data of child */                                     \
+      Token = c->getToken(c);                                     \
+      TokenType = c->getType(c);                                  \
 
 
 
-#define REPORT_NODE(string, node) {                   \
-   CodeIndent(VERBOSE_ALL, Level);                    \
-   CodeOutput(VERBOSE_ALL, "// %s %s %s (%d, %s) from", \
-         ThisFuncName, string,                        \
-         node->toString(node)->chars,                 \
-         node->getType(node),                         \
-         jalParserTokenNames[TokenType]);             \
-   CodeOutput(VERBOSE_ALL, "Line %d:%d)\n",             \
-         Token->getLine(Token),                       \
-         Token->getCharPositionInLine(Token));        \
-                                                      \
-}                                                     \
+#define REPORT_NODE(string, node) {                               \
+   CodeIndent(VERBOSE_ALL, Level);                                \
+   CodeOutput(VERBOSE_ALL, "// %s %s %s (%d, %s) from",           \
+         ThisFuncName, string,                                    \
+         node->toString(node)->chars,                             \
+         node->getType(node),                                     \
+         jalParserTokenNames[TokenType]);                         \
+   CodeOutput(VERBOSE_ALL, "Line %d:%d)\n",                       \
+         Token->getLine(Token),                                   \
+         Token->getCharPositionInLine(Token));                    \
+                                                                  \
+}                                                                 \
 
 
 
@@ -117,7 +117,7 @@ char *VarTypeString(int TokenType)
       case L_SWORD   : { return "int8_t";             }
       case L_DWORD   : { return "uint32_t";           }
       case L_SDWORD  : { return "int32_t";            }
-      default        : { return "unexpected token";   }
+      default        : { return "unknown_vartype";    }
    }
 }
 
@@ -143,6 +143,9 @@ char *GetUniqueIdentifier()
 // identifier is a parameter of this procedure and - if  so - what method
 // is used when calling.
 //
+// NO! -> it can be used anywhere and not only finds procedure parameters, but
+// also pseudo vars. work in progress.!!!!!!!!!!!!!!!!!
+//
 // 0 = not found, else value of CallMethod (Value, Reference, Code)
 //-----------------------------------------------------------------------------
 char GetCallMethod(Context *co, char *ParamName)
@@ -151,47 +154,27 @@ char GetCallMethod(Context *co, char *ParamName)
    int i;
 
 
-   Symbol *s = GetSymbolPointer(co, ParamName, S_VAR, 0); // search for var, exclude global context. 
+   Symbol *s = GetSymbolPointer(co, ParamName, S_VAR, 1); // search for var, include global context for pvars
 
    if (s == NULL) return 0;   // symbol not found
       
    Var *v = s->details;
    
-   if (v->CallMethod == 0) {
-      CodeOutput(VERBOSE_M,   "\n// GetCallMethod - found var without call-method (var is not param)");
+   if (v->CallMethod == 0) {             
+      // found var without call-method (var is not param)
+
+      if ((v->put!= NULL) || (v->get != NULL))  {
+         // pseudo var
+         v->CallMethod = 'c';
+      } else {
+         CodeOutput(VERBOSE_ALL, "// We found something, but not clear what...\n");
+      }
    }
       
    return v->CallMethod;
 }
 
-                    
-char DeRefString[100];                    
-char *DeRefSub(char *InString, char CallMethod)
-{ 
-   if (CallMethod == 0) return InString;
-
-   if (CallMethod == 'r') {
-      // call by reference, so dereference before use
-      sprintf(DeRefString, "*%s", InString);
-      return DeRefString;   
-   }
-   if (CallMethod == 'c') {
-      // call by reference, so dereference before use
-      sprintf(DeRefString, "*%s", InString);
-      return DeRefString;   
-   }
-   return InString;
-}
-
-
-char *DeReference(Context *co, char *InString)
-{  char cm; 
-
-   cm = GetCallMethod(co, InString);
-
-   return DeRefSub(InString, cm);
-}
-               
+              
 //-----------------------------------------------------------------------------
 // CgExpression - Generate code for an Expression node
 //-----------------------------------------------------------------------------
@@ -204,6 +187,7 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
 
    Var *v;
    Symbol *s;
+   char *str;
 
    switch(TokenType) {
       case IDENTIFIER :
@@ -212,13 +196,12 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          s = GetSymbolPointer(co, t->toString(t)->chars, S_VAR, 1); // search for var, in local and global context
          v = NULL;
          if (s != NULL) v = s->details;
-//         v= SymbolGetVar(GlobalContext, t->toString(t)->chars);
 
          if ((v) && (v->get != NULL)) {
             // there is a var record.
             // we have a get function, so call to get value
             CodeIndent(VERBOSE_M,   Level);
-            CodeOutput(VERBOSE_ALL, "%s()", v->get);         
+            CodeOutput(VERBOSE_ALL, "%s((ByCall *)NULL, (char *)NULL)", v->get);         
             CodeOutput(VERBOSE_M,   " // %s call pseudovar put", ThisFuncName); 
             break;
          } 
@@ -234,7 +217,9 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          if ((v) && (v->CallMethod == 'c') ) {
             // a procedure parameter, passed by call
             CodeIndent(VERBOSE_M,   Level);            
-            CodeOutput(VERBOSE_ALL, "(%s)(*%s__bc->get)(%s__bc, %s__p)", VarTypeString(v->Type), t->toString(t)->chars, t->toString(t)->chars, t->toString(t)->chars);
+            CodeOutput(VERBOSE_ALL, "(%s) ( %s__bc->get ?(*%s__bc->get)(%s__bc, %s__p) : 0)", 
+                  VarTypeString(v->Type), t->toString(t)->chars, t->toString(t)->chars, 
+                                          t->toString(t)->chars, t->toString(t)->chars);
             CodeOutput(VERBOSE_M,   " // %s identifier - ByCall param", ThisFuncName);
             break;
          }
@@ -245,10 +230,22 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          CodeOutput(VERBOSE_M,   "// %s identifier (default)", ThisFuncName);   
             
          break;
+         
       case DECIMAL_LITERAL :
          CodeIndent(VERBOSE_M,   Level);            
          CodeOutput(VERBOSE_ALL, "%s", t->toString(t)->chars);
-         CodeOutput(VERBOSE_M,   "// constant");
+         CodeOutput(VERBOSE_M,   "// decimal constant");
+         break;
+
+      case CHARACTER_LITERAL : 
+      case STRING_LITERAL : 
+         str = t->toString(t)->chars;
+         if (strlen(str) > 3) {
+            CodeOutput(VERBOSE_ALL, "/*Warning: only first char of string used.*/");            
+         }
+         CodeIndent(VERBOSE_M,   Level);            
+         CodeOutput(VERBOSE_ALL, "'%c'", str[1]);
+         CodeOutput(VERBOSE_M,   "// character constant");
          break;
 
       case AMP           :
@@ -282,7 +279,7 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
             CodeOutput(VERBOSE_ALL, ")");
             CodeOutput(VERBOSE_M,   " // end subexpr");
          } else {
-            printf("%s Error: not two subnodes\n", ThisFuncName);
+            CodeOutput(VERBOSE_ALL, "%s Error: not two subnodes\n", ThisFuncName);
          }
          break;
 
@@ -291,7 +288,7 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          break;
 
       default :
-         printf("// %s unknown token %s type %d %s\n", ThisFuncName, t->toString(t)->chars, TokenType, jalParserTokenNames[TokenType]);
+         CodeOutput(VERBOSE_ALL, "// %s unknown token %s type %d %s\n", ThisFuncName, t->toString(t)->chars, TokenType, jalParserTokenNames[TokenType]);
          break;      
    }
 }
@@ -325,7 +322,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
       // we have a put function, so call in stead of assing
       // (this is the use of a global defined put function within an assignment)
       CodeIndent(VERBOSE_ALL, Level);
-      CodeOutput(VERBOSE_ALL, "%s(", v->put);         
+      CodeOutput(VERBOSE_ALL, "%s((ByCall *)NULL, (char *)NULL,", v->put);         
       CodeOutput(VERBOSE_M,   " // %s call pseudovar put", ThisFuncName);
 
       // second node is expr
@@ -356,7 +353,8 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
          case 'c' : {
             // call by code (so it is a procedure parameter)
             CodeIndent(VERBOSE_ALL, Level);  // this one always!
-            CodeOutput(VERBOSE_ALL, "(*%s__bc->put)(%s__bc, %s__p, ", c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars);
+            CodeOutput(VERBOSE_ALL, "if (%s__bc->put) (*%s__bc->put)(%s__bc, %s__p, ", 
+                  c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars);
             CodeOutput(VERBOSE_M,   " // %s identifier call by code", ThisFuncName);
 
             // second node is expr
@@ -378,7 +376,6 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    
    // 'v' or 0 or not found -> default = call by value
    CodeIndent(VERBOSE_ALL, Level);  // this one always!
-//   CodeOutput(VERBOSE_ALL, "%s  = ", DeReference(co, c->toString(c)->chars));
    CodeOutput(VERBOSE_ALL, "%s = ", c->toString(c)->chars);
    CodeOutput(VERBOSE_M,   " // %s identifier call by value", ThisFuncName);
 
@@ -655,11 +652,11 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
          CodeOutput(VERBOSE_ALL, "%s(", c->toString(c)->chars);         
          s = GetSymbolPointer(GlobalContext, c->toString(c)->chars, S_FUNCTION, 1);
          if (s != NULL) {
-            CodeOutput(VERBOSE_L, "// CgProcFuncCall s: %x\n", s);
+            CodeOutput(VERBOSE_XL, "// CgProcFuncCall s: %x\n", s);
             f = (SymbolFunction *) s->details;
-            CodeOutput(VERBOSE_L, "// CgProcFuncCall f: %x\n", f);
+            CodeOutput(VERBOSE_XL, "// CgProcFuncCall f: %x\n", f);
             p =                f->Param;
-            CodeOutput(VERBOSE_L, "// CgProcFuncCall p: %x\n", p);
+            CodeOutput(VERBOSE_XL, "// CgProcFuncCall p: %x\n", p);
          } else {
             p = NULL;
          }
@@ -709,7 +706,6 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                      break;
                   }                     
                }                  
-//               CodeOutput(VERBOSE_ALL, "&%s ", DeReference(co, c->toString(c)->chars));
                CodeOutput(VERBOSE_M,   "// identifier by reference default..");
             } else {                     
                // constants etc.
@@ -745,7 +741,7 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                   }                     
                }               
 
-               CodeOutput(VERBOSE_M,   "// identifier by reference qq");
+//               CodeOutput(VERBOSE_M,   "// identifier by reference qq");
             } else {
                // constants etc
                CodeOutput(VERBOSE_ALL, "Error: can't use this parameter to call by code.\n");
@@ -770,9 +766,11 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
 // A SingleVar node has child for it's name and for its options
 // (AT, IS, {}, ASSIGN)
 //-----------------------------------------------------------------------------
-void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level)
+void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType)
 {  char *ThisFuncName = "CgSingleVar";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
+
+   Var *v;
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       
@@ -782,17 +780,10 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level)
          case IDENTIFIER : {
             CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, "%s ", c->toString(c)->chars);       
-//CodeOutput(VERBOSE_ALL, "\n// %d\n", Level);
-//            if (Level == 3) { // this is a tricky one; indent may change...
-//               CodeOutput(VERBOSE_ALL, "CgSingleVar p1\n");
-//               // add var to store.
-//               SymbolVarAdd_DataName(GlobalContext, c->toString(c)->chars, c->toString(c)->chars);   
-//               CodeOutput(VERBOSE_ALL, "CgSingleVar p2\n");
 
-               // add var to context.
-               SymbolVarAdd_DataName(co, c->toString(c)->chars, c->toString(c)->chars);   
-//               CodeOutput(VERBOSE_ALL, "CgSingleVar p2\n");
-//            }
+            // add var to context.
+            v = SymbolVarAdd_DataName(co, c->toString(c)->chars, c->toString(c)->chars);   
+            v->Type = VarType;
             break;
          }
          case ASSIGN : {
@@ -823,7 +814,8 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
    int GotFirstSingleVar = 0;
-      
+   int VarType = 0;
+         
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       
       CODE_GENERATOR_GET_CHILD_INFO
@@ -835,17 +827,18 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
          case L_SWORD  : 
          case L_DWORD  : 
          case L_SDWORD : {
-           CodeIndent(VERBOSE_ALL, Level);            
-            CodeOutput(VERBOSE_ALL, "%s ", VarTypeString(TokenType));
+            CodeIndent(VERBOSE_ALL, Level);            
+            CodeOutput(VERBOSE_ALL, "%s ", VarTypeString(TokenType)); 
+            VarType = TokenType;
             break;
          }
          case VAR : {
             CodeIndent(VERBOSE_M,   Level);            
             if (GotFirstSingleVar) {
                CodeOutput(VERBOSE_ALL, ", ");           
-              CodeIndent(VERBOSE_ALL, Level);
+               CodeIndent(VERBOSE_ALL, Level);
             }
-            CgSingleVar(co, c, Level + 1);
+            CgSingleVar(co, c, Level + 1, VarType);
             GotFirstSingleVar = 1;
             break;
          }
@@ -896,7 +889,7 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
                GotType = 1;        
             }
             if (GotFirstSingleVar) CodeOutput(VERBOSE_ALL, ", ");
-            CgSingleVar(co, c, Level + 1);
+            CgSingleVar(co, c, Level + 1, L_DWORD);
             GotFirstSingleVar = 1;
             break;
          }
@@ -1128,13 +1121,11 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
             CodeOutput(VERBOSE_M,   "// proc/func name");
             s->Name = CreateName(String); // add to symbol table.  
             
-            if (PvPut) {  
-//               CodeOutput(VERBOSE_ALL, "ByCall *__s, ");
-//               CodeOutput(VERBOSE_M,   " // pvPut stuct");
-            }
-            if (PvGet) {  
-//               CodeOutput(VERBOSE_ALL, "ByCall *__s, ");
-//               CodeOutput(VERBOSE_M,   " // pvGet stuct");
+            if (PvPut || PvGet) {  
+               CodeIndent(VERBOSE_M, Level);
+               CodeOutput(VERBOSE_ALL, "ByCall *__s, char *__dummy");
+               if (PvPut) CodeOutput(VERBOSE_ALL, ", ");
+               CodeOutput(VERBOSE_M,   " // pvPut/pvGet params");
             }
             
             break;

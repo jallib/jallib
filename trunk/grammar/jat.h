@@ -68,7 +68,7 @@ void CgCase          (Context *co, pANTLR3_BASE_TREE t, int Level);
 void CgFor           (Context *co, pANTLR3_BASE_TREE t, int Level);
 void CgWhile         (Context *co, pANTLR3_BASE_TREE t, int Level);
 void CgRepeat        (Context *co, pANTLR3_BASE_TREE t, int Level);
-void CgSingleVar     (Context *co, pANTLR3_BASE_TREE t, int Level);
+void CgSingleVar     (Context *co, pANTLR3_BASE_TREE t, int Level, int VarType);
 void CgVar           (Context *co, pANTLR3_BASE_TREE t, int Level);
 void CgParamChilds   (Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, int VarType);
 void CgParams        (Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f);
