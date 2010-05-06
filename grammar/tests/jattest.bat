@@ -34,7 +34,7 @@ del test.tmp
 
 echo include ../pc_target        >test.jal
 type %1.jal                     >>test.jal
-..\jalparser test.jal            >test.c
+..\jalparser test.jal            
 gcc test.c -otest.exe
 test.exe                         >test.tmp
 perl comcapture.pl -f test.tmp   >test.txt

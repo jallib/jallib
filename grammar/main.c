@@ -17,23 +17,25 @@ int Verbose = 0;
 
 void CodeGenerate(pANTLR3_BASE_TREE p);
 void CIndent(int Level);
-
-
-
-void TreeWalk(pANTLR3_BASE_TREE p);    
-jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
+                         
 
 // command line option - vars
 char *Filename = NULL;
 char *IncludePath = NULL;
 int   NoInclude = 0;
 
+char *Namestring = "JAT V0.1 - Just Another Translator (Jal -> C code converter)";                       
+
+
+
+
+
 // Main entry point for this example
 //
 int main (int argc, char *argv[])
 {  jalParser_program_return r;
 
-   printf("// JAT V0.1 - Just Another Translator (Jal -> C code converter)\n");                       
+   printf("%s\n", Namestring);                       
 
    int i;
 
@@ -73,11 +75,36 @@ int main (int argc, char *argv[])
    }
    
 
-
+   // check for filename param.
    if (argc < 2 || Filename == NULL) {
       printf("Use: %s jal-file\n", argv[0]);
       exit(0);
    }
+
+   // open output file & print start message.      
+   char String[202];
+
+   for (i=0; Filename[i]; i++);
+   if (i > 200) {
+      printf("Error: filename too long to process\n");
+      exit(1);
+   }
+   if ((i<5) || (Filename[i-4] != '.')){
+      printf("Error: invalid filename\n");
+      exit(1);
+   }
+
+   // change from '.jal' to '.c'
+   strcpy(String, Filename);
+   String[i-3] = 'c';
+   String[i-2] = 0;   
+
+   if (OpenCodeOut(String) == 0) {
+      printf("Error opening output\n");
+      exit(1);
+   }
+   CodeOutput(VERBOSE_ALL, "//%s\n", Namestring);                       
+
 
    // read, LEX and PARSE source tree   
    r= ParseSource(Filename);
