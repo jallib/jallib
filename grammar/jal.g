@@ -283,11 +283,12 @@ constant :  BIN_LITERAL | HEX_LITERAL | OCTAL_LITERAL | DECIMAL_LITERAL ;
 
 BIN_LITERAL : '0' ('b'|'B') ('0' | '1' | '_')+ ;
 
-DECIMAL_LITERAL : ('0' | '1'..'9' ('0'..'9' | '_')*) ;
+//DECIMAL_LITERAL : ('0' | '1'..'9' ('0'..'9' | '_')*) ;
+DECIMAL_LITERAL : ('0'..'9' ('0'..'9' | '_')*) ;
 
 HEX_LITERAL : '0' ('x'|'X') HEX_DIGIT+ ;
 
-OCTAL_LITERAL : '0' ('0'..'7')+ ;
+OCTAL_LITERAL : '0' ('q'|'Q') (('0'..'7') | '_')+ ;
 
 CHARACTER_LITERAL :   '"' ( ESCAPE_SEQUENCE | ~(APOSTROPHE|'\\') ) '"'
     ;

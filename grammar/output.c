@@ -22,7 +22,8 @@ int OpenCodeOut(char *Filename)
 {  char String[202];  
    int i;
 
-   printf("Open1 _%s_\n", Filename);
+   // Note: we can't use CodeOutput yet...
+   if (Verbose) printf("Open1 _%s_\n", Filename); 
 
    // determine lenght
    for (i=0; Filename[i]; i++);

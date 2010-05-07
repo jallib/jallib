@@ -104,9 +104,9 @@ void PrintJ2cString(char *String)
    CodeOutput(VERBOSE_ALL, "%s", s);   
 }
 
-
-
-
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
 char *VarTypeString(int TokenType)
 {
    switch(TokenType) {
@@ -174,6 +174,60 @@ char GetCallMethod(Context *co, char *ParamName)
    return v->CallMethod;
 }
 
+  
+//-----------------------------------------------------------------------------
+// ConvertLiteral - From JAL convention to C convention
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+char ConvLitString[100];
+char *ConvertLiteral(int Type, char *InString)
+{  uint32_t i, j;
+   char *s = ConvLitString;
+   
+   strcpy(s, InString);
+   CodeOutput(VERBOSE_L, "// ConvertLiteral InString: %s\n", s);
+
+   // remove underscores.   
+   for (i=0, j=0; s[i]; i++, j++) {
+      s[i] = s[j];
+      if (s[i] == '_') i--;
+   }                            
+
+   CodeOutput(VERBOSE_XL, "// ConvertLiteral Str1: %s\n", s);
+
+   switch (Type) {
+      case HEX_LITERAL: 
+         // nothing to do
+         break;          
+
+      case DECIMAL_LITERAL :   
+         // remove heading zero's
+         while (*s == '0') s++;
+         if (*s == 0) s--; // just one zero is possible
+         break;                                        
+
+      case OCTAL_LITERAL :
+         // substitutue 'q' with 0 and 
+         s[1] = '0';
+         s++; //remove first 0 (cosmetic)       
+         break;
+
+      case BIN_LITERAL :
+         // convert
+         j = 0;
+         for (i=2; s[i]; i++) {
+            j *= 2;
+            if (s[i] == '1') j++;
+         }
+         sprintf(s, "0x%x", j);  
+         break;         
+   }
+
+   CodeOutput(VERBOSE_XL, "// ConvertLiteral Str2: %s\n", s);
+   return s;
+}
+
+
               
 //-----------------------------------------------------------------------------
 // CgExpression - Generate code for an Expression node
@@ -201,7 +255,8 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
             // there is a var record.
             // we have a get function, so call to get value
             CodeIndent(VERBOSE_M,   Level);
-            CodeOutput(VERBOSE_ALL, "%s((ByCall *)NULL, (char *)NULL)", v->get);         
+//            CodeOutput(VERBOSE_ALL, "%s((ByCall *)NULL, (char *)NULL)", v->get);         
+            CodeOutput(VERBOSE_ALL, "%s(PVAR_DIRECT)", v->get);         
             CodeOutput(VERBOSE_M,   " // %s call pseudovar put", ThisFuncName); 
             break;
          } 
@@ -216,11 +271,27 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
 
          if ((v) && (v->CallMethod == 'c') ) {
             // a procedure parameter, passed by call
+            //
+            // Here we put in code for runtime determination of the desired get method.
+            // 1. if get != NULL -> use get function
+            // 2. if data != NULL -> use data pointer
+            // 3. revert to 0.
+            /// 
             CodeIndent(VERBOSE_M,   Level);            
-            CodeOutput(VERBOSE_ALL, "(%s) ( %s__bc->get ?(*%s__bc->get)(%s__bc, %s__p) : 0)", 
-                  VarTypeString(v->Type), t->toString(t)->chars, t->toString(t)->chars, 
-                                          t->toString(t)->chars, t->toString(t)->chars);
-            CodeOutput(VERBOSE_M,   " // %s identifier - ByCall param", ThisFuncName);
+            char *str = t->toString(t)->chars;
+
+// moved to macro
+//            // get function?
+//            CodeOutput(VERBOSE_ALL, "(%s) ( %s__bc->get ?(*%s__bc->get)(%s__bc, %s__p) : ", 
+//                  VarTypeString(v->Type), str, str,str, str); 
+//            // data or 0      
+//            CodeOutput(VERBOSE_ALL, " ( %s__bc->data ? *(%s *)%s__bc->data : 0))", str, VarTypeString(v->Type), str); 
+//
+//            CodeOutput(VERBOSE_M,   " // %s identifier - ByCall param", ThisFuncName);
+// moved to marco
+               // PVAR_GET(type, get, data, bc, p)
+               CodeOutput(VERBOSE_ALL, "PVAR_GET(%s, %s__bc, %s__p)", VarTypeString(v->Type), str, str, str, str);           
+
             break;
          }
 
@@ -230,10 +301,13 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          CodeOutput(VERBOSE_M,   "// %s identifier (default)", ThisFuncName);   
             
          break;
-         
+
+      case HEX_LITERAL :        
+      case BIN_LITERAL :
+      case OCTAL_LITERAL :
       case DECIMAL_LITERAL :
          CodeIndent(VERBOSE_M,   Level);            
-         CodeOutput(VERBOSE_ALL, "%s", t->toString(t)->chars);
+         CodeOutput(VERBOSE_ALL, "%s", ConvertLiteral(TokenType, t->toString(t)->chars));
          CodeOutput(VERBOSE_M,   "// decimal constant");
          break;
 
@@ -322,7 +396,8 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
       // we have a put function, so call in stead of assing
       // (this is the use of a global defined put function within an assignment)
       CodeIndent(VERBOSE_ALL, Level);
-      CodeOutput(VERBOSE_ALL, "%s((ByCall *)NULL, (char *)NULL,", v->put);         
+//      CodeOutput(VERBOSE_ALL, "%s((ByCall *)NULL, (char *)NULL,", v->put);         
+      CodeOutput(VERBOSE_ALL, "%s(PVAR_DIRECT,", v->put);         
       CodeOutput(VERBOSE_M,   " // %s call pseudovar put", ThisFuncName);
 
       // second node is expr
@@ -353,8 +428,12 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
          case 'c' : {
             // call by code (so it is a procedure parameter)
             CodeIndent(VERBOSE_ALL, Level);  // this one always!
-            CodeOutput(VERBOSE_ALL, "if (%s__bc->put) (*%s__bc->put)(%s__bc, %s__p, ", 
-                  c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars);
+//   if (bravo__bc->put) (*bravo__bc->put)(bravo__bc, bravo__p, 1);
+//            CodeOutput(VERBOSE_ALL, "if (%s__bc->put) (*%s__bc->put)(%s__bc, %s__p, ", 
+//                  c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars);
+            
+            CodeOutput(VERBOSE_ALL, "PVAR_ASSIGN(uint8_t, %s__bc, %s__p,",    
+                  c->toString(c)->chars, c->toString(c)->chars);
             CodeOutput(VERBOSE_M,   " // %s identifier call by code", ThisFuncName);
 
             // second node is expr
@@ -1136,9 +1215,15 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
          }
          case BODY : {
             CodeIndent(VERBOSE_M,   Level);            
-            CodeOutput(VERBOSE_ALL, ") { \n");         
+            CodeOutput(VERBOSE_ALL, ") { ");         
             CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_M,   "// start body");         
+           
+            // put in self-reference (to allow pvar-functions to access it's var)
+            CodeIndent(VERBOSE_ALL,   Level+1);            
+            CodeOutput(VERBOSE_ALL, "static void *this_function = %s;\n", s->Name);         
+            CodeIndent(VERBOSE_M,   Level+1);            
+            CodeOutput(VERBOSE_M,   "// self-reference");         
             
             if (Verbose) DumpContext(co);            
 

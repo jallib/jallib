@@ -14,6 +14,25 @@ typedef struct ByCall_stuct {
    char  v2;     // var2, implementation-dependent
 } ByCall;
 
+//( alpha__bc->get ?(*alpha__bc->get)(alpha__bc, alpha__p) :  ( alpha__bc->data ? *(uint8_t *)alpha__bc->data : 0)));
+
+#define PVAR_GET(type, bc, p)    \
+(                                \
+   bc->get ?                     \
+      (*bc->get)(bc, p)          \
+   : (                           \
+      bc->data ?                 \
+         *(type *)bc->data       \
+      :                          \
+         0                       \
+   )                             \
+)                                \
+                                               
+#define PVAR_ASSIGN(type, bc, p, expr)        \
+   if (bc->put) (*bc->put)(bc, p, expr)
+
+#define PVAR_DIRECT (ByCall *)NULL, (char *)NULL                                               
+
 
 void     byte__put(ByCall *bc, void *Addr, uint32_t Data)   { *(uint8_t  *)Addr = (uint8_t)   Data; }
 uint32_t byte__get(ByCall *bc, void *Addr)                  { return (uint32_t)  *(uint8_t  *)Addr; }
