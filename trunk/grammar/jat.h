@@ -54,6 +54,7 @@ char *GetUniqueIdentifier(void);
 char *DeRefSub(char *InString, char CallMethod);
 void PrintJ2cString(char *String);
 
+char *ConvertLiteral(int Type, char *InString);
 
 char *DeReference    (Context *co, char *InString);
 char GetCallMethod   (Context *co, char *ParamName);

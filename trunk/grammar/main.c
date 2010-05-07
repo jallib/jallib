@@ -11,7 +11,6 @@
 
 #include "jat.h"
 
-
 int Verbose = 0;
 
 
@@ -36,7 +35,7 @@ int main (int argc, char *argv[])
 {  jalParser_program_return r;
 
    printf("%s\n", Namestring);                       
-
+  
    int i;
 
    for (i=1; i<argc; i++) {   
