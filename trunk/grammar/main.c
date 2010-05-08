@@ -29,7 +29,7 @@ char *Namestring = "JAT V0.1 - Just Another Translator (Jal -> C code converter)
 
 
 
-// Main entry point for this example
+// Main entry point for JustAnotherTranslator
 //
 int main (int argc, char *argv[])
 {  jalParser_program_return r;
@@ -73,7 +73,6 @@ int main (int argc, char *argv[])
 
    }
    
-
    // check for filename param.
    if (argc < 2 || Filename == NULL) {
       printf("Use: %s jal-file\n", argv[0]);
@@ -108,18 +107,6 @@ int main (int argc, char *argv[])
    // call code generator   
    CodeGenerate(r.tree);  
 
-
-//   Symbol *s;
-//   s = AddSymbol();   
-//   strcpy(s->Name, "een");
-//
-//   s = AddSymbol();   
-//   strcpy(s->Name, "twee");
-//   
-//   s = AddSymbol();   
-//   strcpy(s->Name, "drie");
-
-    
    if (Verbose) DumpContext(GlobalContext);
        
    return 0;
