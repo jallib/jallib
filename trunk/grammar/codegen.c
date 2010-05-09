@@ -4,14 +4,10 @@
 #include "jat.h"
 
 
-//#include <stdio.h>
-//
-//// antlr generate
-//#include    "jalLexer.h"
-//#include    "jalParser.h"
-//
-////extern pANTLR3_UINT8   jalParserTokenNames[];
-//#include "symboltable.h"
+int WarningCount, ErrorCount;
+#define R_ERROR   2
+#define R_WARNING 1
+#define R_INFO    0
 
 // Pass 1 collects global variables, constants and function/procedure defs
 // Pass 2 collects the rest, all 'loose' code and puts it into main.
@@ -55,7 +51,7 @@ int Pass;
 
 
 
-#define REPORT_NODE(string, node) {                               \
+#define REPORT_NODE(string, node, ErrorLevel) {                   \
    CodeIndent(VERBOSE_ALL, Level);                                \
    CodeOutput(VERBOSE_ALL, "// %s %s %s (%d, %s) from",           \
          ThisFuncName, string,                                    \
@@ -66,6 +62,22 @@ int Pass;
          Token->getLine(Token),                                   \
          Token->getCharPositionInLine(Token));                    \
                                                                   \
+   if ((ErrorLevel == R_ERROR) || (ErrorLevel == R_WARNING)) {    \
+      printf("%s: %s %s %s (%d, %s) ",                            \
+            (ErrorLevel == R_ERROR) ? "Error" : "Warning",        \
+            ThisFuncName, string,                                 \
+            node->toString(node)->chars,                          \
+            node->getType(node),                                  \
+            jalParserTokenNames[TokenType]);                      \
+      printf("from Line %d:%d)\n",                                \
+            Token->getLine(Token),                                \
+            Token->getCharPositionInLine(Token));                 \
+     if (ErrorLevel == R_ERROR) {                                 \
+        ErrorCount ++;                                            \
+     } else {                                                     \
+        WarningCount ++;                                          \
+     }                                                            \
+   }                                                              \
 }                                                                 \
 
 
@@ -242,14 +254,20 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
    Var *v;
    Symbol *s;
    char *str;
-
+   char *SymbolName;
+   
    switch(TokenType) {
       case IDENTIFIER :
 
          // lookup indentifier in context
-         s = GetSymbolPointer(co, t->toString(t)->chars, S_VAR, 1); // search for var, in local and global context
+         s = GetSymbolPointer(co, t->toString(t)->chars, S_VAR | S_ALIAS, 1); // search for var, in local and global context
          v = NULL;
-         if (s != NULL) v = s->details;
+         if (s != NULL) {
+            v = s->details;
+            SymbolName = s->Name; // could be de-aliassed.
+         } else {
+            SymbolName = t->toString(t)->chars;
+         }
 
          if ((v) && (v->get != NULL)) {
             // there is a var record.
@@ -303,7 +321,7 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
 
          // default - call by value, unknown call-methode or unknown identifier
          CodeIndent(VERBOSE_M,   Level);            
-         CodeOutput(VERBOSE_ALL, "%s", t->toString(t)->chars);
+         CodeOutput(VERBOSE_ALL, "%s", SymbolName); // t->toString(t)->chars);
          CodeOutput(VERBOSE_M,   "// %s identifier (default)", ThisFuncName);   
             
          break;
@@ -395,7 +413,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    }                
 
    // lookup indentifier in context
-   Symbol *s = GetSymbolPointer(co, c->toString(c)->chars, S_VAR, 1); // search for var, in local and global context
+   Symbol *s = GetSymbolPointer(co, c->toString(c)->chars, S_VAR | S_ALIAS, 1); // search for var, in local and global context
    if (s != NULL) v= s->details;
                 
    if ((v != NULL) && (v->put != NULL)) {
@@ -464,7 +482,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    
    // 'v' or 0 or not found -> default = call by value
    CodeIndent(VERBOSE_ALL, Level);  // this one always!
-   CodeOutput(VERBOSE_ALL, "%s = ", c->toString(c)->chars);
+   CodeOutput(VERBOSE_ALL, "%s = ", s->Name); // alias could be resolved... c->toString(c)->chars);
    CodeOutput(VERBOSE_M,   " // %s identifier call by value", ThisFuncName);
 
    // second node is expr
@@ -513,7 +531,7 @@ void CgCaseValue(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;  
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -562,7 +580,7 @@ void CgCase(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;  
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -621,7 +639,7 @@ void CgFor(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;  
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -667,7 +685,7 @@ void CgWhile(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -709,7 +727,7 @@ void CgRepeat(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }         
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -791,6 +809,7 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                      // so we need a scan of parameters before the actual call...
                      CodeOutput(VERBOSE_ALL, "not supported yet: %s ", c->toString(c)->chars);
                      CodeOutput(VERBOSE_M,   "// identifier by reference, from call");
+                     ErrorCount ++;
                      break;
                   }                     
                }                  
@@ -893,7 +912,7 @@ void CgSingleBitVar(Context *co, pANTLR3_BASE_TREE t, int Level)
 //            break;
 //         }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -938,7 +957,7 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -999,8 +1018,12 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
             }
             break;
          }
+         case L_VOLATILE : {            
+            REPORT_NODE("token ignored", c, R_WARNING);
+            break;
+         }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -1009,6 +1032,46 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
    CodeOutput(VERBOSE_ALL, ";");                
 }        
 
+//-----------------------------------------------------------------------------
+// CgAlias - 
+//-----------------------------------------------------------------------------
+// An ALIAS node has child for it's options and a VAR node for each
+// identifier (single var)
+//-----------------------------------------------------------------------------
+void CgAlias(Context *co, pANTLR3_BASE_TREE t, int Level)
+{  char *ThisFuncName = "CgAlias";
+   CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
+
+   int GotType = 0;
+   int GotFirstSingleVar = 0;
+   char *AliasName   = NULL;
+   char *AliasTarget = NULL;
+      
+   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+      
+      CODE_GENERATOR_GET_CHILD_INFO
+      
+      switch(TokenType) {
+         case IDENTIFIER : {   
+            if (ChildIx == 0) {
+               AliasName = c->toString(c)->chars;               
+            }
+            if (ChildIx == 1) {
+               AliasTarget = c->toString(c)->chars;               
+            }  
+            break;
+         }
+         default: {            
+            REPORT_NODE("unexpected token", c, R_ERROR);
+            break;
+         }
+      }
+   }
+   CodeIndent(VERBOSE_ALL,   Level);            
+   CodeOutput(VERBOSE_ALL, "// AliasName : %s, AliasTarget: %s\n", AliasName, AliasTarget);                
+   Symbol *s = NewSymbolAlias(co, AliasName, AliasTarget);
+
+} 
 //-----------------------------------------------------------------------------
 // CgConst - 
 //-----------------------------------------------------------------------------
@@ -1051,7 +1114,7 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -1119,7 +1182,7 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -1180,7 +1243,7 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -1226,7 +1289,7 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
       
       CODE_GENERATOR_GET_CHILD_INFO
 
-      if (Verbose > 1) REPORT_NODE("\n//CgProcedureDef childs", c)
+      if (Verbose > 1) REPORT_NODE("\n//CgProcedureDef childs", c, R_INFO)
       switch(TokenType) {
 
          // L_PUT or L_GET are the first childs if they exist. The flags influence further processing.
@@ -1315,7 +1378,7 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -1351,7 +1414,8 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
          CodeOutput(VERBOSE_ALL, "else");    
          CodeOutput(VERBOSE_M,   " // %s", ThisFuncName);    
          break;
-      default     :  REPORT_NODE("unexpected token", t);
+      default     :  
+         REPORT_NODE("unexpected token", t, R_ERROR);
          break;
    }
       
@@ -1391,7 +1455,7 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -1425,7 +1489,7 @@ void CgForever(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c);
+            REPORT_NODE("unexpected token", c, R_ERROR);
             break;
          }
       }
@@ -1571,8 +1635,13 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
          // ignore statment
          break;   
       }
+      case L_ALIAS : {    
+         PASS1;
+         CgAlias(co, t, Level+VLEVEL);                      
+         break;   
+      }
       default: {
-         REPORT_NODE("Unsupported statement", t);
+         REPORT_NODE("Unsupported statement", t, R_ERROR); 
          break; 
       }
       
@@ -1619,6 +1688,8 @@ void CgStatements(Context *co, pANTLR3_BASE_TREE t, int Level)
 void CodeGenerate(pANTLR3_BASE_TREE t)
 {  int Level;
 
+   ErrorCount = 0;
+   
    CreateGlobalContext(); 
    
    CodeOutput(VERBOSE_ALL, "\n\n//----- JAT code start --------------------------------------------------------\n");                       
@@ -1665,5 +1736,9 @@ void CodeGenerate(pANTLR3_BASE_TREE t)
    }      
    CodeOutput(VERBOSE_ALL, "\n} "); 
    CodeOutput(VERBOSE_M,     "// end of main"); 
-   CodeOutput(VERBOSE_ALL, "\n//----- JAT code end ----------------------------------------------------------\n\n");
+   
+   CodeOutput(VERBOSE_ALL, "\n// JAT finished, %d warnings, %d errors.\n", WarningCount, ErrorCount);
+   CodeOutput(VERBOSE_ALL, "//----- JAT code end ----------------------------------------------------------\n\n");
+   
+   printf("JAT finished, %d warnings, %d errors.\n", WarningCount, ErrorCount);   
 }

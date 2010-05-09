@@ -36,6 +36,43 @@ Symbol *NewSymbolFunction(Context *co)
    return s;
 }
 
+//----------------------------------------------------------------------------- 
+// NewSymbolAlias - add an ALIAS record to symbol table
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+Symbol *NewSymbolAlias(Context *co, char *AliasName, char *AliasTarget)
+{  Symbol *s;
+   SymbolFunction *f;
+
+   Symbol *Target;
+
+   // make sure alias name does not exists
+   s = GetSymbolPointer(co, AliasName, S_ALL, 1);   
+   if (s != NULL) {
+      printf("warning adding alias '%s' - Symbol already exists\n", AliasName);
+      CodeOutput(VERBOSE_ALL, "// waring adding alias '%s' - Symbol already exists\n", AliasName);
+//      ErrorCount++;
+//      return NULL;
+   }
+
+   // find alias target
+   Target = GetSymbolPointer(co, AliasTarget, S_ALL, 1);   
+   if (Target == NULL) {
+      printf("Error adding alias '%s' - Target '%s' does not exist\n", AliasName, AliasTarget);
+      CodeOutput(VERBOSE_ALL, "// Error adding alias '%s' - Target '%s' does not exist\n", AliasName, AliasTarget);
+      ErrorCount++;
+      return NULL;
+   }
+
+   // add alias      
+   s = NewSymbol(co);
+   s->Name = CreateName(AliasName);
+   s->Type = S_ALIAS;
+   s->details = Target;  // details points to symbol record.
+   
+   return s;
+}
+
 
 // add paramter record to function-def
 SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType)
@@ -93,10 +130,9 @@ void SymbolParamSetName(SymbolParam *p, char *Name)
 
   
 //-----------------------------------------------------------------------------
-// GetSymbolPointer - 
+// GetSymbolPointer - find record for name, restricted by type.
 //-----------------------------------------------------------------------------
 // from current context or wider.
-
 //-----------------------------------------------------------------------------
 Symbol *GetSymbolPointer(Context *co, char *SymbolName, int SymbolType, int IncludeGlobal)
 {  Symbol *s;
@@ -128,58 +164,75 @@ Symbol *GetSymbolPointer(Context *co, char *SymbolName, int SymbolType, int Incl
          // -----         
          // match
          // -----         
+         for (;;) {
+            // alias resolving
+            if (s->Type == S_ALIAS) {
+               CodeOutput(VERBOSE_XL, "// alias resolve step\n");
+               DumpSymbol(s, VERBOSE_XL);
+               s = s->details;
+            } else {
+               break;
+            }
+         }
+         CodeOutput(VERBOSE_L, "// matched symbol:\n");
+         DumpSymbol(s, VERBOSE_L);
          return s;
       }       
    }
    return NULL;  // no match
 }
   
-void DumpSymbol(Symbol *s)
+void DumpSymbol(Symbol *s, int VerboseLevel)
 {  int i;
       
-   CodeOutput(VERBOSE_ALL,"//\n//   Symbol name: '%s' at %x, Type: %d ", s->Name, s, s->Type);
+   CodeOutput(VerboseLevel,"//\n//   Symbol name: '%s' at %x, Type: %d ", s->Name, s, s->Type);
    switch (s->Type) {
       case S_FUNCTION : {                
-         CodeOutput(VERBOSE_ALL, "(Function)\n");
+         CodeOutput(VerboseLevel, "(Function)\n");
          SymbolFunction *f = s->details; 
          assert(f != NULL); // error: function struct missing
-         CodeOutput(VERBOSE_ALL, "//      Function returns %s (%d)\n", VarTypeString(f->ReturnType), f->ReturnType);         
+         CodeOutput(VerboseLevel, "//      Function returns %s (%d)\n", VarTypeString(f->ReturnType), f->ReturnType);         
          SymbolParam *p = f->Param;
          for (;;) {
             if (p == NULL) break;
-            CodeOutput(VERBOSE_ALL, "//      param Name: '%s', Type: %s (%d), CallBy: %c\n",
+            CodeOutput(VerboseLevel, "//      param Name: '%s', Type: %s (%d), CallBy: %c\n",
                   p->Name, jalParserTokenNames[p->Type], p->Type, p->CallMethod);
             p = p->next;    
          }
          break;
       }        
       case S_VAR : {
-         CodeOutput(VERBOSE_ALL, "(Var)\n");
+         CodeOutput(VerboseLevel, "(Var)\n");
          Var *v = s->details;
          assert(v != NULL); // error: var struct missing
 
          if ((v->put == NULL) & (v->get == NULL)) {
             if (v->CallMethod == 0) {
                // no put, no get, no call method => regular var
-               CodeOutput(VERBOSE_ALL, "//      Regular VAR, type %s", jalParserTokenNames[v->Type]);
+               CodeOutput(VerboseLevel, "//      Regular VAR, type %s", jalParserTokenNames[v->Type]);
             } else {
-               CodeOutput(VERBOSE_ALL, "//      Procedure/Function parameter, Type: %s, CallMethod: %c\n",
+               CodeOutput(VerboseLevel, "//      Procedure/Function parameter, Type: %s, CallMethod: %c\n",
                      jalParserTokenNames[v->Type], v->CallMethod );
-               CodeOutput(VERBOSE_ALL, "//         ");
+               CodeOutput(VerboseLevel, "//         ");
             }               
          } else {
-            CodeOutput(VERBOSE_ALL, "//      Put: %s, Get: %s, Type: %s",
+            CodeOutput(VerboseLevel, "//      Put: %s, Get: %s, Type: %s",
                (v->put  != NULL) ? v->put  : "NULL",   
                (v->get  != NULL) ? v->get  : "NULL",
                jalParserTokenNames[v->Type]);   
          }
-         CodeOutput(VERBOSE_ALL, " Data: %s, Size: %d, P1: %d, P2: %d\n",
+         CodeOutput(VerboseLevel, " Data: %s, Size: %d, P1: %d, P2: %d\n",
             (v->data != NULL) ? v->data : "NULL",   
             v->size, v->p1, v->p2); 
          break;
       }
+      case S_ALIAS : {
+         CodeOutput(VerboseLevel, "Alias\n");
+         break;
+      }
+
       default : {
-         CodeOutput(VERBOSE_ALL, "!! Unknown type !!\n");
+         CodeOutput(VerboseLevel, "!! Unknown type !!\n");
          break;
       }
    }                 
@@ -205,7 +258,7 @@ void DumpContext(Context *co)
       for(s = co->Head; s != NULL; s = s->Next) {
          if (s== NULL) break;
          //CodeOutput(VERBOSE_ALL, "DumpSymbolTable %x\n", s);
-         DumpSymbol(s);
+         DumpSymbol(s, VERBOSE_ALL);
       }
 
       co = co->Wider;
@@ -390,7 +443,7 @@ void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName)
 Var *SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName)
 {  Var *v;
 
-   CodeOutput(VERBOSE_L, "SymbolVarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
+   CodeOutput(VERBOSE_L, "// SymbolVarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
 
    v = SymbolGetOrNewVar(co, BaseName);                       
    
