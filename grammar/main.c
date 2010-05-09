@@ -22,6 +22,7 @@ void CIndent(int Level);
 char *Filename = NULL;
 char *IncludePath = NULL;
 int   NoInclude = 0;
+int   ToStdOut  = 0;
 
 char *Namestring = "JAT V0.1 - Just Another Translator (Jal -> C code converter)";                       
 
@@ -60,6 +61,12 @@ int main (int argc, char *argv[])
       if (strcmp(argv[i], "-noinclude") == 0) {
          // no-include - disable include function
          NoInclude = 1;
+         continue;
+      }
+
+      if (strcmp(argv[i], "-stdout") == 0) {
+         // stdout - output to stdout rather then filename (usefull to catch the last bytes when exceptions occure)
+         ToStdOut = 1;
          continue;
       }
 
@@ -156,7 +163,7 @@ void CIndent(int Level)
 {   int i;
    Level += 2;
    CodeOutput(VERBOSE_ALL, "\n//");   
-   for (i=0; i<Level; i++) printf("   ");
+   for (i=0; i<Level; i++) CodeOutput(VERBOSE_ALL, "   ");
 }
 
 extern pANTLR3_UINT8   jalParserTokenNames[];

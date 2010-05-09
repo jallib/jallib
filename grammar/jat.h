@@ -22,6 +22,7 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
 // command line switches
 extern int Verbose;
 extern int NoInclude;
+extern int ToStdOut;
 
 // more indent levels with verbose:
 #define VLEVEL (Verbose > 0 ? 1 : 0) 
@@ -44,10 +45,12 @@ void CodeIndent(int VerboseCategory, int Level);
 #define VERBOSE_M   1   // medium (which is already quite a lot - all tree walking stuff)
 #define VERBOSE_L   2   // large  (more details on table searching etc)
 #define VERBOSE_XL  3   // extra large  (probably too much ;) )
-
+#define VERBOSE_WARNING 10
+#define VERBOSE_ERROR   11
 
 // codegen.c        
 extern int Pass;
+extern int WarningCount;
 extern int ErrorCount;
 
 char *VarTypeString(int TokenType);

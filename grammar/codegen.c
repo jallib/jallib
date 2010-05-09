@@ -5,9 +5,6 @@
 
 
 int WarningCount, ErrorCount;
-#define R_ERROR   2
-#define R_WARNING 1
-#define R_INFO    0
 
 // Pass 1 collects global variables, constants and function/procedure defs
 // Pass 2 collects the rest, all 'loose' code and puts it into main.
@@ -51,33 +48,17 @@ int Pass;
 
 
 
-#define REPORT_NODE(string, node, ErrorLevel) {                   \
-   CodeIndent(VERBOSE_ALL, Level);                                \
-   CodeOutput(VERBOSE_ALL, "// %s %s %s (%d, %s) from",           \
+#define REPORT_NODE(VerboseLevel, string, node) {                 \
+   CodeIndent(VerboseLevel, Level);                               \
+   CodeOutput(VerboseLevel, "// %s %s %s (%d, %s) from",          \
          ThisFuncName, string,                                    \
          node->toString(node)->chars,                             \
          node->getType(node),                                     \
          jalParserTokenNames[TokenType]);                         \
-   CodeOutput(VERBOSE_ALL, "Line %d:%d)\n",                       \
+   CodeOutput(VerboseLevel, "Line %d:%d)\n",                      \
          Token->getLine(Token),                                   \
          Token->getCharPositionInLine(Token));                    \
                                                                   \
-   if ((ErrorLevel == R_ERROR) || (ErrorLevel == R_WARNING)) {    \
-      printf("%s: %s %s %s (%d, %s) ",                            \
-            (ErrorLevel == R_ERROR) ? "Error" : "Warning",        \
-            ThisFuncName, string,                                 \
-            node->toString(node)->chars,                          \
-            node->getType(node),                                  \
-            jalParserTokenNames[TokenType]);                      \
-      printf("from Line %d:%d)\n",                                \
-            Token->getLine(Token),                                \
-            Token->getCharPositionInLine(Token));                 \
-     if (ErrorLevel == R_ERROR) {                                 \
-        ErrorCount ++;                                            \
-     } else {                                                     \
-        WarningCount ++;                                          \
-     }                                                            \
-   }                                                              \
 }                                                                 \
 
 
@@ -401,7 +382,8 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgAssign";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
-   Var *v = NULL;
+   Var *v; 
+   char *Identifier;
 
    // first node is identifier to assign to. 
    ChildIx = 0;
@@ -414,7 +396,13 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
 
    // lookup indentifier in context
    Symbol *s = GetSymbolPointer(co, c->toString(c)->chars, S_VAR | S_ALIAS, 1); // search for var, in local and global context
-   if (s != NULL) v= s->details;
+   if (s != NULL) {
+      v= s->details;
+      Identifier = s->Name;
+   } else {  
+      v = NULL;
+      Identifier = c->toString(c)->chars;
+   }      
                 
    if ((v != NULL) && (v->put != NULL)) {
       // we have a put function, so call in stead of assing
@@ -423,7 +411,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
       if (v->data) {
          CodeOutput(VERBOSE_ALL, "%s((const ByCall *)%s__bc, (void *)&%s,", v->put, s->Name, v->data);         
       } else {
-         CodeOutput(VERBOSE_ALL, "%s((const ByCall *)%s__bc, (void *)NULL,", v->put, s->Name);         
+         CodeOutput(VERBOSE_ALL, "%s((const ByCall *)%s__bc, (void *)NULL,", v->put, Identifier);         
       }
       CodeOutput(VERBOSE_M,   " // %s call pseudovar put", ThisFuncName);
 
@@ -482,7 +470,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    
    // 'v' or 0 or not found -> default = call by value
    CodeIndent(VERBOSE_ALL, Level);  // this one always!
-   CodeOutput(VERBOSE_ALL, "%s = ", s->Name); // alias could be resolved... c->toString(c)->chars);
+   CodeOutput(VERBOSE_ALL, "%s = ", Identifier); // alias could be resolved... c->toString(c)->chars);
    CodeOutput(VERBOSE_M,   " // %s identifier call by value", ThisFuncName);
 
    // second node is expr
@@ -531,7 +519,7 @@ void CgCaseValue(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;  
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -580,7 +568,7 @@ void CgCase(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;  
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -639,7 +627,7 @@ void CgFor(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;  
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -685,7 +673,7 @@ void CgWhile(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -727,7 +715,7 @@ void CgRepeat(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }         
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -848,7 +836,7 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                   }                     
                }               
 
-//               CodeOutput(VERBOSE_M,   "// identifier by reference qq");
+//               CodeOutput(VERBOSE_M,   "// identifier by reference");
             } else {
                // constants etc
                CodeOutput(VERBOSE_ALL, "Error: can't use this parameter to call by code.\n");
@@ -912,7 +900,7 @@ void CgSingleBitVar(Context *co, pANTLR3_BASE_TREE t, int Level)
 //            break;
 //         }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -933,15 +921,22 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
    Var *v;
+   char *Identifier = NULL;
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       
       CODE_GENERATOR_GET_CHILD_INFO
+            REPORT_NODE(VERBOSE_M, "SingeVar child token", c);
       
       switch(TokenType) {
-         case IDENTIFIER : {
+         case IDENTIFIER : {   
+            Identifier = c->toString(c)->chars;
+               
+//            CodeIndent(VERBOSE_ALL, Level);            
+//            CodeOutput(VERBOSE_ALL, "%s", VarTypeString(VarType)); 
+//            
             CodeIndent(VERBOSE_M,   Level);            
-            CodeOutput(VERBOSE_ALL, "%s ", c->toString(c)->chars);       
+            CodeOutput(VERBOSE_M, "// %s identifier %s add to context.", ThisFuncName, c->toString(c)->chars);       
 
             // add var to context.
             v = SymbolVarAdd_DataName(co, c->toString(c)->chars, c->toString(c)->chars);   
@@ -949,18 +944,49 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType)
             break;
          }
          case ASSIGN : {
-            CodeIndent(VERBOSE_M,   Level);            
-            CodeOutput(VERBOSE_ALL, "= ");
+            CodeIndent(VERBOSE_ALL,   Level);            
+            CodeOutput(VERBOSE_ALL, "%s %s = ", VarTypeString(VarType), Identifier);
             CodeOutput(VERBOSE_M,   "// assign");
             cc = c->getChild(c, 0);
             CgExpression(co, cc, Level+VLEVEL);
+            CodeIndent(VERBOSE_ALL,   Level);            
+            CodeOutput(VERBOSE_ALL, ";");  
+            Identifier = NULL; // indicate we handled this one.
+            break;
+         }
+         case L_IS : {
+            if (n > 2) {
+               CodeOutput(VERBOSE_ERROR, "// IS can not co-exist with AT or ASSIGN\n");
+               return;
+            }
+            cc = c->getChild(c, 0);
+            if (strcmp(cc->toString(cc)->chars, Identifier) == 0) {                      
+               // no action required - the symbol is already in the table.
+               CodeOutput(VERBOSE_XL, "// %s special case: var %s prototype, like 'extern' in C", Identifier, ThisFuncName);               
+            } else {
+               // No use for this AFAIK - we have alias.
+               CodeOutput(VERBOSE_WARNING, "// %s use of 'IS' only supported in prototype-way", ThisFuncName);               
+               
+//               CodeIndent(VERBOSE_ALL,   Level);            
+//               CodeOutput(VERBOSE_ALL, "%s = %s ", cc->toString(cc)->chars, Identifier);
+//               CodeOutput(VERBOSE_M,   "// is");
+//               cc = c->getChild(c, 0);
+//            here is target name.
+            }
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
-      }
+      }    
+   }    
+   if (Identifier != NULL) {
+      // Identifier unhandled.  
+      CodeIndent(VERBOSE_ALL,   Level);                           
+      CodeOutput(VERBOSE_ALL, "%s %s;", VarTypeString(VarType), Identifier);
+      CodeOutput(VERBOSE_M, "// simple var definition");
+      CodeIndent(VERBOSE_M,   Level);                           
    }
    CodeIndent(VERBOSE_M,   Level);                           
 } 
@@ -975,9 +1001,9 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgVar";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
-   int GotFirstSingleVar = 0;
+//   int GotFirstSingleVar = 0;
    int VarType = 0;
-         
+
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       
       CODE_GENERATOR_GET_CHILD_INFO
@@ -989,8 +1015,8 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
          case L_SWORD  : 
          case L_DWORD  : 
          case L_SDWORD : {
-            CodeIndent(VERBOSE_ALL, Level);            
-            CodeOutput(VERBOSE_ALL, "%s ", VarTypeString(TokenType)); 
+            CodeIndent(VERBOSE_M, Level);            
+            CodeOutput(VERBOSE_M, "// %s Type %s ", ThisFuncName, VarTypeString(TokenType)); 
             VarType = TokenType;
             break;
          }
@@ -1003,27 +1029,29 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
          }
 
          case VAR : {    
-            CodeIndent(VERBOSE_M,   Level);            
+//            CodeOutput(VERBOSE_ALL, ", ");           
+//            CodeIndent(VERBOSE_M,   Level);            
 
             if (VarType == L_BIT) {                   
                CgSingleBitVar(co, c, Level + 1);               
             } else {
-               // a var type that maps to a C var type
-               if (GotFirstSingleVar) {
-                  CodeOutput(VERBOSE_ALL, ", ");           
-                  CodeIndent(VERBOSE_ALL, Level);
-               }
+               // a var type that maps to a C var type  
+               
+//               if (GotFirstSingleVar) {
+//                  CodeOutput(VERBOSE_ALL, ", ");           
+//                  CodeIndent(VERBOSE_ALL, Level);
+//               }
                CgSingleVar(co, c, Level + 1, VarType);
-               GotFirstSingleVar = 1;
+//               GotFirstSingleVar = 1;
             }
             break;
          }
          case L_VOLATILE : {            
-            REPORT_NODE("token ignored", c, R_WARNING);
+            REPORT_NODE(VERBOSE_ERROR, "token ignored", c);
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -1062,7 +1090,7 @@ void CgAlias(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -1114,7 +1142,7 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -1182,7 +1210,7 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -1243,7 +1271,7 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -1289,7 +1317,7 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
       
       CODE_GENERATOR_GET_CHILD_INFO
 
-      if (Verbose > 1) REPORT_NODE("\n//CgProcedureDef childs", c, R_INFO)
+      if (Verbose > 1) REPORT_NODE(VERBOSE_ERROR, "\n//CgProcedureDef childs", c)
       switch(TokenType) {
 
          // L_PUT or L_GET are the first childs if they exist. The flags influence further processing.
@@ -1378,7 +1406,7 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -1415,7 +1443,7 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
          CodeOutput(VERBOSE_M,   " // %s", ThisFuncName);    
          break;
       default     :  
-         REPORT_NODE("unexpected token", t, R_ERROR);
+         REPORT_NODE(VERBOSE_ERROR, "unexpected token", t);
          break;
    }
       
@@ -1455,7 +1483,7 @@ void CgIf(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -1489,7 +1517,7 @@ void CgForever(Context *co, pANTLR3_BASE_TREE t, int Level)
             break;
          }
          default: {            
-            REPORT_NODE("unexpected token", c, R_ERROR);
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
             break;
          }
       }
@@ -1641,7 +1669,7 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
          break;   
       }
       default: {
-         REPORT_NODE("Unsupported statement", t, R_ERROR); 
+         REPORT_NODE(VERBOSE_ERROR, "Unsupported statement", t); 
          break; 
       }
       
