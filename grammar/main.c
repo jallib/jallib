@@ -108,8 +108,11 @@ int main (int argc, char *argv[])
    CodeGenerate(r.tree);  
 
    if (Verbose) DumpContext(GlobalContext);
-       
-   return 0;
+
+   if (ErrorCount) {
+      exit(1);
+   }       
+   exit(0); // success
  
    // below is memory cleanup, which sometimes causes 0-pointer exceptions. 
    // Should be fixed one day... 

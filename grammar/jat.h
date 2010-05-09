@@ -48,6 +48,7 @@ void CodeIndent(int VerboseCategory, int Level);
 
 // codegen.c        
 extern int Pass;
+extern int ErrorCount;
 
 char *VarTypeString(int TokenType);
 char *GetUniqueIdentifier(void);
