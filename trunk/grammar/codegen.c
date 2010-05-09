@@ -160,7 +160,10 @@ char GetCallMethod(Context *co, char *ParamName)
          // pseudo var
          v->CallMethod = 'c';
       } else {
-         CodeOutput(VERBOSE_ALL, "// We found something, but not clear what...\n");
+         // a regular var - 
+         v->CallMethod = 'v';
+//         CodeOutput(VERBOSE_ALL, "// We found something, but not clear what...\n");
+//         DumpSymbol(s, VERBOSE_ALL);
       }
    }
       
@@ -876,7 +879,7 @@ void CgSingleBitVar(Context *co, pANTLR3_BASE_TREE t, int Level)
          case IDENTIFIER : {   
             // setup a bit-pvar
             sprintf(String, "%s__d", c->toString(c)->chars);
-            CodeIndent(VERBOSE_M,   Level);            
+            CodeIndent(VERBOSE_ALL,   Level);            
             CodeOutput(VERBOSE_ALL, "uint8_t %s;", String);       
    
             // add to the symbol table
@@ -916,7 +919,7 @@ void CgSingleBitVar(Context *co, pANTLR3_BASE_TREE t, int Level)
 // A SingleVar node has child for it's name and for its options
 // (AT, IS, {}, ASSIGN)
 //-----------------------------------------------------------------------------
-void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType)
+void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType, int IsConstant)
 {  char *ThisFuncName = "CgSingleVar";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
@@ -930,26 +933,24 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType)
       
       switch(TokenType) {
          case IDENTIFIER : {   
+            // save identifier name
             Identifier = c->toString(c)->chars;
-               
-//            CodeIndent(VERBOSE_ALL, Level);            
-//            CodeOutput(VERBOSE_ALL, "%s", VarTypeString(VarType)); 
-//            
-            CodeIndent(VERBOSE_M,   Level);            
-            CodeOutput(VERBOSE_M, "// %s identifier %s add to context.", ThisFuncName, c->toString(c)->chars);       
 
-            // add var to context.
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_M, "// %s Add identifier %s to context.", ThisFuncName, c->toString(c)->chars);       
             v = SymbolVarAdd_DataName(co, c->toString(c)->chars, c->toString(c)->chars);   
+
             v->Type = VarType;
             break;
          }
          case ASSIGN : {
             CodeIndent(VERBOSE_ALL,   Level);            
+            if (IsConstant) CodeOutput(VERBOSE_ALL, "const ");
             CodeOutput(VERBOSE_ALL, "%s %s = ", VarTypeString(VarType), Identifier);
             CodeOutput(VERBOSE_M,   "// assign");
             cc = c->getChild(c, 0);
             CgExpression(co, cc, Level+VLEVEL);
-            CodeIndent(VERBOSE_ALL,   Level);            
+            CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_ALL, ";");  
             Identifier = NULL; // indicate we handled this one.
             break;
@@ -963,16 +964,16 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType)
             if (strcmp(cc->toString(cc)->chars, Identifier) == 0) {                      
                // no action required - the symbol is already in the table.
                CodeOutput(VERBOSE_XL, "// %s special case: var %s prototype, like 'extern' in C", Identifier, ThisFuncName);               
+
+               // code below forces type
+               //CodeIndent(VERBOSE_ALL,   Level);                           
+               //CodeOutput(VERBOSE_ALL, "extern %s %s;", VarTypeString(VarType), Identifier);
+
             } else {
                // No use for this AFAIK - we have alias.
-               CodeOutput(VERBOSE_WARNING, "// %s use of 'IS' only supported in prototype-way", ThisFuncName);               
-               
-//               CodeIndent(VERBOSE_ALL,   Level);            
-//               CodeOutput(VERBOSE_ALL, "%s = %s ", cc->toString(cc)->chars, Identifier);
-//               CodeOutput(VERBOSE_M,   "// is");
-//               cc = c->getChild(c, 0);
-//            here is target name.
+               CodeOutput(VERBOSE_WARNING, "// %s use of 'IS' only supported in prototype-way", ThisFuncName);                              
             }
+            Identifier = NULL; // indicate we handled this one.
             break;
          }
          default: {            
@@ -983,6 +984,12 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType)
    }    
    if (Identifier != NULL) {
       // Identifier unhandled.  
+      if (IsConstant) {
+         CodeOutput(VERBOSE_ERROR, "// Error: Constant %s '%s' without assign\n", VarTypeString(VarType), Identifier);         
+         return;
+      }
+
+      // handle identifier
       CodeIndent(VERBOSE_ALL,   Level);                           
       CodeOutput(VERBOSE_ALL, "%s %s;", VarTypeString(VarType), Identifier);
       CodeOutput(VERBOSE_M, "// simple var definition");
@@ -1033,7 +1040,7 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
 //            CodeIndent(VERBOSE_M,   Level);            
 
             if (VarType == L_BIT) {                   
-               CgSingleBitVar(co, c, Level + 1);               
+               CgSingleBitVar(co, c, Level + VLEVEL);               
             } else {
                // a var type that maps to a C var type  
                
@@ -1041,7 +1048,7 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
 //                  CodeOutput(VERBOSE_ALL, ", ");           
 //                  CodeIndent(VERBOSE_ALL, Level);
 //               }
-               CgSingleVar(co, c, Level + 1, VarType);
+               CgSingleVar(co, c, Level + VLEVEL, VarType, 0);
 //               GotFirstSingleVar = 1;
             }
             break;
@@ -1057,7 +1064,7 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
       }
    }
    CodeIndent(VERBOSE_M,   Level);            
-   CodeOutput(VERBOSE_ALL, ";");                
+   CodeOutput(VERBOSE_M, "// %s end", ThisFuncName);                
 }        
 
 //-----------------------------------------------------------------------------
@@ -1110,8 +1117,7 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgConst";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
-   int GotType = 0;
-   int GotFirstSingleVar = 0;
+   int VarType = 0;
       
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       
@@ -1124,21 +1130,22 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
          case L_SWORD  : 
          case L_DWORD  : 
          case L_SDWORD : {
-           CodeIndent(VERBOSE_ALL, Level);            
-            CodeOutput(VERBOSE_ALL, "const %s ", VarTypeString(TokenType));
-            GotType = 1;
+ //           CodeIndent(VERBOSE_ALL, Level);            
+//            CodeOutput(VERBOSE_ALL, "const %s ", VarTypeString(TokenType));
+            VarType = TokenType;
             break;
          }
          case VAR : {   
-            CodeIndent(VERBOSE_M,   Level);            
-            if (GotType == 0) {
-               CodeOutput(VERBOSE_ALL, "const long ");
-               CodeOutput(VERBOSE_M,   " // default const type\n");
-               GotType = 1;        
+//            CodeIndent(VERBOSE_M,   Level);            
+//               CodeOutput(VERBOSE_ALL, "const long ");
+//               CodeOutput(VERBOSE_M,   " // default const type\n");
+            if (VarType == 0) {
+               VarType = L_DWORD;
+               CodeIndent(VERBOSE_M,   Level);            
+               CodeOutput(VERBOSE_M,   " // default const type WORD\n");
             }
-            if (GotFirstSingleVar) CodeOutput(VERBOSE_ALL, ", ");
-            CgSingleVar(co, c, Level + 1, L_DWORD);
-            GotFirstSingleVar = 1;
+               
+            CgSingleVar(co, c, Level + VLEVEL, VarType, 1);
             break;
          }
          default: {            
@@ -1147,8 +1154,8 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
          }
       }
    }
-   CodeIndent(VERBOSE_M,   Level);            
-   CodeOutput(VERBOSE_ALL, ";");                
+//   CodeIndent(VERBOSE_M,   Level);            
+//   CodeOutput(VERBOSE_ALL, ";");                
 } 
 
 //-----------------------------------------------------------------------------
