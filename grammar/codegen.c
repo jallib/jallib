@@ -256,7 +256,13 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
             // we have a get function, so call to get value
             CodeIndent(VERBOSE_M,   Level);
 //            CodeOutput(VERBOSE_ALL, "%s((ByCall *)NULL, (char *)NULL)", v->get);         
-            CodeOutput(VERBOSE_ALL, "%s(PVAR_DIRECT)", v->get);         
+//            CodeOutput(VERBOSE_ALL, "%s(PVAR_DIRECT)", v->get);            
+            if (v->data) {
+               CodeOutput(VERBOSE_ALL, "%s((const ByCall *)%s__bc, (void *)&%s)", v->get, s->Name, v->data);         
+            } else {
+               CodeOutput(VERBOSE_ALL, "%s((const ByCall *)%s__bc, NULL)", v->get, s->Name);         
+            }
+
             CodeOutput(VERBOSE_M,   " // %s call pseudovar put", ThisFuncName); 
             break;
          } 
@@ -396,8 +402,11 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
       // we have a put function, so call in stead of assing
       // (this is the use of a global defined put function within an assignment)
       CodeIndent(VERBOSE_ALL, Level);
-//      CodeOutput(VERBOSE_ALL, "%s((ByCall *)NULL, (char *)NULL,", v->put);         
-      CodeOutput(VERBOSE_ALL, "%s(PVAR_DIRECT,", v->put);         
+      if (v->data) {
+         CodeOutput(VERBOSE_ALL, "%s((const ByCall *)%s__bc, (void *)&%s,", v->put, s->Name, v->data);         
+      } else {
+         CodeOutput(VERBOSE_ALL, "%s((const ByCall *)%s__bc, (void *)NULL,", v->put, s->Name);         
+      }
       CodeOutput(VERBOSE_M,   " // %s call pseudovar put", ThisFuncName);
 
       // second node is expr
@@ -838,6 +847,61 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
    CodeOutput(VERBOSE_ALL, ")");
    CodeOutput(VERBOSE_M,   " // end of proc/func call");
 }
+
+//-----------------------------------------------------------------------------
+// CgSingleBitVar - 
+//-----------------------------------------------------------------------------
+// A SingleVar node has child for it's name and for its options
+// (AT, IS, {}, ASSIGN)
+//-----------------------------------------------------------------------------
+void CgSingleBitVar(Context *co, pANTLR3_BASE_TREE t, int Level)
+{  char *ThisFuncName = "CgSingleBitVar";
+   CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
+   char String[100];
+   
+   Var *v;
+      
+   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+      
+      CODE_GENERATOR_GET_CHILD_INFO
+      
+      switch(TokenType) {
+         case IDENTIFIER : {   
+            // setup a bit-pvar
+            sprintf(String, "%s__d", c->toString(c)->chars);
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_ALL, "uint8_t %s;", String);       
+   
+            // add to the symbol table
+            v =SymbolVarAdd_DataName(GlobalContext, c->toString(c)->chars, String);     
+            SymbolVarAdd_PutName(GlobalContext, c->toString(c)->chars, "bitvar01__put");
+            SymbolVarAdd_GetName(GlobalContext, c->toString(c)->chars, "bitvar01__get");
+            
+
+
+            // add var to context.
+//            v = SymbolVarAdd_DataName(co, c->toString(c)->chars, c->toString(c)->chars);   
+//            v->Type = VarType;
+            break;
+         }
+//         case ASSIGN : {
+//            CodeIndent(VERBOSE_M,   Level);            
+//            CodeOutput(VERBOSE_ALL, "= ");
+//            CodeOutput(VERBOSE_M,   "// assign");
+//            cc = c->getChild(c, 0);
+//            CgExpression(co, cc, Level+VLEVEL);
+//            break;
+//         }
+         default: {            
+            REPORT_NODE("unexpected token", c);
+            break;
+         }
+      }
+   }
+   CodeIndent(VERBOSE_M,   Level);                           
+} 
+
+
  
 //-----------------------------------------------------------------------------
 // CgSingleVar - 
@@ -911,14 +975,28 @@ void CgVar(Context *co, pANTLR3_BASE_TREE t, int Level)
             VarType = TokenType;
             break;
          }
-         case VAR : {
+
+         case L_BIT    : { 
+            CodeIndent(VERBOSE_M, Level);            
+            CodeOutput(VERBOSE_M, "// special var %s in %s", VarTypeString(TokenType), ThisFuncName); 
+            VarType = TokenType;
+            break;
+         }
+
+         case VAR : {    
             CodeIndent(VERBOSE_M,   Level);            
-            if (GotFirstSingleVar) {
-               CodeOutput(VERBOSE_ALL, ", ");           
-               CodeIndent(VERBOSE_ALL, Level);
+
+            if (VarType == L_BIT) {                   
+               CgSingleBitVar(co, c, Level + 1);               
+            } else {
+               // a var type that maps to a C var type
+               if (GotFirstSingleVar) {
+                  CodeOutput(VERBOSE_ALL, ", ");           
+                  CodeIndent(VERBOSE_ALL, Level);
+               }
+               CgSingleVar(co, c, Level + 1, VarType);
+               GotFirstSingleVar = 1;
             }
-            CgSingleVar(co, c, Level + 1, VarType);
-            GotFirstSingleVar = 1;
             break;
          }
          default: {            
@@ -1202,7 +1280,7 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
             
             if (PvPut || PvGet) {  
                CodeIndent(VERBOSE_M, Level);
-               CodeOutput(VERBOSE_ALL, "ByCall *__s, char *__dummy");
+               CodeOutput(VERBOSE_ALL, "const ByCall *__s, char *__dummy");
                if (PvPut) CodeOutput(VERBOSE_ALL, ", ");
                CodeOutput(VERBOSE_M,   " // pvPut/pvGet params");
             }
@@ -1547,6 +1625,21 @@ void CodeGenerate(pANTLR3_BASE_TREE t)
    CodeOutput(VERBOSE_ALL, "#include <stdio.h>\n");                       
    CodeOutput(VERBOSE_ALL, "#include <stdint.h>\n\n");                       
    CodeOutput(VERBOSE_ALL, "#include \"jaltarget.h\"\n\n");                       
+
+   Pass = 1;   // collect symbols
+   Level = 0;
+   CodeOutputEnable(0);
+	if  (t->isNilNode(t) == ANTLR3_TRUE) { 
+	   // a nill-node at root level means there are multiple statements to be processed
+      CgStatements(GlobalContext, t, Level); // Proces childs of p,  start at child 0
+	} else {
+	   // the root node is a statement itself (this means we have a program with only
+	   // one statement. Not common in a real program, but possible and usefull while testing).
+      CgStatement(GlobalContext, t, Level); // process statement of node p
+   }      
+
+   CodeOutputEnable(1);
+   SymbolPrintVarTableExternals(GlobalContext);
 
    Pass = 1;   // generate functions, global vars etc.
    Level = 0;
