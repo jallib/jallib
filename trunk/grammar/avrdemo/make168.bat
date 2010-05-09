@@ -16,7 +16,6 @@ Rem Translate JAL to C
 
 Rem Compile C-file to elf-file
 %arduinopath%\bin\avr-gcc -g -Wall -Os -mmcu=atmega168p  -I../ -o blink_avr.elf blink_avr.c
-rem %arduinopath%\bin\avr-gcc -g -Wall -Os -mmcu=atmega168p  -IAVRlib -I. -I../ -I./libs -o blink_avr.elf blink_avr.c
 
 Rem convert elf to hex file
 %arduinopath%\bin\avr-objcopy -j .text -j .data -O ihex blink_avr.elf blink_avr.hex
@@ -30,4 +29,3 @@ pause
 
 rem program hex in target device. 
 %arduinopath%\bin\avrdude -C %arduinopath%\\etc\avrdude.conf -p m168 -c stk500v1 -P %comport% -b 19200 -F -U flash:w:blink_avr.hex
-

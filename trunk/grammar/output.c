@@ -22,6 +22,12 @@ int OpenCodeOut(char *Filename)
 {  char String[202];  
    int i;
 
+   if (ToStdOut) {
+      CODE = stdout;
+      printf("Output file override - print to stdout\n");
+      return;
+   }
+
    // Note: we can't use CodeOutput yet...
    if (Verbose) printf("Open1 _%s_\n", Filename); 
 
@@ -72,19 +78,45 @@ void CodeOutputEnable(int Flag)
 // - format string + parameters -> like printf
 //-----------------------------------------------------------------------------
 void CodeOutput(int VerboseCategory, char *fmt, ... ) 
-{
+{  static PrevCategory = -1;
+   
    va_list args;                       
 
-   // check if code output is enabled
-   if (CodeOutputFlag == 0) return;
+   if ((VerboseCategory != VERBOSE_WARNING) && (VerboseCategory != VERBOSE_ERROR)) {
+      // test only in 'normal' mode
 
+      // Is code output enabled?
+      if (CodeOutputFlag == 0) return;
+      
+      // is this important enough?
+      if(VerboseCategory > Verbose) return;
+   } else {
+      // warning/error to stdout too.
+      if (CODE != stdout) {
+         va_start( args, fmt );
+         vfprintf(stdout, fmt, args);
+         va_end( args );
+      }  
+      if (VerboseCategory != PrevCategory) {
+         // only on change -> multiple error lines 
+         // will probably be related to the same error...
+         if (VerboseCategory != VERBOSE_WARNING) {
+            WarningCount++;
+         } else {
+            ErrorCount++;
+         } 
+      }
+   }
+   PrevCategory = VerboseCategory;
+   
    assert(CODE != NULL);
         
-   if(VerboseCategory > Verbose) return;
-         
+   // output to CODE stream         
    va_start( args, fmt );
    vfprintf(CODE, fmt, args);
    va_end( args );
+
+   
 
 }   
 
