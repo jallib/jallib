@@ -246,6 +246,30 @@ void SymbolPrintVarTable(Context *co)
    CodeIndent(VERBOSE_ALL, 1);
 }
 
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+void SymbolPrintVarTableExternals(Context *co)
+{  Symbol *s;
+   Var   *v;
+
+   CodeOutput(VERBOSE_M, "\n\n   // Pseudo Var table");   
+
+   for(s = co->Head; s != NULL; s = s->Next) {
+      if (s->Type != S_VAR) continue;
+      v = s->details;   
+      assert(v != NULL); // error: var struct missing
+      if ((v->put != NULL) | (v->get != NULL)) {
+
+         CodeIndent(VERBOSE_ALL, 1);
+         CodeOutput(VERBOSE_ALL, "   extern const ByCall *%s__bc; ",s->Name);
+         CodeOutput(VERBOSE_M,   " // not realy extern, but forward referencing...");
+      }
+   }              
+   CodeIndent(VERBOSE_ALL, 1);
+}
+
+
 
 //-----------------------------------------------------------------------------  
 // NewSymbolVar - Add new var to current context.
@@ -360,7 +384,7 @@ void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName)
 }
 
 //-----------------------------------------------------------------------------   
-// SymbolVarAdd_DataName - 
+// SymbolVarAdd_DataName - lookup/create record and add name
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 Var *SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName)

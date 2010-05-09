@@ -6,8 +6,8 @@ typedef struct ByCall_stuct {
 //   int  (*get)(struct ByCall_stuct *s, int Param) ;       
 
 
-   void (*put)(const struct ByCall_stuct *s, char* Addr, int Value) ;
-   int  (*get)(const struct ByCall_stuct *s, char* Addr) ;
+   void     (*put)(const struct ByCall_stuct *s, char* Addr, int Value) ;
+   uint32_t (*get)(const struct ByCall_stuct *s, char* Addr) ;
    void *data;
    int   Size; // size of type in bytes (round up)
    char  v1;     // var1, implementation-dependent
@@ -31,7 +31,7 @@ typedef struct ByCall_stuct {
 #define PVAR_ASSIGN(type, bc, p, expr)        \
    if (bc->put) (*bc->put)(bc, p, expr)
 
-#define PVAR_DIRECT (ByCall *)NULL, (char *)NULL                                               
+//#define PVAR_DIRECT (ByCall *)NULL, (char *)NULL                                               
 
 
 void     byte__put(ByCall *bc, void *Addr, uint32_t Data)   { *(uint8_t  *)Addr = (uint8_t)   Data; }
@@ -47,6 +47,30 @@ uint32_t dword__get(ByCall *bc, void *Addr)                 { return (uint32_t) 
 const ByCall bc_byte  = { (void *) &byte__put, (void *) &byte__get, NULL, 1, 0, 0};
 const ByCall bc_word  = { (void *) &word__put, (void *) &word__get, NULL, 2, 0, 0};
 const ByCall bc_dword = { (void *)&dword__put, (void *)&dword__get, NULL, 4, 0, 0};
+
+
+
+
+// 01 means start with bit 0, 1 bit of size, so we can
+// have up to 36 of there functions if we limit ourself to one byte.
+//
+// values are always passed in the lower bits
+void bitvar01__put(const ByCall *s, void *Addr, uint32_t Value)
+{
+   if (Value) {
+      *(uint8_t *)Addr |= 0x01;
+   } else {
+      *(uint8_t *)Addr &= 0xFE;
+   }
+}
+
+uint32_t  bitvar01__get(const struct ByCall_stuct *s, void* Addr) 
+{ 
+   return (*(uint8_t *)Addr) & 0x01 ? 1 : 0 ; 
+}
+
+
+
 
 
 //// http://www.newty.de/fpt/fpt.html#defi
