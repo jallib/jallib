@@ -11,6 +11,8 @@
 #include    "jalParser.h"
 
 
+#define MAX_FILENAME_SIZE 255 // including path
+
 
 
 void TreeWalk(pANTLR3_BASE_TREE p);    
@@ -22,7 +24,8 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
 // command line switches
 extern int Verbose;
 extern int NoInclude;
-extern int ToStdOut;
+extern int ToStdOut;  
+extern char *IncludePath;
 
 // more indent levels with verbose:
 #define VLEVEL (Verbose > 0 ? 1 : 0) 
@@ -36,17 +39,18 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line);
 jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
 
 // output.c
-int OpenCodeOut(char *Filename);
+int OpenCodeOut(char *Filename, int Translate);
 void CodeOutputEnable(int Flag);
 void CodeOutput(int VerboseCategory, char *fmt, ... );
 void CodeIndent(int VerboseCategory, int Level);
 
-#define VERBOSE_ALL 0   // always output
+#define VERBOSE_ALL 0   // always output (if output stream is on)
 #define VERBOSE_M   1   // medium (which is already quite a lot - all tree walking stuff)
 #define VERBOSE_L   2   // large  (more details on table searching etc)
 #define VERBOSE_XL  3   // extra large  (probably too much ;) )
-#define VERBOSE_WARNING 10
-#define VERBOSE_ERROR   11
+#define VERBOSE_UNCOND  10
+#define VERBOSE_WARNING 11
+#define VERBOSE_ERROR   12
 
 // codegen.c        
 extern int Pass;

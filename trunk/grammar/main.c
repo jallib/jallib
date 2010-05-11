@@ -22,10 +22,12 @@ void CIndent(int Level);
                          
 
 // command line option - vars
-char *Filename = NULL;
+char *Filename = NULL; 
+char *OutFileName = NULL;
 char *IncludePath = NULL;
 int   NoInclude = 0;
 int   ToStdOut  = 0;
+int   ParseOnly = 0;
 
 char *Namestring = "JAT V0.1 - Just Another Translator (Jal -> C code converter)";                       
 
@@ -40,6 +42,28 @@ int main (int argc, char *argv[])
    int i;
 
    for (i=1; i<argc; i++) {   
+
+      if (strcmp(argv[i], "-h") == 0) {
+         // help message
+//         printf("   (argv[0]: '%s', assumed 'jalparser')\n", argv[0]);
+         printf("\n");
+         printf("  jalparser sourcefile.jal - converts 'sourcefile.jal' to 'sourcefile.c'\n");
+         printf("\n");
+         printf("  -s path [ ';' path1... ] - set include search path (like jal compiler)\n");
+         printf("\n");
+         printf("  -o outfile.c             - output is 'outfile.c' (overrides 'sourcefile.c')\n");
+         printf("  -stdout                  - output to stdout, overrides -s\n");
+         printf("\n");         
+         printf("  -v                       - increase verbose level, can be used multiple times\n");
+         printf("  -noinclude               - ignore include statments\n");
+         printf("  -parseonly               - exit after parse, do not generate code\n");
+         printf("\n");
+         
+         exit(0); 
+      }
+
+
+
       if (strcmp(argv[i], "-s") == 0) {
          // include path
          i++;
@@ -49,6 +73,18 @@ int main (int argc, char *argv[])
             exit(1);
          }                   
          IncludePath = argv[i];
+         continue;
+      }                 
+
+      if (strcmp(argv[i], "-o") == 0) {
+         // output filename
+         i++;
+         if (OutFileName != NULL) {
+            printf("Error: second output filename (-o) %s specified, while only one is supported\n", argv[i]);
+            printf("First one: %s\n", OutFileName);
+            exit(1);
+         }                   
+         OutFileName = argv[i];
          continue;
       }                 
       
@@ -61,6 +97,12 @@ int main (int argc, char *argv[])
       if (strcmp(argv[i], "-noinclude") == 0) {
          // no-include - disable include function
          NoInclude = 1;
+         continue;
+      }
+
+      if (strcmp(argv[i], "-parseonly") == 0) {
+         // parse-only - exit after parse
+         ParseOnly = 1;
          continue;
       }
 
@@ -82,18 +124,46 @@ int main (int argc, char *argv[])
    
    // check for filename param.
    if (argc < 2 || Filename == NULL) {
-      printf("Use: %s jal-file\n", argv[0]);
+      printf("Use: %s sourcefile.jal\n", argv[0]);
+      printf("     %s -h for help\n", argv[0]);
       exit(0);
    }
 
-   // open output file & print start message. 
-   // note: OpenCodeOut() changes extension from '.jal' to '.c'     
-   if (OpenCodeOut(Filename) == 0) {
-      printf("Error opening output\n");
-      exit(1);
+   // open output file
+   if (OutFileName!= NULL) {
+      // specific filename, no translation by OpenCodeOut
+      if (OpenCodeOut(OutFileName, 0) == 0) {
+         printf("Error opening output file '%s'\n", OutFileName);
+         exit(1);
+      }
+   } else {
+      // no output filename, so base it on input filename      
+      // note: OpenCodeOut() changes extension from '.jal' to '.c'     
+      if (OpenCodeOut(Filename, 1) == 0) {
+         printf("Error opening output\n");
+         exit(1);
+      }
    }
+
+   // start message
    CodeOutput(VERBOSE_ALL, "//%s\n", Namestring);                       
 
+   // dump parameters.
+   CodeOutput(VERBOSE_M, "//-----------------------------\n");
+   CodeOutput(VERBOSE_M, "// argv[0]:   %s\n", argv[0]);
+   CodeOutput(VERBOSE_M, "// Source:    %s\n", Filename);
+   CodeOutput(VERBOSE_M, "// -s:        %s\n", IncludePath);
+   CodeOutput(VERBOSE_M, "// -o         %s\n", OutFileName);
+   CodeOutput(VERBOSE_M, "// -stdout    %d\n", ToStdOut);
+   CodeOutput(VERBOSE_M, "// -v         %d\n", Verbose);
+   CodeOutput(VERBOSE_M, "// -noinclude %d\n", NoInclude);
+   CodeOutput(VERBOSE_M, "// -parseonly %d\n", ParseOnly);
+   CodeOutput(VERBOSE_M, "//-----------------------------\n");
+   
+
+   // ------------------------------
+   // okay, now the real work start!
+   // ------------------------------
 
    // read, LEX and PARSE source tree   
    r= ParseSource(Filename);
@@ -109,6 +179,12 @@ int main (int argc, char *argv[])
 
       // print tree elements with indent
       TreeWalk(r.tree);
+   }
+
+
+   if (ParseOnly) {
+      CodeOutput(VERBOSE_UNCOND, "// ParseOnly done.\n");
+      exit(0);
    }
 
    // call code generator   
