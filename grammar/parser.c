@@ -166,6 +166,7 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName)
    return r;
 }
             
+static int GetIncludePath(char *String, int Reset);
             
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
@@ -173,7 +174,9 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName)
 pANTLR3_INPUT_STREAM JalOpenInclude(char *Line) 
 {  int State, i;
    char *BaseName;                       
-   char FileName[256];
+   char FileName[MAX_FILENAME_SIZE];  
+   char FilePath[MAX_FILENAME_SIZE];
+   
    pANTLR3_INPUT_STREAM    in;
 
    if (NoInclude) {
@@ -219,18 +222,74 @@ pANTLR3_INPUT_STREAM JalOpenInclude(char *Line)
 
    sprintf(FileName, "%s.jal", BaseName);
 // TODO:
-//
-// walk include path to find file.                                  
 
-   in = antlr3AsciiFileStreamNew(FileName);
+   // try to open filename at current location.
+   strcpy(FilePath, FileName);
+   CodeOutput(VERBOSE_L, "// Try first %s \n", FilePath); 
+   in = antlr3AsciiFileStreamNew(FilePath);
 
    if (in == NULL) {
-      CodeOutput(VERBOSE_ALL, "Error opening include file %s\n", FileName);
-      fprintf(stderr, "Error opening include file %s\n", FileName);
+      // file not at current location, so
+      // walk include path to find file.                                  
+      GetIncludePath(NULL, 1); // reset include path   
+      for (;;) {
+         if (GetIncludePath(FilePath, 0)) {
+            // got a path.
+            strcat(FilePath, FileName);
+            CodeOutput(VERBOSE_L, "// Try path %s \n", FilePath); 
+            in = antlr3AsciiFileStreamNew(FilePath);
+            if (in != NULL) break;  // found the file!
+
+            // else next file
+            continue;
+         }
+         CodeOutput(VERBOSE_L, "// Path done without succes...\n"); 
+         break;      
+      }
+   }
+
+   if (in == NULL) {
+      CodeOutput(VERBOSE_ERROR, "Error opening include file %s\n", FileName);
       exit(1);
    }
 
    // note: PUSHSTREAM macro only works in LEX context (not in this code, nor PARSER context).
    // So leave PUSHSTREAM in the gramar-file.
    return in;
+}
+
+
+// return 1 if path, 0 if none.
+static int GetIncludePath(char *String, int Reset)
+{  static int Index;
+   int i;
+      
+   if (Reset) {
+      Index = 0;
+      return 0;
+   }                      
+   
+   // no include path
+   if (IncludePath == NULL) return 0;
+      
+   // string already handled      
+   if (IncludePath[Index] == 0) return 0;
+      
+   for (i=0;; i++) {   
+      String[i] = IncludePath[i+Index];
+      if (String[i] == 0) {
+        // end of string
+        Index += i;
+        break;
+      }
+      if (String[i] == ';') {
+         // end of single path
+         String[i] = 0;
+         Index += (i+1);
+         break;
+      }
+   }     
+   strcat(String, "/");
+   return 1;
+   
 }

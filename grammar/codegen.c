@@ -103,6 +103,13 @@ void PrintJ2cString(char *String)
 char *VarTypeString(int TokenType)
 {
    switch(TokenType) {
+      case L_BIT     : { 
+         if (Verbose) {
+            return "uint8_t /*bit*/";               
+         } else {
+            return "uint8_t";               
+         }
+      }
       case L_VOID    : { return "void";               }
       case L_BYTE    : { return "uint8_t";            }
       case L_SBYTE   : { return "int8_t";             }
@@ -737,7 +744,9 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
    int GotFirstParam = 0;
    Symbol      *s = NULL;
    SymbolFunction  *f = NULL;
-   SymbolParam *p = NULL;
+   SymbolParam *p = NULL;    
+   
+   char *ProcedureName = NULL;
    
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
 
@@ -746,7 +755,8 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
       if (ChildIx == 0) {
          // function/procedure name
          CodeIndent(VERBOSE_M,   Level); 
-         CodeOutput(VERBOSE_ALL, "%s(", c->toString(c)->chars);         
+         CodeOutput(VERBOSE_ALL, "%s(", c->toString(c)->chars);   
+         ProcedureName =  c->toString(c)->chars; // save for error reporting.      
          s = GetSymbolPointer(GlobalContext, c->toString(c)->chars, S_FUNCTION, 1);
          if (s != NULL) {
             CodeOutput(VERBOSE_XL, "// CgProcFuncCall s: %x\n", s);
@@ -798,9 +808,11 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                      // here we need to create a var, get the value and pass the parameter.
                      // and... we can't do this - create a var within a procedure call - can we?
                      // so we need a scan of parameters before the actual call...
-                     CodeOutput(VERBOSE_ALL, "not supported yet: %s ", c->toString(c)->chars);
-                     CodeOutput(VERBOSE_M,   "// identifier by reference, from call");
-                     ErrorCount ++;
+                     // For now, we don't support it.
+                     CodeOutput(VERBOSE_ERROR, "// Error at call of %s(), param: %s\n", ProcedureName, c->toString(c)->chars);
+                     CodeOutput(VERBOSE_ERROR, "// Pass of pseudo- or volatile var as in/out parameter is not supported, use 'in' or 'volatile'\n");
+                     
+                     CodeOutput(VERBOSE_M,     "// identifier by reference, from call"); /* keep as doc for case statement */
                      break;
                   }                     
                }                  
@@ -833,8 +845,20 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                      break;
                   }                     
                   case 'c' : { // by code => just pass received params
-                     CodeOutput(VERBOSE_ALL, "%s__bc, %s__p ", c->toString(c)->chars, c->toString(c)->chars);
-                     CodeOutput(VERBOSE_M,   "// identifier by code, from code");
+                     
+                     // above, we determined callmethod, now we need to get the var struct again
+                     // maybe refactor to save the symol or var pointer??
+                     s = GetSymbolPointer(co, c->toString(c)->chars, S_VAR, 1); // search for var, include global context for pvars
+                     assert(s != NULL); // should not be NULL, we just got call method
+                     Var *v = s->details;
+                                       
+                     if (v->data != NULL) {
+                        CodeOutput(VERBOSE_ALL, "(const ByCall *)%s__bc, (void *)&%s ", c->toString(c)->chars, v->data);
+                        CodeOutput(VERBOSE_M,   "// identifier by code, from code 1");
+                     } else {
+                        CodeOutput(VERBOSE_ALL, "(const ByCall *)%s__bc, (void *)NULL", c->toString(c)->chars);
+                        CodeOutput(VERBOSE_M,   "// identifier by code, from code 2");
+                     }
                      break;
                   }                     
                }               
@@ -1172,6 +1196,11 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
 
       CODE_GENERATOR_GET_CHILD_INFO
 
+      if (VarType == L_BIT) {
+         // a bit var is always by-code
+         p->CallMethod = 'c';     // Call by code
+      }
+
       switch(TokenType) {
          case L_IN : {
             break;
@@ -1248,6 +1277,8 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
       GotFirstParam = 1;
 
       switch(TokenType) {
+         case L_BIT    : 
+
          case L_BYTE   : 
          case L_SBYTE  : 
          case L_WORD   : 
@@ -1255,7 +1286,6 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
          case L_DWORD  : 
          case L_SDWORD : {     
             CodeIndent(VERBOSE_M,   Level);            
-//            CodeOutput(VERBOSE_ALL, "%s", VarTypeString(TokenType)); 
 
             // add new parameter to current symbol  
             CodeOutput(VERBOSE_M,   " // TokenType: %d (Add param to SymbolTable", TokenType); 
@@ -1265,7 +1295,8 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
             CgParamChilds(co, c, Level+VLEVEL, p, TokenType);
             
             // *copy* param info to context
-            // (  We could add the pointer to p. But some day, we will free()
+            // (  
+            //    We could add the pointer to p. But some day, we will free()
             //    the structs when they are not used any more and a pointer to the
             //    actual procedure parameter might free() that too.
             //    So... when cleanup is implemented and some flag is added, copy
@@ -1324,7 +1355,7 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
       
       CODE_GENERATOR_GET_CHILD_INFO
 
-      if (Verbose > 1) REPORT_NODE(VERBOSE_ERROR, "\n//CgProcedureDef childs", c)
+      if (Verbose > 1) REPORT_NODE(VERBOSE_ALL, "\n//CgProcedureDef childs", c)
       switch(TokenType) {
 
          // L_PUT or L_GET are the first childs if they exist. The flags influence further processing.

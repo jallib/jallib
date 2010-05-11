@@ -15,10 +15,11 @@ FILE *CODE = NULL;
 int CodeOutputFlag = 1;
 
 //-----------------------------------------------------------------------------
-// OpenCodeOut - change extension from .jal to .c and open file for write
+// OpenCodeOut - open file for write
+//-----------------------------------------------------------------------------    
+// IF Translate THEN change extension from .jal to .c.
 //-----------------------------------------------------------------------------
-//-----------------------------------------------------------------------------
-int OpenCodeOut(char *Filename)    
+int OpenCodeOut(char *Filename, int Translate)    
 {  char String[202];  
    int i;
 
@@ -28,27 +29,35 @@ int OpenCodeOut(char *Filename)
       return;
    }
 
-   // Note: we can't use CodeOutput yet...
-   if (Verbose) printf("Open1 _%s_\n", Filename); 
-
-   // determine lenght
-   for (i=0; Filename[i]; i++);
-   if (i > 200) {
-      printf("Error: filename too long to process\n");
-      exit(1);
-   }                  
+   if (Translate) {      
+      
+      //----------------------------------------
+      // Translate input filename to output name     
+      //----------------------------------------               
+      
+      if (Verbose) printf("Open1 _%s_\n", Filename); //Note: use printf since we can't use CodeOutput yet...
    
-   // valid (not to short and with '.' at right place)?
-   if ((i<5) || (Filename[i-4] != '.')){
-      printf("Error: invalid filename\n");
-      exit(1);
+      // determine lenght
+      for (i=0; Filename[i]; i++);
+      if (i > 200) {
+         printf("Error: filename too long to process\n");
+         exit(1);
+      }                  
+      
+      // valid (not to short and with '.' at right place)?
+      if ((i<5) || (Filename[i-4] != '.')){
+         printf("Error: invalid filename\n");
+         exit(1);
+      }
+   
+      // change from '.jal' to '.c'
+      strcpy(String, Filename);
+      String[i-3] = 'c';
+      String[i-2] = 0;   
+   } else {                    
+      // use given output filename
+      strcpy(String, Filename);
    }
-
-   // change from '.jal' to '.c'
-   strcpy(String, Filename);
-   String[i-3] = 'c';
-   String[i-2] = 0;   
-
                         
    CODE = fopen(String, "w");     
 
@@ -82,7 +91,7 @@ void CodeOutput(int VerboseCategory, char *fmt, ... )
    
    va_list args;                       
 
-   if ((VerboseCategory != VERBOSE_WARNING) && (VerboseCategory != VERBOSE_ERROR)) {
+   if ((VerboseCategory != VERBOSE_UNCOND) && (VerboseCategory != VERBOSE_WARNING) && (VerboseCategory != VERBOSE_ERROR)) {
       // test only in 'normal' mode
 
       // Is code output enabled?
@@ -100,9 +109,10 @@ void CodeOutput(int VerboseCategory, char *fmt, ... )
       if (VerboseCategory != PrevCategory) {
          // only on change -> multiple error lines 
          // will probably be related to the same error...
-         if (VerboseCategory != VERBOSE_WARNING) {
+         if (VerboseCategory == VERBOSE_WARNING) {
             WarningCount++;
-         } else {
+         }
+         if (VerboseCategory == VERBOSE_ERROR) {
             ErrorCount++;
          } 
       }
