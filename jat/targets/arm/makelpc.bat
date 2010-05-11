@@ -13,7 +13,8 @@ set source=blink_lpc
 Rem remove old files      
 if exist jat_lpc.c del jat_lpc.c   
 del .dep\*.d
-rem make clean
+del cbuild\*.o
+make clean
 
 Rem Translate JAL to C
 ..\..\bin\jalparser sample\%source%.jal -s include -o jat_lpc.c
