@@ -4,7 +4,7 @@
 set projectname      jalparser
 
 filelist {     
-   jal.g
+   ..\grammar\jal.g
 
    main.c
    parser.c    
@@ -17,11 +17,8 @@ filelist {
 }
 
 transform .g .c  {                   
-   exec_i "md tmp_g"
-   exec "perl changeoptions.pl jal.g >tmp_g\jal.g"   
-   exec "java -cp antlr-3.2.jar org.antlr.Tool tmp_g\jal.g"   
-   exec "copy /y tmp_g\*.c ."   
-   exec "copy /y tmp_g\*.h ."   
+   exec "perl changeoptions.pl ..\grammar\jal.g >jal.g"   
+   exec "java -cp antlr-3.2.jar org.antlr.Tool jal.g"   
    clear suffix
    exec "echo // timestamp dummy >($_).c"   
    exec "del *.o"

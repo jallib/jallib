@@ -12,7 +12,7 @@ rem if exist  blink_avr.lss    del blink_avr.lss
 rem if exist  blink_avr.sym    del blink_avr.sym
 
 Rem Translate JAL to C
-..\jalparser blink_avr.jal
+..\..\bin\jalparser sample\blink_avr.jal -o blink_avr.c
 
 Rem Compile C-file to elf-file
 %arduinopath%\bin\avr-gcc -g -Wall -Os -mmcu=atmega328p  -I../ -o blink_avr.elf blink_avr.c
@@ -29,4 +29,3 @@ pause
 
 rem program hex in target device. 
 %arduinopath%\bin\avrdude -C %arduinopath%\\etc\avrdude.conf -p m328p -c stk500v1 -P %comport% -b 57600 -F -U flash:w:blink_avr.hex
-
