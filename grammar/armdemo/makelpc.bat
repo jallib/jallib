@@ -7,7 +7,7 @@ rem
 rem *** any modifications of jat_lpc.c are destroyed by this script ! ***
 rem
 
-set comport=com1
+set comport=com4
 set source=blink_lpc
 
 Rem remove old files      

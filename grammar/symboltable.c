@@ -6,10 +6,6 @@ Context *GlobalContext = NULL;
 
 // static prototypes
 static void _AddSymbolToContext(Context *co, Symbol *s);
-//static void append_node(Symbol *lnode);
-//static void remove_node(Symbol *lnode);
-//static void insert_node(Symbol *lnode, Symbol *after); 
-
 static Symbol *NewSymbol(Context *co);                           
 
 //----------------------------------------------------------------------------- 

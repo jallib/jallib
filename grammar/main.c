@@ -1,4 +1,6 @@
-// Title: main.g
+//-----------------------------------------------------------------------------
+// Title: main.c
+//-----------------------------------------------------------------------------
 //
 // Adapted-by: Joep Suijs
 // Compiler: >=2.4m
@@ -6,8 +8,9 @@
 // This file is part of jallib (http://jallib.googlecode.com)
 // Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 //
-// Description: test main for antlr3 grammar definition of JAL
+// Description: main functions of 'Just Another Translator'.
 //
+//-----------------------------------------------------------------------------
 
 #include "jat.h"
 
@@ -25,9 +28,6 @@ int   NoInclude = 0;
 int   ToStdOut  = 0;
 
 char *Namestring = "JAT V0.1 - Just Another Translator (Jal -> C code converter)";                       
-
-
-
 
 
 // Main entry point for JustAnotherTranslator
