@@ -13,16 +13,13 @@ set source=blink_lpc
 Rem remove old files      
 if exist jat_lpc.c del jat_lpc.c   
 del .dep\*.d
-make clean
+rem make clean
 
 Rem Translate JAL to C
-..\jalparser %source%.jal
-
-Rem copy result to target name
-copy %source%.c jat_lpc.c
+..\..\bin\jalparser sample\%source%.jal -s include -o jat_lpc.c
 
 Rem Compile, link & create hex
 make all
 
 Rem program hex in target device.
-lpc21isp -control  jat_lpc.hex %comport% 115200 14746
+cbuild\lpc21isp -control  jat_lpc.hex %comport% 115200 14746

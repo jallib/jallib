@@ -77,7 +77,7 @@ CPPSRC =
 ASRC = 
 
 # List Assembler source files here which must be assembled in ARM-Mode..
-ASRCARM = crt0.S 
+ASRCARM = cbuild/crt0.S 
 
 # Optimization level, can be [0, 1, 2, 3, s]. 
 # 0 = turn off optimization. s = optimize for size.
@@ -168,9 +168,9 @@ LDFLAGS += -lc -lgcc
 
 # Set Linker-Script Depending On Selected Memory
 ifeq ($(RUN_MODE),RAM_RUN)
-LDFLAGS +=-T$(SUBMDL)-RAM.ld
+LDFLAGS +=-Tcbuild/$(SUBMDL)-RAM.ld
 else 
-LDFLAGS +=-T$(SUBMDL)-ROM.ld
+LDFLAGS +=-Tcbuild/$(SUBMDL)-ROM.ld
 endif
 
 
