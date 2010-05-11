@@ -200,12 +200,12 @@ LPC21ISP_FLASHFILE = $(TARGET).hex
 
 # Define programs and commands.
 SHELL = sh
-CC = arm-elf-gcc
-CPP = arm-elf-g++
-OBJCOPY = arm-elf-objcopy
-OBJDUMP = arm-elf-objdump
-SIZE = arm-elf-size
-NM = arm-elf-nm
+CC = arm-eabi-gcc
+CPP = arm-eabi-g++
+OBJCOPY = arm-eabi-objcopy
+OBJDUMP = arm-eabi-objdump
+SIZE = arm-eabi-size
+NM = arm-eabi-nm
 REMOVE = rm -f
 COPY = cp
 
