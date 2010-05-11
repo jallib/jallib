@@ -12,7 +12,7 @@
 
 #include "cbuild/lpc2xxx.h"
 
-void delay_ms( uint8_t ms) { 
+void delay_ms( uint32_t ms) { 
    static void *this_function = delay_ms;
 
    volatile int i, j;        
@@ -48,7 +48,7 @@ int main(int argc, char **argv) {
       io0_set(LED);
       delay_ms(500);
       io0_clr(LED);
-      delay_ms(500);
+      delay_ms(100);
    }
 
 } 
