@@ -278,9 +278,19 @@ void SymbolPrintVarTable(Context *co)
       if ((v->put != NULL) | (v->get != NULL)) {
          CodeIndent(VERBOSE_ALL, 1);
          CodeOutput(VERBOSE_ALL, "   const ByCall %s__bcs = { ",s->Name);
-         if (v->put ) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->put ); else CodeOutput(VERBOSE_ALL, "NULL, "); 
-         if (v->get ) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->get ); else CodeOutput(VERBOSE_ALL, "NULL, "); 
-         if (v->data) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->data); else CodeOutput(VERBOSE_ALL, "NULL, "); 
+         if (v->put ) {
+            CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->put ); 
+          } else {
+// TODO add proper type here.            
+            CodeOutput(VERBOSE_ALL, "(void *)&byte__put, "); 
+         }
+         if (v->get ) {
+            CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->get ); 
+         } else {
+// TODO add proper type here.            
+            CodeOutput(VERBOSE_ALL, "(void *)&byte__get, "); 
+         }
+//         if (v->data) CodeOutput(VERBOSE_ALL, "(void *)&%s, ", v->data); else CodeOutput(VERBOSE_ALL, "NULL, "); 
          CodeOutput(VERBOSE_ALL, "%d, %d, %d};", v->size, v->p1, v->p2); 
 
          CodeIndent(VERBOSE_ALL, 1);
@@ -288,8 +298,12 @@ void SymbolPrintVarTable(Context *co)
 
 
          CodeIndent(VERBOSE_ALL, 1);
-         CodeOutput(VERBOSE_ALL, "   char *%s__p = NULL;", s->Name);
-         CodeOutput(VERBOSE_M,   " // pointer needs to be here to pass when the pv is called indirect, but its value is not used");
+         if (v->data) {
+            CodeOutput(VERBOSE_ALL, "   char *%s__p = &%s;", s->Name, v->data);
+         } else {
+            CodeOutput(VERBOSE_ALL, "   char *%s__p = NULL;", s->Name);
+         }
+         CodeOutput(VERBOSE_M,   " // pointer to actual data-field (if there is one)");
       }
    }              
    CodeIndent(VERBOSE_ALL, 1);
