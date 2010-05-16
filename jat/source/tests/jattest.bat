@@ -59,6 +59,7 @@ goto diff_done
           
 : diff_err
 echo TEST %1 FAILED          
+pause
 
 :diff_done
 echo. 

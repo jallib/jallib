@@ -339,7 +339,6 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
 
       case AMP           :
       case ASTERIX       :
-      case BANG          :
       case CARET         :
       case EQUAL         :
       case GREATER       :
@@ -368,7 +367,22 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
             CodeOutput(VERBOSE_ALL, ")");
             CodeOutput(VERBOSE_M,   " // end subexpr");
          } else {
-            CodeOutput(VERBOSE_ALL, "%s Error: not two subnodes\n", ThisFuncName);
+            CodeOutput(VERBOSE_ERROR, "%s Error: not two subnodes\n", ThisFuncName);
+         }
+         break;
+
+      case BANG          :
+         if (n == 1) {
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_ALL, "( ! ");
+            CodeOutput(VERBOSE_M,   " // start expr");
+            CgExpression(co, t->getChild(t, 0), Level + 1);
+
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_ALL, ")");
+            CodeOutput(VERBOSE_M,   " // end expr");
+         } else {
+            CodeOutput(VERBOSE_ERROR, "%s Error: not two subnodes\n", ThisFuncName);
          }
          break;
 
