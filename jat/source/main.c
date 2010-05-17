@@ -22,12 +22,13 @@ void CIndent(int Level);
                          
 
 // command line option - vars
-char *Filename = NULL; 
-char *OutFileName = NULL;
-char *IncludePath = NULL;
-int   NoInclude = 0;
-int   ToStdOut  = 0;
-int   ParseOnly = 0;
+char *Filename       = NULL; 
+char *OutFileName    = NULL;
+char *IncludePath    = NULL;
+int   NoInclude      = 0;
+int   NoMainParams   = 0;
+int   ToStdOut       = 0;
+int   ParseOnly      = 0;
 
 char *Namestring = "JAT V0.1 - Just Another Translator (Jal -> C code converter)";                       
 
@@ -62,8 +63,6 @@ int main (int argc, char *argv[])
          exit(0); 
       }
 
-
-
       if (strcmp(argv[i], "-s") == 0) {
          // include path
          i++;
@@ -94,6 +93,12 @@ int main (int argc, char *argv[])
          continue;
       }
 
+      if (strcmp(argv[i], "-nomainparams") == 0) {
+         // no-main-params - main(void) rather than main(argc, argv)
+         NoMainParams = 1;
+         continue;
+      }
+
       if (strcmp(argv[i], "-noinclude") == 0) {
          // no-include - disable include function
          NoInclude = 1;
@@ -112,6 +117,12 @@ int main (int argc, char *argv[])
          continue;
       }
 
+      // check if argument starts with '-', which is not a filename...
+      if (argv[i][0] == '-') {
+         printf("Error: unrecognized command line option: '%s'\n", argv[i]);
+         exit(1);
+      }
+
       // default = filename
       if (Filename != NULL) {
          printf("Error: second Filename %s specified, while only one is supported\n", argv[i]);
@@ -121,6 +132,10 @@ int main (int argc, char *argv[])
       Filename = argv[i];
 
    }
+
+   //-------------------------   
+   // argument processing done.
+   //-------------------------   
    
    // check for filename param.
    if (argc < 2 || Filename == NULL) {
@@ -150,14 +165,15 @@ int main (int argc, char *argv[])
 
    // dump parameters.
    CodeOutput(VERBOSE_M, "//-----------------------------\n");
-   CodeOutput(VERBOSE_M, "// argv[0]:   %s\n", argv[0]);
-   CodeOutput(VERBOSE_M, "// Source:    %s\n", Filename);
-   CodeOutput(VERBOSE_M, "// -s:        %s\n", IncludePath);
-   CodeOutput(VERBOSE_M, "// -o         %s\n", OutFileName);
-   CodeOutput(VERBOSE_M, "// -stdout    %d\n", ToStdOut);
-   CodeOutput(VERBOSE_M, "// -v         %d\n", Verbose);
-   CodeOutput(VERBOSE_M, "// -noinclude %d\n", NoInclude);
-   CodeOutput(VERBOSE_M, "// -parseonly %d\n", ParseOnly);
+   CodeOutput(VERBOSE_M, "// argv[0]:        %s\n", argv[0]);
+   CodeOutput(VERBOSE_M, "// Source:         %s\n", Filename);
+   CodeOutput(VERBOSE_M, "// -s:             %s\n", IncludePath);
+   CodeOutput(VERBOSE_M, "// -o              %s\n", OutFileName);
+   CodeOutput(VERBOSE_M, "// -stdout         %d\n", ToStdOut);
+   CodeOutput(VERBOSE_M, "// -v              %d\n", Verbose);
+   CodeOutput(VERBOSE_M, "// -nomainparams   %d\n", NoMainParams);
+   CodeOutput(VERBOSE_M, "// -noinclude      %d\n", NoInclude);
+   CodeOutput(VERBOSE_M, "// -parseonly      %d\n", ParseOnly);
    CodeOutput(VERBOSE_M, "//-----------------------------\n");
    
 
