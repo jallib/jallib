@@ -76,24 +76,59 @@ const ByCall bc_word  = { (void *) &word__put, (void *) &word__get, 2, 0, 0};
 const ByCall bc_dword = { (void *)&dword__put, (void *)&dword__get, 4, 0, 0};
 
 
+#define VARBITPUT(name, bitnr)                              \
+   void name(const ByCall *s, void *Addr, uint32_t Value)   \
+   {                                                        \
+      if (Value) {                                          \
+         *(uint8_t *)Addr |= (1<<bitnr);                    \
+      } else {                                              \
+         *(uint8_t *)Addr &= ~(1<<bitnr);                   \
+      }                                                     \
+   }                                                        \
+
+#define VARBITGET(name, bitnr)                              \
+   uint32_t name(const ByCall *s, void *Addr)               \
+   {                                                        \
+      return (*(uint8_t *)Addr) & (1<<bitnr) ? 1 : 0 ;      \
+   }                                                        \
+
+
+//VARBITSPUT(varbits01__put, 0, 1)
+VARBITPUT(varbit0__put, 0);
+VARBITPUT(varbit1__put, 1);
+VARBITPUT(varbit2__put, 2);
+VARBITPUT(varbit3__put, 3);
+VARBITPUT(varbit4__put, 4);
+VARBITPUT(varbit5__put, 5);
+VARBITPUT(varbit6__put, 6);
+VARBITPUT(varbit7__put, 7);
+
+VARBITGET(varbit0__get, 0);
+VARBITGET(varbit1__get, 1);
+VARBITGET(varbit2__get, 2);
+VARBITGET(varbit3__get, 3);
+VARBITGET(varbit4__get, 4);
+VARBITGET(varbit5__get, 5);
+VARBITGET(varbit6__get, 6);
+VARBITGET(varbit7__get, 7);
 
 
 // 01 means start with bit 0, 1 bit of size, so we can
 // have up to 36 of there functions if we limit ourself to one byte.
 //
 // values are always passed in the lower bits
-void bitvar01__put(const ByCall *s, void *Addr, uint32_t Value)
-{
-   if (Value) {
-      *(uint8_t *)Addr |= 0x01;
-   } else {
-      *(uint8_t *)Addr &= 0xFE;
-   }
-}
-
-uint32_t  bitvar01__get(const struct ByCall_stuct *s, void* Addr) 
-{ 
-   return (*(uint8_t *)Addr) & 0x01 ? 1 : 0 ; 
-}
-
+//void bitvar01__put(const ByCall *s, void *Addr, uint32_t Value)
+//{
+//   if (Value) {
+//      *(uint8_t *)Addr |= 0x01;
+//   } else {
+//      *(uint8_t *)Addr &= 0xFE;
+//   }
+//}
+//
+//uint32_t  bitvar01__get(const struct ByCall_stuct *s, void* Addr) 
+//{ 
+//   return (*(uint8_t *)Addr) & 0x01 ? 1 : 0 ; 
+//}
+//
 

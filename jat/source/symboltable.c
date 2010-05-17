@@ -453,7 +453,7 @@ void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName)
 Var *SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName)
 {  Var *v;
 
-   CodeOutput(VERBOSE_L, "// SymbolVarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
+   CodeOutput(VERBOSE_L, "\n// SymbolVarAdd_DataName Base: %s, Data: %s\n", BaseName, DataName);
 
    v = SymbolGetOrNewVar(co, BaseName);                       
    
