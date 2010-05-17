@@ -22,7 +22,8 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
 #include    "symboltable.h"
 
 // command line switches
-extern int Verbose;
+extern int Verbose;    
+extern int NoMainParams;
 extern int NoInclude;
 extern int ToStdOut;  
 extern char *IncludePath;

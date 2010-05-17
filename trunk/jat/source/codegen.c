@@ -1807,7 +1807,11 @@ void CodeGenerate(pANTLR3_BASE_TREE t)
    
    Pass = 2;   // generate main function
    Level = 0;
-   CodeOutput(VERBOSE_ALL, "\nint main(int argc, char **argv) {\n");                       
+   if (NoMainParams == 0) {
+      CodeOutput(VERBOSE_ALL, "\nint main(int argc, char **argv) {\n");                       
+   } else {
+      CodeOutput(VERBOSE_ALL, "\nint main(void) {\n");                       
+   }
 
 	if  (t->isNilNode(t) == ANTLR3_TRUE) { 
       CgStatements(GlobalContext, t, Level); // Proces childs of p,  start at child 0
