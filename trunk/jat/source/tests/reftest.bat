@@ -18,6 +18,8 @@ rem exclude due to jal bug - ref is okay now - call %0 test_005
 call %0 test_006
 call %0 test_007
 call %0 test_008
+call %0 test_009
+call %0 test_010
 
 
 rem ---------------------------------------------------------------------------

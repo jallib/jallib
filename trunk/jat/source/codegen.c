@@ -897,6 +897,51 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
 }
 
 //-----------------------------------------------------------------------------
+// CgGetAtInfo - 
+//-----------------------------------------------------------------------------
+// get identifier name and (optional) bit location
+//-----------------------------------------------------------------------------
+char *CgGetAtInfo(Context *co, pANTLR3_BASE_TREE t, int Level, char **BitLocation)
+{  char *ThisFuncName = "CgGetAtInfo";
+   CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
+   char String[100];
+   
+   Var *v;
+
+   char *Identifier = NULL;
+      
+   for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+      
+      CODE_GENERATOR_GET_CHILD_INFO
+      
+      switch(TokenType) {
+         case IDENTIFIER : {   
+            Identifier = c->toString(c)->chars;
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_M,   "// %s AtName %s", ThisFuncName, Identifier);
+            break;
+         }
+         case COLON : {
+            // ignore 
+            break;
+         }
+         case DECIMAL_LITERAL : {
+            *BitLocation = c->toString(c)->chars; 
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_M,   "// %s BitLocation %s", ThisFuncName, *BitLocation);            
+            break;
+         }
+         default: {            
+            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
+            break;
+         }
+      }
+   }
+   return Identifier;
+} 
+
+
+//-----------------------------------------------------------------------------
 // CgSingleBitVar - 
 //-----------------------------------------------------------------------------
 // A SingleVar node has child for it's name and for its options
@@ -906,47 +951,92 @@ void CgSingleBitVar(Context *co, pANTLR3_BASE_TREE t, int Level)
 {  char *ThisFuncName = "CgSingleBitVar";
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
    char String[100];
-   
+
    Var *v;
-      
+
+   char *Identifier = NULL;
+   char *AtName = NULL;
+   char *BitLocation = NULL;
+   
+   int i;
+            
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       
       CODE_GENERATOR_GET_CHILD_INFO
-      
-      switch(TokenType) {
-         case IDENTIFIER : {   
-            // setup a bit-pvar
-            sprintf(String, "%s__d", c->toString(c)->chars);
-            CodeIndent(VERBOSE_ALL,   Level);            
-            CodeOutput(VERBOSE_ALL, "uint8_t %s;", String);       
-   
-            // add to the symbol table
-            v =SymbolVarAdd_DataName(GlobalContext, c->toString(c)->chars, String);     
-            SymbolVarAdd_PutName(GlobalContext, c->toString(c)->chars, "bitvar01__put");
-            SymbolVarAdd_GetName(GlobalContext, c->toString(c)->chars, "bitvar01__get");
-            
 
+      //--------------------------------------------
+      // ** warning: non-standard code construct ***
+      //--------------------------------------------
 
-            // add var to context.
-//            v = SymbolVarAdd_DataName(co, c->toString(c)->chars, c->toString(c)->chars);   
-//            v->Type = VarType;
-            break;
-         }
-//         case ASSIGN : {
-//            CodeIndent(VERBOSE_M,   Level);            
-//            CodeOutput(VERBOSE_ALL, "= ");
-//            CodeOutput(VERBOSE_M,   "// assign");
-//            cc = c->getChild(c, 0);
-//            CgExpression(co, cc, Level+VLEVEL);
-//            break;
-//         }
-         default: {            
-            REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
-            break;
-         }
+      // check for invalid tokens
+      if ((TokenType != IDENTIFIER) && (TokenType != L_AT) && (TokenType != ASSIGN)) { 
+         REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
       }
-   }
+
+      CodeIndent(VERBOSE_L,   Level);            
+      CodeOutput(VERBOSE_L,   "// %s loop ChildIx: %d, n: %d", ThisFuncName, ChildIx, n);
+      REPORT_NODE(VERBOSE_L, "parse this token:", c);
+
+      if (TokenType == IDENTIFIER ) {   
+         Identifier = c->toString(c)->chars;
+         CodeIndent(VERBOSE_M,   Level);            
+         CodeOutput(VERBOSE_M,   "// %s identifier %s", ThisFuncName, Identifier);
+         
+         // continue if we have more tokens, otherwise go to next IFs and create var
+         if (ChildIx < (n-1)) continue;
+      }
+      
+      if (TokenType == L_AT) {   
+         // get at parameters **and go to next IFs**
+         AtName = CgGetAtInfo(co, c, Level+VLEVEL, &BitLocation);
+         if (ChildIx < (n-1)) continue;
+      }
+
+      // If we get to this point, we need to create the var
+      if (AtName == NULL) {
+         // normal bitvar => create   
+         
+         // create a storage place
+         sprintf(String, "%s__d", Identifier);
+         CodeIndent(VERBOSE_ALL,   Level);            
+         CodeOutput(VERBOSE_ALL, "uint8_t %s;", String);       
+         i = 0; // default bit location 
+      } else {
+         // at bitvar -> reference to exisiting storage place
+         strcpy(String, AtName);
+         i = BitLocation[0];
+         if (i < '0' || i > '9') {
+            CodeOutput(VERBOSE_ERROR, "Error: bit location is non-numerical");
+         } 
+         i = i - '0'; // convert to number.           
+         CodeIndent(VERBOSE_M,   Level);            
+         CodeOutput(VERBOSE_M,   " // %s bitlocation %d", ThisFuncName, i);
+      }  
+
+      // add to the symbol table
+      v =SymbolVarAdd_DataName(GlobalContext, Identifier, String);     
+      sprintf(String, "varbit%d__put", i);
+      SymbolVarAdd_PutName(GlobalContext, Identifier, String);
+      sprintf(String, "varbit%d__get", i);
+      SymbolVarAdd_GetName(GlobalContext, Identifier, String);
+      v->Type = L_BIT;
+      
+      // optional assign
+      if (TokenType == ASSIGN) {   
+         // assign value
+         CodeIndent(VERBOSE_M,   Level);            
+         CodeOutput(VERBOSE_ALL, "= ");
+         CodeOutput(VERBOSE_M,   "// assign");
+         cc = c->getChild(c, 0);
+         CgExpression(co, cc, Level+VLEVEL);
+      }
+   } // end of for loop
+
+ 
+   DumpContext(co);
+      
    CodeIndent(VERBOSE_M,   Level);                           
+   CodeOutput(VERBOSE_ALL, ";");
 } 
 
 

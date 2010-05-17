@@ -17,6 +17,8 @@ call %0 test_005
 call %0 test_006
 call %0 test_007
 call %0 test_008
+call %0 test_009
+call %0 test_010
 
 rem non JAL-compliant tests:
 call %0 test_100

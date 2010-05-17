@@ -191,7 +191,7 @@ int main (int argc, char *argv[])
 
    if (Verbose > 0) {
       
-      CodeOutput(VERBOSE_ALL, "// Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree on one line
+      CodeOutput(VERBOSE_L, "// Tree : %s\n", r.tree->toStringTree(r.tree)->chars);  // dump whole tree on one line
 
       // print tree elements with indent
       TreeWalk(r.tree);
