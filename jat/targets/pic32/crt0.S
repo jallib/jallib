@@ -1,6 +1,6 @@
-#include <machine/regdef.h>
-#include "cp0defs.h"
 
+#include "regdef.h"
+#include "cp0defs.h"
 
 #ifdef __LIBBUILD__
    .file 1 "crt0.S"
