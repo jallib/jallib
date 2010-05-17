@@ -999,7 +999,7 @@ void CgSingleBitVar(Context *co, pANTLR3_BASE_TREE t, int Level)
          // create a storage place
          sprintf(String, "%s__d", Identifier);
          CodeIndent(VERBOSE_ALL,   Level);            
-         CodeOutput(VERBOSE_ALL, "uint8_t %s;", String);       
+         CodeOutput(VERBOSE_ALL, "uint8_t %s ", String);       
          i = 0; // default bit location 
       } else {
          // at bitvar -> reference to exisiting storage place
@@ -1023,23 +1023,27 @@ void CgSingleBitVar(Context *co, pANTLR3_BASE_TREE t, int Level)
       
       // optional assign
       if (TokenType == ASSIGN) {   
-         // assign value
-         CodeIndent(VERBOSE_M,   Level);            
-         CodeOutput(VERBOSE_ALL, "= ");
-         CodeOutput(VERBOSE_M,   "// assign");
-         cc = c->getChild(c, 0);
-         CgExpression(co, cc, Level+VLEVEL);
+         if (AtName) {
+            CodeOutput(VERBOSE_ERROR, "// bitvar definition with both 'at' and assign not supported");       
+            // To support this, we need a separte statement that assigns the var. This is valid if the
+            // var is defined in the body of a function. If it is part of a function parameter definition
+            // it must be put into the body of the function. And if the var is a global one, the definition
+            // is global too, but the assignment must be part of main.
+         } else {
+            // assign value
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_ALL, "= ");
+            CodeOutput(VERBOSE_M,   "// assign");
+            cc = c->getChild(c, 0);
+            CgExpression(co, cc, Level+VLEVEL);
+         }
       }
    } // end of for loop
 
- 
-   DumpContext(co);
-      
+//   DumpContext(co);      
    CodeIndent(VERBOSE_M,   Level);                           
    CodeOutput(VERBOSE_ALL, ";");
 } 
-
-
  
 //-----------------------------------------------------------------------------
 // CgSingleVar - 
@@ -1300,10 +1304,15 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
 
       CODE_GENERATOR_GET_CHILD_INFO
 
+//      if (VarType == L_BIT) {
+//         // a bit var is always by-code
+//         p->CallMethod = 'c';     // Call by code
+//      }
+
       if (VarType == L_BIT) {
-         // a bit var is always by-code
-         p->CallMethod = 'c';     // Call by code
+         VarType = L_BYTE; // pass bit param as byte
       }
+
 
       switch(TokenType) {
          case L_IN : {
@@ -1323,7 +1332,6 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
          case IDENTIFIER : {
             CodeIndent(VERBOSE_M,   Level);            
             // store procedure param name
-//            strcpy(SymbolTail->Param[(SymbolTail->NrOfParams)-1].Name, c->toString(c)->chars);
             SymbolParamSetName(p, c->toString(c)->chars);      
             
             switch(p->CallMethod) {
@@ -1529,12 +1537,12 @@ void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)
             CodeOutput(VERBOSE_ALL, ") { ");         
             CodeIndent(VERBOSE_M,   Level);            
             CodeOutput(VERBOSE_M,   "// start body");         
-           
-            // put in self-reference (to allow pvar-functions to access it's var)
-            CodeIndent(VERBOSE_ALL,   Level+1);            
-            CodeOutput(VERBOSE_ALL, "static void *this_function = %s;\n", s->Name);         
-            CodeIndent(VERBOSE_M,   Level+1);            
-            CodeOutput(VERBOSE_M,   "// self-reference");         
+
+//            // put in self-reference (to allow pvar-functions to access it's var)
+//            CodeIndent(VERBOSE_ALL,   Level+1);            
+//            CodeOutput(VERBOSE_ALL, "static void *this_function = %s;\n", s->Name);         
+//            CodeIndent(VERBOSE_M,   Level+1);            
+//            CodeOutput(VERBOSE_M,   "// self-reference");         
             
             if (Verbose) DumpContext(co);            
 
