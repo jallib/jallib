@@ -55,6 +55,13 @@ int Pass;
          node->toString(node)->chars,                             \
          node->getType(node),                                     \
          jalParserTokenNames[TokenType]);                         \
+                                                                  \
+   if (Token->input) {                                         \
+      CodeOutput(VerboseLevel,"%s, ",                          \
+            Token->input->fileName->chars);                    \
+   }                                                           \
+                                                                  \
+                                                                  \
    CodeOutput(VerboseLevel, "Line %d:%d)\n",                      \
          Token->getLine(Token),                                   \
          Token->getCharPositionInLine(Token));                    \
@@ -1684,10 +1691,16 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
  
    CodeIndent(VERBOSE_M,   Level);            
-   CodeOutput(VERBOSE_M,   "// %s (%d, %s from Line %d:%d)",
+   CodeOutput(VERBOSE_M,   "// %s (%d, %s from ",
             t->toString(t)->chars, 
             TokenType, 
-            jalParserTokenNames[TokenType],
+            jalParserTokenNames[TokenType]);
+            
+      if (Token->input) {
+         CodeOutput(VERBOSE_M,"%s, ", Token->input->fileName->chars);
+      }
+
+   CodeOutput(VERBOSE_M,   "Line %d:%d)",
             Token->getLine(Token), 
             Token->getCharPositionInLine(Token));
 
