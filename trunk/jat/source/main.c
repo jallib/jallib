@@ -184,10 +184,13 @@ int main (int argc, char *argv[])
    // read, LEX and PARSE source tree   
    r= ParseSource(Filename);
 
-//    pjalParser				psr
-//extern pjalParser psr;
-//   printf("// Nr of syntax errors in parser: %d\n", psr.getNumberOfSyntaxErrors()   );
+//extern pjalLexer lxr;
+//   printf("// Nr of syntax errors in parser: %d\n", lxr.getNumberOfSyntaxErrors()   );
 // (niet werkend, zou moeten werken op zowel lexer als parser object... een keer uitzoeken.)
+ 
+// this works (but there is similar code in the parser): 
+//    extern pjalParser psr;
+//    printf("// Nr of syntax errors in parser: %d\n", psr->pParser->rec->getNumberOfSyntaxErrors(psr->pParser->rec)   );
 
    if (Verbose > 0) {
       
@@ -292,10 +295,9 @@ void TreeWalkWorker(pANTLR3_BASE_TREE p, int Level)
       CIndent(Level);            
       CodeOutput(VERBOSE_ALL, "%s (%d, %s from ",child->toString(child)->chars, TokenType, jalParserTokenNames[TokenType]);   
   
-//      ANTLR3_INPUT_STREAM *is = Token->input;
-//      printf("input stream %x,",is);
-//      printf("input stream %x,", is->fileName);
-//      printf("input stream %d,", (int)&is->data);
+      if (Token->input) {
+         CodeOutput(VERBOSE_ALL,"%s, ", Token->input->fileName->chars);
+      }
       CodeOutput(VERBOSE_ALL, "Line %d:%d)",Token->getLine(Token), Token->getCharPositionInLine(Token));
 
 

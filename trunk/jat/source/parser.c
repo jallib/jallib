@@ -21,6 +21,7 @@
 
 
 pjalLexer		    lxr;
+pjalParser				psr;
 
 
 jalParser_program_return ParseSource(pANTLR3_UINT8 fName)
@@ -38,7 +39,7 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName)
    pANTLR3_COMMON_TOKEN_STREAM	    tstream;
 
    // The C parser (ANTLR generated)
-   pjalParser				psr;
+   // (moved to global)  pjalParser				psr;
    
    // Create the input stream using the supplied file name
    input	= antlr3AsciiFileStreamNew(fName);
