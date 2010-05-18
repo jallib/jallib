@@ -46,7 +46,7 @@ tokens {
 	L_VOID;  // used in translator as return type for procedures
 }
 
-program : ( statement )+ ; 
+program : ( statement )+ EOF; 
 
 statement 
 	:	
