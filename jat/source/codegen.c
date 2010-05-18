@@ -1809,7 +1809,8 @@ void CgStatement(Context *co, pANTLR3_BASE_TREE t, int Level)
          CgWhile(co, t, Level+VLEVEL);             
          break;   
       }
-      case INCLUDE_STMT : {    
+      case INCLUDE_STMT :     
+      case EOF : {    
          // ignore statment
          break;   
       }
