@@ -174,10 +174,13 @@ const_def : L_CONST vtype? const_def2 (COMMA const_def2)*
 
 var_init : ASSIGN^ (cexpr | cexpr_list | STRING_LITERAL | CHARACTER_LITERAL | identifier) ;
 
-//var_with_init : ASSIGN^ var_init;
+var_def_array  
+	: LBRACKET cexpr? RBRACKET 
+	-> ^(LBRACKET cexpr?)
+	;
 
-var_def2 : identifier ( LBRACKET cexpr? RBRACKET )? ( at_decl | is_decl | var_init)*
-	-> ^(VAR identifier ^(cexpr)?  at_decl*  is_decl* var_init? )
+var_def2 : identifier ( var_def_array )? ( at_decl | is_decl | var_init)*
+	-> ^(VAR identifier var_def_array?  at_decl*  is_decl* var_init? )
 	;
 
 var_def : L_VAR L_VOLATILE? vtype var_def2 (COMMA var_def2)* 
