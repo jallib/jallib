@@ -164,21 +164,21 @@ Symbol *GetSymbolPointer(Context *co, char *SymbolName, int SymbolType, int Incl
             // alias resolving
             if (s->Type == S_ALIAS) {
                CodeOutput(VERBOSE_XL, "// alias resolve step\n");
-               DumpSymbol(s, VERBOSE_XL);
+               DumpSymbol(VERBOSE_XL, s);
                s = s->details;
             } else {
                break;
             }
          }
          CodeOutput(VERBOSE_L, "// matched symbol:\n");
-         DumpSymbol(s, VERBOSE_L);
+         DumpSymbol(VERBOSE_L, s);
          return s;
       }       
    }
    return NULL;  // no match
 }
   
-void DumpSymbol(Symbol *s, int VerboseLevel)
+void DumpSymbol(int VerboseLevel, Symbol *s)
 {  int i;
       
    CodeOutput(VerboseLevel,"//\n//   Symbol name: '%s' at %x, Type: %d ", s->Name, s, s->Type);
@@ -201,6 +201,14 @@ void DumpSymbol(Symbol *s, int VerboseLevel)
          CodeOutput(VerboseLevel, "(Var)\n");
          Var *v = s->details;
          assert(v != NULL); // error: var struct missing
+
+         if (v->ArraySize) {
+            if (v->ArraySize > 0) {
+               CodeOutput(VerboseLevel, "//      Array size %d elements\n", v->ArraySize);
+            } else {
+               CodeOutput(VerboseLevel, "//      Array of unspecified size\n");
+            }
+         }
 
          if ((v->put == NULL) & (v->get == NULL)) {
             if (v->CallMethod == 0) {
@@ -254,7 +262,7 @@ void DumpContext(Context *co)
       for(s = co->Head; s != NULL; s = s->Next) {
          if (s== NULL) break;
          //CodeOutput(VERBOSE_ALL, "DumpSymbolTable %x\n", s);
-         DumpSymbol(s, VERBOSE_ALL);
+         DumpSymbol(VERBOSE_ALL, s);
       }
 
       co = co->Wider;
@@ -356,7 +364,8 @@ static Var *NewSymbolVar(Context *co, char *Name)
    
 //   p->ID    = ID++;
 
-   v->Type        = 0;     // undetermined type
+   v->Type        = 0;     // undetermined type    
+   v->ArraySize   = 0;     // not an array, -1 = undetermined size.
    v->CallMethod  = 0;     // 0 = not a param, 'v' = value, 'r' = reference, 'c' = code
    
    v->put         = NULL;   
