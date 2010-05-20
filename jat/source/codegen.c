@@ -50,16 +50,16 @@ int Pass;
 
 #define REPORT_NODE(VerboseLevel, string, node) {                 \
    CodeIndent(VerboseLevel, Level);                               \
-   CodeOutput(VerboseLevel, "// %s %s %s (%d, %s) from",          \
+   CodeOutput(VerboseLevel, "// %s %s %s (%d, %s) from ",         \
          ThisFuncName, string,                                    \
          node->toString(node)->chars,                             \
          node->getType(node),                                     \
          jalParserTokenNames[TokenType]);                         \
                                                                   \
-   if (Token->input) {                                         \
-      CodeOutput(VerboseLevel,"%s, ",                          \
-            Token->input->fileName->chars);                    \
-   }                                                           \
+   if (Token->input) {                                            \
+      CodeOutput(VerboseLevel,"%s, ",                             \
+            Token->input->fileName->chars);                       \
+   }                                                              \
                                                                   \
                                                                   \
    CodeOutput(VerboseLevel, "Line %d:%d)\n",                      \
@@ -253,9 +253,21 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
    Symbol *s;
    char *str;
    char *SymbolName;
+   char *ArrayIndex = NULL;
    
    switch(TokenType) {
       case IDENTIFIER :
+
+         // check for child, which is LBRACKET and has array index child.   
+         if (t->getChildCount(t) > 0) {
+            // a child -> array
+            cc = t->getChild(t, 0);
+            assert(cc != NULL);
+            cc = cc->getChild(cc, 0);
+            assert(cc != NULL);
+            ArrayIndex = cc->toString(cc)->chars;   
+//            CodeOutput(VERBOSE_ALL, "array");
+         }
 
          // lookup indentifier in context
          s = GetSymbolPointer(co, t->toString(t)->chars, S_VAR | S_ALIAS, 1); // search for var, in local and global context
@@ -293,34 +305,26 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
 
          if ((v) && (v->CallMethod == 'c') ) {
             // a procedure parameter, passed by call
-            //
-            // Here we put in code for runtime determination of the desired get method.
-            // 1. if get != NULL -> use get function
-            // 2. if data != NULL -> use data pointer
-            // 3. revert to 0.
-            /// 
             CodeIndent(VERBOSE_M,   Level);            
             char *str = t->toString(t)->chars;
 
-// moved to macro
-//            // get function?
-//            CodeOutput(VERBOSE_ALL, "(%s) ( %s__bc->get ?(*%s__bc->get)(%s__bc, %s__p) : ", 
-//                  VarTypeString(v->Type), str, str,str, str); 
-//            // data or 0      
-//            CodeOutput(VERBOSE_ALL, " ( %s__bc->data ? *(%s *)%s__bc->data : 0))", str, VarTypeString(v->Type), str); 
-//
-//            CodeOutput(VERBOSE_M,   " // %s identifier - ByCall param", ThisFuncName);
-// moved to marco
-               // PVAR_GET(type, get, data, bc, p)
-               CodeOutput(VERBOSE_ALL, "PVAR_GET(%s, %s__bc, %s__p)", VarTypeString(v->Type), str, str, str, str);           
+            // PVAR_GET(type, get, data, bc, p)
+            CodeOutput(VERBOSE_ALL, "PVAR_GET(%s, %s__bc, %s__p)", VarTypeString(v->Type), str, str, str, str);           
 
             break;
          }
 
          // default - call by value, unknown call-methode or unknown identifier
          CodeIndent(VERBOSE_M,   Level);            
-         CodeOutput(VERBOSE_ALL, "%s", SymbolName); // t->toString(t)->chars);
-         CodeOutput(VERBOSE_M,   "// %s identifier (default)", ThisFuncName);   
+         if (ArrayIndex == NULL) {
+            // non-array
+            CodeOutput(VERBOSE_ALL, "%s", SymbolName); // t->toString(t)->chars);
+            CodeOutput(VERBOSE_M,   "// %s identifier (default)", ThisFuncName);   
+         } else {                                          
+            // array    !!! boudary checking required !!!
+            CodeOutput(VERBOSE_ALL, "%s[%s]", SymbolName, ArrayIndex); // t->toString(t)->chars);
+            CodeOutput(VERBOSE_M,   "// %s identifier-array (default)", ThisFuncName);   
+         }
             
          break;
 
@@ -414,25 +418,44 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
 
    Var *v; 
-   char *Identifier;
+   char *Identifier;  
+   char *ArrayIndex = NULL;
 
    // first node is identifier to assign to. 
    ChildIx = 0;
    CODE_GENERATOR_GET_CHILD_INFO
    
    if (TokenType != IDENTIFIER) {   
-      printf("%s error: token %s \n", ThisFuncName, c->toString(c)->chars);
+      CodeOutput(VERBOSE_ERROR, "%s error: token %s \n", ThisFuncName, c->toString(c)->chars);
       return;
    }                
+
+   // check for child, which is LBRACKET and has array index child.   
+   if (c->getChildCount(c) > 0) {
+      // a child -> array
+      cc = c->getChild(c, 0);
+      assert(cc != NULL);
+      cc = cc->getChild(cc, 0);
+      assert(cc != NULL);
+      ArrayIndex = cc->toString(cc)->chars;
+   }
+
 
    // lookup indentifier in context
    Symbol *s = GetSymbolPointer(co, c->toString(c)->chars, S_VAR | S_ALIAS, 1); // search for var, in local and global context
    if (s != NULL) {
       v= s->details;
       Identifier = s->Name;
+
+      CodeIndent(VERBOSE_M, Level);
+      CodeOutput(VERBOSE_M,"// CgAssign - var %s found in context, Dump!\n", Identifier);
+      DumpSymbol(VERBOSE_M, s);
    } else {  
       v = NULL;
-      Identifier = c->toString(c)->chars;
+      Identifier = c->toString(c)->chars; 
+
+      CodeIndent(VERBOSE_M, Level);
+      CodeOutput(VERBOSE_M,"// CgAssign - var %s not found in context, use default\n", Identifier);
    }      
                 
    if ((v != NULL) && (v->put != NULL)) {
@@ -501,8 +524,18 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    
    // 'v' or 0 or not found -> default = call by value
    CodeIndent(VERBOSE_ALL, Level);  // this one always!
-   CodeOutput(VERBOSE_ALL, "%s = ", Identifier); // alias could be resolved... c->toString(c)->chars);
-   CodeOutput(VERBOSE_M,   " // %s identifier call by value", ThisFuncName);
+   if (ArrayIndex == NULL) {
+      // normal var
+      CodeOutput(VERBOSE_ALL, "%s = ", Identifier); // alias could be resolved... c->toString(c)->chars);
+      CodeOutput(VERBOSE_M,   " // %s identifier call by value", ThisFuncName);
+   } else {
+      // array                                        
+      
+      // !!! boundery checking required !!!
+      CodeOutput(VERBOSE_ALL, "%s[%s] = ", Identifier, ArrayIndex); // alias could be resolved... c->toString(c)->chars);
+      CodeOutput(VERBOSE_M,   " // %s identifier-array call by value", ThisFuncName);
+      
+   }
 
    // second node is expr
    c = t->getChild(t, 1);  
@@ -1055,7 +1088,7 @@ void CgSingleBitVar(Context *co, pANTLR3_BASE_TREE t, int Level)
 //-----------------------------------------------------------------------------
 // CgSingleVar - 
 //-----------------------------------------------------------------------------
-// A SingleVar node has child for it's name and for its options
+// A SingleVar node has child for its name and for its options
 // (AT, IS, {}, ASSIGN)
 //-----------------------------------------------------------------------------
 void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType, int IsConstant)
@@ -1064,7 +1097,9 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType, int I
 
    Var *v;
    char *Identifier = NULL;
-      
+   char *ArraySizeExpr = NULL;
+   int IsArray = 0;
+         
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       
       CODE_GENERATOR_GET_CHILD_INFO
@@ -1080,6 +1115,14 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType, int I
             v = SymbolVarAdd_DataName(co, c->toString(c)->chars, c->toString(c)->chars);   
 
             v->Type = VarType;
+            break;
+         }
+         case LBRACKET : {
+            // array
+            IsArray = 1;
+            assert(v != NULL);
+            v->ArraySize = atoi(c->toString(c->getChild(c,0))->chars);   // need expression conversion.
+            ArraySizeExpr = c->toString(c->getChild(c,0))->chars;            
             break;
          }
          case ASSIGN : {
@@ -1110,7 +1153,7 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType, int I
 
             } else {
                // No use for this AFAIK - we have alias.
-               CodeOutput(VERBOSE_WARNING, "// %s use of 'IS' only supported in prototype-way", ThisFuncName);                              
+               CodeOutput(VERBOSE_WARNING, "// %s use of 'VAR ... IS' only supported in prototype-way", ThisFuncName);                              
             }
             Identifier = NULL; // indicate we handled this one.
             break;
@@ -1128,11 +1171,29 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType, int I
          return;
       }
 
-      // handle identifier
-      CodeIndent(VERBOSE_ALL,   Level);                           
-      CodeOutput(VERBOSE_ALL, "%s %s;", VarTypeString(VarType), Identifier);
-      CodeOutput(VERBOSE_M, "// simple var definition");
-      CodeIndent(VERBOSE_M,   Level);                           
+
+      if (IsArray) {   
+         // array
+         CodeIndent(VERBOSE_ALL,   Level);                           
+         CodeOutput(VERBOSE_ALL, "%s %s[%s];", VarTypeString(VarType), Identifier, ArraySizeExpr);
+         CodeOutput(VERBOSE_M, "// simple var definition");
+         CodeIndent(VERBOSE_M,   Level);    
+           
+         assert(v != NULL);   
+         DumpContext(co);
+         
+//         if (ArraySizeExpr != NULL) (
+//            v->ArraySize = 1;//atoi((char *) ArraySizeExpr);
+//         } else {
+//            v->ArraySize = -1; // unspecified.
+//         }
+      } else {
+         // handle identifier
+         CodeIndent(VERBOSE_ALL,   Level);                           
+         CodeOutput(VERBOSE_ALL, "%s %s;", VarTypeString(VarType), Identifier);
+         CodeOutput(VERBOSE_M, "// simple var definition");
+         CodeIndent(VERBOSE_M,   Level);                           
+      }
    }
    CodeIndent(VERBOSE_M,   Level);                           
 } 
@@ -1301,6 +1362,8 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
 // CgParamChilds - process childs of a procedure param at definition/prototype time 
 //-----------------------------------------------------------------------------
 // A ParamChilds node
+// p points to the copy of the param, stored with the function def itself.
+//
 //-----------------------------------------------------------------------------
 void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, int VarType)
 {  char *ThisFuncName = "CgParamChilds";
@@ -1446,9 +1509,10 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
 //   not exist, it is created. In any case, the function name will be 
 //   registered as 'put' or 'get' value.                                        
 //
-// - Next a record is created, as for each function, that describe the 
-//   function call. This record holds the function name, which is appended 
-//   with __put or __get in the case of put or get.
+// - Next a record is created, as for each function, that describe how this
+//   function is called.
+//   This record holds the function name, appended with __put or __get in the
+//   case of put or get. This is also the name of the function in C.
 // 
 //-----------------------------------------------------------------------------
 void CgProcedureDef(Context *co, pANTLR3_BASE_TREE t, int Level)

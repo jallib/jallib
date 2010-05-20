@@ -45,6 +45,7 @@ typedef struct Var_stuct {
 
    // param-related
    int      Type;	                                                            
+   int      ArraySize;
    char     CallMethod; // 0 = no param, 'v' = value, 'r' = reference, 'c' = code
 
    char *put;     // put function name
@@ -103,7 +104,7 @@ Symbol *GetSymbolPointer(Context *co, char *SymbolName, int SymbolType, int Incl
 
 SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType);
 void SymbolParamSetName(SymbolParam *p, char *Name);
-void DumpSymbol(Symbol *s, int VerboseLevel);
+void DumpSymbol(int VerboseLevel, Symbol *s);
 Symbol *NewSymbolFunction(Context *co);
 Symbol *NewSymbolAlias(Context *co, char *AliasName, char *AliasTarget);
 
@@ -114,6 +115,7 @@ void SymbolVarAdd_PutName(Context *co, char *BaseName, char *PutName);
 void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName);
 Var *SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName);
 
+void SymbolPrintVarTableExternals(Context *co);
 
 void CreateGlobalContext(void);
 

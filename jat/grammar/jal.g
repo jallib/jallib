@@ -73,7 +73,7 @@ statement
 
 
 variable 
-	: identifier^ (LBRACKET expr RBRACKET)?	;
+	: identifier^ ( var_def_array )?	;
 
 asm_stmt 
 	: L_ASM (L_NOP | (identifier (cexpr ( COMMA cexpr )*)?))
@@ -268,12 +268,15 @@ factor : PLUS^ factor
        | atom
        ;
 
+array : identifier^ var_def_array 
+      ;
+
 atom	:  CHARACTER_LITERAL
         |  STRING_LITERAL
 	| vtype LPAREN expr RPAREN // cast, byte(foo)
         |  constant
 	| LPAREN! expr RPAREN!
-	|  identifier (LBRACKET expr RBRACKET)
+	| array // identifier (LBRACKET expr RBRACKET)
 	| proc_func_call
 	|  identifier
 	;
