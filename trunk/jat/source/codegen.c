@@ -1952,7 +1952,7 @@ void CgStatements(Context *co, pANTLR3_BASE_TREE t, int Level)
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 void CodeGenerate(pANTLR3_BASE_TREE t)
-{  int Level;
+{  int Level, i;
 
    ErrorCount = 0;
    
@@ -1961,24 +1961,15 @@ void CodeGenerate(pANTLR3_BASE_TREE t)
    CodeOutput(VERBOSE_ALL, "\n\n//----- JAT code start --------------------------------------------------------\n");                       
    CodeOutput(VERBOSE_ALL, "#include <stdio.h>\n");                       
    CodeOutput(VERBOSE_ALL, "#include <stdint.h>\n\n");                       
-   CodeOutput(VERBOSE_ALL, "#include \"jaltarget.h\"\n\n");                       
+   CodeOutput(VERBOSE_ALL, "#include \"jaltarget.h\"\n");                       
 
-   Pass = 1;   // collect symbols
-   Level = 0;
-   CodeOutputEnable(0);
-	if  (t->isNilNode(t) == ANTLR3_TRUE) { 
-	   // a nill-node at root level means there are multiple statements to be processed
-      CgStatements(GlobalContext, t, Level); // Proces childs of p,  start at child 0
-	} else {
-	   // the root node is a statement itself (this means we have a program with only
-	   // one statement. Not common in a real program, but possible and usefull while testing).
-      CgStatement(GlobalContext, t, Level); // process statement of node p
-   }      
+   // get base filename
+   i = GetFileExtIndex(Filename);
+   Filename[i-1] = 0;
+   CodeOutput(VERBOSE_ALL, "#include \"%s.h\"\n\n", Filename);                       
+   Filename[i-1] = '.'; // and restore filename
 
-   CodeOutputEnable(1);
-   SymbolPrintVarTableExternals(GlobalContext);
-
-   Pass = 1;   // generate functions, global vars etc.
+   Pass = 1;   // collect symbols, generate functions, global vars etc.
    Level = 0;
 	if  (t->isNilNode(t) == ANTLR3_TRUE) { 
 	   // a nill-node at root level means there are multiple statements to be processed
@@ -1989,6 +1980,10 @@ void CodeGenerate(pANTLR3_BASE_TREE t)
       CgStatement(GlobalContext, t, Level); // process statement of node p
    }      
 
+   // create .h file of project.
+   SymbolPrintVarTableExternals(GlobalContext, Filename);
+
+   // put vartable in the master source file.
    SymbolPrintVarTable(GlobalContext);
    
    Pass = 2;   // generate main function

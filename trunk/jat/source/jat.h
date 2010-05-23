@@ -26,7 +26,8 @@ extern int Verbose;
 extern int NoMainParams;
 extern int NoInclude;
 extern int ToStdOut;  
-extern char *IncludePath;
+extern char *IncludePath;  
+extern char *Filename;
 
 // more indent levels with verbose:
 #define VLEVEL (Verbose > 0 ? 1 : 0) 
@@ -43,7 +44,9 @@ jalParser_program_return ParseSource(pANTLR3_UINT8 fName);
 int OpenCodeOut(char *Filename, int Translate);
 void CodeOutputEnable(int Flag);
 void CodeOutput(int VerboseCategory, char *fmt, ... );
-void CodeIndent(int VerboseCategory, int Level);
+void CodeIndent(int VerboseCategory, int Level);     
+int GetFileExtIndex(char *Filename);
+
 
 #define VERBOSE_ALL 0   // always output (if output stream is on)
 #define VERBOSE_M   1   // medium (which is already quite a lot - all tree walking stuff)

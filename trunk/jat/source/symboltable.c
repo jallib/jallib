@@ -318,26 +318,47 @@ void SymbolPrintVarTable(Context *co)
 }
 
 //-----------------------------------------------------------------------------
+// SymbolPrintVarTableExternals - print these externals to include file
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
-void SymbolPrintVarTableExternals(Context *co)
+void SymbolPrintVarTableExternals(Context *co, char *Filename)
 {  Symbol *s;
    Var   *v;
+   
+   FILE *fp;
+   int i;
+   char String[MAX_FILENAME_SIZE];
 
-   CodeOutput(VERBOSE_M, "\n\n   // Pseudo Var table");   
+
+   // create .h filename
+   i = GetFileExtIndex(Filename);
+   strcpy(String, Filename);
+   String[i] = 'h';
+   String[i+1] = 0;   
+   
+             
+   CodeOutput(VERBOSE_M, "\n\n   // Pseudo Var table created in %s", String);   
+   
+   fp = fopen(String, "w");     
+   assert(fp != NULL);
+
+   fprintf(fp, "//-----------------------------------------------------------------------------\n");                       
+   fprintf(fp, "// %s - Pseudo Var table (generated code)\n//\n", String);   
+   fprintf(fp, "//-----------------------------------------------------------------------------\n");                       
+   fprintf(fp, "// note: these vars are not realy extern to the master file,\n");
+   fprintf(fp, "//       but will be defined later...\n");
+   fprintf(fp, "//-----------------------------------------------------------------------------\n\n");                       
 
    for(s = co->Head; s != NULL; s = s->Next) {
       if (s->Type != S_VAR) continue;
       v = s->details;   
       assert(v != NULL); // error: var struct missing
       if ((v->put != NULL) | (v->get != NULL)) {
-
-         CodeIndent(VERBOSE_ALL, 1);
-         CodeOutput(VERBOSE_ALL, "   extern const ByCall *%s__bc; ",s->Name);
-         CodeOutput(VERBOSE_M,   " // not realy extern, but forward referencing...");
+         fprintf(fp, "extern const ByCall *%s__bc;\n",s->Name);
       }
-   }              
-   CodeIndent(VERBOSE_ALL, 1);
+   }
+   fprintf(fp, "\n// Generated code end\n", String);   
+
 }
 
 
