@@ -431,8 +431,8 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
    }                
 
    // check for child, which is LBRACKET and has array index child.   
-   if (c->getChildCount(c) > 0) {
-      // a child -> array
+   if (c->getChildCount(c) > 0) {    
+      // a child -> array assign
       cc = c->getChild(c, 0);
       assert(cc != NULL);
       cc = cc->getChild(cc, 0);
@@ -528,19 +528,24 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
       // normal var
       CodeOutput(VERBOSE_ALL, "%s = ", Identifier); // alias could be resolved... c->toString(c)->chars);
       CodeOutput(VERBOSE_M,   " // %s identifier call by value", ThisFuncName);
+
+      // second node is expr
+      c = t->getChild(t, 1);  
+      CgExpression(co, c, Level + 1);      
+
    } else {
       // array                                        
       
       // !!! boundery checking required !!!
-      CodeOutput(VERBOSE_ALL, "%s[%s] = ", Identifier, ArrayIndex); // alias could be resolved... c->toString(c)->chars);
+      CodeOutput(VERBOSE_ALL, "DIRECT_ARRAY_ASSIGN(%s, %s, %s__size, ", Identifier, ArrayIndex, Identifier); // alias could be resolved... c->toString(c)->chars);
       CodeOutput(VERBOSE_M,   " // %s identifier-array call by value", ThisFuncName);
-      
-   }
 
-   // second node is expr
-   c = t->getChild(t, 1);  
-   CgExpression(co, c, Level + 1);      
+      // second node is expr
+      c = t->getChild(t, 1);  
+      CgExpression(co, c, Level + 1);      
 
+      CodeOutput(VERBOSE_ALL, ")"); // close macro call      
+   }   
 } 
 
 //-----------------------------------------------------------------------------
@@ -1179,8 +1184,13 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType, int I
          CodeOutput(VERBOSE_M, "// simple var definition");
          CodeIndent(VERBOSE_M,   Level);    
            
+         CodeIndent(VERBOSE_ALL,   Level);                           
+         CodeOutput(VERBOSE_ALL, "const int %s__size = %s;", Identifier, ArraySizeExpr);
+         CodeOutput(VERBOSE_M, "// constant with array size");
+         CodeIndent(VERBOSE_M,   Level);    
+           
          assert(v != NULL);   
-         DumpContext(co);
+//         DumpContext(co);
          
 //         if (ArraySizeExpr != NULL) (
 //            v->ArraySize = 1;//atoi((char *) ArraySizeExpr);
