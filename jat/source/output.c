@@ -14,13 +14,38 @@
 FILE *CODE = NULL;
 int CodeOutputFlag = 1;
 
+
+//-----------------------------------------------------------------------------
+// GetFileExtIndex - Get location of first char after extension '.'
+//-----------------------------------------------------------------------------
+//-----------------------------------------------------------------------------
+int GetFileExtIndex(char *Filename)
+{  int i;
+   
+   // determine lenght
+   for (i=0; Filename[i]; i++);
+   if (i > (MAX_FILENAME_SIZE - 3)) {
+      printf("Error: filename %s too long to process\n", Filename);
+      exit(1);
+   }                  
+   
+   // valid (not to short and with '.' at right place)?
+   if ((i<5) || (Filename[i-4] != '.')){
+      printf("Error: invalid filename %s\n", Filename);
+      exit(1);
+   }
+
+   return i-3;
+}
+
+
 //-----------------------------------------------------------------------------
 // OpenCodeOut - open file for write
 //-----------------------------------------------------------------------------    
 // IF Translate THEN change extension from .jal to .c.
 //-----------------------------------------------------------------------------
 int OpenCodeOut(char *Filename, int Translate)    
-{  char String[202];  
+{  char String[MAX_FILENAME_SIZE];  
    int i;
 
    if (ToStdOut) {
@@ -36,24 +61,13 @@ int OpenCodeOut(char *Filename, int Translate)
       //----------------------------------------               
       
       if (Verbose) printf("Open1 _%s_\n", Filename); //Note: use printf since we can't use CodeOutput yet...
-   
-      // determine lenght
-      for (i=0; Filename[i]; i++);
-      if (i > 200) {
-         printf("Error: filename too long to process\n");
-         exit(1);
-      }                  
-      
-      // valid (not to short and with '.' at right place)?
-      if ((i<5) || (Filename[i-4] != '.')){
-         printf("Error: invalid filename\n");
-         exit(1);
-      }
+
+      i = GetFileExtIndex(Filename);   
    
       // change from '.jal' to '.c'
       strcpy(String, Filename);
-      String[i-3] = 'c';
-      String[i-2] = 0;   
+      String[i] = 'c';
+      String[i+1] = 0;   
    } else {                    
       // use given output filename
       strcpy(String, Filename);

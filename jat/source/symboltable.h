@@ -115,7 +115,7 @@ void SymbolVarAdd_PutName(Context *co, char *BaseName, char *PutName);
 void SymbolVarAdd_GetName(Context *co, char *BaseName, char *GetName);
 Var *SymbolVarAdd_DataName(Context *co, char *BaseName, char *DataName);
 
-void SymbolPrintVarTableExternals(Context *co);
+void SymbolPrintVarTableExternals(Context *co, char *Filename);
 
 void CreateGlobalContext(void);
 
