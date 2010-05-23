@@ -64,6 +64,17 @@ uint32_t byte__get(const ByCall *bc, void *Addr)                  {
 }
 
 
+// marco to check bounderies on array write. Read boundaries are not
+// checked (mostly no harm done and wrong index returns unexpected 
+// info anyway)
+#define DIRECT_ARRAY_ASSIGN(name, index, size, expr)  \
+   {if ((index>=0) && (index<size)) name[index]=expr;}
+
+// count definition (for direct access vars). 
+// Note:t ## indicates name has to be appended by __size without space.
+#define count(name) name##__size
+
+
 void     word__put(const ByCall *bc, void *Addr, uint32_t Data)   { *(uint16_t *)Addr = (uint16_t)  Data; }
 uint32_t word__get(const ByCall *bc, void *Addr)                  { return (uint32_t)  *(uint16_t *)Addr; }
 
