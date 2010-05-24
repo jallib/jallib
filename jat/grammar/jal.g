@@ -162,7 +162,7 @@ alias_def : L_ALIAS identifier L_IS identifier
 
 // note: next *is* constant, but makes use of var rules and sub-structure.
 const_def2 : identifier ( LBRACKET cexpr? RBRACKET )? var_init?
-	-> ^(VAR identifier ^(cexpr)?  var_init? )
+	-> ^(VAR identifier ^(LBRACKET cexpr)?  var_init? )
 	;
 
 const_def : L_CONST vtype? const_def2 (COMMA const_def2)* 
