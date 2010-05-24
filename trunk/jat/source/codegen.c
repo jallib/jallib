@@ -13,7 +13,6 @@ int Pass;
 #define PASS2 if ((Level == 1) & (Pass != 2)) break;
 
 
-
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 // code blocks
@@ -341,7 +340,8 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
       case STRING_LITERAL : 
          str = t->toString(t)->chars;
          if (strlen(str) > 3) {
-            CodeOutput(VERBOSE_ALL, "/*Warning: only first char of string used.*/");            
+            CodeOutput(VERBOSE_WARNING, "// Warning: only first char of string used.");            
+           CodeIndent(VERBOSE_ALL,   Level);            
          }
          CodeIndent(VERBOSE_M,   Level);            
          CodeOutput(VERBOSE_ALL, "'%c'", str[1]);
@@ -406,6 +406,78 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          break;      
    }
 }
+
+
+
+//-----------------------------------------------------------------------------
+// CgArrayAssign - Generate code
+//-----------------------------------------------------------------------------
+// an array assignment is a node with a string or a curly bracket
+// The latter has multiple elemements.
+//-----------------------------------------------------------------------------
+void CgArrayAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
+{  char *ThisFuncName = "CgArrayAssign";
+   CODE_GENERATOR_FUNCT_HEADER  // declare vars, print debug, get n, Token and TokenType of 'p'
+
+   Var *v; 
+   char *Identifier;  
+   char *ArrayIndex = NULL;
+   char *str;
+
+//   // first node is identifier to assign to. 
+//   ChildIx = 0;
+//   CODE_GENERATOR_GET_CHILD_INFO
+
+   switch (TokenType) {
+      case LCURLY : {
+         CodeIndent(VERBOSE_M,   Level);            
+         CodeOutput(VERBOSE_ALL, "{", str);
+         CodeOutput(VERBOSE_M, "//curly", str[1]);         
+
+         // put the values in the list
+         for (ChildIx = 0; ChildIx<n ; ChildIx++) {
+            CODE_GENERATOR_GET_CHILD_INFO
+
+            if (ChildIx > 0) {
+               CodeIndent(VERBOSE_M, Level);               
+               CodeOutput(VERBOSE_ALL, ", ");               
+            }            
+            CgExpression(co, c, Level + 1);
+         }            
+         
+         CodeIndent(VERBOSE_ALL,   Level);            
+         CodeOutput(VERBOSE_ALL, "}", str);
+         break;
+      }
+
+      case STRING_LITERAL : {
+         str = t->toString(t)->chars;
+         CodeIndent(VERBOSE_M,   Level);            
+         CodeOutput(VERBOSE_ALL, "%s", str);
+         CodeOutput(VERBOSE_M,   "// string constant");
+
+         break;
+      }   
+      default: {            
+         REPORT_NODE(VERBOSE_ERROR, "unexpected token", c);
+         break;
+      }
+   }
+} 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 //-----------------------------------------------------------------------------
 // CgAssign - Generate code for an assign node and it's subnodes
@@ -544,6 +616,7 @@ void CgAssign(Context *co, pANTLR3_BASE_TREE t, int Level)
       c = t->getChild(t, 1);  
       CgExpression(co, c, Level + 1);      
 
+      CodeIndent(VERBOSE_M,   Level);
       CodeOutput(VERBOSE_ALL, ")"); // close macro call      
    }   
 } 
@@ -1108,7 +1181,7 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType, int I
    for (ChildIx = 0; ChildIx<n ; ChildIx++) {
       
       CODE_GENERATOR_GET_CHILD_INFO
-            REPORT_NODE(VERBOSE_M, "SingeVar child token", c);
+      REPORT_NODE(VERBOSE_M, "SingeVar child token", c);
       
       switch(TokenType) {
          case IDENTIFIER : {   
@@ -1125,21 +1198,45 @@ void CgSingleVar(Context *co, pANTLR3_BASE_TREE t, int Level, int VarType, int I
          case LBRACKET : {
             // array
             IsArray = 1;
-            assert(v != NULL);
-            v->ArraySize = atoi(c->toString(c->getChild(c,0))->chars);   // need expression conversion.
-            ArraySizeExpr = c->toString(c->getChild(c,0))->chars;            
+            assert(v != NULL);     
+            cc = c->getChild(c,0);                  
+            if (IsConstant) {
+               // constants can have arrays of undefined length
+               if (cc == NULL) {
+                  v->ArraySize = -1; // no array size specified
+                  ArraySizeExpr = NULL;
+                  break;   
+               }
+            } else {
+               // var (not constant)
+               assert(cc != NULL);     
+            }
+            v->ArraySize = atoi(c->toString(cc)->chars);   // need expression conversion.
+            ArraySizeExpr = c->toString(cc)->chars;            
             break;
          }
-         case ASSIGN : {
-            CodeIndent(VERBOSE_ALL,   Level);            
-            if (IsConstant) CodeOutput(VERBOSE_ALL, "const ");
-            CodeOutput(VERBOSE_ALL, "%s %s = ", VarTypeString(VarType), Identifier);
-            CodeOutput(VERBOSE_M,   "// assign");
-            cc = c->getChild(c, 0);
-            CgExpression(co, cc, Level+VLEVEL);
-            CodeIndent(VERBOSE_M,   Level);            
-            CodeOutput(VERBOSE_ALL, ";");  
-            Identifier = NULL; // indicate we handled this one.
+         case ASSIGN : {              
+            if (!IsArray) {
+               CodeIndent(VERBOSE_ALL,   Level);            
+               if (IsConstant) CodeOutput(VERBOSE_ALL, "const ");
+               CodeOutput(VERBOSE_ALL, "%s %s = ", VarTypeString(VarType), Identifier);
+               CodeOutput(VERBOSE_M,   "// assign");
+               cc = c->getChild(c, 0);
+               CgExpression(co, cc, Level+VLEVEL);
+               CodeIndent(VERBOSE_M,   Level);            
+               CodeOutput(VERBOSE_ALL, ";");  
+               Identifier = NULL; // indicate we handled this one.
+            } else {
+               CodeIndent(VERBOSE_ALL,   Level);            
+               if (IsConstant) CodeOutput(VERBOSE_ALL, "const ");
+               CodeOutput(VERBOSE_ALL, "%s %s[] = ", VarTypeString(VarType), Identifier);
+               CodeOutput(VERBOSE_M,   "// assign");
+               cc = c->getChild(c, 0);                           
+               CgArrayAssign(co, cc, Level+VLEVEL);
+               CodeIndent(VERBOSE_M,   Level);            
+               CodeOutput(VERBOSE_ALL, ";");  
+               Identifier = NULL; // indicate we handled this one.
+            }
             break;
          }
          case L_IS : {
@@ -1340,15 +1437,10 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
          case L_SWORD  : 
          case L_DWORD  : 
          case L_SDWORD : {
- //           CodeIndent(VERBOSE_ALL, Level);            
-//            CodeOutput(VERBOSE_ALL, "const %s ", VarTypeString(TokenType));
             VarType = TokenType;
             break;
          }
          case VAR : {   
-//            CodeIndent(VERBOSE_M,   Level);            
-//               CodeOutput(VERBOSE_ALL, "const long ");
-//               CodeOutput(VERBOSE_M,   " // default const type\n");
             if (VarType == 0) {
                VarType = L_DWORD;
                CodeIndent(VERBOSE_M,   Level);            
@@ -1364,8 +1456,6 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
          }
       }
    }
-//   CodeIndent(VERBOSE_M,   Level);            
-//   CodeOutput(VERBOSE_ALL, ";");                
 } 
 
 //-----------------------------------------------------------------------------
