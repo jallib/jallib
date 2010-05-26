@@ -175,8 +175,6 @@ char GetCallMethod(Context *co, char *ParamName)
       } else {
          // a regular var - 
          v->CallMethod = 'v';
-//         CodeOutput(VERBOSE_ALL, "// We found something, but not clear what...\n");
-//         DumpSymbol(s, VERBOSE_ALL);
       }
    }
       
@@ -310,6 +308,17 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
             // PVAR_GET(type, get, data, bc, p)
             CodeOutput(VERBOSE_ALL, "PVAR_GET(%s, %s__bc, %s__p)", VarTypeString(v->Type), str, str, str, str);           
 
+            break;
+         }
+
+         if ((v) && (v->CallMethod == 'a') ) {
+            // a ARRAY procedure parameter, passed by call
+//            CodeIndent(VERBOSE_M,   Level);            
+//            char *str = t->toString(t)->chars;
+//
+//            // PVAR_GET(type, get, data, bc, p)
+//            CodeOutput(VERBOSE_ALL, "PVAR_GET(%s, %s__bc, %s__p)", VarTypeString(v->Type), str, str, str, str);           
+       CodeOutput(VERBOSE_ALL, "not_yet_supported %s", SymbolName);           
             break;
          }
 
@@ -1478,9 +1487,16 @@ void CgConst(Context *co, pANTLR3_BASE_TREE t, int Level)
 //-----------------------------------------------------------------------------
 // CgParamChilds - process childs of a procedure param at definition/prototype time 
 //-----------------------------------------------------------------------------
-// A ParamChilds node
-// p points to the copy of the param, stored with the function def itself.
+// A ParamChilds node         
 //
+// p points to the copy of the param, stored with the function def itself.    
+//
+// CgParamChilds generate code for this parameter and add it as a parameter
+// to the procedure def. This is used pass the proper parameters when the
+// procedure gets called (and later copied by CgParam as real symbols).
+//
+// TODO: check similarity between this function and CgSingleVar - maybe it
+// is better to merge them into one.
 //-----------------------------------------------------------------------------
 void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, int VarType)
 {  char *ThisFuncName = "CgParamChilds";
@@ -1491,15 +1507,9 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
 
       CODE_GENERATOR_GET_CHILD_INFO
 
-//      if (VarType == L_BIT) {
-//         // a bit var is always by-code
-//         p->CallMethod = 'c';     // Call by code
-//      }
-
       if (VarType == L_BIT) {
          VarType = L_BYTE; // pass bit param as byte
       }
-
 
       switch(TokenType) {
          case L_IN : {
@@ -1514,10 +1524,28 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
          case L_VOLATILE : {                                                 
             p->CallMethod = 'c';     // Call by code
             break;
+         }  
+         
+         case LBRACKET : {
+            // array
+            cc = c->getChild(c,0);                  
+            if (cc == NULL) {
+               p->ArraySize = -1; // no array size specified
+            } else {
+               p->ArraySize = atoi(c->toString(cc)->chars);   // need expression conversion.
+            }     
+            p->CallMethod = 'a';
+            break;   
          }
+         
+         
          case L_DATA     : // L_DATA is also identifier
-         case IDENTIFIER : {
-            CodeIndent(VERBOSE_M,   Level);            
+         case IDENTIFIER : {                                  
+            // -----------------------------------------------
+            // Identifier is always there & last child in list.
+            // -----------------------------------------------
+            CodeIndent(VERBOSE_M,   Level); 
+                       
             // store procedure param name
             SymbolParamSetName(p, c->toString(c)->chars);      
             
@@ -1534,10 +1562,15 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
                   break;          
                }
                case 'c': {
-                  // call by reference
-                  CodeOutput(VERBOSE_ALL, "const ByCall *%s__bc, char *%s__p", c->toString(c)->chars, c->toString(c)->chars);
+                  // call by code
+                  CodeOutput(VERBOSE_ALL, "const ByCall *%s__bc, uint8_t *%s__p", c->toString(c)->chars, c->toString(c)->chars);
                   break;          
-               }
+               } 
+               case 'a': {
+                  // call by array-code
+                  CodeOutput(VERBOSE_ALL, "const ByCall *%s__bc, uint8_t *%s__p, uint16_t %s__size", c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars);
+                  break;          
+               } 
             }
 //            // deref if called by reference
 //            CodeOutput(VERBOSE_ALL, " %s ", DeRefSub(c->toString(c)->chars, p->CallMethod));  
@@ -1555,7 +1588,14 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
 //-----------------------------------------------------------------------------
 // CgParams - process params of procedure / function definition or prototype
 //-----------------------------------------------------------------------------
-// A Param node
+// A Param node 
+//
+// Let CgParamChilds generate code for this parameter and add it as a parameter
+// to the procedure def. This is used pass the proper parameters when the
+// procedure gets called.
+//
+// This function adds a 'var' symbol *copy* to the local context for each 
+// parameter to handle access to the var within the procedure.
 //-----------------------------------------------------------------------------
 void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
 {  char *ThisFuncName = "CgParams";
@@ -1603,6 +1643,7 @@ void CgParams(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolFunction *f)
             // )
             Var *v = SymbolGetOrNewVar(co, p->Name);
             v->Type       = p->Type;
+            v->ArraySize  = p->ArraySize;
             v->CallMethod = p->CallMethod;
 
             break;
