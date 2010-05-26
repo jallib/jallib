@@ -137,7 +137,8 @@ proc_params
 	:  LPAREN ( proc_param (COMMA proc_param)* )? RPAREN -> ^(PARAMS proc_param*)
 	;
 
-proc_param : L_VOLATILE? vtype^ ( L_IN | L_OUT | L_IN L_OUT ) identifier (LBRACKET expr? RBRACKET)? at_decl?
+proc_param : L_VOLATILE? vtype ( L_IN | L_OUT | L_IN L_OUT ) identifier (LBRACKET expr? RBRACKET)? at_decl?
+   -> ^(vtype L_VOLATILE? L_IN? L_OUT? ^(LBRACKET expr?) at_decl? identifier)
     ;
 
 proc_body : L_IS statement* L_END L_PROCEDURE -> ^(BODY statement*)

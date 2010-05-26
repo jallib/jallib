@@ -14,25 +14,31 @@
 //-----------------------------------------------------------------------------
 
 
-// some notes on calling, will be removed...
-//    note: param is used for arrays only. leave it out for now
-//       void (*put)(struct ByCall_stuct *s, int Param, int Value) ;
-//       int  (*get)(struct ByCall_stuct *s, int Param) ;       
-//       ( alpha__bc->get ?(*alpha__bc->get)(alpha__bc, alpha__p) :  ( alpha__bc->data ? *(uint8_t *)alpha__bc->data : 0)));
-
-
 //-----------------------------------------------------------------------------
 // The ByCall struct describes how to call a specific pseudo var or volatile
 // variable type. The actuall pointer to this var is passed seperatley so the
 // same variables can share a ByCall struct.
 //-----------------------------------------------------------------------------
 typedef struct ByCall_stuct {
-   void     (*put)(const struct ByCall_stuct *s, char* Addr, int Value) ;
-   uint32_t (*get)(const struct ByCall_stuct *s, char* Addr) ;
+   void     (*put)(const struct ByCall_stuct *s, uint8_t* Addr, uint32_t Value) ;
+   uint32_t (*get)(const struct ByCall_stuct *s, uint8_t* Addr) ;
    int   Size; // size of type in bytes (round up)
    char  v1;     // var1, implementation-dependent
    char  v2;     // var2, implementation-dependent
 } ByCall;
+
+
+//-----------------------------------------------------------------------------
+// ByCallA - the array access struct
+//-----------------------------------------------------------------------------
+typedef struct ByCallA_stuct {
+   void     (*put)(const struct ByCall_stuct *s, uint8_t* Addr, uint16_t Index, uint32_t Value) ;
+   uint32_t (*get)(const struct ByCall_stuct *s, uint8_t* Addr, uint16_t Index) ;
+   int   Size; // size of type in bytes (round up)
+   char  v1;     // var1, implementation-dependent
+   char  v2;     // var2, implementation-dependent
+} ByCallA;
+
 
 
 #define PVAR_GET(type, bc, p)    \
@@ -46,47 +52,24 @@ typedef struct ByCall_stuct {
 #define PVAR_ASSIGN(type, bc, p, expr)        \
    if (bc->put) (*bc->put)(bc, p, expr)
 
-//#define PVAR_DIRECT (ByCall *)NULL, (char *)NULL                                               
+//-----------------------------------------------------------------------------
+// byte, word and dword ByCall structs
+void      byte__put(const ByCall *bc, void *Addr, uint32_t Data)  { if (Addr) { *(uint8_t  *)Addr = (uint8_t )  Data; } }
+void      word__put(const ByCall *bc, void *Addr, uint32_t Data)  { if (Addr) { *(uint16_t *)Addr = (uint16_t)  Data; } }
+void     dword__put(const ByCall *bc, void *Addr, uint32_t Data)  { if (Addr) { *(uint32_t *)Addr = (uint32_t)  Data; } }
 
-
-void     byte__put(const ByCall *bc, void *Addr, uint32_t Data)   {
-   if (Addr) {
-       *(uint8_t  *)Addr = (uint8_t)   Data; 
-   }
-}
-    
-uint32_t byte__get(const ByCall *bc, void *Addr)                  { 
-   if (Addr) {
-      return (uint32_t)  *(uint8_t  *)Addr; 
-   } else {
-      return 0;
-   }
-}
-
-
-// marco to check bounderies on array write. Read boundaries are not
-// checked (mostly no harm done and wrong index returns unexpected 
-// info anyway)
-#define DIRECT_ARRAY_ASSIGN(name, index, size, expr)  \
-   {if ((index>=0) && (index<size)) name[index]=expr;}
-
-// count definition (for direct access vars). 
-// Note:t ## indicates name has to be appended by __size without space.
-#define count(name) name##__size
-
-
-void     word__put(const ByCall *bc, void *Addr, uint32_t Data)   { *(uint16_t *)Addr = (uint16_t)  Data; }
-uint32_t word__get(const ByCall *bc, void *Addr)                  { return (uint32_t)  *(uint16_t *)Addr; }
-
-void     dword__put(const ByCall *bc, void *Addr, uint32_t Data)  { *(uint32_t *)Addr = (uint32_t)  Data; }
-uint32_t dword__get(const ByCall *bc, void *Addr)                 { return (uint32_t)  *(uint32_t *)Addr; }
-
+uint32_t  byte__get(const ByCall *bc, void *Addr)  { if ( Addr) { return (uint32_t)  *(uint8_t  *)Addr; } else { return (uint32_t) 0; } }
+uint32_t  word__get(const ByCall *bc, void *Addr)  { if ( Addr) { return (uint32_t)  *(uint16_t *)Addr; } else { return (uint32_t) 0; } }
+uint32_t dword__get(const ByCall *bc, void *Addr)  { if ( Addr) { return (uint32_t)  *(uint32_t *)Addr; } else { return (uint32_t) 0; } }
 
 const ByCall bc_byte  = { (void *) &byte__put, (void *) &byte__get, 1, 0, 0};
 const ByCall bc_word  = { (void *) &word__put, (void *) &word__get, 2, 0, 0};
 const ByCall bc_dword = { (void *)&dword__put, (void *)&dword__get, 4, 0, 0};
 
 
+
+//-----------------------------------------------------------------------------
+// single bit access functions.
 #define VARBITPUT(name, bitnr)                              \
    void name(const ByCall *s, void *Addr, uint32_t Value)   \
    {                                                        \
@@ -142,4 +125,19 @@ VARBITGET(varbit7__get, 7);
 //   return (*(uint8_t *)Addr) & 0x01 ? 1 : 0 ; 
 //}
 //
+
+
+//-----------------------------------------------------------------------------
+// Array stuff
+
+// marco to check bounderies on array write. Read boundaries are not
+// checked (mostly no harm done and wrong index returns unexpected 
+// info anyway)
+#define DIRECT_ARRAY_ASSIGN(name, index, size, expr)  \
+   {if ((index>=0) && (index<size)) name[index]=expr;}
+
+// count definition (for direct access vars). 
+// Note: ## indicates name has to be appended by __size without space.
+#define count(name) name##__size
+
 

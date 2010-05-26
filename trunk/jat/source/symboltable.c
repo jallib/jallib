@@ -91,8 +91,9 @@ SymbolParam *SymbolFunctionAddParam(SymbolFunction *f, int TokenType)
 
    // init                
    p->next = NULL;
-   p->Type = TokenType; 
    p->Name = NULL;
+   p->Type = TokenType; 
+   p->ArraySize  = 0;   // 0 not an array, -1 = undetermined size.
    p->CallMethod = 'v'; // default call by value
 
    return p;

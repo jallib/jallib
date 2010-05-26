@@ -13,16 +13,44 @@
 //    There are two main types of symbols: 
 //       - VAR - contains info on a var, can be normal var, pseudo var or both
 //       - FUNCTION (or procedure which is function with void return). Function has 
-//         a param-struct for each param.
-     
+//         a param-struct for each param, used to create the proper fuction call.
+//         Each function parameter is also added to the scope within the 
+//         function as a VAR. So within the function, use of 'var' covers 
+//         local vars, global vars *and* function parameters.
+//
+//-----------------------------------------------------------------------------
+//  RECONSIDERATION (when local scope is required for further processing) 
+//
+//  Scope is currently modelled as a list of lists. This can be converted to
+//  a single list, so each element kind of creates a new scope. If the 
+//  scope is single linked (from newest to oldest), storing the most recent 
+//  pointer gives - at any point - the relevant scope. This way, the scope 
+//  remains available after a tree scan for further processing (assuming the
+//  pointers are stored at relevant points in the tree).
+//  This will require some rework on the global scope, which is now a single 
+//  list but will become a range of symbols. Global scope can't be mixed with
+//  local one, since the local one gets 'dropped' (out of scope) later.
+//  And.. the global scope need a fixed starting point. So either this 
+//  startpoint is in the middle - with global scope growing one way and local
+//  the other way - or there is a placeholder for the global scope and new
+//  global symbols are added between this placeholder and the previous 
+//  global scope. Afaik order of global scope does not matter, so the first
+//  is probably most easy (no special placeholder to handle).
+//                                                               
+// (as a positive side-effect, this will merge the similar concepts 
+// of 'scope' and 'symbol list'.)
+//-----------------------------------------------------------------------------
+
 //-----------------------------------------------------------------------------
 // Function/Procedure parameter structure
 //-----------------------------------------------------------------------------
 typedef struct SymbolParam_struct{ 
    struct SymbolParam_struct *next;
    
-   int      Type;	                                                            
 	char     *Name;
+
+   int      Type;	                                                            
+   int      ArraySize;  // 0 = not an array, -1 = undetermined size.
    char     CallMethod; // v = value, r = reference, c = code
 } SymbolParam;
 
@@ -45,7 +73,7 @@ typedef struct Var_stuct {
 
    // param-related
    int      Type;	                                                            
-   int      ArraySize;
+   int      ArraySize;  // 0 = not an array, -1 = undetermined size.
    char     CallMethod; // 0 = no param, 'v' = value, 'r' = reference, 'c' = code
 
    char *put;     // put function name
