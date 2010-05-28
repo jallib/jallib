@@ -32,8 +32,8 @@ typedef struct ByCall_stuct {
 // ByCallA - the array access struct
 //-----------------------------------------------------------------------------
 typedef struct ByCallA_stuct {
-   void     (*put)(const struct ByCall_stuct *s, uint8_t* Addr, uint16_t Index, uint32_t Value) ;
-   uint32_t (*get)(const struct ByCall_stuct *s, uint8_t* Addr, uint16_t Index) ;
+   void     (*put)(const struct ByCallA_stuct *s, uint8_t* Addr, uint16_t Index, uint32_t Value) ;
+   uint32_t (*get)(const struct ByCallA_stuct *s, uint8_t* Addr, uint16_t Index) ;
    int   Size; // size of type in bytes (round up)
    char  v1;     // var1, implementation-dependent
    char  v2;     // var2, implementation-dependent
@@ -50,7 +50,7 @@ typedef struct ByCallA_stuct {
 )                                \
                                                
 #define PVAR_ASSIGN(type, bc, p, expr)        \
-   if (bc->put) (*bc->put)(bc, p, expr)
+   if (bc->put)(*bc->put)(bc, p, expr)
 
 //-----------------------------------------------------------------------------
 // byte, word and dword ByCall structs
@@ -136,8 +136,17 @@ VARBITGET(varbit7__get, 7);
 #define DIRECT_ARRAY_ASSIGN(name, index, size, expr)  \
    {if ((index>=0) && (index<size)) name[index]=expr;}
 
-// count definition (for direct access vars). 
-// Note: ## indicates name has to be appended by __size without space.
-#define count(name) name##__size
+#define CODE_ARRAY_READ(name, index)  \
+(                                \
+   name##__bc->get ?                     \
+      (*name##__bc->get)(name##__bc, name##__p, index)          \
+   :                             \
+      0                          \
+)                                
 
+#define ARRAY_PARAMETER(name) \
+   *name##__bc, *name##__p, name##__size
+    
+//   const ByCallA *name##__bc, uint8_t *name##__p, uint16_t name##__size
+  
 
