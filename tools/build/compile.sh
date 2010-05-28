@@ -7,6 +7,7 @@ export JALLIB_ROOT=`pwd`	# correct when set by buildbot
 export JALLIB_REPOS=$JALLIB_ROOT/include
 export JALLIB_SAMPLEDIR=$JALLIB_ROOT/sample
 
+$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile -h
 
 jalsamples=`find $JALLIB_SAMPLEDIR -name \*.jal -type f`
 echo `echo $jalsamples | sed "s#\.jal #.jal\n#g" | wc -l` samples to compile...
