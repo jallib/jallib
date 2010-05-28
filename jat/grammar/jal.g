@@ -9,14 +9,8 @@
 // Description: antlr3 grammar definition of JAL
 //
 //
-// 
 // you may prefer to view this file from the 'ANTLRWorks' GUI tool, 
 // which is a single Java 'jar' file, from here: http://www.antlr.org/works/index.html
-//
-// If you want to run the test program, jaltest.py, then you need to 
-// generate the lexer and parser first, like this:
-//    java -cp antlr-3.1.2.jar org.antlr.Tool jal.g 
-// js: note grammar is for Java client now, so you need to change 'options' to use Python
 //
 // this first cut of JAL grammar was derived from an example found 
 // here: http://www.antlr.org/wiki/display/ANTLR3/Example
@@ -206,6 +200,9 @@ bitloc  : COLON cexpr // constant
 // which are matched as 'identifiers' and must be handled by the code genarator.
 proc_func_call   : identifier (LPAREN expr? (COMMA expr) * RPAREN) -> ^(FUNC_PROC_CALL identifier expr*) ;
 
+count : L_COUNT^ LPAREN! identifier RPAREN! ;  
+
+
 pragma
     : L_PRAGMA^ (
 	(   L_TARGET pragma_target )
@@ -272,15 +269,16 @@ factor : PLUS^ factor
 array : identifier^ var_def_array 
       ;
 
-atom	:  CHARACTER_LITERAL
-        |  STRING_LITERAL
-	| vtype LPAREN expr RPAREN // cast, byte(foo)
-        |  constant
-	| LPAREN! expr RPAREN!
-	| array // identifier (LBRACKET expr RBRACKET)
-	| proc_func_call
-	|  identifier
-	;
+atom	: CHARACTER_LITERAL
+      | STRING_LITERAL
+	   | vtype LPAREN expr RPAREN // cast, byte(foo)
+      | constant
+	   | LPAREN! expr RPAREN!
+	   | count
+	   | array 
+	   | proc_func_call
+	   | identifier
+	   ;
           
 identifier : IDENTIFIER
             | L_DATA
@@ -367,6 +365,7 @@ L_CASE		:	'case'		;
 L_CHIP		:	'chip'		;
 L_CODE		:	'code'		;
 L_CONST		:	'const'		;
+L_COUNT		:	'count'		;
 L_DATA		:	'data'		;
 L_DWORD		:	'dword'		;
 L_EEPROM	:	'eeprom'	;		
@@ -445,3 +444,6 @@ fragment LETTER : 'A'..'Z' | 'a'..'z' | '_' ;
 	
 	
 
+
+
+	

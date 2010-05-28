@@ -250,7 +250,8 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
    Symbol *s;
    char *str;
    char *SymbolName;
-   char *ArrayIndex = NULL;
+   char *ArrayIndex = NULL; 
+   char CallMethod;
    
    switch(TokenType) {
       case IDENTIFIER :
@@ -258,9 +259,9 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
          // check for child, which is LBRACKET and has array index child.   
          if (t->getChildCount(t) > 0) {
             // a child -> array
-            cc = t->getChild(t, 0);
-            assert(cc != NULL);
-            cc = cc->getChild(cc, 0);
+            c = t->getChild(t, 0);
+            assert(c != NULL);
+            cc = c->getChild(c, 0);
             assert(cc != NULL);
             ArrayIndex = cc->toString(cc)->chars;   
 //            CodeOutput(VERBOSE_ALL, "array");
@@ -313,12 +314,20 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
 
          if ((v) && (v->CallMethod == 'a') ) {
             // a ARRAY procedure parameter, passed by call
+            
+            // at this point, we need to get a value from this array
+            // with ArrayIndex as the identifier that gives location.
+            
+            
+            
 //            CodeIndent(VERBOSE_M,   Level);            
 //            char *str = t->toString(t)->chars;
 //
 //            // PVAR_GET(type, get, data, bc, p)
 //            CodeOutput(VERBOSE_ALL, "PVAR_GET(%s, %s__bc, %s__p)", VarTypeString(v->Type), str, str, str, str);           
-       CodeOutput(VERBOSE_ALL, "not_yet_supported %s", SymbolName);           
+
+            CodeIndent(VERBOSE_M,   Level);            
+            CodeOutput(VERBOSE_ALL, "CODE_ARRAY_READ(%s, %s)", SymbolName, ArrayIndex);           
             break;
          }
 
@@ -408,6 +417,33 @@ int CgExpression(Context *co, pANTLR3_BASE_TREE t, int Level)
 
       case FUNC_PROC_CALL :
          CgProcFuncCall(co, t, Level+VLEVEL);
+         break;
+
+      case L_COUNT :       
+        
+         // child -> identifier
+         c = t->getChild(t, 0);
+         assert(c != NULL);              
+         
+         // lookup indentifier in context
+         s = GetSymbolPointer(co, c->toString(c)->chars, S_VAR | S_ALIAS, 1); // search for var, in local and global context
+         v = NULL;  
+         SymbolName = "undef";
+         if (s != NULL) {
+            v = s->details;
+            SymbolName = s->Name; // could be de-aliassed.
+         } else {
+            SymbolName = t->toString(t)->chars;
+         }  
+         
+//         if ((v) && (v->CallMethod == 'a')) {
+
+         // regardless of the type, __size is always what is needed (right?)
+         CodeIndent(VERBOSE_M, Level);
+         CodeOutput(VERBOSE_ALL, " %s__size ", SymbolName);         
+         CodeOutput(VERBOSE_M, " // array length of '%s'\n", t->toString(t)->chars);         
+            
+//         }
          break;
 
       default :
@@ -911,7 +947,10 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
          continue;
       }
       
-      if (GotFirstParam) CodeOutput(VERBOSE_ALL, ",");
+      if (GotFirstParam) {
+         CodeIndent(VERBOSE_M, Level);
+         CodeOutput(VERBOSE_ALL, ",");
+      }
       GotFirstParam = 1;
 
       char CallMethod = 0; // method required by function
@@ -994,23 +1033,33 @@ void CgProcFuncCall(Context *co, pANTLR3_BASE_TREE t, int Level)
                      Var *v = s->details;
                                        
                      if (v->data != NULL) {
+                        CodeIndent(VERBOSE_M, Level);
                         CodeOutput(VERBOSE_ALL, "(const ByCall *)%s__bc, (void *)&%s ", c->toString(c)->chars, v->data);
                         CodeOutput(VERBOSE_M,   "// identifier by code, from code 1");
                      } else {
+                        CodeIndent(VERBOSE_M, Level);
                         CodeOutput(VERBOSE_ALL, "(const ByCall *)%s__bc, (void *)NULL", c->toString(c)->chars);
                         CodeOutput(VERBOSE_M,   "// identifier by code, from code 2");
                      }
                      break;
-                  }                     
+                  }   
+                  default : assert(0); // unhandled case
+                  
                }               
 
 //               CodeOutput(VERBOSE_M,   "// identifier by reference");
             } else {
                // constants etc
-               CodeOutput(VERBOSE_ALL, "Error: can't use this parameter to call by code.\n");
+               CodeOutput(VERBOSE_ERROR, "Error: can't use this parameter to call by code.\n");
             }         
             break;          
          }
+         case 'a' : {
+            // const ByCallA *str__bc, uint8_t *str__p, uint16_t str__size
+            CodeOutput(VERBOSE_ALL, "pass_array_param %s)", c->toString(c)->chars);
+            break;
+         }
+         default : assert(0); // unhandled case
       }
       
       // note: p can be zero if the function name is unknown (in other words,
@@ -1568,7 +1617,7 @@ void CgParamChilds(Context *co, pANTLR3_BASE_TREE t, int Level, SymbolParam *p, 
                } 
                case 'a': {
                   // call by array-code
-                  CodeOutput(VERBOSE_ALL, "const ByCall *%s__bc, uint8_t *%s__p, uint16_t %s__size", c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars);
+                  CodeOutput(VERBOSE_ALL, "const ByCallA *%s__bc, uint8_t *%s__p, uint16_t %s__size", c->toString(c)->chars, c->toString(c)->chars, c->toString(c)->chars);
                   break;          
                } 
             }
