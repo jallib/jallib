@@ -126,6 +126,10 @@ def _explore_dir(onedir):
     def keepit(fd):
         if os.path.isdir(fd):
             dirs.extend(_explore_dir(fd))
+    # silently don't explore subdirs if onedir actually
+    # doesn't exist, and simply ignore it
+    if not os.path.isdir(onedir):
+        return []
     for fd in os.listdir(onedir):
         if not fd.startswith("."):
             keepit(os.path.join(onedir,fd))
