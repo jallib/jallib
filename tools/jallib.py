@@ -512,9 +512,10 @@ def merge_board_testfile(boardcontent,testcontent):
         # when eating line sep char (to keep layout),
         # remember some OS needs 2 chars !
         newcontent += testcontent[start:m.start() - len(os.linesep)]
-        new = os.linesep.join(board['section'][sectionname])
-        start = m.end() + 1 # next char
-        newcontent += new
+        if board['section'].get(sectionname):
+            new = os.linesep.join(board['section'][sectionname])
+            start = m.end() + 1 # next char
+            newcontent += new
     newcontent += testcontent[start:]
     return newcontent
 
