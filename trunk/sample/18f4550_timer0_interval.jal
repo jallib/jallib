@@ -1,39 +1,22 @@
--- ------------------------------------------------------
--- Title: BOARD FILE for [see filename]
--- Author: Joep Suijs, Copyright (c) 2008..2010, all rights reserved.
--- Adapted-by: 
--- Compiler: >=2.4m
+-- Title: test timer0 interval
 --
--- This file is part of jallib  (http://jallib.googlecode.com)
+-- Author: Joep Suijs, Copyright (c) 2008, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: This file defines the configuration of a specific test-board.
+-- Description: test the library timero_isr_interval
 -- --
--- BOARD DESCRIPTION
--- -----------------
--- --
--- DB01 - Dwarf board with 16f877a and:
--- --
--- A0: analog input (potmeter)
--- C0: Button + pull-up resistor
--- C2: LED 
--- C3: I2C SCL
--- C4: I2C SDA
--- --
--- DB017 with 2x16 LCD display on port D
---    D0…3: LCD Data nibble
---    D4: LCD Enable
---    D5: LCD R/S
--- --
---   
+-- This file defines a test for JALLIB testing, using a test-board
+--  defined by a BOARD file .
+-- 
 --
--- Sources:
+-- This file has been generated from:
+--    * board: board_18f4550_af.jal
+--    * test : test_timer0_interval.jal
 --
--- Notes:
---
--- ------------------------------------------------------
-
--- This board is *not* used as a reference while generating samples
 
 ;@jallib section chipdef
 -- chip setup
@@ -85,43 +68,48 @@ pragma target EBTR2         DISABLED    -- table read block 2 not protected
 pragma target EBTR3         DISABLED    -- table read block 3 not protected
 pragma target EBTRB         DISABLED    -- boot block not protected
 
-; just to be sure: prepare for bootloader.
-PRAGMA BOOTLOADER LOADER18 4
-
 ;@jallib section led
 -- LED IO definition
-alias led             is pin_c2             ; red
-alias led_direction   is pin_c2_direction
-alias led2            is pin_d7             ; yellow
-alias led2_direction  is pin_d7_direction
-alias led3            is pin_d6             ; green
-alias led3_direction  is pin_d6_direction
+alias led is pin_b3
+alias led_direction is pin_b3_direction
+alias led2 is pin_b1
+alias led2_direction is pin_b1_direction
 
-;@jallib section button
--- button IO definition
-alias button             is pin_c0
-alias button_direction   is pin_c0_direction
+led_direction = output
 
-;@jallib section serial
-const serial_hw_baudrate = 115_200
+if (defined(led2)) then -- compile only when led2 is defined.
+   led2_direction = output
+end if
 
-;@jallib section lcd_hd44780_4
--- LCD IO definition
-alias lcd_rs           is pin_d5              -- LCD command/data select.
-alias lcd_rs_direction is pin_d5_direction
-alias lcd_en           is pin_d4              -- LCD data trigger
-alias lcd_en_direction is pin_d4_direction
+-- set all IO as digital
+enable_digital_io()
 
--- dataport nibble:
-alias lcd_dataport is portd_low              -- LCD data  port
-alias lcd_dataport_direction is portd_low_direction
+-- setup the timer0_isr_interval library
+const word timer0_isr_rate = 1000  -- 1 kHz isr rate
+const DELAY_SLOTS = 2         -- support 2 delays at the same time
+include timer0_isr_interval
+timer0_isr_init()             -- init timer0 isr
 
-const byte LCD_ROWS     = 2                     -- 2 lines
-const byte LCD_CHARS    = 16                    -- 16 chars per line
+var word prev_interval_counter
 
-;@jallib section i2c
--- I2C io definition
-alias i2c_scl            is pin_scl
-alias i2c_scl_direction  is pin_scl_direction
-alias i2c_sda            is pin_sda
-alias i2c_sda_direction  is pin_sda_direction
+   forever loop   
+      
+      if (isr_counter != prev_interval_counter) then
+         prev_interval_counter = isr_counter
+         -- put here code that you want  
+         -- to execute each tick.               
+      end if ; 1 kHz loop   
+           
+      if (check_delay(0)) then
+         set_delay(0, 409) -- 409 ticks on delay-slot 0
+         led = !led                  
+      end if
+      if (defined(led2)) then -- compile only when led2 is defined.
+         if (check_delay(1)) then
+            set_delay(1, 619) -- 619 ticks on delay-slot 1
+            led2 = !led2
+         end if
+      end if
+   end loop
+
+; end of main
