@@ -1,0 +1,202 @@
+-- Title: Library for SLIP (Serial Line IP)
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library sends and receives SLIP (Serial Line IP) packets
+--              for communication with serial data in packet form.
+--
+-- Sources:
+-- http://tools.ietf.org/html/rfc1055
+--
+
+-- Choose serial HW or SW
+if SLIP_USE_SERIAL_HW == TRUE then
+   alias slip_serial_data_available is serial_hw_data_available
+   alias slip_serial_data is serial_hw_data
+else
+   alias slip_serial_data_available is serial_sw_data_available
+   alias slip_serial_data is serial_sw_data
+end if
+
+-- SLIP special character codes
+const byte _SLIP_END = 0xC0 --192
+const byte _SLIP_ESC = 0xDB -- 219
+const byte _SLIP_ESC_END = 0xDC --220
+const byte _SLIP_ESC_ESC = 0xDD --221
+
+-- it is good to use an end character at the beginning of a packet to flush out
+-- any data that may have accumulated in the receiver due to line noise
+alias _SLIP_START is _SLIP_END
+
+-- Allow large arrays
+if SLIP_MAX_PACKET_SIZE <= 0xFF then
+   const byte SLIP_BYTE_WIDTH = 1
+elsif (SLIP_MAX_PACKET_SIZE > 0xFF) & (SLIP_MAX_PACKET_SIZE <= 0xFFFF) then
+   const byte SLIP_BYTE_WIDTH = 2
+else
+   pragma error  -- slip_max_packet_size is too large
+end if
+
+--------------------------------------------------------------------------------
+-- Wait for the start of the packet
+--------------------------------------------------------------------------------
+procedure slip_wait_start() is
+   pragma inline
+   -- Wait for a _SLIP_END character to flush any bad data that may
+   -- have accumulated in the receiver due to line noise
+   while !(slip_serial_data == _SLIP_END) loop
+   end loop
+end procedure
+
+--------------------------------------------------------------------------------
+-- Get the packet data, return TRUE if packet is finished
+--------------------------------------------------------------------------------
+function slip_get_data(byte out char) return byte is
+   char = slip_serial_data                        -- get the character
+   
+   -- if it's an END character then we're done with the packet
+   if char == _SLIP_END then
+      return TRUE  -- return TRUE for packet is finished
+   end if
+   
+   -- if it's the same code as an _SLIP_ESC character, wait
+   -- and get another character and then figure out
+   -- what to store in the packet based on that.
+   if char == _SLIP_ESC then
+      while !slip_serial_data_available loop   -- wait for a character
+         -- You may want to add a delay/count here for timeout, but
+         -- getting another byte will allow program to continue anyways.
+      end loop
+      
+      char = slip_serial_data -- get the character
+      
+      -- if "char" is not one of these two, then we
+      -- have a protocol violation.  The best bet
+      -- seems to be to leave the byte alone and
+      -- just stuff it into the packet
+      if char == _SLIP_ESC_END then
+         char = _SLIP_END
+      elsif char == _SLIP_ESC_ESC then
+         char = _SLIP_ESC
+      end if
+   end if
+   
+   return FALSE --  Return FALSE for Packet is not finished,
+end function
+
+--------------------------------------------------------------------------------
+-- Sends start of packet data
+--------------------------------------------------------------------------------
+procedure slip_start_packet() is
+   pragma inline
+   -- send a _SLIP_END character to flush any bad data that may
+   -- have accumulated in the receiver due to line noise
+   slip_serial_data = _SLIP_START -- same as _SLIP_END char
+end procedure
+
+--------------------------------------------------------------------------------
+-- Sends one byte of packet data
+--------------------------------------------------------------------------------
+procedure slip_send_data(byte in data) is
+   var byte*SLIP_BYTE_WIDTH  position = 0
+   
+   -- if it's the same code as an END character, we send a
+   -- special two character code so as not to make the
+   -- receiver think we sent an END
+   if data == _SLIP_END then
+      slip_serial_data = _SLIP_ESC
+      slip_serial_data = _SLIP_ESC_END
+      
+   elsif data == _SLIP_ESC then
+      -- if it's the same code as an _SLIP_ESC character,
+      -- we send a special two character code so as not
+      -- to make the receiver think we sent an _SLIP_ESC
+      slip_serial_data = _SLIP_ESC
+      slip_serial_data = _SLIP_ESC_ESC
+      
+   else -- otherwise, we just send the character
+      slip_serial_data = data
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Sends end of packet data
+--------------------------------------------------------------------------------
+procedure slip_end_packet() is
+   pragma inline
+   -- send a _end character to let the receiver know that we are finished
+   -- sending our packet
+   slip_serial_data = _SLIP_END
+end procedure
+
+--------------------------------------------------------------------------------
+-- Send a full packet from slip_tx_array[] array. The size of the packet
+-- will be packet_length.
+--------------------------------------------------------------------------------
+if defined (slip_tx_array) then
+   procedure slip_send_packet(byte*SLIP_BYTE_WIDTH in packet_length) is
+      var byte*SLIP_BYTE_WIDTH  position = 0
+      
+      -- wait for the beginning of a packet
+      slip_start_packet()
+      
+      -- for each byte in the packet, send the appropriate character sequence
+      for packet_length loop
+         slip_send_data(slip_tx_array[position]) -- send the data
+         position = position + 1
+      end loop
+      
+      -- tell the receiver that we're done sending the packet
+      slip_end_packet()
+   end procedure
+end if
+
+--------------------------------------------------------------------------------
+-- Receives a full packet into slip_rx_array[]. Returns the size of the packet.
+-- If more data then the size of your rx array, the packet will be truncated.
+-- This function is blocking until entire packet is received.
+--------------------------------------------------------------------------------
+if defined (slip_rx_array) then
+   function slip_get_packet() return byte*SLIP_BYTE_WIDTH is
+      
+      if SLIP_MAX_PACKET_SIZE <= 0xFF then
+         var byte*SLIP_BYTE_WIDTH packet_length = byte(SLIP_MAX_PACKET_SIZE)
+         var byte*SLIP_BYTE_WIDTH received = 0
+      elsif (SLIP_MAX_PACKET_SIZE > 0xFF) & (SLIP_MAX_PACKET_SIZE <= 0xFFFF) then
+         var byte*SLIP_BYTE_WIDTH packet_length = SLIP_MAX_PACKET_SIZE
+         var byte*SLIP_BYTE_WIDTH received = 0
+      end if
+      
+      var byte char
+      var bit packet_finished
+      
+      -- wait for the start of a packet
+      slip_wait_start()
+      
+      --  sit in a loop reading bytes until we put together
+      --  a whole packet.
+      --  Make sure not to copy them into the packet if we
+      --  run out of room.
+      forever loop
+         -- wait for a serial port character
+         while slip_serial_data_available loop end loop
+         
+         -- get the data and state of the packet
+         packet_finished = slip_get_data(char)
+         
+         if packet_finished == TRUE then
+            -- exit when we find the end of the packet
+            return received
+         else
+            -- otherwise put the packet data into our array
+            slip_rx_array[received] = char
+            received = received + 1
+         end if
+         
+      end loop
+   end function
+end if
