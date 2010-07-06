@@ -1,0 +1,168 @@
+-- Title: Sample for SLIP (Serial Line IP)
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This sample sends and receives SLIP (Serial Line IP) packets
+--              for communication with serial data in packet form.
+--
+-- Sources:
+-- http://tools.ietf.org/html/rfc1055
+--
+
+-- chip setup
+include 18f4550
+
+-- even though the external crystal is 20 MHz, the configuration is such that
+-- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
+-- target frequency to 48 MHz
+pragma target clock       48_000_000
+
+-- fuses
+pragma target PLLDIV        P5          -- divide by 5 - 20MHZ_INPUT
+pragma target CPUDIV        P2          -- OSC1_OSC2_SRC_1_96MHZ_PLL_SRC_2
+pragma target USBPLL        F48MHZ      -- CLOCK_SRC_FROM_96MHZ_PLL_2
+pragma target OSC           HS_PLL
+pragma target FCMEN         DISABLED
+pragma target IESO          DISABLED
+pragma target PWRTE         DISABLED    -- power up timer
+pragma target VREGEN        ENABLED     -- USB voltage regulator
+pragma target VOLTAGE       V20         -- brown out voltage
+pragma target BROWNOUT      DISABLED    -- no brownout detection
+pragma target WDTPS         P32K        -- watch dog saler setting
+pragma target WDT           DISABLED    -- no watchdog
+pragma target CCP2MUX       pin_C1      -- CCP2 pin
+pragma target PBADEN        DIGITAL     -- digital input port<0..4>
+pragma target LPT1OSC       LOW_POWER   -- low power timer 1
+pragma target MCLR          EXTERNAL    -- master reset on RE3
+pragma target STVR          DISABLED    -- reset on stack over/under flow
+pragma target LVP           DISABLED    -- no low-voltage programming
+pragma target XINST         ENABLED     -- extended instruction set
+pragma target DEBUG         DISABLED    -- background debugging
+pragma target CP0           DISABLED    -- code block 0 not protected
+pragma target CP1           DISABLED    -- code block 1 not protected
+pragma target CP2           DISABLED    -- code block 2 not protected
+pragma target CP3           DISABLED    -- code block 3 not protected
+pragma target CPB           DISABLED    -- bootblock code not write protected
+pragma target CPD           DISABLED    -- eeprom code not write protected
+pragma target WRT0          DISABLED    -- table writeblock 0 not protected
+pragma target WRT1          DISABLED    -- table write block 1 not protected
+pragma target WRT2          DISABLED    -- table write block 2 not protected
+pragma target WRT3          DISABLED    -- table write block 3 not protected
+pragma target WRTB          DISABLED    -- bootblock not write protected
+pragma target WRTD          DISABLED    -- eeprom not write protected
+pragma target WRTC          DISABLED    -- config not write protected
+pragma target EBTR0         DISABLED    -- table read block 0 not protected
+pragma target EBTR1         DISABLED    -- table read block 1 not protected
+pragma target EBTR2         DISABLED    -- table read block 2 not protected
+pragma target EBTR3         DISABLED    -- table read block 3 not protected
+pragma target EBTRB         DISABLED    -- boot block not protected
+--
+--
+enable_digital_io()                      -- make all pins digital I/O
+--
+
+-- setup uart for communication
+const serial_hw_baudrate  = 9600   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+-- setup SLIP
+const word SLIP_MAX_PACKET_SIZE = 10 -- choose max packet size
+const byte SLIP_USE_SERIAL_HW = TRUE -- TRUE = serial_hw, FALSE = serial_sw
+--
+-- define a TX array for SLIP
+var byte slip_tx_array[SLIP_MAX_PACKET_SIZE] -- define the slip array
+-- ;define a large array for SLIP (for larger packets)
+;const dword LARGE_ARRAY_1_SIZE = SLIP_MAX_PACKET_SIZE  -- choose number of array variables
+;const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1    -- choose size of variables (byte*1)
+;include large_array_1                          -- include the array library
+;alias slip_tx_array is large_array_1           -- rename/alias the array for SLIP
+--
+-- define a RX array for SLIP
+var byte slip_rx_array[SLIP_MAX_PACKET_SIZE] -- define the slip array
+-- ;define a large array for SLIP (for larger packets)
+;const dword LARGE_ARRAY_2_SIZE = SLIP_MAX_PACKET_SIZE  -- choose number of array variables
+;const dword LARGE_ARRAY_2_VARIABLE_SIZE = 1    -- choose size of variables (byte*1)
+;include large_array_2                          -- include the array library
+;alias slip_rx_array is large_array_2           -- rename/alias the array for SLIP
+--
+include slip
+
+-- main program --
+
+-- send some junk via serial port
+for 4 loop
+   serial_hw_data = 0
+end loop
+
+;-- SENDING AN ARRAY OF DATA FROM THE SLIP ARRAY
+;-- put the data into the slip tx array
+;slip_tx_array[0] = 1
+;slip_tx_array[1] = 2
+;slip_tx_array[2] = 3
+;slip_tx_array[3] = 0xC0
+;slip_tx_array[4] = 5
+;slip_tx_array[5] = 6
+;slip_tx_array[6] = 0xDB
+;slip_tx_array[7] = 8
+;slip_tx_array[8] = 9
+;slip_tx_array[9] = 10
+;-- send the array
+;slip_send_packet(10)
+
+-- SEND DATA WITHOUT AN ARRAY
+slip_start_packet()
+for 10 loop            -- loop through all bytes in packet
+   slip_send_data(5)   -- send each byte via serial port (partly SLIP encrypted)
+end loop
+slip_end_packet()
+
+-- RECEIVE A FULL PACKET INTO THE SLIP ARRAY
+;var byte packet_size
+;packet_size = slip_get_packet() -- get the packet data and packet size
+;-- send the received (decrypted) packet data via the serial port
+;var byte count1 = 0
+;for 10 loop
+;    serial_hw_data = slip_rx_array[count1]
+;    count1 = count1 + 1
+;end loop
+;serial_hw_data = packet_size -- send the packet size via serial port
+
+-- send some junk via serial port
+for 4 loop
+   serial_hw_data = 0
+end loop
+
+-- RECEIVE A PACKET WITHOUT AN ARRAY
+var byte data = 0
+var byte packet_finished
+
+slip_wait_start()
+forever loop
+   
+   -- wait for a serial port character
+   while slip_serial_data_available loop end loop
+   
+   -- get the data and state of the packet
+   packet_finished = slip_get_data(data)
+   
+   if packet_finished == TRUE then
+      -- exit when we find the end of the packet
+      exit loop
+   else
+      -- otherwise do something with the packet data.
+      -- in this case we will just send the decrypted data via serial port
+      serial_hw_data = data
+   end if
+end loop
+
+
+-- send some junk via serial port
+for 4 loop
+   serial_hw_data = 0
+end loop
+
