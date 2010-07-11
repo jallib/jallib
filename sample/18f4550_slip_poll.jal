@@ -70,27 +70,42 @@ const serial_hw_baudrate  = 9600   -- set the baudrate
 include serial_hardware
 serial_hw_init()
 
+-- Choose the size of your recieve buffer.
+-- Should be the same as SLIP MTU if slip interrupts are not enabled
+const byte QUEUE01_SIZE = 10
+include queue01 -- include the queue/buffer library
+
+-- Choose the packet size size buffer (for interrupts only)
+;const byte QUEUE02_SIZE = 10
+;include queue02 -- include the queue/buffer library
+
 -- setup SLIP
-const word SLIP_MAX_PACKET_SIZE = 10 -- choose max packet size
-const byte SLIP_USE_SERIAL_HW = TRUE -- TRUE = serial_hw, FALSE = serial_sw
+const word SLIP_MTU = 10  -- Max bytes per packet (Max Transfer Unit)
 --
--- define a TX array for SLIP
-var byte slip_tx_array[SLIP_MAX_PACKET_SIZE] -- define the slip array
--- ;define a large array for SLIP (for larger packets)
-;const dword LARGE_ARRAY_1_SIZE = SLIP_MAX_PACKET_SIZE  -- choose number of array variables
-;const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1    -- choose size of variables (byte*1)
-;include large_array_1                          -- include the array library
-;alias slip_tx_array is large_array_1           -- rename/alias the array for SLIP
+const bit SLIP_USE_ISR = FALSE                   -- TRUE = recieve data via interrupt
 --
--- define a RX array for SLIP
-var byte slip_rx_array[SLIP_MAX_PACKET_SIZE] -- define the slip array
--- ;define a large array for SLIP (for larger packets)
-;const dword LARGE_ARRAY_2_SIZE = SLIP_MAX_PACKET_SIZE  -- choose number of array variables
-;const dword LARGE_ARRAY_2_VARIABLE_SIZE = 1    -- choose size of variables (byte*1)
-;include large_array_2                          -- include the array library
-;alias slip_rx_array is large_array_2           -- rename/alias the array for SLIP
+alias slip_rx_buffer is queue01_nb               -- choose buffer for recieved data
+;alias slip_packet_size_buffer is queue02_nb     -- choose buffer for packet sizes
+;alias slip_packets_available is queue02_nr_used -- alias for number of packets avail
 --
-include slip
+-- choose your data carrier
+alias slip_serial_data is serial_hw_data
+alias slip_data_available is serial_hw_data_available
+--
+-- callback for when a full slip packet is recieved (not needed for isr)
+procedure slip_received_packet_callback(byte in packet_size) is
+   if packet_size > SLIP_MTU then
+      -- your packet may have a problem, it is too large
+   end if
+
+   for packet_size loop               -- for each byte in packet
+      serial_hw_data = slip_rx_buffer -- do something with the packet data
+   end loop
+end procedure
+--
+include slip -- include the library
+--
+slip_init() -- init the slip library
 
 -- main program --
 
@@ -99,70 +114,20 @@ for 4 loop
    serial_hw_data = 0
 end loop
 
-;-- SENDING AN ARRAY OF DATA FROM THE SLIP ARRAY
-;-- put the data into the slip tx array
-;slip_tx_array[0] = 1
-;slip_tx_array[1] = 2
-;slip_tx_array[2] = 3
-;slip_tx_array[3] = 0xC0
-;slip_tx_array[4] = 5
-;slip_tx_array[5] = 6
-;slip_tx_array[6] = 0xDB
-;slip_tx_array[7] = 8
-;slip_tx_array[8] = 9
-;slip_tx_array[9] = 10
-;-- send the array
-;slip_send_packet(10)
-
--- SEND DATA WITHOUT AN ARRAY
-slip_start_packet()
+-- Send some data
+const byte test_data[] = {1,2,3,0xC0,5,6,0xDB,8,9,10}
+var byte count1 = 0
 for 10 loop            -- loop through all bytes in packet
-   slip_send_data(5)   -- send each byte via serial port (partly SLIP encrypted)
+   slip_send_data(test_data[count1])   -- send each byte via serial port (partly SLIP encrypted)
+   count1 = count1 + 1
 end loop
-slip_end_packet()
+-- if you don't send SLIP_RECIEVE_BUFFER_SIZE bytes, then you
+-- must call slip_end_packet()
+;slip_end_packet()
 
--- RECEIVE A FULL PACKET INTO THE SLIP ARRAY
-;var byte packet_size
-;packet_size = slip_get_packet() -- get the packet data and packet size
-;-- send the received (decrypted) packet data via the serial port
-;var byte count1 = 0
-;for 10 loop
-;    serial_hw_data = slip_rx_array[count1]
-;    count1 = count1 + 1
-;end loop
-;serial_hw_data = packet_size -- send the packet size via serial port
-
--- send some junk via serial port
-for 4 loop
-   serial_hw_data = 0
-end loop
-
--- RECEIVE A PACKET WITHOUT AN ARRAY
-var byte data = 0
-var byte packet_finished
-
-slip_wait_start()
+-- your main loop
 forever loop
-   
-   -- wait for a serial port character
-   while slip_serial_data_available loop end loop
-   
-   -- get the data and state of the packet
-   packet_finished = slip_get_data(data)
-   
-   if packet_finished == TRUE then
-      -- exit when we find the end of the packet
-      exit loop
-   else
-      -- otherwise do something with the packet data.
-      -- in this case we will just send the decrypted data via serial port
-      serial_hw_data = data
-   end if
-end loop
-
-
--- send some junk via serial port
-for 4 loop
-   serial_hw_data = 0
+   slip_poll() -- poll for slip data
+   -- do other stuff but don't take too long
 end loop
 
