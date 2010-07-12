@@ -143,6 +143,7 @@ do i = 1 to dev.0
   call list_property PicType, '#_OF_A_D_CONVERTERS'
   call list_property PicType, '#_OF_A_D_CH'
   call list_property PicType, 'ADCGROUP'
+  call list_property PicType, 'CAP_TOUCH_CHANNELS'
   call list_property PicType, 'BANDGAP_REFERENCE'
   call list_property PicType, 'SR_LATCH'
   call list_property PicType, 'DIGITAL_COMMUNICATION'
@@ -317,7 +318,7 @@ return
 /* --------------------------------------------------- */
 file_read_json: procedure expose p.
 
-parse arg jsonfile
+parse arg jsonfile .
 
 if stream(jsonfile, 'c', 'open read') \= 'READY:' then do
   Say '  Error: could not open file with device specific data' jsonfile
@@ -337,14 +338,8 @@ do until x = '}' | x = 0                        /* end of properties */
     end
     do until x = '}' | x = 0                    /* this PICs specs */
       ItemName = json_newstring(jsonfile)
-      do until x = '[' | x = 0                  /* search item */
-        x = json_newchar(jsonfile)
-      end
-      do until x = ']' | x = 0                  /* end of item */
-        value = json_newstring(jsonfile)
-        p.PicName.ItemName = value
-        x = json_newchar(jsonfile)
-      end
+      value = json_newstring(jsonfile)
+      p.PicName.ItemName = value
       x = json_newchar(jsonfile)
     end
     x = json_newchar(jsonfile)
