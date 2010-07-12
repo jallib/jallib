@@ -92,8 +92,7 @@ do i = 1 to dev.0
   parse value filespec('N',dev.i) with PicType '.jal' .
   call lineout list, PicType
   PicNameCaps = translate('pic'PicType,xrange('A','Z'),xrange('a','z'))
-  if p.PicNameCaps.ARCHITECTURE = '?' &,                /* check absence */
-     p.PicNameCaps.DATASHEET = '?' then do
+  if p.PicNameCaps.ARCHITECTURE = '?' then do           /* check absence in CSV files */
     if pos('LF',PicNameCaps) > 0 then do
       PicTemp = delstr(PicType,3,1)                     /* remove 'l' */
       PicNameCaps = translate('pic'PicTemp,xrange('A','Z'),xrange('a','z'))
