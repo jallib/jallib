@@ -19,6 +19,7 @@
  *  - If needed, modify the first few lines below for your system setup:      *
  *    * directory with the downloaded XLS files                               *
  *    * names of the XLS files (prefixes without the date)                    *
+ *      (maybe rename the file because of the special (R) character)          *
  *    * <date> of the XLS files (assumed equal for both XLS files)            *
  *    * directory with the Jallib device files                                *
  *      (used for the selection of PICs for which properties to list)         *
@@ -33,8 +34,8 @@
 
 base   = 'k:/picdatasheets/'                    /* XLS downloaded directory   */
 flash  = 'FLASH'                                /* 'flash' XLS file           */
-mature = 'Mature PIC® MCUs'                     /* 'mature products' XLS file */
-date   = '2009-10-16'                           /* date of the XLS files      */
+mature = 'Mature PIC~ MCUs'                     /* 'mature products' XLS file */
+date   = '2010-07-12'                           /* date of the XLS files      */
 dev    = 'k:/jallib/include/device/'            /* dir of Jallib device files */
 tools  = 'k:/jallib/tools/'                     /* dir of Jallib tools/data   */
 
