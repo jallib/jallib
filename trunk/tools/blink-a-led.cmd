@@ -116,23 +116,24 @@ do i=1 to pic.0
   call lineout PgmFile, 'include' PicName '                   -- target PICmicro'
   call lineout PgmFile, '--'
   call SysFileSearch 'pragma fuse_def OSC', pic.i, osc.
-  if osc.0 > 0 then do                                  /* oscillator pragma present */
+  if osc.0 > 0 then do                                   /* oscillator pragma present */
     call SysFileSearch ' HS', pic.i, osc.
-    if  osc.0 > 0 then do                               /* HS mode supported */
-      hs = 'HS'
+    if  osc.0 > 0 then do                                /* HS mode supported */
       do j = 1 to osc.0
-        if pos('PLL', word(osc.j,1)) = 0 then do        /* no PLL */
-          hs = word(osc.j,1)                            /* select! */
-          leave
+        if word(osc.j,1) = 'HS'  |,                      /* found default */
+           word(osc.j,1) = 'HS_HIGH' then do             /* found alternate */
+          hs = word(osc.j,1)                             /* select */
+          leave j
         end
       end
+      say 'Selected pragma OSC' hs
       call lineout PgmFile, '-- This program assumes that a 20 MHz resonator or crystal'
       call lineout PgmFile, '-- is connected to pins OSC1 and OSC2.'
       if left(PicName,2) = '18' then
         call lineout PgmFile, '-- (unspecified configuration bits may cause a different frequency!)('
       call lineout PgmFile, 'pragma target clock 20_000_000     -- oscillator frequency'
       call lineout PgmFile, '-- configuration memory settings (fuses)'
-      call lineout PgmFile, 'pragma target OSC  'hs'              -- HS crystal or resonator'
+      call lineout PgmFile, 'pragma target OSC  'left(hs,7)'         -- HS crystal or resonator'
     end
     else do                                             /* assume internal oscillator */
       call lineout PgmFile, '-- This program assumes the internal oscillator'
@@ -181,6 +182,10 @@ do i=1 to pic.0
   if wdt.0 > 0 then do
     call lineout PgmFile, 'pragma target WDT  disabled        -- no watchdog'
   end
+  call SysFileSearch 'fuse_def XINST', pic.i, xinst.
+  if xinst.0 > 0 then do
+    call lineout PgmFile, 'pragma target XINST disabled       -- not supported by JalV2'
+  end
   call SysFileSearch 'fuse_def LVP', pic.i, lvp.
   if lvp.0 > 0 then do
     call lineout PgmFile, 'pragma target LVP  disabled        -- no Low Voltage Programming'
@@ -202,6 +207,8 @@ do i=1 to pic.0
     end
   end
   call stream Pic.i, 'c', 'close'                       /* done for now */
+  call lineout PgmFile, '-- These configuration bit settings are only a selection, sufficient for'
+  call lineout PgmFile, '-- this program, but other programs may need more or different settings.'
   call lineout PgmFile, '--'
   call lineout PgmFile, 'enable_digital_io()                -- make all pins digital I/O'
   call lineout PgmFile, '--'
