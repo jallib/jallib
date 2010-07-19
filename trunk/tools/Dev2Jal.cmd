@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.03'
+   ScriptVersion   = '0.1.04'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -3075,7 +3075,7 @@ return addr_list' }'                                    /* complete string */
 /* input:  - nothing                                                      */
 /* Note:  some fuse_defs are omitted because the bit is not supported(!), */
 /*        even if it is (partly) specified in the .dev file.              */
-/*        See at the bottom of changes.txt for details.                   */
+/*        See at the bottom of devicefiles.html for details.              */
 /* ---------------------------------------------------------------------- */
 list_fuses_bits:   procedure expose Dev. jalfile CfgAddr. Fuse_Def. Core PicName msglevel
 call lineout jalfile, '--'
@@ -3374,7 +3374,7 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'ETHLED' then do
-         if pos('ETHERNET',val2) > 0 then do           /* LED enabled */
+         if pos('ETHERNET',val2) > 0 then do            /* LED enabled */
             kwd = 'ENABLED'
             flag_enabled = flag_enabled + 1
          end
@@ -3484,6 +3484,11 @@ do i = i + 1  while i <= dev.0  &,
             if msglevel <= 2 then
                say '  Warning: No mapping for fuse_def' key' :' val2u
             return
+         end
+         else if val2u = 'INTOSC'  & ,
+                (PicName = '16f913' | PicName = '16f914'|,
+                 PicName = '16f916' | PicName = '16f917') then do  /* exception */
+            kwd = 'INTOSC_CLKOUT'                       /* correction of map: NOCLKOUT */
          end
       end
 
@@ -3647,12 +3652,12 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'WDT' then do                           /* Watchdog */
-         p_en = pos('ENABLE', val2)
-         p_dis = pos('DISABLE', val2)
+         pos_en = pos('ENABLE', val2)
+         pos_dis = pos('DISABLE', val2)
          if pos('RUNNING', val2) > 0 |,
             pos('DISABLED IN SLEEP', val2) > 0 then
             kwd = 'RUNONLY'
-         else if val2 = 'OFF' | p_dis > 0 then do
+         else if val2 = 'OFF' | (pos_dis > 0 & (pos_en = 0 | pos_en > pos_dis)) then do
             kwd = 'DISABLED'
             flag_disabled = flag_disabled + 1
          end
@@ -3662,7 +3667,7 @@ do i = i + 1  while i <= dev.0  &,
             else
                kwd = 'CONTROL'
          end
-         else if val2 = 'ON' | (p_en > 0 & (p_dis = 0 | p_dis > p_en)) then do
+         else if val2 = 'ON' | (pos_en > 0 & (pos_dis = 0 | pos_dis > pos_en)) then do
             kwd = 'ENABLED'
             flag_enabled = flag_enabled + 1
          end
@@ -3792,6 +3797,7 @@ return
  * ANCON0   ANCON1                                                               *
  * CMCON                                                                         *
  * CMCON0  [CMCON1]                                                              *
+ * CM1CON  [CM2CON] [CM2CON]                                                     *
  * CM1CON0 [CM1CON1] [CM2CON0 CM2CON1]                                           *
  * Between brackets optional, otherwise always together.                         *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - *
@@ -3924,8 +3930,9 @@ if Name.ADCON0 \= '-' then do                           /* check on presence */
    call lineout jalfile, '--'
 end
 
-if Name.CMCON   \= '-' | Name.CMCON0 \= '-' |,
-   Name.CM1CON0 \= '-' | Name.CM1CON1 \= '-' then do
+if Name.CMCON   \= '-' | Name.CMCON0  \= '-' |,
+   Name.CM1CON0 \= '-' | Name.CM1CON1 \= '-' |,
+   Name.CM1CON  \= '-' | Name.CM2CON  \= '-' | Name.CM3CON \= '-' then do
    analog.CMCON = 'comparator'                          /* Comparator present */
    call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
    call lineout jalfile, '-- Disable comparator module'
@@ -3945,6 +3952,16 @@ if Name.CMCON   \= '-' | Name.CMCON0 \= '-' |,
          call lineout jalfile, '   CM1CON1 = 0b0000_0000       -- disable comparator'
          if Name.CM2CON1 \= '-' then
             call lineout jalfile, '   CM2CON1 = 0b0000_0000       -- disable 2nd comparator'
+      end
+      when Name.CM1CON \= '-' then do
+         call lineout jalfile, '   CM1CON = 0b0000_0000        -- disable comparator'
+         if Name.CM2CON \= '-' then
+            call lineout jalfile, '   CM2CON = 0b0000_0000        -- disable 2nd comparator'
+         if Name.CM3CON \= '-' then
+            call lineout jalfile, '   CM3CON = 0b0000_0000        -- disable 3rd comparator'
+         if Name.CM4CON \= '-' then do
+            say "  Warning: Comparator 4 detected! Not handled, and check for more!"
+         end
       end
       otherwise                                         /* others */
          nop                                            /* can be ignored */
