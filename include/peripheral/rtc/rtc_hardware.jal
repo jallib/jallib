@@ -1,5 +1,5 @@
 -- ----------------------------------------------------------------------
--- Title: rtc.jal. Support for builtin RealTimeClockCalendar modules of 18FxxJxx.
+-- Title: Support for builtin RealTimeClockCalendar modules of 18FxxJxx.
 -- Author: Rob Hamerling, Copyright (c) 2010..2010, all rights reserved.
 -- Adapted-by:
 -- Compiler: 2.4n
@@ -12,7 +12,7 @@
 --   - routines for control of realtime clock and alarm
 -- .
 -- This library supports:
---   - RTCC modules like in 18fxxj11 and 18fxxj50 PICs
+--   - RTCC modules like in 18fxxj11, 18fxxj50 and some other PICs
 -- .
 -- Available procedures/functions for application programs:
 --   - rtc_init()                  -- initialize rtc module and library
@@ -23,16 +23,18 @@
 --   - rtc_set_hhmmss_bcd()        -- set new hours,minutes,seconds (bcd format)
 --   - rtc_get_yymmdd_bcd()        -- get year,month,day (bcd format)
 --   - rtc_set_yymmdd_bcd()        -- set new year,month,day (bcd format)
---   - rtc_set_alarm()             -- enable/disable alarm
 --   - rtc_get_alarm_hhmmss_bcd()  -- get alarm time (bcd format)
 --   - rtc_set_alarm_hhmmss_bcd()  -- set alarm time (bcd format)
---   - rtc_set_alarm_period()      -- set alarm repeat period
+--   - rtc_set_alarm_period()      -- set alarm period
 --   - rtc_set_alarm_repeat()      -- enable/disable alarm repeat function
+--   - rtc_set_alarm()             -- enable/disable alarm
 --
 -- NOTES: - This library assumes that a 32768 Hz crystal is connected to
 --          the T1OSI/T1OSO pins.
 --        - The application should specify the RTCC oscillator source
 --          configuration bits as: pragma target RTCOSC T1OSC
+--        - Byte numbers in bcd-notation can easily be displayed with
+--          print_byte_hex()
 --
 --
 -- ----------------------------------------------------------------------
@@ -58,7 +60,7 @@ var  byte  _alrm_weekday  = 0x00                -- day of week
 
 -- ----------------------------------------------------------------------
 -- read the realtime clock
--- ----------------------------------------------------------------------
+-- ---------------------------------------------------------------------
 procedure _rtc_read() is
 
    while (RTCCFG_RTCSYNC == true) loop          -- wait for safe read
@@ -84,7 +86,7 @@ end procedure
 -- output: none
 -- returns: nothing
 -- notes:  Setting the RTCWREN bit in RTCCFG requires a strict
---         sequence, therefore some assembly language is used.
+--         sequence, some assembly language need to be used.
 -- ----------------------------------------------------------------------
 procedure _rtc_write_control(bit in control) is
 
@@ -96,38 +98,38 @@ procedure _rtc_write_control(bit in control) is
    else
       EECON2 = 0x55                             -- ) write ..
       EECON2 = 0xAA                             -- ) .. enable
-      RTCCFG_RTCWREN = disabled                 -- ignore writes
+      RTCCFG_RTCWREN = disabled                 -- deny writes
    end if
 
 end procedure
 
+
 -- ----------------------------------------------------------------------
--- set the realtime clock
+-- write the realtime clock
 -- ----------------------------------------------------------------------
 procedure _rtc_write() is
+
+   _rtc_write_control(enabled)                  -- enable writing RTC registers
 
    while (RTCCFG_RTCSYNC == true) loop          -- wait for safe write
    end loop
 
-   _rtc_write_control(enabled)                  -- allow writing RTC registers
-
-   RTCCFG_RTCEN = false                         -- disable rtc
+   RTCCFG_RTCEN = false                         -- disable rtc (temporary)
 
    RTCCFG_RTCPTR1 = 1                           -- ) init RTCVAL pointer
    RTCCFG_RTCPTR0 = 1                           -- )
    RTCVALL = _rtc_year                          -- write year
    RTCCFG_RTCPTR0 = 0                           -- decrement pointer
-   RTCVALL = _rtc_monthday                      -- write day
-   RTCVALH = _rtc_month                         -- write month (and decr. pointer)
+   RTCVALL = _rtc_monthday                      -- write day of month
+   RTCVALH = _rtc_month                         -- write month (and decr. ptr)
    RTCVALL = _rtc_hour                          -- write hour
-   RTCCFG_RTCPTR0 = 0                           -- ) decr. (no write day of week)
+   RTCVALH = _rtc_weekday                       -- write day of week (and decr. ptr)
    RTCVALL = _rtc_sec                           -- write second
    RTCVALH = _rtc_min                           -- write minute
 
    RTCCFG_RTCEN = true                          -- re-enable rtc
 
-   _rtc_write_control(disabled)                 -- ignore RTC writes
-
+   _rtc_write_control(disabled)                 -- disable RTC writes
 
 end procedure
 
@@ -155,18 +157,12 @@ end procedure
 -- ----------------------------------------------------------------------
 procedure _rtc_alrm_write() is
 
-   var  bit  old_alarm_state                    -- to preserve
-
-   while (RTCCFG_RTCSYNC == true) loop          -- wait for safe write
-   end loop
-
-   _rtc_write_control(enabled)                  -- allow writing RTC registers
-
+   var   bit  old_alarm_state                   -- to preserve current state
    old_alarm_state = ALRMCFG_ALRMEN             -- save old alarm state
-   ALRMCFG_ALRMEN  = disabled                    -- disable alarm
+   ALRMCFG_ALRMEN  = disabled                   -- disable alarm
 
-   ALRMCFG_ALRMPTR1 = 1                         -- set ALRMVAL pointer
-   ALRMCFG_ALRMPTR0 = 0
+   ALRMCFG_ALRMPTR1 = 1                         -- ) set ALRMVAL pointer
+   ALRMCFG_ALRMPTR0 = 0                         -- )
 
    ALRMVALL = _alrm_monthday                    -- write day of month
    ALRMVALH = _alrm_month                       -- write month (and decr. ptr)
@@ -174,8 +170,6 @@ procedure _rtc_alrm_write() is
    ALRMVALH = _alrm_weekday                     -- write day of week (and decr ptr)
    ALRMVALL = _alrm_sec                         -- write second
    ALRMVALH = _alrm_min                         -- write minute
-
-   _rtc_write_control(disabled)                 -- ignore RTC writes
 
    ALRMCFG_ALRMEN = old_alarm_state             -- restore alarm state
 
@@ -185,13 +179,16 @@ end procedure
 -- ======================================================================
 --  RTC CONSTANTS, FUNCTIONS and PROCEDURES for use by application
 -- ======================================================================
+
 -- RTCC pin selection masks
+
    const  bit*2  RTC_PIN_ALARM        =  0b00
    const  bit*2  RTC_PIN_SECONDS      =  0b01
    const  bit*2  RTC_PIN_SOURCE_CLOCK =  0b10
    const  bit*2  RTC_PIN_NONE         =  0b11     -- (disable RTCC pin)
 
 -- RTCC alarm repetition period masks
+
    const  byte  RTC_ALARM_PERIOD_HALF_SECOND = 0b0000
    const  byte  RTC_ALARM_PERIOD_SECOND      = 0b0001
    const  byte  RTC_ALARM_PERIOD_10_SECONDS  = 0b0010
@@ -234,13 +231,11 @@ end procedure
 -- ----------------------------------------------------------------------
 procedure rtc_calibrate(byte in calibration) is
 
-   pragma inline
-
    _rtc_write_control(enabled)                  -- allow writing RTC registers
 
-   RTCCFG_RTCEN = false                         -- disable RTCC
+   RTCCFG_RTCEN = disabled                      -- disable RTCC
    RTCCAL = calibration                         -- set calibration amount
-   RTCCFG_RTCEN = true                          -- re-enable RTCC
+   RTCCFG_RTCEN = enabled                       -- re-enable RTCC
 
    _rtc_write_control(disabled)                 -- ignore writes to RTC registers
 
@@ -254,8 +249,7 @@ end procedure
 -- output: none
 -- returns: nothing
 -- notes:  Setting the RTCWREN bit in RTCCFG requires a specific
---         sequence, therefore some assembly language is used.
---         Unlike the recommendation by Microchip the bit is left on!
+--         sequence, with some assembly language required.
 -- ----------------------------------------------------------------------
 procedure rtc_init() is
 
@@ -271,7 +265,7 @@ procedure rtc_init() is
    PADCFG1_RTSECSEL = RTC_PIN_NONE              -- default: RTC-pin not used
    RTCCFG_RTCEN = enabled                       -- enable RTCC
 
-   _rtc_write_control(disabled)                 -- ignore writes to RTC registers
+   _rtc_write_control(disabled)                 -- deny writing RTC registers
 
    INTCON_GIE = old_gie                         -- restore interrupt state
 
@@ -282,7 +276,7 @@ end procedure
 -- get time of day (hhmm) in BCD format
 -- input: none
 -- output: none
--- returns: hhmm in bcd format
+-- returns: hhmm in bcd format (word)
 -- ----------------------------------------------------------------------
 function rtc_get_hhmm_bcd() return byte*2 is
 
@@ -303,7 +297,7 @@ end function
 -- get time of day (hhmmss) in BCD format
 -- input: none
 -- output: none
--- returns: hhmmss in bcd format
+-- returns: hhmmss in bcd format (byte*3)
 -- ----------------------------------------------------------------------
 function rtc_get_hhmmss_bcd() return byte*3 is
 
@@ -314,7 +308,7 @@ function rtc_get_hhmmss_bcd() return byte*3 is
 
    hhmmss[0] = _rtc_hour                        --      ( hour
    hhmmss[1] = _rtc_min                         -- copy ( minute
-   hhmmss[2] = _rtc_sec                         --      ( seconds
+   hhmmss[2] = _rtc_sec                         --      ( second
 
    return hhmmss_bcd                            -- hhmmss
 
@@ -327,13 +321,15 @@ end function
 -- output: none
 -- returns: nothing
 -- ----------------------------------------------------------------------
-procedure rtc_set_hhmmss_bcd(byte in hh, byte in mm, byte in ss) is
+procedure rtc_set_hhmmss_bcd(byte*3 in hhmmss_bcd) is
+
+   var  byte  hhmmss[3] at hhmmss_bcd
 
    _rtc_read()                                  -- read all of rtc
 
-   _rtc_hour = hh                               --        ( hour
-   _rtc_min  = mm                               -- modify ( minute
-   _rtc_sec  = ss                               --        ( seconds
+   _rtc_hour = hhmmss[0]                        --        ( hour
+   _rtc_min  = hhmmss[1]                        -- modify ( minute
+   _rtc_sec  = hhmmss[2]                        --        ( second
 
    _rtc_write()                                 -- write to rtc hardware
 
@@ -364,17 +360,41 @@ end function
 
 -- ----------------------------------------------------------------------
 -- set date (yymmdd) in BCD format
--- input: year, month and day of month, each in bcd format
--- output: none
+-- input:   year,month,day-of-month in bcd format (byte*3)
+--          all in bcd format
+-- output:  none
 -- returns: nothing
+-- notes: - Expected ranges: yy 0..99, mm 1..12, dd 1..31 in bcd notation
+--        - RTC does not calculate weekday from date, so have to do it here,
+--          with algorithm by Tomohiko Sakamoto of Sony, slightly modified
+--          to support 21st century only (2000..2099).
 -- ----------------------------------------------------------------------
-procedure rtc_set_yymmdd_bcd(byte in yy, byte in mm, byte in dd) is
+procedure rtc_set_yymmdd_bcd(byte*3 in yymmdd_bcd) is
+
+   var  byte  yymmdd[3] at  yymmdd_bcd
+   var  byte  yy        at  yymmdd[0]
+   var  byte  mm        at  yymmdd[1]
+   var  byte  dd        at  yymmdd[2]
+
+   const byte  tbl[] = {0,3,2,5,0,3,5,1,4,6,2,4}     -- weekday offsets
+
+   var byte t_day   = (dd >> 4) * 10 + (dd & 0x0f)   -- day decimal
+   var byte t_month = (mm >> 4) * 10 + (mm & 0x0f)   -- month decimal
+   var byte t_year  = (yy >> 4) * 10 + (yy & 0x0f)   -- year decimal
+   if (t_month < 3) then                        -- before doomsday
+      if (t_year > 0) then
+         t_year = t_year - 1                    -- previous year
+      else
+         t_year = 4                             -- for Jan/Feb 2000
+      end if
+   end if
 
    _rtc_read()                                  -- read all of rtc
 
    _rtc_year     = yy                           --        ( year
    _rtc_month    = mm                           -- modify ( month
    _rtc_monthday = dd                           --        ( day of month
+   _rtc_weekday  = (t_year + t_year / 4 + tbl[t_month-1] + t_day) % 7
 
    _rtc_write()                                 -- write to rtc hardware
 
@@ -413,13 +433,15 @@ end function
 -- output: none
 -- returns: nothing
 -- ----------------------------------------------------------------------
-procedure rtc_set_alarm_hhmmss_bcd(byte in hh, byte in mm, byte in ss) is
+procedure rtc_set_alarm_hhmmss_bcd(byte*3 in hhmmss_bcd) is
+
+   var  byte  hhmmss[3] at hhmmss_bcd
 
    _rtc_alrm_read()                             -- read current settings
 
-   _alrm_hour = hh                              --        ( hour
-   _alrm_min  = mm                              -- modify ( minute
-   _alrm_sec  = ss                              --        ( seconds
+   _alrm_hour = hhmmss[0]                       --        ( hour
+   _alrm_min  = hhmmss[1]                       -- modify ( minute
+   _alrm_sec  = hhmmss[2]                       --        ( seconds
 
    _rtc_alrm_write()                            -- write to rtc hardware
 
@@ -435,7 +457,8 @@ end procedure
 -- ----------------------------------------------------------------------
 procedure rtc_set_alarm(bit in alarm_state) is
 
-   pragma  inline
+   while (RTCCFG_RTCSYNC == true) loop          -- wait for safe write
+   end loop
 
    ALRMCFG_ALRMEN = alarm_state                 -- enable/disable alarm
 
@@ -451,7 +474,8 @@ end procedure
 -- ----------------------------------------------------------------------
 procedure rtc_set_alarm_signal(bit in alarm_signal) is
 
-   pragma  inline
+   while (RTCCFG_RTCSYNC == true) loop          -- wait for safe write
+   end loop
 
    ALRMCFG_CHIME = alarm_signal                 -- enable/disable alarm signal
 
@@ -466,7 +490,8 @@ end procedure
 -- ----------------------------------------------------------------------
 procedure rtc_set_alarm_repeat(byte in alarm_repeat) is
 
-   pragma  inline
+   while (RTCCFG_RTCSYNC == true) loop          -- wait for safe write
+   end loop
 
    ALRMRPT = alarm_repeat                       -- set alarm repeat value
 
@@ -476,14 +501,19 @@ end procedure
 -- ----------------------------------------------------------------------
 -- set alarm period
 -- input: alarm_period with one of the RTC_ALARM_PERIOD_xxxx masks
---        (see one of the defined RTC_ALARM_PERIOD masks)
+--        (see one of the defined RTC_ALARM_PERIOD masks above)
 -- output: none
 -- returns: nothing
 -- ---------------------------------------------------------------------
 procedure rtc_set_alarm_period(byte in alarm_period) is
 
    if (alarm_period <= RTC_ALARM_PERIOD_YEAR) then
+
+      while (RTCCFG_RTCSYNC == true) loop       -- wait for safe write
+      end loop
+
       ALRMCFG_AMASK = alarm_period              -- set alarm period
+
    end if
 
 end procedure
