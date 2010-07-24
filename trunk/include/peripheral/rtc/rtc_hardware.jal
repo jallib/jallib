@@ -23,23 +23,56 @@
 --   - rtc_set_hhmmss_bcd()        -- set new hours,minutes,seconds (bcd format)
 --   - rtc_get_yymmdd_bcd()        -- get year,month,day (bcd format)
 --   - rtc_set_yymmdd_bcd()        -- set new year,month,day (bcd format)
+--   - rtc_get_weekday()           -- get day of week number (binary)
 --   - rtc_get_alarm_hhmmss_bcd()  -- get alarm time (bcd format)
 --   - rtc_set_alarm_hhmmss_bcd()  -- set alarm time (bcd format)
 --   - rtc_set_alarm_period()      -- set alarm period
 --   - rtc_set_alarm_repeat()      -- enable/disable alarm repeat function
 --   - rtc_set_alarm()             -- enable/disable alarm
+-- .
+-- Several procedures and functions use multi-byte variables to pass
+-- arguments in bcd-notation in low-to-high sequence.
+-- When you want to set the time to 15:21:37 you must specify
+--    hhmmdd_bcd = 0x372115                   -- init time
+-- .
+-- To access the individual bytes of such a variable you can use the
+-- data overlay facility of the compiler.
+-- For example for the time in hours, minutes and seconds you could
+-- declare a variable as:
+-- .
+--    var  byte*3  yymmdd_bcd                 -- time of day in bcd
+-- .
+-- and in addition:
+-- .
+--    var  byte    yymmdd[3] at  yymmdd_bcd   -- overlay as array
+--    var  byte    yy        at  yymmdd[0]    -- )
+--    var  byte    mm        at  yymmdd[1]    -- ) overlay as bytes
+--    var  byte    dd        at  yymmdd[2]    -- )
+-- .
+-- Now you can access the seconds-byte of 'hhmmss_bcd' simply with 'ss'
+-- (contents still in bcd notation!), and minutes and hours similarly.
+-- Note: It works this way because PICs use little endian notation:
+--       store multi-byte variables with low order byte first!
+-- .
+-- Bytes in bcd-notation can easily be displayed with print_byte_hex()
+-- of the Jallib print library.
+-- .
+-- To convert a byte in bcd-notation to a binary value you could use
+-- something like:
+-- .
+--    var byte dd_bin = (dd >> 4) * 10 + (dd & 0x0f)
+-- .
+--
 --
 -- NOTES: - This library assumes that a 32768 Hz crystal is connected to
 --          the T1OSI/T1OSO pins.
 --        - The application should specify the RTCC oscillator source
 --          configuration bits as: pragma target RTCOSC T1OSC
---        - Byte numbers in bcd-notation can easily be displayed with
---          print_byte_hex()
 --
 --
 -- ----------------------------------------------------------------------
--- global variables (internally used by rtc and alarm functions and procedures,
---                   not meant to be accessed by application programs)
+-- global variables internally used by rtc and alarm functions and procedures.
+-- Not to be accessed by application programs!
 -- ----------------------------------------------------------------------
 
 var  byte  _rtc_year      = 0x00                -- year
@@ -60,6 +93,10 @@ var  byte  _alrm_weekday  = 0x00                -- day of week
 
 -- ----------------------------------------------------------------------
 -- read the realtime clock
+-- input:  none
+-- output: none
+-- returns: nothing
+-- notes: copy RTC registers to local variables
 -- ---------------------------------------------------------------------
 procedure _rtc_read() is
 
@@ -85,8 +122,8 @@ end procedure
 -- input: bit (enable / disable)
 -- output: none
 -- returns: nothing
--- notes:  Setting the RTCWREN bit in RTCCFG requires a strict
---         sequence, some assembly language need to be used.
+-- notes:  (Re)setting the RTCWREN bit in RTCCFG requires a strict
+--         sequence, some assembly language needed!
 -- ----------------------------------------------------------------------
 procedure _rtc_write_control(bit in control) is
 
@@ -106,6 +143,12 @@ end procedure
 
 -- ----------------------------------------------------------------------
 -- write the realtime clock
+-- input:  none
+-- output: none
+-- returns: nothing
+-- notes: - enable writing to RTC registers
+--        - update RTC
+--        - disable writes
 -- ----------------------------------------------------------------------
 procedure _rtc_write() is
 
@@ -136,6 +179,10 @@ end procedure
 
 -- ----------------------------------------------------------------------
 -- read the alarm setting
+-- input:  none
+-- output: none
+-- returns: nothing
+-- notes: copy RTC alarm registers to local variables
 -- ----------------------------------------------------------------------
 procedure _rtc_alrm_read() is
 
@@ -154,6 +201,12 @@ end procedure
 
 -- ----------------------------------------------------------------------
 -- set the realtime clock alarm
+-- input:  none
+-- output: none
+-- returns: nothing
+-- notes: - disable alarm
+--        - copy RTC alarm registers to local variables
+--        - restore alarm state
 -- ----------------------------------------------------------------------
 procedure _rtc_alrm_write() is
 
@@ -202,11 +255,12 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- select the output pin signal
+-- select the output pin signal functionality
 -- input: 2-bits mask: one of the RTC_PIN_xxxx constants (see above)
 -- output: none
 -- returns: nothing
--- note: See the datasheet for the meaning of the different masks.
+-- notes: - With 'NONE' pin_RTCC is released and available for I/O
+--        - See the datasheet for the meaning of the different masks.
 -- ----------------------------------------------------------------------
 procedure rtc_pin_signal(bit*2 in pin_signal_selection_mask) is
 
@@ -248,8 +302,7 @@ end procedure
 -- input: none
 -- output: none
 -- returns: nothing
--- notes:  Setting the RTCWREN bit in RTCCFG requires a specific
---         sequence, with some assembly language required.
+-- notes:
 -- ----------------------------------------------------------------------
 procedure rtc_init() is
 
@@ -317,7 +370,7 @@ end function
 
 -- ----------------------------------------------------------------------
 -- set time of day (hhmmss) in BCD format
--- input: hour, minute, seconds, each in bcd format
+-- input: year,month,day-of-month in bcd format (byte*3)
 -- output: none
 -- returns: nothing
 -- ----------------------------------------------------------------------
@@ -359,22 +412,36 @@ end function
 
 
 -- ----------------------------------------------------------------------
+-- get weekday number in binary format
+-- input: none
+-- output: none
+-- returns: day of week number (0..6)
+-- ----------------------------------------------------------------------
+function rtc_get_weekday() return byte is
+
+   _rtc_read()                                  -- read all of rtc
+
+   return _rtc_weekday                          -- day of week
+
+end function
+
+
+-- ----------------------------------------------------------------------
 -- set date (yymmdd) in BCD format
 -- input:   year,month,day-of-month in bcd format (byte*3)
---          all in bcd format
 -- output:  none
 -- returns: nothing
--- notes: - Expected ranges: yy 0..99, mm 1..12, dd 1..31 in bcd notation
---        - RTC does not calculate weekday from date, so have to do it here,
---          with algorithm by Tomohiko Sakamoto of Sony, slightly modified
---          to support 21st century only (2000..2099).
+-- notes: - Expected range: yy 0..99, mm 1..12, dd 1..31 in bcd notation
+--        - RTC hardware does not calculate weekday from date, so we have
+--          to do it here.  We use the algorithm by Tomohiko Sakamoto of Sony,
+--          slightly squeezed to support 21st century only (2000..2099).
 -- ----------------------------------------------------------------------
 procedure rtc_set_yymmdd_bcd(byte*3 in yymmdd_bcd) is
 
-   var  byte  yymmdd[3] at  yymmdd_bcd
-   var  byte  yy        at  yymmdd[0]
-   var  byte  mm        at  yymmdd[1]
-   var  byte  dd        at  yymmdd[2]
+   var  byte  yymmdd[3] at  yymmdd_bcd          -- overlay
+   var  byte  yy        at  yymmdd[0]           -- )
+   var  byte  mm        at  yymmdd[1]           -- ) shorthand
+   var  byte  dd        at  yymmdd[2]           -- )
 
    const byte  tbl[] = {0,3,2,5,0,3,5,1,4,6,2,4}     -- weekday offsets
 
@@ -406,7 +473,7 @@ end procedure
 -- ======================================================================
 
 -- ----------------------------------------------------------------------
--- get alarm time of day (hhmmss) in BCD format
+-- get alarm time of day in BCD format
 -- input: none
 -- output: none
 -- returns: alarm time setting (hhmmss) in bcd format
@@ -428,8 +495,8 @@ end function
 
 
 -- ----------------------------------------------------------------------
--- set alarm time (hhmmss) in bcd format
--- input: hour, minute, second, each in bcd format
+-- set alarm time in bcd format
+-- input: hour-minute-second in bcd format
 -- output: none
 -- returns: nothing
 -- ----------------------------------------------------------------------
@@ -500,8 +567,8 @@ end procedure
 
 -- ----------------------------------------------------------------------
 -- set alarm period
--- input: alarm_period with one of the RTC_ALARM_PERIOD_xxxx masks
---        (see one of the defined RTC_ALARM_PERIOD masks above)
+-- input: alarm_period with a RTC_ALARM_PERIOD_xxxx mask
+--        (see the defined RTC_ALARM_PERIOD_xxxx masks above)
 -- output: none
 -- returns: nothing
 -- ---------------------------------------------------------------------
