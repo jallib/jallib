@@ -21,7 +21,7 @@
 --  Numeric keys provide the new value.
 --  (# and numbers are ignored when not in a menu).
 -- .
--- Some error checking is implemented: out of range values are ignored.
+-- Some error checking is implemented: out of range keys are ignored.
 --
 -- Sources:
 --
@@ -40,6 +40,8 @@
 --             Added menus for Alarm Repeat and Alarm Period.
 -- 2010-07-22  Using modified rtc library with weekday calculation.
 -- 2010-07-24  Using function rtc_get_weekday() (new in rtc_hardware library).
+-- 2010-07-26  Fixed error in show_3byte_bcd.
+--             Added menu for switching alarm on or off.
 --
 -- =====================================================================
 --
@@ -150,7 +152,7 @@ include  print                                  -- print and conversion
 
 -- ------- local function prototypes
 
-function   keyboard_handling(byte in key) return byte  -- handle keyboard activity
+function   keyboard_handling(byte in kkk) return byte  -- handle keyboard activity
 procedure  setup_pic()                          -- global PIC initialisation
 procedure  show_byte_bcd(volatile byte out device,
                                   byte in data)
@@ -164,11 +166,12 @@ procedure  show_3byte_bcd(volatile byte out device,
 --       mainline, otherwise these will not be initialised!
 
 const    byte    KBD_IDLE         = 0           -- valid values of kbd_state
-const    byte    KBD_DATE         = 1
-const    byte    KBD_TIME         = 2
-const    byte    KBD_ALARM        = 3
-const    byte    KBD_ALARM_PERIOD = 4
-const    byte    KBD_ALARM_REPEAT = 5
+const    byte    KBD_ALARM_ONOFF  = 1
+const    byte    KBD_DATE         = 2
+const    byte    KBD_TIME         = 3
+const    byte    KBD_ALARM_TIME   = 4
+const    byte    KBD_ALARM_PERIOD = 5
+const    byte    KBD_ALARM_REPEAT = 6
 
 var  byte  kbd_state = KBD_IDLE                 -- keyboard state
 var  byte  kbd_count = 0                        -- key ('offset') counter
@@ -196,6 +199,7 @@ var  byte*3  datenow = 0x010110                 -- actual date, init: 10/01/01
 var  byte*3  timenow = 0x000000                 -- actual time, init: 00:00:00
 var  byte    weekday                            -- day of week (used read only)
 var  byte*3  alarmtime = 0x003007               -- actual alarmtime, init: 07:30:00
+var  bit     alarm_onoff = on                   -- alarm, init: on
 var  byte    alarm_period = 0                   -- alarm-period, init: 0
 var  byte    alarm_repeat = 0                   -- alarm-repeat, init: 0
 
@@ -230,6 +234,16 @@ forever loop
    lcd = "0"                                    -- )
    show_3byte_bcd(lcd,datenow,"/")              -- current date
 
+   lcd_cursor_position(0,LCD_CHARS - 4)         -- debug
+   lcd = kbd_state + "0"                        -- keyboard state
+
+   lcd_cursor_position(0,LCD_CHARS - 1)         -- top right corner
+   if (alarm_onoff == ON) then
+      lcd = "*"                                 -- show alarm 'ON'
+   else
+      lcd = " "                                 -- show alarm 'OFF'
+   end if
+
    lcd_cursor_position(1,0)                     -- second line
    show_3byte_bcd(lcd,timenow,":")              -- current time
 
@@ -259,7 +273,22 @@ forever loop
 
    if (kbd_state != KBD_IDLE) then              -- modification pending?
      lcd_cursor_position(LCD_ROWS - 1,0)        -- lower left corner
-     if (kbd_state == KBD_DATE) then            -- time mod.
+     if (kbd_state == KBD_ALARM_ONOFF) then     -- alarm on/off
+       lcd = "A"
+       lcd = "l"
+       lcd = "a"
+       lcd = "r"
+       lcd = "m"
+       lcd = " "
+       lcd = "O"
+       if (alarm_onoff == ON) then
+         lcd = "n"
+         lcd = " "
+       else
+         lcd = "f"
+         lcd = "f"
+       end if
+     elsif (kbd_state == KBD_DATE) then         -- time mod.
        lcd = "D"
        lcd = " "
        show_3byte_bcd(lcd,ndate,"/")
@@ -267,7 +296,7 @@ forever loop
        lcd = "T"
        lcd = " "
        show_3byte_bcd(lcd,ntime,":")
-     elsif (kbd_state == KBD_ALARM) then        -- alarm mod.
+     elsif (kbd_state == KBD_ALARM_TIME) then     -- alarm mod.
        lcd = "A"
        lcd = " "
        show_3byte_bcd(lcd,nalarm,":")
@@ -289,7 +318,9 @@ forever loop
    -- handle keyboard activity
 
    key = getkey_once()                          -- determine key pressed
-   key = keyboard_handling(key)                 -- specific key handling
+   if (key < 16) then                           -- valid key
+      key = keyboard_handling(key)              -- specific key handling
+   end if
 
    -- asm sleep (consider for power saving with battery backup)
 
@@ -301,26 +332,9 @@ end loop
 -- -------------------------------------------------------
 function  keyboard_handling(byte in key) return byte is
 
-   var  byte    andate[3] at ndate                 --         ( new date
-   var  byte    antime[3] at ntime                 -- overlay ( new time
-   var  byte    analarm[3] at nalarm               --         ( new alarm
-
-   lcd_cursor_position(0, LCD_CHARS - 1)        -- upper right corner
-   if (key < 16) then                           -- key pressed
-      if (key < 10) then
-         lcd = "0" + key                        -- 0..9
-      elsif (key == 10) then
-         lcd = "*"                              -- asterisk
-      elsif (key == 11) then
-         lcd = "#"                              -- number sign
-      else
-         lcd = "?"                              -- unsupported key
-         return key                             -- done
-      end if
-   else                                         -- invalid key
-      lcd = " "                                 -- display blank
-      return key                                -- done
-   end if
+   var  byte  andate[3]  at ndate               --         ( new date
+   var  byte  antime[3]  at ntime               -- overlay ( new time
+   var  byte  analarm[3] at nalarm              --         ( new alarm
 
    -- handle new key, based on active menu and previous progress within menu
 
@@ -328,12 +342,37 @@ function  keyboard_handling(byte in key) return byte is
 
       KBD_IDLE:                                 -- no keyboard action pending
          block
-            rtc_set_alarm_signal(OFF)           -- chime off
-            rtc_set_alarm(OFF)                  -- alarm off
             if (key == 10) then                 -- asterisk
-               kbd_state = KBD_DATE             -- to next menu
-               ndate = 0                        -- init
+               kbd_state = KBD_ALARM_ONOFF      -- to next menu
+               kbd_count = 0                    -- no change pending
                lcd_clear_line(LCD_ROWS - 1)     -- clear bottom line
+            end if
+         end block
+
+      KBD_ALARM_ONOFF:                          -- switch alarm on/off
+         block
+            if (key == 10) then                 -- asterisk
+               if (kbd_count == 0) then         -- first key
+                  kbd_state = KBD_DATE          -- to next menu
+                  ndate = 0                     -- init
+                  lcd_clear_line(LCD_ROWS - 1)  -- clear bottom line
+               else
+                  kbd_count = kbd_count - 1     -- back
+               end if
+            elsif (key == 11) then              -- 'Enter'
+               kbd_state = KBD_IDLE             -- reset state
+               kbd_count = 0                    -- done
+            else                                -- any other key
+               if (alarm_onoff == OFF) then     -- currently off
+                  alarm_onoff = ON              -- switch to on
+                  rtc_set_alarm_signal(ON)      -- chime on
+                  rtc_set_alarm(ON)             -- alarm on
+               else                             -- currently on
+                  alarm_onoff = OFF             -- switch to off
+                  rtc_set_alarm_signal(OFF)     -- chime on
+                  rtc_set_alarm(OFF)            -- alarm on
+               end if
+               kbd_count = 1                    -- single key input
             end if
          end block
 
@@ -409,7 +448,7 @@ function  keyboard_handling(byte in key) return byte is
          block
             if (key == 10) then                 -- asterisk
                if (kbd_count == 0) then         -- no time action pending
-                  kbd_state = KBD_ALARM         -- to next menu
+                  kbd_state = KBD_ALARM_TIME    -- to next menu
                   nalarm = 0                    -- init
                   lcd_clear_line(LCD_ROWS - 1)  -- clear bottom line
                else                             -- alarm action pending
@@ -464,7 +503,7 @@ function  keyboard_handling(byte in key) return byte is
             end if
          end block
 
-      KBD_ALARM:
+      KBD_ALARM_TIME:
          block                                  -- alarm setting pending
             if (key == 10) then                 -- asterisk
                if (kbd_count == 0) then         -- no alarm action pending
@@ -618,7 +657,8 @@ end procedure
 
 -- -------------------------------------------------------
 --  Show one byte in bcd notation as two decimal digits.
---  Simple alternative for print_byte_hex() in the print library!
+--  Simple alternative for print_byte_hex() in the print library
+--  without check or correction of valid bcd notation!
 -- -------------------------------------------------------
 procedure  show_byte_bcd(volatile byte out device, byte in data) is
 
@@ -632,10 +672,11 @@ end procedure
 --  Show byte*3 variable in bcd notation as 3 x 2 decimal digits.
 -- -------------------------------------------------------
 procedure  show_3byte_bcd(volatile byte   out device,
-                                   byte*3 in  value,
+                                   byte*3 in  data,
                                    byte   in  separator) is
 
-   var byte avalue[3] at value                  -- overlay
+   var byte*3 bcd_value = data                  -- copy of parm
+   var byte   avalue[3] at bcd_value            -- overlay
 
    show_byte_bcd(lcd,avalue[0])
    lcd = separator
