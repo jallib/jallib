@@ -12,9 +12,9 @@
 --   - routines for control of realtime clock and alarm
 -- .
 -- This library supports:
---   - RTCC modules like in 18fxxj11, 18fxxj50 and some other PICs
+--   - RTCC modules like in 18fxxj11, 18fxxj50 and several other PICs.
 -- .
--- Available procedures/functions for application programs:
+-- Available procedures and functions for application programs:
 --   - rtc_init()                  -- initialize rtc module and library
 --   - rtc_calibrate()             -- clock ('tick') calibration
 --   - rtc_pin_signal()            -- RTCC output pin signal control
@@ -30,14 +30,14 @@
 --   - rtc_set_alarm_repeat()      -- enable/disable alarm repeat function
 --   - rtc_set_alarm()             -- enable/disable alarm
 -- .
--- Several procedures and functions use multi-byte variables to pass
--- arguments in bcd-notation in low-to-high sequence.
--- When you want to set the time to 15:21:37 you must specify
---    hhmmdd_bcd = 0x372115                   -- init time
+-- Additional general purpose functions and procedures:
+--   - bcd2bin()                   -- convert byte from bcd to binary
 -- .
--- To access the individual bytes of such a variable you can use the
--- data overlay facility of the compiler.
--- For example for the time in hours, minutes and seconds you could
+-- Several procedures and functions use multi-byte variables to pass
+-- arguments in bcd-notation. This is done in high-to-low sequence.
+-- To access the individual bytes of such a 'composite' variable you
+-- could the data overlay facility of the compiler.
+-- For example for the date in years, months and days you could
 -- declare a variable as:
 -- .
 --    var  byte*3  yymmdd_bcd                 -- time of day in bcd
@@ -49,32 +49,29 @@
 --    var  byte    mm        at  yymmdd[1]    -- ) overlay as bytes
 --    var  byte    dd        at  yymmdd[2]    -- )
 -- .
--- Now you can access the seconds-byte of 'hhmmss_bcd' simply with 'ss'
--- (contents still in bcd notation!), and minutes and hours similarly.
--- Note: It works this way because PICs use little endian notation:
---       store multi-byte variables with low order byte first!
+-- Now you can access the year-byte of 'yymmdd_bcd' simply with 'yy'
+-- (contents still in bcd notation!), and month and day similarly.
+-- .
+-- PICs use little endian notation (store multi-byte variables with
+-- low order byte first)! So when you want to set the date to 10:07:28
+-- you must specify:
+--    yymmdd_bcd = 0x280710                   -- reversed sequence
 -- .
 -- Bytes in bcd-notation can easily be displayed with print_byte_hex()
 -- of the Jallib print library.
--- .
--- To convert a byte in bcd-notation to a binary value you could use
--- something like:
--- .
---    var byte dd_bin = (dd >> 4) * 10 + (dd & 0x0f)
--- .
 --
 --
 -- NOTES: - This library assumes that a 32768 Hz crystal is connected to
---          the T1OSI/T1OSO pins.
---        - The application should specify the RTCC oscillator source
---          configuration bits as: pragma target RTCOSC T1OSC
+--          the T1OSI/T1OSO pins. Therefore the application should specify
+--          the RTCC oscillator source configuration bits as:
+--              pragma target RTCOSC T1OSC
 --
 --
 -- ----------------------------------------------------------------------
--- global variables internally used by rtc and alarm functions and procedures.
+-- Global variables internally used by rtc and alarm functions and procedures.
 -- Not to be accessed by application programs!
 -- ----------------------------------------------------------------------
-
+--
 var  byte  _rtc_year      = 0x00                -- year
 var  byte  _rtc_month     = 0x01                -- month
 var  byte  _rtc_monthday  = 0x01                -- day of month
@@ -82,17 +79,23 @@ var  byte  _rtc_hour      = 0x12                -- hour
 var  byte  _rtc_min       = 0x00                -- minute
 var  byte  _rtc_sec       = 0x00                -- second
 var  byte  _rtc_weekday   = 0x00                -- day of week
-
+--
 var  byte  _alrm_month    = 0x01                -- month
 var  byte  _alrm_monthday = 0x00                -- day of month
 var  byte  _alrm_hour     = 0x00                -- hour
 var  byte  _alrm_min      = 0x00                -- minute
 var  byte  _alrm_sec      = 0x00                -- second
 var  byte  _alrm_weekday  = 0x00                -- day of week
+--
+--
+-- Prototypes of functions and procedure called ahead of their definition.
 
+function bcd2bin(byte in bcd) return byte       -- convert bcd to bin
 
+--
+--
 -- ----------------------------------------------------------------------
--- read the realtime clock
+-- Read the realtime clock.
 -- input:  none
 -- output: none
 -- returns: nothing
@@ -118,12 +121,13 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- Enable RTCC register writes
+-- Enable or disable RTCC register writes.
 -- input: bit (enable / disable)
 -- output: none
 -- returns: nothing
 -- notes:  (Re)setting the RTCWREN bit in RTCCFG requires a strict
---         sequence, some assembly language needed!
+--         sequence, see datasheets for details.
+--         JalV2 2.4n generates the correct sequences with the code below.
 -- ----------------------------------------------------------------------
 procedure _rtc_write_control(bit in control) is
 
@@ -143,7 +147,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- write the realtime clock
+-- Write the realtime clock.
 -- input:  none
 -- output: none
 -- returns: nothing
@@ -179,7 +183,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- read the alarm setting
+-- Read the alarm setting.
 -- input:  none
 -- output: none
 -- returns: nothing
@@ -187,21 +191,21 @@ end procedure
 -- ----------------------------------------------------------------------
 procedure _rtc_alrm_read() is
 
-   ALRMCFG_ALRMPTR1 = 1                          -- init ALRMVAL pointer
+   ALRMCFG_ALRMPTR1 = 1                         -- init ALRMVAL pointer
    ALRMCFG_ALRMPTR0 = 0
 
-   _alrm_monthday = ALRMVALL                     -- read day of month
-   _alrm_month    = ALRMVALH                     -- read month (and decr. pointer)
-   _alrm_hour     = ALRMVALL                     -- read hour
-   _alrm_weekday  = ALRMVALH                     -- read day of week (and decr. pointer)
-   _alrm_sec      = ALRMVALL                     -- read second
-   _alrm_min      = ALRMVALH                     -- read minute
+   _alrm_monthday = ALRMVALL                    -- read day of month
+   _alrm_month    = ALRMVALH                    -- read month (and decr. pointer)
+   _alrm_hour     = ALRMVALL                    -- read hour
+   _alrm_weekday  = ALRMVALH                    -- read day of week (and decr. pointer)
+   _alrm_sec      = ALRMVALL                    -- read second
+   _alrm_min      = ALRMVALH                    -- read minute
 
 end procedure
 
 
 -- ----------------------------------------------------------------------
--- set the realtime clock alarm
+-- Set the realtime clock alarm.
 -- input:  none
 -- output: none
 -- returns: nothing
@@ -256,7 +260,28 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- select the output pin signal functionality
+-- Convert 1 byte packed bcd to 1 byte binary.
+-- input:   byte with bcd data
+-- output:  none
+-- returns: byte with binary value of bcd byte
+-- notes: - A byte in bcd notation contains ((16 * tens) + ones).
+--          To convert it to a binary value: subtract (6 * tens)
+--          Algorithm is modeled after an assembler version of
+--          Scott Dattalo at PicList (but slightly less efficient!).
+-- ----------------------------------------------------------------------
+function bcd2bin(byte in bcd) return byte is
+
+   var byte  t                                  -- intermediate value
+
+   t = (bcd >> 1) & 0b0111_1000                 -- 8*tens
+   return (bcd - t + (t >> 2))                  -- (16*tens + ones) - 8*tens + 2*tens
+
+end function
+
+
+
+-- ----------------------------------------------------------------------
+-- Select the RTCC output pin signal functionality.
 -- input: 2-bits mask: one of the RTC_PIN_xxxx constants (see above)
 -- output: none
 -- returns: nothing
@@ -276,7 +301,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- calibrate the RTCC module
+-- Calibrate the RTCC module.
 -- input: calibration value
 -- output: none
 -- returns: nothing
@@ -299,7 +324,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- initialize the RTCC module
+-- Initialize the RTCC module.
 -- input: none
 -- output: none
 -- returns: nothing
@@ -327,7 +352,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- get time of day (hhmm) in BCD format
+-- Get time of day (hhmm) in BCD format.
 -- input: none
 -- output: none
 -- returns: hhmm in bcd format (word)
@@ -348,7 +373,7 @@ end function
 
 
 -- ----------------------------------------------------------------------
--- get time of day (hhmmss) in BCD format
+-- Get time of day (hhmmss) in BCD format.
 -- input: none
 -- output: none
 -- returns: hhmmss in bcd format (byte*3)
@@ -370,7 +395,7 @@ end function
 
 
 -- ----------------------------------------------------------------------
--- set time of day (hhmmss) in BCD format
+-- Set time of day (hhmmss) in BCD format.
 -- input: year,month,day-of-month in bcd format (byte*3)
 -- output: none
 -- returns: nothing
@@ -391,7 +416,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- get date (yymmdd) in BCD format
+-- Get date (yymmdd) in BCD format.
 -- input: none
 -- output: none
 -- returns: yymmdd in bcd format
@@ -413,7 +438,7 @@ end function
 
 
 -- ----------------------------------------------------------------------
--- get weekday number in binary format
+-- Get weekday number in binary format.
 -- input: none
 -- output: none
 -- returns: day of week number (0..6)
@@ -428,7 +453,7 @@ end function
 
 
 -- ----------------------------------------------------------------------
--- set date (yymmdd) in BCD format
+-- Set date (yymmdd) in BCD format.
 -- input:   year,month,day-of-month in bcd format (byte*3)
 -- output:  none
 -- returns: nothing
@@ -439,16 +464,13 @@ end function
 -- ----------------------------------------------------------------------
 procedure rtc_set_yymmdd_bcd(byte*3 in yymmdd_bcd) is
 
-   var  byte  yymmdd[3] at  yymmdd_bcd          -- overlay
-   var  byte  yy        at  yymmdd[0]           -- )
-   var  byte  mm        at  yymmdd[1]           -- ) shorthand
-   var  byte  dd        at  yymmdd[2]           -- )
+   var  byte  yymmdd[3]  at  yymmdd_bcd         -- overlay
 
-   const byte  tbl[] = {0,3,2,5,0,3,5,1,4,6,2,4}     -- weekday offsets
+   const byte  tbl[] = {0,3,2,5,0,3,5,1,4,6,2,4}   -- weekday offsets
 
-   var byte t_day   = (dd >> 4) * 10 + (dd & 0x0f)   -- day decimal
-   var byte t_month = (mm >> 4) * 10 + (mm & 0x0f)   -- month decimal
-   var byte t_year  = (yy >> 4) * 10 + (yy & 0x0f)   -- year decimal
+   var byte t_year  = bcd2bin(yymmdd[0])        -- year decimal
+   var byte t_month = bcd2bin(yymmdd[1])        -- month decimal
+   var byte t_day   = bcd2bin(yymmdd[2])        -- day decimal
    if (t_month < 3) then                        -- before doomsday
       if (t_year > 0) then
          t_year = t_year - 1                    -- previous year
@@ -459,9 +481,9 @@ procedure rtc_set_yymmdd_bcd(byte*3 in yymmdd_bcd) is
 
    _rtc_read()                                  -- read all of rtc
 
-   _rtc_year     = yy                           --        ( year
-   _rtc_month    = mm                           -- modify ( month
-   _rtc_monthday = dd                           --        ( day of month
+   _rtc_year     = yymmdd[0]                    --        ( year
+   _rtc_month    = yymmdd[1]                    -- modify ( month
+   _rtc_monthday = yymmdd[2]                    --        ( day of month
    _rtc_weekday  = (t_year + t_year / 4 + tbl[t_month-1] + t_day) % 7
 
    _rtc_write()                                 -- write to rtc hardware
@@ -474,7 +496,7 @@ end procedure
 -- ======================================================================
 
 -- ----------------------------------------------------------------------
--- get alarm time of day in BCD format
+-- Get alarm time of day in BCD format.
 -- input: none
 -- output: none
 -- returns: alarm time setting (hhmmss) in bcd format
@@ -496,7 +518,7 @@ end function
 
 
 -- ----------------------------------------------------------------------
--- set alarm time in bcd format
+-- Set alarm time in bcd format.
 -- input: hour-minute-second in bcd format
 -- output: none
 -- returns: nothing
@@ -517,7 +539,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- enable or disable alarm
+-- Enable or disable alarm.
 -- input: alarm_state (bit): true  - alarm active
 --                           false - alarm not active
 -- output: none
@@ -534,7 +556,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- set alarm signal
+-- Set alarm signal.
 -- input: alarm_signal (bit): true  - alarm signal activated
 --                            false - alarm signal deactivated
 -- output: none
@@ -551,7 +573,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- set alarm repetition
+-- Set alarm repetition factor.
 -- input: alarm_repeat (byte): number of times to repeat alarm signal
 -- output: none
 -- returns: nothing
@@ -567,7 +589,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- set alarm period
+-- Set alarm period.
 -- input: alarm_period with a RTC_ALARM_PERIOD_xxxx mask
 --        (see the defined RTC_ALARM_PERIOD_xxxx masks above)
 -- output: none

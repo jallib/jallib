@@ -16,10 +16,10 @@
 -- Date, time and alarm-time and settings are displayed on 4x20 LCD display
 -- and can be controlled with a numeric 3x4 keyboard via a simple menu system:
 --  *  key is for menu selection (when repeated: next menu item)
---     Functions as backspace during keying of value!
---  #  key is end of operation ('enter')
---  Numeric keys provide the new value.
---  (# and numbers are ignored when not in a menu).
+--     Functions as backspace during keying of a new value!
+--  #  key is end of operation (accept new value, return to normal operation).
+--  Numeric keys determine the new value.
+--  All keys except '*' are ignored when not in a menu.
 -- .
 -- Some error checking is implemented: out of range keys are ignored.
 --
@@ -42,6 +42,8 @@
 -- 2010-07-24  Using function rtc_get_weekday() (new in rtc_hardware library).
 -- 2010-07-26  Fixed error in show_3byte_bcd.
 --             Added menu for switching alarm on or off.
+-- 2010-07-29  Using modified rtc_hardware library.
+--             (with new bcd-to-binary conversion function).
 --
 -- =====================================================================
 --
@@ -147,12 +149,12 @@ include  rtc_hardware                           -- RTC support library
 
 -- ------ data formatting ---------------------------------
 
-include  print                                  -- print and conversion
+include  print                                  -- data conversion
 
 
--- ------- local function prototypes
+-- ------- local function and procedure prototypes
 
-function   keyboard_handling(byte in kkk) return byte  -- handle keyboard activity
+function   keyboard_handling(byte in key) return byte  -- handle keyboard activity
 procedure  setup_pic()                          -- global PIC initialisation
 procedure  show_byte_bcd(volatile byte out device,
                                   byte in data)
@@ -329,6 +331,8 @@ end loop
 
 -- -------------------------------------------------------
 --  Handle keyboard activity
+--  Contains some input validation checking,
+--  but does not intercept all faulty input.
 -- -------------------------------------------------------
 function  keyboard_handling(byte in key) return byte is
 
@@ -601,12 +605,12 @@ function  keyboard_handling(byte in key) return byte is
                end if
                lcd_clear_line(LCD_ROWS - 1)     -- clear bottom line
             elsif (key < 10) then               -- numeric
-               if (nalarm_repeat <= 25) then
-                  nalarm_repeat = nalarm_repeat * 10  -- shift
-                  if (nalarm_repeat < 250 | key < 6) then    -- max repeat is 255
-                     nalarm_repeat = nalarm_repeat + key  -- accept new key
-                     kbd_count = kbd_count + 1   -- progress counter
-                  end if
+               if (nalarm_repeat < 25) then     -- max repeat is 255!
+                  nalarm_repeat = nalarm_repeat * 10 + key
+                  kbd_count = kbd_count + 1     -- progress counter
+               elsif (nalarm_repeat == 25  &  key < 6) then
+                  nalarm_repeat = nalarm_repeat * 10 + key
+                  kbd_count = kbd_count + 1     -- progress counter
                end if
             elsif (key == 11) then              -- number sign
                if (kbd_count > 0) then          -- alarm_repeat prepared
@@ -648,8 +652,8 @@ procedure  setup_pic() is
   TRISC         = 0b0000_0000                   -- all output
 
   OSCCON_IRCF   = 0b111                         -- INTOSC at 8 MHz
-  OSCCON_SCS    = 0b00                          -- primary clock source
   OSCTUNE_PLLEN = TRUE                          -- enable PLL
+  OSCCON_SCS    = 0b00                          -- primary clock source
   REFOCON_ROON  = FALSE                         -- no oscillator output
 
 end procedure
