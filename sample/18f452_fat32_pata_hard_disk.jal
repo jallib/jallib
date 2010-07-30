@@ -16,15 +16,26 @@
 --
 
 -- include chip
-include 18F452                   -- target picmicro
+include 18F4620                   -- target picmicro
+;include 18F452                   -- target picmicro
 -- this program assumes a 20 mhz resonator or crystal
 -- is connected to pins osc1 and osc2.
-pragma target osc hs              -- hs crystal or resonator
+;pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
+;pragma target osc hs_pll              -- hs crystal or resonator
+pragma target osc hs
 pragma target clock 20_000_000    -- oscillator frequency
+;pragma target clock 16_000_000    -- oscillator frequency
+;pragma target clock 32_000_000    -- oscillator frequency
+;pragma target clock 40_000_000    -- oscillator frequency
 --
 pragma target wdt  disabled
 pragma target lvp  disabled
---
+pragma target MCLR external        -- reset externally
+--;
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+;OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+;OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+;--
 
 enable_digital_io() -- disable all analog pins if any
 _usec_delay (100_000) -- wait for power to stablilize
@@ -34,39 +45,39 @@ const serial_hw_baudrate  = 38400   -- set the baudrate
 include serial_hardware
 serial_hw_init()
 
--- setup the hard disk library
+-- setup hard disk library
+CONST BYTE PATA_HD_USE_CS0_CS1_PINS = FALSE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
+const bit PATA_HD_NO_INVERTER = TRUE -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
 -- pin assignments
-ALIAS     pata_hd_data_low              is portb
-ALIAS     pata_hd_data_low_direction    is portb_direction
-ALIAS     pata_hd_data_high             is portd
-ALIAS     pata_hd_data_high_direction   is portd_direction
-ALIAS     pata_hd_a0                    is pin_a0 ; register select pin
-ALIAS     pata_hd_a0_direction          is pin_a0_direction ; register select pin
-ALIAS     pata_hd_a1                    is pin_a1 ; register select pin
-ALIAS     pata_hd_a1_direction          is pin_a1_direction ; register select pin
-ALIAS     pata_hd_a2                    is pin_a2 ; register select pin
-ALIAS     pata_hd_a2_direction          is pin_a2_direction ; register select pin
-ALIAS     pata_hd_cs1                   is pin_a3 ; register select pin
-ALIAS     pata_hd_cs1_direction         is pin_a3_direction ; register select pin
-ALIAS     pata_hd_cs0                   is pin_a4 ; register select pin
-ALIAS     pata_hd_cs0_direction         is pin_a4_direction ; register select pin
-ALIAS     pata_hd_iowr                  is pin_c2 ; used for write pulse
-ALIAS     pata_hd_iowr_direction        is pin_c2_direction ; used for write pulse
-ALIAS     pata_hd_iord                  is pin_c1 ; used for read pulse
-ALIAS     pata_hd_iord_direction        is pin_c1_direction ; used for read pulse
+alias     pata_hd_data_low              is portb   -- data port (low bits)
+alias     pata_hd_data_low_direction    is portb_direction
+alias     pata_hd_data_high             is portd   -- data port (high bits)
+alias     pata_hd_data_high_direction   is portd_direction
+alias     pata_hd_a0                    is pin_a3
+alias     pata_hd_a0_direction          is pin_a3_direction
+alias     pata_hd_a1                    is pin_a1
+alias     pata_hd_a1_direction          is pin_a1_direction
+alias     pata_hd_a2                    is pin_a0
+alias     pata_hd_a2_direction          is pin_a0_direction
+alias     pata_hd_iowr                  is pin_e0
+alias     pata_hd_iowr_direction        is pin_e0_direction
+alias     pata_hd_iord                  is pin_a4
+alias     pata_hd_iord_direction        is pin_a4_direction
+;alias     pata_hd_cs1                   is pin_a3
+;alias     pata_hd_cs1_direction         is pin_a3_direction
+;alias     pata_hd_cs0                   is pin_a4
+;alias     pata_hd_cs0_direction         is pin_a4_direction
 
 pata_hd_a0_direction = output    -- register select pin
 pata_hd_a1_direction = output    -- register select pin
 pata_hd_a2_direction = output    -- register select pin
-pata_hd_cs1_direction = output   -- register select pin
-pata_hd_cs0_direction = output   -- register select pin
 pata_hd_iowr_direction = output  -- used for write pulse
 pata_hd_iord_direction = output  -- used for read pulse
+;pata_hd_cs1_direction = output   -- register select pin
+;pata_hd_cs0_direction = output   -- register select pin
 
-CONST BYTE PATA_HD_USE_CS0_CS1_PINS = FALSE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
-const bit PATA_HD_NO_INVERTER = TRUE -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
 include pata_hard_disk           -- include the parallel ata ide hard disk library
-pata_hd_init()
+pata_hd_init()                   -- initialize startup settings
 
 -- setup fat32 --
 -- include the required files
