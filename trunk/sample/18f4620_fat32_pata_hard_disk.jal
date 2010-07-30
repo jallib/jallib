@@ -16,27 +16,34 @@
 --
 
 -- include chip
-include 18f4620                    -- target PICmicro
-pragma target clock 20_000_000     -- oscillator frequency
--- configuration memory settings (fuses)
-pragma target OSC  HS              -- HS crystal or resonator
-pragma target WDT  disabled        -- no watchdog
-pragma target LVP  disabled        -- no Low Voltage Programming
+include 18F4620                   -- target picmicro
+;include 18F452                   -- target picmicro
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+;pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
+;pragma target osc hs_pll              -- hs crystal or resonator
+pragma target osc hs
+pragma target clock 20_000_000    -- oscillator frequency
+;pragma target clock 16_000_000    -- oscillator frequency
+;pragma target clock 32_000_000    -- oscillator frequency
+;pragma target clock 40_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
 pragma target MCLR external        -- reset externally
+--;
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+;OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+;OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+;--
 
 enable_digital_io() -- disable all analog pins if any
-_usec_delay(100_000) -- wait for power to settle
+_usec_delay (100_000) -- wait for power to stablilize
 
 -- setup uart for communication
-const serial_hw_baudrate  = 38400    -- set the baud rate
+const serial_hw_baudrate  = 38400   -- set the baudrate
 include serial_hardware
 serial_hw_init()
-
-include print
-
-const byte str1[] = "INITIALIZING DATA STORAGE DEVICE"
-print_string(serial_hw_data, str1)
-print_crlf(serial_hw_data)
 
 -- setup hard disk library
 CONST BYTE PATA_HD_USE_CS0_CS1_PINS = FALSE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
@@ -72,43 +79,12 @@ pata_hd_iord_direction = output  -- used for read pulse
 include pata_hard_disk           -- include the parallel ata ide hard disk library
 pata_hd_init()                   -- initialize startup settings
 
-if defined(sd_init_ok) == TRUE then
-   if sd_init_ok == TRUE then
-      const byte str1[] = "SD CARD INITIALIZED OK"
-      print_string(serial_hw_data, str1)
-   else
-      const byte str2[] = "SD CARD INITIALIZATION ERROR"
-      print_string(serial_hw_data, str2)
-   end if
-elsif defined(pata_hd_init_ok) == TRUE then
-   if pata_hd_init_ok == TRUE then
-      const byte str1[] = "HARD DISK INITIALIZED OK"
-      print_string(serial_hw_data, str1)
-   else
-      const byte str2[] = "HARD DISK INITIALIZATION ERROR"
-      print_string(serial_hw_data, str2)
-   end if
-end if
-print_crlf(serial_hw_data)
-
--- spi is required by vs1053b, so set it up.
--- if we are using an sd card, we already initialized the SPI bus, so skip this.
-if defined(spi_init) == false then
-   include spi_master_hw         -- includes the spi library
-   -- define spi inputs/outputs
-   pin_sdi_direction = input    -- spi input
-   pin_sdo_direction = output   -- spi output
-   pin_sck_direction = output   -- spi clock
-   --
-   spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
-end if
-
 -- setup fat32 --
 -- include the required files
 include pic_data_eeprom
 include format  -- include format library (required by some fat32 procedures)
 -- change these vaues to save memory
-const word FAT32_FILES_MAX = 150            -- the max number of files allowed in a directory
+const word FAT32_FILES_MAX = 50            -- the max number of files allowed in a directory
 const byte FAT32_FILENAME_SIZE = 100        -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
 const FAT32_DIR_FRAGMENTS_TO_ALLOW = 10     -- (0 = you must have a defragmented media), usually directories are fragmented.
 --                                          -- uses 6 bytes memory per fragment allowed
@@ -136,8 +112,7 @@ elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
 
    -- example usage of 23k256 for external memory
 
-   -- spi is required by 23k256, so set it up.
-   -- if we are using an sd card, we already initialized the SPI bus, so skip this.
+   -- if we are using an sd card, we already initilized the SPI bus, so skip this.
    if defined(sd_init) == false then  -- if we are using an sd card, we already did this step
       include spi_master_hw        -- includes the spi library
       -- define spi inputs/outputs
@@ -154,9 +129,8 @@ elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
    ALIAS sram_23k256_chip_select_direction   is pin_a2_direction
    -- initial settings
    sram_23k256_chip_select_direction = output    -- chip select/slave select pin
-   sram_23k256_chip_select = high                -- start chip select high (chip disabled)
+   sram_23k256_chip_select = high                -- start chip slect high (chip disabled)
    -- initalize 23k256 in byte mode
-   const bit SRAM_23K256_ALWAYS_SET_SPI_MODE = TRUE
    include sram_23k256 -- setup Microchip 23k256 sram
    sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
 
@@ -166,7 +140,7 @@ elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
 END IF
 --
 include fat32   -- include fat32 library -- include fat32
---
+
 -- CHOOSE FILE ATTRIBUTES TO FILTER OUT
 fat32_filter_is_read_only  = FALSE
 fat32_filter_is_hidden     = FALSE
