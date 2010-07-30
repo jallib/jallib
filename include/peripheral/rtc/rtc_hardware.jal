@@ -19,7 +19,9 @@
 --   - rtc_calibrate()             -- clock ('tick') calibration
 --   - rtc_pin_signal()            -- RTCC output pin signal control
 --   - rtc_get_hhmm_bcd()          -- obtain hours,minute (bcd format)
+--   - rtc_get_hhmm_bin()          -- obtain relative minute of day (binary)
 --   - rtc_get_hhmmss_bcd()        -- obtain hours,minutes,seconds (bcd format)
+--   - rtc_get_hhmmss_bin()        -- obtain relative second of day (binary)
 --   - rtc_set_hhmmss_bcd()        -- set new hours,minutes,seconds (bcd format)
 --   - rtc_get_yymmdd_bcd()        -- get year,month,day (bcd format)
 --   - rtc_set_yymmdd_bcd()        -- set new year,month,day (bcd format)
@@ -27,27 +29,28 @@
 --   - rtc_get_alarm_hhmmss_bcd()  -- get alarm time (bcd format)
 --   - rtc_set_alarm_hhmmss_bcd()  -- set alarm time (bcd format)
 --   - rtc_set_alarm_period()      -- set alarm period
---   - rtc_set_alarm_repeat()      -- enable/disable alarm repeat function
+--   - rtc_set_alarm_repeat()      -- set alarm repeat
 --   - rtc_set_alarm()             -- enable/disable alarm
 -- .
 -- Additional general purpose functions and procedures:
 --   - bcd2bin()                   -- convert byte from bcd to binary
+--   - mult60()                    -- hours -> minutes, minutes -> seconds
 -- .
 -- Several procedures and functions use multi-byte variables to pass
 -- arguments in bcd-notation. This is done in high-to-low sequence.
 -- To access the individual bytes of such a 'composite' variable you
--- could the data overlay facility of the compiler.
+-- could use the data overlay facility of the compiler.
 -- For example for the date in years, months and days you could
 -- declare a variable as:
 -- .
---    var  byte*3  yymmdd_bcd                 -- time of day in bcd
+--    var  byte*3  yymmdd_bcd                   -- date (bcd)
 -- .
 -- and in addition:
 -- .
---    var  byte    yymmdd[3] at  yymmdd_bcd   -- overlay as array
---    var  byte    yy        at  yymmdd[0]    -- )
---    var  byte    mm        at  yymmdd[1]    -- ) overlay as bytes
---    var  byte    dd        at  yymmdd[2]    -- )
+--    var  byte    yymmdd[3] at  yymmdd_bcd     -- overlay as array
+--    var  byte    yy        at  yymmdd[0]      -- )
+--    var  byte    mm        at  yymmdd[1]      -- ) overlay as bytes
+--    var  byte    dd        at  yymmdd[2]      -- )
 -- .
 -- Now you can access the year-byte of 'yymmdd_bcd' simply with 'yy'
 -- (contents still in bcd notation!), and month and day similarly.
@@ -55,7 +58,7 @@
 -- PICs use little endian notation (store multi-byte variables with
 -- low order byte first)! So when you want to set the date to 10:07:28
 -- you must specify:
---    yymmdd_bcd = 0x280710                   -- reversed sequence
+--    rtc_set_yymmdd(0x280710)                  -- 'reversed' sequence!
 -- .
 -- Bytes in bcd-notation can easily be displayed with print_byte_hex()
 -- of the Jallib print library.
@@ -71,7 +74,6 @@
 -- Global variables internally used by rtc and alarm functions and procedures.
 -- Not to be accessed by application programs!
 -- ----------------------------------------------------------------------
---
 var  byte  _rtc_year      = 0x00                -- year
 var  byte  _rtc_month     = 0x01                -- month
 var  byte  _rtc_monthday  = 0x01                -- day of month
@@ -79,7 +81,6 @@ var  byte  _rtc_hour      = 0x12                -- hour
 var  byte  _rtc_min       = 0x00                -- minute
 var  byte  _rtc_sec       = 0x00                -- second
 var  byte  _rtc_weekday   = 0x00                -- day of week
---
 var  byte  _alrm_month    = 0x01                -- month
 var  byte  _alrm_monthday = 0x00                -- day of month
 var  byte  _alrm_hour     = 0x00                -- hour
@@ -88,9 +89,10 @@ var  byte  _alrm_sec      = 0x00                -- second
 var  byte  _alrm_weekday  = 0x00                -- day of week
 --
 --
--- Prototypes of functions and procedure called ahead of their definition.
-
-function bcd2bin(byte in bcd) return byte       -- convert bcd to bin
+-- Prototypes of some functions
+-- ----------------------------
+-- function bcd2bin(byte in bcd) return byte       -- convert bcd to bin
+-- function mult60(word in x) return dword         -- multiply byte by 60
 
 --
 --
@@ -205,7 +207,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- Set the realtime clock alarm.
+-- Write te alarm time of realtime clock.
 -- input:  none
 -- output: none
 -- returns: nothing
@@ -259,8 +261,12 @@ end procedure
    const  byte  RTC_ALARM_PERIOD_YEAR        = 0b1001
 
 
+-- ======================================================================
+--  General purpose functions / procedures
+-- ======================================================================
+--
 -- ----------------------------------------------------------------------
--- Convert 1 byte packed bcd to 1 byte binary.
+-- Convert one byte packed bcd to one byte binary.
 -- input:   byte with bcd data
 -- output:  none
 -- returns: byte with binary value of bcd byte
@@ -279,6 +285,28 @@ function bcd2bin(byte in bcd) return byte is
 end function
 
 
+-- ----------------------------------------------------------------------
+-- Multiply a word by 60 (typically for minutes to seconds or hours to minutes)
+-- input:   byte with binary data
+-- output:  none
+-- returns: word with product
+-- notes: -  (x * 60) = x * (64 - 4) = (x * 64) - (x * 4)
+--        - algorithm without multiplication
+--        - word as input, dword as returnvalue chosen for
+--          relative second of day (function rtc_hhmmss_bin())
+-- ----------------------------------------------------------------------
+function mult60(word in x) return dword is
+
+   var dword y = x                              -- cast to dword
+
+   return (y << 6) - (y << 2)                   -- (x * 64) - (x * 4)
+
+end function
+
+
+-- ======================================================================
+--  TIME functions of realtime clock
+-- ======================================================================
 
 -- ----------------------------------------------------------------------
 -- Select the RTCC output pin signal functionality.
@@ -357,9 +385,9 @@ end procedure
 -- output: none
 -- returns: hhmm in bcd format (word)
 -- ----------------------------------------------------------------------
-function rtc_get_hhmm_bcd() return byte*2 is
+function rtc_get_hhmm_bcd() return word is
 
-   var  byte*2  hhmm_bcd
+   var  word    hhmm_bcd
    var  byte    hhmm[2] at hhmm_bcd
 
    _rtc_read()                                  -- read rtc
@@ -368,6 +396,21 @@ function rtc_get_hhmm_bcd() return byte*2 is
    hhmm[1] = _rtc_min                           --        min
 
    return hhmm_bcd                              -- return to caller
+
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Get relative minute of day in binary format
+-- input: none
+-- output: none
+-- returns: minute of day binary (word)
+-- ----------------------------------------------------------------------
+function rtc_get_hhmm_bin() return word is
+
+   _rtc_read()                                  -- read rtc
+
+   return (word(mult60(bcd2bin(_rtc_hour))) + bcd2bin(_rtc_min))
 
 end function
 
@@ -390,6 +433,21 @@ function rtc_get_hhmmss_bcd() return byte*3 is
    hhmmss[2] = _rtc_sec                         --      ( second
 
    return hhmmss_bcd                            -- hhmmss
+
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Get relative second of day in binary format
+-- input: none
+-- output: none
+-- returns: second of day binary (dword)
+-- ----------------------------------------------------------------------
+function rtc_get_hhmmss_bin() return dword is
+
+   _rtc_read()                                  -- read rtc
+
+   return (mult60(word(mult60(bcd2bin(_rtc_hour))) + bcd2bin(_rtc_min)) + bcd2bin(_rtc_sec))
 
 end function
 
@@ -492,7 +550,7 @@ end procedure
 
 
 -- ======================================================================
---  ALARM functionality
+--  ALARM functionality of realtime clock
 -- ======================================================================
 
 -- ----------------------------------------------------------------------
