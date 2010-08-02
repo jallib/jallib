@@ -16,7 +16,7 @@
 -- .
 -- Available procedures and functions for application programs:
 --   - rtc_init()                  -- initialize rtc module and library
---   - rtc_calibrate()             -- clock ('tick') calibration
+--   - rtc_calibrate()             -- compensate crystal frequency aberration
 --   - rtc_pin_signal()            -- RTCC output pin signal control
 --   - rtc_get_hhmm_bcd()          -- obtain hours,minute (bcd format)
 --   - rtc_get_hhmm_bin()          -- obtain relative minute of day (binary)
@@ -87,15 +87,8 @@ var  byte  _alrm_hour     = 0x00                -- hour
 var  byte  _alrm_min      = 0x00                -- minute
 var  byte  _alrm_sec      = 0x00                -- second
 var  byte  _alrm_weekday  = 0x00                -- day of week
---
---
--- Prototypes of some functions
--- ----------------------------
--- function bcd2bin(byte in bcd) return byte       -- convert bcd to bin
--- function mult60(word in x) return dword         -- multiply byte by 60
 
---
---
+
 -- ----------------------------------------------------------------------
 -- Read the realtime clock.
 -- input:  none
@@ -290,7 +283,7 @@ end function
 -- input:   byte with binary data
 -- output:  none
 -- returns: word with product
--- notes: -  (x * 60) = x * (64 - 4) = (x * 64) - (x * 4)
+-- notes: - (x * 60) = x * (64 - 4) = (x * 64) - (x * 4)
 --        - algorithm without multiplication
 --        - word as input, dword as returnvalue chosen for
 --          relative second of day (function rtc_hhmmss_bin())
@@ -305,7 +298,7 @@ end function
 
 
 -- ======================================================================
---  TIME functions of realtime clock
+--  TIME and DATE functions of realtime clock
 -- ======================================================================
 
 -- ----------------------------------------------------------------------
@@ -333,16 +326,17 @@ end procedure
 -- input: calibration value
 -- output: none
 -- returns: nothing
--- note: Calibration value is declared as (unsigned) byte because
---       the RTCCAL register in the device file is delared as unsigned byte,
---       but both are used as signed value (-128..+127), see datasheet.
+-- note: Calibration value is a signed byte  (-128..+127).
+--       A negative value must be specified when the crystal is too fast.
+--       See datasheet for the calculation of the amount.
 -- ----------------------------------------------------------------------
-procedure rtc_calibrate(byte in calibration) is
+procedure rtc_calibrate(sbyte in calibration) is
 
    _rtc_write_control(enabled)                  -- allow writing RTC registers
 
    RTCCFG_RTCEN = disabled                      -- disable RTCC
-   RTCCAL = calibration                         -- set calibration amount
+   RTCCAL = byte(calibration)                   -- set calibration amount
+                                                -- ('byte' in device file)
    RTCCFG_RTCEN = enabled                       -- re-enable RTCC
 
    _rtc_write_control(disabled)                 -- ignore writes to RTC registers
