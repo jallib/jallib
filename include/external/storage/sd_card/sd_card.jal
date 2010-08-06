@@ -141,20 +141,30 @@ procedure sd_init() is
    SSPCON_CKP = 1
    SSPSTAT_CKE = 0
 
-   var byte reply            -- shows if sd card init is ok
+   var byte reply = 0           -- shows if sd card init is ok
 
    -- steps to set sd card to use SPI
    sd_chip_select = low      -- start chip slect low
+   _usec_delay(1_000)        -- delay
    sd_chip_select = high     -- chip select high
+
    for 10 loop
-      spi_master_hw = 0xFF    -- send 0xFF 10 times
+      spi_master_hw = 0xFF    -- send clock pulses (0xFF 10 times)
    end loop
 
-   sd_chip_select = low      -- enable the sd card
-   send_command(SD_GO_IDLE_STATE,0,reply) -- command 0, Resets card to idle state, get a response
-   sd_ready()             -- wait till sd card is ready
-   sd_chip_select = high  -- disable the sd card
+   -- try to contact the sd card
+   var byte count1 = 0
+   while (reply == 0) & (count1 < 100) loop
+      sd_chip_select = low   -- enable the sd card
+      _usec_delay(1000)
 
+      sd_chip_select = low   -- enable the sd card
+      send_command(SD_GO_IDLE_STATE,0,reply) -- command 0, Resets card to idle state, get a response
+      sd_ready()             -- wait till sd card is ready
+      sd_chip_select = high  -- disable the sd card
+
+      count1 = count1 + 1
+   end loop
 end procedure
 
 --------------------------------------------------------------------------------
