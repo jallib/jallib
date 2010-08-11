@@ -19,7 +19,7 @@
 
 import sys, os, re
 import urlparse
-from BeautifulSoup import BeautifulSoup
+from BeautifulSoup import BeautifulSoup, BeautifulStoneSoup
 
 # we'll put images and attachments in general in this directory
 DRUPAL_IMG_PATH_PREFIX = "/sites/default/files/"
@@ -128,7 +128,10 @@ if not h1s:
 else:
     # there should be only one element, but anyway remove first one
     # only keep text content, not potential inner elements
-    title = h1s[0].findAll(text=True)[0]
+    # title will be used as email subject, not HTML content anymore
+    # so we need to convert HTML entities
+    quoted = h1s[0].findAll(text=True)[0]
+    title = BeautifulStoneSoup(quoted,convertEntities=BeautifulStoneSoup.HTML_ENTITIES).contents[0]
     h1s[0].replaceWith("")
 
 # we're done
