@@ -1,0 +1,82 @@
+-- Title: Creates a IP Header
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4l
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library creates a IP header
+--
+-- Sources:
+--
+
+include checksum
+
+const bit*4 IP_HEADER_VERSION          = 0b0100                -- ip version
+const bit*4 IP_HEADER_LENGTH           = 0b0101                -- Internet header length in 32-bit words.
+const byte IP_HEADER_SERVICE           = 0b0000_0000           -- Type of service
+var word ip_header_total_length        = 0b0000_0000_0001_1100 -- Length of internet header and data in octets.
+const word IP_HEADER_IDENTIFICATION    = 0b1000_1000_0001_0000 -- Identification
+const bit*3 IP_HEADER_FLAGS            = 0b010                 -- Flags
+const bit*13 IP_HEADER_FRAGMENT_OFFSET = 0b0_0000_0000_0000    -- Fragment Offset
+const byte IP_HEADER_TTL               = 0b0111_1111           -- Time to live in seconds
+var byte ip_header_protocol            = 0b0000_0001           -- ICMP
+
+;var word IP_HEADER_header_checksum   = 0b0011_0011_1010_0111 -- The 16 bit one's complement of the one's complement sum of all 16 bit words in the header
+var word ip_header_checksum = 0
+var byte ip_header_checksum_bytes[2] at ip_header_checksum
+
+var byte ip_header_source_ip[4]
+procedure ip_header_source_ip_set(byte in byte3, byte in byte2, byte in byte1, byte in byte0) is
+   pragma inline
+   ip_header_source_ip[3] = byte3
+   ip_header_source_ip[2] = byte2
+   ip_header_source_ip[1] = byte1
+   ip_header_source_ip[0] = byte0
+end procedure
+
+var byte ip_header_destination_ip[4]
+procedure ip_header_destination_ip_set(byte in byte3, byte in byte2, byte in byte1, byte in byte0) is
+   pragma inline
+   ip_header_destination_ip[3] = byte3
+   ip_header_destination_ip[2] = byte2
+   ip_header_destination_ip[1] = byte1
+   ip_header_destination_ip[0] = byte0
+end procedure
+
+var byte ip_header[20]
+; = {
+;0b01000101, 0b00000000, 0b00000000, 0b00011100,
+;0b10001000, 0b00010000, 0b01000000, 0b00000000,
+;0b01111111, 0b00000001, ip_header_checksum_bytes[1], ip_header_checksum_bytes[0],
+;ip_header_source_ip[3], ip_header_source_ip[2], ip_header_source_ip[1], ip_header_source_ip[0],
+;ip_header_destination_ip[3], ip_header_destination_ip[2], ip_header_destination_ip[1], ip_header_destination_ip[0]}
+
+procedure ip_header_create() is
+   ip_header[0] = (byte(IP_HEADER_VERSION) << 4) + IP_HEADER_LENGTH
+   ip_header[1] = IP_HEADER_SERVICE
+   ip_header[2] = byte(ip_header_total_length >> 8)
+   ip_header[3] = byte(ip_header_total_length)
+   ip_header[4] = byte(IP_HEADER_IDENTIFICATION >> 8)
+   ip_header[5] = byte(IP_HEADER_IDENTIFICATION)
+   ip_header[6] = (byte(IP_HEADER_FLAGS) << 5) + byte((IP_HEADER_FRAGMENT_OFFSET) >> 8)
+   ip_header[7] = byte (IP_HEADER_FRAGMENT_OFFSET)
+   ip_header[8] = IP_HEADER_TTL
+   ip_header[9] = ip_header_protocol
+   ip_header[10] = 0
+   ip_header[11] = 0
+   ip_header[12] = ip_header_source_ip[3]
+   ip_header[13] = ip_header_source_ip[2]
+   ip_header[14] = ip_header_source_ip[1]
+   ip_header[15] = ip_header_source_ip[0]
+   ip_header[16] = ip_header_destination_ip[3]
+   ip_header[17] = ip_header_destination_ip[2]
+   ip_header[18] = ip_header_destination_ip[1]
+   ip_header[19] = ip_header_destination_ip[0]
+
+   ;set the checksum bytes for transmit
+   ip_header_checksum = checksum_calc(ip_header)
+   ip_header[10] = ip_header_checksum_bytes[1]
+   ip_header[11] = ip_header_checksum_bytes[0]
+end procedure
