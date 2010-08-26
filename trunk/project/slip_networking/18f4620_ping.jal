@@ -14,20 +14,34 @@
 -- http://tools.ietf.org/html/rfc1055
 --
 
--- include chip
-include 18f4620                    -- target PICmicro
+include 18f4550                    -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+-- (unspecified configuration bits may cause a different frequency!)(
 pragma target clock 20_000_000     -- oscillator frequency
 -- configuration memory settings (fuses)
 pragma target OSC  HS              -- HS crystal or resonator
+pragma target PLLDIV  P1           -- PLL off
+pragma target CPUDIV  P2           -- no cycle divisor
 pragma target WDT  disabled        -- no watchdog
+pragma target XINST disabled       -- not supported by JalV2
 pragma target LVP  disabled        -- no Low Voltage Programming
 pragma target MCLR external        -- reset externally
-
 --
 --
 enable_digital_io()                      -- make all pins digital I/O
 --
 include print
+
+-- setup serial software
+const serial_sw_baudrate = 38400
+alias serial_sw_tx_pin is pin_B4
+alias serial_sw_rx_pin is pin_B5
+pin_B4_direction = output
+pin_B5_direction = input
+include serial_software
+serial_sw_init()
 
 -- setup uart for communication
 const serial_hw_baudrate  = 9600   -- set the baudrate
@@ -35,7 +49,7 @@ include serial_hardware
 serial_hw_init()
 
 -- setup SLIP
-const word SLIP_MTU = 10  -- Max bytes per packet (Max Transfer Unit)
+const word SLIP_MTU = 254  -- Max bytes per packet (Max Transfer Unit)
 --
 -- choose your interrupt routine. you may ignore this and create your own
 -- isr or use polling method slip_poll()
@@ -47,7 +61,7 @@ alias slip_data_available is serial_hw_data_available
 --
 -- Choose the size of your recieve buffer.
 -- Should be the same as SLIP MTU if slip interrupts are not enabled
-const byte QUEUE01_SIZE = 500
+const byte QUEUE01_SIZE = 254
 include queue01 -- include the queue/buffer library
 alias slip_rx_buffer is queue01_nb  -- alias buffer for recieved data
 --
@@ -62,9 +76,13 @@ procedure slip_received_packet_callback(byte in packet_size) is
    if packet_size > SLIP_MTU then
       -- your packet may have a problem, it is too large
    end if
-
+   
+   for 50 loop
+       serial_sw_data = 0
+   end loop
+   
    for packet_size loop               -- for each byte in packet
-      ;serial_hw_data = slip_rx_buffer -- do something with the packet data
+      serial_sw_data = slip_rx_buffer -- do something with the packet data
    end loop
 end procedure
 --
@@ -83,17 +101,23 @@ alias network_end_packet is slip_end_packet
 include ip_header
 --
 
+
 ----------------------------------------------------------------
 -- MAIN PROGRAM
 ----------------------------------------------------------------
 
--- wait for "CLIENT" from windows slip connection (yes, i got lazy)
-while !serial_hw_data_available loop
+-- inform user PIC is ready !
+for 10 loop
+    serial_sw_data = "!"
 end loop
 
+;-- wait for "CLIENT" from windows slip connection (yes, i got lazy)
+;while !serial_hw_data_available loop
+;end loop
+
 -- reply with "CLIENTSERVER" to initiate connection
-const byte str1[] = "CLIENTSERVER"   -- define a string
-print_string(serial_hw_data, str1)   -- send via serial port
+;const byte str1[] = "CLIENTSERVER"   -- define a string
+;print_string(serial_hw_data, str1)   -- send via serial port
 
 -- choose ip_header data
 ip_header_protocol = 0b0000_0001 -- ICMP
