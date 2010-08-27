@@ -72,99 +72,34 @@ include queue02 -- include the queue/buffer library
 alias slip_packet_size_buffer is queue02_nb     -- alias buffer for packet sizes
 alias slip_packets_available is queue02_nr_used -- alias for number of packets avail
 --
--- callback for when a full slip packet is recieved (not needed for isr)
-procedure slip_received_packet_callback(byte in packet_size) is
-   if packet_size > SLIP_MTU then
-      -- your packet may have a problem, it is too large
-   end if
-   
-   for 50 loop
-       serial_sw_data = 0
-   end loop
-   
-   for packet_size loop               -- for each byte in packet
-      serial_sw_data = slip_rx_buffer -- do something with the packet data
-   end loop
-end procedure
+-- callback is defined in network.jal
+procedure slip_received_packet_callback(byte in packet_size)
 --
 include slip -- include the library
 --
 slip_init() -- init the slip library
 
--- alias slip for networking
-alias network_send_data is slip_send_data
-alias network_packet_available is slip_packet_available
-alias network_received_packet_callback is slip_received_packet_callback
-alias network_max_packet_size is SLIP_MTU
-alias network_packet_queue_size is QUEUE01_SIZE
-alias network_end_packet is slip_end_packet
---
-include ip_header
---
-
+-- setup networking
+const byte NETWORK_LINK_LAYER = SLIP
+include network
 
 ----------------------------------------------------------------
 -- MAIN PROGRAM
 ----------------------------------------------------------------
+ip_header_set_source_ip     (192,168,2,3) -- PIC's ip address
 
 -- inform user PIC is ready !
 for 10 loop
     serial_sw_data = "!"
 end loop
 
-;-- wait for "CLIENT" from windows slip connection (yes, i got lazy)
-;while !serial_hw_data_available loop
-;end loop
-
--- reply with "CLIENTSERVER" to initiate connection
-;const byte str1[] = "CLIENTSERVER"   -- define a string
-;print_string(serial_hw_data, str1)   -- send via serial port
-
--- choose ip_header data
-ip_header_protocol = 0b0000_0001 -- ICMP
-;ip_header_source_ip_set     (205,200,45,124) -- PIC's ip address
-;ip_header_destination_ip_set(207,161,117,67) -- destination ip
-ip_header_source_ip_set     (192,168,2,3) -- PIC's ip address
-ip_header_destination_ip_set(192,168,2,2) -- destination ip
-ip_header_create()
+-- choose ip_header protocol and destination ip
+ip_header_protocol = NETWORK_PROTOCOL_ICMP -- ICMP
+ip_header_set_destination_ip(192,168,2,2)  -- destination ip
 
 forever loop
-   -- Send ip header
-   var byte count1 = 0
-   for 20 loop                       -- loop through all bytes in packet
-      network_send_data(ip_header[count1]) -- send slip packet data via serial port
-      ;serial_hw_data = ip_header[count1]
-      count1 = count1 + 1
-   end loop
-
-   -- choose ICMP PING data
-   var byte icmp_message[8] = {0b00001000, 0, 0b11110111, 0b11111110, 0, 1, 0, 0}
-   
-;   ;set the checksum bytes for transmit
-;   var word icmp_message_checksum = checksum_calc(icmp_message)
-;   var byte icmp_message_checksum_bytes[2] at icmp_message_checksum
-;   icmp_message[2] = icmp_message_checksum_bytes[1]
-;   icmp_message[3] = icmp_message_checksum_bytes[0]
-   
-   -- Send ICMP message - PING
-   count1 = 0
-   for 8 loop                              -- loop through all bytes in packet
-      network_send_data(icmp_message[count1]) -- send slip packet data via serial port
-      ;serial_hw_data = icmp_message[count1]
-      count1 = count1 + 1
-   end loop
-
-   -- if you don't send SLIP_RECIEVE_BUFFER_SIZE bytes, then you
-   -- must call slip_end_packet()
-   network_end_packet()
-   
+   icmp_send_echo()
    _usec_delay(1_000_000)
-   ;exit loop
 end loop
-
-
-;if network_packet_available then -- if a packet is available
-;   network_received_packet_callback(slip_packet_size_buffer)
-;end if
 
 
