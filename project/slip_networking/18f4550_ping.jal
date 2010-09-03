@@ -48,13 +48,19 @@ const serial_hw_baudrate  = 9600   -- set the baudrate
 include serial_hardware
 serial_hw_init()
 
+-- setup a button
+alias button is pin_a0
+alias button_direction is pin_a0_direction
+--
+button_direction = INPUT
+
 -- setup SLIP
-const word SLIP_MTU = 254  -- Max bytes per packet (Max Transfer Unit)
+const word SLIP_MTU = 100  -- Max bytes per packet (Max Transfer Unit)
 --
 -- choose your interrupt routine. you may ignore this and create your own
 -- isr or use polling method slip_poll()
 const bit SLIP_USE_SERIAL_HW_ISR = TRUE -- TRUE = recieve data via serial hw interrupt
-const SLIP_DO_CALLBACK_IN_ISR == TRUE -- the callback will get run within the ISR
+const SLIP_DO_CALLBACK_IN_ISR == FALSE -- the callback will get run within the ISR
 --
 -- choose your data carrier
 alias slip_serial_data is serial_hw_data
@@ -62,44 +68,78 @@ alias slip_data_available is serial_hw_data_available
 --
 -- Choose the size of your recieve buffer.
 -- Should be the same as SLIP MTU if slip interrupts are not enabled
-const byte QUEUE01_SIZE = 254
+const byte QUEUE01_SIZE = 100
 include queue01 -- include the queue/buffer library
 alias slip_rx_buffer is queue01_nb  -- alias buffer for recieved data
 --
 -- Choose buffer to hold packet sizes (for interrupts only)
-const byte QUEUE02_SIZE = 100
+const byte QUEUE02_SIZE = 10
 include queue02 -- include the queue/buffer library
 alias slip_packet_size_buffer is queue02_nb     -- alias buffer for packet sizes
 alias slip_packets_available is queue02_nr_used -- alias for number of packets avail
 --
--- callback is defined in network.jal
-procedure slip_received_packet_callback(byte in packet_size)
---
+-- prototype for procedure defined in network.jal
+procedure network_received_packet(byte in packet_size)
+-- allias callback for when a full slip packet is recieved
+alias slip_received_packet_callback is network_received_packet
+
 include slip -- include the library
+--
+-- alias slip for networking
+alias network_send_data is slip_send_data
+alias network_rx_packet_available is slip_packet_available
+alias network_rx_buffer is slip_rx_buffer
+alias network_max_packet_size is SLIP_MTU
+alias network_packet_queue_size is QUEUE01_SIZE
+alias network_end_packet is slip_end_packet
+--
+-- queue clear procedure for networking
+procedure network_clear_rx_queue() is
+   queue01_clear()
+   queue02_clear()
+end procedure
 --
 slip_init() -- init the slip library
 
+-- setup ip header lib
+include ip_header
+ip_header_set_ip (192,168,2,3) -- PIC's ip address
+
+-- setup icmp lib
+--
+-- Truncating PING reply gives a working but bad ping reply (less memory usage)
+const ICMP_PING_TRUNCATE = FALSE
+include icmp
+
 -- setup networking
-const byte NETWORK_LINK_LAYER = SLIP
+const byte NETWORK_LINK_LAYER = SLIP -- choose network link
 include network
 
 ----------------------------------------------------------------
 -- MAIN PROGRAM
 ----------------------------------------------------------------
-ip_header_set_source_ip     (192,168,2,3) -- PIC's ip address
 
 -- inform user PIC is ready !
 for 10 loop
     serial_sw_data = "!"
 end loop
+print_crlf(serial_sw_data)
 
--- choose ip_header protocol and destination ip
-ip_header_protocol = NETWORK_PROTOCOL_ICMP -- ICMP
-ip_header_set_destination_ip(192,168,2,2)  -- destination ip
-
+var byte char
 forever loop
-   icmp_send_echo()
-   _usec_delay(1_000_000)
+   -- send ping when button is pressed
+   if button == LOW then
+      icmp_send_echo(192,168,2,2)
+      while button == LOW loop
+         _usec_delay(10_000)
+      end loop
+   end if
+
+   -- poll for full packets
+   if network_rx_packet_available then
+      -- check what type of packet it is and do whatever has to be done
+      network_received_packet(slip_packet_size_buffer)
+   end if
 end loop
 
 
