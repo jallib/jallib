@@ -9,7 +9,9 @@
 -- Description: this library creates a IP header
 --
 -- Sources:
+-- http://www.faqs.org/rfcs/rfc791.html
 -- http://www.tekelec.com/ss7/protocols/ip2.asp
+-- http://www.networksorcery.com/enp/protocol/ip.htm
 --
 
 -- checksum lib is required
@@ -22,22 +24,22 @@ var byte ip_header[20] at _ip_header
 var bit*4 ip_header_length  at _ip_header : 0                -- Internet header length in 32-bit words.
 var bit*4 ip_header_version at _ip_header : 4                -- ip version
 var byte ip_header_service  at _ip_header : 8                -- Type of Service.
-var byte ip_header_total_length_high at _ip_header : 16      -- Length of internet header and data in octets.
+var byte ip_header_total_length_high at _ip_header : 16      -- length of the internet header in 32 bit dwords
 var byte ip_header_total_length_low at _ip_header : 24
 var byte ip_header_identification_high at _ip_header : 32    -- Packet Identification (Used in fragmentation)
 var byte ip_header_identification_low at _ip_header : 40
-var bit*3 ip_header_flags at _ip_header : 53
+var bit*3 ip_header_flags at _ip_header : 53                 -- Various Control Flags
 var bit*5 ip_header_fragment_offset_high at _ip_header : 48
 var byte ip_header_fragment_offset_low at _ip_header : 56
 var byte ip_header_ttl at _ip_header : 64                     -- Time to live in seconds
-var byte ip_header_protocol at _ip_header : 72                -- ICMP protocol
-var byte ip_header_checksum_1 at ip_header : 80
+var byte ip_header_protocol at _ip_header : 72                -- next level protocol such as ICMP,UDP
+var byte ip_header_checksum_1 at ip_header : 80               -- checksum of ip header
 var byte ip_header_checksum_0 at ip_header : 88
-var byte ip_header_source_ip_3 at ip_header : 96
+var byte ip_header_source_ip_3 at ip_header : 96              -- source ip address (PIC's ip address)
 var byte ip_header_source_ip_2 at ip_header : 104
 var byte ip_header_source_ip_1 at ip_header : 112
 var byte ip_header_source_ip_0 at ip_header : 120
-var byte ip_header_destination_ip_3 at ip_header : 128
+var byte ip_header_destination_ip_3 at ip_header : 128        -- destination ip address.
 var byte ip_header_destination_ip_2 at ip_header : 136
 var byte ip_header_destination_ip_1 at ip_header : 144
 var byte ip_header_destination_ip_0 at ip_header : 152
@@ -94,7 +96,7 @@ procedure ip_header_send(byte in ip_3,byte in ip_2,byte in ip_1,byte in ip_0, by
    ip_header_total_length_low     = _data_length[0]
    ip_header_identification_high  = 0b1000_1000
    ip_header_identification_low   = 0b0001_0000
-   ip_header_flags                = 0b010
+   ip_header_flags                = 0b010          -- dont' fragment
    ip_header_fragment_offset_high = 0b0_0000
    ip_header_fragment_offset_low  = 0b_0000_0000
    ip_header_ttl                  = 0b0111_1111
@@ -133,8 +135,9 @@ function ip_header_verify() return byte is
    -- check if the destination ip is the PIC's ip address
    if (ip_header[16] == ip_header_ip[3]) & (ip_header[17] == ip_header_ip[2]) & (ip_header[18] == ip_header_ip[1]) & (ip_header[19] == ip_header_ip[0]) then
    -- check the checksum
-   if checksum_verify(ip_header,count(ip_header)) then
+   -- checksum may be wrong if recieved ip header is longer then usual
+   ;if checksum_verify(ip_header,count(ip_header)) then
          return 1
-      end if
+   ;   end if
    end if
 end function
