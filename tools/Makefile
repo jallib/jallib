@@ -181,7 +181,14 @@ jallib-pack: pdfbooks
 	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	# include PDF books
+	#   generated
 	cp $$HOME/tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
+	#   static
+	-cd  distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^doc\/ | sed 's#\r##g'`; \
+	do \
+		cp ../jallib-export/$$f doc/ || (echo problem with $$f ) \
+	done | grep problem && exit 255 || true
 	echo DONE: jallib pack ready
 
 archive:
@@ -222,6 +229,3 @@ bee: clean export prepare jallib-pack bee-archive bee-check bee-upload
 pdfbooks:
 	# Tutorial book
 	ant -f $$DITA_HOME/build_demo.xml -Dprompt.ditamap.filename=`pwd`/../doc/dita/tutorials/tutorials.ditamap -Dprompt.output.type=pdf -Dprompt.output.directory=$$HOME/tmp/pdfbooks_${VERSION} -Dprompt.output.confirm=y
-	# Stater guide
-	cp distrib/jallib-export/doc/pdf/jallib_starters_guide_a4.pdf $$HOME/tmp/pdfbooks_${VERSION}/
-	cp distrib/jallib-export/doc/pdf/jallib_starters_guide_letter.pdf $$HOME/tmp/pdfbooks_${VERSION}/
