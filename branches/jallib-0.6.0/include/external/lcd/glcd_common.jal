@@ -1,0 +1,107 @@
+-- Title: glcd_common - generic routines for graphic lcd
+-- Author: Stef Mientki, Serkan Ayyýldýz Copyright (c) 2006..2009, all rights reserved.
+-- Adapted-by: Joep Suijs
+-- Compiler: >=2.2
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: 
+-- 
+-- Description: Generic routines for graphic lcd.
+-- glcd_box
+-- glcd_line
+-- --
+-- And mapping to char based lcd:
+-- lcd_put
+-- lcd_...
+--
+-- Notes: 
+--
+
+
+-- ----------------------------------------------------------
+-- ----------------------------------------------------------
+procedure lcd_line(byte in x0, byte in y0, byte in x1, byte in y1) is
+ var byte xi,yi , xfark,yfark, fark , xx
+
+   xi = x0
+   yi = y0
+   if x1 >= x0  then  xfark = x1 - x0 else  xfark = x0 - x1 end if
+   if y1 >= y0  then  yfark = y1 - y0 else  yfark = y0 - y1 end if
+
+   if xfark >= yfark then fark = xfark else fark = yfark end if
+   xx = 0
+   for fark loop
+      lcd_write_pixel ( xi, yi ,1)
+      if xx < xfark then
+          if x1 >= x0 then xi = xi + 1 else xi = xi - 1 end if
+      end if
+      if xx < yfark then
+          if y1 >= y0 then yi = yi + 1 else yi = yi - 1 end if
+      end if
+      xx = xx + 1
+   end loop
+end procedure
+
+-- ----------------------------------------------------------
+-- ----------------------------------------------------------
+procedure lcd_box(byte in x0, byte in y0, byte in x1, byte in y1) is
+   pragma inline 
+   
+   lcd_line ( x0,y0, x1,y0 )
+   lcd_line ( x1,y0, x1,y1 )
+   lcd_line ( x1,y1, x0,y1 )
+   lcd_line ( x0,y1, x0,y0 )
+end procedure
+
+
+var byte glcd_char_x_pos = 0;
+var byte glcd_char_y_pos = 0;
+
+
+-- ----------------------------------------------------------
+-- Pseudo variable 'lcd' as alternative for lcd_writechar(<byte>)
+-- ----------------------------------------------------------
+procedure lcd'put(byte in char) is
+    lcd_write_char(glcd_char_x_pos, glcd_char_y_pos, char)
+    glcd_char_x_pos = glcd_char_x_pos + 5
+end procedure
+
+;-- ----------------------------------------------------------
+;-- Send byte to the LCD and automatically set the cursor one 
+;-- position right.
+;-- There is no check on line overflow.
+;-- ----------------------------------------------------------
+;procedure  lcd_writechar(byte in c) is    
+;   _warn "lcd_writechar() is deprecated - please use lcd_write_char()" 
+;   lcd = c
+;end procedure
+
+-- ------------------------------------------------------------
+-- Clear screen
+-- (and set the cursor to the upper left corner: row 0, column 0)
+-- ------------------------------------------------------------
+procedure  lcd_clearscreen() is
+   lcd_fill(0)           -- Clear the display                 
+   glcd_char_x_pos = 0;
+   glcd_char_y_pos = 0;   
+end procedure                                 
+
+-- ------------------------------------------------------------
+-- Set cursor position
+-- Specify row and column in base-0 notation (first line is 0).
+-- ------------------------------------------------------------
+procedure  lcd_setcursor(byte in row, byte in col)  is
+   glcd_char_y_pos = row * 7 -- up to 9 rows
+   glcd_char_x_pos = col * 5 -- up to 25 cols
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- cursor returns home(line 1, position 1)
+-- ----------------------------------------------------------------------------
+procedure lcd_home()  is  
+   glcd_char_y_pos = 0
+   glcd_char_x_pos = 0
+end procedure
+-- ----------------------------------------------------------------------------

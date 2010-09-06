@@ -1,0 +1,51 @@
+-- Title: motor speed control by skipping periods of AC mains 
+-- Author: Eur van Andel, eur@fiwihex.nl (c) 2009
+-- Compiler: >=2.4g
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: AC induction motors are low-priced, very reliable and widely available.
+-- They are often used for pumps and fans. They are hard to control, mostly with expensive
+-- frequency converters. This application shows how to fine-tune the speed of such a motor,
+-- up from 0 RPM to 99.6% of full speed, without the electrical noise of phase control and
+-- without large duty cycles of varying speed. 
+-- 
+
+-- select PIC
+include 16f877a
+
+pragma target clock 20_000_000  -- 20 MHz xtal
+pragma target OSC       HS
+pragma target WDT       disabled        -- no watchdog, please
+pragma target LVP       disabled        -- no low voltage programming, frees up pin_b3
+
+-- set all IO as digital
+enable_digital_io()
+
+
+var bit triac is pin_c1 = off    -- pin connected to optotriac, can be any output
+pin_c1_direction = output
+pin_b0_direction = input   -- must be interrupt pin, connected to zero-crossing signal
+
+var byte ps_speed = 0         -- 0..255 speed control
+
+
+include period_skip        -- library, read for explanation and schematics
+
+include delay
+
+   
+-- start of main program
+
+forever loop
+   for 20 loop          -- two seconds, motor needs time to adjust to new speed
+      delay_100ms(1)
+      ps_check_period()    -- call at least every 320ms for 50Hz, 267ms for 60Hz
+   end loop
+   ps_speed = ps_speed + 10
+   ps_adjust_period()      -- call when speed changes
+end loop    -- end of main loop
+
+
+

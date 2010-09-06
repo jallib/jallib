@@ -1,0 +1,148 @@
+;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
+; test of call-by-[code|reference|value] x call-by-[code|reference|value]
+;------------------------------------------------------------------------------
+; 
+; This file tests the ability to pass parameters on from one procedure to an
+; other in different combinations.
+; 
+; There are quite a few options. The ingredients are:
+; 
+; When a parameter is defined 'in', it has to be passed to a procedure in JAL.
+; The calling procedure copies the value to the designated location of the 
+; procedure before the actual call.
+; 
+; When a parameter is defined 'out', it has to be passed from a procedure 
+; in JAL. The calling procedure copies the value from the designated location
+; of the procedure after the actual call.
+; 
+; When a parameter is defined 'volatile', not the parameter is passed, but 
+; procedures to read and write the parameter (and store it in a generic place.
+; 
+; JAT makes use of stack parameter passing of C and implements in/out passing
+; differently.
+; So a closer look to the in/out combi's:
+; 
+; in       copy before calling only in JAL, pass by value by JAT  
+; in-out   copy before and after calling by JAL, pass by reference by JAT
+;          This means that toggling a value within a procedure has no
+;          effect in JAL but does in JAT!         
+; out      copy after calling only by JAL, which means you have an 
+;          uninitialised value in your procedure and when you don't touch
+;          it, the calling variable will be jabbered. This is counter-
+;          intuitive IMO. JAT handles this as in-out (where you have the 
+;          toggling difference, but the in-copy is a valid way of 
+;          'uninitialised' ;).
+;             
+; For our test, it is sufficient to test 'call by value' (in) and 'call by
+; reference' (in-out).
+; 
+; Next we have 'volatile'. This could be sub-divided into in/out/in-out too, 
+; but in this test, we only use 'volatile in out'. JAT internally refers to 
+; this as 'call-by-code'
+; 
+; So... We have 3 combinations: 'in' 'in out' and 'volatile in out'.
+; 
+; The test consists of creating each of them in 'testfrom...()' and then call
+; three 'callby' procedures. This provides 9 combi's.
+; 
+; Some combinations with 'volatile' turn out not to be supported by JAL.
+; This is understandable since 'volatile' is much more complex then one 
+; suspects at first sight. And since nobody noticed before, the combinations
+;  are probably more academic then practical...
+;
+;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
+
+
+;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
+; Begin of test procedure/function definitions
+;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
+
+procedure callby_value(byte in x) is
+   print_var(x)
+end procedure
+
+procedure callby_reference(byte in out y) is
+   y = y + 2
+end procedure
+
+procedure callby_code(volatile byte in out z) is
+   z = z + 1
+end procedure
+
+procedure TestFromValue(byte in g) is
+;   callby_code(g)         ; not supported by JAL
+   callby_reference(g)
+   callby_value(g)
+end procedure
+
+procedure TestFromReference(byte in out h) is
+;   callby_code(h)         ; not supported by JAL
+   callby_reference(h)
+   callby_value(h)
+end procedure
+
+procedure TestFromCode(volatile byte in out i) is
+   callby_code(i)
+;   callby_reference(i)   ; not supported by JAL or JAT !!
+   callby_value(i)
+end procedure
+
+var byte a
+var volatile byte b
+
+;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
+; End of test procedure/function definitions
+;------------------------------------------------------------------------------
+;------------------------------------------------------------------------------
+
+
+for 10 loop
+
+   delay_1ms(300)    
+   start_of_test_marker()   
+   ;---------------------------------------------------------------------------
+   ;---------------------------------------------------------------------------
+   ; Start of test code
+   ;---------------------------------------------------------------------------
+   ;---------------------------------------------------------------------------
+
+   ;------------------------------------------------------------------------------
+   ; test call by code, reference and value from *value*
+   test_header(1)
+   
+   a = 1
+   TestFromValue(a)
+   print_var(a)
+   
+   ;------------------------------------------------------------------------------
+   ; test call by code, reference and value from *reference*
+   test_header(2)                                          
+   
+   a = 1
+   TestFromReference(a)
+   print_var(a)
+   
+   ;------------------------------------------------------------------------------
+   ; test call by code, reference and value from *code*
+   test_header(3)
+   
+   b = 1
+;   TestFromCode(b) ; not supported by JAL; 
+   print_var(b)         
+
+; more testing: it seems related to the use of b, twice in a row and within a loop.
+; issue a bug report to Kyle.
+
+
+   ;---------------------------------------------------------------------------
+   ;---------------------------------------------------------------------------
+   ; End of test code
+   ;---------------------------------------------------------------------------
+   ;---------------------------------------------------------------------------
+      
+end loop

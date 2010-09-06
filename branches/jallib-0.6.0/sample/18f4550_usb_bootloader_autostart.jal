@@ -1,0 +1,741 @@
+-- Title: USB (legacy) bootloader
+-- Author: Albert Faber, Copyright (c) 2009, all rights reserved.
+-- Adapted-by: -
+-- Compiler: >=2.4l
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- 
+-- Description: This application implements the Microchip PDF/USB bootloader (legacy)
+-- The compiled code shall fit in the first 1024 words 0x0000..0x0800
+-- The booloader checks the bootloader_program_pin, if it is low at initialization time
+-- the bootloader will be activated, otherwise the user program (starting at 0x800) is
+-- executed. Currently only the high priority interrupts are supported, since JAL does
+-- not support low priority interrupts. When the bootloader is active, he PDFSUSB utility 
+-- can be used to program the flase (from 0x800 and onwards), eeprom and configuration data 
+-- 
+-- 
+-- Sources: http://www.microchip.org for PICDEM specifications
+-- 
+-- Notes: compiled with following flags
+--	use -no-variable-reuse when debugging flags are
+--  set due to a compiler issue
+--
+-- -----------------------------------------------------
+--
+--
+-- This file has been generated from:
+--    * board: board_18f4550_af.jal
+--    * test : test_usb_bootloader_autostart.jal
+--
+
+
+-- whether or not using the serial port
+-- const HAS_SERIAL_DEBUG_PORT = 1
+-- const STUB_ERASE = 1
+-- const STUB_WRITE_FLASH = 1
+
+-- needed to get compact code, bootloader has to
+-- fit within first 2048 bytes in order to be
+-- compatible with default of PDFSUSB
+-- currently only 14 bytes left (2010 bytes) for a 18f4550
+-- and only 18 bytes left (2006 bytes) for a 18f14k50
+
+PRAGMA OPT CONST_DETECT YES
+
+
+;@jallib section chipdef
+-- chip setup
+include 18f4550
+
+-- even though the external crystal is 20 MHz, the configuration is such that
+-- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
+-- target frequency to 48 MHz
+pragma target clock       48_000_000
+
+
+-- fuses
+pragma target PLLDIV        P5          -- divide by 5 - 20MHZ_INPUT
+pragma target CPUDIV        P2          -- OSC1_OSC2_SRC_1_96MHZ_PLL_SRC_2
+pragma target USBPLL        F48MHZ      -- CLOCK_SRC_FROM_96MHZ_PLL_2
+pragma target OSC           HS_PLL
+pragma target FCMEN         DISABLED
+pragma target IESO          DISABLED
+pragma target PWRTE         DISABLED    -- power up timer
+pragma target VREGEN        ENABLED     -- USB voltage regulator
+pragma target VOLTAGE       V20         -- brown out voltage
+pragma target BROWNOUT      DISABLED    -- no brownout detection
+pragma target WDTPS         P32K        -- watch dog saler setting
+pragma target WDT           DISABLED    -- no watchdog
+pragma target CCP2MUX       pin_C1      -- CCP2 pin
+pragma target PBADEN        DIGITAL     -- digital input port<0..4>
+pragma target LPT1OSC       LOW_POWER   -- low power timer 1
+pragma target MCLR          EXTERNAL    -- master reset on RE3
+pragma target STVR          DISABLED    -- reset on stack over/under flow
+pragma target LVP           DISABLED    -- no low-voltage programming
+pragma target XINST         ENABLED     -- extended instruction set
+pragma target DEBUG         DISABLED    -- background debugging
+pragma target CP0           DISABLED    -- code block 0 not protected
+pragma target CP1           DISABLED    -- code block 1 not protected
+pragma target CP2           DISABLED    -- code block 2 not protected
+pragma target CP3           DISABLED    -- code block 3 not protected
+pragma target CPB           DISABLED    -- bootblock code not write protected
+pragma target CPD           DISABLED    -- eeprom code not write protected
+pragma target WRT0          DISABLED    -- table writeblock 0 not protected
+pragma target WRT1          DISABLED    -- table write block 1 not protected
+pragma target WRT2          DISABLED    -- table write block 2 not protected
+pragma target WRT3          DISABLED    -- table write block 3 not protected
+pragma target WRTB          DISABLED    -- bootblock not write protected
+pragma target WRTD          DISABLED    -- eeprom not write protected
+pragma target WRTC          DISABLED    -- config not write protected
+pragma target EBTR0         DISABLED    -- table read block 0 not protected
+pragma target EBTR1         DISABLED    -- table read block 1 not protected
+pragma target EBTR2         DISABLED    -- table read block 2 not protected
+pragma target EBTR3         DISABLED    -- table read block 3 not protected
+pragma target EBTRB         DISABLED    -- boot block not protected
+
+
+;@jallib section bootloader
+alias bootloader_program_pin    is pin_b5
+alias bootloader_program_pin_direction  is pin_b5_direction
+
+-- boot timer delay (practical values between 1..10 seconds)
+const BOOT_DELAY_IN_SECONDS = 10
+
+-- timer ticks: clock / 4 / prescaler = 8  / 16 timer overflow
+const TIMER_TICKS_PER_SECOND = target_clock / 65536 / 8 / 4
+const BOOT_TIMER_TICS = BOOT_DELAY_IN_SECONDS * TIMER_TICKS_PER_SECOND
+
+if ( BOOT_TIMER_TICS > 256) then
+   pragma error "Boot delay too large"
+end if
+
+
+const byte READ_VERSION    = 0x00
+const byte READ_FLASH      = 0x01
+const byte WRITE_FLASH     = 0x02
+const byte ERASE_FLASH     = 0x03
+const byte READ_EEDATA     = 0x04
+const byte WRITE_EEDATA    = 0x05
+const byte READ_CONFIG     = 0x06
+const byte WRITE_CONFIG    = 0x07
+const byte UPDATE_LED      = 0x32
+const byte RESET           = 0xFF
+
+const byte MINOR_VERSION   = 0x14    -- Bootloader Version 1.20
+const byte MAJOR_VERSION   = 0x01
+
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == true then
+
+	const serial_hw_baudrate = 115_200
+	
+	include serial_hardware
+	include format
+	include print
+	
+	-- intialze serial device
+	serial_hw_init()
+
+	-- uncomment when directly coupled (i.e. without max 232) to rs-232C
+	-- BAUDCON_CKTXP = true
+
+	procedure serial_print_spc() is 
+		serial_hw_write( " " )
+	end procedure
+
+	procedure serial_newline() is
+		serial_hw_write( 10 )
+		-- serial_hw_write( 13 )
+	end procedure
+
+	procedure print_nibble( byte in nibble ) is 
+
+		if nibble > 9 then
+			nibble = nibble + ( "A" - 10 ) 
+		else
+			nibble = nibble + ( "0" ) 		
+		end if
+		serial_hw_data = nibble
+	end procedure
+
+	procedure print_hex( byte in bt ) is 
+		var byte nibble = bt >> 4
+		print_nibble( nibble )
+		nibble = bt & 0x0F
+		print_nibble( nibble )
+	end procedure
+
+	const bit USB_DEBUG = false
+	const bit USB_HID_DEBUG = true
+	const bit ADD_RW_OFFSET = true
+else
+	const bit USB_DEBUG = false
+	const bit USB_HID_DEBUG = false
+
+end if
+
+const bit USB_DEBUG_HIGH = USB_DEBUG
+const bit USB_HID_DEBUG_HIGH = USB_DEBUG
+
+include usb_defs
+
+const byte USB_EP0_OUT_SIZE = 8
+const word USB_EP0_OUT_ADDR = ( USB_BASE_ADDRESS + 0x0010 )
+const byte USB_EP0_IN_SIZE  = 8
+const word USB_EP0_IN_ADDR  = ( USB_EP0_OUT_ADDR + USB_EP0_OUT_SIZE )
+
+const bit USB_EP1 = 1
+const byte USB_EP1_OUT_SIZE = 64
+const word USB_EP1_OUT_ADDR = ( USB_EP0_IN_ADDR + USB_EP0_IN_SIZE )
+const byte USB_EP1_IN_SIZE  = USB_EP1_OUT_SIZE
+const word USB_EP1_IN_ADDR  = USB_EP1_OUT_ADDR -- point to the same buffer!
+
+var volatile byte  usb_ep1in_buf[ USB_EP1_IN_SIZE ] at USB_EP1_IN_ADDR
+var volatile byte  usb_ep1out_buf[ USB_EP1_OUT_SIZE ] at USB_EP1_OUT_ADDR
+var volatile byte  boot_cmd_buffer[ USB_EP1_OUT_SIZE ] at USB_EP1_OUT_ADDR
+
+
+-- *********************************************************************
+-- * General Data Packet Structure:
+-- * .
+-- * __________________           boot_cmd fields
+-- * |    COMMAND     |   0       [CMD]
+-- * |      LEN       |   1       [LEN]
+-- * |     ADDRL      |   2       [        ]  [addrl]
+-- * |     ADDRH      |   3       [ADR.pAdr]: [addrh]
+-- * |     ADDRU      |   4       [        ]  [addru]
+-- * |                |   5       [DATA]
+-- * |                |
+-- * .      DATA      .
+-- * .                .
+-- * |                |   62
+-- * |________________|   63
+-- *
+-- ********************************************************************/
+var volatile byte  boot_cmd_cmd at boot_cmd_buffer[0]
+var volatile byte  boot_cmd_len at boot_cmd_buffer[1]
+var volatile byte  boot_cmd_addrl at boot_cmd_buffer[2]
+var volatile byte  boot_cmd_addrh at boot_cmd_buffer[3]
+var volatile byte  boot_cmd_addru at boot_cmd_buffer[4]
+var volatile byte  boot_cmd_data[USB_EP1_OUT_SIZE-6] at boot_cmd_buffer[5]
+
+const bit USB_EP2 = 0
+const byte USB_EP2_OUT_SIZE = 8
+const word USB_EP2_OUT_ADDR = 0x0000
+const byte USB_EP2_IN_SIZE  = 8
+const word USB_EP2_IN_ADDR  = 0x0000
+
+const bit USB_EP3 = 0
+const byte USB_EP3_OUT_SIZE = 8
+const word USB_EP3_OUT_ADDR = 0x0000
+const byte USB_EP3_IN_SIZE = 8
+const word USB_EP3_IN_ADDR  = 0x0000
+
+
+const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
+	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
+	USB_DT_DEVICE, 	-- DEVICE 01h
+	0x00,
+	0x02,		-- usb version 2.00
+	0x00,		-- class
+	0x00,		-- subclass
+	0x00,		-- protocol
+	USB_EP0_OUT_SIZE,		-- max packet size for end point 0
+	0xd8,
+	0x04,		-- Microchip's vendor
+	0x0b,
+	0x00,		-- Microchip bootloader
+	0x01,
+	0x00, 	     -- version 1.0 of the product
+	0x00,		-- string 1 for manufacturer
+	0x00,		-- string 2 for product
+	0x00,		-- string 3 for serial number
+	0x01		-- number of configurations
+}
+
+const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x07 + 0x07
+
+const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
+{	
+	-- configuration descriptor - - - - - - - - - - 
+	0x09,	-- length,
+	USB_DT_CONFIGURATION,	-- descriptor_type
+
+	USB_CONFIGURATION_DESCRIPTOR_SIZE,
+	0x00,	-- total_length;
+	
+	0x01,	-- num_interfaces,
+	0x01,	-- configuration_value,
+	0x00,	-- configuration_string_id,
+	0b10000000, -- attributes (bus powered, no remote wake up)
+	100,	-- max_power; (200ma)
+
+	-- interface descriptor - - - - - - - - - - - -
+	0x09,						-- length,
+	USB_DT_INTERFACE,			-- descriptor_type,
+	0x00,						-- interface_number, (starts at zero)
+	0x00,						-- alternate_setting, (no alternatives)
+	0x02,						-- num_endpoints,
+	0x00,						-- interface_class,
+	0x00,						-- interface_subclass,
+	0x00,						-- interface_protocol,
+	0x00,						-- interface_string_id;	
+	
+	-- endpoint descriptor(s)  - - - - - - - - - - - -
+	0x07,				-- length,
+	USB_DT_ENDPOINT,	-- descriptor_type,
+	0b10000001,			-- endpoint_address, (Endpoint 1, IN)
+	USB_EPT_BULK,		-- attributes
+	USB_EP1_IN_SIZE,				
+	0x00,				-- max_packet_size
+	0x00,				-- interval
+
+	0x07,				-- length,
+	USB_DT_ENDPOINT,	-- descriptor_type,
+	0b00000001,			-- endpoint_address, (Endpoint 1, OUT)
+	USB_EPT_BULK,		-- attributes
+	USB_EP1_OUT_SIZE,				
+	0x00,				-- max_packet_size
+	0x00				-- interval
+}
+
+const byte USB_STRING0[] = 
+{
+	0x04,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	0x09,	-- wLANGID[0] (low byte)
+	0x04	-- wLANGID[0] (high byte)
+}
+
+include usb_drv_core
+
+
+procedure trigger_dev2host_transfer() is 
+	var volatile bit dts_bit at usb_bd1in_stat : USB_BDSTATUS_DTS
+--	var volatile bit uown_bit_out at usb_bd1in_stat : USB_BDSTATUS_UOWN 
+	
+	if ( dts_bit  ) then
+		usb_bd1in_stat = 0b_1000_1000
+	else
+		usb_bd1in_stat = 0b_1100_1000
+	end if	
+end procedure
+
+				
+				
+procedure start_write() is 
+    EECON2 = 0x55
+    EECON2 = 0xAA
+    EECON1_WR = 1
+	if USB_HID_DEBUG then
+        serial_hw_data = "S"
+        serial_hw_data = "W"
+		serial_hw_data = " "				
+		serial_hw_data = " "
+		print_hex( TBLPTRU )
+		print_hex( TBLPTRH )
+		print_hex( TBLPTRL )
+		serial_hw_data = 10				
+		serial_hw_data = 13				
+	end if
+end procedure
+
+procedure set_boot_address() is 
+	-- pragma inline
+	TBLPTRU = boot_cmd_addru
+	TBLPTRH = boot_cmd_addrh
+	TBLPTRL = boot_cmd_addrl
+ 
+	if defined( ADD_RW_OFFSET ) == true then
+		TBLPTRH = TBLPTRH + 0x10
+	end if
+	 
+end procedure
+
+procedure disable_boot() is 
+	var word big_counter = 0xFFFF 
+
+	-- disable timer 1
+	T1CON = 0x00
+
+	-- disable USB
+	UCON = 0x00
+	
+	-- force timeout on USB
+	while big_counter != 0  loop
+		big_counter = big_counter - 1
+	end loop
+end procedure
+
+
+procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
+	pragma inline
+    var byte cdc_rx_next
+
+	-- if USB_HID_DEBUG then
+	if false then
+		var byte idx
+        const byte str[] = " EP data out: "
+        const byte str1[] = " bytes "
+        print_string(serial_hw_data,str)
+        print_hex( byte_count )
+        print_string(serial_hw_data,str1)
+        for byte_count using idx loop
+			print_hex( boot_cmd_buffer[ idx ] )
+        end loop
+    end if
+    
+	if USB_HID_DEBUG then
+		serial_hw_data = "C"
+		serial_hw_data = "M"
+		serial_hw_data = "D"
+		serial_hw_data = " "
+		
+		print_hex( boot_cmd_cmd )
+		serial_hw_data = " "
+		print_hex( boot_cmd_len )
+		serial_hw_data = " "
+		print_hex( boot_cmd_addru )
+		print_hex( boot_cmd_addrh )
+		print_hex( boot_cmd_addrl )
+		serial_hw_data = " "
+    end if
+    
+    usb_bd1in_cnt = 0x00
+    
+    case boot_cmd_cmd of
+		READ_VERSION:
+		block
+			boot_cmd_buffer[2] = MINOR_VERSION;
+			boot_cmd_buffer[3] = MAJOR_VERSION;
+			usb_bd1in_cnt = 4
+			T1CON = 0b0000_0000 -- disable timer 1
+		end block
+		
+ 		READ_EEDATA:
+		block
+if true then
+
+
+			if defined( EECON1_EEPGD ) == true then			
+				var byte counter
+				EECON1_EEPGD = 0
+				EECON1_CFGS = 0
+
+				if USB_HID_DEBUG then
+					serial_hw_data = "R"
+					serial_hw_data = "E"
+					serial_hw_data = ":"
+					serial_hw_data = " "				
+					print_hex( TBLPTRU )
+					print_hex( TBLPTRH )
+					print_hex( TBLPTRL )
+					serial_hw_data = 10				
+					serial_hw_data = 13				
+				end if
+				
+				for boot_cmd_len using counter loop
+					EEADR = boot_cmd_addrl + counter
+					-- EEADRH = byte( (word(boot_cmd_addrl) + word(counter) ) >> 8)
+					EECON1_RD = 1;
+					boot_cmd_data[ counter ] = EEDATA
+				end loop
+			end if
+end if
+						
+			usb_bd1in_cnt = 5 + boot_cmd_len
+
+		end block
+		
+		READ_FLASH,READ_CONFIG:
+		block
+			set_boot_address()
+
+			if USB_HID_DEBUG then
+				serial_hw_data = "R"
+				serial_hw_data = "F"
+				serial_hw_data = ":"
+				serial_hw_data = " "				
+				print_hex( TBLPTRU )
+				print_hex( TBLPTRH )
+				print_hex( TBLPTRL )
+				serial_hw_data = 10				
+				serial_hw_data = 13				
+			end if
+			
+			if defined( STUB_READ ) == false then
+				var byte counter
+				for boot_cmd_len using counter loop
+					asm TBLRD*+
+					boot_cmd_data[ counter ] = TABLAT
+				end loop
+			end if
+			
+			usb_bd1in_cnt = 5 + boot_cmd_len
+		end block
+		WRITE_FLASH:
+		block
+			 -- * The write holding register for the 18F4550 family is
+			 -- * actually 32-byte. The code below only tries to write
+			 -- * 16-byte because the GUI program only sends out 16-byte
+			 -- * at a time.
+			 -- * This limitation will be fixed in the future version.
+			EECON1 = 0b_1000_0100 -- Setup writes: EEPGD=1,WREN=1
+			
+			set_boot_address()
+
+			TBLPTRL = ( TBLPTRL & 0xF0 )   -- Force 16-byte boundary
+
+			if USB_HID_DEBUG then
+				serial_hw_data = "W"
+				serial_hw_data = "F"
+				serial_hw_data = ":"
+				serial_hw_data = " "				
+				print_hex( TBLPTRU )
+				print_hex( TBLPTRH )
+				print_hex( TBLPTRL )
+				serial_hw_data = 10				
+				serial_hw_data = 13				
+			end if
+			
+			if defined( STUB_WRITE_FLASH ) == false then
+				var volatile byte counter
+				for boot_cmd_len using counter loop
+					TABLAT = boot_cmd_data[ counter ]
+					
+					if USB_HID_DEBUG then
+						serial_hw_data = " "
+						print_hex(TABLAT)
+					end if
+					
+					asm TBLWT*+
+					
+					if ((counter & 0x0F ) == 0x0F ) then
+						asm TBLRD*-
+						start_write()
+					end if
+				end loop
+			end if
+			
+			usb_bd1in_cnt = 1
+		
+		end block
+		ERASE_FLASH:
+		block
+			-- The most significant 16 bits of the address pointer points to the block
+			-- being erased. Bits5:0 are ignored. (In hardware).
+
+			-- LEN = # of 64-byte block to erase
+			-- Setup writes: EEPGD=1,FREE=1,WREN=1
+			EECON1 = 0b10010100
+			
+			set_boot_address()
+
+			if USB_HID_DEBUG then
+				serial_hw_data = "E"
+				serial_hw_data = "F"
+				serial_hw_data = ":"
+				serial_hw_data = " "				
+				print_hex( TBLPTRU )
+				print_hex( TBLPTRH )
+				print_hex( TBLPTRL )
+				serial_hw_data = 10				
+				serial_hw_data = 13				
+			end if
+			
+			if defined( STUB_ERASE ) == false then
+				var byte counter
+				for boot_cmd_len using counter loop
+					start_write();
+					TBLPTRL = TBLPTRL + 32
+					if TBLPTRL == 0 then
+						TBLPTRH = TBLPTRH + 1	
+					end if
+				end loop
+				-- TBLPTRU = 0
+			end if
+			
+			usb_bd1in_cnt = 1
+		end block
+		
+		
+		WRITE_EEDATA:
+		block
+if true then
+
+			if defined( EECON1_EEPGD ) == true then			
+		
+				var byte counter
+				for boot_cmd_len using counter loop
+					EEADR = boot_cmd_addrl + counter
+					-- EEADRH = byte( (word(boot_cmd_addrl) + word(counter) ) >> 8)
+					EEDATA = boot_cmd_data[ counter ]
+					start_write()
+					while ( EECON1_WR ) loop
+					end loop
+				end loop
+			end if			
+end if
+			usb_bd1in_cnt = 1		
+		end block
+		
+		
+		WRITE_CONFIG:
+		block
+		
+			-- * The write holding register for the 18F4550 family is
+			-- * actually 32-byte. The code below only tries to write
+			-- * 16-byte because the GUI program only sends out 16-byte
+			-- * at a time.
+			-- * This limitation will be fixed in the future version.
+			EECON1 = 0b10000100								-- Setup writes: EEPGD=1,WREN=1
+			
+			set_boot_address()
+			
+			var byte counter
+			for boot_cmd_len using counter loop
+				TABLAT = boot_cmd_data[ counter ]
+
+				if USB_HID_DEBUG then
+					serial_hw_data = " "
+					print_hex( TABLAT )
+				end if
+
+				asm TBLWT*
+				start_write()
+				asm TBLWT*+
+			end loop
+			
+			usb_bd1in_cnt = 1
+		
+		end block
+		
+		UPDATE_LED:
+		block
+		
+		end block
+		
+		RESET: 
+			block
+				disable_boot()
+				-- asm reset
+				asm goto 0x800
+			end block		
+    end case
+
+    
+    if usb_bd1in_cnt > 0 then
+		-- if defined( HAS_SERIAL_DEBUG_PORT ) == true then
+		if false then
+			const byte str4[] = " XFER BYTES "
+			print_string(serial_hw_data,str4)
+			print_hex( usb_bd1in_cnt )
+			serial_hw_data = " "
+			serial_hw_data = "T"
+			serial_hw_data = "0"
+			serial_hw_data = " "
+			print_hex( usb_bd1in_addrh )
+			print_hex( usb_bd1in_addrl )
+
+		end if
+		trigger_dev2host_transfer()    
+    end if
+
+	usb_prime_epx_out( end_point, USB_EP1_OUT_SIZE )
+
+end procedure
+
+
+include usb_drv
+
+
+-- constants
+-- const  byte str_welcome[] = "JAL USB BOOTLOADER 0.10\n"
+
+-- variables
+
+
+procedure usb_tasks() is
+	pragma inline
+    usb_handle_isr()
+end procedure
+
+-- interrupts? No thanks
+-- INTCON_GIE = false
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == high then
+	-- put info on RS-232 serial line
+	serial_newline()
+	serial_newline()
+
+	-- print_string(serial_hw_data, str_welcome )
+	serial_newline()
+end if
+
+procedure interrupt_high() is 
+	pragma interrupt raw
+	asm goto ( 0x0808 )
+end procedure
+
+-- read first byte of USER ID
+-- TBLPTRU = 0x20
+-- TBLPTRH = 0x00
+-- TBLPTRL = 0x00
+--asm TBLRD*+
+
+--if ( TABLAT != 0x00 ) then
+-- if ( false) then
+--	asm goto ( 0x800)
+--else
+	-- setup the USB device
+	usb_setup()
+
+	-- enable USB device
+	usb_enable_module()		
+--end if
+
+usb_bd1in_addr = USB_EP1_IN_ADDR
+
+-- timer 1 on, prescaler 8
+T1CON = 0b0011_0001 
+
+-- check if highest part of goto instruction 
+-- if byte is set to 0xFF, then disable
+-- timer
+
+TBLPTRU = 0x00
+TBLPTRH = 0x08
+TBLPTRL = 0x03
+
+asm TBLRD*+
+if TABLAT == 0xFF then
+   T1CON = 0x00
+end if
+
+
+var byte t1_count = 0 
+
+-- main loop
+forever loop
+	-- poll the usb ISR function on a regular base, in order to 
+	-- serve the USB requests
+    usb_handle_isr()
+	if defined( HAS_SERIAL_DEBUG_PORT ) == true then    
+		if PIR1_RCIF then
+		end if
+	end if
+	
+	if PIR1_TMR1IF == 1 then
+		t1_count = t1_count + 1 
+		PIR1_TMR1IF = 0
+		
+		-- if expired, then jump to user location
+		if t1_count > BOOT_TIMER_TICS then
+			disable_boot()
+			
+			-- start user app
+			asm goto 0x800
+		end if 
+	end if	
+end loop

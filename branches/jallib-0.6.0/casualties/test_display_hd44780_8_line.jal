@@ -1,0 +1,330 @@
+-- JAL 2.0.4
+;WRITEN BY: R.P.M. ZENGERINK
+;KREHALON INDUSTRIE B.V.
+;LONDENSTRAAT 10
+;DEVENTER
+;
+;DATE:27-06-2008			
+;VERSION:1.0		
+;FILENAME:Test display.jal	
+;CPU:	16F877			
+;CLOCK:20Mhz			
+;
+;
+;
+;
+;
+
+
+-------------  INCLUDE file ----------------------------------------
+pragma target clock       20_000_000 ; change in 16f887_ok"
+include 16f877_ok
+
+
+---initial config  (addr 2007h) for config PIC-chip page 120 --------
+
+pragma target osc         hs    ;(lp,xt,hs,zie 16f887_inc_all.jal)
+pragma target watchdog    off   ;(on,off)
+pragma target LVP         off   ;low voltage ICSP (on,off)
+pragma target BOR         off   ;Burn Out Reset  (on,off)
+pragma target protection  off   ;Flash Prog mem code Protection  (off,half,all)
+pragma target CPD         off   ;Data EEprom mem code Protection (on,off)
+pragma target powerup     off   ;power up delay (72mS after power up)(on,off)
+pragma target DEBUG       off   ;In-Circuit Debugger mode (on,off)
+
+
+------------- DEFINES -----------------------------------------------
+
+--a poort
+pin_a0_direction = input   ; mag ook port_A_direction = all_input
+pin_a1_direction = input
+pin_a2_direction = input
+pin_a3_direction = input
+pin_a4_direction = input
+pin_a5_direction = input
+
+--b poort
+pin_b0_direction = output  ;mag ook port_B_direction = all_output
+pin_b1_direction = output
+pin_b2_direction = output
+pin_b3_direction = output
+pin_b4_direction = output
+pin_b5_direction = output
+pin_b6_direction = output
+pin_b7_direction = output
+
+--c poort
+pin_c0_direction = input
+pin_c1_direction = input
+pin_c2_direction = input
+pin_c3_direction = input
+pin_c4_direction = input
+pin_c5_direction = input
+pin_c6_direction = input
+pin_c7_direction = input
+
+--d poort
+pin_d0_direction = output
+pin_d1_direction = output
+pin_d2_direction = output
+pin_d3_direction = output
+pin_d4_direction = output
+pin_d5_direction = output
+pin_d6_direction = output
+pin_d7_direction = output
+
+--d poort
+pin_e0_direction = output
+pin_e1_direction = output
+pin_e2_direction = output
+
+
+
+
+
+Serial_HW_enable      ; zet hardware voor uart aan
+
+GIE = 1               ;general interupt enabled
+PEIE = 1              ;Peripheral interupt enabled
+T0IE = 0            ;timer 0 interupt disabled
+TMR1IE = 0            ;timer 1 interupt disabled
+------------- OPTION register met timer0  -------------------------------
+OPTION_REG = 0B0000_0111
+;NOT_RBPU at OPTION_REG : 7 = 0   0 = weak pull-up on port B
+;intedg   at OPTION_REG : 6 = 0   1 = opgaande flank interupt op RB0
+;T0CS     at OPTION_REG : 5 = 0   internal instruction cycle clock
+;T0SE     at OPTION_REG : 4 = 0   nvt ivm setting T0CS
+;PSA      at OPTION_REG : 3 = 0   prescaler voor timer 0
+;PS2      at OPTION_REG : 2 = 1   prescaler op 256 (20Mhz/4/128) = 39062,5HZ
+;PS1      at OPTION_REG : 1 = 1   1/(39062,5/39)TMR0 = 39 >> ~1mS = tijd van
+;PS0      at OPTION_REG : 0 = 1   timer0
+
+ --------- timer1-----------
+ T1CON = 0B0011_0100
+;not used   at T1CON : 7  = 0
+;T1RUN      at T1CON : 6  = 0     ;wordt geset als interne clock op T1 loopt
+;T1CKPS1    at T1CON : 5  = 1     ; samen met T1CKPSO prescaler
+;T1CKPS0    at T1CON : 4  = 1     ;
+;T1OSCEN    at T1CON : 3  = 0     ;1 = osc is enabled 0 = osc is shut off
+;T1INSYNC   at T1CON : 2  = 1     ;1 = do not sync ext. clk  0 = sync ext.clk
+;TMR1CS     at T1CON : 1  = 0     ;1 = ext. clock 0 = int. clock (Fosc/4)
+;TMR1ON     at T1CON : 0  = 0     ;1 = enables timer1 0 =  disables timer 1
+;
+;in is Foc/4 = 5000000/prescaler = 5000000/8 =  635000 / 625 = 1mS
+;625 = 65280 - 64655  64655/256= 252,55859375  TMR1H = 252
+;252,55859375 - 252 = 0,55859375 x 256 = 143   TMR1L = 143
+
+ ------------- Variable -----------------------------------------------
+
+
+ var bit volatile LED0 is pin_b0
+ var bit volatile LED1 is pin_b1
+ var bit volatile LED2 is pin_b2
+ var bit volatile LED3 is pin_b3
+ var bit volatile LED4 is pin_b4
+ var bit volatile LED5 is pin_b5
+ var bit volatile LED6 is pin_b6
+
+ ------------- LCD Variables ---------
+
+ var bit not_connected
+
+ var volatile bit lcd_rs is pin_e0   -- data/command select
+ var volatile bit lcd_rw is pin_e1
+ var volatile bit lcd_enable  is pin_e2   -- clock the data
+
+ var volatile bit lcd_d0 is pin_d0
+ var volatile bit lcd_d1 is pin_d1
+ var volatile bit lcd_d2 is pin_d2
+ var volatile bit lcd_d3 is pin_d3
+ var volatile bit lcd_d4 is pin_d4
+ var volatile bit lcd_d5 is pin_d5
+ var volatile bit lcd_d6 is pin_d6
+ var volatile bit lcd_d7 is pin_d7
+
+
+ const lcd_hardware_4line = false    ;true = 4 data line, false = 8 data line
+ const lcd_number_of_display_lines      = 2    ; 1 = 1 line 2 = 2 line 4 = 4 line
+ const lcd_number_of_display_characters = 16   ; number of digits per line
+
+ include lcd_hd44780_tmp
+
+  ------------------------------------------------------------------------
+  ------------- Procedures -----------------------------------------------
+  ------------------------------------------------------------------------
+ procedure Interupt is
+   pragma interrupt
+
+ ----------------Interupt ingang INT(RB0) ---------------------
+
+ --------------------------------------------------------------
+
+ ----------------Interupt ingang RB4 ---------------------
+
+ --------------------------------------------------------------
+
+ ----------------Interupt Timer 0 ---------------------
+
+
+-----------------------------------------------------------------
+
+
+
+end procedure
+
+
+
+--------------------------------------------------------------------------
+------------- MAIN program -----------------------------------------------
+--------------------------------------------------------------------------
+
+
+
+
+
+   var byte Data
+   var word wvalue = 0
+   var byte value = 0
+   var byte value1 = 0
+   var byte test = 0
+   var byte HRS = 12
+   var byte MIN = 55
+   var byte SEC = 40
+   var byte YEAR = 08
+   var word YEARW = 2008
+   var byte MOUNTH = 09
+   var byte DAY = 03
+
+
+   const byte teststring[] = "display"
+   var byte volatile testlength = count(teststring)
+
+
+   lcd_new_line_cursor_position (1, 1)
+      lcd_write_data ("T")
+      lcd_write_data ("e")
+      lcd_write_data ("s")
+      lcd_write_data ("t")
+
+
+
+
+forever loop
+   lcd_new_line_cursor_position (2, 1)
+   for testlength  loop
+       Data = teststring[value]
+       lcd_write_data (data)
+       value = value + 1
+   end loop
+
+      delay_1s(1)
+      lcd_shift_right (6)
+      delay_1s(1)
+      lcd_shift_left (4)
+      delay_1s(1)
+      lcd_cursor_blink_display (on,on,on)
+      delay_1s(1)
+      lcd_cursor_shift_left (4)
+      delay_1s(1)
+      lcd_cursor_shift_right (6)
+      delay_1s(1)
+      lcd_clear_line  ( 2 )
+      delay_1s(1)
+      lcd_home
+      delay_1s(1)
+      lcd_clear
+
+      lcd_cursor_blink_display (off,off,on)
+      lcd_clear_line  (2)
+      value = 0
+      while value < 255  loop
+            lcd_bvalue_dp_line_pos_left_sign ( value, 0, 1, 5, true, false)
+             value = value + 1
+             delay_5ms(10)
+            lcd_progress  (2, (value/17)+1, 0xFF)
+      end loop
+      lcd_bvalue_dp_line_pos_left_sign ( value, 0, 1, 5, true, false)
+
+      lcd_clear
+
+      lcd_bvalue_dp_line_pos_left_sign ( 200, 0, 1, 1, true, false)
+      delay_1s(1)
+      lcd_bvalue_dp_line_pos_left_sign ( 5, 0, 1, 5, true, false)
+      delay_1s(1)
+      lcd_bvalue_dp_line_pos_left_sign ( 7, 0, 1, 9, false, false)
+      delay_1s(1)
+      lcd_bvalue_dp_line_pos_left_sign ( 112, 1, 1, 13, false, false)
+      delay_1s(1)
+
+      lcd_clear_line  (2)
+
+      lcd_write_data ("V")
+      lcd_write_data ("a")
+      lcd_write_data ("l")
+
+      lcd_new_line_cursor_position (2, 5)  ;
+
+      lcd_write_data ("=")
+
+
+      lcd_clear_line  (1)
+
+      value1 = 0
+      wvalue = 5000
+
+      while wvalue != 0  loop
+            LCD_wvalue_dp_line_pos_left_sign ( wvalue, 2, 2, 7, true, false)
+            wvalue = wvalue - 1
+            delay_1ms(3)
+       end loop
+            LCD_wvalue_dp_line_pos_left_sign ( wvalue, 2, 2, 7, true, false)
+      delay_1s(2)
+
+      lcd_clear
+      lcd_new_line_cursor_position (1, 5)
+      lcd_date ( DAY, MOUNTH, YEAR, "-", true )
+
+      while SEC< 59 loop
+            lcd_new_line_cursor_position (2, 5)
+            lcd_time ( HRS, MIN, SEC, ":" )
+            SEC = SEC + 1
+            delay_1s(1)
+      end loop
+      lcd_new_line_cursor_position (1, 5)
+      lcd_date ( DAY, MOUNTH, YEARW, "/", false )
+      delay_1s(3)
+
+      lcd_clear
+
+  value1 = 0
+  lcd_new_line_cursor_position (1, 5)
+  lcd_write_data ("=")
+  while value1 < 255  loop
+        lcd_bvalue_dp_line_pos_left_sign ( value1, 0, 1, 1, false, false)
+        lcd_new_line_cursor_position (1, 7)
+        lcd_bvalue_hex (value1)
+        value1 = value1 + 1
+        delay_5ms(50)
+  end loop
+
+  wvalue = 0
+  lcd_new_line_cursor_position (2, 7)
+  lcd_write_data ("=")
+
+
+  while wvalue < 2000  loop
+        lcd_wvalue_dp_line_pos_left_sign ( wvalue, 0, 2, 1, false, false)
+        lcd_new_line_cursor_position (2, 9)
+        lcd_wvalue_hex (wvalue)
+        wvalue = wvalue + 1
+        delay_5ms(1)
+  end loop
+
+
+
+ end loop
+
+
+
+
+

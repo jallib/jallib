@@ -1,0 +1,108 @@
+-- --------------------------------------------------------------------------
+-- Title: Test program for lcd_hd44780_serial.jal (basic / interface test)
+-- Author: Eur Van Andel, Copyright (c) 2008, all rights reserved.
+-- Adapted-by: Rob Hamerling, Joep Suijs
+-- Compiler: >=2.4m
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- This sample shows how to setup an LCD and writes
+-- "Hello World" to the first line, using a string and the print library.
+-- Line 3 and line 4 are used as well, but will work properly only on a 4x20 LCD.
+-- A counter is printed to show the running forever loop.     
+-- --
+-- This file defines a test for JALLIB testing, using a test-board
+--  defined by a BOARD file .
+--
+-- Sources:
+--
+-- Notes: 
+-- setup: an hd44780 compatible display, used in 4-bit mode.
+-- 
+-- --------------------------------------------------------------------------
+
+;@jallib use chipdef
+;@jallib use lcd_hd44780_serial
+;@jallib use led
+
+-- ok, now setup serial
+;@jallib use serial
+include serial_hardware
+serial_hw_init()
+
+enable_digital_io()
+
+led_direction = output
+
+
+alias serial_sw_tx_pin is i2c_scl
+i2c_scl_direction = output   
+
+include print                          -- formatted output library
+include lcd_hd44780_serial_sw          -- LCD lib with serial interface
+
+for 4 loop                             -- blink LED 4 times to indicate startup
+   LED = on
+   delay_100ms(2)
+   LED = off
+   delay_100ms(2)
+end loop
+
+const byte str1[] = "Hello world!"      -- define strings
+;const byte str2[] = "third line"
+;const byte str3[] = "fourth line"
+
+lcd_init()                              -- initialize LCD
+
+print_string(lcd, str1)                 -- show hello world!
+;lcd_cursor_position(2,0)                     -- to 3rd line
+;print_string(lcd, str2)
+;lcd_cursor_position(3,0)                     -- to 4th line
+;print_string(lcd, str3)
+
+var byte counter = 0
+
+procedure backlight_slope is
+   var byte i
+
+   -- slope increase   
+   for 255 using i loop
+      lcd_backlight_variable(i)           
+      delay_1ms(2)
+   end loop
+                    
+   -- slope decrease
+   for 255 using i loop
+      lcd_backlight_variable(255-i)           
+      delay_1ms(2)
+   end loop
+
+;   -- off for 2 secs
+;   lcd_backlight_variable(0)           
+;   delay_100ms(20)                  
+      
+end procedure
+
+
+forever loop                           -- loop forever
+
+   counter = counter + 1               -- update counter
+   lcd_cursor_position(1,0)            -- second line, first column (0)
+   print_byte_hex(lcd, counter)        -- output in hex format
+   delay_100ms(3)                      -- wait a little
+
+--   lcd_backlight_variable(counter)     -- basic test backlight
+
+   backlight_slope();                  -- enhanced backlight test
+
+   if counter == 255 then              -- counter wrap
+      lcd_cursor_position(1,1)         -- 2nd line, 2nd char
+      lcd = " "                        -- clear 2nd char
+      lcd = " "                        -- clear 3rd char
+   end if
+
+end loop
+
+

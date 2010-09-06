@@ -1,0 +1,81 @@
+-- Title: External SPI bus 2K EEPROM with EUI-48 Node Identity
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- The 25AA02E48 is pre-programmed with a unique EUI-48 address but also
+--                 allows for user-generated non-volatile storage. 
+--
+-- Note:  uses SPI Master library and also needs a 'chip select' pin such as:
+--              alias ee25_sel is pin_A1
+
+-- The 6-byte EUI-48 node address value is stored at locations 0xFA thru 0xFF. Otherwise,
+-- the chip appears to be the same as the 25AA020A EEPROM.
+
+-- read the data from the specified address
+function ee25_read(byte in addr) return byte is
+   var byte data
+   ee25_sel = 0
+   spi_master_hw = 0x03
+   spi_master_hw = addr
+   data = spi_master_hw
+   ee25_sel = 1
+   return data
+end function
+
+-- write the data to the specified address. 
+procedure ee25_write(byte in addr, byte in data) is
+   
+   -- the default from the factory is for the chip to protect the upper 1/4 of the 
+   -- address space, which contains the MAC address.  Therefore we also
+   -- enforce this in software.
+   if addr >= 0xC0 then
+      return
+   end if
+   
+   -- enable write
+   ee25_sel = 0
+   spi_master_hw = 0x06
+   ee25_sel = 1
+   
+   -- write the value
+   ee25_sel = 0
+   spi_master_hw = 0x02
+   spi_master_hw = addr
+   spi_master_hw = data
+   ee25_sel = 1
+   
+   -- mandatory 5mS delay
+   for 50 loop
+      _usec_delay(100)
+   end loop
+   
+   -- disable write
+   ee25_sel = 0
+   spi_master_hw = 0x04
+   ee25_sel = 1
+end procedure
+
+-- optional routine for advanced operations.
+-- read the Status register
+function ee25_rd_status() return byte is
+   var byte data
+   ee25_sel = 0
+   spi_master_hw = 0x05
+   data = spi_master_hw
+   ee25_sel = 1
+   return data
+end function
+
+-- optional routine for advanced operations.
+-- write the Status register (be careful)
+procedure ee25_wr_status(byte in data) is
+   ee25_sel = 0
+   spi_master_hw = 0x01
+   spi_master_hw = data
+   ee25_sel = 1
+end procedure
+

@@ -1,0 +1,293 @@
+-- Title: FAT32 library for reading fat32 filesystem
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this example reads files & folders from a fat32 formatted sd card
+--              using the fat32 library.
+--
+-- Sources:
+-- http://www.microsoft.com/whdc/system/platform/firmware/fatgen.mspx
+-- http://www.pjrc.com/tech/8051/ide/fat32.html
+-- http://en.wikipedia.org/wiki/File_Allocation_Table
+--
+
+-- include chip
+include 18F4620                   -- target picmicro
+;include 18F452                   -- target picmicro
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+;pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
+;pragma target osc hs_pll              -- hs crystal or resonator
+pragma target osc hs
+pragma target clock 20_000_000    -- oscillator frequency
+;pragma target clock 16_000_000    -- oscillator frequency
+;pragma target clock 32_000_000    -- oscillator frequency
+;pragma target clock 40_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
+pragma target MCLR external        -- reset externally
+--;
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+;OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+;OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+;--
+
+enable_digital_io() -- disable all analog pins if any
+_usec_delay (100_000) -- wait for power to stablilize
+
+-- setup uart for communication
+const serial_hw_baudrate  = 38400   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+-- setup hard disk library
+CONST BYTE PATA_HD_USE_CS0_CS1_PINS = FALSE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
+const bit PATA_HD_NO_INVERTER = TRUE -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
+-- pin assignments
+alias     pata_hd_data_low              is portb   -- data port (low bits)
+alias     pata_hd_data_low_direction    is portb_direction
+alias     pata_hd_data_high             is portd   -- data port (high bits)
+alias     pata_hd_data_high_direction   is portd_direction
+alias     pata_hd_a0                    is pin_a3
+alias     pata_hd_a0_direction          is pin_a3_direction
+alias     pata_hd_a1                    is pin_a1
+alias     pata_hd_a1_direction          is pin_a1_direction
+alias     pata_hd_a2                    is pin_a0
+alias     pata_hd_a2_direction          is pin_a0_direction
+alias     pata_hd_iowr                  is pin_e0
+alias     pata_hd_iowr_direction        is pin_e0_direction
+alias     pata_hd_iord                  is pin_a4
+alias     pata_hd_iord_direction        is pin_a4_direction
+;alias     pata_hd_cs1                   is pin_a3
+;alias     pata_hd_cs1_direction         is pin_a3_direction
+;alias     pata_hd_cs0                   is pin_a4
+;alias     pata_hd_cs0_direction         is pin_a4_direction
+
+pata_hd_a0_direction = output    -- register select pin
+pata_hd_a1_direction = output    -- register select pin
+pata_hd_a2_direction = output    -- register select pin
+pata_hd_iowr_direction = output  -- used for write pulse
+pata_hd_iord_direction = output  -- used for read pulse
+;pata_hd_cs1_direction = output   -- register select pin
+;pata_hd_cs0_direction = output   -- register select pin
+
+include pata_hard_disk           -- include the parallel ata ide hard disk library
+pata_hd_init()                   -- initialize startup settings
+
+-- setup fat32 --
+-- include the required files
+include pic_data_eeprom
+include format  -- include format library (required by some fat32 procedures)
+-- change these vaues to save memory
+const word FAT32_FILES_MAX = 50            -- the max number of files allowed in a directory
+const byte FAT32_FILENAME_SIZE = 100        -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
+const FAT32_DIR_FRAGMENTS_TO_ALLOW = 10     -- (0 = you must have a defragmented media), usually directories are fragmented.
+--                                          -- uses 6 bytes memory per fragment allowed
+--                                          -- windows defrag does not defragment directories.
+const FAT32_FILE_FRAGMENTS_TO_ALLOW = 10    -- (0 = you must have a defragmented media)
+--                                          -- uses 8 bytes memory per fragment allowed
+const bit FAT_32_FILENAME_IN_EEPROM = FALSE -- PIC eeprom is slow, loads filenames slow, false = use internal memory
+var byte LONGNAMELOCATION = 0               -- The start location for the filename in eeprom. use only if FAT_32_FILENAME_IN_EEPROM = TRUE
+--
+-- experts may change the following values
+const byte FAT32_USE_SECTOR_BUFFER = FALSE  -- must be true if using SD card + external memory on SPI bus
+;const byte FAT32_ENTRIES_MAX = 1           -- highest file entry address can be 256
+const byte FAT32_ENTRIES_MAX = 2            -- highest file entry address can be 65535
+--
+-- choose a memory source for the file list
+const bit FAT32_USE_INTERNAL_MEMORY = TRUE -- Use internal memory for file location list
+IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
+   -- Setup a large array for storing sector data, This is where filename locations are stored
+   const dword LARGE_ARRAY_2_SIZE = FAT32_FILES_MAX               -- choose number of array variables
+   const dword LARGE_ARRAY_2_VARIABLE_SIZE = FAT32_ENTRIES_MAX    -- choose bytes size of variables
+   include large_array_2                    -- include the array library
+   ALIAS entry_location is large_array_2
+elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
+   -- put your own code here if you wish to allow massive amounts of files per directory
+
+   -- example usage of 23k256 for external memory
+
+   -- if we are using an sd card, we already initilized the SPI bus, so skip this.
+   if defined(sd_init) == false then  -- if we are using an sd card, we already did this step
+      include spi_master_hw        -- includes the spi library
+      -- define spi inputs/outputs
+      pin_sdi_direction = input    -- spi input
+      pin_sdo_direction = output   -- spi output
+      pin_sck_direction = output   -- spi clock
+      --
+      spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+   end if
+
+   -- setup 23k256 for external memory
+   -- setup chip select pin
+   ALIAS sram_23k256_chip_select             is pin_a2
+   ALIAS sram_23k256_chip_select_direction   is pin_a2_direction
+   -- initial settings
+   sram_23k256_chip_select_direction = output    -- chip select/slave select pin
+   sram_23k256_chip_select = high                -- start chip slect high (chip disabled)
+   -- initalize 23k256 in byte mode
+   include sram_23k256 -- setup Microchip 23k256 sram
+   sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
+
+  -- alias the 23k256 device word array
+  ;alias entry_location is sram_23k256_byte  -- highest file entry address can be 256
+   alias entry_location is sram_23k256_word   -- highest file entry address can be 65535
+END IF
+--
+include fat32   -- include fat32 library -- include fat32
+
+-- CHOOSE FILE ATTRIBUTES TO FILTER OUT
+fat32_filter_is_read_only  = FALSE
+fat32_filter_is_hidden     = FALSE
+fat32_filter_is_system     = FALSE
+fat32_filter_is_volume_id  = FALSE
+fat32_filter_is_directory  = FALSE
+fat32_filter_is_archive    = FALSE
+
+-- user procedures
+
+-- procedure for sending 80 "-----------------" via serial port
+procedure next() is
+   serial_hw_write (13)-- send (carriage return, line feed) characters to serial port
+   serial_hw_write (10)
+   for 80 loop
+      serial_hw_write ("-")
+   end loop
+   serial_hw_write (13)-- send (carriage return, line feed) characters to serial port
+   serial_hw_write (10)
+end procedure
+
+-- start of main program
+var byte in_a, in_b -- vars for storing data read
+
+fat32_init(1)       -- initialize fat32, go to 1st primary partition's root dir "\"
+
+------------------------------------------------------------
+-- list a directory, send it via serial port
+------------------------------------------------------------
+
+-- we are now in the root dir of the 1st partition
+
+fat32_list_dir() -- see the procedure, sends dir listing via serial port
+
+;next() -- send "-----" and go to next example
+
+---------------------------------------------------------------------------------------------------------------
+-- example read filename, send it via serial port
+------------------------------------------------------------
+
+-- we are still in the root dir of the 1st partition
+
+;fat32_read_file_info(3) -- read 3rd file's name, location, size, attributes into memory
+
+
+-- now send the filename via the serial port
+;fat32_read_filename()
+
+;next() -- send "-----" and go to next example
+
+------------------------------------------------------------
+-- example select a file,
+-- if dir then go into dir list it
+-- if file then go into file and read it
+------------------------------------------------------------
+
+;  var byte file_number = 13
+;     -- choose a file for reading or dir for opening
+;
+;  if fat32_cd(file_number) then            -- if change directory is successful
+;    list_dir()                              -- sends dir listing via serial port
+;  end if
+;
+;  if fat32_file_open(file_number) then  -- if go into file is successful
+;
+;    fat32_start_read (fat32_file_location)  -- go in the file, get ready to read
+;    for (fat32_file_size / 2) loop          -- reading 2 bytes at a time
+;      fat32_read_file (in_b, in_a)          -- read 2 data bytes
+;       serial_hw_write (in_b)                -- send 2 data bytes via serial port
+;       serial_hw_write (in_a)
+;    end loop
+;
+;    -- if odd number of bytes in file, send last byte
+;    var bit odd_number at fat32_file_size : 0
+;    if odd_number then
+;      fat32_read_file (in_b, in_a)          -- read 2 data bytes
+;      serial_hw_write     (in_b)            -- send last data byte via serial port
+;    end if
+;
+;    fat32_stop_read () -- end of file, set media idle
+;  end if
+;
+;serial_hw_write (13)                -- send 2 data bytes via serial port
+;serial_hw_write (10)
+
+
+;------------------------------------------------------------
+;-- example raw read one sector from anywhere on media
+;------------------------------------------------------------
+;-- READ ONE SECTOR
+;var byte low_byte
+;var byte high_byte
+;
+;-- raw read the sector containing the root dir (sector 0)
+;fat32_start_read(fat32_cluster_begin + (0x02 * 8))
+;for 256 loop                          -- read 1 sector (256 words)
+;  fat32_raw_read (low_byte, high_byte)  -- read 2 bytes of data
+;  serial_hw_write (low_byte)          -- send byte via serial port
+;  serial_hw_write (high_byte)         -- send byte via serial port
+;end loop
+;fat32_stop_read()                        -- tell sd card you are done reading
+
+
+
+
+------------------------------------------------------------
+-- example user interaction,
+-- send file/dir number via serial port to go into it
+--
+-- if volume id selected, list the current dir (root dir)
+-- if directory selected go into it and list it
+-- if file selected go into file and read it
+------------------------------------------------------------
+
+var byte file_number2 = 0
+forever loop
+
+
+   next() -- send "-----" then loop and wait for user input
+
+   while !serial_hw_data_available loop
+   end loop
+
+   var byte x
+   x = serial_hw_read(file_number2)
+
+   -- choose a file for reading or dir for opening
+   if fat32_cd(file_number2) then             -- if change directory is successful
+      fat32_list_dir()                        -- sends dir listing via serial port
+   elsif fat32_file_open(file_number2) then   -- if go into file is successful
+
+      fat32_start_read (fat32_file_location)  -- go in the file, get ready to read
+      for (fat32_file_size / 2) loop          -- reading 2 bytes at a time
+         fat32_read_file (in_b, in_a)         -- read 2 data bytes
+         serial_hw_write (in_b)               -- send 2 data bytes via serial port
+         serial_hw_write (in_a)
+      end loop
+
+      -- if odd number of bytes in file, send last byte
+      var bit odd_number at fat32_file_size : 0
+      if odd_number then
+         fat32_read_file (in_b, in_a)          -- read 2 data bytes
+         serial_hw_write     (in_b)            -- send last data byte via serial port
+      end if
+
+      fat32_stop_read () -- end of file, set media idle
+   end if
+
+
+end loop

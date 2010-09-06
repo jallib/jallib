@@ -1,0 +1,338 @@
+-- Title: CATPADV1
+-- Author: Michael Watterson Copyright (c) 2010, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- see http://freshmeat.net/projects/jalv2
+
+-- Run out of Flash at 32K
+-- prototype  PIC18F46J50 64 KByte, 3800 RAM, 34 I/O, 44 pin with adaptor PCB
+-- or PIC18F67J50 128 Kbyte, 3904 RAM  49 I/O, 64 pin
+-- and for PCB version either
+-- PIC18F66J50  64 KByte, 3904 RAM, 49 I/O, 64 pin        66j50
+-- PIC18F86J50  64 KByte, 3904 RAM, 65 I/O, 80 pin        86j50
+-- or for more Flash
+-- PIC18F66J55  96 Kbyte, 3904 RAM  49 I/O, 64 pin        66j60
+                                                   --     66j65
+-- PIC18F67J50 128 Kbyte, 3904 RAM  49 I/O, 64 pin        67j60  67j50
+-- PIC18F86J55  96 Kbyte, 3904 RAM  65 I/O, 80 pin        86J60  86j55
+-- PIC18F87J50 128K byte, 3904 RAM  65 I/O, 80 pin        86J65
+                                                    --    87j60
+                                                    --    96j65
+                                                    --    97j60
+-- Product  	kB	I/O Pins  Packages	# of A/D Ch.	Cap Touch Channels	Digital Communication	Timers	Operation Voltage Range	Volume Pricing	Documents								
+-- PIC18F46J50 	64	34	44	 44/TQFP	13	13	 2 -A/E/USART  , 2 -MSSP(SPI/I2C)  	 2 - 8-bit , 3 - 16-bit  , 0 - 32-bit	 2V - 3.6V	$2.58	http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1335&dDocName=en539708								
+-- PIC18F66J50 	64	49	64	 64/TQFP	8		 0 -UART  , 2 -A/E/USART  , 0 -SPI  , 0 -I2C  , 2 -MSSP(SPI/I2C)  	 2 - 8-bit , 3 - 16-bit  , 0 - 32-bit	 2V - 3.6V	$2.59	http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1335&dDocName=en027179								
+-- PIC18F66J55 	96	49	64	 64/TQFP	8		 0 -UART  , 2 -A/E/USART  , 0 -SPI  , 0 -I2C  , 2 -MSSP(SPI/I2C)  	 2 - 8-bit , 3 - 16-bit  , 0 - 32-bit	 2V - 3.6V	$2.72	http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1335&dDocName=en027178								
+-- PIC18F67J50 	128	49	64	 64/TQFP	8		 0 -UART  , 2 -A/E/USART  , 0 -SPI  , 0 -I2C  , 2 -MSSP(SPI/I2C)  	 2 - 8-bit , 3 - 16-bit  , 0 - 32-bit	 2V - 3.6V	$2.83	http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1335&dDocName=en027177								
+-- PIC18F86J50 	64	65	80	 80/TQFP	12		 0 -UART  , 2 -A/E/USART  , 0 -SPI  , 0 -I2C  , 2 -MSSP(SPI/I2C)  	 2 - 8-bit , 3 - 16-bit  , 0 - 32-bit	 2V - 3.6V	$2.86	http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1335&dDocName=en027175								
+-- PIC18F86J55 	96	66	80	 80/TQFP	12		 0 -UART  , 2 -A/E/USART  , 0 -SPI  , 0 -I2C  , 2 -MSSP(SPI/I2C)  	 2 - 8-bit , 3 - 16-bit  , 0 - 32-bit	 2V - 3.6V	$2.98	http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1335&dDocName=en027181								
+-- PIC18F87J50 	128	65	80	 80/TQFP	12		 0 -UART  , 2 -A/E/USART  , 0 -SPI  , 0 -I2C  , 2 -MSSP(SPI/I2C)  	 2 - 8-bit , 3 - 16-bit  , 0 - 32-bit	 2V - 3.6V	$3.09	http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1335&dDocName=en027172								
+
+
+
+-- I can see no value in using external Flash or RAM.
+-- 1) Triples or quadruples board area due to tracks and extra chip
+-- 2) Doubles cost
+-- 3) Reduces i/o pins by about 27
+
+
+include 18f4550
+-- even though the external crystal is 20 MHz, the configuration is such that
+-- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
+-- target frequency to 48 MHz
+pragma target clock       48_000_000
+
+-- fuses
+pragma target PLLDIV        P5          -- divide by 5 - 20MHZ_INPUT
+pragma target CPUDIV        P2          -- OSC1_OSC2_SRC_1_96MHZ_PLL_SRC_2
+pragma target USBPLL        F48MHZ      -- CLOCK_SRC_FROM_96MHZ_PLL_2
+pragma target OSC           HS_PLL
+pragma target FCMEN         DISABLED
+pragma target IESO          DISABLED
+pragma target PWRTE         ENABLED    -- power up timer
+pragma target VREGEN        ENABLED     -- USB voltage regulator
+pragma target VOLTAGE       V20         -- brown out voltage
+pragma target BROWNOUT      DISABLED    -- no brownout detection
+pragma target WDTPS         P32K        -- watch dog saler setting
+pragma target WDT           DISABLED    -- no watchdog
+pragma target CCP2MUX       pin_C1      -- CCP2 pin
+pragma target PBADEN        DIGITAL     -- digital input port<0..4>
+pragma target LPT1OSC       LOW_POWER   -- low power timer 1
+pragma target MCLR          EXTERNAL    -- master reset on RE3
+pragma target STVR          DISABLED    -- reset on stack over/under flow
+pragma target LVP           DISABLED    -- no low-voltage programming
+pragma target XINST         ENABLED     -- extended instruction set
+pragma target DEBUG         DISABLED    -- background debugging
+pragma target CP0           DISABLED    -- code block 0 not protected
+pragma target CP1           DISABLED    -- code block 1 not protected
+pragma target CP2           DISABLED    -- code block 2 not protected
+pragma target CP3           DISABLED    -- code block 3 not protected
+pragma target CPB           DISABLED    -- bootblock code not write protected
+pragma target CPD           DISABLED    -- eeprom code not write protected
+pragma target WRT0          DISABLED    -- table writeblock 0 not protected
+pragma target WRT1          DISABLED    -- table write block 1 not protected
+pragma target WRT2          DISABLED    -- table write block 2 not protected
+pragma target WRT3          DISABLED    -- table write block 3 not protected
+pragma target WRTB          DISABLED    -- bootblock not write protected
+pragma target WRTD          DISABLED    -- eeprom not write protected
+pragma target WRTC          DISABLED    -- config not write protected
+pragma target EBTR0         DISABLED    -- table read block 0 not protected
+pragma target EBTR1         DISABLED    -- table read block 1 not protected
+pragma target EBTR2         DISABLED    -- table read block 2 not protected
+pragma target EBTR3         DISABLED    -- table read block 3 not protected
+pragma target EBTRB         DISABLED    -- boot block not protected
+
+PRAGMA SIZE
+
+enable_digital_io()
+
+-- ---------------------------- LIBRARIES -----------------------------
+include delay
+
+--include tasks
+-- ---------------------------- SERIAL USART --------------------------
+-- ok, now setup serial;@jallib section serial
+const serial_hw_baudrate = 38_400
+include io_usart_int
+
+-- ----------------------------  USB SERIAL --------------------------
+include io_usb_serial
+--
+-- ------------ EEPROMS ---- Internal and I2C SW (not MSSP) ----------
+
+-- include eeprom_int  replaced by  array_storage
+
+Alias   i2c_scl            is pin_b1
+Alias   i2c_scl_direction is pin_b1_direction
+Alias   i2c_sda            is pin_b0
+Alias   i2c_sda_direction is pin_b0_direction
+include io_i2c_sw
+--include I2C_hw
+-- include eeprom_i2c_smart  replaced by  array_storage
+include array_storage
+
+
+--
+-- ------------------------- KS0108 GLCD 128 x64 ---------------------
+--GLCD ports
+alias  GLCD_CS2           is pin_b2
+alias  GLCD_CS2_direction is pin_b2_direction
+alias  GLCD_CS1           is pin_b3
+alias  GLCD_CS1_direction is pin_b3_direction
+alias  GLCD_RW            is pin_b6
+alias  GLCD_RW_direction  is pin_b6_direction
+alias  GLCD_DI            is pin_b7 -- LCD command/data select.
+alias  GLCD_DI_direction  is pin_b7_direction
+alias  GLCD_E             is pin_E2
+alias  GLCD_E_direction   is pin_E2_direction
+alias  GLCD_LED           is pin_E1
+alias  GLCD_LED_direction is pin_E1_direction
+alias GLCD_dataprt        is portd    -- LCD data
+alias GLCD_DATAPRT_DIR    is portd_direction
+include dev_glcd_ks0108
+--graphics layout
+-- 0,0--------------------------------------------------------127,0
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- 0,63------------------------------------------------------127,63
+--
+
+
+-- ------------------ 4x4 Keypad, Menu and Navipad ----------------
+
+-- 5x5 Keypad setup
+-- keyboard map (4x4, col4 is left out with 4x3 keyboard)
+-- --
+--      1 2 3 A   ^  row1
+--      4 5 6 B   <  row2
+--      7 8 9 C   v  row3
+--      * 0 # D   >  row4
+--      r g y b   e
+-- --
+--  col 1 2 3 4   5
+
+-- 4x4 pad
+;pin numbers of keypad shown in <> brackets
+;
+;	   <1> <2> <3> <4>
+;	<5>	1	2	3	A
+;	<6>	4	5	6	B
+;	<7>	7	8	9	C
+;	<8>	*	0	#	D
+
+; *top view* of keypad pins: 1,2,3,4,5,6,7,8
+; pin 1 is near * key.
+--
+alias keyscan  is portb      -- rows of keyboard
+alias keyscan_direction is portb_direction
+alias keydrive is portd      -- columns of keyboard
+alias keydrive_direction is portd_direction
+include dev_keypad6x8
+--
+
+-- --------------------- General Libraries ---------------------
+include math_int
+include graphics
+include bcd_utils
+include terminal
+--
+
+-- --------------------- RIG Control / CAT commands ------------
+
+include cat_ft817
+--
+
+-- ------------------- for Clock Calendar  ---------------------
+var volatile byte seconds                 -- updated by ISR
+-- updated by calendar
+var byte minutes  = 25
+var byte hours    = 14
+var byte date     = 23
+var byte month    = 3
+var word year     = 2010
+include calendar
+
+procedure ClockInit()  is
+var word boots
+    EepromIntWord[IO_Boots] = boots
+    seconds = EepromIntByte[IO_Seconds]
+    if seconds > 59 then
+        seconds =15
+       --EepromIntByte[IO_Seconds] = seconds
+    end if
+    minutes = EepromIntByte[IO_Minutes]
+    if minutes > 59 then
+       minutes =41
+       --EepromIntByte[IO_Minutes] = minutes
+    end if
+    hours = EepromIntByte[IO_Hours]
+    if hours > 23 then
+       hours =10
+       --EepromIntByte[IO_Hours] = hours
+    end if
+    date = EepromIntByte[IO_Day]
+    if date > 31 then
+       date =23
+       --EepromIntByte[IO_Day] = date
+    end if
+    month = EepromIntByte[IO_Month]
+    if month > 12 then
+       month =3
+       --EepromIntByte[IO_Month] = month
+    end if
+    year = EepromIntWord[IO_Year]
+    if year == 0xFFFF then
+       year = 2010
+       --EepromIntWord[IO_Year] = year
+    end if
+    boots = EepromIntWord[IO_Boots]
+    if boots == 0xFFFF then
+       boots =0
+    else
+       boots = boots +1
+    end if
+end procedure
+
+procedure ClockSave()  is
+    calendar()
+    EepromIntByte[IO_Seconds] = seconds
+    EepromIntByte[IO_Minutes] = minutes
+    EepromIntByte[IO_Hours] = hours
+    EepromIntByte[IO_Day] = date
+    EepromIntByte[IO_Month] = month
+    EepromIntWord[IO_Year] = year
+end procedure
+
+--
+
+-- --------------------- For RDS decoder  ----------------------
+alias rds_data is pin_A1
+alias rds_data_direction is pin_A1_direction
+rds_data_direction = input
+alias rds_clock is pin_A2
+alias rds_clock_direction is pin_A2_direction
+rds_clock_direction = input
+ -- include dev_rds_rx
+
+-- ---------------- Main Globals and Tasks ----------------------
+-- constants
+const  byte str_welcome[] = "EI9FEB's Catpad test\n"
+const byte str0[] = "EI9FEB"
+const byte str1[] = "'s"
+const byte str2[] = "CatPad for FT817 1.4"
+-- variables
+alias  ptt      is pin_E0
+alias  ptt_direction   is pin_E0_direction
+ptt_direction = output
+include catpad_main
+--
+
+-- --------------------- Main Program  ----------------------
+block
+    --serial_twostop_bits(on)
+    -- --------- Do a boot screen with Version -------------
+    LCD_Cmd = PANEL_INIT + PANEL_FILL + PANEL_LAMP_ON
+    CharInk = off
+    CharStyleDouble = on
+    ScreenCharXY(2,1)
+    print_string(ScreenChar,str0)
+    print_string(ScreenChar,str1)
+    CharStyleDouble = off
+    CharStyleBold = on
+    ScreenCharXY(1,6)
+    print_string(ScreenChar, str2)
+    CharStyleBold = off
+    --
+
+    delay_100ms(20)
+    -- rand_seed( word(seconds) + year )
+    --for 20_000 loop
+    --    PlotPixel(byte(rand() % 127), byte(rand() % 63), 1)
+    --end loop
+    -- rand_seed( word(seconds) + word(minutes) + year)
+    --for 10_000 loop
+    --    PlotPixel(byte(rand % 127), byte(rand % 63), bit(rand & 1))
+    --end loop
+    --for 20_000 loop
+    --    PlotPixel(byte(rand() % 127), byte(rand() % 63), 0)
+    --end loop
+
+    -- setup the USB serial library, but too quickly!
+    -- must do usb_serial_flush() as soon as USB port is enabled
+    LCD_Cmd = PANEL_CLEAR + PANEL_LAMP_OFF
+    
+    -- Enable Real Time Clock and Tasks
+    CharInk = on
+    T0CON_T0CS =0                          -- TMR0 on internal clock
+    T0CON_PSA = 1                                -- prescaler
+                         -- so no prescaler for TMR0 (= default)
+    INTCON_TMR0IE = on                  -- if your PIC freezes, move these lines
+    INTCON_GIE = on                     -- to see if the ISR causes troublewelcome()
+    serial_hw_init(38_400, USART_PARITY_NONE, 8, 1, USART_FLOW_INT)      -- use interupts and no flow control
+    usb_serial_init()
+    ClockInit()
+    welcome()
+
+    --start ClockWidget
+    --start RadioWidget
+    --start UserInput
+    --start RDSWidget
+
+    forever loop
+
+        --_usec_delay(10)
+        --suspend
+        RadioWidget()
+
+        UserInput()
+
+        ClockWidget()
+
+        RDSWidget()
+
+    end loop
+end block

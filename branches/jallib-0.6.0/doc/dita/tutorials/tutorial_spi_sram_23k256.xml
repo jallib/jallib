@@ -1,0 +1,147 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- This document was created with Syntext Serna Free. --><!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd" []>
+<topic id="sram_23k256">
+  <title>Memory with 23k256 sram</title>
+  <prolog>
+    <author>Matthew Schinkel</author>
+    <publisher>Jallib Group</publisher>
+  </prolog>
+  <body>
+    <p id="firstcontent">Learn how to use Microchip&apos;s cheap 256kbit (32KB) sram for temporary data storage</p>
+    <section>
+      <title>What is the 23k256 sram and why use it?</title>
+      <p>So, you need some data storage? Put your data on a 23k256!</p>
+      <image href="images/sram_23k256.jpg" width="100" otherprops="clickable"/>
+      <p>If speed is your thing, this one is for you! This is FAST. According to Microchip&apos;s datasheet, data can be clocked in at 20mhz. The disadvantage to this memory however is that it will not hold it&apos;s memory when power is off since it is a type of RAM (Random Access memory).</p>
+      <p>If you wish to hold memory while power is off, you will have to go with EEPROM but it is much slower. EEPROM requires a 1ms delay between writes.  In the time that I could write 1 byte to an EEPROM (1ms), I could write 2500 bytes to the 23k256 (if I can get my PIC to run fast enough).</p>
+      <p>Yet another advantage, is that it is only 8 pins (as you can see from the image). Other RAM memories have 10 or so address lines + 8 data lines. If you haven&apos;t guessed yet, we are sending serial data for reads &amp; writes. We will be using SPI (Serial Peripheral Interface Bus).</p>
+      <p>I suggest you start by reading the <xref href="tutorial_spi_introduction.xml">SPI Introduction</xref> within this book first.</p>
+      <p>You can read more about the 23k256 here:</p>
+      <p><xref href="http://www.microchip.com/wwwproducts/Devices.aspx?dDocName=en539039" format="html">http://www.microchip.com/wwwproducts/Devices.aspx?dDocName=en539039</xref></p>
+    </section>
+    <section>
+      <title>What will I learn?</title>
+      <p>We will be using the jallib sram_23k256 library &amp; sample written by myself. With this library, we will be able to do the following:</p>
+      <p>1. Initialization settings for 23k256.</p>
+      <p>2. Read settings from the 23k256.</p>
+      <p>3. Read &amp; Write one byte to/from a specific address</p>
+      <p>4. Use the 23k256 as a large byte, word or dword array (32k bytes, 16k words, 8k dwords)</p>
+      <p>5. Fast read/write lots of data.</p>
+    </section>
+    <section>
+      <title>OK, lets get started</title>
+      <p>I suggest you start by compiling and writing the sample file to your PIC. We must make sure your circuit is working before we continue. As always, you will find the 23k256 sample file in the sample directory of your jallib installation &quot;16f877_23k256.jal&quot;</p>
+      <p>You will need to modify this sample file for your target PIC.</p>
+      <note>Jallib version 0.5 had this following line in the library file, but in the next version (0.6) it will be removed from the library and you will have to add it to your sample file before the line include sram_23k256. </note>
+      <codeblock>const bit SRAM_23K256_ALWAYS_SET_SPI_MODE = TRUE</codeblock>
+      <p>Here&apos;s the 23K256 pin-out diagram:</p>
+      <image href="images/sram_23k256_pinout.jpg"/>
+      <p>Now build this schematics. Notice the resistors for 5v to 3.3v conversion. Also notice that we are using the PIC&apos;s hardware SPI port pins. These pins are named (SDO, SDI, SCK) + One chip select pin of your choice.</p>
+      <note>This is a 3.3V Device</note>
+      <image href="images/sram_23k256_circuit_1.jpg" width="450" otherprops="clickable"/>
+      <image href="images/sram_23k256_built.jpg" width="450" otherprops="clickable"/>
+      <p>Plug in your serial port and turn it on (serial baud rate 38400). If it is working, you will get mostly the hex value &quot;11&quot; to your  PC&apos;s serial port. Here&apos;s an image from my serial port software:</p>
+      <image href="images/sram_23k256_realterm.jpg" width="400" otherprops="clickable"/>
+      <p>If it is not working, lets do some troubleshooting. First start by checking over your schematic. If your schematic is correct, the most likely problem is voltage levels. Check over your PIC&apos;s datasheet to see what the PIN types are, if any of the pins have CMOS level outputs, you will not need voltage conversion resistors. </p>
+      <p>In the past, I have had issues with the voltage conversion resistors on the SCK line.</p>
+    </section>
+    <section>
+      <title>Setup the devices</title>
+      <p>Since the beginning initialization has already been written for you, and you already know how to include your PIC, you can skip this section and go down to the <xref href="#sram_23k256/usage"/> section if you wish.</p>
+      <p>Take a look at the sample file you have. As you know, firstly, we will include your chip, disable all analog pins and setup serial communication.</p>
+      <codeblock>include 16F877a                    -- target PICmicro
+--
+-- This program assumes a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target clock 20_000_000     -- oscillator frequency
+-- configure fuses
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target WDT  disabled        -- no watchdog
+pragma target LVP  disabled        -- no Low Voltage Programming
+
+enable_digital_io()                -- disable analog I/O (if any)
+
+-- setup uart for communication
+const serial_hw_baudrate  = 38400   -- set the baudrate
+include serial_hardware
+serial_hw_init()</codeblock>
+      <p>As stated before, the 23k256 MUST be connected to the pic&apos;s SPI port, so let&apos;s setup the SPI port as well as the SPI library.  We do not need to alias SPI hardware pins to another name. First include the library, then set the pin directions for the 2 data lines and the clock line:</p>
+      <codeblock>-- setup spi
+include spi_master_hw         -- includes the spi library
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock</codeblock>
+      <p>Now that SPI data/clock pins are setup, the only pin left to define is the 23k256 chip select pin. If you have more then one device on the SPI bus, this chip select pin setup should be done at the beginning of your program instead. This chip select pin can be any digital output pin you choose to use.</p>
+      <codeblock>-- setup chip select pin
+ALIAS sram_23k256_chip_select             is pin_a2
+ALIAS sram_23k256_chip_select_direction   is pin_a2_direction
+-- initial settings
+sram_23k256_chip_select_direction = output    -- chip select/slave select pin
+sram_23k256_chip_select = high                -- start chip slect high (chip disabled)
+--</codeblock>
+      <p>Choose SPI mode and rate. 23k256 uses SPI mode 1,1</p>
+      <p>We will start with peed SPI_RATE_FOSC_16. (oscillator/16). These are the speeds that are available:</p>
+      <p>SPI_RATE_FOSC_4 -- Fastest</p>
+      <p>SPI_RATE_FOSC_16 -- Mid speed</p>
+      <p>SPI_RATE_FOSC_64 -- Slower</p>
+      <p>SPI_RATE_TMR -- Use timer</p>
+      <codeblock>spi_init(SPI_MODE_11,SPI_RATE_FOSC_16) -- init spi, choose mode and speed</codeblock>
+      <p>This line tells the PIC to set the SPI mode before each read &amp; write. If you have multiple devices on the SPI bus using different modes, you will need to set this to TRUE</p>
+      <codeblock>const byte SRAM_23K256_ALWAYS_SET_SPI_MODE = TRUE</codeblock>
+      <p>Now we can finally include the library file, and initialize the chip:</p>
+      <codeblock>include sram_23k256 -- setup Microchip 23k256 sram
+sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
+</codeblock>
+    </section>
+    <section id="usage">
+      <title>23k256 Usage</title>
+      <p>I&apos;m going to go over this quickly since the code is simple.</p>
+      <p><b>Read &amp; Write Byte</b></p>
+      <p>Write hex &quot;AA&quot; to address 1:</p>
+      <codeblock>sram_23k256_write(1,0xAA)   -- write byte</codeblock>
+      <p>Now read it back:</p>
+      <codeblock>var byte data
+sram_23k256_read(1, data) -- read byte</codeblock>
+      <p><b>Byte Array</b></p>
+      <p>You can use the 23k256 as a large byte, word or dword  array like this:</p>
+      <codeblock>-- Example using 23k256 as a 32KByte array (at array address 2)
+var byte data1
+sram_23k256_byte[2] = 0xBB   -- set array byte 2 to value 0xBB
+data1 = sram_23k256_byte[2]  -- read array byte 2, data2 should = 0xBB
+
+-- Example using 23k256 as a 16K word array
+var word data2
+sram_23k256_word[3] = 0xEEFF     -- set array word 3 to value 0xEEFF
+data2 = sram_23k256_word[3]      -- read array word 3, data2 should = 0xEEFF
+
+-- Example using 23k256 as a 8K dword array
+var dword data3
+sram_23k256_dword[3] = 0xCCDDEEFF -- set array dword 3 to value 0xCCDDEEFF
+data3 = sram_23k256_dword[3]      -- read array dword 3, data2 should = 0xCCDDEEFF</codeblock>
+      <p>If you are looking for a quick way to write lots of data, you can use the start_write, do_write and stop_write procedures. You should not use any other SPI devices on the same SPI bus between start_write() and stop_write()</p>
+      <p>sram_23k256_start_write (word in address) -- sets the address to write to</p>
+      <p>sram_23k256_do_write (byte in data) -- send the data</p>
+      <p>sram_23k256_stop_write() -- stops the write process</p>
+      <p>Here&apos;s an example:</p>
+      <codeblock>-- Example fast write lots of data
+sram_23k256_start_write (10)
+for 1024 loop
+  sram_23k256_do_write (0x11)
+end loop
+sram_23k256_stop_write()</codeblock>
+      <p>This works the same for the read procedures:</p>
+      <p>sram_23k256_start_read (word in address) -- sets the address to read from</p>
+      <p>sram_23k256_do_read (byte out data) -- get the data</p>
+      <p>sram_23k256_stop_read() -- stop the read process</p>
+      <codeblock>-- Example fast read lots of data
+sram_23k256_start_read (10)
+for 1024 loop
+  sram_23k256_do_read (data1)
+  serial_hw_write (data1)
+end loop
+sram_23k256_stop_read()</codeblock>
+      <p><b>Your done, enjoy!</b></p>
+    </section>
+  </body>
+</topic>

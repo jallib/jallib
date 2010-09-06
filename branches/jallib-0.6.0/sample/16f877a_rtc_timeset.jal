@@ -1,0 +1,216 @@
+-- Title: Sample program to show usage of rtc_isr, with a time set procedure
+-- Author: Eur van Andel, Copyright (c) 2008, all rights reserved.
+-- Adapted-by: Albert Faber, Rob Hamerling
+-- Compiler: 2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Sources:  http://www.romanblack.com/one_sec.htm, http://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+--
+-- Description: This program shows how to handle Real Time in a PIC,
+-- complete with setting the initial time by the compiler OS
+-- via the timeset.py script, which writes the now.jal file
+-- The user can set the time via the timeset() procedure,
+-- which uses the keyboard and LCD. This layout is tailored to a 20x4 LCD.
+--
+
+-- ------------------- SELECT PIC ----------------------------
+include 16f877a
+
+pragma target clock     20_000_000           -- 20 MHz xtal
+pragma target OSC       HS                   -- high speed
+pragma target WDT       disabled             -- no watchdog, please
+pragma target LVP       disabled             -- no low voltage programming
+
+enable_digital_io()                          -- no analog pins used in this sample
+
+T0CON_T0CS = 0                               -- internal instruction cycle clock
+T0CON_PSA = 1                                -- prescaler assigned to Timer0 module
+T0CON_T0PS = 0                               -- no prescaling
+
+-- ------------------------ LIBRARIES ------------------------
+
+include rtc_isr_tmr0
+
+var byte minutes                 -- seconds in ISR lib
+var byte hours
+
+var byte date
+var byte month
+var word year
+
+include now                      -- sets the time to system time + one minute
+                                 -- = compile and burn time
+                                 -- should be generated just before compiling
+
+include calendar                 -- 60/24/27..31/12 range limits
+pragma eedata 250                -- to check if first boot after programming
+
+
+include delay                    -- used by LCD lib
+
+const byte  LCD_ROWS = 4
+const byte  LCD_CHARS = 20
+alias LCD_RS           is pin_b5       -- LCD command/data select.
+alias LCD_EN           is pin_b4       -- LCD data trigger
+alias LCD_dataport     is portb_low    -- LCD data nibble
+portb_direction = all_output           -- LCD data is portb_low
+include lcd_hd44780_4                  -- LCD library with 4 data lines
+lcd_init()
+
+include print                          -- nice formatted output
+include format                         -- more nice formatting
+include pic_data_eeprom                -- to save time when no power
+
+var byte dummy
+alias keyscan  is portc_low            -- rows of keyboard
+portc_low_direction = all_input
+alias keydrive is portb_low            -- columns of keyboard, also LCD data
+var byte keydrive_direction = dummy
+include keyboard                       -- read for schematics
+
+
+-- ------------------------ PROCEDURES ------------------------
+
+procedure time_set() is
+lcd_clear_screen()
+while getkey() != 0x0C loop        -- wait until C, bottom right key
+
+   lcd_cursor_position(0,0)
+   const byte str4[] = "timeset menu C=exit"
+   print_string(lcd, str4)
+
+   lcd_cursor_position(1,0)
+   format_time_hms(lcd, hours, minutes, seconds)
+   lcd = " "
+   print_byte_dec(lcd, date)
+   lcd = "-"
+   print_byte_dec(lcd, month)
+   lcd = "-"
+   print_word_dec(lcd, year)
+   lcd = " "
+
+   const byte str5[] = " 1  2 use 3  F   7"
+   const byte str6[] = " 4  5 key 6  E   A"
+   lcd_cursor_position(2,0)                           -- line 3
+   print_string(lcd, str5)
+   lcd_cursor_position(3,0)                           -- line 4
+   print_string(lcd, str6)
+
+
+   if getkey() == 1 then
+      hours = hours + 1
+         if hours > 23 then
+               hours = hours - 24
+         end if
+   end if
+   if getkey() == 4 then  hours = hours - 1
+      if hours > 127 then     -- through zero
+         hours = hours + 24      -- 255 + 24 = 23
+      end if
+   end if
+   if getkey() == 2 then  minutes = minutes + 1
+      if minutes > 59 then
+         minutes = minutes - 60
+      end if
+   end if
+   if getkey() == 5 then  minutes = minutes - 1
+      if minutes > 127 then      -- through zero
+         minutes = minutes + 60  -- 255 + 60 = 59
+      end if
+   end if
+   if getkey() == 3 then  date = date + 1
+      if date > 31 then
+         date = date - 31
+      end if
+   end if
+   if getkey() == 6 then  date = date - 1
+      if date > 127 then      -- through zero
+         date = date + 32     -- 255 + 32 = 31
+      end if
+   end if
+   if getkey() == 0x0F then  month = month + 1
+      if month > 12 then
+         month = month - 12
+      end if
+   end if
+   if getkey() == 0x0E then  month = month - 1
+      if month > 127 then
+         month = month + 13      -- 255 +13 = 12
+      end if
+   end if
+   if getkey() == 7 then
+      year = year + 1
+   end if
+   if getkey() == 0x0A then
+      year = year - 1
+   end if
+
+   calendar
+
+   delay_100ms(2)
+
+end loop       -- getkey() = # or 0x0F
+-- time is set here, ISR can be off
+data_eeprom_write(0, minutes)
+data_eeprom_write(1, hours)
+data_eeprom_write(2, date)
+data_eeprom_write(3, month)
+data_eeprom_write_word(4, year)
+
+lcd_clear_screen()
+end procedure        -- ----------------- TIME SET  ----------------------
+
+
+-- -------------------------- START PROGRAM -----------------
+
+if data_eeprom(0) != 250 then       -- not first boot after programming
+   seconds = 0                      -- time isn't accurate anyway
+   data_eeprom_read(0, minutes)     -- get old time from eeprom
+   data_eeprom_read(1, hours)
+   data_eeprom_read(2, date)
+   data_eeprom_read(3, month)
+   data_eeprom_read_word(4, year)
+else
+   data_eeprom_write(0, minutes)    -- save present time to eeprom
+   data_eeprom_write(1, hours)      -- present time comes from now.jal
+   data_eeprom_write(2, date)
+   data_eeprom_write(3, month)
+   data_eeprom_write_word(4, year)
+end if
+
+INTCON_TMR0IE = on                  -- if your PIC freezes, comment these lines
+INTCON_GIE = on                     -- to see if the ISR is messed up
+
+lcd_clear_screen()
+forever  loop
+   lcd_cursor_position(0,0)
+   const byte str1[] = "Time RTC sample"
+   print_string(lcd, str1)
+
+   lcd_cursor_position(1,0)
+   print_byte_dec(lcd, date)
+   lcd = "-"
+   print_byte_dec(lcd, month)
+   lcd = "-"
+   print_word_dec(lcd, year)
+   lcd = " "
+   if seconds > 59 then
+      calendar()
+   end if
+   format_time_hms(lcd, hours, minutes, seconds)
+
+   lcd_cursor_position(3,0)                     -- fourth line
+   const byte str3[] = "press 9 to set time"
+   print_string(lcd, str3)
+   if getkey() == 9 then
+      time_set()
+   end if
+
+   delay_100ms(2)                      -- for LCD viewing
+
+end loop
+
+
+
