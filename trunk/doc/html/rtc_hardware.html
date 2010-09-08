@@ -1,0 +1,678 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html>
+    <head>
+		<title>rtc_hardware - jallib API doc</title>
+    </head>
+    <body>
+		
+		        <div id="page">
+        
+            <div id="pagecontent">
+
+			    
+	<a href="#toc" name="rtc_hardware">
+    <h1>rtc_hardware</h1>
+	</a>
+
+    <div>
+		<font size="+1"><i>Support for builtin RealTimeClockCalendar modules of 18FxxJxx.</i></font>
+	</div>
+
+	<br/>
+
+    <div class="narrow">
+        
+	<table>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Author</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			Rob Hamerling, Copyright (c) 2010..2010, all rights reserved.
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Adapted-by</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Compiler</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			2.4n
+		</td>
+	</tr>
+	</table>
+
+	<br/>
+	
+	<b>Description</b>
+	<p>
+		<pre>RealTimeClock support:
+  - routines for control of realtime clock and alarm
+.
+This library supports:
+  - RTCC modules like in 18fxxj11, 18fxxj50 and several other PICs.
+.
+Available procedures and functions for application programs:
+  - rtc_init()                  -- initialize rtc module and library
+  - rtc_calibrate()             -- compensate crystal frequency aberration
+  - rtc_pin_signal()            -- RTCC output pin signal control
+  - rtc_get_hhmm_bcd()          -- obtain hours,minute (bcd format)
+  - rtc_get_hhmm_bin()          -- obtain relative minute of day (binary)
+  - rtc_get_hhmmss_bcd()        -- obtain hours,minutes,seconds (bcd format)
+  - rtc_get_hhmmss_bin()        -- obtain relative second of day (binary)
+  - rtc_set_hhmmss_bcd()        -- set new hours,minutes,seconds (bcd format)
+  - rtc_get_yymmdd_bcd()        -- get year,month,day (bcd format)
+  - rtc_set_yymmdd_bcd()        -- set new year,month,day (bcd format)
+  - rtc_get_weekday()           -- get day of week number (binary)
+  - rtc_get_alarm_hhmmss_bcd()  -- get alarm time (bcd format)
+  - rtc_set_alarm_hhmmss_bcd()  -- set alarm time (bcd format)
+  - rtc_set_alarm_period()      -- set alarm period
+  - rtc_set_alarm_repeat()      -- set alarm repeat
+  - rtc_set_alarm()             -- enable/disable alarm
+.
+Additional general purpose functions and procedures:
+  - bcd2bin()                   -- convert byte from bcd to binary
+  - mult60()                    -- hours -> minutes, minutes -> seconds
+.
+Several procedures and functions use multi-byte variables to pass
+arguments in bcd-notation. This is done in high-to-low sequence.
+To access the individual bytes of such a 'composite' variable you
+could use the data overlay facility of the compiler.
+For example for the date in years, months and days you could
+declare a variable as:
+.
+   var  byte*3  yymmdd_bcd                   -- date (bcd)
+.
+and in addition:
+.
+   var  byte    yymmdd[3] at  yymmdd_bcd     -- overlay as array
+   var  byte    yy        at  yymmdd[0]      -- )
+   var  byte    mm        at  yymmdd[1]      -- ) overlay as bytes
+   var  byte    dd        at  yymmdd[2]      -- )
+.
+Now you can access the year-byte of 'yymmdd_bcd' simply with 'yy'
+(contents still in bcd notation!), and month and day similarly.
+.
+PICs use little endian notation (store multi-byte variables with
+low order byte first)! So when you want to set the date to 10:07:28
+you must specify:
+   rtc_set_yymmdd(0x280710)                  -- 'reversed' sequence!
+.
+Bytes in bcd-notation can easily be displayed with print_byte_hex()
+of the Jallib print library.
+</pre>
+
+	</p>
+	<br/>
+
+
+	
+	<b>Dependencies</b>
+	<p>
+		<i>No dependency found</i>
+	</p>
+	<br/>
+
+
+			<br/>
+				<h2><a name="summary">Summary</a></h2>
+
+		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#d474b5837f79271dcb612be8ad14c86f">var  byte  _alrm_weekday  = 0x00                -- day of week
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#087bdc0d2af257da5a0476369eccaf3d">var  byte  _alrm_month    = 0x01                -- month
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#e604751bc0c97d7f1d00b33cb6b89a0c">var  byte  _alrm_monthday = 0x00                -- day of month
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#fcd196c35d5f4ea064fbe4d12c94d52b">var  byte  _rtc_year      = 0x00                -- year
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#52871cd4db7cfa8a552d55a539beb917">var  byte  _rtc_min       = 0x00                -- minute
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#d9752a0373fda5607e92e92e8bad2bfc">var  byte  _alrm_hour     = 0x00                -- hour
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#235bf851c89870c9a202219973697ef7">var  byte  _rtc_monthday  = 0x01                -- day of month
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#f699e2d88856b9571e3b1ef74d1a2132">var  byte  _rtc_sec       = 0x00                -- second
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#08f16148a8ad4480058e6495882b69c4">var  byte  _alrm_sec      = 0x00                -- second
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#53f64229ce442f2a524b1785ea60e727">var  byte  _alrm_min      = 0x00                -- minute
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#5f806c378ea596ac116781f3cb71289d">var  byte  _rtc_month     = 0x01                -- month
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#6fa270366bc5115714e8674737cc260b">var  byte  _rtc_hour      = 0x12                -- hour
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#057da9d5ed3c3cc419dc9fe364ea16dc">var  byte  _rtc_weekday   = 0x00                -- day of week
+</a></code></b>
+		</li>
+	</ul>
+
+
+		<h3><a name="Procedures">Procedures</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#ee69ae408df446564d69bf2b27dd2593">rtc_calibrate(sbyte in calibration)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#4b2206cd60d2cc87f4ae310f1fb49618">rtc_set_alarm_repeat(byte in alarm_repeat)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#01f0b4ce3d0189c48de519928ddb6305">rtc_set_yymmdd_bcd(byte*3 in yymmdd_bcd)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#5680c27623b0f0841cf0cf0b241824ed">rtc_set_alarm(bit in alarm_state)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#4c05f5f6a5db1ac3767e52fe45995029">rtc_init()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#f09fb1291b29f6ed27f35b3b187ee662">rtc_set_alarm_hhmmss_bcd(byte*3 in hhmmss_bcd)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#f14657ba2206f4121afe1c921c3c701e">rtc_set_alarm_signal(bit in alarm_signal)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#6d28296995630ffe162035a2f93bfd39">rtc_set_hhmmss_bcd(byte*3 in hhmmss_bcd)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#fb8cb49957d450ff6828b947b6274a40">rtc_set_alarm_period(byte in alarm_period)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#ebf1f261242ba82755b8184cb5912521">rtc_pin_signal(bit*2 in pin_signal_selection_mask)</a></code></b>
+		</li>
+	</ul>
+
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#8cdf0ffbfa28cd3ad7ab8303c7a92e91">_rtc_read()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#e37e95eb8c92e1ffabbe79886dbe98ea">_rtc_write_control(bit in control)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#8839242b18181e0974b32e919e3c24da">_rtc_alrm_read()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#401820f16c0733b99699f04cbc3ac70b">_rtc_write()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#4d2f3c54fde609b55ffbd8fb1c191c9d">_rtc_alrm_write()</a></code></b>
+		</li>
+	</ul>
+
+	<br/>
+
+		<h3><a name="Functions">Functions</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#c3c1bfdac92da4c1cd9cf18062ef9280">mult60(word in x) return dword</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#85e52fb5713d941a2b89efe4ce8a8421">rtc_get_hhmmss_bcd() return byte*3</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#e66755caf333a9c3eead23f633c4fe10">rtc_get_hhmm_bin() return word</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#32ce88679cc97a1893c94ac031632fd2">rtc_get_weekday() return byte</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#0fe329f2aabaacd099cb0e4f621dae23">rtc_get_hhmm_bcd() return word</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#820e37ff46b8c280c6f8d41716eaca30">rtc_get_hhmmss_bin() return dword</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#a3f5233ce235fd4907b8ff26b8aa2f14">rtc_get_alarm_hhmmss_bcd() return byte*3</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#87e1039e19b394690d1ae4a92afb07b5">rtc_get_yymmdd_bcd() return byte*3</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#c53c48ce7630280b23d854bee9bd0f77">bcd2bin(byte in bcd) return byte</a></code></b>
+		</li>
+	</ul>
+
+
+
+			<br/>
+				<h2><a name="api">API details</a></h2>
+
+		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="d474b5837f79271dcb612be8ad14c86f" href="#summary">var  byte  _alrm_weekday  = 0x00                -- day of week
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="087bdc0d2af257da5a0476369eccaf3d" href="#summary">var  byte  _alrm_month    = 0x01                -- month
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="e604751bc0c97d7f1d00b33cb6b89a0c" href="#summary">var  byte  _alrm_monthday = 0x00                -- day of month
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="fcd196c35d5f4ea064fbe4d12c94d52b" href="#summary">var  byte  _rtc_year      = 0x00                -- year
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="52871cd4db7cfa8a552d55a539beb917" href="#summary">var  byte  _rtc_min       = 0x00                -- minute
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="d9752a0373fda5607e92e92e8bad2bfc" href="#summary">var  byte  _alrm_hour     = 0x00                -- hour
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="235bf851c89870c9a202219973697ef7" href="#summary">var  byte  _rtc_monthday  = 0x01                -- day of month
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="f699e2d88856b9571e3b1ef74d1a2132" href="#summary">var  byte  _rtc_sec       = 0x00                -- second
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="08f16148a8ad4480058e6495882b69c4" href="#summary">var  byte  _alrm_sec      = 0x00                -- second
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="53f64229ce442f2a524b1785ea60e727" href="#summary">var  byte  _alrm_min      = 0x00                -- minute
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="5f806c378ea596ac116781f3cb71289d" href="#summary">var  byte  _rtc_month     = 0x01                -- month
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="6fa270366bc5115714e8674737cc260b" href="#summary">var  byte  _rtc_hour      = 0x12                -- hour
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="057da9d5ed3c3cc419dc9fe364ea16dc" href="#summary">var  byte  _rtc_weekday   = 0x00                -- day of week
+</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+	</ul>
+
+
+		<h3><a name="Procedures">Procedures</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="ee69ae408df446564d69bf2b27dd2593" href="#summary">rtc_calibrate(sbyte in calibration)</a></code></b>
+				<p>	<pre>
+Calibrate the RTCC module.
+input: calibration value
+output: none
+returns: nothing
+note: Calibration value is a signed byte  (-128..+127).
+      A negative value must be specified when the crystal is too fast.
+      See datasheet for the calculation of the amount.
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="4b2206cd60d2cc87f4ae310f1fb49618" href="#summary">rtc_set_alarm_repeat(byte in alarm_repeat)</a></code></b>
+				<p>	<pre>
+Set alarm repetition factor.
+input: alarm_repeat (byte): number of times to repeat alarm signal
+output: none
+returns: nothing
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="01f0b4ce3d0189c48de519928ddb6305" href="#summary">rtc_set_yymmdd_bcd(byte*3 in yymmdd_bcd)</a></code></b>
+				<p>	<pre>
+Set date (yymmdd) in BCD format.
+input:   year,month,day-of-month in bcd format (byte*3)
+output:  none
+returns: nothing
+notes: - Expected range: yy 0..99, mm 1..12, dd 1..31 in bcd notation
+       - RTC hardware does not calculate weekday from date, so we have
+         to do it here.  We use the algorithm by Tomohiko Sakamoto of Sony,
+         slightly squeezed to support 21st century only (2000..2099).
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="5680c27623b0f0841cf0cf0b241824ed" href="#summary">rtc_set_alarm(bit in alarm_state)</a></code></b>
+				<p>	<pre>
+Enable or disable alarm.
+input: alarm_state (bit): true  - alarm active
+                          false - alarm not active
+output: none
+returns: nothing
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="4c05f5f6a5db1ac3767e52fe45995029" href="#summary">rtc_init()</a></code></b>
+				<p>	<pre>
+Initialize the RTCC module.
+input: none
+output: none
+returns: nothing
+notes:
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="f09fb1291b29f6ed27f35b3b187ee662" href="#summary">rtc_set_alarm_hhmmss_bcd(byte*3 in hhmmss_bcd)</a></code></b>
+				<p>	<pre>
+Set alarm time in bcd format.
+input: hour-minute-second in bcd format
+output: none
+returns: nothing
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="f14657ba2206f4121afe1c921c3c701e" href="#summary">rtc_set_alarm_signal(bit in alarm_signal)</a></code></b>
+				<p>	<pre>
+Set alarm signal.
+input: alarm_signal (bit): true  - alarm signal activated
+                           false - alarm signal deactivated
+output: none
+returns: nothing
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="6d28296995630ffe162035a2f93bfd39" href="#summary">rtc_set_hhmmss_bcd(byte*3 in hhmmss_bcd)</a></code></b>
+				<p>	<pre>
+Set time of day (hhmmss) in BCD format.
+input: year,month,day-of-month in bcd format (byte*3)
+output: none
+returns: nothing
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="fb8cb49957d450ff6828b947b6274a40" href="#summary">rtc_set_alarm_period(byte in alarm_period)</a></code></b>
+				<p>	<pre>
+Set alarm period.
+input: alarm_period with a RTC_ALARM_PERIOD_xxxx mask
+       (see the defined RTC_ALARM_PERIOD_xxxx masks above)
+output: none
+returns: nothing
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="ebf1f261242ba82755b8184cb5912521" href="#summary">rtc_pin_signal(bit*2 in pin_signal_selection_mask)</a></code></b>
+				<p>	<pre>
+Select the RTCC output pin signal functionality.
+input: 2-bits mask: one of the RTC_PIN_xxxx constants (see above)
+output: none
+returns: nothing
+notes: - With 'NONE' pin_RTCC is released and available for I/O
+       - See the datasheet for the meaning of the different masks.
+
+</pre>
+</p>
+		</li>
+	</ul>
+
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="8cdf0ffbfa28cd3ad7ab8303c7a92e91" href="#summary">_rtc_read()</a></code></b>
+				<p>	<pre>
+Read the realtime clock.
+input:  none
+output: none
+returns: nothing
+notes: copy RTC registers to local variables
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="e37e95eb8c92e1ffabbe79886dbe98ea" href="#summary">_rtc_write_control(bit in control)</a></code></b>
+				<p>	<pre>
+Enable or disable RTCC register writes.
+input: bit (enable / disable)
+output: none
+returns: nothing
+notes:  (Re)setting the RTCWREN bit in RTCCFG requires a strict
+        sequence, see datasheets for details.
+        JalV2 2.4n generates the correct sequences with the code below.
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="8839242b18181e0974b32e919e3c24da" href="#summary">_rtc_alrm_read()</a></code></b>
+				<p>	<pre>
+Read the alarm setting.
+input:  none
+output: none
+returns: nothing
+notes: copy RTC alarm registers to local variables
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="401820f16c0733b99699f04cbc3ac70b" href="#summary">_rtc_write()</a></code></b>
+				<p>	<pre>
+Write the realtime clock.
+input:  none
+output: none
+returns: nothing
+notes: - enable writing to RTC registers
+       - update RTC
+       - disable writes
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="4d2f3c54fde609b55ffbd8fb1c191c9d" href="#summary">_rtc_alrm_write()</a></code></b>
+				<p>	<pre>
+Write te alarm time of realtime clock.
+input:  none
+output: none
+returns: nothing
+notes: - disable alarm
+       - copy RTC alarm registers to local variables
+       - restore alarm state
+
+</pre>
+</p>
+		</li>
+	</ul>
+
+	<br/>
+
+		<h3><a name="Functions">Functions</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="c3c1bfdac92da4c1cd9cf18062ef9280" href="#summary">mult60(word in x) return dword</a></code></b>
+				<p>	<pre>
+Multiply a word by 60 (typically for minutes to seconds or hours to minutes)
+input:   byte with binary data
+output:  none
+returns: word with product
+notes: - (x * 60) = x * (64 - 4) = (x * 64) - (x * 4)
+       - algorithm without multiplication
+       - word as input, dword as returnvalue chosen for
+         relative second of day (function rtc_hhmmss_bin())
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="85e52fb5713d941a2b89efe4ce8a8421" href="#summary">rtc_get_hhmmss_bcd() return byte*3</a></code></b>
+				<p>	<pre>
+Get time of day (hhmmss) in BCD format.
+input: none
+output: none
+returns: hhmmss in bcd format (byte*3)
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="e66755caf333a9c3eead23f633c4fe10" href="#summary">rtc_get_hhmm_bin() return word</a></code></b>
+				<p>	<pre>
+Get relative minute of day in binary format
+input: none
+output: none
+returns: minute of day binary (word)
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="32ce88679cc97a1893c94ac031632fd2" href="#summary">rtc_get_weekday() return byte</a></code></b>
+				<p>	<pre>
+Get weekday number in binary format.
+input: none
+output: none
+returns: day of week number (0..6)
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="0fe329f2aabaacd099cb0e4f621dae23" href="#summary">rtc_get_hhmm_bcd() return word</a></code></b>
+				<p>	<pre>
+Get time of day (hhmm) in BCD format.
+input: none
+output: none
+returns: hhmm in bcd format (word)
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="820e37ff46b8c280c6f8d41716eaca30" href="#summary">rtc_get_hhmmss_bin() return dword</a></code></b>
+				<p>	<pre>
+Get relative second of day in binary format
+input: none
+output: none
+returns: second of day binary (dword)
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="a3f5233ce235fd4907b8ff26b8aa2f14" href="#summary">rtc_get_alarm_hhmmss_bcd() return byte*3</a></code></b>
+				<p>	<pre>
+Get alarm time of day in BCD format.
+input: none
+output: none
+returns: alarm time setting (hhmmss) in bcd format
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="87e1039e19b394690d1ae4a92afb07b5" href="#summary">rtc_get_yymmdd_bcd() return byte*3</a></code></b>
+				<p>	<pre>
+Get date (yymmdd) in BCD format.
+input: none
+output: none
+returns: yymmdd in bcd format
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="c53c48ce7630280b23d854bee9bd0f77" href="#summary">bcd2bin(byte in bcd) return byte</a></code></b>
+				<p>	<pre>======================================================================
+ General purpose functions / procedures
+======================================================================
+
+
+Convert one byte packed bcd to one byte binary.
+input:   byte with bcd data
+output:  none
+returns: byte with binary value of bcd byte
+notes: - A byte in bcd notation contains ((16 * tens) + ones).
+         To convert it to a binary value: subtract (6 * tens)
+         Algorithm is modeled after an assembler version of
+         Scott Dattalo at PicList (but slightly less efficient!).
+
+</pre>
+</p>
+		</li>
+	</ul>
+
+
+
+			<br/>
+				<h2><a name="related_samples">Related samples</a></h2>
+	Here are the list of samples which use this library:<br/><br/>
+	<table border=1>
+			<tr>
+			<td><b>18f26j11</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f26j11_rtc_hardware.jal" target="_blank">18f26j11_rtc_hardware.jal</a></td>
+			</tr>
+	</table>
+
+			<br/>
+
+            </div>
+        </div>
+
+
+	</body>
+</html>
+
