@@ -21,11 +21,84 @@
 
 const byte UDP = 17 -- UDP protocol number for ip header
 
-var word udp_source_port
-var word udp_destination_port
-var word udp_length
-var word udb_checksum
-;var byte udp_data[50]
+var byte udp_header[8]
+var word udb_xxx at udp_header[0]
+
+var byte udp_source_port_1 at udp_header :0
+var byte udp_source_port_0 at udp_header : 8
+var byte udp_destination_port_1 at udp_header : 16
+var byte udp_destination_port_0 at udp_header : 24
+var byte udp_length_1 at udp_header : 32
+var byte udp_length_0 at udp_header : 40
+var byte udp_checksum_1 at udp_header : 48
+var byte udp_checksum_0 at udp_header : 56
+
+var word udp_type  = 1
+var word udp_class = 1
+
+procedure udp_source_port'put(word in data) is
+   pragma inline
+   var byte _data[2] at data
+   udp_source_port_0 = _data[0]
+   udp_source_port_1 = _data[1]
+end procedure
+
+function udp_source_port'get() return word is
+   pragma inline
+   var word data
+   var byte _data[2] at data
+   _data[0] = udp_source_port_0
+   _data[1] = udp_source_port_1
+   return
+end function
+
+procedure udp_destination_port'put(word in data) is
+   pragma inline
+   var byte _data[2] at data
+   udp_destination_port_0 = _data[0]
+   udp_destination_port_1 = _data[1]
+end procedure
+
+function udp_destination_port'get() return word is
+   pragma inline
+   var word data
+   var byte _data[2] at data
+   _data[0] = udp_destination_port_0
+   _data[1] = udp_destination_port_1
+   return
+end function
+
+procedure udp_length'put(word in data) is
+   pragma inline
+   var byte _data[2] at data
+   udp_length_0 = _data[0]
+   udp_length_1 = _data[1]
+end procedure
+
+function udp_length'get() return word is
+   pragma inline
+   var word data
+   var byte _data[2] at data
+   _data[0] = udp_length_0
+   _data[1] = udp_length_1
+   return
+end function
+
+procedure udp_checksum'put(word in data) is
+   pragma inline
+   var byte _data[2] at data
+   udp_checksum_0 = _data[0]
+   udp_checksum_1 = _data[1]
+end procedure
+
+function udp_checksum'get() return word is
+   pragma inline
+   var word data
+   var byte _data[2] at data
+   _data[0] = udp_checksum_0
+   _data[1] = udp_checksum_1
+   return
+end function
 
 procedure udp_read_packet(byte in data_size) is
    -- print unknown UDP message
@@ -33,4 +106,30 @@ procedure udp_read_packet(byte in data_size) is
       print_byte_hex(serial_sw_data, network_rx_buffer)
       serial_sw_data = " "
    end loop
+end procedure
+
+procedure udp_send(byte in ip_3, byte in ip_2, byte in ip_1, byte in ip_0,byte in data[]) is
+   const byte UDP_DATA_LENGTH = 12+23
+   ip_header_send(ip_3,ip_2,ip_1,ip_0,UDP,UDP_DATA_LENGTH)
+   
+   var byte count1 = 0
+   for 8 loop                             -- loop through all bytes in packet
+      network_send_data(udp_header[count1]) -- send slip packet data via serial port
+      count1 = count1 + 1
+   end loop
+   
+   count1 = 0
+   for count(data) loop                             -- loop through all bytes in packet
+      network_send_data(data[count1]) -- send slip packet data via serial port
+      count1 = count1 + 1
+   end loop
+   
+   var byte _udp_type[2] at udp_type
+   var byte _udp_class[2] at udp_class
+   network_send_data(_udp_type[1])
+   network_send_data(_udp_type[0])
+   network_send_data(_udp_class[1])
+   network_send_data(_udp_class[0])
+   
+   network_end_packet() -- slip end packet (ethernet not tested yet)
 end procedure
