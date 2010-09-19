@@ -11,6 +11,10 @@
 -- Sources:
 -- http://www.faqs.org/rfcs/rfc792.html
 --
+-- Notes:
+-- Linux default echo/ping message size is 64, windows is 32
+-- const byte ICMP_MAX_MESSAGE_SIZE = 64
+--
 
 const byte ICMP = 1 -- ICMP protocol number for ip header
 
@@ -27,35 +31,44 @@ const ICMP_TIMESTAMP_REPLY = 14
 const ICMP_INFORMATION_REQUEST = 15
 const ICMP_INFORMATION_REPLY = 16
 
+var byte icmp_message[ICMP_MAX_MESSAGE_SIZE]
+var byte icmp_type at icmp_message : 0
+var byte icmp_code at icmp_message : 8
+var word icmp_checksum at icmp_message : 16
+var word icmp_identifier at icmp_message : 32
+var word icmp_sequence_number at icmp_message : 48
+   
 --------------------------------------------------------------------------------
 -- Sends an echo (PING) message
 --------------------------------------------------------------------------------
 procedure icmp_send_echo(byte in ip_3, byte in ip_2, byte in ip_1, byte in ip_0) is
 
+   var byte sending_ping[] = "---------- sending ping... ----------"
+   debug_string(DEBUG_2,sending_ping)
+   debug_crlf(DEBUG_2)
+
    -- send the ip header
    const byte ECHO_DATA_LENGTH = 8
    ip_header_send(ip_3,ip_2,ip_1,ip_0,ICMP,ECHO_DATA_LENGTH)
    
-   -- choose ICMP PING data
-   const byte CODE = 0
-   const byte IDENTIFIER[] = {0, 1}
-   const byte SEQUENCE_NUMBER[] = {0, 0}
-   --
-   var byte message[ECHO_DATA_LENGTH] = {
-   ICMP_ECHO,
-   CODE,
-   0, 0,                                 -- set checksum to 0 before calculation
-   IDENTIFIER[0], IDENTIFIER[1],
-   SEQUENCE_NUMBER[0], SEQUENCE_NUMBER[1]
-   }
+   icmp_type = ICMP_ECHO
+   icmp_code = 0
+   icmp_checksum = 0
+   icmp_identifier = 1
+   icmp_sequence_number = 0
+
+   network_switch_word_bytes(icmp_identifier)  -- switch bytes for network out format
+   network_switch_word_bytes(icmp_sequence_number)  -- switch bytes for network out format
    
    -- set the checksum bytes for transmit
-   checksum_calc(message,count(message),message[2],message[3])
-   
+   checksum_16_byte_calc(icmp_message,0,8,icmp_checksum)
+   network_switch_word_bytes(icmp_checksum)  -- switch bytes for network out format
+
    -- put the data into the output buffer
    var byte count1 = 0
-   for count(message) using count1 loop  -- loop through all bytes in packet
-      network_send_data(message[count1]) -- send slip packet data via serial port
+   for 8 using count1 loop  -- loop through all bytes in packet
+      network_send_data(icmp_message[count1]) -- send slip packet data via serial port
+      -- send the data for debugging
    end loop
    
    -- complete the packet and send it
@@ -66,85 +79,48 @@ end procedure
 -- Sends an echo reply message
 --------------------------------------------------------------------------------
 procedure icmp_send_echo_reply(byte in data_left) is
-   var word message_size
-   if ICMP_PING_TRUNCATE == FALSE then
-      var byte message[8 + 100] -- array for icmp message received
-
-      -- get 8 bytes of icmp message + icmp data
-      -- except the first byte, we already got it in icmp_read_packet()
-      message_size = 1
-      for data_left loop
-         message[message_size] = network_rx_buffer
-         print_byte_hex(serial_sw_data, message[message_size])
-         serial_sw_data = " "
-         message_size = message_size + 1
-      end loop
-      ;note: the icmp checksum should be verified here
+   -- calculate icmp message size
+   var byte message_size = data_left + 1
+   if message_size > ICMP_MAX_MESSAGE_SIZE then
+      const byte icmp_str2[] = "---------- ICMP ERROR: Received Data Is Too Large ----------"
+      debug_string(DEBUG_1, icmp_str2)
+      debug_crlf(DEBUG_1)
+      message_size = ICMP_MAX_MESSAGE_SIZE
    else
-      var byte message[8 + 8] -- array for icmp message received
-      -- get 8 bytes of icmp message + 8 bytes of icmp data
-      -- except the first byte, we already got it in icmp_read_packet()
-      var byte count1 = 1
-      for 8 + 8 - 1 loop
-         message[count1] = network_rx_buffer
-         print_byte_hex(serial_sw_data, message[count1])
-         serial_sw_data = " "
-         count1 = count1 + 1
-      end loop
-      --disgard the rest of the icmp data
-      for data_left - 8+8 loop
-         count1 = network_rx_buffer
-      end loop
-
-      message_size = count(message)
-      ;note: the icmp checksum can't be verified since we ignored some bytes
+      debug_crlf(DEBUG_2)
+      const byte icmp_str1[] = "---------- sending ping reply! ----------"
+      debug_string(DEBUG_2, icmp_str1)
+      debug_crlf(DEBUG_2)
    end if
-
-   print_crlf(serial_sw_data)
-   const byte icmp_str1[] = "---------- sending ping reply: ----------"
-   print_string(serial_sw_data, icmp_str1)
-   print_crlf(serial_sw_data)
+   
+   -- get 8 bytes of icmp message + icmp data
+   -- except the first byte, we already got ICMP_ECHO in icmp_read_packet()
+   var word step = 1
+   for data_left loop
+      icmp_message[step] = network_rx_buffer
+      debug_byte_hex(DEBUG_4, icmp_message[step])
+      debug_char(DEBUG_4," ")
+      step = step + 1
+   end loop
 
    -- send an ip header
-   if ICMP_PING_TRUNCATE == FALSE then
-      ip_header_send(ip_header_source_ip_3,ip_header_source_ip_2,ip_header_source_ip_1,ip_header_source_ip_0,ICMP,data_left + 1)
-   else
-      ip_header_send(ip_header_source_ip_3,ip_header_source_ip_2,ip_header_source_ip_1,ip_header_source_ip_0,ICMP,16 + 8)
-   end if
+   ip_header_send(ip_header_source_ip_3,ip_header_source_ip_2,ip_header_source_ip_1,ip_header_source_ip_0,ICMP,data_left + 1)
 
    -- set the type byte in icmp message
-   message[0] = ICMP_ECHO_REPLY
+   icmp_message[0] = ICMP_ECHO_REPLY
 
    -- set the checksum bytes in icmp message
-   message[2] = 0
-   message[3] = 0
-   checksum_calc(message,message_size,message[2],message[3])
-   
+   icmp_checksum = 0
+   checksum_16_byte_calc(icmp_message,0,message_size,icmp_checksum)
+   network_switch_word_bytes(icmp_checksum)  -- switch bytes for network out format
+
    -- put the data into the output buffer
-   if ICMP_PING_TRUNCATE == FALSE then
-      -- send the data
-      var byte count2 = 0
-      for data_left + 1 using count2 loop   -- loop through all bytes in packet
-         network_send_data(message[count2]) -- send slip packet data via serial port
-
-         print_byte_hex(serial_sw_data, message[count2])
-         serial_sw_data = " "
-      end loop
-   else
-      -- send ICMP message + echo 8 bytes data
-      var byte count2 = 0
-      for (8 + 8) using count2 loop         -- loop through all bytes in packet
-         network_send_data(message[count2]) -- send slip packet data via serial port
-         
-         print_byte_hex(serial_sw_data, message[count2])
-         serial_sw_data = " "
-      end loop
-
-      -- send 0's as rest of data
-      for (data_left + 1) - (8 + 8) loop    -- loop through all bytes in packet
-         network_send_data(0) -- send slip packet data via serial port
-      end loop
-   end if
+   var byte count2 = 0
+   for message_size using count2 loop   -- loop through all bytes in packet
+      network_send_data(icmp_message[count2]) -- send slip packet data via serial port
+      debug_byte_hex(DEBUG_4, icmp_message[count2])
+      debug_char(DEBUG_4," ")
+   end loop
 
    -- complete the packet and send it
    network_end_packet() -- slip end packet (ethernet not tested yet)
@@ -155,38 +131,38 @@ procedure icmp_read_packet(byte in data_size) is
    var byte icmp_message_type = network_rx_buffer
 
    if icmp_message_type == ICMP_ECHO_REPLY then
-      print_crlf(serial_sw_data)
+      debug_crlf(DEBUG_2)
       const byte icmp_str1[] = "---------- ping reply received! ----------"
    
-      print_string(serial_sw_data, icmp_str1)
-      print_crlf(serial_sw_data)
+      debug_string(DEBUG_2, icmp_str1)
+      debug_crlf(DEBUG_2)
 
       -- print the message type
-      print_byte_hex(serial_sw_data, icmp_message_type)
-      serial_sw_data = " "
+      debug_byte_hex(DEBUG_4, icmp_message_type)
+      debug_char(DEBUG_4," ")
 
       -- print rest of the data (already sent first byte)
       for data_size - 1 loop               -- for each byte in packet
-         print_byte_hex(serial_sw_data, network_rx_buffer)
-         serial_sw_data = " "
+         debug_byte_hex(DEBUG_4, network_rx_buffer)
+         debug_char(DEBUG_4," ")
       end loop
    elsif icmp_message_type == ICMP_ECHO then
-      print_crlf(serial_sw_data)
+      debug_crlf(DEBUG_2)
       const byte icmp_str1[] = "---------- ping received! ----------"
-      print_string(serial_sw_data, icmp_str1)
-      print_crlf(serial_sw_data)
+      debug_string(DEBUG_2, icmp_str1)
+      debug_crlf(DEBUG_2)
 
       -- print the type
-      print_byte_hex(serial_sw_data, icmp_message_type)
-      serial_sw_data = " "
+      debug_byte_hex(DEBUG_4, icmp_message_type)
+      debug_char(DEBUG_4," ")
       
       -- reply to the ping (we already got the first byte so minus 1)
       icmp_send_echo_reply(data_size - 1)
    else
       -- print unknown ICMP message
       for data_size - 1 loop               -- for each byte in packet
-         print_byte_hex(serial_sw_data, network_rx_buffer)
-         serial_sw_data = " "
+         debug_byte_hex(DEBUG_4, network_rx_buffer)
+         debug_char(DEBUG_4," ")
       end loop
    end if
 end procedure

@@ -21,20 +21,16 @@ procedure network_received_packet(byte in packet_size) is
    ;if NETWORK_LINK_LAYER == SLIP then
    ;end if
 
-   print_crlf(serial_sw_data)
+   debug_crlf(DEBUG_2)
    const byte str1[] = "---------- PACKET RECEIVED ----------"
-   print_string(serial_sw_data, str1)
-   print_crlf(serial_sw_data)
-
-   const byte str2[] = "-- IP Header --"
-   print_string(serial_sw_data, str2)
-   print_crlf(serial_sw_data)
+   debug_string(DEBUG_3, str1)
+   debug_crlf(DEBUG_3)
    
    if packet_size > network_max_packet_size then
       -- your packet may have a problem, it is too large
       const byte str[] = "---------- ERROR: packet too large for buffer ----------"
-      print_string(serial_sw_data, str)
-      print_crlf(serial_sw_data)
+      debug_string(debug_lvl_1, str)
+      debug_crlf(debug_lvl_1)
       
       network_clear_rx_queue() -- clear bad data in the queues
       return                   -- ignore the packet
@@ -43,47 +39,68 @@ procedure network_received_packet(byte in packet_size) is
    -- check if the header destination ip matches PIC ip,
    -- and check if ip_header checksum is ok.
    if ip_header_verify() == 1 then
-      print_crlf(serial_sw_data)
+      debug_crlf(debug_lvl_3)
 
       -- check what type of packet it is (what protocol)
       if ip_header_protocol == ICMP then -- ICMP protocol
          const byte str2[] = "-- ICMP Packet --"
-         print_string(serial_sw_data, str2)
+         debug_string(debug_lvl_3, str2)
 
          -- send the data to ICMP lib for reading
          icmp_read_packet(packet_size - 20)
-      -- check what type of packet it is (what protocol)
       elsif ip_header_protocol == UDP then -- UDP protocol
          const byte str2[] = "-- UDP Packet --"
-         print_string(serial_sw_data, str2)
+         debug_string(debug_lvl_3, str2)
 
          -- send the data to UDP lib for reading
          udp_read_packet(packet_size - 20)
       else                               -- unknown protocol
          const byte str3[] = "-- raw data --"
-         print_string(serial_sw_data, str3)
-         print_crlf(serial_sw_data)
+         debug_string(debug_lvl_3, str3)
+         debug_crlf(debug_lvl_3)
          
          -- just print the raw data
          for packet_size - 20 loop               -- for each byte in packet
-            print_byte_hex(serial_sw_data, network_rx_buffer)
-            serial_sw_data = " "
+            debug_byte_hex(DEBUG_4, network_rx_buffer)
+            debug_char(DEBUG_4," ")
          end loop
       end if
    else
       -- ignore the packet, it wasn't for us, or ip header checksum failed.
       -- must read all packet data to keep buffer in sync.
-      print_crlf(serial_sw_data)
+      debug_crlf(debug_lvl_3)
       const byte str2[] = "-- packet ignored --"
-      print_string(serial_sw_data, str2)
+      debug_string(debug_lvl_3, str2)
       for packet_size - 20 loop
          -- ignore the packet
          var byte x = network_rx_buffer
       end loop
-      print_crlf(serial_sw_data)
+      debug_crlf(2)
    end if
    --
-   print_crlf(serial_sw_data)
+   debug_crlf(DEBUG_3)
+end procedure
+
+-- switch byte order in a word
+procedure network_switch_word_bytes(word in out data) is
+   var byte _data[2] at data
+   var byte temp
+   temp = _data[0]
+   _data[0] = _data[1]
+   _data[1] = temp
+end procedure
+
+-- switch byte order in a dword
+procedure network_switch_dword_bytes(dword in out data) is
+   var byte _data[4] at data
+   var byte temp
+   temp = _data[0]
+   _data[0] = _data[3]
+   _data[3] = temp
+
+   temp = _data[1]
+   _data[1] = _data[2]
+   _data[2] = temp
 end procedure
 
 
