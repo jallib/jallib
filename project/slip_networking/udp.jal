@@ -15,121 +15,62 @@
 -- http://www.networksorcery.com/enp/protocol/udp.htm
 --
 -- Note:
--- not complete
+-- untested
 --
-
-
 const byte UDP = 17 -- UDP protocol number for ip header
 
-var byte udp_header[8]
-var word udb_xxx at udp_header[0]
+const word UDP_SOURCE_PORT = 0
+const word UDP_DESTINATION_PORT = 2
+const word UDP_LENGTH = 4
+const word UDP_CHECKSUM = 6
+--
+const word UDP_TYPE  = 8
+const word UDP_CLASS = 10
 
-var byte udp_source_port_1 at udp_header :0
-var byte udp_source_port_0 at udp_header : 8
-var byte udp_destination_port_1 at udp_header : 16
-var byte udp_destination_port_0 at udp_header : 24
-var byte udp_length_1 at udp_header : 32
-var byte udp_length_0 at udp_header : 40
-var byte udp_checksum_1 at udp_header : 48
-var byte udp_checksum_0 at udp_header : 56
-
-var word udp_type  = 1
-var word udp_class = 1
-
-procedure udp_source_port'put(word in data) is
-   pragma inline
-   var byte _data[2] at data
-   udp_source_port_0 = _data[0]
-   udp_source_port_1 = _data[1]
-end procedure
-
-function udp_source_port'get() return word is
-   pragma inline
-   var word data
-   var byte _data[2] at data
-   _data[0] = udp_source_port_0
-   _data[1] = udp_source_port_1
-   return
-end function
-
-procedure udp_destination_port'put(word in data) is
-   pragma inline
-   var byte _data[2] at data
-   udp_destination_port_0 = _data[0]
-   udp_destination_port_1 = _data[1]
-end procedure
-
-function udp_destination_port'get() return word is
-   pragma inline
-   var word data
-   var byte _data[2] at data
-   _data[0] = udp_destination_port_0
-   _data[1] = udp_destination_port_1
-   return
-end function
-
-procedure udp_length'put(word in data) is
-   pragma inline
-   var byte _data[2] at data
-   udp_length_0 = _data[0]
-   udp_length_1 = _data[1]
-end procedure
-
-function udp_length'get() return word is
-   pragma inline
-   var word data
-   var byte _data[2] at data
-   _data[0] = udp_length_0
-   _data[1] = udp_length_1
-   return
-end function
-
-procedure udp_checksum'put(word in data) is
-   pragma inline
-   var byte _data[2] at data
-   udp_checksum_0 = _data[0]
-   udp_checksum_1 = _data[1]
-end procedure
-
-function udp_checksum'get() return word is
-   pragma inline
-   var word data
-   var byte _data[2] at data
-   _data[0] = udp_checksum_0
-   _data[1] = udp_checksum_1
-   return
-end function
-
+--------------------------------------------------------------------------------
+-- Read a UDP packet
+--------------------------------------------------------------------------------
 procedure udp_read_packet(byte in data_size) is
+   network_var_offset = ip_header_size
+   
    -- print unknown UDP message
-   for data_size - 1 loop               -- for each byte in packet
-      print_byte_hex(serial_sw_data, network_rx_buffer)
+   var byte count1 = ip_header_size
+   for data_size loop               -- for each byte in packet
+      debug_byte_hex(DEBUG_4, network_data[count1])
       serial_sw_data = " "
+      count1 = count1 + 1
    end loop
 end procedure
 
-procedure udp_send(byte in ip_3, byte in ip_2, byte in ip_1, byte in ip_0,byte in data[]) is
-   const byte UDP_DATA_LENGTH = 12+23
-   ip_header_send(ip_3,ip_2,ip_1,ip_0,UDP,UDP_DATA_LENGTH)
+--------------------------------------------------------------------------------
+-- Sends a UDP packet
+--------------------------------------------------------------------------------
+procedure udp_send(byte in ip_3, byte in ip_2, byte in ip_1, byte in ip_0,word in source_port, word in destination_port, byte in data[]) is
+   var word UDP_DATA_LENGTH = 8 + count(data)
    
-   var byte count1 = 0
-   for 8 loop                             -- loop through all bytes in packet
-      network_send_data(udp_header[count1]) -- send slip packet data via serial port
-      count1 = count1 + 1
+   -- create the ip header
+   ip_header_create(ip_3,ip_2,ip_1,ip_0,UDP,UDP_DATA_LENGTH)
+   
+   -- set the UDP header data
+   network_word[UDP_SOURCE_PORT] = source_port
+   network_word[UDP_DESTINATION_PORT] = destination_port
+   network_word[UDP_LENGTH] = count(data)
+   network_word[UDP_CHECKSUM] = 0
+   
+   -- calculate and set the checksum
+   network_word[ICMP_CHECKSUM] = checksum_16_byte_calc(network_data,0,ip_header_size + UDP_DATA_LENGTH + count(data))
+
+   -- put the UDP data into the network array
+   var byte count1
+   for count(data) using count1 loop
+      network_data[ip_header_size + count1] = data[count1]
    end loop
+
+   ;-- change the variable offset to after the UDP data
+   ;network_var_offset = ip_header_size + count(data)
+   ;-- set variable data
+   ;network_word[UDP_TYPE]  = ""
+   ;network_word[UDP_CLASS] = ""
    
-   count1 = 0
-   for count(data) loop                             -- loop through all bytes in packet
-      network_send_data(data[count1]) -- send slip packet data via serial port
-      count1 = count1 + 1
-   end loop
-   
-   var byte _udp_type[2] at udp_type
-   var byte _udp_class[2] at udp_class
-   network_send_data(_udp_type[1])
-   network_send_data(_udp_type[0])
-   network_send_data(_udp_class[1])
-   network_send_data(_udp_class[0])
-   
-   network_end_packet() -- slip end packet (ethernet not tested yet)
+   network_send_packet(ip_header_size + UDP_DATA_LENGTH) -- slip end packet (ethernet not tested yet)
 end procedure
