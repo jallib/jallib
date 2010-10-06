@@ -361,7 +361,7 @@ end procedure
 -- ----------------------------------------------------------------------------
 -- Read two bytes from disk.
 -- ----------------------------------------------------------------------------
-procedure pata_hd_read_data(byte out low_byte, byte out high_byte) is
+procedure pata_hd_read_data(byte out low_byte,byte out high_byte) is
   if (pata_hd_word_count == 0) & (pata_hd_sector_count) == 0 then        -- if we are at beginning of read
     pata_hd_go_to_sector(pata_hd_sector_select,0)                        -- go to the selected sector
     pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_READ_SECTORS)      -- send the read command to the command register	
@@ -379,9 +379,19 @@ procedure pata_hd_read_data(byte out low_byte, byte out high_byte) is
 	
   -- get the data trough the ide interface
   pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
+  
+  ;slow down if > 20mhz
+  if target_clock > 20_000_000 then
+     asm nop
+  end if
+  
+  high_byte = pata_hd_data_high             -- get high data byte
   low_byte = pata_hd_data_low                -- get low data byte
-  high_byte  = pata_hd_data_high             -- get high data byte
-  pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse 	
+  pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
+
+  if !(pata_hd_data_high == high_byte) then
+     serial_hw_data = "_"
+  end if
 end procedure
 
 -- ----------------------------------------------------------------------------
