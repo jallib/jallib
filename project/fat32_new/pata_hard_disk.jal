@@ -587,48 +587,55 @@ procedure pata_hd_init() is begin
   pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE) -- recalibrate the drive
 end procedure
 
+---------------------------------------------------------------------------
+-- define the sector buffer
+---------------------------------------------------------------------------
+var byte pata_hd_sector_buffer_lo[256] -- 256 low bytes
+var byte pata_hd_sector_buffer_hi[256] -- 256 high bytes
+function pata_hd_sector_buffer'get(word in address) return byte is
+    pragma inline
+    if bit(address) == 0 then
+       return pata_hd_sector_buffer_lo[address / 2]
+    else
+       return pata_hd_sector_buffer_hi[(address / 2)]
+    end if
+ end function
 
---------------------------------------------------------------------------------
+---------------------------------------------------------------------------
 -- read one entire sector
---------------------------------------------------------------------------------
-var dword pata_hd_last_sector
-const dword LARGE_ARRAY_3_SIZE = 512           -- choose number of array variables
-const dword LARGE_ARRAY_3_VARIABLE_SIZE = 1    -- choose size of variables
-include large_array_3                          -- include the array library
-alias pata_hd_sector_buffer is large_array_3   -- rename/alias the array to pata_hd_sector_buffer
-var byte pata_hd_sector_count2 = 0
---
+---------------------------------------------------------------------------
 procedure pata_hd_read_sector() is
-  var word count1
-  pata_hd_word_count = 0
+   var word count1
+   pata_hd_word_count = 0
 
-  if pata_hd_sector_count == 0 then                                      -- if we are at beginning of read
-    pata_hd_go_to_sector(pata_hd_sector_select,0)                        -- go to the selected sector
-    pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_READ_SECTORS)     -- send the read command to the command register	
-  end if
+   if pata_hd_sector_count == 0 then
+     pata_hd_go_to_sector(pata_hd_sector_select,0)
+     pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_READ_SECTORS)
+   end if
 
-  pata_hd_data_request(PATA_HD_WAIT_READ) -- wait for data to be ready for read before each sector
-	
-	count1 = 0
-   for 256 loop	
+   pata_hd_data_request(PATA_HD_WAIT_READ)
+
+   for 256 using count1 loop -- NOTE: now "using count1"
      -- get the data trough the ide interface
      pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
-     pata_hd_sector_buffer[count1 + 1] = pata_hd_data_high -- get high data byte
-     pata_hd_sector_buffer[count1]     = pata_hd_data_low  -- get low data byte
+     asm nop
+     pata_hd_sector_buffer_lo[count1] = pata_hd_data_low  -- get low data
+     pata_hd_sector_buffer_hi[count1] = pata_hd_data_high -- get high data
      pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
-     count1 = count1 + 2
-	end loop	
+   end loop
 
-  pata_hd_sector_select = pata_hd_sector_select + 1  -- increment the selected sector
-  pata_hd_sector_count = pata_hd_sector_count + 1    -- increase sector count
+   pata_hd_sector_select = pata_hd_sector_select + 1
+   pata_hd_sector_count = pata_hd_sector_count + 1
 end procedure
 
 --------------------------------------------------------------------------------
 -- read one entire sector
 --------------------------------------------------------------------------------
+var dword pata_hd_last_sector
+var byte pata_hd_sector_count2 = 0
 var dword pata_hd_prev_address = 0
 var dword pata_hd_current_address = 0xFF_FF_FF_FF
-procedure pata_hd_read_sector2(dword in address) is
+procedure pata_hd_read_sector_address(dword in address) is
    if !(address == pata_hd_current_address) then
       pata_hd_start_read(address)
    end if
@@ -643,15 +650,14 @@ procedure pata_hd_read_sector2(dword in address) is
 
    pata_hd_data_request(PATA_HD_WAIT_READ) -- wait for data to be ready for read before each sector
 
-   count1 = 0
-   for 256 loop	
-      -- get the data trough the ide interface
-      pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
-      pata_hd_sector_buffer[count1 + 1] = pata_hd_data_high -- get high data byte
-      pata_hd_sector_buffer[count1]     = pata_hd_data_low  -- get low data byte
-      pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
-      count1 = count1 + 2
-   end loop	
+   for 256 using count1 loop -- NOTE: now "using count1"
+     -- get the data trough the ide interface
+     pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
+     asm nop
+     pata_hd_sector_buffer_lo[count1] = pata_hd_data_low  -- get low data
+     pata_hd_sector_buffer_hi[count1] = pata_hd_data_high -- get high data
+     pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
+   end loop
 
    pata_hd_last_sector = pata_hd_sector_select
    pata_hd_sector_select = pata_hd_sector_select + 1  -- increment the selected sector
