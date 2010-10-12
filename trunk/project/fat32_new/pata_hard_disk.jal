@@ -96,6 +96,8 @@ const PATA_HD_SPIN_UP = 0xE1         -- turn on the drive's motor
 -- used for pata_hd_data_request()
 const bit PATA_HD_WAIT_READ = 0  -- wait for sector buffer to fill it's contents with data from disk platters
 const bit PATA_HD_WAIT_WRITE = 1 -- wait for sector buffer to empty it's contents to disk platters
+const bit PATA_HD_READ = 0  -- wait for sector buffer to fill it's contents with data from disk platters
+const bit PATA_HD_WRITE = 1 -- wait for sector buffer to empty it's contents to disk platters
 
 const PATA_HARD_DISK = 0            -- data media constants for fat32 lib
 const SD_CARD = 1
@@ -106,6 +108,7 @@ var dword pata_hd_sector_select = 0
 var bit pata_hd_48_bit_lba_support = false  -- currently this lib does not support drives > 137,438,952,960 bytes (28 bit addressing)
                                             -- "IDENTIFY DEVICE bit 10 word 83 indicates support for 48-bit addressing" - in ata8 pdf
 var bit pata_hd_byte_location = 0
+var bit pata_hd_last_operation
 
 -- from "connecting ide drives by tilmann reh" - http://www.gaby.de/gide/ide-tcj.txt
 -- List of commands and required parameters:
@@ -498,12 +501,13 @@ end procedure
 -- ----------------------------------------------------------------------------
 -- Get drive ready for writing at specified address
 -- ----------------------------------------------------------------------------
-procedure pata_hd_start_write(dword in address) is
-  pata_hd_sector_select = address
-  pata_hd_word_count = 0              -- reset number of words written to sector
-  pata_hd_sector_count = 0            -- reset number of sectors written
-  pata_hd_byte_location = 0
-end procedure
+alias pata_hd_start_write is pata_hd_start_read
+;  procedure pata_hd_start_write(dword in address) is
+;     pata_hd_sector_select = address
+;     pata_hd_word_count = 0              -- reset number of words written to sector
+;     pata_hd_sector_count = 0            -- reset number of sectors written
+;     pata_hd_byte_location = 0
+;  end procedure
 
 -- ----------------------------------------------------------------------------
 -- Write two bytes to disk
@@ -618,18 +622,27 @@ procedure pata_hd_init() is begin
 end procedure
 
 ---------------------------------------------------------------------------
--- define the sector buffer
+-- define the sector buffer. Can be read as pata_hd_sector_buffer[0-511]
 ---------------------------------------------------------------------------
-var byte pata_hd_sector_buffer_lo[256] -- 256 low bytes
-var byte pata_hd_sector_buffer_hi[256] -- 256 high bytes
+var byte pata_hd_sector_buffer_low[256] -- 256 low bytes
+var byte pata_hd_sector_buffer_high[256] -- 256 high bytes
 function pata_hd_sector_buffer'get(word in address) return byte is
-    pragma inline
-    if bit(address) == 0 then
-       return pata_hd_sector_buffer_lo[address / 2]
-    else
-       return pata_hd_sector_buffer_hi[(address / 2)]
-    end if
- end function
+   pragma inline
+   if bit(address) == 0 then
+      return pata_hd_sector_buffer_low[address / 2]
+   else
+      return pata_hd_sector_buffer_high[(address / 2)]
+   end if
+end function
+--
+procedure pata_hd_sector_buffer'put(word in address, byte in data) is
+   pragma inline
+   if bit(address) == 0 then
+      pata_hd_sector_buffer_low[address / 2] = data
+   else
+      pata_hd_sector_buffer_high[(address / 2)] = data
+   end if
+end procedure
 
 ---------------------------------------------------------------------------
 -- For faster reading in pata_hd_read_sector procedures
@@ -637,1283 +650,1283 @@ function pata_hd_sector_buffer'get(word in address) return byte is
 procedure _pata_read_512() is
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	0	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	0	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	0	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	0	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	1	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	1	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	1	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	1	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	2	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	2	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	2	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	2	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	3	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	3	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	3	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	3	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	4	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	4	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	4	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	4	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	5	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	5	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	5	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	5	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	6	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	6	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	6	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	6	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	7	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	7	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	7	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	7	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	8	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	8	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	8	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	8	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	9	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	9	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	9	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	9	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	10	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	10	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	10	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	10	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	11	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	11	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	11	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	11	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	12	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	12	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	12	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	12	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	13	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	13	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	13	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	13	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	14	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	14	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	14	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	14	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	15	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	15	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	15	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	15	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	16	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	16	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	16	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	16	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	17	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	17	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	17	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	17	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	18	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	18	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	18	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	18	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	19	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	19	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	19	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	19	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	20	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	20	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	20	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	20	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	21	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	21	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	21	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	21	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	22	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	22	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	22	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	22	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	23	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	23	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	23	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	23	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	24	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	24	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	24	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	24	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	25	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	25	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	25	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	25	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	26	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	26	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	26	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	26	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	27	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	27	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	27	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	27	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	28	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	28	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	28	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	28	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	29	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	29	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	29	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	29	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	30	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	30	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	30	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	30	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	31	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	31	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	31	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	31	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	32	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	32	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	32	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	32	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	33	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	33	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	33	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	33	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	34	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	34	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	34	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	34	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	35	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	35	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	35	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	35	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	36	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	36	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	36	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	36	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	37	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	37	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	37	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	37	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	38	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	38	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	38	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	38	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	39	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	39	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	39	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	39	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	40	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	40	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	40	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	40	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	41	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	41	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	41	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	41	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	42	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	42	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	42	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	42	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	43	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	43	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	43	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	43	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	44	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	44	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	44	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	44	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	45	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	45	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	45	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	45	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	46	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	46	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	46	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	46	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	47	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	47	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	47	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	47	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	48	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	48	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	48	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	48	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	49	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	49	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	49	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	49	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	50	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	50	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	50	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	50	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	51	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	51	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	51	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	51	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	52	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	52	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	52	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	52	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	53	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	53	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	53	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	53	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	54	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	54	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	54	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	54	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	55	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	55	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	55	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	55	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	56	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	56	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	56	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	56	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	57	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	57	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	57	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	57	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	58	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	58	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	58	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	58	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	59	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	59	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	59	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	59	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	60	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	60	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	60	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	60	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	61	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	61	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	61	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	61	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	62	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	62	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	62	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	62	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	63	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	63	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	63	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	63	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	64	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	64	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	64	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	64	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	65	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	65	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	65	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	65	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	66	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	66	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	66	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	66	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	67	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	67	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	67	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	67	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	68	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	68	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	68	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	68	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	69	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	69	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	69	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	69	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	70	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	70	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	70	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	70	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	71	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	71	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	71	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	71	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	72	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	72	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	72	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	72	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	73	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	73	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	73	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	73	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	74	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	74	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	74	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	74	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	75	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	75	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	75	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	75	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	76	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	76	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	76	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	76	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	77	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	77	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	77	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	77	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	78	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	78	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	78	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	78	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	79	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	79	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	79	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	79	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	80	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	80	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	80	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	80	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	81	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	81	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	81	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	81	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	82	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	82	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	82	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	82	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	83	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	83	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	83	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	83	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	84	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	84	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	84	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	84	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	85	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	85	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	85	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	85	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	86	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	86	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	86	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	86	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	87	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	87	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	87	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	87	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	88	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	88	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	88	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	88	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	89	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	89	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	89	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	89	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	90	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	90	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	90	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	90	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	91	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	91	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	91	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	91	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	92	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	92	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	92	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	92	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	93	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	93	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	93	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	93	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	94	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	94	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	94	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	94	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	95	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	95	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	95	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	95	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	96	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	96	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	96	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	96	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	97	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	97	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	97	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	97	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	98	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	98	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	98	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	98	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	99	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	99	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	99	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	99	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	100	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	100	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	100	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	100	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	101	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	101	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	101	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	101	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	102	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	102	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	102	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	102	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	103	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	103	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	103	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	103	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	104	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	104	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	104	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	104	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	105	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	105	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	105	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	105	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	106	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	106	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	106	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	106	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	107	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	107	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	107	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	107	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	108	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	108	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	108	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	108	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	109	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	109	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	109	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	109	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	110	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	110	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	110	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	110	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	111	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	111	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	111	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	111	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	112	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	112	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	112	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	112	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	113	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	113	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	113	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	113	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	114	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	114	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	114	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	114	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	115	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	115	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	115	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	115	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	116	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	116	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	116	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	116	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	117	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	117	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	117	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	117	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	118	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	118	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	118	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	118	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	119	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	119	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	119	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	119	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	120	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	120	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	120	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	120	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	121	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	121	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	121	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	121	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	122	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	122	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	122	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	122	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	123	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	123	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	123	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	123	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	124	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	124	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	124	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	124	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	125	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	125	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	125	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	125	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	126	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	126	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	126	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	126	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	127	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	127	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	127	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	127	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	128	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	128	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	128	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	128	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	129	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	129	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	129	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	129	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	130	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	130	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	130	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	130	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	131	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	131	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	131	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	131	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	132	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	132	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	132	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	132	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	133	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	133	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	133	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	133	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	134	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	134	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	134	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	134	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	135	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	135	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	135	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	135	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	136	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	136	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	136	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	136	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	137	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	137	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	137	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	137	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	138	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	138	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	138	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	138	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	139	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	139	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	139	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	139	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	140	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	140	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	140	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	140	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	141	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	141	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	141	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	141	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	142	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	142	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	142	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	142	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	143	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	143	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	143	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	143	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	144	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	144	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	144	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	144	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	145	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	145	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	145	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	145	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	146	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	146	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	146	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	146	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	147	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	147	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	147	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	147	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	148	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	148	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	148	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	148	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	149	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	149	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	149	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	149	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	150	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	150	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	150	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	150	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	151	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	151	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	151	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	151	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	152	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	152	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	152	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	152	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	153	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	153	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	153	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	153	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	154	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	154	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	154	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	154	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	155	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	155	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	155	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	155	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	156	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	156	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	156	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	156	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	157	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	157	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	157	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	157	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	158	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	158	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	158	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	158	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	159	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	159	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	159	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	159	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	160	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	160	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	160	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	160	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	161	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	161	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	161	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	161	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	162	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	162	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	162	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	162	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	163	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	163	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	163	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	163	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	164	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	164	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	164	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	164	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	165	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	165	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	165	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	165	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	166	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	166	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	166	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	166	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	167	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	167	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	167	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	167	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	168	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	168	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	168	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	168	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	169	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	169	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	169	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	169	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	170	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	170	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	170	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	170	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	171	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	171	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	171	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	171	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	172	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	172	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	172	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	172	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	173	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	173	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	173	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	173	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	174	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	174	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	174	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	174	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	175	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	175	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	175	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	175	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	176	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	176	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	176	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	176	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	177	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	177	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	177	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	177	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	178	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	178	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	178	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	178	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	179	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	179	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	179	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	179	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	180	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	180	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	180	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	180	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	181	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	181	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	181	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	181	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	182	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	182	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	182	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	182	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	183	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	183	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	183	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	183	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	184	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	184	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	184	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	184	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	185	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	185	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	185	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	185	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	186	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	186	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	186	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	186	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	187	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	187	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	187	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	187	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	188	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	188	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	188	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	188	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	189	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	189	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	189	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	189	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	190	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	190	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	190	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	190	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	191	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	191	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	191	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	191	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	192	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	192	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	192	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	192	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	193	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	193	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	193	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	193	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	194	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	194	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	194	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	194	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	195	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	195	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	195	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	195	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	196	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	196	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	196	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	196	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	197	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	197	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	197	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	197	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	198	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	198	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	198	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	198	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	199	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	199	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	199	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	199	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	200	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	200	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	200	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	200	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	201	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	201	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	201	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	201	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	202	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	202	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	202	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	202	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	203	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	203	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	203	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	203	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	204	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	204	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	204	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	204	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	205	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	205	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	205	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	205	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	206	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	206	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	206	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	206	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	207	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	207	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	207	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	207	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	208	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	208	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	208	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	208	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	209	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	209	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	209	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	209	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	210	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	210	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	210	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	210	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	211	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	211	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	211	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	211	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	212	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	212	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	212	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	212	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	213	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	213	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	213	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	213	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	214	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	214	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	214	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	214	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	215	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	215	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	215	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	215	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	216	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	216	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	216	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	216	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	217	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	217	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	217	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	217	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	218	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	218	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	218	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	218	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	219	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	219	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	219	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	219	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	220	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	220	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	220	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	220	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	221	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	221	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	221	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	221	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	222	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	222	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	222	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	222	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	223	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	223	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	223	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	223	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	224	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	224	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	224	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	224	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	225	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	225	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	225	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	225	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	226	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	226	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	226	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	226	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	227	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	227	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	227	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	227	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	228	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	228	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	228	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	228	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	229	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	229	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	229	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	229	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	230	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	230	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	230	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	230	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	231	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	231	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	231	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	231	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	232	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	232	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	232	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	232	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	233	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	233	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	233	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	233	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	234	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	234	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	234	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	234	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	235	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	235	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	235	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	235	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	236	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	236	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	236	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	236	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	237	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	237	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	237	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	237	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	238	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	238	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	238	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	238	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	239	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	239	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	239	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	239	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	240	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	240	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	240	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	240	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	241	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	241	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	241	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	241	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	242	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	242	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	242	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	242	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	243	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	243	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	243	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	243	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	244	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	244	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	244	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	244	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	245	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	245	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	245	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	245	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	246	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	246	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	246	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	246	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	247	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	247	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	247	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	247	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	248	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	248	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	248	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	248	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	249	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	249	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	249	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	249	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	250	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	250	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	250	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	250	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	251	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	251	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	251	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	251	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	252	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	252	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	252	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	252	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	253	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	253	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	253	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	253	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	254	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	254	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	254	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	254	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
    pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
    pata_hd_delay_100ns()
-   pata_hd_sector_buffer_lo[	255	] = pata_hd_data_low  -- get low data				
-   pata_hd_sector_buffer_hi[	255	] = pata_hd_data_high -- get high data				
+   pata_hd_sector_buffer_low[	255	] = pata_hd_data_low  -- get low data				
+   pata_hd_sector_buffer_high[	255	] = pata_hd_data_high -- get high data				
    pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read
 end procedure
 
@@ -1936,22 +1949,22 @@ procedure pata_hd_read_sector() is
       if PATA_HD_READ_EXTRA_SPEED == TRUE then
          _pata_read_512()
       else
-         for 256 using count1 loop -- NOTE: now "using count1"
+         for 256 using count1 loop
             -- get the data trough the ide interface
             pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
             pata_hd_delay_100ns()
-            pata_hd_sector_buffer_lo[count1] = pata_hd_data_low  -- get low data
-            pata_hd_sector_buffer_hi[count1] = pata_hd_data_high -- get high data
+            pata_hd_sector_buffer_low[count1] = pata_hd_data_low  -- get low data
+            pata_hd_sector_buffer_high[count1] = pata_hd_data_high -- get high data
             pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
          end loop
       end if
    else
-      for 256 using count1 loop -- NOTE: now "using count1"
+      for 256 using count1 loop
          -- get the data trough the ide interface
          pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
          pata_hd_delay_100ns()
-         pata_hd_sector_buffer_lo[count1] = pata_hd_data_low  -- get low data
-         pata_hd_sector_buffer_hi[count1] = pata_hd_data_high -- get high data
+         pata_hd_sector_buffer_low[count1] = pata_hd_data_low  -- get low data
+         pata_hd_sector_buffer_high[count1] = pata_hd_data_high -- get high data
          pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
       end loop
    end if
@@ -1977,9 +1990,10 @@ procedure pata_hd_read_sector_address(dword in address) is
 
    -- check if we are at the correct sector already
    -- if not, go to the sector and start reading
-   if (!(pata_hd_last_sector + 1 == pata_hd_sector_select)) | (pata_hd_sector_count2 == 0) then       -- if we are at beginning of read
+   if (pata_hd_last_operation == PATA_HD_WRITE) | (pata_hd_sector_count2 == 0) | (!(pata_hd_last_sector + 1 == pata_hd_sector_select)) then       -- if we are at beginning of read
       pata_hd_go_to_sector(pata_hd_sector_select,0)                        -- go to the selected sector
       pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_READ_SECTORS)     -- send the read command to the command register	
+      pata_hd_last_operation = PATA_HD_READ                              -- set last operation to read
    end if
 
    pata_hd_data_request(PATA_HD_WAIT_READ) -- wait for data to be ready for read before each sector
@@ -1989,22 +2003,22 @@ procedure pata_hd_read_sector_address(dword in address) is
       if PATA_HD_READ_EXTRA_SPEED == TRUE then
          _pata_read_512()
       else
-         for 256 using count1 loop -- NOTE: now "using count1"
+         for 256 using count1 loop
             -- get the data trough the ide interface
             pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
             pata_hd_delay_100ns()
-            pata_hd_sector_buffer_lo[count1] = pata_hd_data_low  -- get low data
-            pata_hd_sector_buffer_hi[count1] = pata_hd_data_high -- get high data
+            pata_hd_sector_buffer_low[count1] = pata_hd_data_low  -- get low data
+            pata_hd_sector_buffer_high[count1] = pata_hd_data_high -- get high data
             pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
          end loop
       end if
    else
-      for 256 using count1 loop -- NOTE: now "using count1"
+      for 256 using count1 loop
          -- get the data trough the ide interface
          pata_hd_iord = high ^ PATA_HD_NO_INVERTER  -- start read pulse
          pata_hd_delay_100ns()
-         pata_hd_sector_buffer_lo[count1] = pata_hd_data_low  -- get low data
-         pata_hd_sector_buffer_hi[count1] = pata_hd_data_high -- get high data
+         pata_hd_sector_buffer_low[count1] = pata_hd_data_low  -- get low data
+         pata_hd_sector_buffer_high[count1] = pata_hd_data_high -- get high data
          pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- end read pulse
       end loop
    end if
@@ -2018,8 +2032,76 @@ procedure pata_hd_read_sector_address(dword in address) is
 end procedure
 
 
+-- ----------------------------------------------------------------------------
+-- Write one sector to the disk, requires start write/stop write.
+-- ----------------------------------------------------------------------------
+procedure pata_hd_write_sector() is
+   var word count1
+   
+   if pata_hd_sector_count == 0 then
+      pata_hd_go_to_sector (pata_hd_sector_select,1)                    -- go to the correct sector, set sector count to 0
+      pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_WRITE_SECTORS)-- send the write command to the command register
+   end if
 
+   pata_hd_data_request(PATA_HD_WAIT_WRITE)                          -- wait till data is ready to be written
+  	
+   for 256 using count1 loop
+      -- put the data onto the ide interface
+      pata_hd_data_low = pata_hd_sector_buffer_low[count1]    -- put low data
+      pata_hd_data_high = pata_hd_sector_buffer_high[count1]   -- put high data
+      pata_hd_delay_100ns()                                  -- delay about 100ns
+      pata_hd_iowr = high ^ PATA_HD_NO_INVERTER      -- send write pulse
+      pata_hd_delay_100ns()                                  -- delay about 100ns
+      pata_hd_iowr = low ^ PATA_HD_NO_INVERTER
+   end loop		  	
 
+   pata_hd_sector_select = pata_hd_sector_select + 1
+   pata_hd_sector_count = pata_hd_sector_count + 1
+end procedure
+
+--------------------------------------------------------------------------------
+-- write one entire sector at address. no need for start_read/stop_read
+--------------------------------------------------------------------------------
+procedure pata_hd_write_sector_address(dword in address) is
+   -- work needs to be done so we don't need to do start read/stop read
+   -- at every sector.
+
+   ;if !(address == pata_hd_current_address) then
+   pata_hd_start_write(address)
+   ;end if
+
+   var word count1
+   pata_hd_word_count = 0
+
+   ;-- check if we are at the correct sector already
+   ;-- if not, go to the sector and start writing
+   ;if (pata_hd_last_operation == PATA_HD_READ) | (pata_hd_sector_count2 == 0) |
+   ;(!(pata_hd_last_sector + 1 == pata_hd_sector_select)) then          -- if we are at beginning of write
+     pata_hd_go_to_sector (pata_hd_sector_select,1)                    -- go to the correct sector, set sector count to 0
+     pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_WRITE_SECTORS)-- send the write command to the command register
+     pata_hd_last_operation = PATA_HD_WRITE                            -- set last operation to write
+   ;end if
+
+   pata_hd_data_request(PATA_HD_WAIT_WRITE)  -- wait for data to be ready for write before each sector
+
+   -- put sector data
+   for 256 using count1 loop
+      -- put the data onto the ide interface
+      pata_hd_data_low = pata_hd_sector_buffer_low[count1]    -- get low data
+      pata_hd_data_high = pata_hd_sector_buffer_high[count1]   -- get high data
+      pata_hd_delay_100ns()                                  -- delay about 100ns
+      pata_hd_iowr = high ^ PATA_HD_NO_INVERTER              -- send write pulse
+      pata_hd_delay_100ns()                                  -- delay about 100ns
+      pata_hd_iowr = low ^ PATA_HD_NO_INVERTER
+   end loop		
+
+   pata_hd_last_sector = pata_hd_sector_select
+   pata_hd_sector_select = pata_hd_sector_select + 1  -- increment the selected sector
+   ;pata_hd_sector_count = pata_hd_sector_count + 1    -- increase sector count
+   pata_hd_sector_count2 = pata_hd_sector_count2 + 1    -- increase sector count2
+
+   pata_hd_current_address = address + 1
+end procedure
 
 
 
