@@ -17,11 +17,11 @@
 
 include 18f67j50                    -- target PICmicro
 -- include chip
-pragma target clock 24_000_000     -- oscillator frequency
+pragma target clock 48_000_000     -- oscillator frequency
 -- configuration memory settings (fuses)
 pragma target WDT  disabled        -- no watchdog
 pragma target PLLDIV        P2     -- divide by 5 - 20MHZ_INPUT
-pragma target CPUDIV        P2     -- no cpu system clock divide
+pragma target CPUDIV        P1     -- no cpu system clock divide
 pragma target OSC  INTOSC_NOCLKOUT_PLL           -- HS crystal or resonator
 pragma target IESO  DISABLED
 pragma target FCMEN DISABLED
@@ -41,7 +41,8 @@ include print
 const byte return[] = "\r\n"
 
 -- setup hard disk library
-CONST BYTE PATA_HD_USE_CS0_CS1_PINS = TRUE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
+const bit PATA_HD_READ_EXTRA_SPEED = TRUE -- uses additonal code space to add a speed boost to sector_read procedures
+const byte PATA_HD_USE_CS0_CS1_PINS = TRUE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
 const bit PATA_HD_NO_INVERTER = TRUE -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
 -- pin assignments
 alias     pata_hd_data_low              is porta   -- data port (low bits)
@@ -80,7 +81,7 @@ pata_hd_init()                   -- initialize startup settings
 ;include pic_data_eeprom
 include format  -- include format library (required by some fat32 procedures)
 -- change these vaues to save memory
-const word FAT32_FILES_MAX = 50            -- the max number of files allowed in a directory
+const word FAT32_FILES_MAX = 100            -- the max number of files allowed in a directory
 const byte FAT32_FILENAME_SIZE = 100        -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
 const FAT32_DIR_FRAGMENTS_TO_ALLOW = 10     -- (0 = you must have a defragmented media), usually directories are fragmented.
 --                                          -- uses 6 bytes memory per fragment allowed
@@ -93,7 +94,7 @@ const FAT32_FILE_FRAGMENTS_TO_ALLOW = 10    -- (0 = you must have a defragmented
 const byte FAT32_ENTRIES_MAX = 2            -- highest file entry address can be 65535
 --
 -- choose a memory source for the file list
-const bit FAT32_USE_INTERNAL_MEMORY = FALSE -- Use internal memory for file location list
+const bit FAT32_USE_INTERNAL_MEMORY = false -- Use internal memory for file location list
 IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
    -- Setup a large array for storing sector data, This is where filename locations are stored
    const dword LARGE_ARRAY_2_SIZE = FAT32_FILES_MAX               -- choose number of array variables
@@ -142,6 +143,15 @@ fat32_filter_is_system     = FALSE
 fat32_filter_is_volume_id  = FALSE
 fat32_filter_is_directory  = FALSE
 fat32_filter_is_archive    = FALSE
+
+-- SETUP SPI
+include spi_master_hw        -- includes the spi library
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+--
+spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
 
 -- setup vs1053(b)
 const byte str1[] = "INITIALIZING VS1053B"

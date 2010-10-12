@@ -53,7 +53,7 @@ var byte  file_ext[3]                  -- holds file extension after file_read_i
 var word  fat32_dir_file_count         -- number of files in current directory
 
 var dword fat32_root_dir               -- sector location of the root dir
-var dword fat32_current_dir_location   -- sector location of last dir read
+var volatile dword fat32_current_dir_location   -- sector location of last dir read
 var dword fat32_fat_begin              -- the location of the file alocation table for current partition
 var byte  fat32_sectors_per_cluster    -- the number of sectors per cluster, usually 8
 var dword fat32_root_dir_first_cluster -- the location of the root dir's first cluster, should be 2
@@ -163,7 +163,6 @@ end if
 ;  alias fat32_sector_data is large_array_1
 
 ;END IF
-
 
 
 -- ----------------------------------------------------------------------------
@@ -559,8 +558,9 @@ procedure fat32_read_dir_info(dword in dir) is
 
    fat32_current_dir_location = dir
 
-   while exit_procedure == FALSE loop
 
+
+   while exit_procedure == FALSE loop
       if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
          ;fat32_stop_read() -- stop the current read process if any
 
@@ -580,8 +580,6 @@ procedure fat32_read_dir_info(dword in dir) is
          current_entry = 0
 
          for 16 loop                        -- loop once per sector & count sectors read
-
-
             in_a             = fat32_sector_buffer [(current_entry * 32) + 0]
             long_name_check  = fat32_sector_buffer [(current_entry * 32) + 6]
             attrib           = fat32_sector_buffer [(current_entry * 32) + 11]
@@ -673,9 +671,9 @@ procedure fat32_read_dir_info(dword in dir) is
       end if
 
    end loop
+
    fat32_entry_location[fat32_dir_file_count] = 0
    fat32_stop_read() -- let media wait for next operation
-
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -689,8 +687,8 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
    var byte count1
    var byte long_name_entries
    var byte x
-   
-   read_fat32_entry_location = fat32_entry_location [file_number]
+
+   read_fat32_entry_location = fat32_entry_location[file_number]
    
    if (FAT32_DIR_FRAGMENTS_TO_ALLOW > 0) then
       -- start reading at the correct sector
@@ -734,7 +732,7 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
       -- start reading at the correct sector
       fat32_start_read (fat32_current_dir_location + (read_fat32_entry_location >> 4))
    end if
-   
+
    -- start reading at the correct 32 byte entry
    var byte  temp_val[4] at read_fat32_entry_location -- get lower nibble out of read_fat32_entry_location
    x = temp_val[0]
