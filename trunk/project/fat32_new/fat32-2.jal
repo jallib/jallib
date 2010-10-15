@@ -49,7 +49,7 @@
 
 -- vars you can read info from
 var dword fat32_file_size              -- holds file size after file_read_info()
-var byte  file_ext[3]                  -- holds file extension after file_read_info()
+var byte  fat32_file_extension[3]                  -- holds file extension after file_read_info()
 var word  fat32_dir_file_count         -- number of files in current directory
 
 var dword fat32_root_dir               -- sector location of the root dir
@@ -60,7 +60,6 @@ var dword fat32_root_dir_first_cluster -- the location of the root dir's first c
 var dword fat32_file_location          -- holds file location after file_read_info()
 ;var dword fat32_root_dir_first_cluster           -- file's start cluster number after file_read_info()
 var dword fat32_cluster_begin          -- the location of the beginning of clusters (where files & folders data is)
-var bit fat32_file_data_available = FALSE   -- holds if file data is available for reading
 var bit fat32_init_ok = FALSE          -- tells you if fat32 initalized ok or not.
 
 -- Create file fat32_attribute variables
@@ -92,10 +91,10 @@ var bit fat32_filter_is_archive at fat32_attrib_filter   : 5
 -- data media selection
 if (DATA_MEDIA == PATA_HARD_DISK) then
    -- hard disk procedures
-   alias fat32_start_read is pata_hd_start_read              -- get hard disk ready for reading
+;   alias fat32_start_read is pata_hd_start_read              -- get hard disk ready for reading
    alias fat32_raw_read is pata_hd_read_data                 -- read one word from hard disk
    alias fat32_read_pulse is pata_hd_read_pulse              -- go forward 2 bytes in current sector
-   ;alias fat32_stop_read is pata_hd_stop_read                -- tell hard disk we are done reading
+   alias fat32_stop_read is pata_hd_stop_read                -- tell hard disk we are done reading
    alias fat32_raw_read_sector is pata_hd_read_sector        -- read one sector to sector buffer array
    alias fat32_raw_read_sector_address is pata_hd_read_sector_address        -- read one sector to sector buffer array
    alias fat32_set_idle is pata_hd_set_idle                  -- sets hard disk to idle state
@@ -106,10 +105,10 @@ if (DATA_MEDIA == PATA_HARD_DISK) then
    alias fat32_sector_buffer is pata_hd_sector_buffer        -- sector buffer array
 elsif DATA_MEDIA == SD_CARD then
    -- sd card procedures
-   alias fat32_start_read is sd_start_read                   -- get sd card ready for reading
+;   alias fat32_start_read is sd_start_read                   -- get sd card ready for reading
    alias fat32_raw_read is sd_read_data                      -- read one word from sd card
    alias fat32_read_pulse is sd_read_pulse                   -- go forward 2 bytes in current sector
-   ;alias fat32_stop_read  is sd_stop_read                    -- tell sd card we are done reading
+   alias fat32_stop_read  is sd_stop_read                    -- tell sd card we are done reading
    alias fat32_raw_read_sector is sd_read_sector             -- read one sector to sector buffer array
    alias fat32_set_idle is sd_set_idle                       -- sets sd card to idle state
    alias fat32_raw_read_sector_address is sd_read_sector2
@@ -120,14 +119,19 @@ elsif DATA_MEDIA == SD_CARD then
    alias fat32_sector_buffer is sd_sector_buffer             -- sector buffer array
 end if
 
-procedure fat32_stop_read() is
+
+var word fat32_read_count
+procedure fat32_start_read(dword in address) is
    pragma inline
-   fat32_file_data_available = FALSE
+
    if (DATA_MEDIA == PATA_HARD_DISK) then
-      pata_hd_stop_read
+      pata_hd_start_read(address)
    elsif DATA_MEDIA == SD_CARD then
-      sd_stop_read
+      sd_start_read(address)
    end if
+   
+   -- reset read count (used in fat32_read_file)
+   fat32_read_count = 0
 end procedure
 
 -- other intarnal vars
@@ -261,22 +265,30 @@ end procedure
 -- ----------------------------------------------------------------------------
 const byte FAT32_DIRECTORY = 0
 const byte FAT32_FILE = 1
+var dword fat32_current_cluster
 if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
-   -- start cluster location of each directory fragment
-   var dword fat32_dir_fragments_start[FAT32_DIR_FRAGMENTS_TO_ALLOW]
-   -- count clusters that are next to eachother, max 32 if byte (256/8), var fat32_dir_count_3 must be same (default byte)
-   var byte fat32_dir_fragment_cluster_count[FAT32_DIR_FRAGMENTS_TO_ALLOW]
+
+   -- the user may create these arrays themselves in an external memory source
+   if !defined(fat32_dir_fragments_start) then
+      -- start cluster location of each directory fragment
+      var dword fat32_dir_fragments_start[FAT32_DIR_FRAGMENTS_TO_ALLOW]
+      -- count clusters that are next to eachother, max 32 if byte (256/8), var fat32_dir_count_3 must be same (default byte)
+      var byte fat32_dir_fragment_cluster_count[FAT32_DIR_FRAGMENTS_TO_ALLOW]
+   end if
    
-   -- start cluster location of each file fragment
-   var dword fat32_file_fragments_start[FAT32_FILE_FRAGMENTS_TO_ALLOW]
-   -- count sectors that are next to eachother, max fragment size is 4.19 megabites if word, 274.878 gb if dword, var fat32_file_count_3 must be same (default dword)
-   var dword fat32_file_fragment_cluster_count[FAT32_FILE_FRAGMENTS_TO_ALLOW]
+   -- the user may create these arrays themselves in an external memory source
+   if !defined(fat32_file_fragments_start) then
+      -- start cluster location of each file fragment
+      var dword fat32_file_fragments_start[FAT32_FILE_FRAGMENTS_TO_ALLOW]
+      -- count sectors that are next to eachother, max fragment size is 4.19 megabites if word, 274.878 gb if dword, var fat32_file_count_3 must be same (default dword)
+      var dword fat32_file_fragment_cluster_count[FAT32_FILE_FRAGMENTS_TO_ALLOW]
+   end if
    
    procedure fat32_read_fragments(dword in dir_cluster_start, bit in file_or_dir) is
       if file_or_dir == FAT32_DIRECTORY then
          var byte fat32_dir_fragments_start_count = 0
          var byte cluster_location_in_sector
-         var dword current_cluster = dir_cluster_start
+         fat32_current_cluster = dir_cluster_start
          var bit done = false
          var dword custers_sector
          var byte custers_sector_array[4] at custers_sector
@@ -287,7 +299,7 @@ if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
          var byte in_0, in_1, in_2, in_3
          var dword next_cluster at next_cluster_array
          
-         var byte current_cluster_array[4] at current_cluster
+         var byte fat32_current_cluster_array[4] at fat32_current_cluster
          
          fat32_dir_fragments_start[0] = dir_cluster_start -- store the first cluster's start location in first array value
          
@@ -295,16 +307,16 @@ if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
          
          while done == FALSE loop
             
-            current_cluster = current_cluster << 1
+            fat32_current_cluster = fat32_current_cluster << 1
             
-            custers_sector_array[0] = current_cluster_array[1]
-            custers_sector_array[1] = current_cluster_array[2]
-            custers_sector_array[2] = current_cluster_array[3]
+            custers_sector_array[0] = fat32_current_cluster_array[1]
+            custers_sector_array[1] = fat32_current_cluster_array[2]
+            custers_sector_array[2] = fat32_current_cluster_array[3]
             custers_sector_array[3] = 0
             
-            cluster_location_in_sector = current_cluster_array[0]
+            cluster_location_in_sector = fat32_current_cluster_array[0]
             
-            current_cluster = current_cluster >> 1
+            fat32_current_cluster = fat32_current_cluster >> 1
             
             -- for troubleshooting only
             ;_fat32_send_dword (custers_sector)
@@ -315,17 +327,14 @@ if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
             fat32_read_pulse (cluster_location_in_sector)       -- go to the location of the value in the sector
             
             -- get the location of the next cluster
-            fat32_raw_read (in_0, in_1)          -- read 2 data bytes
-            fat32_raw_read (in_2, in_3)          -- read 2 data bytes
-            
             -- put it into a dword
-            next_cluster_array[0] = in_0
-            next_cluster_array[1] = in_1
-            next_cluster_array[2] = in_2
-            next_cluster_array[3] = in_3
+            next_cluster_array[0] = fat32_raw_data_byte
+            next_cluster_array[1] = fat32_raw_data_byte
+            next_cluster_array[2] = fat32_raw_data_byte
+            next_cluster_array[3] = fat32_raw_data_byte
             
             -- for troubleshooting only
-            ;_fat32_send_dword (current_cluster)
+            ;_fat32_send_dword (fat32_current_cluster)
             ;_fat32_send_dword (next_cluster)
             ;send_word (0xAA, 0xAA)
             
@@ -337,55 +346,61 @@ if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
             end if
             
             while done == FALSE loop
-               if current_cluster + 1 == next_cluster  then -- if no fragmentation
-                  while current_cluster + 1 == next_cluster loop
-                     current_cluster = next_cluster -- increment since we read the next cluster, no fragmentation
+               fat32_dir_count_3 = 1
+               if fat32_current_cluster + 1 == next_cluster  then -- if no fragmentation
+                  while fat32_current_cluster + 1 == next_cluster loop
+                     fat32_current_cluster = next_cluster -- increment since we read the next cluster, no fragmentation
                      
                      -- get the location of the next cluster
-                     fat32_raw_read (in_0, in_1)          -- read 2 data bytes
-                     fat32_raw_read (in_2, in_3)          -- read 2 data bytes
-                     
                      -- put it into a dword
-                     next_cluster_array[0] = in_0
-                     next_cluster_array[1] = in_1
-                     next_cluster_array[2] = in_2
-                     next_cluster_array[3] = in_3
+                     next_cluster_array[0] = fat32_raw_data_byte
+                     next_cluster_array[1] = fat32_raw_data_byte
+                     next_cluster_array[2] = fat32_raw_data_byte
+                     next_cluster_array[3] = fat32_raw_data_byte
                      
                      -- store number of clusters that are beside eachother
                      fat32_dir_count_3 = fat32_dir_count_3 + 1
-                     fat32_dir_fragment_cluster_count[fat32_dir_fragments_start_count - 1] = fat32_dir_count_3
                   end loop
+                  fat32_dir_fragment_cluster_count[fat32_dir_fragments_start_count - 1] = fat32_dir_count_3
                elsif next_cluster == 0x0F_FF_FF_FF then -- if end of clusters
                   done = TRUE -- we are done, quit all loops
                else -- if fragmentation
+               
                   fat32_dir_fragments_start[fat32_dir_fragments_start_count] = next_cluster -- store the location of the start of the next fragment
                   fat32_dir_fragments_start_count = fat32_dir_fragments_start_count + 1 -- increment fat32_dir_fragments_start address
-                  current_cluster = next_cluster
+                  fat32_current_cluster = next_cluster
                   
                   -- for troubleshooting only
-                  ;_fat32_send_dword (current_cluster)
+                  ;_fat32_send_dword (fat32_current_cluster)
                   
                   exit loop -- exit this loop and go to the next fragment
                end if
                
+               -- exit if there are more fragments then FAT32_DIR_FRAGMENTS_TO_ALLOW
+               if fat32_dir_fragments_start_count == FAT32_DIR_FRAGMENTS_TO_ALLOW then
+                  done = TRUE
+                  exit loop
+               end if
+               
             end loop
             fat32_stop_read() -- stop reading media
+
          end loop
          
-         -- set the rest of the values to 0x0F_FF_FF_FF
-         for FAT32_DIR_FRAGMENTS_TO_ALLOW - fat32_dir_fragments_start_count loop
-            fat32_dir_fragments_start[fat32_dir_fragments_start_count] = 0xFF_FF_FF_FF
-            ;fat32_dir_fragment_cluster_count[fat32_dir_fragments_start_count] = 0xFF
-            fat32_dir_fragments_start_count = fat32_dir_fragments_start_count + 1
-         end loop
+         ;-- set the rest of the values to 0x0F_FF_FF_FF
+         ;for FAT32_DIR_FRAGMENTS_TO_ALLOW - fat32_dir_fragments_start_count loop
+         ;   fat32_dir_fragments_start[fat32_dir_fragments_start_count] = 0xFF_FF_FF_FF
+         ;   ;fat32_dir_fragment_cluster_count[fat32_dir_fragments_start_count] = 0xFF
+         ;   fat32_dir_fragments_start_count = fat32_dir_fragments_start_count + 1
+         ;end loop
          
-      else
+      else -- if file
          
          -- same as above but renamed variables to fat32_file_fragments_start, fat32_file_fragments_start_count
          -- finds fragments in files
          var byte fat32_file_fragments_start_count = 0
          var byte cluster_location_in_sector
-         var dword current_cluster = dir_cluster_start
+         var dword fat32_current_cluster = dir_cluster_start
          var bit done = false
          var dword custers_sector
          var byte custers_sector_array[4] at custers_sector
@@ -396,23 +411,23 @@ if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
          var byte in_0, in_1, in_2, in_3
          var dword next_cluster at next_cluster_array
          
-         var byte current_cluster_array[4] at current_cluster
+         var byte fat32_current_cluster_array[4] at fat32_current_cluster
          
          fat32_file_fragments_start[0] = dir_cluster_start -- store the first cluster's start location in first array value
          fat32_file_fragments_start_count = fat32_file_fragments_start_count + 1 -- increment fat32_file_fragments_start address
-         
+
          while done == FALSE loop
+         
+            fat32_current_cluster = fat32_current_cluster << 1
             
-            current_cluster = current_cluster << 1
-            
-            custers_sector_array[0] = current_cluster_array[1]
-            custers_sector_array[1] = current_cluster_array[2]
-            custers_sector_array[2] = current_cluster_array[3]
+            custers_sector_array[0] = fat32_current_cluster_array[1]
+            custers_sector_array[1] = fat32_current_cluster_array[2]
+            custers_sector_array[2] = fat32_current_cluster_array[3]
             custers_sector_array[3] = 0
             
-            cluster_location_in_sector = current_cluster_array[0]
+            cluster_location_in_sector = fat32_current_cluster_array[0]
             
-            current_cluster = current_cluster >> 1
+            fat32_current_cluster = fat32_current_cluster >> 1
             
             -- for troubleshooting only
             ;_fat32_send_dword (custers_sector)
@@ -423,17 +438,14 @@ if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
             fat32_read_pulse (cluster_location_in_sector)       -- go to the location of the value in the sector
             
             -- get the location of the next cluster
-            fat32_raw_read (in_0, in_1)          -- read 2 data bytes
-            fat32_raw_read (in_2, in_3)          -- read 2 data bytes
-            
             -- put it into a dword
-            next_cluster_array[0] = in_0
-            next_cluster_array[1] = in_1
-            next_cluster_array[2] = in_2
-            next_cluster_array[3] = in_3
+            next_cluster_array[0] = fat32_raw_data_byte
+            next_cluster_array[1] = fat32_raw_data_byte
+            next_cluster_array[2] = fat32_raw_data_byte
+            next_cluster_array[3] = fat32_raw_data_byte
             
             -- for troubleshooting only
-            ;_fat32_send_dword (current_cluster)
+            ;_fat32_send_dword (fat32_current_cluster)
             ;_fat32_send_dword (next_cluster)
             ;send_word (0xAA, 0xAA)
             
@@ -445,47 +457,54 @@ if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
             end if
             
             while done == FALSE loop
-               if current_cluster + 1 == next_cluster  then -- if no fragmentation
-                  while current_cluster + 1 == next_cluster loop
-                     current_cluster = next_cluster -- increment since we read the next cluster, no fragmentation
+            
+               fat32_file_count_3 = 1
+               if fat32_current_cluster + 1 == next_cluster  then -- if no fragmentation
+                  while fat32_current_cluster + 1 == next_cluster loop
+
+                     -- increment since we read the next cluster, no fragmentation
+                     fat32_current_cluster = next_cluster
                      
                      -- get the location of the next cluster
-                     fat32_raw_read (in_0, in_1)          -- read 2 data bytes
-                     fat32_raw_read (in_2, in_3)          -- read 2 data bytes
-                     
                      -- put it into a dword
-                     next_cluster_array[0] = in_0
-                     next_cluster_array[1] = in_1
-                     next_cluster_array[2] = in_2
-                     next_cluster_array[3] = in_3
-                     
+                     next_cluster_array[0] = fat32_raw_data_byte
+                     next_cluster_array[1] = fat32_raw_data_byte
+                     next_cluster_array[2] = fat32_raw_data_byte
+                     next_cluster_array[3] = fat32_raw_data_byte
+
                      -- store number of clusters that are beside eachother
                      fat32_file_count_3 = fat32_file_count_3 + 1
-                     fat32_file_fragment_cluster_count[fat32_file_fragments_start_count - 1] = fat32_file_count_3
                   end loop
+
+                  fat32_file_fragment_cluster_count[fat32_file_fragments_start_count - 1] = fat32_file_count_3
+
                elsif next_cluster == 0x0F_FF_FF_FF then -- if end of clusters
                   done = TRUE -- we are done, quit all loops
                else -- if fragmentation
-                  fat32_file_fragments_start[fat32_file_fragments_start_count] = next_cluster -- store the location of the start of the next fragment
+                  fat32_file_fragments_start[fat32_file_fragments_start_count] = next_cluster -- store the cluster location of the start of the next fragment
                   fat32_file_fragments_start_count = fat32_file_fragments_start_count + 1 -- increment fat32_file_fragments_start address
-                  current_cluster = next_cluster
-                  
-                  -- for troubleshooting only
-                  ;_fat32_send_dword (current_cluster)
-                  
+                  fat32_current_cluster = next_cluster
                   exit loop -- exit this loop and go to the next fragment
+               end if
+               
+               -- exit if there are more fragments then FAT32_FILE_FRAGMENTS_TO_ALLOW
+               if fat32_file_fragments_start_count == FAT32_FILE_FRAGMENTS_TO_ALLOW then
+                  done = TRUE
+                  exit loop
                end if
                
             end loop
             fat32_stop_read() -- stop reading media
+            
+
          end loop
          
-         -- set the rest of the values to 0x0F_FF_FF_FF
-         for FAT32_DIR_FRAGMENTS_TO_ALLOW - fat32_file_fragments_start_count loop
-            fat32_file_fragments_start[fat32_file_fragments_start_count] = 0xFF_FF_FF_FF
-            fat32_file_fragment_cluster_count[fat32_file_fragments_start_count] = 0xFF_FF
-            fat32_file_fragments_start_count = fat32_file_fragments_start_count + 1
-         end loop
+         ;-- set the rest of the values to 0x0F_FF_FF_FF
+         ;for FAT32_DIR_FRAGMENTS_TO_ALLOW - fat32_file_fragments_start_count loop
+         ;   fat32_file_fragments_start[fat32_file_fragments_start_count] = 0xFF_FF_FF_FF
+         ;   fat32_file_fragment_cluster_count[fat32_file_fragments_start_count] = 0xFF_FF
+         ;   fat32_file_fragments_start_count = fat32_file_fragments_start_count + 1
+         ;end loop
       end if
       
       fat32_stop_read() -- stop reading media
@@ -925,9 +944,9 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
    fat32_stop_read() -- let media wait for next operation
    
    ;Get Extension
-   file_ext[0] = line[8]
-   file_ext[1] = line[9]
-   file_ext[2] = line[10]
+   fat32_file_extension[0] = line[8]
+   fat32_file_extension[1] = line[9]
+   fat32_file_extension[2] = line[10]
    
    ;Get Cluster high, Cluster low, file location
    fat32_root_dir_first_cluster = line[21]
@@ -1028,7 +1047,6 @@ function fat32_file_open(byte in file_number) return bit is
    end if
    if (!fat32_is_directory) & (!fat32_is_volume_id) then -- if it is a file
       _fat32_file_sector_count = 0
-      fat32_file_data_available = TRUE
 ;   fat32_send_high_byte = FALSE
       if FAT32_DIR_FRAGMENTS_TO_ALLOW > 0 then
          fat32_sector_count = 0   -- reset number of sectors read, only used for fragmented files
@@ -1081,28 +1099,6 @@ procedure fat32_list_dir() is
 end procedure
 
 -- ----------------------------------------------------------------------------
--- read data from the currently opened file.
--- ----------------------------------------------------------------------------
-procedure fat32_read_file(byte out in_b, byte out in_a) is
-   if FAT32_FILE_FRAGMENTS_TO_ALLOW == 0 then
-      fat32_raw_read (in_b, in_a)
-   else
-      if fat32_word_count == 0 then  -- if at the beginning of a sector
-         -- if between fragments, go to the next fragment and read
-         if fat32_sector_count == fat32_file_fragment_cluster_count[fat32_file_fragment_number] * fat32_sectors_per_cluster then
-            fat32_stop_read() -- stop the current read process if any
-            fat32_file_fragment_number = fat32_file_fragment_number + 1  -- increment the fragment number being read
-            -- start reading at the beginning of the fragment
-            fat32_start_read (fat32_cluster_begin + (fat32_file_fragments_start[fat32_file_fragment_number] * fat32_sectors_per_cluster) )
-            fat32_sector_count = 0 -- reset the sector counter.
-         end if
-         fat32_sector_count = fat32_sector_count + 1 -- increment sector number
-      end if
-      fat32_raw_read (in_b, in_a)
-   end if
-end procedure
-
--- ----------------------------------------------------------------------------
 -- send the current filename via serial port, you may modify this for
 -- your own application.
 -- requires serial_hw.jal
@@ -1120,41 +1116,115 @@ procedure fat32_read_filename() is
 end procedure
 
 -- ----------------------------------------------------------------------------
--- read one entire sector 2nd try(fragmented file needs to be tested)
+-- read one sector from a file starting at the beginning of the file.
+-- auto increments to next sector in file. fragmented files work.
+-- requires: fat32_start_read(fat32_file_location), fat32_stop_read
+-- faster then fat32_read_file_sector_number() procedure
 -- ----------------------------------------------------------------------------
-procedure fat32_read_sector2(dword in address) is
+var byte*3 fat32_file_sector_count = 0
+procedure fat32_read_file_sector() is
    if FAT32_FILE_FRAGMENTS_TO_ALLOW == 0 then
       fat32_raw_read_sector()
    else
       -- if between fragments, go to the next fragment and read
-      if fat32_sector_count == fat32_file_fragment_cluster_count[fat32_file_fragment_number] * fat32_sectors_per_cluster then
+      if fat32_file_sector_count == (fat32_file_fragment_cluster_count[fat32_file_fragment_number] * fat32_sectors_per_cluster) then
+
          fat32_stop_read() -- stop the current read process if any
          fat32_file_fragment_number = fat32_file_fragment_number + 1  -- increment the fragment number being read
+
          -- start reading at the beginning of the fragment
          fat32_start_read (fat32_cluster_begin + (fat32_file_fragments_start[fat32_file_fragment_number] * fat32_sectors_per_cluster) )
-         fat32_sector_count = 0 -- reset the sector counter.
+         fat32_file_sector_count = 0 -- reset the sector counter.
+
       end if
-      fat32_sector_count = fat32_sector_count + 1 -- increment sector number
+      fat32_file_sector_count = fat32_file_sector_count + 1 -- increment sector number
       fat32_raw_read_sector()
    end if
 end procedure
 
-
 -- ----------------------------------------------------------------------------
--- read one sector of the currently open file (fragmented file needs to be tested)
+-- reads selected sector from a file. fragmented files work.
+-- slower then fat32_read_file_sector() procedure, but user friendly.
 -- ----------------------------------------------------------------------------
-procedure fat32_read_file_sector() is
-   -- if the file was just opened
-   if _fat32_file_sector_count == 0 then
-   end if
+procedure fat32_read_file_sector_number(dword in file_sector_number) is
+   if FAT32_FILE_FRAGMENTS_TO_ALLOW == 0 then
+      -- just read the file at the address. assume no fragments.
+      fat32_raw_read_sector_address(fat32_file_location + file_sector_number)
+   else
+      -- find what fragment the requested file sector number is located in
+      
+      -- rename/reuse the input variable
+      alias sectors_left is file_sector_number
+      
+      -- start at first fragment
+      fat32_file_fragment_number = 0
 
-   _fat32_file_sector_count = _fat32_file_sector_count + 1
-   ;fat32_raw_read_sector()
-   fat32_raw_read_sector_address(fat32_file_location + _fat32_file_sector_count)
+      -- calculate how many sectors are in the current fragment
+      var dword count_fragment_sectors = fat32_file_fragment_cluster_count[0] * fat32_sectors_per_cluster
 
-   -- if we are finnished reading the file
-   if _fat32_file_sector_count == (fat32_file_size / 512) then
-      -- set the media to idle mode
-      fat32_file_data_available = FALSE
+      -- while we are not at the correct fragment,
+      -- number of sectors left is > the number of sectors in the current fragment.
+      while !((fat32_file_fragment_cluster_count[fat32_file_fragment_number] * fat32_sectors_per_cluster) > sectors_left) loop
+         -- subtract the number of sectors in the current fragment from sectors left
+         sectors_left = sectors_left - (fat32_file_fragment_cluster_count[fat32_file_fragment_number] * fat32_sectors_per_cluster)
+         -- increment to the next fragment
+         fat32_file_fragment_number = fat32_file_fragment_number + 1
+      end loop
+
+      -- calculate the address
+      var dword address
+      address = fat32_cluster_begin + (fat32_file_fragments_start[fat32_file_fragment_number] * fat32_sectors_per_cluster) + sectors_left
+
+      -- read a sector at the address
+      fat32_raw_read_sector_address(address)
    end if
 end procedure
+
+-- ----------------------------------------------------------------------------
+-- read one byte from a file starting at the beginning of the file.
+-- auto increments to next byte in file. fragmented files work.
+-- requires: fat32_start_read(fat32_file_location), fat32_stop_read
+-- faster then fat32_read_file_address() procedure
+-- ----------------------------------------------------------------------------
+function fat32_read_file_byte() return byte is
+   var byte data
+   if fat32_read_count == 0 then
+      fat32_read_sector()
+      fat32_read_count = fat32_read_count + 1
+      return fat32_sector_buffer[0]
+   else
+      data = fat32_sector_buffer[fat32_read_count]
+      fat32_read_count = fat32_read_count + 1
+      if fat32_read_count == 512 then
+         fat32_read_count = 0
+      end if
+      return data
+   end if
+end function
+
+-- ----------------------------------------------------------------------------
+-- reads selected byte from a file. fragmented files work.
+-- slower then fat32_read_file() procedure, but user friendly.
+-- ----------------------------------------------------------------------------
+var dword current_address = 0xFFFFFFFF
+function fat32_read_file_byte_address(dword in address) return byte is
+   var byte data
+   var word sector_location = 0
+
+   while address > 512 loop
+      -- calculate what sector the byte is in
+      sector_location = sector_location + 1
+      
+      -- calculate where the byte is in the sector
+      address = address - 512
+   end loop
+   
+   -- read the sector
+   if !(sector_location == current_address) then
+      fat32_read_file_sector_number(sector_location)
+      current_address = sector_location
+   end if
+   
+   -- return the data byte
+   return fat32_sector_buffer[word(address)]
+end function

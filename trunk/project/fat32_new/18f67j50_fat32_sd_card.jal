@@ -65,12 +65,12 @@ sd_init()                    -- initialize startup settings
 ;include pic_data_eeprom
 include format  -- include format library (required by some fat32 procedures)
 -- change these vaues to save memory
-const word FAT32_FILES_MAX = 50            -- the max number of files allowed in a directory
+const word FAT32_FILES_MAX = 25            -- the max number of files allowed in a directory
 const byte FAT32_FILENAME_SIZE = 100        -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
-const FAT32_DIR_FRAGMENTS_TO_ALLOW = 0     -- (0 = you must have a defragmented media), usually directories are fragmented.
+const FAT32_DIR_FRAGMENTS_TO_ALLOW = 10     -- (0 = you must have a defragmented media), usually directories are fragmented.
 --                                          -- uses 6 bytes memory per fragment allowed
 --                                          -- windows defrag does not defragment directories.
-const FAT32_FILE_FRAGMENTS_TO_ALLOW = 0    -- (0 = you must have a defragmented media)
+const FAT32_FILE_FRAGMENTS_TO_ALLOW = 10    -- (0 = you must have a defragmented media)
 --                                          -- uses 8 bytes memory per fragment allowed
 --
 -- experts may change the following values
@@ -128,43 +128,25 @@ fat32_filter_is_volume_id  = FALSE
 fat32_filter_is_directory  = FALSE
 fat32_filter_is_archive    = FALSE
 
--- user procedures
-
 -- procedure for sending 80 "-----------------" via serial port
-procedure next() is
-   serial_hw_write (13)-- send (carriage return, line feed) characters to serial port
-   serial_hw_write (10)
-   for 80 loop
-      serial_hw_write ("-")
-   end loop
-   serial_hw_write (13)-- send (carriage return, line feed) characters to serial port
-   serial_hw_write (10)
+procedure seperator() is
+   serial_hw_data = 13
+   serial_hw_data = 10
+   const byte str3[] = "--------------------------------------------------------------------------------"
+   print_string(serial_hw_data, str3)
 end procedure
 
 -- start of main program
-var byte in_a, in_b -- vars for storing data read
+seperator()-- send "----"
 
-fat32_init(1)       -- initialize fat32, go to 1st primary partition's root dir "\"
-
-if fat32_init_ok == TRUE then
-   const byte str1[] = "FAT32 FOUND"
-   print_string(serial_hw_data, str1)
-else
-   const byte str2[] = "FAT32 PARTITION NOT FOUND"
-   print_string(serial_hw_data, str2)
-end if
-print_crlf(serial_hw_data)
-print_crlf(serial_hw_data)
+fat32_init(1) -- initialize fat32, go to 1st primary partition's root dir "\"
 
 ------------------------------------------------------------
 -- list a directory, send it via serial port
 ------------------------------------------------------------
-
--- we are now in the root dir of the 1st partition
-
 fat32_list_dir() -- see the procedure, sends dir listing via serial port
 
-;next() -- send "-----" and go to next example
+seperator() -- send "-----" and go to next example
 
 ---------------------------------------------------------------------------------------------------------------
 -- example read filename, send it via serial port
@@ -174,66 +156,8 @@ fat32_list_dir() -- see the procedure, sends dir listing via serial port
 
 ;fat32_read_file_info(3) -- read 3rd file's name, location, size, attributes into memory
 
-
 -- now send the filename via the serial port
 ;fat32_read_filename()
-
-;next() -- send "-----" and go to next example
-
-------------------------------------------------------------
--- example select a file,
--- if dir then go into dir list it
--- if file then go into file and read it
-------------------------------------------------------------
-
-;  var byte file_number = 13
-;     -- choose a file for reading or dir for opening
-;
-;  if fat32_cd(file_number) then            -- if change directory is successful
-;    list_dir()                              -- sends dir listing via serial port
-;  end if
-;
-;  if fat32_file_open(file_number) then  -- if go into file is successful
-;
-;    fat32_start_read (fat32_file_location)  -- go in the file, get ready to read
-;    for (fat32_file_size / 2) loop          -- reading 2 bytes at a time
-;      fat32_read_file (in_b, in_a)          -- read 2 data bytes
-;       serial_hw_write (in_b)                -- send 2 data bytes via serial port
-;       serial_hw_write (in_a)
-;    end loop
-;
-;    -- if odd number of bytes in file, send last byte
-;    var bit odd_number at fat32_file_size : 0
-;    if odd_number then
-;      fat32_read_file (in_b, in_a)          -- read 2 data bytes
-;      serial_hw_write     (in_b)            -- send last data byte via serial port
-;    end if
-;
-;    fat32_stop_read () -- end of file, set media idle
-;  end if
-;
-;serial_hw_write (13)                -- send 2 data bytes via serial port
-;serial_hw_write (10)
-
-
-;------------------------------------------------------------
-;-- example raw read one sector from anywhere on media
-;------------------------------------------------------------
-;-- READ ONE SECTOR
-;var byte low_byte
-;var byte high_byte
-;
-;-- raw read the sector containing the root dir (sector 0)
-;fat32_start_read(fat32_cluster_begin + (0x02 * 8))
-;for 256 loop                          -- read 1 sector (256 words)
-;  fat32_raw_read (low_byte, high_byte)  -- read 2 bytes of data
-;  serial_hw_write (low_byte)          -- send byte via serial port
-;  serial_hw_write (high_byte)         -- send byte via serial port
-;end loop
-;fat32_stop_read()                        -- tell sd card you are done reading
-
-
-
 
 ------------------------------------------------------------
 -- example user interaction,
@@ -244,37 +168,67 @@ fat32_list_dir() -- see the procedure, sends dir listing via serial port
 -- if file selected go into file and read it
 ------------------------------------------------------------
 
+var byte data
+var dword step1
+var word step2
+
 var byte file_number2 = 0
 forever loop
-   next() -- send "-----" then loop and wait for user input
-   
+   seperator() -- send "-----" then loop and wait for user input
+
    while !serial_hw_data_available loop
    end loop
-   
+
    var byte x
    x = serial_hw_read(file_number2)
-   
+
    -- choose a file for reading or dir for opening
    if fat32_cd(file_number2) then             -- if change directory is successful
       fat32_list_dir()                        -- sends dir listing via serial port
    elsif fat32_file_open(file_number2) then   -- if go into file is successful
-      
-      fat32_start_read (fat32_file_location)  -- go in the file, get ready to read
-      for (fat32_file_size / 2) loop          -- reading 2 bytes at a time
-         fat32_read_file (in_b, in_a)         -- read 2 data bytes
-         serial_hw_write (in_b)               -- send 2 data bytes via serial port
-         serial_hw_write (in_a)
+
+;      -- EXAMPLE 1 (slowest and user friendly)
+;      -- Read any byte number in the file, in any order you wish.
+;      for fat32_file_size using step1 loop
+;          data = fat32_read_file_byte_address(step1)
+;          serial_hw_data = data
+;      end loop
+
+;      -- EXAMPLE 2 (slow, not so user friendly)
+;      -- You must start reading from the beginning of the file, and
+;      -- read sectors in order.
+;      fat32_start_read (fat32_file_location)
+;      for fat32_file_size loop
+;          data = fat32_read_file_byte()
+;          serial_hw_data = data
+;      end loop
+;      fat32_stop_read()
+
+      -- EXAMPLE 3 (fast and user friendly)
+      -- Read from any sector number in the file, in any order you wish.
+      for ((fat32_file_size / 512) + 1) using step1 loop
+         -- read one sector from the disk
+         fat32_read_file_sector_number(step1)
+         -- send the sector via serial port
+         for 512 using step2 loop
+            serial_hw_data = fat32_sector_buffer[step2]
+         end loop
       end loop
+
+;      -- EXAMPLE 4 (fastest, not so user friendly)
+;      -- Read sectors from a file. You must start reading from
+;      -- the beginning of the file, and read sectors in order.
+;      fat32_start_read (fat32_file_location)  -- go in the file, get ready to read
+;      for ((fat32_file_size / 512) + 1) using step1 loop
+;         -- read one sector from the disk
+;         fat32_read_file_sector()
+;         -- send the sector via serial port
+;         for 512 using step2 loop
+;            serial_hw_data = fat32_sector_buffer[step2]
+;         end loop
+;      end loop
+;      fat32_stop_read() -- end of file, set media idle
+
       
-      -- if odd number of bytes in file, send last byte
-      var bit odd_number at fat32_file_size : 0
-      if odd_number then
-         fat32_read_file (in_b, in_a)          -- read 2 data bytes
-         serial_hw_write     (in_b)            -- send last data byte via serial port
-      end if
-      
-      fat32_stop_read () -- end of file, set media idle
    end if
-   
-   
 end loop
