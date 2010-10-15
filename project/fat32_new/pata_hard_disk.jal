@@ -91,6 +91,7 @@ const PATA_HD_WRITE_SECTORS = 0x30    -- write data to sector(s)
 const PATA_HD_IDENTIFY_DRIVE = 0xEC  -- read drive info such as make/modem/sn/drive size
 const PATA_HD_SPIN_DOWN = 0xE0       -- turn off the drive's motor
 const PATA_HD_SPIN_UP = 0xE1         -- turn on the drive's motor
+const PATA_HD_WRITE_SECTOR_BUFFER = 0xE8    -- write sector buffer to disk
 
 -- other constants
 -- used for pata_hd_data_request()
@@ -2047,16 +2048,18 @@ procedure pata_hd_write_sector() is
   	
    for 256 using count1 loop
       -- put the data onto the ide interface
-      pata_hd_data_low = pata_hd_sector_buffer_low[count1]    -- put low data
-      pata_hd_data_high = pata_hd_sector_buffer_high[count1]   -- put high data
+      pata_hd_data_low = pata_hd_sector_buffer_low[count1]   -- put low data
+      pata_hd_data_high = pata_hd_sector_buffer_high[count1] -- put high data
       pata_hd_delay_100ns()                                  -- delay about 100ns
-      pata_hd_iowr = high ^ PATA_HD_NO_INVERTER      -- send write pulse
+      pata_hd_iowr = high ^ PATA_HD_NO_INVERTER              -- send write pulse
       pata_hd_delay_100ns()                                  -- delay about 100ns
       pata_hd_iowr = low ^ PATA_HD_NO_INVERTER
    end loop		  	
 
    pata_hd_sector_select = pata_hd_sector_select + 1
    pata_hd_sector_count = pata_hd_sector_count + 1
+   
+;  pata_hd_register_write (PATA_HD_SEC_COUNT_REG,0)
 end procedure
 
 --------------------------------------------------------------------------------
@@ -2077,9 +2080,9 @@ procedure pata_hd_write_sector_address(dword in address) is
    ;-- if not, go to the sector and start writing
    ;if (pata_hd_last_operation == PATA_HD_READ) | (pata_hd_sector_count2 == 0) |
    ;(!(pata_hd_last_sector + 1 == pata_hd_sector_select)) then          -- if we are at beginning of write
-     pata_hd_go_to_sector (pata_hd_sector_select,1)                    -- go to the correct sector, set sector count to 0
-     pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_WRITE_SECTORS)-- send the write command to the command register
-     pata_hd_last_operation = PATA_HD_WRITE                            -- set last operation to write
+     pata_hd_go_to_sector (pata_hd_sector_select,1)                     -- go to the correct sector, set sector count to 0
+     pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_WRITE_SECTORS) -- send the write command to the command register
+     pata_hd_last_operation = PATA_HD_WRITE                             -- set last operation to write
    ;end if
 
    pata_hd_data_request(PATA_HD_WAIT_WRITE)  -- wait for data to be ready for write before each sector

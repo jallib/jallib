@@ -84,7 +84,7 @@ include format  -- include format library (required by some fat32 procedures)
 const word FAT32_FILES_MAX = 100            -- the max number of files allowed in a directory
 const byte FAT32_FILENAME_SIZE = 100        -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
 const FAT32_DIR_FRAGMENTS_TO_ALLOW = 10     -- (0 = you must have a defragmented media), usually directories are fragmented.
---                                          -- uses 6 bytes memory per fragment allowed
+--                                          -- uses 5 bytes memory per fragment allowed
 --                                          -- windows defrag does not defragment directories.
 const FAT32_FILE_FRAGMENTS_TO_ALLOW = 10    -- (0 = you must have a defragmented media)
 --                                          -- uses 8 bytes memory per fragment allowed
@@ -94,7 +94,7 @@ const FAT32_FILE_FRAGMENTS_TO_ALLOW = 10    -- (0 = you must have a defragmented
 const byte FAT32_ENTRIES_MAX = 2            -- highest file entry address can be 65535
 --
 -- choose a memory source for the file list
-const bit FAT32_USE_INTERNAL_MEMORY = false -- Use internal memory for file location list
+const bit FAT32_USE_INTERNAL_MEMORY = TRUE -- Use internal memory for file location list
 IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
    -- Setup a large array for storing sector data, This is where filename locations are stored
    const dword LARGE_ARRAY_2_SIZE = FAT32_FILES_MAX               -- choose number of array variables
@@ -242,52 +242,70 @@ forever loop
    -- wait for user to send serial data (file selection)
    while !serial_hw_data_available loop
    end loop
+
    file_number = serial_hw_data
 
-   -- display the filename chosen
-   format_word_dec(serial_hw_data,file_number,6,0) -- send the file number
-   serial_hw_write (".")
-   serial_hw_write (" ")
-   fat32_read_file_info(file_number) -- read file's name, location, size, attributes into memory
-   fat32_read_filename()             -- send the file name via serial port
-
-   seperator() -- send "-----"
+   if !(file_number > fat32_dir_file_count) then -- if the file number exists
+      -- display the filename chosen
+      format_word_dec(serial_hw_data,file_number,6,0) -- send the file number
+      serial_hw_write (".")
+      serial_hw_write (" ")
+      fat32_read_file_info(file_number) -- read file's name, location, size, attributes into memory
+      fat32_read_filename()             -- send the file name via serial port
+      seperator() -- send "-----"
+   end if
 
    -- do something with the chosen file number
    if fat32_cd(file_number) then            -- if change directory is successful
       fat32_list_dir()                      -- sends dir listing via serial port
 
-   elsif fat32_file_open(file_number) then  -- if go into file is successful
+   elsif fat32_file_open(file_number) then  -- if file open is successful
+      var dword sector_step = 0
       count8 = 0
 
-      vs_play()
+      vs_play() -- allow vs1053b to play music
 
-      while fat32_file_data_available loop
+      -- continue till no data is left.
+      for (fat32_file_size / 512) + 1 loop
 
-         fat32_read_file_sector() -- read one sector of file data
+         fat32_read_file_sector_number(sector_step)
+         sector_step = sector_step + 1
 
-         -- now send it to vs1053b
+         -- do something with the data
+         if (fat32_file_extension[0] == "m" & fat32_file_extension[1] == "p" & fat32_file_extension[2] == "3") |
+            (fat32_file_extension[0] == "m" & fat32_file_extension[1] == "P" & fat32_file_extension[2] == "3") |
+            (fat32_file_extension[0] == "M" & fat32_file_extension[1] == "p" & fat32_file_extension[2] == "3") |
+            (fat32_file_extension[0] == "M" & fat32_file_extension[1] == "P" & fat32_file_extension[2] == "3") then
 
-         -- set to spi mode 00
-         SSPCON_CKP = 0
-         SSPSTAT_CKE = 1
+            -- now send it to vs1053b
 
-         vs_data_chip_select = low -- enable vs1053b
+            -- set to spi mode 00
+            SSPCON_CKP = 0
+            SSPSTAT_CKE = 1
+            -- enable vs1053b
+            vs_data_chip_select = low
 
-         var word count1 = 0                     -- sector data count
-         for 16 loop                             -- loop till end of sector read
+            var word count1                        -- sector data count
+            count1 = 0
+            for 16 loop                             -- loop till end of sector read
 
-            -- wait till data gets requested
-            while vs_dreq == low loop
+               -- wait till data gets requested
+               while vs_dreq == low loop
+               end loop
+
+               -- vs1053b can take up to 32 bytes when vs_dreq is low
+               for 32 loop
+                  spi_master_hw = fat32_sector_buffer[count1]
+                  count1 = count1 + 1
+               end loop
             end loop
-
-            -- vs1053b can take up to 32 bytes when vs_dreq is low
-            for 32 loop
-               spi_master_hw = (fat32_sector_buffer[count1])
+         else
+            var word count1 = 0
+            for 512 loop
+               serial_hw_data = fat32_sector_buffer[count1]
                count1 = count1 + 1
             end loop
-         end loop
-
+         end if
          -- get users input via serial port to control music (volume, play speed, stop, etc.)
          if serial_hw_data_available == TRUE then
             var byte serial_data = serial_hw_data
@@ -365,13 +383,13 @@ forever loop
                   vs_play_speed = vs_play_speed - 1
                end if
                print_word_dec(serial_hw_data, vs_play_speed)
-               print_string(serial_hw_data, return)
+               print_crlf(serial_hw_data)
             elsif serial_data == 59 then                -- faster play speed (fast-forward)
                if !(vs_play_speed == 10) then
                   vs_play_speed = vs_play_speed + 1
                end if
                print_word_dec(serial_hw_data, vs_play_speed)
-               print_string(serial_hw_data, return)
+               print_crlf(serial_hw_data)
             elsif serial_data == 60 then                -- get file info, so far
                vs_file_info()                           -- only file type " MP3", "MIDI", etc.
                print_string(serial_hw_data,vs_current_file_type) -- send filetype
@@ -381,7 +399,7 @@ forever loop
                print_dword_dec (serial_hw_data,vs_average_bitrate) -- send avgerage bitrate
                serial_hw_data = " "
                print_dword_dec (serial_hw_data,vs_samplerate)  -- send samplerate
-               print_string(serial_hw_data, return)
+               print_crlf(serial_hw_data)
             elsif serial_data == 61 then                -- MUTE
                vs_mute = TRUE
                print_byte_dec(serial_hw_data, 1)
