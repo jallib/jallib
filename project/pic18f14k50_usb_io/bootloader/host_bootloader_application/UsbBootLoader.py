@@ -120,8 +120,13 @@ class UsbBootLoader():
 			try: 
 				version_number = usb_driver.ReadVersion()
 			
-			except: 
-				""" catch exception """
+			except AttributeError: 
+				# if we get there, this means USB object doesn't have
+				# appropriate method defined, meaning USB device
+				# doesn't exist on the system (eg. not plugged, not
+				# configure yet, ...). let's wait some more
+				pass
+
 			
 		usb_driver.CloseDevice()
 		return version_number
@@ -147,7 +152,7 @@ class UsbBootLoader():
 		deivce_rev = device_id & 0x001F
 
 
-		# mask revision number            
+		# mask revision number
 		device_id = device_id  & 0xFFE0
 		
 		hexValue = "%X" % device_id
@@ -583,4 +588,3 @@ Options:
 		print "PIC type " + device_id + " not supported"
 	
 	sys.exit( 0 )
-	
