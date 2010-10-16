@@ -134,7 +134,7 @@ elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
    alias fat32_entry_location is sram_23k256_word   -- highest file entry address can be 65535
 END IF
 --
-include fat32-2   -- include fat32 library -- include fat32
+include fat32   -- include fat32 library -- include fat32
 
 -- CHOOSE FILE ATTRIBUTES TO FILTER OUT
 fat32_filter_is_read_only  = FALSE
@@ -203,24 +203,38 @@ forever loop
       fat32_list_dir()                        -- sends dir listing via serial port
    elsif fat32_file_open(file_number2) then   -- if go into file is successful
 
-;      -- EXAMPLE 1 (slowest and user friendly)
+;      -- EXAMPLE 1 READ (slowest and user friendly)
 ;      -- Read any byte number in the file, in any order you wish.
 ;      for fat32_file_size using step1 loop
 ;          data = fat32_read_file_byte_address(step1)
 ;          serial_hw_data = data
 ;      end loop
 ;
-;      -- EXAMPLE 2 (slow, not so user friendly)
-;      -- You must start reading from the beginning of the file, and
-;      -- read sectors in order.
-;      fat32_start_read (fat32_file_location)
+      -- EXAMPLE 2 READ (slow, not so user friendly)
+      -- You must start reading from the beginning of the file, and
+      -- read sectors in order.
+;      fat32_start_file_read (fat32_file_location)
 ;      for fat32_file_size loop
 ;          data = fat32_read_file_byte()
 ;          serial_hw_data = data
 ;      end loop
-;      fat32_stop_read()
+;      fat32_stop_file_read()
 
-      -- EXAMPLE 3 (fast and user friendly)
+;      -- EXAMPLE 3 WRITE (fast and user friendly)
+;      -- Read from any sector number in the file, in any order you wish.
+;      for ((fat32_file_size / 512) + 1) using step1 loop
+;
+;         -- set the data to be written
+;         for 512 using step2 loop
+;            fat32_sector_buffer[step2] = "E"
+;         end loop
+;
+;         -- write one sector to the disk
+;         fat32_write_file_sector_number(step1)
+;      end loop
+      --
+      --
+      -- EXAMPLE 3 READ (fast and user friendly)
       -- Read from any sector number in the file, in any order you wish.
       for ((fat32_file_size / 512) + 1) using step1 loop
          -- read one sector from the disk
@@ -231,10 +245,26 @@ forever loop
          end loop
       end loop
 
-;      -- EXAMPLE 4 (fastest, not so user friendly)
+;      -- EXAMPLE 4 WRITE (fastest, not so user friendly)
 ;      -- Read sectors from a file. You must start reading from
 ;      -- the beginning of the file, and read sectors in order.
-;      fat32_start_read (fat32_file_location)  -- go in the file, get ready to read
+;      fat32_start_file_write (fat32_file_location)  -- go in the file, get ready to read
+;      for ((fat32_file_size / 512) + 1) using step1 loop
+;         -- set the data to be written
+;         for 512 using step2 loop
+;            fat32_sector_buffer[step2] = "D"
+;         end loop
+;         -- write one sector to the disk
+;         fat32_write_file_sector()
+;         -- send the sector via serial port
+;      end loop
+;      fat32_stop_file_write() -- end of file, set media idle
+;      --
+;      --
+;      -- EXAMPLE 4 READ (fastest, not so user friendly)
+;      -- Read sectors from a file. You must start reading from
+;      -- the beginning of the file, and read sectors in order.
+;      fat32_start_file_read (fat32_file_location)  -- go in the file, get ready to read
 ;      for ((fat32_file_size / 512) + 1) using step1 loop
 ;         -- read one sector from the disk
 ;         fat32_read_file_sector()
@@ -243,7 +273,7 @@ forever loop
 ;            serial_hw_data = fat32_sector_buffer[step2]
 ;         end loop
 ;      end loop
-;      fat32_stop_read() -- end of file, set media idle
 
+      fat32_file_close()
    end if
 end loop
