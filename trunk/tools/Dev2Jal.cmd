@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.07'
+   ScriptVersion   = '0.1.08'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -879,7 +879,7 @@ if xChipDef.xDevId = '?' then do                            /* if not yet assign
 end
 else do
    say '  Warning: DevID of' PicName 'in use by' xChipDef.xDevid
-   if right(PicName,2) = '39' then                          /* PicName end with '39' */
+   if right(PicName,2) \= '39' then                         /* PicName not ending with '39' */
       say '  Warning: PicName ('PicName') does not end with 39! Probably an error!'
    xDevId = xDevId'a'                                       /* try with suffix 'a' */
    if xChipDef.xDevId = '?' then do                         /* if not yet assigned */
@@ -937,7 +937,7 @@ return
 list_shared_data_range: procedure expose Lkr. jalfile Core MaxSharedRAM PicName msglevel
 select                                                      /* exceptions first */
    when Left(PicName,3) = '10f' |,
-      PicName = '12f508'   then do
+        PicName = '12f508'   then do
       DataRange = '0x1E-0x1F'                               /* 1 bank: some pseudo shared RAM */
       MaxSharedRAM = X2D(1F)
    end
@@ -988,9 +988,9 @@ select                                                      /* exceptions first 
          if pos('PROTECTED', ln) > 0 then                   /* skip protected mem */
             iterate
          if Core = '12' | Core = '14'  | core = '14H' then
-            parse var ln 'SHAREBANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
+            parse var ln 'SHAREBANK'  Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
          else
-            parse var Lkr.i 'ACCESSBANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
+            parse var ln 'ACCESSBANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
          if val1 \= '' then do
             if DataRange \= '' then                         /* not first range */
                DataRange = DataRange','                     /* insert separator */
@@ -1550,6 +1550,12 @@ do i = 1 to Dev.0
                                   left('PORT'substr(reg,5)'_direction',25) 'at' reg
             call list_tris_nibbles reg                      /* nibble direction */
          end
+         when left(reg,4) = 'SSP1' then do                  /* first or only SSP module */
+            alias = delstr(reg,4,1)                         /* remove intermediate '1' */
+            alias = strip(alias,'T','1')                    /* remove trailing '1' */
+            if duplicate_name(alias,reg) = 0 then
+               call lineout jalfile, 'alias               'left(alias,25) 'is' reg
+         end
          when reg = 'SPBRGL' then do                        /* for backward compatibility */
             call lineout jalfile, 'alias              ' left('SPBRG',25) 'is' reg
          end
@@ -1637,13 +1643,15 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
             else do                                         /* not twin name */
                field = reg'_'n.j
                select                                       /* intercept */
-                  when (left(reg,5) = 'ADCON'  & left(n.j,3) = 'CHS')                       |,
-                       (left(reg,6) = 'SSPCON' & left(n.j,4) = 'SSPM')                      |,
-                       (reg = 'OPTION_REG'     & (n.j = 'PS0' | n.j = 'PS1' | n.j = 'PS2')) |,
-                       (reg = 'T1CON'          & (n.j = 'TMR1CS1' | n.j = 'TMR1CS0'))       |,
-                       (reg = 'OSCCON'         & left(n.j,4) = 'IRCF')                      |,
-                       (reg = 'OSCTUNE'        & left(n.j,3) = 'TUN')                       |,
-                       (reg = 'WDTCON'         & left(n.j,5) = 'WDTPS')            then do
+                  when (left(reg,5) = 'ADCON'   & left(n.j,3) = 'CHS')                       |,
+                       (left(reg,7) = 'SSP1CON' & left(n.j,4) = 'SSPM')                      |,
+                       (left(reg,7) = 'SSP2CON' & left(n.j,4) = 'SSPM')                      |,
+                       (reg = 'OPTION_REG'      & (n.j = 'PS0' | n.j = 'PS1' | n.j = 'PS2')) |,
+                       (reg = 'T1CON'           & (n.j = 'TMR1CS1' | n.j = 'TMR1CS0'))       |,
+                       (reg = 'OSCCON'          & left(n.j,4) = 'IRCF')                      |,
+                       (reg = 'OSCCON'          & left(n.j,3) = 'SCS')                       |,
+                       (reg = 'OSCTUNE'         & left(n.j,3) = 'TUN')                       |,
+                       (reg = 'WDTCON'          & left(n.j,5) = 'WDTPS')            then do
                      nop                                    /* suppress enumerated bitfields */
                   end
                   when left(reg,3) = 'CCP'  &  right(reg,3) = 'CON'  &, /* CCPxCON */
@@ -1736,13 +1744,30 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                      call lineout jalfile, 'var volatile bit*4 ',
                           left(reg'_IRCF',25) memtype'at' reg ':' offset
                   end
+                  when reg = 'OSCCON'  &  n.j = 'SCS0' then do
+                     call lineout jalfile, 'var volatile bit*2 ',
+                          left(reg'_SCS',25) memtype'at' reg ':' offset
+                  end
                   when reg = 'OSCTUNE'  &  n.j = 'TUN0' then do
                      call lineout jalfile, 'var volatile bit*6 ',
                           left(reg'_TUN',25) memtype'at' reg ':' offset
                   end
-                  when left(reg,6) = 'SSPCON' & n.j = 'SSPM0' then do
+                  when reg = 'PIE1' & n.j = 'SSP1IE' then do
+                     call lineout jalfile, 'alias              ',
+                                  left(reg'_'delstr(n.j,4,1),25) 'is' reg'_'n.j
+                  end
+                  when reg = 'PIR1'  &  n.j = 'SSP1IF' then do
+                     call lineout jalfile, 'alias              ',
+                                  left(reg'_'delstr(n.j,4,1),25) 'is' reg'_'n.j
+                  end
+                  when (left(reg,7) = 'SSP1CON' & n.j = 'SSPM0') |,
+                       (left(reg,7) = 'SSP2CON' & n.j = 'SSPM0') then do
                      call lineout jalfile, 'var volatile bit*4 ',
                           left(reg'_SSPM',25) memtype'at' reg ':' offset
+                     if left(reg,4) = 'SSP1' then do
+                        call lineout jalfile, 'alias              ',
+                             left('SSPCON_SSPM',25) 'is' reg'_SSPM'
+                     end
                   end
                   when reg = 'T1CON' & n.j = 'TMR1CS0' then do
                      call lineout jalfile, 'var volatile bit*2 ',
@@ -1787,6 +1812,41 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
             end
          end
 
+         if reg = 'SSP1CON1' |,
+            reg = 'SSP1CON2' |,                             /* selected SSP1 regs */
+            reg = 'SSP1CON3' |,
+            reg = 'SSP1STAT' then do
+            regalias = delstr(reg,4,1)                      /* remove intermediate '1' */
+            regalias = strip(regalias,'T','1')              /* remove trailing '1' */
+            if (pos('/', n.j) > 0 | pos('_', n.j) > 0)  &,  /* check for twin name */
+                left(n.j,4) \= 'PRI_' then do               /* exception */
+               if pos('/', n.j) > 0 then                    /* splitted with '/' */
+                 parse var n.j val1'/'val2 .
+               else                                         /* splitted with '_' */
+                 parse var n.j val1'_'val2 .
+               if val1 \= '' then do
+                  alias = regalias'_'val1
+                  if duplicate_name(alias,reg) = 0 then do  /* unique */
+                     call lineout jalfile, 'alias               'left(alias,25) 'is' reg'_'val1
+                  end
+               end
+               if val2 \= '' & val2 \= 'SHAD' then do
+                  alias = regalias'_'val2
+                  if duplicate_name(alias,reg) = 0 then do  /* unique */
+                     call lineout jalfile, 'alias               'left(alias,25) 'is' reg'_'val2
+                  end
+               end
+            end
+            else do                                         /* not twin name */
+               if left(n.j,4) \= 'SSPM' then do
+                  alias = regalias'_'n.j
+                  if alias \= '' then do                    /* alias to be generated */
+                     if duplicate_name(alias,reg) = 0 then
+                        call lineout jalfile, 'alias               'left(alias,25) 'is' reg'_'n.j
+                  end
+               end
+            end
+         end
          offset = offset - s.j
       end
    end
@@ -2072,7 +2132,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                      end
                   end
                   when reg = 'PIE1' then do
-                     if n.j = 'TX1IE' | n.j = 'RC1IE' then do /* add alias without '1' */
+                     if n.j = 'SSP1IE' then do
+                        call lineout jalfile, 'alias              ',
+                               left(reg'_'delstr(n.j,4,1),32) 'is' reg'_'n.j
+                     end
+                     else if n.j = 'TX1IE' | n.j = 'RC1IE' then do /* add alias without '1' */
                         call lineout jalfile, 'alias              ',
                                left(reg'_'delstr(n.j,3,1),32) 'is' reg'_'n.j
                      end
@@ -2084,7 +2148,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                      end
                   end
                   when reg = 'PIR1' then do
-                     if n.j = 'TX1IF' | n.j = 'RC1IF' then do
+                     if n.j = 'SSP1IF' then do
+                        call lineout jalfile, 'alias              ',
+                               left(reg'_'delstr(n.j,4,1),32) 'is' reg'_'n.j
+                     end
+                     else if n.j = 'TX1IF' | n.j = 'RC1IF' then do
                         call lineout jalfile, 'alias              ',
                                left(reg'_'delstr(n.j,3,1),32) 'is' reg'_'n.j
                      end
@@ -2313,7 +2381,7 @@ return 0
 /* -------------------------------------------------------- */
 /* procedure to normalize MSSP register names               */
 /* input: - register name                                   */
-/* 16-bit core                                              */
+/* 16-bit and extended 14 bit core (14H)                    */
 /* -------------------------------------------------------  */
 normalize_ssp16:
 select
