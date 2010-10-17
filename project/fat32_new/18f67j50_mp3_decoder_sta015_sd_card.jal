@@ -209,7 +209,7 @@ fat32_init(1) -- initialize fat32, go to 1st primary partition's root dir "\"
 ------------------------------------------------------------
 -- list a directory, send it via serial port
 ------------------------------------------------------------
-fat32_list_dir() -- see the procedure, sends dir listing via serial port
+fat32_print_directory(serial_hw_data, TRUE) -- see the procedure, sends dir listing via serial port
 
 ------------------------------------------------------------
 -- example user interaction,
@@ -234,17 +234,17 @@ forever loop
 
    if !(file_number > fat32_dir_file_count) then -- if the file number exists
       -- display the filename chosen
-      format_word_dec(serial_hw_data,file_number,6,0) -- send the file number
-      serial_hw_write (".")
-      serial_hw_write (" ")
+      print_word_dec(serial_hw_data,file_number)
+      const byte string1[] = {0x2E,0x20,0x20} -- ".  "
+      print_string(serial_hw_data,string1)
       fat32_read_file_info(file_number) -- read file's name, location, size, attributes into memory
-      fat32_read_filename()             -- send the file name via serial port
+      fat32_print_filename(serial_hw_data)
       seperator() -- send "-----"
    end if
 
    -- do something with the chosen file number
    if fat32_cd(file_number) then            -- if change directory is successful
-      fat32_list_dir()                      -- sends dir listing via serial port
+      fat32_print_directory(serial_hw_data,TRUE)                      -- sends dir listing via serial port
 
    elsif fat32_file_open(file_number) then  -- if file open is successful
       var dword sector_step = 0
@@ -425,5 +425,7 @@ forever loop
       end loop
       -- close the file
       fat32_file_close()
+      seperator()
+      fat32_print_directory(serial_hw_data, TRUE) -- see the procedure, sends dir listing via serial port
    end if
 end loop
