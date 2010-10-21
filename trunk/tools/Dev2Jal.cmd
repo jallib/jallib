@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.08'
+   ScriptVersion   = '0.1.09'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -1552,7 +1552,7 @@ do i = 1 to Dev.0
          end
          when left(reg,4) = 'SSP1' then do                  /* first or only SSP module */
             alias = delstr(reg,4,1)                         /* remove intermediate '1' */
-            alias = strip(alias,'T','1')                    /* remove trailing '1' */
+            alias = strip(alias,'T','1')                    /* remove trailing '1' if any */
             if duplicate_name(alias,reg) = 0 then
                call lineout jalfile, 'alias               'left(alias,25) 'is' reg
          end
@@ -3252,6 +3252,8 @@ do i = 1 to dev.0                                           /* scan .dev file */
                   key = 'MCLR'
                when key = 'MSSP7B_EN' | key = 'MSSPMSK' then
                   key = 'MSSPMASK'
+               when key = 'P2BMX' then
+                  key = 'P2BMUX'
                when key = 'PLL_EN' | key = 'CFGPLLEN' then
                   key = 'PLLEN'
                when key = 'MODE' | key = 'PM' then
@@ -3589,6 +3591,17 @@ do i = i + 1  while i <= dev.0  &,
          end
       end
 
+      when key = 'P2BMUX' then do
+         if right(val2,3) = 'RB5' then
+            kwd = 'pin_B5'
+         else if right(val2,3) = 'RD2' then
+            kwd = 'pin_D2'
+         else if right(val2,3) = 'RC0' then
+            kwd = 'pin_C0'
+         else
+            kwd = val2u
+      end
+
       when key = 'PLLDIV' then do
          if left(val2,9) = 'DIVIDE BY' then
             kwd = P||word(val2,3)                           /* 3rd word */
@@ -3694,6 +3707,15 @@ do i = i + 1  while i <= dev.0  &,
             kwd = 'pin_A6_A7'
          else if right(val2,3) = 'RB3' then
             kwd = 'pin_B2_B3'
+         else
+            kwd = val2u
+      end
+
+      when key = 'T3CMUX' then do
+         if right(val2,3) = 'RC0' then
+            kwd = 'pin_C0'
+         else if right(val2,3) = 'RB5' then
+            kwd = 'pin_B5'
          else
             kwd = val2u
       end
