@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.09'
+   ScriptVersion   = '0.1.10'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -3411,10 +3411,10 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when left(key,3) = 'CCP' & right(key,3) = 'MUX' then do /* CCPxMUX */
-         if pos('MICRO',val2) > 0 then                      /* Mcrocontroller mode */
+         if pos('MICRO',val2) > 0 then                      /* Microcontroller mode */
             kwd = 'pin_E7'                                  /* valid for all current PICs */
          else
-            kwd = 'pin_'right(val2,2)                       /* last 2 chars */
+            kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
       end
 
       when key = 'CPUDIV' then do
@@ -3458,7 +3458,10 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'ECCPMUX' then do
-         kwd = 'pin_'right(val2,2)                          /* last 2 chars */
+         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
+            kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
+         else
+            kwd = val2u
       end
 
       when key = 'EMB' then do
@@ -3484,11 +3487,17 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'EXCLKMUX' then do                         /* Timer0/5 clock pin */
-         kwd = 'pin_'right(val2,2)                          /* last 2 chars */
+         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
+            kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
+         else
+            kwd = val2u
       end
 
       when key = 'FLTAMUX' then do
-         kwd = 'pin_'right(val2,2)                          /* last 2 chars */
+         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
+            kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
+         else
+            kwd = val2u
       end
 
       when key = 'FOSC2' then do
@@ -3592,12 +3601,8 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'P2BMUX' then do
-         if right(val2,3) = 'RB5' then
-            kwd = 'pin_B5'
-         else if right(val2,3) = 'RD2' then
-            kwd = 'pin_D2'
-         else if right(val2,3) = 'RC0' then
-            kwd = 'pin_C0'
+         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
+            kwd = 'pin_'right(val2u,2)
          else
             kwd = val2u
       end
@@ -3655,7 +3660,10 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'PWM4MUX' then do
-         kwd = 'pin_'right(val2,2)
+         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
+            kwd = 'pin_'right(val2u,2)
+         else
+            kwd = val2u
       end
 
       when key = 'RTCOSC' then do
@@ -3712,10 +3720,8 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'T3CMUX' then do
-         if right(val2,3) = 'RC0' then
-            kwd = 'pin_C0'
-         else if right(val2,3) = 'RB5' then
-            kwd = 'pin_B5'
+         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
+            kwd = 'pin_'right(val2u,2)
          else
             kwd = val2u
       end
