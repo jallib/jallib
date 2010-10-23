@@ -1,15 +1,15 @@
--- Title: vs1053b mp3 decoder sample
+-- Title: MP3 decoder vs1053b sample
 -- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4m
+-- Compiler: >=2.4k
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: Example usage of the vs1053 mp3 decoder. plays .mp3 files from
---              a fat32 formatted sd card. Full control of play speed, volume,
---              right/left speaker, bass, treble, mute via serial port. Also plays
---              Ogg Vorbis/AAC/WMA/MIDI
+-- Description: example usage of the vs1053 mp3 decoder. plays .mp3 files from
+--              a fat32 formatted sd card or hard disk. Full control of play
+--              speed, volume, right/left speaker, bass, treble, mute.
+--              Also plays Ogg Vorbis/AAC/WMA/MIDI
 --
 -- Notes:
 -- vs1053 uses SPI mode 0,0
@@ -27,21 +27,18 @@ pragma target OSC  HS              -- HS crystal or resonator
 pragma target WDT  disabled        -- no watchdog
 pragma target LVP  disabled        -- no Low Voltage Programming
 pragma target MCLR external        -- reset externally
-
+--
 enable_digital_io() -- disable all analog pins if any
-_usec_delay(100_000) -- wait for power to settle
+_usec_delay (100_000) -- wait for power to stablilize
+
+include delay
 
 -- setup uart for communication
-const serial_hw_baudrate  = 38400    -- set the baud rate
+const serial_hw_baudrate  = 115200   -- set the baudrate
 include serial_hardware
 serial_hw_init()
 
 include print
-const byte return[] = "\r\n"
-
-const byte str1[] = "INITIALIZING DATA STORAGE DEVICE"
-print_string(serial_hw_data, str1)
-print_string(serial_hw_data, return)
 
 include spi_master_hw         -- includes the spi library
 -- define spi inputs/outputs
@@ -51,64 +48,46 @@ pin_sck_direction = output   -- spi clock
 --
 spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
 
-alias sd_chip_select is pin_a5
-alias sd_chip_select_direction is pin_a5_direction
-sd_chip_select_direction = output
 
--- setup the sd card
+-- setup 23k256 for external memory
+-- setup chip select pin
+ALIAS sram_23k256_chip_select             is pin_a1
+ALIAS sram_23k256_chip_select_direction   is pin_a1_direction
+-- initial settings
+sram_23k256_chip_select_direction = output    -- chip select/slave select pin
+sram_23k256_chip_select = high                -- start chip slect high (chip disabled)
+-- initalize 23k256 in byte mode
+const byte SRAM_23K256_ALWAYS_SET_SPI_MODE = TRUE
+include sram_23k256 -- setup Microchip 23k256 sram
+sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
+
+
+-- setup the sd card pins
+alias sd_chip_select is pin_SS
+alias sd_chip_select_direction is pin_SS_direction
+sd_chip_select_direction = output
+sd_chip_select = high
+--
+-- setup the sd card library
+;const bit SD_EXTRA_SPEED = TRUE
 const bit SD_ALWAYS_SET_SPI_MODE = TRUE
 const bit SD_DELAY_AFTER_WRITE = TRUE
 include sd_card              -- include the sd card ide hard disk library
 sd_init()                    -- initialize startup settings
 
-if defined(sd_init_ok) == TRUE then
-   if sd_init_ok == TRUE then
-      const byte str1[] = "SD CARD INITIALIZED OK"
-      print_string(serial_hw_data, str1)
-   else
-      const byte str2[] = "SD CARD INITIALIZATION ERROR"
-      print_string(serial_hw_data, str2)
-   end if
-elsif defined(pata_hd_init_ok) == TRUE then
-   if pata_hd_init_ok == TRUE then
-      const byte str1[] = "HARD DISK INITIALIZED OK"
-      print_string(serial_hw_data, str1)
-   else
-      const byte str2[] = "HARD DISK INITIALIZATION ERROR"
-      print_string(serial_hw_data, str2)
-   end if
-end if
-print_string(serial_hw_data, return)
-
--- spi is required by vs1053b, so set it up.
--- if we are using an sd card, we already initialized the SPI bus, so skip this.
-if defined(spi_init) == false then
-   include spi_master_hw         -- includes the spi library
-   -- define spi inputs/outputs
-   pin_sdi_direction = input    -- spi input
-   pin_sdo_direction = output   -- spi output
-   pin_sck_direction = output   -- spi clock
-   --
-   spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
-end if
 
 -- setup fat32 --
 -- include the required files
-include pic_data_eeprom
+;include pic_data_eeprom
 include format  -- include format library (required by some fat32 procedures)
 -- change these vaues to save memory
-const word FAT32_FILES_MAX = 150            -- the max number of files allowed in a directory
+const word FAT32_FILES_MAX = 20            -- the max number of files allowed in a directory
 const byte FAT32_FILENAME_SIZE = 100        -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
-const FAT32_DIR_FRAGMENTS_TO_ALLOW = 10     -- (0 = you must have a defragmented media), usually directories are fragmented.
---                                          -- uses 6 bytes memory per fragment allowed
+const FAT32_DIR_FRAGMENTS_TO_ALLOW = 5     -- uses 6 bytes memory per fragment allowed (0 not allowed)
 --                                          -- windows defrag does not defragment directories.
-const FAT32_FILE_FRAGMENTS_TO_ALLOW = 10    -- (0 = you must have a defragmented media)
---                                          -- uses 8 bytes memory per fragment allowed
-const bit FAT_32_FILENAME_IN_EEPROM = FALSE -- PIC eeprom is slow, loads filenames slow, false = use internal memory
-var byte LONGNAMELOCATION = 0               -- The start location for the filename in eeprom. use only if FAT_32_FILENAME_IN_EEPROM = TRUE
+const FAT32_FILE_FRAGMENTS_TO_ALLOW = 5    -- uses 8 bytes memory per fragment allowed (0 not allowed)
 --
 -- experts may change the following values
-const byte FAT32_USE_SECTOR_BUFFER = FALSE  -- must be true if using SD card + external memory on SPI bus
 ;const byte FAT32_ENTRIES_MAX = 1           -- highest file entry address can be 256
 const byte FAT32_ENTRIES_MAX = 2            -- highest file entry address can be 65535
 --
@@ -119,43 +98,19 @@ IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
    const dword LARGE_ARRAY_2_SIZE = FAT32_FILES_MAX               -- choose number of array variables
    const dword LARGE_ARRAY_2_VARIABLE_SIZE = FAT32_ENTRIES_MAX    -- choose bytes size of variables
    include large_array_2                    -- include the array library
-   ALIAS entry_location is large_array_2
+   ALIAS fat32_entry_location is large_array_2
 elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
    -- put your own code here if you wish to allow massive amounts of files per directory
 
    -- example usage of 23k256 for external memory
 
-   -- spi is required by 23k256, so set it up.
-   -- if we are using an sd card, we already initialized the SPI bus, so skip this.
-   if defined(sd_init) == false then  -- if we are using an sd card, we already did this step
-      include spi_master_hw        -- includes the spi library
-      -- define spi inputs/outputs
-      pin_sdi_direction = input    -- spi input
-      pin_sdo_direction = output   -- spi output
-      pin_sck_direction = output   -- spi clock
-      --
-      spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
-   end if
-
-   -- setup 23k256 for external memory
-   -- setup chip select pin
-   ALIAS sram_23k256_chip_select             is pin_a2
-   ALIAS sram_23k256_chip_select_direction   is pin_a2_direction
-   -- initial settings
-   sram_23k256_chip_select_direction = output    -- chip select/slave select pin
-   sram_23k256_chip_select = high                -- start chip select high (chip disabled)
-   -- initalize 23k256 in byte mode
-   const bit SRAM_23K256_ALWAYS_SET_SPI_MODE = TRUE
-   include sram_23k256 -- setup Microchip 23k256 sram
-   sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
-
-  -- alias the 23k256 device word array
-  ;alias entry_location is sram_23k256_byte  -- highest file entry address can be 256
-   alias entry_location is sram_23k256_word   -- highest file entry address can be 65535
+   -- alias the 23k256 device word array 
+   ;alias entry_location is sram_23k256_byte  -- highest file entry address can be 256
+   alias fat32_entry_location is sram_23k256_word   -- highest file entry address can be 65535
 END IF
 --
 include fat32   -- include fat32 library -- include fat32
---
+
 -- CHOOSE FILE ATTRIBUTES TO FILTER OUT
 fat32_filter_is_read_only  = FALSE
 fat32_filter_is_hidden     = FALSE
@@ -167,7 +122,7 @@ fat32_filter_is_archive    = FALSE
 
 -- setup vs1053(b)
 const byte str3[] = "INITIALIZING VS1053B"
-print_string(serial_hw_data, str1)
+print_string(serial_hw_data, str3)
 --
 alias vs_command_chip_select              is pin_e1                     -- command chip select pin
 alias vs_command_chip_select_direction    is pin_e1_direction
@@ -194,18 +149,6 @@ const byte VS_SPI_COMMAND_SPEED = SPI_RATE_FOSC_64 -- choose speed to send comma
 --
 include mp3_decoder_vs1053b
 vs_init()
---
--- check if vs1053 initialization is ok, send result to serial port
-if vs_init_ok then
-   const byte str1[] = "VS1053B INITIALIZED OK"
-   print_string(serial_hw_data, str1)
-   vs_patch_vs1053b() -- patch for vs1053b only page 54 of datasheet
-else
-   const byte str2[] = "VS1053B INITIALIZATION ERROR"
-   print_string(serial_hw_data, str2)
-end if
-
--- user procedures
 
 -- procedure for sending 80 "-----------------" via serial port
 procedure seperator() is
@@ -213,11 +156,12 @@ procedure seperator() is
    serial_hw_data = 10
    const byte str3[] = "--------------------------------------------------------------------------------"
    print_string(serial_hw_data, str3)
+   print_crlf(serial_hw_data)
 end procedure
 
 -- start of main program
 vs_volume = 240 -- set startup volume
-   
+
 -- example of using an output pin
 var bit my_pin_name is vs_pin_gpio0
 var bit my_pin_name_direction is vs_pin_gpio0_direction
@@ -234,15 +178,13 @@ fat32_init(1) -- initialize fat32, go to 1st primary partition's root dir "\"
 ------------------------------------------------------------
 -- list a directory, send it via serial port
 ------------------------------------------------------------
-fat32_list_dir() -- see the procedure, sends dir listing via serial port
+fat32_print_directory(serial_hw_data, TRUE) -- see the procedure, sends dir listing via serial port
 
 ------------------------------------------------------------
 -- example user interaction,
 -- if volume id selected, list the current dir (root dir)
 -- if directory selected go into it and list it
 -- if file selected go into a mp3 file and play it
---
--- see enable_user_interaction = FALSE in this example
 ------------------------------------------------------------
 
 var byte file_number = 0
@@ -254,59 +196,77 @@ forever loop
    -- wait for user to send serial data (file selection)
    while !serial_hw_data_available loop
    end loop
+
    file_number = serial_hw_data
 
-   -- display the filename chosen
-   format_word_dec(serial_hw_data,file_number,6,0) -- send the file number
-   serial_hw_write (".")
-   serial_hw_write (" ")
-   fat32_read_file_info(file_number) -- read file's name, location, size, attributes into memory
-   fat32_read_filename()             -- send the file name via serial port
-
-   seperator() -- send "-----"
+   if !(file_number > fat32_dir_file_count) then -- if the file number exists
+      -- display the filename chosen
+      print_word_dec(serial_hw_data,file_number)
+      const byte string1[] = {0x2E,0x20,0x20} -- ".  "
+      print_string(serial_hw_data,string1)
+      fat32_read_file_info(file_number) -- read file's name, location, size, attributes into memory
+      fat32_print_filename(serial_hw_data)
+      seperator() -- send "-----"
+   end if
 
    -- do something with the chosen file number
    if fat32_cd(file_number) then            -- if change directory is successful
-      fat32_list_dir()                      -- sends dir listing via serial port
+      fat32_print_directory(serial_hw_data,TRUE)                      -- sends dir listing via serial port
 
-   elsif fat32_file_open(file_number) then  -- if go into file is successful
+   elsif fat32_file_open(file_number) then  -- if file open is successful
+      var dword sector_step = 0
       count8 = 0
-      
-      vs_play()
 
-      for (fat32_file_size / 512) loop
-         fat32_start_read (fat32_file_location + count8)  -- go in the file, get ready to read
-         fat32_read_sector()  -- read one sector
-         fat32_stop_read ()   -- end of file, set media idle
+      vs_play() -- allow vs1053b to play music
 
-         -- now send it to vs1053b
-         
-         -- set to spi mode 00
-         SSPCON_CKP = 0
-         SSPSTAT_CKE = 1
+      -- continue till no data is left.
+      for (fat32_file_size / 512) + 1 loop
+         fat32_read_file_sector_number(sector_step)
+         sector_step = sector_step + 1
 
-         vs_data_chip_select = low -- enable vs1053b
+         -- do something with the data
+         if (fat32_file_extension[0] == "m" & fat32_file_extension[1] == "p" & fat32_file_extension[2] == "3") |
+            (fat32_file_extension[0] == "m" & fat32_file_extension[1] == "P" & fat32_file_extension[2] == "3") |
+            (fat32_file_extension[0] == "M" & fat32_file_extension[1] == "p" & fat32_file_extension[2] == "3") |
+            (fat32_file_extension[0] == "M" & fat32_file_extension[1] == "P" & fat32_file_extension[2] == "3") then
 
-         var word count1 = 0                     -- sector data count
-         for 16 loop                             -- loop till end of sector read
+            -- now send it to vs1053b
 
-            -- wait till data gets requested
-            while vs_dreq == low loop
+            -- set to spi mode 00
+            SSPCON_CKP = 0
+            SSPSTAT_CKE = 1
+            -- enable vs1053b
+            vs_data_chip_select = low
+
+            var word count1                        -- sector data count
+            count1 = 0
+            for 16 loop                             -- loop till end of sector read
+
+               -- wait till data gets requested
+               while vs_dreq == low loop
+               end loop
+
+               -- vs1053b can take up to 32 bytes when vs_dreq is low
+               for 32 loop
+                  spi_master_hw = fat32_sector_buffer[count1]
+                  count1 = count1 + 1
+               end loop
             end loop
-
-            -- vs1053b can take up to 32 bytes when vs_dreq is low
-            for 32 loop
-               spi_master_hw = (fat32_sector_buffer[count1])
+         else
+            var word count1 = 0
+            for 512 loop
+               serial_hw_data = fat32_sector_buffer[count1]
                count1 = count1 + 1
             end loop
-         end loop
+         end if
 
          -- get users input via serial port to control music (volume, play speed, stop, etc.)
          if serial_hw_data_available == TRUE then
             var byte serial_data = serial_hw_data
             if serial_data == 0 then                    -- stop
-               vs_stop()
-               vs_data_chip_select =low
+               fat32_set_idle()          -- set data device to idle state
+               vs_stop()                 -- stop the audio
+               vs_data_chip_select = low -- disable mp3 decoder
                exit loop
             elsif serial_data == 50 then                -- volume down
                if vs_volume != 0 then
@@ -377,13 +337,13 @@ forever loop
                   vs_play_speed = vs_play_speed - 1
                end if
                print_word_dec(serial_hw_data, vs_play_speed)
-               print_string(serial_hw_data, return)
+               print_crlf(serial_hw_data)
             elsif serial_data == 59 then                -- faster play speed (fast-forward)
                if !(vs_play_speed == 10) then
                   vs_play_speed = vs_play_speed + 1
                end if
                print_word_dec(serial_hw_data, vs_play_speed)
-               print_string(serial_hw_data, return)
+               print_crlf(serial_hw_data)
             elsif serial_data == 60 then                -- get file info, so far
                vs_file_info()                           -- only file type " MP3", "MIDI", etc.
                print_string(serial_hw_data,vs_current_file_type) -- send filetype
@@ -393,7 +353,7 @@ forever loop
                print_dword_dec (serial_hw_data,vs_average_bitrate) -- send avgerage bitrate
                serial_hw_data = " "
                print_dword_dec (serial_hw_data,vs_samplerate)  -- send samplerate
-               print_string(serial_hw_data, return)
+               print_crlf(serial_hw_data)
             elsif serial_data == 61 then                -- MUTE
                vs_mute = TRUE
                print_byte_dec(serial_hw_data, 1)
@@ -426,11 +386,13 @@ forever loop
             serial_hw_data = 13
             serial_hw_data = 10
          end if
-
          vs_data_chip_select = high -- disable vs1053b
-
          count8 = count8 + 1
+         
       end loop
+      -- close the file
+      fat32_file_close()
+      seperator()
+      fat32_print_directory(serial_hw_data, TRUE) -- see the procedure, sends dir listing via serial port
    end if
 end loop
-
