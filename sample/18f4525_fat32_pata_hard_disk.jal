@@ -16,12 +16,21 @@
 --
 
 -- include chip
-include 18f452                     -- target picmicro
+include 18f4525                    -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
 pragma target clock 20_000_000     -- oscillator frequency
 -- configuration memory settings (fuses)
 pragma target OSC  HS              -- HS crystal or resonator
 pragma target WDT  disabled        -- no watchdog
+pragma target XINST disabled       -- not supported by JalV2
 pragma target LVP  disabled        -- no Low Voltage Programming
+pragma target MCLR external        -- reset externally
+--
+enable_digital_io() -- disable all analog pins if any
+_usec_delay (100_000) -- wait for power to stablilize
+
 
 include delay
 
@@ -54,19 +63,40 @@ include sram_23k256 -- setup Microchip 23k256 sram
 sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
 
 
--- setup the sd card pins
-alias sd_chip_select is pin_SS
-alias sd_chip_select_direction is pin_SS_direction
-sd_chip_select_direction = output
-sd_chip_select = high
---
--- setup the sd card library
-;const bit SD_EXTRA_SPEED = TRUE
-const bit SD_ALWAYS_SET_SPI_MODE = TRUE
-const bit SD_DELAY_AFTER_WRITE = TRUE
-include sd_card              -- include the sd card ide hard disk library
-sd_init()                    -- initialize startup settings
+-- setup hard disk library
+const bit PATA_HD_READ_EXTRA_SPEED = FALSE -- uses additonal code space to add a speed boost to sector_read procedures
+CONST BYTE PATA_HD_USE_CS0_CS1_PINS = FALSE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
+const bit PATA_HD_NO_INVERTER = TRUE -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
+-- pin assignments
+alias     pata_hd_data_low              is portb   -- data port (low bits)
+alias     pata_hd_data_low_direction    is portb_direction
+alias     pata_hd_data_high             is portd   -- data port (high bits)
+alias     pata_hd_data_high_direction   is portd_direction
+alias     pata_hd_a0                    is pin_a3
+alias     pata_hd_a0_direction          is pin_a3_direction
+alias     pata_hd_a1                    is pin_a1
+alias     pata_hd_a1_direction          is pin_a1_direction
+alias     pata_hd_a2                    is pin_a0
+alias     pata_hd_a2_direction          is pin_a0_direction
+alias     pata_hd_iowr                  is pin_e0
+alias     pata_hd_iowr_direction        is pin_e0_direction
+alias     pata_hd_iord                  is pin_a4
+alias     pata_hd_iord_direction        is pin_a4_direction
+;alias     pata_hd_cs1                   is pin_a3
+;alias     pata_hd_cs1_direction         is pin_a3_direction
+;alias     pata_hd_cs0                   is pin_a4
+;alias     pata_hd_cs0_direction         is pin_a4_direction
 
+pata_hd_a0_direction = output    -- register select pin
+pata_hd_a1_direction = output    -- register select pin
+pata_hd_a2_direction = output    -- register select pin
+pata_hd_iowr_direction = output  -- used for write pulse
+pata_hd_iord_direction = output  -- used for read pulse
+;pata_hd_cs1_direction = output   -- register select pin
+;pata_hd_cs0_direction = output   -- register select pin
+
+include pata_hard_disk           -- include the parallel ata ide hard disk library
+pata_hd_init()                   -- initialize startup settings
 
 -- setup fat32 --
 -- include the required files

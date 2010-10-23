@@ -20,58 +20,45 @@
 --
 
 -- include chip
-include 18F4620                   -- target picmicro
-;include 18F452                   -- target picmicro
--- this program assumes a 20 mhz resonator or crystal
--- is connected to pins osc1 and osc2.
-;pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
-;pragma target osc hs_pll              -- hs crystal or resonator
-pragma target osc hs
-pragma target clock 20_000_000    -- oscillator frequency
-;pragma target clock 16_000_000    -- oscillator frequency
-;pragma target clock 32_000_000    -- oscillator frequency
-;pragma target clock 40_000_000    -- oscillator frequency
---
-pragma target wdt  disabled
-pragma target lvp  disabled
+include 18f4620                    -- target PICmicro
+pragma target clock 20_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target WDT  disabled        -- no watchdog
+pragma target LVP  disabled        -- no Low Voltage Programming
 pragma target MCLR external        -- reset externally
---;
-;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
-;OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
-;OSCTUNE_PLLEN = true  -- multiply internal osc by 4
-;--
-
+--
 enable_digital_io() -- disable all analog pins if any
+_usec_delay (100_000) -- wait for power to stablilize
 
-include delay       -- include the delay library
+include delay
 
 -- setup uart for communication
 const serial_hw_baudrate  = 115200   -- set the baudrate
 include serial_hardware
 serial_hw_init()
 
+include print
+
 -- setup hard disk library
+const bit PATA_HD_READ_EXTRA_SPEED = FALSE -- uses additonal code space to add a speed boost to sector_read procedures
 CONST BYTE PATA_HD_USE_CS0_CS1_PINS = FALSE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
 const bit PATA_HD_NO_INVERTER = TRUE -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
-
 -- pin assignments
 alias     pata_hd_data_low              is portb   -- data port (low bits)
 alias     pata_hd_data_low_direction    is portb_direction
 alias     pata_hd_data_high             is portd   -- data port (high bits)
 alias     pata_hd_data_high_direction   is portd_direction
-
 alias     pata_hd_a0                    is pin_a3
 alias     pata_hd_a0_direction          is pin_a3_direction
 alias     pata_hd_a1                    is pin_a1
 alias     pata_hd_a1_direction          is pin_a1_direction
 alias     pata_hd_a2                    is pin_a0
 alias     pata_hd_a2_direction          is pin_a0_direction
-
 alias     pata_hd_iowr                  is pin_e0
 alias     pata_hd_iowr_direction        is pin_e0_direction
 alias     pata_hd_iord                  is pin_a4
 alias     pata_hd_iord_direction        is pin_a4_direction
-
 ;alias     pata_hd_cs1                   is pin_a3
 ;alias     pata_hd_cs1_direction         is pin_a3_direction
 ;alias     pata_hd_cs0                   is pin_a4
@@ -80,81 +67,156 @@ alias     pata_hd_iord_direction        is pin_a4_direction
 pata_hd_a0_direction = output    -- register select pin
 pata_hd_a1_direction = output    -- register select pin
 pata_hd_a2_direction = output    -- register select pin
-
 pata_hd_iowr_direction = output  -- used for write pulse
 pata_hd_iord_direction = output  -- used for read pulse
-
 ;pata_hd_cs1_direction = output   -- register select pin
 ;pata_hd_cs0_direction = output   -- register select pin
 
 include pata_hard_disk           -- include the parallel ata ide hard disk library
 pata_hd_init()                   -- initialize startup settings
 
--- Function for sending hard disk data via serial port, data is read 2 bytes at a time.
-procedure send_word(byte in lowbit, byte in highbit) is
-   serial_hw_write( lowbit )  -- send 1st serial data byte
-   serial_hw_write( highbit ) -- send 2nd serial data byte
+------------------------------------------------------------
+-- START of PROGRAM
+------------------------------------------------------------
+
+-- procedure for sending 80 "-----------------" via serial port
+procedure separator() is
+   serial_hw_data = 13
+   serial_hw_data = 10
+   const byte str3[] = "--------------------------------------------------------------------------------"
+   print_string(serial_hw_data, str3)
+   print_crlf(serial_hw_data)
 end procedure
 
--- Declare variables for this example.
-var byte in_a
-var byte in_b
+-- Send something to the serial port
+separator()             -- send "----" via serial port
+var byte start_string[] = "HARD DISK SAMPLE STARTED"
+print_string(serial_hw_data,start_string)
 
------main prog----
+-- variables for the sample
+var word step1
+var byte data
 
-_usec_delay (1_000_000) -- wait for power to stabilize
+separator()            -- seperate the examples with "----"
+--------------------------------------------------------------------------------
+-- EXAMPLE #1 - read sector 0 (the boot sector) & sector 1, one byte at a time
+--------------------------------------------------------------------------------
+pata_hd_start_read(0)      -- get sd card ready for read at sector 0
+for 512 * 2 loop           -- read 2 sectors (512 * 2 bytes)
+  data = pata_hd_data_byte -- read 1 bytes of data
+  serial_hw_write(data)    -- send byte via serial port
+end loop
+pata_hd_stop_read()        -- tell sd card you are done reading
 
--- send "start" to pc / test uart communication
-send_word("S", "T")
-send_word("A", "R")
-send_word("T", 0x20)
-send_word(13, 10)
-send_word(13, 10)
+separator()                -- seperate the examples with "----"
+_usec_delay(500_000)       -- a small delay
+--------------------------------------------------------------------------------
+-- EXAMPLE #2 - write to a sector 1 byte at a time
+--------------------------------------------------------------------------------
+pata_hd_start_write(20)    -- get sd card ready for write at sector 20
+for 512 + 256 loop         -- loop 1 sector + 1 half sector (512 + 256 bytes)
+  pata_hd_data_byte = "A"  -- write 1 bytes of data
+end loop
+pata_hd_stop_write()       -- tell sd card you are done reading
+--
+-- read the data back
+pata_hd_start_read(20)          -- get sd card ready for read at sector 20
+for 512 + 256 loop         -- loop 1 sector + 1 half sector (512 + 256 bytes)
+  data = pata_hd_data_byte       -- read 1 bytes of data
+  serial_hw_write(data)    -- send byte via serial port
+end loop
+pata_hd_stop_read()             -- tell sd card you are done reading
+
+separator()                -- seperate the examples with "----"
+_usec_delay(500_000)       -- a small delay
+;   --------------------------------------------------------------------------------
+;   -- EXAMPLE #3 write to 2 sectors using a sector buffer at a address
+;   -- user friendly and fastest.
+;   --------------------------------------------------------------------------------
+;   -- fill the sector buffer with data
+;   for 512 using step1 loop                     -- loop till the end of the sector buffer
+;      pata_hd_sector_buffer[step1] = "B"        -- set each byte of data
+;   end loop
+;   -- write the sector buffer to sector 20
+;   pata_hd_write_sector_address(20)
+;   for 512 using step1 loop                     -- loop till the end of the sector buffer
+;      pata_hd_sector_buffer[step1] = "C"        -- set each byte of data
+;   end loop
+;   -- write the sector buffer to sector 21
+;   pata_hd_write_sector_address(21)
+;   --
+;   -- read back the same sectors
+;   -- read sector 20 into the sector buffer
+;   pata_hd_read_sector_address(20)
+;   -- now send it to the serial port
+;   for 512 using step1 loop                     -- loop till the end of the sector buffer
+;      serial_hw_write (pata_hd_sector_buffer[step1]) -- send each byte via serial port
+;   end loop
+;   -- read sector 21 into the sector buffer
+;   pata_hd_read_sector_address(21)
+;   -- now send it to the serial port
+;   for 512 using step1 loop                     -- loop till the end of the sector buffer
+;      serial_hw_write (pata_hd_sector_buffer[step1]) -- send each byte via serial port
+;   end loop
+;
+;   separator()                                  -- seperate the examples with "----"
+;   _usec_delay(500_000)                         -- a small delay
+;   --------------------------------------------------------------------------------
+;   -- EXAMPLE #4 write to 2 sectors using a sector buffer. About the same speed as
+;   -- example 3.
+;   --------------------------------------------------------------------------------
+;   -- get sd card ready for write at sector 20
+;   pata_hd_start_write(20)
+;   -- fill the sector buffer with data
+;   for 512 using step1 loop                   -- loop till the end of the sector buffer
+;     pata_hd_sector_buffer[step1] = "D"       -- set each byte of data
+;   end loop
+;   -- write the sector buffer to the sd card
+;   pata_hd_write_sector()
+;   -- fill the sector buffer with new data
+;   for 512 using step1 loop                   -- loop till the end of the sector buffer
+;     pata_hd_sector_buffer[step1] = "E"       -- set each byte of data
+;   end loop
+;   -- write the sector buffer to the sd card
+;   pata_hd_write_sector()                     -- write the buffer to the sd card
+;   -- tell sd card you are done writing
+;   pata_hd_stop_write()
+;   --
+;   -- read back both of the same sectors
+;   -- get sd card ready for read at sector 20
+;   pata_hd_start_read(20)
+;   -- read the sector into the sector buffer
+;   pata_hd_read_sector()
+;   -- now send it to the serial port
+;   for 512 using step1 loop                   -- loop till the end of the sector buffer
+;     serial_hw_write(pata_hd_sector_buffer[step1]) -- send each byte via serial port
+;   end loop
+;   -- read the next sector into the sector buffer
+;   pata_hd_read_sector()
+;   -- now send it to the serial port
+;   for 512 using step1 loop                   -- loop till the end of the sector buffer
+;     serial_hw_write(pata_hd_sector_buffer[step1]) -- send each byte via serial port
+;   end loop
+;   pata_hd_stop_read()                          -- tell sd card you are done reading
+;
+;
+;   separator()                                  -- seperate the examples with "----"
+;   _usec_delay(500_000)                         -- a small delay
 
 -- ----------------------------------------------------------------------------
--- Example spin up & spin down drive command
+-- EXAMPLE #5 - spin up & spin down drive command
 -- ----------------------------------------------------------------------------
 for 2 loop
-   pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_SPIN_UP)      -- turn on motor
-   _usec_delay(5_000_000) -- 5 sec delay
    pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_SPIN_DOWN)    -- turn off motor
    _usec_delay(5_000_000) -- 5 sec delay
+   pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_SPIN_UP)      -- turn on motor
+   _usec_delay(5_000_000) -- 5 sec delay
 end loop
 
-pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_SPIN_UP)          -- turn on motor
-
-_usec_delay(10_000_000) -- wait 10 seconds before next example
-
-
+separator()                -- seperate the examples with "----"
+_usec_delay(500_000)       -- a small delay
 -- ----------------------------------------------------------------------------
--- Example read sectors command
--- ----------------------------------------------------------------------------
-
-pata_hd_start_read(0) -- get drive ready for reading at sector 0 (boot sector)
-
--- Read one sector
-for 256 loop                            -- 256 words, 512 bytes per sector
-   pata_hd_read_data (in_b, in_a)        -- read data
-   send_word (in_b, in_a)                -- send data via serial port
-end loop
-
--- You will see hard disk LED on during this delay
--- because you did not finnish reading.
-_usec_delay(2_000_000) -- 2 second delay
-
--- Read 2nd sector.
-for 256 loop                            -- 256 words, 512 bytes per sector
-   pata_hd_read_data (in_b, in_a)        -- read data
-   send_word     (in_b, in_a)            -- send data via serial port
-end loop
-
-pata_hd_stop_read()       -- tell drive you are done reading
--- hard disk led will turn off at this point.
-
-_usec_delay(10_000_000) -- wait 10 seconds before next example
-
--- ----------------------------------------------------------------------------
--- Example identify drive command (Read drive information)
+-- Example #6 - identify drive command (Read drive information)
 -- size of drive, make, model, serial number, etc.
 -- ----------------------------------------------------------------------------
 
@@ -166,62 +228,11 @@ pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_IDENTIFY_DRIVE)
 pata_hd_data_request(PATA_HD_WAIT_READ)
 
 -- Read 512 bytes
-for 256 loop                            -- 256 words, 512 bytes per sector
-   pata_hd_read_data(in_b, in_a)        -- read data
-   send_word(in_a, in_b )           -- send data via serial port
+for 512 loop                            -- 256 words, 512 bytes per sector
+   data = pata_hd_data_byte
+   serial_hw_data = data
 end loop                                -- drive info high/low bytes are in reverse order
 
 
-_usec_delay(10_000_000) -- wait 10 seconds before next example
 
--- ----------------------------------------------------------------------------
--- Example write sectors command
--- note: this will over write data currently on your drive
--- ----------------------------------------------------------------------------
-
-pata_hd_start_write(20) -- tell hd to get ready for writing
-
--- now write 1 sector + most of 2nd sector, data will not be written unless 512 bytes are sent
-for 256 + 250 loop
-   pata_hd_write_data(0xCC, 0xDD) -- write data 0xCC, 0xDD over and over
-end loop
--- first sector has been written to the disk since 512 bytes where sent,
--- but 2nd sector is not finnished, only 500 bytes sent,
--- so lets finnish the sector with 6 more write pulses (0xFF's as data)
-pata_hd_write_to_sector_end(0xFF)
-
-pata_hd_stop_write()     -- tell hd we are done writing
-
--- Now read the 1st sector you just wrote, should get 0xCC, 0xDD over and over
-pata_hd_start_read(20)                 -- get drive ready for reading
-for 256 + 250 loop                      -- read 512 bytes + 500 bytes
-   pata_hd_read_data(in_b, in_a)        -- read data
-   send_word(in_b, in_a)            -- send data via serial port
-end loop
-
--- if you want, you can read back the last 6 bytes that are 0xFF
-for 6 loop
-   pata_hd_read_data (in_b, in_a)        -- read data
-   send_word(in_b, in_a)            -- send data via serial port
-end loop
-
-pata_hd_stop_read()                     -- tell drive we are done reading
-
--- We're done, lets turn off the hd motor
-pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_SPIN_DOWN)
-
----------------
-;-- read one full sector into sd_sector_buffer (512 byte array)
-;pata_hd_start_read(0)                      -- get sd card ready for read at sector 0
-;pata_hd_read_sector()
-;pata_hd_stop_read()                        -- tell sd card you are done reading
-;
-;-- now send it to the pc
-;var word count1 = 0
-;for 512 loop                          -- read 1 sector (512 bytes)
-;  serial_hw_write (pata_hd_sector_buffer[count1])          -- send byte via serial port
-;  count1 = count1 + 1
-;end loop
-
----------------
-
+-------THE END!--------

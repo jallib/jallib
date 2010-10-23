@@ -15,13 +15,22 @@
 -- http://en.wikipedia.org/wiki/File_Allocation_Table
 --
 
+include 18f67j50                    -- target PICmicro
 -- include chip
-include 18f452                     -- target picmicro
-pragma target clock 20_000_000     -- oscillator frequency
+pragma target clock 48_000_000     -- oscillator frequency
 -- configuration memory settings (fuses)
-pragma target OSC  HS              -- HS crystal or resonator
 pragma target WDT  disabled        -- no watchdog
-pragma target LVP  disabled        -- no Low Voltage Programming
+pragma target PLLDIV        P2     -- divide by 5 - 20MHZ_INPUT
+pragma target CPUDIV        P1     -- no cpu system clock divide
+pragma target OSC  INTOSC_NOCLKOUT_PLL           -- HS crystal or resonator
+pragma target IESO  DISABLED
+pragma target FCMEN DISABLED
+OSCTUNE_PLLEN = 1                  -- set 96mhz pll
+OSCCON_SCS = 0b00
+_usec_delay(1_000)                 -- wait for OSC PLL to settle
+--
+enable_digital_io() -- disable all analog pins if any
+_usec_delay (100_000) -- wait for power to stablilize
 
 include delay
 
@@ -43,8 +52,8 @@ spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
 
 -- setup 23k256 for external memory
 -- setup chip select pin
-ALIAS sram_23k256_chip_select             is pin_a1
-ALIAS sram_23k256_chip_select_direction   is pin_a1_direction
+ALIAS sram_23k256_chip_select             is pin_c2
+ALIAS sram_23k256_chip_select_direction   is pin_c2_direction
 -- initial settings
 sram_23k256_chip_select_direction = output    -- chip select/slave select pin
 sram_23k256_chip_select = high                -- start chip slect high (chip disabled)
@@ -54,19 +63,41 @@ include sram_23k256 -- setup Microchip 23k256 sram
 sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
 
 
--- setup the sd card pins
-alias sd_chip_select is pin_SS
-alias sd_chip_select_direction is pin_SS_direction
-sd_chip_select_direction = output
-sd_chip_select = high
+-- setup hard disk library
+const bit PATA_HD_READ_EXTRA_SPEED = FALSE -- uses additonal code space to add a speed boost to sector_read procedures
+const byte PATA_HD_USE_CS0_CS1_PINS = TRUE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
+const bit PATA_HD_NO_INVERTER = TRUE -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
+-- pin assignments
+alias     pata_hd_data_low              is porta   -- data port (low bits)
+alias     pata_hd_data_low_direction    is porta_direction
+alias     pata_hd_data_high             is portd   -- data port (high bits)
+alias     pata_hd_data_high_direction   is portd_direction
+alias     pata_hd_a0                    is pin_g2
+alias     pata_hd_a0_direction          is pin_g2_direction
+alias     pata_hd_a1                    is pin_g3
+alias     pata_hd_a1_direction          is pin_g3_direction
+alias     pata_hd_a2                    is pin_g4
+alias     pata_hd_a2_direction          is pin_g4_direction
+alias     pata_hd_iowr                  is pin_g0
+alias     pata_hd_iowr_direction        is pin_g0_direction
+alias     pata_hd_iord                  is pin_g1
+alias     pata_hd_iord_direction        is pin_g1_direction
+alias     pata_hd_cs1                   is pin_c1
+alias     pata_hd_cs1_direction         is pin_c1_direction
+alias     pata_hd_cs0                   is pin_c0
+alias     pata_hd_cs0_direction         is pin_c0_direction
 --
--- setup the sd card library
-;const bit SD_EXTRA_SPEED = TRUE
-const bit SD_ALWAYS_SET_SPI_MODE = TRUE
-const bit SD_DELAY_AFTER_WRITE = TRUE
-include sd_card              -- include the sd card ide hard disk library
-sd_init()                    -- initialize startup settings
+pata_hd_a0_direction = output    -- register select pin
+pata_hd_a1_direction = output    -- register select pin
+pata_hd_a2_direction = output    -- register select pin
+pata_hd_iowr_direction = output  -- used for write pulse
+pata_hd_iord_direction = output  -- used for read pulse
+pata_hd_cs1_direction = output   -- register select pin
+pata_hd_cs0_direction = output   -- register select pin
+--
 
+include pata_hard_disk           -- include the parallel ata ide hard disk library
+pata_hd_init()                   -- initialize startup settings
 
 -- setup fat32 --
 -- include the required files

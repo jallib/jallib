@@ -13,98 +13,171 @@
 -- How to use MMC/SDC - http://forums.parallax.com/forums/attach.aspx?a=32012
 --
 
--- compiler dependant device definitions
-;include 16f877
-;include 16f877a
-include 18f452
---
-pragma target OSC HS               -- HS crystal or resonator
+-- include chip
+include 18f452                     -- target picmicro
 pragma target clock 20_000_000     -- oscillator frequency
---
-pragma target WDT  disabled
-pragma target LVP  disabled
+-- configuration memory settings (fuses)
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target WDT  disabled        -- no watchdog
+pragma target LVP  disabled        -- no Low Voltage Programming
 
--- include the delay library
 include delay
 
 -- setup uart for communication
-const serial_hw_baudrate  = 38400    -- set the baudrate
+const serial_hw_baudrate  = 115200   -- set the baudrate
 include serial_hardware
 serial_hw_init()
 
--- setup spi
+include print
+
 include spi_master_hw         -- includes the spi library
 -- define spi inputs/outputs
 pin_sdi_direction = input    -- spi input
 pin_sdo_direction = output   -- spi output
 pin_sck_direction = output   -- spi clock
--- spi chip select pin
-ALIAS sd_chip_select_direction   is pin_SS_direction
-ALIAS sd_chip_select             is pin_SS
-sd_chip_select_direction = output    -- chip select/slave select pin
-sd_chip_select = high  -- disable the sd card
 --
-spi_init(SPI_MODE_11,SPI_RATE_FOSC_16) -- choose spi mode and speed
+spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
 
--- setup sd card library
+
+-- setup the sd card pins
+alias sd_chip_select is pin_SS
+alias sd_chip_select_direction is pin_SS_direction
+sd_chip_select_direction = output
+sd_chip_select = high
 --
--- select weather or not to switch SPI modes before every read/write
--- needed if using more then one component on the SPI bus.
-const byte SD_ALWAYS_SET_SPI_MODE = TRUE
---
-const bit SD_DELAY_AFTER_WRITE = TRUE -- some
-include sd_card -- include sd card library
-sd_init()       -- initalize the sd card
+-- setup the sd card library
+;const bit SD_EXTRA_SPEED = TRUE
+const bit SD_ALWAYS_SET_SPI_MODE = TRUE
+const bit SD_DELAY_AFTER_WRITE = TRUE
+include sd_card              -- include the sd card ide hard disk library
+sd_init()                    -- initialize startup settings
 
 ------------------------------------------------------------
 -- START of PROGRAM
 ------------------------------------------------------------
-
 _usec_delay(100_000)                  -- wait for power to settle
 
-var byte low_byte, high_byte          -- vars for sending and recieving data
+-- procedure for sending 80 "-----------------" via serial port
+procedure seperator() is
+   serial_hw_data = 13
+   serial_hw_data = 10
+   const byte str3[] = "--------------------------------------------------------------------------------"
+   print_string(serial_hw_data, str3)
+   print_crlf(serial_hw_data)
+end procedure
 
--- read the boot sector only (sector 0)
-sd_start_read(0)                      -- get sd card ready for read at sector 0
-for 256 loop                          -- read 1 sector (256 words)
-  sd_read_data (low_byte, high_byte)  -- read 2 bytes of data
-  serial_hw_write(low_byte)          -- send byte via serial port
-  serial_hw_write(high_byte)         -- send byte via serial port
+-- Send something to the serial port
+seperator()             -- send "----" via serial port
+var byte start_string[] = "SD CARD SAMPLE STARTED"
+print_string(serial_hw_data,start_string)
+
+-- variables for the sample
+var word step1
+var byte data
+
+seperator()            -- seperate the examples with "----"
+--------------------------------------------------------------------------------
+-- EXAMPLE #1 read sector 0 (the boot sector) & sector 1, one byte at a time
+--------------------------------------------------------------------------------
+sd_start_read(0)           -- get sd card ready for read at sector 0
+for 512 * 2 loop           -- read 2 sectors (512 * 2 bytes)
+  data = sd_data_byte      -- read 1 bytes of data
+  serial_hw_write(data)    -- send byte via serial port
 end loop
-sd_stop_read()                        -- tell sd card you are done reading
+sd_stop_read()             -- tell sd card you are done reading
 
--- write (0x66, 0x22) to sector 20 over and over.
-low_byte = 0x66                       -- set low byte to write
-high_byte = 0x22                      -- set high byte to write
-
-sd_start_write(20)                    -- get sd card ready for write
-for 256 + 128 loop                    -- write 1 sector + 1/2 sector
-  sd_write_data(low_byte, high_byte)  -- write data to the card
+seperator()                -- seperate the examples with "----"
+_usec_delay(500_000)       -- a small delay
+--------------------------------------------------------------------------------
+-- EXAMPLE #2 write to a sector 1 byte at a time
+--------------------------------------------------------------------------------
+sd_start_write(20)         -- get sd card ready for write at sector 20
+for 512 + 256 loop         -- loop 1 sector + 1 half sector (512 + 256 bytes)
+  sd_data_byte = "A"       -- write 1 bytes of data
 end loop
-sd_write_to_sector_end(0x00)          -- 2nd sector is not done, so finnish it
-                                      -- sectors must be completed during write
-                                      
-sd_stop_write()                       -- tell sd card you are done writing
-
--- read the data back, should get (0x66, 0x22) over and over.
-sd_start_read(20)                     -- get sd card ready for read at sector 20
-for 512 loop                          -- read 2 sectors (512 words)
-  sd_read_data(low_byte, high_byte)  -- read 2 bytes of data
-  serial_hw_write(low_byte)          -- send byte via serial port
-  serial_hw_write(high_byte)         -- send byte via serial port
+sd_stop_write()            -- tell sd card you are done reading
+--
+-- read the data back
+sd_start_read(20)          -- get sd card ready for read at sector 20
+for 512 + 256 loop         -- loop 1 sector + 1 half sector (512 + 256 bytes)
+ data = sd_data_byte       -- read 1 bytes of data
+  serial_hw_write(data)    -- send byte via serial port
 end loop
-sd_stop_read()                        -- tell sd card you are done reading
+sd_stop_read()             -- tell sd card you are done reading
 
----------------
-;-- read one full sector into sd_sector_buffer (512 byte array)
-;sd_start_read(0)                      -- get sd card ready for read at sector 0
-;sd_read_sector()
-;sd_stop_read()                        -- tell sd card you are done reading
+seperator()                -- seperate the examples with "----"
+_usec_delay(500_000)       -- a small delay
+;   --------------------------------------------------------------------------------
+;   -- EXAMPLE #3 write to 2 sectors using a sector buffer at a address
+;   -- user friendly and fastest.
+;   --------------------------------------------------------------------------------
+;   -- fill the sector buffer with data
+;   for 512 using step1 loop                     -- loop till the end of the sector buffer
+;      sd_sector_buffer[step1] = "B"             -- set each byte of data
+;   end loop
+;   -- write the sector buffer to sector 20
+;   sd_write_sector_address(20)
+;   for 512 using step1 loop                     -- loop till the end of the sector buffer
+;      sd_sector_buffer[step1] = "C"             -- set each byte of data
+;   end loop
+;   -- write the sector buffer to sector 21
+;   sd_write_sector_address(21)
+;   --
+;   -- read back the same sectors
+;   -- read sector 20 into the sector buffer
+;   sd_read_sector_address(20)
+;   -- now send it to the serial port
+;   for 512 using step1 loop                     -- loop till the end of the sector buffer
+;      serial_hw_write (sd_sector_buffer[step1]) -- send each byte via serial port
+;   end loop
+;   -- read sector 21 into the sector buffer
+;   sd_read_sector_address(21)
+;   -- now send it to the serial port
+;   for 512 using step1 loop                     -- loop till the end of the sector buffer
+;      serial_hw_write (sd_sector_buffer[step1]) -- send each byte via serial port
+;   end loop
 ;
-;-- now send it to the pc
-;var word count1 = 0
-;for 512 loop                          -- read 1 sector (512 bytes)
-;  serial_hw_write (sd_sector_buffer[count1])          -- send byte via serial port
-;  count1 = count1 + 1
-;end loop
----------------
+;   seperator()                                  -- seperate the examples with "----"
+;   _usec_delay(500_000)                         -- a small delay
+;   --------------------------------------------------------------------------------
+;   -- EXAMPLE #4 write to 2 sectors using a sector buffer. About the same speed as
+;   -- example 3.
+;   --------------------------------------------------------------------------------
+;   -- get sd card ready for write at sector 20
+;   sd_start_write(20)
+;   -- fill the sector buffer with data
+;   for 512 using step1 loop                   -- loop till the end of the sector buffer
+;     sd_sector_buffer[step1] = "D"            -- set each byte of data
+;   end loop
+;   -- write the sector buffer to the sd card
+;   sd_write_sector()
+;   -- fill the sector buffer with new data
+;   for 512 using step1 loop                   -- loop till the end of the sector buffer
+;     sd_sector_buffer[step1] = "E"            -- set each byte of data
+;   end loop
+;   -- write the sector buffer to the sd card
+;   sd_write_sector()                          -- write the buffer to the sd card
+;   -- tell sd card you are done writing
+;   sd_stop_write()
+;   --
+;   -- read back both of the same sectors
+;   -- get sd card ready for read at sector 20
+;   sd_start_read(20)
+;   -- read the sector into the sector buffer
+;   sd_read_sector()
+;   -- now send it to the serial port
+;   for 512 using step1 loop                   -- loop till the end of the sector buffer
+;     serial_hw_write(sd_sector_buffer[step1]) -- send each byte via serial port
+;   end loop
+;   -- read the next sector into the sector buffer
+;   sd_read_sector()
+;   -- now send it to the serial port
+;   for 512 using step1 loop                   -- loop till the end of the sector buffer
+;     serial_hw_write(sd_sector_buffer[step1]) -- send each byte via serial port
+;   end loop
+;   sd_stop_read()                             -- tell sd card you are done reading
+
+
+
+
+-------THE END!--------
