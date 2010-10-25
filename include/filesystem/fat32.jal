@@ -59,23 +59,23 @@ var dword fat32_file_location          -- holds file location after file_read_in
 var dword fat32_cluster_begin          -- the location of the beginning of clusters (where files & folders data is)
 var bit fat32_init_ok = FALSE          -- tells you if fat32 initalized ok or not.
 
--- Create file fat32_attribute variables
-var byte fat32_attrib
-var bit fat32_is_read_only at fat32_attrib : 0
-var bit fat32_is_hidden at fat32_attrib    : 1
-var bit fat32_is_system at fat32_attrib    : 2
-var bit fat32_is_volume_id at fat32_attrib : 3
-var bit fat32_is_directory at fat32_attrib : 4
-var bit fat32_is_archive at fat32_attrib   : 5
+-- Create file fat32_file_attribute variables
+var byte fat32_file_attrib
+var bit fat32_is_read_only at fat32_file_attrib : 0
+var bit fat32_is_hidden at fat32_file_attrib    : 1
+var bit fat32_is_system at fat32_file_attrib    : 2
+var bit fat32_is_volume_id at fat32_file_attrib : 3
+var bit fat32_is_directory at fat32_file_attrib : 4
+var bit fat32_is_archive at fat32_file_attrib   : 5
 
 -- filter file attributes
-var byte fat32_attrib_filter = 0 -- default is do not filter any file attributes
-var bit fat32_filter_is_read_only at fat32_attrib_filter : 0
-var bit fat32_filter_is_hidden at fat32_attrib_filter    : 1
-var bit fat32_filter_is_system at fat32_attrib_filter    : 2
-var bit fat32_filter_is_volume_id at fat32_attrib_filter : 3
-var bit fat32_filter_is_directory at fat32_attrib_filter : 4
-var bit fat32_filter_is_archive at fat32_attrib_filter   : 5
+var byte fat32_file_attrib_filter = 0 -- default is do not filter any file attributes
+var bit fat32_filter_is_read_only at fat32_file_attrib_filter : 0
+var bit fat32_filter_is_hidden at fat32_file_attrib_filter    : 1
+var bit fat32_filter_is_system at fat32_file_attrib_filter    : 2
+var bit fat32_filter_is_volume_id at fat32_file_attrib_filter : 3
+var bit fat32_filter_is_directory at fat32_file_attrib_filter : 4
+var bit fat32_filter_is_archive at fat32_file_attrib_filter   : 5
 -- move these filters to your your main program then modify there values.
 -- filters out files with unwanted file types
 ;fat32_filter_is_read_only  = FALSE
@@ -127,6 +127,22 @@ elsif DATA_MEDIA == SD_CARD then
    alias fat32_word_count is sd_word_count                   -- number of words read from current sector (byte var)
    alias fat32_sector_buffer is sd_sector_buffer             -- sector buffer array
 end if
+
+
+-- ----------------------------------------------------------------------------
+-- Print the sector buffer
+-- ----------------------------------------------------------------------------
+procedure fat32_print_sector_buffer_hex(volatile byte out device,word in bytes_per_line) is
+   var word step1 = 0
+   for 512 / bytes_per_line loop
+      print_crlf(device)
+      for bytes_per_line loop
+         device = " "
+         print_byte_hex(device,fat32_sector_buffer[step1])
+         step1 = step1 + 1
+      end loop
+   end loop
+end procedure
 
 -- ----------------------------------------------------------------------------
 -- Start reading a file
@@ -538,7 +554,7 @@ procedure _fat32_read_dir_info(dword in dir) is
    var dword clusters_to_read = 1   -- number of clusters to read
    var word fragment_number = 0  -- the fragment number being read
 
-   var byte attrib -- this attrib is different var then fat32_attrib
+   var byte attrib -- this attrib is different var then fat32_file_attrib
    var bit fat32_is_read_only at attrib : 0
    var bit fat32_is_hidden at attrib    : 1
    var bit fat32_is_system at attrib    : 2
@@ -619,15 +635,15 @@ procedure _fat32_read_dir_info(dword in dir) is
 
                send_it = TRUE
 
-               -- fat32_attrib_filter out unwanted attributes
-               if (attrib & fat32_attrib_filter) > 0 then
+               -- fat32_file_attrib_filter out unwanted attributes
+               if (attrib & fat32_file_attrib_filter) > 0 then
                   send_it = false
                end if
 
             elsif y != FAT32_ENTRY_NOT_IN_USE & long_name_check == "~" then -- if shortname entry that has a long name
 
-               -- fat32_attrib_filter out unwanted attributes
-               if (attrib & fat32_attrib_filter) > 0 then
+               -- fat32_file_attrib_filter out unwanted attributes
+               if (attrib & fat32_file_attrib_filter) > 0 then
                   fat32_dir_file_count = fat32_dir_file_count - 1
                end if
 
@@ -740,7 +756,7 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
       count1 = count1 + 1
    end loop
 
-   -- read the filename, fat32_attributes, location, ext
+   -- read the filename, fat32_file_attributes, location, ext
    forever loop
       -- GET LINE OF CLUSTER
       line[0] = fat32_raw_data_byte
@@ -778,10 +794,10 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
 
       long_name_entries = line[0] -- get the number of entries a longname takes up if it is a long name
 
-      fat32_attrib = line[11] -- get file fat32_attributes if short name, 0x0F if part of long name.
+      fat32_file_attrib = line[11] -- get file fat32_file_attributes if short name, 0x0F if part of long name.
 
       -- if line is part of long filename
-      if fat32_attrib == FAT32_ENTRY_IS_PART_OF_LONG_NAME & line[0] != FAT32_ENTRY_NOT_IN_USE then
+      if fat32_file_attrib == FAT32_ENTRY_IS_PART_OF_LONG_NAME & line[0] != FAT32_ENTRY_NOT_IN_USE then
          for long_name_entries - 0x40 loop
 
             long_filename_char[12] = line[1]
@@ -837,7 +853,7 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
                entry_count = entry_count + 1 -- increment entry counter
             end if
 
-            -- use this to get file info such as the longname's shortname, file ext, file fat32_attrib
+            -- use this to get file info such as the longname's shortname, file ext, file fat32_file_attrib
 
             line[0] = fat32_raw_data_byte
             line[1] = fat32_raw_data_byte
@@ -876,7 +892,7 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
 
          exit loop
 
-      elsif (fat32_attrib != FAT32_ENTRY_IS_PART_OF_LONG_NAME)  & (line[0] != FAT32_ENTRY_NOT_IN_USE) then ; IF LINE IS SHORT FILENAME
+      elsif (fat32_file_attrib != FAT32_ENTRY_IS_PART_OF_LONG_NAME)  & (line[0] != FAT32_ENTRY_NOT_IN_USE) then ; IF LINE IS SHORT FILENAME
          fat32_filename[FAT32_FILENAME_SIZE + 0 - 12] = line[0]  -- first char
          fat32_filename[FAT32_FILENAME_SIZE + 0 - 11] = line[1]
          fat32_filename[FAT32_FILENAME_SIZE + 0 - 10] = line[2]
@@ -941,7 +957,7 @@ procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
    _filesize[1] = line[29]
    _filesize[0] = line[28]
 
-   fat32_attrib = line[11] ; GET FILE fat32_attributes
+   fat32_file_attrib = line[11] ; GET FILE fat32_file_attributes
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -1230,3 +1246,114 @@ procedure fat32_print_directory(volatile byte out output_device, bit in with_fil
       count4 = count4 + 1                  -- increment count
    end loop
 end procedure
+
+-- ----------------------------------------------------------------------------
+-- This procedure is not finnished yet
+-- creates a file. So far only short filenames are supported, and directory
+-- fragmentation is also not supported (I'm working on it!)
+-- ----------------------------------------------------------------------------
+procedure fat32_file_create(byte in filename[], byte in file_extension[], byte in attributes) is
+   var byte step1, step2
+   var word sector_count = 0
+   var word sector_byte_location
+   if count(filename) <= 12 then -- It is a short file name
+      forever loop
+         -- start reading at the beginning of the directory and continue
+         fat32_raw_read_sector_address(fat32_root_dir + sector_count)
+
+         for 16 using step1 loop -- there are 16 filename entries per sector
+            -- check for a deleted entry, or an entry at the end of the directory
+            sector_byte_location = word(step1) * 32
+            if fat32_sector_buffer[sector_byte_location] == 0x00 | fat32_sector_buffer[sector_byte_location] == 0xE5 then
+
+
+            print_dword_dec (serial_hw_data, fat32_root_dir + sector_count)
+            print_crlf (serial_hw_data)
+            
+               -- write the short filename
+               for count(filename) using step2 loop
+                  fat32_sector_buffer[sector_byte_location] = filename[step2]
+                  ;fat32_write_sector_address(fat32_root_dir + sector_count)
+                  sector_byte_location = sector_byte_location + 1
+               end loop
+
+               -- add spaces if less then 8 characters
+               for 8 - step2 loop
+                  fat32_sector_buffer[sector_byte_location] = " "
+                  sector_byte_location = sector_byte_location + 1
+               end loop
+
+               -- write the file extension
+               for 3 using step2 loop
+                  fat32_sector_buffer[sector_byte_location] = file_extension[step2]
+                  sector_byte_location = sector_byte_location + 1
+               end loop
+
+               -- write the file attributes
+               fat32_sector_buffer[sector_byte_location] = attributes
+               sector_byte_location = sector_byte_location + 1
+
+               -- write some misc filename data
+               fat32_sector_buffer[sector_byte_location] = 0x00
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x21
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x69
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x94
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x04
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x3D
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x04
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x3D
+               sector_byte_location = sector_byte_location + 1
+
+               -- write the file cluster high location
+               var byte _fat32_file_location[4] at fat32_file_location
+               fat32_sector_buffer[sector_byte_location] = _fat32_file_location[3]
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = _fat32_file_location[2]
+               sector_byte_location = sector_byte_location + 1
+
+               -- write some more misc filename data
+               fat32_sector_buffer[sector_byte_location] = 0xEC
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x93
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x04
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = 0x3D
+               sector_byte_location = sector_byte_location + 1
+
+               -- write the file cluster low location
+               fat32_sector_buffer[sector_byte_location] = _fat32_file_location[1]
+               sector_byte_location = sector_byte_location + 1
+               fat32_sector_buffer[sector_byte_location] = _fat32_file_location[0]
+               sector_byte_location = sector_byte_location + 1
+
+               -- write the file size as 0 bytes
+               for 4 using step2 loop
+                  fat32_sector_buffer[sector_byte_location] = 0
+                  sector_byte_location = sector_byte_location + 1
+               end loop
+
+               -- save the file name / write the sector
+               ;fat32_raw_write_sector_address(fat32_root_dir + sector_count)
+               ;sd_print_sector_hex(serial_hw_data, 32, fat32_root_dir + sector_count)
+
+               -- update the directory info (user should do it with fat32_print_directory()
+               ;_fat32_read_dir_info()
+
+               return -- all done, lets get out of here!
+            end if
+         end loop
+         sector_count = sector_count + 1
+       end loop
+   else                          -- It is a long file name
+      -- filenames are not supported yet
+   end if
+end procedure
+
