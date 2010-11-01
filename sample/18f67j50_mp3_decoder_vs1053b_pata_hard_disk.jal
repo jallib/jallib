@@ -108,8 +108,9 @@ pata_hd_init()                   -- initialize startup settings
 ;include pic_data_eeprom
 include format  -- include format library (required by some fat32 procedures)
 -- change these vaues to save memory
+const bit FAT32_WRITE_LONG_FILE_NAMES = FALSE -- support writing of long file names
 const word FAT32_FILES_MAX = 20            -- the max number of files allowed in a directory
-const byte FAT32_FILENAME_SIZE = 100        -- choose max filename size. if a filename is longer the this, beginning chars will be cut. short filenames are 12 bytes.
+const byte FAT32_FILE_NAME_SIZE = 80        -- choose max file_name size. if a file_name is longer the this, beginning chars will be cut. short file_names are 12 bytes.
 const FAT32_DIR_FRAGMENTS_TO_ALLOW = 5     -- uses 6 bytes memory per fragment allowed (0 not allowed)
 --                                          -- windows defrag does not defragment directories.
 const FAT32_FILE_FRAGMENTS_TO_ALLOW = 5    -- uses 8 bytes memory per fragment allowed (0 not allowed)
@@ -121,7 +122,7 @@ const byte FAT32_ENTRIES_MAX = 2            -- highest file entry address can be
 -- choose a memory source for the file list
 const bit FAT32_USE_INTERNAL_MEMORY = TRUE -- Use internal memory for file location list
 IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
-   -- Setup a large array for storing sector data, This is where filename locations are stored
+   -- Setup a large array for storing sector data, This is where file_name locations are stored
    const dword LARGE_ARRAY_2_SIZE = FAT32_FILES_MAX               -- choose number of array variables
    const dword LARGE_ARRAY_2_VARIABLE_SIZE = FAT32_ENTRIES_MAX    -- choose bytes size of variables
    include large_array_2                    -- include the array library
@@ -131,7 +132,7 @@ elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
 
    -- example usage of 23k256 for external memory
 
-   -- alias the 23k256 device word array 
+   -- alias the 23k256 device word array
    ;alias entry_location is sram_23k256_byte  -- highest file entry address can be 256
    alias fat32_entry_location is sram_23k256_word   -- highest file entry address can be 65535
 END IF
@@ -227,12 +228,12 @@ forever loop
    file_number = serial_hw_data
 
    if !(file_number > fat32_dir_file_count) then -- if the file number exists
-      -- display the filename chosen
+      -- display the file_name chosen
       print_word_dec(serial_hw_data,file_number)
       const byte string1[] = {0x2E,0x20,0x20} -- ".  "
       print_string(serial_hw_data,string1)
       fat32_read_file_info(file_number) -- read file's name, location, size, attributes into memory
-      fat32_print_filename(serial_hw_data)
+      fat32_print_file_name(serial_hw_data)
       seperator() -- send "-----"
    end if
 
