@@ -20,12 +20,13 @@ echo "" > /tmp/compile.failed
 
 for sample in $jalsamples
 do
+    echo `basename $sample` > /tmp/tmpcomp.out
 	if grep -i "^include[[:space:]]\+18l\?f" $sample > /dev/null 2>&1
 	then
-		$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile -no-variable-reuse $sample > /tmp/tmpcomp.out 2>&1 
+		$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile -no-variable-reuse $sample >> /tmp/tmpcomp.out 2>&1 
 		status=$?
 	else
-		$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile $sample > /tmp/tmpcomp.out 2>&1
+		$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile $sample >> /tmp/tmpcomp.out 2>&1
 		status=$?
 	fi
 
