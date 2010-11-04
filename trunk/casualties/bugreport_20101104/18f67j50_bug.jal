@@ -1,0 +1,119 @@
+-- ------------------------------------------------------
+-- Title: Blink-a-led of the Microchip pic18f67j50
+--
+-- Author: Rob Hamerling, Copyright (c) 2008..2010, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4n
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Sample blink-a-led program for Microchip PIC18f67j50.
+--
+-- Sources:
+--
+-- Notes:
+--  - File creation date/time: 7 Jul 2010 11:13:41.
+--
+-- ------------------------------------------------------
+--
+
+include 18f67j50                    -- target PICmicro
+-- include chip
+pragma target clock 48_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target WDT  disabled        -- no watchdog
+pragma target PLLDIV        P2     -- divide by 5 - 20MHZ_INPUT
+pragma target CPUDIV        P1     -- no cpu system clock divide
+pragma target OSC  INTOSC_NOCLKOUT_PLL           -- HS crystal or resonator
+pragma target IESO  DISABLED
+pragma target FCMEN DISABLED
+OSCTUNE_PLLEN = 1                  -- set 96mhz pll
+OSCCON_SCS = 0b00
+_usec_delay(1_000)                 -- wait for OSC PLL to settle
+
+-- These configuration bit settings are only a selection, sufficient for
+-- this program, but other programs may need more or different settings.
+--
+enable_digital_io()                -- make all pins digital I/O
+--
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+include print
+
+---------------------------------------------------------------------------
+-- define the sector buffer. Can be read as sd_sector_buffer[0-511]
+---------------------------------------------------------------------------
+var byte sd_sector_buffer_low[256] -- 256 low bytes
+var byte sd_sector_buffer_high[256] -- 256 high bytes
+
+---------------------------------------------------------------------------
+-- procedure for printing the arrays
+---------------------------------------------------------------------------
+procedure fat32_print_sector_buffer_hex(volatile byte out device,word in bytes_per_line) is
+   var word step1 = 0
+   for 512 / bytes_per_line loop
+      print_crlf(device)
+
+      for bytes_per_line / 2 loop
+         device = " "
+         print_byte_hex(device,sd_sector_buffer_low[step1])
+         device = " "
+         print_byte_hex(device,sd_sector_buffer_high[step1])
+         step1 = step1 + 1
+      end loop
+
+   end loop
+end procedure
+
+---------------------------------------------------------------------------
+-- Main Program
+---------------------------------------------------------------------------
+
+---- MISSING ONE OF THE 0xDD
+sd_sector_buffer_low[28] = 0xDD
+sd_sector_buffer_high[28] = 0xDD
+sd_sector_buffer_low[29] = 0xDD -- this one doesn't get stored
+sd_sector_buffer_high[29] = 0xDD
+sd_sector_buffer_low[30] = 0xDD
+sd_sector_buffer_high[30] = 0xDD
+
+-- sector buffer is missing byte sd_sector_buffer_low[29]
+fat32_print_sector_buffer_hex(serial_hw_data, 32)
+
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+
+-- this line DOES NOT show 0xDD ok if after print_sector_buffer_hex proc
+print_dword_hex(serial_hw_data,sd_sector_buffer_low[29])
+print_crlf(serial_hw_data)
+
+----
+-- split the samples
+var byte string1[] = "------------------------\r\n"
+print_string(serial_hw_data, string1)
+----
+
+sd_sector_buffer_low[28] = 0xDD
+sd_sector_buffer_high[28] = 0xDD
+sd_sector_buffer_low[29] = 0xDD -- this one doesn't get stored
+sd_sector_buffer_high[29] = 0xDD
+sd_sector_buffer_low[30] = 0xDD
+sd_sector_buffer_high[30] = 0xDD
+
+-- this line shows 0xDD ok only if before print_sector_buffer_hex proc
+print_dword_hex(serial_hw_data,sd_sector_buffer_low[29])
+
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+
+-- sector buffer is still missing byte sd_sector_buffer_low[29]
+fat32_print_sector_buffer_hex(serial_hw_data, 32)
+print_crlf(serial_hw_data)
