@@ -642,6 +642,38 @@ end procedure
 
 #end def
 
+#def adpref_adnref
+
+-- Configure Voltage reference using ADPREF bits and ADNREF bit
+-- ADNREF isn't necessarily found when ADPREF is:
+--   $ diff <(grep ADPREF1 * | sed "s#:var.*##" | sort -u) <(grep ADNREF * | sed "s#:var.*##" | sort -u)
+-- tells the following PICs have a Vref+ (ADPREF) but no Vref- (ADNREF):
+--   12f1822, 12lf1822, 16f1823, 16lf1823
+
+procedure _adc_vref_adpref_adnref() is
+
+    if ADC_NVREF > 1 & !defined(ADCON1_ADNREF) then
+        _error "You seem to want to configure a Vref- pin, but selected PIC doesn't support this feature"
+    end if
+
+    if ADC_NVREF == 1 then
+        -- Vref+ is one Vref+ pin
+        ADCON1_ADPREF0 = 0b0
+        ADCON1_ADPREF1 = 0b1
+    elsif ADC_NVREF == 2 then
+        -- Vref+ is on Vref+ pin
+        -- Vref- is on Vref- pin
+        ADCON1_ADPREF0 = 0b0
+        ADCON1_ADPREF1 = 0b1
+        ADCON1_ADNREF = 1
+    elsif ADC_NVREF == 3 then
+        -- Vref- is on Vref- pin (no Vref+)
+        ADCON1_ADNREF = 1    
+    end if
+
+end procedure
+
+#end def
 
 #def select_vref_proc
 
@@ -649,6 +681,8 @@ end procedure
       alias _adc_vref is _adc_vref_vcfg
    elsif defined(ADCON1_ADREF) == true then
       alias _adc_vref is _adc_vref_adref
+   elsif defined(ADCON1_ADPREF0) then
+    alias _adc_vref is _adc_vref_adpref_adnref
    else
       _warn " \n\tUnable to find how Vref is setup with this chip, selection Vref won't work\n\tPlease report !"
       -- just create a dummy procedure, to honor normalization, but Vref setup
@@ -719,6 +753,7 @@ $deps
 
 $vcfg
 $adref
+$adpref_adnref
 $channels
 
 #end def
