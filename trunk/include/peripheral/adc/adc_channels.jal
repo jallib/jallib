@@ -1,7 +1,7 @@
 -- Title: ADC channel configuration.
 -- Author: Sebastien Lelong, Copyright (C) 2009, all rights reserved. 
 -- Adapted-by: 
--- Compiler: >=2.4k
+-- Compiler: 2.4n
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -50,13 +50,13 @@ procedure _adc_vref_vcfg() is
       vcfg_shadow = 2 -- 0b_10 | 0b_00 => 0b_10 => one bit per VCFG bit*2
    end if
    
-   if defined(ADCON0_VCFG) == true then
+   if defined(ADCON0_VCFG) then
       ADCON0_VCFG = vcfg_shadow
-   elsif defined(ADCON1_VCFG) == true then
+   elsif defined(ADCON1_VCFG) then
       ADCON1_VCFG = vcfg_shadow
 
    -- VCFG0 bit can be found in ADCON0 or ADCON1 register
-   elsif defined(ADCON1_VCFG0) == true then
+   elsif defined(ADCON1_VCFG0) then
       if ADC_NVREF == 1 then
          ADCON1_VCFG0 = true
       elsif ADC_NVREF == 2 then
@@ -65,7 +65,7 @@ procedure _adc_vref_vcfg() is
       elsif ADC_NVREF == 3 then
          ADCON1_VCFG1 = true
       end if
-   elsif defined(ADCON0_VCFG0) == true then
+   elsif defined(ADCON0_VCFG0) then
       if ADC_NVREF == 1 then
          ADCON0_VCFG0 = true
       elsif ADC_NVREF == 2 then
@@ -76,7 +76,7 @@ procedure _adc_vref_vcfg() is
       end if
    -- Special case for PVCFG
    -- Need to act on PVCFG and NVCFG bits
-   elsif defined(ADCON1_PVCFG0) == true then
+   elsif defined(ADCON1_PVCFG0) then
       if ADC_NVREF == 1 then
          -- PVCFG = 0b_01
          ADCON1_PVCFG0 = false
@@ -94,7 +94,7 @@ procedure _adc_vref_vcfg() is
          ADCON1_NVCFG1 = true
       end if
    else
-      if defined(ADC_NVREF) == true & ADC_NVREF != 0 then
+      if defined(ADC_NVREF) & ADC_NVREF != 0 then
          _error "You've specified ADC_NVREF, but I can't find VCFG bits. There should be VCFG bits, except if I've made a mistake..."
       end if
    end if
@@ -108,7 +108,7 @@ end procedure
 -- Same family, DS 41341B
 procedure _adc_vref_adref() is
 
-   if defined(ADCON1_ADREF) == true then
+   if defined(ADCON1_ADREF) then
       if ADC_NVREF == 1 then
          ADCON1_ADREF = 0b_10
       elsif ADC_NVREF != 0 then
@@ -128,23 +128,25 @@ end procedure
 
 procedure _adc_vref_adpref_adnref() is
 
-    if ADC_NVREF > 1 & !defined(ADCON1_ADNREF) then
-        _error "You seem to want to configure a Vref- pin, but selected PIC doesn't support this feature"
-    end if
+    if defined(ADCON1_ADPREF0) then
+        if ADC_NVREF > 1 & !defined(ADCON1_ADNREF) then
+            _error "You seem to want to configure a Vref- pin, but selected PIC doesn't support this feature"
+        end if
 
-    if ADC_NVREF == 1 then
-        -- Vref+ is one Vref+ pin
-        ADCON1_ADPREF0 = 0b0
-        ADCON1_ADPREF1 = 0b1
-    elsif ADC_NVREF == 2 then
-        -- Vref+ is on Vref+ pin
-        -- Vref- is on Vref- pin
-        ADCON1_ADPREF0 = 0b0
-        ADCON1_ADPREF1 = 0b1
-        ADCON1_ADNREF = 1
-    elsif ADC_NVREF == 3 then
-        -- Vref- is on Vref- pin (no Vref+)
-        ADCON1_ADNREF = 1    
+        if ADC_NVREF == 1 then
+            -- Vref+ is one Vref+ pin
+            ADCON1_ADPREF0 = 0b0
+            ADCON1_ADPREF1 = 0b1
+        elsif ADC_NVREF == 2 then
+            -- Vref+ is on Vref+ pin
+            -- Vref- is on Vref- pin
+            ADCON1_ADPREF0 = 0b0
+            ADCON1_ADPREF1 = 0b1
+            ADCON1_ADNREF = 1
+        elsif ADC_NVREF == 3 then
+            -- Vref- is on Vref- pin (no Vref+)
+            ADCON1_ADNREF = 1    
+        end if
     end if
 
 end procedure
@@ -2741,7 +2743,7 @@ if target_chip == PIC_16F72 | target_chip == PIC_16F767 | target_chip == PIC_16F
 
       -- Retrieve config bits according to selected number of ADC channels
       -- ADC_PCFG_MAP contains all confs, from 0 analog to the max
-      if defined(ADC_DYNAMIC) == true then
+      if defined(ADC_DYNAMIC) then
          var byte idx = ADC_NCHANNEL * 3
       else
          const byte idx = ADC_NCHANNEL * 3
@@ -2757,7 +2759,7 @@ if target_chip == PIC_16F72 | target_chip == PIC_16F767 | target_chip == PIC_16F
          ADCON1_PCFG = two_vref
       else
          -- This is only valid when using constant, ie. not dynamic ADC channels
-         if defined(ADC_DYNAMIC) == false then
+         if !defined(ADC_DYNAMIC) then
             _error "You can't have more than 2 VRef..."
          end if
       end if
@@ -2778,7 +2780,7 @@ if target_chip == PIC_16F72 | target_chip == PIC_16F767 | target_chip == PIC_16F
 --  - Vref config is done via VCFG bits
 -- --------------------------------------------
 
-elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCFG1) == true | defined(ANCON0_PCFG2) == true | defined(ANCON0_PCFG3) == true | defined(ANCON0_PCFG4) == true | defined(ANCON0_PCFG5) == true | defined(ANCON0_PCFG6) == true | defined(ANCON0_PCFG7) == true | defined(ANCON1_PCFG10) == true | defined(ANCON1_PCFG11) == true | defined(ANCON1_PCFG12) == true | defined(ANCON1_PCFG8) == true | defined(ANCON1_PCFG9) == true) then
+elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) | defined(ANCON0_PCFG1) | defined(ANCON0_PCFG2) | defined(ANCON0_PCFG3) | defined(ANCON0_PCFG4) | defined(ANCON0_PCFG5) | defined(ANCON0_PCFG6) | defined(ANCON0_PCFG7) | defined(ANCON1_PCFG10) | defined(ANCON1_PCFG11) | defined(ANCON1_PCFG12) | defined(ANCON1_PCFG8) | defined(ANCON1_PCFG9)) then
 
    _debug "ADC channels config: independent pins, via PCFG bits"
 
@@ -2788,7 +2790,7 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCF
    procedure _adc_setup_pins() is
       -- Selecting the number of ADC channels is done using PCFG bits
       -- User can optionally specify ADC channels number
-      if defined(ADC_NCHANNEL) == true then
+      if defined(ADC_NCHANNEL) then
          if ADC_NCHANNEL > ADC_NTOTAL_CHANNEL then
             _error "More ADC channels than available, adjust ADC_NCHANNEL"
          end if
@@ -2902,7 +2904,7 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCF
       -- analog pins is respected: there's no AN5, AN6 and AN7 as well)
 
       -- PCFG5, PCFG6 and PCFG7 are always found together
-      if defined(ANCON0_PCFG5) == true & defined(ANCON0_PCFG6) == true & defined(ANCON0_PCFG7) == true then
+      if defined(ANCON0_PCFG5) & defined(ANCON0_PCFG6) & defined(ANCON0_PCFG7) then
          if an_pin_num == 5 then
             ANCON0_PCFG5 = false
             pin_AN5_direction = input
@@ -2918,7 +2920,7 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCF
       end if
 
       -- PCFG8, PCFG9, PCFG10, PCFG11 and PCFG12 are always found together
-      if defined(ANCON1_PCFG8) == true & defined(ANCON1_PCFG9) == true & defined(ANCON1_PCFG10) == true & defined(ANCON1_PCFG11) == true & defined(ANCON1_PCFG12) == true then
+      if defined(ANCON1_PCFG8) & defined(ANCON1_PCFG9) & defined(ANCON1_PCFG10) & defined(ANCON1_PCFG11) & defined(ANCON1_PCFG12) then
          if an_pin_num == 8 then
             ANCON1_PCFG8 = false
             pin_AN8_direction = input
@@ -2976,7 +2978,7 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCF
       end if
 
       -- PCFG5, PCFG6 and PCFG7 are always found together
-      if defined(ANCON0_PCFG5) == true & defined(ANCON0_PCFG6) == true & defined(ANCON0_PCFG7) == true then
+      if defined(ANCON0_PCFG5) & defined(ANCON0_PCFG6) & defined(ANCON0_PCFG7) then
          if an_pin_num == 5 then
             ANCON0_PCFG5 = true
             pin_AN5_direction = input
@@ -2992,7 +2994,7 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCF
       end if
 
       -- PCFG8, PCFG9, PCFG10, PCFG11 and PCFG12 are always found together
-      if defined(ANCON1_PCFG8) == true & defined(ANCON1_PCFG9) == true & defined(ANCON1_PCFG10) == true & defined(ANCON1_PCFG11) == true & defined(ANCON1_PCFG12) == true then
+      if defined(ANCON1_PCFG8) & defined(ANCON1_PCFG9) & defined(ANCON1_PCFG10) & defined(ANCON1_PCFG11) & defined(ANCON1_PCFG12) then
          if an_pin_num == 8 then
             ANCON1_PCFG8 = true
             pin_AN8_direction = input
@@ -3018,9 +3020,9 @@ elsif target_cpu == PIC_16 & (defined(ANCON0_PCFG0) == true | defined(ANCON0_PCF
 
 
 
-   if defined(ADCON0_VCFG) == true | defined(ADCON1_VCFG) == true then
+   if defined(ADCON0_VCFG) | defined(ADCON1_VCFG) then
       alias _adc_vref is _adc_vref_vcfg
-   elsif defined(ADCON1_ADREF) == true then
+   elsif defined(ADCON1_ADREF) then
       alias _adc_vref is _adc_vref_adref
    elsif defined(ADCON1_ADPREF0) then
     alias _adc_vref is _adc_vref_adpref_adnref
@@ -3086,175 +3088,175 @@ else
    --       one named AN12, if any
    --     - set_analog_pin(4) will do the same for AN4
    procedure set_analog_pin(byte in an_pin_num) is
-      if defined(JANSEL_ANS0) == true then
+      if defined(JANSEL_ANS0) then
          if an_pin_num == 0 then
             JANSEL_ANS0 = true
             pin_AN0_direction = input
          end if
       end if
-      if defined(JANSEL_ANS1) == true then
+      if defined(JANSEL_ANS1) then
          if an_pin_num == 1 then
             JANSEL_ANS1 = true
             pin_AN1_direction = input
          end if
       end if
-      if defined(JANSEL_ANS2) == true then
+      if defined(JANSEL_ANS2) then
          if an_pin_num == 2 then
             JANSEL_ANS2 = true
             pin_AN2_direction = input
          end if
       end if
-      if defined(JANSEL_ANS3) == true then
+      if defined(JANSEL_ANS3) then
          if an_pin_num == 3 then
             JANSEL_ANS3 = true
             pin_AN3_direction = input
          end if
       end if
-      if defined(JANSEL_ANS4) == true then
+      if defined(JANSEL_ANS4) then
          if an_pin_num == 4 then
             JANSEL_ANS4 = true
             pin_AN4_direction = input
          end if
       end if
-      if defined(JANSEL_ANS5) == true then
+      if defined(JANSEL_ANS5) then
          if an_pin_num == 5 then
             JANSEL_ANS5 = true
             pin_AN5_direction = input
          end if
       end if
-      if defined(JANSEL_ANS6) == true then
+      if defined(JANSEL_ANS6) then
          if an_pin_num == 6 then
             JANSEL_ANS6 = true
             pin_AN6_direction = input
          end if
       end if
-      if defined(JANSEL_ANS7) == true then
+      if defined(JANSEL_ANS7) then
          if an_pin_num == 7 then
             JANSEL_ANS7 = true
             pin_AN7_direction = input
          end if
       end if
-      if defined(JANSEL_ANS8) == true then
+      if defined(JANSEL_ANS8) then
          if an_pin_num == 8 then
             JANSEL_ANS8 = true
             pin_AN8_direction = input
          end if
       end if
-      if defined(JANSEL_ANS9) == true then
+      if defined(JANSEL_ANS9) then
          if an_pin_num == 9 then
             JANSEL_ANS9 = true
             pin_AN9_direction = input
          end if
       end if
-      if defined(JANSEL_ANS10) == true then
+      if defined(JANSEL_ANS10) then
          if an_pin_num == 10 then
             JANSEL_ANS10 = true
             pin_AN10_direction = input
          end if
       end if
-      if defined(JANSEL_ANS11) == true then
+      if defined(JANSEL_ANS11) then
          if an_pin_num == 11 then
             JANSEL_ANS11 = true
             pin_AN11_direction = input
          end if
       end if
-      if defined(JANSEL_ANS12) == true then
+      if defined(JANSEL_ANS12) then
          if an_pin_num == 12 then
             JANSEL_ANS12 = true
             pin_AN12_direction = input
          end if
       end if
-      if defined(JANSEL_ANS13) == true then
+      if defined(JANSEL_ANS13) then
          if an_pin_num == 13 then
             JANSEL_ANS13 = true
             pin_AN13_direction = input
          end if
       end if
-      if defined(JANSEL_ANS14) == true then
+      if defined(JANSEL_ANS14) then
          if an_pin_num == 14 then
             JANSEL_ANS14 = true
             pin_AN14_direction = input
          end if
       end if
-      if defined(JANSEL_ANS15) == true then
+      if defined(JANSEL_ANS15) then
          if an_pin_num == 15 then
             JANSEL_ANS15 = true
             pin_AN15_direction = input
          end if
       end if
-      if defined(JANSEL_ANS16) == true then
+      if defined(JANSEL_ANS16) then
          if an_pin_num == 16 then
             JANSEL_ANS16 = true
             pin_AN16_direction = input
          end if
       end if
-      if defined(JANSEL_ANS17) == true then
+      if defined(JANSEL_ANS17) then
          if an_pin_num == 17 then
             JANSEL_ANS17 = true
             pin_AN17_direction = input
          end if
       end if
-      if defined(JANSEL_ANS18) == true then
+      if defined(JANSEL_ANS18) then
          if an_pin_num == 18 then
             JANSEL_ANS18 = true
             pin_AN18_direction = input
          end if
       end if
-      if defined(JANSEL_ANS19) == true then
+      if defined(JANSEL_ANS19) then
          if an_pin_num == 19 then
             JANSEL_ANS19 = true
             pin_AN19_direction = input
          end if
       end if
-      if defined(JANSEL_ANS20) == true then
+      if defined(JANSEL_ANS20) then
          if an_pin_num == 20 then
             JANSEL_ANS20 = true
             pin_AN20_direction = input
          end if
       end if
-      if defined(JANSEL_ANS21) == true then
+      if defined(JANSEL_ANS21) then
          if an_pin_num == 21 then
             JANSEL_ANS21 = true
             pin_AN21_direction = input
          end if
       end if
-      if defined(JANSEL_ANS22) == true then
+      if defined(JANSEL_ANS22) then
          if an_pin_num == 22 then
             JANSEL_ANS22 = true
             pin_AN22_direction = input
          end if
       end if
-      if defined(JANSEL_ANS23) == true then
+      if defined(JANSEL_ANS23) then
          if an_pin_num == 23 then
             JANSEL_ANS23 = true
             pin_AN23_direction = input
          end if
       end if
-      if defined(JANSEL_ANS24) == true then
+      if defined(JANSEL_ANS24) then
          if an_pin_num == 24 then
             JANSEL_ANS24 = true
             pin_AN24_direction = input
          end if
       end if
-      if defined(JANSEL_ANS25) == true then
+      if defined(JANSEL_ANS25) then
          if an_pin_num == 25 then
             JANSEL_ANS25 = true
             pin_AN25_direction = input
          end if
       end if
-      if defined(JANSEL_ANS26) == true then
+      if defined(JANSEL_ANS26) then
          if an_pin_num == 26 then
             JANSEL_ANS26 = true
             pin_AN26_direction = input
          end if
       end if
-      if defined(JANSEL_ANS27) == true then
+      if defined(JANSEL_ANS27) then
          if an_pin_num == 27 then
             JANSEL_ANS27 = true
             pin_AN27_direction = input
          end if
       end if
-      if defined(JANSEL_ANS0) == false & defined(JANSEL_ANS1) == false & defined(JANSEL_ANS2) == false & defined(JANSEL_ANS3) == false & defined(JANSEL_ANS4) == false & defined(JANSEL_ANS5) == false & defined(JANSEL_ANS6) == false & defined(JANSEL_ANS7) == false & defined(JANSEL_ANS8) == false & defined(JANSEL_ANS9) == false & defined(JANSEL_ANS10) == false & defined(JANSEL_ANS11) == false & defined(JANSEL_ANS12) == false & defined(JANSEL_ANS13) == false & defined(JANSEL_ANS14) == false & defined(JANSEL_ANS15) == false & defined(JANSEL_ANS16) == false & defined(JANSEL_ANS17) == false & defined(JANSEL_ANS18) == false & defined(JANSEL_ANS19) == false & defined(JANSEL_ANS20) == false & defined(JANSEL_ANS21) == false & defined(JANSEL_ANS22) == false & defined(JANSEL_ANS23) == false & defined(JANSEL_ANS24) == false & defined(JANSEL_ANS25) == false & defined(JANSEL_ANS26) == false & defined(JANSEL_ANS27) == false then
+      if !defined(JANSEL_ANS0) & !defined(JANSEL_ANS1) & !defined(JANSEL_ANS2) & !defined(JANSEL_ANS3) & !defined(JANSEL_ANS4) & !defined(JANSEL_ANS5) & !defined(JANSEL_ANS6) & !defined(JANSEL_ANS7) & !defined(JANSEL_ANS8) & !defined(JANSEL_ANS9) & !defined(JANSEL_ANS10) & !defined(JANSEL_ANS11) & !defined(JANSEL_ANS12) & !defined(JANSEL_ANS13) & !defined(JANSEL_ANS14) & !defined(JANSEL_ANS15) & !defined(JANSEL_ANS16) & !defined(JANSEL_ANS17) & !defined(JANSEL_ANS18) & !defined(JANSEL_ANS19) & !defined(JANSEL_ANS20) & !defined(JANSEL_ANS21) & !defined(JANSEL_ANS22) & !defined(JANSEL_ANS23) & !defined(JANSEL_ANS24) & !defined(JANSEL_ANS25) & !defined(JANSEL_ANS26) & !defined(JANSEL_ANS27) then
          _error "\n\tUnable to configure ADC channels.\n\tConfiguration is supposed to be done using ANS bits\n\tbut it seems there's no ANS bits for this PIC.\n\tMaybe your PIC isn't supported, please report !"
       end if
    end procedure
@@ -3271,142 +3273,142 @@ else
    -- 
    -- Note: the pin direction is not modified
    procedure set_digital_pin(byte in an_pin_num) is
-      if defined(JANSEL_ANS0) == true then
+      if defined(JANSEL_ANS0) then
          if an_pin_num == 0 then
             JANSEL_ANS0 = false
          end if
       end if
-      if defined(JANSEL_ANS1) == true then
+      if defined(JANSEL_ANS1) then
          if an_pin_num == 1 then
             JANSEL_ANS1 = false
          end if
       end if
-      if defined(JANSEL_ANS2) == true then
+      if defined(JANSEL_ANS2) then
          if an_pin_num == 2 then
             JANSEL_ANS2 = false
          end if
       end if
-      if defined(JANSEL_ANS3) == true then
+      if defined(JANSEL_ANS3) then
          if an_pin_num == 3 then
             JANSEL_ANS3 = false
          end if
       end if
-      if defined(JANSEL_ANS4) == true then
+      if defined(JANSEL_ANS4) then
          if an_pin_num == 4 then
             JANSEL_ANS4 = false
          end if
       end if
-      if defined(JANSEL_ANS5) == true then
+      if defined(JANSEL_ANS5) then
          if an_pin_num == 5 then
             JANSEL_ANS5 = false
          end if
       end if
-      if defined(JANSEL_ANS6) == true then
+      if defined(JANSEL_ANS6) then
          if an_pin_num == 6 then
             JANSEL_ANS6 = false
          end if
       end if
-      if defined(JANSEL_ANS7) == true then
+      if defined(JANSEL_ANS7) then
          if an_pin_num == 7 then
             JANSEL_ANS7 = false
          end if
       end if
-      if defined(JANSEL_ANS8) == true then
+      if defined(JANSEL_ANS8) then
          if an_pin_num == 8 then
             JANSEL_ANS8 = false
          end if
       end if
-      if defined(JANSEL_ANS9) == true then
+      if defined(JANSEL_ANS9) then
          if an_pin_num == 9 then
             JANSEL_ANS9 = false
          end if
       end if
-      if defined(JANSEL_ANS10) == true then
+      if defined(JANSEL_ANS10) then
          if an_pin_num == 10 then
             JANSEL_ANS10 = false
          end if
       end if
-      if defined(JANSEL_ANS11) == true then
+      if defined(JANSEL_ANS11) then
          if an_pin_num == 11 then
             JANSEL_ANS11 = false
          end if
       end if
-      if defined(JANSEL_ANS12) == true then
+      if defined(JANSEL_ANS12) then
          if an_pin_num == 12 then
             JANSEL_ANS12 = false
          end if
       end if
-      if defined(JANSEL_ANS13) == true then
+      if defined(JANSEL_ANS13) then
          if an_pin_num == 13 then
             JANSEL_ANS13 = false
          end if
       end if
-      if defined(JANSEL_ANS14) == true then
+      if defined(JANSEL_ANS14) then
          if an_pin_num == 14 then
             JANSEL_ANS14 = false
          end if
       end if
-      if defined(JANSEL_ANS15) == true then
+      if defined(JANSEL_ANS15) then
          if an_pin_num == 15 then
             JANSEL_ANS15 = false
          end if
       end if
-      if defined(JANSEL_ANS16) == true then
+      if defined(JANSEL_ANS16) then
          if an_pin_num == 16 then
             JANSEL_ANS16 = false
          end if
       end if
-      if defined(JANSEL_ANS17) == true then
+      if defined(JANSEL_ANS17) then
          if an_pin_num == 17 then
             JANSEL_ANS17 = false
          end if
       end if
-      if defined(JANSEL_ANS18) == true then
+      if defined(JANSEL_ANS18) then
          if an_pin_num == 18 then
             JANSEL_ANS18 = false
          end if
       end if
-      if defined(JANSEL_ANS19) == true then
+      if defined(JANSEL_ANS19) then
          if an_pin_num == 19 then
             JANSEL_ANS19 = false
          end if
       end if
-      if defined(JANSEL_ANS20) == true then
+      if defined(JANSEL_ANS20) then
          if an_pin_num == 20 then
             JANSEL_ANS20 = false
          end if
       end if
-      if defined(JANSEL_ANS21) == true then
+      if defined(JANSEL_ANS21) then
          if an_pin_num == 21 then
             JANSEL_ANS21 = false
          end if
       end if
-      if defined(JANSEL_ANS22) == true then
+      if defined(JANSEL_ANS22) then
          if an_pin_num == 22 then
             JANSEL_ANS22 = false
          end if
       end if
-      if defined(JANSEL_ANS23) == true then
+      if defined(JANSEL_ANS23) then
          if an_pin_num == 23 then
             JANSEL_ANS23 = false
          end if
       end if
-      if defined(JANSEL_ANS24) == true then
+      if defined(JANSEL_ANS24) then
          if an_pin_num == 24 then
             JANSEL_ANS24 = false
          end if
       end if
-      if defined(JANSEL_ANS25) == true then
+      if defined(JANSEL_ANS25) then
          if an_pin_num == 25 then
             JANSEL_ANS25 = false
          end if
       end if
-      if defined(JANSEL_ANS26) == true then
+      if defined(JANSEL_ANS26) then
          if an_pin_num == 26 then
             JANSEL_ANS26 = false
          end if
       end if
-      if defined(JANSEL_ANS27) == true then
+      if defined(JANSEL_ANS27) then
          if an_pin_num == 27 then
             JANSEL_ANS27 = false
          end if
@@ -3418,15 +3420,15 @@ else
    -- set_analog_pin() instead of specifying ADC_NCHANNEL and then always wondering
    -- which ADC pin to use, and finally, because I'm lazy, there won't be automatic
    -- ADC_NCHANNEL settings in this case
-   if defined(ADC_NCHANNEL) == true then
+   if defined(ADC_NCHANNEL) then
       _error "You can't specify the number of ADC channel with ADC_NCHANNEL, you have to use set_analog_pin(...)"
    end if
 
 
 
-   if defined(ADCON0_VCFG) == true | defined(ADCON1_VCFG) == true then
+   if defined(ADCON0_VCFG) | defined(ADCON1_VCFG) then
       alias _adc_vref is _adc_vref_vcfg
-   elsif defined(ADCON1_ADREF) == true then
+   elsif defined(ADCON1_ADREF) then
       alias _adc_vref is _adc_vref_adref
    elsif defined(ADCON1_ADPREF0) then
     alias _adc_vref is _adc_vref_adpref_adnref
