@@ -1277,6 +1277,8 @@ return 0
 /*         - register name                           */
 /* Generates names for pins or bit fields            */
 /* 12-bit and 14-bit core                            */
+/* Note: part of code relies on:                     */
+/*       - ADCON0 comes before ADCON1 (in .dev file) */
 /* ------------------------------------------------- */
 list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. Core PicName jalfile msglevel
 i = arg(1) + 1                                              /* first after reg */
@@ -1321,20 +1323,27 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
             end
             else do                                         /* not twin name */
                field = reg'_'n.j
+               next_j = j + 1                               /* next subfield index */
+               next_subfield = n.next_j                     /* next subfield name */
                select                                       /* interceptions */
-                  when left(reg,5) = 'ANSEL'  &,
-                       left(n.j,3) = 'ANS' then do
+                  when left(reg,5) = 'ADCON' &,             /* ADCON0/1 */
+                       (n.j = 'ADCS0' | n.j = 'ADCS1' |,
+                         (n.j = 'ADCS2' & next_subfield = 'ADCS1')) then do
+                     nop                                    /* suppress ADCON_ADCS enumeration */
+                                                            /* but not 'isolated' ADCS2 */
+                  end
+                  when left(reg,5) = 'ANSEL'  &  left(n.j,3) = 'ANS' then do
                      ansx = ansel2j(reg, n.j)
                      if ansx < 99 then                      /* valid number */
                         call lineout jalfile, 'var volatile bit   ',
                                      left('JANSEL_ANS'ansx,25) 'at' reg ':' offset
                   end
-                  when reg = 'T1CON' & n.j = 'T1SYNC' then do
+                  when (reg = 'T1CON' & n.j = 'T1SYNC') then do
                      field = reg'_N'n.j                     /* insert 'not' prefix */
                      call lineout jalfile, 'var volatile bit   ',
                                   left(field,25) 'at' reg ':' offset
                   end
-                  when reg = 'GPIO' & left(n.j,4) = 'GPIO' then do
+                  when (reg = 'GPIO' & left(n.j,4) = 'GPIO') then do
                     field = reg'_GP'right(n.j,1)            /* pin GPIOx -> GPx */
                     call lineout jalfile, 'var volatile bit   ',
                                  left(field,25) 'at' reg ':' offset
@@ -1353,18 +1362,35 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                        call lineout jalfile, 'var volatile bit*2 ',
                             left(left(field,length(field)-1),25) 'at' reg ':' offset
                   end
+                  when reg = 'ADCON1'  &,                   /* ADCON1 */
+                      (n.j = 'ADCS2' & next_subfield \= ADCS1)  then do        /* scattered ADCS bits */
+                     call lineout jalfile, 'procedure  ADCON0_ADCS'"'put"'(byte in x) is'
+                     call lineout jalfile, '   pragma inline'
+                     call lineout jalfile, '   ADCON0_ADCS10 = x       -- low order bits'
+                     call lineout jalfile, '   ADCON1_ADCS2 = 0'
+                     call lineout jalfile, '   if ((x & 0x04) != 0) then'
+                     call lineout jalfile, '      ADCON1_ADCS2 = 1     -- high order bit'
+                     call lineout jalfile, '   end if'
+                     call lineout jalfile, 'end procedure'
+                  end
+                  when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
+                       n.j = 'ADCS0'  then do               /* enumerated ADCS */
+                     field = reg'_ADCS'
+                     call lineout jalfile, 'var volatile bit*3 ',
+                            left(field,25) 'at' reg ':' offset
+                  end
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        n.j = 'CHS3'  then do                /* 'loose' 4th bit */
-                     chkname = reg'_CHS012'                 /* compose name */
+                     chkname = reg'_CHS210'                 /* compose name */
                      if  Name.chkname = '-' then do         /* partner field not present */
                         if msglevel <= 2 then
                            say '  Warning: ADCONx_CHS3 bit without previous',
-                               ' ADCONx_CHS012 field declaration'
+                               ' ADCONx_CHS210 field declaration'
                      end
                      else do
                         call lineout jalfile, 'procedure' reg'_CHS'"'put"'(byte in x) is'
                         call lineout jalfile, '   pragma inline'
-                        call lineout jalfile, '   'reg'_CHS012 = x         -- low order bits'
+                        call lineout jalfile, '   'reg'_CHS210 = x         -- low order bits'
                         call lineout jalfile, '   'reg'_CHS3 = 0'
                         call lineout jalfile, '   if ((x & 0x08) != 0) then'
                         call lineout jalfile, '      'reg'_CHS3 = 1        -- high order bit'
@@ -1453,25 +1479,41 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
             if field = 'OSCCON_IRFC' then                   /* .dev error */
                field = 'OSCCON_IRCF'                        /* datasheet name */
             select
-               when left(reg,5) = 'ADCON'  &,               /* ADCON0/1 */
-                    n.j = 'CHS'            &,               /* (multibit) CHS field */
-                    pos('CHS3',Dev.i) > 0  then do          /* 'loose' 4th bit present */
-                  field = field'012'                        /* rename! */
+               when reg = 'ADCON0'               &,         /* ADCON0 */
+                    (n.j = 'ADCS'  &  s.j = '2') &,         /* 2-bits ADCS field */
+                    PicName \= '12f510'          &,
+                    PicName \= '16f506'          &,
+                    PicName \= '16f526'          &,
+                    PicName \= '16f716'          &,
+                    PicName \= '16f72'           &,
+                    PicName \= '16f73'           &,
+                    PicName \= '16f74'           &,
+                    PicName \= '16f76'           &,
+                    PicName \= '16f77'           &,          /* not a specific PIC with */
+                    PicName \= '16f870'          &,          /* only 2 ADCS bits */
+                    PicName \= '16f871'          &,
+                    PicName \= '16f872'          &,
+                    PicName \= '16f873'          &,
+                    PicName \= '16f874'          &,
+                    PicName \= '16f876'          &,
+                    PicName \= '16f877'          &,
+                    PicName \= '16f882'          &,
+                    PicName \= '16f883'          &,
+                    PicName \= '16f884'          &,
+                    PicName \= '16f886'          &,
+                    PicName \= '16f887'         then do
+                  field = reg'_ADCS10'
                   if duplicate_name(field,reg) = 0 then     /* renamed subfield */
                      call lineout jalfile, 'var volatile bit*'s.j' ',
                                            left(field,25) 'at' reg ':' offset - s.j + 1
                end
-               when (left(n.j,2) = 'AN')    &,              /* AN(S) subfield */
-                    (left(reg,5) = 'ADCON'  |,              /* ADCON* reg */
-                     left(reg,5) = 'ANSEL')  then do        /* ANSELx reg */
-                  k = s.j - 1
-                  do while k >= 0
-                    ansx = ansel2j(reg,n.j||k)
-                    if ansx < 99 then
-                       call lineout jalfile, 'var volatile bit   ',
-                                    left('JANSEL_ANS'ansx,25) 'at' reg ':' offset + k + 1 - s.j
-                    k = k - 1
-                  end
+               when left(reg,5) = 'ADCON'  &,               /* ADCON0/1 */
+                    n.j = 'CHS'            &,               /* (multibit) CHS field */
+                    pos('CHS3',Dev.i) > 0  then do          /* 'loose' 4th bit present */
+                  field = field'210'                        /* rename! */
+                  if duplicate_name(field,reg) = 0 then     /* renamed subfield */
+                     call lineout jalfile, 'var volatile bit*'s.j' ',
+                                           left(field,25) 'at' reg ':' offset - s.j + 1
                end
                when left(reg,5) = 'ADCON' &,                /* ADCONx */
                     pos('VCFG',field) > 0  then do          /* multibit VCFG present */
@@ -1482,6 +1524,18 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                   if duplicate_name(field,reg) = 0 then     /* unique */
                      call lineout jalfile, 'var volatile bit*'s.j' ',
                                   left(field,25) 'at' reg ':' offset - s.j + 1
+               end
+               when (left(n.j,2) = 'AN')    &,              /* AN(S) subfield */
+                    (left(reg,5) = 'ADCON'  |,              /* ADCONx reg */
+                     left(reg,5) = 'ANSEL')  then do        /* ANSELx reg */
+                  k = s.j - 1
+                  do while k >= 0
+                    ansx = ansel2j(reg,n.j||k)
+                    if ansx < 99 then
+                       call lineout jalfile, 'var volatile bit   ',
+                                    left('JANSEL_ANS'ansx,25) 'at' reg ':' offset + k + 1 - s.j
+                    k = k - 1
+                  end
                end
                when reg = 'OPTION_REG' &  n.j = 'PS' then do
                   call lineout jalfile, 'var volatile bit*'s.j' ',
@@ -1644,6 +1698,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                field = reg'_'n.j
                select                                       /* intercept */
                   when (left(reg,5) = 'ADCON'   & left(n.j,3) = 'CHS')                       |,
+                       (left(reg,5) = 'ADCON' & left(n.j,4) = 'ADCS')                        |,
                        (left(reg,7) = 'SSP1CON' & left(n.j,4) = 'SSPM')                      |,
                        (left(reg,7) = 'SSP2CON' & left(n.j,4) = 'SSPM')                      |,
                        (reg = 'OPTION_REG'      & (n.j = 'PS0' | n.j = 'PS1' | n.j = 'PS2')) |,
@@ -1689,6 +1744,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                   when left(reg,5) = 'ADCON' &  n.j = 'CHS0' then do
                      call lineout jalfile, 'var volatile bit*5 ',
                           left(reg'_CHS',25) memtype'at' reg ':' offset
+                  end
+                  when left(reg,5) = 'ADCON' &  n.j = 'ADCS0' then do
+                     call lineout jalfile, 'var volatile bit*3 ',
+                          left(reg'_ADCS',25) memtype'at' reg ':' offset
                   end
                   when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &, /* CCPxCON */
                        datatype(substr(reg,4,1)) = 'NUM'        then do
@@ -2001,16 +2060,18 @@ end
 return 0
 
 
-/* --------------------------------------- */
-/* Formatting of special function register */
-/* input:  - index in .dev                 */
-/*         - register name                 */
-/* Generates names for pins or bit fields  */
-/* Normalises ANS bits                     */
-/* Generates some midrange aliases         */
-/* Fixes some errors in MPLAB              */
-/* 16-bit core                             */
-/* --------------------------------------- */
+/* ---------------------------------------------- */
+/* Formatting of special function register        */
+/* input:  - index in .dev                        */
+/*         - register name                        */
+/* Generates names for pins or bit fields         */
+/* Normalises ANS bits                            */
+/* Generates some midrange aliases                */
+/* Fixes some errors in MPLAB                     */
+/* 16-bit core                                    */
+/* Note: part of code relies on                   */
+/*       ADCON0 comes after ADCON1 (in .dev file) */
+/* ---------------------------------------------- */
 list_sfr_subfields16: procedure expose Dev. Name. PinMap. PinANMap. PortLat. Core PicName,
                                        jalfile msglevel multi_usart
 i = arg(1) + 1                                              /* 1st after reg */
@@ -2067,7 +2128,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                         field = reg'_DC'substr(n.j,3,1)'B'
                      else
                         field = reg'_DC'substr(n.j,4,1)'B'
-                     if duplicate_name(reg'_DC'n'B',reg) = 0 then /* unique */
+                     if duplicate_name(reg'_DC'n'B',reg) = 0 then  /* unique */
                         call lineout jalfile, 'var volatile bit*2 ',
                                    left(field,25) memtype 'at' reg ':' offset - s.j + 1
                   end
@@ -2200,6 +2261,32 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                    call lineout jalfile, 'var volatile bit*'s.j' ',
                          left(field,25) memtype 'at' reg ':' offset - s.j + 1
                  end
+               end
+               when reg = 'ADCON0'               &,         /* ADCON0 */
+                    (n.j = 'ADCS' &  s.j = '2')  &,         /* 2 bits of ADCS */
+                    (PicName = '18f242'   |,
+                     PicName = '18f2439'  |,
+                     PicName = '18f248'   |,                /* specific PICs of */
+                     PicName = '18f252'   |,                /* which ADCS2 bit */
+                     PicName = '18f2539'  |,                /* is in ADCON1 */
+                     PicName = '18f258'   |,
+                     PicName = '18f442'   |,
+                     PicName = '18f4439'  |,
+                     PicName = '18f448'   |,
+                     PicName = '18f452'   |,
+                     PicName = '18f4539'  |,
+                     PicName = '18f458')       then do
+                  if duplicate_name(field,reg) = 0 then     /* unique */
+                     call lineout jalfile, 'var volatile bit*'s.j' ',
+                          left(field'10',25) memtype 'at' reg ':' offset - s.j + 1
+                  call lineout jalfile, 'procedure  ADCON0_ADCS'"'put"'(byte in x) is'
+                  call lineout jalfile, '   pragma inline'
+                  call lineout jalfile, '   ADCON0_ADCS10 = x       -- low order bits'
+                  call lineout jalfile, '   ADCON1_ADCS2 = 0'
+                  call lineout jalfile, '   if ((x & 0x04) != 0) then'
+                  call lineout jalfile, '      ADCON1_ADCS2 = 1     -- high order bit'
+                  call lineout jalfile, '   end if'
+                  call lineout jalfile, 'end procedure'
                end
                when (left(n.j,3) = 'ANS')   &,              /* ANS subfield */
                     (left(reg,5) = 'ADCON'  |,              /* ADCON* reg */
