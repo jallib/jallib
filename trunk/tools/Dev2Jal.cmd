@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.10'
+   ScriptVersion   = '0.1.11'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -165,8 +165,8 @@ do i=1 to dir.0                                             /* all relevant .dev
    Lkr.        = ''                                         /* .lkr file contents */
    Ram.        = ''                                         /* sfr usage and mirroring */
    Name.       = '-'                                        /* register and subfield names */
-   CfgAddr.    = ''                                         /* ) */
-   IDAddr.     = ''                                         /* ) decimal! */
+   CfgAddr.    = ''
+   IDAddr.     = ''                                         /*  decimal! */
 
    DevFile = tolower(translate(dir.i,'/','\'))              /* lower case + forward slashes */
    parse value filespec('Name', DevFile) with 'pic' PicName '.dev'
@@ -276,6 +276,7 @@ PAGESIZE   = 512                                            /* 0x0200 */
 DataStart  = '0x400'                                        /* default */
 NumBanks   = 1                                              /* default */
 StackDepth = 2                                              /* default */
+adcs_bitcount = 0                                           /* # ADCONx_ADCS bits */
 
 call load_stackdepth                                        /* check stack depth */
 call load_sfr1x                                             /* load sfr + mirror info */
@@ -304,6 +305,7 @@ PAGESIZE   = 2048                                           /* 0x0800 */
 DataStart  = '0x2100'                                       /* default */
 NumBanks   = 1                                              /* default */
 StackDepth = 8                                              /* default */
+adcs_bitcount = 0                                           /* # ADCONx_ADCS bits */
 
 call load_stackdepth                                        /* check stack depth */
 call load_sfr1x                                             /* load sfr + mirror info */
@@ -332,6 +334,7 @@ PAGESIZE   = 2048                                           /* 0x0800 */
 DataStart  = '0xF000'                                       /* default */
 NumBanks   = 32                                             /* default */
 StackDepth = 16                                             /* default */
+adcs_bitcount = 0                                           /* # ADCONx_ADCS bits */
 
 call load_stackdepth                                        /* check stack depth */
 call load_sfr1x                                             /* load sfr + mirror info */
@@ -360,6 +363,7 @@ DataStart  = '0xF00000'                                     /* default */
 NumBanks   = 1                                              /* default */
 AccessBankSplitOffset = 128                                 /* default */
 StackDepth = 31                                             /* default */
+adcs_bitcount = 0                                           /* # ADCONx_ADCS bits */
 
 call load_sfr16                                             /* load sfr */
 
@@ -1202,7 +1206,7 @@ return
 /* 12-bit and 14-bit core                             */
 /* -------------------------------------------------- */
 list_sfr1x: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
-                             jalfile BANKSIZE NumBanks msglevel
+                             adcs_bitcount jalfile BANKSIZE NumBanks msglevel
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then                           /* skip non SFRs */
       iterate
@@ -1280,7 +1284,8 @@ return 0
 /* Note: part of code relies on:                     */
 /*       - ADCON0 comes before ADCON1 (in .dev file) */
 /* ------------------------------------------------- */
-list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. Core PicName jalfile msglevel
+list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. ,
+                                adcs_bitcount Core PicName jalfile msglevel
 i = arg(1) + 1                                              /* first after reg */
 reg = arg(2)                                                /* register (name) */
 PicUpper = toupper(PicName)                                 /* for alias handling */
@@ -1330,7 +1335,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                        (n.j = 'ADCS0' | n.j = 'ADCS1' |,
                          (n.j = 'ADCS2' & next_subfield = 'ADCS1')) then do
                      nop                                    /* suppress ADCON_ADCS enumeration */
-                                                            /* but not 'isolated' ADCS2 */
+                                                            /* but not a 'loose' ADCS2 */
                   end
                   when left(reg,5) = 'ANSEL'  &  left(n.j,3) = 'ANS' then do
                      ansx = ansel2j(reg, n.j)
@@ -1364,20 +1369,20 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                   end
                   when reg = 'ADCON1'  &,                   /* ADCON1 */
                       (n.j = 'ADCS2' & next_subfield \= ADCS1)  then do        /* scattered ADCS bits */
+                     call lineout jalfile, 'var  byte  ADCON0_ADCS'
                      call lineout jalfile, 'procedure  ADCON0_ADCS'"'put"'(byte in x) is'
                      call lineout jalfile, '   pragma inline'
                      call lineout jalfile, '   ADCON0_ADCS10 = x       -- low order bits'
-                     call lineout jalfile, '   ADCON1_ADCS2 = 0'
-                     call lineout jalfile, '   if ((x & 0x04) != 0) then'
-                     call lineout jalfile, '      ADCON1_ADCS2 = 1     -- high order bit'
-                     call lineout jalfile, '   end if'
+                     call lineout jalfile, '   ADCON1_ADCS2 = (x & 0x04)'
                      call lineout jalfile, 'end procedure'
+                     adcs_bitcount = 3                      /* always 3 bits */
                   end
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        n.j = 'ADCS0'  then do               /* enumerated ADCS */
                      field = reg'_ADCS'
                      call lineout jalfile, 'var volatile bit*3 ',
                             left(field,25) 'at' reg ':' offset
+                     adcs_bitcount = 3                      /* always 3 bits */
                   end
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        n.j = 'CHS3'  then do                /* 'loose' 4th bit */
@@ -1503,9 +1508,10 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                     PicName \= '16f886'          &,
                     PicName \= '16f887'         then do
                   field = reg'_ADCS10'
-                  if duplicate_name(field,reg) = 0 then     /* renamed subfield */
+                  if duplicate_name(field,reg) = 0 then do  /* renamed subfield */
                      call lineout jalfile, 'var volatile bit*'s.j' ',
                                            left(field,25) 'at' reg ':' offset - s.j + 1
+                  end
                end
                when left(reg,5) = 'ADCON'  &,               /* ADCON0/1 */
                     n.j = 'CHS'            &,               /* (multibit) CHS field */
@@ -1545,9 +1551,14 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                end
                otherwise                                    /* other */
                   if \(s.j = 8  &  n.j = reg) then do       /* subfield not alias of reg */
-                     if duplicate_name(field,reg) = 0 then  /* unique */
+                     if duplicate_name(field,reg) = 0 then do  /* unique */
                         call lineout jalfile, 'var volatile bit*'s.j' ',
                                      left(field,25) 'at' reg ':' offset - s.j + 1
+                        if  left(n.j,4) = ADCS  &,
+                           (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
+                           adcs_bitcount = s.j              /* variable # ADCS bits */
+                        end
+                     end
                   end
             end
          end
@@ -1566,7 +1577,7 @@ return 0
 /* Extended 14-bit core                               */
 /* -------------------------------------------------- */
 list_sfr14h: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
-                              jalfile BANKSIZE NumBanks msglevel
+                              adcs_bitcount jalfile BANKSIZE NumBanks msglevel
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then                           /* skip non SFRs */
       iterate
@@ -1589,6 +1600,8 @@ do i = 1 to Dev.0
       else
          memtype = ''
       call lineout jalfile, 'var volatile' field left(reg,25) memtype'at 0x'D2X(addr,3)
+      if left(reg,5) = 'ADCON' & left(n.j,4) = ADCS then
+         adcs_bitcount = s.j                                /* variable # ADCS bits */
       select
          when left(reg,4) = 'PORT' then do                  /* port */
             PortLetter = right(reg,1)
@@ -1650,7 +1663,7 @@ return 0
 /* Extended 14-bit core                              */
 /* ------------------------------------------------- */
 list_sfr_subfields14h: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
-                       Core PicName jalfile msglevel
+                       adcs_bitcount Core PicName jalfile msglevel
 i = arg(1) + 1                                              /* first after reg */
 reg = arg(2)                                                /* register (name) */
 memtype = arg(3)                                            /* shared/blank */
@@ -1748,6 +1761,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                   when left(reg,5) = 'ADCON' &  n.j = 'ADCS0' then do
                      call lineout jalfile, 'var volatile bit*3 ',
                           left(reg'_ADCS',25) memtype'at' reg ':' offset
+                     adcs_bitcount = 3                      /* always 3 */
                   end
                   when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &, /* CCPxCON */
                        datatype(substr(reg,4,1)) = 'NUM'        then do
@@ -1922,7 +1936,8 @@ return 0
 /* 16-bit core                                              */
 /* -------------------------------------------------------  */
 list_sfr16: procedure expose Dev. Ram. Name. PinMap. PinANMap. jalfile,
-            BANKSIZE NumBanks Core PicName AccessBankSplitOffset msglevel
+                             adcs_bitcount BANKSIZE NumBanks,
+                             Core PicName AccessBankSplitOffset msglevel
 multi_usart = 0                                             /* max 1 USART */
 do i = 1 to Dev.0
   if pos('RCSTA2',Dev.i) > 0 then do
@@ -2073,7 +2088,7 @@ return 0
 /*       ADCON0 comes after ADCON1 (in .dev file) */
 /* ---------------------------------------------- */
 list_sfr_subfields16: procedure expose Dev. Name. PinMap. PinANMap. PortLat. Core PicName,
-                                       jalfile msglevel multi_usart
+                                       adcs_bitcount jalfile msglevel multi_usart
 i = arg(1) + 1                                              /* 1st after reg */
 reg = strip(arg(2))                                         /* register (name) */
 memtype = arg(3)                                            /* shared/blank */
@@ -2275,18 +2290,18 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                      PicName = '18f448'   |,
                      PicName = '18f452'   |,
                      PicName = '18f4539'  |,
-                     PicName = '18f458')       then do
-                  if duplicate_name(field,reg) = 0 then     /* unique */
+                     PicName = '18f458')  then do
+                  if duplicate_name(field,reg) = 0 then do  /* unique */
                      call lineout jalfile, 'var volatile bit*'s.j' ',
                           left(field'10',25) memtype 'at' reg ':' offset - s.j + 1
+                  end
+                  call lineout jalfile, 'var  byte  ADCON0_ADCS'
                   call lineout jalfile, 'procedure  ADCON0_ADCS'"'put"'(byte in x) is'
                   call lineout jalfile, '   pragma inline'
                   call lineout jalfile, '   ADCON0_ADCS10 = x       -- low order bits'
-                  call lineout jalfile, '   ADCON1_ADCS2 = 0'
-                  call lineout jalfile, '   if ((x & 0x04) != 0) then'
-                  call lineout jalfile, '      ADCON1_ADCS2 = 1     -- high order bit'
-                  call lineout jalfile, '   end if'
+                  call lineout jalfile, '   ADCON1_ADCS2 = (x & 0x04)'
                   call lineout jalfile, 'end procedure'
+                  adcs_bitcount = 3                         /* can only be 3 */
                end
                when (left(n.j,3) = 'ANS')   &,              /* ANS subfield */
                     (left(reg,5) = 'ADCON'  |,              /* ADCON* reg */
@@ -2321,9 +2336,14 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                end
                otherwise                                    /* others */
                   if \(s.j = 8  &  n.j = reg) then do       /* subfield not alias of reg */
-                  if duplicate_name(field,reg) = 0 then     /* unique */
+                  if duplicate_name(field,reg) = 0 then do  /* unique */
                      call lineout jalfile, 'var volatile bit*'s.j' ',
                           left(field,25) memtype 'at' reg ':' offset - s.j + 1
+                     if  left(n.j,4) = ADCS  &,
+                        (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
+                        adcs_bitcount = s.j                 /* variable (2 or 3) */
+                     end
+                  end
                end
             end
          end
@@ -4042,7 +4062,8 @@ return
  * ADC_V13_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
  * ADC_V13_2 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
  * ----------------------------------------------------------------------------- */
-list_analog_functions: procedure expose jalfile Name. Core PicSpec. PinMap. PicName msglevel
+list_analog_functions: procedure expose jalfile Name. Core PicSpec. PinMap. ,
+                                        adcs_bitcount PicName msglevel
 PicNameCaps = toupper(PicName)
 
 call lineout jalfile, '--'
@@ -4066,6 +4087,7 @@ if ADCgroup = '0' then
 else
    call lineout jalfile, ''
 call lineout jalfile, 'const byte ADC_NTOTAL_CHANNEL =' PinMap.PicNameCaps.ANCOUNT
+call lineout jalfile, 'const byte ADC_ADCS_BITCOUNT  =' adcs_bitcount
 call lineout jalfile, '--'
 
 if (ADCgroup = '0'  & PinMap.PicNameCaps.ANCOUNT > 0) |,
@@ -4446,12 +4468,16 @@ return
 
 catch_error:
 Say 'Rexx Execution error, rc' rc 'at script line' SIGL
+if rc > 0 & rc < 100 then
+  say ErrorText(rc)
 return rc
 
 catch_syntax:
 if rc = 4 then                                              /* interrupted */
    exit
 Say 'Rexx Syntax error, rc' rc 'at script line' SIGL":"
+if rc > 0 & rc < 100 then
+  say ErrorText(rc)
 Say SourceLine(SIGL)
 return rc
 
