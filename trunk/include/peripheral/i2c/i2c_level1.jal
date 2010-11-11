@@ -17,7 +17,8 @@
 -- const single_byte_tx_buffer = 1
 --
 -- TODO: eur@fiwihex.nl 2010-11-10: function i2c_send_receive() is tailored to a specific EEPROM!
---
+-- JS: comments was wrong (about eeprom), fixed this. This should work for any
+--     device with 7-bit i2c addressing. Any operational problems?
 
 -- some validations
 if (defined(single_byte_tx_buffer) ==  false) then
@@ -38,21 +39,24 @@ function i2c_send_receive(byte in i2c_address, byte in i2c_tx_count, byte in i2c
    var byte i
    var bit r = true -- okay
    
-    -- read first 3 bytes from an 24lc256 eeprom and output these to the serial port
-   -- then, increment the last one (write one byte)
+   -- send START and i2c device address for write
    i2c_start()
-   r = i2c_transmit_byte(i2c_address & 0xFE) -- i2c address for write (for memory address, within eeprom)
+   r = i2c_transmit_byte(i2c_address & 0xFE) 
    if (r == false) then return r end if      -- eur@fiwihex.nl 2010-11-10: this is NOT usable for generic 
                                              -- i2c communications!
 
+   -- write data
    for i2c_tx_count using i loop
       r = r & i2c_transmit_byte(i2c_tx_buffer[i]) 
       if (r == false) then return r end if
    end loop 
    
+   -- if we also need to receive
    if (i2c_rx_count > 0) then
+      
+      -- send RESTART & i2c device address for read
       i2c_restart()
-      r = r & i2c_transmit_byte(i2c_address | 0x01) -- i2c address for read (of memory from eeprom)
+      r = r & i2c_transmit_byte(i2c_address | 0x01) 
       if (r == false) then return r end if
 
       if (i2c_rx_count > 1) then
@@ -60,13 +64,15 @@ function i2c_send_receive(byte in i2c_address, byte in i2c_tx_count, byte in i2c
             i2c_rx_buffer[i] = i2c_receive_byte(true)
          end loop
       end if
-   
+
+      -- read with NACK, to signal it is the last byte.   
       i2c_rx_buffer[i2c_rx_count-1] = i2c_receive_byte(false)
    end if
-   
+
+   -- send STOP to end communication sequence with device.   
    i2c_stop()
 
-   return true;
+   return true;   // signal succes
 
 end function
 
