@@ -11,7 +11,9 @@
 --    1. the number of channels is specified setting/clearing PCFG bits
 --       => a combination of PCFG bits selects a given number of ADC channels.
 --          It is not possible to independently select which pins as ADC pins.
---          If available, Vref+ and Vref- are part of these combinations.
+--          If available (1.a), Vref+ and Vref- are part of these combinations. 
+--          If not (1.b), either PIC doesn't support voltage reference, or in 
+--          some few cases, Vref+ and Vref- are handled separately via VCGF bits.
 --          PCFG bits are in ADCON1, as ADCON1_PCFG
 --    2. the number of channels is specified clearing PCFG bits (case only found in 18F, I think)
 --       => pins can be configured independently (you can decide which pin will act as
@@ -2757,21 +2759,26 @@ if target_chip == PIC_16F72 | target_chip == PIC_16F767 | target_chip == PIC_16F
       elsif ADC_NVREF == 2 then
          two_vref = ADC_PCFG_MAP[idx + 2]
          ADCON1_PCFG = two_vref
-      else
-         -- This is only valid when using constant, ie. not dynamic ADC channels
-         if !defined(ADC_DYNAMIC) then
-            _error "You can't have more than 2 VRef..."
-         end if
+      -- we could add "else" a warn we can't have more than 2 vref
+      -- (and this used to be the case), but in some case, Vref config
+      -- is done separately, and ADC_NVREF = 3 means Vref- only. So,
+      -- more than 2 Vref can sometime mean something...
       end if
    end procedure
    
 
 
-   -- declare dummy procedure for normalization. Note Vref setup, due to some jalv2 contraints
-   -- (like defining a constant but assigning its definitive value later), Vref setup is done
-   -- while discovering/setting up ADC pins. See comment within _adc_setup_pins() for dependent pins
-   procedure _adc_vref() is
-   end procedure
+   if defined(ADCON0_VCFG) | defined(ADCON1_VCFG) then
+      _debug "Vref config is handled separately through VCFG bits"
+      alias _adc_vref is _adc_vref_vcfg
+   else
+      -- declare dummy procedure for normalization. Note Vref setup, due to some jalv2 contraints
+      -- (like defining a constant but assigning its definitive value later), Vref setup is done
+      -- while discovering/setting up ADC pins. See comment within _adc_setup_pins() for dependent pins
+      _debug "Vref config is included in PCFG bits selection"
+      procedure _adc_vref() is
+      end procedure
+   end if
 
 -- --------------------------------------------
 -- SECOND CASE: 
