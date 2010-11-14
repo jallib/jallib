@@ -44,7 +44,10 @@ procedure _adc_vref_vcfg() is
    -- Configure Voltage Reference, Vref bits
    -- This is only valid for PICs where Vref isn't part of PCFG bits combination
 
+   -- Note: ADC_NVREF = 0 is indirectly handled by the following assignment
+   -- at least when bits aren't scattered
    var byte vcfg_shadow = ADC_NVREF
+
    if ADC_NVREF == 2 then
       vcfg_shadow = 3   -- 0b_10 | 0b_01 => 0b_11 => one bit per VCFG bit*2
    end if
@@ -59,7 +62,10 @@ procedure _adc_vref_vcfg() is
 
    -- VCFG0 bit can be found in ADCON0 or ADCON1 register
    elsif defined(ADCON1_VCFG0) then
-      if ADC_NVREF == 1 then
+      if ADC_NVREF == 0 then
+         ADCON1_VCFG0 = false
+         ADCON1_VCFG1 = false
+      elsif ADC_NVREF == 1 then
          ADCON1_VCFG0 = true
       elsif ADC_NVREF == 2 then
          ADCON1_VCFG0 = true
@@ -68,7 +74,10 @@ procedure _adc_vref_vcfg() is
          ADCON1_VCFG1 = true
       end if
    elsif defined(ADCON0_VCFG0) then
-      if ADC_NVREF == 1 then
+      if ADC_NVREF == 0 then
+         ADCON0_VCFG0 = false
+         ADCON0_VCFG1 = false
+      elsif ADC_NVREF == 1 then
          ADCON0_VCFG0 = true
       elsif ADC_NVREF == 2 then
          ADCON0_VCFG0 = true
@@ -79,7 +88,12 @@ procedure _adc_vref_vcfg() is
    -- Special case for PVCFG
    -- Need to act on PVCFG and NVCFG bits
    elsif defined(ADCON1_PVCFG0) then
-      if ADC_NVREF == 1 then
+      if ADC_NVREF == 0 then
+         ADCON1_PVCFG0 = false
+         ADCON1_PVCFG1 = false
+         ADCON1_NVCFG0 = false
+         ADCON1_NVCFG1 = false
+      elsif ADC_NVREF == 1 then
          -- PVCFG = 0b_01
          ADCON1_PVCFG0 = false
          ADCON1_PVCFG1 = true
@@ -111,7 +125,9 @@ end procedure
 procedure _adc_vref_adref() is
 
    if defined(ADCON1_ADREF) then
-      if ADC_NVREF == 1 then
+      if ADC_NVREF == 0 then
+         ADCON1_ADREF = 0b_00
+      elsif ADC_NVREF == 1 then
          ADCON1_ADREF = 0b_10
       elsif ADC_NVREF != 0 then
          _error "ADC_NVREF must be 0 or 1"
@@ -135,7 +151,11 @@ procedure _adc_vref_adpref_adnref() is
             _error "You seem to want to configure a Vref- pin, but selected PIC doesn't support this feature"
         end if
 
-        if ADC_NVREF == 1 then
+        if ADC_NVREF == 0 then
+            ADCON1_ADPREF0 = 0b0
+            ADCON1_ADPREF1 = 0b0
+            ADCON1_ADNREF = 0b0
+        elsif ADC_NVREF == 1 then
             -- Vref+ is one Vref+ pin
             ADCON1_ADPREF0 = 0b0
             ADCON1_ADPREF1 = 0b1
@@ -144,10 +164,10 @@ procedure _adc_vref_adpref_adnref() is
             -- Vref- is on Vref- pin
             ADCON1_ADPREF0 = 0b0
             ADCON1_ADPREF1 = 0b1
-            ADCON1_ADNREF = 1
+            ADCON1_ADNREF = 0b1
         elsif ADC_NVREF == 3 then
             -- Vref- is on Vref- pin (no Vref+)
-            ADCON1_ADNREF = 1    
+            ADCON1_ADNREF = 0b1    
         end if
     end if
 
