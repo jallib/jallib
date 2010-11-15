@@ -21,12 +21,12 @@
 --      . enable_digital_io()
 --
 -- Sources:
---  - x:/mplab856/mplab ide/device/pic18lf44j10.dev
---  - x:/mplab856/MPASM Suite/LKR/18f44j10_g.lkr
+--  - x:/mplab860/mplab ide/device/pic18lf44j10.dev
+--  - x:/mplab860/MPASM Suite/LKR/18f44j10_g.lkr
 --
 -- Notes:
---  - Created with Dev2Jal Rexx script version 0.1.11
---  - File creation date/time: 9 Nov 2010 13:44
+--  - Created with Dev2Jal Rexx script version 0.1.12
+--  - File creation date/time: 15 Nov 2010 20:04
 --
 -- ===================================================
 --
@@ -53,23 +53,19 @@ pragma  shared  0x0-0x7F
 var volatile byte _pic_accum shared at 0x7E   -- (compiler)
 var volatile byte _pic_isr_w shared at 0x7F   -- (compiler)
 --
-const word  _FUSES_CT             = 8
+const word  _FUSES_CT             = 6
 const dword _FUSE_BASE[_FUSES_CT] = { 0x003FF8,
                                       0x003FF9,
                                       0x003FFA,
                                       0x003FFB,
                                       0x003FFC,
-                                      0x003FFD,
-                                      0x003FFE,
-                                      0x003FFF }
+                                      0x003FFD }
 const byte  _FUSES[_FUSES_CT]     = { 0b_1110_0001,         -- CONFIG1L
                                       0b_1111_0100,         -- CONFIG1H
                                       0b_1100_1111,         -- CONFIG2L
                                       0b_1111_1111,         -- CONFIG2H
                                       0b_1111_1111,         -- CONFIG3L
-                                      0b_1111_0001,         -- CONFIG3H
-                                      0b_0000_0000,         -- CONFIG4L
-                                      0b_1111_0000 }        -- CONFIG4H
+                                      0b_1111_0001 }        -- CONFIG3H
 --
 -- ------------------------------------------------
 var volatile byte   PORTA                     shared at 0xF80
@@ -856,9 +852,7 @@ alias               pin_AN5_direction         is pin_E0_direction
 --
 -- ------------------------------------------------
 var volatile byte   OSCTUNE                   shared at 0xF9B
-var volatile bit    OSCTUNE_HF256DIV          shared at OSCTUNE : 7
 var volatile bit    OSCTUNE_PLLEN             shared at OSCTUNE : 6
-var volatile bit*5  OSCTUNE_TUN               shared at OSCTUNE : 0
 -- ------------------------------------------------
 var volatile byte   PIE1                      shared at 0xF9D
 var volatile bit    PIE1_PSPIE                shared at PIE1 : 7
@@ -979,17 +973,17 @@ var volatile bit*3  ECCP1AS_ECCPAS            shared at ECCP1AS : 4
 var volatile bit*2  ECCP1AS_PSSAC             shared at ECCP1AS : 2
 var volatile bit*2  ECCP1AS_PSSBD             shared at ECCP1AS : 0
 -- ------------------------------------------------
-var volatile byte   PWM1CON                   shared at 0xFB7
-var volatile bit    PWM1CON_PRSEN             shared at PWM1CON : 7
-var volatile bit*7  PWM1CON_PDC               shared at PWM1CON : 0
+var volatile byte   ECCP1DEL                  shared at 0xFB7
+var volatile bit    ECCP1DEL_PRSEN            shared at ECCP1DEL : 7
+var volatile bit*7  ECCP1DEL_PDC              shared at ECCP1DEL : 0
 -- ------------------------------------------------
-var volatile byte   BAUDCTL                   shared at 0xFB8
-var volatile bit    BAUDCTL_ABDOVF            shared at BAUDCTL : 7
-var volatile bit    BAUDCTL_RCMT              shared at BAUDCTL : 6
-var volatile bit    BAUDCTL_SCKP              shared at BAUDCTL : 4
-var volatile bit    BAUDCTL_BRG16             shared at BAUDCTL : 3
-var volatile bit    BAUDCTL_WUE               shared at BAUDCTL : 1
-var volatile bit    BAUDCTL_ABDEN             shared at BAUDCTL : 0
+var volatile byte   BAUDCON                   shared at 0xFB8
+var volatile bit    BAUDCON_ABDOVF            shared at BAUDCON : 7
+var volatile bit    BAUDCON_RCMT              shared at BAUDCON : 6
+var volatile bit    BAUDCON_SCKP              shared at BAUDCON : 4
+var volatile bit    BAUDCON_BRG16             shared at BAUDCON : 3
+var volatile bit    BAUDCON_WUE               shared at BAUDCON : 1
+var volatile bit    BAUDCON_ABDEN             shared at BAUDCON : 0
 -- ------------------------------------------------
 var volatile byte   CCP2CON                   shared at 0xFBA
 var volatile bit*2  CCP2CON_DC2B              shared at CCP2CON : 4
@@ -1327,7 +1321,7 @@ end procedure
 -- Disable comparator module
 procedure comparator_off() is
    pragma inline
-   CMCON  = 0b0000_0111        -- disable comparator
+   CMCON  = 0b0000_0000        -- disable comparator
 end procedure
 --
 -- - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1345,11 +1339,11 @@ end procedure
 --
 -- CONFIG1L (0x3FF8)
 --
-pragma fuse_def WDT:0 0x1 {                -- watchdog timer enable
+pragma fuse_def WDT:0 0x1 {                -- watchdog timer enable bit
        ENABLED = 0x1                       -- enabled
        DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def STVR:0 0x20 {              -- stack overflow reset enable
+pragma fuse_def STVR:0 0x20 {              -- stack overflow/underflow reset enable bit
        ENABLED = 0x20                      -- enabled
        DISABLED = 0x0                      -- disabled
        }
@@ -1357,14 +1351,14 @@ pragma fuse_def XINST:0 0x40 {             -- extended instruction set enable bi
        ENABLED = 0x40                      -- enabled
        DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def DEBUG:0 0x80 {             -- background debug
+pragma fuse_def DEBUG:0 0x80 {             -- background debugger enable bit
        DISABLED = 0x80                     -- disabled
        ENABLED = 0x0                       -- enabled
        }
 --
 -- CONFIG1H (0x3FF9)
 --
-pragma fuse_def CP0:1 0x4 {                -- code protect enable
+pragma fuse_def CP0:1 0x4 {                -- code protection bit
        DISABLED = 0x4                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
@@ -1378,34 +1372,34 @@ pragma fuse_def FNOP_0:1 0xF0 {            -- force nop
 --
 -- CONFIG2L (0x3FFA)
 --
-pragma fuse_def OSC:2 0x3 {                -- oscillator
-       EC_CLKOUT_SW_PLL = 0x3              -- ec osc with software pll and clkout on osc2
-       EC_CLKOUT = 0x2                     -- ec osc with clkout on osc2
-       HS_SW_PLL = 0x1                     -- hs osc with software pll
-       HS = 0x0                            -- hs osc
+pragma fuse_def OSC:2 0x3 {                -- oscillator selection bits
+       EC_CLKOUT_PLL = 0x3                 -- ec oscillator, pll enabled and under software control, clko function on osc2
+       EC_CLKOUT = 0x2                     -- ec oscillator, clko function on osc2
+       HS_PLL = 0x1                        -- hs oscillator, pll enabled and under software control
+       HS = 0x0                            -- hs oscillator
        }
-pragma fuse_def FOSC2:2 0x4 {              -- default/reset system clock select
-       OSC = 0x4                           -- clock select by fosc
-       INTOSC = 0x0                        -- intrc enabled
+pragma fuse_def FOSC2:2 0x4 {              -- default/reset system clock select bit
+       INTOSC = 0x4                        -- enabled
+       OSC = 0x0                           -- disabled
        }
-pragma fuse_def FCMEN:2 0x40 {             -- fail safe monitor clock enable
+pragma fuse_def FCMEN:2 0x40 {             -- fail-safe clock monitor enable bit
        ENABLED = 0x40                      -- enabled
        DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def IESO:2 0x80 {              -- internal external switch over enable
+pragma fuse_def IESO:2 0x80 {              -- two-speed start-up (internal/external oscillator switchover) control bit
        ENABLED = 0x80                      -- enabled
        DISABLED = 0x0                      -- disabled
        }
 --
 -- CONFIG2H (0x3FFB)
 --
-pragma fuse_def WDTPS:3 0xF {              -- watchdog timer postscale
-       P32K = 0xF                          -- 1:32,768
-       P16K = 0xE                          -- 1:16,384
-       P8K = 0xD                           -- 1:8,192
-       P4K = 0xC                           -- 1:4,096
-       P2K = 0xB                           -- 1:2,048
-       P1K = 0xA                           -- 1:1,024
+pragma fuse_def WDTPS:3 0xF {              -- watchdog timer postscale select bits
+       P32K = 0xF                          -- 1:32768
+       P16K = 0xE                          -- 1:16384
+       P8K = 0xD                           -- 1:8192
+       P4K = 0xC                           -- 1:4096
+       P2K = 0xB                           -- 1:2048
+       P1K = 0xA                           -- 1:1024
        P512  = 0x9                         -- 1:512
        P256  = 0x8                         -- 1:256
        P128  = 0x7                         -- 1:128
@@ -1423,9 +1417,9 @@ pragma fuse_def FNOP_1:3 0xF0 {            -- force nop
 --
 -- CONFIG3H (0x3FFD)
 --
-pragma fuse_def CCP2MUX:5 0x1 {            -- ccp2 mux
-       pin_C1 = 0x1                        -- ccp2 i/o muxed with rc1
-       pin_B3 = 0x0                        -- ccp2 i/o muxed with rb3
+pragma fuse_def CCP2MUX:5 0x1 {            -- ccp2 mux bit
+       pin_C1 = 0x1                        -- ccp2 is multiplexed with rc1
+       pin_B3 = 0x0                        -- ccp2 is multiplexed with rb3
        }
 pragma fuse_def FNOP_2:5 0xF0 {            -- force nop
        NOPD = 0xF0                         -- nopd

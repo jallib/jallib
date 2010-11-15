@@ -21,12 +21,12 @@
 --      . enable_digital_io()
 --
 -- Sources:
---  - x:/mplab856/mplab ide/device/pic16lf727.dev
---  - x:/mplab856/MPASM Suite/LKR/16lf727_g.lkr
+--  - x:/mplab860/mplab ide/device/pic16lf727.dev
+--  - x:/mplab860/MPASM Suite/LKR/16lf727_g.lkr
 --
 -- Notes:
---  - Created with Dev2Jal Rexx script version 0.1.11
---  - File creation date/time: 9 Nov 2010 13:43
+--  - Created with Dev2Jal Rexx script version 0.1.12
+--  - File creation date/time: 15 Nov 2010 20:03
 --
 -- ===================================================
 --
@@ -619,9 +619,11 @@ var volatile byte   _pclath                   at { 0xA,0x8A,0x10A,0x18A }      -
 var volatile byte   INTCON                    at { 0xB,0x8B,0x10B,0x18B }
 var volatile bit    INTCON_GIE                at INTCON : 7
 var volatile bit    INTCON_PEIE               at INTCON : 6
+var volatile bit    INTCON_T0IE               at INTCON : 5
 var volatile bit    INTCON_TMR0IE             at INTCON : 5
 var volatile bit    INTCON_INTE               at INTCON : 4
 var volatile bit    INTCON_RBIE               at INTCON : 3
+var volatile bit    INTCON_T0IF               at INTCON : 2
 var volatile bit    INTCON_TMR0IF             at INTCON : 2
 var volatile bit    INTCON_INTF               at INTCON : 1
 var volatile bit    INTCON_RBIF               at INTCON : 0
@@ -1038,6 +1040,8 @@ var volatile byte   PR2                       at { 0x92 }
 -- ------------------------------------------------
 var volatile byte   SSPADD                    at { 0x93 }
 -- ------------------------------------------------
+var volatile byte   SSPMSK                    at { 0x93 }
+-- ------------------------------------------------
 var volatile byte   SSPSTAT                   at { 0x94 }
 var volatile bit    SSPSTAT_SMP               at SSPSTAT : 7
 var volatile bit    SSPSTAT_CKE               at SSPSTAT : 6
@@ -1162,52 +1166,52 @@ end procedure
 -- Symbolic Fuse definitions
 -- -------------------------
 --
--- CONFIG (0x2007)
+-- CONFIG1 (0x2007)
 --
-pragma fuse_def OSC:0 0x7 {                -- oscillator
-       RC_CLKOUT = 0x7                     -- external rc clockout
-       RC_NOCLKOUT = 0x6                   -- external rc no clock
-       INTOSC_CLKOUT = 0x5                 -- internal rc clockout
-       INTOSC_NOCLKOUT = 0x4               -- internal rc no clock
-       EC_NOCLKOUT = 0x3                   -- ec
-       HS = 0x2                            -- hs
-       XT = 0x1                            -- xt
-       LP = 0x0                            -- lp
+pragma fuse_def OSC:0 0x7 {                -- oscillator selection bits
+       RC_CLKOUT = 0x7                     -- rc oscillator: clkout function on ra6/osc2/clkout pin, rc on ra7/osc1/clkin
+       RC_NOCLKOUT = 0x6                   -- rcio oscillator: i/o function on ra6/osc2/clkout pin, rc on ra7/osc1/clkin
+       INTOSC_CLKOUT = 0x5                 -- intosc oscillator: clkout function on ra6/osc2/clkout pin, i/o function on ra7/osc1/clkin
+       INTOSC_NOCLKOUT = 0x4               -- intoscio oscillator: i/o function on ra6/osc2/clkout pin, i/o function on ra7/osc1/clkin
+       EC_NOCLKOUT = 0x3                   -- ec: i/o function on ra6/osc2/clkout pin, clkin on ra7/osc1/clkin
+       HS = 0x2                            -- hs oscillator: high-speed crystal/resonator on ra6/osc2/clkout and ra7/osc1/clkin
+       XT = 0x1                            -- xt oscillator: crystal/resonator on ra6/osc2/clkout and ra7/osc1/clkin
+       LP = 0x0                            -- lp oscillator: low-power crystal on ra6/osc2/clkout and ra7/osc1/clkin
        }
-pragma fuse_def WDT:0 0x8 {                -- watchdog timer
-       ENABLED = 0x8                       -- on
-       DISABLED = 0x0                      -- off
+pragma fuse_def WDT:0 0x8 {                -- watchdog timer enable bit
+       ENABLED = 0x8                       -- enabled
+       DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def PWRTE:0 0x10 {             -- power up timer
-       DISABLED = 0x10                     -- off
-       ENABLED = 0x0                       -- on
+pragma fuse_def PWRTE:0 0x10 {             -- power-up timer enable bit
+       DISABLED = 0x10                     -- disabled
+       ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def MCLR:0 0x20 {              -- master clear enable
-       INTERNAL = 0x0                      -- re3 is digital input
-       EXTERNAL = 0x20                     -- /mclr is external
+pragma fuse_def MCLR:0 0x20 {              -- re3/mclr pin function select bit
+       INTERNAL = 0x0                      -- disabled
+       EXTERNAL = 0x20                     -- enabled
        }
-pragma fuse_def CP:0 0x40 {                -- code protect
-       DISABLED = 0x40                     -- off
-       ENABLED = 0x0                       -- on
+pragma fuse_def CP:0 0x40 {                -- code protection bit
+       DISABLED = 0x40                     -- disabled
+       ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def BROWNOUT:0 0x300 {         -- brown out reset enable
-       DISABLED = 0x0                      -- bor disabled
-       RUNONLY = 0x200                     -- bor enabled in run, disabled in sleep
-       ENABLED = 0x300                     -- bor enabled
+pragma fuse_def BROWNOUT:0 0x300 {         -- brown-out reset selection bits
+       ENABLED = 0x300                     -- enabled
+       RUNONLY = 0x200                     -- bor enabled during operation and disabled in sleep
+       DISABLED = 0x100                    -- disabled
        }
-pragma fuse_def VOLTAGE:0 0x400 {          -- brown-out reset voltage selection
-       V19 = 0x400                         -- 1.9v
-       V25 = 0x0                           -- 2.5v
+pragma fuse_def VOLTAGE:0 0x400 {          -- brown-out reset voltage selection bit
+       V19 = 0x400                         -- brown-out reset voltage (vbor) set to 1.9 v nominal
+       V25 = 0x0                           -- brown-out reset voltage (vbor) set to 2.5 v nominal
        }
 pragma fuse_def WDTCS:0 0x800 {            -- watchdog timer clock select
        STANDARD = 0x800                    -- standard watchdog timer is selected
        LOW_POWER = 0x0                     -- low power watchdog timer is selected
        }
 pragma fuse_def PLLEN:0 0x1000 {           -- intosc pllen enable bit
-       F16MHZ = 0x1000                     -- 16mhz
-       F500KHZ = 0x0                       -- 500khz
+       P4 = 0x1000                         -- enabled
+       P1 = 0x0                            -- disabled
        }
-pragma fuse_def DEBUG:0 0x2000 {           -- background debug
+pragma fuse_def DEBUG:0 0x2000 {           -- in-circuit debugger mode bit
        DISABLED = 0x2000                   -- disabled
        ENABLED = 0x0                       -- enabled
        }
