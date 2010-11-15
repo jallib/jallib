@@ -21,12 +21,12 @@
 --      . enable_digital_io()
 --
 -- Sources:
---  - x:/mplab856/mplab ide/device/pic16f785.dev
---  - x:/mplab856/MPASM Suite/LKR/16f785_g.lkr
+--  - x:/mplab860/mplab ide/device/pic16f785.dev
+--  - x:/mplab860/MPASM Suite/LKR/16f785_g.lkr
 --
 -- Notes:
---  - Created with Dev2Jal Rexx script version 0.1.11
---  - File creation date/time: 9 Nov 2010 13:43
+--  - Created with Dev2Jal Rexx script version 0.1.12
+--  - File creation date/time: 15 Nov 2010 20:03
 --
 -- ===================================================
 --
@@ -388,9 +388,11 @@ var volatile byte   _pclath                   at { 0xA,0x8A,0x10A,0x18A }      -
 var volatile byte   INTCON                    at { 0xB,0x8B,0x10B,0x18B }
 var volatile bit    INTCON_GIE                at INTCON : 7
 var volatile bit    INTCON_PEIE               at INTCON : 6
+var volatile bit    INTCON_T0IE               at INTCON : 5
 var volatile bit    INTCON_TMR0IE             at INTCON : 5
 var volatile bit    INTCON_INTE               at INTCON : 4
 var volatile bit    INTCON_RAIE               at INTCON : 3
+var volatile bit    INTCON_T0IF               at INTCON : 2
 var volatile bit    INTCON_TMR0IF             at INTCON : 2
 var volatile bit    INTCON_INTF               at INTCON : 1
 var volatile bit    INTCON_RAIF               at INTCON : 0
@@ -430,10 +432,8 @@ var volatile bit*2  T2CON_T2CKPS              at T2CON : 0
 var volatile word   CCPR                      at { 0x13 }
 -- ------------------------------------------------
 var volatile byte   CCPR1L                    at { 0x13 }
-var volatile bit*8  CCPR1L_CCPRL              at CCPR1L : 0
 -- ------------------------------------------------
 var volatile byte   CCPR1H                    at { 0x14 }
-var volatile bit*8  CCPR1H_CCPRH              at CCPR1H : 0
 -- ------------------------------------------------
 var volatile byte   CCP1CON                   at { 0x15 }
 var volatile bit*2  CCP1CON_DCB               at CCP1CON : 4
@@ -673,6 +673,7 @@ var volatile bit    JANSEL_ANS8               at ANSEL1 : 0
 var volatile byte   WPUA                      at { 0x95 }
 var volatile bit    WPUA_WPUA5                at WPUA : 5
 var volatile bit    WPUA_WPUA4                at WPUA : 4
+var volatile bit    WPUA_WPUA3                at WPUA : 3
 var volatile bit    WPUA_WPUA2                at WPUA : 2
 var volatile bit    WPUA_WPUA1                at WPUA : 1
 var volatile bit    WPUA_WPUA0                at WPUA : 0
@@ -734,7 +735,7 @@ var volatile bit    PWMCON0_PH1EN             at PWMCON0 : 0
 -- ------------------------------------------------
 var volatile byte   PWMCLK                    at { 0x112 }
 var volatile bit    PWMCLK_PWMASE             at PWMCLK : 7
-var volatile bit*2  PWMCLK_PS                 at PWMCLK : 5
+var volatile bit*2  PWMCLK_PWMP               at PWMCLK : 5
 var volatile bit*5  PWMCLK_PER                at PWMCLK : 0
 -- ------------------------------------------------
 var volatile byte   PWMPH1                    at { 0x113 }
@@ -827,47 +828,47 @@ end procedure
 --
 -- CONFIG (0x2007)
 --
-pragma fuse_def OSC 0x7 {                  -- oscillator
-       RC_CLKOUT = 0x7                     -- extrc: clkout on ra4, rc on ra5
-       RC_NOCLKOUT = 0x6                   -- extrcio: i/o on ra4, rc on ra5
-       INTOSC_CLKOUT = 0x5                 -- intosc: clkout on ra4, i/o on ra5
-       INTOSC_NOCLKOUT = 0x4               -- intoscio: i/o on ra4/ra5
-       EC_NOCLKOUT = 0x3                   -- ec
-       HS = 0x2                            -- hs
-       XT = 0x1                            -- xt
-       LP = 0x0                            -- lp
+pragma fuse_def OSC 0x7 {                  -- oscillator selection bits
+       RC_CLKOUT = 0x7                     -- extrc oscillator: external rc on ra5/osc1/clkin, clkout function on ra4/osc2/clkout pin
+       RC_NOCLKOUT = 0x6                   -- extrcio oscillator: external rc on ra5/osc1/clkin, i/o function on ra4/osc2/clkout pin
+       INTOSC_CLKOUT = 0x5                 -- intosc oscillator: clkout function on ra4/osc2/clkout pin, i/o function on ra5/osc1/clkin
+       INTOSC_NOCLKOUT = 0x4               -- intoscio oscillator: i/o function on ra4/osc2/clkout pin, i/o function on ra5/osc1/clkin
+       EC_NOCLKOUT = 0x3                   -- ec: i/o function on ra4/osc2/clkout pin, clkin on ra5/osc1/clkin
+       HS = 0x2                            -- hs oscillator: high-speed crystal/resonator on ra4/osc2/clkout and ra5/osc1/clkin
+       XT = 0x1                            -- xt oscillator: crystal/resonator on ra4/osc2/clkout and ra5/osc1/clkint
+       LP = 0x0                            -- lp oscillator: low-power crystal on ra4/osc2/clkout and ra5/osc1/clkin
        }
-pragma fuse_def WDT 0x8 {                  -- watchdog timer
-       ENABLED = 0x8                       -- on
-       DISABLED = 0x0                      -- off
+pragma fuse_def WDT 0x8 {                  -- watchdog timer enable bit
+       ENABLED = 0x8                       -- enabled
+       DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def PWRTE 0x10 {               -- power up timer
-       DISABLED = 0x10                     -- off
-       ENABLED = 0x0                       -- on
+pragma fuse_def PWRTE 0x10 {               -- power-up timer enable bit
+       DISABLED = 0x10                     -- disabled
+       ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def MCLR 0x20 {                -- master clear enable
-       EXTERNAL = 0x20                     -- external
-       INTERNAL = 0x0                      -- internal
+pragma fuse_def MCLR 0x20 {                -- mclr pin function select bit
+       EXTERNAL = 0x20                     -- enabled
+       INTERNAL = 0x0                      -- disabled
        }
-pragma fuse_def CP 0x40 {                  -- code protect
-       DISABLED = 0x40                     -- off
-       ENABLED = 0x0                       -- on
+pragma fuse_def CP 0x40 {                  -- code protection bit
+       DISABLED = 0x40                     -- disabled
+       ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def CPD 0x80 {                 -- data ee read protect
-       DISABLED = 0x80                     -- off
-       ENABLED = 0x0                       -- on
+pragma fuse_def CPD 0x80 {                 -- data code protection bit
+       DISABLED = 0x80                     -- disabled
+       ENABLED = 0x0                       -- enabled
        }
 pragma fuse_def BROWNOUT 0x300 {           -- brown out detect
-       DISABLED = 0x0                      -- bod and sboren disabled
-       CONTROL = 0x100                     -- sboren controls bor function
-       RUNONLY = 0x200                     -- bod enabled in run, disabled in sleep, sboren disabled
-       ENABLED = 0x300                     -- bod enabled, sboren disabled
+       ENABLED = 0x300                     -- enabled
+       RUNONLY = 0x200                     -- bor enabled during operation and disabled in sleep
+       CONTROL = 0x100                     -- bor controlled by sboren bit of the pcon register
+       DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def IESO 0x400 {               -- internal external switch over mode
+pragma fuse_def IESO 0x400 {               -- internal external switchover bit
        ENABLED = 0x400                     -- enabled
        DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def FCMEN 0x800 {              -- monitor clock fail-safe
+pragma fuse_def FCMEN 0x800 {              -- fail-safe clock monitor enabled bit
        ENABLED = 0x800                     -- enabled
        DISABLED = 0x0                      -- disabled
        }

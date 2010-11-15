@@ -21,12 +21,12 @@
 --      . enable_digital_io()
 --
 -- Sources:
---  - x:/mplab856/mplab ide/device/pic18f4320.dev
---  - x:/mplab856/MPASM Suite/LKR/18f4320_g.lkr
+--  - x:/mplab860/mplab ide/device/pic18f4320.dev
+--  - x:/mplab860/MPASM Suite/LKR/18f4320_g.lkr
 --
 -- Notes:
---  - Created with Dev2Jal Rexx script version 0.1.11
---  - File creation date/time: 9 Nov 2010 13:43
+--  - Created with Dev2Jal Rexx script version 0.1.12
+--  - File creation date/time: 15 Nov 2010 20:03
 --
 -- ===================================================
 --
@@ -544,8 +544,6 @@ function PORTE_high'get() return byte is
    return (PORTE >> 4)
 end function
 --
-var volatile bit    pin_E3                    shared at PORTE : 3
---
 var volatile bit    LATE_LATE2                shared at LATE : 2
 var volatile bit    pin_E2                    shared at PORTE : 2
 alias               pin_AN7                   is pin_E2
@@ -858,8 +856,9 @@ alias               pin_AN5_direction         is pin_E0_direction
 alias               pin_RD_direction          is pin_E0_direction
 --
 -- ------------------------------------------------
-var volatile byte   OSCTUNE2                  shared at 0xF9A
-var volatile bit*8  OSCTUNE2_TUN              shared at OSCTUNE2 : 0
+var volatile byte   OSCTUN2                   shared at 0xF9A
+var volatile bit    OSCTUN2_TUNSEL            shared at OSCTUN2 : 7
+var volatile bit*6  OSCTUN2_TUN               shared at OSCTUN2 : 0
 -- ------------------------------------------------
 var volatile byte   OSCTUNE                   shared at 0xF9B
 var volatile bit*6  OSCTUNE_TUN               shared at OSCTUNE : 0
@@ -1152,6 +1151,8 @@ var volatile bit    OSCCON_IDLEN              shared at OSCCON : 7
 var volatile bit*3  OSCCON_IRCF               shared at OSCCON : 4
 var volatile bit    OSCCON_OSTS               shared at OSCCON : 3
 var volatile bit    OSCCON_IOFS               shared at OSCCON : 2
+var volatile bit    OSCCON_SCS1               shared at OSCCON : 1
+var volatile bit    OSCCON_SCS0               shared at OSCCON : 0
 var volatile bit*2  OSCCON_SCS                shared at OSCCON : 0
 -- ------------------------------------------------
 var volatile byte   T0CON                     shared at 0xFD5
@@ -1340,7 +1341,7 @@ end procedure
 -- Disable comparator module
 procedure comparator_off() is
    pragma inline
-   CMCON  = 0b0000_0111        -- disable comparator
+   CMCON  = 0b0000_0000        -- disable comparator
 end procedure
 --
 -- - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1358,51 +1359,51 @@ end procedure
 --
 -- CONFIG1H (0x300001)
 --
-pragma fuse_def OSC:1 0xF {                -- oscillator
-       RC_CLKOUT = 0xC                     -- ext rc-clkout on ra6
-       INTOSC_CLKOUT = 0x9                 -- int rc-clkout on ra6,port on ra7
-       INTOSC_NOCLKOUT = 0x8               -- int rc-port on ra6,port on ra7
-       RC_NOCLKOUT = 0x7                   -- ext rc-port on ra6
-       HS_PLL = 0x6                        -- hs-pll enabled freq=4xfosc1
-       EC_NOCLKOUT = 0x5                   -- ec-port on ra6
-       EC_CLKOUT = 0x4                     -- ec-clkout on ra6
-       HS = 0x2                            -- hs
-       XT = 0x1                            -- xt
-       LP = 0x0                            -- lp
+pragma fuse_def OSC:1 0xF {                -- oscillator selection bits
+       RC_CLKOUT = 0xC                     -- external rc oscillator, clko function on ra6
+       INTOSC_CLKOUT = 0x9                 -- internal rc oscillator, clko function on ra6 and port function on ra7
+       INTOSC_NOCLKOUT = 0x8               -- internal rc oscillator, port function on ra6 and port function on ra7
+       RC_NOCLKOUT = 0x7                   -- external rc oscillator, port function on ra6
+       HS_PLL = 0x6                        -- hs oscillator, pll enabled (clock frequency = 4 x fosc1)
+       EC_NOCLKOUT = 0x5                   -- ec oscillator, port function on ra6
+       EC_CLKOUT = 0x4                     -- ec oscillator, clko function on ra6
+       HS = 0x2                            -- hs oscillator
+       XT = 0x1                            -- xt oscillator
+       LP = 0x0                            -- lp oscillator
        }
-pragma fuse_def FCMEN:1 0x40 {             -- fail-safe clock monitor enable
-       DISABLED = 0x0                      -- disabled
+pragma fuse_def FCMEN:1 0x40 {             -- fail-safe clock monitor enable bit
        ENABLED = 0x40                      -- enabled
-       }
-pragma fuse_def IESO:1 0x80 {              -- internal external switch over mode
        DISABLED = 0x0                      -- disabled
+       }
+pragma fuse_def IESO:1 0x80 {              -- internal/external switchover bit
        ENABLED = 0x80                      -- enabled
+       DISABLED = 0x0                      -- disabled
        }
 --
 -- CONFIG2L (0x300002)
 --
-pragma fuse_def PWRTE:2 0x1 {              -- power up timer
+pragma fuse_def PWRTE:2 0x1 {              -- power-up timer enable bit
        DISABLED = 0x1                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def BROWNOUT:2 0x2 {           -- brown out detect
+pragma fuse_def BROWNOUT:2 0x2 {           -- brown-out reset enable bit
        ENABLED = 0x2                       -- enabled
        DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def VOLTAGE:2 0xC {            -- brown out voltage
-       V20 = 0xC                           -- 2.0v
-       V27 = 0x8                           -- 2.7v
-       V42 = 0x4                           -- 4.2v
-       V45 = 0x0                           -- 4.5v
+pragma fuse_def VOLTAGE:2 0xC {            -- brown-out reset voltage bits
+       V20 = 0xC                           -- vbor set to 2.0v
+       V27 = 0x8                           -- vbor set to 2.7v
+       V42 = 0x4                           -- vbor set to 4.2v
+       V45 = 0x0                           -- vbor set to 4.5v
        }
 --
 -- CONFIG2H (0x300003)
 --
-pragma fuse_def WDT:3 0x1 {                -- watchdog timer
+pragma fuse_def WDT:3 0x1 {                -- watchdog timer enable bit
        ENABLED = 0x1                       -- enabled
-       DISABLED = 0x0                      -- disabled-controlled by swdten bit
+       DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def WDTPS:3 0x1E {             -- watchdog postscaler
+pragma fuse_def WDTPS:3 0x1E {             -- watchdog timer postscale select bits
        P32K = 0x1E                         -- 1:32768
        P16K = 0x1C                         -- 1:16384
        P8K = 0x1A                          -- 1:8192
@@ -1423,120 +1424,120 @@ pragma fuse_def WDTPS:3 0x1E {             -- watchdog postscaler
 --
 -- CONFIG3H (0x300005)
 --
-pragma fuse_def CCP2MUX:5 0x1 {            -- ccp2 mux
-       pin_C1 = 0x1                        -- rc1
-       pin_B3 = 0x0                        -- rb3
+pragma fuse_def CCP2MUX:5 0x1 {            -- ccp2 mux bit
+       ENABLED = 0x1                       -- enabled
+       DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def PBADEN:5 0x2 {             -- portb a/d enable
-       ANALOG = 0x2                        -- portb<4:0> configured as analog inputs on reset
-       DIGITAL = 0x0                       -- portb<4:0> configured as digital i/o on reset
+pragma fuse_def PBAD:5 0x2 {               -- portb a/d enable bit
+       ANALOG = 0x2                        -- portb<4:0> pins are configured as analog input channels on reset
+       DIGITAL = 0x0                       -- portb<4:0> pins are configured as digital i/o on reset
        }
-pragma fuse_def MCLR:5 0x80 {              -- master clear enable
-       EXTERNAL = 0x80                     -- mclr enabled,re3 disabled
-       INTERNAL = 0x0                      -- mclr disabled, re3 enabled
+pragma fuse_def MCLR:5 0x80 {              -- mclr pin enable bit
+       EXTERNAL = 0x80                     -- enabled
+       INTERNAL = 0x0                      -- disabled
        }
 --
 -- CONFIG4L (0x300006)
 --
-pragma fuse_def STVR:6 0x1 {               -- stack overflow reset
+pragma fuse_def STVR:6 0x1 {               -- stack full/underflow reset enable bit
        ENABLED = 0x1                       -- enabled
        DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def LVP:6 0x4 {                -- low voltage program
+pragma fuse_def LVP:6 0x4 {                -- single-supply icsp enable bit
        ENABLED = 0x4                       -- enabled
        DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def DEBUG:6 0x80 {             -- background debug
+pragma fuse_def DEBUG:6 0x80 {             -- background debugger enable bit
        DISABLED = 0x80                     -- disabled
        ENABLED = 0x0                       -- enabled
        }
 --
 -- CONFIG5L (0x300008)
 --
-pragma fuse_def CP0:8 0x1 {                -- code protect 000200-0007ff
+pragma fuse_def CP0:8 0x1 {                -- code protection bit
        DISABLED = 0x1                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def CP1:8 0x2 {                -- code protect 000800-000fff
+pragma fuse_def CP1:8 0x2 {                -- code protection bit
        DISABLED = 0x2                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def CP2:8 0x4 {                -- code protect 001000-0017ff
+pragma fuse_def CP2:8 0x4 {                -- code protection bit
        DISABLED = 0x4                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def CP3:8 0x8 {                -- code protect 001800-001fff
+pragma fuse_def CP3:8 0x8 {                -- code protection bit
        DISABLED = 0x8                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
 --
 -- CONFIG5H (0x300009)
 --
-pragma fuse_def CPB:9 0x40 {               -- code protect boot
+pragma fuse_def CPB:9 0x40 {               -- boot block code protection bit
        DISABLED = 0x40                     -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def CPD:9 0x80 {               -- data eeprom code protect
+pragma fuse_def CPD:9 0x80 {               -- data eeprom code protection bit
        DISABLED = 0x80                     -- disabled
        ENABLED = 0x0                       -- enabled
        }
 --
 -- CONFIG6L (0x30000A)
 --
-pragma fuse_def WRT0:10 0x1 {              -- table write protect 00200-007ff
+pragma fuse_def WRT0:10 0x1 {              -- write protection bit
        DISABLED = 0x1                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def WRT1:10 0x2 {              -- table write protect 00800-00fff
+pragma fuse_def WRT1:10 0x2 {              -- write protection bit
        DISABLED = 0x2                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def WRT2:10 0x4 {              -- table write protect 01000-017ff
+pragma fuse_def WRT2:10 0x4 {              -- write protection bit
        DISABLED = 0x4                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def WRT3:10 0x8 {              -- table write protect 01800-01fff
+pragma fuse_def WRT3:10 0x8 {              -- write protection bit
        DISABLED = 0x8                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
 --
 -- CONFIG6H (0x30000B)
 --
-pragma fuse_def WRTC:11 0x20 {             -- config. write protect
+pragma fuse_def WRTC:11 0x20 {             -- configuration register write protection bit
        DISABLED = 0x20                     -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def WRTB:11 0x40 {             -- table write protect boot
+pragma fuse_def WRTB:11 0x40 {             -- boot block write protection bit
        DISABLED = 0x40                     -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def WRTD:11 0x80 {             -- data eeprom write protect
+pragma fuse_def WRTD:11 0x80 {             -- data eeprom write protection bit
        DISABLED = 0x80                     -- disabled
        ENABLED = 0x0                       -- enabled
        }
 --
 -- CONFIG7L (0x30000C)
 --
-pragma fuse_def EBTR0:12 0x1 {             -- table read protect 00200-007ff
+pragma fuse_def EBTR0:12 0x1 {             -- table read protection bit
        DISABLED = 0x1                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def EBTR1:12 0x2 {             -- table read protect 00800-00fff
+pragma fuse_def EBTR1:12 0x2 {             -- table read protection bit
        DISABLED = 0x2                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def EBTR2:12 0x4 {             -- table read protect 01000-017ff
+pragma fuse_def EBTR2:12 0x4 {             -- table read protection bit
        DISABLED = 0x4                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
-pragma fuse_def EBTR3:12 0x8 {             -- table read protect 01800-01fff
+pragma fuse_def EBTR3:12 0x8 {             -- table read protection bit
        DISABLED = 0x8                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
 --
 -- CONFIG7H (0x30000D)
 --
-pragma fuse_def EBTRB:13 0x40 {            -- table read protect boot
+pragma fuse_def EBTRB:13 0x40 {            -- boot block table read protection bit
        DISABLED = 0x40                     -- disabled
        ENABLED = 0x0                       -- enabled
        }

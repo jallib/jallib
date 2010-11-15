@@ -21,12 +21,12 @@
 --      . enable_digital_io()
 --
 -- Sources:
---  - x:/mplab856/mplab ide/device/pic18f65j50.dev
---  - x:/mplab856/MPASM Suite/LKR/18f65j50_g.lkr
+--  - x:/mplab860/mplab ide/device/pic18f65j50.dev
+--  - x:/mplab860/MPASM Suite/LKR/18f65j50_g.lkr
 --
 -- Notes:
---  - Created with Dev2Jal Rexx script version 0.1.11
---  - File creation date/time: 9 Nov 2010 13:44
+--  - Created with Dev2Jal Rexx script version 0.1.12
+--  - File creation date/time: 15 Nov 2010 20:03
 --
 -- ===================================================
 --
@@ -56,24 +56,22 @@ pragma  shared  0x0-0x5F
 var volatile byte _pic_accum shared at 0x5E   -- (compiler)
 var volatile byte _pic_isr_w shared at 0x5F   -- (compiler)
 --
-const word  _FUSES_CT             = 8
+const word  _FUSES_CT             = 6
 const dword _FUSE_BASE[_FUSES_CT] = { 0x007FF8,
                                       0x007FF9,
                                       0x007FFA,
                                       0x007FFB,
                                       0x007FFC,
-                                      0x007FFD,
-                                      0x007FFE,
-                                      0x007FFF }
+                                      0x007FFD }
 const byte  _FUSES[_FUSES_CT]     = { 0b_1110_0001,         -- CONFIG1L
                                       0b_1111_0100,         -- CONFIG1H
                                       0b_1100_0111,         -- CONFIG2L
                                       0b_1111_1111,         -- CONFIG2H
                                       0b_0000_0000,         -- CONFIG3L
-                                      0b_1111_0011,         -- CONFIG3H
-                                      0b_0000_0000,         -- CONFIG4L
-                                      0b_1111_0000 }        -- CONFIG4H
+                                      0b_1111_0011 }        -- CONFIG3H
 --
+-- ------------------------------------------------
+var volatile word   PMSTAT                           at 0xF40
 -- ------------------------------------------------
 var volatile byte   PMSTATL                          at 0xF40
 var volatile bit    PMSTATL_OBE                      at PMSTATL : 7
@@ -91,11 +89,15 @@ var volatile bit    PMSTATH_IB2F                     at PMSTATH : 2
 var volatile bit    PMSTATH_IB1F                     at PMSTATH : 1
 var volatile bit    PMSTATH_IB0F                     at PMSTATH : 0
 -- ------------------------------------------------
+var volatile word   PMEN                             at 0xF42
+-- ------------------------------------------------
 var volatile byte   PMEL                             at 0xF42
 var volatile bit*8  PMEL_PTENL                       at PMEL : 0
 -- ------------------------------------------------
 var volatile byte   PMEH                             at 0xF43
 var volatile bit*8  PMEH_PTENH                       at PMEH : 0
+-- ------------------------------------------------
+var volatile word   PMDIN2                           at 0xF44
 -- ------------------------------------------------
 var volatile byte   PMDIN2L                          at 0xF44
 var volatile bit*8  PMDIN2L_DATAL                    at PMDIN2L : 0
@@ -103,11 +105,15 @@ var volatile bit*8  PMDIN2L_DATAL                    at PMDIN2L : 0
 var volatile byte   PMDIN2H                          at 0xF45
 var volatile bit*8  PMDIN2H_DATAH                    at PMDIN2H : 0
 -- ------------------------------------------------
+var volatile word   PMDOUT2                          at 0xF46
+-- ------------------------------------------------
 var volatile byte   PMDOUT2L                         at 0xF46
 var volatile bit*8  PMDOUT2L_DATAL                   at PMDOUT2L : 0
 -- ------------------------------------------------
 var volatile byte   PMDOUT2H                         at 0xF47
 var volatile bit*8  PMDOUT2H_DATAH                   at PMDOUT2H : 0
+-- ------------------------------------------------
+var volatile word   PMMODE                           at 0xF48
 -- ------------------------------------------------
 var volatile byte   PMMODEL                          at 0xF48
 var volatile bit*2  PMMODEL_WAITB                    at PMMODEL : 6
@@ -120,6 +126,8 @@ var volatile bit*2  PMMODEH_IRQM                     at PMMODEH : 5
 var volatile bit*2  PMMODEH_INCM                     at PMMODEH : 3
 var volatile bit    PMMODEH_MODE16                   at PMMODEH : 2
 var volatile bit*2  PMMODEH_MODE                     at PMMODEH : 0
+-- ------------------------------------------------
+var volatile word   PMCON                            at 0xF4A
 -- ------------------------------------------------
 var volatile byte   PMCONL                           at 0xF4A
 var volatile bit    PMCONL_CSF1                      at PMCONL : 7
@@ -257,7 +265,7 @@ var volatile bit    UIE_SOFIE                        at UIE : 6
 var volatile bit    UIE_STALLIE                      at UIE : 5
 var volatile bit    UIE_IDLEIE                       at UIE : 4
 var volatile bit    UIE_TRNIE                        at UIE : 3
-var volatile bit    UIE_ACTIVIE                      at UIE : 2
+var volatile bit    UIE_ACTVIE                       at UIE : 2
 var volatile bit    UIE_UERRIE                       at UIE : 1
 var volatile bit    UIE_URSTIE                       at UIE : 0
 -- ------------------------------------------------
@@ -274,6 +282,7 @@ var volatile bit*7  UADDR_ADDR                       at UADDR : 0
 -- ------------------------------------------------
 var volatile byte   UCFG                             at 0xF5F
 var volatile bit    UCFG_UTEYE                       at UCFG : 7
+var volatile bit    UCFG_UOEMON                      at UCFG : 6
 var volatile bit    UCFG_UPUEN                       at UCFG : 4
 var volatile bit    UCFG_UTRDIS                      at UCFG : 3
 var volatile bit    UCFG_FSEN                        at UCFG : 2
@@ -292,7 +301,7 @@ var volatile bit    UIR_SOFIF                 shared at UIR : 6
 var volatile bit    UIR_STALLIF               shared at UIR : 5
 var volatile bit    UIR_IDLEIF                shared at UIR : 4
 var volatile bit    UIR_TRNIF                 shared at UIR : 3
-var volatile bit    UIR_ACTIVIF               shared at UIR : 2
+var volatile bit    UIR_ACTVIF                shared at UIR : 2
 var volatile bit    UIR_UERRIF                shared at UIR : 1
 var volatile bit    UIR_URSTIF                shared at UIR : 0
 -- ------------------------------------------------
@@ -317,23 +326,31 @@ var volatile bit    UCON_USBEN                shared at UCON : 3
 var volatile bit    UCON_RESUME               shared at UCON : 2
 var volatile bit    UCON_SUSPND               shared at UCON : 1
 -- ------------------------------------------------
+var volatile word   PMDIN1                    shared at 0xF66
+-- ------------------------------------------------
 var volatile byte   PMDIN1L                   shared at 0xF66
 var volatile bit*8  PMDIN1L_DATAL             shared at PMDIN1L : 0
 -- ------------------------------------------------
 var volatile byte   PMDIN1H                   shared at 0xF67
 var volatile bit*8  PMDIN1H_DATAH             shared at PMDIN1H : 0
 -- ------------------------------------------------
+var volatile word   PMADDR                    shared at 0xF68
+-- ------------------------------------------------
 var volatile byte   PMADDRL                   shared at 0xF68
 var volatile bit*8  PMADDRL_ADDRL             shared at PMADDRL : 0
+-- ------------------------------------------------
+var volatile byte   PMDOUT1L                  shared at 0xF68
 -- ------------------------------------------------
 var volatile byte   PMADDRH                   shared at 0xF69
 var volatile bit    PMADDRH_CS2               shared at PMADDRH : 7
 var volatile bit    PMADDRH_CS1               shared at PMADDRH : 6
 var volatile bit*6  PMADDRH_ADDRH             shared at PMADDRH : 0
 -- ------------------------------------------------
-var volatile byte   CMSTATUS                  shared at 0xF6A
-var volatile bit    CMSTATUS_COUT2            shared at CMSTATUS : 1
-var volatile bit    CMSTATUS_COUT1            shared at CMSTATUS : 0
+var volatile byte   PMDOUT1H                  shared at 0xF69
+-- ------------------------------------------------
+var volatile byte   CMSTAT                    shared at 0xF6A
+var volatile bit    CMSTAT_COUT2              shared at CMSTAT : 1
+var volatile bit    CMSTAT_COUT1              shared at CMSTAT : 0
 -- ------------------------------------------------
 var volatile byte   SSP2CON2                  shared at 0xF6B
 var volatile bit    SSP2CON2_GCEN             shared at SSP2CON2 : 7
@@ -366,6 +383,16 @@ var volatile bit    SSP2STAT_BF               shared at SSP2STAT : 0
 -- ------------------------------------------------
 var volatile byte   SSP2ADD                   shared at 0xF6E
 var volatile bit*8  SSP2ADD_SSPADD            shared at SSP2ADD : 0
+-- ------------------------------------------------
+var volatile byte   SSP2MSK                   shared at 0xF6E
+var volatile bit    SSP2MSK_MSK7              shared at SSP2MSK : 7
+var volatile bit    SSP2MSK_MSK6              shared at SSP2MSK : 6
+var volatile bit    SSP2MSK_MSK5              shared at SSP2MSK : 5
+var volatile bit    SSP2MSK_MSK4              shared at SSP2MSK : 4
+var volatile bit    SSP2MSK_MSK3              shared at SSP2MSK : 3
+var volatile bit    SSP2MSK_MSK2              shared at SSP2MSK : 2
+var volatile bit    SSP2MSK_MSK1              shared at SSP2MSK : 1
+var volatile bit    SSP2MSK_MSK0              shared at SSP2MSK : 0
 -- ------------------------------------------------
 var volatile byte   SSP2BUF                   shared at 0xF6F
 var volatile bit*8  SSP2BUF_SSPBUF            shared at SSP2BUF : 0
@@ -414,40 +441,42 @@ var volatile byte   TMR3L                     shared at 0xF7A
 -- ------------------------------------------------
 var volatile byte   TMR3H                     shared at 0xF7B
 -- ------------------------------------------------
-var volatile byte   BAUDCTL2                  shared at 0xF7C
-var volatile bit    BAUDCTL2_ABDOVF           shared at BAUDCTL2 : 7
-var volatile bit    BAUDCTL2_RCMT             shared at BAUDCTL2 : 6
-var volatile bit    BAUDCTL2_DTRXP            shared at BAUDCTL2 : 5
-var volatile bit    BAUDCTL2_SCKP             shared at BAUDCTL2 : 4
-var volatile bit    BAUDCTL2_BRG16            shared at BAUDCTL2 : 3
-var volatile bit    BAUDCTL2_WUE              shared at BAUDCTL2 : 1
-var volatile bit    BAUDCTL2_ABDEN            shared at BAUDCTL2 : 0
+var volatile byte   BAUDCON2                  shared at 0xF7C
+var volatile bit    BAUDCON2_ABDOVF           shared at BAUDCON2 : 7
+var volatile bit    BAUDCON2_RCIDL            shared at BAUDCON2 : 6
+var volatile bit    BAUDCON2_RXDTP            shared at BAUDCON2 : 5
+var volatile bit    BAUDCON2_TXCKP            shared at BAUDCON2 : 4
+var volatile bit    BAUDCON2_BRG16            shared at BAUDCON2 : 3
+var volatile bit    BAUDCON2_WUE              shared at BAUDCON2 : 1
+var volatile bit    BAUDCON2_ABDEN            shared at BAUDCON2 : 0
 -- ------------------------------------------------
 var volatile byte   SPBRGH2                   shared at 0xF7D
 -- ------------------------------------------------
-var volatile byte   BAUDCTL1                  shared at 0xF7E
-var volatile bit    BAUDCTL1_ABDOVF           shared at BAUDCTL1 : 7
-var volatile bit    BAUDCTL1_RCMT             shared at BAUDCTL1 : 6
-var volatile bit    BAUDCTL1_DTRXP            shared at BAUDCTL1 : 5
-var volatile bit    BAUDCTL1_SCKP             shared at BAUDCTL1 : 4
-var volatile bit    BAUDCTL1_BRG16            shared at BAUDCTL1 : 3
-var volatile bit    BAUDCTL1_WUE              shared at BAUDCTL1 : 1
-var volatile bit    BAUDCTL1_ABDEN            shared at BAUDCTL1 : 0
+var volatile byte   BAUDCON1                  shared at 0xF7E
+var volatile bit    BAUDCON1_ABDOVF           shared at BAUDCON1 : 7
+var volatile bit    BAUDCON1_RCIDL            shared at BAUDCON1 : 6
+var volatile bit    BAUDCON1_RXDTP            shared at BAUDCON1 : 5
+var volatile bit    BAUDCON1_TXCKP            shared at BAUDCON1 : 4
+var volatile bit    BAUDCON1_BRG16            shared at BAUDCON1 : 3
+var volatile bit    BAUDCON1_WUE              shared at BAUDCON1 : 1
+var volatile bit    BAUDCON1_ABDEN            shared at BAUDCON1 : 0
 --
-alias               BAUDCTL                          is BAUDCTL1
-alias               BAUDCTL_ABDOVF                   is BAUDCTL1_ABDOVF
-alias               BAUDCTL_RCMT                     is BAUDCTL1_RCMT
-alias               BAUDCTL_DTRXP                    is BAUDCTL1_DTRXP
-alias               BAUDCTL_SCKP                     is BAUDCTL1_SCKP
-alias               BAUDCTL_BRG16                    is BAUDCTL1_BRG16
-alias               BAUDCTL_WUE                      is BAUDCTL1_WUE
-alias               BAUDCTL_ABDEN                    is BAUDCTL1_ABDEN
+alias               BAUDCON                          is BAUDCON1
+alias               BAUDCON_ABDOVF                   is BAUDCON1_ABDOVF
+alias               BAUDCON_RCIDL                    is BAUDCON1_RCIDL
+alias               BAUDCON_RXDTP                    is BAUDCON1_RXDTP
+alias               BAUDCON_TXCKP                    is BAUDCON1_TXCKP
+alias               BAUDCON_BRG16                    is BAUDCON1_BRG16
+alias               BAUDCON_WUE                      is BAUDCON1_WUE
+alias               BAUDCON_ABDEN                    is BAUDCON1_ABDEN
 -- ------------------------------------------------
 var volatile byte   SPBRGH1                   shared at 0xF7F
 --
 alias               SPBRGH                           is SPBRGH1
 -- ------------------------------------------------
 var volatile byte   PORTA                     shared at 0xF80
+var volatile bit    PORTA_RA7                 shared at PORTA : 7
+var volatile bit    PORTA_RA6                 shared at PORTA : 6
 var volatile bit    PORTA_RA5                 shared at PORTA : 5
 var volatile bit    PORTA_RA4                 shared at PORTA : 4
 var volatile bit    PORTA_RA3                 shared at PORTA : 3
@@ -506,7 +535,6 @@ var volatile bit    PORTF_RF2                 shared at PORTF : 2
 var volatile byte   PORTG                     shared at 0xF86
 var volatile bit    PORTG_RDPU                shared at PORTG : 7
 var volatile bit    PORTG_REPU                shared at PORTG : 6
-var volatile bit    PORTG_RJPU                shared at PORTG : 5
 var volatile bit    PORTG_RG4                 shared at PORTG : 4
 var volatile bit    PORTG_RG3                 shared at PORTG : 3
 var volatile bit    PORTG_RG2                 shared at PORTG : 2
@@ -537,6 +565,24 @@ function PORTA_high'get() return byte is
    pragma inline
    return (PORTA >> 4)
 end function
+--
+var volatile bit    LATA_LATA7                shared at LATA : 7
+var volatile bit    pin_A7                    shared at PORTA : 7
+alias               pin_OSC1                  is pin_A7
+alias               pin_CLKI                  is pin_A7
+--
+procedure pin_A7'put(bit in x at LATA : 7) is
+   pragma inline
+end procedure
+--
+var volatile bit    LATA_LATA6                shared at LATA : 6
+var volatile bit    pin_A6                    shared at PORTA : 6
+alias               pin_OSC2                  is pin_A6
+alias               pin_CLKO                  is pin_A6
+--
+procedure pin_A6'put(bit in x at LATA : 6) is
+   pragma inline
+end procedure
 --
 var volatile bit    LATA_LATA5                shared at LATA : 5
 var volatile bit    pin_A5                    shared at PORTA : 5
@@ -1164,6 +1210,16 @@ function PORTA_high_direction'get() return byte is
    return (TRISA >> 4)
 end function
 --
+var volatile bit    TRISA_TRISA7              shared at TRISA : 7
+var volatile bit    pin_A7_direction          shared at TRISA : 7
+alias               pin_OSC1_direction        is pin_A7_direction
+alias               pin_CLKI_direction        is pin_A7_direction
+--
+var volatile bit    TRISA_TRISA6              shared at TRISA : 6
+var volatile bit    pin_A6_direction          shared at TRISA : 6
+alias               pin_OSC2_direction        is pin_A6_direction
+alias               pin_CLKO_direction        is pin_A6_direction
+--
 var volatile bit    TRISA_TRISA5              shared at TRISA : 5
 var volatile bit    pin_A5_direction          shared at TRISA : 5
 alias               pin_AN4_direction         is pin_A5_direction
@@ -1550,7 +1606,7 @@ alias               pin_P3A_direction         is pin_G0_direction
 --
 -- ------------------------------------------------
 var volatile byte   OSCTUNE                   shared at 0xF9B
-var volatile bit    OSCTUNE_HF256DIV          shared at OSCTUNE : 7
+var volatile bit    OSCTUNE_INTSRC            shared at OSCTUNE : 7
 var volatile bit    OSCTUNE_PLLEN             shared at OSCTUNE : 6
 var volatile bit    OSCTUNE_TUN5              shared at OSCTUNE : 5
 var volatile bit    OSCTUNE_TUN4              shared at OSCTUNE : 4
@@ -1576,7 +1632,8 @@ var volatile bit    PIE1_RC1IE                shared at PIE1 : 5
 alias               PIE1_RCIE                        is PIE1_RC1IE
 var volatile bit    PIE1_TX1IE                shared at PIE1 : 4
 alias               PIE1_TXIE                        is PIE1_TX1IE
-var volatile bit    PIE1_SSPIE1               shared at PIE1 : 3
+var volatile bit    PIE1_SSP1IE               shared at PIE1 : 3
+alias               PIE1_SSPIE                       is PIE1_SSP1IE
 var volatile bit    PIE1_CCP1IE               shared at PIE1 : 2
 var volatile bit    PIE1_TMR2IE               shared at PIE1 : 1
 var volatile bit    PIE1_TMR1IE               shared at PIE1 : 0
@@ -1588,7 +1645,8 @@ var volatile bit    PIR1_RC1IF                shared at PIR1 : 5
 alias               PIR1_RCIF                        is PIR1_RC1IF
 var volatile bit    PIR1_TX1IF                shared at PIR1 : 4
 alias               PIR1_TXIF                        is PIR1_TX1IF
-var volatile bit    PIR1_SSPIF1               shared at PIR1 : 3
+var volatile bit    PIR1_SSP1IF               shared at PIR1 : 3
+alias               PIR1_SSPIF                       is PIR1_SSP1IF
 var volatile bit    PIR1_CCP1IF               shared at PIR1 : 2
 var volatile bit    PIR1_TMR2IF               shared at PIR1 : 1
 var volatile bit    PIR1_TMR1IF               shared at PIR1 : 0
@@ -1598,7 +1656,7 @@ var volatile bit    IPR1_PMPIP                shared at IPR1 : 7
 var volatile bit    IPR1_ADIP                 shared at IPR1 : 6
 var volatile bit    IPR1_RC1IP                shared at IPR1 : 5
 var volatile bit    IPR1_TX1IP                shared at IPR1 : 4
-var volatile bit    IPR1_SSPIP1               shared at IPR1 : 3
+var volatile bit    IPR1_SSP1IP               shared at IPR1 : 3
 var volatile bit    IPR1_CCP1IP               shared at IPR1 : 2
 var volatile bit    IPR1_TMR2IP               shared at IPR1 : 1
 var volatile bit    IPR1_TMR1IP               shared at IPR1 : 0
@@ -1664,6 +1722,7 @@ var volatile bit    IPR3_CCP4IP               shared at IPR3 : 1
 var volatile bit    IPR3_CCP3IP               shared at IPR3 : 0
 -- ------------------------------------------------
 var volatile byte   EECON1                    shared at 0xFA6
+var volatile bit    EECON1_WPROG              shared at EECON1 : 5
 var volatile bit    EECON1_FREE               shared at EECON1 : 4
 var volatile bit    EECON1_WRERR              shared at EECON1 : 3
 var volatile bit    EECON1_WREN               shared at EECON1 : 2
@@ -1753,9 +1812,9 @@ var volatile byte   CCPR3L                    shared at 0xFB2
 -- ------------------------------------------------
 var volatile byte   CCPR3H                    shared at 0xFB3
 -- ------------------------------------------------
-var volatile byte   PWM3CON                   shared at 0xFB4
-var volatile bit    PWM3CON_PRSEN             shared at PWM3CON : 7
-var volatile bit*7  PWM3CON_PDC               shared at PWM3CON : 0
+var volatile byte   ECCP3DEL                  shared at 0xFB4
+var volatile bit    ECCP3DEL_PRSEN            shared at ECCP3DEL : 7
+var volatile bit*7  ECCP3DEL_PDC              shared at ECCP3DEL : 0
 -- ------------------------------------------------
 var volatile byte   ECCP3AS                   shared at 0xFB5
 var volatile bit    ECCP3AS_ECCPASE           shared at ECCP3AS : 7
@@ -1777,9 +1836,9 @@ var volatile byte   CCPR2L                    shared at 0xFB7
 -- ------------------------------------------------
 var volatile byte   CCPR2H                    shared at 0xFB8
 -- ------------------------------------------------
-var volatile byte   PWM2CON                   shared at 0xFB9
-var volatile bit    PWM2CON_PRSEN             shared at PWM2CON : 7
-var volatile bit*7  PWM2CON_PDC               shared at PWM2CON : 0
+var volatile byte   ECCP2DEL                  shared at 0xFB9
+var volatile bit    ECCP2DEL_PRSEN            shared at ECCP2DEL : 7
+var volatile bit*7  ECCP2DEL_PDC              shared at ECCP2DEL : 0
 -- ------------------------------------------------
 var volatile byte   ECCP2AS                   shared at 0xFBA
 var volatile bit    ECCP2AS_ECCPASE           shared at ECCP2AS : 7
@@ -1801,9 +1860,9 @@ var volatile byte   CCPR1L                    shared at 0xFBC
 -- ------------------------------------------------
 var volatile byte   CCPR1H                    shared at 0xFBD
 -- ------------------------------------------------
-var volatile byte   PWM1CON                   shared at 0xFBE
-var volatile bit    PWM1CON_PRSEN             shared at PWM1CON : 7
-var volatile bit*7  PWM1CON_PDC               shared at PWM1CON : 0
+var volatile byte   ECCP1DEL                  shared at 0xFBE
+var volatile bit    ECCP1DEL_PRSEN            shared at ECCP1DEL : 7
+var volatile bit*7  ECCP1DEL_PDC              shared at ECCP1DEL : 0
 -- ------------------------------------------------
 var volatile byte   ECCP1AS                   shared at 0xFBF
 var volatile bit    ECCP1AS_ECCPASE           shared at ECCP1AS : 7
@@ -1898,6 +1957,17 @@ var volatile byte   SSP1ADD                   shared at 0xFC8
 alias               SSPADD                           is SSP1ADD
 var volatile bit*8  SSP1ADD_SSPADD            shared at SSP1ADD : 0
 -- ------------------------------------------------
+var volatile byte   SSP1MSK                   shared at 0xFC8
+alias               SSPMSK                           is SSP1MSK
+var volatile bit    SSP1MSK_MSK7              shared at SSP1MSK : 7
+var volatile bit    SSP1MSK_MSK6              shared at SSP1MSK : 6
+var volatile bit    SSP1MSK_MSK5              shared at SSP1MSK : 5
+var volatile bit    SSP1MSK_MSK4              shared at SSP1MSK : 4
+var volatile bit    SSP1MSK_MSK3              shared at SSP1MSK : 3
+var volatile bit    SSP1MSK_MSK2              shared at SSP1MSK : 2
+var volatile bit    SSP1MSK_MSK1              shared at SSP1MSK : 1
+var volatile bit    SSP1MSK_MSK0              shared at SSP1MSK : 0
+-- ------------------------------------------------
 var volatile byte   SSP1BUF                   shared at 0xFC9
 alias               SSPBUF                           is SSP1BUF
 var volatile bit*8  SSP1BUF_SSPBUF            shared at SSP1BUF : 0
@@ -1955,7 +2025,6 @@ var volatile byte   OSCCON                    shared at 0xFD3
 var volatile bit    OSCCON_IDLEN              shared at OSCCON : 7
 var volatile bit*3  OSCCON_IRCF               shared at OSCCON : 4
 var volatile bit    OSCCON_OSTS               shared at OSCCON : 3
-var volatile bit    OSCCON_FLTS               shared at OSCCON : 2
 var volatile bit*2  OSCCON_SCS                shared at OSCCON : 0
 -- ------------------------------------------------
 var volatile byte   T0CON                     shared at 0xFD5
@@ -2266,75 +2335,6 @@ function ANCON1'get() return byte is
 end function
 --
 -- ------------------------------------------------
-var volatile byte   _MEMCON                   shared at 0xFCB
---
-procedure MEMCON'put(byte in x) is
-   pragma inline
-   WDTCON_ADSHR = TRUE
-   _MEMCON = x
-   WDTCON_ADSHR = FALSE
-end procedure
-function MEMCON'get() return byte is
-   pragma inline
-   var  byte  x
-   WDTCON_ADSHR = TRUE
-   x = _MEMCON
-   WDTCON_ADSHR = FALSE
-   return  x
-end function
---
-procedure MEMCON_EBDIS'put(bit in x) is
-   pragma inline
-   var  bit   y at _MEMCON : 7
-   WDTCON_ADSHR = TRUE
-   y = x
-   WDTCON_ADSHR = FALSE
-end procedure
-function  MEMCON_EBDIS'get() return bit is
-   pragma inline
-   var  bit   x at _MEMCON : 7
-   var  bit   y
-   WDTCON_ADSHR = TRUE
-   y = x
-   WDTCON_ADSHR = FALSE
-   return y
-end function
---
-procedure MEMCON_WAIT'put(bit*2 in x) is
-   pragma inline
-   var  bit*2 y at _MEMCON : 4
-   WDTCON_ADSHR = TRUE
-   y = x
-   WDTCON_ADSHR = FALSE
-end procedure
-function  MEMCON_WAIT'get() return bit*2 is
-   pragma inline
-   var  bit*2 x at _MEMCON : 4
-   var  bit*2 y
-   WDTCON_ADSHR = TRUE
-   y = x
-   WDTCON_ADSHR = FALSE
-   return y
-end function
---
-procedure MEMCON_WM'put(bit*2 in x) is
-   pragma inline
-   var  bit*2 y at _MEMCON : 0
-   WDTCON_ADSHR = TRUE
-   y = x
-   WDTCON_ADSHR = FALSE
-end procedure
-function  MEMCON_WM'get() return bit*2 is
-   pragma inline
-   var  bit*2 x at _MEMCON : 0
-   var  bit*2 y
-   WDTCON_ADSHR = TRUE
-   y = x
-   WDTCON_ADSHR = FALSE
-   return y
-end function
---
--- ------------------------------------------------
 var volatile byte   _PADCFG1                  shared at 0xFCC
 --
 procedure PADCFG1'put(byte in x) is
@@ -2387,14 +2387,14 @@ function ODCON3'get() return byte is
    return  x
 end function
 --
-procedure ODCON3_SPI1OD'put(bit in x) is
+procedure ODCON3_SPI2OD'put(bit in x) is
    pragma inline
    var  bit   y at _ODCON3 : 1
    WDTCON_ADSHR = TRUE
    y = x
    WDTCON_ADSHR = FALSE
 end procedure
-function  ODCON3_SPI1OD'get() return bit is
+function  ODCON3_SPI2OD'get() return bit is
    pragma inline
    var  bit   x at _ODCON3 : 1
    var  bit   y
@@ -2404,14 +2404,14 @@ function  ODCON3_SPI1OD'get() return bit is
    return y
 end function
 --
-procedure ODCON3_SPI2OD'put(bit in x) is
+procedure ODCON3_SPI1OD'put(bit in x) is
    pragma inline
    var  bit   y at _ODCON3 : 0
    WDTCON_ADSHR = TRUE
    y = x
    WDTCON_ADSHR = FALSE
 end procedure
-function  ODCON3_SPI2OD'get() return bit is
+function  ODCON3_SPI1OD'get() return bit is
    pragma inline
    var  bit   x at _ODCON3 : 0
    var  bit   y
@@ -2711,21 +2711,21 @@ end procedure
 --
 -- CONFIG1L (0x7FF8)
 --
-pragma fuse_def WDT:0 0x1 {                -- watchdog timer
+pragma fuse_def WDT:0 0x1 {                -- watchdog timer enable bit
        ENABLED = 0x1                       -- enabled
-       DISABLED = 0x0                      -- disabled-controlled by swdten bit
+       DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def PLLDIV:0 0xE {             -- pll div
-       P1 = 0xE                            -- no divide (4mhz input)
-       P2 = 0xC                            -- divide by 2 (8mhz input)
-       P3 = 0xA                            -- divide by 3 (12mhz input)
-       P4 = 0x8                            -- divide by 4 (16mhz input)
-       P5 = 0x6                            -- divide by 5 (20mhz input)
-       P6 = 0x4                            -- divide by 6 (24mhz input)
-       P10 = 0x2                           -- divide by 10 (40mhz input)
-       P12 = 0x0                           -- divide by 12 (48mhz input)
+pragma fuse_def PLLDIV:0 0xE {             -- pll prescaler selection bits
+       P1 = 0xE                            -- no prescale (4 mhz oscillator input drives pll directly)
+       P2 = 0xC                            -- divide by 2 (8 mhz oscillator input)
+       P3 = 0xA                            -- divide by 3 (12 mhz oscillator input)
+       P4 = 0x8                            -- divide by 4 (16 mhz oscillator input)
+       P5 = 0x6                            -- divide by 5 (20 mhz oscillator input)
+       P6 = 0x4                            -- divide by 6 (24 mhz oscillator input)
+       P10 = 0x2                           -- divide by 10 (40 mhz oscillator input)
+       P12 = 0x0                           -- divide by 12 (48 mhz oscillator input)
        }
-pragma fuse_def STVR:0 0x20 {              -- stack overflow reset
+pragma fuse_def STVR:0 0x20 {              -- stack overflow/underflow reset enable bit
        ENABLED = 0x20                      -- enabled
        DISABLED = 0x0                      -- disabled
        }
@@ -2733,20 +2733,20 @@ pragma fuse_def XINST:0 0x40 {             -- extended instruction set enable bi
        ENABLED = 0x40                      -- enabled
        DISABLED = 0x0                      -- disabled
        }
-pragma fuse_def DEBUG:0 0x80 {             -- background debug
+pragma fuse_def DEBUG:0 0x80 {             -- background debugger enable bit
        DISABLED = 0x80                     -- disabled
        ENABLED = 0x0                       -- enabled
        }
 --
 -- CONFIG1H (0x7FF9)
 --
-pragma fuse_def CPUDIV:1 0x3 {             -- cpu div
+pragma fuse_def CPUDIV:1 0x3 {             -- cpu system clock postscaler
        P1 = 0x3                            -- no cpu system clock divide
        P2 = 0x2                            -- cpu system clock divide by 2
        P3 = 0x1                            -- cpu system clock divide by 3
        P6 = 0x0                            -- cpu system clock divide by 6
        }
-pragma fuse_def CP0:1 0x4 {                -- code protect 000000-007ff7
+pragma fuse_def CP0:1 0x4 {                -- code protection bit
        DISABLED = 0x4                      -- disabled
        ENABLED = 0x0                       -- enabled
        }
@@ -2757,28 +2757,28 @@ pragma fuse_def SIGN:1 0x8 {               -- config word signature bit
 --
 -- CONFIG2L (0x7FFA)
 --
-pragma fuse_def OSC:2 0x7 {                -- oscillator
-       EC_CLKOUT_PLL = 0x7                 -- ec+pll(clko-ra6),usb-ec+pll
-       EC_CLKOUT = 0x6                     -- ec(clko-ra6),usb-ec
-       HS_PLL = 0x5                        -- hs+pll,usb-hs+pll
-       HS = 0x4                            -- hs,usb-hs
-       INTOSC_CLKOUT_PLL = 0x3             -- intoscpllo(clko-ra6)
-       INTOSC_NOCLKOUT_PLL = 0x2           -- intoscpll
-       INTOSC_CLKOUT = 0x1                 -- intosco(clko-ra6)
-       INTOSC_NOCLKOUT = 0x0               -- intosc
+pragma fuse_def OSC:2 0x7 {                -- oscillator selection bits
+       EC_CLKOUT_PLL = 0x7                 -- ec oscillator with pll, clko on ra6, ecpll used by usb
+       EC_CLKOUT = 0x6                     -- ec oscillator with clko on ra6, ec used by usb
+       HS_PLL = 0x5                        -- hs oscillator, pll enabled, hspll used by usb
+       HS = 0x4                            -- hs oscillator, hs used by usb
+       INTOSC_CLKOUT_PLL = 0x3             -- intosc with pll enabled, clko on ra6 and port function on ra7
+       INTOSC_NOCLKOUT_PLL = 0x2           -- intosc with pll enabled, port function on ra6 and ra7
+       INTOSC_CLKOUT = 0x1                 -- intosc, clko on ra6 and port function on ra7
+       INTOSC_NOCLKOUT = 0x0               -- intosc, port function on ra6 and ra7
        }
-pragma fuse_def FCMEN:2 0x40 {             -- fail-safe clock monitor enable
+pragma fuse_def FCMEN:2 0x40 {             -- fail-safe clock monitor enable bit
        DISABLED = 0x0                      -- disabled
        ENABLED = 0x40                      -- enabled
        }
-pragma fuse_def IESO:2 0x80 {              -- internal external switch over mode
+pragma fuse_def IESO:2 0x80 {              -- two-speed start-up (internal/external oscillator switchover) control bit
        DISABLED = 0x0                      -- disabled
        ENABLED = 0x80                      -- enabled
        }
 --
 -- CONFIG2H (0x7FFB)
 --
-pragma fuse_def WDTPS:3 0xF {              -- watchdog postscaler
+pragma fuse_def WDTPS:3 0xF {              -- watchdog timer postscaler select bits
        P32K = 0xF                          -- 1:32768
        P16K = 0xE                          -- 1:16384
        P8K = 0xD                           -- 1:8192
@@ -2802,16 +2802,12 @@ pragma fuse_def WDTPS:3 0xF {              -- watchdog postscaler
 --
 -- CONFIG3H (0x7FFD)
 --
-pragma fuse_def CCP2MUX:5 0x1 {            -- ccp2 mux
-       pin_C1 = 0x1                        -- rc1
-       pin_E7 = 0x0                        -- re7
+pragma fuse_def CCP2MUX:5 0x1 {            -- eccp2 mux bit
+       pin_C1 = 0x1                        -- eccp2/p2a is multiplexed with rc1
+       pin_E7 = 0x0                        -- eccp2/p2a is multiplexed with re7
        }
-pragma fuse_def PMPMUX:5 0x4 {             -- pmp mux
-       PORTD = 0x4                         -- pmp ports on portd and porte
-       PORTA = 0x0                         -- pmp ports on porta,portf and porth
-       }
-pragma fuse_def MSSPMASK:5 0x8 {           -- mssp v3 7 bit address masking bit mode
-       B7 = 0x8                            -- 7 bit address masking mode
-       B5 = 0x0                            -- 5 bit address masking mode
+pragma fuse_def MSSPMASK:5 0x8 {           -- mssp address masking mode select bit
+       B7 = 0x8                            -- 7-bit address masking mode enable
+       B5 = 0x0                            -- 5-bit address masking mode enable
        }
 --
