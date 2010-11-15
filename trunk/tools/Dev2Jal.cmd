@@ -38,23 +38,24 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.11'
+   ScriptVersion   = '0.1.12'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated               */
-/*   1 - all: info, progress, warnings and errors                           */
-/*   2 - only warnings and errors                                           */
-/*   3 - only errors (always reported!)                                     */
+/*   0 - progress messages (mostly only PicName)                            */
+/*   1 - info, warnings and errors                                          */
+/*   2 - warnings and errors                                                */
+/*   3 - errors (always reported!)                                          */
 
-msglevel = 1
+msglevel = 2
 
 /* MPLAB and a local copy of the Jallib SVN tree should be installed.       */
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab856/'                                 /* base directory of MPLAB */
+MPLABbase  = 'k:/mplab860/'                                 /* base directory of MPLAB */
 JALLIBbase = 'k:/jallib/'                                   /* base directory of JALLIB (local) */
 
 /* When using 'standard' installations no other changes are needed,         */
@@ -76,9 +77,8 @@ FuseDefFile = JALLIBbase'tools/fusedefmap.cmd'              /* fuse_def mapping 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx system functions */
 
-say ' Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
-if msglevel > 2 then
-   say 'Only reporting errors!'
+call msg 0, 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
+call msg 1, 'Only reporting errors!'
 
 /* The destination of the generated device files depends on the first       */
 /* mandatory commandline argument, which must be 'PROD' or 'TEST'           */
@@ -94,14 +94,14 @@ select
    when destination = 'TEST' then do                        /* test run */
       dstdir = './test/'                                    /* subdir for testing */
       rx = SysMkDir(strip(dstdir,'T','/'))                  /* create destination dir */
-      if rx \= 0 & rx \= 5 then do                          /* not created, not existing*/
-         say 'Error' rx 'while creating destination directory' dstdir
+      if rx \= 0 & rx \= 5 then do                          /* not created, not existing */
+         call msg 3, rx 'while creating destination directory' dstdir
          return rx                                          /* unrecoverable: terminate */
       end
    end
    otherwise
-      say 'Error: Required argument missing: "prod" or "test"'
-      say '       Optional second argument: PIC selection (wildcard), e.g.: 18F45*'
+      call msg 3, 'Required argument missing: "prod" or "test"',
+                  ' (and optional wildcard.'
       return 1
 end
 
@@ -115,7 +115,7 @@ select
    when destination = 'TEST' then                           /* TEST run */
       wildcard = 'PIC'selection'.dev'                       /* accept user selection */
    otherwise                                                /* PROD run with selection */
-      say 'Selection not allowed for production run!'
+      call msg 3, 'No selection allowed for production run!'
       return 1                                              /* unrecoverable: terminate */
 end
 
@@ -128,7 +128,7 @@ call time 'R'                                               /* reset 'elapsed' t
 
 call SysFileTree devdir||wildcard, dir, 'FO'                /* get list of filespecs */
 if dir.0 = 0 then do
-   say 'Error: No .dev files matching <'wildcard'> found in' devdir
+   call msg 3, 'No .dev files matching <'wildcard'> found in' devdir
    return 0                                                 /* nothing to do */
 end
 
@@ -149,7 +149,7 @@ chipdef = dstdir'chipdef_jallib.jal'                        /* common include fi
 if stream(chipdef, 'c', 'query exists') \= '' then          /* old chipdef file present */
    call SysFileDelete chipdef                               /* delete it */
 if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* new chipdef file */
-   Say 'Error: Could not create common include file' chipdef
+   call msg 3, 'Could not create common include file' chipdef
    return 1                                                 /* unrecoverable: terminate */
 end
 call list_chipdef_header                                    /* create new chipdef file */
@@ -171,7 +171,7 @@ do i=1 to dir.0                                             /* all relevant .dev
    DevFile = tolower(translate(dir.i,'/','\'))              /* lower case + forward slashes */
    parse value filespec('Name', DevFile) with 'pic' PicName '.dev'
    if PicName = '' then do
-      Say '  Error: Could not derive PIC name from filespec: "'DevFile'"'
+      call msg 3, 'Could not derive PIC name from filespec: "'DevFile'"'
       leave                                                 /* setup error: terminate */
    end
 
@@ -185,29 +185,24 @@ do i=1 to dir.0                                             /* all relevant .dev
       PicName = '16f57'   |,
       PicName = '16f59'   |,
       PicName = '16hv540' then do                           /* OTP (not flash) PIC */
-      if msglevel <= 1 then do
-         say PicName
-         say '  Info: Not supported by JalV2'
-      end
+      call msg 0, Picname
+      call msg 1, 'Not supported by JalV2'
       iterate
    end
 
    PicNameCaps = toupper(PicName)
    if PicSpec.PicNameCaps.DataSheet = '?' then do
-      if msglevel <= 2 then
-         say PicName 'Warning: not listed in' PicSpecFile', no device file generated'
+      call msg 0, PicName
+      call msg 2, 'Not listed in' PicSpecFile', no device file generated'
       iterate                                               /* skip */
    end
    else if PicSpec.PicNameCaps.DataSheet = '-' then do
-      if msglevel <= 2 then do
-         say PicName
-         say '  Warning: no datasheet found in' PicSpecFile', no device file generated'
-      end
+      call msg 0, PicName
+      call msg 2, 'No datasheet found in' PicSpecFile', no device file generated'
       iterate                                               /* skip */
    end
 
-   if msglevel <= 1 then
-      say PicName                                           /* progress signal */
+   call msg 0, PicName                                      /* progress signal */
 
    if file_read_dev() = 0 then                              /* read .dev file */
       iterate                                               /* skip */
@@ -219,7 +214,7 @@ do i=1 to dir.0                                             /* all relevant .dev
    if stream(jalfile, 'c', 'query exists') \= '' then       /* previous */
       call SysFileDelete jalfile                            /* delete */
    if stream(jalfile, 'c', 'open write') \= 'READY:' then do
-      Say '  Error: Could not create device file' jalfile
+      call msg 3, 'Could not create device file' jalfile
       leave                                                 /* setup error: terminate */
    end
 
@@ -233,8 +228,8 @@ do i=1 to dir.0                                             /* all relevant .dev
    else if core = '16' then                                 /* 18Fs */
       rx = dev2Jal16()
    else do                                                  /* other or undetermined core */
-      say '  Error: Unsupported core:' Core                 /* report detected Core */
-      say '         Internal script error, terminating ....'
+      call msg 3, 'Unsupported core:' Core,                 /* report detected Core */
+                  'Internal script error, terminating ....'
       leave                                                 /* script error: terminate */
    end
 
@@ -248,10 +243,9 @@ end
 call lineout chipdef, '--'                                  /* last line */
 call stream  chipdef, 'c', 'close'                          /* done */
 
-if msglevel <= 1 then
-   say 'Generated' listcount 'device files in' format(time('E'),,2) 'seconds'
-if LkrMissCount > 0 & msglevel <= 1 then
-   say LkrMissCount 'device files could not be created because of missing .lkr files'
+call msg 1, 'Generated' listcount 'device files in' format(time('E'),,2) 'seconds'
+if LkrMissCount > 0 then
+   call msg 1, LkrMissCount 'device files could not be created because of missing .lkr files'
 
 signal off error
 signal off syntax                                           /* restore to default */
@@ -390,7 +384,7 @@ return 0
 file_read_dev: procedure expose DevFile Dev. msglevel
 Dev.0 = 0                                                   /* no records read yet */
 if stream(DevFile, 'c', 'open read') \= 'READY:' then do
-   Say '  Error: could not open .dev file' DevFile
+   call msg 3, 'Could not open .dev file' DevFile
    return 0                                                 /* zero records */
 end
 i = 1                                                       /* first record */
@@ -429,7 +423,7 @@ if stream(LkrFile, 'c', 'query exists') = '' then do
 end
 Lkr.0 = 0                                                   /* no records read */
 if stream(LkrFile, 'c', 'open read') \= 'READY:' then do
-   Say '  Error: Could not find any suitable .lkr file for' PicName
+   call msg 3, 'Could not find any suitable .lkr file for' PicName
    LkrMissCount = LkrMissCount + 1
    return 0                                                 /* zero records */
 end
@@ -469,11 +463,10 @@ return Lkr.0                                                /* number of records
 /* --------------------------------------------------- */
 file_read_picspec: procedure expose PicSpecFile PicSpec. msglevel
 if stream(PicSpecFile, 'c', 'open read') \= 'READY:' then do
-   Say '  Error: could not open file with device specific data' PicSpecFile
+   call msg 3, 'Could not open file with device specific data' PicSpecFile
    exit 1                                                   /* zero records */
 end
-if msglevel <= 1 then
-   call charout , 'Reading device specific data items from' PicSpecFile '... '
+call msg 1, 'Reading device specific data items from' PicSpecFile '...'
 do until x = '{' | x = 0                                    /* search begin of pinmap */
    x = json_newchar(PicSpecFile)
 end
@@ -494,8 +487,6 @@ do until x = '}' | x = 0                                    /* end of pinmap */
    x = json_newchar(PicSpecFile)
 end
 call stream PicSpecFile, 'c', 'close'
-if msglevel <= 1 then
-  say 'done!'
 return
 
 
@@ -505,11 +496,10 @@ return
 /* --------------------------------------------------- */
 file_read_pinmap: procedure expose PinMapFile PinMap. PinANMap. msglevel
 if stream(PinMapFile, 'c', 'open read') \= 'READY:' then do
-   Say '  Error: could not open file with Pin Alias information' PinMapFile
+   call msg 3, 'Could not open file with Pin Alias information' PinMapFile
    exit 1                                                   /* zero records */
 end
-if msglevel <= 1 then
-   call charout , 'Reading pin alias names from' PinMapFile '... '
+call msg 1, 'Reading pin alias names from' PinMapFile '...'
 do until x = '{' | x = 0                                    /* search begin of pinmap */
    x = json_newchar(PinMapFile)
 end
@@ -555,8 +545,6 @@ do until x = '}' | x = 0                                    /* end of pinmap */
    x = json_newchar(PinMapFile)
 end
 call stream PinMapFile, 'c', 'close'
-if msglevel <= 1 then
-   say 'done!'
 return
 
 
@@ -594,17 +582,14 @@ return 0                                                    /* dummy */
 /* ---------------------------------------------------- */
 file_read_fusedef: procedure expose FuseDefFile Fuse_Def. msglevel
 if stream(FuseDefFile, 'c', 'open read') \= 'READY:' then do
-   Say '  Error: could not open file with fuse_def mappings' FuseDefFile
+   call msg 3, 'Could not open file with fuse_def mappings' FuseDefFile
    exit 1                                                   /* zero records */
 end
-if msglevel <= 1 then
-  call charout , 'Reading Fusedef Names from' FuseDefFile '... '
+call msg 1, 'Reading Fusedef Names from' FuseDefFile '... '
 do while lines(FuseDefFile) > 0                             /* read whole file */
    interpret linein(FuseDefFile)                            /* read and interpret line */
 end
 call stream FuseDefFile, 'c', 'close'                       /* done */
-if msglevel <= 1 then
-   say 'done!'
 return
 
 
@@ -671,8 +656,7 @@ do i = 1 to Dev.0
       NumBanks = strip(Value)
       if NumBanks > 4 then do                               /* max 4 banks for core 12 and 14 */
          if core \= '14H' then do                           /* (32 banks for core 14h) */
-            if msglevel <= 2 then
-               say '  Warning: Number of RAM banks > 4'
+            call msg  2, 'Number of RAM banks > 4'
             NumBanks = 4                                    /* compiler limit */
          end
       end
@@ -787,8 +771,7 @@ do i = 1 to Dev.0
 end
 if core == '16' then do                                     /* 18F */
    if CfgAddr.1 < CodeSize then do                          /* code overlaps cfg words */
-      if msglevel <= 2 then
-         say '  Warning: Code memory overlaps Configuration words'
+      call msg 2, 'Code memory overlaps Configuration words'
       CodeSize = CfgAddr.1                                  /* correct Code size */
    end
    call lineout jalfile, 'pragma  code    'CodeSize'                    -- (bytes)'
@@ -811,8 +794,8 @@ do i = 1 to Dev.0
    if Value \= '' then do
       parse var Value '0X' val1 '-' '0X' val2 .
       if X2D(val1) > 0 then do                              /* start address */
-         if DataStart \= '0x'val1  & msglevel <= 1 then
-            say '   Info: DataStart changed from' DataStart 'to 0x'val1
+         if DataStart \= '0x'val1 then
+            call msg 1, 'DataStart changed from' DataStart 'to 0x'val1
          DataStart = '0x'val1
       end
       DataSize = X2D(val2) - X2D(val1) + 1
@@ -859,7 +842,7 @@ do i = 1 to Dev.0
    end
 end
 if DevId == '0000' then do                                  /* DevID not found */
-   if PicName = '16f627' then                               /* missing in MPlab */
+   if PicName = '16f627' then                               /* missing in MPlab < 8.60*/
       Devid = '07A0'
    else if PicName = '16f628' then
       Devid = '07C0'
@@ -882,17 +865,17 @@ if xChipDef.xDevId = '?' then do                            /* if not yet assign
    call lineout chipdef, left('const       PIC_'PicNameUpper,29) '= 0x_'xDevId
 end
 else do
-   say '  Warning: DevID of' PicName 'in use by' xChipDef.xDevid
+   call msg  2, 'DevID of' PicName 'in use by' xChipDef.xDevid
    if right(PicName,2) \= '39' then                         /* PicName not ending with '39' */
-      say '  Warning: PicName ('PicName') does not end with 39! Probably an error!'
+      Call msg 3, 'PicName <'PicName'> does not end with 39!'
    xDevId = xDevId'a'                                       /* try with suffix 'a' */
    if xChipDef.xDevId = '?' then do                         /* if not yet assigned */
       xChipDef.xDevId = PicName                             /* remember alternate */
       call lineout chipdef, left('const       PIC_'PicNameUpper,29) '= 0x_'xDevId
-      say '           Alternate devid (0x'xDevid') assigned'
+      call msg 1, 'Alternate devid (0x'xDevid') assigned'
    end
    else do
-      say '  Error: Even alternate devid (0x'xDevId') in use (by 'xChipDef.xDevId')'
+      call msg 3, 'Even alternate devid (0x'xDevId') in use (by 'xChipDef.xDevId')'
       exit 1
    end
 end
@@ -1119,7 +1102,7 @@ list_fuses_words1x: procedure expose jalfile CfgAddr. PicSpec. PicName msglevel
 PicNameCaps = toupper(PicName)
 FusesDefault = PicSpec.PicNameCaps.FusesDefault
 if FusesDefault = '?' then do
-   say '  Error:' PicName 'FusesDefault not listed in devicespecific.cmd!'
+   call msg 3, 'FusesDefault not listed in devicespecific.cmd!'
    exit 1
 end
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
@@ -1168,7 +1151,7 @@ list_fuses_bytes16: procedure expose jalfile CfgAddr. PicSpec. PicName msglevel
 PicNameCaps = toupper(PicName)
 FusesDefault = PicSpec.PicNameCaps.FusesDefault             /* get default */
 if FusesDefault = '?' then do
-  say '  Error:' PicName 'FusesDefault not listed in devicespecific.cmd!'
+  call msg 3, 'FusesDefault not listed in devicespecific.cmd!'
   exit 1
 end
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
@@ -1213,7 +1196,8 @@ do i = 1 to Dev.0
    parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 .
    if val1 \= '' then do
       reg = strip(val1)                                     /* register name */
-      if reg = 'SSPCON1' |,                                 /* to be normalized */
+      if reg = 'SSPCON1' |,
+         reg = 'SSP1CON' |,                                 /* to be normalized */
          reg = 'SSPCON0' then
          reg = 'SSPCON'                                     /* normalized name */
       Name.reg = reg                                        /* add to collection of names */
@@ -1237,10 +1221,8 @@ do i = 1 to Dev.0
             call lineout jalfile, 'var volatile byte  ' left('PORTA',25) 'at' reg
             call list_port1x_shadow 'PORTA'
          end
-         when reg = 'GP' then do                            /* port */
-            if msglevel <= 2 then
-            say '  Warning: register GP to be renamed to GPIO'
-         end
+         when reg = 'GP' then                               /* port */
+            call msg 2, 'Register GP to be renamed to GPIO'
          when reg = 'TRISIO' then do                        /* low pincount PIC */
             call lineout jalfile, 'var volatile byte  ' left('TRISA',25) 'at' reg
             call lineout jalfile, 'var volatile byte  ' left('PORTA_direction',25) 'at' reg
@@ -1343,6 +1325,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                         call lineout jalfile, 'var volatile bit   ',
                                      left('JANSEL_ANS'ansx,25) 'at' reg ':' offset
                   end
+                  when pos('CCP',reg) > 0  & right(reg,3) = 'CON'  &,   /* [E]CCPxCON */
+                       left(n.j,3) = 'CCP'                         &,
+                            (right(n.j,1) = 'X' | right(n.j,1) = 'Y') then do   /* CCP.X/Y */
+                     nop                                    /* suppress */
+                  end
                   when (reg = 'T1CON' & n.j = 'T1SYNC') then do
                      field = reg'_N'n.j                     /* insert 'not' prefix */
                      call lineout jalfile, 'var volatile bit   ',
@@ -1387,11 +1374,9 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        n.j = 'CHS3'  then do                /* 'loose' 4th bit */
                      chkname = reg'_CHS210'                 /* compose name */
-                     if  Name.chkname = '-' then do         /* partner field not present */
-                        if msglevel <= 2 then
-                           say '  Warning: ADCONx_CHS3 bit without previous',
+                     if  Name.chkname = '-' then            /* partner field not present */
+                        call msg 2, 'ADCONx_CHS3 bit without previous',
                                ' ADCONx_CHS210 field declaration'
-                     end
                      else do
                         call lineout jalfile, 'procedure' reg'_CHS'"'put"'(byte in x) is'
                         call lineout jalfile, '   pragma inline'
@@ -1403,8 +1388,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                         call lineout jalfile, 'end procedure'
                      end
                   end
-                  when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &, /* [E]CCPxCON */
-                     ((left(n.j,3) = 'CCP' &  right(n.j,1) = 'Y') |, /* CCPxY */
+                  when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &,   /* [E]CCPxCON */
+                     ((left(n.j,3) = 'CCP' &  right(n.j,1) = 'Y') |,    /* CCPxY */
                       (left(n.j,2) = 'DC' &  right(n.j,2) = 'B0')) then do /* DCxB0 */
                      if left(n.j,2) = 'DC' then
                         field = reg'_DC'substr(n.j,3,1)'B'
@@ -1885,7 +1870,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
             end
          end
 
-         if reg = 'SSP1CON1' |,
+         if reg = 'SSP1CON'  |,
+            reg = 'SSP1CON1' |,
             reg = 'SSP1CON2' |,                             /* selected SSP1 regs */
             reg = 'SSP1CON3' |,
             reg = 'SSP1STAT' then do
@@ -2056,7 +2042,7 @@ do i = 1 to Dev.0
                reg = 'BAUDCON' |,
                reg = 'BAUDCTL' then do
                alias = reg'1'                               /* add '1' suffix */
-               say 'PIC with 2 USARTs, but register ('reg') of first USART has no "1" suffix'
+               call msg 2, 'PIC with 2 USARTs, but register ('reg') of first USART has no "1" suffix'
             end
          end
 
@@ -2104,9 +2090,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
       parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
       offset = 7                                            /* MSbit first */
       do j = 1 to 8 while offset >= 0                       /* 8 bits */
-         if s.j = 1 then do                                 /* single bit */
-            if (pos('/', n.j) > 0 | pos('_', n.j) > 0)  &,  /* check for twin name */
-                left(n.j,4) \= 'PRI_' then do               /* exception */
+         if s.j = 1  & n.j \= '-'then do                    /* single active bit */
+            if (pos('/', n.j) > 0 | pos('_', n.j) > 0)  &,   /* check for twin name */
+                left(n.j,4) \= 'PRI_'     &,
+                left(reg,7) \= 'RXFBCON'  &,                /* exceptions */
+                left(reg,4) \= 'MSEL'     then do
                if pos('/', n.j) > 0 then                    /* splitted with '/' */
                  parse var n.j val1'/'val2 .
                else                                         /* splitted with '_' */
@@ -2134,6 +2122,12 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                      p = j - 1                              /* previous bit */
                      if right(n.j,5) = 'VCFG0' & right(n.p,5) = 'VCFG1' then
                         call lineout jalfile, 'var volatile bit*2 ',
+                           left(left(field,length(field)-1),25) memtype 'at' reg ':' offset
+                  end
+                  when left(reg,6) = 'CANCON'  &,                   /* CANCON */
+                       left(n.j,5) = 'REQOP' then do        /* REQOP bit */
+                     if n.j = 'REQOP0' then                 /* last enumerated bit */
+                        call lineout jalfile, 'var volatile bit*3 ',
                            left(left(field,length(field)-1),25) memtype 'at' reg ':' offset
                   end
                   when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &, /* [E]CCPxCON */
@@ -2206,6 +2200,12 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                         call lineout jalfile, 'end procedure'
                         call lineout jalfile, '--'
                      end
+                  end
+                  when reg = 'OSCCON'  &  n.j = 'SCS0' then do
+                     field = reg'_SCS'
+                     if duplicate_name(field,reg) = 0 then  /* unique */
+                        call lineout jalfile, 'var volatile bit*2 ',
+                                     left(field,25) memtype 'at' reg ':' offset
                   end
                   when reg = 'PIE1' then do
                      if n.j = 'SSP1IE' then do
@@ -2760,7 +2760,7 @@ return 0
 /*         - register name                                    */
 /* 16-bit core                                                */
 /* ---------------------------------------------------------- */
-list_nmmr_sub16: procedure expose Dev. Name. PinMap. PicName jalfile msgelevel
+list_nmmr_sub16: procedure expose Dev. Name. PinMap. PicName jalfile msglevel
 i = arg(1) + 1                                              /* first after reg */
 reg = arg(2)                                                /* register (name) */
 do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records */
@@ -2887,8 +2887,7 @@ if core = '12' | core = '14' then do                        /* baseline, midrang
          end
       end
       otherwise
-         if msglevel < 3 then
-            say '  Unsupported ADC register for' PicName ':' reg
+         call msg 3, 'Unsupported ADC register for' PicName ':' reg
          ansx = 99
    end
 end
@@ -2937,8 +2936,7 @@ else if core = '14H' then do                                /* extended midrange
             ansx = word('0 1 2 3 99 4 99 99', ansx + 1)
       end
       otherwise
-         if msglevel < 3 then
-            say '  Unsupported ADC register for' PicName ':' reg
+         call msg 3, 'Unsupported ADC register for' PicName ':' reg
          ansx = 99
    end
 end
@@ -2981,8 +2979,7 @@ else if core = '16' then do                                 /* 18F series */
             ansx = 4                                        /* jump */
       end
       otherwise
-         if msglevel < 3 then
-            say '  Unsupported ADC register for' PicName ':' reg
+         call msg 3, 'Unsupported ADC register for' PicName ':' reg
          ansx = 99
     end
 end
@@ -2990,8 +2987,7 @@ end
 PicNameUpper = toupper(PicName)
 aliasname    = 'AN'ansx
 if ansx < 99 & PinANMap.PicNameUpper.aliasname = '---' then do /* no match */
-   if msglevel < 3 then
-      say '  Warning: No "pin_AN'ansx'" alias in pinmap'
+   call msg 2, 'No "pin_AN'ansx'" alias in pinmap'
    ansx = 99                                                /* error indication */
 end
 return ansx
@@ -3125,8 +3121,7 @@ reg     = arg(1)
 PinName = arg(2)
 Pin     = arg(3)
 if PinMap.PicUpper.PinName.0 = '?' then do
-   if msglevel <= 2 then
-      Say '  Warning: insert_pin_alias() PinMap.'PicUpper'.'PinName 'is undefined'
+   call msg 2, 'insert_pin_alias() PinMap.'PicUpper'.'PinName 'is undefined'
    return 0                                                 /* no alias */
 end
 if PinMap.PicUpper.PinName.0 > 0 then do
@@ -3152,8 +3147,7 @@ reg     = arg(1)
 PinName = arg(2)
 Pin     = arg(3)
 if PinMap.PicUpper.PinName.0 = '?' then do
-   if msglevel <= 2 then
-      Say '  Warning: insert_pin_direction_alias() PinMap.'PicUpper'.'PinName 'is undefined'
+   call msg 2, 'insert_pin_direction_alias() PinMap.'PicUpper'.'PinName 'is undefined'
    return 0                                                 /* ignore no alias */
 end
 if PinMap.PicUpper.PinName.0 > 0 then do
@@ -3329,20 +3323,27 @@ do i = 1 to dev.0                                           /* scan .dev file */
 
             select                                          /* reduce synonyms and */
                                                             /* correct MPLAB errors */
+               when key = 'ADDRBW' then
+                  key = 'ABW'
                when key = 'BACKBUG' | key = 'BKBUG' then
                   key = 'DEBUG'
                when key = 'BBSIZ0' then
                   key = 'BBSIZ'
                when key = 'BODENV' | key = 'BOR4V' | key = 'BORV' then
                   key = 'VOLTAGE'
-               when key = 'BODEN' | key = 'BOREN' | key = 'DSBOREN' then
+               when key = 'BODEN' | key = 'BOREN' | key = 'DSBOREN' | key = 'BOD' | key = 'BOR' then
                   key = 'BROWNOUT'
-               when left(key,3) = 'CCP' & right(key,2) = 'MX' then
-                  key = left(key,4)'MUX'                    /* CCPxMX -> CCPxMUX */
+               when left(key,3) = 'CCP' & right(key,2) = 'MX' then do
+                  key = left(key,pos('MX',key)-1)'MUX'      /* CCP(x)MX -> CCP(x)MUX */
+                  if key = 'CCPMUX' then
+                     key = 'CCP1MUX'                        /* compatibility */
+               end
                when key = 'CPDF' | key = 'CPSW' then
                   key = 'CPD'
                when left(key,3) = 'CP_' & datatype(substr(key,4),'W') = 1 then
                   key = 'CP'substr(key,4)                   /* remove underscore */
+               when key = 'DATABW' then
+                  key = 'BW'
                when left(key,4) = 'EBRT' then               /* typo in .dev files */
                   key = 'EBTR'substr(key,5)
                when left(key,5) = 'EBTR_' & datatype(substr(key,6),'W') = 1 then
@@ -3355,6 +3356,8 @@ do i = 1 to dev.0                                           /* scan .dev file */
                   key = 'FLTAMUX'
                when key = 'FOSC' then
                   key = 'OSC'
+               when key = 'FSCM' then
+                  key = 'FCMEN'
                when key = 'MCLRE' then
                   key = 'MCLR'
                when key = 'MSSP7B_EN' | key = 'MSSPMSK' then
@@ -3384,12 +3387,18 @@ do i = 1 to dev.0                                           /* scan .dev file */
                   key = 'T1OSCMUX'
                when key = 'T3CMX' then
                   key = 'T3CMUX'
+               when key = 'USBDIV'  &,                      /* compatibility */
+                    (left(PicName,6) = '18f245' | left(PicName,6) = '18f255' |,
+                     left(PicName,6) = '18f445' | left(PicName,6) = '18f455' ) then
+                  key = 'USBPLL'
                when key = 'WDTEN' | key = 'WDTE' then
                   key = 'WDT'
+               when key = 'WDPS' then
+                  key = 'WDTPS'
                when key = 'WRT_ENABLE' | key = 'WRTEN' then
                   key = 'WRT'
                when left(key,4) = 'WRT_' & datatype(substr(key,5),'W') = 1 then
-                  key = 'WRT'substr(key,5)                  /* remove underscore */
+                  key = delstr(key,4,1)                     /* remove underscore from 'WRT_x' */
                otherwise
                   nop                                       /* accept any other key asis */
             end
@@ -3447,15 +3456,17 @@ end
 
 do i = i + 1  while i <= dev.0  &,
            (word(dev.i,1) = 'SETTING' | word(dev.i,1) = 'CHECKSUM')
-   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X',
-                          val1 'DESC' '=' '"' val2 '"' .
+   parse var Dev.i 'SETTING' val0 'VALUE' '=' '0X' val1 'DESC' '=' '"' val2 '"' .
    if val1 = '' then                                        /* no setting value found */
       iterate                                               /* skip to next line */
 
    mask = strip(val1)                                       /* bit mask (hex) */
    val2 = strip(val2)
-   val2u = translate(val2, '                 ','+-:;.,<>{}[]()=/?') /* to blanks */
-   val2u = space(val2u,,'_')                                /* single underscores */
+   val2u = translate(val2, '                 ',,            /* to blank */
+                           '+-:;.,<>{}[]()=/?')             /* from special char */
+   val2u = space(val2u,,'_')                                /* blanks -> single underscore */
+
+   kwd = ''                                                 /* null keyword */
 
    select                                                   /* key specific formatting */
 
@@ -3467,11 +3478,19 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'BBSIZ' then do
-         do j=1 to words(val2)
-           if left(word(val2,j),1) >= '0' & left(word(val2,j),1) <= '9' then do
-             kwd = 'W'word(val2,j)                          /* found leading digit */
-             leave
-           end
+         if val2 = 'ENABLED' then do
+            kwd = val2
+            flag_enabled = flag_enabled + 1
+         end
+         else if val2 = 'DISABLED' then do
+            kwd = val2
+            flag_disabled = flag_disabled + 1
+         end
+         else do j=1 to words(val2)
+            if left(word(val2,j),1) >= '0' & left(word(val2,j),1) <= '9' then do
+               kwd = 'W'word(val2,j)                          /* found leading digit */
+               leave
+            end
          end
          if datatype(substr(kwd,2),'W') = 1  &,             /* second char numeric */
              pos('KW',val2u) > 0 then do                    /* contains KW */
@@ -3480,13 +3499,16 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'BG' then do                               /* band gap */
-         kwd = word(val2,1)                                 /* first word */
-         if kwd = 'ADJUST' then do
+         if word(val2,1) = 'HIGHEST' | word(val2,1) = 'LOWEST' then
+            kwd = word(val2,1)
+         else if word(val2,1) = 'ADJUST' then do
             if pos('-',val2) > 0 then                       /* negative voltage */
-               kwd = kwd'_NEG'
+               kwd = word(val2,1)'_NEG'
             else
-               kwd = kwd'_POS'
+               kwd = word(val2,1)'_POS'
          end
+         else
+            kwd = val2u
       end
 
       when key = 'BORPWR' then do                           /* BOR power mode */
@@ -3505,12 +3527,16 @@ do i = i + 1  while i <= dev.0  &,
       when key = 'BROWNOUT' then do
          if  pos('SLEEP',val2) > 0 & pos('DEEP SLEEP',val2) = 0 then
             kwd = 'RUNONLY'
-         else if pos('ENABLE',val2) > 0  | val2 = 'ON' then do
+         else if pos('HARDWARE_ONLY',val2u) > 0 then do
             kwd = 'ENABLED'
             flag_enabled = flag_enabled + 1
          end
          else if pos('CONTROL',val2) > 0 then
             kwd = 'CONTROL'
+         else if pos('ENABLED',val2) > 0 | val2 = 'ON' then do
+            kwd = 'ENABLED'
+            flag_enabled = flag_enabled + 1
+         end
          else do
             kwd = 'DISABLED'
             flag_disabled = flag_disabled + 1
@@ -3520,6 +3546,14 @@ do i = i + 1  while i <= dev.0  &,
       when left(key,3) = 'CCP' & right(key,3) = 'MUX' then do /* CCPxMUX */
          if pos('MICRO',val2) > 0 then                      /* Microcontroller mode */
             kwd = 'pin_E7'                                  /* valid for all current PICs */
+         else if val2u = 'ENABLED' then do
+            kwd = val2u
+            flag_enabled = flag_enabled + 1
+         end
+         else if val2u = 'DISABLED' then do
+            kwd = val2u
+            flag_disabled = flag_disabled + 1
+         end
          else
             kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
       end
@@ -3565,8 +3599,8 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'ECCPMUX' then do
-         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
-            kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
+         if pos('_R',val2u) > 0 then                       /* check for _R<pin> */
+            kwd = 'pin_'substr(val2u,pos('_R',val2u)+2,2)  /* 2 chars after '_R' */
          else
             kwd = val2u
       end
@@ -3583,7 +3617,7 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'ETHLED' then do
-         if pos('ETHERNET',val2) > 0 then do                /* LED enabled */
+         if pos('ETHERNET',val2) > 0 | val2 = 'ENABLED' then do     /* LED enabled */
             kwd = 'ENABLED'
             flag_enabled = flag_enabled + 1
          end
@@ -3594,21 +3628,22 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'EXCLKMUX' then do                         /* Timer0/5 clock pin */
-         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
-            kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
+         if pos('_R',val2u) > 0 then                       /* check for _R<pin> */
+            kwd = 'pin_'substr(val2u,pos('_R',val2u)+2,2)  /* 2 chars after '_R' */
          else
             kwd = val2u
       end
 
       when key = 'FLTAMUX' then do
-         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
-            kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
+         if pos('_R',val2u) > 0 then                       /* check for _R<pin> */
+            kwd = 'pin_'substr(val2u,pos('_R',val2u)+2,2)  /* 2 chars after '_R' */
          else
             kwd = val2u
       end
 
       when key = 'FOSC2' then do
-         if pos('INTRC',val2) > 0 then
+         if pos('INTRC', val2) > 0  |,
+            val2 = 'ENABLED' then
             kwd = 'INTOSC'
          else
             kwd = 'OSC'
@@ -3641,6 +3676,10 @@ do i = i + 1  while i <= dev.0  &,
             else
                kwd = 'F4MHZ'                                /* otherwise */
          end
+         else if val2 = 'ENABLED' then
+            kwd = 'F8MHZ'
+         else if val2 = 'DISABLED' then
+            kwd = 'F4MHZ'                                   /* otherwise */
          else do
             kwd = val2u
             if left(kwd,1) >= '0' & left(kwd,1) <= '9' then
@@ -3690,15 +3729,14 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'MSSPMASK' then do
-         kwd = 'B'word(val2,1)                              /* 5 or 7 expected */
+         kwd = 'B'word(translate(val2u,' ','_'),1)          /* 5 or 7 expected */
       end
 
       when key = 'OSC' then do
          kwd = Fuse_Def.Osc.val2u
          if kwd = '?' then do
-            if msglevel <= 2 then
-               say '  Warning: No mapping for fuse_def' key' :' val2u
-            return
+            call msg 2, 'No mapping for fuse_def' key' :' val2u
+/* ???      return    */
          end
          else if val2u = 'INTOSC'  & ,
                 (PicName = '16f913' | PicName = '16f914'|,
@@ -3714,6 +3752,13 @@ do i = i + 1  while i <= dev.0  &,
             kwd = val2u
       end
 
+      when key = 'PBADEN' then do
+         if pos('ANALOG',val2) > 0  |  val2 = 'ENABLED' then
+            kwd = 'ANALOG'
+         else
+            kwd = 'DIGITAL'
+      end
+
       when key = 'PLLDIV' then do
          if left(val2,9) = 'DIVIDE BY' then
             kwd = P||word(val2,3)                           /* 3rd word */
@@ -3726,12 +3771,16 @@ do i = i + 1  while i <= dev.0  &,
       when key = 'PLLEN' then do
          if pos('MULTIPL',val2) > 0 then
             kwd = 'P'word(val2,words(val2))                 /* last word */
-         else if pos('DIRECT',val2) > 0 | pos('DISABLED',val2) > 0 then
+         else if pos('DIRECT',val2) > 0 | pos('DISABLED',val2) > 0 then do
             kwd = 'P1'
-         else if pos('ENABLED',val2) > 0 then
-            kwd = 'P4'                                      /* (assumed) */
-         else if pos('DISABLED',val2) > 0 then
-            kwd = 'P1'
+            if left(PicName,4) = '16f7'                     /* compatibility */
+               then kwd = 'F500KHZ'
+         end
+         else if pos('ENABLED',val2) > 0 then do
+            kwd = 'P4'
+            if left(PicName,4) = '16f7'                     /* compatibility */
+               then kwd = 'F16MHZ'
+         end
          else if datatype(left(val2,1),'W') = 1 then
             kwd = 'F'val2u
          else
@@ -3767,8 +3816,8 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'PWM4MUX' then do
-         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
-            kwd = 'pin_'right(val2u,2)
+         if pos('_R',val2u) > 0 then                       /* check for _R<pin> */
+            kwd = 'pin_'substr(val2u,pos('_R',val2u)+2,2)  /* 2 chars after '_R' */
          else
             kwd = val2u
       end
@@ -3803,13 +3852,11 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'SSPMUX' then do
-         offset1 = pos('MUX',val2)
-         if offset1 > 0 then do
-                                                            /* say 'offset 1' offset1 */
-            offset2 = pos(' R',substr(val2,offset1))        /* pin */
-                                                            /* say 'offset 2' offset2 */
+         offset1 = pos('_MULTIPLEX',val2u)
+         if offset1 > 0 then do                             /* 'multiplexed' found */
+            offset2 = pos('_R',substr(val2u,offset1))       /* first pin */
             if offset2 > 0 then
-               kwd = 'pin_'substr(val2,offset1+offset2+1,2)
+               kwd = 'pin_'substr(val2u,offset1+offset2+1,2)
             else
                kwd = 'ENABLED'
          end
@@ -3818,26 +3865,24 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'T1OSCMUX' then do
-         if right(val2,3) = 'RA7' then
-            kwd = 'pin_A6_A7'
-         else if right(val2,3) = 'RB3' then
-            kwd = 'pin_B2_B3'
+         if left(right(val2u,4),2) = '_R' then
+            kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
          else
             kwd = val2u
       end
 
       when key = 'T3CMUX' then do
-         if substr(val2u,length(val2u)-3,2) = '_R' then     /* check for _R<pin> */
-            kwd = 'pin_'right(val2u,2)
+         if pos('_R',val2u) > 0 then                       /* check for _R<pin> */
+            kwd = 'pin_'substr(val2u,pos('_R',val2u)+2,2)  /* 2 chars after '_R' */
          else
             kwd = val2u
       end
 
-      when key = 'USBDIV' then do
-         if pos('NO DIVIDE',val2) > 0 then
-            kwd = 'P1'
+      when key = 'USBDIV' then do                           /* mplab >= 8.60 (was USBPLL) */
+         if val2u = 'ENABLED' | pos('96_MH',val2u) > 0 | pos('DIVIDED_BY',val2u) > 0 then
+            kwd = 'P4'                                  /* compatibility */
          else
-            kwd = 'P'word(val2,words(val2))                 /* last word */
+            kwd = 'P1'                                      /* compatibility */
       end
 
       when key = 'USBPLL' then do
@@ -3848,7 +3893,7 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'VCAPEN' then do
-         if pos('DISABLED',val2) > 0 then                   /* no en/disable balancing */
+         if pos('DISABLED',val2) > 0 then
             kwd = 'DISABLED'
          else if pos('ENABLED',val2) > 0 then do
             kwd = word(val2, words(val2))                   /* last word */
@@ -3864,12 +3909,20 @@ do i = i + 1  while i <= dev.0  &,
             if left(word(val2,j),1) >= '0' & left(word(val2,j),1) <= '9' then do
                if pos('.',word(val2,j)) > 0 then do         /* select digits */
                   kwd = 'V'left(word(val2,j),1,1)||substr(word(val2,j),3,1)
+                  if kwd = 'V21' then
+                     kwd = 'V20'                            /* compatibility */
                   leave                                     /* done */
                end
             end
          end
-         if j > words(val2) then                            /* no voltage value found */
-            kwd = val2u
+         if j > words(val2) then do                         /* no voltage value found */
+            if pos('MINIMUM',val2) > 0 then
+               kwd = 'MINIMUM'
+            else if pos('MAXIMUM',val2) > 0 then
+               kwd = 'MAXIMUM'
+            else
+               kwd = val2u
+         end
       end
 
       when key = 'WAIT' then do
@@ -3926,11 +3979,15 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'WRT' then do
-         if pos('DISABLED',val2) > 0 |,                     /* unprotected */
-            pos('OFF',val2) > 0 then
+         if val2u = 'ENABLED' | val2u = 'DISABLED' then do
+            if val1 > 0 then                                /* (any) bit(s) on */
+               kwd = 'NO_PROTECTION'
+            else
+               kwd = 'ALL_PROTECTED'
+         end
+         else if pos('OFF',val2) > 0    |,
+                 pos('UNPROT',val2) > 0 then
             kwd = 'NO_PROTECTION'
-         else if pos('ENABLED',val2) > 0 then               /* protected */
-            kwd = 'ALL_PROTECTED'
          else if left(Val2,1) = '0' then do                 /* memory range */
             parse var Val2 '0X'aa '-' '0X'zz .
             if zz = '' then do
@@ -3978,29 +4035,38 @@ do i = i + 1  while i <= dev.0  &,
                   kwd = 'F'val2u                            /* 'F' prefix */
                else if pos('_TO_',val2u) > 0  |,            /* probably a range */
                        pos('0_',val2u) > 0    |,
-                       pos('_0',val2u) > 0  then
-                  kwd = 'R'val2u                            /* 'R' prefix */
+                       pos('_0',val2u) > 0  then do
+                  if pos('_TO_',val2u) > 0 then do
+                     kwd = delword(val2,4)                  /* keep 1st three words */
+                     kwd = delword(kwd,2,1)                 /* keep only 'from' and 'to' */
+                     kwd = translate(kwd, '  ','Hh')        /* replace 'H' and 'h' by space */
+                     kwd = space(kwd,1,'_')                 /* single undescore */
+                  end
+                  else
+                     kwd = word(val2,1)                     /* keep 1st word */
+                  kwd = 'R'translate(kwd,'_','-')           /* 'R' prefix, hyphen->undesrcore */
+               end
                else                                         /* probably a range */
-                  kwd = 'N'val2u                            /* 'N' prefix */
+                  kwd = 'N'toupper(word(val2,1))            /* 1st word, 'N' prefix */
             end
             else
-               kwd = val2u
+               kwd = val2u                                  /* if no alternative! */
          end
    end
 
-   if kwd.kwd = '-' then do                                 /* unique (not duplicate) */
+   if kwd = '' then                                           /* empty keyword */
+      call msg 3, 'No keyword found for fuse_def' key '('val2')'
+   else if kwd.kwd = '-' then do                            /* unique (not duplicate) */
       kwd.kwd = kwd                                         /* remember keyword */
-      if length(kwd) > 22 & msglevel <= 1 then
-         say '  Info: fuse_def' key 'keyword excessively long: "'kwd'"'
-
+      if length(kwd) > 22  then
+         call msg 2, 'fuse_def' key 'keyword excessively long: "'kwd'"'
       str = '       'kwd '= 0x'mask
       if length(str) < 40 then                              /* 'short' */
          str = left(str,40)                                 /* alignment of comments */
       call lineout jalfile, str'   --' tolower(val2)
    end
    else do                                                  /* duplicate kwd */
-      if msglevel <= 2 then
-         say '  Warning: Duplicate keyword for fuse_def' key':' kwd '('val2u')'
+      call msg 2, 'Duplicate keyword for fuse_def' key':' kwd '('val2u')'
       if kwd = 'ENABLED' then
          flag_enabled = flag_enabled - 1                    /* correction */
       else if kwd = 'DISABLED' then
@@ -4009,10 +4075,8 @@ do i = i + 1  while i <= dev.0  &,
 
 end
 
-if flag_enabled \= flag_disabled then do                    /* unbalanced */
-   if msglevel <= 2 then
-      say '  Warning: Possibly unbalanced enabled/disabled keywords for fuse_def' key
-end
+if flag_enabled \= flag_disabled then                       /* unbalanced */
+   call msg 2, 'Possibly unbalanced enabled/disabled keywords for fuse_def' key
 return
 
 
@@ -4073,7 +4137,7 @@ call lineout jalfile, '-- Special (device specific) constants and procedures'
 call lineout jalfile, '--'
 
 if PicSpec.PicNameCaps.ADCgroup = '?' then do
-   say PicName 'Error: No ADCgroup for' PicName 'in devicespecific.cmd!'
+   call msg 3, 'No ADCgroup for' PicName 'in devicespecific.cmd!'
    exit 1
 end
 ADCgroup = PicSpec.PicNameCaps.ADCgroup
@@ -4092,8 +4156,7 @@ call lineout jalfile, '--'
 
 if (ADCgroup = '0'  & PinMap.PicNameCaps.ANCOUNT > 0) |,
    (ADCgroup \= '0' & PinMap.PicNameCaps.ANCOUNT = 0) then do
-   if msglevel <= 2 then
-      say '  Warning: Possible conflict between ADC-group ('ADCgroup')',
+   call msg 2, 'Possible conflict between ADC-group ('ADCgroup')',
           'and number of ADC channels ('PinMap.PicNameCaps.ANCOUNT')'
 end
 analog. = '-'                                               /* no analog modules */
@@ -4175,9 +4238,9 @@ if Name.CMCON   \= '-' | Name.CMCON0  \= '-' |,
    call lineout jalfile, '   pragma inline'
    select
       when Name.CMCON \= '-' then
-         call lineout jalfile, '   CMCON  = 0b0000_0111        -- disable comparator'
+         call lineout jalfile, '   CMCON  = 0b0000_0000        -- disable comparator'
       when Name.CMCON0 \= '-' then
-         call lineout jalfile, '   CMCON0 = 0b0000_0111        -- disable comparator'
+         call lineout jalfile, '   CMCON0 = 0b0000_0000        -- disable comparator'
       when Name.CM1CON0 \= '-' then do
          call lineout jalfile, '   CM1CON0 = 0b0000_0000       -- disable comparator'
          if Name.CM2CON0 \= '-' then
@@ -4195,7 +4258,7 @@ if Name.CMCON   \= '-' | Name.CMCON0  \= '-' |,
          if Name.CM3CON \= '-' then
             call lineout jalfile, '   CM3CON = 0b0000_0000        -- disable 3rd comparator'
          if Name.CM4CON \= '-' then do
-            say "  Warning: Comparator 4 detected! Not handled, and check for more!"
+            call msg 2, 'Comparator 4 detected, not handled. Check for more!'
          end
       end
       otherwise                                             /* others */
@@ -4240,8 +4303,7 @@ if Name.newname = '-' then do                               /* name not in use y
    return 0                                                 /* unique */
 end
 if reg \= newname then do                                   /* not alias of register */
-   if msglevel <= 2 then
-      Say '  Warning: Duplicate name:' newname 'in' reg'. First occurence:' Name.newname
+   call msg 2, 'Duplicate name:' newname 'in' reg'. First occurence:' Name.newname
    return 1                                                 /* duplicate */
 end
 
@@ -4295,13 +4357,13 @@ PicNameCaps = toupper(PicName)
 call lineout jalfile, 'const byte PICTYPE[]   = "'PicNameCaps'"'
 DataSheet = PicSpec.PicNameCaps.DataSheet
 if DataSheet = '?' then do
-   say PicName 'Error: Datasheet not listed in devicespecific.cmd!'
+   call msg 3, 'Datasheet not listed in devicespecific.cmd!'
    exit 1
 end
 call lineout jalfile, 'const byte DATASHEET[] = "'DataSheet'"'
 PgmSpec = PicSpec.PicNameCaps.PgmSpec
 if PgmSpec = '?' then do
-   say PicName 'Error: PgmSpec not listed in devicespecific.cmd!'
+   call msg 3, 'PgmSpec not listed in devicespecific.cmd!'
    exit 1
 end
 call lineout jalfile, 'const byte PGMSPEC[]   = "'PgmSpec'"'
@@ -4327,18 +4389,12 @@ call list_unshared_data_range                               /* MaxUnsharedRam up
 MaxSharedRAM = 0                                            /* no shared RAM */
 x = list_shared_data_range()                                /* returns range string */
 /* - - - - - - - -  temporary? - - - - - - - - - - - - - - - - - */
-if MaxSharedRam > 0  &  MaxUnsharedRAM = 0  then do         /* no unshared RAM */
-   if msglevel <= 2 then do
-      say '  Warning:' PicName 'has only shared, no unshared RAM!'
-      say '            Must be handled as exceptional chip!'
-   end
-end
-else if MaxSharedRAM = 0 then do                            /* no shared RAM */
-   if msglevel <= 2 then do
-     say '  Warning:' PicName 'has no shared RAM!'
-     say '           Must be handled as exceptional chip!'
-   end
-end
+if MaxSharedRam > 0  &  MaxUnsharedRAM = 0  then            /* no unshared RAM */
+   call msg 2, PicName 'has only shared, no unshared RAM,',
+               ' must be handled as exceptional chip!'
+else if MaxSharedRAM = 0 then                               /* no shared RAM */
+   call msg 2, PicName 'has no shared RAM,',
+               ' must be handled as exceptional chip!'
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 call lineout jalfile, '--'
 if Core = '12'  |  Core = '14' then do
@@ -4463,7 +4519,25 @@ return
 
 
 /* ---------------------------------------------- */
-/* some script debugging procedures               */
+/* message handling, depending on msglevel        */
+/* ---------------------------------------------- */
+msg: procedure expose msglevel
+parse arg lvl, txt
+   if lvl = 0 then
+      say txt
+   else if lvl >= msglevel then do
+      if lvl = 1 then
+         say '   Info: 'txt
+      else if lvl = 2 then
+         say '   Warning: 'txt
+      else
+         say '   Error: 'txt
+   end
+return lvl
+
+
+/* ---------------------------------------------- */
+/* Some procedures to help script debugging       */
 /* ---------------------------------------------- */
 
 catch_error:
