@@ -2765,6 +2765,20 @@ if target_chip == PIC_16F72 | target_chip == PIC_16F767 | target_chip == PIC_16F
 
       -- Retrieve config bits according to selected number of ADC channels
       -- ADC_PCFG_MAP contains all confs, from 0 analog to the max
+      -- It also contains configuration bits to select Vref+/- pins (case 1.a),
+      -- expect when voltage ref is configured separately via VCFG bits (case 1.b).
+      -- In case 1.b, ADC_PCFG_MAP only contains configuration bits to set analog pins,
+      -- leaving other config as default one. That is, only the first element of 3-tuples
+      -- is correctly set, since there were no configuration information for Vref+ and Vref-
+      -- pins. Defined VCFG register bits tell us in which case we are, we can thus adjust
+      -- shifting value to map 3-tuple elements accordingly.
+      if defined(ADCON0_VCFG) | defined(ADCON1_VCFG) then
+         const byte ONE_VREF_SHIFT = 0  -- we only want to extract 1st element of each 3-tuples
+         const byte TWO_VREF_SHIFT = 0
+      else
+         const byte ONE_VREF_SHIFT = 1
+         const byte TWO_VREF_SHIFT = 2
+      end if
       if defined(ADC_DYNAMIC) then
          var byte idx = ADC_NCHANNEL * 3
       else
@@ -2774,20 +2788,20 @@ if target_chip == PIC_16F72 | target_chip == PIC_16F767 | target_chip == PIC_16F
          no_vref = ADC_PCFG_MAP[idx]
          ADCON1_PCFG = no_vref
       elsif ADC_NVREF == 1 then
-         one_vref = ADC_PCFG_MAP[idx + 1]
+         one_vref = ADC_PCFG_MAP[idx + ONE_VREF_SHIFT]
          ADCON1_PCFG = one_vref
-      elsif ADC_NVREF == 2 then
-         two_vref = ADC_PCFG_MAP[idx + 2]
+      -- In some case, Vref config is done separately (case 1.b), allowing ADC_NVREF = 3 
+      -- to actually mean something (Vref- only). So we need to care of this case 1.b too
+      elsif ADC_NVREF >= 2 then
+         two_vref = ADC_PCFG_MAP[idx + TWO_VREF_SHIFT]
          ADCON1_PCFG = two_vref
-      -- we could add "else" a warn we can't have more than 2 vref
-      -- (and this used to be the case), but in some case, Vref config
-      -- is done separately, and ADC_NVREF = 3 means Vref- only. So,
-      -- more than 2 Vref can sometime mean something...
       end if
    end procedure
    
 
 
+   -- Check whether we're in case 1.a (Vref done through PCFG bits) or
+   -- case 1.b (Vref done separately through VCFG bits)
    if defined(ADCON0_VCFG) | defined(ADCON1_VCFG) then
       _debug "Vref config is handled separately through VCFG bits"
       alias _adc_vref is _adc_vref_vcfg
