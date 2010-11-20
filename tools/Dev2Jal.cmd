@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.12'
+   ScriptVersion   = '0.1.13'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -4093,8 +4093,10 @@ return
  * ANCON0   ANCON1                                                               *
  * CMCON                                                                         *
  * CMCON0  [CMCON1]                                                              *
- * CM1CON  [CM2CON] [CM2CON]                                                     *
- * CM1CON0 [CM1CON1] [CM2CON0 CM2CON1]                                           *
+ * CM1CON  [CM2CON]  [CM2CON]                                                    *
+ * CM1CON0 [CM1CON1] [CM2CON0 CM2CON1] [CM3CON0 CM3CON1]                         *
+ * CM1CON0 [CM1CON1] [CM2CON0] [CM2CON1] [CM3CON0] [CM3CON1]                     *
+ * CM1CON1 [CM2CON1]                                                             *
  * Between brackets optional, otherwise always together.                         *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - *
  * PICs are classified in groups for ADC module settings.                        *
@@ -4228,9 +4230,11 @@ if Name.ADCON0 \= '-' then do                               /* check on presence
    call lineout jalfile, '--'
 end
 
-if Name.CMCON   \= '-' | Name.CMCON0  \= '-' |,
-   Name.CM1CON0 \= '-' | Name.CM1CON1 \= '-' |,
-   Name.CM1CON  \= '-' | Name.CM2CON  \= '-' | Name.CM3CON \= '-' then do
+if Name.CMCON   \= '-' |,
+   Name.CMCON0  \= '-' |,
+   Name.CM1CON  \= '-' |,
+   Name.CM1CON0 \= '-' |,
+   Name.CM1CON1 \= '-' then do
    analog.CMCON = 'comparator'                              /* Comparator present */
    call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
    call lineout jalfile, '-- Disable comparator module'
@@ -4238,31 +4242,52 @@ if Name.CMCON   \= '-' | Name.CMCON0  \= '-' |,
    call lineout jalfile, '   pragma inline'
    select
       when Name.CMCON \= '-' then
-         call lineout jalfile, '   CMCON  = 0b0000_0000        -- disable comparator'
-      when Name.CMCON0 \= '-' then
-         call lineout jalfile, '   CMCON0 = 0b0000_0000        -- disable comparator'
+         if Name.CMCON_CM \= '-' then
+            call lineout jalfile, '   CMCON  = 0b0000_0111        -- disable comparator'
+         else
+            call lineout jalfile, '   CMCON  = 0b0000_0000        -- disable comparator'
+      when Name.CMCON0 \= '-' then do
+         if Name.CMCON0_CM \= '-' then
+            call lineout jalfile, '   CMCON0 = 0b0000_0111        -- disable comparator'
+         else
+            call lineout jalfile, '   CMCON0 = 0b0000_0000        -- disable comparator'
+         if Name.CMCON1 \= '-' then
+            call lineout jalfile, '   CMCON1 = 0b0000_0000'
+      end
+      when Name.CM1CON \= '-' then do
+         if Name.CM1CON_CM \= '-' then
+            call lineout jalfile, '   CM1CON = 0b0000_0111        -- disable comparator'
+         else
+            call lineout jalfile, '   CM1CON = 0b0000_0000        -- disable comparator'
+         if Name.CM2CON \= '-' then
+            call lineout jalfile, '   CM2CON = 0b0000_0000'
+         if Name.CM3CON \= '-' then
+            call lineout jalfile, '   CM3CON = 0b0000_0000'
+      end
       when Name.CM1CON0 \= '-' then do
          call lineout jalfile, '   CM1CON0 = 0b0000_0000       -- disable comparator'
-         if Name.CM2CON0 \= '-' then
+         if Name.CM1CON1 \= '-' then
+            call lineout jalfile, '   CM1CON1 = 0b0000_0000'
+         if Name.CM2CON0 \= '-' then do
             call lineout jalfile, '   CM2CON0 = 0b0000_0000       -- disable 2nd comparator'
+            if Name.CM2CON1 \= '-' then
+               call lineout jalfile, '   CM2CON1 = 0b0000_0000'
+         end
+         if Name.CM3CON0 \= '-' then do
+            call lineout jalfile, '   CM3CON0 = 0b0000_0000        -- disable 3rd comparator'
+            if Name.CM3CON1 \= '-' then
+               call lineout jalfile, '   CM3CON1 = 0b0000_0000'
+         end
+         if Name.CM4CON0 \= '-' then
+            call msg 2, 'Comparator 4 detected, not handled. Check for more!'
       end
       when Name.CM1CON1 \= '-' then do
          call lineout jalfile, '   CM1CON1 = 0b0000_0000       -- disable comparator'
          if Name.CM2CON1 \= '-' then
             call lineout jalfile, '   CM2CON1 = 0b0000_0000       -- disable 2nd comparator'
       end
-      when Name.CM1CON \= '-' then do
-         call lineout jalfile, '   CM1CON = 0b0000_0000        -- disable comparator'
-         if Name.CM2CON \= '-' then
-            call lineout jalfile, '   CM2CON = 0b0000_0000        -- disable 2nd comparator'
-         if Name.CM3CON \= '-' then
-            call lineout jalfile, '   CM3CON = 0b0000_0000        -- disable 3rd comparator'
-         if Name.CM4CON \= '-' then do
-            call msg 2, 'Comparator 4 detected, not handled. Check for more!'
-         end
-      end
-      otherwise                                             /* others */
-         nop                                                /* can be ignored */
+      otherwise                                             /* not possible with 'if' at top */
+         nop
    end
    call lineout jalfile, 'end procedure'
    call lineout jalfile, '--'
@@ -4428,18 +4453,21 @@ return
 /* ------------------------------------------------- */
 list_chipdef_header:
 call lineout chipdef, '-- =================================================================='
-call lineout chipdef, '-- Title: Common JalV2 compiler include file'
+call lineout chipdef, '-- Title: Common Jallib include file for device files'
 call list_copyright_etc chipdef
 call lineout chipdef, '-- Sources:'
 call lineout chipdef, '--'
 call lineout chipdef, '-- Description:'
-call lineout chipdef, '--    Common JalV2 compiler include file'
+call lineout chipdef, '--    Common Jallib include files for device files'
 call lineout chipdef, '--'
 call lineout chipdef, '-- Notes:'
 call lineout chipdef, '--    - Created with Dev2Jal Rexx script version' ScriptVersion
 call lineout chipdef, '--    - File creation date/time:' date('N') left(time('N'),5)
 call lineout chipdef, '--'
 call lineout chipdef, '-- ---------------------------------------------------'
+call lineout chipdef, '--'
+call lineout chipdef, '-- JalV2 compiler required constants'
+call lineout chipdef, '--'
 call lineout chipdef, 'const       PIC_12            = 1'
 call lineout chipdef, 'const       PIC_14            = 2'
 call lineout chipdef, 'const       PIC_16            = 3'
@@ -4451,37 +4479,7 @@ call lineout chipdef, '--'
 call lineout chipdef, 'const byte  W                 = 0'
 call lineout chipdef, 'const byte  F                 = 1'
 call lineout chipdef, '--'
-call lineout chipdef, 'const bit   TRUE              = 1'
-call lineout chipdef, 'const bit   FALSE             = 0'
-call lineout chipdef, 'const bit   HIGH              = TRUE'
-call lineout chipdef, 'const bit   LOW               = FALSE'
-call lineout chipdef, 'const bit   ON                = TRUE'
-call lineout chipdef, 'const bit   OFF               = FALSE'
-call lineout chipdef, 'const bit   ENABLED           = TRUE'
-call lineout chipdef, 'const bit   DISABLED          = FALSE'
-call lineout chipdef, 'const bit   INPUT             = TRUE'
-call lineout chipdef, 'const bit   OUTPUT            = FALSE'
-call lineout chipdef, 'const byte  ALL_INPUT         = 0b_1111_1111'
-call lineout chipdef, 'const byte  ALL_OUTPUT        = 0b_0000_0000'
-call lineout chipdef, '--'
-call lineout chipdef, 'const       ADC_V0            = 0x_ADC_0'
-call lineout chipdef, 'const       ADC_V1            = 0x_ADC_1'
-call lineout chipdef, 'const       ADC_V2            = 0x_ADC_2'
-call lineout chipdef, 'const       ADC_V3            = 0x_ADC_3'
-call lineout chipdef, 'const       ADC_V4            = 0x_ADC_4'
-call lineout chipdef, 'const       ADC_V5            = 0x_ADC_5'
-call lineout chipdef, 'const       ADC_V6            = 0x_ADC_6'
-call lineout chipdef, 'const       ADC_V7            = 0x_ADC_7'
-call lineout chipdef, 'const       ADC_V7_1          = 0x_ADC_7_1'
-call lineout chipdef, 'const       ADC_V8            = 0x_ADC_8'
-call lineout chipdef, 'const       ADC_V9            = 0x_ADC_9'
-call lineout chipdef, 'const       ADC_V10           = 0x_ADC_10'
-call lineout chipdef, 'const       ADC_V11           = 0x_ADC_11'
-call lineout chipdef, 'const       ADC_V11_1         = 0x_ADC_11_1'
-call lineout chipdef, 'const       ADC_V12           = 0x_ADC_12'
-call lineout chipdef, 'const       ADC_V13           = 0x_ADC_13'
-call lineout chipdef, 'const       ADC_V13_1         = 0x_ADC_13_1'
-call lineout chipdef, 'const       ADC_V13_2         = 0x_ADC_13_2'
+call lineout chipdef, 'include  constants_jallib                     -- common Jallib library constants'
 call lineout chipdef, '--'
 call lineout chipdef, '-- =================================================================='
 call lineout chipdef, '--'
