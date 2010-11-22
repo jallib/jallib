@@ -67,7 +67,7 @@ def get_jal_filenames(dir,subdir=None,predicate=lambda dir,filename: True):
             jalfiles.update(get_jal_filenames(fulldf,subdir=os.path.join(subdir and subdir or "",df),predicate=predicate))
     return jalfiles
 
-def get_full_sample_path(sample_dir,pic="",sample=""):
+def get_full_sample_path(sample_dir,sample=""):
     return os.path.join(sample_dir,sample)
 
 
@@ -144,7 +144,7 @@ def clean_compiler_products(fromjalfile):
         # luckily all product files have 3-letters extension
         if f[:-4] == noext and f[-4:] in [".asm",".hex",".err",".cod",".obj",".lst"]:
             toclean = os.path.join(outdir,f)
-            ###print >> sys.stderr, "Cleaning %s" % toclean
+            print >> sys.stderr, "Cleaning %s" % toclean
             try:
                 os.unlink(toclean)
             except OSError,e:
@@ -561,6 +561,7 @@ def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
         print "Succesfully generated sample '%s' from board '%s' and test '%s'" % (outfile,boardfile,testfile)
     elif deleteiffailed:
         # delete the file !
+        clean_compiler_products(outfile)
         os.unlink(outfile)
         raise Exception("Can't compile sample '%s' generated from '%s' and test '%s'" % (outfile,boardfile,testfile))
 
@@ -600,7 +601,36 @@ def generate_samples_for_board(path_to_sample,board,outdir=None):
             print >> sys.stderr, "Skip test '%s' because tagged 'skip-auto'" % test
             continue
         samplename = picname + "_" + os.path.basename(test)[5:] # remove "test_", naming convention
-        fullsamplepath = outdir and os.path.join(outdir,samplename) or get_full_sample_path(path_to_sample,picname,samplename)
+        fullsamplepath = outdir and os.path.join(outdir,samplename) or get_full_sample_path(path_to_sample,samplename)
+        try:
+           generate_one_sample(board,test,fullsamplepath)
+        except Exception,e:
+           print >> sys.stderr,"Invalid board/test combination: %s" % e
+           import traceback
+           print >> sys.stderr, traceback.format_exc()
+           continue
+
+def generate_samples_for_test(path_to_sample,test,outdir=None):
+    if outdir:
+        assert os.path.isdir(outdir), "%s must be a directory when auto-generate samples (this is where samples will be stored)" % outdir
+    samplepath = get_full_sample_path(path_to_sample)
+    boardpath = get_full_board_path(path_to_sample)
+    fullboardfiles = find_board_files(boardpath)
+
+    if not is_test_autoable(test):
+        print >> sys.stderr, "Skip test '%s' because tagged 'skip-auto'" % test
+        return
+
+    # in automated mode, only board files with "@jallib preferred" are kept.
+    # this is because there can be multiple boards for a given PIC, but only
+    # ony being used to auto-generate samples
+    for board in fullboardfiles:
+        if not preferred_board(board):
+            print >> sys.stderr,"board %s is not 'preferred', skip it" % board
+            continue
+        picname = os.path.basename(board).split("_")[1] # naming convention
+        samplename = picname + "_" + os.path.basename(test)[5:] # remove "test_", naming convention
+        fullsamplepath = outdir and os.path.join(outdir,samplename) or get_full_sample_path(path_to_sample,samplename)
         try:
            generate_one_sample(board,test,fullsamplepath)
         except Exception,e:
@@ -643,6 +673,9 @@ def do_sample(args=[]):
             path_to_sample = v
     if automatic and path_to_sample and boardfile:
         generate_samples_for_board(path_to_sample,boardfile,outdir=outfile)
+    elif automatic and testfile:
+        generate_samples_for_test(path_to_sample,testfile)
+        generate_samples_for_test(path_to_sample,testfile)
     elif automatic and path_to_sample:
         generate_all_samples(path_to_sample,outdir=outfile)
     elif boardfile and testfile and outfile:
