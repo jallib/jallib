@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.13'
+   ScriptVersion   = '0.1.14'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -55,8 +55,8 @@ msglevel = 2
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab860/'                                 /* base directory of MPLAB */
-JALLIBbase = 'k:/jallib/'                                   /* base directory of JALLIB (local) */
+MPLABbase  = 'k:/mplab860/'                      /* base directory of MPLAB */
+JALLIBbase = 'k:/jallib/'               /* base directory of JALLIB (local) */
 
 /* When using 'standard' installations no other changes are needed,         */
 /* but you may check below which specific sources of information are used,  */
@@ -65,17 +65,17 @@ JALLIBbase = 'k:/jallib/'                                   /* base directory of
 /* The following libraries are used to collect information from             */
 /* MPLAB .dev and .lkr files:                                               */
 
-devdir = MPLABbase'MPLAB IDE/Device/'                       /* dir with MPLAB .dev files */
-lkrdir = MPLABbase'MPASM Suite/LKR/'                        /* dir with MPLAB .lkr files */
+devdir = MPLABbase'MPLAB IDE/Device/'          /* dir with MPLAB .dev files */
+lkrdir = MPLABbase'MPASM Suite/LKR/'           /* dir with MPLAB .lkr files */
 
 /* Some information is collected from files in JALLIB tools directory       */
 
-PicSpecFile = JALLIBbase'tools/devicespecific.json'         /* pic specific data */
-PinMapFile  = JALLIBbase'tools/pinmap_pinsuffix.json'       /* pin aliases */
-FuseDefFile = JALLIBbase'tools/fusedefmap.cmd'              /* fuse_def mapping */
+PicSpecFile = JALLIBbase'tools/devicespecific.json'    /* pic specific data */
+PinMapFile  = JALLIBbase'tools/pinmap_pinsuffix.json'        /* pin aliases */
+FuseDefFile = JALLIBbase'tools/fusedefmap.cmd'          /* fuse_def mapping */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
-call SysLoadFuncs                                           /* load Rexx system functions */
+call SysLoadFuncs                             /* load Rexx system functions */
 
 call msg 0, 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
 call msg 1, 'Only reporting errors!'
@@ -87,21 +87,21 @@ call msg 1, 'Only reporting errors!'
 /* Note: The destination is not emptied, existing device files will be      */
 /*       overwritten, other files remain.                                   */
 
-parse upper arg destination selection .                     /* commandline arguments */
+parse upper arg destination selection .            /* commandline arguments */
 select
-   when destination = 'PROD' then                           /* production run */
+   when destination = 'PROD' then                         /* production run */
       dstdir = JALLIBbase'include/device/'                  /* local Jallib */
-   when destination = 'TEST' then do                        /* test run */
-      dstdir = './test/'                                    /* subdir for testing */
-      rx = SysMkDir(strip(dstdir,'T','/'))                  /* create destination dir */
-      if rx \= 0 & rx \= 5 then do                          /* not created, not existing */
+   when destination = 'TEST' then do                            /* test run */
+      dstdir = './test/'                              /* subdir for testing */
+      rx = SysMkDir(strip(dstdir,'T','/'))        /* create destination dir */
+      if rx \= 0 & rx \= 5 then do             /* not created, not existing */
          call msg 3, rx 'while creating destination directory' dstdir
-         return rx                                          /* unrecoverable: terminate */
+         return rx                              /* unrecoverable: terminate */
       end
    end
    otherwise
       call msg 3, 'Required argument missing: "prod" or "test"',
-                  ' (and optional wildcard.'
+                  ' and optionally wildcard.'
       return 1
 end
 
@@ -110,13 +110,13 @@ end
 /* The selection may contain wildcards like '18LF*', default is '*' (all).   */
 
 select
-   when selection = '' then                                 /* no selection spec'd */
-      wildcard = 'PIC1*.dev'                                /* default (8 bit PICs) */
-   when destination = 'TEST' then                           /* TEST run */
-      wildcard = 'PIC'selection'.dev'                       /* accept user selection */
-   otherwise                                                /* PROD run with selection */
+   when selection = '' then                          /* no selection spec'd */
+      wildcard = 'PIC1*.dev'                        /* default (8 bit PICs) */
+   when destination = 'TEST' then                               /* TEST run */
+      wildcard = 'PIC'selection'.dev'              /* accept user selection */
+   otherwise                                     /* PROD run with selection */
       call msg 3, 'No selection allowed for production run!'
-      return 1                                              /* unrecoverable: terminate */
+      return 1                                  /* unrecoverable: terminate */
 end
 
 
@@ -126,9 +126,9 @@ end
 
 call time 'R'                                               /* reset 'elapsed' timer */
 
-call SysFileTree devdir||wildcard, dir, 'FO'                /* get list of filespecs */
+call SysFileTree devdir||wildcard, dir, 'FO'                /* get list of files */
 if dir.0 = 0 then do
-   call msg 3, 'No .dev files matching <'wildcard'> found in' devdir
+   call msg 3, 'No .dev files found matching <'wildcard'> in' devdir
    return 0                                                 /* nothing to do */
 end
 
@@ -840,14 +840,6 @@ do i = 1 to Dev.0
       DevID = C2X(bitand(X2C(DevID),X2C(RevMask)))          /* reset revision bits */
       leave                                                 /* 1 occurence expected */
    end
-end
-if DevId == '0000' then do                                  /* DevID not found */
-   if PicName = '16f627' then                               /* missing in MPlab < 8.60*/
-      Devid = '07A0'
-   else if PicName = '16f628' then
-      Devid = '07C0'
-   else if PicName = '16f84A' then
-      Devid = '0560'
 end
 parse upper var PicName PicNameUpper
 call lineout jalfile, 'const word DEVICE_ID   = 0x'DevID
@@ -1563,6 +1555,7 @@ return 0
 /* -------------------------------------------------- */
 list_sfr14h: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
                               adcs_bitcount jalfile BANKSIZE NumBanks msglevel
+PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then                           /* skip non SFRs */
       iterate
@@ -1666,8 +1659,18 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
       offset = 7                                            /* MSbit first */
       do j = 1 to 8 while offset >= 0                       /* max 8 bits */
 
-         if n.j = '-' then do                               /* bit not used */
-           nop
+         if n.j = '-'  then do                              /* bit not used */
+            if left(reg,3) = 'LAT' then do                  /* LATx register */
+               PortLetter = right(reg,1)
+               PinNumber  = right(n.j,1)
+               pin = 'pin_'PortLat.PortLetter.offset
+               if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
+                  call lineout jalfile, 'var volatile bit   ',
+                          left(pin,25) memtype'at' 'PORT'portletter ':' offset
+                  call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
+                  call lineout jalfile, '--'
+               end
+            end
          end
 
          else if s.j = 1 then do                            /* single bit */
@@ -1728,8 +1731,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                                      left(field,25) memtype'at' reg ':' offset
                         if left(reg,4) = 'PORT' then do
                            PortLetter = right(reg,1)
-                           if left(n.j,2) = 'R'portletter  &, /* probably pin */
-                              substr(n.j,3) = offset  then  /* matching pin number */
+                           if left(n.j,2) = 'R'portletter  &,  /* probably pin */
+                              substr(n.j,3) = offset  then     /* matching pin number */
                               PortLat.PortLetter.offset = Portletter||offset
                         end
                      end
@@ -1769,7 +1772,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                      PortLetter = right(reg,1)
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
-                     if PortLat.PortLetter.offset \= 0 then do /* pin present in PORTx */
+                     if PortLat.PortLetter.offset \= 0 then do  /* pin present in PORTx */
                         call lineout jalfile, 'var volatile bit   ',
                                 left(pin,25) memtype'at' 'PORT'portletter ':' offset
                         call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
@@ -1831,7 +1834,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                      call lineout jalfile, 'var volatile bit*2 ',
                           left(reg'_TMR1CS',25) memtype'at' reg ':' offset
                   end
-                  when left(reg,1) = 'T'  &  right(reg,3) = 'CON'  &, /* TxCON */
+                  when left(reg,1) = 'T'  &  right(reg,3) = 'CON'  &,  /* TxCON */
                        datatype(substr(reg,2,1)) = 'NUM'           &,
                        (substr(n.j,3,6) = 'OUTPS0' | substr(n.j,3,5) = 'CKPS0')   then do
                      if substr(n.j,3,5) == 'OUTPS' then
@@ -1846,7 +1849,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                      pin = 'pin_'substr(n.j,5)'_direction'
                      call lineout jalfile, 'var volatile bit   ',
                               left('pin_'substr(n.j,5)'_direction',25) memtype'at' reg ':' offset
-                     if substr(n.j,5,1) = right(reg,1) then do /* prob. I/O pin */
+                     if substr(n.j,5,1) = right(reg,1) then do   /* prob. I/O pin */
                        call insert_pin_direction_alias reg, 'R'substr(n.j,5), pin
                      end
                      call lineout jalfile, '--'
@@ -2259,8 +2262,18 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
             end
          end
 
-         else if n.j = '-' then do                          /* bit not used */
-            nop
+         else if n.j = '-' then do                          /* bit not used (?) */
+            if left(reg,3) = 'LAT' then do                  /* LATx register */
+               PortLetter = right(reg,1)
+               PinNumber  = right(n.j,1)
+               pin = 'pin_'PortLat.PortLetter.offset
+               if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
+                  call lineout jalfile, 'var volatile bit   ',
+                          left(pin,25) memtype 'at' 'PORT'portletter ':' offset
+                  call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
+                  call lineout jalfile, '--'
+               end
+            end
          end
 
          else if s.j <= 8 then do                           /* multi bit sub field */
@@ -4521,14 +4534,14 @@ return
 /* ---------------------------------------------- */
 msg: procedure expose msglevel
 parse arg lvl, txt
-   if lvl = 0 then
+   if lvl = 0 then                                          /* used for continuation lines */
       say txt
    else if lvl >= msglevel then do
-      if lvl = 1 then
+      if lvl = 1 then                                       /* info level */
          say '   Info: 'txt
-      else if lvl = 2 then
+      else if lvl = 2 then                                  /* warning level */
          say '   Warning: 'txt
-      else
+      else                                                  /* error level */
          say '   Error: 'txt
    end
 return lvl
@@ -4540,7 +4553,7 @@ return lvl
 
 catch_error:
 Say 'Rexx Execution error, rc' rc 'at script line' SIGL
-if rc > 0 & rc < 100 then
+if rc > 0 & rc < 100 then                                   /* msg text only for rc 1..99 */
   say ErrorText(rc)
 return rc
 
@@ -4548,7 +4561,7 @@ catch_syntax:
 if rc = 4 then                                              /* interrupted */
    exit
 Say 'Rexx Syntax error, rc' rc 'at script line' SIGL":"
-if rc > 0 & rc < 100 then
+if rc > 0 & rc < 100 then                                   /* rc 1..99 */
   say ErrorText(rc)
 Say SourceLine(SIGL)
 return rc
