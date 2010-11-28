@@ -3,7 +3,7 @@
 --
 -- Author: Richard Zengerink, Copyright (c) 2008..2009, all rights reserved.
 --
--- Adapted-by: Joep Suijs,
+-- Adapted-by: Joep Suijs
 --
 -- Compiler: >=2.4j
 --
@@ -14,61 +14,6 @@
 -- .
 --  Procedures which can be used by application program:
 -- .
--- * lcd_write_char( byte in value ):
---   writes 'value' to lcd
---   example: lcd_write_char( "E" )  or lcd_write_char( 69 )
--- .
--- * lcd = value:
---   writes 'value' to lcd
---   example: lcd = "E"  or lcd = 69
--- .
--- * lcd_cursor_position(byte in line, byte in pos):
---   places the cursor on position (pos) in line (line) (zero based!)
---   example: lcd_new_line_cursor_position (1, 8)
--- .
--- * lcd_shift_left(byte in value):
---   shifts the display [value] times to the left without changing DDRAM data.
---   example: lcd_shift_left(4)
---   or       lcd_shift_left(variable)
--- .
--- * lcd_shift_right(byte in value):
---   shifts the display [value] times to the right without changing DDRAM data.
---   example: lcd_shift_right(12)
---   or       lcd_shift_right(variable)
--- .
--- * lcd_cursor_shift_left(byte in value):
---   shifts the cursor [value] times to the left without changing display
---   contents and DDRAM data.
---   example: lcd_cursor_shift_left(8)
---   or       lcd_cursor_shift_left(variable)
--- .
--- * lcd_cursor_shift_right(byte in value):
---   shifts the cursor [value] times to the right without changing display
---   contents and DDRAM data.
---   example: lcd_cursor_shift_right(3)
---   or       lcd_cursor_shift_right(variable)
--- .
--- * lcd_clear:
---   Write "20H" to DDRAM and set DDRAM address to "00H" from AC
---   This will clear the display.
--- .
--- * lcd_home:
---   Set DDRAM address to "00H" from AC and return cursor to its original
---   position if shifted. The contents of DDRAM are not changed.
--- .
--- * lcd_cursor_blink_display(bit in cursor,bit in blink,bit in display):
---   sets the underline cursor on/off, let the block-cursor blinking/off
---   and puts the display on/off
---   example: lcd_cursor_blink_display(on,off,on)
--- .
--- * lcd_clear_line ( byte in line  )
---   clears the line [line] of the lcd including DDRAM data of that line
---   example: lcd_clear_line(1)
--- .
--- * lcd_progress(byte in line, byte in amount)
---   create a progress bar on line [line] with a lenght of [amout]
---   example: lcd_progress(2,12)
---
 --
 -- Sources:
 --
@@ -87,8 +32,6 @@ const LCD_DISPLAY_SHIFT_RIGHT = 0b_0001_1100
 const LCD_DISPLAY_SHIFT_LEFT  = 0b_0001_1000
 
 const LCD_SET_DDRAM_ADDRESS   = 0b_1000_0000
-const LCD_SET_CGRAM_ADDRESS   = 0b_0100_0000
-
 -- ----------------------------------------------------------------------------
 
 var volatile byte lcd_pos     = 0
@@ -117,7 +60,9 @@ end function
 -- _lcd_restore_cursor - sets the cursor to the position in the shadow register
 -- (this routine is only used inside this file)
 -- ----------------------------------------------------------------------------
-procedure _lcd_restore_cursor() is
+procedure _lcd_restore_cursor() is    
+   pragma inline
+   
    -- set LCD back to normal operation
    _lcd_write_command( lcd_set_ddram_address | lcd_pos )
 end procedure
@@ -126,7 +71,8 @@ end procedure
 -- ----------------------------------------------------------------------------
 -- lcd_write_char - write one char to LCD
 -- ----------------------------------------------------------------------------
-procedure lcd_write_char(byte in data) is
+procedure lcd_write_char(byte in data) is 
+   pragma inline   
    _lcd_write_data(data)
 end procedure
 
@@ -135,7 +81,6 @@ end procedure
 -- lcd'put - write one char to screen (pseudo var, enables streams)
 -- ----------------------------------------------------------------------------
 procedure lcd'put(byte in data) is
-;   pragma inline -- disabled due to complier bug with inline + pseudovar/arrays.
    _lcd_write_data(data)
 end procedure
 
@@ -296,27 +241,6 @@ procedure lcd_progress(byte in line, byte in amount, byte in pattern) is
    end loop
 
 end procedure
-
-
--- ----------------------------------------------------------------------------
--- _hd44780_init - Initialise display (not realy internal, but not for users)
---
--- This procedure is called from lcd_init of the interface used. lcd_init brings
--- up the interface and powers up the display.
--- This procedure sets the display in the pre-defined startposition (clear
--- screen, no cursor etc).
--- ----------------------------------------------------------------------------
-procedure _hd44780_init() is
-
-   _lcd_write_command(0b_0010_1000)             -- 2 lines, 5x7 pattern
-   _lcd_write_command(0b_0001_1100)             -- cursor move right
-   _lcd_write_command(0b_0000_1100)             -- display on, cursor,blink off
-   _lcd_write_command(0b_0000_0110)             -- cursor->right, no shift
-   lcd_clear_screen()                           -- clear screen
-                                                -- (incl switch to data char mode)
-end procedure
-
-
 
 
 -- ----------------------------------------------------------------------------
