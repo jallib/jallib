@@ -212,12 +212,12 @@ bee-archive:
 	-mv distrib/jallib-pack-${JALV2_VERSION}-${VERSION} distrib/jallib-pack-${VERSION}
 	# We need to enrich version with date, so user can report what exact version is used (else there'll just a "bee"
 	echo ${VERSION}-${JALV2_VERSION}-`date +%Y%m%d` > distrib/jallib-pack-${VERSION}/VERSION
-	cd distrib && tar czfv jallib-pack-${VERSION}.tar.gz jallib-pack-${VERSION}
-	cd distrib/jallib-pack-${VERSION} && zip -r jallib-pack-${VERSION}.zip . && mv jallib-pack-${VERSION}.zip ..
+	cd distrib && tar czfv jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.tar.gz jallib-pack-${VERSION}
+	cd distrib/jallib-pack-${VERSION} && zip -r jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.zip . && mv jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.zip ..
 
 bee-upload:
-	python2.5 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib" -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-${VERSION}.tar.gz
-	python2.5 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib" -p jallib -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-${VERSION}.zip
+	python2.5 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib, version `cat distrib/jallib-pack-${VERSION}/VERSION`" -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.tar.gz
+	python2.5 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib, version `cat distrib/jallib-pack-${VERSION}/VERSION`" -p jallib -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.zip
 
 bee-check:
 	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2
