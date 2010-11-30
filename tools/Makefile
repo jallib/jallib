@@ -16,7 +16,7 @@ SAMPLIR_DIR=../sample
 TEST_DIR=../test
 INCLUDE_DIR=../include
 JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2
-JALV2_VERSION := `${JALV2_BIN} | sed "s\#.*jal \(.*\) (.*\#\1\#"`
+JALV2_VERSION := `${JALV2_BIN} 2> /dev/null | sed "s\#.*jal \(.*\) (.*\#\1\#"`
 
 
 clean :
@@ -206,14 +206,13 @@ check:
 	sh check_package.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2
 
 bee-archive:
-	# weekly build packages don't have any information about the version (except "bee", which is in VERSION env var)
-	# this way, we don't have to deal with old uploaded pakcages in GC. Each upload overwrite previous one
-	# Note: only jallib-pack are bee'fied...
+	# simplify folder name so I can use `` while generating archive names (else some `` are nested)
+	# Oh, Seb, how long will you use this crappy Makefile ??
 	-mv distrib/jallib-pack-${JALV2_VERSION}-${VERSION} distrib/jallib-pack-${VERSION}
 	# We need to enrich version with date, so user can report what exact version is used (else there'll just a "bee"
 	echo ${VERSION}-${JALV2_VERSION}-`date +%Y%m%d` > distrib/jallib-pack-${VERSION}/VERSION
-	cd distrib && tar czfv jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.tar.gz jallib-pack-${VERSION}
-	cd distrib/jallib-pack-${VERSION} && zip -r jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.zip . && mv jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.zip ..
+	cd distrib && tar czfv jallib-pack-`cat jallib-pack-${VERSION}/VERSION`.tar.gz jallib-pack-${VERSION}
+	cd distrib/jallib-pack-${VERSION} && zip -r jallib-pack-`cat VERSION`.zip . && mv jallib-pack-`cat VERSION`.zip ..
 
 bee-upload:
 	python2.5 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib, version `cat distrib/jallib-pack-${VERSION}/VERSION`" -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.tar.gz
