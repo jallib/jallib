@@ -18,14 +18,15 @@
  * - collect entries into compound variable f.                              *
  *   on a per-directory basis (1st level subdirectory)                      *
  *   collect PICnames used in names of samples                              *
- * - check if there is a basic-a-led sample for every device file           *
+ * - check if there is a basic blink-a-led sample for every device file     *
  * - check if there is a device file for every sample                       *
+ *   (based on name of PIC in filename)                                     *
  * - collect some statistics for every main library group                   *
  * - list these statistics                                                  *
- * - collect Jallib contents (directory tree)                               *
- *   and list if unreleased                                                 *
- *   and list if sample released but device file not                        *
- * - sort each of the parts (first level library)                           *
+ * - collect Jallib contents (directory tree) and                           *
+ *    - list if unreleased                                                  *
+ *    - list if sample released but device file not                         *
+ * - sort each of the parts (on first level directory)                      *
  *   and create new TORELEASE                                               *
  *                                                                          *
  * Sources: none                                                            *
@@ -40,7 +41,7 @@
 
 parse upper arg runtype .                                   /* any: list all unreleased files */
 
-base       = 'k:/jallib'                                    /* base dir */
+base       = 'k:/jallib'                                    /* base Jallib directory */
 libdir     = base'/include'                                 /* libraries */
 smpdir     = base'/sample'                                  /* samples */
 projdir    = base'/project'                                 /* project files */
@@ -339,11 +340,11 @@ end
 call lineout newrelease, ''
 return
 
-/* ------------------------------------------- */
-/* Sorting members of 1st level subdirectory   */
-/* '_' in name for sort changed into '/'       */
-/* so that 16f72_xxx comes before 16c722_yyy   */
-/* ------------------------------------------- */
+/* --------------------------------------------- */
+/* Sorting members of 1st level subdirectory     */
+/* '_' in name for sort changed into '/'         */
+/* such that 16f72_xxx comes before 16f722_xxx   */
+/* --------------------------------------------- */
 sortpart: procedure expose f. newrelease
 parse arg part .
 do i = 1 to f.part.0 - 1
