@@ -6,24 +6,37 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: This library provides a procedure to configure
--- ADC clock according to ADC constraints about Tad values and PIC's clock speed
---
--- Notes: This is a complete rewrite of a previous version of this library.
---
--- ----------------------------------------------------------------------------
+-- Description:
+-- This library provides a procedure to configure ADC clock
+-- according to ADC constraints about Tad values and PIC's clock speed
+-- .
 -- Selecting the appropriate ADC clocking is critical.
 -- Not all PICs have the same value in min/max Tad, some PICs can go faster
 -- than 20MHz, like 18F. LF-PICs don't follow the same rules as the F-PICS
 -- (see 18F4550 and 18LF4550 for instance). How to get a general rule of thumb?
 -- For 16F88, and for many other PICs: 1.6usec < Tad < 6.4usec
--- For 18F4550 (and other 18F PICs ?): 0.7usec < Tad < 25usec
+-- For 18F4550 (and other 18F PICs ?): 0.8usec < Tad < 25usec
 -- Honoring 16F88 values should do the trick for 18F4550, although this
--- may not be optimal for the 16f4550. When this compromise is not
+-- may not be optimal for the 18f4550. When this compromise is not
 -- acceptable the user may define alternate values for the contants
 -- ADC_MIN_TAD and ADC_MAX_TAD (values in microseconds * 10)
 -- *** before *** including the ADC library.
 -- When not defined by the user the following values will be used:
+--     ADC_MIN_TAD = 16     (1.6 usec)
+--     ADC_MAX_TAD = 60     (6 usec)
+-- Clock devider selection bits (ADCS) can bit*2 or bit*3 or none.
+--   - when bit*2: factor is 2, 8 or 32
+--   - when bit*3: factor is 2, 4, 8, 16, 32 or 64
+-- .
+-- The device files contain a constant ADC_ADCS_BITCOUNT to indicate
+-- the number of bits for ADCS variable of 'this' PIC.
+-- ADCS bits may be scattered over different registers. When this is the case
+-- the device file contains a pseudo-variable ADCON0_ADCS to hide the scattering.
+-- Some PICs with ADC module have no ADCS bits (e.g. 10F220/220)!
+--
+-- Notes: This is a complete rewrite of a previous version of this library.
+--
+-- ------------------------------------------------------------------------------
 
 if defined(ADC_MIN_TAD) == false then
    const ADC_MIN_TAD = 16                       -- 1.6 usec minimum
@@ -32,20 +45,12 @@ if defined(ADC_MAX_TAD) == false then
    const ADC_MAX_TAD = 60                       -- 6 usec maximum
 end if
 
--- Clock devider selection bits (ADCS) can bit*2 or bit*3 or none.
---   - when bit*2: factor is 2, 8 or 32
---   - when bit*3: factor is 2, 4, 8, 16, 32 or 64
--- The device files contain a constant ADC_ADCS_BITCOUNT to indicate
--- the number of bits for ADCS variable of 'this' PIC.
--- ADCS bits may be scattered over different registers. When this is the case
--- the device file contains a pseudo-variable ADCON0_ADCS to hide the scattering.
--- Note: Some PICs with ADC module have no ADCS bits (e.g. 10F220/220).
-
+-- Calculated Tad value (result of procedure _adc_init_clock())
 var byte tad_value                              -- calculated Tad (* 10)
 
--- ---------------------------------------------------------------------------------
+-- ------------------------------------------------------------------------------
 -- Set ADCS bits to obtain correct ADC timing
--- ---------------------------------------------------------------------------------
+-- ------------------------------------------------------------------------------
 procedure _adc_init_clock() is
 
    pragma inline
@@ -73,7 +78,12 @@ procedure _adc_init_clock() is
      _error "No ADCS bits found (no ADCONx_ADCS variable in device file?)"
    end if
 
-   if (ADC_ADCS_BITCOUNT == 3) then             -- target has 3 ADCS bits
+   if  (2 * 10_000_000 / target_clock > ADC_MAX_TAD) then
+      _warn "Oscillator frequency too low for Tad, using internal clock"
+      tad_word = 40                             -- (approx)
+      jallib_adcs = 0b_011                      -- use Frc
+
+   elsif (ADC_ADCS_BITCOUNT == 3) then          -- target has 3 ADCS bits
       if    ( 2 * 10_000_000 / target_clock >= ADC_MIN_TAD) then
          tad_word  = 2 * 10_000_000 / target_clock
          jallib_adcs = 0b_000                   -- 2 Tosc
@@ -93,7 +103,7 @@ procedure _adc_init_clock() is
          tad_word  = 64 * 10_000_000 / target_clock
          jallib_adcs = 0b_110
       else                                      -- 64 Tosc
-         _warn "Oscillator speed exceeds maximum for Tad, using builtin clock"
+         _warn "Oscillator frequency too high for Tad, using internal clock"
          tad_word  = 40                         -- (approx)
          jallib_adcs = 0b_011                   -- use Frc
       end if
@@ -109,7 +119,7 @@ procedure _adc_init_clock() is
          tad_word  = 32 * 10_000_000 / target_clock
          jallib_adcs = 0b_10
       else                                      -- 32 Tosc
-         _warn "Oscillator speed exceeds maximum for Tad, using builtin clock"
+         _warn "Oscillator frequency too high for Tad, using internal clock"
          tad_word  = 40                         -- (approx)
          jallib_adcs = 0b_011                   -- use Frc
       end if
