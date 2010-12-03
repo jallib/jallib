@@ -1359,44 +1359,137 @@ procedure fat32_write_file_sector_number(dword in file_sector_number) is
 end procedure
 
 -- ----------------------------------------------------------------------------
--- print a file_name to an output device
+-- Print a file_name to an output device. Use the following constants as
+-- input options.
 -- ----------------------------------------------------------------------------
-procedure fat32_print_file_name(volatile byte out output_device) is
+const FAT32_PRINT_LONG_FILE_NAME    = 1
+const FAT32_PRINT_NUMBER            = 2
+const FAT32_PRINT_SIZE              = 4
+const FAT32_PRINT_CLUSTER           = 8
+const FAT32_PRINT_TABLE             = 16
+const FAT32_PRINT_DATE              = 32
+const FAT32_PRINT_ATTRIBUTES        = 64
+;const FAT32_PRINT_SHORT_FILE_NAME  = 128
+const FAT32_PRINT_ALL               = 0xFF
+procedure fat32_print_file_info(volatile byte out output_device, byte in options) is
    var byte step1
-   for fat32_file_name_length using step1 loop
-      if fat32_file_name[step1] != 0 then
-         output_device = fat32_file_name[step1]
+
+   -- print the file number
+   if (options & FAT32_PRINT_NUMBER) > 0 then
+      format_dword_dec(output_device,fat32_current_file_number,4,0)
+      const byte string1[] = ". "
+      print_string(output_device,string1)
+
+      if (options & FAT32_PRINT_TABLE) > 0 then
+         output_device = "|"
       end if
-   end loop
+   end if
+
+   -- print the file size
+   if (options & FAT32_PRINT_SIZE) > 0 then
+      format_dword_dec(output_device,fat32_file_size,8,0)
+      output_device = " "
+
+      if (options & FAT32_PRINT_TABLE) > 0 then
+         output_device = "|"
+      end if
+   end if
+
+   -- print the files first cluster location
+   if (options & FAT32_PRINT_CLUSTER) > 0 then
+      format_dword_dec(output_device,fat32_file_cluster_address,8,0)
+      output_device = " "
+
+      if (options & FAT32_PRINT_TABLE) > 0 then
+         output_device = "|"
+      end if
+   end if
+
+   -- print the files attributes
+   if (options & FAT32_PRINT_ATTRIBUTES) > 0 then
+      print_byte_binary(output_device,fat32_file_attrib)
+
+      if (options & FAT32_PRINT_TABLE) > 0 then
+         output_device = "|"
+      end if
+   end if
+
+   -- print the file name
+   if (options & FAT32_PRINT_LONG_FILE_NAME) > 0 then
+      output_device = " "
+      for fat32_file_name_length using step1 loop
+         if fat32_file_name[step1] != 0 then
+            output_device = fat32_file_name[step1]
+         end if
+      end loop
+   end if
+
 end procedure
 
 -- ----------------------------------------------------------------------------
--- print the current directory to an output device
+-- print the current directory to an output device. Use same options as
+-- in fat32_print_file_info
 -- ----------------------------------------------------------------------------
-procedure fat32_print_directory(volatile byte out output_device, bit in with_file_numbers) is
+procedure fat32_print_directory(volatile byte out output_device, bit in with_file_numbers, byte in options) is
    var word count4 = 0          -- set count to 0
-   for fat32_dir_file_count loop          -- loop untill end of files
-      
-      -- send file number via serial port in ascii format
-      if with_file_numbers == TRUE then
-         print_word_dec(output_device,count4)
-         const byte string1[] = {0x2E,0x20,0x20} -- ".  "
-         print_string(output_device,string1)
+
+   -- print the table header
+   const byte string1[] = "----------------------------------------------------"
+   const byte string2[] = "FILE #|"
+   const byte string3[] = "    SIZE |"
+   const byte string4[] = " CLUSTER |"
+   const byte string5[] = " FILE NAME"
+   const byte string6[] = "XXADVSHR|" -- Archive-Directory-Volume_id-System--Hidden-Read_only
+   if (options & FAT32_PRINT_TABLE) > 0 then
+
+      print_crlf(output_device) -- cend CRLF to serial port
+      print_string(output_device,string1)
+      print_crlf(output_device) -- cend CRLF to serial port
+
+      if (options & FAT32_PRINT_NUMBER) > 0 then
+         print_string(output_device,string2) -- "FILE #|"
       end if
-      
-      ;-- write entery location via serial port
-      ;serial_hw_write (0x20)
-      ;format_word_dec(serial_hw_data,fat32_entry_location[count4],6,0)
-      ;serial_hw_write (0x20)
-      
+
+      if (options & FAT32_PRINT_SIZE) > 0 then
+         print_string(output_device,string3) -- "    SIZE |"
+      end if
+
+      if (options & FAT32_PRINT_CLUSTER) > 0 then
+         print_string(output_device,string4) -- " CLUSTER |"
+      end if
+
+      if (options & FAT32_PRINT_ATTRIBUTES) > 0 then
+         print_string(output_device,string6) -- "ATTRIB|"
+      end if
+
+      if (options & FAT32_PRINT_NUMBER) > 0 then
+         print_string(output_device,string5) -- " FILE NAME"
+      end if
+
+      print_crlf(output_device) -- cend CRLF to serial port
+      print_string(output_device,string1)
+      print_crlf(output_device) -- cend CRLF to serial port
+   end if
+
+   -- print the file data
+   for fat32_dir_file_count loop          -- loop untill end of files
+
       -- choose the file number to read acording to the count
       fat32_read_file_info(count4) -- read file's name, location, size, attributes
-      fat32_print_file_name(output_device)
-      
+      fat32_print_file_info(output_device,options)
+
       print_crlf(output_device) -- cend CRLF to serial port
-      
+
       count4 = count4 + 1  -- increment count
    end loop
+
+
+   -- print the table footer
+   if (options & FAT32_PRINT_TABLE) > 0 then
+      print_string(output_device,string1)
+      print_crlf(output_device) -- cend CRLF to serial port
+   end if
+
 end procedure
 
 -- ----------------------------------------------------------------------------
