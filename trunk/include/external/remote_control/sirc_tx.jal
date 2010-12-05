@@ -1,0 +1,126 @@
+-- Title: SIRC transmitter library for encoding SIRC protocol
+-- Author: Mike Reynolds, Copyright (C) 2009, all rights reserved.
+-- Adapted by: Joep Suijs
+-- Compiler: >=2.4l
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides functions for sending SIRC 
+-- infrared remote control codes. See sirc.jal for more info.
+--
+-- Sources:
+-- http://www.sbprojects.com/knowledge/ir/sirc.htm
+-- http://www.ustr.net/infrared/sony.shtml
+-- http://web.archive.org/web/20071212170236/http://www.geocities.com/CapeCanaveral/Launchpad/4652/sircs.htm
+--
+-- Notes: See sirc.jal for more info.
+--
+
+-- dependant Procedures for Send_SIRC
+procedure fast_ir_pulse_0() is
+   for 23 loop
+      sirc_pulse_out = high
+      _usec_delay(6)  -- 6 microseconds    was 3
+      sirc_pulse_out = low
+      _usec_delay(19) -- 19 microseconds    was 15
+      -- delay_10us(1)
+   end loop
+end procedure
+
+procedure slow_ir_pulse_0() is
+   for 23 loop
+      sirc_pulse_out = high
+      _usec_delay(3)  -- 6 microseconds    was 3
+      sirc_pulse_out = low
+      _usec_delay(15) -- 19 microseconds    was 15
+      -- delay_10us(1)
+   end loop
+end procedure
+
+--
+
+procedure fast_ir_pulse_1() is
+   for 46 loop
+      sirc_pulse_out = high
+      _usec_delay(6) -- 6 microseconds       was 3
+      sirc_pulse_out = low
+      _usec_delay(19) -- 19 microseconds      was 15
+      -- delay_10us(1)
+   end loop
+end procedure
+
+procedure slow_ir_pulse_1() is
+   for 46 loop
+      sirc_pulse_out = high
+      _usec_delay(3) -- 6 microseconds       was 3
+      sirc_pulse_out = low
+      _usec_delay(15) -- 19 microseconds      was 15
+      -- delay_10us(1)
+   end loop
+end procedure
+
+--
+
+procedure fast_ir_pulse_start() is
+   for 84 loop
+      sirc_pulse_out = high
+      _usec_delay(6)  -- 6 microseconds     was 3
+      sirc_pulse_out = low
+      _usec_delay(19)  -- 19 microseconds   was 15
+      -- delay_10us(1)
+   end loop
+end procedure
+
+procedure slow_ir_pulse_start() is
+   for 84 loop
+      sirc_pulse_out = high
+      _usec_delay(3)  -- 6 microseconds     was 3
+      sirc_pulse_out = low
+      _usec_delay(15)  -- 19 microseconds   was 15
+      -- delay_10us(1)
+   end loop
+end procedure
+
+--
+
+procedure ir_pulse_deadtime() is
+   sirc_pulse_out = low
+   _usec_delay(600)  -- delay 600 microseconds
+end procedure
+--
+
+if target_clock == 4_000_000 then
+   alias ir_pulse_0 is slow_ir_pulse_0
+   alias ir_pulse_1 is slow_ir_pulse_1
+   alias ir_pulse_start is slow_ir_pulse_start
+end if
+
+if target_clock > 4_000_000 then
+   alias ir_pulse_0 is fast_ir_pulse_0
+   alias ir_pulse_1 is fast_ir_pulse_1
+   alias ir_pulse_start is fast_ir_pulse_start
+end if
+--
+procedure send_sirc( byte in sirc_addr_tx, byte in sirc_cmd_tx ) is
+   var bit my_cmd_bit at sirc_cmd_tx    : 0
+   var bit my_addr_bit  at sirc_addr_tx : 0
+
+   ir_pulse_start
+   ir_pulse_deadtime
+
+   for 7 loop
+      if (my_cmd_bit == 0) then ir_pulse_0 end if
+      if (my_cmd_bit == 1) then ir_pulse_1 end if
+      ir_pulse_deadtime
+      sirc_cmd_tx = sirc_cmd_tx >> 1
+   end loop
+
+   for 5 loop
+      if (my_addr_bit == 0) then ir_pulse_0 end if
+      if (my_addr_bit == 1) then ir_pulse_1 end if
+      ir_pulse_deadtime
+      sirc_addr_tx = sirc_addr_tx >> 1
+   end loop
+   delay_1ms(25)
+end procedure
