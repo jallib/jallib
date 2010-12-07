@@ -1,0 +1,94 @@
+-- ---------------------------------------------------------------------------
+-- Title: LCD sample program for the Microchip PIC 16f88 with custom characters
+--
+-- Author: Rob Hamerling, Copyright (c) 2010, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4n
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+--    LCD sample program for Microchip PIC 16f88.
+--    Shows the use of custom (user defined) characters.
+--    Blinks also a LED on pin_A0 to show program is running.
+--    Uses:  - LCD library lcd_hd44780_4.jal
+--           - 4 LCD data lines
+--           - DataPath: 1 nibble
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+include 16f88                                   -- target PICmicro
+--
+pragma target clock 20_000_000                  -- oscillator frequency
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target OSC HS                            -- HS crystal or resonator
+pragma target WDT  disabled                     -- WDT off
+pragma target LVP  disabled                     -- no low voltage programming
+pragma target MCLR external
+--
+enable_digital_io()                             -- set all pins to digital I/O
+--
+alias  LED        is pin_A0                     -- LED
+pin_A0_direction  =  output
+--
+-- ----------- setup for LCD -------------------------------------------------
+--
+const byte LCD_ROWS    =  2                     -- LCD with 2 lines
+const byte LCD_CHARS   =  16                    -- and 16 characters per line
+--
+alias     lcd_en       is pin_A2                -- data trigger
+alias     lcd_rs       is pin_A3                -- command/data select.
+pin_A2_direction       = output
+pin_A3_direction       = output
+--
+alias     lcd_dataport is portB_low
+portB_low_direction    = all_output
+--
+include lcd_hd44780_4
+--
+lcd_init()                                      -- init the lcd controller
+--
+-- ---------------------------------------------------------------------------
+--
+include delay                                   -- delay library
+--
+const byte title[]   = "< custom chars >"
+const byte custom1[] = { 0x1f,0x1e,0x1c,0x18,0x10,0x00,0x00,0x00 }   -- upper left
+const byte custom2[] = { 0x1f,0x0f,0x07,0x03,0x01,0x00,0x00,0x00 }   -- upper right
+const byte custom3[] = { 0x00,0x00,0x00,0x01,0x03,0x07,0x0f,0x1f }   -- lower right
+const byte custom4[] = { 0x00,0x00,0x00,0x10,0x18,0x1c,0x1e,0x1f }   -- lower left
+
+lcd_define(1,custom1)                           -- )
+lcd_define(2,custom2)                           -- ) send custom chars
+lcd_define(3,custom3)                           -- ) 1..4 to LCD CGRAM
+lcd_define(4,custom4)                           -- )
+
+var byte i
+forever loop
+   lcd_clear_screen()                           -- erase whole display
+   delay_100ms(10)
+   for LCD_CHARS using i loop                   -- title on first line
+      lcd = title[i]
+   end loop
+   delay_100ms(10)
+   lcd_cursor_position(1,0)                     -- second line
+   for 4 using i loop                           -- 4 custom characters 1..4
+      lcd = "0" + i+1                           -- display (i+1) in ASCII
+      lcd = "="
+      lcd = i+1                                 -- display custom character
+      lcd = " "
+      delay_100ms(10)
+   end loop
+   delay_100ms(20)
+   pin_A0 = !pin_A0                             -- flip the LED
+end loop
+--
