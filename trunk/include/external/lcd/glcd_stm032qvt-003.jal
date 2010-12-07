@@ -7,6 +7,7 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: Library for Color GLCD 320x240 stm032qvt-003 TFT display.
+--              Internal TFT GLCD driver is HX8347-A.
 --
 -- Sources:
 -- http://www.divshare.com/download/11463401-4a9
@@ -14,82 +15,126 @@
 
 include delay
 
-const glcd_height = 320
-const glcd_width = 240
+const GLCD_X_PIXELS = 240
+const GLCD_Y_PIXELS = 320
+const GLCD_COLOR_BITS = 16 -- 16bit color, 65535 colors
+
+-- constants
+const GLCD_LEFT          = 0
+const GLCD_RIGHT         = 1
+const GLCD_CMD_ON        = 0x3F
+const GLCD_CMD_OFF       = 0x3E
+const GLCD_CMD_PAGE      = 0xB8
+const GLCD_CMD_COLUMN    = 0x40
+const GLCD_CMD_TOP_RAM   = 0xC0
 
 --------------------------------------------------------------------------------
 -- Write a command
 --------------------------------------------------------------------------------
 procedure glcd_write_command(word in data) is
-   glcd_rs=0;
-	glcd_cs =0;	
-	glcd_high_port = byte(data>>8);	
-	glcd_low_port = byte(data);		
-	glcd_wr=0;
-	glcd_wr=1;
-	glcd_cs =1;	
+   var byte _data[2] at data
+   glcd_rs=0
+	glcd_cs =0	
+	glcd_high_port = _data[1]	
+	glcd_low_port = _data[0]	
+	glcd_wr=0
+	glcd_wr=1
+	glcd_cs =1	
 end procedure
 
 --------------------------------------------------------------------------------
 -- Write data
 --------------------------------------------------------------------------------
 procedure glcd_write_data(word in data) is
-   glcd_rs=1;
-   glcd_cs =0;	  				
-   glcd_high_port = byte(data>>8);	
-   glcd_low_port = byte(data);					
-   glcd_wr=0;
-   glcd_wr=1;
-   glcd_cs =1;	
+   pragma inline -- pragma inline for faster color data writes
+
+   var byte _data[2] at data
+   glcd_rs = 1
+   glcd_cs = 0	  				
+	glcd_high_port = _data[1]	
+	glcd_low_port = _data[0]					
+   glcd_wr = 0
+   glcd_wr = 1
+   glcd_cs = 1	
 end procedure
 
 --------------------------------------------------------------------------------
 -- Write color in bytes
 --------------------------------------------------------------------------------
+procedure glcd_write_color_word(word in data) is
+   ;pragma inline -- pragma inline not working
+   
+   var byte _data[2] at data
+   
+   -- bug fix, don't know why this is needed
+   -- maybe a problem with my lcd? already tested another PIC.
+   _data[1] = _data[1] | 1
+
+   glcd_rs= 1
+   glcd_cs = 0	  				
+   glcd_high_port = _data[1]
+   glcd_low_port = _data[0]					
+   glcd_wr=0
+   glcd_wr=1
+   glcd_cs =1	
+end procedure
+
 procedure glcd_write_color(byte in data_high,byte in data_low) is
-   glcd_rs=1;
-   glcd_cs =0;	  				
-   glcd_high_port = data_high;	
-   glcd_low_port = data_low;					
-   glcd_wr=0;
-   glcd_wr=1;
-   glcd_cs =1;	
+   glcd_rs=1
+   glcd_cs =0	  				
+   glcd_high_port = data_high	
+   glcd_low_port = data_low					
+   glcd_wr=0
+   glcd_wr=1
+   glcd_cs =1	
 end procedure
 
 --------------------------------------------------------------------------------
 -- Write a command + data
 --------------------------------------------------------------------------------
 procedure glcd_write_command_data(word in com1,word in dat1) is
-   glcd_write_command(com1);
-   glcd_write_data(dat1);
+   glcd_write_command(com1)
+   glcd_write_data(dat1)
 end procedure
 
 --------------------------------------------------------------------------------
 -- set start x,y and end x,y addresses
 --------------------------------------------------------------------------------
-procedure glcd_address_set(word in x1,word in y1,word in x2,word in y2) is
-   glcd_write_command_data(0x0002,x1>>8);	 -- Column address start2
-   glcd_write_command_data(0x0003,x1);	    -- Column address start1
-   glcd_write_command_data(0x0004,x2>>8);	 -- Column address end2
-   glcd_write_command_data(0x0005,x2);	    -- Column address end1
-   glcd_write_command_data(0x0006,y1>>8);	 -- Row address start2
-   glcd_write_command_data(0x0007,y1);	    -- Row address start1
-   glcd_write_command_data(0x0008,y2>>8);	 -- Row address end2
-   glcd_write_command_data(0x0009,y2);	    -- Row address end1
+procedure glcd_address_set(byte in x1,word in y1,word in x2,word in y2) is
+   var byte _x1[2] at x1
+   var byte _x2[2] at x2
+   var byte _y1[2] at y1
+   var byte _y2[2] at y2
+
+   glcd_write_command_data(0x0002,_x1[1]);	 -- Column address start2
+   glcd_write_command_data(0x0003,_x1[0]);	 -- Column address start1
+   glcd_write_command_data(0x0004,_x2[1]);	 -- Column address end2
+   glcd_write_command_data(0x0005,_x2[0]);	 -- Column address end1
+   glcd_write_command_data(0x0006,_y1[1]);	 -- Row address start2
+   glcd_write_command_data(0x0007,_y1[0]);	 -- Row address start1
+   glcd_write_command_data(0x0008,_y2[1]);	 -- Row address end2
+   glcd_write_command_data(0x0009,_y2[0]);	 -- Row address end1
    glcd_write_command(0x0022);	
 end procedure
 
 --------------------------------------------------------------------------------
 -- set the entire screen one color
 --------------------------------------------------------------------------------
-procedure glcd_set_all(word in color) is
-   var word i,j
+procedure lcd_fill(word in color) is
    glcd_address_set(0,0,239,319)
-   for 320 using i loop
-      for 240 using j loop
+   for 320 loop
+      for 240 loop
           glcd_write_data(color);
       end loop
    end loop
+end procedure
+
+--------------------------------------------------------------------------------
+-- draw one pixel
+--------------------------------------------------------------------------------
+procedure lcd_write_pixel(byte in x,word in y,word in color) is
+   glcd_address_set(x,y,x,y);
+   glcd_write_color_word(color)
 end procedure
 
 --------------------------------------------------------------------------------
@@ -191,3 +236,5 @@ procedure glcd_init() is
    --glcd_write_command_data(0x0021,0x0000);
    glcd_write_command(0x0022);
 end procedure
+
+
