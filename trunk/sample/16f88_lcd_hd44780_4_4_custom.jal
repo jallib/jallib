@@ -21,6 +21,16 @@
 -- Sources:
 --
 -- Notes:
+--    The Jallib libraries for HD47780-based LCDs are setup for 5x8 pixel
+--    characters (effectively 5x7 to leave the cursor line free).
+--    The HD47780 has memory reserved for 8 user-defined characters (in CGRAM).
+--    Custom characters occupy positions 0 to 7. To define and display such
+--    a character you should use the values 0 to 7 (binary! not "0" to "7").
+--    Each character is defined as an 8 byte array to form a 8x8 bit
+--    pattern. The 3 left (high order) bits of each pixel line are not used.
+--    A binary 0 in the pattern defines an 'off' pixel, a binary 1 an 'on' pixel.
+--    This sample program demonstrates how to use positions 0 to 3 to display
+--    4 different arrows.
 --
 -- ------------------------------------------------------
 --
@@ -37,8 +47,8 @@ pragma target MCLR external
 --
 enable_digital_io()                             -- set all pins to digital I/O
 --
-alias  LED        is pin_A0                     -- LED
-pin_A0_direction  =  output
+alias  led        is pin_A0                     -- pin with LED
+pin_A0_direction  =  output                     -- is output
 --
 -- ----------- setup for LCD -------------------------------------------------
 --
@@ -50,7 +60,7 @@ alias     lcd_rs       is pin_A3                -- command/data select.
 pin_A2_direction       = output
 pin_A3_direction       = output
 --
-alias     lcd_dataport is portB_low
+alias     lcd_dataport is portB_low             -- 4 data lines used
 portB_low_direction    = all_output
 --
 include lcd_hd44780_4
@@ -61,16 +71,44 @@ lcd_init()                                      -- init the lcd controller
 --
 include delay                                   -- delay library
 --
-const byte title[]   = "< custom chars >"
-const byte custom1[] = { 0x1f,0x1e,0x1c,0x18,0x10,0x00,0x00,0x00 }   -- upper left
-const byte custom2[] = { 0x1f,0x0f,0x07,0x03,0x01,0x00,0x00,0x00 }   -- upper right
-const byte custom3[] = { 0x00,0x00,0x00,0x01,0x03,0x07,0x0f,0x1f }   -- lower right
-const byte custom4[] = { 0x00,0x00,0x00,0x10,0x18,0x1c,0x1e,0x1f }   -- lower left
+const byte title[]   = "< Custom chars >"       -- for top line of LCD
+const byte custom0[] = { 0b_00011111,
+                         0b_00011110,
+                         0b_00011100,
+                         0b_00011010,
+                         0b_00010001,
+                         0b_00000000,
+                         0b_00000000,
+                         0b_00000000 }          -- upper left
+const byte custom1[] = { 0b_00011111,
+                         0b_00001111,
+                         0b_00000111,
+                         0b_00001011,
+                         0b_00010001,
+                         0b_00000000,
+                         0b_00000000,
+                         0b_00000000 }          -- upper right
+const byte custom2[] = { 0b_00000000,
+                         0b_00000000,
+                         0b_00010001,
+                         0b_00001011,
+                         0b_00000111,
+                         0b_00001111,
+                         0b_00011111,           -- lower right
+                         0b_00000000 }
+const byte custom3[] = { 0b_00000000,
+                         0b_00000000,
+                         0b_00010001,
+                         0b_00011010,
+                         0b_00011100,
+                         0b_00011110,
+                         0b_00011111,           -- lower left
+                         0b_00000000 }
 
-lcd_define(1,custom1)                           -- )
-lcd_define(2,custom2)                           -- ) send custom chars
-lcd_define(3,custom3)                           -- ) 1..4 to LCD CGRAM
-lcd_define(4,custom4)                           -- )
+lcd_define(0,custom0)                           -- )
+lcd_define(1,custom1)                           -- ) send custom chars
+lcd_define(2,custom2)                           -- ) 1..4 to LCD CGRAM
+lcd_define(3,custom3)                           -- )
 
 var byte i
 forever loop
@@ -82,13 +120,13 @@ forever loop
    delay_100ms(10)
    lcd_cursor_position(1,0)                     -- second line
    for 4 using i loop                           -- 4 custom characters 1..4
-      lcd = "0" + i+1                           -- display (i+1) in ASCII
+      lcd = "0" + i                             -- display value of i in ASCII
       lcd = "="
-      lcd = i+1                                 -- display custom character
+      lcd = i                                   -- display custom character
       lcd = " "
       delay_100ms(10)
    end loop
    delay_100ms(20)
-   pin_A0 = !pin_A0                             -- flip the LED
+   led = !led                                   -- flip the LED
 end loop
 --
