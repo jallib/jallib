@@ -35,6 +35,34 @@ _usec_delay(100_000) -- wait for power to settle
 
 include delay
 
+include print
+include format
+
+include spi_master_hw         -- includes the spi library
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+--
+spi_init(SPI_MODE_11,SPI_RATE_FOSC_64) -- init spi, choose mode and speed
+
+-- setup fonts
+const byte FONT_MORE_THEN_ONE = TRUE -- use more then one font
+const byte FONT_BIT_DIRECTION = FONT_TOP_RIGHT_HORIZONTAL -- see constants_jallib.jal
+const byte FONT_AUTO_WRAP = TRUE -- auto wrap text at end of screen
+--
+include glcd_font -- include the font library
+--
+-- choose some fonts
+alias FONT_1        is FONT_8x12_TOP_RIGHT_HORIZONTAL_NO_NAME
+alias FONT_1_WIDTH  is FONT_8x12_WIDTH
+alias FONT_1_HEIGHT is FONT_8x12_HEIGHT
+--
+-- set your current font
+FONT_NUMBER = 1  -- select your font number
+FONT_WIDTH  = FONT_1_WIDTH  -- must match current font width
+FONT_HEIGHT = FONT_1_HEIGHT -- must match current font height
+
 -- Setup glcd_stm032qvt-003
 alias glcd_low_port            is portb -- 8 bit port low
 alias glcd_low_port_direction  is portb_direction
@@ -59,15 +87,31 @@ glcd_wr_direction = OUTPUT
 glcd_rd_direction = input
 glcd_cs_direction = OUTPUT
 --
+
+var word LCD_BACK_COLOR = 0xFFFF -- white
+var word LCD_PEN_COLOR  = 0      -- black
 include glcd_stm032qvt-003
 glcd_init()
-
-const LCD_BACK_COLOR = 0xffff -- white
-const LCD_PEN_COLOR  = 0     -- black
 include glcd_common
 
-const image[3208] = {
-   0x00,0x10,0x28,0x00,0x28,0x00,0x01,0x1B,
+-- Setup the GLCD touch controller.
+alias touch_cs                is pin_a3
+alias touch_cs_direction      is pin_a3_direction
+alias touch_irq               is pin_a4
+alias touch_irq_direction     is pin_a4_direction
+--
+touch_cs_direction = output        -- touch chip select
+touch_irq_direction = input        -- optional interrupt pin
+--
+const byte TOUCH_HIGH_POWER_MODE = HIGH
+const TOUCH_USE_INTERRUPT = TRUE
+const TOUCH_8_BIT_RESOLUTION = TRUE -- TRUE = 8bit, FALSE = 12bit (not supported yet)
+--
+include glcd_touch_ad7843
+--
+touch_init()
+
+const byte image[3200] = {
    0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
    0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xBE,0xF7,0x7D,0xEF,
    0xBA,0xD6,0xB6,0xB5,0xF3,0x9C,0xB2,0x94,0xB3,0x9C,0xB2,0x94,0x34,0xA5,0xF7,0xBD,
@@ -270,6 +314,8 @@ const image[3208] = {
    0xB7,0xAD,0x79,0xC6,0x3C,0xE7,0xBE,0xF7,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF
    }
 
+
+
 -- loop through some colors on screen
 lcd_fill(0xf800) -- red
 lcd_fill(0x07E0) -- Green
@@ -280,25 +326,65 @@ lcd_fill(0xffff) -- White
 lcd_fill(0x07ff) -- Teal
 lcd_fill(0xd343) -- orange?
 
-lcd_clearscreen()
+LCD_BACK_COLOR = 0xffe0 -- blue
+lcd_clear_screen() -- clear screen with background color
 
+-- draw a box
 lcd_box(10,10,190,300)
 
--- display a 40x40 image.
--- for some reason the image is distorted, I have to look into it.
--- I think it's a bad image. See image size. 40*40 = 3200 not 3208.
---
--- set location to write image
-const x = GLCD_X_PIXELS - 40
-const y = GLCD_Y_PIXELS - 40
-const width = 40
-const height = 40
-glcd_address_set(x,y,x + width - 1,y + height - 1);
---
--- print the image
-var word i
-for 1600 using i loop
-   glcd_write_color(image[i*2+1],image[i*2])
-end loop
+-- display a 40x40 image at bottom right corner of screen.
+glcd_draw_image(image,GLCD_X_PIXELS - 40,GLCD_Y_PIXELS - 40,40,40)
 
+-- variables for touch
+var byte touch_x
+var word touch_y
+
+-- print "X:" and "Y:" at bottom left
+glcd_char_x_pos = 0
+glcd_char_y_pos = 320 - 12
+const byte string_x[] = "X:   "
+print_string(lcd,string_x)
+
+glcd_char_x_pos = 80
+glcd_char_y_pos = 320 - 12
+const byte string_y[] = "Y:   "
+print_string(lcd,string_y)
+
+LCD_PEN_COLOR  = 0xf800 -- RED PEN
+
+-- draw some text
+var dword step = 0
+forever loop
+
+   -- put a text counter on the screen
+   glcd_char_x_pos = 50
+   glcd_char_y_pos = 50
+   print_dword_dec(lcd, step)
+   step = step + 1
+
+   -- read currelt location of touch
+   touch_read_xy_8_bit(touch_x, touch_y)
+
+   -- touch monitoring
+   if (touch_x > 1) & (touch_x < 126) then
+      glcd_char_x_pos = 16
+      glcd_char_y_pos = 320 - 12
+      format_byte_dec(lcd, touch_x, 3, 0)
+
+      glcd_char_x_pos = 80 + 16
+      glcd_char_y_pos = 320 - 12
+      format_word_dec(lcd, touch_y, 3, 0)
+
+      -- do some coversion to allocate in correct position on screen
+      touch_x = (touch_x * 2) - 8
+      touch_y = 320 - (touch_y * 3) + 40
+
+      -- draw a black dot at touch location
+      glcd_address_set(touch_x,touch_y,touch_x + 1,touch_y + 1)
+      glcd_write_color_word(0x001f)
+      glcd_write_color_word(0x001f)
+      glcd_write_color_word(0x001f)
+      glcd_write_color_word(0x001f)
+   end if
+end loop
 
