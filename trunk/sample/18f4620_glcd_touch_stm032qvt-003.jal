@@ -103,7 +103,7 @@ alias touch_irq_direction     is pin_a4_direction
 touch_cs_direction = output        -- touch chip select
 touch_irq_direction = input        -- optional interrupt pin
 --
-const byte TOUCH_HIGH_POWER_MODE = HIGH
+const byte TOUCH_HIGH_POWER_MODE = LOW
 const TOUCH_USE_INTERRUPT = TRUE
 const TOUCH_8_BIT_RESOLUTION = TRUE -- TRUE = 8bit, FALSE = 12bit (not supported yet)
 --
@@ -326,11 +326,9 @@ lcd_fill(0xffff) -- White
 lcd_fill(0x07ff) -- Teal
 lcd_fill(0xd343) -- orange?
 
-LCD_BACK_COLOR = 0xffe0 -- blue
+LCD_BACK_COLOR = 0xffe0 -- yellow
 lcd_clear_screen() -- clear screen with background color
 
--- draw a box
-lcd_box(10,10,190,300)
 
 -- display a 40x40 image at bottom right corner of screen.
 glcd_draw_image(image,GLCD_X_PIXELS - 40,GLCD_Y_PIXELS - 40,40,40)
@@ -352,8 +350,16 @@ print_string(lcd,string_y)
 
 LCD_PEN_COLOR  = 0xf800 -- RED PEN
 
+-- draw shapes
+lcd_box(10,20,50,100)
+lcd_ellipse(20,50,10,10)
+lcd_line(10,20,50,100)
+
+
 -- draw some text
 var dword step = 0
+var byte touch_x_prev
+var word touch_y_prev
 forever loop
 
    -- put a text counter on the screen
@@ -362,11 +368,11 @@ forever loop
    print_dword_dec(lcd, step)
    step = step + 1
 
-   -- read currelt location of touch
-   touch_read_xy_8_bit(touch_x, touch_y)
-
    -- touch monitoring
-   if (touch_x > 1) & (touch_x < 126) then
+   if touch_irq == low then
+      -- read location of touch
+      touch_read_xy_8_bit(touch_x, touch_y)
+      
       glcd_char_x_pos = 16
       glcd_char_y_pos = 320 - 12
       format_byte_dec(lcd, touch_x, 3, 0)
@@ -378,13 +384,26 @@ forever loop
       -- do some coversion to allocate in correct position on screen
       touch_x = (touch_x * 2) - 8
       touch_y = 320 - (touch_y * 3) + 40
+      
+      -- erase the previous circle
+      LCD_PEN_COLOR  = LCD_BACK_COLOR -- RED PEN
+      lcd_circle(touch_x_prev,touch_y_prev,20)
+
+      -- draw a new circle
+      LCD_PEN_COLOR = 0xf800 -- RED PEN
+      lcd_circle(touch_x,touch_y,20)
+      
+      touch_x_prev = touch_x
+      touch_y_prev = touch_y
+
 
       -- draw a black dot at touch location
-      glcd_address_set(touch_x,touch_y,touch_x + 1,touch_y + 1)
-      glcd_write_color_word(0x001f)
-      glcd_write_color_word(0x001f)
-      glcd_write_color_word(0x001f)
-      glcd_write_color_word(0x001f)
+      ;glcd_address_set(touch_x,touch_y,touch_x + 1,touch_y + 1)
+      ;glcd_write_color_word(0x001f)
+      ;glcd_write_color_word(0x001f)
+      ;glcd_write_color_word(0x001f)
+      ;glcd_write_color_word(0x001f)
    end if
+
 end loop
 
