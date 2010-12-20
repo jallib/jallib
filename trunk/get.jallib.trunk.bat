@@ -1,0 +1,1 @@
+svn checkout https://jallib.googlecode.com/svn/trunk --username pcdh@copada.dk --password RC7xS8Bx9ue5
