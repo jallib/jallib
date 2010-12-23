@@ -1,0 +1,105 @@
+-- Title: Sample stopwatch
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This example shows basic usage stopwatch library which can
+--              be used to time events
+--
+-- Sources:
+--
+
+include 18f67j50                    -- target PICmicro
+-- include chip
+pragma target clock 24_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target WDT  disabled        -- no watchdog
+pragma target PLLDIV        P4     -- divide by 2 - 20MHZ_INPUT
+pragma target CPUDIV        P1     -- no cpu system clock divide
+pragma target OSC  INTOSC_NOCLKOUT_PLL           -- HS crystal or resonator
+pragma target IESO  DISABLED
+pragma target FCMEN DISABLED
+OSCTUNE_PLLEN = 1                  -- set 96mhz pll
+OSCCON_SCS = 0b00
+_usec_delay(1_000)                 -- wait for OSC PLL to settle
+--
+enable_digital_io() -- disable all analog pins if any
+_usec_delay (100_000) -- wait for power to stablilize
+
+include delay
+include format
+
+include print
+
+-- timer out def
+alias timer_out             is pin_a1
+alias timer_out_direction   is pin_a1_direction
+--
+timer_out_direction = output
+
+-- led def
+alias led             is pin_a0
+alias led_direction   is pin_a0_direction
+--
+led_direction = output
+
+-- set all IO as digital
+enable_digital_io()
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200    -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+serial_hw_data = "!"
+serial_hw_data = "!"
+serial_hw_data = "!"
+serial_hw_data = "!"
+serial_hw_data = " "
+
+-- set stopwatch variable size, (2 = word) or (4 = dword)
+-- word max time = 10ms
+-- dword max time = 10sec
+const STOPWATCH_VAR_SIZE = 4
+--
+-- stopwatch counts in increments of 1us (currently the only supported setting)
+const STOPWATCH_MIN_VALUE = 1
+--
+-- choose what timer to use (currently only timer3 is supported)
+const STOPWATCH_USE_TIMER = 3
+include stopwatch -- include the library
+--
+stopwatch_init()
+
+-- main program here
+stopwatch_start() -- start the stopwatch
+
+delay_1ms(10) -- some delay
+;_usec_delay(1_000)
+
+stopwatch_stop() -- stop the stopwatch
+
+if stopwatch_error == FALSE then
+   -- print the time in miliseconds since last stopwatch restart
+   format_dword_dec(serial_hw_data,stopwatch,8,3)
+   
+   -- print "ms" for milliseconds
+   const byte ms[] = "ms"
+   print_string(serial_hw_data, ms)
+else
+   -- print an error. the stop watch has run too long
+   const byte error[] = "Error: Stopwatch Ran Too Long"
+   print_string(serial_hw_data, error)
+end if
+
+serial_hw_data = " "
+serial_hw_data = "!"
+serial_hw_data = "!"
+serial_hw_data = "!"
+serial_hw_data = "!"
+
