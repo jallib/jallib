@@ -10,6 +10,8 @@
 --
 -- Sources:
 --
+-- Notes:
+--
 
 var bit stopwatch_error = FALSE -- error indicates if time > max stopwatch value
 
@@ -18,7 +20,7 @@ if STOPWATCH_VAR_SIZE > 2 then
    var byte stopwatch_high_value[(STOPWATCH_VAR_SIZE - 2)] at _stopwatch_high_value
 end if
 
-var byte _stopwatch_timer_cycle_time -- min timer time (value/DEVIDER = time in usec)
+var byte _stopwatch_timer_cycle_time -- time of one timer step
 
 if target_clock > 20_000_000 then
    const DEVIDER = 10
@@ -37,17 +39,15 @@ procedure stopwatch_init() is
    -- timer3 setup
    t3con_tmr3cs = 0       -- use internal clock
    pie2_tmr3ie  = 1       -- enable the timer3 interrupt bit
-   ;t3con_tmr3on = 1       -- enables timer
-   pir2_tmr3if  = off     --
+   ;t3con_tmr3on = 1      -- enables timer
+   pir2_tmr3if  = off     -- turn off interrupt overflow flag
 
    -- set timer3 clock prescaler
    -- each increment slows clock by a multiple of 2
    t3con_t3ckps = 0 -- set prscal of 1:1
 
-   -- calculate min time of one clock cycle (in .00 usec)
-   const dword STOPWATCH_CALC_1 = target_clock / 10_000
-   const dword STOPWATCH_CALC_2 = STOPWATCH_CALC_1 / 4
-   _stopwatch_timer_cycle_time = byte((10_000) / STOPWATCH_CALC_2)
+   -- calculate min time of one timer step
+   _stopwatch_timer_cycle_time = 4_000_000_000 / target_clock
 
    -- increment the prescaler if < 1us
    while _stopwatch_timer_cycle_time < DEVIDER loop
@@ -97,23 +97,26 @@ function stopwatch_read_time() return byte*STOPWATCH_VAR_SIZE is
 
    if STOPWATCH_VAR_SIZE == 2 then
 
+      -- get value of timer3
       var word timer_time = TMR3
-      timer_time = word( (dword(_stopwatch_timer_cycle_time) * timer_time) / 100 )
+      
+      -- calculate time
+      timer_time = word( (dword(_stopwatch_timer_cycle_time) * timer_time) / 1000 )
       return word(timer_time)
    else
       var dword timer_time
       var byte _timer_time[4] at timer_time
 
-      -- get value of timer3
+      -- get value of timer3 + overflow
       timer_time = TMR3
-
       _timer_time[3] = stopwatch_high_value[1]
       _timer_time[2] = stopwatch_high_value[0]
       var byte _TMR3[2] at TMR3
       _timer_time[1] = _TMR3[1]
       _timer_time[0] = _TMR3[0]
 
-      timer_time = (_stopwatch_timer_cycle_time * timer_time) / 100
+      -- calculate time
+      timer_time = (_stopwatch_timer_cycle_time * timer_time) / 1000
       
       return dword(timer_time)
    end if
@@ -129,19 +132,6 @@ function stopwatch'get() return byte*STOPWATCH_VAR_SIZE is
 end function
 
 --------------------------------------------------------------------------------
--- set the stopwatch's value in cycles
---------------------------------------------------------------------------------
-;   procedure stopwatch_set_cycles(byte*STOPWATCH_VAR_SIZE in start_value) is
-;      pragma inline
-;
-;      if STOPWATCH_VAR_SIZE <= 2 then
-;         TMR3 = start_value
-;      else
-;         -- not active yet
-;      end if
-;   end procedure
-
---------------------------------------------------------------------------------
 -- interrupt to increment stopwatch if hardware timer > 65535
 --------------------------------------------------------------------------------
 procedure stopwatch_isr() is
@@ -151,15 +141,18 @@ procedure stopwatch_isr() is
       return                 -- exit interupt if it is not
    end if
 
-   PIR2_TMR3IF = off         -- clear overflow to start timer
+   PIR2_TMR3IF = off         -- turn off interrupt overflow flag
 
    if STOPWATCH_VAR_SIZE > 2 then
+      -- add an overflow
       _stopwatch_high_value = _stopwatch_high_value + 1
       
+      -- set error if overflow is too high
       if _stopwatch_high_value == 0 then
          stopwatch_error = TRUE -- set error
       end if
    else
+      -- set error if timer rolls over
       stopwatch_error = TRUE -- set error
    end if
    
