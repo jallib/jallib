@@ -31,13 +31,20 @@ enable_digital_io()                -- make all pins digital I/O
 _usec_delay (100_000) -- wait for power to stablilize
 
 
-
 include delay
 
--- setup uart for communication
-const serial_hw_baudrate  = 115200   -- set the baudrate
-include serial_hardware
-serial_hw_init()
+-- setup serial software
+const serial_sw_baudrate = 115200
+alias serial_sw_tx_pin is pin_B4
+alias serial_sw_rx_pin is pin_B5
+pin_B4_direction = output
+pin_B5_direction = input
+include serial_software
+serial_sw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_sw_write
+alias serial_data is serial_sw_data
+
 
 include print
 
@@ -70,17 +77,17 @@ _usec_delay(100_000)                  -- wait for power to settle
 
 -- procedure for sending 80 "-----------------" via serial port
 procedure seperator() is
-   serial_hw_data = 13
-   serial_hw_data = 10
+   serial_data = 13
+   serial_data = 10
    const byte str3[] = "--------------------------------------------------------------------------------"
-   print_string(serial_hw_data, str3)
-   print_crlf(serial_hw_data)
+   print_string(serial_data, str3)
+   print_crlf(serial_data)
 end procedure
 
 -- Send something to the serial port
 seperator()             -- send "----" via serial port
 var byte start_string[] = "SD CARD SAMPLE STARTED"
-print_string(serial_hw_data,start_string)
+print_string(serial_data,start_string)
 
 -- variables for the sample
 var word step1
@@ -93,7 +100,7 @@ seperator()            -- seperate the examples with "----"
 sd_start_read(0)           -- get sd card ready for read at sector 0
 for 512 * 2 loop           -- read 2 sectors (512 * 2 bytes)
   data = sd_data_byte      -- read 1 bytes of data
-  serial_hw_write(data)    -- send byte via serial port
+  serial_write(data)    -- send byte via serial port
 end loop
 sd_stop_read()             -- tell sd card you are done reading
 
@@ -112,7 +119,7 @@ sd_stop_write()            -- tell sd card you are done reading
 sd_start_read(20)          -- get sd card ready for read at sector 20
 for 512 + 256 loop         -- loop 1 sector + 1 half sector (512 + 256 bytes)
  data = sd_data_byte       -- read 1 bytes of data
-  serial_hw_write(data)    -- send byte via serial port
+  serial_write(data)    -- send byte via serial port
 end loop
 sd_stop_read()             -- tell sd card you are done reading
 
@@ -139,13 +146,13 @@ _usec_delay(500_000)       -- a small delay
 ;   sd_read_sector_address(20)
 ;   -- now send it to the serial port
 ;   for 512 using step1 loop                     -- loop till the end of the sector buffer
-;      serial_hw_write (sd_sector_buffer[step1]) -- send each byte via serial port
+;      serial_write (sd_sector_buffer[step1]) -- send each byte via serial port
 ;   end loop
 ;   -- read sector 21 into the sector buffer
 ;   sd_read_sector_address(21)
 ;   -- now send it to the serial port
 ;   for 512 using step1 loop                     -- loop till the end of the sector buffer
-;      serial_hw_write (sd_sector_buffer[step1]) -- send each byte via serial port
+;      serial_write (sd_sector_buffer[step1]) -- send each byte via serial port
 ;   end loop
 ;
 ;   seperator()                                  -- seperate the examples with "----"
@@ -178,13 +185,13 @@ _usec_delay(500_000)       -- a small delay
 ;   sd_read_sector()
 ;   -- now send it to the serial port
 ;   for 512 using step1 loop                   -- loop till the end of the sector buffer
-;     serial_hw_write(sd_sector_buffer[step1]) -- send each byte via serial port
+;     serial_write(sd_sector_buffer[step1]) -- send each byte via serial port
 ;   end loop
 ;   -- read the next sector into the sector buffer
 ;   sd_read_sector()
 ;   -- now send it to the serial port
 ;   for 512 using step1 loop                   -- loop till the end of the sector buffer
-;     serial_hw_write(sd_sector_buffer[step1]) -- send each byte via serial port
+;     serial_write(sd_sector_buffer[step1]) -- send each byte via serial port
 ;   end loop
 ;   sd_stop_read()                             -- tell sd card you are done reading
 
