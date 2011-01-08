@@ -45,8 +45,8 @@
 include jascii         
          
 ; prototypes
-procedure _print_universal_dec(volatile byte out device, dword in data, dword in digit_divisor)
-procedure _print_suniversal_dec(volatile byte out device, sdword in data, dword in digit_divisor)
+procedure _print_universal_dec(volatile byte out device, dword in data, sbyte in divisor_index)
+procedure _print_suniversal_dec(volatile byte out device, sdword in data, byte in divisor_index)
 procedure print_byte_binary(volatile byte out device, byte in data)
 
 const byte nibble2hex[] = "0123456789ABCDEF"   -- conversion string
@@ -251,63 +251,64 @@ end procedure
 
 procedure print_sdword_dec(volatile byte out device, sdword in data) is
 
-   _print_suniversal_dec(device, data, 1000000000)
+   _print_suniversal_dec(device, data, 9)
 
 end procedure
 
 procedure print_sword_dec(volatile byte out device, sword in data) is
 
-   _print_suniversal_dec(device, data, 10000)
+   _print_suniversal_dec(device, data, 4)
 
 end procedure
 
 -- 8 bit fixed point integer math
 procedure print_sword_fp_dec(volatile byte out device, sword in data) is
 
-   _print_suniversal_dec(device, (data >> 8), 10000) -- whole part
+   _print_suniversal_dec(device, (data >> 8), 4) -- whole part
    device = "."
-   _print_suniversal_dec(device, (data & 0xFF), 10000) -- decimal part
+   _print_suniversal_dec(device, (data & 0xFF), 4) -- decimal part
 end procedure
 
 procedure print_sbyte_dec(volatile byte out device, sbyte in data) is
 
-   _print_suniversal_dec(device, data, 100)
+   _print_suniversal_dec(device, data, 2)
       
 end procedure
 
 procedure print_dword_dec(volatile byte out device, dword in data) is
 
-   _print_universal_dec(device, data, 1000000000)
+   _print_universal_dec(device, data, 9)
 
 end procedure
 
 procedure print_word_dec(volatile byte out device, word in data) is
 
-   _print_universal_dec(device, data, 10000)
+   _print_universal_dec(device, data, 4)
 
 end procedure
 
 procedure print_byte_dec(volatile byte out device, byte in data) is
 
-   _print_universal_dec(device, data, 100)
+   _print_universal_dec(device, data, 2)
       
 end procedure
 
 
 
 
-procedure _print_suniversal_dec(volatile byte out device, sdword in data, dword in digit_divisor) is
+procedure _print_suniversal_dec(volatile byte out device, sdword in data, byte in divisor_index) is
    
    if (data < 0) then
       data = -data
       device = "-"      
    end if
 
-   _print_universal_dec(device, dword( data ), digit_divisor)
+   _print_universal_dec(device, dword( data ), divisor_index)
       
 end procedure
 
-procedure _print_universal_dec(volatile byte out device, dword in data, dword in digit_divisor) is
+const dword digit_divisor[] = { 1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000 }
+procedure _print_universal_dec(volatile byte out device, dword in data, sbyte in divisor_index) is
    var byte digit
    var bit  no_digits_printed_yet;
    
@@ -317,14 +318,15 @@ procedure _print_universal_dec(volatile byte out device, dword in data, dword in
    end if
 
    no_digits_printed_yet = true
-   while (digit_divisor > 0) loop   
-      if (data >= digit_divisor) then
-         digit = byte ( data / digit_divisor )
-         data = data % digit_divisor  
+   while (divisor_index >= 0) loop   
+      if (data >= digit_divisor[divisor_index]) then
+         digit = byte ( data / digit_divisor[divisor_index] )
+         data = data % digit_divisor[divisor_index]  
       else
          digit = 0
       end if
-      digit_divisor = digit_divisor / 10
+;      digit_divisor = digit_divisor / 10
+      divisor_index = divisor_index - 1
       
       if ((digit != 0) | (no_digits_printed_yet == false)) then
          device = digit | "0"
