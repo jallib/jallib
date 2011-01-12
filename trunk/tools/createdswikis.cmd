@@ -16,10 +16,10 @@
 parse upper arg runtype .
 
 /* -- input files (change for other systems or platforms) -- */
-if runtype \= 'TEST' then
-   jaldir   = 'k:/jallib/include/device/'           /* dir with Jallib device files */
+if runtype  = 'TEST' then
+   jaldir   = 'k:/jal/dev2jal/test/'                /* dir with test device files */
 else
-   jaldir      = 'k:/jal/dev2jal/test/'             /* dir with test files */
+   jaldir   = 'k:/jallib/include/device/'           /* dir with production device files */
 pdfdir      = 'k:/picdatasheets/'                   /* dir with datasheets (local)  */
 PicSpecFile = 'k:/jallib/tools/devicespecific.json' /* PIC specific properties      */
 titles      = 'k:/jallib/tools/datasheet.list'      /* datasheet number/title file  */
@@ -103,7 +103,6 @@ do i=1 to dir.0                                /* a line for every Jallib PIC de
     DS = PicSpec.PicName.PgmSpec
 
   if DS \= '-'  &  DS \= '?' then do
-    PicNameFmt = left('"'PicName'"',12)
     call SysFileSearch DS, titles, dsnum.               /* lookup ds# & title */
     if dsnum.0 > 0 then do
       call lineout wiki, '||' left(PicName,9),
@@ -113,10 +112,11 @@ do i=1 to dir.0                                /* a line for every Jallib PIC de
       if dsfile.0 = 0 then                              /* check on presence */
         say 'Datasheet' dsnum.1 'not found in' pdfdir
     end
-    else
+    else do
       call lineout wiki, '||' left(PicName,9),
                          '||' left(DS,6),
                          '|| - ||'
+    end
   end
   else                                      /* no datasheet number found */
     call lineout wiki, '||' left(PicName,9),
