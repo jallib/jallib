@@ -1,0 +1,98 @@
+-- Title: UDP (User Datagram Protocol)
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4l
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: An unreliable, connection less protocol, used to send and
+--              recieve data. The application must provide it's own reliability.
+--
+-- Sources:
+-- http://www.networksorcery.com/enp/protocol/udp.htm
+--
+-- Note:
+--
+
+const word UDP_SOURCE_PORT = 0
+const word UDP_DESTINATION_PORT = 2
+const word UDP_LENGTH = 4
+const word UDP_CHECKSUM = 6
+--
+const word UDP_TYPE  = 8
+const word UDP_CLASS = 10
+
+const UDP_HEADER_LENGTH = 8
+
+--------------------------------------------------------------------------------
+-- Sends a UDP packet
+--------------------------------------------------------------------------------
+procedure udp_send(word in source_port, word in destination_port, byte in data[]) is
+   -- print a debug message
+   var byte sending_ping[] = "---------- sending udp data... ----------"
+   debug_string(DEBUG_2,sending_ping)
+   debug_crlf(DEBUG_2)
+
+   network_var_offset = 0
+   
+   if NETWORK_LINK_LAYER == NET_ETHERNET then
+      ethernet_header_create(0,
+      network_destination_mac[0],
+      network_destination_mac[1],
+      network_destination_mac[2],
+      network_destination_mac[3],
+      network_destination_mac[4],
+      network_destination_mac[5]
+      )
+   end if
+   
+   var word udp_size = UDP_HEADER_LENGTH + count(data)
+   
+   -- create the ip header
+   ip_header_create(UDP,udp_size)
+   
+   -- set the UDP header data
+   network_word[UDP_SOURCE_PORT] = source_port
+   network_word[UDP_DESTINATION_PORT] = destination_port
+   network_word[UDP_LENGTH] = count(data) + UDP_HEADER_LENGTH
+   network_word[UDP_CHECKSUM] = 0
+
+   -- put the UDP data into the network array
+   var word count1 = 0
+   for count(data) loop
+      network_data[count1 + network_var_offset + UDP_HEADER_LENGTH] = data[count1]
+      ;serial_hw_data = data[count1]
+      count1 = count1 + 1
+   end loop
+
+   -- calculate and set the checksum
+   -- i'm not sure how to calculate this, but it seems that
+   -- checksum value 0x0000 works!
+   ;network_word[UDP_CHECKSUM] = network_checksum_16_byte_calc(network_var_offset - ip_header_size,ip_header_size + udp_size)
+
+   ;-- end the udp packet (not sure where I saw this)
+   -- seems that it is not needed anyways.
+   ;-- set variable data
+   ;network_word[UDP_TYPE]  = ""
+   ;network_word[UDP_CLASS] = ""
+   
+   network_send_packet(network_var_offset + udp_size) -- send the packet
+end procedure
+
+--------------------------------------------------------------------------------
+-- Read a UDP packet
+--------------------------------------------------------------------------------
+alias udp_data_size is network_packet_size
+procedure udp_read_packet() is
+   -- print a debug message
+   var byte sending_ping[] = "---------- UDP data recieved! ----------"
+   debug_string(DEBUG_2,sending_ping)
+   debug_crlf(DEBUG_2)
+   network_packet_size = network_packet_size - UDP_HEADER_LENGTH
+
+   -- call the call back
+   if defined(udp_receive_callback) then
+      udp_receive_callback(network_word[UDP_DESTINATION_PORT],network_word[UDP_SOURCE_PORT],network_packet_size)
+   end if
+end procedure
