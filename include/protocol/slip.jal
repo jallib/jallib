@@ -38,8 +38,6 @@ var byte _slip_last_char
 var byte _slip_rx_packet_data_count = 0
 var byte _slip_tx_packet_data_count = 0
 
-const byte SLIP = 1 -- slip network layer
-
 --------------------------------------------------------------------------------
 -- initalize slip
 --------------------------------------------------------------------------------
@@ -60,8 +58,15 @@ end procedure
 procedure slip_send_data(byte in data) is
    var byte*SLIP_BYTE_WIDTH  position = 0
 
-   if _slip_tx_packet_data_count == 0 then
+   _slip_tx_packet_data_count = _slip_tx_packet_data_count + 1
+   if _slip_tx_packet_data_count == 1 then
       slip_serial_data = _SLIP_START -- same as _SLIP_END char
+   elsif _slip_tx_packet_data_count == SLIP_MTU then
+      -- send a _end character to let the receiver know that we are finished
+      -- sending our packet
+      slip_serial_data = _SLIP_END
+      _slip_tx_packet_data_count = 0 -- reset packet data counter
+      return
    end if
    
    -- if it's the same code as an END character, we send a
@@ -80,15 +85,6 @@ procedure slip_send_data(byte in data) is
       
    else -- otherwise, we just send the character
       slip_serial_data = data
-   end if
-   _slip_tx_packet_data_count = _slip_tx_packet_data_count + 1
-   
-   if _slip_tx_packet_data_count == SLIP_MTU then
-      -- send a _end character to let the receiver know that we are finished
-      -- sending our packet
-      slip_serial_data = _SLIP_END
-      _slip_tx_packet_data_count = 0 -- reset packet data counter
-      return
    end if
 end procedure
 
@@ -116,7 +112,9 @@ procedure slip_poll() is
       if char == _SLIP_END then
          _slip_rx_packet_finished = TRUE
          if defined (slip_received_packet_callback) then
-            slip_received_packet_callback(_slip_rx_packet_data_count) -- do the users callback
+            ;slip_received_packet_callback(_slip_rx_packet_data_count) -- do the users callback
+            slip_packet_size_buffer = _slip_rx_packet_data_count
+            slip_received_packet_callback() -- do the users callback
          end if
          _slip_rx_packet_data_count = 0
          return
