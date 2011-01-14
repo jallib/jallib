@@ -1,4 +1,4 @@
--- Title: Sample PING/UDP/ARP via SLIP
+-- Title: Sample PING/UDP/ARP via ENC28j60
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4n
@@ -6,20 +6,16 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: This sample is for SLIP network communication using
---              a serial port. sends/receives PING, UDP data packets
+-- Description: This sample is for ethernet network communication using
+--              ENC28j60. sends/receives PING, UDP data packets,
+--              and ARP
 --
 -- Sources:
--- http://tools.ietf.org/html/rfc1055
 --
 -- Notes:
 -- Switches + pull up resistor connected to pin_d0, pin_d1.
 -- led + resistor on pin_d2
 -- serial sw: tx_pin is pin_B4, rx_pin is pin_B5
--- serial hw to slip connection
---
--- change "const WIN_XP_CONNECTION = TRUE" to false if you are not using
--- win XP "direct connect"
 --
 
 -- include chip
@@ -41,6 +37,8 @@ OSCTUNE_PLLEN = true  -- multiply internal osc by 4
 ;--
 _usec_delay(500_000)
 
+include print
+
 -- setup serial software
 const serial_sw_baudrate = 115200
 alias serial_sw_tx_pin is pin_B4
@@ -50,28 +48,6 @@ pin_B5_direction = input
 include serial_software
 serial_sw_init()
 alias serial_data is serial_sw_data
-
--- setup uart for communication
-const serial_hw_baudrate  = 9600   -- set the baudrate
-include serial_hardware
-serial_hw_init()
-
-alias debug_data is serial_sw_data
-const bit DEBUG_MASTER_ENABLE = FALSE    -- enables debugging
-include debug
---
--- turn on and off debug levels.
-;debug_lvl_0 = ON
-debug_lvl_1 = ON   -- network error messages
-debug_lvl_2 = ON   -- network general text
-debug_lvl_3 = ON   -- network packet data type text
-debug_lvl_4 = ON   -- network debug data
-;debug_lvl_5 = ON
-;debug_lvl_6 = ON
-
-var byte debug_text1[] = "DEBUG STARTED"
-debug_string(DEBUG_2,debug_text1)
-debug_crlf(DEBUG_2)
 
 -- setup a button
 alias button is pin_d1
@@ -92,56 +68,113 @@ alias led_direction is pin_d2_direction
 led_direction = OUTPUT
 led = high
 
+include spi_master_hw         -- includes the spi library
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+--
+spi_init(SPI_MODE_00,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+
+-- setup debug lib
+alias debug_data is serial_data
+const bit DEBUG_MASTER_ENABLE = FALSE    -- enables debugging
+include debug
+--
+-- turn on and off debug levels.
+;debug_lvl_0 = ON
+debug_lvl_1 = ON   -- network error messages
+debug_lvl_2 = ON   -- network general text
+debug_lvl_3 = ON   -- network packet data type text
+debug_lvl_4 = ON   -- network debug data
+;debug_lvl_5 = ON
+;debug_lvl_6 = ON
+--
+var byte debug_text1[] = "DEBUG STARTED"
+debug_string(DEBUG_2,debug_text1)
+debug_crlf(DEBUG_2)
+
+-- setup networking global variables & procedures
+const ENC_USE_INTERRUPT_PIN = FALSE     -- TRUE not tested yet
+const NETWORK_DATA_SIZE = 100           -- up to 1500
+const NETWORK_LINK_LAYER = NET_ETHERNET -- choose network link layer
+--
+-- Setup the network array. use large array lib
+const LARGE_ARRAY_1_SIZE = NETWORK_DATA_SIZE   -- choose number of array variables
+const LARGE_ARRAY_1_VARIABLE_SIZE = 1          -- choose size of variables (byte*1)
+include large_array_1                          -- include the array library
+alias network_data is large_array_1            -- rename/alias the array to test
+--
+-- or just use a small/regular array
+;var byte network_data[NETWORK_DATA_SIZE]
 --
 ;var byte network_mac[6] = {0x54,0x55,0x58,0x10,0x00,0x24}
 var byte network_source_mac[6] = {0x00,0x13,0xD4,0xC6,0x53,0x16}
 var byte network_destination_mac[6] = {0,0,0,0,0,0} ;{0x00,0x09,0x6B,0x5F,0xC4,0x81}      -- destination mac address
 var byte network_destination_ip[] = {192,168,2,2}
 --
-;var byte network_source_ip[] = {192,168,1,60}
-var byte network_source_ip[] = {192,168,2,1}
+var byte network_source_ip[] = {192,168,1,60}
+;var byte network_source_ip[] = {192,168,2,1}
 --
 
--- setup SLIP
-const word SLIP_MTU = 100  -- Max bytes per packet (Max Transfer Unit)
+-- setup ENC28j60
 --
--- choose your interrupt routine. you may ignore this and create your own
--- isr or use polling method slip_poll()
-const bit SLIP_USE_SERIAL_HW_ISR = TRUE -- TRUE = recieve data via serial hw interrupt
-const SLIP_DO_CALLBACK_IN_ISR == FALSE -- the callback will get run within the ISR
+-- pin def
+alias enc_reset is pin_a2
+alias enc_reset_direction is pin_a2_direction
+enc_reset_direction = output
+enc_reset = 1
 --
--- choose your data carrier
-alias slip_serial_data is serial_hw_data
-alias slip_data_available is serial_hw_data_available
+-- interrupt output pin
+alias enc_int is pin_a4
+alias enc_int_direction is pin_a4_direction
+enc_int_direction = input
 --
--- Choose the size of your recieve buffer.
--- Should be the same as SLIP MTU if slip interrupts are not enabled
-const byte QUEUE01_SIZE = 254
-include queue01 -- include the queue/buffer library
-alias slip_rx_buffer is queue01_nb  -- alias buffer for recieved data
+-- wake up on lan signal (some datasheets say this pin is not connected?)
+;alias enc_wol is pin_ax
+;alias enc_wol_direction is pin_ax_direction
+;enc_wol_direction = input
 --
--- Choose buffer to hold packet sizes (for interrupts only)
-const byte QUEUE02_SIZE = 10
-include queue02 -- include the queue/buffer library
-alias slip_packet_size_buffer is queue02_nb     -- alias buffer for packet sizes
-alias slip_packets_available is queue02_nr_used -- alias for number of packets avail
+-- chip select pin
+alias enc_cs is pin_e0
+alias enc_cs_direction is pin_e0_direction
+enc_cs_direction = output
+enc_cs = 1
 --
--- prototype for procedure defined in network.jal
-procedure network_received_packet()
--- allias callback for when a full slip packet is recieved
-alias slip_received_packet_callback is network_received_packet
+const ENC_ALWAYS_SET_SPI_MODE = TRUE
+include enc28j60
+enc_init()
 --
-include slip -- include the library
---
-slip_init() -- init the slip library
+enc_set_clkout_freq(ENC_8_333) -- change clockout pin freq. (good communication test)
+enc_set_clkout_freq(ENC_3_125) -- change clockout pin freq again
 
--- setup networking global variables & procedures
-const byte NETWORK_DATA_SIZE = 100
-const byte NETWORK_LINK_LAYER = NET_SLIP -- choose network link layer
 include network_globals
 
 -- setup ip header lib
 include ip_header
+
+-- setup ARP. callback procedures do not have to be defined.
+--------------------------------------------------------------------------------
+-- called when we get a arp reply from an external source
+--------------------------------------------------------------------------------
+procedure arp_reply_callback() is
+    -- print a message
+    var byte get_ping[] = "arp reply recieved!"
+    print_string(serial_data,get_ping)
+    print_crlf(serial_data)
+end procedure
+--------------------------------------------------------------------------------
+-- called when we get a arp request
+--------------------------------------------------------------------------------
+procedure arp_request_callback() is
+    -- print a message
+    var byte get_ping[] = "arp request recieved, sending reply"
+    print_string(serial_data,get_ping)
+    print_crlf(serial_data)
+end procedure
+include arp
+
+include ethernet
 
 -- setup icmp lib. callback procedures do not have to be defined.
 --
@@ -161,6 +194,7 @@ procedure icmp_ping_callback() is
       led = !led -- toggle led
 end procedure
 --
+const ICMP_ECHO_DATA_LENGTH = 32 -- size of data to send with PING
 include icmp
 
 -- setup UDP lib. Callback procedures do not have to be defined.
@@ -168,13 +202,6 @@ include icmp
 -- Receive UDP data. Minumum data size is 18 bytes. You are the client
 --------------------------------------------------------------------------------
 procedure udp_receive_callback(word in udp_client_port,word in udp_server_port, word in udp_data_size) is
-   -- function to make a fake array from location of udp data located in
-   -- network_data array. To save processing power, you can directly
-   -- use network_data[] starting at address "network_var_offset + 8"
-   function udp_data'get(word in address) return byte is
-      return network_data[network_var_offset + 8 + address]
-   end function
-
    -- send some info via serial port about our packet
    print_crlf(serial_data)
    const byte str2[] = "UDP data received. port: "
@@ -184,10 +211,10 @@ procedure udp_receive_callback(word in udp_client_port,word in udp_server_port, 
    print_string(serial_data,str_size)
    print_word_dec(serial_data, udp_data_size)
    print_crlf(serial_data)
-
+   
    -- check the port number
    if udp_client_port == 251 then
-
+      
       -- do something with the data, we'll print it to serial port
       var word step
       for udp_data_size using step loop               -- for each byte in packet
@@ -196,7 +223,7 @@ procedure udp_receive_callback(word in udp_client_port,word in udp_server_port, 
          serial_data = udp_data[step]
       end loop
    end if
-
+   
    print_crlf(serial_data)
 end procedure
 include udp
@@ -204,32 +231,27 @@ include udp
 -- include networking main file
 include network_main
 
-----------------------------------------------------------------
--- MAIN PROGRAM
-----------------------------------------------------------------
--- choose if you are connecting to win xp machine,
--- if so, PIC will wait for a connection
-const WIN_XP_CONNECTION = TRUE
---
-if WIN_XP_CONNECTION == TRUE then
-   ;-- wait for "CLIENT" from windows slip connection (yes, i got lazy)
-   while !serial_hw_data_available loop
-   end loop
-   --
-   -- reply with "CLIENTSERVER" to initiate connection
-   const byte str1[] = "CLIENTSERVER"   -- define a string
-   print_string(serial_hw_data, str1)   -- send via serial port
-   ---
-   -- inform user we are connected to win xp
-   var byte xp_conn[] = "Connected to WIN XP"
-   debug_string(DEBUG_2,xp_conn)
-   debug_crlf(DEBUG_2)
-end if
+-- print some start characters
+for 10 loop
+   serial_data = "!"
+end loop
+print_crlf(serial_data)
 
--- inform user PIC is ready!
-var byte program_started[] = "PROGRAM STARTED"
-debug_string(DEBUG_2,program_started)
-debug_crlf(DEBUG_2)
+-- you must send some arp requests and get at leaset one reply before you do
+-- anything if you don't know the mac address of whom you are
+-- talking through (your router).
+;network_set_destination_ip(192,168,2,2)
+network_set_destination_ip(192,168,1,1)
+for 10 loop -- 10 times just to make sure we get a reply.
+   -- send arp request
+    arp_send_request()
+    
+    -- print message
+    var byte sending_arp[] = "sent arp request"
+    print_string(serial_data,sending_arp)
+    print_crlf(serial_data)
+end loop
+
 
 -- main loop
 var word packet_size
@@ -243,8 +265,8 @@ forever loop
        print_crlf(serial_data)
 
       -- you must always set destination ip address
-      ;network_set_destination_ip(74,125,226,18) -- ping google's ip address
-      network_set_destination_ip(192,168,2,2)    -- ping a computer
+      network_set_destination_ip(74,125,226,18) -- ping google's ip address
+      ;network_set_destination_ip(192,168,2,2)   -- ping a computer
       icmp_send_echo()
 
       while button == LOW loop
@@ -252,7 +274,7 @@ forever loop
       end loop
 
    end if
-
+   
    -- send arp when button is pressed
    if button2 == LOW then
 
@@ -262,32 +284,34 @@ forever loop
        print_string(serial_data,sending_udp)
        print_crlf(serial_data)
 
-       -- send UDP data "HELLO"
        -- you must always set destination ip address
-       network_set_destination_ip(192,168,2,2)
+       ;network_set_destination_ip(192,168,2,2)
+       network_set_destination_ip(192,168,1,105)
 
-       var byte test[5]
-       test[0] = "H"
-       test[1] = "E"
-       test[2] = "L"
-       test[3] = "L"
-       test[4] = "O"
+       -- EXAMPLE 1: Send data from udp_data[] internal array
+       -- less ram usage and more cpu cycles then udp_send_array()
+       -- send UDP data "HELLO"
+       udp_data[0] = "H"
+       udp_data[1] = "E"
+       udp_data[2] = "L"
+       udp_data[3] = "L"
+       udp_data[4] = "O"
+       udp_send(251,251,5)
 
+       -- EXAMPLE 2: Send an array
+       -- more ram usage and less cpu cycles then udp_send()
        -- send the data (source port, destination port, data)
-       udp_send(251,251,test)
-
+       ;var byte test[] = "HELLO WORLD"
+       ;udp_send_array(251,251,test)
+       
       while button2 == LOW loop
          _usec_delay(10_000)
       end loop
 
    end if
-
-   -- poll to see if there is a packet available
-   if network_rx_packet_available & !network_data_in_use then
-      network_received_packet() -- get the packet
-   end if
-
+   
+   -- poll to see if there are network packets available
+   network_poll()
+   
 end loop
-
-
 

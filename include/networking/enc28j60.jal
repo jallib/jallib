@@ -1,7 +1,7 @@
 -- Title: Ethernet Device ENC28j60
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4l
+-- Compiler: >=2.4n
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -19,8 +19,8 @@
 include delay
 
 var byte enc_current_bank
-var word NextPacketPtr = 0
-var byte _NextPacketPtr[2] at NextPacketPtr
+var word enc_packet_pointer = 0
+var byte _enc_packet_pointer[2] at enc_packet_pointer
 
 -- receive buffer end
 const word RXSTOP_INIT   = (0x1FFF-0x0600-1) -- =0x19FE
@@ -383,8 +383,8 @@ end procedure
 --------------------------------------------------------------------------------
 procedure enc_complete_packet_read() is
 	-- move the receive read pointer to the start of the next packet
-	enc_write_register(ERXRDPTL, _NextPacketPtr[0])
-	enc_write_register(ERXRDPTH, _NextPacketPtr[1])
+	enc_write_register(ERXRDPTL, _enc_packet_pointer[0])
+	enc_write_register(ERXRDPTH, _enc_packet_pointer[1])
 	-- decrement the count of number of packets
 	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON2, ECON2_PKTDEC) -- decrement EPKTCNT by 1
 end procedure
@@ -602,11 +602,11 @@ function enc_packet_available'get() return bit is
    if enc_packets_available() > 0 then
    
    -- Set the read pointer to the start of the received packet
-	enc_write_register(ERDPTL, _NextPacketPtr[0])
-	enc_write_register(ERDPTH, _NextPacketPtr[1])
+	enc_write_register(ERDPTL, _enc_packet_pointer[0])
+	enc_write_register(ERDPTH, _enc_packet_pointer[1])
 	-- read the next packet pointer
-	NextPacketPtr  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0);
-	NextPacketPtr  = NextPacketPtr | (word( enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0) )<<8)
+	enc_packet_pointer  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0);
+	enc_packet_pointer  = enc_packet_pointer | (word( enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0) )<<8)
    
       return 1
    else
