@@ -96,6 +96,8 @@ vref_pins = \
  '16LF1827': {'RA2': 'VREF-', 'RA3': 'VREF+'},
  '16LF1828': {'RA0': 'VREF-', 'RA1': 'VREF+'},
  '16LF1829': {'RA0': 'VREF-', 'RA1': 'VREF+'},
+ '16LF1902': {'RA3': 'VREF+'},
+ '16LF1903': {'RA3': 'VREF+'},
  '16LF1933': {'RA2': 'VREF-', 'RA3': 'VREF+'},
  '16LF1934': {'RA2': 'VREF-', 'RA3': 'VREF+'},
  '16LF1936': {'RA2': 'VREF-', 'RA3': 'VREF+'},
