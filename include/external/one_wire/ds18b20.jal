@@ -132,7 +132,7 @@ function _ds18b20_read( byte in nbre_byte ) return bit is
    -- the complete group          
    var byte bb = 0, i
    if (ds18b20_ignore_crc == 0) then  
-      var byte bb = 0, n = 0 , crcbyte = 0
+      var byte n = 0 , crcbyte = 0
       var bit  bb_bit0 at bb : 0
       var bit  crcbyte_bit0 at crcbyte : 0
       var bit  crcbyte_bit2 at crcbyte : 2
@@ -177,12 +177,32 @@ function _ds18b20_read( byte in nbre_byte ) return bit is
 end function
 
 -- for reading the ROM when you have only one device on wire
--- result is in scratchpad area
--- returns true if all went well.
+
+
+-- -----------------------------------------------------------------------
+-- ds18b20_s_temp - read temperature from single device on bus
+-- -----------------------------------------------------------------------
+-- Only use this procedure when there is only one device on the one_wire bus.
+-- behavior of this procedure (retry) is influenced by constants, see lib header.
+--
+-- result is 8-byte ID in the scratchpad area 
+-- return:  true if success (crc okay).
+-- -----------------------------------------------------------------------
 function ds18b20_s_read_rom() return bit is
-   d1w_reset()
-   d1w_write_byte( 0x33 )         -- read ID command
-   return _ds18b20_read( 8 )      -- just 8 bytes for ID
+   var bit success_flag
+   
+   -- ---------------------
+   -- read with retry logic
+   -- ---------------------
+   var byte i = 0
+   repeat 
+      d1w_reset()
+      d1w_write_byte(0x33)             -- read ID command
+      success_flag = _ds18b20_read(8)  -- 8 bytes for ID 
+      i = i + 1           
+   until (success_flag) | (i > ds18b20_max_retries)
+
+   return success_flag
 end function
 
 -- -----------------------------------------------------------------------
@@ -192,7 +212,15 @@ end function
 
 -- for reading the temperature when you have only one device on wire       
 
+-- -----------------------------------------------------------------------
+-- ds18b20_s_temp - read temperature from single device on bus
+-- -----------------------------------------------------------------------
+-- Only use this procedure when there is only one device on the one_wire bus.
+-- behavior of this procedure (retry, converions) is influenced by 
+-- constants, see lib header.
+-- 
 -- return:  true if success (crc okay).
+-- -----------------------------------------------------------------------
 function ds18b20_s_temp(sword out temperature) return bit is
    var byte b[2] at temperature
    var bit success_flag -- return value 
@@ -215,8 +243,8 @@ function ds18b20_s_temp(sword out temperature) return bit is
          _ds18b20_skip_rom()
          d1w_write_byte(0xBE)
          success_flag = _ds18b20_read(9) 
-         i = i + 1
-      until (success) | (i > max_crc_errors)
+         i = i + 1           
+      until (success_flag) | (i > ds18b20_max_retries)
 
       -- copy temperature to return value
       b[0] = scratchpad[0]

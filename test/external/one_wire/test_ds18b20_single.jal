@@ -23,7 +23,8 @@
 ;@jallib use chipdef
 
 include delay
-include print
+include print  
+include format
 
 -- set all IO as digital
 enable_digital_io()
@@ -40,58 +41,50 @@ alias d1w_bus_direction  is pin_b1_direction
 include one_wire           -- include one-wire library
 d1w_init()                 -- init one-wire bus
 
-
-;constant ds18b20_value_raw          = 1
+-- select one of the output formats below
+const ds18b20_value_raw          = 0
 const ds18b20_value_celcius      = 1
-const ds18b20_value_farenheit    = 0
+const ds18b20_value_farenheit    = 0   -- not yet supported
 
-const ds18b20_ignore_crc    = 1 -- tell lib to ignore crc (code becomes smaller and faster, but reliability of data is less)
-;constant ds18b20_max_retries  = 5
+const ds18b20_ignore_crc         = 0 -- 1 tell lib to ignore crc (code becomes smaller and faster, but reliability of data is less)
+const ds18b20_max_retries        = 2
 
 include ds18b20            -- include library for ds18b20 temperature sensor with one-wire interface
 
 enable_digital_io()
 
-const byte str1[] = "Temp.= "
-
-
-var bit sign
-var byte units, decimals
+const byte str1[] = "Temp="
+const byte str_err1[] = "ds18b20 read failed."
 var byte i
+var sword temperature                
+var bit r
 forever loop           
                   
-   ds18b20_convert(80) -- tell ds18b20 (all of them if there are more on the bus) to execute conversion and wait for 80*10ms
-
- ;  ds18b20_s_temp_CRC(units, decimals, sign, 5)
-;   print_byte_dec(device, good_crc)
-
-   print_string(device, str1)    -- print string
-
-   if sign == 1 then
-      device = "-"
+   ds18b20_convert(80)  -- tell all ds18b20 devices to execute conversion and wait for 80*10ms                 
+   r = ds18b20_s_temp(temperature)                  -- read conversion result
+   
+   if (r) then
+      -- success, so print temperature
+      print_string(device, str1)                   -- print string
+      format_sword_dec(device, temperature, 4, 1)  -- print temperature in xx.x format
+      device = "C"
+      device = " "
+   else
+      -- print fail message
+      print_string(device, str_err1)    
    end if
-   print_byte_dec(device, units)
-   device = "."
-   print_byte_dec(device, decimals)
-   device = "C"
-   device = " "
-                   
-   -- read previous conversion again in fast mode (no crc)
-   var sword temperature                
-   ds18b20_s_temp(temperature)   
-   device = "!"
-   print_sword_dec(device, temperature)  
-;   print_sword_dec(device, sbyte(temperature >> 4))  ; temp in full degrees (no rounding)
-;   device = "!"
-;   print_sbyte_dec(device, sbyte((temperature + 8) >> 4))  ; temp in full degrees (with rounding)
-;   device = " "
-    
+
    -- read the device's ID and print it
-   ds18b20_s_read_rom()
-   for 8 using i loop
-      print_byte_hex(device, scratchpad[i])
-   end loop                
+   r = ds18b20_s_read_rom()
+   if (r) then
+      -- read_rom successful, so print ID which is now stored in scratchpad 
+      for 8 using i loop
+         print_byte_hex(device, scratchpad[i])
+      end loop                
+   else                      
+      -- print fail message
+      print_string(device, str_err1)
+   end if
 
    print_crlf(device)   
 end loop
-
