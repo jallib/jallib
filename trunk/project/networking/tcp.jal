@@ -1,0 +1,202 @@
+-- Title: TCP - TRANSMISSION CONTROL PROTOCOL
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: implements TCP/IP
+--
+-- Sources:
+-- http://www.faqs.org/rfcs/rfc793.html
+-- http://www.8051projects.net/out.php?link=http://www.sics.se/~adam/uip/index.php/Main_Page
+--
+-- Notes:
+-- NOT COMPETE!!!!!!!!!!
+--
+-- Todo:
+-- add ip to connection table (search for lines with #)
+--
+
+var byte tcp_error_max_connections_exceeded = FALSE
+var byte tcp_error
+
+-- TCP HEADER FORMAT
+const TCP_SOURCE_PORT = 0
+const TCP_DESTINATION_PORT = 2
+const TCP_SEQUENCY_NUMBER = 4
+const TCP_ACKNOWLEDGEMENT_NUBMER = 8
+const TCP_DATA_OFFSET = 12
+const TCP_FLAGS = 13    -- UAPRSF
+const TCP_WINDOW = 14
+const TCP_CHECKSUM = 16
+const TCP_URGENT_POINTER = 18
+const TCP_OPTIONS = 20
+const TCP_PADDING = 23
+
+-- status of TCP connection
+const byte TCP_STATUS_CLOSED       = 0
+const byte TCP_STATUS_LISTEN       = 1
+const byte TCP_STATUS_SYN_SENT     = 2
+const byte TCP_STATUS_SYN_RECEIVED = 3
+const byte TCP_STATUS_ESTABLISHED  = 4
+
+-- connection table
+var byte tcp_connection_enabled[TCP_MAX_SOCKETS] -- needs to be removed. use tcp_status instead
+var byte tcp_server_sequence[TCP_MAX_SOCKETS]
+var byte tcp_client_sequence[TCP_MAX_SOCKETS]
+var byte tcp_status[TCP_MAX_SOCKETS]
+--
+if TCP_SERVER == TRUE then -- server
+   var byte   tcp_server_status[TCP_MAX_SOCKETS]
+   var byte*4 tcp_client_ip_number[TCP_MAX_SOCKETS]
+   var word   tcp_client_port_number[TCP_MAX_SOCKETS]
+else                       -- client
+   var byte   tcp_client_status[TCP_MAX_SOCKETS]
+   var byte*4 tcp_server_ip_number[TCP_MAX_SOCKETS]
+   var word   tcp_server_port_number[TCP_MAX_SOCKETS]
+end if
+
+-- bit locations of flags
+const TCP_FIN =    0b00000001
+const TCP_SYN =    0b00000010
+const TCP_RESET =  0b00000100
+const TCP_PUSH =   0b00001000
+const TCP_ACK =    0b00010000 -- Acknowlegement
+const TCP_URGENT = 0b00100000 -- Urgent
+const TCP_ECN =    0b01000000 -- ECN-Echo
+const TCP_CWR =    0b10000000 -- Congestion window reduced
+
+-- TCP Flags
+const FIN = 0x01
+const SYN = 0x02
+const RST = 0x04
+const PSH = 0x08
+const ACK = 0x10
+const URG = 0x20
+
+procedure tcp_init() is
+   var byte step
+   
+   -- set all connections as closed or listening
+   for TCP_MAX_SOCKETS using step loop
+      -- client or server start status
+      if TCP_SERVER == TRUE then -- server
+         tcp_server_status[step] = TCP_STATUS_LISTEN
+      else                       -- client
+         tcp_client_status[step] = TCP_STATUS_CLOSED
+      end if
+      
+      tcp_connection_enabled[step] = FALSE
+   end loop
+   
+end procedure
+
+procedure tcp_process_server_connection(byte in connection_number) is
+;
+;      -- status of TCP connection
+;      const byte TCP_STATUS_CLOSED       = 0
+;      const byte TCP_STATUS_LISTEN       = 1
+;      const byte TCP_STATUS_SYN_SENT     = 2
+;      const byte TCP_STATUS_SYN_RECEIVED = 3
+;      const byte TCP_STATUS_ESTABLISHED  = 4
+
+   -- check flags in packet
+   
+   if network_byte[TCP_FLAGS & TCP_SYN] != 0 then         -- SYN
+      -- Send back syn received
+      ;tcp_server_syn_received()
+
+      -- if only syn is set
+      if network_byte[TCP_FLAGS] == TCP_SYN then
+         -- set status as SYN-RECEIVED
+         tcp_status[connection_number] = TCP_STATUS_SYN_RECEIVED
+         
+         -- now send SYN/ACK to client
+      end if
+
+      -- if only ack is set
+      if network_byte[TCP_FLAGS] == TCP_ACK then -- also need to check if there is any data
+
+         -- the connection is established
+         if tcp_server_status[connection_number] == TCP_STATUS_LISTEN then
+           -- create the connection
+           tcp_connection_enabled[connection_number] = TRUE                           -- set the connection as opened
+           tcp_client_port_number[connection_number] = network_word[TCP_SOURCE_PORT]  -- save the client's port
+           ;save client ip address
+           
+            tcp_status[connection_number] = TCP_STATUS_ESTABLISHED
+            
+            return -- we're done here
+         end if
+         
+      end if
+   end if
+
+   if network_byte[TCP_FLAGS & TCP_FIN] != 0 then            -- FIN
+   elsif network_byte[TCP_FLAGS & TCP_RESET] != 0 then       -- RESET
+   elsif network_byte[TCP_FLAGS & TCP_PUSH] != 0 then        -- PUSH
+   elsif network_byte[TCP_FLAGS & TCP_ACK] != 0 then         -- Acknowlegement
+   elsif network_byte[TCP_FLAGS & TCP_URGENT] != 0 then      -- Urgent
+   elsif network_byte[TCP_FLAGS & TCP_ECN] != 0 then         -- ECN-Echo
+   elsif network_byte[TCP_FLAGS & TCP_CWR] != 0 then         -- Congestion window reduced
+   end if
+
+end procedure
+
+procedure tcp_server_read_packet() is
+   var byte connection_defined = FALSE
+   var byte connection_number
+   
+   -- find if there is a connection, and what connection number we are talking to.
+   -- by ip number + port number
+   for TCP_MAX_SOCKETS using connection_number loop
+   
+      -- if the connection is found
+      if network_word[TCP_SOURCE_PORT] == TCP_SERVER_PORT then -- must add ip address if statment #
+         connection_defined = TRUE
+         exit loop
+      end if
+   end loop
+
+   -- if there is already a connection
+   if connection_defined == TRUE then
+      tcp_process_server_connection(connection_number)
+      
+   -- if there is no connection yet, make one (if possible)
+   else
+      -- find a place for this connection
+      for (TCP_MAX_SOCKETS + 1) using connection_number loop
+
+         -- if there is no room for another connection
+         if (connection_number != TCP_MAX_SOCKETS) then
+            -- set an error, no connections left.
+            tcp_error_max_connections_exceeded = TRUE
+            return
+         end if
+
+         -- process this new connection
+         if (tcp_connection_enabled[connection_number] == FALSE) then
+            tcp_process_server_connection(connection_number)
+            exit loop
+         end if
+      end loop
+   end if
+
+   tcp_receive_callback(connection_number, network_word[TCP_DESTINATION_PORT],network_word[TCP_SOURCE_PORT],network_packet_size)
+end procedure
+
+procedure tcp_client_read_packet() is
+end procedure
+
+procedure tcp_read_packet() is
+   if TCP_SERVER == TRUE then
+      tcp_server_read_packet()
+   else
+      tcp_client_read_packet()
+   end if
+end procedure
+
+procedure tcp_send(word in source_port, word in destination_port, byte in data_size) is
+end procedure
