@@ -1,5 +1,5 @@
 -- Title: Ethernet Device ENC28j60
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4n
 --
@@ -17,6 +17,14 @@
 --
 
 include delay
+
+
+--
+-- Setup the network array. use large array lib
+const LARGE_ARRAY_1_SIZE = ENC_ARRAY_SIZE      -- choose number of array variables
+const LARGE_ARRAY_1_VARIABLE_SIZE = 1          -- choose size of variables (byte*1)
+include large_array_1                          -- include the array library
+alias enc_tx_array is large_array_1            -- rename/alias the array to test
 
 var byte enc_current_bank
 var word enc_packet_pointer = 0
@@ -390,7 +398,7 @@ procedure enc_complete_packet_read() is
 end procedure
 
 --------------------------------------------------------------------------------
--- read from the network buffer into network_data[]
+-- read from the network buffer into enc_tx_array[]
 --------------------------------------------------------------------------------
 procedure enc_read_buffer(word in len) is
 
@@ -408,7 +416,7 @@ procedure enc_read_buffer(word in len) is
    -- get the packet data
    var word step = len
    for len using step loop
-       network_data[step] = spi_master_hw
+       enc_tx_array[step] = spi_master_hw
    end loop
 
    enc_cs = 1 -- disable chip
@@ -423,7 +431,7 @@ end procedure
 alias enc_clear_rx_buffer is enc_complete_packet_read
 
 --------------------------------------------------------------------------------
--- write network_data[] into the network buffer
+-- write enc_tx_array[] into the network buffer
 --------------------------------------------------------------------------------
 procedure enc_write_buffer(word in len) is
 
@@ -441,7 +449,7 @@ procedure enc_write_buffer(word in len) is
 
    -- write the packet data
    for len using step loop
-      spi_master_hw = network_data[step]
+      spi_master_hw = enc_tx_array[step]
    end loop
 
    enc_cs = 1 -- disable chip
@@ -537,7 +545,7 @@ procedure enc_init() is
    -- packet match filter
    -- only allow packets for our mac address
    -- also allow broadcasted ARP packets
-	enc_write_register(ERXFCON, ERXFCON_UCEN|ERXFCON_CRCEN|ERXFCON_PMEN);
+	enc_write_register(ERXFCON, ERXFCON_UCEN|ERXFCON_CRCEN|ERXFCON_PMEN)
 	enc_write_register(EPMM0, 0x3f)
 	enc_write_register(EPMM1, 0x30)
 	enc_write_register(EPMCSL, 0xf9)
@@ -545,11 +553,11 @@ procedure enc_init() is
 
 
 	-- enable MAC receive
-	enc_write_register(MACON1, MACON1_MARXEN|MACON1_TXPAUS|MACON1_RXPAUS);
+	enc_write_register(MACON1, MACON1_MARXEN|MACON1_TXPAUS|MACON1_RXPAUS)
 	-- bring MAC out of reset
 	enc_write_register(MACON2, 0x00)
 	-- enable automatic padding to 60bytes and CRC operations
-	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, MACON3, MACON3_PADCFG0|MACON3_TXCRCEN|MACON3_FRMLNEN);
+	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, MACON3, MACON3_PADCFG0|MACON3_TXCRCEN|MACON3_FRMLNEN)
 	-- set inter-frame gap (non-back-to-back)
 	enc_write_register(MAIPGL, 0x12)
 	enc_write_register(MAIPGH, 0x0C)
@@ -562,12 +570,12 @@ procedure enc_init() is
 
 
    -- write MAC address
-   enc_write_register(MAADR5, network_source_mac[0]);
-   enc_write_register(MAADR4, network_source_mac[1]);
-   enc_write_register(MAADR3, network_source_mac[2]);
-   enc_write_register(MAADR2, network_source_mac[3]);
-   enc_write_register(MAADR1, network_source_mac[4]);
-   enc_write_register(MAADR0, network_source_mac[5]);
+   enc_write_register(MAADR5, enc_local_mac[0])
+   enc_write_register(MAADR4, enc_local_mac[1])
+   enc_write_register(MAADR3, enc_local_mac[2])
+   enc_write_register(MAADR2, enc_local_mac[3])
+   enc_write_register(MAADR1, enc_local_mac[4])
+   enc_write_register(MAADR0, enc_local_mac[5])
         
    -- don't write our output into the input buffer, only onto the twisted pair.
 	enc_write_phy_register(PHCON2, PHCON2_HDLDIS)
@@ -605,7 +613,7 @@ function enc_packet_available'get() return bit is
 	enc_write_register(ERDPTL, _enc_packet_pointer[0])
 	enc_write_register(ERDPTH, _enc_packet_pointer[1])
 	-- read the next packet pointer
-	enc_packet_pointer  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0);
+	enc_packet_pointer  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
 	enc_packet_pointer  = enc_packet_pointer | (word( enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0) )<<8)
    
       return 1
@@ -622,14 +630,14 @@ procedure enc_end_packet(word in network_current_packet_size) is
 	enc_write_register(EWRPTL, TXSTART_INIT_L)
 	enc_write_register(EWRPTH, TXSTART_INIT_H)
 	-- Set the TXND to last bye in data payload
-	enc_write_register(ETXNDL, byte((TXSTART_INIT+network_current_packet_size)&0xFF));
-	enc_write_register(ETXNDH, byte((TXSTART_INIT+network_current_packet_size)>>8));
+	enc_write_register(ETXNDL, byte((TXSTART_INIT+network_current_packet_size)&0xFF))
+	enc_write_register(ETXNDH, byte((TXSTART_INIT+network_current_packet_size)>>8))
 	-- write per-packet control byte (0x00 means use macon3 settings)
-	enc_spi_write_command(ENC28J60_WRITE_BUF_MEM, 0, 0x00);
+	enc_spi_write_command(ENC28J60_WRITE_BUF_MEM, 0, 0x00)
 	-- copy the packet into the transmit buffer
 	enc_write_buffer(network_current_packet_size)
 	-- send the contents of the transmit buffer onto the network
-	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_TXRTS);
+	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_TXRTS)
    -- when done, reset the transmission process bit
 	if ((enc_read_register(EIR) & EIR_TXERIF)) != 0 then
       enc_spi_write_command(ENC28J60_BIT_FIELD_CLR, ECON1, ECON1_TXRTS)
@@ -654,9 +662,9 @@ function enc_packet_size'get() return word is
 	receive_status  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
 	receive_status = receive_status | word(enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0))<<8
 	
-	;-- limit packet length
-   ;if !(packet_size > NETWORK_DATA_SIZE-1) then
-   ;   packet_size = NETWORK_DATA_SIZE - 1
+	-- limit packet length
+   ;if !(packet_size > enc_tx_array_SIZE-1) then
+   ;   packet_size = enc_tx_array_SIZE - 1
    ;end if
 
    -- check that there where no CRC/symbol errors

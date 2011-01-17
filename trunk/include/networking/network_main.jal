@@ -1,5 +1,5 @@
 -- Title: Networking main procedures
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4n
 --
@@ -12,18 +12,21 @@
 -- http://www.comptechdoc.org/independent/networking/protocol/protnet.html
 --
 -- notes:
+--
+-- Wireshark is awsome! http://www.wireshark.org/
+--
 -- Requirements for network adapter (ethernet device, wifi device, SLIP, etc.)
 -- 1. Add aliases to network_globals.jal
 -- 2. Modify procedure network_send_packet() in this file
 -- 3. Modify procedure network_get_packet() in this file
--- 4. check if "NETWORK_LINK_LAYER ==" in all protocols.
 --
 -- RECEIVING PACKETS:
 -- 1. User polls network_poll() procedure
 -- 2. If a packet is recieved, it is passed to network_received_packet,
 --    the packet size is checked, then sent to the next level/protocol.
--- 3. If it is Ethernet, it goes to ethernet_read_packet(). If it is
---    SLIP, it goes to ip_header_read_packet()
+-- 3. If it is Ethernet, it goes to ethernet_read_packet(), then
+--    ip_header_read_packet(). If it is SLIP, it goes directly
+--    to ip_header_read_packet()
 -- 4. The packet is then sent to the next protocol's read_packet procedure.
 -- 5. A callback procedure is run in the user program.
 --
@@ -37,23 +40,35 @@
 -- TODO:
 -- rethink step 4 of first note? maybe make a procedure for that.
 -- variable network_data_in_use needs to be fixed?
+-- allow enable/disable of UDP, ICMP and other protocols
 --
+
+--------------------------------------------------------------------------------
+-- include required debug library
+--------------------------------------------------------------------------------
+if !defined(debug_data) then
+   const bit DEBUG_MASTER_ENABLE = FALSE    -- enables debugging
+   include debug
+   -- IP_HEADER DEBUG LEVELS:
+   -- lvl 2 - show text
+   -- lvl 4 - show data
+end if
 
 ----------------------------------------------------------------
 -- set destination ip address
 ----------------------------------------------------------------
-procedure network_set_destination_ip(byte in ip_0,byte in ip_1,byte in ip_2,byte in ip_3) is
-   network_destination_ip[0] = ip_0
-   network_destination_ip[1] = ip_1
-   network_destination_ip[2] = ip_2
-   network_destination_ip[3] = ip_3
+procedure network_set_remote_ip(byte in ip_0,byte in ip_1,byte in ip_2,byte in ip_3) is
+   network_remote_ip[0] = ip_0
+   network_remote_ip[1] = ip_1
+   network_remote_ip[2] = ip_2
+   network_remote_ip[3] = ip_3
 end procedure
 
 ----------------------------------------------------------------
 -- put the network array into the output buffer
 ----------------------------------------------------------------
 procedure network_send_packet(word in size) is
-   if NETWORK_LINK_LAYER == NET_SLIP then
+   if NETWORK_LINK_LAYER_ETHERNET == FALSE then
       var byte count1 = 0
       for size using count1 loop
          network_send_data(network_data[count1])
@@ -61,9 +76,9 @@ procedure network_send_packet(word in size) is
          debug_char(DEBUG_4," ")
       end loop
       network_end_packet()
-   elsif NETWORK_LINK_LAYER == NET_ETHERNET then
-      enc_write_buffer(size)  -- write all data to tx buffer
-      network_end_packet(size)   -- send the packet
+   elsif NETWORK_LINK_LAYER_ETHERNET == TRUE then
+      network_write_buffer(size)  -- write all data to tx buffer
+      network_end_packet(size)    -- send the packet
    else
       pragma error -- Layer Not Supported
    end if
@@ -75,14 +90,14 @@ end procedure
 -- get the network array from the input buffer
 ----------------------------------------------------------------
 procedure network_get_packet(word in size) is
-   if NETWORK_LINK_LAYER == NET_SLIP then
+   if NETWORK_LINK_LAYER_ETHERNET == FALSE then
       var byte count1 = 0
       for size using count1 loop
          network_data[count1] = network_rx_buffer
          ;debug_byte_hex(DEBUG_4,network_data[count1])
          ;debug_char(DEBUG_4," ")
       end loop
-   elsif NETWORK_LINK_LAYER == NET_ETHERNET then
+   elsif NETWORK_LINK_LAYER_ETHERNET == TRUE then
       enc_read_buffer(size)
    else
       pragma error -- Layer Not Supported
@@ -126,9 +141,9 @@ procedure network_received_packet() is
    
    network_get_packet(network_packet_size)
 
-   if NETWORK_LINK_LAYER == NET_ETHERNET then
+   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
       ethernet_read_packet()
-   elsif NETWORK_LINK_LAYER == NET_SLIP then
+   elsif NETWORK_LINK_LAYER_ETHERNET == FALSE then
       ip_header_read_packet()
    end if
    
@@ -149,20 +164,20 @@ end procedure
 ;   _data[1] = temp
 ;end procedure
 ;
-;----------------------------------------------------------------
-;-- switch byte order in a dword
-;----------------------------------------------------------------
-;procedure network_switch_dword_bytes(dword in out data) is
-;   var byte _data[4] at data
-;   var byte temp
-;   temp = _data[0]
-;   _data[0] = _data[3]
-;   _data[3] = temp
-;
-;   temp = _data[1]
-;   _data[1] = _data[2]
-;   _data[2] = temp
-;end procedure
+----------------------------------------------------------------
+-- switch byte order in a dword
+----------------------------------------------------------------
+procedure network_switch_dword_bytes(dword in out data) is
+   var byte _data[4] at data
+   var byte temp
+   temp = _data[0]
+   _data[0] = _data[3]
+   _data[3] = temp
+
+   temp = _data[1]
+   _data[1] = _data[2]
+   _data[2] = temp
+end procedure
 
 
 ----------------------------------------------------------------

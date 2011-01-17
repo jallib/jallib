@@ -1,5 +1,5 @@
 -- Title: Creates a IP Header
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4n
 --
@@ -73,10 +73,10 @@ const IP_HEADER_DESTINATION_IP_0 = 19
 procedure ip_header_set_source_ip() is
    pragma inline
 
-   network_byte[IP_HEADER_SOURCE_IP_3] = network_source_ip[0]
-   network_byte[IP_HEADER_SOURCE_IP_2] = network_source_ip[1]
-   network_byte[IP_HEADER_SOURCE_IP_1] = network_source_ip[2]
-   network_byte[IP_HEADER_SOURCE_IP_0] = network_source_ip[3]
+   network_byte[IP_HEADER_SOURCE_IP_3] = network_local_ip[0]
+   network_byte[IP_HEADER_SOURCE_IP_2] = network_local_ip[1]
+   network_byte[IP_HEADER_SOURCE_IP_1] = network_local_ip[2]
+   network_byte[IP_HEADER_SOURCE_IP_0] = network_local_ip[3]
 end procedure
 
 --------------------------------------------------------------------------------
@@ -120,10 +120,10 @@ procedure ip_header_create(byte in protocol_select, word in data_length) is
    network_word[IP_HEADER_CHECKSUM] = 0
 
    -- set destination ip addresses
-   network_byte[IP_HEADER_DESTINATION_IP_3] = network_destination_ip[0]
-   network_byte[IP_HEADER_DESTINATION_IP_2] = network_destination_ip[1]
-   network_byte[IP_HEADER_DESTINATION_IP_1] = network_destination_ip[2]
-   network_byte[IP_HEADER_DESTINATION_IP_0] = network_destination_ip[3]
+   network_byte[IP_HEADER_DESTINATION_IP_3] = network_remote_ip[0]
+   network_byte[IP_HEADER_DESTINATION_IP_2] = network_remote_ip[1]
+   network_byte[IP_HEADER_DESTINATION_IP_1] = network_remote_ip[2]
+   network_byte[IP_HEADER_DESTINATION_IP_0] = network_remote_ip[3]
    
    -- set source ip
    ip_header_set_source_ip()
@@ -141,7 +141,7 @@ end procedure
 --------------------------------------------------------------------------------
 function ip_header_verify() return byte is
 
-   if NETWORK_LINK_LAYER == NET_SLIP then
+   if NETWORK_LINK_LAYER_ETHERNET == FALSE then
       network_var_offset = 0 -- reset network offset
    end if
 
@@ -150,10 +150,10 @@ function ip_header_verify() return byte is
 
    -- check if the destination ip is the PIC's ip address
    -- also check for ip version 4 with length of 20 bytes
-   if (network_byte[IP_HEADER_DESTINATION_IP_3] == network_source_ip[0]) &
-      (network_byte[IP_HEADER_DESTINATION_IP_2] == network_source_ip[1]) &
-      (network_byte[IP_HEADER_DESTINATION_IP_1] == network_source_ip[2]) &
-      (network_byte[IP_HEADER_DESTINATION_IP_0] == network_source_ip[3])
+   if (network_byte[IP_HEADER_DESTINATION_IP_3] == network_local_ip[0]) &
+      (network_byte[IP_HEADER_DESTINATION_IP_2] == network_local_ip[1]) &
+      (network_byte[IP_HEADER_DESTINATION_IP_1] == network_local_ip[2]) &
+      (network_byte[IP_HEADER_DESTINATION_IP_0] == network_local_ip[3])
 
       & (network_byte[IP_HEADER_VERSION_LENGTH] == 0x45)
       then
@@ -216,18 +216,34 @@ procedure ip_header_read_packet() is
 
       debug_crlf(debug_lvl_3)
 
+      -- save source ip as destination ip address (the IP we can will reply to)
+      network_remote_ip[0] = network_byte[IP_HEADER_SOURCE_IP_0]
+      network_remote_ip[1] = network_byte[IP_HEADER_SOURCE_IP_1]
+      network_remote_ip[2] = network_byte[IP_HEADER_SOURCE_IP_2]
+      network_remote_ip[3] = network_byte[IP_HEADER_SOURCE_IP_3]
+      
       -- check what type of packet it is (what protocol)
       if network_byte[IP_HEADER_PROTOCOL] == ICMP then -- ICMP protocol
-         -- send the data to ICMP lib for reading
-         network_packet_size = network_packet_size - ip_header_size
-         network_var_offset = network_var_offset + ip_header_size
-         icmp_read_packet()
-      elsif network_byte[IP_HEADER_PROTOCOL] == UDP then -- ICMP protocol
-         -- send the data to UDP lib for reading
-         -- send the data to ICMP lib for reading
-         network_packet_size = network_packet_size - ip_header_size
-         network_var_offset = network_var_offset + ip_header_size
-         udp_read_packet()
+         if NETWORK_USE_ICMP == TRUE then
+            -- send the data to ICMP lib for reading
+            network_packet_size = network_packet_size - ip_header_size
+            network_var_offset = network_var_offset + ip_header_size
+            icmp_read_packet()
+         end if
+      elsif network_byte[IP_HEADER_PROTOCOL] == UDP then -- UDP protocol
+         if NETWORK_USE_UDP == TRUE then
+            -- send the data to UDP lib for reading
+            network_packet_size = network_packet_size - ip_header_size
+            network_var_offset = network_var_offset + ip_header_size
+            udp_read_packet()
+         end if
+      elsif network_byte[IP_HEADER_PROTOCOL] == TCP then -- TCP protocol
+         if NETWORK_USE_TCP == TRUE then
+            -- send the data to TCP lib for reading
+            network_packet_size = network_packet_size - ip_header_size
+            network_var_offset = network_var_offset + ip_header_size
+            tcp_read_packet()
+         end if
       else                               -- unknown protocol
          const byte str3[] = "-- unknown ip header protocol --"
          debug_string(debug_lvl_3, str3)
