@@ -11,8 +11,8 @@
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description: Test program
---    Read sensor temperature DS18B20. It does not use device ID, so there 
---    can only be a single device on the bus.
+--    Read sensor temperature DS18B20 from a specific device using the
+--    device ID. This allows for multiple devices on a single bus.
 --
 -- Sources:
 --
@@ -47,6 +47,9 @@ const ds18b20_max_retries        = 2 -- 1 means the library re-reads once when c
 
 include ds18b20            -- include library for ds18b20 temperature sensor with one-wire interface
 
+const byte my_device_id[] = { 0x28, 0x49, 0x94, 0xC5, 0x02, 0x00, 0x00, 0xA2 }
+const byte nonexistent_device_id[] = { 0x20, 0x40, 0x90, 0xC5, 0x02, 0x00, 0x00, 0xA2 }
+
 -- strings and vars for the main loop
 const byte str1[]       = "Temp="
 const byte str_err1[]   = "ds18b20 read failed."
@@ -58,13 +61,15 @@ led_direction = output
 
 forever loop           
                 
-   ds18b20_convert()  -- tell all ds18b20 devices to start conversion
+   ds18b20_convert() -- tell *all* ds18b20 devices to start conversion
 
    delay_1ms(750)    -- wait for conversion to complete (mandatory when
                      -- sensor is working in parasite mode)
 
    led = high
-   r = ds18b20_s_temp(temperature)                  -- read conversion result  
+   r = ds18b20_m_temp(my_device_id, temperature)                  -- read conversion result  
+;   r = ds18b20_m_temp(nonexistent_device_id, temperature)         -- read conversion result  
+
    if (r) then
       -- success, so print temperature
       print_string(device, str1)                   -- print string
@@ -74,19 +79,6 @@ forever loop
    else
       -- print fail message
       print_string(device, str_err1)    
-   end if
-
-   -- read the device's ID and print it    
-   r = ds18b20_s_read_rom()
-   if (r) then
-      -- read_rom successful, so print ID which is now stored in scratchpad 
-      for 8 using i loop
-         print_byte_hex(device, scratchpad[i]) 
-         if (i != 7) then device = "." end if
-      end loop                
-   else                      
-      -- print fail message
-      print_string(device, str_err1)
    end if
 
    print_crlf(device)  
