@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
  * Title: Dev2Jal.cmd - Create JalV2 device include files for flash PICs    *
  *                                                                          *
- * Author: Rob Hamerling, Copyright (c) 2008..2010, all rights reserved.    *
+ * Author: Rob Hamerling, Copyright (c) 2008..2011, all rights reserved.    *
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.14'
+   ScriptVersion   = '0.1.15'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -49,13 +49,13 @@
 /*   2 - warnings and errors                                                */
 /*   3 - errors (always reported!)                                          */
 
-msglevel = 2
+msglevel = 0
 
 /* MPLAB and a local copy of the Jallib SVN tree should be installed.       */
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab860/'                      /* base directory of MPLAB */
+MPLABbase  = 'k:/mplab863/'                      /* base directory of MPLAB */
 JALLIBbase = 'k:/jallib/'               /* base directory of JALLIB (local) */
 
 /* When using 'standard' installations no other changes are needed,         */
@@ -78,7 +78,8 @@ call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                             /* load Rexx system functions */
 
 call msg 0, 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
-call msg 1, 'Only reporting errors!'
+if msglevel > 2 then
+   call msg 0, 'Only reporting errors!'
 
 /* The destination of the generated device files depends on the first       */
 /* mandatory commandline argument, which must be 'PROD' or 'TEST'           */
@@ -831,7 +832,7 @@ return
 /* remarks: some corrections of errors in MPLAB   */
 /* ---------------------------------------------- */
 list_devid: procedure expose Dev. jalfile chipdef Core PicName msglevel xChipDef.
-DevID = '0000'                                              /* default (not found) */
+DevID = '0000'                                              /* default ('not found') */
 do i = 1 to Dev.0
    parse var Dev.i 'DEVID' val0 'IDMASK' '=' Val1 'ID' '=' '0X' val2 ')' .
    if val2 \= '' then do
@@ -927,7 +928,8 @@ select                                                      /* exceptions first 
       DataRange = '0x5E-0x5F'                               /* for _pic_accum and _pic_isr_w */
       MaxSharedRAM = X2D(5F)
    end
-   when PicName = '16f73'   |,
+   when PicName = '16f72'   |,
+        PicName = '16f73'   |,
         PicName = '16f74'  then do
       DataRange = '0x7E-0x7F'
       MaxSharedRAM = X2D(7F)
@@ -1020,6 +1022,10 @@ select                                                      /* exceptions first 
         PicName = '16f676' then do
       DataRange = '0x20-0x5D'                               /* 1 bank: 'unshared' part */
       MaxUnsharedRAM = X2D(5D)
+   end
+   when PicName = '16f72' then do
+      DataRange = '0x20-0x7D,0xA0-0xBF'
+      MaxUnsharedRAM = X2D(7D)
    end
    when PicName = '16f73'   |,
         PicName = '16f74'  then do
@@ -1508,9 +1514,9 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                      call lineout jalfile, 'var volatile bit*'s.j' ',
                                   left(field,25) 'at' reg ':' offset - s.j + 1
                end
-               when (left(n.j,2) = 'AN')    &,              /* AN(S) subfield */
+               when (left(n.j,2) = 'AN')    &,              /* AN(S) subfield and */
                     (left(reg,5) = 'ADCON'  |,              /* ADCONx reg */
-                     left(reg,5) = 'ANSEL')  then do        /* ANSELx reg */
+                     left(reg,5) = 'ANSEL')  then do        /* or ANSELx reg */
                   k = s.j - 1
                   do while k >= 0
                     ansx = ansel2j(reg,n.j||k)
@@ -1867,9 +1873,18 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
          else if s.j <= 8 then do                           /* multi-bit subfield */
             field = reg'_'n.j
             if \(s.j = 8  &  n.j = reg) then do             /* subfield not alias of reg */
-               if duplicate_name(field,reg) = 0 then        /* unique */
+               if duplicate_name(field,reg) = 0 then do     /* unique */
                   call lineout jalfile, 'var volatile bit*'s.j' ',
                                left(field,25) memtype'at' reg ':' offset - s.j + 1
+                  if  left(n.j,4) = ADCS  &,
+                     (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
+                     adcs_bitcount = s.j                    /* variable # ADCS bits */
+                  end
+                  else if reg = 'OPTION_REG' &  n.j = 'PS' then do
+                     call lineout jalfile, 'alias              ',
+                                     left('T0CON_T0'n.j,25) 'is' reg'_'n.j /* added 'T0' */
+                  end
+               end
             end
          end
 
@@ -2914,7 +2929,8 @@ else if core = '14H' then do                                /* extended midrange
          ansx = word('16 6 7 8 9 10 11 5', ansx + 1)
       end
       when reg = 'ANSELE' then do
-         if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
+         if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
+            left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
             ansx = ansx + 5
          else if left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
             ansx = 99
@@ -2922,29 +2938,40 @@ else if core = '14H' then do                                /* extended midrange
             ansx = ansx + 20
       end
       when reg = 'ANSELD' then do
-         ansx = 99
+         if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' then
+            ansx = ansx + 20
+         else
+            ansx = 99
       end
       when reg = 'ANSELC' then do
-         if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
+         if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' then
+            ansx = word('99 99 14 15 16 17 18 19', ansx + 1)
+         else if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('4 5 6 7 99 99 8 9', ansx + 1)
       end
       when reg = 'ANSELB' then do
          if PicName = '16f1826' | PicName = '16lf1826' |,
-            PicName = '16f1827' | PicName = '16lf1827' then
+            PicName = '16f1827' | PicName = '16lf1827' |,
+            PicName = '16f1847' | PicName = '16lf1847' then
             ansx = word('99 11 10 9 8 7 5 6', ansx + 1)
          else if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('99 99 99 99 10 11 99 99 ', ansx + 1)
-         else if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
+         else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
+                 left(PicName,7) = '16lf190'                              |,
+                 left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
             ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
       end
       when reg = 'ANSELA' then do
          if PicName = '16f1826' | PicName = '16lf1826' |,
-            PicName = '16f1827' | PicName = '16lf1827' then
+            PicName = '16f1827' | PicName = '16lf1827' |,
+            PicName = '16f1847' | PicName = '16lf1847' then
             ansx = ansx + 0
          else if left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
                  left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
-         else if left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' |,
+         else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
+                 left(PicName,7) = '16lf190'                              |,
+                 left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' |,
                  left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
             ansx = word('0 1 2 3 99 4 99 99', ansx + 1)
       end
@@ -3748,7 +3775,7 @@ do i = i + 1  while i <= dev.0  &,
       when key = 'OSC' then do
          kwd = Fuse_Def.Osc.val2u
          if kwd = '?' then do
-            call msg 2, 'No mapping for fuse_def' key' :' val2u
+            call msg 2, 'No mapping for fuse_def' key':' val2u
 /* ???      return    */
          end
          else if val2u = 'INTOSC'  & ,
@@ -4436,9 +4463,11 @@ else if MaxSharedRAM = 0 then                               /* no shared RAM */
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 call lineout jalfile, '--'
 if Core = '12'  |  Core = '14' then do
+/* -- The warning below is disabled for JalV2 2.4o-beta
    if PicName = '16f73'  | PicName = '16f74' then
       call lineout jalfile,,
          '_warn "Calculations with variables over 16 bits are not supported for a' PicName'"'
+*/
    call lineout jalfile, 'var volatile byte _pic_accum shared at',
                              '0x'D2X(MaxSharedRAM-1,2)'        -- (compiler)'
    call lineout jalfile, 'var volatile byte _pic_isr_w shared at',
@@ -4514,7 +4543,7 @@ return
 list_copyright_etc:
 listfile = arg(1)                                           /* destination filespec */
 call lineout listfile, '--'
-call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2010,',
+call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2011,',
                        'all rights reserved.'
 call lineout listfile, '--'
 call lineout listfile, '-- Adapted-by:'
@@ -4565,4 +4594,5 @@ if rc > 0 & rc < 100 then                                   /* rc 1..99 */
   say ErrorText(rc)
 Say SourceLine(SIGL)
 return rc
+
 
