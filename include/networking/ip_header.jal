@@ -14,6 +14,11 @@
 -- http://www.networksorcery.com/enp/protocol/ip.htm
 --
 
+-- protocol types, for "IP_HEADER_PROTOCOL"
+const byte ICMP = 1 -- ICMP protocol number for ip header
+const byte UDP = 17 -- UDP protocol number for ip header
+const byte TCP = 6  -- TCP protocol number for ip header
+
 var byte ip_header_size = 20
 
 -- ip_header is always the first bytes of the network data
@@ -84,7 +89,19 @@ end procedure
 --------------------------------------------------------------------------------
 procedure ip_header_create(byte in protocol_select, word in data_length) is
 
-   network_data_in_use = TRUE
+   -- create ethernet mac header if required
+   -- if not, set network offset to 0
+   if defined(NETWORK_USE_MAC) then
+      if NETWORK_USE_MAC == FALSE then
+         -- set network offset
+         network_var_offset = 0 -- reset network offset
+      else
+         ethernet_header_create(MAC_IPV4,ETHERNET_REMOTE_MAC)
+      end if
+   else
+      -- set network offset
+      network_var_offset = 0 -- reset network offset
+   end if
 
    -- gets the length of the ip header into bytes
    data_length = data_length + 20
@@ -141,7 +158,12 @@ end procedure
 --------------------------------------------------------------------------------
 function ip_header_verify() return byte is
 
-   if NETWORK_LINK_LAYER_ETHERNET == FALSE then
+   -- set offset to 0 if not set already from ethernet mac header
+   if defined(NETWORK_USE_MAC) then
+      if NETWORK_USE_MAC == FALSE then
+         network_var_offset = 0 -- reset network offset
+      end if
+   else
       network_var_offset = 0 -- reset network offset
    end if
 
@@ -217,32 +239,38 @@ procedure ip_header_read_packet() is
       debug_crlf(debug_lvl_3)
 
       -- save source ip as destination ip address (the IP we can will reply to)
-      network_remote_ip[0] = network_byte[IP_HEADER_SOURCE_IP_0]
-      network_remote_ip[1] = network_byte[IP_HEADER_SOURCE_IP_1]
-      network_remote_ip[2] = network_byte[IP_HEADER_SOURCE_IP_2]
-      network_remote_ip[3] = network_byte[IP_HEADER_SOURCE_IP_3]
+      network_remote_ip[0] = network_byte[IP_HEADER_SOURCE_IP_3]
+      network_remote_ip[1] = network_byte[IP_HEADER_SOURCE_IP_2]
+      network_remote_ip[2] = network_byte[IP_HEADER_SOURCE_IP_1]
+      network_remote_ip[3] = network_byte[IP_HEADER_SOURCE_IP_0]
       
       -- check what type of packet it is (what protocol)
       if network_byte[IP_HEADER_PROTOCOL] == ICMP then -- ICMP protocol
-         if NETWORK_USE_ICMP == TRUE then
-            -- send the data to ICMP lib for reading
-            network_packet_size = network_packet_size - ip_header_size
-            network_var_offset = network_var_offset + ip_header_size
-            icmp_read_packet()
+         if defined(NETWORK_USE_ICMP) then
+            if NETWORK_USE_ICMP == TRUE then
+               -- send the data to ICMP lib for reading
+               network_packet_size = network_packet_size - ip_header_size
+               network_var_offset = network_var_offset + ip_header_size
+               icmp_read_packet()
+            end if
          end if
       elsif network_byte[IP_HEADER_PROTOCOL] == UDP then -- UDP protocol
-         if NETWORK_USE_UDP == TRUE then
-            -- send the data to UDP lib for reading
-            network_packet_size = network_packet_size - ip_header_size
-            network_var_offset = network_var_offset + ip_header_size
-            udp_read_packet()
+         if defined(NETWORK_USE_UDP) then
+            if NETWORK_USE_UDP == TRUE then
+               -- send the data to UDP lib for reading
+               network_packet_size = network_packet_size - ip_header_size
+               network_var_offset = network_var_offset + ip_header_size
+               udp_read_packet()
+            end if
          end if
       elsif network_byte[IP_HEADER_PROTOCOL] == TCP then -- TCP protocol
-         if NETWORK_USE_TCP == TRUE then
-            -- send the data to TCP lib for reading
-            network_packet_size = network_packet_size - ip_header_size
-            network_var_offset = network_var_offset + ip_header_size
-            tcp_read_packet()
+         if defined(NETWORK_USE_TCP) then
+            if NETWORK_USE_TCP == TRUE then
+               -- send the data to TCP lib for reading
+               network_packet_size = network_packet_size - ip_header_size
+               network_var_offset = network_var_offset + ip_header_size
+               tcp_read_packet()
+            end if
          end if
       else                               -- unknown protocol
          const byte str3[] = "-- unknown ip header protocol --"

@@ -14,7 +14,9 @@
 -- Notes:
 --
 
-const byte ARP = 6
+include delay
+
+var byte arp_packet_recieved
 
 const byte ARP_HARDWARE_TYPE = 0
 const byte ARP_PROTOCOL_TYPE = 2
@@ -25,7 +27,10 @@ const byte ARP_OPERATION = 6
 const byte ARP_REQUEST = 1
 const byte ARP_REPLY   = 2
 
-const byte ARP_TYPE = 6
+if !defined(network_local_mac) then
+   _warn "Does your device have a MAC address?"
+   _error "If no mac, you should not include this file"
+end if
 
 -- sender mac address
 ;const byte ARP_SENDER_HARDWARE_ADDRESS = 8
@@ -69,15 +74,14 @@ procedure arp_send_request() is
    debug_string(DEBUG_2,sending_ping)
    debug_crlf(DEBUG_2)
    
-   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
-      -- 0xFFFFFFFFFFFF = broadcast to all.
-      ethernet_header_create(ARP,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF)
+   if NETWORK_USE_MAC == TRUE then
+      ethernet_header_create(MAC_ARP,ETHERNET_BROADCAST_MAC)
    end if
-
+   
    const ARP_DATA_LENGTH = 28
 
    network_word[ARP_HARDWARE_TYPE] = 1 -- ethernet
-   network_word[ARP_PROTOCOL_TYPE] = 0x0800 -- ARP protocol type
+   network_word[ARP_PROTOCOL_TYPE] = 0x0800 -- ARP protocol type is IP
    network_byte[ARP_HARDWARE_LENGTH] = 6 -- mac address length is 6
    network_byte[ARP_PROTOCOL_LENGTH] = 4 -- ip address length is 4
    network_word[ARP_OPERATION] = 1 -- request
@@ -114,20 +118,26 @@ end procedure
 --------------------------------------------------------------------------------
 procedure arp_send_reply() is
 
+   -- maybe we should also check that the packet was for our IP?
+
    debug_crlf(DEBUG_2)
    const byte icmp_str1[] = "---------- sending arp reply! ----------"
    debug_string(DEBUG_2, icmp_str1)
    debug_crlf(DEBUG_2)
       
-   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
-      ethernet_header_create(ARP,
-      network_byte[ARP_SENDER_HARDWARE_ADDRESS_0],
-      network_byte[ARP_SENDER_HARDWARE_ADDRESS_1],
-      network_byte[ARP_SENDER_HARDWARE_ADDRESS_2],
-      network_byte[ARP_SENDER_HARDWARE_ADDRESS_3],
-      network_byte[ARP_SENDER_HARDWARE_ADDRESS_4],
-      network_byte[ARP_SENDER_HARDWARE_ADDRESS_5]
-      )
+;   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
+;      ethernet_header_create(ARP,
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_0],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_1],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_2],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_3],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_4],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_5]
+;      )
+;   end if
+
+   if NETWORK_USE_MAC == TRUE then
+      ethernet_header_create(MAC_ARP,ETHERNET_BROADCAST_MAC)
    end if
 
    const ARP_DATA_LENGTH = 28
@@ -189,8 +199,10 @@ procedure arp_read_reply() is
    debug_crlf(DEBUG_3)
 
    -- set network array offset
-   network_var_offset = 14
+   ;network_var_offset = ETHERNET_HEADER_SIZE
 
+   arp_packet_recieved = TRUE
+      
    -- get the mac address
    network_remote_mac[0] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_0]
    network_remote_mac[1] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_1]
@@ -198,17 +210,29 @@ procedure arp_read_reply() is
    network_remote_mac[3] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_3]
    network_remote_mac[4] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_4]
    network_remote_mac[5] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_5]
+;   print_crlf(serial_data)
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[0])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[1])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[2])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[3])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[4])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[5])
+;   serial_data = "-"
 
-   -- get the ip address
-   network_remote_ip[0] = network_byte[ARP_SENDER_PROTOCOL_ADDRESS_0]
-   network_remote_ip[1] = network_byte[ARP_SENDER_PROTOCOL_ADDRESS_1]
-   network_remote_ip[2] = network_byte[ARP_SENDER_PROTOCOL_ADDRESS_2]
-   network_remote_ip[3] = network_byte[ARP_SENDER_PROTOCOL_ADDRESS_3]
-
-   ;print_byte_array_hex(serial_hw_data,network_remote_mac)
-   ;serial_hw_data = "-"
-   ;print_byte_array_dec(serial_hw_data,network_remote_ip)
-
+;   -- DO I NEED TO CHECK SENDER IP ADDRESS??
+;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_0])
+;   serial_data = "."
+;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_1])
+;   serial_data = "."
+;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_2])
+;   serial_data = "."
+;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_3])
 end procedure
 
 --------------------------------------------------------------------------------
@@ -221,8 +245,8 @@ procedure arp_read_packet() is
    const byte str1[] = "---------- arp packet recieved ----------"
    debug_string(DEBUG_3, str1)
    debug_crlf(DEBUG_3)
-   
-   if network_word[ARP_TYPE] == ARP_REQUEST then -- if arp request
+
+   if network_word[ARP_OPERATION] == ARP_REQUEST then -- if arp request
       debug_crlf(DEBUG_2)
       const byte icmp_str1[] = "---------- arp request received! ----------"
       debug_string(DEBUG_2, icmp_str1)
@@ -234,7 +258,7 @@ procedure arp_read_packet() is
       if defined(arp_request_callback) then
          arp_request_callback()
       end if
-   elsif network_word[ARP_TYPE] == ARP_REPLY then
+   elsif network_word[ARP_OPERATION] == ARP_REPLY then
       debug_crlf(DEBUG_2)
       const byte icmp_str1[] = "---------- arp reply received! ----------"
       debug_string(DEBUG_2, icmp_str1)
@@ -248,4 +272,39 @@ procedure arp_read_packet() is
       end if
       
    end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Get gateway MAC address and check connectivity.
+-- Specify timeout in ms. (timeout time is not accurate)
+--------------------------------------------------------------------------------
+procedure arp_get_gateway_mac(word in timeout) is
+   -- you must send some arp requests and get at leaset one reply before you do
+   -- anything.
+   
+   var word time = 0
+   arp_packet_recieved = FALSE
+   
+   forever  loop
+      
+      -- send arp request
+      arp_send_request()
+      
+      delay_1ms(1)
+      time = time + 1
+
+      -- poll to see if there are network packets available
+      network_poll()
+
+      -- if a packet has been received
+      if arp_packet_recieved == TRUE then
+         ;network_poll()
+         return
+      end if
+      
+      -- timeout
+      if time > (timeout) then
+         return
+      end if
+   end loop
 end procedure

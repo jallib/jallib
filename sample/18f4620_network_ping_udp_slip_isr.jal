@@ -13,6 +13,7 @@
 -- http://tools.ietf.org/html/rfc1055
 --
 -- Notes:
+-- Circuit MUST have all of the following:
 -- Switches + pull up resistor connected to pin_d0, pin_d1.
 -- led + resistor on pin_d2
 -- serial sw: tx_pin is pin_B4, rx_pin is pin_B5
@@ -126,56 +127,58 @@ include slip -- include the library
 --
 slip_init() -- init the slip library
 
+-- Setup Networking
 -- choose network protocols to use
 --
-;const NETWORK_USE_MAC = TRUE -- libs takes care of this
+-- choose network protocols to use. You must put TRUE
+-- for each protocol you use.
+-- If you set FALSE or don't a define constant, don't include the file.
+const NETWORK_USE_IP = TRUE
 --
-;const NETWORK_USE_IP = TRUE -- libs takes care of this
---
-const NETWORK_USE_ARP = FALSE -- required for ethernet, not slip
-const NETWORK_USE_ARP_CALLBACKS = FALSE
+;const NETWORK_USE_ARP = TRUE -- suggested for ethernet, not slip
+;const NETWORK_USE_ARP_CALLBACKS = TRUE
 --
 const NETWORK_USE_ICMP = TRUE -- required for ping only
 const NETWORK_USE_ICMP_CALLBACKS = TRUE
 --
-const NETWORK_USE_UDP = TRUE -- udp can transfer your data
+const NETWORK_USE_UDP = TRUE -- udp can transfer data
 const NETWORK_USE_UDP_CALLBACKS = TRUE
 --
-const NETWORK_USE_TCP = FALSE -- under development (not working)
-const NETWORK_USE_TCP_CALLBACKS = FALSE
-
--- choose size of networking output buffer
-const NETWORK_DATA_SIZE = SLIP_MTU           -- up to 1500
-var byte network_local_mac[6] = {0x00,0x13,0xD4,0xC6,0x53,0x16}-- MAC address of PIC
+;const NETWORK_USE_TCP = FALSE -- under development (not working)
+;const NETWORK_USE_TCP_CALLBACKS = FALSE
+--
 var byte network_local_ip[4] = {192,168,2,1}                  -- IP address of PIC
-;var byte network_local_ip[4] = {192,168,1,60}                  -- IP address of PIC
-
+;var byte network_local_ip[4] = {192,168,2,1}
+--
 -- set network layer
-const NETWORK_LINK_LAYER_ETHERNET = FALSE -- TRUE for ethernet, FALSE for SLIP
-const byte NETWORK_ENC28J60 = FALSE
+;const NETWORK_LINK_LAYER_ETHERNET = TRUE -- TRUE for ethernet, FALSE for SLIP
+const NETWORK_LINK_LAYER = NETWORK_SLIP
+;const NETWORK_LINK_DEVICE = NETWORK_ENC28J60
 --
 -- include networking main files
-include network_globals
+include networking
+;include ethernet_mac
 include ip_header
-include arp
-include ethernet_mac
---
+;include arp
+
 const ICMP_ECHO_DATA_LENGTH = 32 -- size of data to send with PING
 include icmp
-
--- UDP SERVER SETTINGS
-const byte UDP_SERVER_PORT = 111 -- (you can rename/remove this constant)
---
--- UDP CLIENT SETTINGS
-var byte udp_conn_1              -- create a variable to be used as a udp client.
-const byte UDP_CLIENT_PORT = 251 -- (you can rename/remove this constant)
 --
 const UDP_MAX_SOCKETS = 3 -- max number of udp connections (9 bytes ram per connection)
 --
 include udp
 udp_init()
-
-include network_main
+--
+-- LOCAL UDP SERVER SETTINGS
+const byte UDP_LOCAL_SERVER_PORT = 111 -- port of local UDP server
+--
+-- LOCAL UDP CLIENT SETTINGS
+var byte udp_conn_1                       -- create a variable to be used as a udp client.
+const UDP_LOCAL_CLIENT_PORT = 1234   -- port of local UDP client
+const UDP_REMOTE_SERVER_PORT = 251   -- port of remote UDP server
+network_set_remote_ip(192,168,2,2)      -- set IP of server to connect to.
+udp_conn_1 = udp_socket_create(UDP_LOCAL_CLIENT_PORT,UDP_REMOTE_SERVER_PORT)  -- open a socket
+;udp_socket_remove(udp_conn_1) -- I guess we'll never remove this socket
 
 ;   -- setup TCP
 ;   const TCP_MAX_SOCKETS = 2
@@ -193,8 +196,8 @@ include network_main
 --------------------------------------------------------------------------------
 procedure arp_reply_callback() is
     -- print a message
-    var byte get_ping[] = "arp reply recieved!"
-    print_string(serial_data,get_ping)
+    var byte get_arp[] = "ARP Reply Recieved!"
+    print_string(serial_data,get_arp)
     print_crlf(serial_data)
 end procedure
 --------------------------------------------------------------------------------
@@ -227,7 +230,6 @@ end procedure
 -- Called when UDP packet is received. Minumum data size is 18 bytes.
 --------------------------------------------------------------------------------
 procedure udp_receive_callback(byte in socket,word in udp_data_size) is
-
    -- print info about the socket received
    print_udp_socket_info(0,socket)
 
@@ -235,19 +237,45 @@ procedure udp_receive_callback(byte in socket,word in udp_data_size) is
    if udp_error != 0 then
    end if
 
+;   -- If it is our client connection
+;   -- you can use this method if the server reply's using
+;   -- the same source port as the server.
+;   -- This is untested since my PC programming software does not
+;   -- do this (yet).
+;   if socket == udp_conn_1 then
+;       print_crlf(serial_data)
+;       var byte sending_udp[] = "Welcome client!" -- print a message
+;       print_string(serial_data,sending_udp)
+;       print_crlf(serial_data)
+;
+;      -- do something with the data, we'll print it to serial port
+;      var word step
+;      for udp_data_size using step loop               -- for each byte in packet
+;         serial_data = udp_data[step]
+;      end loop
+;   end if
+
    -- if it is our client connection
-   if socket == udp_conn_1 then
-      -- maybe you want to talk back to the client?
+   -- if we had sent information to a server, and the server replyed on same port.
+   if udp_socket_local_port[socket] == UDP_LOCAL_CLIENT_PORT &
+      udp_socket_ip[socket] == udp_socket_ip[udp_conn_1] then
+      -- do something with the data, we'll print it to serial port
+      var word step
+      for udp_data_size using step loop               -- for each byte in packet
+         serial_data = udp_data[step]
+      end loop
    end if
 
    -- if it is our server connection
-   if udp_socket_local_port[socket] == UDP_SERVER_PORT then
+   -- if a client is sending information to our UDP server on PIC.
+   if udp_socket_local_port[socket] == UDP_LOCAL_SERVER_PORT then
       -- do something with the data, we'll print it to serial port
       var word step
       for udp_data_size using step loop               -- for each byte in packet
          serial_data = udp_data[step]
       end loop
 
+       -- maybe you want to talk back to the client?
        -- send a reply message
        udp_data[0] = "T"
        udp_data[1] = "H"
@@ -261,18 +289,21 @@ procedure udp_receive_callback(byte in socket,word in udp_data_size) is
        var byte sending_udp[] = "Sending reply UDP data" -- print a message
        print_string(serial_data,sending_udp)
        print_crlf(serial_data)
-       udp_send(udp_conn_1,7)         -- send 7 bytes data to udp_conn_1
-
-       udp_socket_disconnect(socket) -- disconnect the socket
-
+       udp_send(socket,7)        -- send 7 bytes data to socket
    end if
+
+
+   ;if it is anything else
+
+
+   udp_socket_remove(socket) -- remove the socket
 
    print_crlf(serial_data)
 end procedure
 
-; not working yet.
+
 ;   --------------------------------------------------------------------------------
-;   -- Receive TCP data. Minumum data size is 18 bytes. udp_client_port is
+;   -- Receive UDP data. Minumum data size is 18 bytes. UDP_LOCAL_CLIENT_PORT is
 ;   -- the PIC's port.
 ;   --------------------------------------------------------------------------------
 ;   procedure tcp_receive_callback(byte in connection_number, word in tcp_client_port,word in tcp_server_port, word in tcp_data_size) is
@@ -312,34 +343,56 @@ for 10 loop
 end loop
 print_crlf(serial_data)
 
-
-if NETWORK_LINK_LAYER_ETHERNET == TRUE then
-   -- you must send some arp requests and get at leaset one reply before you do
-   -- anything if you don't know the mac address of whom you are
-   -- talking through (your router).
+if defined(arp_get_gateway_mac) then
+   -- get the MAC of the gateway we will be talking to
+   network_set_remote_ip(192,168,1,1) -- ip address of your PC or router
    ;network_set_remote_ip(192,168,2,2)
-   network_set_remote_ip(192,168,1,1)
-   for 10 loop -- 10 times just to make sure we get a reply.
-      -- send arp request
-       arp_send_request()
-
-       -- print message
-       var byte sending_arp[] = "sent arp request"
-       print_string(serial_data,sending_arp)
-       print_crlf(serial_data)
-   end loop
+   -- print message
+   var byte sending_arp[] = "sending arp request, waiting for reply..."
+   print_string(serial_data,sending_arp)
+   print_crlf(serial_data)
+   --
+   if NETWORK_LINK_LAYER == NETWORK_ETHERNET then
+      arp_get_gateway_mac(1_000)
+   end if
+   --
+   if arp_packet_recieved == TRUE then
+      print_crlf(serial_data)
+      var byte get_arp[] = "You are connected! Your Router or PC mac address is:"
+      print_string(serial_data,get_arp)
+      print_crlf(serial_data)
+      --
+      print_byte_hex(serial_data,network_remote_mac[0])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[1])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[2])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[3])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[4])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[5])
+      print_crlf(serial_data)
+      print_crlf(serial_data)
+   else
+      print_crlf(serial_data)
+      var byte arp_error[] = "ERROR: ARP did not get a reply. Is your network connected correctly?"
+      print_string(serial_data,arp_error)
+      print_crlf(serial_data)
+   end if
 end if
 
-   -- uncomment if you are using WIN XP slip connection
-   if NETWORK_LINK_LAYER_ETHERNET == FALSE then
-      -- wait for "CLIENT" from windows slip connection (yes, i got lazy)
-      while !serial_hw_data_available loop
-      end loop
-
-      -- reply with "CLIENTSERVER" to initiate connection
-      const byte str1[] = "CLIENTSERVER"   -- define a string
-      print_string(serial_hw_data, str1)   -- send via serial port
-   end if
+;-- uncomment if you are using WIN XP slip connection
+;if NETWORK_LINK_LAYER == NETWORK_SLIP Then
+;   -- wait for "CLIENT" from windows slip connection (yes, i got lazy)
+;   while !serial_hw_data_available loop
+;   end loop
+;
+;   -- reply with "CLIENTSERVER" to initiate connection
+;   const byte str1[] = "CLIENTSERVER"   -- define a string
+;   print_string(serial_hw_data, str1)   -- send via serial port
+;end if
 
 -- main loop
 var word packet_size
@@ -354,6 +407,9 @@ forever loop
 
       ;network_set_remote_ip(74,125,226,18) -- ping google's ip address
       network_set_remote_ip(192,168,2,2)   -- ping a computer
+      ;network_set_remote_ip(192,168,2,2) -- ping a computer
+      ;network_set_remote_ip(192,168,2,25) -- ping a computer
+      ;network_set_remote_ip(192,168,1,1)   -- ping router
       icmp_send_echo()
 
       while button == LOW loop
@@ -369,8 +425,9 @@ forever loop
        print_crlf(serial_data)
 
        -- set remote ip
-;       network_set_remote_ip(192,168,1,105)
-      network_set_remote_ip(192,168,2,2)
+;       network_set_remote_ip(192,168,2,255)
+;      network_set_remote_ip(192,168,2,2)
+       ;network_set_remote_ip(192,168,2,25)
 
        -- EXAMPLE 1: Send data from udp_data[] internal array
        -- less ram usage and more cpu cycles then udp_send_array()
@@ -381,7 +438,7 @@ forever loop
        udp_data[3] = "L"
        udp_data[4] = "O"
        --
-       udp_conn_1 = udp_socket_connect(1234,UDP_CLIENT_PORT) -- connect
+       ;udp_conn_1 = udp_socket_create(1234,UDP_LOCAL_CLIENT_PORT) -- connect
        --
        print_udp_socket_info(1,udp_conn_1) -- print socket info
        --
@@ -391,14 +448,15 @@ forever loop
           print_crlf(serial_data)
           udp_send(udp_conn_1,5)         -- send 5 bytes data to udp_conn_1
        end if
+
        --
-       udp_socket_disconnect(udp_conn_1) -- disconnect the socket
+       ;udp_socket_remove(udp_conn_1) -- remove the socket
 
 ;      -- EXAMPLE 2: Send an array
 ;      -- more ram usage and less cpu cycles then udp_send()
 ;      -- send the data (source port, destination port, data)
 ;      --
-;      udp_conn_1 = udp_socket_connect(1234,UDP_CLIENT_PORT) -- connect
+;      ;udp_conn_1 = udp_socket_create(1234,UDP_LOCAL_CLIENT_PORT) -- connect
 ;      --
 ;      print_udp_socket_info(1,udp_conn_1) -- print socket info
 ;      --
@@ -413,7 +471,7 @@ forever loop
 ;         print_string(serial_data,sending_udp)
 ;         print_crlf(serial_data)
 ;      end if
-;      udp_socket_disconnect(udp_conn_1)                 -- disconnect
+;      ;udp_socket_remove(udp_conn_1)                 -- remove
 
 
      while button2 == LOW loop
@@ -426,6 +484,4 @@ forever loop
    network_poll()
 
 end loop
-
-
 
