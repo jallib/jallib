@@ -27,7 +27,7 @@ var byte*4 udp_socket_ip[UDP_MAX_SOCKETS]
 var word udp_socket_local_port[UDP_MAX_SOCKETS]
 var word udp_socket_remote_port[UDP_MAX_SOCKETS]
 --
-const UDP_SOCKET_DISCONNECTED = 0
+const UDP_SOCKET_REMOVED = 0
 const UDP_SOCKET_CONNECTED = 1
 ;const UDP_SOCKET_IDLE = 3
 
@@ -58,7 +58,7 @@ procedure udp_init() is
    -- start all sockets as disconnected
    var byte udp_step = 0
    for UDP_MAX_SOCKETS using udp_step loop
-      udp_socket_status[udp_step] = UDP_SOCKET_DISCONNECTED
+      udp_socket_status[udp_step] = UDP_SOCKET_REMOVED
    end loop
 end procedure
 
@@ -67,7 +67,7 @@ end procedure
 -- remote_port - the port number the server uses
 -- local_port - any port number that is avalable locally.
 --------------------------------------------------------------------------------
-function udp_socket_connect(word in local_port, word in remote_port) return byte is
+function udp_socket_create(word in local_port, word in remote_port) return byte is
    var byte step
 
    -- check if socket already exists
@@ -84,7 +84,7 @@ function udp_socket_connect(word in local_port, word in remote_port) return byte
 
    -- search for an available socket, if it didn't exist already
    for UDP_MAX_SOCKETS using step loop
-      if udp_socket_status[step] == UDP_SOCKET_DISCONNECTED then -- if socket not in use
+      if udp_socket_status[step] == UDP_SOCKET_REMOVED then -- if socket not in use
 
          -- save socket info
          udp_socket_ip[step]          = _network_remote_ip
@@ -98,15 +98,15 @@ function udp_socket_connect(word in local_port, word in remote_port) return byte
    end loop
    
    _udp_error = UDP_NO_SOCKET_AVAILABLE -- there was an error creating the socket
-   return                                     -- just return anything
+   return                               -- just return anything
 end function
 
 --------------------------------------------------------------------------------
 -- Celete/disconnect a socket.
 --------------------------------------------------------------------------------
-procedure udp_socket_disconnect(byte in socket_number) is
+procedure udp_socket_remove(byte in socket_number) is
    pragma inline
-   udp_socket_status[socket_number] = UDP_SOCKET_DISCONNECTED
+   udp_socket_status[socket_number] = UDP_SOCKET_REMOVED
 end procedure
 
 --------------------------------------------------------------------------------
@@ -123,24 +123,11 @@ end function
 -- must specify the size of data written to udp_data[]
 -- less ram usage and more cpu cycles then udp_send_array()
 --------------------------------------------------------------------------------
-procedure udp_send(byte in socket_name, byte in data_size) is
+procedure udp_send(byte in socket_name, word in data_size) is
    -- print a debug message
    var byte sending_ping[] = "---------- sending udp data... ----------"
    debug_string(DEBUG_2,sending_ping)
    debug_crlf(DEBUG_2)
-
-   network_var_offset = 0
-
-   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
-      ethernet_header_create(0,
-      network_remote_mac[0],
-      network_remote_mac[1],
-      network_remote_mac[2],
-      network_remote_mac[3],
-      network_remote_mac[4],
-      network_remote_mac[5]
-      )
-   end if
 
    var word udp_size = UDP_HEADER_SIZE + data_size
 
@@ -171,18 +158,18 @@ procedure udp_send_array(byte in socket_name, byte in data[]) is
    debug_string(DEBUG_2,sending_ping)
    debug_crlf(DEBUG_2)
 
-   network_var_offset = 0
-   
-   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
-      ethernet_header_create(0,
-      network_remote_mac[0],
-      network_remote_mac[1],
-      network_remote_mac[2],
-      network_remote_mac[3],
-      network_remote_mac[4],
-      network_remote_mac[5]
-      )
-   end if
+;   network_var_offset = 0
+
+;   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
+;      ethernet_header_create(0,
+;      network_remote_mac[0],
+;      network_remote_mac[1],
+;      network_remote_mac[2],
+;      network_remote_mac[3],
+;      network_remote_mac[4],
+;      network_remote_mac[5]
+;      )
+;   end if
    
    var word udp_size = UDP_HEADER_SIZE + count(data)
    
@@ -221,11 +208,12 @@ procedure udp_read_packet() is
    debug_crlf(DEBUG_2)
    network_packet_size = network_packet_size - UDP_HEADER_SIZE
 
+   ;possible bug in compiler, this fixed it.
    var word temp = network_word[UDP_DESTINATION_PORT]
 
    -- create a socket, or see if one already exists.
    -- if an error occurs, udp_error will be set for the user.
-   var byte socket = udp_socket_connect(temp,network_word[UDP_SOURCE_PORT])
+   var byte socket = udp_socket_create(temp,network_word[UDP_SOURCE_PORT])
 
    -- call the udp callback
    if defined(udp_receive_callback) then
@@ -242,12 +230,7 @@ function udp_data'get(word in address) return byte is
 end function
 --
 procedure udp_data'put(word in address, byte in data) is
-   ;pragma inline
-   if NETWORK_LINK_LAYER_ETHERNET == FALSE THEN
-      network_data[ip_header_size + UDP_HEADER_SIZE + address] = data
-   ELSE
-      network_data[(ETHERNET_HEADER_SIZE + UDP_HEADER_SIZE) + ip_header_size + address] = data
-   END IF
+   network_data[(NETWORK_GLOBAL_OFFSET + UDP_HEADER_SIZE) + ip_header_size + address] = data
 end procedure
 
 --------------------------------------------------------------------------------
@@ -288,11 +271,22 @@ procedure print_udp_socket_info(bit in received_sent, byte in socket) is
    print_string(serial_data,str_error)
    print_word_dec(serial_data, error_temp)
    --
-   const byte str_ip[] = ", ip hex: "
-   print_string(serial_data,str_ip)
-   print_dword_hex(serial_data, udp_socket_ip[socket])
-   print_crlf(serial_data)
+   ;const byte str_ip[] = ", ip hex: "
+   ;print_string(serial_data,str_ip)
+   ;print_dword_hex(serial_data, udp_socket_ip[socket])
+   ;print_crlf(serial_data)
 
+   const byte str_ip[] = ", ip address: "
+   print_string(serial_data,str_ip)
+   var byte _udp_socket_ip[4] at udp_socket_ip
+   print_byte_dec(serial_data,_udp_socket_ip[0])
+   serial_data = "."
+   print_byte_dec(serial_data,_udp_socket_ip[1])
+   serial_data = "."
+   print_byte_dec(serial_data,_udp_socket_ip[2])
+   serial_data = "."
+   print_byte_dec(serial_data,_udp_socket_ip[3])
+   
    if error_temp != 0 then     -- if there was an error
       print_crlf(serial_data)
       const byte str2[] = "An error occurred while creating a socket"
