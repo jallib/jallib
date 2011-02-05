@@ -15,19 +15,25 @@
 -- See the ADC-chapter in the datasheet for the actual limits.
 -- Some PICs can go faster than 20MHz, like 18F. LF-PICs don't follow
 -- the same rules as the F-PICS (see 18F4550 and 18LF4550 for instance).
--- How to obtain a general rule of thumb?
--- For 16F88, and for many other PICs: 1.6usec < Tad < 6.4usec
--- For 18F4550 (and other 18F PICs ?): 0.8usec < Tad < 25usec
--- Honoring 16F88 values should do the trick for 18F4550, although this
--- may not be optimal for the 18f4550. When this compromise is not
--- acceptable alternate values for the contants ADC_MIN_TAD and
--- ADC_MAX_TAD (values in microseconds * 10) may be specified
--- *** before *** including the ADC library.
--- When not defined by the user the following values will be used:
---     ADC_MIN_TAD = 16     (1.6 usec)
---     ADC_MAX_TAD = 60     (6 usec)
--- The library will select the shortest possible Tad within these limits.
+-- How to obtain a general rule of thumb? For some popular PICs we find:
+-- For 16F88, and for many other PICs: 1.6 < Tad < 6.4 (microseconds)
+-- For 18F4550 (and other 18F PICs):   0.8 < Tad < 25  (microseconds)
 -- .
+-- The ADC libraries use 2 constants as minimum and maximum Tad values.
+-- The constants should contain a value 10 times as large as these
+-- limits expressed in microseconds.
+-- The following values are used by the library as defaults:
+-- .
+-- for 18F family:     ADC_MIN_TAD = 8      (0.8 us)
+--                     ADC_MAX_TAD = 250    (25 us)
+-- .
+-- for other PICs:     ADC_MIN_TAD = 16     (1.6 us)
+--                     ADC_MAX_TAD = 250    (16  us)
+-- .
+-- When these values are not acceptable alternate values may be specified
+-- by the user  *** before *** including the ADC library.
+-- .
+-- The library will select the shortest possible Tad.
 -- A warning will be issued when it is not possible to derive a value
 -- for Tad within the limits of ADC_TAD_MIN and ADC_TAD_MAX with the
 -- current clock speed. In that case the internal RC oscillator of the
@@ -48,11 +54,22 @@
 --
 -- --------------------------------------------------------------------------
 
+-- Set values for ADC_TAD_MIN and ADC_TAD_MAX when not user specified.
+
 if defined(ADC_MIN_TAD) == false then
-   const ADC_MIN_TAD = 16                       -- 1.6 usec minimum
+   if target_cpu == PIC_16 then                 -- 18F family
+      const ADC_MIN_TAD = 8                     -- 0.8 usec minimum
+   else                                         -- non-18F
+      const ADC_MIN_TAD = 16                    -- 1.6 usec minimum
+   end if
 end if
+
 if defined(ADC_MAX_TAD) == false then
-   const ADC_MAX_TAD = 60                       -- 6 usec maximum
+   if target_cpu == PIC_16 then                 -- 18F family
+      const ADC_MAX_TAD = 250                   -- 25 usec maximum
+   else                                         -- non-18F
+      const ADC_MAX_TAD = 60                    -- 6 usec maximum
+   end if
 end if
 
 -- Calculated Tad value (result of procedure _adc_init_clock())
