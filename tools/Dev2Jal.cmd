@@ -38,13 +38,13 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.15'
+   ScriptVersion   = '0.1.16'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated               */
-/*   0 - progress messages (mostly only PicName)                            */
+/*   0 - progress messages, info, warnings and errors                       */
 /*   1 - info, warnings and errors                                          */
 /*   2 - warnings and errors                                                */
 /*   3 - errors (always reported!)                                          */
@@ -85,10 +85,11 @@ if msglevel > 2 then
 /* mandatory commandline argument, which must be 'PROD' or 'TEST'           */
 /*  - with 'PROD' the files go to directory "<JALLIBbase>include/device"    */
 /*  - with 'TEST' the files go to directory "./test>"                       */
-/* Note: The destination is not emptied, existing device files will be      */
+/* Note: The destination is not emptied, existing device files may be       */
 /*       overwritten, other files remain.                                   */
 
 parse upper arg destination selection .            /* commandline arguments */
+
 select
    when destination = 'PROD' then                         /* production run */
       dstdir = JALLIBbase'include/device/'                  /* local Jallib */
@@ -2159,9 +2160,9 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                         call lineout jalfile, 'var volatile bit*2 ',
                                    left(field,25) memtype 'at' reg ':' offset - s.j + 1
                   end
-                  when left(reg,5) = 'ANSEL'  &,
+                  when (left(reg,5) = 'ANSEL' | left(reg,5) = 'ANCON')  &,
                        left(n.j,3) = 'ANS' then do
-                     ansx = ansel2j(reg,n.j)
+                     ansx = ansel2j(reg, n.j)
                      if ansx < 99 then
                         call lineout jalfile, 'var volatile bit   ',
                                      left('JANSEL_ANS'ansx,25) memtype 'at' reg ':' offset
@@ -2932,6 +2933,8 @@ else if core = '14H' then do                                /* extended midrange
          if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
             left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
             ansx = ansx + 5
+         else if left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' then
+            ansx = word('27 28 29 99 99 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
             ansx = 99
          else
@@ -2940,6 +2943,8 @@ else if core = '14H' then do                                /* extended midrange
       when reg = 'ANSELD' then do
          if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' then
             ansx = ansx + 20
+         else if left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' then
+            ansx = word('23 24 25 26 99 99 99 99', ansx + 1)
          else
             ansx = 99
       end
@@ -2960,6 +2965,8 @@ else if core = '14H' then do                                /* extended midrange
                  left(PicName,7) = '16lf190'                              |,
                  left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
             ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
+         else if left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' then
+            ansx = word('17 18 19 20 21 22 99 99', ansx + 1)
       end
       when reg = 'ANSELA' then do
          if PicName = '16f1826' | PicName = '16lf1826' |,
@@ -2970,6 +2977,7 @@ else if core = '14H' then do                                /* extended midrange
                  left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
+                 left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' |,
                  left(PicName,7) = '16lf190'                              |,
                  left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' |,
                  left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
@@ -3156,10 +3164,8 @@ return
 /* returns index of alias (0 if none)                       */
 /* -------------------------------------------------------- */
 insert_pin_alias: procedure expose  PinMap. Name. PicName jalfile msglevel
+parse arg reg, PinName, Pin .
 PicUpper = toupper(PicName)
-reg     = arg(1)
-PinName = arg(2)
-Pin     = arg(3)
 if PinMap.PicUpper.PinName.0 = '?' then do
    call msg 2, 'insert_pin_alias() PinMap.'PicUpper'.'PinName 'is undefined'
    return 0                                                 /* no alias */
@@ -3182,10 +3188,8 @@ return k                                                    /* k-th alias */
 /* note: '_direction' is added                              */
 /* -------------------------------------------------------- */
 insert_pin_direction_alias: procedure expose  PinMap. Name. PicName jalfile msglevel
+parse arg reg, PinName, Pin .
 PicUpper = toupper(PicName)
-reg     = arg(1)
-PinName = arg(2)
-Pin     = arg(3)
 if PinMap.PicUpper.PinName.0 = '?' then do
    call msg 2, 'insert_pin_direction_alias() PinMap.'PicUpper'.'PinName 'is undefined'
    return 0                                                 /* ignore no alias */
@@ -3373,6 +3377,8 @@ do i = 1 to dev.0                                           /* scan .dev file */
                   key = 'VOLTAGE'
                when key = 'BODEN' | key = 'BOREN' | key = 'DSBOREN' | key = 'BOD' | key = 'BOR' then
                   key = 'BROWNOUT'
+               when key = 'CANMX' then
+                  key = 'CANMUX'
                when left(key,3) = 'CCP' & right(key,2) = 'MX' then do
                   key = left(key,pos('MX',key)-1)'MUX'      /* CCP(x)MX -> CCP(x)MUX */
                   if key = 'CCPMUX' then
@@ -3423,10 +3429,14 @@ do i = 1 to dev.0                                           /* scan .dev file */
                   key = 'SSPMUX'
                when key = 'STVREN' then
                   key = 'STVR'
+               when key = T0CKMX then
+                  key = 'T0CKMUX'
                when key = 'T1OSCMX' then
                   key = 'T1OSCMUX'
                when key = 'T3CMX' then
                   key = 'T3CMUX'
+               when key = 'T3CKMX' then
+                  key = 'T3CKMUX'
                when key = 'USBDIV'  &,                      /* compatibility */
                     (left(PicName,6) = '18f245' | left(PicName,6) = '18f255' |,
                      left(PicName,6) = '18f445' | left(PicName,6) = '18f455' ) then
@@ -3581,6 +3591,17 @@ do i = i + 1  while i <= dev.0  &,
             kwd = 'DISABLED'
             flag_disabled = flag_disabled + 1
          end
+      end
+
+      when key = 'CANMUX' then do
+         if pos('_RB', val2u) > 0 then
+            kwd = 'pin_'substr(val2u, pos('_RB', val2u) + 2, 2)
+         else if pos('_RC', val2u) > 0 then
+            kwd = 'pin_'substr(val2u, pos('_RC', val2u) + 2, 2)
+         else if pos('_RE', val2u) > 0 then
+            kwd = 'pin_'substr(val2u, pos('_RE', val2u) + 2, 2)
+         else
+            kwd = val2u
       end
 
       when left(key,3) = 'CCP' & right(key,3) = 'MUX' then do /* CCPxMUX */
@@ -3904,9 +3925,27 @@ do i = i + 1  while i <= dev.0  &,
             kwd = 'DISABLED'                                /* no en/disable balancing */
       end
 
+      when key = 'T0CKMUX' then do
+         if pos('_RB', val2u) > 0 then
+            kwd = 'pin_'substr(val2u, pos('_RB', val2u) + 2, 2)
+         else if pos('_RG', val2u) > 0 then
+            kwd = 'pin_'substr(val2u, pos('_RG', val2u) + 2, 2)
+         else
+            kwd = val2u
+      end
+
       when key = 'T1OSCMUX' then do
          if left(right(val2u,4),2) = '_R' then
             kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
+         else
+            kwd = val2u
+      end
+
+      when key = 'T3CKMUX' then do
+         if pos('_RB', val2u) > 0 then
+            kwd = 'pin_'substr(val2u, pos('_RB', val2u) + 2, 2)
+         else if pos('_RG', val2u) > 0 then
+            kwd = 'pin_'substr(val2u, pos('_RG', val2u) + 2, 2)
          else
             kwd = val2u
       end
