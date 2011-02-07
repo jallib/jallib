@@ -24,7 +24,7 @@
   <ul>
   <li><a href="#device_files">Device files</a>
   <li><a href="#chipdef_jallib">Common include file Chipdef_Jallib</a>
-  <li><a href="#function_includes">Function include files'</a>
+  <li><a href="#function_includes">Function include files</a>
   </ul>
 <li><a href="#user">User Information</a>
   <ul>
@@ -143,16 +143,18 @@ For example pins which are input after power-on or reset remain input,
 etc.
 Required changes are the responsibility of the application program or
 function libraries.
-For user convenience every device file contains a procedure to
+<br>For user convenience every device file contains a procedure to
 disable all analog modules of the PIC and to change all pins which are
 by default analog to digital I/O: enable_digital_io().
+This procedure calls on its turn a procedure to disable ADC modules,
+Comparator modules and a procedure to set analog pins to digital,
+all when applicable to the specific PIC.
 
-<p>The defaults for the configuration bits may be slightly different
-than their specifications in the datasheet.
-You can find the default configuration bits settings in the top of the
-device file.
+<p>The device file contains also a set of configuration bits settings
+with default values,
+which may be different than the specifications in the datasheet!
 <b>Never trust defaults!</b>
-Always specify the way you want the configuration bits.
+Always specify the way you want the configuration bits set.
 
 <h2><a name="chipdef_jallib">Common Include File 'chipdef_jallib.jal'</a></h2>
 
@@ -311,7 +313,7 @@ similar direction declaration, as the following examples show:
    var  volatile  bit   pin_A0  at  PORTA : 0
    var  volatile  bit   pin_A0_direction at TRISA : 0
 </pre>
-etc. (for all other existing pins and ports)
+etc. (for all other existing pins and ports).
 
 
 <h3><a name="gpioregs">GPIO and TRISIO (with the smaller chips)</a></h3>
@@ -1204,7 +1206,7 @@ Several other keywords are possible, for example:
 <li>with dual oscillator sources
 <li>low, medium, and high power oscillators
 </ul>
-The datasheet will specify the possibilities, scan the device file for
+The datasheet will specify the possibilities, browse the device file for
 the applicable keywords.
 
 <h4>Fuse_def PLLDIV (PLL prescaler)</h4>
@@ -1438,24 +1440,35 @@ number of requirements for device specifications.
 The most important from a user perspective are the following:
 
 <h3>Memory allocation</h3>
-<p>The device files specify the amounts of available data memory for
-variables in bytes.
+<p>The device files specify the amounts of available data memory (RAM)
+for variables in bytes.
 <p>There is a distinction between 'shared' and 'unshared' memory.
 For the compiler 'shared' means:
 <ul compact>
 <li>for baseline and midrange PICs: accessible in all banks
-regardless the value in STATUS_RP
-<li>for the extended midrange and 18F PICS: memory in the access bank
+regardless the value of STATUS_RP
+<li>for the extended midrange and 18F PICS: (GPR) memory in the access
+bank
 </ul>
 Memory which is accessible in more than one bank but not in all banks
 is in this context 'unshared'.
-<p>The compiler allocates memory for regular ('user') variables in unshared
-memory.
-<p>The compiler needs some memory for internal use.
-These variables are named _pic_accum and _pic_isr_w,
+<br>The compiler allocates memory for regular ('user') variables in
+unshared memory.
+When a PIC has shared memory (most PICs have) it is specified with
+'pragma shared' in the device files,
+while unshared memory is specified with 'pragma data'.
+<br>The log of a compilation contains a line like:
+<pre>
+ Data area: 250 of 368
+</pre>
+in which the last number is the total amount of <b>unshared</b> memory,
+which is in most cases lower than the total amount of data memory
+according to the datasheet, because it does not inlcude shared memory.
+<p>The compiler needs some data memory for internal use.
+The variables are named _pic_accum and _pic_isr_w,
 and <b>must</b> be in shared memory.
-Each device files contains the declarations for these.
-<p>Most PICS have both shared and unshared RAM and then there is no
+Each device files contains a declarations for these variables.
+Most PICS have both shared and unshared RAM and then there is no
 issue, neither is there an issue with PICs with only 1 memory bank.
 But some midrange PICs have only shared memory while some others have
 no shared memory at all.
@@ -1472,10 +1485,21 @@ are reserved (excluded from the available data memory for user variables).
 <br>This is only partly a solution.
 It avoids problems with interrupt handlers (which use _pic_isr_w), but it
 does not completely avoid problems with calculations with multi-byte
-variables (which uses _pic_accum) when the variables are in different banks.
-For the involved PICs a warning will be issued by the device files.
-<br>Examples: 16F73/74.
+variables (word, dword, etc., which uses _pic_accum) when the variables
+are in different banks.
+This applies to the 16F72, 16F73 and 16F74 and means:
+<br><b>Programs for 16F72, 16F73 and 16F74 should not perform calculations
+with multi-byte variables</b>.
 </ul>
+<p>Another subject of attention is data memory for USB modules.
+This is 'special' data memory, sometimes dedicated to the USB module,
+sometimes it can be used as normal data memory by the user program,
+but only when the USB module is inactive,
+and sometimes it can be shared between USB module and user program.
+So the amount of available data memory as specified in the device file
+can be smaller than the total amount of memory specified in the
+datasheet due to reservation by the USB module.
+
 
 <h3>Analog modules</h3>
 <p>(to be done)
@@ -1520,6 +1544,15 @@ This grouping is inspired by the Microchip MCC18 compiler.
 
 </ul>
 
+<p>Note: With Jallib version 0.7 a number of constants, formerly
+declared in each device file is moved to a file 'constants_jallib.jal'.
+This file is included by chipdef_jallib.jal (which is on its turn
+included by every device file).
+Don't worry about memory occupation: unused constants are removed by the
+compiler automatically and don't occupy memory!
+
+
+
 <!- ---------------------------------------------------------------------- -->
 <hr>
 
@@ -1563,15 +1596,60 @@ Probably the easiest way to run the script is:
 Regina Rexx.
 <li>Make the necessary changes in the script.
 <li>Start a CommandLine session ('command prompt' / 'MS-DOS prompt' / 'terminal').
-<li>Go to the directory with Regina.
+<li>Go to the directory with Regina Rexx.
 <li>Enter the command: regina dev2jal test
 </ul>
 The generated device files will be in subdirectory 'test' (./test).
 
+<h2>To do when new datasheets become available</h2>
+<p>Generally MPLAB contains .dev and .lkr files of PICs of which the
+datasheet is not yet available.
+The dev2jal script does not generate device files when the datasheet number
+is (yet) unknown.
+When a datasheet becomes available the following actions are needed to
+generate device files (by 'manual' editing the involved tools files):
+<ul>
+<li>Make a new entry in the file 'datasheet.list' in the jallib tools
+directory for each new Datasheet or Programming Specifications.
+<li>Make a new entry or update an existing entry in the file
+'devicespecific.json' in the tools directory for each of the PICs described
+in the new datasheet.
+<li>Make a new entry or update an existing entry in the file 'pinmap.py' for
+each of the PICs described in the new datasheet.
+In most cases the datasheet contains a table 'Pinout I/O descriptions' or
+'Pin allocation' with the required information to define aliases.
+<br>When a PIC has more than one I2C or SPI module additional aliases have
+to be added: SDA for SDA1, SDO for SDO1, SCK for SCK1, SCL for SCL1
+(this might be incorporated in the dev2jal.cmd script later).
+Run Rexx script check_alias.cmd to check if all these aliases are present.
+Run python script extract_pininfos.py to obtain an up-to-date
+pinmap_pinsuffix.json and some other tools files.
+<li>Now run the Rexx script dev2jal.cmd with TEST option to generate a new
+set of device files.
+<li>Possibly some corrections have to be applied to the dev2jal script when
+new PICs have exceptions not covered yet, for example JANSEL numbering.
+<li>Run the Rexx blink-a-led script with TEST option to verify the device
+files and to generate blink samples.
+<p>When all is satisfactory run the dev2jal.cmd script with the 'PROD'
+option, SVN-add the device files of new PICs, and commit all device files
+and changed files in the tools and wiki directories.
+<li>Now run also the blink-a-led script with PROD option, SVN-add the
+new blink samples and commit these.
+<li>Run the Rexx script 'createdswikis.cmd' to generate up-to-date wiki
+files related to datasheets.
+Note: This script needs to be run after new device files have been generated
+because it considers only 'existing' Jallib device files.
+</ul>
+
+
 <h2>To do after a fresh install of MPLAB</h2>
-<p>When generating Jallib device files after a fresh install of MPLAB
-the following corrections may have to be made by 'manual' editing of the
-MPLAB .dev files of the indicated PICs:
+<p>The dev2jal.cmd script contains several device specific 'adaptations' to make
+the device files suitable for Jallib.
+Most of these are mentioned in chapter 3 of this document.
+When generating Jallib device files after a fresh install of MPLAB
+in addition to the 'automatic' corrections some 'manual' editing is required.
+These are mainly corrections of errors or omissions in the MPLAB .dev files,
+which may have been corrected by Microchip from one to another version of MPLAB!
 <ul>
 <li>10F200,202,204,206:
     <br>Remove Config 'OSC' field
@@ -1581,34 +1659,29 @@ MPLAB .dev files of the indicated PICs:
 <li>12F519 and 12F520:
     <br>Rename PORTB to GPIO, and TRISB to TRISIO
     and individual bits RBx to GPIOx, and TRISBx to TRISIOx
+<li>16LF1902/3
+    <br>Correct devID 16lf1902 = 0x1C00, 16lf1903 = 0x1C20
 <li>16F506:
     <br>Add individual pin widths of PORTB and PORTC when missing
     <br>Rename IOSCFS values: Enabled to 8MHz, Disabled to 4MHz
 <li>16F526:
     Add individual pin widths of PORTB and PORTC when missing
-<li>16F/LF720/721
-    <br>Device IDs: 16f720=1C00 16f721=1C20, 16LF720=1C40 16LF721=1C60
+<li>16F627:
+    Remove second option (value=0x2800) from CP cfgbits.
 <li>16F87:
-    <br>CCPMX -> CCP1MUX: and only RB0 and RB3
+    <br>CCPMX -> CCP1MUX: and only desc="RB0" and "RB3"
 <li>18F1230/1330:
     <br>Add 'Enabled' for fusedef ICPRT
 <li>18F13K50,14K50 and LF-variants:
     <br>Add LATA3,1,0 and TRISA3,1,0 when missing.
     Check default fuse settings for CPUDIV and PLL (should be all 1:1)
-<li>18F448, 18f458:
-    <br>Register ECCPR1L: change subfield ECCPR1H to ECCPR1L
 </ul>
-<p>When there are new device files which are not in Jallib yet then
-before running the dev2jal script:
-<ul>
-<li>Add the required info of new PICs to devicespecific.json in the
-    tools directory (datasheet, programming specifications, ADCgroup,
-    Fusesdefault).
-<li>Add the pin aliases to pinmap.py in the tools directory and run
-    extract_pininfos.py to obtain an up-to-date pinmap_pinsuffix.json.
-</ul>
-Now run the dev2jal script, redirect the output to a file and check
-this file for errors and warnings which needs attention.
+<p>When there are new device files which are not in Jallib yet then before
+running the dev2jal script you may have to perform the actions described
+above in the section 'To do when new datasheets become available'.
+
+<p>Now run the dev2jal script with the 'TEST' option, redirect the output to
+a file and check this file for errors and warnings which need attention.
 <ul>
 <li>Add support for unrecognised Fuse_Def keywords to the dev2jal script.
 <li>Probably the script file 'fusedefmap.cmd' needs to be updated
@@ -1617,16 +1690,10 @@ this file for errors and warnings which needs attention.
     when new PICs have exceptions not covered yet,
     for example JANSEL numbering.
 <li>Visually check the new device files for irregularities.
-    Use a file compare program (e.g. KDIFF3) to reveal differences.
+    Use a file compare program (e.g. Kdiff3) to reveal differences.
     When needed apply changes to the script and/or data files.
 </ul>
-There is some related work to do:
-<ul>
-<li>Add Datasheet and Programming Specifications to DataSheet.lst and
-    run the Createdswikis.cmd script to update 4 wikis.
-</ul>
-<p>When all is satisfactory SVN-add the device files of new PICs and
-commit all device files and changed files in tools and wiki directory.
+
 
 </body>
 </html>
