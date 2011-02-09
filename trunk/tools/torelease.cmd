@@ -77,22 +77,22 @@ if stream(list,'c','query exists') \= '' then
   call SysFileDelete list
 call stream  list, 'c', 'open write'
 call lineout list, ''
-call lineout list, 'Analysis of' filespec('N', torelease) 'dd' date('N')  time('N')
+call lineout list, 'Analysis of' filespec('N', torelease),
+                    'dd' date('N')  time('N') '(local time)'
 call lineout list, ''
 
-linenumber = 0
 call stream torelease, 'c', 'open read'
-do while lines(torelease)                                   /* collect files */
+do linenumber = 1  while lines(torelease)                   /* collect files */
   ln = linein(torelease)
-  linenumber = linenumber + 1
   if length(ln) = 0  |  left(word(ln,1),1) = '#' then
     iterate                                                 /* skip line */
   ln = translate(ln, xrange('a','z'), xrange('A','Z'))      /* ensure lower case */
-  if stream(base'/'ln, 'c', 'query exists') = '' then do
+  if stream(base'/'ln, 'c', 'query exists') = '' then       /* file not found */
     call lineout list, format(linenumber,4)'. File <'ln'> missing in' base
+  else do                                                   /* file found */
     svnspec = base'/'filespec('P',ln)||svnpath||filespec('N',ln)'.svn-base'
     if stream(svnspec, 'c', 'query exists') = '' then
-      call lineout list, format(linenumber,4)'. File <'ln'> not in in SVN!'
+      call lineout list, format(linenumber,4)'. File <'ln'> not in SVN'
   end
   select
     when left(ln,15) = 'include/device/' then
@@ -321,6 +321,8 @@ call listpart 'sample', 'Samples'
 call listpart 'doc', 'Static documentation (only in jallib-pack)'
 call stream newrelease, 'c', 'close'
 
+Say 'For a sorted TORELEASE file see' newrelease
+
 return 0     /* all done */
 
 
@@ -334,7 +336,7 @@ part = translate(part, xrange('A','Z'), xrange('a','z'))    /* make upper case *
 parse upper var part part
 call sortpart part                                          /* sort this part of collection */
 call lineout newrelease, '#' title
-do k = 1 to f.part.0
+do k = 1 to f.part.0                                        /* list this collection */
   call lineout newrelease, f.part.k
 end
 call lineout newrelease, ''
@@ -348,16 +350,17 @@ return
 sortpart: procedure expose f. newrelease
 parse arg part .
 do i = 1 to f.part.0 - 1
-  lo = translate(f.part.i,'/','_')                          /* underscore higher than ASCII digit */
-  do j = i + 1 to f.part.0
-    hi = translate(f.part.j,'/','_')
+  do j = 1 to f.part.0 - i
+    k = j + 1
+    lo = translate(f.part.j,'/','_')                        /* underscore higher than ASCII digit */
+    hi = translate(f.part.k,'/','_')
     if lo > hi then do                                      /* desc. sequence */
-      tmp = f.part.i
-      f.part.i = f.part.j
+      tmp = f.part.k
+      f.part.k = f.part.j
       f.part.j = tmp
     end
     else if lo = hi then do                                 /* equal */
-      call lineout newrelease, '#' f.part.j '     (duplicate)'
+      call lineout newrelease, '#' f.part.k '     (duplicate)'
     end
   end
 end
