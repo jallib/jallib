@@ -3173,8 +3173,18 @@ end
 if PinMap.PicUpper.PinName.0 > 0 then do
    do k = 1 to PinMap.PicUpper.PinName.0                    /* all aliases */
       pinalias = 'pin_'PinMap.PicUpper.PinName.k
-      if duplicate_name(pinalias,reg) = 0 then              /* unique */
+      if duplicate_name(pinalias,reg) = 0 then do           /* unique */
          call lineout jalfile, 'alias              ' left(pinalias,25) 'is' Pin
+         if pinalias = 'pin_SDA1' |,                        /* 1st I2C module */
+            pinalias = 'pin_SCL1' then
+            call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),25) 'is' Pin
+         else if pinalias = 'pin_SDI1' |,                   /* 1st SPI module */
+                 pinalias = 'pin_SDO1' |,
+                 pinalias = 'pin_SCK1' then
+            call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),25) 'is' Pin
+         else if pinalias = 'pin_SS1'  then                 /* 1st SPI module */
+            call lineout jalfile, 'alias              ' left(delstr(pinalias,7,1),25) 'is' Pin
+      end
    end
 end
 return k                                                    /* k-th alias */
@@ -3197,8 +3207,18 @@ end
 if PinMap.PicUpper.PinName.0 > 0 then do
    do k = 1 to PinMap.PicUpper.PinName.0                    /* all aliases */
       pinalias = 'pin_'PinMap.PicUpper.PinName.k'_direction'
-      if duplicate_name(pinalias,reg) = 0 then              /* unique */
+      if duplicate_name(pinalias,reg) = 0 then do           /* unique */
          call lineout jalfile, 'alias              ' left(pinalias,25) 'is' pin
+         if pinalias = 'pin_SDA1_direction' |,              /* 1st I2C module */
+            pinalias = 'pin_SCL1_direction' then
+            call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),25) 'is' Pin
+         else if pinalias = 'pin_SDI1_direction' |,         /* 1st SPI module */
+                 pinalias = 'pin_SDO1_direction' |,
+                 pinalias = 'pin_SCK1_direction' then
+            call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),25) 'is' Pin
+         else if pinalias = 'pin_SS1_direction'  then       /* 1st SPI module */
+            call lineout jalfile, 'alias              ' left(delstr(pinalias,7,1),25) 'is' Pin
+      end
    end
 end
 return k
