@@ -24,6 +24,10 @@
 -- 
 --
 -- ----------------------------------------------------------------------------
+
+const byte GLCD_X_PIXELS = 128
+const byte GLCD_Y_PIXELS = 64
+const byte GLCD_COLOR_BITS = 1 -- black & white, monochrome
                        
 const KS0108_LEFT          = 0              
 const KS0108_RIGHT         = 1              
@@ -397,12 +401,9 @@ const byte _font_5x7_table[] = {
 
 }           
 
--- ----------------------------------------------------------------------------
--- lcd_write_char - Writes an inverted character to the display         
--- ----------------------------------------------------------------------------
+-- Writes an inverted character to the display using internal font definition.
 -- note: the vertical position of chars is in 8-bit steps.
--- ----------------------------------------------------------------------------
-procedure lcd_write_char(byte in x, byte in y, byte in ch ) is
+procedure ks0108_write_char(byte in x, byte in y, byte in ch ) is
   pragma inline
    var word indx = 0
    var byte cx
@@ -415,6 +416,43 @@ procedure lcd_write_char(byte in x, byte in y, byte in ch ) is
   
    for 5 loop
       cx = _font_5x7_table[indx]
+
+      _ks0108_inst()                          -- Set for instruction          
+      
+      if (x < 64) then
+         _ks0108_column(KS0108_LEFT,x)        -- Set the horizontal address
+         _ks0108_page(KS0108_LEFT, (y / 8))   -- Set the page address
+         _ks0108_data()                       -- Set for data
+         _ks0108_write(KS0108_LEFT, cx)       -- Write the pixel data
+      elsif (x < 128) then
+         _ks0108_column(KS0108_RIGHT, x-64)   -- Set the horizontal address
+         _ks0108_page(KS0108_RIGHT, (y / 8))  -- Set the page address
+         _ks0108_data()                       -- Set for data
+         _ks0108_write(KS0108_RIGHT, cx)      -- Write the pixel data
+      end if
+      -- x > 128 is also ignored (this enables us to write partial chars on the edge)
+
+      indx = indx + 1
+      x = x + 1
+   end loop
+end procedure
+
+
+-- Same as ks0108_write_char, but can use external or user defined font
+-- library.
+procedure lcd_write_char(byte in x, byte in y, byte in ch ) is
+  pragma inline
+   var word indx = 0
+   var byte cx
+    
+   if (ch <  32) then return end if
+   if (ch > 122) then return end if
+  
+   indx = indx + _glcd_font_current_byte_per_char * word(ch - 32)
+
+  
+   for _glcd_font_current_byte_per_char loop
+      cx = glcd_font_lookup(indx)
 
       _ks0108_inst()                          -- Set for instruction          
       
