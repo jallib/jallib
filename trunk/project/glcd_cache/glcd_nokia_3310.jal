@@ -1,25 +1,178 @@
---------------------------------------------------------------------------------
--- procedure to fill the screen with one color
---------------------------------------------------------------------------------
-procedure lcd_fill(byte in color) is
-   -- some code to fill the screen with background color
-end procedure
+-- -----------------------------------------------------------------------------
+-- Title: library for GLCD with pcd8544 controller used in Nokia 3310
+-- Author: Andre Miller Copyright (c) 2008..2010, all rights reserved.
+-- Adapted-by: Richard Zengerink
+-- Compiler:  >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: http://www.amontec.com/lcd_nokia_3310.shtml
+--
+-- Description: library for Nokia 3310 display with pcd8544 controller
+--
 
---------------------------------------------------------------------------------
--- draw one pixel: lcd_write_pixel(x,y,color)
---------------------------------------------------------------------------------
-procedure _lcd_write_pixel(byte in x,byte in y,byte in color) is
-   -- some code to put a pixel on the screen
-end procedure
+include delay
 
--- if cache is not enalbed, rename _lcd_write_pixel to lcd_write_pixel
-if !defined(glcd_write_cache) then
-   alias lcd_write_pixel is _lcd_write_pixel
+-- GLCD specifications
+const byte GLCD_X_PIXELS = 84
+const byte GLCD_Y_PIXELS = 48
+const byte GLCD_COLOR_BITS = 1 -- 16bit color, 65535 colors
+
+-- According to datasheet, pcd8544 controller already deals with auto-wrap,
+-- so we musn't interfere with its logic.
+if defined(FONT_AUTO_WRAP) then
+   if FONT_AUTO_WRAP == FALSE then
+       _warn "FONT_AUTO_WRAP must be set to TRUE because this is\n\tthe default behavior for this GLCD controller"
+   end if
+else
+    const bit FONT_AUTO_WRAP = TRUE
 end if
 
---------------------------------------------------------------------------------
--- init procedure
---------------------------------------------------------------------------------
+-- Default background and pen colors
+if !defined(lcd_background_color) then
+    const word LCD_BACKGROUND_COLOR = GLCD_WHITE
+end if
+if !defined(lcd_pen_color) then
+    const word LCD_PEN_COLOR = GLCD_BLACK
+end if
+
+-- -----------------------
+-- Private/Internal API --
+-- -----------------------
+
+procedure _lcd_write(byte in value) is
+-- Clock in 8 bits of data
+  for 8 loop
+     nok_sclk = low
+     if ( (value & 0x80) == 0 )then
+        nok_sda = low
+     else
+        nok_sda = high
+     end if
+     nok_sclk = high
+     value = value << 1
+     delay_1us            -- max dataspeed is 4Mhz so delay for safety
+  end loop
+end procedure
+
+
+-- Write a data byte to the LCD
+procedure _lcd_write_data(byte in value) is
+   nok_dc = high     -- d/c line high for data
+   _lcd_write (value)
+end procedure
+
+
+-- Write a command byte to the LCD
+procedure _lcd_write_command(byte in value) is
+   nok_dc = low     -- d/c line low for command
+   _lcd_write (value)
+   nok_dc = high   -- set d/c to data
+end procedure
+
+-- -------------
+-- Public API -- 
+-- -------------
+
+-- stub, todo
+procedure lcd_write_pixel(byte in x, byte in y, byte*2 in onoff) is  
+end procedure
+
+-- Set the current position for data (x = 0->83, y = 0->5)
+procedure lcd_gotoxy(byte in xnokia, byte in ynokia) is
+   _lcd_write_command ( 0x40 | ( ynokia & 0x07 ))
+   _lcd_write_command ( 0x80 | ( xnokia & 0x7f ))
+end procedure
+
+
+-- Clear the LCD data memory
+procedure lcd_clear_screen() is
+   nok_sda = low ;; Data bit is low
+   nok_dc = high ;; Data mode
+   nok_cs = low
+   for 6 loop  -- 6 rows
+      for 84 loop  -- 84 columns or 'pages'
+         for 8 loop --Clock for the 8 bits of the 'page'
+            nok_sclk = low
+            nok_sclk = high
+         end loop
+      end loop
+   end loop
+end procedure
+
+-- Send LCD initialization commands
 procedure glcd_init() is
+-- Set initial status of LCD pins
+   nok_sclk = low
+   nok_sda = low
+   nok_dc = low
+   nok_cs = low
+   nok_res = low
+-- Toggle LCD Reset
+   delay_1ms (10)
+   nok_res = low
+   delay_1ms (250)
+   nok_res = high
+-- nok_cs = high
+   _lcd_write_command (0x21) -- Extended commands
+   _lcd_write_command (0xc5) -- LCD Vop
+   _lcd_write_command (0x06) -- Temp coef
+   _lcd_write_command (0x13) -- LCD Bias 1:48
+   _lcd_write_command (0x20) -- Standard commands
+   _lcd_write_command (0x0c) -- Normal Mode
+-- Clear and position at top of LCD
+   lcd_clear_screen()
+   lcd_gotoxy (0,0);
+end procedure
+
+
+-- prints any bitmap graphics (for instance created with fastLCD
+-- http://www.amontec.com/lcd_nokia_3310.shtml) to lcd
+-- just create: const byte graphic[] = { graphic max 504 bytes} and call
+-- graphic_to_nokia( graphic)
+
+procedure graphic_to_nokia( byte in graph[]) is
+   var word len = count(graph)
+   var word i
+
+   for len using i loop
+      _lcd_write_data(graph[i])
+   end loop
 
 end procedure
+
+-- write a char at position (x,y), using font previously selected with
+-- glcd_font_use(FONT_ID). Honor lcd_background_color variable, and indirectly
+-- lcd_pen_color, such as:
+--    * lcd_background_color can be GLCD_BLACK. If so, pen color will be white (inverted)
+--    * if lcd_background_color isn't GLCD_BLACK, then background color will be white, and
+--      pen color will be white ("normal").
+-- when using glcd_common library, a lcd'put pseudo-variable will be defined,
+-- and be called as an output device (eg. lcd = "x")
+procedure lcd_write_char(byte in x, byte in y, byte in char) is
+
+   var word index = 0
+   var byte offset
+   var byte ch
+
+   offset = char - 32 ;; Fix for ascii value
+
+   for offset loop
+      index = index + _glcd_font_current_byte_per_char
+   end loop
+
+   for _glcd_font_current_byte_per_char loop
+      ch = glcd_font_lookup(index)
+      if lcd_background_color == GLCD_BLACK then
+         ch = ch ^ 0xFF
+      end if
+      _lcd_write_data(ch)
+      index = index + 1
+   end loop
+
+   -- Add blank space between characters
+   _lcd_write_data(byte(lcd_background_color) ^ 0xFF)
+
+end procedure
+
