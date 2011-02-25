@@ -38,6 +38,25 @@ include delay
 include print
 include format
 
+
+-- setup serial software
+const serial_sw_baudrate = 115200
+alias serial_sw_tx_pin is pin_c1
+alias serial_sw_rx_pin is pin_c0
+pin_c1_direction = output
+pin_c0_direction = input
+include serial_software
+serial_sw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_sw_write
+alias serial_data is serial_sw_data
+
+const byte str1[] = "START"
+print_crlf(serial_data)
+print_string(serial_data, str1)
+print_crlf(serial_data)
+
+
 include spi_master_hw         -- includes the spi library
 -- define spi inputs/outputs
 pin_sdi_direction = input    -- spi input
@@ -46,22 +65,30 @@ pin_sck_direction = output   -- spi clock
 --
 spi_init(SPI_MODE_11,SPI_RATE_FOSC_64) -- init spi, choose mode and speed
 
--- setup fonts
-const byte FONT_MORE_THEN_ONE = TRUE -- use more then one font
-const byte FONT_BIT_DIRECTION = FONT_TOP_RIGHT_HORIZONTAL -- see constants_jallib.jal
-const byte FONT_AUTO_WRAP = TRUE -- auto wrap text at end of screen
---
-include glcd_font -- include the font library
---
--- choose some fonts
-alias FONT_1        is FONT_8X12_TOP_RIGHT_HORIZONTAL_NO_NAME
-alias FONT_1_WIDTH  is FONT_8X12_WIDTH
-alias FONT_1_HEIGHT is FONT_8X12_HEIGHT
---
--- set your current font
-FONT_NUMBER = 1  -- select your font number
-FONT_WIDTH  = FONT_1_WIDTH  -- must match current font width
-FONT_HEIGHT = FONT_1_HEIGHT -- must match current font height
+-- font libraries
+
+
+-- declare a user-defined font
+-- it's a kind of sprite definition...
+-- must be defined before glcd_font include
+const byte FONT_UDF_0XFE = 0xFE
+const byte FONT_UDF_0XFE_BYTE_PER_CHAR = 5
+const byte FONT_UDF_0XFE_WIDTH = 5
+const byte FONT_UDF_0XFE_HEIGHT = 8
+const byte FONT_UDF_0XFE_BIT_DIRECTION = FONT_BOTTOM_LEFT_VERTICAL
+const byte FONT_UDF_0XFE_CHARS [] =
+{
+   0x81,0x81,0x42,0x24,0x18,        -- >
+   0x00,0x81,0x42,0x3c,0x00,        -- )
+   0x00,0x00,0xff,0x00,0x00,        -- |
+   0x00,0x3c,0x42,0x81,0x00,        -- (
+   0x18,0x24,0x42,0x81,0x81         -- <
+}
+
+include glcd_5x7_font
+include glcd_6x8_font
+include glcd_8x12_font
+include glcd_font
 
 -- Setup glcd_stm032qvt-003
 alias glcd_low_port            is portb -- 8 bit port low
@@ -87,11 +114,11 @@ glcd_wr_direction = OUTPUT
 glcd_rd_direction = input
 glcd_cs_direction = OUTPUT
 --
-
-var word LCD_BACK_COLOR = 0xFFFF -- white
-var word LCD_PEN_COLOR  = 0      -- black
 include glcd_stm032qvt-003
 glcd_init()
+
+
+const FONT_AUTO_WRAP = TRUE
 include glcd_common
 
 -- Setup the GLCD touch controller.
@@ -317,14 +344,15 @@ const byte image[3200] = {
 
 
 -- loop through some colors on screen
-lcd_fill(0xf800) -- red
-lcd_fill(0x07E0) -- Green
-lcd_fill(0x001f) -- blue
-lcd_fill(0xffe0) -- yellow
-lcd_fill(0x0000) -- black
-lcd_fill(0xffff) -- White
-lcd_fill(0x07ff) -- Teal
-lcd_fill(0xd343) -- orange?
+;   lcd_fill(0xf800) -- red
+;   lcd_fill(0x07E0) -- Green
+;   lcd_fill(0x001f) -- blue
+;   lcd_fill(0xffe0) -- yellow
+;   lcd_fill(0x0000) -- black
+;   lcd_fill(0xffff) -- White
+;   lcd_fill(0x07ff) -- Teal
+;   lcd_fill(0xd343) -- orange?
+
 
 LCD_BACK_COLOR = 0xffe0 -- yellow
 lcd_clear_screen() -- clear screen with background color
@@ -337,6 +365,41 @@ glcd_draw_image(image,GLCD_X_PIXELS - 40,GLCD_Y_PIXELS - 40,40,40)
 var byte touch_x
 var word touch_y
 
+-- draw some font
+const byte hello_string[] = "Hello World "
+--
+glcd_font_use(FONT_8X12)       -- set font size
+print_string(lcd,hello_string) -- print characters to lcd
+--
+glcd_font_use(FONT_6x8)
+print_string(lcd,hello_string)
+--
+glcd_font_use(FONT_5x7)
+print_string(lcd,hello_string)
+--
+-- Do a font animation with UDP font
+glcd_font_use(FONT_UDF_0XFE)
+var byte test
+for 5 loop
+   test = 32
+   for 4 loop
+      glcd_char_x_pos = 150
+      glcd_char_y_pos = 150
+      lcd = test
+      test = test + 1
+      _usec_delay(50_000)
+   end loop
+   for 4 loop
+      glcd_char_x_pos = 150
+      glcd_char_y_pos = 150
+      lcd = test
+      test = test - 1
+      _usec_delay(100_000)
+   end loop
+end loop
+
+-- Set font size
+glcd_font_use(FONT_8X12)
 -- print "X:" and "Y:" at bottom left
 glcd_char_x_pos = 0
 glcd_char_y_pos = 320 - 12
@@ -372,7 +435,7 @@ forever loop
    if touch_irq == low then
       -- read location of touch
       touch_read_xy_8_bit(touch_x, touch_y)
-      
+
       glcd_char_x_pos = 16
       glcd_char_y_pos = 320 - 12
       format_byte_dec(lcd, touch_x, 3, 0)
@@ -384,7 +447,7 @@ forever loop
       -- do some coversion to allocate in correct position on screen
       touch_x = (touch_x * 2) - 8
       touch_y = 320 - (touch_y * 3) + 40
-      
+
       -- erase the previous circle
       LCD_PEN_COLOR  = LCD_BACK_COLOR -- RED PEN
       lcd_circle(touch_x_prev,touch_y_prev,20)
@@ -392,7 +455,7 @@ forever loop
       -- draw a new circle
       LCD_PEN_COLOR = 0xf800 -- RED PEN
       lcd_circle(touch_x,touch_y,20)
-      
+
       touch_x_prev = touch_x
       touch_y_prev = touch_y
 
