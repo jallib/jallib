@@ -246,83 +246,7 @@ procedure glcd_init() is
    glcd_write_command(0x0022);
 end procedure
 
---------------------------------------------------------------------------------
--- Draw one character of text from input array constant.
--- must set: glcd_text_height, glcd_text_width and
--- GLCD_FONT_BIT_DIRECTION must be = GLCD_FONT_VERTICAL
---------------------------------------------------------------------------------
-procedure lcd_write_char(byte in x,word in y,byte in value) is
 
-   if _glcd_font_current_bit_direction == FONT_TOP_LEFT_HORIZONTAL then
-;      -- this is the most eficient bit direction for this GLCD
-;      -- currently only works for fonts with width of 8 or less, any height
-;      var word i,j
-;      var word step = 0
-;
-;      glcd_address_set(x,y,x+(_glcd_font_current_width-1),y+(_glcd_font_current_height - 1))
-;      step = step + word(value-32)*_glcd_font_current_height;
-;
-;      for _glcd_font_current_height using j loop
-;         for _glcd_font_current_width using i loop
-;            if( ( glcd_font_lookup(step) & (1<<((_glcd_font_current_width-1)-i)) ) != 0 ) then
-;               glcd_write_data(LCD_PEN_COLOR)
-;            else
-;               glcd_write_data(LCD_BACK_COLOR)
-;            end if
-;         end loop
-;         step = step + 1
-;      end loop
-
-      -- this is not an eficient bit direction for this GLCD
-      -- this will work for any glcd that has a lcd_write_pixel procedure
-      -- currently only works for with width of 8 or less, any height
-      var word i,j,k
-      var word step = 0
-
-      ;for _glcd_font_current_byte_per_char using k loop -- wrong!
-      for _glcd_font_current_height using k loop          -- right!
-         -- get each byte from character
-         var byte char_byte = glcd_font_lookup( (word(value - 32) * _glcd_font_current_byte_per_char) + k )
-         var byte bit_y_address = 128 -- y bit mask
-
-         -- get each bit from each character byte and print it to glcd
-         for _glcd_font_current_width using j loop
-            if( ( char_byte & bit_y_address) > 0 ) then
-               lcd_write_pixel(byte(x+j),y+k,LCD_PEN_COLOR)
-            else
-               lcd_write_pixel(byte(x+j),y+k,LCD_BACK_COLOR)
-            end if
-            bit_y_address = bit_y_address >> 1
-         end loop
-      end loop
-      
-   elsif _glcd_font_current_bit_direction == FONT_BOTTOM_LEFT_VERTICAL then
-      -- this is not an eficient bit direction for this GLCD
-      -- this will work for any glcd that has a lcd_write_pixel procedure
-      -- currently only works for fonts 8x8 or smaller.
-      var word i,j,k
-      var word step = 0
-
-      ;for _glcd_font_current_byte_per_char using k loop -- wrong!
-      for _glcd_font_current_width using k loop          -- right!
-         -- get each byte from character
-         var byte char_byte = glcd_font_lookup( (word(value - 32) * _glcd_font_current_byte_per_char) + k )
-         
-         -- get each bit from each character byte and print it to glcd
-         var byte bit_y_address = 1 -- y bit mask
-         for _glcd_font_current_height using j loop
-            if( ( char_byte & bit_y_address) > 0 ) then
-               lcd_write_pixel(byte(x+k),y+j,LCD_PEN_COLOR)
-            else
-               lcd_write_pixel(byte(x+k),y+j,LCD_BACK_COLOR)
-            end if
-            bit_y_address = bit_y_address << 1
-         end loop
-      end loop
-   else
-      -- not supported yet!
-   end if
-end procedure
 
 --------------------------------------------------------------------------------
 -- Draw an image from a byte array
@@ -335,4 +259,29 @@ procedure glcd_draw_image(byte in image[], byte in x, word in y, byte in width, 
       var word location2 = i*2
       glcd_write_color(image[location1],image[location2])
    end loop
+end procedure
+
+--------------------------------------------------------------------------------
+-- Most efficient font printing. Best font type for this glcd is
+-- FONT_TOP_LEFT_HORIZONTAL
+--------------------------------------------------------------------------------
+procedure lcd_write_char_top_left_horizontal(byte in x,word in y,byte in value) is
+      -- this is the most eficient bit direction for this GLCD
+      -- currently only works for fonts with width of 8 or less, any height
+      var word i,j
+      var word step = 0
+
+      glcd_address_set(x,y,x+(_glcd_font_current_width-1),y+(_glcd_font_current_height - 1))
+      step = step + word(value-32)*_glcd_font_current_height;
+
+      for _glcd_font_current_height using j loop
+         for _glcd_font_current_width using i loop
+            if( ( glcd_font_lookup(step) & (1<<((_glcd_font_current_width-1)-i)) ) != 0 ) then
+               glcd_write_data(LCD_PEN_COLOR)
+            else
+               glcd_write_data(LCD_BACK_COLOR)
+            end if
+         end loop
+         step = step + 1
+      end loop
 end procedure
