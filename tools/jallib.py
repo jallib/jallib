@@ -1089,13 +1089,13 @@ def jalapi_extract_doc(filename):
     for i,(_,line) in enumerate(content):
         # strip line once matched, else loose ident
         if func.match(line):
-            doc = jalapi_extract_comments(i,line.strip(),content[i+1:])
+            line,doc = jalapi_extract_comments(i,line.strip(),content[i+1:])
             dfunc[func.match(line).groups()[0]] = doc
         if proc.match(line):
-            doc = jalapi_extract_comments(i,line.strip(),content[i+1:])
+            line,doc = jalapi_extract_comments(i,line.strip(),content[i+1:])
             dproc[proc.match(line).groups()[0]] = doc
         if var_const.match(line):
-            doc = jalapi_extract_comments(i,line.strip(),content[i+1:])
+            line,doc = jalapi_extract_comments(i,line.strip(),content[i+1:])
             dvarconst[line] = doc
         if include.match(line):
             dep = include.match(line).groups()[0]
@@ -1113,13 +1113,26 @@ def jalapi_extract_comments(i,origline,content):
         if not stillcomment.match(line) or line.strip() == "":
             break
         doc.append(stillcomment.sub("",line))
+
+    # clean potential comments following declaration
+    comm = re.compile("--\s?(.*)")
+    followdoc = ""
+    if comm.findall(origline):
+        followdoc = comm.findall(origline)[-1]
+        origline = comm.sub("",origline)
+
+    if not doc and followdoc:
+        # use potential following comment
+        doc.append(followdoc)
+
     # no comment found
     if not doc:
         print >> sys.stderr, "No documentation found for %s (line %s)" % (repr(origline),i)
-        return None
+        return (origline,None)
     # back to human readable content
     doc.reverse()
-    return "".join(doc) or None
+    # clean documented line with 
+    return (origline,"".join(doc)) or (origline,None)
 
 def jalapi_generate(infos,tmpl_file,sampledir,locallinks):
 
