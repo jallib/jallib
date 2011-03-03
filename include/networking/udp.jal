@@ -27,8 +27,8 @@ var byte*4 udp_socket_ip[UDP_MAX_SOCKETS]
 var word udp_socket_local_port[UDP_MAX_SOCKETS]
 var word udp_socket_remote_port[UDP_MAX_SOCKETS]
 --
-const UDP_SOCKET_REMOVED = 0
-const UDP_SOCKET_CONNECTED = 1
+const UDP_SOCKET_CLOSED = 0
+const UDP_SOCKET_OPEN = 1
 ;const UDP_SOCKET_IDLE = 3
 
 -- UDP header format
@@ -58,7 +58,7 @@ procedure udp_init() is
    -- start all sockets as disconnected
    var byte udp_step = 0
    for UDP_MAX_SOCKETS using udp_step loop
-      udp_socket_status[udp_step] = UDP_SOCKET_REMOVED
+      udp_socket_status[udp_step] = UDP_SOCKET_CLOSED
    end loop
 end procedure
 
@@ -76,7 +76,7 @@ function udp_socket_create(word in local_port, word in remote_port) return byte 
          (udp_socket_local_port[step] == local_port) &
          (udp_socket_remote_port[step] == remote_port) then
 
-         udp_socket_status[step] = UDP_SOCKET_CONNECTED
+         udp_socket_status[step] = UDP_SOCKET_OPEN
          _udp_error = UDP_NO_ERROR -- no error
          return step               -- return socket number
       end if
@@ -84,13 +84,13 @@ function udp_socket_create(word in local_port, word in remote_port) return byte 
 
    -- search for an available socket, if it didn't exist already
    for UDP_MAX_SOCKETS using step loop
-      if udp_socket_status[step] == UDP_SOCKET_REMOVED then -- if socket not in use
+      if udp_socket_status[step] == UDP_SOCKET_CLOSED then -- if socket not in use
 
          -- save socket info
          udp_socket_ip[step]          = _network_remote_ip
          udp_socket_local_port[step]  = local_port
          udp_socket_remote_port[step] = remote_port
-         udp_socket_status[step]      = UDP_SOCKET_CONNECTED
+         udp_socket_status[step]      = UDP_SOCKET_OPEN
 
          _udp_error = UDP_NO_ERROR -- no error
          return step               -- return socket number
@@ -106,17 +106,8 @@ end function
 --------------------------------------------------------------------------------
 procedure udp_socket_remove(byte in socket_number) is
    pragma inline
-   udp_socket_status[socket_number] = UDP_SOCKET_REMOVED
+   udp_socket_status[socket_number] = UDP_SOCKET_CLOSED
 end procedure
-
---------------------------------------------------------------------------------
--- get the socket number of an incomming connection
---------------------------------------------------------------------------------
-function udp_get_socket() return byte is
-   var byte socket_number
-   
-   return socket_number
-end function
 
 --------------------------------------------------------------------------------
 -- Sends a UDP packet containing data held in udp_data[] array. You
@@ -141,9 +132,9 @@ procedure udp_send(byte in socket_name, word in data_size) is
    network_word[UDP_CHECKSUM] = 0
 
    -- calculate and set the checksum
+   -- i'm not sure how to calculate this, but it seems that
    -- checksum value 0x0000 works!
-   -- proper checksum could be done here, check TCP calc with pseudo header tcp_set_checksum()
-   ;network_word[UDP_CHECKSUM] = network_checksum_16_byte_calc()
+   ;network_word[UDP_CHECKSUM] = network_checksum_16_byte_calc(network_var_offset - ip_header_size,ip_header_size + udp_size)
 
    network_send_packet(network_var_offset + udp_size) -- send the packet
 end procedure

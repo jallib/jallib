@@ -36,8 +36,6 @@
 -- 3. The packet is sent onto the network.
 --
 -- TODO:
--- check usage of variable network_packet_size
--- rename internal variables so they start with "_" (on all files)
 --
 
 -- defined in constants_jallib.jal
@@ -177,6 +175,16 @@ if defined(NETWORK_USE_UDP) then
       end if
    end if
 end if
+--
+-- TCP prototypes
+if defined(NETWORK_USE_TCP) then
+   if NETWORK_USE_TCP == TRUE then
+      procedure tcp_read_packet()
+      if NETWORK_USE_TCP_CALLBACKS == TRUE then
+         procedure tcp_receive_callback(byte in socket,word in tcp_data_size)
+      end if
+   end if
+end if
 
 --------------------------------------------------------------------------------
 -- global variables
@@ -209,7 +217,7 @@ end if
 --------------------------------------------------------------------------------
 
 --------------------------------------------------------------------------------
--- include required debug library
+-- include required libs
 --------------------------------------------------------------------------------
 if !defined(debug_data) then
    const bit DEBUG_MASTER_ENABLE = FALSE    -- enables debugging
@@ -218,6 +226,34 @@ if !defined(debug_data) then
    -- lvl 2 - show text
    -- lvl 4 - show data
 end if
+
+include random
+
+--------------------------------------------------------------------------------
+-- setup a timer
+--------------------------------------------------------------------------------
+-- setup network timer aliases for the timer the user selected
+if NETWORK_USE_TIMER == 1 then
+   -- set special timer1 settings
+   t1con_tmr1on = 1               -- enables timer 1
+   -- set timer registers to timer1
+   alias NETWORK_TMR      is TMR1             -- timer interval
+   alias NETWORK_CS       is T1CON_TMR1CS     -- timer clock source bit
+   alias NETWORK_IE       is PIE1_TMR1IE      -- interrupt enable
+   alias NETWORK_IF       is PIR1_TMR1IF      -- interrupt overflow bit
+   alias NETWORK_PS       is T1CON_T1CKPS     -- timer prescaler select bits
+elsif NETWORK_USE_TIMER == 3 then
+   t3con_tmr3on = 1               -- enables timer 3
+   -- set timer registers to timer3
+   alias NETWORK_TMR      is TMR3             -- timer interval
+   alias NETWORK_CS       is T3CON_TMR3CS     -- timer clock source bit
+   alias NETWORK_IE       is PIE2_TMR3IE      -- interrupt enable
+   alias NETWORK_IF       is PIR2_TMR3IF      -- interrupt overflow bit
+   alias NETWORK_PS       is T3CON_T3CKPS     -- timer prescaler select bits
+end if
+NETWORK_CS = 0       -- use internal clock
+;NETWORK_IE = 1      -- enable interrupt
+NETWORK_IF  = off    -- clear overflow to start timer
 
 --------------------------------------------------------------------------------
 -- Reads a recieve packet. Verifies IP Header data such as IP
@@ -232,6 +268,11 @@ procedure network_received_packet() is
    ;network_data_in_use = TRUE
    network_var_offset = 0
 
+   ;print_word_dec(serial_data,network_packet_size)
+   ;serial_data = " "
+   ;print_word_dec(serial_data,enc_packets_available())
+   ;print_crlf(serial_data)
+
    -- print "-- PACKET RECEIVED: x bytes --"
    debug_crlf(DEBUG_2)
    const byte str1[] = "---------- PACKET RECEIVED: "
@@ -240,6 +281,14 @@ procedure network_received_packet() is
    const byte str_size[] = " bytes ----------"
    debug_string(DEBUG_3, str_size)
    debug_crlf(DEBUG_2)
+   
+;   -- packet should not be 0 size in length, there could be an issue?
+;   if network_packet_size == 0 then
+;      if defined(network_clear_rx_queue) then
+;         network_clear_rx_queue() -- clear bad data in the queues
+;      end if
+;      return
+;   end if
 
    if network_packet_size > network_max_packet_size then
       -- your packet may have a problem, it is too large
@@ -353,7 +402,6 @@ function network_checksum_16_byte_calc(word in start, word in size) return word 
    -- also check odd numbered buffer
    if count1 == 1 then
       sum = sum + (word(network_data[i + 0]) << 8)
-      ;sum = sum + word((word(network_data[i + 0]) << 8) + 0)
       if sum > 0xFFFF then
          sum = word(sum) + 1
       end if
