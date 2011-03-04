@@ -12,18 +12,18 @@ REM ****************************************************************************
 
 
 mkdir d:\temp
-mkdir d:\temp\mplab860
-mkdir "d:\temp\mplab860\mpasm suite"
-mkdir "d:\temp\mplab860\mpasm suite\LKR"
-mkdir "d:\temp\mplab860\mplab ide"
-mkdir "d:\temp\mplab860\mplab ide\device"
+mkdir d:\temp\mplab863
+mkdir "d:\temp\mplab863\mpasm suite"
+mkdir "d:\temp\mplab863\mpasm suite\LKR"
+mkdir "d:\temp\mplab863\mplab ide"
+mkdir "d:\temp\mplab863\mplab ide\device"
 
-del "d:\temp\mplab860\mpasm suite\LKR\*.*" /S /F /Q
-del "d:\temp\mplab860\mplab ide\device" /S /F /Q
+del "d:\temp\mplab863\mpasm suite\LKR\*.*" /S /F /Q
+del "d:\temp\mplab863\mplab ide\device" /S /F /Q
 
 
-copy "D:\pic\Microchip\MPASM Suite\LKR\*.*" "d:\temp\mplab833\mpasm suite\LKR\"
-copy "D:\pic\Microchip\MPLAB IDE\device\*.*" "d:\temp\mplab833\mplab ide\device\"
+copy "D:\pic\Microchip\MPASM Suite\LKR\*.*" "d:\temp\mplab863\mpasm suite\LKR\"
+copy "D:\pic\Microchip\MPLAB IDE\device\*.*" "d:\temp\mplab863\mplab ide\device\"
 
 subst k: /d
 subst k: d:\temp
