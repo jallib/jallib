@@ -66,6 +66,14 @@ adclib:
 doc:
 	./jalapi_generate.sh ..
 
+vimdoc:
+	for f in `find ../include -name \*.jal | grep -v include.device` ; \
+	do \
+		libfile=`basename $$f`; \
+		vimfile=`echo $$libfile | sed "s#\.jal#.txt#"`; \
+		python2.5 jallib.py jalapi -l -d ../sample -t jalapi_vim.tmpl -o ../doc/vim/$$vimfile $$f ;\
+	done
+
 matrix:
 	./jallib_matrix_generate.sh ../
 
