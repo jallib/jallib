@@ -1027,7 +1027,7 @@ def do_jalapi(args):
     else:
         api,samples = jalinfos[0]
         output = jalapi_generate({'api' : api, 'samples' : samples},tmplfile,sampledir,locallinks)
-    print >> outfile, output
+    print >> outfile, output.replace("\r","")
 
 def jalapi_extract(jalfile,sampledir,svnbaseurl,locallinks):
     # extract JSG info

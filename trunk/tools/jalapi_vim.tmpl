@@ -22,9 +22,8 @@
 
     #silent libname = libname.upper()
     
-{$libname}   $title
+$libname |  $title
 
-==============================================================================
 Overview
 
 Author:		$author
@@ -53,22 +52,28 @@ Dependencies: no dependency found
 
 #def findtag(val,procfunc)
 #if procfunc
-#set pat = re.compile("(\w+'?(get|put)?)\s*\(")
+#set pat = re.compile("(\w+'?(get|put)?)\s*\(?")
 #set tag = pat.findall(val)[0]
 #set tag = tag[0]
 #else
-#set pat = re.compile("(var|const)\s+(volatile)?\s*(bit|s?byte|s?word|s?dword)?\*?\d?\s*(\w+)")
+#set pat = re.compile("(var|const)\s+(volatile)?\s*((bit|s?byte|s?word|s?dword)?(\*\w+)?)\s*(\w+)")
 #set tag = pat.findall(val)[0]
-#set tag = tag[3]
+#set tag = tag[5]
 #end if
+#silent print "val: %s, tag: %s" % (repr(val),repr(tag))
 #return tag
 #end def
 
 
-#def _display(ltup,procfunc)
+#def _display(libname,ltup,procfunc)
 #for v,doc in ltup
 #silent v = v.strip()
-#set tag = $findtag(v,procfunc)
+#try
+    #set tag = $findtag(v,procfunc)
+#except IndexError
+    #silent print >> sys.stderr, "Incorrect formatting, can't extract doc tag in %s" % $libname
+    #continue
+#end try
 #set val = v.replace(tag,"|%s|" % tag)
 #silent tag = "*%s.%s*" % ($libname,tag)
 ###set l = val.ljust(50," ") + tag.rjust(50," ")
@@ -83,35 +88,34 @@ Dependencies: no dependency found
 #end for
 #end def
 
-#def display_dict(title,ddict,procfunc)
+#def display_dict(libname,title,ddict,procfunc)
     #set dashes = "-" * len(title)
-==============================================================================
+
 $title
 ##$dashes
 	#set private = [(v,doc) for v,doc in $ddict.items() if v.startswith("_")]
 	#set public = [(v,doc) for v,doc in $ddict.items() if not v.startswith("_")]
-$_display($public,procfunc)
+$_display($libname,$public,procfunc)
 	#if private
 Private
-$_display($private,procfunc)
+$_display($libname,$private,procfunc)
 	#end if
 #end def
 
 
-#def api(dvarconst,dproc,dfunc)
+#def api(libname,dvarconst,dproc,dfunc)
 API details
 
-$display_dict("Global variables/contants",$dvarconst,procfunc=False)
+$display_dict($libname,"Global variables/contants",$dvarconst,procfunc=False)
 
-$display_dict("Procedures",$dproc,procfunc=True)
+$display_dict($libname,"Procedures",$dproc,procfunc=True)
 
-$display_dict("Functions",$dfunc,procfunc=True)
+$display_dict($libname,"Functions",$dfunc,procfunc=True)
 
 #end def
 
 
 #def samples(dsamples)
-==============================================================================
 Related samples
 
 #if dsamples
@@ -129,7 +133,6 @@ Samples using this library:
         #else
  - $pic     $url
 			##<td><b>$pic</b></td><td><a href="$url" target="_blank">$file</a></td>
-			</tr>
         #end if
     #end for
 #else
@@ -140,7 +143,7 @@ No sample found
 
 #def content(dhead,dproc,dfunc,dvarconst,ddeps,libname,dsamples)
 $header($libname,$dhead,$ddeps)
-$api($dvarconst,$dproc,$dfunc)
+$api($libname,$dvarconst,$dproc,$dfunc)
 $samples($dsamples)
 #end def
 
@@ -155,3 +158,27 @@ $samples($dsamples)
 #end def
 
 
+#def main_singlepage
+                    ~ Jalapi - Jallib API documenation ~
+
+  
+Table of Content ~
+
+#set libnames = [l[1][0] for l in $infos]
+#for l in libnames
+  - |$l|
+#end for
+
+==============================================================================
+
+#for (dhead,dproc,dfunc,dvarconst,ddeps),(libname,dsamples) in $infos
+*$libname*
+
+		  $libname API documentation
+
+$content($dhead,$dproc,$dfunc,$dvarconst,$ddeps,$libname,$dsamples)
+
+===============================================================================
+#end for
+
+#end def
