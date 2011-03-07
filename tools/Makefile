@@ -44,7 +44,7 @@ test :
 compile:
 	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
 	do \
-		../compiler/jalv2 -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors' && true || ( echo problem with $$f && exit 255; ) \
+		../compiler/jalv2 -no-variable-reuse -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
 	done 
 
 jsg:
