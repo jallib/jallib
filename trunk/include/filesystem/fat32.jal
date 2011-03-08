@@ -44,6 +44,19 @@
 -- external memory source if you want to have a large amount
 -- of files in a directory. see the sample file
 --
+-- Debug:
+--    -- setup debug lib
+--    alias debug_data is serial_data
+--    const bit DEBUG_MASTER_ENABLE = TRUE    -- enables debugging
+--    include debug
+--    --
+--    -- turn on and off debug levels.
+--    debug_lvl_0 = ON
+--    --
+--    var byte debug_text1[] = "DEBUG STARTED"
+--    debug_string(DEBUG_2,debug_text1)
+--    debug_crlf(DEBUG_2)
+--
 -- Known issues:
 -- Can't write to the end of a file if out of file fragment boundaries
 -- Can't write a file_name if out of dir fragment boundaries
@@ -70,6 +83,7 @@
 -- one file does not show size/cluster correctly (#4)
 --
 
+include debug
 
 ------- GENERAL SETTINGS & VARS -------
 
@@ -266,6 +280,16 @@ procedure _fat32_read_boot_sector(byte in partition_select) is
    
    fat32_raw_read_sector_address(0)
    
+   -- debug info
+   if defined(debug_lvl_1) then
+      if debug_lvl_1 == ON then
+         const byte str1[] = "DEBUG - Boot Sector..."
+         debug_string(1,str1)
+         fat32_print_sector_buffer_hex(serial_hw_data, 16)
+         debug_crlf(1)
+      end if
+   end if
+   
    -- read the FileSystem Information Sector
    fat32_raw_read_sector_address((word(fat32_sector_buffer[49])*256)+fat32_sector_buffer[48])
    
@@ -273,16 +297,36 @@ procedure _fat32_read_boot_sector(byte in partition_select) is
    -- "FS information sector signature"
    if ((fat32_sector_buffer[0] == 0x52) & (fat32_sector_buffer[1] == 0x52) &
    (fat32_sector_buffer[2] == 0x61) &(fat32_sector_buffer[3] == 0x41)) then
-      -- Medium is identified as unpartitioned FAT32 filesystem
+
+      const byte str1[] = "DEBUG - No FileSystem Information Sector"
+      debug_string(0,str1)
+      debug_crlf(0)
+      
+      -- Medium is identified as FAT32 filesystem
       fat32_raw_read_sector_address(0)
       fat32_init_ok = TRUE
    else -- Medium is partitioned or contains no FAT32 filesystem
+
+      const byte str2[] = "DEBUG - FileSystem Information Sector Found"
+      debug_string(0,str2)
+      debug_crlf(0)
+      
       fat32_raw_read_sector_address(0)
       -- check if the partition is fat32
       var byte type_code -- partition type code
       type_code = fat32_sector_buffer[450 + part_addr]
       if (type_code == 0x0B) | (type_code == 0x0C) then
          fat32_init_ok = TRUE
+
+         const byte str0[] = "DEBUG - Init OK, FAT32 Found"
+         debug_string(0,str0)
+         debug_crlf(0)
+      else
+
+         const byte str0_[] = "DEBUG - Init Fail, FAT32 Not Found"
+         debug_string(0,str0_)
+         debug_crlf(0)
+      
       end if
       
       var byte _partition_lba_begin[4] at partition_lba_begin
@@ -291,19 +335,49 @@ procedure _fat32_read_boot_sector(byte in partition_select) is
       _partition_lba_begin[2] = fat32_sector_buffer[456 + part_addr]
       _partition_lba_begin[3] = fat32_sector_buffer[457 + part_addr]
    end if
+
+   const byte str3[] = "DEBUG - LBA Begin: "
+   debug_string(0,str3)
+   debug_dword_dec(0,partition_lba_begin)
+   debug_crlf(0)
    
-   fat32_raw_read_sector_address(partition_lba_begin) -- read at sector at volume id location        --
+   fat32_raw_read_sector_address(partition_lba_begin) -- read at sector volume id location
+
+   -- debug info
+   if defined(debug_lvl_1) then
+      if debug_lvl_1 == ON then
+         const byte str1[] = "DEBUG - Volume ID Sector..."
+         debug_string(1,str1)
+         fat32_print_sector_buffer_hex(serial_hw_data, 16)
+         debug_crlf(1)
+      end if
+   end if
    
    fat32_sectors_per_cluster = fat32_sector_buffer[13]
+
+   const byte str4[] = "DEBUG - Sectors Per Cluster: "
+   debug_string(0,str4)
+   debug_dword_dec(0,fat32_sectors_per_cluster)
+   debug_crlf(0)
    
    -- reserved sectors
    _reserved_sectors[0] = fat32_sector_buffer[14]
    _reserved_sectors[1] = fat32_sector_buffer[15]
+
+   const byte str5[] = "DEBUG - Reserved Sectors: "
+   debug_string(0,str5)
+   debug_word_dec(0,reserved_sectors)
+   debug_crlf(0)
    
    _fat32_sectors_per_fat[0] = fat32_sector_buffer[36]
    _fat32_sectors_per_fat[1] = fat32_sector_buffer[37]
    _fat32_sectors_per_fat[2] = fat32_sector_buffer[38]
    _fat32_sectors_per_fat[3] = fat32_sector_buffer[39]
+
+   const byte str6[] = "DEBUG - Sectors Per Fat: "
+   debug_string(0,str6)
+   debug_dword_dec(0,fat32_sectors_per_fat)
+   debug_crlf(0)
    
    -- get root dir first cluster (usually 00 00 00 02)
    var byte _fat32_root_dir_first_cluster[4] at fat32_root_dir_first_cluster
@@ -311,19 +385,35 @@ procedure _fat32_read_boot_sector(byte in partition_select) is
    _fat32_root_dir_first_cluster[1] = fat32_sector_buffer[45]
    _fat32_root_dir_first_cluster[2] = fat32_sector_buffer[46]
    _fat32_root_dir_first_cluster[3] = fat32_sector_buffer[47]
+
+   const byte str7[] = "DEBUG - Root Dir First Cluster: "
+   debug_string(0,str7)
+   debug_dword_dec(0,fat32_root_dir_first_cluster)
+   debug_crlf(0)
    
    -- get fat begin
    fat32_fat_begin = word(partition_lba_begin + reserved_sectors)
+
+   const byte str8[] = "DEBUG - Fat Begin: "
+   debug_string(0,str8)
+   debug_dword_dec(0,fat32_fat_begin)
+   debug_crlf(0)
    
    -- get cluster begin
 ;   fat32_root_dir = partition_lba_begin + reserved_sectors + (2 * fat32_sectors_per_fat)
    fat32_current_dir_location = partition_lba_begin + reserved_sectors + (2 * fat32_sectors_per_fat)
-   
-   fat32_cluster_begin = fat32_current_dir_location - (16)
-   
-;   fat32_current_dir_location = fat32_root_dir -- same as cluster_begin
-   
-   ;print_dword_dec(serial_hw_data, fat32_sectors_per_fat)
+
+   fat32_cluster_begin = fat32_current_dir_location - (fat32_sectors_per_cluster * 2)
+
+   const byte str9[] = "DEBUG - Cluster Begin: "
+   debug_string(0,str9)
+   debug_dword_dec(0,fat32_cluster_begin)
+   debug_crlf(0)
+
+   const byte str10[] = "DEBUG - Current Dir Location: "
+   debug_string(0,str10)
+   debug_dword_dec(0,fat32_current_dir_location)
+   debug_crlf(0)
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -676,6 +766,17 @@ procedure _fat32_read_fragments(dword in cluster_start, bit in file_or_dir) is
    var dword cluster_count
 
    if file_or_dir == FAT32_DIRECTORY then
+
+      -- debug info
+      if defined(debug_lvl_1) then
+         if debug_lvl_1 == ON then
+            const byte str1[] = "DEBUG - Current Directory FAT Start..."
+            debug_string(1,str1)
+            fat32_print_sector_buffer_hex(serial_hw_data, 32)
+            debug_crlf(1)
+         end if
+      end if
+      
       fat32_dir_fragments_start[0] = cluster_start
       fat32_dir_fragment_cluster_count[0] = 0
    else
@@ -751,6 +852,31 @@ procedure _fat32_read_fragments(dword in cluster_start, bit in file_or_dir) is
       end if
 
    end loop
+
+   if file_or_dir == FAT32_DIRECTORY then
+      -- debug info
+      if defined(debug_lvl_1) then
+         if debug_lvl_1 == ON then
+            var byte x
+            const byte str1[] = "DEBUG - Current Directory Fragment Count:"
+            debug_string(1,str1)
+            for (_fat32_dir_fragment_count + 1) using x loop
+               debug_dword_hex(1,fat32_dir_fragment_cluster_count[x])
+               debug_char(1," ")
+            end loop
+            debug_crlf(1)
+
+
+            const byte str2[] = "DEBUG - Current Directory Fragment Locations:"
+            debug_string(1,str2)
+            for (_fat32_dir_fragment_count + 1) using x loop
+               debug_dword_hex(1,fat32_file_fragments_start[x])
+               debug_char(1," ")
+            end loop
+            debug_crlf(1)
+         end if
+      end if
+   end if
 
 end procedure
 
@@ -947,6 +1073,19 @@ procedure _fat32_read_dir_info() is
       entry = 0
       
       _fat32_read_dir_sector_number(address)
+      
+      if defined(debug_lvl_1) then
+         if defined(serial_data) then
+            if debug_lvl_1 == ON then
+               var byte x
+               const byte str1[] = "DEBUG - Directory Cluster Hex:"
+               debug_string(1,str1)
+               fat32_print_sector_buffer_hex(serial_data,32)
+               debug_crlf(1)
+            end if
+         end if
+      end if
+
       
       for 16 loop
       
