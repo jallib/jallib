@@ -54,8 +54,8 @@ else
 end if
 
 -- define foreground and background colors, if not defined already
-if !defined(LCD_BACK_COLOR) then
-   const LCD_BACK_COLOR = 0
+if !defined(lcd_background_color) then
+   const byte LCD_BACKGROUND_COLOR = 0
 end if
 if !defined(LCD_PEN_COLOR) then
    const LCD_PEN_COLOR = 1
@@ -67,67 +67,9 @@ var byte*GLCD_Y_SIZE glcd_char_y_pos = 0;
 
 include glcd_font
 
-;   --------------------------------------------------------------------------------
-;   -- Draw a line (x0,y0,x1,y1). First set LCD_BACK_COLOR & LCD_PEN_COLOR.
-;   --------------------------------------------------------------------------------
-;   procedure lcd_line(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0, byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
-;
-;    var byte*GLCD_X_SIZE xi, xfark
-;    var byte*GLCD_Y_SIZE yi, yfark
-;
-;    if (GLCD_X_SIZE == 2) | (GLCD_Y_SIZE == 2) then
-;       var word fark , xx
-;    else
-;       var byte fark , xx
-;    end if
-;
-;      xi = x0
-;      yi = y0
-;
-;      if x1 >= x0  then
-;         xfark = x1 - x0
-;      else
-;         xfark = x0 - x1
-;      end if
-;
-;      if y1 >= y0  then
-;         yfark = y1 - y0
-;      else
-;         yfark = y0 - y1
-;      end if
-;
-;      if xfark >= yfark then
-;         fark = xfark
-;      else
-;         fark = yfark
-;      end if
-;
-;      xx = 0
-;      for fark loop
-;         lcd_write_pixel ( xi, yi ,LCD_PEN_COLOR)
-;         if xx < xfark then
-;             if x1 >= x0 then
-;                xi = xi + 1
-;             else
-;                xi = xi - 1
-;             end if
-;         end if
-;         if xx < yfark then
-;             if y1 >= y0 then
-;                yi = yi + 1
-;             else
-;                yi = yi - 1
-;             end if
-;         end if
-;         xx = xx + 1
-;      end loop
-;   end procedure
-
---------------------------------------------------------------------------------
 -- Draw one character of text from input array constant.
 -- must set: glcd_text_height, glcd_text_width and
 -- GLCD_FONT_BIT_DIRECTION must be = GLCD_FONT_VERTICAL
---------------------------------------------------------------------------------
 procedure lcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte in value) is
    if _glcd_font_current_bit_direction == FONT_TOP_LEFT_HORIZONTAL then
       if !defined(lcd_write_char_top_left_horizontal) then
@@ -146,9 +88,11 @@ procedure lcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte in
             -- get each bit from each character byte and print it to glcd
             for _glcd_font_current_width using j loop
                if( ( char_byte & bit_y_address) > 0 ) then
-                  lcd_write_pixel(byte(x+j),byte(y+k),lcd_pen_color)
+                  -- TODO @Matt
+                  lcd_write_pixel(byte(x+j),byte(y+k))
                else
-                  lcd_write_pixel(byte(x+j),byte(y+k),LCD_BACK_COLOR)
+                  -- TODO @Matt
+                  lcd_write_pixel(byte(x+j),byte(y+k))
                end if
                bit_y_address = bit_y_address >> 1
             end loop
@@ -177,9 +121,11 @@ procedure lcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte in
             var byte bit_y_address = 1 -- y bit mask
             for _glcd_font_current_height using j loop
                if( ( char_byte & bit_y_address) > 0 ) then
-                  lcd_write_pixel(byte(x+k),byte(y+j),lcd_pen_color)
+                  -- TODO @Matt
+                  lcd_write_pixel(byte(x+k),byte(y+j))
                else
-                  lcd_write_pixel(byte(x+k),byte(y+j),LCD_BACK_COLOR)
+                  -- TODO @Matt
+                  lcd_write_pixel(byte(x+k),byte(y+j))
                end if
                bit_y_address = bit_y_address << 1
             end loop
@@ -193,9 +139,7 @@ procedure lcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte in
    end if
 end procedure
 
---------------------------------------------------------------------------------
 -- Pseudo variable 'lcd' as alternative for lcd_writechar(<byte>)
---------------------------------------------------------------------------------
 --
 
 if defined(lcd_write_char) then
@@ -214,38 +158,31 @@ if defined(lcd_write_char) then
    end procedure
 end if
 
---------------------------------------------------------------------------------
 -- Clear screen
 -- (and set the cursor to the upper left corner: row 0, column 0)
 -- lcd_fill must be defined in glcd device library
---------------------------------------------------------------------------------
 if defined(lcd_fill) then
    procedure  lcd_clear_screen() is
-      lcd_fill(LCD_BACK_COLOR)
+      lcd_fill(lcd_background_color)
       glcd_char_x_pos = 0;
       glcd_char_y_pos = 0;
    end procedure
 end if
 
---------------------------------------------------------------------------------
 -- Set cursor position
 -- Specify row and column in base-0 notation (first line is 0).
---------------------------------------------------------------------------------
 procedure lcd_set_cursor(byte in row, byte in col)  is
    glcd_char_y_pos = row * _glcd_font_current_height -- up to 8 rows
    glcd_char_x_pos = col * _glcd_font_current_width  -- up to 25 cols
 end procedure
 alias lcd_setcursor is lcd_set_cursor -- name changed for JSG compilent
 
---------------------------------------------------------------------------------
 -- cursor returns home (line 1, position 1)
---------------------------------------------------------------------------------
 procedure lcd_home()  is
    glcd_char_y_pos = 0
    glcd_char_x_pos = 0
 end procedure
 
-------------------------------------------------------------------------------
 -- name        : lcd_ellipse( cx, cy, xradius, yradius, mode )
 -- description : Bresenham ellipse plot
 -- argument(s) : cx, cy -> 	center of the ellipse
@@ -254,7 +191,6 @@ end procedure
 -- return value: none
 -- notes       : Would be nice to draw filled ellipses to.. :-)
 -- Author      : Paul D'haene
-------------------------------------------------------------------------------
 procedure lcd_ellipse(byte*GLCD_X_SIZE in cx,byte*GLCD_Y_SIZE in cy, byte in xradius,byte in yradius) is
    var sword xr = sword(xradius), yr = sword(yradius)
    var sword x = xr, y = 0
@@ -267,10 +203,10 @@ procedure lcd_ellipse(byte*GLCD_X_SIZE in cx,byte*GLCD_Y_SIZE in cy, byte in xra
    var sword stopping_y = 0
    
    while stopping_x >= stopping_y loop -- 1st set of points, Y' > -1
-      lcd_write_pixel(byte(cx + x), byte(cy + y), lcd_pen_color)
-      lcd_write_pixel(byte(cx - x), byte(cy + y), lcd_pen_color)
-      lcd_write_pixel(byte(cx - x), byte(cy - y), lcd_pen_color)
-      lcd_write_pixel(byte(cx + x), byte(cy - y), lcd_pen_color)
+      lcd_write_pixel(byte(cx + x), byte(cy + y))
+      lcd_write_pixel(byte(cx - x), byte(cy + y))
+      lcd_write_pixel(byte(cx - x), byte(cy - y))
+      lcd_write_pixel(byte(cx + x), byte(cy - y))
       
       y = y + 1
       stopping_y = stopping_y + two_a_square
@@ -294,10 +230,10 @@ procedure lcd_ellipse(byte*GLCD_X_SIZE in cx,byte*GLCD_Y_SIZE in cy, byte in xra
    stopping_y = two_a_square * yr
    
    while stopping_x <= stopping_y loop -- 2st set of points, Y' < -1
-      lcd_write_pixel(byte(cx + x), byte(cy + y), lcd_pen_color)
-      lcd_write_pixel(byte(cx - x), byte(cy + y), lcd_pen_color)
-      lcd_write_pixel(byte(cx - x), byte(cy - y), lcd_pen_color)
-      lcd_write_pixel(byte(cx + x), byte(cy - y), lcd_pen_color)
+      lcd_write_pixel(byte(cx + x), byte(cy + y))
+      lcd_write_pixel(byte(cx - x), byte(cy + y))
+      lcd_write_pixel(byte(cx - x), byte(cy - y))
+      lcd_write_pixel(byte(cx + x), byte(cy - y))
       
       x = x + 1
       stopping_x = stopping_x + two_b_square
@@ -313,7 +249,6 @@ procedure lcd_ellipse(byte*GLCD_X_SIZE in cx,byte*GLCD_Y_SIZE in cy, byte in xra
    end loop
 end procedure
 
-------------------------------------------------------------------------------
 -- name        : lcd_circle( cx, cy, radius, lcd_pen_color )
 -- description : Bresenham circle draw
 -- argument(s) : cx, cy -> 	center of the circle
@@ -323,12 +258,10 @@ end procedure
 -- notes       : the circle code does not give a round circle on
 --               the lcd.
 -- Author      : Paul D'haene
-------------------------------------------------------------------------------
 procedure lcd_circle(byte*GLCD_X_SIZE in cx, byte*GLCD_Y_SIZE in cy, byte in radius) is
    lcd_ellipse(cx, cy, radius, radius) -- approx scaled y radius
 end procedure
 
--- ----------------------------------------------------------------------------
 -- name        : lcd_line( x0, y0, x1, y1, lcd_pen_color )
 -- description : fast integer only line draw
 -- argument(s) : x0 -> start x  0 >= x < 84
@@ -337,7 +270,6 @@ end procedure
 --               y1 -> end y
 --               lcd_pen_color -> draw, erase or xor
 -- Author      : Paul D'haene
--- ----------------------------------------------------------------------------
 procedure  lcd_line(byte*GLCD_X_SIZE in x0,byte*GLCD_Y_SIZE in y0, byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
    var sword dx = sword(x1) - sword(x0)
    var sword dy = sword(y1) - sword(y0)
@@ -357,7 +289,7 @@ procedure  lcd_line(byte*GLCD_X_SIZE in x0,byte*GLCD_Y_SIZE in y0, byte*GLCD_X_S
       dy = -dy
       two_dy = -two_dy
    end if
-   lcd_write_pixel(x0,y0,lcd_pen_color) -- first point is special case
+   lcd_write_pixel(x0,y0) -- first point is special case
    
    if (dx != 0) | (dy != 0) then -- are there other points on the line?
       if dy <= dx then -- is the slope <= 1 ?
@@ -369,7 +301,7 @@ procedure  lcd_line(byte*GLCD_X_SIZE in x0,byte*GLCD_Y_SIZE in y0, byte*GLCD_X_S
                currenty = currenty + yinc
                two_ds_accumulated_error = two_ds_accumulated_error - two_ds
             end if
-            lcd_write_pixel(byte(currentx), byte(currenty), lcd_pen_color)
+            lcd_write_pixel(byte(currentx), byte(currenty))
          end loop
       else -- the slope is large: reverse roles of X & Y
          two_dy_accumulated_error = 0 -- initialize error
@@ -380,16 +312,14 @@ procedure  lcd_line(byte*GLCD_X_SIZE in x0,byte*GLCD_Y_SIZE in y0, byte*GLCD_X_S
                currentx = currentx + xinc
                two_dy_accumulated_error = two_dy_accumulated_error - two_dy
             end if
-            lcd_write_pixel(byte(currentx), byte(currenty), lcd_pen_color)
+            lcd_write_pixel(byte(currentx), byte(currenty))
          end loop
       end if
    end if
 end procedure
 
 
---------------------------------------------------------------------------------
--- Draw a box (x0,y0,x1,y1). First set LCD_BACK_COLOR & lcd_pen_color.
---------------------------------------------------------------------------------
+-- Draw a box (x0,y0,x1,y1). First set lcd_background_color & lcd_pen_color.
 procedure lcd_box(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0, byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
    pragma inline
    

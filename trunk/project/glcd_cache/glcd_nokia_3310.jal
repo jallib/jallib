@@ -20,7 +20,7 @@ include delay
 -- GLCD specifications
 const byte GLCD_X_PIXELS = 84
 const byte GLCD_Y_PIXELS = 48
-const byte GLCD_COLOR_BITS = 1 -- 16bit color, 65535 colors
+const byte GLCD_COLOR_BITS = 1 -- monochrome display
 
 -- According to datasheet, pcd8544 controller already deals with auto-wrap,
 -- so we musn't interfere with its logic.
@@ -33,8 +33,13 @@ else
 end if
 
 -- colors constants
+-- black & white are official value for display controller
 const GLCD_BLACK = 0x00
 const GLCD_WHITE = 0xFF
+-- this color is a special, internal to this library (not part
+-- of controller specs). When using this color, what's black becomes
+-- white (off), what's white becomes black (on)
+const GLCD_XOR = 0x01
 
 -- Default background color
 var byte lcd_background_color = GLCD_WHITE
@@ -51,10 +56,6 @@ if !defined(glcd_cache) then
     include large_array_1
     alias glcd_cache is large_array_1
 end if
--- Plot mode
-const byte GLCD_MODE_OFF = 0
-const byte GLCD_MODE_ON = 1
-const byte GLCD_MODE_XOR = 2
 -- track current changed (dirty) area
 var word glcd_lo_watermark = cache_size - 1
 var word glcd_hi_watermark = 0
@@ -161,6 +162,9 @@ procedure graphic_to_nokia(byte in graph[]) is
 
 end procedure
 
+
+-- should only be available if using fonts
+if defined(GLCD_FONT_USAGE) then
 -- write a char at position (x,y), using font previously selected with
 -- glcd_font_use(FONT_ID). Honor lcd_background_color variable, and indirectly
 -- lcd_pen_color, such as:
@@ -194,6 +198,7 @@ procedure lcd_write_char(byte in x, byte in y, byte in char) is
    _lcd_write_data(byte(lcd_background_color) ^ 0xFF)
 
 end procedure
+end if
 
 -- Clear the display. lcd_update must be called next.
 procedure lcd_clear_cache() is
@@ -259,9 +264,9 @@ end procedure
 
 -- Plot a pixel at given absolute (x, y) location.
 -- x, y -> Absolute pixel coordinates
--- mode -> GLCD_MODE_ON, _OFF, _XOR
-procedure lcd_write_pixel(byte in x, byte in y, byte in pixel_mode) is
-
+-- lcd_pen_color should be set before calling to plot 
+-- appropriate pixel colors.
+procedure lcd_write_pixel(byte in x, byte in y) is
    var byte pdata,offset
    var word index
 
@@ -273,11 +278,11 @@ procedure lcd_write_pixel(byte in x, byte in y, byte in pixel_mode) is
  
    pdata = glcd_cache[ index ]
  
-   if pixel_mode == GLCD_MODE_ON then
+   if lcd_pen_color == GLCD_BLACK then
       pdata = pdata | (0x01 << offset)
-   elsif pixel_mode == GLCD_MODE_OFF then
+   elsif lcd_pen_color == GLCD_WHITE then
       pdata = pdata & (255 ^ (0x01 << offset))
-   elsif pixel_mode == GLCD_MODE_XOR then
+   elsif lcd_pen_color == GLCD_XOR then
       pdata = pdata ^ (0x01 << offset)
    end if
  
@@ -294,6 +299,5 @@ procedure lcd_write_pixel(byte in x, byte in y, byte in pixel_mode) is
    end if
  
    glcd_cache_changed = true
-
 end procedure
 
