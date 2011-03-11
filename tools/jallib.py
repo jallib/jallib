@@ -217,7 +217,7 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
     # No exec specify, try env var or defaulting
     if not jalv2_exec:
         jalv2_exec = os.environ.get('JALLIB_JALV2','jalv2').split()
-    cmd = jalv2_exec + ["-s",";".join(dirs)]
+    cmd = [jalv2_exec] + ["-s",";".join(dirs)]
     ###print cmd
     # Complete with compiler args
     if args:
@@ -1191,6 +1191,8 @@ def do_list(_trash):
 #----------#
 # API FUNC #
 #----------#
+# Extract some API informations (const, var, proc, func,...)
+# Can be used in IDE
 
 VALID_IDENTIFIER = "a-z0-9_"
 COMMENT_RE = re.compile("((--)|;).*")
@@ -1391,6 +1393,129 @@ def do_api(args):
         import pprint
         outfile.write(pprint.pformat(pydesc) + "\n")
 
+#--------------#
+# MONITOR FUNC #
+#--------------#
+# Parse and compare compiler output. Used 
+# to monitor and compare different parameters
+# (ram, program, stack,...) accross different 
+# program or compiler versions
+
+def parse_compiler_output(out,err="",compiler=None,filename=None):
+    dout = {"compiler" : compiler, "filename" : filename}
+    outs = out.splitlines()
+    for l in outs:
+        if l.startswith("jal"):
+            dout["compiler_version"] = l  # ex: "jal 2.4o (compiled Mar  6 2011)"
+        elif "tokens" in l:
+            toks = l.split()        # ex: "1410 tokens, 188860 chars; 4536 lines; 15 files"
+            dout["tokens"] = int(toks[0])
+            dout["chars"] = int(toks[2])
+            dout["lines"] = int(toks[4])
+            dout["files"] = int(toks[6])
+        elif l.startswith("Code area"):
+            ca = l.split()                # ex: "Code area: 3174 of 32768 used (bytes)"
+            dout["code_area_used"] = int(ca[2])
+            dout["code_area_avail"] = int(ca[4])
+        elif l.startswith("Data area"):
+            da = l.split()
+            dout["data_area_used"] = int(da[2])
+            dout["data_area_avail"] = int(da[4])
+        elif l.startswith("Software stack"):
+            sw = l.split()                # ex: "Software stack available: 838 bytes"
+            dout["soft_stack_avail"] = int(sw[3])
+        elif l.startswith("Hardware stack"):
+            hw = l.split()                # ex: "Hardware stack depth 2 of 31"
+            dout["soft_stack_used"] = int(hw[3])
+            dout["soft_stack_avail"] = int(hw[5])
+            
+    return dout
+
+def compare_compiler_outputs(douts):
+    # assuming all dicts are structured the same...
+    # map on array
+    array = {}
+    keys = ["compiler","compiler_version","tokens","chars","lines","files",\
+            "code_area_used","code_area_avail","data_area_used","data_area_avail",\
+            "soft_stack_avail","soft_stack_used","soft_stack_avail"]
+    filenames = [dout["filename"] for dout in douts]
+    for k in keys:
+        array[k] = [dout[k] for dout in douts]
+
+    print
+    print " " * 20,
+    for x in range(len(douts)):
+        print "%35s" % filenames[x],
+    print
+    print
+    for param in keys: 
+        print "%20s" % param,
+        for x in range(len(douts)):
+            print "%35s" % array[param][x],
+        print
+    
+ 
+def do_monitor(args):
+
+    try:
+        opts, args = getopt.getopt(args, ACTIONS['monitor']['options'])
+    except getopt.error,e:
+        print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+        sys.exit(255)
+
+    list_only = False
+    clean_files = True
+    verbose = False
+    for o,v in opts:
+        if o == "-k":
+            clean_files = False
+        elif o == "-l":
+            list_only = True
+        elif o == "-v":
+            verbose = True
+
+    # args contain a jal file to test, and optionally a list
+    # testcase's name to run. If it's a "regular jal" file
+    # there's no way to specify which testcase to run, since
+    # only one testcase can be declared.
+    compiler_and_filenames = args
+
+    douts = []
+    for num,compiler_and_filename in enumerate(compiler_and_filenames):
+        compiler = None
+        try:
+            compiler,filename = compiler_and_filename.split(":")
+        except ValueError:
+            # no compiler specified
+            filename = compiler_and_filename
+
+        args = []
+        if compiler:
+            args.extend(["-E",compiler])
+        args.append(filename)
+
+        fnout = filename + ".stdout"
+        fnerr = filename + ".stderr"
+        fout = file(fnout,"w")
+        ferr = file(fnerr,"w")
+        try:
+            status = do_compile(args,exitonerror=False,clean=False,stdout=fout,stderr=ferr)
+            output = file(fnout).read()
+            errput = file(fnerr).read()
+            try:
+                dout = parse_compiler_output(output,compiler=compiler,filename=filename)
+                douts.append(dout)
+            except IndexError,e:
+                import traceback
+                print >> sys.stderr, traceback.format_exc()
+                sys.exit(1)
+        finally:
+            os.unlink(fnout)
+            os.unlink(fnerr)
+
+    compare_compiler_outputs(douts)
+
+    sys.exit(0)
 
 #############
 # HELP FUNC #
@@ -1613,6 +1738,16 @@ on stdout.
 
 """
 
+
+def monitor_help():
+    print """
+    jallib monitor [compiler1:]file1.jal [compiler2:]file2.jal [...]
+
+Compiles file1.jal using compiler1 binary, file2.jal using compiler2 binary, etc...
+and display output results and comparisons. If "compiler" parameter isn't specified,
+it assumes "jalv2" is available on PATH.
+"""
+
 def do_help(action_args=[]):
     action = None
     if action_args:
@@ -1629,10 +1764,11 @@ ACTIONS = {
         'validate'  : {'callback' : do_validate, 'options' : '',           'help' : validate_help},
         'list'      : {'callback' : do_list,     'options' : '',           'help' : list_help},
         'api'       : {'callback' : do_api,      'options' : 'xjkpo:l:',   'help' : api_help},
-        'jalapi'    : {'callback' : do_jalapi,   'options' : 'slt:d:g:o:',  'help' : jalapi_help},
+        'jalapi'    : {'callback' : do_jalapi,   'options' : 'slt:d:g:o:', 'help' : jalapi_help},
         'sample'    : {'callback' : do_sample,   'options' : 'a:b:t:o:',   'help' : sample_help},
         'reindent'  : {'callback' : do_reindent, 'options' : 'c:',         'help' : reindent_help},
         'unittest'  : {'callback' : do_unittest, 'options' : 'kvl',        'help' : unittest_help},
+        'monitor'   : {'callback' : do_monitor,  'options' : '',           'help' : monitor_help},
         'help'      : {'callback' : do_help,     'options' : '',           'help' : None},
         'license'   : {'callback' : do_license,  'options' : '',           'help' : None},
         }
