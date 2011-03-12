@@ -216,7 +216,7 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
             dirs.extend(_explore_dir(d))
     # No exec specify, try env var or defaulting
     if not jalv2_exec:
-        jalv2_exec = os.environ.get('JALLIB_JALV2','jalv2').split()
+        jalv2_exec = os.environ.get('JALLIB_JALV2','jalv2')
     cmd = [jalv2_exec] + ["-s",";".join(dirs)]
     ###print cmd
     # Complete with compiler args
