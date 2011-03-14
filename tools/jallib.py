@@ -1401,11 +1401,17 @@ def do_api(args):
 # (ram, program, stack,...) accross different 
 # program or compiler versions
 
+METRIC_KEYS = ["compiler_path","compiler_version","tokens","chars","lines","files",\
+               "code_area_used","code_area_avail","data_area_used","data_area_avail",\
+               "soft_stack_avail","soft_stack_used","soft_stack_avail","filename"]
+
 def parse_compiler_output(out,err="",compiler=None,filename=None):
-    dout = {"compiler" : compiler, "filename" : filename}
+    dout = dict(zip(METRIC_KEYS,[None] * len(METRIC_KEYS)))
+    dout["compiler_path"] = compiler
+    dout["filename"] = filename
     outs = out.splitlines()
     for l in outs:
-        if l.startswith("jal"):
+        if l.startswith("jal 2."):
             dout["compiler_version"] = l  # ex: "jal 2.4o (compiled Mar  6 2011)"
         elif "tokens" in l:
             toks = l.split()        # ex: "1410 tokens, 188860 chars; 4536 lines; 15 files"
@@ -1435,25 +1441,41 @@ def compare_compiler_outputs(douts):
     # assuming all dicts are structured the same...
     # map on array
     array = {}
-    keys = ["compiler","compiler_version","tokens","chars","lines","files",\
-            "code_area_used","code_area_avail","data_area_used","data_area_avail",\
-            "soft_stack_avail","soft_stack_used","soft_stack_avail"]
     filenames = [dout["filename"] for dout in douts]
-    for k in keys:
+    for k in METRIC_KEYS:
         array[k] = [dout[k] for dout in douts]
 
+    return array
+
+def monitor_display_human(results):
     print
     print " " * 20,
-    for x in range(len(douts)):
-        print "%35s" % filenames[x],
+    nelem = len(results["filename"])
+    for x in range(nelem):
+        print "%35s" % results["filename"][x],
     print
     print
-    for param in keys: 
+    for param in METRIC_KEYS: 
+        if param == "filename":
+            continue
         print "%20s" % param,
-        for x in range(len(douts)):
-            print "%35s" % array[param][x],
+        for x in range(nelem):
+            print "%35s" % results[param][x],
         print
-    
+
+def monitor_display_csv(results):
+    nelem = len(results["filename"])
+    print ",",  # placeholder for param column
+    for x in range(nelem):
+        print "%s," % results["filename"][x],
+    print
+    for param in METRIC_KEYS: 
+        if param == "filename":
+            continue
+        print "%s," % param,
+        for x in range(nelem):
+            print "%s," % results[param][x],
+        print
  
 def do_monitor(args):
 
@@ -1466,32 +1488,43 @@ def do_monitor(args):
     list_only = False
     clean_files = True
     verbose = False
+    output_format = ""
     for o,v in opts:
-        if o == "-k":
-            clean_files = False
-        elif o == "-l":
-            list_only = True
-        elif o == "-v":
-            verbose = True
+        if o == "-f":
+            output_format = v
 
     # args contain a jal file to test, and optionally a list
     # testcase's name to run. If it's a "regular jal" file
     # there's no way to specify which testcase to run, since
     # only one testcase can be declared.
-    compiler_and_filenames = args
+    compiler_and_repos_and_filenames = args
 
     douts = []
-    for num,compiler_and_filename in enumerate(compiler_and_filenames):
+    for num,compiler_and_repos_and_filename in enumerate(compiler_and_repos_and_filenames):
         compiler = None
+        repos = None
+
         try:
-            compiler,filename = compiler_and_filename.split(":")
+            # extract filename and compiler+repos
+            compiler_and_repos,filename = compiler_and_repos_and_filename.split(":")
+
+            # extract compiler and repos
+            try:
+                compiler,repos = compiler_and_repos.split(",")
+            except ValueError:
+                compiler = compiler_and_repos
+
         except ValueError:
             # no compiler specified
-            filename = compiler_and_filename
+            filename = compiler_and_repos_and_filename
+
+
 
         args = []
         if compiler:
             args.extend(["-E",compiler])
+        if repos:
+             args.extend(["-R",repos])
         args.append(filename)
 
         fnout = filename + ".stdout"
@@ -1513,7 +1546,12 @@ def do_monitor(args):
             os.unlink(fnout)
             os.unlink(fnerr)
 
-    compare_compiler_outputs(douts)
+    res = compare_compiler_outputs(douts)
+
+    # dispatch displayer
+    displayer = {"human" : monitor_display_human,
+                 "csv" : monitor_display_csv}
+    displayer.get(output_format,displayer["human"])(res)
 
     sys.exit(0)
 
@@ -1741,11 +1779,21 @@ on stdout.
 
 def monitor_help():
     print """
-    jallib monitor [compiler1:]file1.jal [compiler2:]file2.jal [...]
+    jallib monitor [-f format] [compiler1[,repos1]:]file1.jal [compiler2[,repos2]:]file2.jal [...]
 
-Compiles file1.jal using compiler1 binary, file2.jal using compiler2 binary, etc...
-and display output results and comparisons. If "compiler" parameter isn't specified,
+Compiles file1.jal using compiler1 binary against lib repository repos1, 
+file2.jal using compiler2 binary  against lib repository repos2, etc...
+and display output results and comparisons. 
+
+"compiler" is a path to a jalv2 compiler binary. If not specified,
 it assumes "jalv2" is available on PATH.
+
+"repos" is a path to a directory containing jal libraries used to compile
+given file. Explored recursively. Same meaning as -R option of action "compile".
+
+"format" specifies how results are display. Available values are:
+    - human : displays a table readable by mere mortals (default)
+    - csv : outputs results as a CSV file, comma seperated
 """
 
 def do_help(action_args=[]):
@@ -1768,7 +1816,7 @@ ACTIONS = {
         'sample'    : {'callback' : do_sample,   'options' : 'a:b:t:o:',   'help' : sample_help},
         'reindent'  : {'callback' : do_reindent, 'options' : 'c:',         'help' : reindent_help},
         'unittest'  : {'callback' : do_unittest, 'options' : 'kvl',        'help' : unittest_help},
-        'monitor'   : {'callback' : do_monitor,  'options' : '',           'help' : monitor_help},
+        'monitor'   : {'callback' : do_monitor,  'options' : 'f:',         'help' : monitor_help},
         'help'      : {'callback' : do_help,     'options' : '',           'help' : None},
         'license'   : {'callback' : do_license,  'options' : '',           'help' : None},
         }
