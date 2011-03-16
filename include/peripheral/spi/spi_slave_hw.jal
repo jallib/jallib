@@ -1,0 +1,87 @@
+-- Title: SPI Slave Hardware
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Compiler: 2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: SPI Hardware Slave library for exchanging data through SPI bus.
+--
+-- Sources:
+-- Jallib spi_master_hw library - Written by William Welch
+-- http://www.justanotherlanguage.org/content/jallib/tutorials/tutorial_spi_introduction
+-- http://ww1.microchip.com/downloads/en/devicedoc/spi.pdf
+--
+-- Notes:
+--
+-- -- Setup SPI Slave Hardware
+-- pin_sdi_direction = input    -- spi input
+-- pin_sdo_direction = output   -- spi output
+-- pin_sck_direction = input    -- spi clock
+-- pin_ss_direction = input     -- chip select
+-- include spi_slave_hw
+-- spi_slave_init(SPI_MODE_11)
+--
+
+-- Use these when calling the spi_slave_init()
+const SPI_MODE_00 = 0
+const SPI_MODE_01 = 1
+const SPI_MODE_10 = 2
+const SPI_MODE_11 = 3
+
+--------------------------------------------------------------------------------
+-- wait to exchange data through the spi port
+-- (wait for chip select to go low, and clock pulses to come in from master)
+--------------------------------------------------------------------------------
+function spi_slave_hw_exchange(byte in data) return byte is
+   SSPBUF = data
+   
+   while SSPSTAT_BF == 0 loop ; while sspbuf is not full
+   end loop
+
+   return SSPBUF  -- get data from the buffer
+end function
+
+--------------------------------------------------------------------------------
+-- wait to receive data from the spi port
+-- (wait for chip select to go low, and clock pulses to come in from master)
+--------------------------------------------------------------------------------
+procedure spi_slave_hw'put(byte in data) is
+   var byte dummy
+   dummy = spi_slave_hw_exchange(data)
+end procedure
+
+--------------------------------------------------------------------------------
+-- wait to transmit data to spi port
+-- (wait for chip select to go low, and clock pulses to come in from master)
+--------------------------------------------------------------------------------
+function spi_slave_hw'get() return byte is
+   var byte data
+   data = spi_slave_hw_exchange(0xFF)
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- spi slave init
+--------------------------------------------------------------------------------
+procedure spi_slave_init(byte in spi_mode) is
+   SSPCON = 0
+   SSPSTAT_SMP = 0
+
+   if spi_mode == SPI_MODE_00 then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   elsif spi_mode == SPI_MODE_01 then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 0
+   elsif spi_mode == SPI_MODE_10 then
+      SSPCON_CKP = 1
+      SSPSTAT_CKE = 1
+   else ;spi_mode == SPI_MODE_11 then
+      SSPCON_CKP = 1
+      SSPSTAT_CKE = 0
+   end if
+
+   SSPCON_SSPM = 4        -- Select slave mode with chip select (pin_SS)
+   SSPCON_SSPEN = 1       -- Enables SPI
+end procedure
