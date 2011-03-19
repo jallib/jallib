@@ -54,29 +54,50 @@ procedure spi_init(byte in mode) is
 end procedure
 
 --------------------------------------------------------------------------------
--- TODO
+-- exchange data on the spi bus.
 --------------------------------------------------------------------------------
-;function spi_master_hw_exchange(byte in m_data) return byte is
-;end function
+function spi_master_sw_exchange(byte in data) return byte is
+   var bit bit_out at data : 7
+   var bit bit_in at data : 0
+   if (spi_mode == SPI_MODE_00) | (spi_mode == SPI_MODE_01) then
+      for 8 loop
+         spi_master_sw_sdo = bit_out
+         data = data << 1
+         spi_master_sw_sck = high
+         spi_master_sw_sck = low
+         bit_in = spi_master_sw_sdi
+      end loop
+   else ;(spi_mode == SPI_MODE_11 then) | (spi_mode == SPI_MODE_10) then
+      for 8 loop
+         spi_master_sw_sdo = bit_out
+         data = data << 1
+         spi_master_sw_sck = low
+         spi_master_sw_sck = high
+         bit_in = spi_master_sw_sdi
+      end loop
+   end if
+   
+   return data
+end function
 
 --------------------------------------------------------------------------------
 -- put one byte of data onto the spi bus (pseudo variable)
 --------------------------------------------------------------------------------
 procedure spi_master_sw'put(byte in data) is
-   var bit level at data : 7
+   var bit bit_out at data : 7
    if (spi_mode == SPI_MODE_00) | (spi_mode == SPI_MODE_01) then
       for 8 loop
-         spi_master_sw_sdo = level
+         spi_master_sw_sdo = bit_out
+         data = data << 1
          spi_master_sw_sck = high
          spi_master_sw_sck = low
-         data = data << 1
       end loop
    else ;(spi_mode == SPI_MODE_11 then) | (spi_mode == SPI_MODE_10) then
       for 8 loop
-         spi_master_sw_sdo = level
+         spi_master_sw_sdo = bit_out
+         data = data << 1
          spi_master_sw_sck = low
          spi_master_sw_sck = high
-         data = data << 1
       end loop
    end if
 end procedure
@@ -87,20 +108,20 @@ end procedure
 function spi_master_sw'get() return byte is
    var byte data
 
-   var bit level at data : 0
+   var bit bit_out at data : 0
    if (spi_mode == SPI_MODE_00) | (spi_mode == SPI_MODE_01) then
       for 8 loop
-         level = spi_master_sw_sdi
+         data = data << 1
          spi_master_sw_sck = high
          spi_master_sw_sck = low
-         data = data << 1
+         bit_out = spi_master_sw_sdi
       end loop
    else ;(spi_mode == SPI_MODE_11 then) | (spi_mode == SPI_MODE_10) then
       for 8 loop
-         level = spi_master_sw_sdi
+         data = data << 1
          spi_master_sw_sck = low
          spi_master_sw_sck = high
-         data = data << 1
+         bit_out = spi_master_sw_sdi
       end loop
    end if
    return data
