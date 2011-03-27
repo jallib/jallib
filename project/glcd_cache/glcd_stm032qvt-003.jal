@@ -86,7 +86,7 @@ end procedure
 --------------------------------------------------------------------------------
 -- Write color in bytes
 --------------------------------------------------------------------------------
-procedure glcd_write_color_word(word in data) is
+procedure glcd_write_color(word in data) is
    ;pragma inline -- pragma inline not working
 
    var byte _data[2] at data
@@ -104,7 +104,7 @@ procedure glcd_write_color_word(word in data) is
    glcd_cs =1	
 end procedure
 
-procedure glcd_write_color(byte in data_high,byte in data_low) is
+procedure glcd_write_color_byte(byte in data_high,byte in data_low) is
    glcd_rs=1
    glcd_cs =0	  				
    glcd_high_port = data_high	
@@ -125,7 +125,7 @@ end procedure
 --------------------------------------------------------------------------------
 -- set start x,y and end x,y addresses
 --------------------------------------------------------------------------------
-procedure glcd_address_set(byte in x1,word in y1,byte in x2,word in y2) is
+procedure glcd_block_set_address(byte in x1,word in y1,byte in x2,word in y2) is
    var byte _x1[2] at x1
    var byte _x2[2] at x2
    var byte _y1[2] at y1
@@ -140,14 +140,32 @@ procedure glcd_address_set(byte in x1,word in y1,byte in x2,word in y2) is
    glcd_write_command_data(0x0008,_y2[1]);	 -- Row address end2
    glcd_write_command_data(0x0009,_y2[0]);	 -- Row address end1
    glcd_write_command(0x0022);	
+
+
+
+;   var byte _x1[2] at x1
+;   var byte _x2[2] at x2
+;   var byte _y1[2] at y1
+;   var byte _y2[2] at y2
+;
+;   glcd_write_command_data(0x0002,_x1[1]);	 -- Column address start2
+;   glcd_write_command_data(0x0003,_x1[0]);	 -- Column address start1
+;   glcd_write_command_data(0x0004,_x2[1]);	 -- Column address end2
+;   glcd_write_command_data(0x0005,_x2[0]);	 -- Column address end1
+;   glcd_write_command_data(0x0006,_y1[1]);	 -- Row address start2
+;   glcd_write_command_data(0x0007,_y1[0]);	 -- Row address start1
+;   glcd_write_command_data(0x0008,_y2[1]);	 -- Row address end2
+;   glcd_write_command_data(0x0009,_y2[0]);	 -- Row address end1
+;   glcd_write_command(0x0022);	
+
 end procedure
 
 --------------------------------------------------------------------------------
 -- draw one pixel
 --------------------------------------------------------------------------------
 procedure glcd_write_pixel(byte in x,word in y) is
-   glcd_address_set(x,y,x,y);
-   glcd_write_color_word(glcd_pen_color)
+   glcd_block_set_address(x,y,x,y);
+   glcd_write_color(glcd_pen_color)
 end procedure
 
 --------------------------------------------------------------------------------
@@ -255,36 +273,38 @@ end procedure
 --------------------------------------------------------------------------------
 if GLCD_USE_BLOCK_WRITE == TRUE then
    -- set start x,y and end x,y addresses for block writes
-   ;alias glcd_block_address is glcd_address_set
+   ;alias glcd_block_address is glcd_block_set_address
    -- write a color to the screen within the block
    ;alias glcd_block_write_color is glcd_write_data
 
-   var byte glcd_x1, glcd_x2, glcd_x1_start
-   var word glcd_y1, glcd_y2
-   procedure glcd_block_address(byte in x1,word in y1,byte in x2,word in y2) is
-      glcd_x1 = x1
-      glcd_x2 = x2
-      glcd_y1 = y1
-      glcd_y2 = y2
-      
-      glcd_x1_start = glcd_x1
-   end procedure
-
-   procedure glcd_block_write_color(word in color) is
-      ;var word save_color = glcd_pen_color
-
-      glcd_pen_color = color
-      glcd_write_pixel(glcd_x1, glcd_y1)
-
-      glcd_x1 = glcd_x1 + 1
-      
-      if glcd_x1 >= glcd_x2 then
-         glcd_x1 = glcd_x1_start
-         glcd_y1 = glcd_y1 + 1
-      end if
-      
-      ;glcd_pen_color = save_color
-   end procedure
+;   var byte glcd_x1, glcd_x2, glcd_x1_start
+;   var word glcd_y1, glcd_y2
+;   procedure glcd_block_address(byte in x1,word in y1,byte in x2,word in y2) is
+;      glcd_x1 = x1
+;      glcd_x2 = x2
+;      glcd_y1 = y1
+;      glcd_y2 = y2
+;
+;      glcd_x1_start = glcd_x1
+;   end procedure
+;
+;
+;;   alias glcd_block_write_color is glcd_write_color
+;   procedure glcd_block_write_color(word in color) is
+;      ;var word save_color = glcd_pen_color
+;
+;      glcd_pen_color = color
+;      glcd_write_pixel(glcd_x1, glcd_y1)
+;
+;      glcd_x1 = glcd_x1 + 1
+;
+;      if glcd_x1 >= glcd_x2 then
+;         glcd_x1 = glcd_x1_start
+;         glcd_y1 = glcd_y1 + 1
+;      end if
+;
+;      ;glcd_pen_color = save_color
+;   end procedure
 
 end if
 
@@ -292,11 +312,12 @@ end if
 -- set the entire screen one color
 --------------------------------------------------------------------------------
 procedure glcd_clear_screen() is
-   glcd_address_set(0,0,239,319)
+   glcd_block_set_address(0,0,239,319)
    for 320 loop
       for 240 loop
           glcd_write_data(glcd_background_color)
       end loop
    end loop
 end procedure
+
 
