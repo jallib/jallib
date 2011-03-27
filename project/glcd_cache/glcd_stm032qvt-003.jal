@@ -28,9 +28,9 @@ const GLCD_RED    = 0xf800 -- Red
 
 
 -- Default background color
-var word lcd_background_color = GLCD_WHITE
+var word glcd_background_color = GLCD_WHITE
 -- Default pen color
-var word lcd_pen_color = GLCD_BLACK
+var word glcd_pen_color = GLCD_BLACK
 
 -- efficient font type
 const GLCD_BLOCK_WRITE_TYPE = FONT_TOP_LEFT_HORIZONTAL
@@ -145,9 +145,9 @@ end procedure
 --------------------------------------------------------------------------------
 -- draw one pixel
 --------------------------------------------------------------------------------
-procedure lcd_write_pixel(byte in x,word in y) is
+procedure glcd_write_pixel(byte in x,word in y) is
    glcd_address_set(x,y,x,y);
-   glcd_write_color_word(lcd_pen_color)
+   glcd_write_color_word(glcd_pen_color)
 end procedure
 
 --------------------------------------------------------------------------------
@@ -254,20 +254,48 @@ end procedure
 -- block write procedures required by glcd_common.
 --------------------------------------------------------------------------------
 if GLCD_USE_BLOCK_WRITE == TRUE then
-   -- set start x,y and end x,y addresses for fonts
-   alias glcd_block_address is glcd_address_set
+   -- set start x,y and end x,y addresses for block writes
+   ;alias glcd_block_address is glcd_address_set
    -- write a color to the screen within the block
-   alias glcd_block_write_color is glcd_write_data
+   ;alias glcd_block_write_color is glcd_write_data
+
+   var byte glcd_x1, glcd_x2, glcd_x1_start
+   var word glcd_y1, glcd_y2
+   procedure glcd_block_address(byte in x1,word in y1,byte in x2,word in y2) is
+      glcd_x1 = x1
+      glcd_x2 = x2
+      glcd_y1 = y1
+      glcd_y2 = y2
+      
+      glcd_x1_start = glcd_x1
+   end procedure
+
+   procedure glcd_block_write_color(word in color) is
+      ;var word save_color = glcd_pen_color
+
+      glcd_pen_color = color
+      glcd_write_pixel(glcd_x1, glcd_y1)
+
+      glcd_x1 = glcd_x1 + 1
+      
+      if glcd_x1 >= glcd_x2 then
+         glcd_x1 = glcd_x1_start
+         glcd_y1 = glcd_y1 + 1
+      end if
+      
+      ;glcd_pen_color = save_color
+   end procedure
+
 end if
 
 --------------------------------------------------------------------------------
 -- set the entire screen one color
 --------------------------------------------------------------------------------
-procedure lcd_clear_screen() is
+procedure glcd_clear_screen() is
    glcd_address_set(0,0,239,319)
    for 320 loop
       for 240 loop
-          glcd_write_data(lcd_background_color)
+          glcd_write_data(glcd_background_color)
       end loop
    end loop
 end procedure

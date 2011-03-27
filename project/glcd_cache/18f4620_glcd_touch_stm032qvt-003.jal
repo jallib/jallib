@@ -56,13 +56,31 @@ print_string(serial_data, str1)
 print_crlf(serial_data)
 
 
-include spi_master_hw         -- includes the spi library
+;   include spi_master_hw         -- includes the spi library
+;   -- define spi inputs/outputs
+;   pin_sdi_direction = input    -- spi input
+;   pin_sdo_direction = output   -- spi output
+;   pin_sck_direction = output   -- spi clock
+;   --
+;   spi_init(SPI_MODE_11,SPI_RATE_FOSC_64) -- init spi, choose mode and speed
+;   alias spi_master is spi_master_hw
+
+
+
+alias spi_master_sw_sdi              is pin_sdi
+alias spi_master_sw_sdi_direction    is pin_sdi_direction
+alias spi_master_sw_sdo              is pin_sdo
+alias spi_master_sw_sdo_direction    is pin_sdo_direction
+alias spi_master_sw_sck              is pin_sck
+alias spi_master_sw_sck_direction    is pin_sck_direction
 -- define spi inputs/outputs
-pin_sdi_direction = input    -- spi input
-pin_sdo_direction = output   -- spi output
-pin_sck_direction = output   -- spi clock
+spi_master_sw_sdi_direction = input    -- spi input
+spi_master_sw_sdo_direction = output   -- spi output
+spi_master_sw_sck_direction = output   -- spi clock
 --
-spi_init(SPI_MODE_11,SPI_RATE_FOSC_64) -- init spi, choose mode and speed
+include spi_master_sw
+spi_init(SPI_MODE_11) -- init spi, choose mode
+alias spi_master is spi_master_sw
 
 -- font libraries
 
@@ -114,7 +132,7 @@ glcd_wr_direction = OUTPUT
 glcd_rd_direction = input
 glcd_cs_direction = OUTPUT
 --
--- Using block write is faster, but you can only use one font type:
+-- Using block write is fastest, but you can only use one font type:
 -- FONT_TOP_LEFT_HORIZONTAL
 const GLCD_USE_BLOCK_WRITE = FALSE
 include glcd_stm032qvt-003
@@ -346,22 +364,22 @@ const byte image[3200] = {
 
 
 -- loop through some colors on screen
-lcd_background_color = GLCD_RED
-lcd_clear_screen()
-lcd_background_color = GLCD_BLUE
-lcd_clear_screen()
-lcd_background_color = GLCD_YELLOW
-lcd_clear_screen()
-lcd_background_color = GLCD_BLACK
-lcd_clear_screen()
-lcd_background_color = GLCD_WHITE
-lcd_clear_screen()
-lcd_background_color = GLCD_TEAL
-lcd_clear_screen()
+glcd_background_color = GLCD_RED
+glcd_clear_screen()
+glcd_background_color = GLCD_BLUE
+glcd_clear_screen()
+glcd_background_color = GLCD_YELLOW
+glcd_clear_screen()
+glcd_background_color = GLCD_BLACK
+glcd_clear_screen()
+glcd_background_color = GLCD_WHITE
+glcd_clear_screen()
+glcd_background_color = GLCD_TEAL
+glcd_clear_screen()
 
 
-lcd_background_color = 0xffe0 -- yellow
-lcd_clear_screen() -- clear screen with background color
+glcd_background_color = 0xffe0 -- yellow
+glcd_clear_screen() -- clear screen with background color
 
 
 -- display a 40x40 image at bottom right corner of screen.
@@ -375,13 +393,13 @@ var word touch_y
 const byte hello_string[] = "HelLo World "
 --
 glcd_font_use(FONT_8X12)       -- set font size
-print_string(lcd,hello_string) -- print characters to lcd
+print_string(glcd,hello_string) -- print characters to lcd
 --
 glcd_font_use(FONT_6X8)
-print_string(lcd,hello_string)
+print_string(glcd,hello_string)
 --
 glcd_font_use(FONT_5X7)
-print_string(lcd,hello_string)
+print_string(glcd,hello_string)
 --
 -- Do a font animation with UDP font
 glcd_font_use(FONT_UDF_0XFE)
@@ -391,14 +409,14 @@ for 5 loop
    for 4 loop
       glcd_char_x_pos = 150
       glcd_char_y_pos = 150
-      lcd = test
+      glcd = test
       test = test + 1
       _usec_delay(50_000)
    end loop
    for 4 loop
       glcd_char_x_pos = 150
       glcd_char_y_pos = 150
-      lcd = test
+      glcd = test
       test = test - 1
       _usec_delay(100_000)
    end loop
@@ -410,19 +428,19 @@ glcd_font_use(FONT_8X12)
 glcd_char_x_pos = 0
 glcd_char_y_pos = 320 - 12
 const byte string_x[] = "X:   "
-print_string(lcd,string_x)
+print_string(glcd,string_x)
 
 glcd_char_x_pos = 80
 glcd_char_y_pos = 320 - 12
 const byte string_y[] = "Y:   "
-print_string(lcd,string_y)
+print_string(glcd,string_y)
 
-lcd_pen_color  = 0xf800 -- RED PEN
+glcd_pen_color = 0xf800 -- RED PEN
 
 -- draw shapes
-lcd_box(10,20,50,100)
-lcd_ellipse(20,50,10,10)
-lcd_line(10,20,50,100)
+glcd_box(10,20,50,100)
+glcd_ellipse(20,50,10,10)
+glcd_line(10,20,50,100)
 
 
 -- draw some text
@@ -434,7 +452,7 @@ forever loop
    -- put a text counter on the screen
    glcd_char_x_pos = 50
    glcd_char_y_pos = 50
-   print_dword_dec(lcd, step)
+   print_dword_dec(glcd, step)
    step = step + 1
 
    -- touch monitoring
@@ -444,23 +462,23 @@ forever loop
 
       glcd_char_x_pos = 16
       glcd_char_y_pos = 320 - 12
-      format_byte_dec(lcd, touch_x, 3, 0)
+      format_byte_dec(glcd, touch_x, 3, 0)
 
       glcd_char_x_pos = 80 + 16
       glcd_char_y_pos = 320 - 12
-      format_word_dec(lcd, touch_y, 3, 0)
+      format_word_dec(glcd, touch_y, 3, 0)
 
       -- do some coversion to allocate in correct position on screen
       touch_x = (touch_x * 2) - 8
       touch_y = 320 - (touch_y * 3) + 40
 
       -- erase the previous circle
-      lcd_pen_color = lcd_background_color -- RED PEN
-      lcd_circle(touch_x_prev,touch_y_prev,20)
+      glcd_pen_color = glcd_background_color -- RED PEN
+      glcd_circle(touch_x_prev,touch_y_prev,20)
 
       -- draw a new circle
-      lcd_pen_color = 0xf800 -- RED PEN
-      lcd_circle(touch_x,touch_y,20)
+      glcd_pen_color = 0xf800 -- RED PEN
+      glcd_circle(touch_x,touch_y,20)
 
       touch_x_prev = touch_x
       touch_y_prev = touch_y
