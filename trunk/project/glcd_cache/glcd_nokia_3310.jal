@@ -47,7 +47,13 @@ var byte glcd_background_color = GLCD_WHITE
 var byte glcd_pen_color = GLCD_BLACK
 
 
--- Cache
+-- -------------
+-- GLCD cache --
+-- -------------
+-- TODO: maybe this cache code could be extracted as a generic cache.
+--       For now, prefixed with "glcd_"
+
+-- Cache definition
 const word CACHE_SIZE = GLCD_X_PIXELS * (GLCD_Y_PIXELS/8)
 -- Cache array, defaulting when not previously defined
 if !defined(glcd_cache) then
@@ -67,34 +73,34 @@ var bit glcd_cache_changed = true
 -- Private/Internal API --
 -- -----------------------
 
-procedure _glcd_write(byte in value) is
+procedure _nokia_glcd_write(byte in value) is
 -- Clock in 8 bits of data
   for 8 loop
-     nok_sclk = low
+     nokia_sclk = low
      if((value & 0x80) == 0)then
-        nok_sda = low
+        nokia_sda = low
      else
-        nok_sda = high
+        nokia_sda = high
      end if
-     nok_sclk = high
+     nokia_sclk = high
      value = value << 1
-     delay_1us            -- max dataspeed is 4Mhz so delay for safety
+     delay_1us()            -- max dataspeed is 4Mhz so delay for safety
   end loop
 end procedure
 
 
 -- Write a data byte to the LCD
-procedure _glcd_write_data(byte in value) is
-   nok_dc = high     -- d/c line high for data
-   _glcd_write(value)
+procedure _nokia_glcd_write_data(byte in value) is
+   nokia_dc = high     -- d/c line high for data
+   _nokia_glcd_write(value)
 end procedure
 
 
 -- Write a command byte to the LCD
-procedure _glcd_write_command(byte in value) is
-   nok_dc = low     -- d/c line low for command
-   _glcd_write(value)
-   nok_dc = high   -- set d/c to data
+procedure _nokia_glcd_write_command(byte in value) is
+   nokia_dc = low     -- d/c line low for command
+   _nokia_glcd_write(value)
+   nokia_dc = high   -- set d/c to data
 end procedure
 
 -- -------------
@@ -102,50 +108,52 @@ end procedure
 -- -------------
 
 -- Set the current position for data (x = 0->83, y = 0->5)
-procedure glcd_gotoxy(byte in xnokia, byte in ynokia) is
-   _glcd_write_command(0x40 | (ynokia & 0x07))
-   _glcd_write_command(0x80 | (xnokia & 0x7f))
+procedure nokia_goto(byte in x, byte in y) is
+   _nokia_glcd_write_command(0x40 | (y & 0x07))
+   _nokia_glcd_write_command(0x80 | (x & 0x7f))
 end procedure
 
 
 -- Clear the LCD data memory
-procedure glcd_clear_screen() is
-   nok_sda = low ;; Data bit is low
-   nok_dc = high ;; Data mode
-   nok_cs = low
+procedure nokia_clear_screen() is
+   nokia_sda = low ;; Data bit is low
+   nokia_dc = high ;; Data mode
+   nokia_cs = low
    for 6 loop  -- 6 rows
       for 84 loop  -- 84 columns or 'pages'
          for 8 loop --Clock for the 8 bits of the 'page'
-            nok_sclk = low
-            nok_sclk = high
+            nokia_sclk = low
+            nokia_sclk = high
          end loop
       end loop
    end loop
 end procedure
 
 -- Send LCD initialization commands
-procedure glcd_init() is
--- Set initial status of LCD pins
-   nok_sclk = low
-   nok_sda = low
-   nok_dc = low
-   nok_cs = low
-   nok_res = low
--- Toggle LCD Reset
+procedure nokia_init() is
+   -- Set initial status of LCD pins
+   nokia_sclk = low
+   nokia_sda = low
+   nokia_dc = low
+   nokia_cs = low
+   nokia_res = low
+
+   -- Toggle LCD Reset
    delay_1ms(10)
-   nok_res = low
+   nokia_res = low
    delay_1ms(250)
-   nok_res = high
--- nok_cs = high
-   _glcd_write_command(0x21) -- Extended commands
-   _glcd_write_command(0xc5) -- LCD Vop
-   _glcd_write_command(0x06) -- Temp coef
-   _glcd_write_command(0x13) -- LCD Bias 1:48
-   _glcd_write_command(0x20) -- Standard commands
-   _glcd_write_command(0x0c) -- Normal Mode
--- Clear and position at top of LCD
-   glcd_clear_screen()
-   glcd_gotoxy(0,0);
+   nokia_res = high
+
+   _nokia_glcd_write_command(0x21) -- Extended commands
+   _nokia_glcd_write_command(0xc5) -- LCD Vop
+   _nokia_glcd_write_command(0x06) -- Temp coef
+   _nokia_glcd_write_command(0x13) -- LCD Bias 1:48
+   _nokia_glcd_write_command(0x20) -- Standard commands
+   _nokia_glcd_write_command(0x0c) -- Normal Mode
+
+   -- Clear and position at top of LCD
+   nokia_clear_screen()
+   nokia_goto(0,0);
 end procedure
 
 
@@ -158,7 +166,7 @@ procedure graphic_to_nokia(byte in graph[]) is
    var word i
 
    for len using i loop
-      _glcd_write_data(graph[i])
+      _nokia_glcd_write_data(graph[i])
    end loop
 
 end procedure
@@ -191,12 +199,12 @@ procedure glcd_write_char(byte in x, byte in y, byte in char) is
       if glcd_background_color == GLCD_BLACK then
          ch = ch ^ 0xFF
       end if
-      _glcd_write_data(ch)
+      _nokia_glcd_write_data(ch)
       index = index + 1
    end loop
 
    -- Add blank space between characters
-   _glcd_write_data(byte(glcd_background_color) ^ 0xFF)
+   _nokia_glcd_write_data(byte(glcd_background_color) ^ 0xFF)
 
 end procedure
 end if
@@ -216,13 +224,13 @@ end procedure
 
 -- Set display contrast
 -- contrast -> value from 0x00 to 0x7F
-procedure glcd_contrast(byte in contrast) is
+procedure nokia_contrast(byte in contrast) is
    -- lcd extended commands
-   _glcd_write_command(0x21)
+   _nokia_glcd_write_command(0x21)
    -- set lcd Vop (contrast)
-   _glcd_write_command(0x80 | contrast)
+   _nokia_glcd_write_command(0x80 | contrast)
    -- lcd std. cmd. mode, hor. addressing mode
-   _glcd_write_command(0x20)
+   _nokia_glcd_write_command(0x20)
 end procedure
 
 -- Copy the changed area of the cache to the lcd.
@@ -246,13 +254,13 @@ procedure glcd_cache_update() is
   end if
 
   -- set base address(cursor) to low water mark
-  _glcd_write_command(0x40 | (byte(glcd_lo_watermark / GLCD_X_PIXELS)))
-  _glcd_write_command(0x80 | (byte(glcd_lo_watermark % GLCD_X_PIXELS)))
+  _nokia_glcd_write_command(0x40 | (byte(glcd_lo_watermark / GLCD_X_PIXELS)))
+  _nokia_glcd_write_command(0x80 | (byte(glcd_lo_watermark % GLCD_X_PIXELS)))
   
   -- copy video buffer
   i = glcd_lo_watermark
   while i <= glcd_hi_watermark loop
-    _glcd_write_data(glcd_cache[i] )
+    _nokia_glcd_write_data(glcd_cache[i] )
     i = i + 1
   end loop
   
