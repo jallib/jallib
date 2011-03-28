@@ -40,26 +40,58 @@ pin_c1_direction = output
 pin_c0_direction = output
 
 
+include glcd_5x7_font
+include glcd_font
+glcd_font_use(FONT_5X7)
+
 -- GLCD lib
 include glcd_nokia_3310
 glcd_init()
+glcd_clear_cache()
 include glcd_common
 
+
+include print
 
 procedure plot(byte in pmode) is
    var byte x
    var byte y
    x = 0
    y = 0
-   lcd_clear_cache()
-   lcd_clear_screen()
-   lcd_gotoxy(x,y)
+   glcd_clear_cache()
+   glcd_clear_screen()
+   glcd_gotoxy(x,y)
    while y <= GLCD_Y_PIXELS loop
-      lcd_write_pixel(x,y)
+       glcd_write_pixel(x,y)
+      const byte t1[] = "coord " 
+      const byte t2[] = "cache "
+      glcd_gotoxy(0,10)
+      print_string(glcd,t1)
+      print_byte_dec(glcd,x)
+      glcd = " "
+      print_byte_dec(glcd,y)
+
+      -- reset watermark pointers
+      glcd_hi_watermark = cache_size - 1
+      glcd_lo_watermark = 0
+      
+      var byte zex = byte(glcd_lo_watermark / GLCD_X_PIXELS)
+      var byte zey = byte(glcd_lo_watermark % GLCD_X_PIXELS)
+      var word index = y/8 * GLCD_X_PIXELS + x
+      glcd_gotoxy(0,20)
+      print_string(glcd,t2)
+      print_byte_dec(glcd,zex)
+      glcd = " "
+      print_byte_dec(glcd,zey)
+      glcd = " "
+      print_word_dec(glcd,index)
+      
+      glcd_gotoxy(x,y)
+      delay_100ms(10)
       y = y + 1
       x = x + 1
+      ;glcd_cache_update()
    end loop
-   lcd_update()
 end procedure
 
 forever loop
