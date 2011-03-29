@@ -9187,6 +9187,8 @@ pinmap = \
               'RA3': ['RA3', 'AN3', 'VREF+'],
               'RA4': ['RA4', 'T0CKI'],
               'RA5': ['RA5', 'AN4', 'C2INA'],
+              'RA6': ['RA6', 'OSC2', 'CLKO'],
+              'RA7': ['RA7', 'OSC1', 'CLKI'],
               'RB0': ['RB0', 'FLT0', 'INT0'],
               'RB1': ['RB1', 'INT1', 'PMA4'],
               'RB2': ['RB2', 'INT2', 'PMA3'],
