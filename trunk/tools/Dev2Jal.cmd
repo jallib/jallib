@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.16'
+   ScriptVersion   = '0.1.17'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -55,7 +55,7 @@ msglevel = 0
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab863/'                      /* base directory of MPLAB */
+MPLABbase  = 'k:/mplab866/'                      /* base directory of MPLAB */
 JALLIBbase = 'k:/jallib/'               /* base directory of JALLIB (local) */
 
 /* When using 'standard' installations no other changes are needed,         */
@@ -65,8 +65,8 @@ JALLIBbase = 'k:/jallib/'               /* base directory of JALLIB (local) */
 /* The following libraries are used to collect information from             */
 /* MPLAB .dev and .lkr files:                                               */
 
-devdir = MPLABbase'MPLAB IDE/Device/'          /* dir with MPLAB .dev files */
-lkrdir = MPLABbase'MPASM Suite/LKR/'           /* dir with MPLAB .lkr files */
+devdir = MPLABbase'mplab ide/device/'          /* dir with MPLAB .dev files */
+lkrdir = MPLABbase'mpasm suite/lkr/'           /* dir with MPLAB .lkr files */
 
 /* Some information is collected from files in JALLIB tools directory       */
 
@@ -85,40 +85,38 @@ if msglevel > 2 then
 /* mandatory commandline argument, which must be 'PROD' or 'TEST'           */
 /*  - with 'PROD' the files go to directory "<JALLIBbase>include/device"    */
 /*  - with 'TEST' the files go to directory "./test>"                       */
-/* Note: The destination is not emptied, existing device files may be       */
-/*       overwritten, other files remain.                                   */
+/* Note: The destination directory is completely erased before creating     */
+/*       new device files.                                                  */
 
 parse upper arg destination selection .            /* commandline arguments */
 
-select
-   when destination = 'PROD' then                         /* production run */
-      dstdir = JALLIBbase'include/device/'                  /* local Jallib */
-   when destination = 'TEST' then do                            /* test run */
-      dstdir = './test/'                              /* subdir for testing */
-      rx = SysMkDir(strip(dstdir,'T','/'))        /* create destination dir */
-      if rx \= 0 & rx \= 5 then do             /* not created, not existing */
-         call msg 3, rx 'while creating destination directory' dstdir
-         return rx                              /* unrecoverable: terminate */
-      end
+if destination = 'PROD' then                              /* production run */
+   dstdir = JALLIBbase'include/device/'                     /* local Jallib */
+else if destination = 'TEST' then do                            /* test run */
+   dstdir = './test/'                                 /* subdir for testing */
+   rx = SysMkDir(strip(dstdir,'T','/'))           /* create destination dir */
+   if rx \= 0 & rx \= 5 then do                /* not created, not existing */
+      call msg 3, rx 'while creating destination directory' dstdir
+      return rx                                 /* unrecoverable: terminate */
    end
-   otherwise
-      call msg 3, 'Required argument missing: "prod" or "test"',
-                  ' and optionally wildcard.'
-      return 1
+end
+else do
+   call msg 3, 'Required argument missing: "prod" or "test"',
+               ' and optionally wildcard.'
+   return 1
 end
 
 /* The optional second commandline argument designates for which PICs device */
 /* files must be generated. This argument is only accepted in a 'TEST' run.  */
 /* The selection may contain wildcards like '18LF*', default is '*' (all).   */
 
-select
-   when selection = '' then                          /* no selection spec'd */
-      wildcard = 'PIC1*.dev'                        /* default (8 bit PICs) */
-   when destination = 'TEST' then                               /* TEST run */
-      wildcard = 'PIC'selection'.dev'              /* accept user selection */
-   otherwise                                     /* PROD run with selection */
-      call msg 3, 'No selection allowed for production run!'
-      return 1                                  /* unrecoverable: terminate */
+if selection = '' then                                /* no selection spec'd */
+   wildcard = 'PIC1*.dev'                            /* default (8 bit PICs) */
+else if destination = 'TEST' then                                /* TEST run */
+   wildcard = 'PIC'selection'.dev'                  /* accept user selection */
+else do                                           /* PROD run with selection */
+   call msg 3, 'No selection allowed for production run!'
+   return 1                                      /* unrecoverable: terminate */
 end
 
 
@@ -128,6 +126,8 @@ end
 
 call time 'R'                                               /* reset 'elapsed' timer */
 
+'@erase' translate(dstdir'*.jal','\','/') '1>nul 2>nul'     /* empty destination dir */
+
 call SysFileTree devdir||wildcard, dir, 'FO'                /* get list of files */
 if dir.0 = 0 then do
    call msg 3, 'No .dev files found matching <'wildcard'> in' devdir
@@ -136,6 +136,8 @@ end
 
 signal on syntax name catch_syntax                          /* catch syntax errors */
 signal on error  name catch_error                           /* catch execution errors */
+
+call SysStemSort 'dir.', 'A', 'I'                           /* sort alpha */
 
 PicSpec. = '?'                                              /* PIC specific data */
 call file_read_picspec                                      /* read device specific data */
@@ -159,6 +161,7 @@ call list_chipdef_header                                    /* create new chipde
 xChipDef. = '?'                                             /* devids in chipdef */
 
 ListCount = 0                                               /* # created device files */
+DSMissCount = 0                                             /* # missing datasheets */
 LkrMissCount = 0                                            /* # missing '.lkr' files */
 
 do i=1 to dir.0                                             /* all relevant .dev files */
@@ -201,6 +204,7 @@ do i=1 to dir.0                                             /* all relevant .dev
    else if PicSpec.PicNameCaps.DataSheet = '-' then do
       call msg 0, PicName
       call msg 2, 'No datasheet found in' PicSpecFile', no device file generated'
+      DSMissCount = DSMissCount + 1
       iterate                                               /* skip */
    end
 
@@ -245,7 +249,10 @@ end
 call lineout chipdef, '--'                                  /* last line */
 call stream  chipdef, 'c', 'close'                          /* done */
 
+call msg 0, ''
 call msg 1, 'Generated' listcount 'device files in' format(time('E'),,2) 'seconds'
+if DSMissCount > 0 then
+   call msg 1, DSMissCount 'device files could not be created because of missing datasheet'
 if LkrMissCount > 0 then
    call msg 1, LkrMissCount 'device files could not be created because of missing .lkr files'
 
@@ -859,9 +866,9 @@ if xChipDef.xDevId = '?' then do                            /* if not yet assign
    call lineout chipdef, left('const       PIC_'PicNameUpper,29) '= 0x_'xDevId
 end
 else do
-   call msg  2, 'DevID of' PicName 'in use by' xChipDef.xDevid
+   call msg 2, 'DevID of' PicName 'in use by' xChipDef.xDevid
    if right(PicName,2) \= '39' then                         /* PicName not ending with '39' */
-      Call msg 3, 'PicName <'PicName'> does not end with 39!'
+      Call msg 2, 'PicName <'PicName'> does not end with 39!'
    xDevId = xDevId'a'                                       /* try with suffix 'a' */
    if xChipDef.xDevId = '?' then do                         /* if not yet assigned */
       xChipDef.xDevId = PicName                             /* remember alternate */
@@ -1213,6 +1220,10 @@ do i = 1 to Dev.0
       call lineout jalfile, '-- ------------------------------------------------'
       call lineout jalfile, 'var volatile' field left(reg,25) 'at' addr
       select
+         when reg = 'BAUDCTL' then do                       /* for 16f687,88,89,690 */
+                                                            /*     16f882,3,4,6,7   */
+            call lineout jalfile, 'alias              ' left('BAUDCON',25) 'is' reg
+         end
          when left(reg,4) = 'PORT' then do                  /* port */
             call list_port1x_shadow reg
          end
@@ -1345,16 +1356,17 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                                               left(field,25) 'at' reg ':' offset
                end
 
+                                                            /* additional declarations */
                select
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        pos('VCFG',field) > 0  then do       /* VCFG field */
                      p = j - 1                              /* previous bit */
                      if right(n.j,5) = 'VCFG0' & right(n.p,5) = 'VCFG1' then
-                       call lineout jalfile, 'var volatile bit*2 ',
+                       call lineout jalfile, 'var volatile bit*2 ',        /* add bit*2 var */
                             left(left(field,length(field)-1),25) 'at' reg ':' offset
                   end
                   when reg = 'ADCON1'  &,                   /* ADCON1 */
-                      (n.j = 'ADCS2' & next_subfield \= ADCS1)  then do        /* scattered ADCS bits */
+                      (n.j = 'ADCS2' & next_subfield \= ADCS1)  then do    /* scattered ADCS bits */
                      call lineout jalfile, 'var  byte  ADCON0_ADCS'
                      call lineout jalfile, 'procedure  ADCON0_ADCS'"'put"'(byte in x) is'
                      call lineout jalfile, '   pragma inline'
@@ -1386,6 +1398,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                         call lineout jalfile, '   end if'
                         call lineout jalfile, 'end procedure'
                      end
+                  end
+                  when reg = 'BAUDCTL' then do              /* for 16F687,88,89,90 */
+                                                            /* for 16F882,3,4,6,7 */
+                     call lineout jalfile, 'alias              ',
+                                           left('BAUDCON_'n.j,25) 'is' field
                   end
                   when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &,   /* [E]CCPxCON */
                      ((left(n.j,3) = 'CCP' &  right(n.j,1) = 'Y') |,    /* CCPxY */
@@ -1507,7 +1524,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                end
                when left(reg,5) = 'ADCON' &,                /* ADCONx */
                     pos('VCFG',field) > 0  then do          /* multibit VCFG present */
-                  call lineout jalfile, 'var volatile bit   ',
+                  call lineout jalfile, 'var volatile bit   ',    /* enumerate */
                                left(field'1',25) 'at' reg ':' offset - 0
                   call lineout jalfile, 'var volatile bit   ',
                                left(field'0',25) 'at' reg ':' offset - 1
@@ -1978,6 +1995,9 @@ do i = 1 to Dev.0
       call lineout jalfile, 'var volatile' field left(reg,25) memtype 'at 0x'addr
 
       select
+         when reg = 'BAUDCTL' then do                       /* BAUDCTL (18F1220/1320) */
+            call lineout jalfile, 'alias              ' left('BAUDCON',32) 'is' reg
+         end
          when left(reg,4) = 'PORT' then do                  /* PORTx register */
             PortLetter = right(reg,1)
             PortLat.PortLetter. = 0                         /* init: no pins in PORTx */
@@ -2138,9 +2158,11 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                select                                       /* interceptions */
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        pos('VCFG',field) > 0  then do       /* VCFG field */
+                     call lineout jalfile, 'var volatile bit   ',      /* enumerate */
+                         left(field,25) memtype 'at' reg ':' offset - 0
                      p = j - 1                              /* previous bit */
                      if right(n.j,5) = 'VCFG0' & right(n.p,5) = 'VCFG1' then
-                        call lineout jalfile, 'var volatile bit*2 ',
+                        call lineout jalfile, 'var volatile bit*2 ',    /* add bit*2 var */
                            left(left(field,length(field)-1),25) memtype 'at' reg ':' offset
                   end
                   when left(reg,6) = 'CANCON'  &,                   /* CANCON */
@@ -2193,8 +2215,12 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                                        '-- ensure default (legacy) SFR mapping'
                end
 
-                                                            /* special declarations */
+                                                            /* additional declarations */
                select
+                  when reg = 'BAUDCTL' then do              /* for 18F1220,1320 */
+                     call lineout jalfile, 'alias              ',
+                                           left('BAUDCON_'n.j,32) 'is' field
+                  end
                   when reg = 'INTCON' then do
                      if left(n.j,2) = 'T0' then do
                         call lineout jalfile, 'var volatile bit   ',
@@ -2297,14 +2323,14 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
             select
                when left(reg,5) = 'ADCON'  &,               /* ADCON0/1 */
                     pos('VCFG',n.j) > 0  then do            /* VCFG field */
-                 if duplicate_name(field,reg) = 0 then do   /* unique */
-                   call lineout jalfile, 'var volatile bit   ',
-                         left(field'1',25) memtype 'at' reg ':' offset - 0
-                   call lineout jalfile, 'var volatile bit   ',
-                         left(field'0',25) memtype 'at' reg ':' offset - 1
-                   call lineout jalfile, 'var volatile bit*'s.j' ',
+                  if duplicate_name(field,reg) = 0 then do   /* unique */
+                     call lineout jalfile, 'var volatile bit   ',      /* enumerate */
+                          left(field'1',25) memtype 'at' reg ':' offset - 0
+                     call lineout jalfile, 'var volatile bit   ',
+                          left(field'0',25) memtype 'at' reg ':' offset - 1
+                     call lineout jalfile, 'var volatile bit*'s.j' ',
                          left(field,25) memtype 'at' reg ':' offset - s.j + 1
-                 end
+                  end
                end
                when reg = 'ADCON0'               &,         /* ADCON0 */
                     (n.j = 'ADCS' &  s.j = '2')  &,         /* 2 bits of ADCS */
@@ -2974,6 +3000,7 @@ else if core = '14H' then do                                /* extended midrange
             PicName = '16f1847' | PicName = '16lf1847' then
             ansx = ansx + 0
          else if left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
+                 left(PicName,6) = '12f184' | left(PicName,7) = '12lf184' |,
                  left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
@@ -3156,13 +3183,15 @@ call lineout jalfile, '--'
 return
 
 
-/* -------------------------------------------------------- */
-/* procedure to add pin alias declarations                  */
-/* input:  - register name                                  */
-/*         - original pin name (Rx)                         */
-/*         - pinname for aliases (pin_Xy)                   */
-/* returns index of alias (0 if none)                       */
-/* -------------------------------------------------------- */
+/* ------------------------------------------------------------- */
+/* procedure to add pin alias declarations                       */
+/* input:  - register name                                       */
+/*         - original pin name (Rx)                              */
+/*         - pinname for aliases (pin_Xy)                        */
+/* create alias definitions for all synonyms in pinmap.          */
+/* create extra aliases for first of multiple I2C or SPI modules */
+/* returns index of alias (0 if none)                            */
+/* ------------------------------------------------------------- */
 insert_pin_alias: procedure expose  PinMap. Name. PicName jalfile msglevel
 parse arg reg, PinName, Pin .
 PicUpper = toupper(PicName)
@@ -3190,13 +3219,16 @@ end
 return k                                                    /* k-th alias */
 
 
-/* -------------------------------------------------------- */
-/* procedure to add pin_direction alias declarations        */
-/* input:  - register name                                  */
-/*         - original pin name (Rx)                         */
-/*         - pinname for aliases (pin_Xy)                   */
-/* note: '_direction' is added                              */
-/* -------------------------------------------------------- */
+/* ------------------------------------------------------------- */
+/* procedure to add pin_direction alias declarations             */
+/* input:  - register name                                       */
+/*         - original pin name (Rx)                              */
+/*         - pinname for aliases (pin_Xy)                        */
+/* create alias definitions for all synonyms in pinmap           */
+/* with '_direction' added!                                      */
+/* create extra aliases for first of multiple I2C or SPI modules */
+/* returns index of alias (0 if none)                            */
+/* ------------------------------------------------------------- */
 insert_pin_direction_alias: procedure expose  PinMap. Name. PicName jalfile msglevel
 parse arg reg, PinName, Pin .
 PicUpper = toupper(PicName)
@@ -3640,12 +3672,12 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'CPUDIV' then do
-         if pos('DIVIDE',val2) > 0 & pos('BY',val2) > 0 then
+         if word(val2,1) = 'NO' then
+            kwd = 'P1'
+         else if pos('DIVIDE',val2) > 0 & wordpos('BY',val2) > 0 then
             kwd = P||word(val2,words(val2))                 /* last word */
          else if pos('/',val2) > 0 then
-            kwd = 'P'substr(val2,lastpos('/',val2)+1,1)
-         else if pos('NO',val2) > 0 then
-            kwd = 'P1'
+            kwd = 'P'substr(val2,pos('/',val2)+1,1)
          else
             kwd = val2u
       end
@@ -4153,7 +4185,7 @@ do i = i + 1  while i <= dev.0  &,
          end
    end
 
-   if kwd = '' then                                           /* empty keyword */
+   if kwd = '' then                                         /* empty keyword */
       call msg 3, 'No keyword found for fuse_def' key '('val2')'
    else if kwd.kwd = '-' then do                            /* unique (not duplicate) */
       kwd.kwd = kwd                                         /* remember keyword */
