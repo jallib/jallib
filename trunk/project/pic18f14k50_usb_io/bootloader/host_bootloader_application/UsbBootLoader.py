@@ -585,6 +585,6 @@ Options:
 			test_loader.ResetDevice()
 
 	else:
-		print "PIC type " + device_id + " not supported"
+		print "PIC type " + repr(device_id) + " not supported"
 	
 	sys.exit( 0 )
