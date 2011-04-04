@@ -98,7 +98,10 @@ class UsbBootLoader():
 		0x41A0: ['18f85J50'  , 0x08000, 0x00 ],
 		0x41E0: ['18f86J50'  , 0x10000, 0x00 ],
 		0x1F40: ['18f86J55'  , 0x18000, 0x00 ],
-		0x4220: ['18f87J50'  , 0x20000, 0x00 ]
+		0x4220: ['18f87J50'  , 0x20000, 0x00 ],
+
+		0x5860: ['18f27J53'  , 0x20000, 0x00 ],
+		0x58E0: ['18f47J53'  , 0x20000, 0x00 ],
 	}
 	
 		  
@@ -293,7 +296,7 @@ class UsbBootLoader():
 								buffer.append(  self.file_hex[ base_address + block_offset + j ] )
 							
 							usb_driver.WriteFlashBlock( buffer, addr_u, addr_h, addr_l )
-							#print "self.usb_driver.WriteFlashBlock( 1, " + str( addr_u ) + " " + str( addr_h ) + " " + str( addr_l ) + " )"
+							#print """self.usb_driver.WriteFlashBlock( 1, " + str( addr_u ) + " " + str( addr_h ) + " " + str( addr_l ) + " )"""
 		
 							block_offset = block_offset + self.program_flash_frame_size
 					
