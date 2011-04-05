@@ -1,7 +1,7 @@
 -- =====================================================================
--- Title: alarm_clock using the RTCC module of PIC and rtc_hardware library.
+-- Title: Alarm clock using the RTCC module of PIC and rtc_hardware library.
 --
--- Author: Rob Hamerling, Copyright (c) 2010..2010, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2010..2011, all rights reserved.
 --
 -- Adapted-by:
 --
@@ -32,25 +32,27 @@
 include  18f26j11                                  -- target chip
 
 -- Internal oscillator is confugured for 8 MHz and
--- PLL is activated, resulting in 32 MHz oscillator frequency.
+-- when PLL is activated results in 32 MHz oscillator frequency.
 
-pragma target clock         32_000_000             -- intocs 8 MHz, PLL * 4
+-- pragma target clock         32_000_000             -- intocs 8 MHz, PLL * 4
+pragma target clock         8_000_000              -- intocs 8 MHz
 
 -- fuses
-pragma target WDT           DISABLED               -- no watchdog
+pragma target WDT           DISABLED               -- watchdog software controlled!
 pragma target STVR          DISABLED               -- reset on stack over/under flow
 pragma target XINST         DISABLED               -- extended instruction set
 pragma target DEBUG         DISABLED               -- background debugging
 pragma target CP0           DISABLED               -- code block 0 not protected
 pragma target SIGN          AREA_COMPLETE          -- bulk erase
-pragma target OSC           INTOSC_NOCLKOUT_PLL    -- oscillator type
+-- pragma target OSC           INTOSC_NOCLKOUT_PLL    -- oscillator type
+pragma target OSC           INTOSC_NOCLKOUT        -- oscillator type
 pragma target T1DIG         ENABLED                -- timer1 oscillator
 pragma target LPT1OSC       LOW_POWER              -- low power timer 1
 pragma target FCMEN         DISABLED               -- fail safe clock monitor
 pragma target IESO          DISABLED               -- osc switch over
-pragma target WDTPS         P32K                   -- watch dog scaler setting
+pragma target WDTPS         P64                    -- watchdog timeout 256 msec
 pragma target DSWDTOSC      T1                     -- deep sleep WDT
-pragma target RTCOSC        T1OSC                  -- 32 KHz crystal at T1OSI/T1OSO
+pragma target RTCOSC        T1OSC                  -- 32768 Hz crystal at T1OSI/T1OSO
 pragma target BROWNOUT      DISABLED               -- no brownout detection
 pragma target DSWDTEN       DISABLED               -- no deep sleep WDT
 pragma target DSWDTPS       P2                     -- (no deep sleep WDT)
@@ -136,10 +138,8 @@ include  print                                  -- data conversion
 
 -- ------- local function and procedure prototypes
 
-function   keyboard_handling(byte in key) return byte  -- handle keyboard activity
+procedure  keyboard_handling(byte in key)       -- handle keyboard activity
 procedure  setup_pic()                          -- global PIC initialisation
-procedure  show_byte_bcd(volatile byte out device,
-                                  byte in data)
 procedure  show_3byte_bcd(volatile byte out device,
                                    byte*3 in data,
                                    byte in separator)
@@ -157,7 +157,7 @@ const    byte    KBD_ALARM_TIME   = 4
 const    byte    KBD_ALARM_PERIOD = 5
 const    byte    KBD_ALARM_REPEAT = 6
 
-const byte  PROGNAME[]         = "RTC_hardware_sample" -- sample name
+const byte  PROGNAME[]         = "RTCC_hardware_sample" -- sample title
 const byte  day_of_week[]      = "SuMoTuWeThFrSa"      -- weekday abbreviations
 const byte  ALARM_PERIOD_STR[] = "1/2sec10smin10mhr daywk monyr "   -- period abbr.
 const byte  ALARM_SIGN         = 0b0101_1100           -- Yen(?)
@@ -183,18 +183,15 @@ lcd_init()                                      -- initialize LCD display
 
 rtc_init()                                      -- initialize realtime clock
 
-rtc_calibrate(-114)                             -- uncalibrated: 5 sec/day too fast
+rtc_calibrate(18)                               -- calibrate
 
-
-var  byte*3  datenow = 0x010110                 -- actual date, init: 10/01/01
-var  byte*3  timenow = 0x000000                 -- actual time, init: 00:00:00
-var  byte    weekday                            -- day of week (used read only)
+var  byte*3  datenow = 0x230411                 -- actual date, init: 23 April 2011
+var  byte*3  timenow = 0x003013                 -- actual time, init: 13:30:00 (24hr clock)
+var  byte    weekday                            -- day of week
 var  byte*3  alarmtime = 0x003007               -- actual alarmtime, init: 07:30:00
 var  bit     alarm_onoff = on                   -- alarm, init: on
 var  byte    alarm_period = 0                   -- alarm-period, init: 0
 var  byte    alarm_repeat = 0                   -- alarm-repeat, init: 0
-
-var  word    hhmm_bin
 
 var  byte*3  ndate                              -- new date (bcd format)
 var  byte*3  ntime                              -- new time (bcd format)
@@ -227,6 +224,9 @@ forever loop
    lcd = "0"                                    -- )
    show_3byte_bcd(lcd,datenow,"/")              -- current date
 
+   lcd = " "                                    -- ) for debugging
+   print_sbyte_dec(lcd, sbyte(RTCCAL))          -- ) only
+
    lcd_cursor_position(0,LCD_CHARS - 1)         -- top right corner
    if (alarm_onoff == ON) then
       lcd = ALARM_SIGN                          -- show alarm 'ON'
@@ -236,20 +236,27 @@ forever loop
 
    lcd_cursor_position(1,0)                     -- second line
    show_3byte_bcd(lcd,timenow,":")              -- current time
+   lcd = " "
+   print_dword_dec(lcd,rtc_get_hhmmss_bin())    -- )
+   lcd = " "                                    -- ) just to test functions
+   lcd = " "                                    -- ) rtc_hhmm_bin() and
+   print_word_dec(lcd,rtc_get_hhmm_bin())       -- ) rtc_hhmmss_bin()
+   lcd = " "                                    -- )
+   lcd = " "                                    -- )
 
    lcd_cursor_position(2,0)                     -- third line
    show_3byte_bcd(lcd,alarmtime,":")            -- current alarm time
 
    lcd_cursor_position(2,9)                     -- position
    lcd = "P"                                    -- 'Period'
-   lcd = " "
+   lcd = "="
    lcd = alarm_period_str[alarm_period * 3 + 0]
    lcd = alarm_period_str[alarm_period * 3 + 1]
    lcd = alarm_period_str[alarm_period * 3 + 2]
 
    lcd_cursor_position(2,15)                    -- position
    lcd = "R"                                    -- 'Repeat count'
-   lcd = " "                                    -- separator
+   lcd = "="                                    -- separator
    lcd_cursor_position(2,17)                    -- position
    print_byte_dec(lcd,alarm_repeat)             -- current alarm period
    if (alarm_repeat < 10) then                  -- 1 digit number
@@ -259,7 +266,7 @@ forever loop
       lcd = " "                                 -- separator
    end if
 
-   -- check if manual changes pending
+   -- check if changes pending
 
    lcd_cursor_position(LCD_ROWS - 1,0)          -- lower left corner
    if (kbd_state != KBD_IDLE) then              -- modification pending?
@@ -309,10 +316,14 @@ forever loop
 
    key = getkey_once()                          -- determine key pressed
    if (key < 16) then                           -- valid key
-      key = keyboard_handling(key)              -- specific key handling
+      keyboard_handling(key)                    -- specific key handling
    end if
 
-   -- asm sleep (consider for power saving with battery backup)
+   if (kbd_state == KBD_IDLE) then              -- no pending keyboard activity
+      asm sleep                                 -- enter sleep mode
+   else
+      asm clrwdt                                -- reset watchdog timeout
+   end if
 
 end loop
 
@@ -322,7 +333,7 @@ end loop
 --  Contains some input validation checking,
 --  but does not intercept all faulty input.
 -- -------------------------------------------------------
-function  keyboard_handling(byte in key) return byte is
+procedure keyboard_handling(byte in key) is
 
    var  byte  andate[3]      at ndate           --         ( new date
    var  byte  antime[3]      at ntime           -- overlay ( new time
@@ -456,12 +467,12 @@ function  keyboard_handling(byte in key) return byte is
                         end if
                      end block
                   3: block                      -- units of month
-                        if (andate[1] == 0x00) then
+                        if (andate[1] == 0x00) then      -- months 1..9
                            if (key > 0) then
                               andate[1] = key
                               kbd_count = 4
                            end if
-                        elsif (key == 1  |  key == 2) then
+                        elsif (key <= 2) then   -- months 10,11,12
                            andate[1] = andate[1] | key
                            kbd_count = 4
                         end if
@@ -473,15 +484,15 @@ function  keyboard_handling(byte in key) return byte is
                         end if
                      end block
                   5: block                      -- units of day of month
-                        if (andate[2] == 0x00) then
+                        if (andate[2] == 0x00) then      -- days 1..9
                            if (key > 0) then
                               andate[2] = key
                               kbd_count = 6
                            end if
-                        elsif (andate[2] == 0x10  | andate[2] == 0x20) then
+                        elsif (andate[2] == 0x10  | andate[2] == 0x20) then  -- days 10..29
                            andate[2] = andate[2] | key
                            kbd_count = 6
-                        elsif (key == 0  |  key == 1) then
+                        elsif (key <= 1) then            -- days 30,31
                            andate[2] = andate[2] | key
                            kbd_count = 6
                         end if
@@ -550,7 +561,7 @@ function  keyboard_handling(byte in key) return byte is
                if (kbd_count > 0) then          -- alarm clock prepared
                   rtc_set_alarm_hhmmss_bcd(nalarmtime)  -- store new alarmtime
                   rtc_pin_signal(RTC_PIN_ALARM)   -- output: alarm signal
-                  rtc_set_alarm_repeat(alarm_repeat)   -- blinks
+                  rtc_set_alarm_repeat(alarm_repeat)   -- number of 'pulses'
                   rtc_set_alarm_repeat(RTC_ALARM_PERIOD_DAY)
                   rtc_set_alarm(true)           -- activate alarm function
                else
@@ -617,9 +628,9 @@ function  keyboard_handling(byte in key) return byte is
 
    end case
 
-   return key
+   return
 
-end function
+end procedure
 
 
 -- -------------------------------------------------------
@@ -642,9 +653,16 @@ procedure  setup_pic() is
   TRISC         = 0b0000_0000                   -- all output
 
   OSCCON_IRCF   = 0b111                         -- INTOSC at 8 MHz
-  OSCTUNE_PLLEN = TRUE                          -- enable PLL
-  OSCCON_SCS    = 0b00                          -- primary clock source
+-- OSCTUNE_PLLEN = TRUE                          -- enable PLL
+  OSCCON_SCS    = 0b00                          -- primary clock source INTOSC
   REFOCON_ROON  = FALSE                         -- no oscillator output
+
+  WDTCON        = 0b0000_0000                   -- all bits off
+  WDTCON_REGSLP = 1                             -- voltage regulator off in sleep
+  WDTCON_SWDTEN = 1                             -- enable watchdog
+                                                -- even when config bit disabled
+  OSCCON_IDLEN  = 0                             -- for sleep (not idle) mode
+  DSCONH_DSEN   = 1                             -- 0=normal, 1=deep sleep mode
 
 end procedure
 
@@ -671,11 +689,11 @@ procedure  show_3byte_bcd(volatile byte   out device,
 
    var byte   adata[3] at data                  -- overlay
 
-   show_byte_bcd(lcd,adata[0])
-   lcd = separator
-   show_byte_bcd(lcd,adata[1])
-   lcd = separator
-   show_byte_bcd(lcd,adata[2])
+   show_byte_bcd(device,adata[0])
+   device = separator
+   show_byte_bcd(device,adata[1])
+   device = separator
+   show_byte_bcd(device,adata[2])
 
 end procedure
 
