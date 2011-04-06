@@ -128,7 +128,7 @@ include  lcd_hd44780_4                          -- 4 bits LCD support library
 
 -- ------ real time clock interface -----------------------
 
-include  rtc_hardware                           -- RTC support library
+include  rtcc-hw                                -- RTC support library
 
 
 -- ------ data formatting ---------------------------------
@@ -189,15 +189,15 @@ var  byte*3  datenow = 0x230411                 -- actual date, init: 23 April 2
 var  byte*3  timenow = 0x003013                 -- actual time, init: 13:30:00 (24hr clock)
 var  byte    weekday                            -- day of week
 var  byte*3  alarmtime = 0x003007               -- actual alarmtime, init: 07:30:00
-var  bit     alarm_onoff = on                   -- alarm, init: on
-var  byte    alarm_period = 0                   -- alarm-period, init: 0
+var  bit     alarm_onoff = ON                   -- alarm, init: on
+var  byte    alarm_period = RTC_ALARM_PERIOD_HALF_SECOND  -- init: 1/2 sec
 var  byte    alarm_repeat = 0                   -- alarm-repeat, init: 0
 
 var  byte*3  ndate                              -- new date (bcd format)
 var  byte*3  ntime                              -- new time (bcd format)
 var  byte*3  nalarmtime                         -- new alarm time (bcd format)
-var  byte    nalarm_repeat                      -- new alarm-repeat
 var  byte    nalarm_period                      -- new alarm-period
+var  byte    nalarm_repeat                      -- new alarm-repeat
 
 var  byte    key                                -- keyboard key value
 
@@ -269,6 +269,7 @@ forever loop
    -- check if changes pending
 
    lcd_cursor_position(LCD_ROWS - 1,0)          -- lower left corner
+
    if (kbd_state != KBD_IDLE) then              -- modification pending?
      if (kbd_state == KBD_ALARM_ONOFF) then     -- alarm on/off
        lcd = "A"
@@ -308,11 +309,13 @@ forever loop
        lcd = " "
        print_byte_dec(lcd,nalarm_repeat)
      end if
-   else
-     print_string(lcd, progname)
+
+   else                                         -- no keyboard I/O pending
+     print_string(lcd, progname)                -- program title
+
    end if
 
-   -- handle keyboard activity
+   -- handle keyboard activity if any
 
    key = getkey_once()                          -- determine key pressed
    if (key < 16) then                           -- valid key
@@ -562,7 +565,6 @@ procedure keyboard_handling(byte in key) is
                   rtc_set_alarm_hhmmss_bcd(nalarmtime)  -- store new alarmtime
                   rtc_pin_signal(RTC_PIN_ALARM)   -- output: alarm signal
                   rtc_set_alarm_repeat(alarm_repeat)   -- number of 'pulses'
-                  rtc_set_alarm_repeat(RTC_ALARM_PERIOD_DAY)
                   rtc_set_alarm(true)           -- activate alarm function
                else
                   rtc_set_alarm(false)          -- disable alarm
