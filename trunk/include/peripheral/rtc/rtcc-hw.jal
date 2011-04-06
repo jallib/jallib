@@ -1,6 +1,6 @@
 -- ----------------------------------------------------------------------
 -- Title: Support for builtin RealTimeClockCalendar modules of 18FxxJxx.
--- Author: Rob Hamerling, Copyright (c) 2010..2010, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2010..2011, all rights reserved.
 -- Adapted-by:
 -- Compiler: 2.4n
 --
@@ -55,10 +55,10 @@
 -- Now you can access the year-byte of 'yymmdd_bcd' simply with 'yy'
 -- (contents still in bcd notation!), and month and day similarly.
 -- .
--- PICs use little endian notation (store multi-byte variables with
--- low order byte first)! So when you want to set the date to 10:07:28
--- you must specify:
---    rtc_set_yymmdd(0x280710)                  -- 'reversed' sequence!
+-- PICs use little endian notation (store multi-byte variables in
+-- memory with low order byte first)! So when you want to set the
+-- date to 23 April 2011 you must specify:
+--    rtc_set_yymmdd(0x230411)                  -- 'reversed' sequence!
 -- .
 -- Bytes in bcd-notation can easily be displayed with print_byte_hex()
 -- of the Jallib print library.
@@ -200,7 +200,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- Write te alarm time of realtime clock.
+-- Write the alarm time of realtime clock.
 -- input:  none
 -- output: none
 -- returns: nothing
@@ -283,7 +283,7 @@ end function
 -- input:   byte with binary data
 -- output:  none
 -- returns: word with product
--- notes: - (x * 60) = x * (64 - 4) = (x * 64) - (x * 4)
+-- notes: - (x * 60) -> x * (64 - 4) -> (x * 64) - (x * 4)
 --        - algorithm without multiplication
 --        - word as input, dword as returnvalue chosen for
 --          relative second of day (function rtc_hhmmss_bin())
@@ -510,9 +510,9 @@ end function
 -- output:  none
 -- returns: nothing
 -- notes: - Expected range: yy 0..99, mm 1..12, dd 1..31 in bcd notation
---        - RTC hardware does not calculate weekday from date, so we have
---          to do it here.  We use the algorithm by Tomohiko Sakamoto of Sony,
---          slightly squeezed to support 21st century only (2000..2099).
+--        - RTCC hardware does not calculate weekday from date, so we have to
+--          do it ourselves.  We use the algorithm by Tomohiko Sakamoto of
+--          Sony, slightly squeezed since we need only years 2000..2099.
 -- ----------------------------------------------------------------------
 procedure rtc_set_yymmdd_bcd(byte*3 in yymmdd_bcd) is
 
@@ -523,8 +523,8 @@ procedure rtc_set_yymmdd_bcd(byte*3 in yymmdd_bcd) is
    var byte t_year  = bcd2bin(yymmdd[0])        -- year decimal
    var byte t_month = bcd2bin(yymmdd[1])        -- month decimal
    var byte t_day   = bcd2bin(yymmdd[2])        -- day decimal
-   if (t_month < 3) then                        -- before doomsday
-      if (t_year > 0) then
+   if (t_month < 3) then                        -- Jan/Feb
+      if (t_year > 0) then                      -- after year 2000
          t_year = t_year - 1                    -- previous year
       else
          t_year = 4                             -- for Jan/Feb 2000
