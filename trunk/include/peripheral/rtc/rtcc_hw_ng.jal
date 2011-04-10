@@ -18,25 +18,25 @@
 -- (not all of these may be implemented yet!).
 -- .
 -- Time/clock related operations:
+--   - rtc_set_clock()              -- enable/disable RTCC module
+--   - rtc_calibrate()              -- compensate crystal frequency aberration
+--   - rtc_set_rtccpin()            -- RTCC output pin signal control
+-- .
 --   - rtc_get_date()               -- year,month,day (bcd)
 --   - rtc_set_date()
 --   - rtc_get_time()               -- hour,minute,second (bcd)
 --   - rtc_set_time()
 --   - rtc_get_dayofweek()          -- day of week number (binary)
---   - rtc_get_dayofyear()          -- year,month,day (bcd)
+--   - rtc_get_dayofyear()          -- year,month,day (binary)
 --   - rtc_get_minuteofday()        -- relative minute of day (binary)
 --   - rtc_get_secondofday()        -- relative second of day (binary)
 -- .
---   - rtc_calibrate()              -- compensate crystal frequency aberration
---   - rtc_set_clock()              -- enable/disable RTCC module
---   - rtc_set_rtccpin()            -- RTCC output pin signal control
--- .
 -- Alarm related operations:
+--   - rtc_set_alarm()              -- enable/disable alarm
 --   - rtc_get_alarm_date()         -- alarm month,day (bcd), no year!
 --   - rtc_set_alarm_date()
 --   - rtc_get_alarm_time()         -- alarm hour,minute,second (bcd)
 --   - rtc_set_alarm_time()
---   - rtc_set_alarm()              -- enable/disable alarm
 --   - rtc_set_alarm_dayofweek()
 --   - rtc_set_alarm_interval()     -- alarm interval (binary)
 --   - rtc_set_alarm_repeat()       -- alarm repeat (binary)
@@ -572,9 +572,9 @@ end procedure
 -- returns: nothing
 -- notes: The following will happen after an alarm condition:
 --        - with repeat value 0 there will be 1 alarm event
---        - with repeat values 1..254 there will be as many events as
---          specified with <repeats> at intervals as specified
---          with rtc_set_alarm_interval()
+--        - with repeat values 1..254 there will be as many more alarm
+--          events as specified with <repeats>
+--          (at intervals as specified with rtc_set_alarm_interval() )
 --        - with repeat value 255 there will be indefinite alarm events
 --        The ALRMCFG_ALRMEN bit will be cleared after the last alarm event
 --        (thus never with repeat value 255).
@@ -588,7 +588,7 @@ procedure rtc_set_alarm_repeat(byte in repeats) is
 
    if (repeats == 0) then
       ALRMCFG_CHIME = FALSE                     --
-      ALRMRPT = 0                               -- single alarm event
+      ALRMRPT = 0                               -- alarm event not repeated
    elsif (repeats == 255) then
       ALRMCFG_CHIME = TRUE                      -- repeat alarm event indefinitely
    else
@@ -623,6 +623,8 @@ end procedure
 -- returns: nothing
 -- Notes: When setting the alarm date the alarm interval is
 --        by default set to once a month on the specified day of the month.
+--        You may want to set the alarm time first, or control the
+--        alarm interval separately.
 -- ----------------------------------------------------------------------
 procedure rtc_set_alarm_date(byte in mm,
                              byte in dd) is
@@ -647,6 +649,8 @@ end procedure
 -- returns: nothing
 -- Notes: When setting the alarm date the alarm interval is
 --        by default set to once a week on the specified day of the week.
+--        You may want to set the alarm time first, or control the
+--        alarm interval separately.
 -- ----------------------------------------------------------------------
 procedure rtc_set_alarm_dayofweek(byte in weekday) is
 
