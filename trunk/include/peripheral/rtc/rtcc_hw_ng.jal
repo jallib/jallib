@@ -1,4 +1,4 @@
--- ----------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
 -- Title: Support for builtin RealTimeClockCalendar (RTCC) module of 18FxxJxx.
 -- Author: Rob Hamerling, Copyright (c) 2010..2011, all rights reserved.
 -- Adapted-by:
@@ -20,7 +20,7 @@
 -- Time/clock related operations:
 --   - rtc_set_clock()              -- enable/disable RTCC module
 --   - rtc_calibrate()              -- compensate crystal frequency aberration
---   - rtc_set_rtccpin()            -- RTCC output pin signal control
+--   - rtc_pin_signal()             -- RTCC output pin signal control
 -- .
 --   - rtc_get_date()               -- year,month,day (bcd)
 --   - rtc_set_date()
@@ -62,26 +62,6 @@
 --              pragma target RTCOSC T1OSC
 --
 --
--- ----------------------------------------------------------------------
--- Global variables internally used by rtc and alarm functions and procedures.
--- Not to be accessed by application programs!
--- ----------------------------------------------------------------------
-var  byte  _rtc_year        = 0x00              -- year
-var  byte  _rtc_month       = 0x01              -- month
-var  byte  _rtc_dayofmonth  = 0x01              -- day of month
-var  byte  _rtc_dayofweek                       -- day of week
-var  byte  _rtc_hour        = 0x00              -- hour
-var  byte  _rtc_min         = 0x00              -- minute
-var  byte  _rtc_sec         = 0x00              -- second
-var  byte  _alrm_month      = 0x01              -- alarm month
-var  byte  _alrm_dayofmonth = 0x01              -- alarm day
-var  byte  _alrm_dayofweek  = 0x00              -- alarm day of week
-var  byte  _alrm_hour       = 0x00              -- alarm hour
-var  byte  _alrm_min        = 0x00              -- alarm minute
-var  byte  _alrm_sec        = 0x00              -- alarm second
-
-const byte _rtc_dow[] = {0,3,2,5,0,3,5,1,4,6,2,4}  -- day-of-week offsets
-
 
 -- ======================================================================
 --  General purpose functions / procedures
@@ -127,9 +107,28 @@ end function
 
 
 -- ======================================================================
---  Library only (not user) functions and procedures
+--  Library only functions and procedures (not for user programs)
 -- ======================================================================
---
+
+-- ----------------------------------------------------------------------
+-- Global variables internally used by rtcc and alarm functions and procedures.
+-- Not to be accessed by application programs!
+-- ----------------------------------------------------------------------
+var  byte  _rtc_year        = 0x00              -- year
+var  byte  _rtc_month       = 0x01              -- month
+var  byte  _rtc_dayofmonth  = 0x01              -- day of month
+var  byte  _rtc_dayofweek                       -- day of week
+var  byte  _rtc_hour        = 0x00              -- hour
+var  byte  _rtc_min         = 0x00              -- minute
+var  byte  _rtc_sec         = 0x00              -- second
+var  byte  _alrm_month      = 0x01              -- alarm month
+var  byte  _alrm_dayofmonth = 0x01              -- alarm day
+var  byte  _alrm_dayofweek  = 0x00              -- alarm day of week
+var  byte  _alrm_hour       = 0x00              -- alarm hour
+var  byte  _alrm_min        = 0x00              -- alarm minute
+var  byte  _alrm_sec        = 0x00              -- alarm second
+
+
 -- ----------------------------------------------------------------------
 -- Enable or disable RTCC register writes.
 -- input: bit (enable / disable)
@@ -162,7 +161,7 @@ end procedure
 -- input:  none
 -- output: none
 -- returns: nothing
--- notes: copy RTC registers to local variables
+-- notes: read clock/calendar registers into local variables
 -- ---------------------------------------------------------------------
 procedure _rtc_read() is
 
@@ -192,7 +191,7 @@ end procedure
 -- output: none
 -- returns: nothing
 -- notes: - enable writing to RTC registers
---        - update RTC
+--        - write clock/calendar registers
 --        - disable writes
 -- ----------------------------------------------------------------------
 procedure _rtc_write() is
@@ -232,7 +231,7 @@ end procedure
 -- input:  none
 -- output: none
 -- returns: nothing
--- notes: copy RTC alarm registers to local variables
+-- notes: read alarm registers into local variables
 -- ----------------------------------------------------------------------
 procedure _rtc_alrm_read() is
 
@@ -255,7 +254,7 @@ end procedure
 -- output: none
 -- returns: nothing
 -- notes: - disable alarm
---        - copy RTC alarm registers to local variables
+--        - write alarm registers from local variables
 --        - restore alarm state
 -- ----------------------------------------------------------------------
 procedure _rtc_alrm_write() is
@@ -289,9 +288,12 @@ function _rtc_day_of_week(byte in yy,
                           byte in mm,
                           byte in dd) return byte is
 
+   const byte _rtc_dow[] = {0,3,2,5,0,3,5,1,4,6,2,4}  -- day-of-week offsets
+
    var byte t_year  = bcd2bin(yy)               -- year decimal
    var byte t_month = bcd2bin(mm)               -- month decimal
    var byte t_day   = bcd2bin(dd)               -- day decimal
+
    if (t_month < 3) then                        -- Jan/Feb
       if (t_year > 0) then                      -- after year 2000
          t_year = t_year - 1                    -- previous year
@@ -299,42 +301,20 @@ function _rtc_day_of_week(byte in yy,
          t_year = 4                             -- for Jan/Feb 2000
       end if
    end if
+
    return (t_year + t_year / 4 + _rtc_dow[t_month-1] + t_day) % 7
 
 end function
 
 
 -- ======================================================================
---  RTC CONSTANTS, FUNCTIONS and PROCEDURES for use by application
+--  TIME and DATE functions of realtime clock (for user programs)
 -- ======================================================================
-
--- RTCC pin selection masks
 
    const  bit*2  RTC_PIN_ALARM        =  0b00
    const  bit*2  RTC_PIN_SECONDS      =  0b01
    const  bit*2  RTC_PIN_SOURCE_CLOCK =  0b10
    const  bit*2  RTC_PIN_NONE         =  0b11     -- (disable RTCC pin)
-
--- RTCC alarm repetition period masks
-
-   const  byte  RTC_ALARM_INTERVAL_HALFSECOND  = 0b0000
-   const  byte  RTC_ALARM_INTERVAL_SECOND      = 0b0001
-   const  byte  RTC_ALARM_INTERVAL_TENSECONDS  = 0b0010
-   const  byte  RTC_ALARM_INTERVAL_MINUTE      = 0b0011
-   const  byte  RTC_ALARM_INTERVAL_TENMINUTES  = 0b0100
-   const  byte  RTC_ALARM_INTERVAL_HOUR        = 0b0101
-   const  byte  RTC_ALARM_INTERVAL_DAY         = 0b0110
-   const  byte  RTC_ALARM_INTERVAL_WEEK        = 0b0111
-   const  byte  RTC_ALARM_INTERVAL_MONTH       = 0b1000
-   const  byte  RTC_ALARM_INTERVAL_YEAR        = 0b1001
-
--- Table for day-of-week calculations
-
-
--- ======================================================================
---  TIME and DATE functions of realtime clock
--- ======================================================================
-
 -- ----------------------------------------------------------------------
 -- Select the RTCC output pin signal functionality.
 -- input: 2-bits mask: one of the RTC_PIN_xxxx constants (see above)
@@ -351,8 +331,8 @@ procedure rtc_pin_signal(bit*2 in pin_signal_selection_mask) is
       RTCCFG_RTCOE = false                      -- free the RTCC pin
    else
       RTCCFG_RTCOE = true                       -- enable RTCC output
+      PADCFG1_RTSECSEL = pin_signal_selection_mask  -- select pin signal
    end if
-   PADCFG1_RTSECSEL = pin_signal_selection_mask  -- select pin signal
 
    _rtc_write_control(disabled)                 -- ignore writes to RTC registers
 
@@ -388,7 +368,7 @@ end procedure
 -- input: none
 -- output: none
 -- returns: nothing
--- notes: With enabling the RTCC module
+-- notes: The T1 oscillator is enable/disabled too!
 -- ----------------------------------------------------------------------
 procedure rtc_set_clock(bit in state) is
 
@@ -542,6 +522,17 @@ end function
 --  ALARM functionality of realtime clock
 -- ======================================================================
 
+-- RTCC alarm repetition interval masks
+   const  byte  RTC_ALARM_INTERVAL_HALFSECOND  = 0b0000
+   const  byte  RTC_ALARM_INTERVAL_SECOND      = 0b0001
+   const  byte  RTC_ALARM_INTERVAL_TENSECONDS  = 0b0010
+   const  byte  RTC_ALARM_INTERVAL_MINUTE      = 0b0011
+   const  byte  RTC_ALARM_INTERVAL_TENMINUTES  = 0b0100
+   const  byte  RTC_ALARM_INTERVAL_HOUR        = 0b0101
+   const  byte  RTC_ALARM_INTERVAL_DAY         = 0b0110
+   const  byte  RTC_ALARM_INTERVAL_WEEK        = 0b0111
+   const  byte  RTC_ALARM_INTERVAL_MONTH       = 0b1000
+   const  byte  RTC_ALARM_INTERVAL_YEAR        = 0b1001
 -- ----------------------------------------------------------------------
 -- Set alarm interval.
 -- input: alarm_interval with a RTC_ALARM_INTERVAL_xxxx mask
@@ -551,7 +542,7 @@ end function
 -- ---------------------------------------------------------------------
 procedure rtc_set_alarm_interval(byte in interval) is
 
-   if (interval <= RTC_ALARM_INTERVAL_YEAR) then  -- valid mask
+   if (interval <= RTC_ALARM_INTERVAL_YEAR) then  -- valid interval mask
 
       if (RTCCFG_RTCEN == enabled) then         -- rtcc running
          while (RTCCFG_RTCSYNC == true) loop    -- wait for safe write
@@ -586,15 +577,13 @@ procedure rtc_set_alarm_repeat(byte in repeats) is
       end loop
    end if
 
-   if (repeats == 0) then
-      ALRMCFG_CHIME = FALSE                     --
-      ALRMRPT = 0                               -- alarm event not repeated
-   elsif (repeats == 255) then
+   if (repeats == 255) then
       ALRMCFG_CHIME = TRUE                      -- repeat alarm event indefinitely
    else
-      ALRMCFG_CHIME = FALSE                     --
-      ALRMRPT = repeats                         -- # alarm events repeats
+      ALRMCFG_CHIME = FALSE                     -- limited repeats (0..254)
    end if
+
+   ALRMRPT = repeats                            -- number of alarm repeats
 
 end procedure
 
