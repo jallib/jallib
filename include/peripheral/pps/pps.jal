@@ -1,0 +1,197 @@
+-- Title: Peripheral Pin Select (PPS) library
+-- Author: Sebastien Lelong, Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library provides several utility functions to deal with
+-- Peripheral Pin Select (PPS) module. PPS is a special feature implemented on 
+-- recent PIC (currently 18FXXJ11, 18FXXJ13, 18FXXJ50, 18FXXJ53). PPS allows
+-- to dynamically assign function to pins known as "remappable pins". These pins are
+-- easily identified as they're name "RPn".
+-- .
+-- Assigning function to pins is done differently wheter function is an input
+-- or output. When function is an input (eg. serial RX), PPS is used by 
+-- specifying, for this function, what is the RP pins to be used. On the other
+-- side, when function is an output (eg. serial TX), PPS is used by 
+-- specifying, for this RP pin, what is the function it should
+-- carry. As a consequence, several RP pins can carry the same output function.
+-- .
+-- In order to configure RP pins, PPS module must be unlocked using pps_begin(),
+-- pins should be remapped calling corresponding procedure and setting 
+-- appropriate function ID number, then locked again using pps_commit().
+-- This is a security guard used to prevent any unintentional changes.
+-- When PPS uses 1-way locking (default behavior), pins can be remapped only
+-- once (when PPS is becoming locked again, any further changes are ignored).
+-- When PPS don't use 1-way locking, several unlock/lock sequences can occur
+-- at runtime. If this behavior is wanted, the following fuse setting shoul be
+-- used:
+--          pragma target IOL1WAY disabled
+-- .
+-- Please refer to datasheet in order to have a better overview of PPS.
+-- 
+
+
+var bit _pps_gie_state
+
+-- For convenience, aliases for output functions. Careful, not all may be 
+-- available depending on the involved PIC
+
+-- Unlock PPS module, allowing pins to be remapped. If 1-way locking is used
+-- this procedure must only be called once.
+-- Note: interrupts are temporarily disabled until pps_commit() is called
+procedure pps_begin() is
+
+   _pps_gie_state = INTCON_GIE   -- save interrupt state
+   INTCON_GIE = disabled         -- disable interrupts
+
+   -- unlock
+   EECON2 = 0x55
+   EECON2 = 0xAA
+   PPSCON_IOLOCK = false
+
+end procedure
+
+
+-- Lock PPS module. Must be called after pps_begin(), and once remappable pins
+-- have been configured
+procedure pps_commit() is
+
+   -- so far so good, we can lock PPS 
+   EECON2 = 0x55
+   EECON2 = 0xAA
+   PPSCON_IOLOCK = true
+
+   INTCON_GIE = _pps_gie_state   -- restore interrupt state
+
+end procedure
+
+
+-- -----------------
+-- INPUT FUNCTION --
+-- -----------------
+
+-- Map "External Interrupt 1" input function on remappable pin n°#rpn
+procedure pps_map_int1(byte in rpn) is
+   pragma inline
+   RPINR1_INT1 = rpn
+end procedure
+
+-- Map "External Interrupt 2" input function on remappable pin n°#rpn
+procedure pps_map_int2(byte in rpn) is
+   pragma inline
+   RPINR2_INT2 = rpn
+end procedure
+
+-- Map "External Interrupt 3" input function on remappable pin n°#rpn
+procedure pps_map_int3(byte in rpn) is
+   pragma inline
+   RPINR3_INT3 = rpn
+end procedure
+
+-- Map "Timer0 External Clock Input" input function on remappable pin n°#rpn
+procedure pps_map_t0cki(byte in rpn) is
+   pragma inline
+   RPINR4_T0CKI = rpn
+end procedure
+        
+-- Map "Timer3 External Clock Input" input function on remappable pin n°#rpn
+procedure pps_map_t3cki(byte in rpn) is
+   pragma inline
+   RPINR6_T3CKI = rpn
+end procedure
+
+if defined(RPINR15_T5CKI) then   -- not available on every chip
+-- Map "Timer5 External Clock Input" input function on remappable pin n°#rpn
+procedure pps_map_t5cki(byte in rpn) is
+   pragma inline
+   RPINR15_T5CKI = rpn
+end procedure
+end if
+
+-- Map "Input Capture 1" input function on remappable pin n°#rpn
+procedure pps_map_ic1(byte in rpn) is
+   pragma inline
+   RPINR7_IC1 = rpn
+end procedure
+
+-- Map "Input Capture 2" input function on remappable pin n°#rpn
+procedure pps_map_ic2(byte in rpn) is
+   pragma inline
+   RPINR8_IC2 = rpn
+end procedure
+
+if defined(RPINR9_IC3) then   -- not available on every chip
+-- Map "Input Capture 3" input function on remappable pin n°#rpn
+procedure pps_map_ic3(byte in rpn) is
+   pragma inline
+   RPINR9_IC3 = rpn
+end procedure
+end if
+
+-- Map "Timer1 Gate Input" input function on remappable pin n°#rpn
+procedure pps_map_t1g(byte in rpn) is
+   pragma inline
+   RPINR12_T1G = rpn
+end procedure
+
+-- Map "Timer3 Gate Input" input function on remappable pin n°#rpn
+procedure pps_map_t3g(byte in rpn) is
+   pragma inline
+   RPINR13_T3G = rpn
+end procedure
+
+if defined(RPINR14_T5G) then   -- not available on every chip
+-- Map "Timer5 Gate Input" input function on remappable pin n°#rpn
+procedure pps_map_t5g(byte in rpn) is
+   pragma inline
+   RPINR14_T5G = rpn
+end procedure
+end if
+
+-- Map "EUSART2 RX2/DT2" input function on remappable pin n°#rpn
+procedure pps_map_rx2dt2(byte in rpn) is
+   pragma inline
+   RPINR16_RX2DT2 = rpn
+end procedure
+
+-- Map "EUSART2 CK2" input function on remappable pin n°#rpn
+procedure pps_map_ck2(byte in rpn) is
+   pragma inline
+   RPINR17_CK2 = rpn
+end procedure
+
+-- Map "SPI2 Data Input" input function on remappable pin n°#rpn
+procedure pps_map_sdi2(byte in rpn) is
+   pragma inline
+   RPINR21_SDI2 = rpn
+end procedure
+
+-- Map "SPI2 Clock Input" input function on remappable pin n°#rpn
+procedure pps_map_sck2(byte in rpn) is
+   pragma inline
+   RPINR22_SCK2 = rpn
+end procedure
+
+-- Map "SPI2 Slave Select Input" input function on remappable pin n°#rpn
+procedure pps_map_sck2(byte in rpn) is
+   pragma inline
+   RPINR23_SS2 = rpn
+end procedure
+
+-- Map "PWM Fault Input" input function on remappable pin n°#rpn
+procedure pps_map_flt0(byte in rpn) is
+   pragma inline
+   RPINR24_FLT0 = rpn
+end procedure
+
+
+-- ------------------
+-- OUTPUT FUNCTION --
+-- ------------------
+
+-- work in progress, for now, function must be used, ex:
+-- Map TX2 on RP10: RPOR10_RPOR = 6
+
