@@ -1,0 +1,73 @@
+-- Title: Sample showing usage of PPS module for 18F27J53
+-- Author: Sébastien Lelong, Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Peripheral Pin Select (PPS) peripheral allows to arbitrarily assign
+-- functions to remappable pins, labelled as RPn, where "n" is the remappable pin
+-- number.
+-- This sample uses EUSART2 and assigns TX2 output function to pin_B6 (RP9)
+-- and RX2 input function to pin_B7 (RP10)
+--
+-- Notes: API isn't stable, expect changes
+--
+
+include 18f27j53
+pragma target clock 48_000_000   -- oscillator frequency
+-- magical statements
+pragma target PLLDIV	   P4
+pragma target CPUDIV	   P1
+pragma target PLLEN  P1          -- PLL via fuse turned off
+pragma target OSC	   HS_PLL
+pragma target WDT  disabled      -- no watchdog
+OSCTUNE_PLLEN = on               -- PLL via OSCTUNE enabled
+_usec_delay(2000) -- PLL needs 2ms before stable
+
+enable_digital_io()
+
+include pps
+const PPS_TX2_FUNCTION = 6
+
+-- PPS module writes are protected, we need to first unlock it
+pps_begin()
+
+-- TX2 is an output function: we assign a function to a RP pin
+-- Remappable pin RP9 can be accessed through the following register
+RPOR9_RPOR = PPS_TX2_FUNCTION
+-- RX2 is an input function: we assign a RP pin the a function register
+pps_map_rx2dt2(10)   -- RP10
+
+-- PPS configuration is done, we can lock again
+pps_commit()
+
+-- ok, now setup serial
+const serial_hw2_baudrate = 115_200
+include serial_hardware2
+serial_hw2_init()
+
+include print                       -- output library
+
+const byte str1[] = "Hello serial world"   -- define a string
+print_string(serial_hw2_data, str1)  -- output string to serial
+
+-- inform user PIC is ready !
+serial_hw2_write("!")
+
+-- let's build our loop
+var byte char	-- will store received char
+var word counter = 10
+forever loop
+	if (serial_hw2_read(char))	then
+		serial_hw2_write(char)	-- that's the echo...
+	end if
+	
+	counter = counter - 1;
+	if (counter == 0) then
+	   counter = 50000
+      serial_hw2_data = "."	   
+   end if
+end loop
+
