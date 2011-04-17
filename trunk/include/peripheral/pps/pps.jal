@@ -7,20 +7,20 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: This library provides several utility functions to deal with
--- Peripheral Pin Select (PPS) module. PPS is a special feature implemented on 
+-- Peripheral Pin Select (PPS) module. PPS is a special feature implemented on
 -- recent PIC (currently 18FXXJ11, 18FXXJ13, 18FXXJ50, 18FXXJ53). PPS allows
 -- to dynamically assign function to pins known as "remappable pins". These pins are
 -- easily identified as they're name "RPn".
 -- .
 -- Assigning function to pins is done differently wheter function is an input
--- or output. When function is an input (eg. serial RX), PPS is used by 
+-- or output. When function is an input (eg. serial RX), PPS is used by
 -- specifying, for this function, what is the RP pins to be used. On the other
--- side, when function is an output (eg. serial TX), PPS is used by 
+-- side, when function is an output (eg. serial TX), PPS is used by
 -- specifying, for this RP pin, what is the function it should
 -- carry. As a consequence, several RP pins can carry the same output function.
 -- .
 -- In order to configure RP pins, PPS module must be unlocked using pps_begin(),
--- pins should be remapped calling corresponding procedure and setting 
+-- pins should be remapped calling corresponding procedure and setting
 -- appropriate function ID number, then locked again using pps_commit().
 -- This is a security guard used to prevent any unintentional changes.
 -- When PPS uses 1-way locking (default behavior), pins can be remapped only
@@ -31,12 +31,12 @@
 --          pragma target IOL1WAY disabled
 -- .
 -- Please refer to datasheet in order to have a better overview of PPS.
--- 
+--
 
 
 var bit _pps_gie_state = INTCON_GIE
 
--- For convenience, aliases for output functions. Careful, not all may be 
+-- For convenience, aliases for output functions. Careful, not all may be
 -- available depending on the involved PIC
 
 -- Lock/unlock PPS module, allowing pins to be remapped. If 1-way locking is used
@@ -46,19 +46,20 @@ var bit _pps_gie_state = INTCON_GIE
 -- interrupts are restored back to previous state
 procedure pps_control_lock(bit in state) is
 
-   asm bank PPSCON
-
-   if state == true then
+   if (state == TRUE) then
+      asm bank PPSCON
+      EECON2 = 0x55
+      EECON2 = 0xAA
+      PPSCON_IOLOCK = TRUE
       INTCON_GIE = _pps_gie_state   -- restore interrupt state
    else
       _pps_gie_state = INTCON_GIE   -- save interrupt state
-      INTCON_GIE = disabled         -- disable interrupts
+      INTCON_GIE = DISABLED         -- disable interrupts
+      asm bank PPSCON
+      EECON2 = 0x55
+      EECON2 = 0xAA
+      PPSCON_IOLOCK = FALSE
    end if
-
-   -- lock/unlock
-   EECON2 = 0x55
-   EECON2 = 0xAA
-   PPSCON_IOLOCK = state
 
 end procedure
 
@@ -90,7 +91,7 @@ procedure pps_map_t0cki(byte in rpn) is
    pragma inline
    RPINR4_T0CKI = rpn
 end procedure
-        
+
 -- Map "Timer3 External Clock Input" input function on remappable pin n°#rpn
 procedure pps_map_t3cki(byte in rpn) is
    pragma inline
