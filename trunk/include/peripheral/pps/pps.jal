@@ -26,7 +26,7 @@
 -- When PPS uses 1-way locking (default behavior), pins can be remapped only
 -- once (when PPS is becoming locked again, any further changes are ignored).
 -- When PPS don't use 1-way locking, several unlock/lock sequences can occur
--- at runtime. If this behavior is wanted, the following fuse setting shoul be
+-- at runtime. If this behavior is wanted, the following fuse setting should be
 -- used:
 --          pragma target IOL1WAY disabled
 -- .
@@ -34,37 +34,31 @@
 -- 
 
 
-var bit _pps_gie_state
+var bit _pps_gie_state = INTCON_GIE
 
 -- For convenience, aliases for output functions. Careful, not all may be 
 -- available depending on the involved PIC
 
--- Unlock PPS module, allowing pins to be remapped. If 1-way locking is used
--- this procedure must only be called once.
--- Note: interrupts are temporarily disabled until pps_commit() is called
-procedure pps_begin() is
+-- Lock/unlock PPS module, allowing pins to be remapped. If 1-way locking is used
+-- this procedure must only be called once. Once remappable pins are configured
+-- PPS must be locked again to apply changes
+-- Note: interrupts are temporarily disabled. When pps_lock(true) is called
+-- interrupts are restored back to previous state
+procedure pps_control_lock(bit in state) is
 
-   _pps_gie_state = INTCON_GIE   -- save interrupt state
-   INTCON_GIE = disabled         -- disable interrupts
+   asm bank PPSCON
 
-   -- unlock
+   if state == true then
+      INTCON_GIE = _pps_gie_state   -- restore interrupt state
+   else
+      _pps_gie_state = INTCON_GIE   -- save interrupt state
+      INTCON_GIE = disabled         -- disable interrupts
+   end if
+
+   -- lock/unlock
    EECON2 = 0x55
    EECON2 = 0xAA
-   PPSCON_IOLOCK = false
-
-end procedure
-
-
--- Lock PPS module. Must be called after pps_begin(), and once remappable pins
--- have been configured
-procedure pps_commit() is
-
-   -- so far so good, we can lock PPS 
-   EECON2 = 0x55
-   EECON2 = 0xAA
-   PPSCON_IOLOCK = true
-
-   INTCON_GIE = _pps_gie_state   -- restore interrupt state
+   PPSCON_IOLOCK = state
 
 end procedure
 
