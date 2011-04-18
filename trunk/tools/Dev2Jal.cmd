@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.17'
+   ScriptVersion   = '0.1.18'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4n'
 /* ------------------------------------------------------------------------ */
@@ -120,9 +120,6 @@ else do                                           /* PROD run with selection */
 end
 
 
-/* ------------------------------------------------------------------------ */
-/* Here the device file generation actually starts!                         */
-/* ------------------------------------------------------------------------ */
 
 call time 'R'                                               /* reset 'elapsed' timer */
 
@@ -263,6 +260,12 @@ call SysDropFuncs                                           /* release Rexxutil 
 
 return 0
 
+/* -------------------------------------------------------------------- */
+/* This is the end of the mainline of dev2jal                           */
+/* -------------------------------------------------------------------- */
+
+
+
 
 /* ==================================================================== */
 /*                      1 2 - B I T S   C O R E                         */
@@ -380,8 +383,9 @@ return 0
 
 
 /* ==================================================================== */
-/*          End of the core-specific main procedures                    */
+/*    This is the end of the core-specific main procedures              */
 /* ==================================================================== */
+
 
 
 /* ------------------------------------------- */
@@ -2956,8 +2960,9 @@ else if core = '14H' then do                                /* extended midrange
          ansx = word('16 6 7 8 9 10 11 5', ansx + 1)
       end
       when reg = 'ANSELE' then do
-         if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
-            left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
+         if left(PicName,6) = '16f151'  | left(PicName,7) = '16lf151' |,
+            left(PicName,7) = '16lf190' |,
+            left(PicName,6) = '16f193'  | left(PicName,7) = '16lf193' then
             ansx = ansx + 5
          else if left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' then
             ansx = word('27 28 29 99 99 99 99 99', ansx + 1)
@@ -4267,8 +4272,8 @@ call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
 call lineout jalfile, '-- Special (device specific) constants and procedures'
-call lineout jalfile, '--'
 
+call lineout jalfile, '--'
 if PicSpec.PicNameCaps.ADCgroup = '?' then do
    call msg 3, 'No ADCgroup for' PicName 'in devicespecific.cmd!'
    exit 1
@@ -4286,6 +4291,21 @@ else
 call lineout jalfile, 'const byte ADC_NTOTAL_CHANNEL =' PinMap.PicNameCaps.ANCOUNT
 call lineout jalfile, 'const byte ADC_ADCS_BITCOUNT  =' adcs_bitcount
 call lineout jalfile, '--'
+
+if PicSpec.PicNameCaps.PPSgroup = '?' then
+   call lineout jalfile, 'const PPS_GROUP  = PPS_0        -- no Peripheral Pin Selection'
+else
+   call lineout jalfile, 'const PPS_GROUP  = 'PicSpec.PicNameCaps.PPSgroup,
+                         '       -- PPS group' right(PicSpec.PicNameCaps.PPSgroup,1)
+call lineout jalfile, '--'
+
+if Name.UCON \= '-' then do                                 /* USB module present */
+  if PicSpec.PicNameCaps.USBBDT \= '?' then
+    call lineout jalfile, 'const word USB_BDT_ADDRESS    = 0x'PicSpec.PicNameCaps.USBBDT
+  else
+    call msg 2, PicName 'has USB module but USB_BDT_ADDRESS not specified'
+  call lineout jalfile, '--'
+end
 
 if (ADCgroup = '0'  & PinMap.PicNameCaps.ANCOUNT > 0) |,
    (ADCgroup \= '0' & PinMap.PicNameCaps.ANCOUNT = 0) then do
@@ -4670,7 +4690,6 @@ return lvl
 /* ---------------------------------------------- */
 /* Some procedures to help script debugging       */
 /* ---------------------------------------------- */
-
 catch_error:
 Say 'Rexx Execution error, rc' rc 'at script line' SIGL
 if rc > 0 & rc < 100 then                                   /* msg text only for rc 1..99 */
