@@ -33,6 +33,9 @@
 -- Please refer to datasheet in order to have a better overview of PPS.
 --
 
+if PPS_GROUP == PPS_0 then
+   _error "PIC doesn't have PPS module"
+end if
 
 var bit _pps_gie_state = INTCON_GIE
 
@@ -64,129 +67,167 @@ procedure pps_control_lock(bit in state) is
 end procedure
 
 
+-- PPS module differs between devices, currently we can build 2 groups whom devices behave the same
+if PPS_GROUP == PPS_1 then
+
+   -- ----------------------------
+   -- OUTPUT FUNCTION CONSTANTS --
+   -- ----------------------------
+   const byte PPS_NULL    = 0    -- Disable RPn output function
+   const byte PPS_C1OUT   = 1    -- Comparator 1 Output
+   const byte PPS_C2OUT   = 2    -- Comparator 2 Output
+   const byte PPS_TX2CK2  = 5    -- EUSART2 Asynchronous Transmit/Asynchronous Clock Output
+   const byte PPS_DT2     = 6    -- EUSART2 Synchronous Transmit
+   const byte PPS_SDO2    = 9    -- SPI2 Data Output
+   const byte PPS_SCK2    = 10   -- SPI2 Clock Output
+   const byte PPS_SSDMA   = 12   -- SPI DMA Slave Select
+   const byte PPS_ULPOUT  = 13   -- Ultra Low-Power Wake-Up Event
+   const byte PPS_CCP1P1A = 14   -- ECCP1 Compare or PWM Output Channel A
+   const byte PPS_P1B     = 15   -- ECCP1 Enhanced PWM Output, Channel B
+   const byte PPS_P1C     = 16   -- ECCP1 Enhanced PWM Output, Channel C
+   const byte PPS_P1D     = 17   -- ECCP1 Enhanced PWM Output, Channel D
+   const byte PPS_CCP2P2A = 18   -- ECCP2 Compare or PWM Output Channel A
+   const byte PPS_P2B     = 19   -- ECCP1 Enhanced PWM Output, Channel B
+   const byte PPS_P2C     = 20   -- ECCP1 Enhanced PWM Output, Channel C
+   const byte PPS_P2D     = 21   -- ECCP1 Enhanced PWM Output, Channel D
+
+elsif PPS_GROUP == PPS_2 then
+
+   -- ----------------------------
+   -- OUTPUT FUNCTION CONSTANTS --
+   -- ----------------------------
+   const byte PPS_NULL    = 0    -- Disable RPn output function
+   const byte PPS_C1OUT   = 1    -- Comparator 1 Output
+   const byte PPS_C2OUT   = 2    -- Comparator 2 Output
+   const byte PPS_C3OUT   = 3    -- Comparator 3 Output
+   const byte PPS_TX2CK2  = 6    -- EUSART2 Asynchronous Transmit/Asynchronous Clock Output
+   const byte PPS_DT2     = 7    -- EUSART2 Synchronous Transmit
+   const byte PPS_SDO2    = 10   -- SPI2 Data Output
+   const byte PPS_SCK2    = 11   -- SPI2 Clock Output
+   const byte PPS_SSDMA   = 12   -- SPI DMA Slave Select
+   const byte PPS_ULPOUT  = 13   -- Ultra Low-Power Wake-Up Event
+   const byte PPS_CCP1P1A = 14   -- ECCP1 Compare or PWM Output Channel A
+   const byte PPS_P1B     = 15   -- ECCP1 Enhanced PWM Output, Channel B
+   const byte PPS_P1C     = 16   -- ECCP1 Enhanced PWM Output, Channel C
+   const byte PPS_P1D     = 17   -- ECCP1 Enhanced PWM Output, Channel D
+   const byte PPS_CCP2P2A = 18   -- ECCP2 Compare or PWM Output Channel A
+   const byte PPS_P2B     = 19   -- ECCP1 Enhanced PWM Output, Channel B
+   const byte PPS_P2C     = 20   -- ECCP1 Enhanced PWM Output, Channel C
+   const byte PPS_P2D     = 21   -- ECCP1 Enhanced PWM Output, Channel D
+   const byte PPS_CCP3P3A = 22   -- ECCP3 Compare or PWM Output Channel A
+   const byte PPS_P3B     = 23   -- ECCP3 Enhanced PWM Output, Channel B
+   const byte PPS_P3C     = 24   -- ECCP3 Enhanced PWM Output, Channel C
+   const byte PPS_P3D     = 25   -- ECCP3 Enhanced PWM Output, Channel D
+
+else
+   _error "Unsupported PPS_GROUP, please report !"
+end if
+
+
 -- -----------------
 -- INPUT FUNCTION --
 -- -----------------
-
--- Map "External Interrupt 1" input function on remappable pin n°#rpn
-procedure pps_map_int1(byte in rpn) is
-   pragma inline
-   RPINR1_INT1 = rpn
-end procedure
-
--- Map "External Interrupt 2" input function on remappable pin n°#rpn
-procedure pps_map_int2(byte in rpn) is
-   pragma inline
-   RPINR2_INT2 = rpn
-end procedure
-
--- Map "External Interrupt 3" input function on remappable pin n°#rpn
-procedure pps_map_int3(byte in rpn) is
-   pragma inline
-   RPINR3_INT3 = rpn
-end procedure
-
--- Map "Timer0 External Clock Input" input function on remappable pin n°#rpn
-procedure pps_map_t0cki(byte in rpn) is
-   pragma inline
-   RPINR4_T0CKI = rpn
-end procedure
-
--- Map "Timer3 External Clock Input" input function on remappable pin n°#rpn
-procedure pps_map_t3cki(byte in rpn) is
-   pragma inline
-   RPINR6_T3CKI = rpn
-end procedure
-
-if defined(RPINR15_T5CKI) then   -- not available on every chip
--- Map "Timer5 External Clock Input" input function on remappable pin n°#rpn
-procedure pps_map_t5cki(byte in rpn) is
-   pragma inline
-   RPINR15_T5CKI = rpn
-end procedure
+alias PPS_MAP_INT1 is RPINR1_INT1         -- External Interrupt 1
+alias PPS_MAP_INT2 is RPINR2_INT2         -- External Interrupt 2
+alias PPS_MAP_INT3 is RPINR3_INT3         -- External Interrupt 3
+alias PPS_MAP_T0CKI is RPINR4_T0CKI       -- Timer0 External Clock Input
+alias PPS_MAP_T3CKI is RPINR6_T3CKI       -- Timer3 External Clock Input
+alias PPS_MAP_CCP1 is RPINR7_IC1          -- Input Capture 1
+alias PPS_MAP_CCP2 is RPINR8_IC2          -- Input Capture 2
+alias PPS_MAP_T1G is RPINR12_T1G          -- Timer1 Gate Input
+alias PPS_MAP_T3G is RPINR13_T3G          -- Timer3 Gate Input
+alias PPS_MAP_RX2DT2 is RPINR16_RX2DT2    -- EUSART2 RX2/DT2
+alias PPS_MAP_CK2 is RPINR17_CK2          -- EUSART2 CK2
+alias PPS_MAP_SDI2 is RPINR21_SDI2        -- SPI2 Data Input
+alias PPS_MAP_SCK2IN is RPINR22_SCK2      -- SPI2 Clock Input
+alias PPS_MAP_SS2IN is RPINR23_SS2        -- SPI2 Slave Select Input
+alias PPS_MAP_FLT0 is RPINR24_FLT0        -- PWM Fault Input
+-- not available in all PICs
+if defined(RPINR9_IC3) then
+   alias PPS_MAP_CCP3 is RPINR9_IC3          -- Input Capture 3
 end if
-
--- Map "Input Capture 1" input function on remappable pin n°#rpn
-procedure pps_map_ic1(byte in rpn) is
-   pragma inline
-   RPINR7_IC1 = rpn
-end procedure
-
--- Map "Input Capture 2" input function on remappable pin n°#rpn
-procedure pps_map_ic2(byte in rpn) is
-   pragma inline
-   RPINR8_IC2 = rpn
-end procedure
-
-if defined(RPINR9_IC3) then   -- not available on every chip
--- Map "Input Capture 3" input function on remappable pin n°#rpn
-procedure pps_map_ic3(byte in rpn) is
-   pragma inline
-   RPINR9_IC3 = rpn
-end procedure
+if defined(RPINR14_T5G) then
+   alias PPS_MAP_T5G is RPINR14_T5G          -- Timer5 Gate Input
 end if
-
--- Map "Timer1 Gate Input" input function on remappable pin n°#rpn
-procedure pps_map_t1g(byte in rpn) is
-   pragma inline
-   RPINR12_T1G = rpn
-end procedure
-
--- Map "Timer3 Gate Input" input function on remappable pin n°#rpn
-procedure pps_map_t3g(byte in rpn) is
-   pragma inline
-   RPINR13_T3G = rpn
-end procedure
-
-if defined(RPINR14_T5G) then   -- not available on every chip
--- Map "Timer5 Gate Input" input function on remappable pin n°#rpn
-procedure pps_map_t5g(byte in rpn) is
-   pragma inline
-   RPINR14_T5G = rpn
-end procedure
+if defined(RPINR15_T5CKI) then
+   alias PPS_MAP_T5CKI is RPINR15_T5CKI      -- Timer5 External Clock Input
 end if
-
--- Map "EUSART2 RX2/DT2" input function on remappable pin n°#rpn
-procedure pps_map_rx2dt2(byte in rpn) is
-   pragma inline
-   RPINR16_RX2DT2 = rpn
-end procedure
-
--- Map "EUSART2 CK2" input function on remappable pin n°#rpn
-procedure pps_map_ck2(byte in rpn) is
-   pragma inline
-   RPINR17_CK2 = rpn
-end procedure
-
--- Map "SPI2 Data Input" input function on remappable pin n°#rpn
-procedure pps_map_sdi2(byte in rpn) is
-   pragma inline
-   RPINR21_SDI2 = rpn
-end procedure
-
--- Map "SPI2 Clock Input" input function on remappable pin n°#rpn
-procedure pps_map_sck2(byte in rpn) is
-   pragma inline
-   RPINR22_SCK2 = rpn
-end procedure
-
--- Map "SPI2 Slave Select Input" input function on remappable pin n°#rpn
-procedure pps_map_ss2(byte in rpn) is
-   pragma inline
-   RPINR23_SS2 = rpn
-end procedure
-
--- Map "PWM Fault Input" input function on remappable pin n°#rpn
-procedure pps_map_flt0(byte in rpn) is
-   pragma inline
-   RPINR24_FLT0 = rpn
-end procedure
-
 
 -- ------------------
 -- OUTPUT FUNCTION --
 -- ------------------
+alias PPS_MAP_RP0 is RPOR0_RPOR
+alias PPS_MAP_RP1 is RPOR1_RPOR
+alias PPS_MAP_RP2 is RPOR2_RPOR
+alias PPS_MAP_RP3 is RPOR3_RPOR
+alias PPS_MAP_RP4 is RPOR4_RPOR
+alias PPS_MAP_RP5 is RPOR5_RPOR
+alias PPS_MAP_RP6 is RPOR6_RPOR
+alias PPS_MAP_RP7 is RPOR7_RPOR
+alias PPS_MAP_RP8 is RPOR8_RPOR
+alias PPS_MAP_RP9 is RPOR9_RPOR
+alias PPS_MAP_RP10 is RPOR10_RPOR
+alias PPS_MAP_RP11 is RPOR11_RPOR
+alias PPS_MAP_RP12 is RPOR12_RPOR
+alias PPS_MAP_RP13 is RPOR13_RPOR
+-- not available in all PICs
+if defined(RPOR14_RPOR) then
+   alias PPS_MAP_RP14 is RPOR14_RPOR
+end if
+if defined(RPOR15_RPOR) then
+   alias PPS_MAP_RP15 is RPOR15_RPOR
+end if
+if defined(RPOR16_RPOR) then
+   alias PPS_MAP_RP16 is RPOR16_RPOR
+end if
+alias PPS_MAP_RP17 is RPOR17_RPOR
+alias PPS_MAP_RP18 is RPOR18_RPOR
+if defined(RPOR19_RPOR) then
+   alias PPS_MAP_RP19 is RPOR19_RPOR
+end if
+if defined(RPOR20_RPOR) then
+   alias PPS_MAP_RP20 is RPOR20_RPOR
+end if
+if defined(RPOR21_RPOR) then
+   alias PPS_MAP_RP21 is RPOR21_RPOR
+end if
+if defined(RPOR22_RPOR) then
+   alias PPS_MAP_RP22 is RPOR22_RPOR
+end if
+if defined(RPOR23_RPOR) then
+   alias PPS_MAP_RP23 is RPOR23_RPOR
+end if
+if defined(RPOR24_RPOR) then
+   alias PPS_MAP_RP24 is RPOR24_RPOR
+end if
 
--- work in progress, for now, function must be used, ex:
--- Map TX2 on RP10: RPOR10_RPOR = 6
+-- --------------------------
+-- PPS PINS ENUM CONSTANTS -- 
+-- --------------------------
+-- So you can use eg. "RP10" instead of 10
 
+const byte RP0 = 0
+const byte RP1 = 1
+const byte RP2 = 2
+const byte RP3 = 3
+const byte RP4 = 4
+const byte RP5 = 5
+const byte RP6 = 6
+const byte RP7 = 7
+const byte RP8 = 8
+const byte RP9 = 9
+const byte RP10 = 10
+const byte RP11 = 11
+const byte RP12 = 12
+const byte RP13 = 13
+const byte RP14 = 14
+const byte RP15 = 15
+const byte RP16 = 16
+const byte RP17 = 17
+const byte RP18 = 18
+const byte RP19 = 19
+const byte RP20 = 20
+const byte RP21 = 21
+const byte RP22 = 22
+const byte RP23 = 23
+const byte RP24 = 24
