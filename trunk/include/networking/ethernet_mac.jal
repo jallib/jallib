@@ -69,12 +69,14 @@ procedure ethernet_header_create(word in type, byte in option) is
          network_data[4] = 0xFF
          network_data[5] = 0xFF
       end if
-      
+
       -- set source mac address (at offset 6)
-      var byte step
-      for 6 using step loop
-         network_data[step + 6] = network_local_mac[step]
-      end loop
+      network_data[6] = network_local_mac[0]
+      network_data[7] = network_local_mac[1]
+      network_data[8] = network_local_mac[2]
+      network_data[9] = network_local_mac[3]
+      network_data[10] = network_local_mac[4]
+      network_data[11] = network_local_mac[5]
 
       -- set type field at offset 12-13
       var byte _type[2] at type
@@ -95,7 +97,18 @@ function ethernet_verify_header() return bit is
       -- some devices have an internal mac filter
       -- for our mac or broadcast mac
       -- ethernet header mac address
+
+      -- set remote mac for the reply
+      network_remote_mac[0] = network_data[6]
+      network_remote_mac[1] = network_data[7]
+      network_remote_mac[2] = network_data[8]
+      network_remote_mac[3] = network_data[9]
+      network_remote_mac[4] = network_data[10]
+      network_remote_mac[5] = network_data[11]
+
+      -- return true
       return 1
+   
    else
       -- verify ethernet header mac address
       -- must be our mac or broadcast mac
@@ -111,9 +124,16 @@ function ethernet_verify_header() return bit is
          network_data[2] == 0xFF &
          network_data[3] == 0xFF &
          network_data[4] == 0xFF &
-         network_data[5] == 0xFF)
-         then
+         network_data[5] == 0xFF) then
 
+         -- set remote mac for the reply
+         network_remote_mac[0] = network_data[6]
+         network_remote_mac[1] = network_data[7]
+         network_remote_mac[2] = network_data[8]
+         network_remote_mac[3] = network_data[9]
+         network_remote_mac[4] = network_data[10]
+         network_remote_mac[5] = network_data[11]
+      
          return 1
       else
          return 0
@@ -151,7 +171,7 @@ procedure ethernet_read_packet() is
          debug_crlf(DEBUG_2)
 
          -- print all data after the 14 byte ehternet data
-         var byte count4 = ETHERNET_HEADER_SIZE
+         var word count4 = ETHERNET_HEADER_SIZE
          for network_packet_size - ETHERNET_HEADER_SIZE using count4 loop
             debug_byte_hex(3, network_data[count4])
             debug_char(3," ")
@@ -165,4 +185,23 @@ procedure ethernet_read_packet() is
       debug_crlf(DEBUG_3)
    end if
 
+end procedure
+
+
+----------------------------------------------------------------
+-- prints destination mac to serial port
+----------------------------------------------------------------
+procedure ethernet_print_mac() is
+   -- print remote mac
+   print_byte_hex(serial_data,network_remote_mac[0])
+   serial_data = ":"
+   print_byte_hex(serial_data,network_remote_mac[1])
+   serial_data = ":"
+   print_byte_hex(serial_data,network_remote_mac[2])
+   serial_data = ":"
+   print_byte_hex(serial_data,network_remote_mac[3])
+   serial_data = ":"
+   print_byte_hex(serial_data,network_remote_mac[4])
+   serial_data = ":"
+   print_byte_hex(serial_data,network_remote_mac[5])
 end procedure

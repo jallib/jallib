@@ -10,13 +10,15 @@
 --
 -- Sources:
 -- http://www.faqs.org/rfcs/rfc826.html
+-- http://www.visualland.net/view.php?cid=857&protocol=ARP&title=1.%20Basic-update
 --
 -- Notes:
 --
 
 include delay
 
-var byte arp_packet_recieved
+var byte arp_reply_received
+var bit arp_packet_from_destination = FALSE
 
 const byte ARP_HARDWARE_TYPE = 0
 const byte ARP_PROTOCOL_TYPE = 2
@@ -201,7 +203,7 @@ procedure arp_read_reply() is
    -- set network array offset
    ;network_var_offset = ETHERNET_HEADER_SIZE
 
-   arp_packet_recieved = TRUE
+   arp_reply_received = TRUE
       
    -- get the mac address
    network_remote_mac[0] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_0]
@@ -210,6 +212,7 @@ procedure arp_read_reply() is
    network_remote_mac[3] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_3]
    network_remote_mac[4] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_4]
    network_remote_mac[5] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_5]
+   
 ;   print_crlf(serial_data)
 ;   serial_data = "-"
 ;   print_byte_hex(serial_data,network_remote_mac[0])
@@ -233,6 +236,7 @@ procedure arp_read_reply() is
 ;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_2])
 ;   serial_data = "."
 ;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_3])
+
 end procedure
 
 --------------------------------------------------------------------------------
@@ -242,7 +246,7 @@ procedure arp_read_packet() is
    network_packet_size = network_packet_size - network_var_offset
 
    debug_crlf(DEBUG_2)
-   const byte str1[] = "---------- arp packet recieved ----------"
+   const byte str1[] = "---------- arp packet received ----------"
    debug_string(DEBUG_3, str1)
    debug_crlf(DEBUG_3)
 
@@ -275,36 +279,57 @@ procedure arp_read_packet() is
 end procedure
 
 --------------------------------------------------------------------------------
--- Get gateway MAC address and check connectivity.
--- Specify timeout in ms. (timeout time is not accurate)
+-- Get remote MAC address. Specify approx timeout in ms.
 --------------------------------------------------------------------------------
-procedure arp_get_mac(word in timeout) is
-   -- you must send some arp requests and get at leaset one reply before you do
-   -- anything.
-   
+procedure arp_get_mac(byte in requests, word in timeout) is
    var word time = 0
-   arp_packet_recieved = FALSE
-   
-   forever  loop
+   var byte temp_ip_0,temp_ip_1,temp_ip_2,temp_ip_3
+   arp_reply_received = FALSE
+
+   -- if internal network ip, we must get PC's mac. If external (internet) ip
+   -- we must get router's mac.
+   if !(network_remote_ip[0] == network_gateway_ip[0] &
+      network_remote_ip[1] == network_gateway_ip[1] &
+      network_remote_ip[2] == network_gateway_ip[2]) then
+      -- if did not match internal network ip's, such as 192.168.0.x
+
+      -- store original ip
+      temp_ip_0 = network_gateway_ip[0]
+      temp_ip_1 = network_gateway_ip[1]
+      temp_ip_2 = network_gateway_ip[2]
+      temp_ip_3 = network_gateway_ip[3]
       
-      -- send arp request
+      -- set remote ip to the router's ip address
+      network_set_remote_ip(network_gateway_ip[0],network_gateway_ip[1],network_gateway_ip[2],network_gateway_ip[3])
+   end if
+      
+   -- send arp requests
+   for requests loop
       arp_send_request()
-      
+   end loop
+   
+   -- wait for a reply
+   forever  loop
       delay_1ms(1)
       time = time + 1
 
       -- poll to see if there are network packets available
       network_poll()
-
-      -- if a packet has been received
-      if arp_packet_recieved == TRUE then
-         ;network_poll()
-         return
-      end if
       
       -- timeout
-      if time > (timeout) then
-         return
+      if (time > timeout) | (arp_reply_received == TRUE) then
+         exit loop
       end if
+      
    end loop
+   
+   -- restore original ip, if previously changed.
+   if !(network_remote_ip[0] == network_gateway_ip[0] &
+      network_remote_ip[1] == network_gateway_ip[1] &
+      network_remote_ip[2] == network_gateway_ip[2]) then
+
+      network_set_remote_ip(temp_ip_0,temp_ip_1,temp_ip_2,temp_ip_3)
+   end if
 end procedure
+
+

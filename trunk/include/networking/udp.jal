@@ -23,9 +23,10 @@ const UDP_NO_SOCKET_AVAILABLE = 1
 ;var byte udp_socket[UDP_MAX_SOCKETS]
 var byte udp_socket_status[UDP_MAX_SOCKETS]
 ;var byte udp_local_ip[TCP_MAX_SOCKETS] -- always our ip
-var byte*4 udp_socket_ip[UDP_MAX_SOCKETS]
 var word udp_socket_local_port[UDP_MAX_SOCKETS]
 var word udp_socket_remote_port[UDP_MAX_SOCKETS]
+var byte*4 udp_socket_ip[UDP_MAX_SOCKETS]
+var byte _udp_socket_ip[4] at udp_socket_ip
 --
 const UDP_SOCKET_CLOSED = 0
 const UDP_SOCKET_OPEN = 1
@@ -49,21 +50,21 @@ function udp_error'get() return byte is
    return return_value
 end function
 
-
-
 --------------------------------------------------------------------------------
 -- Init procedure
 --------------------------------------------------------------------------------
 procedure udp_init() is
    -- start all sockets as disconnected
-   var byte udp_step = 0
-   for UDP_MAX_SOCKETS using udp_step loop
-      udp_socket_status[udp_step] = UDP_SOCKET_CLOSED
+   var byte step
+   for UDP_MAX_SOCKETS using step loop
+      udp_socket_status[step] = UDP_SOCKET_CLOSED
    end loop
 end procedure
 
 --------------------------------------------------------------------------------
--- Create a new socket. If a socket was not created, var udp_error gets set.
+-- Create a new socket if one doesn't arleady exist. If a socket already
+-- exists, return the socket.
+-- If a socket was not created, var udp_error gets set.
 -- remote_port - the port number the server uses
 -- local_port - any port number that is avalable locally.
 --------------------------------------------------------------------------------
@@ -72,26 +73,26 @@ function udp_socket_create(word in local_port, word in remote_port) return byte 
 
    -- check if socket already exists
    for UDP_MAX_SOCKETS using step loop
-      if (udp_socket_ip[step] == _network_remote_ip) &
-         (udp_socket_local_port[step] == local_port) &
-         (udp_socket_remote_port[step] == remote_port) then
+      if (udp_socket_status[step] == UDP_SOCKET_OPEN) then
+         if (udp_socket_ip[step] == _network_remote_ip) &
+            (udp_socket_local_port[step] == local_port) &
+            (udp_socket_remote_port[step] == remote_port) then
 
-         udp_socket_status[step] = UDP_SOCKET_OPEN
-         _udp_error = UDP_NO_ERROR -- no error
-         return step               -- return socket number
+            udp_socket_status[step] = UDP_SOCKET_OPEN
+            _udp_error = UDP_NO_ERROR -- no error
+            return step               -- return socket number
+         end if
       end if
    end loop
 
    -- search for an available socket, if it didn't exist already
    for UDP_MAX_SOCKETS using step loop
       if udp_socket_status[step] == UDP_SOCKET_CLOSED then -- if socket not in use
-
          -- save socket info
          udp_socket_ip[step]          = _network_remote_ip
          udp_socket_local_port[step]  = local_port
          udp_socket_remote_port[step] = remote_port
          udp_socket_status[step]      = UDP_SOCKET_OPEN
-
          _udp_error = UDP_NO_ERROR -- no error
          return step               -- return socket number
       end if
@@ -177,7 +178,7 @@ procedure udp_send_array(byte in socket_name, byte in data[]) is
    var word count1 = 0
    for count(data) loop
       network_data[count1 + network_var_offset + UDP_HEADER_SIZE] = data[count1]
-      ;serial_hw_data = data[count1]
+      ;serial_data = data[count1]
       count1 = count1 + 1
    end loop
 
@@ -228,7 +229,7 @@ end procedure
 -- print info about a socket
 --------------------------------------------------------------------------------
 alias udp_data_size is network_packet_size
-procedure print_udp_socket_info(bit in received_sent, byte in socket) is
+procedure print_udp_socket_info(bit in receiving_sending, byte in socket) is
    -- store error code since we can only read it once
    var byte error_temp = _udp_error
 
@@ -237,7 +238,7 @@ procedure print_udp_socket_info(bit in received_sent, byte in socket) is
    print_crlf(serial_data)
    --
 
-   if received_sent == 0 then
+   if receiving_sending == 0 then
       const byte str2[] = "UDP data received. local/remote port: "
       print_string(serial_data,str2)
    else
@@ -269,7 +270,6 @@ procedure print_udp_socket_info(bit in received_sent, byte in socket) is
 
    const byte str_ip[] = ", ip address: "
    print_string(serial_data,str_ip)
-   var byte _udp_socket_ip[4] at udp_socket_ip
    print_byte_dec(serial_data,_udp_socket_ip[0])
    serial_data = "."
    print_byte_dec(serial_data,_udp_socket_ip[1])

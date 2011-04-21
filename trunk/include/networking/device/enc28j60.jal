@@ -18,13 +18,16 @@
 
 include delay
 
-
---
--- Setup the network array. use large array lib
-const LARGE_ARRAY_1_SIZE = ENC_ARRAY_SIZE      -- choose number of array variables
-const LARGE_ARRAY_1_VARIABLE_SIZE = 1          -- choose size of variables (byte*1)
-include large_array_1                          -- include the array library
-alias enc_tx_array is large_array_1            -- rename/alias the array to test
+-- Setup the network array using large array lib, if no array was defined already.
+-- This will allow someone to create their own array which could be stored on
+-- an external memory device. I do wonder if this could be directly stored on
+-- enc28j60 within it's buffer space.
+if !defined(enc_array) then
+   const LARGE_ARRAY_1_SIZE = ENC_ARRAY_SIZE      -- choose number of array variables
+   const LARGE_ARRAY_1_VARIABLE_SIZE = 1          -- choose size of variables (byte*1)
+   include large_array_1                          -- include the array library
+   alias enc_array is large_array_1            -- rename/alias the array to test
+end if
 
 var byte enc_current_bank
 var word enc_packet_pointer = 0
@@ -64,8 +67,8 @@ const ENC28J60_READ_CTRL_REG      = 0x00
 const ENC28J60_READ_BUF_MEM       = 0x3A
 const ENC28J60_WRITE_CTRL_REG     = 0x40
 const ENC28J60_WRITE_BUF_MEM      = 0x7A
-const ENC28J60_BIT_FIELD_SET      = 0x80
-const ENC28J60_BIT_FIELD_CLR      = 0xA0
+const ENC28J60_BIT_SET      = 0x80
+const ENC28J60_BIT_CLEAR      = 0xA0
 const ENC28J60_SOFT_RESET         = 0xFF
 
 -- ENC28J60 Control Registers
@@ -342,9 +345,9 @@ procedure enc_set_bank(byte in address) is
    -- set bank (if needed)
    if((address & BANK_MASK) != enc_current_bank) then
       -- clear bank number bits
-      enc_spi_write_command(ENC28J60_BIT_FIELD_CLR, ECON1, (ECON1_BSEL1|ECON1_BSEL0))
+      enc_spi_write_command(ENC28J60_BIT_CLEAR, ECON1, (ECON1_BSEL1|ECON1_BSEL0))
       -- set new bank number bits
-      enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON1, (BANK_MASK & address)>>5)
+      enc_spi_write_command(ENC28J60_BIT_SET, ECON1, (BANK_MASK & address)>>5)
       -- save the new bank number
       enc_current_bank = (address & BANK_MASK)
    end if
@@ -394,11 +397,11 @@ procedure enc_complete_packet_read() is
 	enc_write_register(ERXRDPTL, _enc_packet_pointer[0])
 	enc_write_register(ERXRDPTH, _enc_packet_pointer[1])
 	-- decrement the count of number of packets
-	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON2, ECON2_PKTDEC) -- decrement EPKTCNT by 1
+	enc_spi_write_command(ENC28J60_BIT_SET, ECON2, ECON2_PKTDEC) -- decrement packet count by 1 (EPKTCNT)
 end procedure
 
 --------------------------------------------------------------------------------
--- read from the network buffer into enc_tx_array[]
+-- read from the network buffer into enc_array[]
 --------------------------------------------------------------------------------
 procedure enc_read_buffer(word in len) is
 
@@ -416,7 +419,7 @@ procedure enc_read_buffer(word in len) is
    -- get the packet data
    var word step = len
    for len using step loop
-       enc_tx_array[step] = spi_master_hw
+       enc_array[step] = spi_master_hw
    end loop
 
    enc_cs = 1 -- disable chip
@@ -425,34 +428,9 @@ procedure enc_read_buffer(word in len) is
    enc_complete_packet_read()
 end procedure
 
---------------------------------------------------------------------------------
--- clears one packet from the rx buffer
---------------------------------------------------------------------------------
-;alias enc_clear_rx_buffer is enc_complete_packet_read
-
-procedure enc_clear_rx_buffer() is
-;	-- setup receive buffer
-;   -- set receive buffer start address to 0
-;	enc_write_register(ERXSTL, 0)
-;	enc_write_register(ERXSTH, 0)
-;	-- set receive pointer address
-;	enc_write_register(ERXRDPTL, 0)
-;	enc_write_register(ERXRDPTH, 0)
-;	-- set rx buffer end address
-;	enc_write_register(ERXNDL, RXSTOP_INIT_L)
-;	enc_write_register(ERXNDH, RXSTOP_INIT_H)
-
-	
-	
-	enc_complete_packet_read()
-	
-	enc_spi_write_command(ENC28J60_BIT_FIELD_CLR, EIR, EIR_RXERIF)
-	
-end procedure
-
 
 --------------------------------------------------------------------------------
--- write enc_tx_array[] into the network buffer
+-- write enc_array[] into the network buffer
 --------------------------------------------------------------------------------
 procedure enc_write_buffer(word in len) is
 
@@ -470,48 +448,11 @@ procedure enc_write_buffer(word in len) is
 
    -- write the packet data
    for len using step loop
-      spi_master_hw = enc_tx_array[step]
+      spi_master_hw = enc_array[step]
    end loop
 
    enc_cs = 1 -- disable chip
 end procedure
-
-;   --------------------------------------------------------------------------------
-;   -- write one byte into the network buffer
-;   --------------------------------------------------------------------------------
-;   procedure enc_tx_buffer'put(byte in data) is
-;
-;      -- put spi into mode 00
-;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
-;         SSPCON_CKP = 0
-;         SSPSTAT_CKE = 1
-;      end if
-;
-;      enc_cs = 0 -- enable chip
-;      spi_master_hw = ENC28J60_WRITE_BUF_MEM -- send write command
-;      spi_master_hw = data                   -- write data
-;      enc_cs = 1 -- disable chip
-;   end procedure
-;
-;   --------------------------------------------------------------------------------
-;   -- read one byte from the network buffer
-;   --------------------------------------------------------------------------------
-;   function enc_rx_buffer'get() return byte is
-;
-;      -- put spi into mode 00
-;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
-;         SSPCON_CKP = 0
-;         SSPSTAT_CKE = 1
-;      end if
-;
-;      var byte data
-;      enc_cs = 0 -- enable chip
-;      spi_master_hw = ENC28J60_READ_BUF_MEM -- send read command
-;      data = spi_master_hw                  -- read data
-;      enc_cs = 1 -- disable chip
-;      return data
-;   end function
-
 
 --------------------------------------------------------------------------------
 -- set clkout pin frequency
@@ -538,7 +479,9 @@ procedure enc_init() is
    SSPCON_CKP = 0
    SSPSTAT_CKE = 1
 
-   enc_cs = 0 -- enable chip
+   ;enc_cs = 0 -- enable chip
+ 	
+ 	enc_set_bank(ECON1)
 
 	-- soft reset
  	enc_spi_write_command(ENC28J60_SOFT_RESET, 0, ENC28J60_SOFT_RESET)
@@ -572,13 +515,12 @@ procedure enc_init() is
 	enc_write_register(EPMCSL, 0xf9)
 	enc_write_register(EPMCSH, 0xf7)
 
-
 	-- enable MAC receive
 	enc_write_register(MACON1, MACON1_MARXEN|MACON1_TXPAUS|MACON1_RXPAUS)
 	-- bring MAC out of reset
 	enc_write_register(MACON2, 0x00)
 	-- enable automatic padding to 60bytes and CRC operations
-	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, MACON3, MACON3_PADCFG0|MACON3_TXCRCEN|MACON3_FRMLNEN)
+	enc_spi_write_command(ENC28J60_BIT_SET, MACON3, MACON3_PADCFG0|MACON3_TXCRCEN|MACON3_FRMLNEN)
 	-- set inter-frame gap (non-back-to-back)
 	enc_write_register(MAIPGL, 0x12)
 	enc_write_register(MAIPGH, 0x0C)
@@ -588,7 +530,6 @@ procedure enc_init() is
    -- Do not send packets longer than ENC_MAX_FRAMELEN
 	enc_write_register(MAMXFLL, ENC_MAX_FRAMELEN_L)	
 	enc_write_register(MAMXFLH, ENC_MAX_FRAMELEN_H)
-
 
    -- write MAC address
    enc_write_register(MAADR5, enc_local_mac[0])
@@ -602,10 +543,10 @@ procedure enc_init() is
 	enc_write_phy_register(PHCON2, PHCON2_HDLDIS)
 		
 	enc_set_bank(ECON1)
-	-- enable interrut output pin
-	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, EIE, EIE_INTIE|EIE_PKTIE)
+	-- enable interrut output pin, although we may not use it.
+	enc_spi_write_command(ENC28J60_BIT_SET, EIE, EIE_INTIE|EIE_PKTIE)
 	-- allow us to receive packets
-	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_RXEN)
+	enc_spi_write_command(ENC28J60_BIT_SET, ECON1, ECON1_RXEN)
 end procedure
 
 --------------------------------------------------------------------------------
@@ -630,12 +571,12 @@ end function
 function enc_packet_available'get() return bit is
    if enc_packets_available() > 0 then
    
-   -- Set the read pointer to the start of the received packet
-	enc_write_register(ERDPTL, _enc_packet_pointer[0])
-	enc_write_register(ERDPTH, _enc_packet_pointer[1])
-	-- read the next packet pointer
-	enc_packet_pointer  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
-	enc_packet_pointer  = enc_packet_pointer | (word( enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0) )<<8)
+      -- Set the read pointer to the start of the received packet
+   	enc_write_register(ERDPTL, _enc_packet_pointer[0])
+   	enc_write_register(ERDPTH, _enc_packet_pointer[1])
+   	-- read the next packet pointer
+   	enc_packet_pointer  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
+   	enc_packet_pointer  = enc_packet_pointer | (word( enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0) )<<8)
    
       return 1
    else
@@ -644,7 +585,7 @@ function enc_packet_available'get() return bit is
 end function
 
 --------------------------------------------------------------------------------
--- End/Send packet from transmit buffer onto twisted pair
+-- End Packet/Send packet from transmit buffer onto twisted pair
 --------------------------------------------------------------------------------
 procedure enc_end_packet(word in network_current_packet_size) is
 	-- move the write pointer to start of transmit buffer area
@@ -658,10 +599,10 @@ procedure enc_end_packet(word in network_current_packet_size) is
 	-- copy the packet into the transmit buffer
 	enc_write_buffer(network_current_packet_size)
 	-- send the contents of the transmit buffer onto the network
-	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_TXRTS)
+	enc_spi_write_command(ENC28J60_BIT_SET, ECON1, ECON1_TXRTS)
    -- when done, reset the transmission process bit
 	if ((enc_read_register(EIR) & EIR_TXERIF)) != 0 then
-      enc_spi_write_command(ENC28J60_BIT_FIELD_CLR, ECON1, ECON1_TXRTS)
+      enc_spi_write_command(ENC28J60_BIT_CLEAR, ECON1, ECON1_TXRTS)
    end if
 end procedure
 
@@ -671,7 +612,7 @@ end procedure
 --------------------------------------------------------------------------------
 function enc_packet_size'get() return word is
    var word packet_size
-   var word receive_status
+   var word recieve_status
    
 	-- read the packet length
 	packet_size = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
@@ -680,17 +621,21 @@ function enc_packet_size'get() return word is
    packet_size = packet_size - 4
 
    -- read the receive status
-	receive_status  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
-	receive_status = receive_status | word(enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0))<<8
+	recieve_status  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
+	recieve_status = recieve_status | word(enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0))<<8
 	
 	-- limit packet length
-   ;if !(packet_size > enc_tx_array_SIZE-1) then
-   ;   packet_size = enc_tx_array_SIZE - 1
+   ;if !(packet_size > enc_array_SIZE-1) then
+   ;   packet_size = enc_array_SIZE - 1
    ;end if
+
+   ;serial_data ="*"
+   ;print_word_hex(serial_data, recieve_status)
+   ;serial_data ="*"
 
    -- check that there where no CRC/symbol errors
    -- return packet size of 0 if there where errors
-   if (receive_status & 0x80) == 0 then
+   if (recieve_status & 0x80) == 0 then
        packet_size = 0
    end if
    
@@ -698,4 +643,107 @@ function enc_packet_size'get() return word is
 end function
 
 
+--------------------------------------------------------------------------------
+-- Clear entire rx buffer
+-- Needs work, I may be able to remove some lines.
+--------------------------------------------------------------------------------
+procedure enc_clear_rx_buffer() is
+ 	enc_set_bank(ECON1) 	
+	enc_spi_write_command(ENC28J60_BIT_CLEAR, ECON1, ECON1_RXEN)
+	
+	-- setup receive buffer
+   -- set receive buffer start address to 0
+	enc_write_register(ERXSTL, 0)
+	enc_write_register(ERXSTH, 0)
+	-- set receive pointer address
+	enc_write_register(ERXRDPTL, 0)
+	enc_write_register(ERXRDPTH, 0)
+	-- set rx buffer end address
+	enc_write_register(ERXNDL, RXSTOP_INIT_L)
+	enc_write_register(ERXNDH, RXSTOP_INIT_H)
+	
+;	-- reset transmit buffer. should not be here???
+;   -- set transmit buffer start address
+;	enc_write_register(ETXSTL, TXSTART_INIT_L)
+;	enc_write_register(ETXSTH, TXSTART_INIT_H)
+;   -- set transmit buffer end address
+;	enc_write_register(ETXNDL, TXSTOP_INIT_L)
+;	enc_write_register(ETXNDH, TXSTOP_INIT_H)
+	
+	enc_packet_pointer = 0
+
+   while enc_read_register(EPKTCNT) != 0 loop
+	   enc_spi_write_command(ENC28J60_BIT_SET, ECON2, ECON2_PKTDEC) -- decrement packet count by 1 (EPKTCNT)
+   end loop
+
+   debug_crlf(DEBUG_2)
+	const byte str1[] = "BUFFER OVERFLOW - Buffer has been cleared!"
+	debug_string(1,str1)
+   debug_crlf(DEBUG_2)
+
+	enc_spi_write_command(ENC28J60_BIT_SET, ECON1, ECON1_RXEN)
+end procedure
+;
+;   --------------------------------------------------------------------------------
+;   -- read one byte from the network buffer
+;   --------------------------------------------------------------------------------
+;   function enc_rx_buffer'get() return byte is
+;
+;      -- put spi into mode 00
+;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
+;         SSPCON_CKP = 0
+;         SSPSTAT_CKE = 1
+;      end if
+;
+;      var byte data
+;      enc_cs = 0 -- enable chip
+;      spi_master_hw = ENC28J60_READ_BUF_MEM -- send read command
+;      data = spi_master_hw                  -- read data
+;      enc_cs = 1 -- disable chip
+;      return data
+;   end function
+
+;   --------------------------------------------------------------------------------
+;   -- write one byte into the network buffer
+;   --------------------------------------------------------------------------------
+;   procedure enc_tx_buffer'put(byte in data) is
+;
+;      -- put spi into mode 00
+;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
+;         SSPCON_CKP = 0
+;         SSPSTAT_CKE = 1
+;      end if
+;
+;      enc_cs = 0 -- enable chip
+;      spi_master_hw = ENC28J60_WRITE_BUF_MEM -- send write command
+;      spi_master_hw = data                   -- write data
+;      enc_cs = 1 -- disable chip
+;   end procedure
+
+;   -- proc to write to anywhere in tx array
+;   -- would be nice to use this to save ram
+;   procedure enc_array'put(word in address, byte in data) is
+;      var byte _address[2] at address
+;
+;      -- put spi into mode 00
+;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
+;         SSPCON_CKP = 0
+;         SSPSTAT_CKE = 1
+;      end if
+;
+;      enc_cs = 0 -- enable chip
+;
+;   	-- move the write pointer to write location
+;   	enc_write_register(EWRPTL, _address[0])
+;   	enc_write_register(EWRPTH, _address[1])
+;   	
+;      -- send write command
+;      spi_master_hw = ENC28J60_WRITE_BUF_MEM
+;      var word step = len
+;
+;      -- write the packet data
+;      spi_master_hw = data
+;
+;      enc_cs = 1 -- disable chip
+;   end procedure
 

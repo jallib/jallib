@@ -341,9 +341,9 @@ procedure tcp_send(byte in socket, word in data_size) is
 end procedure
 
 --------------------------------------------------------------------------------
--- Send ack to TCP
+-- Send ack or reply to TCP
 --------------------------------------------------------------------------------
-procedure tcp_send_ack(byte in socket) is
+procedure tcp_send_ack(byte in socket, word in data_size) is
    -- send an ack
    tcp_header_length = 20 -- set header length
    -- set socket settings
@@ -354,7 +354,7 @@ procedure tcp_send_ack(byte in socket) is
    _tcp_socket_flags[socket] = TCP_ACK
 
    -- send the packet
-   tcp_send(socket,0)
+   tcp_send(socket,data_size)
 end procedure
 
 --------------------------------------------------------------------------------
@@ -397,7 +397,7 @@ procedure tcp_read_packet() is
    var word temp = network_word[TCP_DESTINATION_PORT]
 
    -- create a socket, or see if one already exists.
-   -- if an error occurs, udp_error will be set for the user.
+   -- if an error occurs, tcp_error will be set.
    var byte socket = tcp_socket_create(temp,network_word[TCP_SOURCE_PORT])
 
    -- store the client's mac address
@@ -526,29 +526,28 @@ procedure tcp_read_packet() is
          ;_tcp_socket_flags[socket] = TCP_ACK -- we will send ACK from now on.
       ;end if
 
-
-   -- store the client's mac address
-   -- apparently: "all implementations of TCP/IP include an ARP cache to hold IP address to MAC address mappings"
-   -- see - http://www.softpanorama.org/Net/Internet_layer/arp.shtml
-   _tcp_socket_mac_0[socket] = network_data[6]
-   _tcp_socket_mac_1[socket] = network_data[7]
-   _tcp_socket_mac_2[socket] = network_data[8]
-   _tcp_socket_mac_3[socket] = network_data[9]
-   _tcp_socket_mac_4[socket] = network_data[10]
-   _tcp_socket_mac_5[socket] = network_data[11]
+      -- store the client's mac address
+      -- apparently: "all implementations of TCP/IP include an ARP cache to hold IP address to MAC address mappings"
+      -- see - http://www.softpanorama.org/Net/Internet_layer/arp.shtml
+      _tcp_socket_mac_0[socket] = network_data[6]
+      _tcp_socket_mac_1[socket] = network_data[7]
+      _tcp_socket_mac_2[socket] = network_data[8]
+      _tcp_socket_mac_3[socket] = network_data[9]
+      _tcp_socket_mac_4[socket] = network_data[10]
+      _tcp_socket_mac_5[socket] = network_data[11]
          
    elsif tcp_socket_status[socket] == TCP_STATUS_ESTABLISHED then
       -- We must have recieved DATA or an ACK
       -- Call our callback, then send an ACK (or other way around?)
    
-      -- Send an ACK if data in was not an ACK from something we sent.
-      -- OR send ACK if data recieved.
-      if !(_tcp_socket_acnowledgement_number[socket] == network_dword[TCP_SEQUENCE_NUMBER]) then
-         tcp_send_ack(socket)
-      end if
+;      -- Send an ACK if data in was not an ACK from something we sent.
+;      -- OR send ACK if data recieved.
+;      if !(_tcp_socket_acnowledgement_number[socket] == network_dword[TCP_SEQUENCE_NUMBER]) then
+;         tcp_send_ack(socket)
+;      end if
+
 
       -- call the tcp callback so the user may do something with the data.
-      -- maybe this should be after the ACK?
       if defined(tcp_receive_callback) then
          if tcp_data_size > 0 then
             tcp_receive_callback(socket,tcp_data_size)
@@ -565,7 +564,11 @@ end procedure
 -- Connect to a TCP server. Input a blank variable to be used as a socket name.
 --------------------------------------------------------------------------------
 procedure tcp_connect(byte in socket) is
-   ;arp_get_mac(1_000)
+
+   -- print a debug message
+   var byte sending_tcp[] = "---------- sending TCP connection request... ----------"
+   debug_string(DEBUG_2,sending_tcp)
+   debug_crlf(DEBUG_2)
 
    tcp_header_length = 28
 
@@ -611,20 +614,6 @@ procedure tcp_connect(byte in socket) is
 
    -- set status
    tcp_socket_status[socket] = TCP_STATUS_SYN_SENT
-end procedure
-
---------------------------------------------------------------------------------
--- Reply to TCP with data
---------------------------------------------------------------------------------
-procedure tcp_reply(byte in socket, word in data_size) is
-   tcp_header_length = 20 -- set header length
-   
-   -- set socket settings
-   _tcp_socket_acnowledgement_number[socket] = network_dword[TCP_SEQUENCE_NUMBER] + tcp_data_size
-   _tcp_socket_sequence_number[socket] = network_dword[TCP_ACKNOWLEDGEMENT_NUBMER]
-   _tcp_socket_flags[socket] = TCP_ACK
-
-   tcp_send(socket, data_size )
 end procedure
 
 
