@@ -21,18 +21,26 @@
 -- Notes:
 --
 
-const word MINIX_BYTES_PER_BLOCK = 1024   -- 1KB per block
--- Super Block is one block after boot block
-const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BYTES_PER_BLOCK
 
+
+-- Magic numbers used to idenfity filesystem version
 const word MINIX_SUPER_MAGIC   = 0x137F   -- original minix fs
 const word MINIX_SUPER_MAGIC2  = 0x138F   -- minix fs, 30 char names
 const word MINIX2_SUPER_MAGIC  = 0x2468   -- minix V2 fs
 const word MINIX2_SUPER_MAGIC2 = 0x2478   -- minix V2 fs, 30 char names
 const word MINIX3_SUPER_MAGIC  = 0x4D5A   -- minix V3 fs
 
-const byte MINIX_ERR_NONE = 0
-const byte MINIX_ERR_BAD_MAGIC_NUMBER = 10
+const word MINIX_BYTES_PER_BLOCK = 0x400  -- 1KB per block
+const word MINIX_BYTES_PER_INODE = 0x40   -- 64B per inode
+-- Super Block is one block after boot block
+const word MINIX_BOOT_BLOCK_ADDRESS = 0x00
+const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BOOT_BLOCK_ADDRESS + MINIX_BYTES_PER_BLOCK
+
+-- Error constants. Following "mkfs" convention, errors are added, so
+-- last_error can embed several errors
+const byte MINIX_ERR_NONE = 0b_0000_0000
+const byte MINIX_ERR_BAD_MAGIC_NUMBER     = 0b_0000_0001 -- magic number unsupported
+const byte MINIX_ERR_BAD_ZONE_LOCATION    = 0x_0000_0010 -- something is wrong about declared and computed data location
 
 -- Super Block parameters
 record minix_superblock_record is
@@ -46,12 +54,19 @@ record minix_superblock_record is
    word magic_number -- used to identify Minix version
    ;word padding -- ignored
    dword num_zones_v2
-   -- tmp
-   ;byte remaining[100]
+   -- following are custom variable implied by super-block
+   dword first_inode_bitmap_block
+   dword first_zone_bitmap_block
+   dword first_inode_block
 end record
-var minix_superblock_record minix_sb
+
+-- Inode
+record minix_inode_record is
+   byte loc
+end record
 
 -- Globals
+var minix_superblock_record minix_sb
 var byte last_error = MINIX_ERR_NONE
 const dword _current_address = 0
 
@@ -63,7 +78,7 @@ procedure minix_goto_block(byte in num) is
 end procedure
 
 -- Read Super-Block and fill record
-procedure minix_read_super_block() is
+procedure minix_read_super_block(bit in check_data_zone) is
 
    minix_goto_block(1)
 
@@ -101,10 +116,10 @@ procedure minix_read_super_block() is
    -- read magic number (only one Minix currently supported)
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
-   if data != MINIX2_SUPER_MAGIC2 then
-      last_error = MINIX_ERR_BAD_MAGIC_NUMBER
-   end if
    minix_sb.magic_number = word(data)
+   if minix_sb.magic_number != MINIX2_SUPER_MAGIC2 then
+      last_error = last_error + MINIX_ERR_BAD_MAGIC_NUMBER
+   end if
    -- padding field is ignored
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
@@ -114,6 +129,23 @@ procedure minix_read_super_block() is
    datatab[2] = minix_data_byte
    datatab[3] = minix_data_byte
    minix_sb.num_zones_v2 = data
+
+   -- compute location of first inode
+   -- Inode bitmap blocks are located just after super-block
+   minix_sb.first_inode_bitmap_block = 2
+   -- Zone bitmap  blocks are located just after inode bitmap blocks
+   minix_sb.first_zone_bitmap_block = minix_sb.first_inode_bitmap_block + minix_sb.num_inode_bitmap_blocks
+   -- Then inode themselves...
+   minix_sb.first_inode_block = minix_sb.first_zone_bitmap_block + minix_sb.num_zone_bitmap_blocks
+
+   if check_data_zone == true then
+      -- Then actual zone block (where data lies). Stored in super-block, just
+      -- perform a sanity check
+      var dword computed_data_zone = minix_sb.first_inode_block + (((dword(minix_sb.num_inodes) + 1) * MINIX_BYTES_PER_INODE)  / MINIX_BYTES_PER_BLOCK)
+      if minix_sb.first_data_zone != computed_data_zone then
+         last_error = last_error + MINIX_ERR_BAD_ZONE_LOCATION
+      end if
+   end if
 
    minix_stop_read()
    
@@ -125,15 +157,19 @@ if defined(minix_print_carrier) then
 -- Messages
 procedure minix_print_super_block() is
 
-   const byte STR_READ_SUPER_BLOCK[] = "Reading Super Block"
-   const byte STR_NUMBER_OF_NODES[] = "Number of nodes: "
-   const byte STR_NUMBER_OF_ZONES_V1[] = "Number of zones (v1): "
-   const byte STR_NUMBER_OF_INODE_BITMAP_BLOCKS[] = "Number of inode bitmap blocks: "
-   const byte STR_NUMBER_OF_ZONE_BITMAP_BLOCKS[] = "Number of zone bitmap blocks: "
-   const byte STR_FIRST_DATA_ZONE [] = "First data zone: "
-   const byte STR_MAX_FILE_SIZE [] = "Maximum file size: "
-   const byte STR_MAGIC_NUMBER[] = "Magic number: "
-   const byte STR_NUMBER_OF_ZONES_V2[] = "Number of zones (v2): "
+   const byte STR_READ_SUPER_BLOCK[] = "Super Block"
+   const byte STR_NUMBER_OF_NODES[] = "# nodes: "
+   const byte STR_NUMBER_OF_ZONES_V1[] = "# zones (v1): "
+   const byte STR_NUMBER_OF_INODE_BITMAP_BLOCKS[] = "# inode bitmap blocks: "
+   const byte STR_NUMBER_OF_ZONE_BITMAP_BLOCKS[] = "# zone bitmap blocks: "
+   const byte STR_1ST_DATA_ZONE [] = "@ 1st data zone: "
+   const byte STR_MAX_FILE_SIZE [] = "Max file size: "
+   const byte STR_MAGIC_NUMBER[] = "Magic #: "
+   const byte STR_NUMBER_OF_ZONES_V2[] = "# zones (v2): "
+   const byte STR_1ST_INODE_BP_BLOCK[] = "@ 1st inode bitmap block: "
+   const byte STR_1ST_ZONE_BP_BLOCK[] = "@ 1st zone bitmap block: "
+   const byte STR_1ST_INODE_BLOCK[] = "@ 1st inode block: "
+   ;;const byte STR_1ST_DATA_ZONE_COMPUTED[] = "@ 1st data zone (computed): "
 
    print_string(minix_print_carrier,STR_READ_SUPER_BLOCK)
    print_crlf(minix_print_carrier)
@@ -154,7 +190,7 @@ procedure minix_print_super_block() is
    print_word_hex(minix_print_carrier,minix_sb.num_zone_bitmap_blocks)
    print_crlf(minix_print_carrier)
 
-   print_string(minix_print_carrier,STR_FIRST_DATA_ZONE)
+   print_string(minix_print_carrier,STR_1ST_DATA_ZONE)
    print_word_hex(minix_print_carrier,minix_sb.first_data_zone)
    print_crlf(minix_print_carrier)
 
@@ -169,17 +205,26 @@ procedure minix_print_super_block() is
    print_string(minix_print_carrier,STR_NUMBER_OF_ZONES_V2)
    print_dword_hex(minix_print_carrier,minix_sb.num_zones_v2)
    print_crlf(minix_print_carrier)
-   
+
+   print_string(minix_print_carrier,STR_1ST_INODE_BP_BLOCK)
+   print_dword_hex(minix_print_carrier,minix_sb.first_inode_bitmap_block)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_1ST_ZONE_BP_BLOCK)
+   print_dword_hex(minix_print_carrier,minix_sb.first_zone_bitmap_block)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_1ST_INODE_BLOCK)
+   print_dword_hex(minix_print_carrier,minix_sb.first_inode_block)
+   print_crlf(minix_print_carrier)
+
 end procedure
 
 procedure minix_print_error() is
    const byte STR_ERROR[] = "Error # "
    print_string(minix_print_carrier,STR_ERROR)
-   if last_error != MINIX_ERR_NONE then
-      print_byte_dec(minix_print_carrier,last_error)
-   end if
+   print_byte_binary(minix_print_carrier,last_error)
    print_crlf(minix_print_carrier)
 end procedure
-
 
 end if
