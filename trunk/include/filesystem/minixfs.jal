@@ -37,13 +37,26 @@ const word MINIX_BOOT_BLOCK_ADDRESS = 0x00
 const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BOOT_BLOCK_ADDRESS + MINIX_BYTES_PER_BLOCK
 
 -- Error constants. Following "mkfs" convention, errors are added, so
--- last_error can embed several errors
+-- minix_last_error can embed several errors
 const byte MINIX_ERR_NONE = 0b_0000_0000
 const byte MINIX_ERR_BAD_MAGIC_NUMBER     = 0b_0000_0001 -- magic number unsupported
-const byte MINIX_ERR_BAD_ZONE_LOCATION    = 0x_0000_0010 -- something is wrong about declared and computed data location
+const byte MINIX_ERR_BAD_ZONE_LOCATION    = 0b_0000_0010 -- something is wrong about declared and computed data location
 
--- Super Block parameters
-record minix_superblock_record is
+-- Auto-resetting variable: errors are added, and when read, reset to 0
+var byte _minix_last_error = MINIX_ERR_NONE
+procedure minix_last_error'put(byte in val) is
+   _minix_last_error = _minix_last_error + val
+end procedure
+function minix_last_error'get() return byte is
+   var byte tmp = _minix_last_error
+   _minix_last_error = 0
+   return tmp
+end function
+
+-- -------------------------
+-- Super Block parameters --
+-- -------------------------
+record minix_superblock is
    word num_inodes
    word num_zones_v1
    word num_inode_bitmap_blocks
@@ -60,18 +73,33 @@ record minix_superblock_record is
    dword first_inode_block
 end record
 
--- Inode
-record minix_inode_record is
-   byte loc
+-- --------
+-- Inode --
+-- --------
+const word MINIX_INODE_ROOT_ID = 1
+
+record minix_inode_mode is
+   bit isdir
+   bit isfile
+   bit issymlink
+   bit iswhat  -- dunno...
+   byte user
+   byte group
+   byte other
+   byte all
+   -- there are other bits, but I give up on them...
+end record
+
+record minix_inode is
+   minix_inode_mode mode
 end record
 
 -- Globals
-var minix_superblock_record minix_sb
-var byte last_error = MINIX_ERR_NONE
+var minix_superblock minix_sb
 const dword _current_address = 0
 
 
-procedure minix_goto_block(byte in num) is
+procedure minix_goto_block(dword in num) is
    -- sd_card lib assumes 512-bytes / sector
    var dword addr = 2 * num
    minix_set_address(addr)
@@ -118,7 +146,7 @@ procedure minix_read_super_block(bit in check_data_zone) is
    datatab[1] = minix_data_byte
    minix_sb.magic_number = word(data)
    if minix_sb.magic_number != MINIX2_SUPER_MAGIC2 then
-      last_error = last_error + MINIX_ERR_BAD_MAGIC_NUMBER
+      minix_last_error = MINIX_ERR_BAD_MAGIC_NUMBER
    end if
    -- padding field is ignored
    datatab[0] = minix_data_byte
@@ -143,7 +171,7 @@ procedure minix_read_super_block(bit in check_data_zone) is
       -- perform a sanity check
       var dword computed_data_zone = minix_sb.first_inode_block + (((dword(minix_sb.num_inodes) + 1) * MINIX_BYTES_PER_INODE)  / MINIX_BYTES_PER_BLOCK)
       if minix_sb.first_data_zone != computed_data_zone then
-         last_error = last_error + MINIX_ERR_BAD_ZONE_LOCATION
+         minix_last_error = MINIX_ERR_BAD_ZONE_LOCATION
       end if
    end if
 
@@ -151,6 +179,61 @@ procedure minix_read_super_block(bit in check_data_zone) is
    
 end procedure
 
+function minix_get_inode(word in inode_num) return minix_inode is
+   -- inodes are 64-bytes long, so there can be multiple inodes on one block
+   -- /!\ inode n°0 doesn't exist (and it's a special value)
+   var dword byteaddr = (minix_sb.first_inode_block * MINIX_BYTES_PER_BLOCK) + ((inode_num - 1) * MINIX_BYTES_PER_INODE)
+   var dword blockaddr = byteaddr / MINIX_BYTES_PER_BLOCK
+   minix_goto_block(blockaddr)
+   -- dummy read bytes until we reach inode address
+   var dword remaining = byteaddr - (blockaddr * MINIX_BYTES_PER_BLOCK)
+   minix_print_carrier = "!"
+   print_dword_hex(minix_print_carrier,remaining)
+   var byte _trash
+   for remaining loop
+      _trash = minix_data_byte
+   end loop
+
+   var minix_inode inode
+
+   var dword data
+   var byte datatab[4] at data
+   -- read number of inodes
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   print_word_binary(minix_print_carrier,word(data))
+   print_crlf(minix_print_carrier)
+   
+   -- read file/dir/symlink bit
+   if (datatab[1] & 0b_10000000) == 0b_1000_0000 then
+       inode.mode.isfile = true
+   end if
+   if (datatab[1] & 0b_01000000) == 0b_0100_0000 then
+       inode.mode.isdir = true
+   end if
+   if (datatab[1] & 0b_00100000) == 0b_0010_0000  then
+       inode.mode.issymlink = true
+   end if
+   if (datatab[1] & 0b_00010000) == 0b_0001_0000 then
+       inode.mode.iswhat = true
+   end if
+
+   -- read augo rwx bits
+   inode.mode.all = (datatab[1] & 0b_0000_1110) >> 1
+   inode.mode.user = byte((word(data) & 0b_0000_0001_1100_0000) >> 6)
+   inode.mode.group = (datatab[0] & 0b_0011_1000) >> 3
+   inode.mode.other = datatab[0] & 0b_0000_0111
+
+   minix_stop_read()
+
+   return inode
+
+end function
+
+
+-- -----------------
+-- DEBUG/DEV CODE --
+-- -----------------
 
 if defined(minix_print_carrier) then
 
@@ -223,8 +306,54 @@ end procedure
 procedure minix_print_error() is
    const byte STR_ERROR[] = "Error # "
    print_string(minix_print_carrier,STR_ERROR)
-   print_byte_binary(minix_print_carrier,last_error)
+   print_byte_binary(minix_print_carrier,minix_last_error)
    print_crlf(minix_print_carrier)
+end procedure
+
+procedure minix_print_inode(minix_inode in inode) is
+   const byte STR_INODE[] = "Inode"
+   const byte STR_MODE_FILETYPES[] = "Filetype: "
+   const byte STR_MODE_PERMS[] = "Permissions: "
+   const byte STR_MODE_PERM_ALL[] = " - all: "
+   const byte STR_MODE_PERM_USER[] = " - user: "
+   const byte STR_MODE_PERM_GROUP[] = " - group: "
+   const byte STR_MODE_PERM_OTHER[] = " - other: "
+   const byte STR_MODE_FILE[] = "file"
+   const byte STR_MODE_DIR[] = "dir"
+   const byte STR_MODE_SYMLINK[] = "symlink"
+   const byte STR_MODE_WHAT[] = "dunno"
+
+   print_string(minix_print_carrier,STR_INODE)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_MODE_FILETYPES)
+   if inode.mode.isfile then
+      print_string(minix_print_carrier,STR_MODE_FILE)
+   elsif inode.mode.isdir then
+      print_string(minix_print_carrier,STR_MODE_DIR)
+   elsif inode.mode.issymlink then
+      print_string(minix_print_carrier,STR_MODE_SYMLINK)
+   else
+      print_string(minix_print_carrier,STR_MODE_WHAT)
+   end if
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_MODE_PERMS)
+   print_crlf(minix_print_carrier)
+   print_string(minix_print_carrier,STR_MODE_PERM_ALL)
+   print_byte_dec(minix_print_carrier,inode.mode.all)
+   print_crlf(minix_print_carrier)
+   print_string(minix_print_carrier,STR_MODE_PERM_USER)
+   print_byte_dec(minix_print_carrier,inode.mode.user)
+   print_crlf(minix_print_carrier)
+   print_string(minix_print_carrier,STR_MODE_PERM_GROUP)
+   print_byte_dec(minix_print_carrier,inode.mode.group)
+   print_crlf(minix_print_carrier)
+   print_string(minix_print_carrier,STR_MODE_PERM_OTHER)
+   print_byte_dec(minix_print_carrier,inode.mode.other)
+   print_crlf(minix_print_carrier)
+
+
 end procedure
 
 end if
