@@ -1,0 +1,185 @@
+-- Title: Minix v2 filesystem implementation
+-- Author: Sebastien Lelong, Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Minix v2 implementation
+-- Partitions aren't supported, so you have to create a filesystem on the whole
+-- available memory. Typically, instead of "mkfs.minix -v /dev/sdc1", you'll
+-- have to "mkfs.minix -v /dev/sdc" (and remove sdc1 partition with fdisk)
+-- Some useful commands:
+--  - fsck.minix -f -v -s /dev/sdc
+--       will print Super-Block and some other information about files, dirs, state
+--  - hexdump -C /dev/sdc
+--       will dump Minix FS content (only changing lines)
+--  - hexdump -v -C /dev/sdc
+--       will do the same, but dump all lines, even if identical
+--
+-- Notes:
+--
+
+const word MINIX_BYTES_PER_BLOCK = 1024   -- 1KB per block
+-- Super Block is one block after boot block
+const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BYTES_PER_BLOCK
+
+const word MINIX_SUPER_MAGIC   = 0x137F   -- original minix fs
+const word MINIX_SUPER_MAGIC2  = 0x138F   -- minix fs, 30 char names
+const word MINIX2_SUPER_MAGIC  = 0x2468   -- minix V2 fs
+const word MINIX2_SUPER_MAGIC2 = 0x2478   -- minix V2 fs, 30 char names
+const word MINIX3_SUPER_MAGIC  = 0x4D5A   -- minix V3 fs
+
+const byte MINIX_ERR_NONE = 0
+const byte MINIX_ERR_BAD_MAGIC_NUMBER = 10
+
+-- Super Block parameters
+record minix_superblock_record is
+   word num_inodes
+   word num_zones_v1
+   word num_inode_bitmap_blocks
+   word num_zone_bitmap_blocks
+   word first_data_zone
+   ;word log2 -- ignored because #blocks == #zones
+   dword max_file_size
+   word magic_number -- used to identify Minix version
+   ;word padding -- ignored
+   dword num_zones_v2
+   -- tmp
+   ;byte remaining[100]
+end record
+var minix_superblock_record minix_sb
+
+-- Globals
+var byte last_error = MINIX_ERR_NONE
+const dword _current_address = 0
+
+
+procedure minix_goto_block(byte in num) is
+   -- sd_card lib assumes 512-bytes / sector
+   var dword addr = 2 * num
+   minix_set_address(addr)
+end procedure
+
+-- Read Super-Block and fill record
+procedure minix_read_super_block() is
+
+   minix_goto_block(1)
+
+   var dword data
+   var byte datatab[4] at data
+   -- read number of inodes
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   minix_sb.num_inodes = word(data)
+   -- read number of zones (Minix v1)
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   minix_sb.num_zones_v1 = word(data)
+   -- read number of inode bitmap blocks
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   minix_sb.num_inode_bitmap_blocks = word(data)
+   -- read number of zone bitmap blocks
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   minix_sb.num_zone_bitmap_blocks = word(data)
+   -- read first data zone (it's a block number)
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   minix_sb.first_data_zone = word(data)
+   -- log2 field is ignored
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   -- read maximum file size
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   minix_sb.max_file_size = data
+   -- read magic number (only one Minix currently supported)
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   if data != MINIX2_SUPER_MAGIC2 then
+      last_error = MINIX_ERR_BAD_MAGIC_NUMBER
+   end if
+   minix_sb.magic_number = word(data)
+   -- padding field is ignored
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   -- read number of zones (Minix v2)
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   minix_sb.num_zones_v2 = data
+
+   minix_stop_read()
+   
+end procedure
+
+
+if defined(minix_print_carrier) then
+
+-- Messages
+procedure minix_print_super_block() is
+
+   const byte STR_READ_SUPER_BLOCK[] = "Reading Super Block"
+   const byte STR_NUMBER_OF_NODES[] = "Number of nodes: "
+   const byte STR_NUMBER_OF_ZONES_V1[] = "Number of zones (v1): "
+   const byte STR_NUMBER_OF_INODE_BITMAP_BLOCKS[] = "Number of inode bitmap blocks: "
+   const byte STR_NUMBER_OF_ZONE_BITMAP_BLOCKS[] = "Number of zone bitmap blocks: "
+   const byte STR_FIRST_DATA_ZONE [] = "First data zone: "
+   const byte STR_MAX_FILE_SIZE [] = "Maximum file size: "
+   const byte STR_MAGIC_NUMBER[] = "Magic number: "
+   const byte STR_NUMBER_OF_ZONES_V2[] = "Number of zones (v2): "
+
+   print_string(minix_print_carrier,STR_READ_SUPER_BLOCK)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_NUMBER_OF_NODES)
+   print_word_hex(minix_print_carrier,minix_sb.num_inodes)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_NUMBER_OF_ZONES_V1)
+   print_word_hex(minix_print_carrier,minix_sb.num_zones_v1)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_NUMBER_OF_INODE_BITMAP_BLOCKS)
+   print_word_hex(minix_print_carrier,minix_sb.num_inode_bitmap_blocks)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_NUMBER_OF_ZONE_BITMAP_BLOCKS)
+   print_word_hex(minix_print_carrier,minix_sb.num_zone_bitmap_blocks)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_FIRST_DATA_ZONE)
+   print_word_hex(minix_print_carrier,minix_sb.first_data_zone)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_MAX_FILE_SIZE)
+   print_dword_hex(minix_print_carrier,minix_sb.max_file_size)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_MAGIC_NUMBER)
+   print_word_hex(minix_print_carrier,minix_sb.magic_number)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_NUMBER_OF_ZONES_V2)
+   print_dword_hex(minix_print_carrier,minix_sb.num_zones_v2)
+   print_crlf(minix_print_carrier)
+   
+end procedure
+
+procedure minix_print_error() is
+   const byte STR_ERROR[] = "Error # "
+   print_string(minix_print_carrier,STR_ERROR)
+   if last_error != MINIX_ERR_NONE then
+      print_byte_dec(minix_print_carrier,last_error)
+   end if
+   print_crlf(minix_print_carrier)
+end procedure
+
+
+end if
