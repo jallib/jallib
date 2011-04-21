@@ -164,11 +164,11 @@ const NETWORK_USE_IP = TRUE
 const NETWORK_USE_ARP = TRUE -- suggested for ethernet, not slip
 const NETWORK_USE_ARP_CALLBACKS = TRUE
 --
-const NETWORK_USE_ICMP = FALSE -- required for ping only
-const NETWORK_USE_ICMP_CALLBACKS = FALSE
+const NETWORK_USE_ICMP = TRUE -- required for ping only
+const NETWORK_USE_ICMP_CALLBACKS = TRUE
 --
-const NETWORK_USE_UDP = FALSE -- udp can transfer data
-const NETWORK_USE_UDP_CALLBACKS = FALSE
+const NETWORK_USE_UDP = TRUE -- udp can transfer data
+const NETWORK_USE_UDP_CALLBACKS = TRUE
 --
 const NETWORK_USE_TCP = TRUE -- under development. requires ARP
 const NETWORK_USE_TCP_CALLBACKS = TRUE
@@ -188,8 +188,32 @@ include ethernet_mac
 include ip_header
 include arp
 
+const ICMP_ECHO_DATA_LENGTH = 32 -- size of data to send with PING
+include icmp
+
+-- setup UDP
+const byte UDP_MAX_SOCKETS = 10 -- max number of udp connections (9 bytes ram per connection)
+const bit UDP_CHECKSUM_IN = FALSE -- TRUE not supported yet on incomming packets
+const bit UDP_CHECKSUM_OUT = FALSE -- TRUE not supported yet on outgoing packets
+--
+include udp
+udp_init()
+--
+-- LOCAL UDP SERVER SETTINGS
+const byte UDP_LOCAL_SERVER_PORT = 111 -- port of local UDP server
+--
+-- LOCAL UDP CLIENT SETTINGS
+var byte udp_conn_1                       -- create a variable to be used as a udp client.
+const word UDP_LOCAL_CLIENT_PORT = 1234        -- port of local UDP client
+const word UDP_REMOTE_SERVER_PORT = 251        -- port of remote UDP server
+network_set_remote_ip(192,168,0,10)       -- set IP of server to connect to.
+udp_conn_1 = udp_socket_create(UDP_LOCAL_CLIENT_PORT,UDP_REMOTE_SERVER_PORT)  -- open a socket
+;udp_socket_remove(udp_conn_1) -- I guess we'll never remove this socket
+
+print_udp_socket_info(1,udp_conn_1)
+
 -- setup TCP
-const TCP_MAX_SOCKETS = 5 -- max number of TCP connections (9 bytes ram per connection)
+const TCP_MAX_SOCKETS = 10 -- max number of TCP connections (9 bytes ram per connection)
 const TCP_CHECKSUM_IN = FALSE -- TRUE not supported yet on incomming packets
 const TCP_CHECKSUM_OUT = TRUE -- FALSE not supported yet. TCP MUST do checksum out??
 --
@@ -198,19 +222,19 @@ tcp_init()
 --
 -- LOCAL TCP SERVER SETTINGS
 const byte TCP_LOCAL_SERVER_PORT = 222 -- port of local TCP server
-;   --
-;   -- LOCAL TCP CLIENT SETTINGS (NOTE: NOT FULLY TESTED, HAS ISSUES)
-;   var byte tcp_conn_1                          -- create a variable to be used as a TCP client.
-;   var word TCP_LOCAL_CLIENT_PORT = random_word -- port of local TCP client
-;   const TCP_REMOTE_SERVER_PORT = 333           -- port of remote TCP server
-;   network_set_remote_ip(192,168,0,10)          -- set IP of server to connect to.
-;   tcp_conn_1 = tcp_socket_create(TCP_LOCAL_CLIENT_PORT,TCP_REMOTE_SERVER_PORT)  -- create a socket
-;   --
-;   -- connect to tcp client
-;   network_set_remote_ip(192,168,0,10)
-;   arp_get_mac(5,1_000)
-;   tcp_connect(tcp_conn_1) -- connect to TCP server
-;   ;TCP_socket_remove(tcp_conn_1) -- I guess we'll never remove this socket
+--
+-- LOCAL TCP CLIENT SETTINGS (NOTE: NOT FULLY TESTED, HAS ISSUES)
+var byte tcp_conn_1                          -- create a variable to be used as a TCP client.
+var word TCP_LOCAL_CLIENT_PORT = random_word -- port of local TCP client
+const TCP_REMOTE_SERVER_PORT = 333           -- port of remote TCP server
+network_set_remote_ip(192,168,0,10)          -- set IP of server to connect to.
+tcp_conn_1 = tcp_socket_create(TCP_LOCAL_CLIENT_PORT,TCP_REMOTE_SERVER_PORT)  -- create a socket
+--
+-- connect to tcp client
+network_set_remote_ip(192,168,0,10)
+arp_get_mac(5,1_000)
+tcp_connect(tcp_conn_1) -- connect to TCP server
+;TCP_socket_remove(tcp_conn_1) -- I guess we'll never remove this socket
 
 -- web server data for TCP
 -- must at least contain:
@@ -410,12 +434,133 @@ procedure arp_request_callback() is
 end procedure
 
 --------------------------------------------------------------------------------
+-- called when we get a ping reply (after we sent a ping out somewhere)
+--------------------------------------------------------------------------------
+procedure icmp_echo_reply_callback() is
+    -- print a message
+    var byte get_ping[] = "ping reply recieved!"
+    print_string(serial_data,get_ping)
+    print_crlf(serial_data)
+end procedure
+--------------------------------------------------------------------------------
+-- called when we get a ping from an external source
+--------------------------------------------------------------------------------
+procedure icmp_echo_callback() is
+      led2 = !led2 -- toggle led
+end procedure
+
+--------------------------------------------------------------------------------
+-- Called when UDP packet is received. Minumum data size is 18 bytes.
+--------------------------------------------------------------------------------
+procedure udp_receive_callback(byte in socket,word in udp_data_size) is
+   -- print info about the socket received
+   print_udp_socket_info(0,socket)
+
+   -- if there was an error
+   if udp_error != 0 then
+   end if
+   
+   -- if it is our server connection
+   -- if a client is sending information to our UDP server on PIC.
+   if udp_socket_local_port[socket] == UDP_LOCAL_SERVER_PORT then
+      -- do something with the data, we'll print it to serial port
+      var word step
+      for udp_data_size using step loop               -- for each byte in packet
+         serial_data = udp_data[step]
+      end loop
+
+      -- maybe you want to talk back to the client?
+      -- send a reply message
+      udp_data[0] = "T"
+      udp_data[1] = "H"
+      udp_data[2] = "A"
+      udp_data[3] = "N"
+      udp_data[4] = "K"
+      udp_data[5] = "S"
+      udp_data[6] = "!"
+
+      print_crlf(serial_data)
+      var byte sending_udp[] = "Sending reply UDP data" -- print a message
+      print_string(serial_data,sending_udp)
+      print_crlf(serial_data)
+      udp_send(socket,7)        -- send 7 bytes data to socket
+
+      udp_socket_remove(socket) -- remove the socket
+   else
+
+      -- if it is our client connection
+      -- if we had sent information to a server, and the server replyed on same port.
+      if udp_socket_local_port[socket] == UDP_LOCAL_CLIENT_PORT &
+         udp_socket_ip[socket] == udp_socket_ip[udp_conn_1] then
+         -- do something with the data, we'll print it to serial port
+         var word step
+         for udp_data_size using step loop               -- for each byte in packet
+            serial_data = udp_data[step]
+         end loop
+      end if
+
+   ;   -- If it is our client connection
+   ;   -- you can use this method if the server reply's using
+   ;   -- the same source port as the server.
+   ;   -- This is untested since my PC programming software does not
+   ;   -- do this.
+   ;   if socket == udp_conn_1 then
+   ;       print_crlf(serial_data)
+   ;       var byte sending_udp[] = "Welcome client!" -- print a message
+   ;       print_string(serial_data,sending_udp)
+   ;       print_crlf(serial_data)
+   ;
+   ;      -- do something with the data, we'll print it to serial port
+   ;      var word step
+   ;      for udp_data_size using step loop               -- for each byte in packet
+   ;         serial_data = udp_data[step]
+   ;      end loop
+   ;   end if
+   ;   udp_socket_remove(socket) -- remove the socket
+      
+   end if
+   
+   print_crlf(serial_data)
+end procedure
+
+
+--------------------------------------------------------------------------------
 -- Receive TCP data.
 --------------------------------------------------------------------------------
 procedure tcp_receive_callback(byte in socket,word in tcp_data_size) is
+
    -- do webserver stuff
    http_server(socket,tcp_data_size)
+
+   -- if it is our server connection
+   -- if a client is sending information to our TCP server on PIC.
+   if tcp_socket_local_port[socket] == TCP_LOCAL_SERVER_PORT then
+      -- send data to serial port
+      var word step
+      for tcp_data_size using step loop -- for each byte in packet
+         ;print_byte_hex(serial_data,tcp_data[step])
+         serial_data = tcp_data[step]
+      end loop
+      
+      -- you must send an ack. Set the size of data you wish to send.
+      tcp_send_ack(socket,0)
+   else
+   
+      -- if it is our client connection
+      -- print data to serial port
+      if socket == tcp_conn_1 then
+         -- send incomming data to serial port
+         var word step
+         for tcp_data_size using step loop -- for each byte in packet
+            ;print_byte_hex(serial_data,tcp_data[step])
+            serial_data = tcp_data[step]
+         end loop
+      end if
+   end if
+
+   print_crlf(serial_data)
 end procedure
+
 
 -- MAIN PROGRAM LOOP --
 
@@ -486,7 +631,124 @@ end if
 -- main loop
 var word packet_size
 forever loop
+   -- send ping when button is pressed
+   if button == LOW then
 
+      -- print a message
+      print_crlf(serial_data)
+      var byte sending_ping[] = "sending ping!"
+      print_string(serial_data,sending_ping)
+      print_crlf(serial_data)
+
+      network_set_remote_ip(192,168,0,10)  -- ip address of local network PC
+      ;network_set_remote_ip(74,125,115,106)  -- ping google's ip address
+      arp_get_mac(5,1_000)                   -- get mac address for ethernet layer
+      icmp_send_echo()                       -- send an icmp echo (ping) request
+
+      while button == LOW loop
+         _usec_delay(100_000)
+      end loop
+
+   end if
+   
+   -- Send data via UDP when button is pressed
+   if button2 == LOW then
+      -- print a message
+       print_crlf(serial_data)
+      var byte sending_udp[] = "sending UDP data to UDP server"
+      print_string(serial_data,sending_udp)
+      print_crlf(serial_data)
+
+      -- get mac of remote
+      network_set_remote_ip(192,168,0,10)
+      arp_get_mac(5,1_000)
+
+       -- set remote ip
+      ;      network_set_remote_ip(192,168,0,1055)
+      ;      network_set_remote_ip(192,168,2,2)
+       ;network_set_remote_ip(192,168,0,105)
+
+       -- EXAMPLE 1: Send data from udp_data[] internal array
+       -- less ram usage and more cpu cycles then udp_send_array()
+       -- send UDP data "HELLO"
+       udp_data[0] = "H"                                 -- set data
+       udp_data[1] = "E"
+       udp_data[2] = "L"
+       udp_data[3] = "L"
+       udp_data[4] = "O"
+       --
+       ;udp_conn_1 = udp_socket_create(1234,UDP_LOCAL_CLIENT_PORT) -- connect
+       --
+       print_udp_socket_info(1,udp_conn_1) -- print socket info
+
+       --
+       if udp_error == 0 then                     -- if there are no errors
+          var byte sending_udp[] = "Sending UDP data" -- print a message
+          print_string(serial_data,sending_udp)
+          print_crlf(serial_data)
+          udp_send(udp_conn_1,5)         -- send 5 bytes data to udp_conn_1
+       else
+          var byte udp_error[] = "UDP ERROR - NO SOCKETS AVAILABLE" -- print a message
+          print_string(serial_data,udp_error)
+          print_crlf(serial_data)
+       end if
+
+       --
+       ;udp_socket_remove(udp_conn_1) -- remove the socket
+
+      ;      -- EXAMPLE 2: Send an array
+      ;      -- more ram usage and less cpu cycles then udp_send()
+      ;      -- send the data (source port, destination port, data)
+      ;      --
+      ;      ;udp_conn_1 = udp_socket_create(1234,UDP_LOCAL_CLIENT_PORT) -- connect
+      ;      --
+      ;      print_udp_socket_info(1,udp_conn_1) -- print socket info
+      ;      --
+      ;      var byte test[] = "HELLO WORLD"                   -- set data
+      ;      if udp_error == 0 then                            -- if there are no errors
+      ;         var byte sending_udp[] = "Sending UDP data"    -- print a message
+      ;         print_string(serial_data,sending_udp)
+      ;         print_crlf(serial_data)
+      ;         udp_send_array(udp_conn_1,test)                -- send udp data
+      ;      else
+      ;         var byte sending_udp[] = "UDP error occurred"  -- print a message
+      ;         print_string(serial_data,sending_udp)
+      ;         print_crlf(serial_data)
+      ;      end if
+      ;      ;udp_socket_remove(udp_conn_1)                 -- remove
+
+
+      while button2 == LOW loop
+        _usec_delay(100_000)
+      end loop
+
+   end if
+   
+   
+   -- Send data via TCP when button is pressed
+   if button3 == LOW then
+      -- print a message
+      var byte sending_tcp[] = "sending TCP data to TCP server"
+      print_string(serial_data,sending_tcp)
+      print_crlf(serial_data)
+
+      while button3 == LOW loop
+         _usec_delay(100_000)
+      end loop
+
+
+      network_set_remote_ip(192,168,0,10)
+      arp_get_mac(5,1_000)
+
+      tcp_data[0] = "T"
+      tcp_data[1] = "E"
+      tcp_data[2] = "S"
+      tcp_data[3] = "T"
+      
+      tcp_send(tcp_conn_1, 4)
+
+   end if
+   
    -- poll to see if there are network packets available
    network_poll()
    

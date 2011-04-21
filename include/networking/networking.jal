@@ -121,11 +121,22 @@ elsif NETWORK_LINK_LAYER == NETWORK_ETHERNET then
       alias network_get_packet_size is enc_packet_size              -- get the size of the next packet
       alias network_clear_rx_queue is enc_clear_rx_buffer           -- clear one packet from the recieve buffer
       alias network_local_mac is enc_local_mac                      -- alias device mac address
-      alias network_data is enc_tx_array                            -- alias transmit array
+      alias network_data is enc_array                            -- alias transmit array
       alias network_get_packet is enc_read_buffer                   -- procedure to get data out from the network
       
       -- procedure to send data out onto the network
       procedure network_send_packet(word in size) is
+      
+         if debug_lvl_4 == TRUE then
+            var word step
+            debug_crlf(4)
+            for size using step loop
+               debug_byte_hex(4,network_data[step])
+               debug_data = " "
+            end loop
+            debug_crlf(4)
+         end if
+      
          enc_write_buffer(size)  -- writes data in network_data[] to tx buffer
          enc_end_packet(size)    -- end packet data/send the data
       end procedure
@@ -160,8 +171,8 @@ if defined(NETWORK_USE_ICMP) then
    if NETWORK_USE_ICMP == TRUE then
       procedure icmp_read_packet()
       if NETWORK_USE_ICMP_CALLBACKS == TRUE then
-         procedure icmp_ping_reply_callback()
-         procedure icmp_ping_callback()
+         procedure icmp_echo_reply_callback()
+         procedure icmp_echo_callback()
       end if
    end if
 end if
@@ -254,68 +265,6 @@ end if
 NETWORK_CS = 0       -- use internal clock
 ;NETWORK_IE = 1      -- enable interrupt
 NETWORK_IF  = off    -- clear overflow to start timer
-
---------------------------------------------------------------------------------
--- Reads a recieve packet. Verifies IP Header data such as IP
--- address and checksum (with ip_header.jal), then sends the
--- rest of the data to the correct procedure depending on packet type.
---------------------------------------------------------------------------------
-procedure network_received_packet() is
-
-   -- get the size of the current packet
-   network_packet_size = network_get_packet_size
-
-   ;network_data_in_use = TRUE
-   network_var_offset = 0
-
-   ;print_word_dec(serial_data,network_packet_size)
-   ;serial_data = " "
-   ;print_word_dec(serial_data,enc_packets_available())
-   ;print_crlf(serial_data)
-
-   -- print "-- PACKET RECEIVED: x bytes --"
-   debug_crlf(DEBUG_2)
-   const byte str1[] = "---------- PACKET RECEIVED: "
-   debug_string(DEBUG_3, str1)
-   debug_word_dec(DEBUG_3,network_packet_size)
-   const byte str_size[] = " bytes ----------"
-   debug_string(DEBUG_3, str_size)
-   debug_crlf(DEBUG_2)
-   
-;   -- packet should not be 0 size in length, there could be an issue?
-;   if network_packet_size == 0 then
-;      if defined(network_clear_rx_queue) then
-;         network_clear_rx_queue() -- clear bad data in the queues
-;      end if
-;      return
-;   end if
-
-   if network_packet_size > network_max_packet_size then
-      -- your packet may have a problem, it is too large
-      const byte str[] = "---------- ERROR: packet too large for buffer ----------"
-      debug_string(debug_lvl_1, str)
-      debug_crlf(debug_lvl_1)
-
-      if defined(network_clear_rx_queue) then
-         network_clear_rx_queue() -- clear bad data in the queues
-      end if
-
-      return -- ignore the packet
-   end if
-
-   network_get_packet(network_packet_size)
-
-   if NETWORK_LINK_LAYER == NETWORK_ETHERNET then
-      ethernet_read_packet()
-   else
-      ip_header_read_packet()
-   end if
-
-   --
-   debug_crlf(DEBUG_3)
-
-   ;network_data_in_use = FALSE
-end procedure
 
 ----------------------------------------------------------------
 -- set remote ip address
@@ -432,17 +381,6 @@ function network_checksum_16_byte_verify(word in start, word in size) return bit
 end function
 
 ----------------------------------------------------------------
--- poll to see if there are any packets waiting for us
-----------------------------------------------------------------
-procedure network_poll() is
-   pragma inline
-;   if network_rx_packet_available & !network_data_in_use then
-   if network_rx_packet_available then
-      network_received_packet() -- get the packet
-   end if
-end procedure
-
-----------------------------------------------------------------
 -- functions to get/put variables into the network array
 ----------------------------------------------------------------
 function network_byte'get(word in variable) return byte is
@@ -516,7 +454,81 @@ end function
 ;      end if
 ;   end procedure
 
+--------------------------------------------------------------------------------
+-- Reads a recieve packet. Verifies IP Header data such as IP
+-- address and checksum (with ip_header.jal), then sends the
+-- rest of the data to the correct procedure depending on packet type.
+--------------------------------------------------------------------------------
+procedure network_received_packet() is
 
+   -- get the size of the current packet
+   network_packet_size = network_get_packet_size
+
+   network_var_offset = 0
+
+   -- print "-- PACKET RECEIVED: x bytes --"
+   debug_crlf(DEBUG_2)
+   const byte str1[] = "---------- PACKET RECEIVED: "
+   debug_string(DEBUG_3, str1)
+   debug_word_dec(DEBUG_3,network_packet_size)
+   const byte str_size[] = " bytes ----------"
+   debug_string(DEBUG_3, str_size)
+   debug_crlf(DEBUG_2)
+
+;   print_word_dec(serial_data,network_packet_size)
+;   serial_data = " "
+;   print_word_dec(serial_data,enc_packets_available())
+;   serial_data = " "
+;   print_byte_dec(serial_data,	enc_spi_read_command(ENC28J60_READ_CTRL_REG, EIR) )
+;   print_crlf(serial_data)
+
+   -- packet should not be 0 size in length, there could be an issue.
+   -- note: enc28j60 gives packet size of 0 if rx buffer overflows, so
+   -- this is needed at the moment. Maybe I need a check buffer status proc.
+   if network_packet_size == 0 then
+      if defined(network_clear_rx_queue) then
+         network_clear_rx_queue() -- clear bad data in the queues
+      end if
+      return
+   end if
+
+   if network_packet_size > network_max_packet_size then
+      -- your packet may have a problem, it is too large
+      const byte str[] = "---------- ERROR: packet too large for buffer ----------"
+      debug_string(debug_lvl_1, str)
+      debug_crlf(debug_lvl_1)
+
+      if defined(network_clear_rx_queue) then
+         network_clear_rx_queue() -- clear bad data in the queues
+      end if
+
+      return -- ignore the packet
+   end if
+
+   network_get_packet(network_packet_size)
+
+   if NETWORK_LINK_LAYER == NETWORK_ETHERNET then
+      ethernet_read_packet()
+   else
+      ip_header_read_packet()
+   end if
+
+   --
+   debug_crlf(DEBUG_3)
+
+   ;network_data_in_use = FALSE
+end procedure
+
+----------------------------------------------------------------
+-- poll to see if there are any packets waiting for us
+----------------------------------------------------------------
+procedure network_poll() is
+   pragma inline
+;   if network_rx_packet_available & !network_data_in_use then
+   if network_rx_packet_available then
+      network_received_packet() -- get the packet
+   end if
+end procedure
 
 
 
