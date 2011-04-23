@@ -79,6 +79,7 @@ end record
 const word MINIX_INODE_ROOT_ID = 1
 
 record minix_inode_mode is
+   byte filetype
    bit isdir
    bit isfile
    bit issymlink
@@ -91,7 +92,30 @@ record minix_inode_mode is
 end record
 
 record minix_inode is
+   -- INTERNAL
+   word id
+   -- SPECS
    minix_inode_mode mode
+   word num_links
+   -- user/group owner
+   word uid
+   word gid
+   dword filesize
+   -- access/modification/change times
+   dword atime
+   dword mtime
+   dword ctime
+   -- where actual data lies
+   dword zone0
+   dword zone1
+   dword zone2
+   dword zone3
+   dword zone4
+   dword zone5
+   dword zone6
+   dword indirect_zone
+   dword double_indirect_zone
+   dword triple_indirect_zone -- unimplemented (minix v3)
 end record
 
 -- Globals
@@ -187,34 +211,37 @@ function minix_get_inode(word in inode_num) return minix_inode is
    minix_goto_block(blockaddr)
    -- dummy read bytes until we reach inode address
    var dword remaining = byteaddr - (blockaddr * MINIX_BYTES_PER_BLOCK)
-   minix_print_carrier = "!"
-   print_dword_hex(minix_print_carrier,remaining)
    var byte _trash
    for remaining loop
       _trash = minix_data_byte
    end loop
 
    var minix_inode inode
+   -- internal
+   inode.id = inode_num
 
    var dword data
    var byte datatab[4] at data
    -- read number of inodes
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
-   print_word_binary(minix_print_carrier,word(data))
-   print_crlf(minix_print_carrier)
    
    -- read file/dir/symlink bit
-   if (datatab[1] & 0b_10000000) == 0b_1000_0000 then
+   -- init values (if given inode record has already been used
+   -- it may be polluted by previous data)
+   inode.mode.isfile = false
+   inode.mode.isdir = false
+   inode.mode.issymlink = false
+   inode.mode.iswhat = false
+
+   inode.mode.filetype = (datatab[1] & 0b_1111_0000) >> 4
+   if inode.mode.filetype == 0b_1000 then
        inode.mode.isfile = true
-   end if
-   if (datatab[1] & 0b_01000000) == 0b_0100_0000 then
+   elsif inode.mode.filetype == 0b_0100 then
        inode.mode.isdir = true
-   end if
-   if (datatab[1] & 0b_00100000) == 0b_0010_0000  then
+   elsif inode.mode.filetype == 0b_1010 then
        inode.mode.issymlink = true
-   end if
-   if (datatab[1] & 0b_00010000) == 0b_0001_0000 then
+   else
        inode.mode.iswhat = true
    end if
 
@@ -223,6 +250,118 @@ function minix_get_inode(word in inode_num) return minix_inode is
    inode.mode.user = byte((word(data) & 0b_0000_0001_1100_0000) >> 6)
    inode.mode.group = (datatab[0] & 0b_0011_1000) >> 3
    inode.mode.other = datatab[0] & 0b_0000_0111
+
+   -- read number of links
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   inode.num_links = word(data)
+   
+   -- read UID/GID
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   inode.uid = word(data)
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   inode.gid= word(data)
+   
+   -- File size
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.filesize = data
+
+   -- atime
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.atime = data
+
+   -- mtime
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.mtime = data
+
+   -- ctime
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.ctime = data
+
+   -- zone0
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.zone0 = data
+
+   -- zone1
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.zone1 = data
+
+   -- zone2
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.zone2 = data
+
+   -- zone3
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.zone3 = data
+
+   -- zone4
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.zone4 = data
+
+   -- zone5
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.zone5 = data
+
+   -- zone6
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.zone6 = data
+
+   -- indirect zone
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.indirect_zone = data
+
+   -- double indirect zone
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.double_indirect_zone = data
+
+   -- triple indirect zone
+   -- TODO: not used for now, will be with v3
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   datatab[2] = minix_data_byte
+   datatab[3] = minix_data_byte
+   inode.triple_indirect_zone = data
 
    minix_stop_read()
 
@@ -238,7 +377,7 @@ end function
 if defined(minix_print_carrier) then
 
 -- Messages
-procedure minix_print_super_block() is
+procedure minix_dev_print_super_block() is
 
    const byte STR_READ_SUPER_BLOCK[] = "Super Block"
    const byte STR_NUMBER_OF_NODES[] = "# nodes: "
@@ -303,27 +442,45 @@ procedure minix_print_super_block() is
 
 end procedure
 
-procedure minix_print_error() is
+procedure minix_dev_print_error() is
    const byte STR_ERROR[] = "Error # "
    print_string(minix_print_carrier,STR_ERROR)
    print_byte_binary(minix_print_carrier,minix_last_error)
    print_crlf(minix_print_carrier)
 end procedure
 
-procedure minix_print_inode(minix_inode in inode) is
-   const byte STR_INODE[] = "Inode"
+procedure minix_dev_print_inode(minix_inode in inode) is
+   const byte STR_INODE[] = "Inode #"
    const byte STR_MODE_FILETYPES[] = "Filetype: "
+   const byte STR_MODE_FILE[] = "file"
+   const byte STR_MODE_DIR[] = "dir"
+   const byte STR_MODE_SYMLINK[] = "symlink"
+   const byte STR_MODE_WHAT[] = "dunno"
    const byte STR_MODE_PERMS[] = "Permissions: "
    const byte STR_MODE_PERM_ALL[] = " - all: "
    const byte STR_MODE_PERM_USER[] = " - user: "
    const byte STR_MODE_PERM_GROUP[] = " - group: "
    const byte STR_MODE_PERM_OTHER[] = " - other: "
-   const byte STR_MODE_FILE[] = "file"
-   const byte STR_MODE_DIR[] = "dir"
-   const byte STR_MODE_SYMLINK[] = "symlink"
-   const byte STR_MODE_WHAT[] = "dunno"
-
+   const byte STR_NUM_LINKS[] = "# links: "
+   const byte STR_UID[] = "UID: "
+   const byte STR_GID[] = "GID: "
+   const byte STR_FILESIZE[] = "File size: "
+   const byte STR_ATIME[] = "Acess time: "
+   const byte STR_MTIME[] = "Modification time: "
+   const byte STR_CTIME[] = "Status change time: "
+   const byte STR_ZONE0[] = "Zone 0: "
+   const byte STR_ZONE1[] = "Zone 1: "
+   const byte STR_ZONE2[] = "Zone 2: "
+   const byte STR_ZONE3[] = "Zone 3: "
+   const byte STR_ZONE4[] = "Zone 4: "
+   const byte STR_ZONE5[] = "Zone 5: "
+   const byte STR_ZONE6[] = "Zone 6: "
+   const byte STR_IND_ZONE[] = "Indirect Zone: "
+   const byte STR_DBL_IND_ZONE[] = "Double indirect Zone: "
+   ;;const byte STR_TRPL_IND_ZONE[] = "Triple indirect Zone: "
+   
    print_string(minix_print_carrier,STR_INODE)
+   print_word_dec(minix_print_carrier,inode.id)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_MODE_FILETYPES)
@@ -336,6 +493,10 @@ procedure minix_print_inode(minix_inode in inode) is
    else
       print_string(minix_print_carrier,STR_MODE_WHAT)
    end if
+   minix_print_carrier = " "
+   minix_print_carrier = "("
+   print_word_dec(minix_print_carrier,inode.mode.filetype)
+   minix_print_carrier = ")"
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_MODE_PERMS)
@@ -353,6 +514,69 @@ procedure minix_print_inode(minix_inode in inode) is
    print_byte_dec(minix_print_carrier,inode.mode.other)
    print_crlf(minix_print_carrier)
 
+   print_string(minix_print_carrier,STR_NUM_LINKS)
+   print_word_dec(minix_print_carrier,inode.num_links)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_UID)
+   print_word_dec(minix_print_carrier,inode.uid)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_GID)
+   print_word_dec(minix_print_carrier,inode.gid)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_FILESIZE)
+   print_dword_dec(minix_print_carrier,inode.filesize)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_ATIME)
+   print_dword_dec(minix_print_carrier,inode.atime)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_MTIME)
+   print_dword_dec(minix_print_carrier,inode.mtime)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_CTIME)
+   print_dword_dec(minix_print_carrier,inode.ctime)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_ZONE0)
+   print_dword_hex(minix_print_carrier,inode.zone0)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_ZONE1)
+   print_dword_hex(minix_print_carrier,inode.zone1)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_ZONE2)
+   print_dword_hex(minix_print_carrier,inode.zone2)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_ZONE3)
+   print_dword_hex(minix_print_carrier,inode.zone3)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_ZONE4)
+   print_dword_hex(minix_print_carrier,inode.zone4)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_ZONE5)
+   print_dword_hex(minix_print_carrier,inode.zone5)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_ZONE6)
+   print_dword_hex(minix_print_carrier,inode.zone6)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_IND_ZONE)
+   print_dword_hex(minix_print_carrier,inode.indirect_zone)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_DBL_IND_ZONE)
+   print_dword_hex(minix_print_carrier,inode.double_indirect_zone)
+   print_crlf(minix_print_carrier)
 
 end procedure
 
