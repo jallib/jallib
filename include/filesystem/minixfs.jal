@@ -132,10 +132,20 @@ var minix_superblock minix_sb
 -- store current working directory
 var minix_inode minix_cwd
 
+-- move to block number
 procedure minix_goto_block(dword in num) is
    -- sd_card lib assumes 512-bytes / sector
    var dword addr = 2 * num
    minix_set_address(addr)
+end procedure
+
+-- move to block number, then to byte number within the block
+procedure minix_goto_block_byte(dword in blocknum, word in bytenum) is
+   minix_goto_block(blocknum)
+   var byte _trash
+   for bytenum loop
+      _trash = minix_data_byte
+   end loop
 end procedure
 
 -- Read Super-Block and fill record
@@ -217,13 +227,8 @@ function minix_get_inode(word in inode_num) return minix_inode is
    -- /!\ inode n°0 doesn't exist (and it's a special value)
    var dword byteaddr = (minix_sb.first_inode_block * MINIX_BYTES_PER_BLOCK) + ((inode_num - 1) * MINIX_BYTES_PER_INODE)
    var dword blockaddr = byteaddr / MINIX_BYTES_PER_BLOCK
-   minix_goto_block(blockaddr)
-   -- dummy read bytes until we reach inode address
-   var dword remaining = byteaddr - (blockaddr * MINIX_BYTES_PER_BLOCK)
-   var byte _trash
-   for remaining loop
-      _trash = minix_data_byte
-   end loop
+   var word remaining = word(byteaddr - (blockaddr * MINIX_BYTES_PER_BLOCK))
+   minix_goto_block_byte(blockaddr,remaining)
 
    var minix_inode inode
    -- internal
@@ -399,6 +404,7 @@ function minix_list_cwd'get() return minix_dir_entry is
    entry.inode_num = 0
    entry.filename[0] = 0
 
+   -- TODO: refactoring, walk accross zone 
    -- end of current zone ?
    if minix_cwd.zone_content_idx == (MINIX_BYTES_PER_BLOCK - 1) then
       -- end of available zones ? 
@@ -412,23 +418,18 @@ function minix_list_cwd'get() return minix_dir_entry is
    end if
 
    var dword zone = minix_cwd.zone[minix_cwd.zone_idx]
-   -- TODO: refactor proc
-   minix_goto_block(zone)
-   -- manual walk until current pointer within zone
-   var byte _trash
-   for minix_cwd.zone_content_idx loop
-      _trash = minix_data_byte
-   end loop
+   minix_goto_block_byte(zone,minix_cwd.zone_content_idx)
 
    -- now read directory entry
+   var byte counter
    var word data
    var byte datatab[2] at data
    -- read number of inodes
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
    entry.inode_num = data
-   for MINIX_MAX_FILENANE_LEN using _trash loop
-      entry.filename[_trash] = minix_data_byte
+   for MINIX_MAX_FILENANE_LEN using counter loop
+      entry.filename[counter] = minix_data_byte
    end loop
 
    -- adjust current content index within the zone
@@ -439,6 +440,7 @@ function minix_list_cwd'get() return minix_dir_entry is
    return entry
 
 end function
+
 
 -- -----------------
 -- DEBUG/DEV CODE --
