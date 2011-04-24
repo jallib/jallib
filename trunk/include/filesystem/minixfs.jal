@@ -24,23 +24,28 @@
 
 
 -- Magic numbers used to idenfity filesystem version
-const word MINIX_SUPER_MAGIC   = 0x137F   -- original minix fs
-const word MINIX_SUPER_MAGIC2  = 0x138F   -- minix fs, 30 char names
-const word MINIX2_SUPER_MAGIC  = 0x2468   -- minix V2 fs
-const word MINIX2_SUPER_MAGIC2 = 0x2478   -- minix V2 fs, 30 char names
-const word MINIX3_SUPER_MAGIC  = 0x4D5A   -- minix V3 fs
+const word MINIX_SUPER_MAGIC   = 0x137F      -- original minix fs
+const word MINIX_SUPER_MAGIC2  = 0x138F      -- minix fs, 30 char names
+const word MINIX2_SUPER_MAGIC  = 0x2468      -- minix V2 fs
+const word MINIX2_SUPER_MAGIC2 = 0x2478      -- minix V2 fs, 30 char names
+const word MINIX3_SUPER_MAGIC  = 0x4D5A      -- minix V3 fs
 
-const word MINIX_BYTES_PER_BLOCK = 0x400  -- 1KB per block
-const word MINIX_BYTES_PER_INODE = 0x40   -- 64B per inode
+const word MINIX_BYTES_PER_BLOCK = 0x400     -- 1KB per block
+const word MINIX_BYTES_PER_INODE = 0x40      -- 64B per inode
 -- Super Block is one block after boot block
 const word MINIX_BOOT_BLOCK_ADDRESS = 0x00
 const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BOOT_BLOCK_ADDRESS + MINIX_BYTES_PER_BLOCK
+-- max filename size according to minix v2
+const byte MINIX_MAX_FILENANE_LEN = 30
+const byte MINIX_NUM_DIRECT_ZONE = 7
 
 -- Error constants. Following "mkfs" convention, errors are added, so
 -- minix_last_error can embed several errors
 const byte MINIX_ERR_NONE = 0b_0000_0000
 const byte MINIX_ERR_BAD_MAGIC_NUMBER     = 0b_0000_0001 -- magic number unsupported
 const byte MINIX_ERR_BAD_ZONE_LOCATION    = 0b_0000_0010 -- something is wrong about declared and computed data location
+const byte MINIX_ERR_NOT_DIRECTORY        = 0b_0000_0100 -- try to act on a directory, but inode isn't a directory
+const byte MINIX_ERR_END_OF_ZONE          = 0b_0000_1000 -- reached end of available data zone
 
 -- Auto-resetting variable: errors are added, and when read, reset to 0
 var byte _minix_last_error = MINIX_ERR_NONE
@@ -67,7 +72,7 @@ record minix_superblock is
    word magic_number -- used to identify Minix version
    ;word padding -- ignored
    dword num_zones_v2
-   -- following are custom variable implied by super-block
+   -- following are custom variables implied by super-block
    dword first_inode_bitmap_block
    dword first_zone_bitmap_block
    dword first_inode_block
@@ -106,22 +111,26 @@ record minix_inode is
    dword mtime
    dword ctime
    -- where actual data lies
-   dword zone0
-   dword zone1
-   dword zone2
-   dword zone3
-   dword zone4
-   dword zone5
-   dword zone6
+   dword zone[MINIX_NUM_DIRECT_ZONE]
    dword indirect_zone
    dword double_indirect_zone
    dword triple_indirect_zone -- unimplemented (minix v3)
+   -- track current direct zone in use
+   byte zone_idx
+   -- track current index within current zone (0<x<block_size)
+   word zone_content_idx
+end record
+
+-- Directory entry (dir listing)
+record minix_dir_entry is
+   word inode_num
+   byte filename[MINIX_MAX_FILENANE_LEN]
 end record
 
 -- Globals
 var minix_superblock minix_sb
-const dword _current_address = 0
-
+-- store current working directory
+var minix_inode minix_cwd
 
 procedure minix_goto_block(dword in num) is
    -- sd_card lib assumes 512-bytes / sector
@@ -297,49 +306,49 @@ function minix_get_inode(word in inode_num) return minix_inode is
    datatab[1] = minix_data_byte
    datatab[2] = minix_data_byte
    datatab[3] = minix_data_byte
-   inode.zone0 = data
+   inode.zone[0] = data
 
    -- zone1
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
    datatab[2] = minix_data_byte
    datatab[3] = minix_data_byte
-   inode.zone1 = data
+   inode.zone[1] = data
 
    -- zone2
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
    datatab[2] = minix_data_byte
    datatab[3] = minix_data_byte
-   inode.zone2 = data
+   inode.zone[2] = data
 
    -- zone3
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
    datatab[2] = minix_data_byte
    datatab[3] = minix_data_byte
-   inode.zone3 = data
+   inode.zone[3] = data
 
    -- zone4
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
    datatab[2] = minix_data_byte
    datatab[3] = minix_data_byte
-   inode.zone4 = data
+   inode.zone[4] = data
 
    -- zone5
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
    datatab[2] = minix_data_byte
    datatab[3] = minix_data_byte
-   inode.zone5 = data
+   inode.zone[5] = data
 
    -- zone6
    datatab[0] = minix_data_byte
    datatab[1] = minix_data_byte
    datatab[2] = minix_data_byte
    datatab[3] = minix_data_byte
-   inode.zone6 = data
+   inode.zone[6] = data
 
    -- indirect zone
    datatab[0] = minix_data_byte
@@ -369,6 +378,67 @@ function minix_get_inode(word in inode_num) return minix_inode is
 
 end function
 
+procedure minix_set_cwd(word in inode_num) is
+   minix_cwd = minix_get_inode(inode_num)
+   if minix_cwd.mode.isdir then
+      -- init
+      minix_cwd.zone_idx = 0
+      minix_cwd.zone_content_idx = 0
+   else
+      minix_last_error = MINIX_ERR_NOT_DIRECTORY
+   end if
+end procedure
+
+-- list current working directory (cwd), returning a 
+-- directory entry each time it's called, until no more
+-- entry found.
+-- Pre-req: minix_cwd is set to a directory
+function minix_list_cwd'get() return minix_dir_entry is
+
+   var minix_dir_entry entry
+   entry.inode_num = 0
+   entry.filename[0] = 0
+
+   -- end of current zone ?
+   if minix_cwd.zone_content_idx == (MINIX_BYTES_PER_BLOCK - 1) then
+      -- end of available zones ? 
+      if minix_cwd.zone_idx == (MINIX_NUM_DIRECT_ZONE - 1) then
+         -- empty entry
+         minix_last_error = MINIX_ERR_END_OF_ZONE
+         return entry
+      else
+         minix_cwd.zone_idx = minix_cwd.zone_idx + 1
+      end if
+   end if
+
+   var dword zone = minix_cwd.zone[minix_cwd.zone_idx]
+   -- TODO: refactor proc
+   minix_goto_block(zone)
+   -- manual walk until current pointer within zone
+   var byte _trash
+   for minix_cwd.zone_content_idx loop
+      _trash = minix_data_byte
+   end loop
+
+   -- now read directory entry
+   var word data
+   var byte datatab[2] at data
+   -- read number of inodes
+   datatab[0] = minix_data_byte
+   datatab[1] = minix_data_byte
+   entry.inode_num = data
+   for MINIX_MAX_FILENANE_LEN using _trash loop
+      entry.filename[_trash] = minix_data_byte
+   end loop
+
+   -- adjust current content index within the zone
+   minix_cwd.zone_content_idx = minix_cwd.zone_content_idx + 32
+
+   minix_stop_read()
+
+   return entry
+
+end function
 
 -- -----------------
 -- DEBUG/DEV CODE --
@@ -543,31 +613,31 @@ procedure minix_dev_print_inode(minix_inode in inode) is
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE0)
-   print_dword_hex(minix_print_carrier,inode.zone0)
+   print_dword_hex(minix_print_carrier,inode.zone[0])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE1)
-   print_dword_hex(minix_print_carrier,inode.zone1)
+   print_dword_hex(minix_print_carrier,inode.zone[1])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE2)
-   print_dword_hex(minix_print_carrier,inode.zone2)
+   print_dword_hex(minix_print_carrier,inode.zone[2])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE3)
-   print_dword_hex(minix_print_carrier,inode.zone3)
+   print_dword_hex(minix_print_carrier,inode.zone[3])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE4)
-   print_dword_hex(minix_print_carrier,inode.zone4)
+   print_dword_hex(minix_print_carrier,inode.zone[4])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE5)
-   print_dword_hex(minix_print_carrier,inode.zone5)
+   print_dword_hex(minix_print_carrier,inode.zone[5])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE6)
-   print_dword_hex(minix_print_carrier,inode.zone6)
+   print_dword_hex(minix_print_carrier,inode.zone[6])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_IND_ZONE)
@@ -578,6 +648,27 @@ procedure minix_dev_print_inode(minix_inode in inode) is
    print_dword_hex(minix_print_carrier,inode.double_indirect_zone)
    print_crlf(minix_print_carrier)
 
+end procedure
+
+procedure minix_dev_print_dir_entry(minix_dir_entry in entry) is
+   const byte STR_ENTRY[] = "Inode #"
+   
+   print_string(minix_print_carrier,STR_ENTRY)
+   print_word_dec(minix_print_carrier,entry.inode_num)
+   minix_print_carrier = " "
+
+   -- assuming at least one char in filename...
+   var byte counter
+   var byte char
+   for MINIX_MAX_FILENANE_LEN using counter loop
+      char = entry.filename[counter]
+      if char != 0x00 then
+         minix_print_carrier = char
+      else
+         exit loop
+      end if
+   end loop
+   
 end procedure
 
 end if
