@@ -8,23 +8,57 @@
 --
 -- Description: Minix v2 implementation
 -- Partitions aren't supported, so you have to create a filesystem on the whole
--- available memory. Typically, instead of "mkfs.minix -v /dev/sdc1", you'll
--- have to "mkfs.minix -v /dev/sdc" (and remove sdc1 partition with fdisk)
+-- available memory. Typically, instead of "mkfs.minix -v /dev/sdX1", you'll
+-- have to "mkfs.minix -v /dev/sdX" (and remove sdX1 partition with fdisk)
 -- Some useful commands:
---  - fsck.minix -f -v -s /dev/sdc
+--  - fsck.minix -f -v -s /dev/sdX
 --       will print Super-Block and some other information about files, dirs, state
---  - hexdump -C /dev/sdc
+--  - hexdump -C /dev/sdX
 --       will dump Minix FS content (only changing lines)
---  - hexdump -v -C /dev/sdc
+--  - hexdump -v -C /dev/sdX
 --       will do the same, but dump all lines, even if identical
+-- .
+-- In order to test your setup, you can untar minix_data.tar.bz2 available at:
+-- ... 
+-- This archive contains directories and files of different size, used to test
+-- data zone and helping to understand how Minix filesystem is designed.
+--    1. prepare your device, no partition (replace /dev/sdX with appropriate device):
+--          mkfs.minix -v /dev/sdX
+--          mount /dev/sdX /mnt/tmp
+--    2. untar test data:
+--          cd /mnt/tmp && tar xjfv path/to/minix_data.tar.bz2
+--          cd && umount /mnt/tmp
+--    3. check content:
+--          fsck.minix -f -v -s /dev/sdX
+--       should report something like (1GB SD-card used here):
+-- .
+-- Forcing filesystem check on /dev/sdX.
+-- 65535 inodes
+-- 992000 blocks
+-- Firstdatazone=4227 (4227)
+-- Zonesize=1024
+-- Maxsize=2147483647
+-- Filesystem state=1
+-- namelen=30
+-- .
+--     20 i
+--     20 inodes used (0%)
+--  70858 zones used (7%)
+-- .
+--     16 regu
+--     16 regular files
+--      2 directories
+--      0 character device files
+--      0 block device files
+--      1 links
+--      2 symbolic links
+--      ------
+--      21 files
+--
 --
 -- Notes:
 --
 -- TODO:
--- - improve minix_read() so it doesn't need to goto block address + byte 
---   each time one byte is read
--- - implement a sort of file descriptor, for open & close actions in order to
---   improve speed access
 --
 
 
@@ -46,7 +80,20 @@ const word MINIX_BOOT_BLOCK_ADDRESS = 0x00
 const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BOOT_BLOCK_ADDRESS + MINIX_BYTES_PER_BLOCK
 -- max filename size according to minix v2
 const byte MINIX_MAX_FILENANE_LEN = 30
-const byte MINIX_NUM_DIRECT_ZONE = 7
+const byte MINIX_MAX_DIRECT_ZONE_IDX        = 6
+const byte MINIX_MAX_INDIRECT_ZONE_IDX      = 255
+const word MINIX_MAX_DOUBLE_DIRECT_ZONE_IDX = 65535
+const byte MINIX_ZONE_NONE             = 0b_0000
+const byte MINIX_ZONE_DIRECT           = 0b_0001
+const byte MINIX_ZONE_INDIRECT         = 0b_0010
+const byte MINIX_ZONE_DOUBLE_INDIRECT  = 0b_0100
+
+-- File descriptor constants
+const byte MINIX_FD_READ_ONLY   = 0b_01
+const byte MINIX_FD_WRITE_ONLY  = 0b_10
+const byte MINIX_FD_READ_WRITE  = 0b_11
+
+
 
 -- Error constants. Following "mkfs" convention, errors are added, so
 -- minix_last_error can embed several errors
@@ -120,13 +167,17 @@ record minix_inode is
    dword mtime
    dword ctime
    -- where actual data lies
-   dword zone[MINIX_NUM_DIRECT_ZONE]
+   dword zone[MINIX_MAX_DIRECT_ZONE_IDX + 1]
    dword indirect_zone
    dword double_indirect_zone
    dword triple_indirect_zone -- unimplemented (minix v3)
    -- STATE
-   -- track current direct zone in use
-   byte zone_idx
+   -- track type of zone being accessed (direct, indirect, double indirect)
+   byte zone_type   
+   -- track current direct zone in use or, if indirect, the address
+   -- of data location within indirect zone
+   word zone_idx
+   word zone_dbl_idx
    -- track current index within current zone (0<x<block_size)
    word zone_content_idx
 end record
@@ -139,8 +190,9 @@ end record
 
 -- File descriptor
 record minix_fd is
-   byte fd_num
-   bit available
+   ;byte fd_num   -- may be useful when allowing several file descriptors
+   byte mode      -- read/write/...
+   dword read     
    minix_inode inode
 end record
 
@@ -405,9 +457,16 @@ function minix_get_inode(word in inode_num) return minix_inode is
    minix_close_block()
 
    -- init state
-   inode.zone_idx = 0xFF   -- no data zone accessed yet
-   inode.zone_content_idx = 0
-
+   inode.zone_type = MINIX_ZONE_DIRECT
+   -- Zone indexes serve different purpose, depending on data is
+   -- accessed with direct data zones, indirect data zones, or double
+   -- indirect data zones. To save memory, some indexes are used to track
+   -- states on zones not related to their name !
+   inode.zone_idx = 0xFFFF         -- will rollover to 0 when direct zone is accessed
+   inode.zone_dbl_idx = 0xFFFC     -- track double indirect locations, rollover to
+                                   -- 0 when first accessed
+   inode.zone_content_idx = 0x0400 -- will trigger a move to next zone
+                                   -- ie. first data zone (save one "if" test)
    return inode
 
 end function
@@ -420,14 +479,77 @@ end procedure
 -- move to next data zone, being direct, indirect ou double
 -- indirect
 procedure minix_next_zone() is
-   -- TODO: implement indirect zones
+
    var dword zone
-   minix_curinode.zone_idx = minix_curinode.zone_idx + 1
-   zone = minix_curinode.zone[minix_curinode.zone_idx]
+   var byte zonetab[4] at zone
+
    -- reset zone content
    minix_curinode.zone_content_idx = 0
-   minix_close_block()
-   minix_open_block_byte(zone,minix_curinode.zone_content_idx)
+
+   -- do we need to switch to indirect zone ?
+   if minix_curinode.zone_type == MINIX_ZONE_DIRECT then
+      if minix_curinode.zone_idx == MINIX_MAX_DIRECT_ZONE_IDX then
+         minix_curinode.zone_type = MINIX_ZONE_INDIRECT
+         -- now will track address location within 
+         -- indirect zone and will rollover to 0
+         minix_curinode.zone_idx = 0xFFFC
+      end if
+   end if
+
+   -- do we need to switch to double indirect zone ?
+   if minix_curinode.zone_type == MINIX_ZONE_INDIRECT then
+      if minix_curinode.zone_idx == MINIX_MAX_INDIRECT_ZONE_IDX then
+         minix_curinode.zone_type = MINIX_ZONE_DOUBLE_INDIRECT
+         -- now will track address location within 
+         -- indirect zone and will rollover to 0
+         minix_curinode.zone_idx = 0xFFFC
+      end if
+   end if
+
+   -- triple/double/single indirect zones
+   -- Single indirect zone logic is comprised with double indirect zone logic
+   -- (and same for triple indirect zones) that's why tests are ">="
+   if minix_curinode.zone_type >= MINIX_ZONE_DOUBLE_INDIRECT then
+      -- do we need to switch to the next single indirect zone ?
+      if minix_curinode.zone_idx == MINIX_MAX_INDIRECT_ZONE_IDX then
+         -- increment by size of dword, since data locations are 32-bits long
+         minix_curinode.zone_dbl_idx = minix_curinode.zone_dbl_idx + 4
+         minix_curinode.zone_idx = 0xFFFC -- rollover to 0 when accessing single indirect
+         minix_close_block()
+         minix_open_block_byte(minix_curinode.double_indirect_zone,minix_curinode.zone_dbl_idx)
+         -- read indirect zone address
+         zonetab[0] = minix_data_byte
+         zonetab[1] = minix_data_byte
+         zonetab[2] = minix_data_byte
+         zonetab[3] = minix_data_byte
+         -- and move to this location
+         minix_close_block()
+         minix_open_block(zone)
+      end if
+
+   end if
+
+   if minix_curinode.zone_type >= MINIX_ZONE_INDIRECT then
+      -- increment by size of dword, since data locations are 32-bits long
+      minix_curinode.zone_idx = minix_curinode.zone_idx + 4
+      minix_close_block()
+      minix_open_block_byte(minix_curinode.indirect_zone,minix_curinode.zone_idx)
+      -- read indirect zone address
+      zonetab[0] = minix_data_byte
+      zonetab[1] = minix_data_byte
+      zonetab[2] = minix_data_byte
+      zonetab[3] = minix_data_byte
+      -- and move to this location
+      minix_close_block()
+      minix_open_block(zone)
+   end if
+
+   if minix_curinode.zone_type == MINIX_ZONE_DIRECT then
+      minix_curinode.zone_idx = minix_curinode.zone_idx + 1
+      zone = minix_curinode.zone[minix_curinode.zone_idx]
+      minix_close_block()
+      minix_open_block(zone)
+   end if
 end procedure
 
 -- walk over memory zones given, returning content
@@ -436,19 +558,12 @@ end procedure
 -- track of progress within inode
 function minix_read() return byte is
 
-
-   -- note: it costs less ram and less program memory to have
-   -- twice the same code computing zone index, close and open
-   -- block, than to have one "if ... | ... then" logic !
-
-   -- no data accessed yet ?
-   if minix_curinode.zone_idx == 0xFF then
-       minix_next_zone()   -- rollover to zone[0]
-   end if
-
    -- need to move to next data zone ?
-   if minix_curinode.zone_content_idx == (MINIX_BYTES_PER_BLOCK - 1) then
-       minix_next_zone()
+   -- Note: we pre-increment zone_content_idx, this means content idx grows 
+   -- from to 1024. This avoids to save read byte in a variable, increment,
+   -- then return read byte.
+   if minix_curinode.zone_content_idx == MINIX_BYTES_PER_BLOCK then
+       minix_next_zone() -- on first call will rollover to zone[0]
    end if
 
    -- adjust current content index within the zone to next byte
@@ -458,11 +573,9 @@ function minix_read() return byte is
 
 end function
 
-procedure minix_set_cwd(word in inode_num) is
+procedure minix_open(word in inode_num) is
+   pragma inline
    minix_curinode = minix_get_inode(inode_num)
-   if !minix_curinode.mode.isdir then
-      minix_last_error = MINIX_ERR_NOT_DIRECTORY
-   end if
 end procedure
 
 -- list current working directory (cwd), returning a 
@@ -471,6 +584,7 @@ end procedure
 -- Pre-req: minix_curinode is set to a directory
 function minix_next_entry'get() return minix_dir_entry is
 
+   -- TODO: auto-open inode directory instead of letting user do this
    var minix_dir_entry entry
    entry.inode_num = 0
    entry.filename[0] = 0
@@ -510,6 +624,8 @@ end procedure
 -- -----------------
 
 if defined(minix_print_carrier) then
+
+include print
 
 -- Messages
 procedure minix_dev_print_super_block() is
@@ -735,5 +851,14 @@ procedure minix_dev_print_dir_entry(minix_dir_entry in entry) is
    end loop
    
 end procedure
+
+procedure minix_cat(word in inode_num) is
+   minix_open(inode_num)
+   for minix_curinode.filesize loop
+      minix_print_carrier = minix_read()
+   end loop
+   minix_close()
+end procedure
+
 
 end if
