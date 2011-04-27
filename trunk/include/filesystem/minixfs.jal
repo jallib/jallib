@@ -405,12 +405,30 @@ function minix_get_inode(word in inode_num) return minix_inode is
    minix_close_block()
 
    -- init state
-   inode.zone_idx = 0
+   inode.zone_idx = 0xFF   -- no data zone accessed yet
    inode.zone_content_idx = 0
 
    return inode
 
 end function
+
+procedure minix_close() is
+   -- TODO: write new inode state
+   minix_close_block()
+end procedure
+
+-- move to next data zone, being direct, indirect ou double
+-- indirect
+procedure minix_next_zone() is
+   -- TODO: implement indirect zones
+   var dword zone
+   minix_curinode.zone_idx = minix_curinode.zone_idx + 1
+   zone = minix_curinode.zone[minix_curinode.zone_idx]
+   -- reset zone content
+   minix_curinode.zone_content_idx = 0
+   minix_close_block()
+   minix_open_block_byte(zone,minix_curinode.zone_content_idx)
+end procedure
 
 -- walk over memory zones given, returning content
 -- byte by byte. firt walk over direct zones, then 
@@ -418,32 +436,25 @@ end function
 -- track of progress within inode
 function minix_read() return byte is
 
-   -- end of current direct zones
-   if minix_curinode.zone_content_idx == (MINIX_BYTES_PER_BLOCK - 1) then
-      -- end of available zones ? 
-      if minix_curinode.zone_idx == (MINIX_NUM_DIRECT_ZONE - 1) then
-         -- TODO: implement indirect zones
-         minix_last_error = MINIX_ERR_END_OF_ZONE
-      else
-         minix_curinode.zone_idx = minix_curinode.zone_idx + 1
-      end if
+
+   -- note: it costs less ram and less program memory to have
+   -- twice the same code computing zone index, close and open
+   -- block, than to have one "if ... | ... then" logic !
+
+   -- no data accessed yet ?
+   if minix_curinode.zone_idx == 0xFF then
+       minix_next_zone()   -- rollover to zone[0]
    end if
 
-   -- TODO: this will always move to begining of zone then
-   -- byte by byte until content. With proper file descriptor
-   -- impl. this can be optimized
-   var dword zone = minix_curinode.zone[minix_curinode.zone_idx]
-   minix_open_block_byte(zone,minix_curinode.zone_content_idx)
+   -- need to move to next data zone ?
+   if minix_curinode.zone_content_idx == (MINIX_BYTES_PER_BLOCK - 1) then
+       minix_next_zone()
+   end if
 
    -- adjust current content index within the zone to next byte
    minix_curinode.zone_content_idx = minix_curinode.zone_content_idx + 1
 
-   -- return next byte
-   var byte data = minix_data_byte
-
-   minix_close_block()
-
-   return data
+   return minix_data_byte
 
 end function
 
@@ -472,7 +483,11 @@ function minix_next_entry'get() return minix_dir_entry is
    datatab[0] = minix_read()
    datatab[1] = minix_read()
    -- is there an entry ?
-   if data != 0 then
+   -- TODO: should check inode's filesize instead of 
+   -- reading until no more data
+   if data == 0 then
+      minix_close()
+   else
       entry.inode_num = data
       for MINIX_MAX_FILENANE_LEN using counter loop
          entry.filename[counter] = minix_read()
