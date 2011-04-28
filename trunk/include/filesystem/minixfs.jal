@@ -82,6 +82,9 @@ const byte MINIX_MAX_FILENANE_LEN = 30
 const byte MINIX_MAX_DIRECT_ZONE_IDX        = 6
 const word MINIX_MAX_INDIRECT_ZONE_IDX      = 0x03FC  -- 0x400 - 4 == one block - one location
 const word MINIX_MAX_DOUBLE_DIRECT_ZONE_IDX = 0x03FC  -- 0x400 - 4 == one block - one location
+const byte MINIX_NUM_DIRECT_ZONES           = 7
+const word MINIX_NUM_INDIRECT_ZONES         = 256
+const word MINIX_NUM_DOUBLE_INDIRECT_ZONES  = 65536
 const byte MINIX_ZONE_NONE             = 0b_0000
 const byte MINIX_ZONE_DIRECT           = 0b_0001
 const byte MINIX_ZONE_INDIRECT         = 0b_0010
@@ -197,6 +200,9 @@ end record
 -- Globals --
 -- ----------
 
+var dword minix_curzone
+var byte minix_curzonetab[4] at minix_curzone
+
 -- super-block
 var minix_superblock minix_sb
 -- store current inode lib is working on
@@ -208,6 +214,7 @@ var minix_fd minix_curfd
 
 -- move to block number and open read access on underlying storage
 procedure minix_open_block(dword in num) is
+   -- TODO: check if block number is within memory storage bound !
    var dword addr = MINIX_STORAGE_BLOCK_PER_BLOCK * num
    minix_goto_address(addr)
 end procedure
@@ -487,9 +494,6 @@ end procedure
 -- indirect
 procedure minix_next_zone() is
 
-   var dword zone
-   var byte zonetab[4] at zone
-
    -- reset zone content
    minix_curfd.inode.zone_content_idx = 0
 
@@ -525,12 +529,12 @@ procedure minix_next_zone() is
          minix_close_block()
          minix_open_block_byte(minix_curfd.inode.double_indirect_zone,minix_curfd.inode.zone_dbl_idx)
          -- read indirect zone address
-         zonetab[0] = minix_data_byte
-         zonetab[1] = minix_data_byte
-         zonetab[2] = minix_data_byte
-         zonetab[3] = minix_data_byte
+         minix_curzonetab[0] = minix_data_byte
+         minix_curzonetab[1] = minix_data_byte
+         minix_curzonetab[2] = minix_data_byte
+         minix_curzonetab[3] = minix_data_byte
          -- and replace previous indirect location
-         minix_curfd.inode.indirect_zone = zone
+         minix_curfd.inode.indirect_zone = minix_curzone
       end if
 
    end if
@@ -541,20 +545,20 @@ procedure minix_next_zone() is
       minix_close_block()
       minix_open_block_byte(minix_curfd.inode.indirect_zone,minix_curfd.inode.zone_idx)
       -- read indirect zone address
-      zonetab[0] = minix_data_byte
-      zonetab[1] = minix_data_byte
-      zonetab[2] = minix_data_byte
-      zonetab[3] = minix_data_byte
+      minix_curzonetab[0] = minix_data_byte
+      minix_curzonetab[1] = minix_data_byte
+      minix_curzonetab[2] = minix_data_byte
+      minix_curzonetab[3] = minix_data_byte
       -- and move to this location
       minix_close_block()
-      minix_open_block(zone)
+      minix_open_block(minix_curzone)
    end if
 
    if minix_curfd.inode.zone_type == MINIX_ZONE_DIRECT then
       minix_curfd.inode.zone_idx = minix_curfd.inode.zone_idx + 1
-      zone = minix_curfd.inode.zone[minix_curfd.inode.zone_idx]
+      minix_curzone = minix_curfd.inode.zone[minix_curfd.inode.zone_idx]
       minix_close_block()
-      minix_open_block(zone)
+      minix_open_block(minix_curzone)
    end if
 end procedure
 
@@ -591,6 +595,32 @@ procedure minix_open(word in inode_num) is
 end procedure
 -- for the beauty of the geste
 alias minix_cd is minix_open
+
+-- move to byte bytenum within a file
+-- Notes: assuming file was just opened, no data read
+procedure minix_seek(dword in bytenum) is
+   -- bytenum is the byte number *from* which data will be accessed, 
+   -- so we need to move just before
+   bytenum = bytenum - 1
+   var dword blocknum = bytenum / MINIX_BYTES_PER_BLOCK
+   var word remaining = byte(bytenum - (blocknum * MINIX_BYTES_PER_BLOCK))
+
+   -- TODO: optimize this crap ! this currently just walk over *all*
+   -- zones until the correct one...
+   -- Notes: first block has index 0
+   for blocknum  + 1 loop
+      minix_next_zone()
+   end loop
+
+   -- move within block
+   var byte _trash
+   for remaining loop
+      _trash = minix_data_byte
+   end loop
+
+   minix_curfd.read = bytenum
+
+end procedure
 
 -- list current working directory (cwd), returning a 
 -- directory entry each time it's called, until no more
@@ -871,7 +901,8 @@ procedure minix_cat(word in inode_num) is
 end procedure
 
 -- parially print content. When content is changing, display 
--- zone_type|zone_idx|zone_dbl_idx|zone_content_idx and then one content char
+-- zone_type|zone_idx|zone_dbl_idx|zone_content_idx|address|indirect|dbl_indirect|read/filesize
+-- and then one content char
 procedure minix_dev_cat(word in inode_num) is
    var byte char = 0
    var byte charprev = 0
@@ -887,6 +918,16 @@ procedure minix_dev_cat(word in inode_num) is
          print_word_hex(minix_print_carrier,minix_curfd.inode.zone_dbl_idx)
          minix_print_carrier = "|"
          print_word_hex(minix_print_carrier,minix_curfd.inode.zone_content_idx)
+         minix_print_carrier = "|"
+         print_dword_hex(minix_print_carrier,minix_curzone)
+         minix_print_carrier = "|"
+         print_dword_hex(minix_print_carrier,minix_curfd.inode.indirect_zone)
+         minix_print_carrier = "|"
+         print_dword_hex(minix_print_carrier,minix_curfd.inode.double_indirect_zone)
+         minix_print_carrier = "|"
+         print_dword_dec(minix_print_carrier,minix_curfd.read)
+         minix_print_carrier = "/"
+         print_dword_dec(minix_print_carrier,minix_curfd.inode.filesize)
          minix_print_carrier = " "
          minix_print_carrier = char
          print_crlf(minix_print_carrier)
