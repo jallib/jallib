@@ -80,8 +80,8 @@ const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BOOT_BLOCK_ADDRESS + MINIX_BYTES_PE
 -- max filename size according to minix v2
 const byte MINIX_MAX_FILENANE_LEN = 30
 const byte MINIX_MAX_DIRECT_ZONE_IDX        = 6
-const byte MINIX_MAX_INDIRECT_ZONE_IDX      = 255
-const word MINIX_MAX_DOUBLE_DIRECT_ZONE_IDX = 65535
+const word MINIX_MAX_INDIRECT_ZONE_IDX      = 0x03FC  -- 0x400 - 4 == one block - one location
+const word MINIX_MAX_DOUBLE_DIRECT_ZONE_IDX = 0x03FC  -- 0x400 - 4 == one block - one location
 const byte MINIX_ZONE_NONE             = 0b_0000
 const byte MINIX_ZONE_DIRECT           = 0b_0001
 const byte MINIX_ZONE_INDIRECT         = 0b_0010
@@ -460,11 +460,20 @@ function minix_get_inode(word in inode_num) return minix_inode is
    -- accessed with direct data zones, indirect data zones, or double
    -- indirect data zones. To save memory, some indexes are used to track
    -- states on zones not related to their name !
-   inode.zone_idx = 0xFFFF         -- will rollover to 0 when direct zone is accessed
-   inode.zone_dbl_idx = 0xFFFC     -- track double indirect locations, rollover to
-                                   -- 0 when first accessed
-   inode.zone_content_idx = 0x0400 -- will trigger a move to next zone
-                                   -- ie. first data zone (save one "if" test)
+
+   -- track direct and indirect zone locations.
+   -- Init this way so it will rollover to 0 when direct zone is accessed. 
+   -- Increment one by one when in direct zone, then 4 by 4 when in indirect
+   inode.zone_idx = 0xFFFF         
+   -- track double indirect locations.
+   -- Init this way so rollover to 0 when first accessed. Increment
+   -- 4 by 4 as always used in indirect zones
+   inode.zone_dbl_idx = 0xFFFC
+   -- track content location within a zone.
+   -- Init this way so it will trigger a move to next zone 
+   -- ie. first data zone (save one "if" test)
+   inode.zone_content_idx = 0x0400
+
    return inode
 
 end function
@@ -500,7 +509,7 @@ procedure minix_next_zone() is
          minix_curfd.inode.zone_type = MINIX_ZONE_DOUBLE_INDIRECT
          -- now will track address location within 
          -- indirect zone and will rollover to 0
-         minix_curfd.inode.zone_idx = 0xFFFC
+         minix_curfd.inode.zone_idx = 0x03FC
       end if
    end if
 
@@ -520,9 +529,8 @@ procedure minix_next_zone() is
          zonetab[1] = minix_data_byte
          zonetab[2] = minix_data_byte
          zonetab[3] = minix_data_byte
-         -- and move to this location
-         minix_close_block()
-         minix_open_block(zone)
+         -- and replace previous indirect location
+         minix_curfd.inode.indirect_zone = zone
       end if
 
    end if
@@ -856,11 +864,35 @@ end procedure
 
 procedure minix_cat(word in inode_num) is
    minix_open(inode_num)
-   for minix_curfd.inode.filesize loop
+   while minix_curfd.read != minix_curfd.inode.filesize loop
       minix_print_carrier = minix_read()
    end loop
    minix_close()
 end procedure
 
+-- parially print content. When content is changing, display 
+-- zone_type|zone_idx|zone_dbl_idx|zone_content_idx and then one content char
+procedure minix_dev_cat(word in inode_num) is
+   var byte char = 0
+   var byte charprev = 0
+   minix_open(inode_num)
+   while minix_curfd.read != minix_curfd.inode.filesize loop
+      char = minix_read()
+      if char != charprev then
+         charprev = char
+         print_byte_binary(minix_print_carrier,minix_curfd.inode.zone_type)
+         minix_print_carrier = "|"
+         print_word_hex(minix_print_carrier,minix_curfd.inode.zone_idx)
+         minix_print_carrier = "|"
+         print_word_hex(minix_print_carrier,minix_curfd.inode.zone_dbl_idx)
+         minix_print_carrier = "|"
+         print_word_hex(minix_print_carrier,minix_curfd.inode.zone_content_idx)
+         minix_print_carrier = " "
+         minix_print_carrier = char
+         print_crlf(minix_print_carrier)
+      end if
+   end loop
+   minix_close()
+end procedure
 
 end if
