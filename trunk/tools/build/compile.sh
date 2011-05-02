@@ -2,8 +2,8 @@
 
 start_time=`date +%s`
 
-export JALLIB_ROOT=`pwd`	# correct when set by buildbot
-###export JALLIB_ROOT=`pwd`/../..	# run manually here
+#export JALLIB_ROOT=`pwd`	# correct when set by buildbot
+export JALLIB_ROOT=`pwd`/../..	# run manually here
 export JALLIB_REPOS=$JALLIB_ROOT/include
 export JALLIB_SAMPLEDIR=$JALLIB_ROOT/sample
 
@@ -21,15 +21,15 @@ echo "" > /tmp/compile.failed
 for sample in $jalsamples
 do
     echo `basename $sample` > /tmp/tmpcomp.out
-	if grep -i "^include[[:space:]]\+18l\?f" $sample > /dev/null 2>&1
-	then
-		$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile -no-variable-reuse $sample >> /tmp/tmpcomp.out 2>&1 
-		status=$?
-	else
+    $JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile -no-variable-reuse $sample >> /tmp/tmpcomp.out 2>&1 
+    status=$?
+
+    if [ "$status" != "0" ] && grep -q "Out of data space" /tmp/tmpcomp.out
+    then
+        echo "Retry without -no-variable-reuse..." >> /tmp/compile.out 2>&1
 		$JALLIB_PYTHON $JALLIB_ROOT/tools/jallib.py compile $sample >> /tmp/tmpcomp.out 2>&1
 		status=$?
 	fi
-
 
 	if [ "$status" != "0" ]
 	then
