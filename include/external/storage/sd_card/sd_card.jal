@@ -1,7 +1,7 @@
 -- Title: Library for communicating with SD memory cards
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4l
+-- Compiler: >=2.4n
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -16,6 +16,16 @@
 -- SanDisk Secure Digital Card - http://www.cs.ucr.edu/~amitra/sdcard/ProdManualSDCardv1.9.pdf
 -- How to use MMC/SDC - http://forums.parallax.com/forums/attach.aspx?a=32012
 --
+-- NOTE: THERE IS AN ISSUE WITH COMPILER VERSIONS!, See below:
+--
+
+--for jalv2 2.40
+;var volatile byte sd_sector_buffer_low[256] -- 256 low bytes
+;var volatile byte sd_sector_buffer_high[256] -- 256 high bytes
+--
+--for jalv2 2.4n
+var byte sd_sector_buffer_low[256] -- 256 low bytes
+var byte sd_sector_buffer_high[256] -- 256 high bytes
 
 include print
 
@@ -422,7 +432,10 @@ procedure sd_data_byte'put(byte in data_byte) is
 
    spi_master = data_byte     -- send data byte
 
-   if sd_byte_count == 511 then -- end of sector write
+   sd_byte_count = sd_byte_count + 1  -- increment byte count
+
+   if sd_byte_count == 512 then -- end of sector write
+      sd_byte_count = 0
       sd_sector_count = sd_sector_count + 1 -- increment sector count
 
       spi_master = 0xFF  -- send junk crc, crc is disabled
@@ -440,12 +453,6 @@ procedure sd_data_byte'put(byte in data_byte) is
       while x != 0xFF loop
          x = spi_master
       end loop
-   end if
-
-   sd_byte_count = sd_byte_count + 1  -- increment byte count
-   
-   if sd_byte_count == 512 then
-      sd_byte_count = 0
    end if
 end procedure
 
@@ -526,14 +533,6 @@ end procedure
 ---------------------------------------------------------------------------
 -- define the sector buffer. Can be read as sd_sector_buffer[0-511]
 ---------------------------------------------------------------------------
---for jalv2 2.40
-;var volatile byte sd_sector_buffer_low[256] -- 256 low bytes
-;var volatile byte sd_sector_buffer_high[256] -- 256 high bytes
---
---for jalv2 2.4n
-var byte sd_sector_buffer_low[256] -- 256 low bytes
-var byte sd_sector_buffer_high[256] -- 256 high bytes
---
 function sd_sector_buffer'get(word in address) return byte is
    pragma inline
    if bit(address) == 0 then
