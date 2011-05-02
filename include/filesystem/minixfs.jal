@@ -84,8 +84,10 @@ const byte MINIX_MAX_DIRECT_ZONE_IDX        = 6
 const word MINIX_MAX_INDIRECT_ZONE_IDX      = 0x03FC  -- 0x400 - 4 == one block - one location
 const word MINIX_MAX_DOUBLE_DIRECT_ZONE_IDX = 0x03FC  -- 0x400 - 4 == one block - one location
 const byte MINIX_NUM_DIRECT_ZONES           = 7
-const word MINIX_NUM_INDIRECT_ZONES         = 256
-const word MINIX_NUM_DOUBLE_INDIRECT_ZONES  = 65536
+const dword MINIX_NUM_INDIRECT_ZONES         = 256
+const dword MINIX_NUM_DOUBLE_INDIRECT_ZONES  = 65536
+const dword MINIX_MAX_DIRECT_ZONE_SIZE      = MINIX_NUM_DIRECT_ZONES * MINIX_BYTES_PER_BLOCK
+const dword MINIX_MAX_INDIRECT_ZONE_SIZE    = (MINIX_NUM_INDIRECT_ZONES * MINIX_BYTES_PER_BLOCK) + MINIX_MAX_DIRECT_ZONE_SIZE
 const byte MINIX_ZONE_NONE             = 0b_0000
 const byte MINIX_ZONE_DIRECT           = 0b_0001
 const byte MINIX_ZONE_INDIRECT         = 0b_0010
@@ -104,6 +106,7 @@ const byte MINIX_ERR_BAD_MAGIC_NUMBER     = 0b_0000_0001 -- magic number unsuppo
 const byte MINIX_ERR_BAD_ZONE_LOCATION    = 0b_0000_0010 -- something is wrong about declared and computed data location
 const byte MINIX_ERR_NOT_DIRECTORY        = 0b_0000_0100 -- try to act on a directory, but inode isn't a directory
 const byte MINIX_ERR_NO_SUCH_FILE         = 0b_0000_1000 -- try to access invalid/unexisting filename or inode
+const byte MINIX_ERR_END_OF_FILE          = 0b_0001_0000 -- reached EOF
 
 -- Auto-resetting variable: errors are added, and when read, reset to 0
 var byte _minix_last_error = MINIX_ERR_NONE
@@ -216,6 +219,7 @@ var minix_fd minix_dirfd
 procedure minix_open_block(dword in num) is
    -- TODO: check if block number is within memory storage bound !
    var dword addr = MINIX_STORAGE_BLOCK_PER_BLOCK * num
+   minix_close_block()
    minix_goto_address(addr)
 end procedure
 
@@ -533,7 +537,6 @@ procedure minix_next_zone() is
          -- increment by size of dword, since data locations are 32-bits long
          minix_filefd.inode.zone_dbl_idx = minix_filefd.inode.zone_dbl_idx + 4
          minix_filefd.inode.zone_idx = 0xFFFC -- rollover to 0 when accessing single indirect
-         minix_close_block()
          minix_open_block_byte(minix_filefd.inode.double_indirect_zone,minix_filefd.inode.zone_dbl_idx)
          -- read indirect zone address
          minix_curzonetab[0] = minix_data_byte
@@ -543,13 +546,11 @@ procedure minix_next_zone() is
          -- and replace previous indirect location
          minix_filefd.inode.indirect_zone = minix_curzone
       end if
-
    end if
 
    if minix_filefd.inode.zone_type >= MINIX_ZONE_INDIRECT then
       -- increment by size of dword, since data locations are 32-bits long
       minix_filefd.inode.zone_idx = minix_filefd.inode.zone_idx + 4
-      minix_close_block()
       minix_open_block_byte(minix_filefd.inode.indirect_zone,minix_filefd.inode.zone_idx)
       -- read indirect zone address
       minix_curzonetab[0] = minix_data_byte
@@ -557,14 +558,12 @@ procedure minix_next_zone() is
       minix_curzonetab[2] = minix_data_byte
       minix_curzonetab[3] = minix_data_byte
       -- and move to this location
-      minix_close_block()
       minix_open_block(minix_curzone)
    end if
 
    if minix_filefd.inode.zone_type == MINIX_ZONE_DIRECT then
       minix_filefd.inode.zone_idx = minix_filefd.inode.zone_idx + 1
       minix_curzone = minix_filefd.inode.zone[minix_filefd.inode.zone_idx]
-      minix_close_block()
       minix_open_block(minix_curzone)
    end if
 end procedure
@@ -576,6 +575,7 @@ end procedure
 function minix_read() return byte is
 
    if minix_filefd.read == minix_filefd.inode.filesize then
+      minix_last_error = MINIX_ERR_END_OF_FILE
       return 0
    end if
 
@@ -599,41 +599,6 @@ procedure minix_openi(word in inode_num) is
    pragma inline
    minix_filefd.inode = minix_get_inode(inode_num)
    minix_filefd.read = 0
-end procedure
-
-procedure minix_cdi(word in inode_num) is
-   minix_openi(inode_num)
-   if minix_filefd.inode.mode.isdir == true then
-      minix_dirfd = minix_filefd
-   else
-      minix_last_error = MINIX_ERR_NOT_DIRECTORY
-   end if
-end procedure
-
--- move to byte bytenum within a file
--- Notes: assuming file was just opened, no data read
-procedure minix_seek(dword in bytenum) is
-   -- bytenum is the byte number *from* which data will be accessed, 
-   -- so we need to move just before
-   bytenum = bytenum - 1
-   var dword blocknum = bytenum / MINIX_BYTES_PER_BLOCK
-   var word remaining = byte(bytenum - (blocknum * MINIX_BYTES_PER_BLOCK))
-
-   -- TODO: optimize this crap ! this currently just walk over *all*
-   -- zones until the correct one...
-   -- Notes: first block has index 0
-   for blocknum  + 1 loop
-      minix_next_zone()
-   end loop
-
-   -- move within block
-   var byte _trash
-   for remaining loop
-      _trash = minix_data_byte
-   end loop
-
-   minix_filefd.read = bytenum
-
 end procedure
 
 -- list current working directory (cwd), returning a 
@@ -666,6 +631,7 @@ function minix_next_entry'get() return minix_dir_entry is
 
 end function
 
+
 -- return inode number found for given filename
 -- can be a file or a dir name) in current directory
 function minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word is
@@ -689,6 +655,111 @@ function minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word
    end if
    return inode_num
 end function
+
+procedure minix_open(byte in filename[MINIX_MAX_FILENANE_LEN]) is
+   var word inode_num = minix_find_in_cwd(filename)
+   if inode_num != 0 then
+      minix_openi(inode_num)
+   end if
+end procedure
+
+procedure minix_cdi(word in inode_num) is
+   minix_openi(inode_num)
+   if minix_filefd.inode.mode.isdir == true then
+      minix_dirfd = minix_filefd
+   else
+      minix_last_error = MINIX_ERR_NOT_DIRECTORY
+   end if
+end procedure
+
+-- move to byte bytenum within a file
+-- Notes: assuming file was just opened, no data read
+procedure minix_seek(dword in bytenum) is
+
+   -- TODO: are there really "dword" ? ain't just "word" enough ?
+   -- init to impossible value to detect is previously set
+   var dword mbytes = 0xFFFF_FFFF   
+   var dword kbytes = 0xFFFF_FFFF
+   var word bytes = 0
+
+   -- manual read content update
+   minix_filefd.read = bytenum
+
+   -- special case for direct zone
+   if bytenum <= MINIX_MAX_DIRECT_ZONE_SIZE then
+      kbytes = bytenum / MINIX_BYTES_PER_BLOCK
+      -- very end of zone ?
+      if kbytes == 7 then
+         -- this means bytenum = 7168 = 1024*7
+         kbytes = 6
+      end if
+      bytes = word(bytenum - (kbytes * MINIX_BYTES_PER_BLOCK))
+      minix_curzone = minix_filefd.inode.zone[kbytes]
+      -- manual update inode state
+      minix_filefd.inode.zone_idx = word(kbytes)
+      minix_filefd.inode.zone_content_idx = bytes
+      minix_open_block_byte(minix_curzone,bytes)
+      return 
+   end if
+
+   -- check offset location: indirect ou double indirect addressed
+   if bytenum > MINIX_MAX_INDIRECT_ZONE_SIZE then
+      -- in double indirect zones
+      bytenum = bytenum - MINIX_MAX_INDIRECT_ZONE_SIZE
+      -- now bytenum is an offset fully located in double indirect zones
+      -- indirect & double indirect zones stores block address. Convert so
+      -- indexes are actual block numbers
+      kbytes = bytenum / MINIX_BYTES_PER_BLOCK
+      bytes = word(bytenum - (kbytes * MINIX_BYTES_PER_BLOCK))
+      mbytes = kbytes / MINIX_NUM_INDIRECT_ZONES
+      kbytes = kbytes - (mbytes*MINIX_NUM_INDIRECT_ZONES)
+   elsif bytenum > MINIX_MAX_DIRECT_ZONE_SIZE then
+      -- in indirect zones
+      bytenum = bytenum - MINIX_MAX_DIRECT_ZONE_SIZE
+      -- now bytenum is an offset fully located in a single indirect zone
+      kbytes = bytenum / MINIX_BYTES_PER_BLOCK
+      bytes = word(bytenum - (kbytes * MINIX_BYTES_PER_BLOCK))
+   end if
+
+   -- we've modified double indirect addresses ?
+   if mbytes != 0xFFFF_FFFF then
+      -- go to double indirect zone and read indirect zone address
+      minix_open_block_byte(minix_filefd.inode.double_indirect_zone,word(mbytes*4))  -- mbytes is an index, one element weighs a dword
+      minix_curzonetab[0] = minix_data_byte
+      minix_curzonetab[1] = minix_data_byte
+      minix_curzonetab[2] = minix_data_byte
+      minix_curzonetab[3] = minix_data_byte
+      -- now minix_curzone stores indirect zone
+      -- manual update regarding double indirect addressing
+      minix_filefd.inode.zone_type = MINIX_ZONE_DOUBLE_INDIRECT
+      minix_filefd.inode.indirect_zone = minix_curzone
+      minix_filefd.inode.zone_dbl_idx = word(mbytes*4)
+   end if
+
+   -- we've modified single indirect addresses ?
+   if kbytes != 0xFFFF_FFFF then
+      -- go to indirect zone and read block address
+      minix_open_block_byte(minix_filefd.inode.indirect_zone,word(kbytes*4))
+      minix_curzonetab[0] = minix_data_byte
+      minix_curzonetab[1] = minix_data_byte
+      minix_curzonetab[2] = minix_data_byte
+      minix_curzonetab[3] = minix_data_byte
+      minix_open_block(minix_curzone)
+      -- manual update
+      minix_filefd.inode.zone_idx = word(kbytes*4)
+      minix_filefd.inode.zone_type = MINIX_ZONE_INDIRECT
+   end if
+
+   -- finally move within block until correct offet
+   var byte _trash
+   for bytes loop
+      _trash = minix_data_byte
+   end loop
+   
+   -- manual inode state update for content
+   minix_filefd.inode.zone_content_idx = bytes
+
+end procedure
 
 procedure minix_cd(byte in dirname[MINIX_MAX_FILENANE_LEN]) is
    var word inode_num = minix_find_in_cwd(dirname)
@@ -730,7 +801,6 @@ procedure minix_dev_print_super_block() is
    const byte STR_1ST_INODE_BP_BLOCK[] = "@ 1st inode bitmap block: "
    const byte STR_1ST_ZONE_BP_BLOCK[] = "@ 1st zone bitmap block: "
    const byte STR_1ST_INODE_BLOCK[] = "@ 1st inode block: "
-   ;;const byte STR_1ST_DATA_ZONE_COMPUTED[] = "@ 1st data zone (computed): "
 
    print_string(minix_print_carrier,STR_READ_SUPER_BLOCK)
    print_crlf(minix_print_carrier)
@@ -980,6 +1050,8 @@ procedure minix_dev_cati(word in inode_num) is
          print_dword_dec(minix_print_carrier,minix_filefd.read)
          minix_print_carrier = "/"
          print_dword_dec(minix_print_carrier,minix_filefd.inode.filesize)
+         minix_print_carrier = "|"
+         print_word_dec(minix_print_carrier,sd_byte_count)
          minix_print_carrier = " "
          minix_print_carrier = char
          print_crlf(minix_print_carrier)
