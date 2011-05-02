@@ -2,8 +2,8 @@
 
 start_time=`date +%s`
 
-#export JALLIB_ROOT=`pwd`	# correct when set by buildbot
-export JALLIB_ROOT=`pwd`/../..	# run manually here
+export JALLIB_ROOT=`pwd`	# correct when set by buildbot
+#export JALLIB_ROOT=`pwd`/../..	# run manually here
 export JALLIB_REPOS=$JALLIB_ROOT/include
 export JALLIB_SAMPLEDIR=$JALLIB_ROOT/sample
 
