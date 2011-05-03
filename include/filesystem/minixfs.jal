@@ -58,6 +58,8 @@
 -- Notes:
 --
 -- TODO:
+--  * update atime/mtime/ctime while reading & writing
+--  *  
 --
 
 include strings
@@ -93,11 +95,12 @@ const byte MINIX_ZONE_DIRECT           = 0b_0001
 const byte MINIX_ZONE_INDIRECT         = 0b_0010
 const byte MINIX_ZONE_DOUBLE_INDIRECT  = 0b_0100
 const byte MINIX_ZONE_TRIPLE_INDIRECT  = 0b_1000
+const dword MINIX_NUM_ZONE_BITS_PER_BLOCK = MINIX_BYTES_PER_BLOCK * 8
 
 -- File descriptor constants
-const byte MINIX_FD_READ_ONLY   = 0b_01
-const byte MINIX_FD_WRITE_ONLY  = 0b_10
-const byte MINIX_FD_READ_WRITE  = 0b_11
+const byte MINIX_READ_ONLY   = 0b_01
+const byte MINIX_WRITE_ONLY  = 0b_10
+;;const byte MINIX_READ_WRITE  = 0b_11   -- I'm not sure if this can be supported...
 
 -- Error constants. Following "mkfs" convention, errors are added, so
 -- minix_last_error can embed several errors
@@ -139,6 +142,14 @@ record minix_superblock is
    dword first_inode_bitmap_block
    dword first_zone_bitmap_block
    dword first_inode_block
+   -- Stores the block address and byte index containing the last 
+   -- assigned zone bitmap. This way we don't have to explore zone 
+   -- bitmap each time we request a new zone
+   dword last_zone_bitmap_block
+   word last_zone_bitmap_byte
+   dword last_used_zone_num
+   dword last_zone_address
+
 end record
 
 -- Inode --
@@ -219,8 +230,13 @@ var minix_fd minix_dirfd
 procedure minix_open_block(dword in num) is
    -- TODO: check if block number is within memory storage bound !
    var dword addr = MINIX_STORAGE_BLOCK_PER_BLOCK * num
-   minix_close_block()
-   minix_goto_address(addr)
+   if minix_filefd.mode == MINIX_WRITE_ONLY then
+      minix_stop_write()
+      minix_start_write(addr)
+   else
+      minix_stop_read()
+      minix_start_read(addr)
+   end if
 end procedure
 
 -- move to block number, then to byte number within the block
@@ -230,6 +246,36 @@ procedure minix_open_block_byte(dword in blocknum, word in bytenum) is
    for bytenum loop
       _trash = minix_data_byte
    end loop
+end procedure
+
+procedure minix_find_next_free_zone_bit() is
+   var byte data
+   var byte zeroinside
+   var word counter = 0
+   -- go where previously found
+   minix_open_block_byte(minix_sb.last_zone_bitmap_block,minix_sb.last_zone_bitmap_byte)
+   data = minix_data_byte
+   zeroinside = data ^ 0xFF
+   while zeroinside == 0 loop
+      data = minix_data_byte
+      minix_sb.last_zone_bitmap_byte = minix_sb.last_zone_bitmap_byte + 1
+      if minix_sb.last_zone_bitmap_byte == MINIX_BYTES_PER_BLOCK then
+         minix_sb.last_zone_bitmap_byte = 0
+         minix_sb.last_zone_bitmap_block = minix_sb.last_zone_bitmap_block + 1
+      end if
+      zeroinside = data ^ 0xFF
+      minix_sb.last_used_zone_num = minix_sb.last_used_zone_num + 8
+   end loop
+   -- we're in zone currently allocated, adjust num zone
+   minix_sb.last_used_zone_num = minix_sb.last_used_zone_num - 8
+   -- data contains some zeros, compute number of "1" previously found
+   -- how many "1" in it ?
+   var byte numone = 0
+   while data != 0 loop
+      data = data >> 1
+      numone = numone + 1
+   end loop
+   minix_sb.last_used_zone_num = minix_sb.last_used_zone_num + numone
 end procedure
 
 -- Read Super-Block and fill record
@@ -302,10 +348,21 @@ procedure minix_read_super_block(bit in check_data_zone) is
          minix_last_error = MINIX_ERR_BAD_ZONE_LOCATION
       end if
    end if
+   
+   -- init special vars
+   minix_sb.last_zone_bitmap_block = minix_sb.first_zone_bitmap_block   -- beginning of zone bitmap
+   minix_sb.last_zone_bitmap_byte = 0
+   minix_sb.last_used_zone_num = 0
+   minix_sb.last_zone_address = minix_sb.first_data_zone    -- beginning of actual data
 
-   minix_close_block()
+   minix_stop_read()
+
+   minix_find_next_free_zone_bit()
    
 end procedure
+
+function minix_zone_alloc() return dword is
+end function
 
 function minix_get_inode(word in inode_num) return minix_inode is
 
@@ -470,7 +527,7 @@ function minix_get_inode(word in inode_num) return minix_inode is
    datatab[3] = minix_data_byte
    inode.triple_indirect_zone = data
 
-   minix_close_block()
+   minix_stop_read()
 
    -- init state
    inode.zone_type = MINIX_ZONE_DIRECT
@@ -498,12 +555,19 @@ end function
 
 procedure minix_close() is
    -- TODO: write new inode state
-   minix_close_block()
+   if minix_filefd.mode == MINIX_WRITE_ONLY then
+      minix_stop_write()
+   else
+      minix_stop_read()
+   end if
+   -- because filefd.mode is used globally in order to know how to 
+   -- open block (read|write mode), set it back to read-only as default
+   minix_filefd.mode = MINIX_READ_ONLY
 end procedure
 
 -- move to next data zone, being direct, indirect ou double
 -- indirect
-procedure minix_next_zone() is
+procedure minix_next_zone(bit in create_zone) is
 
    -- reset zone content
    minix_filefd.inode.zone_content_idx = 0
@@ -563,6 +627,11 @@ procedure minix_next_zone() is
 
    if minix_filefd.inode.zone_type == MINIX_ZONE_DIRECT then
       minix_filefd.inode.zone_idx = minix_filefd.inode.zone_idx + 1
+      -- in direct zone mode, we need to get a new block address and fill
+      -- zone0, zone1, etc...
+      if create_zone == true then
+         minix_filefd.inode.zone[minix_filefd.inode.zone_idx] = minix_zone_alloc()
+      end if
       minix_curzone = minix_filefd.inode.zone[minix_filefd.inode.zone_idx]
       minix_open_block(minix_curzone)
    end if
@@ -574,6 +643,10 @@ end procedure
 -- track of progress within inode
 function minix_read() return byte is
 
+   if minix_filefd.mode != MINIX_READ_ONLY then
+      return 0
+   end if
+
    if minix_filefd.read == minix_filefd.inode.filesize then
       minix_last_error = MINIX_ERR_END_OF_FILE
       return 0
@@ -584,7 +657,7 @@ function minix_read() return byte is
    -- from to 1024. This avoids to save read byte in a variable, increment,
    -- then return read byte.
    if minix_filefd.inode.zone_content_idx == MINIX_BYTES_PER_BLOCK then
-       minix_next_zone() -- on first call will rollover to zone[0]
+       minix_next_zone(false) -- on first call will rollover to zone[0]
    end if
 
    -- adjust current content index within the zone to next byte
@@ -595,10 +668,37 @@ function minix_read() return byte is
 
 end function
 
-procedure minix_openi(word in inode_num) is
+-- write a byte to current opened file descriptor
+procedure minix_write(byte in data) is
+
+   if minix_filefd.mode != MINIX_WRITE_ONLY then
+      return
+   end if
+
+   -- if we're writing onto existing data, don't need to create zones
+   -- that's why we track what we read/write in order to know if we go beyond
+   -- file size.
+   var bit create = false
+   if minix_filefd.read == minix_filefd.inode.filesize then
+      minix_filefd.inode.filesize = minix_filefd.inode.filesize + 1
+      create = true
+   end if
+
+   if minix_filefd.inode.zone_content_idx == MINIX_BYTES_PER_BLOCK then
+       minix_next_zone(create)  -- true: write operation, ie. can create new zone
+   end if
+
+   minix_filefd.inode.zone_content_idx = minix_filefd.inode.zone_content_idx + 1
+   minix_filefd.read = minix_filefd.read + 1
+   minix_data_byte = data
+
+end procedure
+
+procedure minix_openi(word in inode_num,byte in mode) is
    pragma inline
    minix_filefd.inode = minix_get_inode(inode_num)
    minix_filefd.read = 0
+   minix_filefd.mode = mode
 end procedure
 
 -- list current working directory (cwd), returning a 
@@ -635,7 +735,7 @@ end function
 -- return inode number found for given filename
 -- can be a file or a dir name) in current directory
 function minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word is
-   minix_openi(minix_dirfd.inode.id)
+   minix_openi(minix_dirfd.inode.id,MINIX_READ_ONLY)
    var minix_dir_entry entry
    var byte fncp[MINIX_MAX_FILENANE_LEN]
    var word inode_num = 0
@@ -656,15 +756,15 @@ function minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word
    return inode_num
 end function
 
-procedure minix_open(byte in filename[MINIX_MAX_FILENANE_LEN]) is
+procedure minix_open(byte in filename[MINIX_MAX_FILENANE_LEN],byte in mode) is
    var word inode_num = minix_find_in_cwd(filename)
    if inode_num != 0 then
-      minix_openi(inode_num)
+      minix_openi(inode_num,mode)
    end if
 end procedure
 
 procedure minix_cdi(word in inode_num) is
-   minix_openi(inode_num)
+   minix_openi(inode_num,MINIX_READ_ONLY)
    if minix_filefd.inode.mode.isdir == true then
       minix_dirfd = minix_filefd
    else
@@ -771,10 +871,14 @@ end procedure
 
 procedure minix_init(bit in check) is
    pragma inline
+
+   minix_filefd.mode = MINIX_READ_ONLY
+
    minix_read_super_block(check)
    -- init root directory
    minix_dirfd.inode = minix_get_inode(MINIX_INODE_ROOT_ID)
    minix_dirfd.read = 0
+
 end procedure
 
 
@@ -801,53 +905,88 @@ procedure minix_dev_print_super_block() is
    const byte STR_1ST_INODE_BP_BLOCK[] = "@ 1st inode bitmap block: "
    const byte STR_1ST_ZONE_BP_BLOCK[] = "@ 1st zone bitmap block: "
    const byte STR_1ST_INODE_BLOCK[] = "@ 1st inode block: "
+   const byte STR_LAST_ZONE_BITMAP_BLOCK[] = "Last zone bitmap block: "
+   const byte STR_LAST_ZONE_BITMAP_BYTE[] = "Last zone bitmap byte: "
+   const byte STR_LAST_USED_ZONE_NUM[] = "# last used zone: "
+   const byte STR_LAST_ZONE_ADDRESS[] = "@ last zone:"
 
    print_string(minix_print_carrier,STR_READ_SUPER_BLOCK)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_NUMBER_OF_NODES)
+   minix_print_carrier = "h"
    print_word_hex(minix_print_carrier,minix_sb.num_inodes)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_NUMBER_OF_ZONES_V1)
+   minix_print_carrier = "h"
    print_word_hex(minix_print_carrier,minix_sb.num_zones_v1)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_NUMBER_OF_INODE_BITMAP_BLOCKS)
+   minix_print_carrier = "h"
    print_word_hex(minix_print_carrier,minix_sb.num_inode_bitmap_blocks)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_NUMBER_OF_ZONE_BITMAP_BLOCKS)
+   minix_print_carrier = "h"
    print_word_hex(minix_print_carrier,minix_sb.num_zone_bitmap_blocks)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_1ST_DATA_ZONE)
+   minix_print_carrier = "h"
    print_word_hex(minix_print_carrier,minix_sb.first_data_zone)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_MAX_FILE_SIZE)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_sb.max_file_size)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_MAGIC_NUMBER)
+   minix_print_carrier = "h"
    print_word_hex(minix_print_carrier,minix_sb.magic_number)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_NUMBER_OF_ZONES_V2)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_sb.num_zones_v2)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_1ST_INODE_BP_BLOCK)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_sb.first_inode_bitmap_block)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_1ST_ZONE_BP_BLOCK)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_sb.first_zone_bitmap_block)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_1ST_INODE_BLOCK)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_sb.first_inode_block)
    print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_LAST_ZONE_BITMAP_BLOCK)
+   minix_print_carrier = "h"
+   print_dword_hex(minix_print_carrier,minix_sb.last_zone_bitmap_block)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_LAST_ZONE_BITMAP_BYTE)
+   minix_print_carrier = "h"
+   print_dword_hex(minix_print_carrier,minix_sb.last_zone_bitmap_byte)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_LAST_USED_ZONE_NUM)
+   print_dword_dec(minix_print_carrier,minix_sb.last_used_zone_num)
+   print_crlf(minix_print_carrier)
+
+   print_string(minix_print_carrier,STR_LAST_ZONE_ADDRESS)
+   minix_print_carrier = "h"
+   print_dword_hex(minix_print_carrier,minix_sb.last_zone_address)
+   print_crlf(minix_print_carrier)
+   minix_sb.last_zone_address = minix_sb.first_data_zone    -- beginning of actual data
 
 end procedure
 
@@ -952,38 +1091,47 @@ procedure minix_dev_print_inode() is
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE0)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[0])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE1)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[1])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE2)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[2])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE3)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[3])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE4)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[4])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE5)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[5])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_ZONE6)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[6])
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_IND_ZONE)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_filefd.inode.indirect_zone)
    print_crlf(minix_print_carrier)
 
    print_string(minix_print_carrier,STR_DBL_IND_ZONE)
+   minix_print_carrier = "h"
    print_dword_hex(minix_print_carrier,minix_filefd.inode.double_indirect_zone)
    print_crlf(minix_print_carrier)
 
@@ -1008,7 +1156,7 @@ procedure minix_print_dir_entry(minix_dir_entry in entry) is
 end procedure
 
 procedure minix_cati(word in inode_num) is
-   minix_openi(inode_num)
+   minix_openi(inode_num,MINIX_READ_ONLY)
    while minix_filefd.read != minix_filefd.inode.filesize loop
       minix_print_carrier = minix_read()
    end loop
@@ -1028,23 +1176,29 @@ end procedure
 procedure minix_dev_cati(word in inode_num) is
    var byte char = 0
    var byte charprev = 0
-   minix_openi(inode_num)
+   minix_openi(inode_num,MINIX_READ_ONLY)
    while minix_filefd.read != minix_filefd.inode.filesize loop
       char = minix_read()
       if char != charprev then
          charprev = char
          print_byte_binary(minix_print_carrier,minix_filefd.inode.zone_type)
          minix_print_carrier = "|"
+         minix_print_carrier = "h"
          print_word_hex(minix_print_carrier,minix_filefd.inode.zone_idx)
          minix_print_carrier = "|"
+         minix_print_carrier = "h"
          print_word_hex(minix_print_carrier,minix_filefd.inode.zone_dbl_idx)
          minix_print_carrier = "|"
+         minix_print_carrier = "h"
          print_word_hex(minix_print_carrier,minix_filefd.inode.zone_content_idx)
          minix_print_carrier = "|"
+         minix_print_carrier = "h"
          print_dword_hex(minix_print_carrier,minix_curzone)
          minix_print_carrier = "|"
+         minix_print_carrier = "h"
          print_dword_hex(minix_print_carrier,minix_filefd.inode.indirect_zone)
          minix_print_carrier = "|"
+         minix_print_carrier = "h"
          print_dword_hex(minix_print_carrier,minix_filefd.inode.double_indirect_zone)
          minix_print_carrier = "|"
          print_dword_dec(minix_print_carrier,minix_filefd.read)
@@ -1068,7 +1222,7 @@ procedure minix_dev_cat(byte in filename[MINIX_MAX_FILENANE_LEN]) is
 end procedure
 
 procedure minix_lsi(word in inode_num) is
-   minix_openi(inode_num)
+   minix_openi(inode_num,MINIX_READ_ONLY)
    if minix_filefd.inode.mode.isdir == true then
       var minix_dir_entry entry
       entry = minix_next_entry
