@@ -273,6 +273,34 @@ function minix_storage_read_byte() return byte is
 
 end function
 
+-- "Raw" read one byte from underlying storage.
+procedure minix_storage_write_byte(byte in data) is
+
+   if minix_sector_counter == MINIX_STORAGE_SECTOR_SIZE then
+      -- reached end of underlying sector. Write current sector (write)
+      -- and open a new one (read)
+      minix_start_write(minix_storage_address)
+      minix_write_sector()
+      minix_stop_write()
+      minix_storage_address = minix_storage_address + 1
+      minix_sector_counter = 0
+   end if
+
+   if minix_sector_counter == 0 then
+      -- fill in buffer
+      minix_start_read(minix_storage_address)
+      minix_read_sector()
+      minix_stop_read()
+   end if
+
+   minix_print_carrier = data
+   minix_print_carrier = "@"
+   print_word_dec(minix_print_carrier,minix_sector_counter)
+   minix_sector_buffer[minix_sector_counter] = data
+   minix_sector_counter = minix_sector_counter + 1
+
+end procedure
+
 
 procedure minix_find_next_free_zone_bit() is
    var byte data
@@ -380,8 +408,6 @@ procedure minix_read_super_block(bit in check_data_zone) is
    minix_sb.last_zone_bitmap_byte = 0
    minix_sb.last_used_zone_num = 0
    minix_sb.last_zone_address = minix_sb.first_data_zone    -- beginning of actual data
-
-   minix_stop_read()
 
    ;;minix_find_next_free_zone_bit()
    
@@ -555,8 +581,6 @@ function minix_get_inode(word in inode_num) return minix_inode is
    datatab[3] = minix_storage_read_byte()
    inode.triple_indirect_zone = data
 
-   minix_stop_read()
-
    -- init state
    inode.zone_type = MINIX_ZONE_DIRECT
    -- Zone indexes serve different purpose, depending on data is
@@ -709,8 +733,6 @@ procedure minix_save_inode(minix_inode in inode) is
    ;datatab[3] = minix_data_byte
    ;inode.triple_indirect_zone = data
 
-   ;minix_stop_read()
-
    ;-- init state
    ;inode.zone_type = MINIX_ZONE_DIRECT
    ;-- Zone indexes serve different purpose, depending on data is
@@ -735,16 +757,20 @@ procedure minix_save_inode(minix_inode in inode) is
 
 end procedure
 
-procedure minix_close() is
-   -- TODO: write new inode state
+procedure minix_flush() is
    if minix_filefd.mode == MINIX_WRITE_ONLY then
-      -- close current filefd
+      -- close current filefd by flushing changes
+      minix_start_write(minix_storage_address)
+      minix_write_sector()
       minix_stop_write()
-      -- save current inode state
-      ;minix_save_inode(minix_filefd.inode)
-   else
-      minix_stop_read()
    end if
+end procedure
+
+procedure minix_close() is
+   minix_flush()
+   -- TODO: write new inode state
+   -- save current inode state
+   ;minix_save_inode(minix_filefd.inode)
    -- because filefd.mode is used globally in order to know how to 
    -- open block (read|write mode), set it back to read-only as default
    minix_filefd.mode = MINIX_READ_ONLY
@@ -874,28 +900,10 @@ procedure minix_write(byte in data) is
        minix_next_zone(create)  -- true: write operation, ie. can create new zone
    end if
 
-   if minix_sector_counter == MINIX_STORAGE_SECTOR_SIZE then
-      -- reached end of underlying sector. Write sector in buffer and 
-      -- load next one
-      minix_start_write(minix_storage_address)
-      minix_write_sector()
-      minix_stop_write()
-      minix_storage_address = minix_storage_address + 1
-      minix_start_read(minix_storage_address)
-      minix_stop_read()
-      minix_sector_counter = 0
-   end if
-
-   if minix_sector_counter == 0 then
-      -- fill in buffer
-      minix_read_sector()
-   end if
-
    minix_filefd.inode.zone_content_idx = minix_filefd.inode.zone_content_idx + 1
    minix_filefd.read = minix_filefd.read + 1
-   minix_sector_counter = minix_sector_counter + 1
    
-   minix_sector_buffer[minix_sector_counter - 1] = data
+   minix_storage_write_byte(data)
 
 end procedure
 
