@@ -95,9 +95,9 @@ const byte MINIX_ZONE_TRIPLE_INDIRECT  = 0b_1000
 const dword MINIX_NUM_ZONE_BITS_PER_BLOCK = MINIX_BYTES_PER_BLOCK * 8
 
 -- File descriptor constants
-const byte MINIX_READ_ONLY   = 0b_01
-const byte MINIX_WRITE_ONLY  = 0b_10
-;;const byte MINIX_READ_WRITE  = 0b_11   -- I'm not sure if this can be supported...
+const byte MINIX_MODE_READ   = 0b001
+const byte MINIX_MODE_WRITE  = 0b010
+const byte MINIX_MODE_APPEND = 0b100  -- write implied
 
 -- Error constants. Following "mkfs" convention, errors are added, so
 -- minix_last_error can embed several errors
@@ -208,7 +208,7 @@ end record
 record minix_fd is
    byte mode      -- read/write/...
    dword read     
-   bit isopen
+   bit dirty
    minix_inode inode
 end record
 
@@ -250,6 +250,20 @@ procedure minix_open_block_byte(dword in blocknum, word in bytenum) is
       minix_stop_read()
    end if
    minix_sector_counter = bytenum
+end procedure
+
+procedure minix_flush() is
+   if (minix_filefd.mode >= MINIX_MODE_WRITE) & minix_filefd.dirty then
+      minix_print_carrier = "F"
+      minix_print_carrier = "F"
+      minix_print_carrier = "F"
+      -- close current filefd by flushing changes
+      minix_start_write(minix_storage_address)
+      minix_write_sector()
+      minix_stop_write()
+      -- now closed
+      minix_filefd.dirty = false
+   end if
 end procedure
 
 -- "Raw" read one byte from underlying storage.
@@ -608,7 +622,7 @@ end function
 procedure minix_save_inode(minix_inode in inode) is
 
    -- manual mode setting as we don't actually open a file fd
-   minix_filefd.mode = MINIX_WRITE_ONLY
+   minix_filefd.mode = MINIX_MODE_WRITE
    minix_open_block_byte(inode.block_address,inode.byte_address)
 
    -- MSB first, then LSB
@@ -757,15 +771,6 @@ procedure minix_save_inode(minix_inode in inode) is
 
 end procedure
 
-procedure minix_flush() is
-   if minix_filefd.mode == MINIX_WRITE_ONLY then
-      -- close current filefd by flushing changes
-      minix_start_write(minix_storage_address)
-      minix_write_sector()
-      minix_stop_write()
-   end if
-end procedure
-
 procedure minix_close() is
    minix_flush()
    -- TODO: write new inode state
@@ -773,14 +778,16 @@ procedure minix_close() is
    ;minix_save_inode(minix_filefd.inode)
    -- because filefd.mode is used globally in order to know how to 
    -- open block (read|write mode), set it back to read-only as default
-   minix_filefd.mode = MINIX_READ_ONLY
-   -- now closed
-   minix_filefd.isopen = false
+   minix_filefd.mode = MINIX_MODE_READ
 end procedure
 
 -- move to next data zone, being direct, indirect ou double
 -- indirect
 procedure minix_next_zone(bit in create_zone) is
+
+   -- if in write mode, we can move to another sector in underlying storage
+   -- and loose changes. Flush in case.
+   minix_flush()
 
    -- reset zone content
    minix_filefd.inode.zone_content_idx = 0
@@ -857,7 +864,7 @@ end procedure
 -- track of progress within inode
 function minix_read() return byte is
 
-   if minix_filefd.mode != MINIX_READ_ONLY then
+   if minix_filefd.mode != MINIX_MODE_READ then
       return 0
    end if
 
@@ -883,7 +890,7 @@ end function
 -- write a byte to current opened file descriptor
 procedure minix_write(byte in data) is
 
-   if minix_filefd.mode != MINIX_WRITE_ONLY then
+   if minix_filefd.mode < MINIX_MODE_WRITE then
       return
    end if
 
@@ -904,86 +911,8 @@ procedure minix_write(byte in data) is
    minix_filefd.read = minix_filefd.read + 1
    
    minix_storage_write_byte(data)
+   minix_filefd.dirty = true
 
-end procedure
-
-procedure minix_openi(word in inode_num,byte in mode) is
-   pragma inline
-   minix_filefd.inode = minix_get_inode(inode_num)
-   minix_filefd.read = 0
-   minix_filefd.mode = mode
-   minix_filefd.isopen = true
-end procedure
-
--- list current working directory (cwd), returning a 
--- directory entry each time it's called, until no more
--- entry found.
-function minix_next_entry'get() return minix_dir_entry is
-
-   var minix_dir_entry entry
-   entry.inode_num = 0
-   entry.filename[0] = 0
-
-   -- now read directory entry
-   var byte counter
-   var word data
-   var byte datatab[2] at data
-   -- read number of inodes
-   datatab[0] = minix_read()
-   datatab[1] = minix_read()
-   -- is there an entry ? (inode #0 is impossible by specs)
-   if data == 0 then
-      minix_close()
-   else
-      entry.inode_num = data
-      for MINIX_MAX_FILENANE_LEN using counter loop
-         entry.filename[counter] = minix_read()
-      end loop
-   end if
-
-   return entry
-
-end function
-
-
--- return inode number found for given filename
--- can be a file or a dir name) in current directory
-function minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word is
-   minix_openi(minix_dirfd.inode.id,MINIX_READ_ONLY)
-   var minix_dir_entry entry
-   var byte fncp[MINIX_MAX_FILENANE_LEN]
-   var word inode_num = 0
-   entry = minix_next_entry
-   while entry.inode_num != 0 loop
-      -- compiler bug (2.4o beta Mar 6 2011): array within record
-      -- aren't considered as array, need to copy
-      fncp = entry.filename
-      if strcmp(fncp,filename) then
-         inode_num = entry.inode_num
-      end if
-      entry = minix_next_entry
-   end loop
-   minix_close()
-   if inode_num == 0 then
-      minix_last_error = MINIX_ERR_NO_SUCH_FILE
-   end if
-   return inode_num
-end function
-
-procedure minix_open(byte in filename[MINIX_MAX_FILENANE_LEN],byte in mode) is
-   var word inode_num = minix_find_in_cwd(filename)
-   if inode_num != 0 then
-      minix_openi(inode_num,mode)
-   end if
-end procedure
-
-procedure minix_cdi(word in inode_num) is
-   minix_openi(inode_num,MINIX_READ_ONLY)
-   if minix_filefd.inode.mode.isdir == true then
-      minix_dirfd = minix_filefd
-   else
-      minix_last_error = MINIX_ERR_NOT_DIRECTORY
-   end if
 end procedure
 
 -- move to byte bytenum within a file
@@ -995,6 +924,10 @@ procedure minix_seek(dword in bytenum) is
    var dword mbytes = 0xFFFF_FFFF   
    var dword kbytes = 0xFFFF_FFFF
    var word bytes = 0
+
+   -- if in write mode, we can move to another sector in underlying storage
+   -- and loose changes. Flush in case.
+   minix_flush()
 
    -- manual read content update
    minix_filefd.read = bytenum
@@ -1075,6 +1008,89 @@ procedure minix_seek(dword in bytenum) is
 
 end procedure
 
+procedure minix_openi(word in inode_num,byte in mode) is
+   pragma inline
+   minix_filefd.inode = minix_get_inode(inode_num)
+   minix_filefd.read = 0
+   minix_filefd.mode = mode
+   minix_filefd.dirty = false -- needs to be written back to storage
+   -- append: seek to the end
+   if minix_filefd.mode >= MINIX_MODE_APPEND then
+      minix_seek(minix_filefd.inode.filesize)
+   end if
+end procedure
+
+-- list current working directory (cwd), returning a 
+-- directory entry each time it's called, until no more
+-- entry found.
+function minix_next_entry'get() return minix_dir_entry is
+
+   var minix_dir_entry entry
+   entry.inode_num = 0
+   entry.filename[0] = 0
+
+   -- now read directory entry
+   var byte counter
+   var word data
+   var byte datatab[2] at data
+   -- read number of inodes
+   datatab[0] = minix_read()
+   datatab[1] = minix_read()
+   -- is there an entry ? (inode #0 is impossible by specs)
+   if data == 0 then
+      minix_close()
+   else
+      entry.inode_num = data
+      for MINIX_MAX_FILENANE_LEN using counter loop
+         entry.filename[counter] = minix_read()
+      end loop
+   end if
+
+   return entry
+
+end function
+
+
+-- return inode number found for given filename
+-- can be a file or a dir name) in current directory
+function minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word is
+   minix_openi(minix_dirfd.inode.id,MINIX_MODE_READ)
+   var minix_dir_entry entry
+   var byte fncp[MINIX_MAX_FILENANE_LEN]
+   var word inode_num = 0
+   entry = minix_next_entry
+   while entry.inode_num != 0 loop
+      -- compiler bug (2.4o beta Mar 6 2011): array within record
+      -- aren't considered as array, need to copy
+      fncp = entry.filename
+      if strcmp(fncp,filename) then
+         inode_num = entry.inode_num
+      end if
+      entry = minix_next_entry
+   end loop
+   minix_close()
+   if inode_num == 0 then
+      minix_last_error = MINIX_ERR_NO_SUCH_FILE
+   end if
+   return inode_num
+end function
+
+procedure minix_open(byte in filename[MINIX_MAX_FILENANE_LEN],byte in mode) is
+   var word inode_num = minix_find_in_cwd(filename)
+   if inode_num != 0 then
+      minix_openi(inode_num,mode)
+   end if
+end procedure
+
+procedure minix_cdi(word in inode_num) is
+   minix_openi(inode_num,MINIX_MODE_READ)
+   if minix_filefd.inode.mode.isdir == true then
+      minix_dirfd = minix_filefd
+   else
+      minix_last_error = MINIX_ERR_NOT_DIRECTORY
+   end if
+end procedure
+
 procedure minix_cd(byte in dirname[MINIX_MAX_FILENANE_LEN]) is
    var word inode_num = minix_find_in_cwd(dirname)
    if inode_num != 0 then
@@ -1086,14 +1102,14 @@ end procedure
 procedure minix_init(bit in check) is
    pragma inline
 
-   minix_filefd.mode = MINIX_READ_ONLY
-   minix_filefd.isopen = false
+   minix_filefd.mode = MINIX_MODE_READ
+   minix_filefd.dirty = false
    
    minix_read_super_block(check)
    -- init root directory
    minix_dirfd.inode = minix_get_inode(MINIX_INODE_ROOT_ID)
    minix_dirfd.read = 0
-   minix_dirfd.isopen = false
+   minix_dirfd.dirty = false
 
 end procedure
 
@@ -1372,7 +1388,7 @@ procedure minix_print_dir_entry(minix_dir_entry in entry) is
 end procedure
 
 procedure minix_cati(word in inode_num) is
-   minix_openi(inode_num,MINIX_READ_ONLY)
+   minix_openi(inode_num,MINIX_MODE_READ)
    while minix_filefd.read != minix_filefd.inode.filesize loop
       minix_print_carrier = minix_read()
    end loop
@@ -1392,7 +1408,7 @@ end procedure
 procedure minix_dev_cati(word in inode_num) is
    var byte char = 0
    var byte charprev = 0
-   minix_openi(inode_num,MINIX_READ_ONLY)
+   minix_openi(inode_num,MINIX_MODE_READ)
    while minix_filefd.read != minix_filefd.inode.filesize loop
       char = minix_read()
       if char != charprev then
@@ -1440,7 +1456,7 @@ procedure minix_dev_cat(byte in filename[MINIX_MAX_FILENANE_LEN]) is
 end procedure
 
 procedure minix_lsi(word in inode_num) is
-   minix_openi(inode_num,MINIX_READ_ONLY)
+   minix_openi(inode_num,MINIX_MODE_READ)
    if minix_filefd.inode.mode.isdir == true then
       var minix_dir_entry entry
       entry = minix_next_entry
