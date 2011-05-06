@@ -59,7 +59,7 @@
 --
 -- TODO:
 --  * update atime/mtime/ctime while reading & writing
---  *  
+--  * update mode bits while saving inode 
 --
 
 include strings
@@ -144,8 +144,9 @@ record minix_superblock is
    -- bitmap each time we request a new zone
    dword last_zone_bitmap_block
    word last_zone_bitmap_byte
-   dword last_used_zone_num
-   dword last_zone_address
+   byte zone_current_bits
+   dword last_full_zone
+   dword next_zone_address
 
 end record
 
@@ -252,15 +253,18 @@ procedure minix_open_block_byte(dword in blocknum, word in bytenum) is
    minix_sector_counter = bytenum
 end procedure
 
+
+procedure minix_storage_flush() is
+   -- TODO: inline ?
+   minix_start_write(minix_storage_address)
+   minix_write_sector()
+   minix_stop_write()
+end procedure
+
 procedure minix_flush() is
    if (minix_filefd.mode >= MINIX_MODE_WRITE) & minix_filefd.dirty then
-      minix_print_carrier = "F"
-      minix_print_carrier = "F"
-      minix_print_carrier = "F"
       -- close current filefd by flushing changes
-      minix_start_write(minix_storage_address)
-      minix_write_sector()
-      minix_stop_write()
+      minix_storage_flush()
       -- now closed
       minix_filefd.dirty = false
    end if
@@ -293,9 +297,7 @@ procedure minix_storage_write_byte(byte in data) is
    if minix_sector_counter == MINIX_STORAGE_SECTOR_SIZE then
       -- reached end of underlying sector. Write current sector (write)
       -- and open a new one (read)
-      minix_start_write(minix_storage_address)
-      minix_write_sector()
-      minix_stop_write()
+      minix_storage_flush()
       minix_storage_address = minix_storage_address + 1
       minix_sector_counter = 0
    end if
@@ -307,44 +309,77 @@ procedure minix_storage_write_byte(byte in data) is
       minix_stop_read()
    end if
 
-   minix_print_carrier = data
-   minix_print_carrier = "@"
-   print_word_dec(minix_print_carrier,minix_sector_counter)
    minix_sector_buffer[minix_sector_counter] = data
    minix_sector_counter = minix_sector_counter + 1
 
 end procedure
 
 
-procedure minix_find_next_free_zone_bit() is
-   var byte data
-   var byte zeroinside
-   var word counter = 0
-   -- go where previously found
-   minix_open_block_byte(minix_sb.last_zone_bitmap_block,minix_sb.last_zone_bitmap_byte)
-   data = minix_data_byte
-   zeroinside = data ^ 0xFF
-   while zeroinside == 0 loop
-      data = minix_data_byte
-      minix_sb.last_zone_bitmap_byte = minix_sb.last_zone_bitmap_byte + 1
-      if minix_sb.last_zone_bitmap_byte == MINIX_BYTES_PER_BLOCK then
-         minix_sb.last_zone_bitmap_byte = 0
-         minix_sb.last_zone_bitmap_block = minix_sb.last_zone_bitmap_block + 1
-      end if
-      zeroinside = data ^ 0xFF
-      minix_sb.last_used_zone_num = minix_sb.last_used_zone_num + 8
-   end loop
-   -- we're in zone currently allocated, adjust num zone
-   minix_sb.last_used_zone_num = minix_sb.last_used_zone_num - 8
-   -- data contains some zeros, compute number of "1" previously found
-   -- how many "1" in it ?
+-- Walk accross zone bitmap, searching for a free zone number (identified by 0s)
+-- and return available zone number. 
+function minix_zone_alloc() return dword is
+   var byte databck = 0
    var byte numone = 0
-   while data != 0 loop
-      data = data >> 1
-      numone = numone + 1
+   alias zeroplace is numone -- reuse
+   -- go where previously found
+   -- TODO: check if zone bitmap is full !
+   if minix_sb.zone_current_bits == 0xFF then   -- current byte is full, search for another one
+      while true loop
+         -- TODO: this ain't really optimized, as we open block again and again. Really not good...
+         --       this takes loooooong seconds to explore few bytes in zone bitmap.
+         minix_sb.last_zone_bitmap_byte = minix_sb.last_zone_bitmap_byte + 1
+         minix_open_block_byte(minix_sb.last_zone_bitmap_block,minix_sb.last_zone_bitmap_byte)
+         minix_sb.zone_current_bits = minix_storage_read_byte()
+         -- data contains some zeros, compute number of "1" previously found
+         -- how many "1" in it ?
+         if minix_sb.zone_current_bits == 0xFF then
+            -- shortcut as most of the time, zone is filled bit by bit so 0xFF
+            -- is a very usual value zone bitmap.
+            minix_sb.last_full_zone = minix_sb.last_full_zone + 8
+            -- bitmap_byte only gets incremented here, as we want to track the last filled byte
+            if minix_sb.last_zone_bitmap_byte == MINIX_BYTES_PER_BLOCK then
+               minix_sb.last_zone_bitmap_byte = 0
+               minix_sb.last_zone_bitmap_block = minix_sb.last_zone_bitmap_block + 1
+            end if
+         else
+            exit loop
+         end if
+      end loop
+   end if
+
+   -- found bits marked as free zone
+   databck = minix_sb.zone_current_bits
+   zeroplace = 0
+   while databck != 0 loop
+      if bit(databck) == 0 then
+         exit loop
+      end if
+      zeroplace = zeroplace + 1
+      databck = databck >> 1
    end loop
-   minix_sb.last_used_zone_num = minix_sb.last_used_zone_num + numone
-end procedure
+
+   -- TODO: write "1" at proper place in zone bitmap
+   minix_sb.zone_current_bits = minix_sb.zone_current_bits | (1 << zeroplace)
+
+   -- the place where we set "1" is identified by zeroplace (because there 
+   -- previously was a "0" here). In order to update the next zone number, we
+   -- need to consider the following enumeration within a byte in zone bitmap:
+   --                      *
+   -- Ex:         0b_1100_1011
+   --                1111 1111
+   -- We'll allocate the "0" marked with "*", because this is the first 0 met.
+   -- This corresponds the zone number 3 within this byte. So new zone number
+   -- is: previous number + 3, that is:
+   minix_sb.next_zone_address = dword(minix_sb.last_full_zone + zeroplace) + minix_sb.first_data_zone
+
+   if minix_sb.zone_current_bits == 0xFF then
+      -- end of current byte, adjust zone number
+      minix_sb.last_full_zone = minix_sb.last_full_zone + 8
+   end if
+
+   return minix_sb.next_zone_address
+   
+end function
 
 -- Read Super-Block and fill record
 procedure minix_read_super_block(bit in check_data_zone) is
@@ -408,10 +443,11 @@ procedure minix_read_super_block(bit in check_data_zone) is
    -- Then inode themselves...
    minix_sb.first_inode_block = minix_sb.first_zone_bitmap_block + minix_sb.num_zone_bitmap_blocks
 
+   var dword computed_data_zone
    if check_data_zone == true then
       -- Then actual zone block (where data lies). Stored in super-block, just
       -- perform a sanity check
-      var dword computed_data_zone = minix_sb.first_inode_block + (((dword(minix_sb.num_inodes) + 1) * MINIX_BYTES_PER_INODE)  / MINIX_BYTES_PER_BLOCK)
+      computed_data_zone = minix_sb.first_inode_block + (((dword(minix_sb.num_inodes) + 1) * MINIX_BYTES_PER_INODE)  / MINIX_BYTES_PER_BLOCK)
       if minix_sb.first_data_zone != computed_data_zone then
          minix_last_error = MINIX_ERR_BAD_ZONE_LOCATION
       end if
@@ -419,16 +455,16 @@ procedure minix_read_super_block(bit in check_data_zone) is
    
    -- init special vars
    minix_sb.last_zone_bitmap_block = minix_sb.first_zone_bitmap_block   -- beginning of zone bitmap
-   minix_sb.last_zone_bitmap_byte = 0
-   minix_sb.last_used_zone_num = 0
-   minix_sb.last_zone_address = minix_sb.first_data_zone    -- beginning of actual data
+   minix_sb.last_zone_bitmap_byte = 0xFFFF   -- )
+   minix_sb.zone_current_bits = 0xFF         -- ) rollover to 0 on first access
+   minix_sb.last_full_zone = 0
+   minix_sb.next_zone_address = minix_sb.first_data_zone    -- beginning of actual data
 
-   ;;minix_find_next_free_zone_bit()
+   alias _trash is computed_data_zone
+   _trash = minix_zone_alloc()
    
 end procedure
 
-function minix_zone_alloc() return dword is
-end function
 
 function minix_get_inode(word in inode_num) return minix_inode is
 
@@ -457,7 +493,7 @@ function minix_get_inode(word in inode_num) return minix_inode is
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    inode.mode_bytes = word(datatab)
-   
+
    -- read file/dir/symlink bit
    -- init values (if given inode record has already been used
    -- it may be polluted by previous data)
@@ -603,7 +639,7 @@ function minix_get_inode(word in inode_num) return minix_inode is
    -- states on zones not related to their name !
 
    -- track direct and indirect zone locations.
-   -- Init this way so it will rollover to 0 when direct zone is accessed. 
+   -- Init this way so it will rollover to 0 when direct zone is accessed.
    -- Increment one by one when in direct zone, then 4 by 4 when in indirect
    inode.zone_idx = 0xFFFF         
    -- track double indirect locations.
@@ -611,7 +647,7 @@ function minix_get_inode(word in inode_num) return minix_inode is
    -- 4 by 4 as always used in indirect zones
    inode.zone_dbl_idx = 0xFFFC
    -- track content location within a zone.
-   -- Init this way so it will trigger a move to next zone 
+   -- Init this way so it will trigger a move to next zone
    -- ie. first data zone (save one "if" test)
    inode.zone_content_idx = 0x0400
 
@@ -621,153 +657,53 @@ end function
 
 procedure minix_save_inode(minix_inode in inode) is
 
-   -- manual mode setting as we don't actually open a file fd
-   minix_filefd.mode = MINIX_MODE_WRITE
    minix_open_block_byte(inode.block_address,inode.byte_address)
 
    -- MSB first, then LSB
-   minix_data_byte = byte((inode.mode_bytes & 0xFF00) >> 8)
-   minix_data_byte = byte(inode.mode_bytes & 0x00FF)
-   
-   ;;-- read augo rwx bits
-   ;;inode.mode.all = (datatab[1] & 0b_0000_1110) >> 1
-   ;;inode.mode.user = byte((word(data) & 0b_0000_0001_1100_0000) >> 6)
-   ;;inode.mode.group = (datatab[0] & 0b_0011_1000) >> 3
-   ;;inode.mode.other = datatab[0] & 0b_0000_0111
 
-   ;-- read number of links
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;inode.num_links = word(data)
-   ;
-   ;-- read UID/GID
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;inode.uid = word(data)
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;inode.gid= word(data)
-   ;
-   ;-- File size
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.filesize = data
+   -- TODO: skip mode bytes, unsupported for now
+   minix_sector_counter = minix_sector_counter + 2
 
-   ;-- atime
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.atime = data
+   -- TODO: skip number of links, unsupported for now
+   minix_sector_counter = minix_sector_counter + 2
 
-   ;-- mtime
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.mtime = data
+   -- TODO: skip UID/GID bytes (will it ever be supported ? does it make sense
+   --       to have a multiple user system in a microcontroller ? :)
+   minix_sector_counter = minix_sector_counter + (2*2)
 
-   ;-- ctime
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.ctime = data
+   -- Update file size
+   minix_storage_write_byte(byte( inode.filesize & 0x000000FF)       )
+   minix_storage_write_byte(byte((inode.filesize & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((inode.filesize & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((inode.filesize & 0xFF000000) >> 24))
 
-   ;-- zone0
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.zone[0] = data
+   -- TODO: skip atime/ctime/mtime
+   minix_sector_counter = minix_sector_counter + (3*4)
 
-   ;-- zone1
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.zone[1] = data
+   -- Update direct zones
+   var byte i
+   for MINIX_NUM_DIRECT_ZONES using i loop
+      minix_storage_write_byte(byte( inode.zone[i] & 0x000000FF)       )
+      minix_storage_write_byte(byte((inode.zone[i] & 0x0000FF00) >> 8) )
+      minix_storage_write_byte(byte((inode.zone[i] & 0x00FF0000) >> 16))
+      minix_storage_write_byte(byte((inode.zone[i] & 0xFF000000) >> 24))
+   end loop
+   -- Indirect zone
+   minix_storage_write_byte(byte( inode.indirect_zone & 0x000000FF)       )
+   minix_storage_write_byte(byte((inode.indirect_zone & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((inode.indirect_zone & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((inode.indirect_zone & 0xFF000000) >> 24))
 
-   ;-- zone2
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.zone[2] = data
+   -- double indirect zone
+   minix_storage_write_byte(byte( inode.double_indirect_zone & 0x000000FF)       )
+   minix_storage_write_byte(byte((inode.double_indirect_zone & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((inode.double_indirect_zone & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((inode.double_indirect_zone & 0xFF000000) >> 24))
 
-   ;-- zone3
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.zone[3] = data
+   -- triple indirect zone
+   -- TODO: not used for now, will be with v3
 
-   ;-- zone4
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.zone[4] = data
-
-   ;-- zone5
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.zone[5] = data
-
-   ;-- zone6
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.zone[6] = data
-
-   ;-- indirect zone
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.indirect_zone = data
-
-   ;-- double indirect zone
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.double_indirect_zone = data
-
-   ;-- triple indirect zone
-   ;-- TODO: not used for now, will be with v3
-   ;datatab[0] = minix_data_byte
-   ;datatab[1] = minix_data_byte
-   ;datatab[2] = minix_data_byte
-   ;datatab[3] = minix_data_byte
-   ;inode.triple_indirect_zone = data
-
-   ;-- init state
-   ;inode.zone_type = MINIX_ZONE_DIRECT
-   ;-- Zone indexes serve different purpose, depending on data is
-   ;-- accessed with direct data zones, indirect data zones, or double
-   ;-- indirect data zones. To save memory, some indexes are used to track
-   ;-- states on zones not related to their name !
-
-   ;-- track direct and indirect zone locations.
-   ;-- Init this way so it will rollover to 0 when direct zone is accessed. 
-   ;-- Increment one by one when in direct zone, then 4 by 4 when in indirect
-   ;inode.zone_idx = 0xFFFF         
-   ;-- track double indirect locations.
-   ;-- Init this way so rollover to 0 when first accessed. Increment
-   ;-- 4 by 4 as always used in indirect zones
-   ;inode.zone_dbl_idx = 0xFFFC
-   ;-- track content location within a zone.
-   ;-- Init this way so it will trigger a move to next zone 
-   ;-- ie. first data zone (save one "if" test)
-   ;inode.zone_content_idx = 0x0400
-
-   ;return inode
+   minix_storage_flush()
 
 end procedure
 
@@ -775,7 +711,7 @@ procedure minix_close() is
    minix_flush()
    -- TODO: write new inode state
    -- save current inode state
-   ;minix_save_inode(minix_filefd.inode)
+   minix_save_inode(minix_filefd.inode)
    -- because filefd.mode is used globally in order to know how to 
    -- open block (read|write mode), set it back to read-only as default
    minix_filefd.mode = MINIX_MODE_READ
@@ -1139,8 +1075,9 @@ procedure minix_dev_print_super_block() is
    const byte STR_1ST_INODE_BLOCK[] = "@ 1st inode block: "
    const byte STR_LAST_ZONE_BITMAP_BLOCK[] = "Last zone bitmap block: "
    const byte STR_LAST_ZONE_BITMAP_BYTE[] = "Last zone bitmap byte: "
-   const byte STR_LAST_USED_ZONE_NUM[] = "# last used zone: "
-   const byte STR_LAST_ZONE_ADDRESS[] = "@ last zone:"
+   const byte STR_LAST_FULL_ZONE[] = "# last full zone: "
+   const byte STR_CURRENT_ZONE_BITS[] = "current zone bits: "
+   const byte STR_NEXT_ZONE_ADDRESS[] = "@ next zone:"
 
    print_string(minix_print_carrier,STR_READ_SUPER_BLOCK)
    print_crlf(minix_print_carrier)
@@ -1210,15 +1147,18 @@ procedure minix_dev_print_super_block() is
    print_dword_hex(minix_print_carrier,minix_sb.last_zone_bitmap_byte)
    print_crlf(minix_print_carrier)
 
-   print_string(minix_print_carrier,STR_LAST_USED_ZONE_NUM)
-   print_dword_dec(minix_print_carrier,minix_sb.last_used_zone_num)
+   print_string(minix_print_carrier,STR_LAST_FULL_ZONE)
+   print_dword_dec(minix_print_carrier,minix_sb.last_full_zone)
    print_crlf(minix_print_carrier)
 
-   print_string(minix_print_carrier,STR_LAST_ZONE_ADDRESS)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_sb.last_zone_address)
+   print_string(minix_print_carrier,STR_CURRENT_ZONE_BITS)
+   print_byte_binary(minix_print_carrier,minix_sb.zone_current_bits)
    print_crlf(minix_print_carrier)
-   minix_sb.last_zone_address = minix_sb.first_data_zone    -- beginning of actual data
+
+   print_string(minix_print_carrier,STR_NEXT_ZONE_ADDRESS)
+   minix_print_carrier = "h"
+   print_dword_hex(minix_print_carrier,minix_sb.next_zone_address)
+   print_crlf(minix_print_carrier)
 
 end procedure
 
