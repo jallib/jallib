@@ -14,7 +14,7 @@
 -- also at: http://elm-chan.org/docs/spi_e.html
 --
 
-include spi_master_common
+include spi_common
 
 -- SPI is full-duplex, so we exchange master and slave data byte
 function spi_master_hw_exchange(byte in m_data) return byte is
@@ -45,19 +45,42 @@ function spi_master_hw'get() return byte is
    return data
 end function
 
+procedure spi_master_hw_set_mode_00() is
+   pragma inline
+   SSPCON_CKP = 0
+   SSPSTAT_CKE = 1
+end procedure
+
+procedure spi_master_hw_set_mode_01() is
+   pragma inline
+   SSPCON_CKP = 0
+   SSPSTAT_CKE = 0
+end procedure
+
+procedure spi_master_hw_set_mode_10() is
+   pragma inline
+   SSPCON_CKP = 1
+   SSPSTAT_CKE = 1
+end procedure
+
+procedure spi_master_hw_set_mode_11() is
+   pragma inline
+   SSPCON_CKP = 1
+   SSPSTAT_CKE = 0
+end procedure
+
+-- Specify SPI mode (see spi_common for predefined constant you can use
+-- as parameters)
 procedure spi_master_hw_set_mode(byte in spi_mode) is
+   pragma inline
    if spi_mode == SPI_MODE_00 then
-      SSPCON_CKP = 0
-      SSPSTAT_CKE = 1
+      spi_master_hw_set_mode_00()
    elsif spi_mode == SPI_MODE_01 then
-      SSPCON_CKP = 0
-      SSPSTAT_CKE = 0
+      spi_master_hw_set_mode_01()
    elsif spi_mode == SPI_MODE_10 then
-      SSPCON_CKP = 1
-      SSPSTAT_CKE = 1
+      spi_master_hw_set_mode_10()
    else
-      SSPCON_CKP = 1
-      SSPSTAT_CKE = 0
+      spi_master_hw_set_mode_11()
    end if
 end procedure
 
@@ -69,7 +92,6 @@ end procedure
 -- Initialize the SPI registers.
 -- Note: check your datasheet -- TRIS settings, any SPI errata?
 procedure spi_init(byte in spi_mode, byte in spi_rate) is
-   pragma inline
    SSPCON = 0
    SSPSTAT_SMP = 0
 
