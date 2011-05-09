@@ -60,6 +60,7 @@
 -- TODO:
 --  * update atime/mtime/ctime while reading & writing
 --  * update mode bits while saving inode 
+--  * since only file desc, passing inode as arg can be avoided, by directly setting global var
 --
 
 include strings
@@ -107,6 +108,7 @@ const byte MINIX_ERR_BAD_ZONE_LOCATION    = 0b_0000_0010 -- something is wrong a
 const byte MINIX_ERR_NOT_DIRECTORY        = 0b_0000_0100 -- try to act on a directory, but inode isn't a directory
 const byte MINIX_ERR_NO_SUCH_FILE         = 0b_0000_1000 -- try to access invalid/unexisting filename or inode
 const byte MINIX_ERR_END_OF_FILE          = 0b_0001_0000 -- reached EOF
+const byte MINIX_ERR_BAD_ADDRESS          = 0b_0010_0000 -- bad block address
 
 -- Auto-resetting variable: errors are added, and when read, reset to 0
 var byte _minix_last_error = MINIX_ERR_NONE
@@ -221,18 +223,25 @@ var dword minix_curzone
 var byte minix_curzonetab[4] at minix_curzone
 
 var word minix_sector_counter = 0   -- track while accessing underlying storage sector
+                                    -- (should never be accessed directly as it's manager incrementally
+                                    -- with write operations and trigger block/sector opening)
+                                    -- If you need skip a value while writing, use open_block_byte() instead
 var dword minix_storage_address = 0 -- track underlying storage address
 
 -- super-block
 var minix_superblock minix_sb
 -- file descriptor currently being accessed (file)
 var minix_fd minix_filefd
--- file descriptor currently being accessed (dir)
-var minix_fd minix_dirfd
+-- current working directory (CWD) inode number
+var word minix_cwd
 
 
 -- move to block number and open read access on underlying storage
 procedure minix_open_block(dword in num) is
+   if num == 0 then
+      minix_last_error = MINIX_ERR_BAD_ADDRESS
+      return
+   end if
    -- TODO: check if block number is within memory storage bound !
    minix_storage_address  = (MINIX_BYTES_PER_BLOCK / MINIX_STORAGE_SECTOR_SIZE) * num
    minix_sector_counter = 0
@@ -255,19 +264,9 @@ end procedure
 
 
 procedure minix_storage_flush() is
-   -- TODO: inline ?
    minix_start_write(minix_storage_address)
    minix_write_sector()
    minix_stop_write()
-end procedure
-
-procedure minix_flush() is
-   if (minix_filefd.mode >= MINIX_MODE_WRITE) & minix_filefd.dirty then
-      -- close current filefd by flushing changes
-      minix_storage_flush()
-      -- now closed
-      minix_filefd.dirty = false
-   end if
 end procedure
 
 -- "Raw" read one byte from underlying storage.
@@ -314,21 +313,119 @@ procedure minix_storage_write_byte(byte in data) is
 
 end procedure
 
+-- Save current file desc's inode (minix_filefd.inode)
+procedure minix_save_inode() is
+
+   -- sanity check: make sure passed inode has been properly init
+   if minix_filefd.inode.id == 0 then
+      return
+   end if
+
+   minix_open_block_byte(minix_filefd.inode.block_address,minix_filefd.inode.byte_address)
+
+   -- MSB first, then LSB
+   -- Mode bytes
+   minix_storage_write_byte(byte( minix_filefd.inode.mode_bytes & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.mode_bytes & 0x0000FF00) >> 8) )
+
+   -- Number of links
+   minix_storage_write_byte(byte( minix_filefd.inode.num_links & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.num_links & 0x0000FF00) >> 8) )
+
+   -- UID/GID bytes (will it ever be supported ? does it make sense
+   --       to have a multiple user system in a microcontroller ? :)
+   minix_storage_write_byte(byte( minix_filefd.inode.uid & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.uid & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte( minix_filefd.inode.gid & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.gid & 0x0000FF00) >> 8) )
+
+   -- Update file size
+   minix_storage_write_byte(byte( minix_filefd.inode.filesize & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.filesize & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.filesize & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.filesize & 0xFF000000) >> 24))
+
+   -- atime/mtime/ctime
+   minix_storage_write_byte(byte( minix_filefd.inode.atime & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.atime & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.atime & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.atime & 0xFF000000) >> 24))
+   minix_storage_write_byte(byte( minix_filefd.inode.mtime & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.mtime & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.mtime & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.mtime & 0xFF000000) >> 24))
+   minix_storage_write_byte(byte( minix_filefd.inode.ctime & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.ctime & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.ctime & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.ctime & 0xFF000000) >> 24))
+
+   -- Update direct zones
+   var byte i
+   for MINIX_NUM_DIRECT_ZONES using i loop
+      minix_storage_write_byte(byte( minix_filefd.inode.zone[i] & 0x000000FF)       )
+      minix_storage_write_byte(byte((minix_filefd.inode.zone[i] & 0x0000FF00) >> 8) )
+      minix_storage_write_byte(byte((minix_filefd.inode.zone[i] & 0x00FF0000) >> 16))
+      minix_storage_write_byte(byte((minix_filefd.inode.zone[i] & 0xFF000000) >> 24))
+   end loop
+   -- Indirect zone
+   minix_storage_write_byte(byte( minix_filefd.inode.indirect_zone & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.indirect_zone & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.indirect_zone & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.indirect_zone & 0xFF000000) >> 24))
+
+   -- double indirect zone
+   minix_storage_write_byte(byte( minix_filefd.inode.double_indirect_zone & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.double_indirect_zone & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.double_indirect_zone & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.double_indirect_zone & 0xFF000000) >> 24))
+
+   -- triple indirect zone
+   -- TODO: not used for now, will be with v3
+
+   minix_storage_flush()
+
+end procedure
+
+
+procedure minix_flush() is
+
+   if minix_filefd.mode >= MINIX_MODE_WRITE then
+      if minix_filefd.dirty then
+         -- close current filefd by flushing changes
+         minix_storage_flush()
+         -- now closed
+         minix_filefd.dirty = false
+
+         -- write new inode state
+         -- save current inode state
+         -- Important Note: read-only file desc means data is read-only, but
+         -- inode itself should be updated even if fd is read-only. Why ? Because
+         -- you'd need, for instance, to update access time (atime). Because, atime
+         -- isn't supported (I'd need to run RTCC + get times from RTP ?), inode state
+         -- is only saved when in write mode. This prevent having too much write operations
+         -- for nothing.
+         minix_save_inode()
+      end if
+   end if
+end procedure
 
 -- Walk accross zone bitmap, searching for a free zone number (identified by 0s)
 -- and return available zone number. 
 function minix_zone_alloc() return dword is
    var byte databck = 0
    var byte numone = 0
-   alias zeroplace is numone -- reuse
-   -- go where previously found
+   var byte zeroplace
+   var byte opened
    -- TODO: check if zone bitmap is full !
+   opened = 0  -- first time: didn't opened block
    if minix_sb.zone_current_bits == 0xFF then   -- current byte is full, search for another one
       while true loop
-         -- TODO: this ain't really optimized, as we open block again and again. Really not good...
-         --       this takes loooooong seconds to explore few bytes in zone bitmap.
          minix_sb.last_zone_bitmap_byte = minix_sb.last_zone_bitmap_byte + 1
-         minix_open_block_byte(minix_sb.last_zone_bitmap_block,minix_sb.last_zone_bitmap_byte)
+         -- prevent opening block again and again
+         if opened == 0 then
+            minix_open_block_byte(minix_sb.last_zone_bitmap_block,minix_sb.last_zone_bitmap_byte)
+            opened = 1
+         end if
          minix_sb.zone_current_bits = minix_storage_read_byte()
          -- data contains some zeros, compute number of "1" previously found
          -- how many "1" in it ?
@@ -340,6 +437,8 @@ function minix_zone_alloc() return dword is
             if minix_sb.last_zone_bitmap_byte == MINIX_BYTES_PER_BLOCK then
                minix_sb.last_zone_bitmap_byte = 0
                minix_sb.last_zone_bitmap_block = minix_sb.last_zone_bitmap_block + 1
+               -- force block re-opening
+               opened = 0
             end if
          else
             exit loop
@@ -375,6 +474,11 @@ function minix_zone_alloc() return dword is
    if minix_sb.zone_current_bits == 0xFF then
       -- end of current byte, adjust zone number
       minix_sb.last_full_zone = minix_sb.last_full_zone + 8
+      -- save new bits. sector counter was increased on the next address, we need 
+      -- to *replace* byte, so decrement
+      minix_sector_counter = minix_sector_counter - 1
+      minix_storage_write_byte(minix_sb.zone_current_bits)
+      minix_storage_flush()
    end if
 
    return minix_sb.next_zone_address
@@ -383,7 +487,6 @@ end function
 
 -- Read Super-Block and fill record
 procedure minix_read_super_block(bit in check_data_zone) is
-   pragma inline
 
    minix_open_block(1)
 
@@ -455,36 +558,36 @@ procedure minix_read_super_block(bit in check_data_zone) is
    
    -- init special vars
    minix_sb.last_zone_bitmap_block = minix_sb.first_zone_bitmap_block   -- beginning of zone bitmap
-   minix_sb.last_zone_bitmap_byte = 0xFFFF   -- )
-   minix_sb.zone_current_bits = 0xFF         -- ) rollover to 0 on first access
+   minix_sb.last_zone_bitmap_byte = 0xFFFF   -- ) rollover to 0 on 1st access
+   minix_sb.zone_current_bits = 0xFF         -- )
    minix_sb.last_full_zone = 0
    minix_sb.next_zone_address = minix_sb.first_data_zone    -- beginning of actual data
 
-   alias _trash is computed_data_zone
+   -- TODO: tmp
+   alias _trash is data
    _trash = minix_zone_alloc()
-   
+
 end procedure
 
-
-function minix_get_inode(word in inode_num) return minix_inode is
-
-   var minix_inode inode
+-- Load inode data, identified by inode_num, into file descriptor's 
+-- (minix_filefd) inode parameter
+procedure minix_load_inode(word in inode_num) is
 
    if inode_num == 0 then
       minix_last_error = MINIX_ERR_NO_SUCH_FILE
-      return inode
+      return
    end if
 
    -- inodes are 64-bytes long, so there can be multiple inodes on one block
    -- /!\ inode n°0 doesn't exist (and it's a special value)
    var dword byteaddr = (minix_sb.first_inode_block * MINIX_BYTES_PER_BLOCK) + ((inode_num - 1) * MINIX_BYTES_PER_INODE)
-   inode.block_address = byteaddr / MINIX_BYTES_PER_BLOCK
-   inode.byte_address = word(byteaddr - (inode.block_address * MINIX_BYTES_PER_BLOCK))
+   minix_filefd.inode.block_address = byteaddr / MINIX_BYTES_PER_BLOCK
+   minix_filefd.inode.byte_address = word(byteaddr - (minix_filefd.inode.block_address * MINIX_BYTES_PER_BLOCK))
 
-   minix_open_block_byte(inode.block_address,inode.byte_address)
+   minix_open_block_byte(minix_filefd.inode.block_address,minix_filefd.inode.byte_address)
 
    -- internal
-   inode.id = inode_num
+   minix_filefd.inode.id = inode_num
 
    -- TODO: use minix_curzone global var to save ram ?
    var dword data
@@ -492,136 +595,136 @@ function minix_get_inode(word in inode_num) return minix_inode is
    -- read inode mode
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
-   inode.mode_bytes = word(datatab)
+   minix_filefd.inode.mode_bytes = word(datatab)
 
    -- read file/dir/symlink bit
    -- init values (if given inode record has already been used
    -- it may be polluted by previous data)
-   inode.mode.isfile = false
-   inode.mode.isdir = false
-   inode.mode.issymlink = false
-   inode.mode.iswhat = false
+   minix_filefd.inode.mode.isfile = false
+   minix_filefd.inode.mode.isdir = false
+   minix_filefd.inode.mode.issymlink = false
+   minix_filefd.inode.mode.iswhat = false
 
-   inode.mode.filetype = (datatab[1] & 0b_1111_0000) >> 4
-   if inode.mode.filetype == 0b_1000 then
-       inode.mode.isfile = true
-   elsif inode.mode.filetype == 0b_0100 then
-       inode.mode.isdir = true
-   elsif inode.mode.filetype == 0b_1010 then
-       inode.mode.issymlink = true
+   minix_filefd.inode.mode.filetype = (datatab[1] & 0b_1111_0000) >> 4
+   if minix_filefd.inode.mode.filetype == 0b_1000 then
+       minix_filefd.inode.mode.isfile = true
+   elsif minix_filefd.inode.mode.filetype == 0b_0100 then
+       minix_filefd.inode.mode.isdir = true
+   elsif minix_filefd.inode.mode.filetype == 0b_1010 then
+       minix_filefd.inode.mode.issymlink = true
    else
-       inode.mode.iswhat = true
+       minix_filefd.inode.mode.iswhat = true
    end if
 
    -- read augo rwx bits
-   inode.mode.all = (datatab[1] & 0b_0000_1110) >> 1
-   inode.mode.user = byte((word(data) & 0b_0000_0001_1100_0000) >> 6)
-   inode.mode.group = (datatab[0] & 0b_0011_1000) >> 3
-   inode.mode.other = datatab[0] & 0b_0000_0111
+   minix_filefd.inode.mode.all = (datatab[1] & 0b_0000_1110) >> 1
+   minix_filefd.inode.mode.user = byte((word(data) & 0b_0000_0001_1100_0000) >> 6)
+   minix_filefd.inode.mode.group = (datatab[0] & 0b_0011_1000) >> 3
+   minix_filefd.inode.mode.other = datatab[0] & 0b_0000_0111
 
    -- read number of links
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
-   inode.num_links = word(data)
+   minix_filefd.inode.num_links = word(data)
    
    -- read UID/GID
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
-   inode.uid = word(data)
+   minix_filefd.inode.uid = word(data)
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
-   inode.gid= word(data)
+   minix_filefd.inode.gid= word(data)
    
    -- File size
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.filesize = data
+   minix_filefd.inode.filesize = data
 
    -- atime
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.atime = data
+   minix_filefd.inode.atime = data
 
    -- mtime
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.mtime = data
+   minix_filefd.inode.mtime = data
 
    -- ctime
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.ctime = data
+   minix_filefd.inode.ctime = data
 
    -- zone0
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.zone[0] = data
+   minix_filefd.inode.zone[0] = data
 
    -- zone1
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.zone[1] = data
+   minix_filefd.inode.zone[1] = data
 
    -- zone2
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.zone[2] = data
+   minix_filefd.inode.zone[2] = data
 
    -- zone3
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.zone[3] = data
+   minix_filefd.inode.zone[3] = data
 
    -- zone4
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.zone[4] = data
+   minix_filefd.inode.zone[4] = data
 
    -- zone5
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.zone[5] = data
+   minix_filefd.inode.zone[5] = data
 
    -- zone6
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.zone[6] = data
+   minix_filefd.inode.zone[6] = data
 
    -- indirect zone
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.indirect_zone = data
+   minix_filefd.inode.indirect_zone = data
 
    -- double indirect zone
    datatab[0] = minix_storage_read_byte()
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.double_indirect_zone = data
+   minix_filefd.inode.double_indirect_zone = data
 
    -- triple indirect zone
    -- TODO: not used for now, will be with v3
@@ -629,10 +732,10 @@ function minix_get_inode(word in inode_num) return minix_inode is
    datatab[1] = minix_storage_read_byte()
    datatab[2] = minix_storage_read_byte()
    datatab[3] = minix_storage_read_byte()
-   inode.triple_indirect_zone = data
+   minix_filefd.inode.triple_indirect_zone = data
 
    -- init state
-   inode.zone_type = MINIX_ZONE_DIRECT
+   minix_filefd.inode.zone_type = MINIX_ZONE_DIRECT
    -- Zone indexes serve different purpose, depending on data is
    -- accessed with direct data zones, indirect data zones, or double
    -- indirect data zones. To save memory, some indexes are used to track
@@ -641,77 +744,20 @@ function minix_get_inode(word in inode_num) return minix_inode is
    -- track direct and indirect zone locations.
    -- Init this way so it will rollover to 0 when direct zone is accessed.
    -- Increment one by one when in direct zone, then 4 by 4 when in indirect
-   inode.zone_idx = 0xFFFF         
+   minix_filefd.inode.zone_idx = 0xFFFF         
    -- track double indirect locations.
    -- Init this way so rollover to 0 when first accessed. Increment
    -- 4 by 4 as always used in indirect zones
-   inode.zone_dbl_idx = 0xFFFC
+   minix_filefd.inode.zone_dbl_idx = 0xFFFC
    -- track content location within a zone.
    -- Init this way so it will trigger a move to next zone
    -- ie. first data zone (save one "if" test)
-   inode.zone_content_idx = 0x0400
-
-   return inode
-
-end function
-
-procedure minix_save_inode(minix_inode in inode) is
-
-   minix_open_block_byte(inode.block_address,inode.byte_address)
-
-   -- MSB first, then LSB
-
-   -- TODO: skip mode bytes, unsupported for now
-   minix_sector_counter = minix_sector_counter + 2
-
-   -- TODO: skip number of links, unsupported for now
-   minix_sector_counter = minix_sector_counter + 2
-
-   -- TODO: skip UID/GID bytes (will it ever be supported ? does it make sense
-   --       to have a multiple user system in a microcontroller ? :)
-   minix_sector_counter = minix_sector_counter + (2*2)
-
-   -- Update file size
-   minix_storage_write_byte(byte( inode.filesize & 0x000000FF)       )
-   minix_storage_write_byte(byte((inode.filesize & 0x0000FF00) >> 8) )
-   minix_storage_write_byte(byte((inode.filesize & 0x00FF0000) >> 16))
-   minix_storage_write_byte(byte((inode.filesize & 0xFF000000) >> 24))
-
-   -- TODO: skip atime/ctime/mtime
-   minix_sector_counter = minix_sector_counter + (3*4)
-
-   -- Update direct zones
-   var byte i
-   for MINIX_NUM_DIRECT_ZONES using i loop
-      minix_storage_write_byte(byte( inode.zone[i] & 0x000000FF)       )
-      minix_storage_write_byte(byte((inode.zone[i] & 0x0000FF00) >> 8) )
-      minix_storage_write_byte(byte((inode.zone[i] & 0x00FF0000) >> 16))
-      minix_storage_write_byte(byte((inode.zone[i] & 0xFF000000) >> 24))
-   end loop
-   -- Indirect zone
-   minix_storage_write_byte(byte( inode.indirect_zone & 0x000000FF)       )
-   minix_storage_write_byte(byte((inode.indirect_zone & 0x0000FF00) >> 8) )
-   minix_storage_write_byte(byte((inode.indirect_zone & 0x00FF0000) >> 16))
-   minix_storage_write_byte(byte((inode.indirect_zone & 0xFF000000) >> 24))
-
-   -- double indirect zone
-   minix_storage_write_byte(byte( inode.double_indirect_zone & 0x000000FF)       )
-   minix_storage_write_byte(byte((inode.double_indirect_zone & 0x0000FF00) >> 8) )
-   minix_storage_write_byte(byte((inode.double_indirect_zone & 0x00FF0000) >> 16))
-   minix_storage_write_byte(byte((inode.double_indirect_zone & 0xFF000000) >> 24))
-
-   -- triple indirect zone
-   -- TODO: not used for now, will be with v3
-
-   minix_storage_flush()
+   minix_filefd.inode.zone_content_idx = 0x0400
 
 end procedure
 
 procedure minix_close() is
    minix_flush()
-   -- TODO: write new inode state
-   -- save current inode state
-   minix_save_inode(minix_filefd.inode)
    -- because filefd.mode is used globally in order to know how to 
    -- open block (read|write mode), set it back to read-only as default
    minix_filefd.mode = MINIX_MODE_READ
@@ -945,8 +991,7 @@ procedure minix_seek(dword in bytenum) is
 end procedure
 
 procedure minix_openi(word in inode_num,byte in mode) is
-   pragma inline
-   minix_filefd.inode = minix_get_inode(inode_num)
+   minix_load_inode(inode_num)
    minix_filefd.read = 0
    minix_filefd.mode = mode
    minix_filefd.dirty = false -- needs to be written back to storage
@@ -990,7 +1035,7 @@ end function
 -- return inode number found for given filename
 -- can be a file or a dir name) in current directory
 function minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word is
-   minix_openi(minix_dirfd.inode.id,MINIX_MODE_READ)
+   minix_openi(minix_cwd,MINIX_MODE_READ)
    var minix_dir_entry entry
    var byte fncp[MINIX_MAX_FILENANE_LEN]
    var word inode_num = 0
@@ -1021,10 +1066,11 @@ end procedure
 procedure minix_cdi(word in inode_num) is
    minix_openi(inode_num,MINIX_MODE_READ)
    if minix_filefd.inode.mode.isdir == true then
-      minix_dirfd = minix_filefd
+      minix_cwd = inode_num
    else
       minix_last_error = MINIX_ERR_NOT_DIRECTORY
    end if
+   minix_close()
 end procedure
 
 procedure minix_cd(byte in dirname[MINIX_MAX_FILENANE_LEN]) is
@@ -1036,389 +1082,14 @@ end procedure
 
 
 procedure minix_init(bit in check) is
-   pragma inline
 
    minix_filefd.mode = MINIX_MODE_READ
    minix_filefd.dirty = false
    
    minix_read_super_block(check)
    -- init root directory
-   minix_dirfd.inode = minix_get_inode(MINIX_INODE_ROOT_ID)
-   minix_dirfd.read = 0
-   minix_dirfd.dirty = false
+   minix_cwd = MINIX_INODE_ROOT_ID
 
 end procedure
 
 
--- -----------------
--- DEBUG/DEV CODE --
--- -----------------
-
-if defined(minix_print_carrier) then
-
-include print
-
--- Messages
-procedure minix_dev_print_super_block() is
-
-   const byte STR_READ_SUPER_BLOCK[] = "Super Block"
-   const byte STR_NUMBER_OF_NODES[] = "# nodes: "
-   const byte STR_NUMBER_OF_ZONES_V1[] = "# zones (v1): "
-   const byte STR_NUMBER_OF_INODE_BITMAP_BLOCKS[] = "# inode bitmap blocks: "
-   const byte STR_NUMBER_OF_ZONE_BITMAP_BLOCKS[] = "# zone bitmap blocks: "
-   const byte STR_1ST_DATA_ZONE [] = "@ 1st data zone: "
-   const byte STR_MAX_FILE_SIZE [] = "Max file size: "
-   const byte STR_MAGIC_NUMBER[] = "Magic #: "
-   const byte STR_NUMBER_OF_ZONES_V2[] = "# zones (v2): "
-   const byte STR_1ST_INODE_BP_BLOCK[] = "@ 1st inode bitmap block: "
-   const byte STR_1ST_ZONE_BP_BLOCK[] = "@ 1st zone bitmap block: "
-   const byte STR_1ST_INODE_BLOCK[] = "@ 1st inode block: "
-   const byte STR_LAST_ZONE_BITMAP_BLOCK[] = "Last zone bitmap block: "
-   const byte STR_LAST_ZONE_BITMAP_BYTE[] = "Last zone bitmap byte: "
-   const byte STR_LAST_FULL_ZONE[] = "# last full zone: "
-   const byte STR_CURRENT_ZONE_BITS[] = "current zone bits: "
-   const byte STR_NEXT_ZONE_ADDRESS[] = "@ next zone:"
-
-   print_string(minix_print_carrier,STR_READ_SUPER_BLOCK)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_NUMBER_OF_NODES)
-   minix_print_carrier = "h"
-   print_word_hex(minix_print_carrier,minix_sb.num_inodes)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_NUMBER_OF_ZONES_V1)
-   minix_print_carrier = "h"
-   print_word_hex(minix_print_carrier,minix_sb.num_zones_v1)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_NUMBER_OF_INODE_BITMAP_BLOCKS)
-   minix_print_carrier = "h"
-   print_word_hex(minix_print_carrier,minix_sb.num_inode_bitmap_blocks)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_NUMBER_OF_ZONE_BITMAP_BLOCKS)
-   minix_print_carrier = "h"
-   print_word_hex(minix_print_carrier,minix_sb.num_zone_bitmap_blocks)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_1ST_DATA_ZONE)
-   minix_print_carrier = "h"
-   print_word_hex(minix_print_carrier,minix_sb.first_data_zone)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_MAX_FILE_SIZE)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_sb.max_file_size)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_MAGIC_NUMBER)
-   minix_print_carrier = "h"
-   print_word_hex(minix_print_carrier,minix_sb.magic_number)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_NUMBER_OF_ZONES_V2)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_sb.num_zones_v2)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_1ST_INODE_BP_BLOCK)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_sb.first_inode_bitmap_block)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_1ST_ZONE_BP_BLOCK)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_sb.first_zone_bitmap_block)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_1ST_INODE_BLOCK)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_sb.first_inode_block)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_LAST_ZONE_BITMAP_BLOCK)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_sb.last_zone_bitmap_block)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_LAST_ZONE_BITMAP_BYTE)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_sb.last_zone_bitmap_byte)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_LAST_FULL_ZONE)
-   print_dword_dec(minix_print_carrier,minix_sb.last_full_zone)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_CURRENT_ZONE_BITS)
-   print_byte_binary(minix_print_carrier,minix_sb.zone_current_bits)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_NEXT_ZONE_ADDRESS)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_sb.next_zone_address)
-   print_crlf(minix_print_carrier)
-
-end procedure
-
-procedure minix_dev_print_error() is
-   const byte STR_ERROR[] = "Error # "
-   print_string(minix_print_carrier,STR_ERROR)
-   print_byte_binary(minix_print_carrier,minix_last_error)
-   print_crlf(minix_print_carrier)
-end procedure
-
-procedure minix_dev_print_inode() is
-   const byte STR_INODE[] = "Inode #"
-   const byte STR_MODE_FILETYPES[] = "Filetype: "
-   const byte STR_MODE_FILE[] = "file"
-   const byte STR_MODE_DIR[] = "dir"
-   const byte STR_MODE_SYMLINK[] = "symlink"
-   const byte STR_MODE_WHAT[] = "dunno"
-   const byte STR_MODE_PERMS[] = "Permissions: "
-   const byte STR_MODE_PERM_ALL[] = " - all: "
-   const byte STR_MODE_PERM_USER[] = " - user: "
-   const byte STR_MODE_PERM_GROUP[] = " - group: "
-   const byte STR_MODE_PERM_OTHER[] = " - other: "
-   const byte STR_NUM_LINKS[] = "# links: "
-   const byte STR_UID[] = "UID: "
-   const byte STR_GID[] = "GID: "
-   const byte STR_FILESIZE[] = "File size: "
-   const byte STR_ATIME[] = "Acess time: "
-   const byte STR_MTIME[] = "Modification time: "
-   const byte STR_CTIME[] = "Status change time: "
-   const byte STR_ZONE0[] = "Zone 0: "
-   const byte STR_ZONE1[] = "Zone 1: "
-   const byte STR_ZONE2[] = "Zone 2: "
-   const byte STR_ZONE3[] = "Zone 3: "
-   const byte STR_ZONE4[] = "Zone 4: "
-   const byte STR_ZONE5[] = "Zone 5: "
-   const byte STR_ZONE6[] = "Zone 6: "
-   const byte STR_IND_ZONE[] = "Indirect Zone: "
-   const byte STR_DBL_IND_ZONE[] = "Double indirect Zone: "
-   ;;const byte STR_TRPL_IND_ZONE[] = "Triple indirect Zone: "
-   
-   print_string(minix_print_carrier,STR_INODE)
-   print_word_dec(minix_print_carrier,minix_filefd.inode.id)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_MODE_FILETYPES)
-   if minix_filefd.inode.mode.isfile then
-      print_string(minix_print_carrier,STR_MODE_FILE)
-   elsif minix_filefd.inode.mode.isdir then
-      print_string(minix_print_carrier,STR_MODE_DIR)
-   elsif minix_filefd.inode.mode.issymlink then
-      print_string(minix_print_carrier,STR_MODE_SYMLINK)
-   else
-      print_string(minix_print_carrier,STR_MODE_WHAT)
-   end if
-   minix_print_carrier = " "
-   minix_print_carrier = "("
-   print_word_dec(minix_print_carrier,minix_filefd.inode.mode.filetype)
-   minix_print_carrier = ")"
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_MODE_PERMS)
-   print_crlf(minix_print_carrier)
-   print_string(minix_print_carrier,STR_MODE_PERM_ALL)
-   print_byte_dec(minix_print_carrier,minix_filefd.inode.mode.all)
-   print_crlf(minix_print_carrier)
-   print_string(minix_print_carrier,STR_MODE_PERM_USER)
-   print_byte_dec(minix_print_carrier,minix_filefd.inode.mode.user)
-   print_crlf(minix_print_carrier)
-   print_string(minix_print_carrier,STR_MODE_PERM_GROUP)
-   print_byte_dec(minix_print_carrier,minix_filefd.inode.mode.group)
-   print_crlf(minix_print_carrier)
-   print_string(minix_print_carrier,STR_MODE_PERM_OTHER)
-   print_byte_dec(minix_print_carrier,minix_filefd.inode.mode.other)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_NUM_LINKS)
-   print_word_dec(minix_print_carrier,minix_filefd.inode.num_links)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_UID)
-   print_word_dec(minix_print_carrier,minix_filefd.inode.uid)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_GID)
-   print_word_dec(minix_print_carrier,minix_filefd.inode.gid)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_FILESIZE)
-   print_dword_dec(minix_print_carrier,minix_filefd.inode.filesize)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_ATIME)
-   print_dword_dec(minix_print_carrier,minix_filefd.inode.atime)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_MTIME)
-   print_dword_dec(minix_print_carrier,minix_filefd.inode.mtime)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_CTIME)
-   print_dword_dec(minix_print_carrier,minix_filefd.inode.ctime)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_ZONE0)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[0])
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_ZONE1)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[1])
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_ZONE2)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[2])
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_ZONE3)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[3])
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_ZONE4)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[4])
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_ZONE5)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[5])
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_ZONE6)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_filefd.inode.zone[6])
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_IND_ZONE)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_filefd.inode.indirect_zone)
-   print_crlf(minix_print_carrier)
-
-   print_string(minix_print_carrier,STR_DBL_IND_ZONE)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,minix_filefd.inode.double_indirect_zone)
-   print_crlf(minix_print_carrier)
-
-end procedure
-
-procedure minix_print_dir_entry(minix_dir_entry in entry) is
-   print_word_dec(minix_print_carrier,entry.inode_num)
-   minix_print_carrier = " "
-
-   -- assuming at least one char in filename...
-   var byte counter
-   var byte char
-   for MINIX_MAX_FILENANE_LEN using counter loop
-      char = entry.filename[counter]
-      if char != 0x00 then
-         minix_print_carrier = char
-      else
-         exit loop
-      end if
-   end loop
-   
-end procedure
-
-procedure minix_cati(word in inode_num) is
-   minix_openi(inode_num,MINIX_MODE_READ)
-   while minix_filefd.read != minix_filefd.inode.filesize loop
-      minix_print_carrier = minix_read()
-   end loop
-   minix_close()
-end procedure
-
-procedure minix_cat(byte in filename[MINIX_MAX_FILENANE_LEN]) is
-   var word inode_num = minix_find_in_cwd(filename)
-   if inode_num != 0 then
-      minix_cati(inode_num)
-   end if
-end procedure
-
--- parially print content. When content is changing, display 
--- zone_type|zone_idx|zone_dbl_idx|zone_content_idx|address|indirect|dbl_indirect|read/filesize
--- and then one content char
-procedure minix_dev_cati(word in inode_num) is
-   var byte char = 0
-   var byte charprev = 0
-   minix_openi(inode_num,MINIX_MODE_READ)
-   while minix_filefd.read != minix_filefd.inode.filesize loop
-      char = minix_read()
-      if char != charprev then
-         charprev = char
-         print_byte_binary(minix_print_carrier,minix_filefd.inode.zone_type)
-         minix_print_carrier = "|"
-         minix_print_carrier = "h"
-         print_word_hex(minix_print_carrier,minix_filefd.inode.zone_idx)
-         minix_print_carrier = "|"
-         minix_print_carrier = "h"
-         print_word_hex(minix_print_carrier,minix_filefd.inode.zone_dbl_idx)
-         minix_print_carrier = "|"
-         minix_print_carrier = "h"
-         print_word_hex(minix_print_carrier,minix_filefd.inode.zone_content_idx)
-         minix_print_carrier = "|"
-         minix_print_carrier = "h"
-         print_dword_hex(minix_print_carrier,minix_curzone)
-         minix_print_carrier = "|"
-         minix_print_carrier = "h"
-         print_dword_hex(minix_print_carrier,minix_filefd.inode.indirect_zone)
-         minix_print_carrier = "|"
-         minix_print_carrier = "h"
-         print_dword_hex(minix_print_carrier,minix_filefd.inode.double_indirect_zone)
-         minix_print_carrier = "|"
-         print_dword_dec(minix_print_carrier,minix_filefd.read)
-         minix_print_carrier = "/"
-         print_dword_dec(minix_print_carrier,minix_filefd.inode.filesize)
-         minix_print_carrier = "|"
-         print_word_dec(minix_print_carrier,sd_byte_count)
-         minix_print_carrier = " "
-         minix_print_carrier = char
-         minix_print_carrier = "="
-         print_byte_dec(minix_print_carrier,char)
-         print_crlf(minix_print_carrier)
-      end if
-   end loop
-   minix_close()
-end procedure
-
-procedure minix_dev_cat(byte in filename[MINIX_MAX_FILENANE_LEN]) is
-   var word inode_num = minix_find_in_cwd(filename)
-   if inode_num != 0 then
-      minix_dev_cati(inode_num)
-   end if
-end procedure
-
-procedure minix_lsi(word in inode_num) is
-   minix_openi(inode_num,MINIX_MODE_READ)
-   if minix_filefd.inode.mode.isdir == true then
-      var minix_dir_entry entry
-      entry = minix_next_entry
-      while entry.inode_num != 0 loop
-         minix_print_dir_entry(entry)
-         print_crlf(serial_hw_data)
-         entry = minix_next_entry 
-      end loop
-   else
-      minix_dev_print_inode()
-   end if
-end procedure 
-
-procedure minix_ls(byte in filename[MINIX_MAX_FILENANE_LEN]) is
-   if filename[0] != 0 then
-      var word inode_num = minix_find_in_cwd(filename)
-      if inode_num != 0 then
-         minix_lsi(inode_num)
-      end if
-   else
-      minix_lsi(minix_dirfd.inode.id)
-   end if
-end procedure
-
-end if
