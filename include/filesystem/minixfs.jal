@@ -563,10 +563,6 @@ procedure minix_read_super_block(bit in check_data_zone) is
    minix_sb.last_full_zone = 0
    minix_sb.next_zone_address = minix_sb.first_data_zone    -- beginning of actual data
 
-   -- TODO: tmp
-   alias _trash is data
-   _trash = minix_zone_alloc()
-
 end procedure
 
 -- Load inode data, identified by inode_num, into file descriptor's 
@@ -768,7 +764,7 @@ end procedure
 procedure minix_next_zone(bit in create_zone) is
 
    -- if in write mode, we can move to another sector in underlying storage
-   -- and loose changes. Flush in case.
+   -- and loose changes. In order to avoid this, flush, just in case.
    minix_flush()
 
    -- reset zone content
@@ -906,6 +902,7 @@ procedure minix_seek(dword in bytenum) is
    var dword mbytes = 0xFFFF_FFFF   
    var dword kbytes = 0xFFFF_FFFF
    var word bytes = 0
+   var bit alloc = false   -- no allocation by default, we'll just read zone addresses
 
    -- if in write mode, we can move to another sector in underlying storage
    -- and loose changes. Flush in case.
@@ -914,16 +911,29 @@ procedure minix_seek(dword in bytenum) is
    -- manual read content update
    minix_filefd.read = bytenum
 
+   -- EOF ? This means we'll need to allocate new zones !
+   if minix_filefd.read >= minix_filefd.inode.filesize then
+      -- fix wrong seek, btw...
+      minix_filefd.read = minix_filefd.inode.filesize
+      alloc = true
+      minix_curzone = minix_zone_alloc()
+   end if
+
+
    -- special case for direct zone
    if bytenum <= MINIX_MAX_DIRECT_ZONE_SIZE then
       kbytes = bytenum / MINIX_BYTES_PER_BLOCK
-      -- very end of zone ?
+      -- very end of zone ? (but even one byte more, else > MINIX_MAX_DIRECT_ZONE_SIZE)
       if kbytes == 7 then
          -- this means bytenum = 7168 = 1024*7
          kbytes = 6
       end if
       bytes = word(bytenum - (kbytes * MINIX_BYTES_PER_BLOCK))
-      minix_curzone = minix_filefd.inode.zone[kbytes]
+      if alloc then
+         minix_filefd.inode.zone[kbytes] = minix_curzone
+      else
+         minix_curzone = minix_filefd.inode.zone[kbytes]
+      end if
       -- manual update inode state
       minix_filefd.inode.zone_idx = word(kbytes)
       minix_filefd.inode.zone_content_idx = bytes
