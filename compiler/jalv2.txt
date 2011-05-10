@@ -19,13 +19,15 @@ An Introduction & Guide to JALV2
    2. Variables, Constants, Aliases
 
         2.1. Types
-        2.2. Variables
-        2.3. Constants
+        2.2. Arrays
+        2.3. Records
+        2.4. Variables
+        2.5. Constants
 
-              2.3.1. Unnamed Constants
-              2.3.2. Named Constants
+              2.5.1. Unnamed Constants
+              2.5.2. Named Constants
 
-        2.4. Aliases
+        2.6. Aliases
 
    3. Operators, Casting, Expressions, Casting
 
@@ -220,7 +222,56 @@ Chapter 2. Variables, Constants, Aliases
    BIT*24 is not the same as defining a value of BYTE*3!
      __________________________________________________________
 
-2.2. Variables
+2.2. Arrays
+
+   JAL allows one dimensional arrays of any non-bit type. These
+   are defined during variable definition using the notation:
+        VAR type '[' cexpr ']' id
+
+   This defines id as type with cexpr elements. These are accessed
+   using brackets. The elements are numbered from zero, so for 5
+   elements the accessors are 0 to 4.
+
+   Example:
+        VAR BYTE stuff[5], xx
+
+        xx = 2
+        stuff[0] = 1
+        stuff[xx] = 2
+        xx = stuff[xx]
+
+   Note: There is no error checking when an array is accessed with
+   a variable. In the above example, if xx is 5 no error will be
+   generated, but the results will not be as expected.
+     __________________________________________________________
+
+2.3. Records
+
+   Records are special types, composed of fields which are
+   built-in types, arrays, and/or other records. These are defined
+   with:
+      RECORD identifier IS
+          type[*cexpr] id0 [ '[' cexpr ']' ]
+          ...
+      END RECORD
+
+   Once defined, the RECORD identifier can be use anywhere a
+   simple type can be used. Each individual field is accessed
+   using '.'
+
+   Example:
+        RECORD eyeinfo IS
+          BYTE left
+          BYTE right
+        END RECORD
+
+        VAR eyeinfo eye
+
+        eye.left = 1
+        eye.right = 2
+     __________________________________________________________
+
+2.4. Variables
 
    A variable is simply an identifier that holds a value. These
    identifiers have types associated which define how much space
@@ -340,9 +391,9 @@ r2...] '}'
                 VAR BYTE a,b,c
      __________________________________________________________
 
-2.3. Constants
+2.5. Constants
 
-2.3.1. Unnamed Constants
+2.5.1. Unnamed Constants
 
    An unnamed numeric constant has the type UNIVERSAL, which is a
    32-bit signed value. When a value of type UNIVERSAL is used in
@@ -387,7 +438,7 @@ r2...] '}'
    for grouping. For example: 0b0000_1111
      __________________________________________________________
 
-2.3.2. Named Constants
+2.5.2. Named Constants
 
    The complete format for defining a named constant is:
           CONST [type[*cexpr]] identifier [ '[' [ cexpr ] ']' ]
@@ -427,7 +478,7 @@ r2...] '}'
           array. Unlike C, there is no terminating NUL.
      __________________________________________________________
 
-2.4. Aliases
+2.6. Aliases
 
    Aliases allow a multiple identifiers (variables, named
    constants, sub-programs) to refer to the same object.
@@ -588,6 +639,21 @@ Chapter 4. Flow Control
    statement is processed, control proceeds past the END CASE.
 
    Each cexpr must evaluate to a unique value.
+
+   Example:
+        CASE xx OF
+          1:     yy = 3
+          2,5,7: yy = 4
+          10:    BLOCK
+                   yy = 5
+                   zz = 6
+                 END BLOCK
+          OTHERWISE zz = 0
+        END CASE
+
+   Note that only one statement is allowed in each case, thus the
+   reason for BLOCK as BLOCK...END BLOCK is considered a single
+   statement.
      __________________________________________________________
 
 4.3. FOR
@@ -604,7 +670,31 @@ Chapter 4. Flow Control
    expr, a warning is generated. If [EXIT LOOP] is used, the loop
    is immediately exited.
 
-   On exit, var is equal to expr.
+   Note: expr is evaluated once on entry to the FOR statement.
+
+   On normal exit, var is equal to expr. After, `EXIT LOOP,' var
+   holds whatever value it had at the beginning of the loop.
+
+   November 2010 -- a minor enhancement has been made at the
+   request of the users. If expr is a cexpr and is one larger than
+   var can hold, the loop will be exited when var rolls over to
+   zero. In this case, on exit var will be zero.
+
+   Example:
+        VAR BYTE n
+
+        FOR 256 USING n LOOP
+          ...
+        END LOOP
+
+   On exit, n will be zero.
+        xx = 0
+        FOR 10 LOOP
+          xx = xx + 1
+          IF (xx = 5) THEN
+            EXIT LOOP
+          END IF
+        END LOOP
      __________________________________________________________
 
 4.4. FOREVER
@@ -619,6 +709,17 @@ Chapter 4. Flow Control
    encountered, in which case the loop is immediately terminated.
    This is commonly used for the main loop in a program because an
    embedded program like this never ends.
+
+   Example:
+        xx = 5
+        yy = 6
+        FOREVER LOOP
+          READ_ADC()
+          CHANGE_SPEED()
+          IF (speed = 5) THEN
+            EXIT LOOP
+          END IF
+        END LOOP
      __________________________________________________________
 
 4.5. IF
@@ -646,6 +747,15 @@ Chapter 4. Flow Control
         this is a dummy block that won't even be parsed!
 
         END IF
+
+   Example:
+        IF x = 5 THEN
+          y = 7
+        ELSIF x = 6 THEN
+          y = 12
+        ELSE
+          y = 0
+        END IF
      __________________________________________________________
 
 4.6. REPEAT
@@ -658,6 +768,11 @@ Chapter 4. Flow Control
 
    statement_block will be executed until lexpr evaluates to 1, or
    until [EXIT LOOP] is encountered.
+
+   Example:
+        REPEAT
+          xx = READ_ADC
+        UNTIL (xx < 5)
      __________________________________________________________
 
 4.7. WHILE
@@ -674,6 +789,14 @@ Chapter 4. Flow Control
    REPEAT loop will always execute at least once, whereas that of
    a WHILE loop may never execute (because the test is done
    first).
+
+   Example:
+        WHILE no_button LOOP
+          xx = xx + 1
+          IF (xx = 10) THEN
+            EXIT LOOP
+          END IF
+        END LOOP
      __________________________________________________________
 
 Chapter 5. Other Keywords
@@ -706,6 +829,9 @@ Chapter 5. Other Keywords
    consideration if you are writing a library as some filesystems
    are case-sensitive, and others are not, so "MYLIBRARY" and
    "mylibrary" might be two different files.
+
+   Example:
+        INCLUDE 16f877
      __________________________________________________________
 
 5.3. Message generating
@@ -722,6 +848,9 @@ Chapter 5. Other Keywords
 
    Generates a debug message. This will only be seen if the
    "-debug" compiler option has been used.
+
+   Example:
+          _DEBUG "this file is being deprecated"
      __________________________________________________________
 
 5.3.2. _ERROR
@@ -730,6 +859,9 @@ Chapter 5. Other Keywords
           _ERROR '"' ... '"'
 
    Generates an error message.
+
+   Example:
+          _ERROR "this function should not be used"
      __________________________________________________________
 
 5.3.3. _WARN
@@ -738,6 +870,11 @@ Chapter 5. Other Keywords
           _WARN '"' ... '"'
 
    Generates a warning message.
+
+   Example:
+          IF !DEFINED(foo) THEN
+            _WARN "foo is not defined"
+          END IF
      __________________________________________________________
 
 Chapter 6. Sub-programs: Procedures and Functions
@@ -845,6 +982,18 @@ Chapter 7. Pseudo-variables
 
    If both a 'GET and 'PUT sub-program are defined, the parameter
    type of the 'PUT must match the return type of the 'GET.
+
+   Example:
+      FUNCTION pin'GET() RETURN BIT IS
+        return pin_shadow
+      END FUNCTION
+
+      PROCEDURE pin'PUT(BIT in xx) IS
+        pin_shadow = xx
+        port = port_shadow
+      END PROCEDURE
+
+      pin = 5
      __________________________________________________________
 
 Chapter 8. Interrupts
@@ -916,7 +1065,7 @@ Chapter 9. Tasks
    time. The following would be an error because it attempts to
    run two copies of task1 at the same time:
       START task1
-      START task1
+      START task2
 
       FOREVER LOOP
         SUSPEND
