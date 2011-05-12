@@ -61,6 +61,8 @@
 --  * update atime/mtime/ctime while reading & writing
 --  * update mode bits while saving inode 
 --  * since only file desc, passing inode as arg can be avoided, by directly setting global var
+--  * rename open_block_byte
+--  * rename sector_counter
 --
 
 include strings
@@ -238,12 +240,6 @@ var word minix_cwd
 
 -- move to block number and open read access on underlying storage
 procedure minix_open_block(dword in num) is
-
-   const byte str[] = "> goto @ "
-   print_crlf(minix_print_carrier)
-   print_string(minix_print_carrier,str)
-   minix_print_carrier = "h"
-   print_dword_hex(minix_print_carrier,num)
    if num == 0 then
       minix_last_error = MINIX_ERR_BAD_ADDRESS
       -- tmp: make sure it reset it case of troubles (safety in a sense)
@@ -258,11 +254,6 @@ end procedure
 -- move to block number, then to byte number within the block
 procedure minix_open_block_byte(dword in blocknum, word in bytenum) is
    minix_open_block(blocknum)
-
-   minix_print_carrier = "/"
-   print_word_dec(minix_print_carrier,bytenum)
-   print_crlf(minix_print_carrier)
-
    -- is there sector included in bytenum ? We must adjust about this
    -- to be sure we won't cross underlying storage sector boundaries
    minix_storage_address = minix_storage_address + (bytenum / MINIX_STORAGE_SECTOR_SIZE)
@@ -424,6 +415,12 @@ end procedure
 
 -- Walk accross zone bitmap, searching for a free zone number (identified by 0s)
 -- and return available zone number. 
+-- /!\ zone bitmap and file's content obviously aren't located the same. This means when 
+-- allocating, we're moving in a different place (zone bitmap) than we previously were
+-- while writing into the file. It's the caller's responsability to move the correct location
+-- once allocation is done. Yes, that's right: it's dirty, as zone_alloc() won't let the system
+-- in its previous state. ("why ?" you may ask... because it's simpler like that, and anyway,
+-- this procedure is somewhat internal, so it shouldn't be a problem in the end).
 function minix_zone_alloc() return dword is
    var byte databck = 0
    var byte numone = 0
@@ -459,6 +456,8 @@ function minix_zone_alloc() return dword is
       end loop
    end if
 
+   minix_open_block_byte(minix_sb.last_zone_bitmap_block,minix_sb.last_zone_bitmap_byte)
+
    -- found bits marked as free zone
    databck = minix_sb.zone_current_bits
    zeroplace = 0
@@ -473,13 +472,11 @@ function minix_zone_alloc() return dword is
    -- TODO: write "1" at proper place in zone bitmap
    minix_sb.zone_current_bits = minix_sb.zone_current_bits | (1 << zeroplace)
 
-   -- save new bits. sector counter was increased on the next address, we need 
-   -- to *replace* byte, so decrement
-   -- TODO: *could* be optimized by moving this into next "if", testing how bits
+   -- save new bits
+   -- TODO: *could* be optimized by moving this into next "if", testing when bits
    -- are full. But... in case partially filled, user has to "umount" device to flush 
    -- bits. If not, already allocated zone will be allocated again ! So, let's be on the
    -- safe side and dump change each time we're allocation a zone bit.
-   minix_sector_counter = minix_sector_counter - 1
    minix_storage_write_byte(minix_sb.zone_current_bits)
    minix_storage_flush()
 
@@ -503,7 +500,6 @@ function minix_zone_alloc() return dword is
    print_crlf(minix_print_carrier)
    print_string(minix_print_carrier,str)
    print_dword_hex(minix_print_carrier,minix_sb.last_alloc_zone_address)
-   print_crlf(minix_print_carrier)
    return minix_sb.last_alloc_zone_address
    
 end function
@@ -823,14 +819,24 @@ procedure minix_next_zone(bit in create_zone) is
          minix_filefd.inode.zone_dbl_idx = minix_filefd.inode.zone_dbl_idx + 4
          minix_filefd.inode.zone_idx = 0xFFFC -- rollover to 0 when accessing single indirect
          if create_zone then
+            const byte strdb[] = "Assigning double indirect"
+            print_string(minix_print_carrier,strdb)
+            print_crlf(minix_print_carrier)
             if minix_filefd.inode.double_indirect_zone == 0 then -- no double indirect zone yet
                minix_filefd.inode.double_indirect_zone = minix_zone_alloc()
+               -- once here, we're in zone bitmap location, not within file's content.
+               -- No problem, next instruction will move back to previous location !
             end if
          end if
          minix_open_block_byte(minix_filefd.inode.double_indirect_zone,minix_filefd.inode.zone_dbl_idx)
          -- read indirect zone address
          if create_zone then
+            -- FIXME: bug bug bug
+            const byte strdb[] = "Assigning within double indirect"
+            print_string(minix_print_carrier,strdb)
+            print_crlf(minix_print_carrier)
             minix_curzone = minix_zone_alloc()
+            -- TODO: need to move back to previous location
             minix_storage_write_byte(minix_curzonetab[0])
             minix_storage_write_byte(minix_curzonetab[1])
             minix_storage_write_byte(minix_curzonetab[2])
@@ -842,6 +848,9 @@ procedure minix_next_zone(bit in create_zone) is
             minix_curzonetab[3] = minix_storage_read_byte()
          end if
          -- and replace previous indirect location
+         -- FIXME: NO !!!! don't write over indirect_zone, it must be saved as its
+         -- first allocation so next access, this will be the very first assigned (good)
+         -- address, not one used while exploring indirect zones *within* double indirect (bad)
          minix_filefd.inode.indirect_zone = minix_curzone
       end if
    end if
@@ -851,15 +860,29 @@ procedure minix_next_zone(bit in create_zone) is
       minix_filefd.inode.zone_idx = minix_filefd.inode.zone_idx + 4
       if create_zone then
          if minix_filefd.inode.indirect_zone == 0 then -- no indirect zone yet
+            const byte strdb[] = "Assigning indirect"
+            print_string(minix_print_carrier,strdb)
+            print_crlf(minix_print_carrier)
             minix_filefd.inode.indirect_zone = minix_zone_alloc()
+            -- once here, we're in zone bitmap location, not within file's content.
+            -- No problem, next instruction will move back to previous location !
          end if
+         const byte strdb[] = "Assigning within indirect"
+         print_string(minix_print_carrier,strdb)
+         print_crlf(minix_print_carrier)
+         -- generate a new zone within indirect block, it'll be saved in next "create_zone" test
+         minix_curzone = minix_zone_alloc()
       end if
+
       -- NB: on 1st indirect zone access, this will just open/create a new block (zone_idx == 0)
       minix_open_block_byte(minix_filefd.inode.indirect_zone,minix_filefd.inode.zone_idx)
+
+      -- yet another create_zone test, I tested the following:
+      -- if both tests are refactored (thus minix_open_block_byte() is duplicated), 
+      -- it produces a bigger code (44 bytes more). so it's better to have one
+      -- minix_open_block_byte() call and the same "if" test twice.
       if create_zone then
-         -- generate a new zone within indirect block
-         minix_curzone = minix_zone_alloc()
-         -- and save it back to storage
+         -- save it back to storage
          minix_storage_write_byte(minix_curzonetab[0])
          minix_storage_write_byte(minix_curzonetab[1])
          minix_storage_write_byte(minix_curzonetab[2])
@@ -882,6 +905,8 @@ procedure minix_next_zone(bit in create_zone) is
       -- zone0, zone1, etc...
       if create_zone == true then
          minix_filefd.inode.zone[minix_filefd.inode.zone_idx] = minix_zone_alloc()
+         -- once here, we're located within zone bitmap, not file's content.
+         -- no problem, we'll moved to content on the few next instructions
       end if
       minix_curzone = minix_filefd.inode.zone[minix_filefd.inode.zone_idx]
       minix_open_block(minix_curzone)
@@ -926,27 +951,16 @@ procedure minix_write(byte in data) is
       return
    end if
 
-   const byte strs[] = "zone_content_idx "
-   print_crlf(minix_print_carrier)
-   print_string(minix_print_carrier,strs)
-   print_word_dec(minix_print_carrier,minix_filefd.inode.zone_content_idx)
-   
    -- if we're writing onto existing data, don't need to create zones
    -- that's why we track what we read/write in order to know if we go beyond
    -- file size.
    var bit create = false
    if minix_filefd.read == minix_filefd.inode.filesize then
-      const byte str[] = "EOF here"
-      print_crlf(minix_print_carrier)
-      print_string(minix_print_carrier,str)
       minix_filefd.inode.filesize = minix_filefd.inode.filesize + 1
       create = true
    end if
 
    if minix_filefd.inode.zone_content_idx == MINIX_BYTES_PER_BLOCK then
-       const byte str[] = "new zone !!!"
-      print_crlf(minix_print_carrier)
-      print_string(minix_print_carrier,str)
       minix_next_zone(create)  -- true: write operation, ie. can create new zone
    end if
 
@@ -975,7 +989,7 @@ procedure minix_seek(dword in bytenum) is
    
    -- manual read content update
    minix_filefd.read = bytenum
-   
+
    -- special case for direct zone
    if bytenum <= MINIX_MAX_DIRECT_ZONE_SIZE then
       kbytes = bytenum / MINIX_BYTES_PER_BLOCK
@@ -1022,17 +1036,20 @@ procedure minix_seek(dword in bytenum) is
    
    -- we've modified double indirect addresses ?
    if mbytes != 0xFFFF_FFFF then
-       -- go to double indirect zone and read indirect zone address
-       minix_open_block_byte(minix_filefd.inode.double_indirect_zone,word(mbytes*4))  -- mbytes is an index, one element weighs a dword
-       minix_curzonetab[0] = minix_storage_read_byte()
-       minix_curzonetab[1] = minix_storage_read_byte()
-       minix_curzonetab[2] = minix_storage_read_byte()
-       minix_curzonetab[3] = minix_storage_read_byte()
-       -- now minix_curzone stores indirect zone
-       -- manual update regarding double indirect addressing
-       minix_filefd.inode.zone_type = MINIX_ZONE_DOUBLE_INDIRECT
-       minix_filefd.inode.indirect_zone = minix_curzone
-       minix_filefd.inode.zone_dbl_idx = word(mbytes*4)
+      -- go to double indirect zone and read indirect zone address
+      minix_open_block_byte(minix_filefd.inode.double_indirect_zone,word(mbytes*4))  -- mbytes is an index, one element weighs a dword
+      minix_curzonetab[0] = minix_storage_read_byte()
+      minix_curzonetab[1] = minix_storage_read_byte()
+      minix_curzonetab[2] = minix_storage_read_byte()
+      minix_curzonetab[3] = minix_storage_read_byte()
+      -- now minix_curzone stores indirect zone
+      -- manual update regarding double indirect addressing
+      -- FIXME: NO !!!! don't write over indirect_zone, it must be saved as its
+      -- first allocation so next access, this will be the very first assigned (good)
+      -- address, not one used while exploring indirect zones *within* double indirect (bad)
+      minix_filefd.inode.zone_type = MINIX_ZONE_DOUBLE_INDIRECT
+      minix_filefd.inode.indirect_zone = minix_curzone
+      minix_filefd.inode.zone_dbl_idx = word(mbytes*4)
    end if
    
    -- we've modified single indirect addresses ?
@@ -1052,12 +1069,12 @@ procedure minix_seek(dword in bytenum) is
    -- finally move within block until correct offet
    var byte _trash
    for bytes loop
-       _trash = minix_read()
+       _trash = minix_storage_read_byte()
    end loop
    
    -- manual inode state update for content
    minix_filefd.inode.zone_content_idx = bytes
-   
+
 end procedure
    
 procedure minix_openi(word in inode_num,byte in mode) is
