@@ -45,10 +45,9 @@
 --
 -- -- Setup SPI Slave Hardware
 -- --
--- -- (PIC takes care of inputs/outputs on SPI port?)
--- ;pin_sdi_direction = input    -- spi input
--- ;pin_sdo_direction = output   -- spi output
--- ;pin_sck_direction = input    -- spi clock
+-- pin_sdi_direction = input    -- spi input
+-- pin_sdo_direction = output   -- spi output
+-- pin_sck_direction = input    -- spi clock
 -- --
 -- alias spi_slave_hw_chip_select is pin_ss -- slave select / chip select pin.
 -- alias spi_slave_hw_chip_select_direction is pin_ss_direction
@@ -81,6 +80,11 @@
 
 include spi_common
 
+-- tx out buffer state
+const byte _SPI_SLAVE_HW_EMPTY = 0
+const byte _SPI_SLAVE_HW_FULL = 1
+var byte _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_EMPTY
+
 -- include a queue for interrupts
 if SPI_SLAVE_HW_ENABLE_INTERRUPT == TRUE then
    const byte QUEUE01_SIZE = SPI_SLAVE_HW_RX_QUEUE_SIZE
@@ -100,7 +104,8 @@ if SPI_SLAVE_HW_ENABLE_INTERRUPT == TRUE then
    alias spi_slave_hw_tx_queue_is_full is queue02_is_full  -- returns true if queue is full
    alias spi_slave_hw_tx_queue_nr_free is queue02_nr_free  -- returns nr of free places in queue
    alias spi_slave_hw_tx_queue_nr_used is queue02_nr_used  -- returns nr of used places in queue
-
+   alias spi_slave_hw_in_pointer is queue02_in_pointer
+   alias spi_slave_hw_out_pointer is queue02_out_pointer
 
    if SPI_SLAVE_ENABLE_ISR_PACKETS == TRUE then
       const byte QUEUE03_SIZE = SPI_SLAVE_HW_RX_PACKET_SIZES
@@ -129,8 +134,9 @@ function spi_slave_hw_exchange(byte in data) return byte is
    else
       -- transmit
       spi_slave_hw_tx_queue = data
-      if SSPSTAT_BF == 0 then
+      if _spi_slave_hw_buffer_tx_status == _SPI_SLAVE_HW_EMPTY then
          SSPBUF = spi_slave_hw_tx_queue
+         _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_FULL
       end if
 
       -- receive
@@ -152,8 +158,9 @@ procedure spi_slave_hw'put(byte in data) is
       dummy = spi_slave_hw_exchange(data)
    else
       spi_slave_hw_tx_queue = data
-      if SSPSTAT_BF == 0 then
+      if _spi_slave_hw_buffer_tx_status == _SPI_SLAVE_HW_EMPTY then
          SSPBUF = spi_slave_hw_tx_queue
+         _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_FULL
       end if
    end if
 end procedure
@@ -243,15 +250,21 @@ procedure spi_slave_initerrupt() is
 
          procedure exchange1() is
             pragma inline
-            -- get new data
+            
+            -- get new data, put it in the rx buffer
             spi_slave_hw_rx_queue = SSPBUF
 
             spi_slave_hw_rx_byte_count = spi_slave_hw_rx_byte_count + 1
-
-            -- this data will get sent during next data transfer
-            if SSPSTAT_BF == 0 then           -- if there is room in PIC SPI output buffer
-               SSPBUF = spi_slave_hw_tx_queue -- fill PIC SPI output buffer
+            
+            -- fill PIC SPI output buffer if there is data in the tx buffer
+            --
+            ;if spi_slave_hw_tx_queue_is_empty == FALSE then
+            ;if spi_slave_hw_tx_queue_nr_used == 0 then
+            if (spi_slave_hw_in_pointer != spi_slave_hw_out_pointer) then -- faster then above if statement
+               SSPBUF = spi_slave_hw_tx_queue
+               _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_FULL
             end if
+
          end procedure
 
          -- continue while there is still data comming in.
@@ -289,7 +302,6 @@ procedure spi_slave_initerrupt() is
          spi_slave_hw_rx_packet_size = spi_slave_hw_rx_byte_count
 
       else -- If packets are not enabled
-      
 
          -- continue while there is still data comming in.
          ;while SSPSTAT_BF == 1 loop
@@ -297,12 +309,17 @@ procedure spi_slave_initerrupt() is
 
             procedure exchange2() is
                pragma inline
+               
                -- get new data
                spi_slave_hw_rx_queue = SSPBUF
 
-               -- this data will get sent during next data transfer
-               if SSPSTAT_BF == 0 then           -- if there is room in PIC SPI output buffer
-                  SSPBUF = spi_slave_hw_tx_queue -- fill PIC SPI output buffer
+               -- fill PIC SPI output buffer if there is data in the tx buffer
+               --
+               ;if spi_slave_hw_tx_queue_is_empty == FALSE then
+               ;if spi_slave_hw_tx_queue_nr_used == 0 then
+               if (spi_slave_hw_in_pointer != spi_slave_hw_out_pointer) then -- faster then above if statement
+                  SSPBUF = spi_slave_hw_tx_queue
+                  _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_FULL
                end if
             end procedure
 
@@ -334,7 +351,7 @@ procedure spi_slave_initerrupt() is
       end if
    end if
 
-         PIR1_SSPIF = FALSE -- clear interrupt bit
+   PIR1_SSPIF = FALSE -- clear interrupt bit
 end procedure
 
 --------------------------------------------------------------------------------
@@ -356,13 +373,7 @@ end procedure
 --------------------------------------------------------------------------------
 function spi_slave_hw_packet_available'get() return bit is
    if (SPI_SLAVE_HW_ENABLE_INTERRUPT == TRUE) & (SPI_SLAVE_ENABLE_ISR_PACKETS == TRUE) then
-      var byte value
-
-      if spi_slave_hw_rx_packet_size_used > 0 then
-         return 1
-      else
-         return 0
-      end if
+     return !spi_slave_hw_rx_packet_size_is_empty
    else
       return 0
    end if
