@@ -38,6 +38,12 @@ include delay
 const serial_hw_baudrate  = 115200   -- set the baudrate
 include serial_hardware
 serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
 
 include print
 
@@ -48,6 +54,9 @@ pin_sdo_direction = output   -- spi output
 pin_sck_direction = output   -- spi clock
 --
 spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+alias spi_master is spi_master_hw
+alias spi_master_set_speed is spi_master_hw_set_speed
+alias spi_master_set_mode is spi_master_hw_set_mode
 
 
 -- setup 23k256 for external memory
@@ -66,10 +75,11 @@ sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init
 -- setup the sd card pins
 alias sd_chip_select is pin_SS
 alias sd_chip_select_direction is pin_SS_direction
-sd_chip_select_direction = output
 sd_chip_select = high
+sd_chip_select_direction = output
 --
 -- setup the sd card library
+alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
 ;const bit SD_EXTRA_SPEED = TRUE
 const bit SD_ALWAYS_SET_SPI_MODE = TRUE
 const bit SD_DELAY_AFTER_WRITE = TRUE
@@ -123,11 +133,11 @@ fat32_filter_is_archive    = FALSE
 
 -- procedure for sending 80 "-----------------" via serial port
 procedure separator() is
-   serial_hw_data = 13
-   serial_hw_data = 10
+   serial_data = 13
+   serial_data = 10
    const byte str3[] = "--------------------------------------------------------------------------------"
-   print_string(serial_hw_data, str3)
-   print_crlf(serial_hw_data)
+   print_string(serial_data, str3)
+   print_crlf(serial_data)
 end procedure
 
 -- start of main program
@@ -138,7 +148,7 @@ fat32_init(1) -- initialize fat32, go to 1st primary partition's root dir "\"
 ------------------------------------------------------------
 -- list a directory, send it via serial port
 ------------------------------------------------------------
-fat32_print_directory(serial_hw_data, TRUE, FAT32_PRINT_ALL) -- see the procedure, sends dir listing via serial port
+fat32_print_directory(serial_data, TRUE, FAT32_PRINT_ALL) -- see the procedure, sends dir listing via serial port
 
 separator() -- send "-----" and go to next example
 
@@ -151,7 +161,7 @@ separator() -- send "-----" and go to next example
 ;fat32_read_file_info(3) -- read 3rd file's name, location, size, attributes into memory
 
 -- now send the filename via the serial port
-;fat32_print_filename(serial_hw_data)
+;fat32_print_filename(serial_data)
 
 ------------------------------------------------------------
 -- example user interaction,
@@ -170,15 +180,18 @@ var byte file_number2 = 0
 forever loop
    separator() -- send "-----" then loop and wait for user input
 
-   while !serial_hw_data_available loop
-   end loop
+   -- this is not needed serial_sw.
+   -- serial_data_available doesn't exist on serial sw.
+   if defined(serial_data_available) then
+      while !serial_data_available loop
+      end loop
+   end if
 
-   var byte x
-   x = serial_hw_read(file_number2)
+   file_number2 = serial_data
 
    -- choose a file for reading or dir for opening
    if fat32_cd(file_number2) then             -- if change directory is successful
-      fat32_print_directory(serial_hw_data, TRUE, FAT32_PRINT_ALL) -- sends dir listing via serial port (with file numbers)
+      fat32_print_directory(serial_data, TRUE, FAT32_PRINT_ALL) -- sends dir listing via serial port (with file numbers)
    elsif fat32_file_open(file_number2) then   -- if go into file is successful
    
       -- calculate number of sectors in file
@@ -193,7 +206,7 @@ forever loop
 ;      -- Read any byte number in the file, in any order you wish.
 ;      for fat32_file_size using step1 loop
 ;          data = fat32_read_file_byte_address(step1)
-;          serial_hw_data = data
+;          serial_data = data
 ;      end loop
 ;
       -- EXAMPLE 2 READ (slow, not so user friendly)
@@ -202,7 +215,7 @@ forever loop
 ;      fat32_start_file_read ()
 ;      for fat32_file_size loop
 ;          data = fat32_read_file_byte()
-;          serial_hw_data = data
+;          serial_data = data
 ;      end loop
 ;      fat32_stop_file_read()
 
@@ -227,7 +240,7 @@ forever loop
          fat32_read_file_sector_number(step1)
          -- send the sector via serial port
          for 512 using step2 loop
-            serial_hw_data = fat32_sector_buffer[step2]
+            serial_data = fat32_sector_buffer[step2]
          end loop
       end loop
 
@@ -256,7 +269,7 @@ forever loop
 ;         fat32_read_file_sector()
 ;         -- send the sector via serial port
 ;         for 512 using step2 loop
-;            serial_hw_data = fat32_sector_buffer[step2]
+;            serial_data = fat32_sector_buffer[step2]
 ;         end loop
 ;      end loop
 
