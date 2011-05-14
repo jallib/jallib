@@ -27,7 +27,7 @@ include 18f67j50                    -- target PICmicro
 pragma target clock 48_000_000     -- oscillator frequency
 -- configuration memory settings (fuses)
 pragma target WDT  disabled        -- no watchdog
-pragma target PLLDIV        P2     -- divide by 5 - 20MHZ_INPUT
+pragma target PLLDIV        P2     -- divide by 2
 pragma target CPUDIV        P1     -- no cpu system clock divide
 pragma target OSC  INTOSC_NOCLKOUT_PLL           -- HS crystal or resonator
 pragma target IESO  DISABLED
@@ -39,12 +39,19 @@ _usec_delay(1_000)                 -- wait for OSC PLL to settle
 enable_digital_io() -- disable all analog pins if any
 _usec_delay (100_000) -- wait for power to stablilize
 
+
 include delay
 
 -- setup uart for communication
 const serial_hw_baudrate  = 115200   -- set the baudrate
 include serial_hardware
 serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
 
 include print
 
@@ -55,6 +62,9 @@ pin_sdo_direction = output   -- spi output
 pin_sck_direction = output   -- spi clock
 --
 spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+alias spi_master is spi_master_hw
+alias spi_master_set_speed is spi_master_hw_set_speed
+alias spi_master_set_mode is spi_master_hw_set_mode
 
 
 -- setup 23k256 for external memory
@@ -73,10 +83,11 @@ sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init
 -- setup the sd card pins
 alias sd_chip_select is pin_SS
 alias sd_chip_select_direction is pin_SS_direction
-sd_chip_select_direction = output
 sd_chip_select = high
+sd_chip_select_direction = output
 --
 -- setup the sd card library
+alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
 ;const bit SD_EXTRA_SPEED = TRUE
 const bit SD_ALWAYS_SET_SPI_MODE = TRUE
 const bit SD_DELAY_AFTER_WRITE = TRUE
@@ -101,19 +112,19 @@ _usec_delay(100_000)                  -- wait for power to settle
 
 -- procedure for sending 80 "-----------------" via serial port
 procedure separator() is
-   print_crlf(serial_hw_data)
+   print_crlf(serial_data)
    const byte str3[] = "--------------------------------------------------------------------------------"
-   print_string(serial_hw_data, str3)
-   print_crlf(serial_hw_data)
+   print_string(serial_data, str3)
+   print_crlf(serial_data)
 end procedure
 
 -- Send something to the serial port.
 separator()             -- send "----" via serial port
-print_crlf(serial_hw_data)
+print_crlf(serial_data)
 var byte start_string[] = "SD CARD FAT32 SMALL - SAMPLE STARTED"
-print_string(serial_hw_data,start_string)
+print_string(serial_data,start_string)
 separator()             -- send "----" via serial port
-print_crlf(serial_hw_data)
+print_crlf(serial_data)
 
 fat32_small_init() -- initalize data media
 
@@ -134,7 +145,7 @@ var byte x
 fat32_small_file_open(0)       -- open the file, at file sector 0 (the beginning)
 for fat32_small_file_size loop -- read the entire file with fat32_small_file_size
    fat32_small_file_read(x)    -- get one byte of data
-   serial_hw_data = x          -- send it to the serial port
+   serial_data = x          -- send it to the serial port
 end loop
 fat32_small_file_close()       -- close the file
 
@@ -151,13 +162,13 @@ fat32_small_file_close()       -- close the file
 ;   -- set the new file size
 ;   fat32_small_set_file_size((address * 512) + new_file_size_count)
 ;
-;   print_crlf(serial_hw_data)
-;   print_crlf(serial_hw_data)
+;   print_crlf(serial_data)
+;   print_crlf(serial_data)
 ;
 ;   -- READ THE ENTIRE FILE AGAIN
 ;   fat32_small_file_open(0)       -- open the file, at file sector 0 (the beginning)
 ;   for fat32_small_file_size loop -- read the entire file with fat32_small_file_size
 ;      fat32_small_file_read(x)    -- get one byte of data
-;      serial_hw_data = x          -- send it to the serial port
+;      serial_data = x          -- send it to the serial port
 ;   end loop
 ;   fat32_small_file_close()       -- close the file
