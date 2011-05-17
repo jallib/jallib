@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
  * Title: blink-a-led.cmd - Create and compile blink-a-led samples.         *
  *                                                                          *
- * Author: Rob Hamerling, Copyright (c) 2008..2010, all rights reserved.    *
+ * Author: Rob Hamerling, Copyright (c) 2008..2011, all rights reserved.    *
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
@@ -48,25 +48,24 @@ call SysLoadFuncs                               /* load Rexx utilities */
 Validator = '/jallib/tools/jallib.py validate'  /* validation command */
 
 if runtype = 'PROD' then do                     /* test mode */
-  JalV2 = '\jallib\compiler\JalV2ecs.exe'       /* prod compiler */
-  include = '/jallib/include/device;/jallib/include/jal'   /* JalV2 include specification */
-  dst = '/jallib/sample/'                       /* blink-samples destination */
-  src = '/jallib/include/device'                /* source for samples */
+  compiler = 'k:\jallib\compiler\JalV2ecs.exe'  /* prod compiler */
+  include = 'k:/jallib/include/device;/jallib/include/jal'   /* JalV2 include specification */
+  dst = 'k:/jallib/sample'                      /* blink-samples destination */
+  src = 'l:/jallib/include/device'              /* source for samples */
 end
 else do                                         /* test mode */
-  JalV2 = '\c\jalv2\bin\JalV2ecs.exe'           /* latest compiler */
-  Include = '/jal/dev2jal/test;/jallib/include/device;/jallib/include/jal'   /* test + prod device files */
-  dst = './'                                    /* to current directory */
-  src = '/jal/dev2jal/test'                     /* test device files */
+  compiler = 'k:\c\jalv2\bin\JalV2ecs.exe'      /* latest compiler */
+  Include = 'k:/jal/dev2jal/test;/jallib/include/device;/jallib/include/jal'   /* test + prod device files */
+  dst = 'test'                                  /* to test subdirectory */
+  src = 'k:/jal/dev2jal/test'                   /* test device files */
   if stream(src'/chipdef_jallib.jal', 'c', 'query exists') = '' then   /* no test device files */
-    src = '/jallib/include/device'              /* production device files */
+    src = 'k:/jallib/include/device'            /* production device files */
 end
 
 if selection = '' then
-  call SysFileTree src'/1*.jal', pic, 'FO'         /* all device files  */
+  call SysFileTree src'/1*.jal', 'pic.', 'FO'      /* all device files  */
 else
-  call SysFileTree src'/'selection'.jal', pic, 'FO'  /* selected device files  */
-
+  call SysFileTree src'/'selection'.jal', 'pic.', 'FO'  /* selected device files  */
 if pic.0 < 1 then do
   say 'No appropriate device files found in directory' src
   return 1
@@ -132,14 +131,13 @@ do i=1 to pic.0
           leave j
         end
       end
-      if tuntype = 'TEST' then
-         say 'Selected pragma OSC' hs
       call lineout PgmFile, '-- This program assumes that a 20 MHz resonator or crystal'
       call lineout PgmFile, '-- is connected to pins OSC1 and OSC2.'
       call lineout PgmFile, '-- (unspecified configuration bits may cause a different frequency!)'
       call lineout PgmFile, 'pragma target clock 20_000_000     -- oscillator frequency'
       call lineout PgmFile, '-- configuration memory settings (fuses)'
       call lineout PgmFile, 'pragma target OSC      'left(hs,7)'          -- HS crystal or resonator'
+      osc_type = 'HS'
     end
     else do                                             /* assume internal oscillator */
       call lineout PgmFile, '-- This program assumes the internal oscillator'
@@ -160,6 +158,7 @@ do i=1 to pic.0
       call SysFileSearch ' IOSCFS ', pic.i, ioscfs.
       if ioscfs.0 > 0 then
         call lineout PgmFile, 'pragma target IOSCFS  F4MHZ        -- select 4 MHz'
+      osc_type = 'INTOSC'
     end
   end
   else do
@@ -170,18 +169,25 @@ do i=1 to pic.0
     call SysFileSearch ' IOSCFS ', pic.i, ioscfs.
     if ioscfs.0 > 0 then
       call lineout PgmFile, 'pragma target IOSCFS   F4MHZ      -- select 4 MHz'
+    osc_type = 'INTOSC'
   end
-  call SysFileSearch 'fuse_def PLLEN', pic.i, pll.
-  if pll.0 > 0 then do
-    if pos('intosc', pll.1) = 0 then                        /* PLL, not for intosc */
+  call SysFileSearch 'fuse_def PLLEN', pic.i, pll., 'N'
+  if pll.0 > 0 then do                                         /* PLLEN present */
+    if osc_type = 'INTOSC' then do                             /* INTOSC selected */
+      call SysFileSearch '16MHZ =', pic.i, 'freq.', 'N'
+      if freq.0 > 0 then                                      /* 16f720,1 (etc) */
+        call lineout PgmFile, 'pragma target PLLEN    F16MHZ       -- PLL on'
+    end
+    else if pos('intosc', pll.1) = 0 then                   /* PLL, not for intosc */
       call lineout PgmFile, 'pragma target PLLEN    P1         -- PLL off'
   end
+  call stream pic.i, 'c', 'close'                       /* closed for SysFileSearch */
   call SysFileSearch 'fuse_def PLLDIV', pic.i, pll.
   if pll.0 > 0 then
-    call lineout PgmFile, 'pragma target PLLDIV   P1           -- PLL off'
+    call lineout PgmFile, 'pragma target PLLDIV   P1           -- no divide'
   call SysFileSearch 'fuse_def CPUDIV', pic.i, pll.
   if pll.0 > 0 then
-    call lineout PgmFile, 'pragma target CPUDIV   P2           -- no cycle divisor'
+    call lineout PgmFile, 'pragma target CPUDIV   P1           -- no Fosc divisor'
   call SysFileSearch 'fuse_def WDT', pic.i, wdt.
   if wdt.0 > 0 then
     call lineout PgmFile, 'pragma target WDT      disabled     -- no watchdog'
@@ -210,10 +216,18 @@ do i=1 to pic.0
       end
     end
   end
-  call stream Pic.i, 'c', 'close'                       /* done for now */
+  call stream pic.i, 'c', 'close'                       /* closed for SysFileSearch */
   call lineout PgmFile, '-- These configuration bit settings are only a selection, sufficient for'
   call lineout PgmFile, '-- this program, but other programs may need more or different settings.'
   call lineout PgmFile, '--'
+  if osc_type = 'INTOSC' then do                        /* internal oscillator selected */
+    call SysFileSearch 'OSCCON_IRCF', pic.i, 'ircf.', 'N'
+    if ircf.0 > 0 then do
+      say 'IRCF found: ['ircf.0']' ircf.1
+      call lineout PgmFile, 'OSCCON_IRCF = 0x1                  -- 4 MHz'
+      call lineout PgmFile, '--'
+    end
+  end
   call lineout PgmFile, 'enable_digital_io()                -- make all pins digital I/O'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Specify the pin to which the LED (with serial resistor!) is connected:'
@@ -262,7 +276,7 @@ do i=1 to pic.0
   '@erase' PgmName'.py*'                        /* when OK, discard log */
   say '     Sample program validated OK!'
 
-  '@'JalV2 Options PgmFile '>'PgmName'.log'     /* compile */
+  '@'compiler Options '-log' PgmName'.log' PgmFile '>nul'  /* compile */
 
   if rc \= 0 then do                            /* compile error */
     say 'JalV2 compile error' rc
@@ -272,32 +286,38 @@ do i=1 to pic.0
   else
     say '     Sample program compiled OK!'
 
-  call SysFileSearch 'WARNING', PgmName'.log', LG.    /* find warning line in log */
+  call SysFileSearch 'WARNING', PgmName'.log', 'LG.'    /* find warning line in log */
   if LG.0 > 0 then do
     parse upper var LG.1 errs 'ERRORS,' wngs 'WARNINGS'
     if errs = 0 & wngs = 0 then do
       if stream(PgmName'.hex', 'c', 'query exists') = '' then do
         Say 'Zero warnings and errors, but no hex file. Compiler failure!'
+        leave                                   /* terminate */
       end
       else do
         k = k + 1                               /* all OK */
-        if runtype = 'PROD' then do             /* PROD only */
-          '@xcopy' PgmFile translate(dst,'\','/')'*' '/S 1>nul'
-          if rc \= 0 then do
-            say 'Copy of' PgmFile 'to' dst 'failed'
-            return rc
-          end
-          call SysFileDelete PgmName'.log'
-          call SysFileDelete PgmName'.jal'
-          call SysFileDelete PgmName'.hex'
+        '@xcopy' PgmFile translate(dst,'\','/')  '1>nul'
+        if rc \= 0 then do
+          say 'Copy of' PgmFile 'to' dst 'failed'
+          leave
         end
+        if runtype = 'TEST' then do
+          '@xcopy' PgmName'.hex' translate(dst,'\','/') '1>nul'
+          '@xcopy' PgmName'.log' translate(dst,'\','/') '1>nul'
+        end
+        call SysFileDelete PgmName'.jal'
+        call SysFileDelete PgmName'.log'
+        call SysFileDelete PgmName'.hex'
       end
     end
-    else
+    else do
       say 'Compilation of' PgmFile 'failed:' LG.1
+      leave
+    end
   end
   else do
     say 'Compilation of' PgmFile 'failed, file' PgmName'.log' 'not found'
+    leave                                       /* terminate */
   end
 
 end
