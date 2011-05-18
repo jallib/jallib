@@ -81,9 +81,7 @@
 -- TODO:
 --  * update atime/mtime/ctime while reading & writing
 --  * update mode bits while saving inode 
---  * since only file desc, passing inode as arg can be avoided, by directly setting global var
 --  * rename open_block_byte
---  * rename sector_counter
 --  * support for file creation
 --  * support for file deletion
 --
@@ -254,7 +252,7 @@ end record
 var dword minix_curzone
 var byte minix_curzonetab[4] at minix_curzone
 
-var word minix_sector_counter = 0   -- track while accessing underlying storage sector
+var word minix_sector_progress = 0  -- track progress while accessing underlying storage sector
                                     -- (should never be accessed directly as it's manager incrementally
                                     -- with write operations and trigger block/sector opening)
                                     -- If you need skip a value while writing, use open_block_byte() instead
@@ -271,12 +269,6 @@ var word minix_cwd
 -- move to block number and open read access on underlying storage
 procedure minix_open_block(dword in num) is
 
-   const byte str[] = "Goto block @ "
-   print_crlf(minix_print_carrier)
-   print_string(minix_print_carrier,str)
-   print_dword_hex(minix_print_carrier,num)
-   minix_print_carrier = " "
-
    if num == 0 then
       minix_last_error = MINIX_ERR_BAD_ADDRESS
       -- tmp: make sure it reset it case of troubles (safety in a sense)
@@ -285,18 +277,11 @@ procedure minix_open_block(dword in num) is
    end if
    -- TODO: check if block number is within memory storage bound !
    minix_storage_address  = (MINIX_BYTES_PER_BLOCK / MINIX_STORAGE_SECTOR_SIZE) * num
-   minix_sector_counter = 0
+   minix_sector_progress = 0
 end procedure
 
 -- move to block number, then to byte number within the block
 procedure minix_open_block_byte(dword in blocknum, word in bytenum) is
-
-   const byte trs[] = "open with: "
-   print_string(minix_print_carrier,trs)
-   print_dword_hex(minix_print_carrier,blocknum)
-   minix_print_carrier = " "
-   print_word_dec(minix_print_carrier,bytenum)
-   print_crlf(minix_print_carrier)
 
    minix_open_block(blocknum)
 
@@ -306,22 +291,13 @@ procedure minix_open_block_byte(dword in blocknum, word in bytenum) is
       bytenum = bytenum - MINIX_STORAGE_SECTOR_SIZE
    end if
 
-   const byte str[] = "Goto bytes # "
-   print_string(minix_print_carrier,str)
-   print_word_dec(minix_print_carrier,bytenum)
-
-   const byte str2[] = " at storage @ "
-   print_string(minix_print_carrier,str2)
-   print_dword_dec(minix_print_carrier,minix_storage_address)
-   print_crlf(minix_print_carrier)
-
    -- fill in buffer
    if bytenum != 0 then
       minix_start_read(minix_storage_address)
       minix_read_sector()
       minix_stop_read()
    end if
-   minix_sector_counter = bytenum
+   minix_sector_progress = bytenum
 end procedure
 
 
@@ -334,44 +310,44 @@ end procedure
 -- "Raw" read one byte from underlying storage.
 function minix_storage_read_byte() return byte is
 
-   if minix_sector_counter == MINIX_STORAGE_SECTOR_SIZE then
+   if minix_sector_progress == MINIX_STORAGE_SECTOR_SIZE then
       -- reached end of underlying sector. To be clean, we open a new sector
       minix_storage_address = minix_storage_address + 1
-      minix_sector_counter = 0
+      minix_sector_progress = 0
    end if
 
-   if minix_sector_counter == 0 then
+   if minix_sector_progress == 0 then
       -- fill in buffer
       minix_start_read(minix_storage_address)
       minix_read_sector()
       minix_stop_read()
    end if
 
-   minix_sector_counter = minix_sector_counter + 1
-   return minix_sector_buffer[minix_sector_counter - 1]
+   minix_sector_progress = minix_sector_progress + 1
+   return minix_sector_buffer[minix_sector_progress - 1]
 
 end function
 
 -- "Raw" read one byte from underlying storage.
 procedure minix_storage_write_byte(byte in data) is
 
-   if minix_sector_counter == MINIX_STORAGE_SECTOR_SIZE then
+   if minix_sector_progress == MINIX_STORAGE_SECTOR_SIZE then
       -- reached end of underlying sector. Write current sector (write)
       -- and open a new one (read)
       minix_storage_flush()
       minix_storage_address = minix_storage_address + 1
-      minix_sector_counter = 0
+      minix_sector_progress = 0
    end if
 
-   if minix_sector_counter == 0 then
+   if minix_sector_progress == 0 then
       -- fill in buffer
       minix_start_read(minix_storage_address)
       minix_read_sector()
       minix_stop_read()
    end if
 
-   minix_sector_buffer[minix_sector_counter] = data
-   minix_sector_counter = minix_sector_counter + 1
+   minix_sector_buffer[minix_sector_progress] = data
+   minix_sector_progress = minix_sector_progress + 1
 
 end procedure
 
@@ -528,7 +504,7 @@ function minix_zone_alloc() return dword is
       databck = databck >> 1
    end loop
 
-   -- TODO: write "1" at proper place in zone bitmap
+   -- Write "1" at proper place in zone bitmap
    minix_sb.zone_current_bits = minix_sb.zone_current_bits | (1 << zeroplace)
 
    -- save new bits
@@ -555,10 +531,6 @@ function minix_zone_alloc() return dword is
       minix_sb.last_full_zone = minix_sb.last_full_zone + 8
    end if
 
-   const byte str[] = "Assigning @ "
-   print_crlf(minix_print_carrier)
-   print_string(minix_print_carrier,str)
-   print_dword_hex(minix_print_carrier,minix_sb.last_alloc_zone_address)
    return minix_sb.last_alloc_zone_address
    
 end function
@@ -883,9 +855,6 @@ procedure minix_next_zone(bit in create_zone) is
                                               -- so it should be 0xFFFC already ?)
          if create_zone then
             if minix_filefd.inode.double_indirect_zone == 0 then
-               const byte strdb[] = "Assigning double indirect"
-               print_string(minix_print_carrier,strdb)
-               print_crlf(minix_print_carrier)
                if minix_filefd.inode.double_indirect_zone == 0 then -- no double indirect zone yet
                   minix_filefd.inode.double_indirect_zone = minix_zone_alloc()
                   -- once here, we're in zone bitmap location, not within file's content.
@@ -900,14 +869,11 @@ procedure minix_next_zone(bit in create_zone) is
 
          -- read indirect zone address
          if create_zone then
-            const byte strdb[] = "Assigning within double indirect"
-            print_string(minix_print_carrier,strdb)
-            print_crlf(minix_print_carrier)
-            -- TODO: need to move back to previous location
             minix_storage_write_byte(minix_curzonetab[0])
             minix_storage_write_byte(minix_curzonetab[1])
             minix_storage_write_byte(minix_curzonetab[2])
             minix_storage_write_byte(minix_curzonetab[3])
+            minix_storage_flush()
          else
             minix_curzonetab[0] = minix_storage_read_byte()
             minix_curzonetab[1] = minix_storage_read_byte()
@@ -924,18 +890,12 @@ procedure minix_next_zone(bit in create_zone) is
       minix_filefd.inode.zone_idx = minix_filefd.inode.zone_idx + 4
       if create_zone then
          if minix_filefd.inode.indirect_zone == 0 then -- no indirect zone yet
-            const byte strdb[] = "Assigning indirect"
-            print_string(minix_print_carrier,strdb)
-            print_crlf(minix_print_carrier)
             minix_filefd.inode.indirect_zone = minix_zone_alloc()
             -- backup. (remember: should be the same logic for double indirect with minix v3)
             minix_filefd.inode.indirect_zone_orig = minix_filefd.inode.indirect_zone
             -- once here, we're in zone bitmap location, not within file's content.
             -- No problem, next instruction will move back to previous location !
          end if
-         const byte strdb[] = "Assigning within indirect"
-         print_string(minix_print_carrier,strdb)
-         print_crlf(minix_print_carrier)
          -- generate a new zone within indirect block, it'll be saved in next "create_zone" test
          minix_curzone = minix_zone_alloc()
       end if
@@ -998,9 +958,6 @@ function minix_read() return byte is
 
    -- need to move to next data zone ?
    if minix_filefd.inode.zone_content_idx == MINIX_BYTES_PER_BLOCK then
-       const byte str[] = "next zone "
-       print_crlf(minix_print_carrier)
-       print_string(minix_print_carrier,str)
        minix_next_zone(false) -- on first call will rollover to zone[0]
    end if
 
