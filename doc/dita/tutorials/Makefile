@@ -2,7 +2,6 @@
 
 VERSION=0.3
 JAPPCONF=japp_config.py
-
 prepare:
 	-rm -fr tmp
 	-mkdir tmp
@@ -26,4 +25,4 @@ front: html
 	cd ../../../tools/japp && python2.5 htmlizer.py ${JAPPCONF} ../../doc/dita/tutorials/tmp/tutorial_book.html
 
 publish-front: front
-	cd ../../../tools/japp && python2.5 publish.py ${JAPPCONF} ../../doc/dita/tutorials/tmp/topublish 
+	cd ../../../tools/japp && python2.5 publish.py ${JAPPCONF} ../../doc/dita/tutorials/tmp/topublish
