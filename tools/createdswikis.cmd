@@ -8,9 +8,6 @@
 /* Notes: - Only PICs for which a Jallib device file is available.              */
 /*        - Script can be run on any platform which supports Rexx.              */
 /*          See for a 'howto' devicefiles.html and the comments in dev2jal.cmd  */
-/*        - The sort order in the wikis depends on the file system on which the */
-/*          Jallib device files are installed                                   */
-/*          (hpfs, jfs and others have builtin sorted file names).              */
 /* ---------------------------------------------------------------------------- */
 
 parse upper arg runtype .
@@ -43,6 +40,8 @@ if dir.0 < 1 then do
   say 'No appropriate PIC .dev files found in directory' jaldir
   return 1
 end
+
+call SysStemSort 'dir.', 'A', 'I'               /* sort ascending, case independent */
 
 PicSpec. = '?'
 call read_picspec                               /* obtain device specific info */
