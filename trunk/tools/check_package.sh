@@ -11,6 +11,7 @@ FAILED=$HOME/tmp/failed.log
 rm -f $FAILED
 
 status=0
+mainstatus=0
 for f in `find $SAMPLEDIR -name \*.jal`
 do
 	if grep -i "^include[[:space:]]\+18l\?f" $f > /dev/null 2>&1
@@ -29,7 +30,7 @@ do
         echo "$f failed !" >> $FAILED
         cat $TMPFILE >> $FAILED
         echo >> $FAILED
-		status=1
+		mainstatus=1
 	fi
 done
 
@@ -38,4 +39,4 @@ echo
 cat $FAILED
 rm -f $FAILED
 
-exit $status
+exit $mainstatus
