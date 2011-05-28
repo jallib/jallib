@@ -1,6 +1,6 @@
 
 
-VERSION=0.3
+VERSION=0.4
 JAPPCONF=japp_config.py
 prepare:
 	-rm -fr tmp
