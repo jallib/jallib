@@ -133,6 +133,8 @@ prepare:
 	do \
 		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
 	done
+	# also add dependencies
+	cp distrib/jallib-export/include/jal/constants_jallib.jal distrib/jallib-all_devices-${VERSION}/lib
 	# doc
 	for f in `cat distrib/jallib-export/TORELEASE | grep ^include | grep -v include.device | sed 's#\r##g'` ; \
 	do \
