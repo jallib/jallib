@@ -1,0 +1,267 @@
+-- Title: FAT32 library for reading fat32 filesystem
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this example reads files & folders from a fat32 formatted sd card
+--              using the fat32 library.
+--
+-- Sources:
+-- http://www.microsoft.com/whdc/system/platform/firmware/fatgen.mspx
+-- http://www.pjrc.com/tech/8051/ide/fat32.html
+-- http://en.wikipedia.org/wiki/File_Allocation_Table
+--
+
+include 18f4550                    -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target clock 20_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target PLLDIV  P1           -- PLL off
+pragma target CPUDIV  P2           -- no cycle divisor
+pragma target WDT  disabled        -- no watchdog
+pragma target XINST disabled       -- not supported by JalV2
+pragma target LVP  disabled        -- no Low Voltage Programming
+pragma target MCLR external        -- reset externally
+--
+enable_digital_io()                -- make all pins digital I/O
+_usec_delay (100_000) -- wait for power to stablilize
+
+
+include delay
+
+-- setup serial software
+const serial_sw_baudrate = 115200
+alias serial_sw_tx_pin is pin_B4
+alias serial_sw_rx_pin is pin_B5
+pin_B4_direction = output
+pin_B5_direction = input
+include serial_software
+serial_sw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_sw_write
+alias serial_read is serial_sw_read
+alias serial_data is serial_sw_data
+
+
+include print
+
+include spi_master_hw         -- includes the spi library
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+--
+spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+alias spi_master is spi_master_hw
+alias spi_master_exchange is spi_master_hw_exchange
+
+
+-- setup the sd card pins
+alias sd_chip_select is pin_SS
+alias sd_chip_select_direction is pin_SS_direction
+sd_chip_select = high
+sd_chip_select_direction = output
+--
+-- setup the sd card library
+alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
+;const bit SD_ALWAYS_SET_SPI_MODE = TRUE -- old constant, replaced by sd_force_spi_mode 
+;const bit SD_EXTRA_SPEED = TRUE
+const bit SD_DELAY_AFTER_WRITE = TRUE
+include sd_card              -- include the sd card ide hard disk library
+sd_init()                    -- initialize startup settings
+
+
+-- setup fat32 --
+-- include the required files
+;include pic_data_eeprom
+-- change these vaues to save memory
+const bit FAT32_WRITE_LONG_FILE_NAMES = FALSE -- support writing of long file names
+const word FAT32_FILES_MAX = 20            -- the max number of files allowed in a directory
+const byte FAT32_FILE_NAME_SIZE = 80        -- choose max file_name size. if a file_name is longer the this, beginning chars will be cut. short file_names are 12 bytes.
+const FAT32_DIR_FRAGMENTS_TO_ALLOW = 5     -- uses 6 bytes memory per fragment allowed (0 not allowed)
+--                                          -- windows defrag does not defragment directories.
+const FAT32_FILE_FRAGMENTS_TO_ALLOW = 5    -- uses 8 bytes memory per fragment allowed (0 not allowed)
+--
+-- experts may change the following values
+;const byte FAT32_ENTRIES_MAX = 1           -- highest file entry address can be 256
+const byte FAT32_ENTRIES_MAX = 2            -- highest file entry address can be 65535
+--
+-- choose a memory source for the file list
+const bit FAT32_USE_INTERNAL_MEMORY = TRUE -- Use internal memory for file location list
+IF FAT32_USE_INTERNAL_MEMORY == TRUE THEN
+   -- Setup a large array for storing sector data, This is where file_name locations are stored
+   const dword LARGE_ARRAY_2_SIZE = FAT32_FILES_MAX               -- choose number of array variables
+   const dword LARGE_ARRAY_2_VARIABLE_SIZE = FAT32_ENTRIES_MAX    -- choose bytes size of variables
+   include large_array_2                    -- include the array library
+   ALIAS fat32_entry_location is large_array_2
+elsif FAT32_USE_INTERNAL_MEMORY == FALSE THEN
+   -- put your own code here if you wish to allow massive amounts of files per directory
+
+   -- example usage of 23k256 for external memory
+
+   -- alias the 23k256 device word array
+   ;alias entry_location is sram_23k256_byte  -- highest file entry address can be 256
+   alias fat32_entry_location is sram_23k256_word   -- highest file entry address can be 65535
+END IF
+--
+include fat32   -- include fat32 library -- include fat32
+
+-- CHOOSE FILE ATTRIBUTES TO FILTER OUT
+fat32_filter_is_read_only  = FALSE
+fat32_filter_is_hidden     = FALSE
+fat32_filter_is_system     = FALSE
+fat32_filter_is_volume_id  = FALSE
+fat32_filter_is_directory  = FALSE
+fat32_filter_is_archive    = FALSE
+
+-- procedure for sending 80 "-----------------" via serial port
+procedure separator() is
+   serial_data = 13
+   serial_data = 10
+   const byte str3[] = "--------------------------------------------------------------------------------"
+   print_string(serial_data, str3)
+   print_crlf(serial_data)
+end procedure
+
+-- start of main program
+separator()-- send "----"
+
+fat32_init(1) -- initialize fat32, go to 1st primary partition's root dir "\"
+
+------------------------------------------------------------
+-- list a directory, send it via serial port
+------------------------------------------------------------
+fat32_print_directory(serial_data, FAT32_PRINT_ALL) -- see the procedure, sends dir listing via serial port
+
+separator() -- send "-----" and go to next example
+
+---------------------------------------------------------------------------------------------------------------
+-- example read filename, send it via serial port
+------------------------------------------------------------
+
+-- read 3rd file's name, location, size, attributes into memory
+;fat32_read_file_info(3)
+
+-- now send the filename via the serial port
+;fat32_print_file_info(serial_data,FAT32_PRINT_NUMBER + FAT32_PRINT_LONG_FILE_NAME)
+
+------------------------------------------------------------
+-- example user interaction,
+-- send file/dir number via serial port to go into it
+--
+-- if volume id selected, list the current dir (root dir)
+-- if directory selected go into it and list it
+-- if file selected go into file and read it
+------------------------------------------------------------
+
+var byte data
+var dword step1
+var word step2
+var byte file_number = 0
+
+forever loop
+   separator() -- send "-----" then loop and wait for user input
+
+   -- this is not needed serial_sw.
+   -- serial_data_available doesn't exist on serial sw.
+   if defined(serial_data_available) then
+      while !serial_data_available loop
+      end loop
+   end if
+
+   file_number = serial_data
+
+   -- choose a file for reading or dir for opening
+   if fat32_cd(file_number) then             -- if change directory is successful
+      fat32_print_directory(serial_data, FAT32_PRINT_ALL) -- sends dir listing via serial port (with file numbers)
+   elsif fat32_file_open(file_number) then   -- if go into file is successful
+   
+      -- calculate number of sectors in file
+      var dword sectors_available
+      if (fat32_file_size) == (fat32_file_size / 512) * 512 then
+         sectors_available = (fat32_file_size / 512)
+      else
+         sectors_available = (fat32_file_size / 512) + 1
+      end if
+   
+;      -- EXAMPLE 1 READ (slowest and user friendly)
+;      -- Read any byte number in the file, in any order you wish.
+;      for fat32_file_size using step1 loop
+;          data = fat32_read_file_byte_address(step1)
+;          serial_data = data
+;      end loop
+;
+      -- EXAMPLE 2 READ (slow, not so user friendly)
+      -- You must start reading from the beginning of the file, and
+      -- read sectors in order.
+;      fat32_start_file_read ()
+;      for fat32_file_size loop
+;          data = fat32_read_file_byte()
+;          serial_data = data
+;      end loop
+;      fat32_stop_file_read()
+
+      -- EXAMPLE 3 WRITE (fast and user friendly)
+      -- Read from any sector number in the file, in any order you wish.
+      for sectors_available using step1 loop
+
+         -- set the data to be written
+         for 512 using step2 loop
+            fat32_sector_buffer[step2] = "E"
+         end loop
+
+         -- write one sector to the disk
+         fat32_write_file_sector_number(step1)
+      end loop
+      --
+      --
+      -- EXAMPLE 3 READ (fast and user friendly)
+      -- Read from any sector number in the file, in any order you wish.
+      for sectors_available using step1 loop
+         -- read one sector from the disk
+         fat32_read_file_sector_number(step1)
+         -- send the sector via serial port
+         for 512 using step2 loop
+            serial_data = fat32_sector_buffer[step2]
+         end loop
+      end loop
+
+;      -- EXAMPLE 4 WRITE (fastest, not so user friendly)
+;      -- Read sectors from a file. You must start reading from
+;      -- the beginning of the file, and read sectors in order.
+;      fat32_start_file_write ()  -- go in the file, get ready to read
+;      for ((fat32_file_size / 512) + 1) using step1 loop
+;         -- set the data to be written
+;         for 512 using step2 loop
+;            fat32_sector_buffer[step2] = "D"
+;         end loop
+;         -- write one sector to the disk
+;         fat32_write_file_sector()
+;         -- send the sector via serial port
+;      end loop
+;      fat32_stop_file_write() -- end of file write, set media idle
+;      --
+;      --
+;      -- EXAMPL ClE 4 READ (fastest, not so user friendly)
+;      -- Read sectors from a file. You must start reading from
+;      -- the beginning of the file, and read sectors in order.
+;      fat32_start_file_read ()  -- go in the file, get ready to read
+;      for ((fat32_file_size / 512) + 1) using step1 loop
+;         -- read one sector from the disk
+;         fat32_read_file_sector()
+;         -- send the sector via serial port
+;         for 512 using step2 loop
+;            serial_data = fat32_sector_buffer[step2]
+;         end loop
+;      end loop
+;      fat32_stop_file_read ()  -- end of file read, set media idle.
+
+      fat32_file_close()
+   end if
+end loop
