@@ -115,14 +115,14 @@ prepare:
 	done | grep problem && exit 255 || true
 	# keep sample structure, but only for those in TORELEASE
 	-cd  distrib/jallib-${VERSION} && mkdir sample
-	-cd  distrib/jallib-${VERSION} && \
+	cd  distrib/jallib-${VERSION} && \
 	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; \
 	do \
 		cp ../jallib-export/$$f sample/ || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
 	# same for "project"
 	-cd  distrib/jallib-${VERSION} && mkdir project
-	-cd  distrib/jallib-${VERSION} && \
+	cd  distrib/jallib-${VERSION} && \
 	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^project\/ | sed 's#\r##g'`; \
 	do \
 		mkdir -p `dirname $$f`; cp ../jallib-export/$$f `dirname $$f`/ || (echo problem with $$f ) \
@@ -192,7 +192,7 @@ jallib-pack: pdfbooks
 	#   generated
 	cp $$HOME/tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
 	#   static
-	-cd  distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && \
+	cd  distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && \
 	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^doc\/ | sed 's#\r##g'`; \
 	do \
 		cp ../jallib-export/$$f doc/ || (echo problem with $$f ) \
