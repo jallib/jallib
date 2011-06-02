@@ -1,0 +1,230 @@
+-- Title: Minix FS sample showing how to read file's content from an inode number
+-- Author: Sébastien Lelong, Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this sample is a rough duplication of "*_sd_card_minix_read.jal" sample.
+-- Please also refer to this sample. The main difference between these is about 
+-- either using a filename or an inode number to access a file. This really is
+-- the only difference...
+-- .
+-- What are the benefits ? Directly using inode number saves a lot of resources:
+-- (using -no-variable-reuse -const-detect as compiler arguments)
+-- * 18f27j53_sd_card_minix_read.jal:
+-- .   Code area: 10798 of 131064 used (bytes)
+-- .   Data area: 1033 of 3664 used
+-- .   Hardware stack depth 14 of 31
+-- .
+-- * 18f27j53_sd_card_minix_readi.jal:
+-- .   Code area: 9354 of 131064 used (bytes)
+-- .   Data area: 872 of 3664 used
+-- .   Hardware stack depth 11 of 31
+-- .
+-- This sample is based on a data set, available here:
+-- http://code.google.com/p/jaluino/source/browse/trunk/tests/minix_data.tar.bz2
+-- You can use this dataset to perform tests. It contains several files with 
+-- very specifc size, I used it to develop and test MinixFS, and this is a great
+-- source of data to understand how MinixFS works.
+--
+-- Notes: this sample is derived from Jaluino Bee's sample, where SD-Card is
+-- on MSSP2. That's why it's using Peripheral Pin Select to map MSSP2 pins
+--
+--
+
+include 18f27j53
+pragma target clock 48_000_000   -- oscillator frequency
+-- magical statements
+pragma target PLLDIV	   P4
+pragma target CPUDIV	   P1
+pragma target PLLEN  P1          -- PLL via fuse turned off
+pragma target OSC	   HS_PLL
+pragma target WDT  disabled      -- no watchdog
+pragma target IOL1WAY disabled   -- Mapping allowed multiple time at runtime
+OSCTUNE_PLLEN = on               -- PLL via OSCTUNE enabled
+-- declare secondary oscillator on T1OSI/T1OSO pins
+pragma target RTCOSC T1OSC
+pragma target SOSCSEL HS_CP
+_usec_delay(2000) -- PLL needs 2ms before stable
+enable_digital_io()
+
+-- -----------------------------------------------------------------
+-- Configure Remappable Pins on MSSP2 to match SPI/SD-Card wiring,
+-- configure MSSP2 and initialize SD-card library
+-- -----------------------------------------------------------------
+include pps
+-- PPS module writes are protected, we need to first unlock it
+pps_control_lock(false)
+-- RP3 <-> /SS2
+PPS_MAP_SS2IN = RP3
+-- RP2 <-> SCK2
+PPS_MAP_RP2 = PPS_SCK2
+PPS_MAP_SCK2IN = RP2
+-- RP5 <-> SDI2
+PPS_MAP_SDI2 = RP5
+-- RP6 <-> SDO2
+PPS_MAP_RP6 = PPS_SDO2
+-- PPS configuration is done, we can lock again
+pps_control_lock(true)
+
+-- Now specify SPI pins aliases
+alias pin_ss2_direction is pin_b0_direction
+alias pin_ss2 is pin_b0
+alias pin_sdi2_direction is pin_b2_direction
+alias pin_sdo2_direction is pin_b3_direction
+alias pin_sck2_direction is pin_a5_direction
+
+-- -----------------------------------------------------------------
+-- configure SPI to use MSSP2 module
+-- -----------------------------------------------------------------
+include spi_master_hw2
+pin_sdi2_direction = input    -- spi input
+pin_sdo2_direction = output   -- spi output
+pin_sck2_direction = output   -- spi clock
+spi2_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+-- setup the sd card SPI "Slave Select" pin
+alias sd_chip_select is pin_ss2
+alias sd_chip_select_direction is pin_ss2_direction
+sd_chip_select_direction = output
+sd_chip_select = high
+-- Aliases used for generic access for SD-card, pointing to MSSP2 related procedures
+-- (you could change these aliases to use MSSP1, or even SPI software)
+alias spi_master_set_mode is spi_master_hw2_set_mode
+alias spi_master_set_speed is spi_master_hw2_set_speed
+
+-- -----------------------------------------------------------------
+-- setup the sd card library
+-- -----------------------------------------------------------------
+const bit SD_ALWAYS_SET_SPI_MODE = TRUE
+const bit SD_DELAY_AFTER_WRITE = TRUE
+-- define which data carrier to use to access sd-card
+alias spi_master is spi_master_hw2
+include sd_card
+sd_init()
+
+-- Misc includes
+include print
+include delay
+include jascii
+include strings
+
+-- -----------------------------------------------------------------
+-- Configure serial comms. to interact with Minix FS, send commands
+-- and read results
+-- -----------------------------------------------------------------
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+
+-- -----------------------------------------------------------------
+-- Configure MinixFS aliases. We need to specify here how to access
+-- underlying storage (here, SD-Card)
+-- -----------------------------------------------------------------
+alias minix_start_read is sd_start_read
+alias minix_stop_read is sd_stop_read
+alias minix_start_write is sd_start_write
+alias minix_stop_write is sd_stop_write
+alias minix_data_byte is sd_data_byte -- get|put byte
+-- Underlying storage (SD-Card) uses 512 bytes buffer
+-- Minix will need to access it
+alias minix_read_sector is sd_read_sector
+alias minix_write_sector is sd_write_sector
+alias minix_sector_buffer is sd_sector_buffer
+-- how do we know when we reach end of storage sector ?
+-- TODO: delete me when SD-card is fixed !
+const word SD_BYTE_PER_SECTOR = 512
+alias MINIX_STORAGE_SECTOR_SIZE is SD_BYTE_PER_SECTOR
+
+-- how to interact with Minix OS ? Through our serial comms.
+alias minix_print_carrier is serial_hw_data
+
+-- include main library
+include minixfs
+
+-- We're going to read data from file2K. This files has the following
+-- structure: 
+--    "START1111....111NEXT2222....2222END"
+--     ^----------------^^---------------^
+--          1 block           1 block
+--
+-- Note the link between the two blocks: "NE" then "XT"
+
+-- Here we go !
+
+-- define which file we're going to open. This time, we specify 
+-- an inode number (so you first have to know it). If you're using
+-- dataset, and properly init your Minix filesystem (from scratch)
+-- file2K will have inode number 5 (use "ls -li" under Linux in order
+-- to know inode number)
+-- We'll use "i" versions, taking an "i"node number (minix_open => minix_openi)
+minix_openi(5,MINIX_MODE_READ)
+
+-- let's read the "START"
+for 4 loop
+   serial_hw_data = minix_read()
+end loop
+-- can you see "START" on your serial link ?
+print_crlf(serial_hw_data)
+
+-- now let've move near the end of the first block
+minix_seek(1022)
+serial_hw_data = minix_read()
+serial_hw_data = minix_read()
+-- should give "NE"
+serial_hw_data = minix_read() -- we moved to the 2nd block !
+serial_hw_data = minix_read()
+-- should give "XT"
+print_crlf(serial_hw_data)
+
+-- Now let's move to the end of file
+minix_seek(2045)
+serial_hw_data = minix_read()
+serial_hw_data = minix_read()
+serial_hw_data = minix_read()
+-- should print "END"
+print_crlf(serial_hw_data)
+
+-- where are we within the file ?
+-- well, what's the size ?
+-- let's access some information from File Descriptor 
+-- and inode records
+const byte sz[] = "Size: "
+print_string(serial_hw_data,sz)
+print_dword_dec(serial_hw_data,minix_filefd.inode.filesize)
+print_crlf(serial_hw_data)
+-- and how much did we read ?
+const byte rd[] = "Read: "
+print_string(serial_hw_data,rd)
+print_dword_dec(serial_hw_data,minix_filefd.read)
+print_crlf(serial_hw_data)
+-- alright, this means there's nothing to read further ?
+serial_hw_data = minix_read()
+serial_hw_data = minix_read()
+serial_hw_data = minix_read()
+-- => print nothing !
+-- ok, don't forget to close file. If you access another file
+-- without closing previous, you may just get stuck ("crash")
+minix_close()
+
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+
+-- Sounds like we have everything to implement "cat" command :)
+procedure my_cat(byte in num) is
+   minix_openi(num,MINIX_MODE_READ)
+   while minix_filefd.read != minix_filefd.inode.filesize loop
+      serial_hw_data = minix_read()
+   end loop
+   minix_close()
+end procedure
+-- (you can find this procedure in minixfs_cmd.jal)
+
+my_cat(5)
+print_crlf(serial_hw_data)
+
+-- enough, let's do nothing...
+forever loop
+end loop
+

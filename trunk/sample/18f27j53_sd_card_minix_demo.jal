@@ -1,0 +1,278 @@
+-- Title: Minix FS/OS demo based on 18F27J53, ov er SD-Card storage
+-- Author: Sébastien Lelong, Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Minix demo. Explore Minix filesystem and perform actions
+-- using some sort of *nix-like commands:
+--    * ls   : list directories or file's details
+--    * cd   : change directory
+--    * fsck : show super-block details
+--    * cat  : print file content
+--    * dcat : "dev" cat, showing address details and content when changing
+--    * $?   : print last errors
+-- .
+-- You can also open, seek, read, write and close files. This sample is ideal
+-- if you want to explore Minix FS and understand how it works behind the scene
+--
+-- Notes: this sample is derived from Jaluino Bee's sample, where SD-Card is
+-- on MSSP2. That's why it's using Peripheral Pin Select to map MSSP2 pins
+--
+--
+
+include 18f27j53
+pragma target clock 48_000_000   -- oscillator frequency
+-- magical statements
+pragma target PLLDIV	   P4
+pragma target CPUDIV	   P1
+pragma target PLLEN  P1          -- PLL via fuse turned off
+pragma target OSC	   HS_PLL
+pragma target WDT  disabled      -- no watchdog
+pragma target IOL1WAY disabled   -- Mapping allowed multiple time at runtime
+OSCTUNE_PLLEN = on               -- PLL via OSCTUNE enabled
+-- declare secondary oscillator on T1OSI/T1OSO pins
+pragma target RTCOSC T1OSC
+pragma target SOSCSEL HS_CP
+_usec_delay(2000) -- PLL needs 2ms before stable
+enable_digital_io()
+
+-- -----------------------------------------------------------------
+-- Configure Remappable Pins on MSSP2 to match SPI/SD-Card wiring,
+-- configure MSSP2 and initialize SD-card library
+-- -----------------------------------------------------------------
+include pps
+-- PPS module writes are protected, we need to first unlock it
+pps_control_lock(false)
+-- RP3 <-> /SS2
+PPS_MAP_SS2IN = RP3
+-- RP2 <-> SCK2
+PPS_MAP_RP2 = PPS_SCK2
+PPS_MAP_SCK2IN = RP2
+-- RP5 <-> SDI2
+PPS_MAP_SDI2 = RP5
+-- RP6 <-> SDO2
+PPS_MAP_RP6 = PPS_SDO2
+-- PPS configuration is done, we can lock again
+pps_control_lock(true)
+
+-- Now specify SPI pins aliases
+alias pin_ss2_direction is pin_b0_direction
+alias pin_ss2 is pin_b0
+alias pin_sdi2_direction is pin_b2_direction
+alias pin_sdo2_direction is pin_b3_direction
+alias pin_sck2_direction is pin_a5_direction
+
+-- -----------------------------------------------------------------
+-- configure SPI to use MSSP2 module
+-- -----------------------------------------------------------------
+include spi_master_hw2
+pin_sdi2_direction = input    -- spi input
+pin_sdo2_direction = output   -- spi output
+pin_sck2_direction = output   -- spi clock
+spi2_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+-- setup the sd card SPI "Slave Select" pin
+alias sd_chip_select is pin_ss2
+alias sd_chip_select_direction is pin_ss2_direction
+sd_chip_select_direction = output
+sd_chip_select = high
+-- Aliases used for generic access for SD-card, pointing to MSSP2 related procedures
+-- (you could change these aliases to use MSSP1, or even SPI software)
+alias spi_master_set_mode is spi_master_hw2_set_mode
+alias spi_master_set_speed is spi_master_hw2_set_speed
+
+-- -----------------------------------------------------------------
+-- setup the sd card library
+-- -----------------------------------------------------------------
+const bit SD_ALWAYS_SET_SPI_MODE = TRUE
+const bit SD_DELAY_AFTER_WRITE = TRUE
+-- define which data carrier to use to access sd-card
+alias spi_master is spi_master_hw2
+include sd_card
+sd_init()
+
+-- Misc includes
+include print
+include delay
+include jascii
+include strings
+
+-- -----------------------------------------------------------------
+-- Configure serial comms. to interact with Minix FS, send commands
+-- and read results
+-- -----------------------------------------------------------------
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+
+-- -----------------------------------------------------------------
+-- Configure MinixFS aliases. We need to specify here how to access
+-- underlying storage (here, SD-Card)
+-- -----------------------------------------------------------------
+alias minix_start_read is sd_start_read
+alias minix_stop_read is sd_stop_read
+alias minix_start_write is sd_start_write
+alias minix_stop_write is sd_stop_write
+alias minix_data_byte is sd_data_byte -- get|put byte
+-- Underlying storage (SD-Card) uses 512 bytes buffer
+-- Minix will need to access it
+alias minix_read_sector is sd_read_sector
+alias minix_write_sector is sd_write_sector
+alias minix_sector_buffer is sd_sector_buffer
+-- how do we know when we reach end of storage sector ?
+-- TODO: delete me when SD-card is fixed !
+const word SD_BYTE_PER_SECTOR = 512
+alias MINIX_STORAGE_SECTOR_SIZE is SD_BYTE_PER_SECTOR
+
+-- how to interact with Minix OS ? Through our serial comms.
+alias minix_print_carrier is serial_hw_data
+
+-- include main library
+include minixfs
+-- this one declares usefull commands to use through a commandline 
+include minixfs_cmd
+
+-- This implements "reboot" command...
+procedure reboot() is
+   asm goto 0x00
+end procedure
+
+-- Minix commands for REPL impl.
+const byte MINIX_FSCK_CMD[] = "fsck\0"
+const byte MINIX_DOLLARQ_CMD[] = "$?\0"
+const byte MINIX_CAT_CMD[] = "cat\0"
+const byte MINIX_DCAT_CMD[] = "dcat\0"
+const byte MINIX_CD_CMD[] = "cd\0"
+const byte MINIX_LS_CMD[] = "ls\0"
+const byte MINIX_OPEN_READ_CMD[] = "openr\0"
+const byte MINIX_OPEN_WRITE_CMD[] = "openw\0"
+const byte MINIX_CLOSE_CMD[] = "close\0"
+const byte MINIX_READ_CMD[] = "read\0"
+const byte MINIX_WRITE_CMD[] = "write\0"
+const byte MINIX_SEEK_CMD[] = "seek\0"
+const byte MINIX_BLOCK_CMD[] = "block\0"
+const byte MINIX_RAWREAD_CMD[] = "rread\0"
+const byte MINIX_ALLOC_CMD[] = "alloc\0"
+const byte MINIX_REBOOT_CMD[] = "reboot\0"
+
+-- OK, let's go !
+const byte WELCOME[] = "Welcome to Minix OS :)"
+const byte PROMPT[] = "minix> "
+const byte COMMAND_NOT_FOUND[] = "Command not found"
+print_crlf(serial_hw_data)
+print_string(serial_hw_data,WELCOME)
+print_crlf(serial_hw_data)
+
+-- some sort of "mount". We require MinixFS to perform some checks
+-- during init (true)
+minix_init(true)
+
+var byte command[16]
+var byte filename[MINIX_MAX_FILENANE_LEN]
+var byte char
+var byte i
+-- This is our REPL: Read-Eval-Print-Loop
+forever loop
+
+   -- print prompt :)
+   print_string(serial_hw_data,PROMPT)
+   
+   -- init to no command and no filename
+   command[0] = 0
+   filename[0] = 0
+
+   -- read command
+   i = 0
+   while true  loop
+      char = serial_hw_data
+      -- echo
+      serial_hw_data = char
+      if char == ASCII_LF | char == ASCII_CR | char == ASCII_SP then
+         command[i] = ASCII_NULL -- NULL terminated string
+         exit loop
+      end if
+      command[i] = char
+      i = i + 1
+   end loop
+
+   -- read filename if necessary
+   if char == ASCII_SP then
+      i = 0
+      while true  loop
+         char = serial_hw_data
+         -- echo
+         serial_hw_data = char
+         if char == ASCII_LF | char == ASCII_CR then
+            filename[i] = ASCII_NULL -- NULL terminated string
+            exit loop
+         end if
+         filename[i] = char
+         i = i + 1
+      end loop
+   end if
+
+   if char == ASCII_LF | char == ASCII_CR | char == ASCII_SP then
+      print_crlf(serial_hw_data)
+   end if
+
+   if command[0] != ASCII_NULL then
+      if strcmp(command,MINIX_FSCK_CMD) then
+         minix_dev_print_super_block()
+      elsif strcmp(command,MINIX_DOLLARQ_CMD) then
+         minix_dev_print_error()
+      elsif strcmp(command,MINIX_CD_CMD) then
+         minix_cd(filename)
+      elsif strcmp(command,MINIX_CAT_CMD) then
+         minix_cat(filename)
+      elsif strcmp(command,MINIX_DCAT_CMD) then
+         minix_dev_cat(filename)
+      elsif strcmp(command,MINIX_LS_CMD) then
+         minix_ls(filename)
+      elsif strcmp(command,MINIX_OPEN_READ_CMD) then
+         minix_open(filename,MINIX_MODE_READ)
+      elsif strcmp(command,MINIX_OPEN_WRITE_CMD) then
+         minix_open(filename,MINIX_MODE_WRITE)
+      elsif strcmp(command,MINIX_CLOSE_CMD) then
+         minix_close()
+      elsif strcmp(command,MINIX_READ_CMD) then
+         if filename[0] != 0 then
+            for atoi(filename) loop
+               serial_hw_data = minix_read()
+            end loop
+         else
+            serial_hw_data = minix_read()
+         end if
+      elsif strcmp(command,MINIX_WRITE_CMD) then
+         for count(filename) using i loop
+            if filename[i] == 0 then
+               exit loop
+            end if
+            minix_write(filename[i])
+         end loop
+      elsif strcmp(command,MINIX_SEEK_CMD) then
+         minix_seek(atoi(filename))
+      elsif strcmp(command,MINIX_BLOCK_CMD) then
+         minix_open_block(atoi(filename))
+      elsif strcmp(command,MINIX_RAWREAD_CMD) then
+         if filename[0] != 0 then
+            for atoi(filename) loop
+               serial_hw_data = minix_data_byte
+            end loop
+         else
+            serial_hw_data = minix_data_byte
+         end if
+      elsif strcmp(command,MINIX_ALLOC_CMD) then
+         print_dword_dec(serial_hw_data,minix_zone_alloc())
+         print_crlf(serial_hw_data)
+      elsif strcmp(command,MINIX_REBOOT_CMD) then
+         reboot()
+      else
+         print_string(serial_hw_data,COMMAND_NOT_FOUND)
+         print_crlf(serial_hw_data)
+      end if
+   end if
+
+end loop
+
