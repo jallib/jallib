@@ -30,7 +30,17 @@ else
    var byte sd_sector_buffer_high[256] -- 256 high bytes
 end if
 
+const word SD_BYTE_PER_SECTOR = 512
+
 include print
+
+-- defaulting to MSSP1 if none of following aliases are previously defined
+if !defined(spi_master_set_mode) then
+   alias spi_master_set_mode is spi_master_hw_set_mode
+end if
+if !defined(spi_master_set_speed) then
+   alias spi_master_set_speed is spi_master_hw_set_speed
+end if
 
 -- counters
 var byte sd_word_count = 0
@@ -96,7 +106,7 @@ end if
 -- send a command to the sd card (commands with 1 response only)
 --------------------------------------------------------------------------------
 procedure send_command(byte in command,dword in data, byte out response) is
-   var byte paramiters[4] at data
+   var byte parameters[4] at data
    var byte x
 
    -- send a valid CRC byte only for set idle command
@@ -112,10 +122,10 @@ procedure send_command(byte in command,dword in data, byte out response) is
    spi_master = 0xFF            -- send 8 clock pulses
 
    spi_master = command         -- send the command
-   spi_master = paramiters[3]   -- send command parameters
-   spi_master = paramiters[2]   -- send command parameters
-   spi_master = paramiters[1]   -- send command parameters
-   spi_master = paramiters[0]   -- send command parameters
+   spi_master = parameters[3]   -- send command parameters
+   spi_master = parameters[2]   -- send command parameters
+   spi_master = parameters[1]   -- send command parameters
+   spi_master = parameters[0]   -- send command parameters
    spi_master = x               -- CRC data byte, crc disabled in this lib.
    spi_master = 0xFF            -- send 8 clock pulses
 
@@ -199,7 +209,7 @@ procedure  sd_start_read(dword in address) is
 
    var byte reply
    sd_chip_select = low  -- enable the sd card
-   address = address * 512 -- make sd card sector addressable, sd cards are normally byte addressable.
+   address = address * SD_BYTE_PER_SECTOR -- make sd card sector addressable, sd cards are normally byte addressable.
    send_command(SD_READ_MULTIPLE_BLOCK,address,reply) -- send read multi block command, ignore reply.
    sd_word_count = 0       -- reset count
    sd_byte_count = 0
@@ -245,7 +255,7 @@ end procedure
 ;
 ;   data_byte = spi_master                -- get data byte
 ;
-;   if sd_byte_count == 512 then             -- end of sector read
+;   if sd_byte_count == SD_BYTE_PER_SECTOR then             -- end of sector read
 ;      sd_sector_count = sd_sector_count + 1 -- increment sector number
 ;      x = spi_master                     -- get junk crc data, crc is disabled
 ;      x = spi_master                     -- get junk crc data, crc is disabled
@@ -253,7 +263,7 @@ end procedure
 ;
 ;   sd_byte_count = sd_byte_count + 1 -- increment byte_count
 ;
-;   if sd_byte_count == 512 then
+;   if sd_byte_count == SD_BYTE_PER_SECTOR then
 ;      sd_byte_count = 0
 ;   end if
 ;end procedure
@@ -273,7 +283,7 @@ function sd_data_byte'get() return byte is
    data_byte = spi_master                -- get data byte
 
    sd_byte_count = sd_byte_count + 1     -- increment byte_count
-   if sd_byte_count == 512 then          -- end of sector read
+   if sd_byte_count == SD_BYTE_PER_SECTOR then          -- end of sector read
       sd_byte_count = 0
       sd_sector_count = sd_sector_count + 1 -- increment sector number
       x = spi_master                     -- get junk crc data, crc is disabled
@@ -318,7 +328,7 @@ end procedure
 
 --------------------------------------------------------------------------------
 -- tell sd card you will be writing data to a specified sector
--- must write 1 sector at a time, 512 bytes
+-- must write 1 sector at a time, SD_BYTE_PER_SECTOR bytes
 -- do not interupt write process by switching to another spi component
 --------------------------------------------------------------------------------
 procedure sd_start_write(dword in address) is
@@ -330,7 +340,7 @@ procedure sd_start_write(dword in address) is
 
    sd_chip_select = LOW  -- enable the sd card
    var byte reply
-   address = address * 512 -- make sd card sector addressable, sd cards are normally byte addressable.
+   address = address * SD_BYTE_PER_SECTOR -- make sd card sector addressable, sd cards are normally byte addressable.
    send_command(SD_WRITE_MULTIPLE_BLOCK,address,reply) -- send read multi block command, ignore reply.
    sd_word_count = 0       -- reset count
    sd_byte_count = 0       -- reset count
@@ -411,7 +421,7 @@ end procedure
 ;
 ;      sd_byte_count = sd_byte_count + 1  -- increment byte count
 ;
-;      if sd_byte_count == 512 then
+;      if sd_byte_count == SD_BYTE_PER_SECTOR then
 ;         sd_byte_count = 0
 ;      end if
 ;   end procedure
@@ -432,7 +442,7 @@ procedure sd_data_byte'put(byte in data_byte) is
 
    sd_byte_count = sd_byte_count + 1  -- increment byte count
 
-   if sd_byte_count == 512 then -- end of sector write
+   if sd_byte_count == SD_BYTE_PER_SECTOR then -- end of sector write
       sd_byte_count = 0
       sd_sector_count = sd_sector_count + 1 -- increment sector count
 
@@ -469,7 +479,7 @@ procedure sd_write_to_sector_end(byte in input_byte) is
       sd_chip_select = high  -- disable the sd card
    elsif !(sd_byte_count == 0) then
       var word y
-      y = 512 - sd_byte_count
+      y = SD_BYTE_PER_SECTOR - sd_byte_count
       for y loop
          sd_data_byte = input_byte -- write 2 bytes, 0's as data
       end loop
@@ -1119,7 +1129,7 @@ procedure sd_read_sector_address(dword in address) is
 end procedure
 
 --------------------------------------------------------------------------------
--- read one entire sector
+-- write one entire sector
 --------------------------------------------------------------------------------
 procedure sd_write_sector() is
    var byte x
@@ -1166,7 +1176,7 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure sd_print_sector(volatile byte out device, dword in address) is
    sd_start_read(address)
-   for 512 loop
+   for SD_BYTE_PER_SECTOR loop
       device = sd_data_byte
    end loop
    sd_stop_read
@@ -1177,7 +1187,7 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure sd_print_sector_hex(volatile byte out device,word in bytes_per_line,dword in address) is
    sd_start_read(address)
-   for 512 / bytes_per_line loop
+   for SD_BYTE_PER_SECTOR / bytes_per_line loop
       print_crlf(device)
       for bytes_per_line loop
          device = " "
