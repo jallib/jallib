@@ -1,0 +1,134 @@
+-- ------------------------------------------------------
+-- Title: Programme to read and control PCF8563 real time IC
+--
+-- Author: Andy Brooker, Copyright (c) 2008..2011, all rights reserved.
+--
+-- Adapted-by: (Joep Suijs)
+--
+-- Compiler: >=2.4m
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Programme to read and control the PCF8563 real time IC
+-- IC address is 0xA2
+-- PCF8563 read sequence
+--  1. Send a START condition and the slave address for write (A2h).
+--  2. Set the address pointer to 2 (VL_seconds) by sending 02h.
+--  3. Send a RESTART condition or STOP followed by START.
+--  4. Send the slave address for read (A3h).
+--  5. Read VL_seconds.         02
+--  6. Read Minutes.            03
+--  7. Read Hours.              04
+--  8. Read Days.               05
+--  9. Read Weekdays.           06
+-- 10. Read Century_months.     07
+-- 11. Read Years.              08
+-- 12. Send a STOP condition.
+-- --
+-- To use set:
+-- -- const byte pcf8563_address = 0xA2
+-- -- include rtc_pcf8563
+--
+-- Sources:
+--
+
+-- procedure to write a register - send data as decimal
+procedure pcf8563_register_write(byte in ic_address, byte in reg, byte in data) is
+   var byte bcd
+   var bit r
+   
+   bcd = (data / 10)
+   bcd = bcd * 16
+   bcd = bcd + (data % 10)
+   i2c_start()
+   r = i2c_transmit_byte(ic_address) -- i2c address for write
+   r = i2c_transmit_byte(reg)        -- register
+   r = i2c_transmit_byte(bcd)       -- bcd in hex
+   i2c_stop()
+   
+end procedure
+
+-- procedure to read the date and time from pcf8563
+procedure read_pcf8563(byte in ic_address,bit out integrity, byte out seconds, byte out minutes,
+byte out hours, byte out day_of_month, byte out month, byte out weekday,
+byte out year) is
+var bit r
+
+   i2c_start()
+   r =     i2c_transmit_byte(ic_address) -- i2c address for write
+   r = r & i2c_transmit_byte(0x02) --
+
+   i2c_restart()
+   r = r & i2c_transmit_byte(ic_address + 1) -- i2c address for read
+
+   d1 = i2c_receive_byte(true)  -- VL sec
+   var bit vl at d1 : 7
+   integrity = vl
+   seconds =  d1 & 0b0111_0000
+   seconds = seconds >> 4
+   seconds = seconds * 10
+   seconds = seconds + (d1 & 0b0000_1111)
+
+   d1 = i2c_receive_byte(true) -- minutes
+   minutes = d1 & 0b0111_0000
+   minutes = minutes >> 4
+   minutes = minutes * 10
+   minutes = minutes + (d1 & 0b0000_1111)
+
+   d1 = i2c_receive_byte(true) -- hours
+   hours = d1 & 0b0011_0000
+   hours = hours >> 4
+   hours = hours * 10
+   hours = hours + (d1 & 0b0000_1111)
+
+   d1 = i2c_receive_byte(true)  -- day of month
+   day_of_month = d1 & 0b0011_0000
+   day_of_month = day_of_month >> 4
+   day_of_month = day_of_month * 10
+   day_of_month = day_of_month + (d1 & 0b0000_1111)
+
+
+   d1 = i2c_receive_byte(true) -- weekday Sunday - Saturday
+   weekday = d1 & 0b0000_0111
+   
+-- since it is 89 years until century bit changes, I am ignoring it
+   d1 = i2c_receive_byte(true) -- Century bit and Month
+   month = d1 & 0b0001_0000
+   month = month >> 4
+   month = month * 10
+   month = month + (d1 & 0b0000_1111)
+
+   d1 = i2c_receive_byte(true) -- year
+   year =  d1 & 0b0111_0000
+   year = year >> 4
+   year = year * 10
+   year = year + (d1 & 0b0000_1111)
+
+   i2c_stop()
+
+end procedure
+
+;i2c_start()
+;   r =     i2c_transmit_byte(ic_address) -- i2c address for write
+;   r = r & i2c_transmit_byte(0x00) --
+;
+;i2c_restart()
+;   r = r & i2c_transmit_byte(ic_address + 1) -- i2c address for read
+;
+;   d1 = i2c_receive_byte(true)
+;   print_byte_hex(serial_hw_data, d1)
+;   serial_hw_data = " "
+;i2c_stop()
+;
+;i2c_start()
+;   r =     i2c_transmit_byte(ic_address) -- i2c address for write
+;   r = r & i2c_transmit_byte(0x01) --
+;
+;i2c_restart()
+;   r = r & i2c_transmit_byte(ic_address + 1) -- i2c address for read
+;
+;   d1 = i2c_receive_byte(true)
+;   print_byte_hex(serial_hw_data, d1)
+;   serial_hw_data = " "
+;i2c_stop()
