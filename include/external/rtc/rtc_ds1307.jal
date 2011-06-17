@@ -1,0 +1,63 @@
+-- Title: DS1307 / I2C read write & bcd routines.
+-- Author: Jean-Bernard, Copyright (c) 2001...2011, all rights reserved.
+-- Adapted-by: Enzo SERAFINI
+-- Compiler: 2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: DS1307 / I2C read write & bcd routines.
+--
+-- Some DS1307 registers
+-- Second 	adress is 0x00 values 0-59
+-- Minuts 	adress is 0x01 values 0-59
+-- Hour   	adress is 0x02 values 0-12 or 0-24
+-- Week day 	adress is 0x03 values 1-7
+-- Month day    adress is 0x04 values 01-28,29,30,31
+-- Month 	adress is 0x05 values 1-12
+-- Year    	adress is 0x06 values 0-99 
+-- for more details download the pec.sheet 
+-- http://pdfserv.maxim-ic.com/arpdf/DS1307.pdf
+--
+
+procedure ds1307_read( byte in ad , byte out d ) is
+   var bit flag
+   i2c_start()
+   flag = i2c_transmit_byte( 0xD0 )    	-- Chip ID in write mode
+   flag = i2c_transmit_byte( ad )	    	-- put register address	
+   i2c_stop()
+   i2c_start()
+   flag = i2c_transmit_byte( 0xD1 )    	-- Chip ID in read mode
+   d = i2c_receive_byte( false ) 	    	-- get data
+   i2c_stop()
+   var byte loc
+   loc = d
+   loc = loc & 0xF0
+   loc = loc / 16
+   d = d & 0x0F
+   loc = loc * 10 + d
+   d = loc
+end procedure
+
+procedure ds1307_write( byte in ad , byte in d ) is
+   var bit flag
+   var byte loc
+   loc = d
+   loc = loc / 10 
+   loc = loc * 16
+   d = d % 10 
+   loc = loc + d
+   d = loc
+   i2c_start()
+   flag = i2c_transmit_byte( 0xD0 )    	-- Chip ID in write mode
+   flag = i2c_transmit_byte( ad )		    -- put register address	
+   flag = i2c_transmit_byte( d ) 		    -- put data in the register
+   i2c_stop()
+end procedure
+
+procedure ds1307_init() is
+   ds1307_write( 0x00 , 0 ) 	            -- Clk halt bit(7):0=ON 1=OFF
+   ds1307_write( 0x07 , 0b_10010000 )    -- OSC ON
+   ds1307_write( 0x02 , 0 ) 	            -- 24H mode
+end procedure
+
