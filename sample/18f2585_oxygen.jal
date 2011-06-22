@@ -1,0 +1,205 @@
+-- ------------------------------------------------------
+-- Title: Measure oxygen concentration with the GOEL370 and a pic18f2585
+--
+-- Author: Eur van Andel, eir@fiwihex.nl, Copyright (c) 2011, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4m
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Measure oxygen concentration via amplified signal of GOEL370 oxygen sensor,
+-- made by Greisinger. 
+--
+-- Sources: http://www.greisinger.de/   manufacturer of sensor
+--
+-- Notes:
+-- see goel370.jal in ~/jallib/include/external/oxygen
+--
+-- ------------------------------------------------------
+
+
+include 18f2585
+pragma target clock 20_000_000
+-- pragma target OSC  HS_PLL
+pragma target OSC  HS
+pragma target XINST disabled
+pragma target WDT  disabled
+pragma target LVP  disabled
+pragma target MCLR external
+
+enable_digital_io()
+
+pin_a0_direction = input        -- analog inputs to oxygen sensors
+pin_a1_direction = input
+
+ADCON0_ADON = true          -- AD converter enabled
+ADCON1_VCFG = 0b00          -- Vref+ and Vref- are default Vdd and Vss
+ADCON1_PCFG = 0b1101        -- AN0, AN1 analog input
+ADCON2_ADFM = 1             -- right justified
+ADCON2_ADCS = 0b101         -- Fosc/16
+
+
+const down  = 0
+const green = 1
+const red   = 2
+
+var bit led      is pin_a4		-- red and green LEDs on Sterm daughterboard
+var bit led_dir  is pin_a4_direction
+
+led_dir = output
+led = high 
+
+const byte LCD_ROWS = 4          -- Sterm LCD + keyboard on single pin_a4
+const byte LCD_CHARS = 20
+var bit lcd_sterm_pin is pin_a5
+var bit lcd_sterm_pin_dir is pin_a5_direction
+include lcd_sterm_master         -- Sterm LCD + keyboard over single pin, contains a PIC too
+const print_string_terminator = 255     -- fixes bug in print_string()    
+include print
+include format
+
+-- this example has two oxygen sensors, on AN1 and AN2
+-- both are amplified 100 times, so 0..40mV sensor voltage = 0..4V analog voltage
+
+var word an_ox[2]                -- 0..818 analog oxygen value
+var word oxygen[2]               -- 0..100% Oxygen, calibrated at 21% = 2100
+var word calibr[2]               -- calibration value
+calibr[0] = 900                  -- close to calibration value at 100x amplification
+calibr[1] = 900
+
+include goel370                  -- sensor library
+
+var bit toggle                   -- to see LED flicker
+
+
+-- start of procedure block --------------------------------------------------
+
+procedure leds(byte in x) is  -- four leds, all connected in series between +5V and GND
+if x == down then             -- at 1.7V Vf, they will not light up
+   led_dir  = input           -- PIC pin is tied to the middle, via 150 Ohm resistor
+elsif x == red then           -- so HIGH will light both lower green LEDs
+   led_dir  = output          -- LOW will light both higher RED leds
+   led      = low             -- pin_direction = input will light no LEDs. 
+elsif x == green then
+   led_dir  = output
+    led     = high
+end if
+end procedure
+
+-- there is a proper analog library, but I'm too old to learn that
+function get_analog(byte in channel) return word is
+    var word analog
+    if channel > 4 then -- PIC18F2585 with 28 pins only has 5 analog channels
+       channel = 4
+    end if
+
+    ADCON0_CHS = channel
+    delay_1ms(1)               -- we have all the time in the world
+    ADCON0_GO = true
+    while ADCON0_NDONE loop end loop    -- wait for AD conversion to complete
+    return ADRES
+end function
+
+
+-- -------------- end procedure block -------------------------------------
+
+
+-- --------------------------------------  S T A R T  M A I N  --------------------
+
+-- wait for STERM Slave to power-up and initialize.
+
+lcd_clear_screen()
+
+
+for 4 loop                 -- red/green sequence means boot
+   leds(red)
+   delay_100ms(2)
+   lcd_clear_screen()		-- Sterm needs some time after power-up
+   leds(green)
+   delay_100ms(2)
+end loop
+
+--                 12345678901234567890                  
+const byte str8[]="Oxygen%  C=calibrate"	-- print banner
+const byte str9[] ="an"
+const byte str10[]="Oxygen"
+const byte str11[]="    CALIBRATION     "
+const byte str12[]="Cbr"
+
+
+lcd_cursor_position(0,0)      -- first line: banner
+print_string(lcd, str8)
+
+forever loop -- ---------------------------  M A I N  L O O P  ----------------------------
+
+
+   lcd_cursor_position(1,0)      -- second line: values
+   var byte i
+   for 2 using i loop
+      an_ox[i] = get_analog(i)
+      oxygen[i] = g370_ox(an_ox[i], calibr[i])  -- value is 100x actual concentration
+
+      print_string(lcd, str9)
+      lcd = i + 48   -- ASCII 0
+      lcd = "="
+      print_word_dec(lcd, an_ox[i])
+      lcd = " "
+   end loop
+
+   lcd_cursor_position(2,0)      -- second line: first value
+   print_string(lcd, str10)
+   lcd = "0"
+   lcd = "="
+   format_word_dec(lcd, oxygen[0], 5, 2)  -- two digits after decimal point
+   lcd = "%"
+
+   lcd_cursor_position(3,0)      -- third line: second value
+   print_string(lcd, str10)
+   lcd = "1"
+   lcd = "="
+   format_word_dec(lcd, oxygen[1], 5, 2)
+   lcd = "%"
+   delay_100ms(2)
+
+   if getkey() == 0x0C then
+      lcd_clear_screen()
+      lcd_cursor_position(1,0)      -- second line: banner
+      print_string(lcd, str11)
+      an_ox[0] = get_analog(0)
+      calibr[0] = g370_calbr(an_ox[0])
+      an_ox[1] = get_analog(1)
+      calibr[1] = g370_calbr(an_ox[1])
+      lcd_cursor_position(2,0)      -- third line: calibration values
+      print_string(lcd, str12)
+      lcd = "0"
+      lcd = "="
+      print_word_dec(lcd, calibr[0])
+      lcd = " "
+      print_string(lcd, str12)
+      lcd = "0"
+      lcd = "="
+      print_word_dec(lcd, calibr[1])
+      lcd = " "
+      delay_1s(3)             -- keep values visible for operator
+      lcd_clear_screen()
+      lcd_cursor_position(0,0)      -- first line: banner
+      print_string(lcd, str8)
+   end if
+
+   toggle = ! toggle
+
+   if toggle then 
+      leds(green)
+   else
+      leds(down)
+   end if
+
+
+end loop          -- waiting for "B" to be pressed
+
+
+
