@@ -1,0 +1,67 @@
+-- Title: oxygen sensor, GOEL 370 by Greisinger
+-- Author: Eur van Andel, eur@fiwihex.nl (c) 2011, all rights reserved.
+-- Compiler: 2.4m
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: library for calibrating and calculating GOEL370 oxygen sensor
+-- I needed to log these sensors in an existing CAN BUS setup and made my own amplifier.  
+--
+
+-- Notes: The sensor signal is 0..40mV for 0..100% Oxygen concentration. 
+-- I just amplified the sensor signal 100 times with a simple opamp circuit
+-- to get 0..4V for 0..100% oxygen:
+--
+--                                +5V DC      
+--                              |\|
+--             sensor  #--------|+\
+--             input            |  >---+-----o PIC analog input
+--                     #      +-|-/    |
+--                     |      | |/     |
+--                     |      |   ___  |
+--                     |      +--|___|-+
+--                     |      |    10k
+--                     |     .-.
+--                     |     | | 100R
+--                     |     | |
+--                     |     '-'
+--                     |      |
+--                    ===    ===
+--                    GND    GND (also PIC GND)
+--
+-- It turns out that for different sensors, only the slope of the signal differs. So you can adjust
+-- your amplification to your expected oxygen range for maximum resolution. Get at least three digits
+-- for the range that you want to measure, so above 100 as analog value, which is about 0.5V 
+--
+-- Sources: http://www.greisinger.de/   manufacturer of sensor
+--          http://www.tech-chat.de/aacircuit.html  ASCII circuit editor for Windows
+--
+
+
+-- This function takes the word output of the D/A converter (0..1023) and the calibration value
+-- it returns a word value of the oxygen concentration in % * 100. So if the oxygen concentration is 
+-- 21%, the function returns 2100. 
+function g370_ox(word in an, word in calibr) return word is
+   var dword result
+   result = dword(an) * dword(calibr)   -- for maximum resolution
+   result = result/100
+   if result > 10_000 then      -- probably wrong calibration value
+      return 10_000             -- max 100%
+   else
+      return word(result)
+   end if
+end function
+
+-- This function assumes 20.95% oxygen concentration and returns
+-- the calibrating value. Call this one when your sensor breathes well ventilated air.
+-- Store the calibration value for use with the g370_ox() function. 
+function g370_calbr(word in an) return word is
+   var dword calibr
+   calibr = 209_500/dword(an)
+   if calibr > 65535 then      -- bad sensor amplification or wrong input value
+      return 65535             
+   else
+      return word(calibr)
+   end if
+end function
