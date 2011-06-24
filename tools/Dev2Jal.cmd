@@ -38,9 +38,9 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.18'
+   ScriptVersion   = '0.1.19'
    ScriptAuthor    = 'Rob Hamerling'
-   CompilerVersion = '2.4n'
+   CompilerVersion = '2.4o'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated               */
@@ -49,7 +49,7 @@
 /*   2 - warnings and errors                                                */
 /*   3 - errors (always reported!)                                          */
 
-msglevel = 0
+msglevel = 1
 
 /* MPLAB and a local copy of the Jallib SVN tree should be installed.       */
 /* For any system or platform the following base information must be        */
@@ -1084,7 +1084,7 @@ select                                                      /* exceptions first 
          parse var ln 'DATABANK' Val0 'START' '=' '0X' val1 'END' '=' '0X' val2 .
          if val1 \= '' & val2 \= '' then do                 /* both found */
             if Length(DataRange) > 50 then do               /* long string */
-               call lineout jalfile, 'pragma  data    'DataRange /* 'flush' */
+               call lineout jalfile, 'pragma  data    'DataRange    /* flush' */
                DataRange = ''                               /* reset */
             end
             if DataRange \= '' then                         /* not first range */
@@ -1253,18 +1253,24 @@ do i = 1 to Dev.0
 
       call list_sfr_subfields1x i, reg                      /* bit fields */
 
-      if reg = 'FSR'    |,
-         reg = 'INDF'   |,
-         reg = 'PCL'    |,
-         reg = 'PCLATH' |,
-         reg = 'STATUS' then do
-         if reg = 'INDF' then
-            reg = 'IND'                                     /* compiler wants 'ind' */
-         reg = tolower(reg)                                 /* to lower case */
-         call lineout jalfile, 'var volatile byte  ' left('_'reg,25) 'at' addr,
-                                  '     -- (compiler)'
-         if reg = 'status' then                             /* status register */
-            call list_status1x i                            /* extra for compiler */
+      select                                                /* special actions */
+
+         when reg = 'FSR'    |,
+              reg = 'INDF'   |,
+              reg = 'PCL'    |,
+              reg = 'PCLATH' |,
+              reg = 'STATUS' then do
+            if reg = 'INDF' then
+               reg = 'IND'                                     /* compiler wants 'ind' */
+            reg = tolower(reg)                                 /* to lower case */
+            call lineout jalfile, 'var volatile byte  ' left('_'reg,25) 'at' addr,
+                                     '     -- (compiler)'
+            if reg = 'status' then                             /* status register */
+               call list_status1x i                            /* extra for compiler */
+         end
+
+         otherwise
+            nop
       end
    end
 end
@@ -1575,19 +1581,23 @@ end
 return 0
 
 
-/* -------------------------------------------------- */
-/* procedure to list special function registers       */
-/* input:  - nothing                                  */
-/* Note: name is stored but not checked on duplicates */
-/* Extended 14-bit core                               */
-/* -------------------------------------------------- */
+/* ---------------------------------------------------- */
+/* procedure to list special function registers         */
+/* input:  - nothing                                    */
+/* Note: - register names are not checked on duplicates */
+/*       - bits of PORTx are expanded with LATx,        */
+/*         dependency: PORTx comes before LATx in .dev  */
+/*       - when RE3 is the only active bit of PORTE     */
+/*         it is declared with PORTE, not LATE          */
+/* Extended 14-bit core                                 */
+/* ---------------------------------------------------- */
 list_sfr14h: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
                               adcs_bitcount jalfile BANKSIZE NumBanks msglevel
 PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then                           /* skip non SFRs */
       iterate
-   parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 .
+   parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 access
    if val1 \= '' then do
       reg = strip(val1)                                     /* register name */
       Name.reg = reg                                        /* add to collection of names */
@@ -1638,23 +1648,44 @@ do i = 1 to Dev.0
 
       call list_sfr_subfields14h i, reg, memtype            /* bit fields */
 
-      if reg = 'BSR'    |,
-         reg = 'FSR0L'  |,
-         reg = 'FSR0H'  |,
-         reg = 'FSR1L'  |,
-         reg = 'FSR1H'  |,
-         reg = 'INDF0'  |,
-         reg = 'PCL'    |,
-         reg = 'PCLATH' |,
-         reg = 'STATUS' then do
-         if reg = 'INDF0' then
-            reg = 'IND'                                     /* compiler wants '_ind' */
-         reg = tolower(reg)                                 /* to lower case */
-         call lineout jalfile, 'var volatile byte  ' left('_'reg,25) memtype'at 0x'D2X(addr,3),
-                                  '     -- (compiler)'
-         if reg = 'status' then                             /* status register */
-            call list_status1x i                            /* extra for compiler */
+      select                                                /* special actions */
+
+         when reg = 'BSR'    |,
+              reg = 'FSR0L'  |,
+              reg = 'FSR0H'  |,
+              reg = 'FSR1L'  |,
+              reg = 'FSR1H'  |,
+              reg = 'INDF0'  |,
+              reg = 'PCL'    |,
+              reg = 'PCLATH' |,
+              reg = 'STATUS' then do
+            if reg = 'INDF0' then
+               reg = 'IND'                                     /* compiler wants '_ind' */
+            reg = tolower(reg)                                 /* to lower case */
+            call lineout jalfile, 'var volatile byte  ' left('_'reg,25) memtype'at 0x'D2X(addr,3),
+                                     '     -- (compiler)'
+            if reg = 'status' then                             /* status register */
+               call list_status1x i                            /* extra for compiler */
+         end
+
+         when reg = 'PORTE' then do                            /* esp. for  pin_E3 */
+            parse var access 'ACCESS' '=' "'" a7 a6 a5 a4 a3 a2 a1 a0 "'" ')' .
+            if a7='U' & a6='U' & a5='U' & a4='U' & a3\='U' & a2='U' & a1='U' & a0='U' then do
+               pin = 'pin_E3'
+               if duplicate_name(pin, reg) = 0 then do
+                  call lineout jalfile, 'var volatile bit   ',
+                            left(pin, 25) memtype'at' reg ':' 3
+                  call insert_pin_alias reg, 'RE3', pin
+                  call msg 1, pin 'is declared under' reg
+               end
+            end
+         end
+
+         otherwise
+            nop
+
       end
+
    end
 end
 
@@ -1693,7 +1724,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                PinNumber  = right(n.j,1)
                pin = 'pin_'PortLat.PortLetter.offset
                if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
-                  call lineout jalfile, 'var volatile bit   ',
+                  if duplicate_name(pin,'PORT'portletter) = 0 then
+                     call lineout jalfile, 'var volatile bit   ',
                           left(pin,25) memtype'at' 'PORT'portletter ':' offset
                   call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                   call lineout jalfile, '--'
@@ -1801,10 +1833,12 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
                      if PortLat.PortLetter.offset \= 0 then do  /* pin present in PORTx */
-                        call lineout jalfile, 'var volatile bit   ',
+                        if duplicate_name(pin,reg) = 0 then do     /* unique */
+                           call lineout jalfile, 'var volatile bit   ',
                                 left(pin,25) memtype'at' 'PORT'portletter ':' offset
-                        call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
-                        call lineout jalfile, '--'
+                           call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
+                           call lineout jalfile, '--'
+                        end
                      end
                      if substr(n.j,4,1) = PortLetter  &,    /* port letter */
                         datatype(PinNumber) = 'NUM' then do /* pin number */
@@ -1954,13 +1988,17 @@ end
 return 0
 
 
-/* -------------------------------------------------------- */
-/* procedure to list special function registers             */
-/* input:  - nothing                                        */
-/* Note: - name is stored but not checked on duplicates     */
-/*       - generates some midrange aliases                  */
-/* 16-bit core                                              */
-/* -------------------------------------------------------  */
+/* -----------------------------------------------------*/
+/* procedure to list special function registers         */
+/* input:  - nothing                                    */
+/* Note: - register names are not checked on duplicates */
+/*       - bits of PORTx are expanded with LATx,        */
+/*         dependency: PORTx comes before LATx in .dev  */
+/*       - when RE3 is the only active bit of PORTE     */
+/*         it is declared with PORTE, not LATE          */
+/*       - generates some midrange aliases              */
+/* 16-bit core                                          */
+/* -----------------------------------------------------*/
 list_sfr16: procedure expose Dev. Ram. Name. PinMap. PinANMap. jalfile,
                              adcs_bitcount BANKSIZE NumBanks,
                              Core PicName AccessBankSplitOffset msglevel
@@ -1975,7 +2013,7 @@ PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then
       iterate
-   parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 .
+   parse var Dev.i  val0 '(KEY=' val1 ' ADDR' '=' '0X' val2 'SIZE' '=' val3 access
    if val1 \= '' then do
       reg = strip(val1)                                     /* register name */
       if left(reg,3) = 'SSP' then                           /* MSSP register */
@@ -2043,7 +2081,9 @@ do i = 1 to Dev.0
       call list_sfr_subfields16 i, reg, memtype             /* bit fields */
 
       alias = ''                                            /* nul alias */
-      select
+
+      select                                                /* special actions */
+
          when reg = 'FSR0'   |,
               reg = 'FSR0L'  |,
               reg = 'FSR0H'  |,
@@ -2058,6 +2098,19 @@ do i = 1 to Dev.0
             reg = tolower(reg)                              /* to lower case */
             call lineout jalfile, 'var volatile' field left('_'reg, 25),
                                   'shared at 0x'addr '     -- (compiler)'
+         end
+
+         when reg = 'PORTE' then do                         /* esp. for pin_E3 */
+            parse var access 'ACCESS' '=' "'" a7 a6 a5 a4 a3 a2 a1 a0 "'" ')' .
+            if a7='U' & a6='U' & a5='U' & a4='U' & a3\='U' & a2='U' & a1='U' & a0='U' then do
+               pin = 'pin_E3'
+               if duplicate_name(pin, reg) = 0 then do
+                  call lineout jalfile, 'var volatile bit   ',
+                            left(pin, 25) memtype 'at' reg ':' 3
+                  call insert_pin_alias reg, 'RE3', pin
+                  call msg 1, pin 'is declared under' reg
+               end
+            end
          end
 
          when reg = 'STATUS' then do                        /* status register */
@@ -2236,10 +2289,12 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
                      if PortLat.PortLetter.offset \= 0 then do /* pin present in PORTx */
-                        call lineout jalfile, 'var volatile bit   ',
+                        if duplicate_name(pin,reg) = 0 then do
+                           call lineout jalfile, 'var volatile bit   ',
                                 left(pin,25) memtype 'at' 'PORT'portletter ':' offset
-                        call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
-                        call lineout jalfile, '--'
+                           call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
+                           call lineout jalfile, '--'
+                        end
                      end
                      if substr(n.j,4,1) = portletter  &,    /* port letter */
                         datatype(pinnumber) = 'NUM' then do /* pin number */
@@ -2364,7 +2419,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records 
                end
                when (left(n.j,3) = 'ANS')   &,              /* ANS subfield */
                     (left(reg,5) = 'ADCON'  |,              /* ADCON* reg */
-                    left(reg,5) = 'ANSEL')    then do       /* ANSELx reg */
+                     left(reg,5) = 'ANSEL')    then do      /* ANSELx reg */
                   k = s.j - 1
                   do while k >= 0
                      ansx = ansel2j(reg,n.j||k)
@@ -2601,9 +2656,9 @@ do i = 1 to Dev.0
          shadow = '_TRIS'portletter'_shadow'
          call lineout jalfile, 'var  byte' shadow '= 0b1111_1111         -- default all input'
          call lineout jalfile, '--'
-         call lineout jalfile, 'procedure PORT'portletter"_direction'put(byte in x) is"
+         call lineout jalfile, 'procedure PORT'portletter"_direction'put(byte in x",
+                                                                        'at' shadow') is'
          call lineout jalfile, '   pragma inline'
-         call lineout jalfile, '   'shadow '= x'
          call lineout jalfile, '   asm movf' shadow',W'
          if reg = 'TRISIO' then                             /* TRISIO (small PIC) */
             call lineout jalfile, '   asm tris 6'
@@ -2642,9 +2697,8 @@ do i = 1 to Dev.0
         call lineout jalfile, '-- ------------------------------------------------'
         call lineout jalfile, 'var  byte' shadow '= 0b1111_1111         -- default all set'
         call lineout jalfile, '--'
-        call lineout jalfile, 'procedure' reg"'put(byte in x) is"
+        call lineout jalfile, 'procedure' reg"'put(byte in x at" shadow') is'
         call lineout jalfile, '   pragma inline'
-        call lineout jalfile, '   'shadow '= x'
         call lineout jalfile, '   asm movf' shadow',0'
         if reg = 'OPTION_REG' then                          /* OPTION_REG */
            call lineout jalfile, '   asm option'
@@ -2993,6 +3047,7 @@ else if core = '14H' then do                                /* extended midrange
          else if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('99 99 99 99 10 11 99 99 ', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
+                 left(PicName,6) = '16f178' | left(PicName,7) = '16lf178' |,
                  left(PicName,7) = '16lf190'                              |,
                  left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
             ansx = word('12 10 8 9 11 13 99 99', ansx + 1)
@@ -3010,6 +3065,7 @@ else if core = '14H' then do                                /* extended midrange
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
                  left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' |,
+                 left(PicName,6) = '16f178' | left(PicName,7) = '16lf178' |,
                  left(PicName,7) = '16lf190'                              |,
                  left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' |,
                  left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
@@ -3089,9 +3145,9 @@ call lineout jalfile, 'procedure _PORT'substr(reg,5)'_flush() is'
 call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'reg '=' shadow
 call lineout jalfile, 'end procedure'
-call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
+call lineout jalfile, '--'
+call lineout jalfile, 'procedure' reg"'put"'(byte in x at' shadow') is'
 call lineout jalfile, '   pragma inline'
-call lineout jalfile, '   'shadow '= x'
 call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
@@ -3129,9 +3185,9 @@ list_port16_shadow: procedure expose jalfile
 lat  = arg(1)                                               /* LATx register */
 port = 'PORT'substr(lat,4)                                  /* corresponding port */
 call lineout jalfile, '--'
-call lineout jalfile, 'procedure' port"'put"'(byte in x) is'
+call lineout jalfile, 'procedure' port"'put"'(byte in x at' lat') is'
 call lineout jalfile, '   pragma inline'
-call lineout jalfile, '   'lat '= x'
+/* call lineout jalfile, '   'lat '= x' */
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_low'
@@ -3245,16 +3301,16 @@ if PinMap.PicUpper.PinName.0 > 0 then do
    do k = 1 to PinMap.PicUpper.PinName.0                    /* all aliases */
       pinalias = 'pin_'PinMap.PicUpper.PinName.k'_direction'
       if duplicate_name(pinalias,reg) = 0 then do           /* unique */
-         call lineout jalfile, 'alias              ' left(pinalias,25) 'is' pin
+         call lineout jalfile, 'alias              ' left(pinalias,max(25,length(pinalias))) 'is' Pin
          if pinalias = 'pin_SDA1_direction' |,              /* 1st I2C module */
             pinalias = 'pin_SCL1_direction' then
-            call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),25) 'is' Pin
+            call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),max(25,length(pinalias))) 'is' Pin
          else if pinalias = 'pin_SDI1_direction' |,         /* 1st SPI module */
                  pinalias = 'pin_SDO1_direction' |,
                  pinalias = 'pin_SCK1_direction' then
-            call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),25) 'is' Pin
+            call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),max(25,length(pinalias))) 'is' Pin
          else if pinalias = 'pin_SS1_direction'  then       /* 1st SPI module */
-            call lineout jalfile, 'alias              ' left(delstr(pinalias,7,1),25) 'is' Pin
+            call lineout jalfile, 'alias              ' left(delstr(pinalias,7,1),max(25,length(pinalias))) 'is' Pin
       end
    end
 end
@@ -4511,7 +4567,7 @@ if core \= '16' then do                                     /* for the baseline 
 end
 else do                                                     /* for the 18F series */
    call lineout jalfile, '--    - Procedures to force the use of the LATx register'
-   call lineout jalfile, '--      when PORTx is addressed.'
+   call lineout jalfile, '--      when PORTx is addressed for output.'
 end
 call lineout jalfile, '--    - Symbolic definitions for configuration bits (fuses)'
 call lineout jalfile, '--    - Some device dependent procedures for common'
@@ -4574,7 +4630,7 @@ else if MaxSharedRAM = 0 then                               /* no shared RAM */
 /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 call lineout jalfile, '--'
 if Core = '12'  |  Core = '14' then do
-/* -- The warning below is disabled for JalV2 2.4o-beta
+/* -- The warning below is disabled (not included in the device files)
    if PicName = '16f73'  | PicName = '16f74' then
       call lineout jalfile,,
          '_warn "Calculations with variables over 16 bits are not supported for a' PicName'"'
