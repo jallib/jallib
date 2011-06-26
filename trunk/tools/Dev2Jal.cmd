@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.19'
+   ScriptVersion   = '0.1.20'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
 /* ------------------------------------------------------------------------ */
@@ -1222,28 +1222,31 @@ do i = 1 to Dev.0
       else
          field = 'dword '
       call lineout jalfile, '-- ------------------------------------------------'
-      call lineout jalfile, 'var volatile' field left(reg,25) 'at' addr
+      if left(reg,4) \= 'PORT' & reg \= 'GPIO' then
+         call lineout jalfile, 'var volatile' field left(reg,25) 'at' addr
       select
          when reg = 'BAUDCTL' then do                       /* for 16f687,88,89,690 */
                                                             /*     16f882,3,4,6,7   */
             call lineout jalfile, 'alias              ' left('BAUDCON',25) 'is' reg
          end
          when left(reg,4) = 'PORT' then do                  /* port */
+            call lineout jalfile, 'var volatile' field left('_'reg,25) 'at' addr
             call list_port1x_shadow reg
          end
          when reg = 'GPIO' then do                          /* port */
-            call lineout jalfile, 'var volatile byte  ' left('PORTA',25) 'at' reg
-            call list_port1x_shadow 'PORTA'
+            call lineout jalfile, 'var volatile' field left('_'reg,25) 'at' addr
+            call lineout jalfile, 'alias              ' left('_'PORTA,25) 'is' '_'reg
+            call list_port1x_shadow 'PORTA'                 /* GPIO -> PORTA */
          end
          when reg = 'GP' then                               /* port */
             call msg 2, 'Register GP to be renamed to GPIO'
          when reg = 'TRISIO' then do                        /* low pincount PIC */
-            call lineout jalfile, 'var volatile byte  ' left('TRISA',25) 'at' reg
-            call lineout jalfile, 'var volatile byte  ' left('PORTA_direction',25) 'at' reg
+            call lineout jalfile, 'var volatile' field left('TRISA',25) 'at' reg
+            call lineout jalfile, 'var volatile' field left('PORTA_direction',25) 'at' reg
             call list_tris_nibbles 'TRISA'                  /* nibble direction */
          end
          when left(reg,4) = 'TRIS' then do                  /* TRISx */
-            call lineout jalfile, 'var volatile byte  ',
+            call lineout jalfile, 'var volatile' field,
                                   left('PORT'substr(reg,5)'_direction',25) 'at' reg
             call list_tris_nibbles reg                      /* nibble direction */
          end
@@ -1358,12 +1361,17 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                   when (reg = 'GPIO' & left(n.j,4) = 'GPIO') then do
                     field = reg'_GP'right(n.j,1)            /* pin GPIOx -> GPx */
                     call lineout jalfile, 'var volatile bit   ',
-                                 left(field,25) 'at' reg ':' offset
+                                 left(field,25) 'at' '_'reg ':' offset
                   end
                   otherwise
-                     if duplicate_name(field,reg) = 0 then  /* unique */
-                        call lineout jalfile, 'var volatile bit   ',
+                     if duplicate_name(field,reg) = 0 then do  /* unique */
+                        if left(reg,4) \= 'PORT' & reg \= 'GPIO' then    /* not for PORTx or GPIO */
+                           call lineout jalfile, 'var volatile bit   ',
                                               left(field,25) 'at' reg ':' offset
+                        else
+                           call lineout jalfile, 'var volatile bit   ',
+                                              left(field,25) 'at' '_'reg ':' offset
+                     end
                end
 
                                                             /* additional declarations */
@@ -1434,13 +1442,13 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                      shadow = '_PORTA_shadow'
                      pin = 'pin_A'right(n.j,1)
                      call lineout jalfile, 'var volatile bit   ',
-                                          left(pin,25) 'at' reg ':' offset
+                                          left(pin,25) 'at' '_'reg ':' offset
                      call insert_pin_alias 'PORTA', 'RA'right(n.j,1), pin
                      call lineout jalfile, '--'
                      call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                       'at' shadow ':' offset') is'
                      call lineout jalfile, '   pragma inline'
-                     call lineout jalfile, '   _PORTA_flush()'
+                     call lineout jalfile, '   _PORTA =' shadow
                      call lineout jalfile, 'end procedure'
                      call lineout jalfile, '--'
                   end
@@ -1451,17 +1459,17 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                   end
                   when left(reg,4) = 'PORT' then do
                      if left(n.j,1) = 'R'  &,
-                         substr(n.j,2,1) = right(reg,1) then do /* prob. I/O pin */
+                         substr(n.j,2,1) = right(reg,1) then do   /* prob. I/O pin */
                         shadow = '_PORT'right(reg,1)'_shadow'
                         pin = 'pin_'substr(n.j,2)
                         call lineout jalfile, 'var volatile bit   ',
-                                              left(pin,25) 'at' reg ':' offset
+                                              left(pin,25) 'at' '_'reg ':' offset
                         call insert_pin_alias reg, n.j, pin
                         call lineout jalfile, '--'
                         call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                        'at' shadow ':' offset') is'
                         call lineout jalfile, '   pragma inline'
-                        call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
+                        call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
                         call lineout jalfile, 'end procedure'
                      end
                      call lineout jalfile, '--'
@@ -1478,7 +1486,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                      pin = 'pin_'substr(n.j,5)'_direction'
                      call lineout jalfile, 'var volatile bit   ',
                               left('pin_'substr(n.j,5)'_direction',25) 'at' reg ':' offset
-                     if substr(n.j,5,1) = right(reg,1) then do /* prob. I/O pin */
+                     if substr(n.j,5,1) = right(reg,1) then do    /* prob. I/O pin */
                        call insert_pin_direction_alias reg, 'R'substr(n.j,5), pin
                      end
                      call lineout jalfile, '--'
@@ -3139,23 +3147,19 @@ list_port1x_shadow: procedure expose jalfile
 reg = arg(1)
 shadow = '_PORT'substr(reg,5)'_shadow'
 call lineout jalfile, '--'
-call lineout jalfile, 'var          byte ' shadow '       = 'reg
-call lineout jalfile, '--'
-call lineout jalfile, 'procedure _PORT'substr(reg,5)'_flush() is'
-call lineout jalfile, '   pragma inline'
-call lineout jalfile, '   'reg '=' shadow
-call lineout jalfile, 'end procedure'
+call lineout jalfile, 'var          byte  ' left('PORT'substr(reg,5),25) 'at _PORT'substr(reg,5)
+call lineout jalfile, 'var          byte  ' left(shadow,25) '= ' reg
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure' reg"'put"'(byte in x at' shadow') is'
 call lineout jalfile, '   pragma inline'
-call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
+call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 half = 'PORT'substr(reg,5)'_low'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
-call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
+call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '   pragma inline'
@@ -3166,7 +3170,7 @@ half = 'PORT'substr(reg,5)'_high'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '   pragma inline'
 call lineout jalfile, '   'shadow '= ('shadow '& 0x0F) | (x << 4)'
-call lineout jalfile, '   _PORT'substr(reg,5)'_flush()'
+call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '   pragma inline'
@@ -3193,7 +3197,8 @@ call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_low'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '   pragma inline'
-call lineout jalfile, '   'lat '= ('port '& 0xF0) | (x & 0x0F)'
+/* call lineout jalfile, '   'lat '= ('port '& 0xF0) | (x & 0x0F)' */
+call lineout jalfile, '   'lat '= ('lat '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '   pragma inline'
@@ -3203,7 +3208,8 @@ call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_high'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '   pragma inline'
-call lineout jalfile, '   'lat '= ('port '& 0x0F) | (x << 4)'
+/* call lineout jalfile, '   'lat '= ('port '& 0x0F) | (x << 4)' */
+call lineout jalfile, '   'lat '= ('lat '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
 call lineout jalfile, '   pragma inline'
