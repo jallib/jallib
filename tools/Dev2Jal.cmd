@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.20'
+   ScriptVersion   = '0.1.21'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
 /* ------------------------------------------------------------------------ */
@@ -3148,7 +3148,7 @@ reg = arg(1)
 shadow = '_PORT'substr(reg,5)'_shadow'
 call lineout jalfile, '--'
 call lineout jalfile, 'var          byte  ' left('PORT'substr(reg,5),25) 'at _PORT'substr(reg,5)
-call lineout jalfile, 'var          byte  ' left(shadow,25) '= ' reg
+call lineout jalfile, 'var          byte  ' left(shadow,25)
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure' reg"'put"'(byte in x at' shadow') is'
 call lineout jalfile, '   pragma inline'
