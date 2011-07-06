@@ -50,8 +50,6 @@ include jascii
 ; prototypes
 procedure print_byte_binary(volatile byte out device, byte in data)
 
-const byte nibble2hex[] = "0123456789ABCDEF"   -- conversion string
-
 var bit print_prefix = false        
 
 procedure print_crlf(volatile byte out device) is
@@ -105,7 +103,8 @@ procedure print_bit_10(volatile byte out device, bit in data) is
    else
       device = "0"
    end if
-         
+
+--     device="0"+byte(data)         
 end procedure
 
 procedure print_dword_binary(volatile byte out device, dword in data) is
@@ -115,10 +114,12 @@ procedure print_dword_binary(volatile byte out device, dword in data) is
       device = "b"
    end if
 
-   print_byte_binary(device, byte(data>>24))
-   print_byte_binary(device, byte(data>>16))
-   print_byte_binary(device, byte(data>>8))
-   print_byte_binary(device, byte(data))
+   var byte a_data[4] at data
+
+   print_byte_binary(device, a_data[3])
+   print_byte_binary(device, a_data[2])
+   print_byte_binary(device, a_data[1])
+   print_byte_binary(device, a_data[0])
    
 end procedure
 
@@ -128,14 +129,18 @@ procedure print_word_binary(volatile byte out device, word in data) is
       device = "0"
       device = "b"
    end if
+
+   var byte a_data[2] at data
    
-   print_byte_binary(device, byte(data>>8))
-   print_byte_binary(device, byte(data))
+   print_byte_binary(device, a_data[1])
+   print_byte_binary(device, a_data[0])
    
 end procedure
 
 
 procedure print_byte_binary(volatile byte out device, byte in data) is
+
+   var bit high_bit at data:7
    
    if (print_prefix) then
       device = "0"
@@ -143,7 +148,7 @@ procedure print_byte_binary(volatile byte out device, byte in data) is
    end if
 
    for 8 loop    
-      if ((data & 0x80) != 0) then
+      if high_bit then
          device = "1"
       else
          device = "0"
@@ -156,14 +161,44 @@ end procedure
 
 procedure print_nibble_binary(volatile byte out device, byte in data) is
    
+   var bit high_bit at data:3
+
    for 4 loop    
-      if ((data & 0x08) != 0) then
+      if high_bit then
          device = "1"
       else
          device = "0"
       end if
       data = data << 1
    end loop
+   
+end procedure
+
+function nibble2hex(bit*4 in nibble) return byte is
+pragma inline
+   var byte convert
+
+   convert=byte(nibble)
+   convert=convert+"0"
+   if (convert > "9") then
+     convert=convert + ( "A" - "0" -10 )
+   end if
+
+   return convert
+
+end function
+
+procedure print_byte_hex(volatile byte out device, byte in data) is             
+
+
+   if (print_prefix) then
+      device = "0"
+      device = "x"
+   end if
+
+
+   device = nibble2hex(data>>4)
+   device = nibble2hex(data)
    
 end procedure
 
@@ -175,15 +210,14 @@ procedure print_dword_hex(volatile byte out device, dword in data) is
       device = "0"
       device = "x"
    end if
+
+   var byte a_data[4] at data
+  
+  print_byte_hex(device,a_data[3])
+  print_byte_hex(device,a_data[2])
+  print_byte_hex(device,a_data[1])
+  print_byte_hex(device,a_data[0])
       
-   device = nibble2hex[0x0F & (data>>28)]
-   device = nibble2hex[0x0F & (data>>24)]
-   device = nibble2hex[0x0F & (data>>20)]
-   device = nibble2hex[0x0F & (data>>16)]
-   device = nibble2hex[0x0F & (data>>12)]
-   device = nibble2hex[0x0F & (data>>8)]
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
    
 end procedure
 
@@ -193,15 +227,15 @@ procedure print_sdword_hex(volatile byte out device, sdword in data) is
       device = "0"
       device = "x"
    end if
+
+   var byte a_data[4] at data
+  
+  print_byte_hex(device,a_data[3])
+  print_byte_hex(device,a_data[2])
+  print_byte_hex(device,a_data[1])
+  print_byte_hex(device,a_data[0])
+
       
-   device = nibble2hex[0x0F & (data>>28)]
-   device = nibble2hex[0x0F & (data>>24)]
-   device = nibble2hex[0x0F & (data>>20)]
-   device = nibble2hex[0x0F & (data>>16)]
-   device = nibble2hex[0x0F & (data>>12)]
-   device = nibble2hex[0x0F & (data>>8)]
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
    
 end procedure
 
@@ -212,11 +246,15 @@ procedure print_word_hex(volatile byte out device, word in data) is
       device = "0"
       device = "x"
    end if
+
+   var byte a_data[2] at data
+  
+  print_byte_hex(device,a_data[1])
+  print_byte_hex(device,a_data[0])
+
+
+
    
-   device = nibble2hex[0x0F & (data>>12)]
-   device = nibble2hex[0x0F & (data>>8)]
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
    
 end procedure
 
@@ -227,31 +265,21 @@ procedure print_sword_hex(volatile byte out device, sword in data) is
       device = "0"
       device = "x"
    end if
-   
-   device = nibble2hex[0x0F & (data>>12)]
-   device = nibble2hex[0x0F & (data>>8)]
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
-   
-end procedure
+  
+   var byte a_data[2] at data
+  
+  print_byte_hex(device,a_data[1])
+  print_byte_hex(device,a_data[0])
 
 
-
-
-procedure print_byte_hex(volatile byte out device, byte in data) is             
-
-   if (print_prefix) then
-      device = "0"
-      device = "x"
-   end if
-
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
+ 
    
 end procedure
 
 
------------------------------------------------------- NEW -----------------------------------
+
+
+
 
 if ! defined(_print_max_var_size_dec) then
   const  _print_max_var_size_dec=4          -- if not defined, keep compatibility with conventional print.jal
@@ -379,6 +407,6 @@ if _print_max_var_size_dec>0 then  -- well.. haha ;-)
 end if
 
 
------------------------------------------------------- END NEW -------------------------------
+
 
 
