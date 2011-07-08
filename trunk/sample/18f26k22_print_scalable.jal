@@ -1,0 +1,128 @@
+-- ------------------------------------------------------
+-- Title: Demo for print_scalable.jal on Microchip pic18f26k22
+--
+-- Author: Oliver "Kiste" Seitz, Copyright (c) 2011, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Sample program for print_scalable.jal library on Microchip PIC18f4520.
+--
+-- Sources:
+--
+-- Notes:
+--
+
+
+--
+include 18f26k22                    -- target PICmicro
+--
+pragma target clock 64_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC      INTOSC_NOCLKOUT              
+pragma target WDT      disabled     -- no watchdog
+pragma target DEBUG    disabled     -- no debugging
+pragma target LVP      disabled     -- no Low Voltage Programming
+pragma target MCLR internal        -- reset internally
+
+pragma target PWRTE	enabled
+pragma target BROWNOUT	enabled
+
+
+
+OSCCON_IRCF=0b111   -- set internal oscillator to maximum frequency
+OSCTUNE_PLLEN=1
+
+
+enable_digital_io()                -- make all pins digital I/O
+
+
+var dword counter=0
+
+const _print_max_var_size_dec=256
+
+-- when _print_max_var_size_dec is set to 4, the normal "print.jal" lib can be used for comparison 
+
+include print_scalable
+
+--include print
+
+const serial_overflow_discard = FALSE 
+
+var bit serial_ctsinv
+
+const serial_hw_baudrate=115200
+--include serial_hardware
+
+include serial_hw_int_cts
+
+serial_hw_init()
+
+include delay
+
+delay_100ms(10)
+
+
+var byte*_print_max_var_size_dec large_number=1
+var byte*_print_max_var_size_dec large_save=1
+
+
+counter=0
+
+var bit overflow=false
+
+repeat
+
+  print_dword_dec(serial_hw_data,counter)
+  serial_hw_data="!"
+  serial_hw_data="="
+  print_maxvar_dec(serial_hw_data,large_number)
+
+  print_crlf(serial_hw_data)
+  print_crlf(serial_hw_data)
+
+
+  large_save=large_number
+  for counter loop
+    large_number=large_number+large_save
+
+    if large_number<=large_save then 
+      overflow=true
+    end if
+  end loop
+
+  counter=counter+1
+
+until overflow
+
+
+print_crlf(serial_hw_data)
+
+large_number=1
+
+for (_print_max_var_size_dec*8)-1 using counter loop
+
+
+  serial_hw_data="2"
+  serial_hw_data="^"
+  print_dword_dec(serial_hw_data,counter)
+  serial_hw_data="="
+  print_maxvar_dec(serial_hw_data,large_number)
+  print_crlf(serial_hw_data)
+  print_crlf(serial_hw_data)
+
+
+  large_number=large_number*2
+
+
+end loop
+
+forever loop
+
+end loop
+--
