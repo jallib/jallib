@@ -1,0 +1,231 @@
+-- Title: mcp342, 18-bit, multi-channel delta-sigma AD converter with I2C output
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2010
+-- Adapted-by: William Welch
+-- Compiler: =2.4n
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library works with the MCP3424 AD converter from Microchip with up to 18 bits accuracy
+-- Datasheet: DS22088B
+--
+-- Declare this in main program:
+
+-- if you want to use more than one MCP3424, use the address pins:
+-- const byte mcp3424_1_addr  = 0b1101_0000  -- both ADR0 and ADR1 tied to Vss
+-- const byte mcp3424_2_addr  = 0b1101_1000  -- ADR0 tied to Vdd, ADR1 tied to Vss
+-- i2c setup
+-- const word _i2c_bus_speed = 1 ; * 100kHz
+-- const bit _i2c_level = true   ; i2c levels (not SMB)
+-- include i2c_hardware
+-- i2c_initialize()
+
+var byte mcp3424_config[8]
+
+-- initialize mcp3424 for 18-bit samples and continuous conversion mode.
+-- NB: also sets G=1, channel=0. These may be modified by other functions (see below)
+function mcp3424_set18bits(byte in address) return bit is
+   var byte idx = (address >> 1) & 7
+   var byte config_reg = mcp3424_config[idx]
+   var bit _RDY   at config_reg : 7
+   var bit C1     at config_reg : 6
+   var bit C0     at config_reg : 5
+   var bit _O     at config_reg : 4
+   var bit S1     at config_reg : 3
+   var bit S0     at config_reg : 2
+   var bit G1     at config_reg : 1
+   var bit G0     at config_reg : 0
+   var bit tx_ok
+   _RDY = 1
+   C1  = 0
+   C0  = 0
+   _O  = 1
+   S0  = 1
+   S1  = 1
+   G1  = 0
+   G0  = 0
+   mcp3424_config[idx] = config_reg
+   
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(address)
+   tx_ok = tx_ok & i2c_transmit_byte(config_reg)     
+   i2c_stop()
+   return tx_ok
+end function
+
+
+-- channel should be 1 .. 4, as per datasheet DS22088B page 18
+-- if channel = 0, 1 is assumed. If channel is > 4, 4 is assumed
+function mcp3424_set_channel(byte in address, byte in channel) return bit is
+   var byte idx = (address >> 1) & 7
+   var byte config_reg = mcp3424_config[idx]
+   var bit _RDY   at config_reg : 7
+   var bit C1     at config_reg : 6
+   var bit C0     at config_reg : 5
+   var bit _O     at config_reg : 4
+   var bit S1     at config_reg : 3
+   var bit S0     at config_reg : 2
+   var bit G1     at config_reg : 1
+   var bit G0     at config_reg : 0
+   var bit tx_ok
+   var bit CH0    at channel : 0
+   var bit CH1    at channel : 1
+   
+   if channel > 4 then
+      channel = 4
+   elsif channel == 0 then
+      channel = 1
+   end if
+   channel = channel - 1      -- scale from 0..3
+   
+   C0 = CH0
+   C1 = CH1
+   mcp3424_config[idx] = config_reg
+   
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(address)
+   tx_ok = tx_ok & i2c_transmit_byte(config_reg)     -- config register address
+   i2c_stop()
+   return tx_ok
+end function
+
+
+-- gain should be 1, 2, 4, 8, as per datasheet DS22088B page 18
+-- gain = 0,1 -> 1 / 2 -> 2, 3,4 -> 4 / 5..255 -> 8  
+function mcp3424_set_gain(byte in address, byte in gain) return bit is
+   var byte idx = (address >> 1) & 7
+   var byte config_reg = mcp3424_config[idx]
+   var bit _RDY   at config_reg : 7
+   var bit C1     at config_reg : 6
+   var bit C0     at config_reg : 5
+   var bit _O     at config_reg : 4
+   var bit S1     at config_reg : 3
+   var bit S0     at config_reg : 2
+   var bit G1     at config_reg : 1
+   var bit G0     at config_reg : 0
+   var bit tx_ok
+   if    gain < 2 then
+      G0 = 0              -- gain = 1
+      G1 = 0
+   elsif gain < 3 then
+      G0 = 1               -- gain = 2 
+      G1 = 0
+   elsif gain < 5 then
+      G0 = 0               -- gain = 4
+      G1 = 1
+   else
+      G0 = 1               -- gain = 8
+      G1 = 1
+   end if
+   mcp3424_config[idx] = config_reg
+   
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(address)
+   tx_ok = tx_ok & i2c_transmit_byte(config_reg)     -- config register address
+   i2c_stop()
+   return tx_ok
+end function
+
+-- get 16-bit adc reading, return status/config_reg read-back to caller
+function mcp3424_get_16_status(byte in address, byte out status) return sword is  
+   var word a, b, v
+   var sword temp
+   var bit tx_ok
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(address | 1)
+   a = i2c_receive_byte(1)
+   b = i2c_receive_byte(1)
+   status = i2c_receive_byte(0)
+   i2c_stop()
+   v = ( a << 8 ) + b
+   temp = sword(v)
+   return temp
+end function
+
+-- get 16-bit adc reading, no status returned to caller. legacy routine.
+function mcp3424_get_16(byte in address) return sword is  
+   var byte status
+   var sword v
+   v = mcp3424_get_16_status(address, status)
+   return v
+end function
+
+-- get 18-bit adc reading, return status/config_reg read-back to caller
+function mcp3424_get_18_status(byte in address, byte out status) return sdword is  
+   var dword a, b, c   -- NB unsigned
+   var sdword temp     -- NB: signed
+   var bit tx_ok
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(address | 1)
+   a = i2c_receive_byte(1)
+   b = i2c_receive_byte(1)
+   c = i2c_receive_byte(1)
+   status = i2c_receive_byte(0)
+   i2c_stop()
+   
+   -- format A: 0b_00000000_00000000_00000000_SSSSSSSd  (sign-bits, D16)
+   -- format B: 0b_00000000_00000000_00000000_dddddddd  ( D15 - D08)
+   -- format C: 0b_00000000_00000000_00000000_dddddddd  ( D07 - D00)
+   
+   a = a << 24       -- 0b_SSSSSSdd_00000000_00000000_00000000
+   a = a + (b << 16) -- 0b_SSSSSSdd_dddddddd_00000000_00000000
+   a = a + (c <<  8) -- 0b_SSSSSSdd_dddddddd_dddddddd_00000000
+   
+   -- discard unused bits but preserve sign bit
+   temp = sdword(a)
+   temp = temp / 256
+   return temp
+end function
+
+-- get 18-bit adc reading, no status returned to caller. legacy routine.
+function mcp3424_get_18(byte in address) return sdword is  
+   var byte status
+   var sdword v
+   v = mcp3424_get_18_status(address, status)
+   return v
+end function
+
+-- gain should be 1, 2, 4, 8, as per datasheet DS22088B page 18
+-- if gain = 0,1 -> 1 / 2 -> 2, 3,4 -> 4 / 5..255 -> 8  
+-- FIXME: this routine only handles 18-bit samples.
+function mcp3424_microvolt(sdword in tcvalue, byte in gain) return sdword is
+   var bit tx_ok
+   var sdword temp
+   if    gain < 2 then
+      gain = 0             -- shift values
+   elsif gain < 3 then
+      gain = 1 
+   elsif gain < 5 then
+      gain = 2
+   else
+      gain = 3
+   end if
+   
+   temp = tcvalue * 15625
+   temp = temp >> gain        -- faster
+   temp = temp / 1000
+   return temp
+end function
+
+-- gain should be 1, 2, 4, 8, as per datasheet DS22088B page 18
+-- if gain = 0,1 -> 1 / 2 -> 2, 3,4 -> 4 / 5..255 -> 8  
+-- FIXME: this routine only handles 18-bit samples.
+function mcp3424_millivolt(sdword in tcvalue, byte in gain) return sword is
+   var bit tx_ok
+   var sdword temp
+   if    gain < 2 then
+      gain = 0             -- shift values
+   elsif gain < 3 then
+      gain = 1 
+   elsif gain < 5 then
+      gain = 2
+   else
+      gain = 3
+   end if
+   
+   temp = tcvalue * 15625
+   temp = temp >> gain        -- faster
+   temp = temp / 1_000_000
+   return sword(temp)
+end function
+

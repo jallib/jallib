@@ -1,0 +1,475 @@
+-- Title: sta015/sta013 mp3 decoder sample
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: example usage of the sta015 mp3 decoder. plays .mp3 files from
+--              a fat32 formatted sd card or hard disk
+--
+-- Sources:
+-- http://www.st.com/stonline/books/pdf/docs/7042.pdf
+-- http://www.pjrc.com/mp3/sta013.html
+--
+-- notes:
+-- vs1053b is a better mp3 decoder device
+-- Oscillator values can be 20mhz, 10mhz, 14.31818 mhz or 14.7456 mhz.
+-- Base and treble max can not go above sta015_attenuation value. If you want base and
+-- treble control, you must raise STA015_DEFAULT_ATTENUATION
+-- you may do things while the song is playing while sta015_data_request = high
+-- sta015 works in SPI mode 0,1 .
+-- Send mp3 data as fast as possible for high bitrate mp3
+
+-- useful variables --
+
+-- send one of the following constants to the sta015_write_command procedure
+const byte STA015_RESET = 100           -- Reset the sta015 device
+const byte STA015_START_PLAY = 101      -- Tell the device to start playing. You need to send data after
+const byte STA015_STOP_PLAY = 102       -- Tell device to stop playing. Or just stop sending data
+const byte STA015_MUTE = 103            -- Mute (turn off volume but continue playing)
+const byte STA015_NO_MUTE = 104         -- Turn off Mute  (restore volume)
+const byte STA015_VOLUME_DOWN = 105     -- Turn down the volume (more attenuation)
+const byte STA015_VOLUME_UP = 106       -- Turn up the volume   (less attenuation)
+const byte STA015_BASE_DOWN = 107       -- Turn down base       (low frequency sounds)
+const byte STA015_BASE_UP = 108         -- Turn up base         (low frequency sounds)
+const byte STA015_TREBLE_DOWN = 109     -- Turn down treble     (high frequency sounds)
+const byte STA015_TREBLE_UP = 110       -- Turn up the treble   (high frequency sounds)
+const byte STA015_RIGHT_DOWN = 111      -- Turn down the right speaker volume
+const byte STA015_RIGHT_UP = 112        -- Turn up the right speaker volume
+const byte STA015_LEFT_DOWN = 113       -- Turn down the left speaker volume
+const byte STA015_LEFT_UP = 114         -- Turn up the left speaker volume
+const byte STA015_READ_INFO = 115       -- Get mp3 bitrate and mode(mono/stereo) with sta015_read_mp3_info() command
+
+-- sta015_mode will equal current playing mp3's mode after sta015_write_command(STA015_READ_INFO) as seen below.
+-- example: if sta015_mode == STA015_STEREO then
+var byte sta015_mode                  -- holds the current mode, byte value from 0 to 3
+const byte STA015_STEREO = 0          -- stereo
+const byte STA015_JOINT_STEREO = 1    -- joint stereo (intensity_stereo and/or ms_stereo)
+const byte STA015_DUAL_CHANNEL = 2    -- dual_channel
+const byte STA015_SINGLE_CHANNEL = 3  -- single_channel (mono)
+
+-- holds current playing mp3's bitrate or quality in kbps after sta015_write_command(STA015_READ_INFO)
+var word sta015_bitrate
+
+-- oscillators for the init procedure
+const byte STA015_OSC_10 = 0         -- 10 mhz crystal
+const byte STA015_OSC_20 = 1         -- 20 mhz crystal
+const byte STA015_OSC_14_31818 = 2   -- 14.31818 mhz crystal
+const byte STA015_OSC_14_7456 = 3    -- 14.7456 mhz crystal
+var byte sta015_crystal              -- holds the crystal value chosen after init
+
+-- volume control vars, read only. use sta015_write_command() procedure to change volume
+var byte   sta015_attenuation = STA015_DEFAULT_ATTENUATION -- current attenuation / volume
+var sbyte  sta015_base = 0                                 -- current base volume
+var sbyte  sta015_treble = 0                               -- current treble volume
+var byte   sta015_left = 0                                 -- current left speaker volume
+var byte   sta015_right = 0                                -- current right speaker volume
+
+-- program variables --
+
+-- register addresses
+const byte _STA015_RESET = 0x16            -- soft reset command register
+const byte _STA015_PLAY = 0x19             -- play command register
+const byte _STA015_MUTE = 0x14             -- mute command register
+const byte _STA015_RUN = 0x72              -- run command register
+const byte _STA015_TREBLE_ENHANCE = 0x7B   -- treble enhance register
+const byte _STA015_BASS_ENHANCE = 0x7C     -- base enhance register
+const byte _STA015_TONE_ATTEN = 0x7D       -- tone attenuation register
+const byte _STA015_DRA = 0x48              -- left volume register
+const byte _STA015_DRB = 0x49              -- right volume register
+
+var byte  _sta015_head_high                -- holds some mp3 info
+var byte  _sta015_head_mid                 -- holds some mp3 info
+var byte  _sta015_head_low                 -- holds some mp3 info
+
+--------------------------------------------------------------------------------
+-- write to any sta015 register
+--------------------------------------------------------------------------------
+procedure sta015_write_register(byte in reg_address, byte in data) is
+  var byte ack_ok  -- true if recieved from slave
+
+  i2c_start()                                -- send start bit
+  ack_ok = i2c_transmit_byte (0x86)          -- transmit data & wait for ack
+  ack_ok = i2c_transmit_byte (reg_address)   -- transmit data & wait for ack
+  ack_ok = i2c_transmit_byte (data)          -- transmit data & wait for ack
+  i2c_stop()                                 -- send stop bit
+end procedure
+
+--------------------------------------------------------------------------------
+-- read to any sta015 register
+--------------------------------------------------------------------------------
+procedure sta015_read_register(byte in reg_address, byte out data) is
+  var byte ack_ok            -- true if recieved from slave
+
+  i2c_start()                                     -- send start bit
+  ack_ok = i2c_transmit_byte (0x86)               -- transmit data & wait for ack
+  ack_ok = i2c_transmit_byte (reg_address)        -- transmit data & wait for ack
+
+  i2c_start()
+                                                  -- send start bit
+  ack_ok = i2c_transmit_byte (0x86 + 1)           -- transmit data & wait for ack
+  data = i2c_receive_byte (0)                     -- recieve data & get nack (no ack)
+  i2c_stop()                                      -- send stop bit
+end procedure
+
+--------------------------------------------------------------------------------
+-- send mp3 data for playing
+--------------------------------------------------------------------------------
+procedure sta015_send(byte in data) is
+   pragma inline
+
+   if STA015_ALWAYS_SET_SPI_MODE == TRUE then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   end if
+   
+   sta015_bit_en = high   -- enable chip select
+
+   while sta015_data_request == low loop -- wait till data gets requested
+   end loop
+   
+   spi_master_hw = data
+   sta015_bit_en = low   -- enable chip select
+end procedure
+
+--------------------------------------------------------------------------------
+-- initialize the device with input crystal speed
+--------------------------------------------------------------------------------
+procedure sta015_init(byte in crystal_speed) is
+;  sta015_clock = low    -- input clock normally now
+  sta015_crystal = crystal_speed
+  
+
+  if STA015_USE_RESET_PIN == TRUE then
+     -- hardware reset the device with reset pin
+     sta015_hw_reset = low
+     _usec_delay (20_000)
+     sta015_hw_reset = high
+  end if
+  
+  -- software reset at register 0x10
+  sta015_write_register (16, 1)
+  _usec_delay (20_000)
+
+   -- ADC settings for ADC device CS4334
+   sta015_write_register (84, 1)  -- 0x54 PCM DIVIDER, 256X oversample, 32 bit words (allows 24 bit output)
+   sta015_write_register (85, 33) -- 0x55 PCMCONF, I2S format for CS4334
+   
+   if crystal_speed == STA015_OSC_14_31818 then  -- 14.31818 mhz crystal
+      -- setup 14.31818 MHZ CRYSTAL values calculated via ST's cpll.exe
+      sta015_write_register (7, 0)
+      sta015_write_register (6, 12)
+      sta015_write_register (11, 3)
+      sta015_write_register (80, 16)
+      sta015_write_register (81, 119)
+      sta015_write_register (82, 103)
+      sta015_write_register (97, 15)
+      sta015_write_register (100, 58)
+      sta015_write_register (101, 187)
+   elsif crystal_speed == STA015_OSC_10 then  -- 10 mhz
+      sta015_write_register (7, 0)
+      sta015_write_register (6, 18)
+      sta015_write_register (11, 3)
+      sta015_write_register (80, 16)
+      sta015_write_register (81, 60)
+      sta015_write_register (82, 49)
+      sta015_write_register (97, 15)
+      sta015_write_register (100, 42)
+      sta015_write_register (101, 169)
+   elsif crystal_speed == STA015_OSC_20 then  -- 20 mhz crystal
+      sta015_write_register (7, 1)
+      sta015_write_register (6, 18)
+      sta015_write_register (11, 3)
+      sta015_write_register (80, 16)
+      sta015_write_register (81, 60)
+      sta015_write_register (82, 49)
+      sta015_write_register (97, 15)
+      sta015_write_register (100, 42)
+    sta015_write_register (101, 169)
+   elsif crystal_speed == STA015_OSC_14_7456 then  -- 14.7456 mhz crystal
+      sta015_write_register (7, 0)
+      sta015_write_register (6, 12)
+      sta015_write_register (11, 3)
+      sta015_write_register (80, 16)
+      sta015_write_register (81, 0)
+      sta015_write_register (82, 4)
+      sta015_write_register (97, 15)
+      sta015_write_register (100, 85)
+      sta015_write_register (101, 85)
+   end if
+   
+   sta015_write_register (5, 161) -- PLLCTL
+   ;sta015_write_register (16, 4)  --	SDI sampled on falling edge of SCKR
+   sta015_write_register (24, 4)  -- DATA_REQ_ENABLE - enable the data request pin
+
+   sta015_write_register (_STA015_MUTE, 0x00) -- NO MUTE
+   sta015_write_register (_STA015_RUN, 0x01)  -- Start Running
+   sta015_write_register (_STA015_PLAY, 0x01) -- Start Playing
+   sta015_write_register (_STA015_TONE_ATTEN, STA015_DEFAULT_ATTENUATION)
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- read bitrate, song quality, mono/stereo into vars sta015_mode and sta015_bitrate
+--------------------------------------------------------------------------------
+procedure sta015_read_mp3_info() is
+   sta015_read_register(0x43, _sta015_head_high)
+   sta015_read_register(0x44, _sta015_head_mid)
+   sta015_read_register(0x45, _sta015_head_low)
+
+   -- get the mpeg id
+   var bit mpeg_id at _sta015_head_high : 3
+
+   -- get the bitrate index
+   var byte bitrate_index
+   bitrate_index = _sta015_head_mid >> 4
+
+   var byte mode
+   mode = _sta015_head_low >> 6
+
+   -- get the bitrate
+   if mpeg_id == 1 then  -- if mpeg_id = 1
+     if bitrate_index == 0 then
+        sta015_bitrate = 0
+     elsif bitrate_index == 1 then
+        sta015_bitrate = 32
+     elsif bitrate_index == 2 then
+        sta015_bitrate = 40
+     elsif bitrate_index == 3 then
+        sta015_bitrate = 48
+     elsif bitrate_index == 4 then
+        sta015_bitrate = 56
+     elsif bitrate_index == 5 then
+        sta015_bitrate = 64
+     elsif bitrate_index == 6 then
+        sta015_bitrate = 80
+     elsif bitrate_index == 7 then
+        sta015_bitrate = 96
+     elsif bitrate_index == 8 then
+        sta015_bitrate = 112
+     elsif bitrate_index == 9 then
+        sta015_bitrate = 128
+     elsif bitrate_index == 10 then
+        sta015_bitrate = 160
+     elsif bitrate_index == 11 then
+        sta015_bitrate = 192
+     elsif bitrate_index == 12 then
+        sta015_bitrate = 224
+     elsif bitrate_index == 13 then
+        sta015_bitrate = 256
+     elsif bitrate_index == 14 then
+        sta015_bitrate = 320
+     elsif bitrate_index == 15 then
+        sta015_bitrate = 0
+     end if
+   else -- if mpeg_id = 0
+     if bitrate_index == 0 then
+        sta015_bitrate = 0
+     elsif bitrate_index == 1 then
+        sta015_bitrate = 8
+     elsif bitrate_index == 2 then
+        sta015_bitrate = 16
+     elsif bitrate_index == 3 then
+        sta015_bitrate = 24
+     elsif bitrate_index == 4 then
+        sta015_bitrate = 32
+     elsif bitrate_index == 5 then
+        sta015_bitrate = 40
+     elsif bitrate_index == 6 then
+        sta015_bitrate = 48
+     elsif bitrate_index == 7 then
+        sta015_bitrate = 56
+     elsif bitrate_index == 8 then
+        sta015_bitrate = 64
+     elsif bitrate_index == 9 then
+        sta015_bitrate = 80
+     elsif bitrate_index == 10 then
+        sta015_bitrate = 96
+     elsif bitrate_index == 11 then
+        sta015_bitrate = 112
+     elsif bitrate_index == 12 then
+        sta015_bitrate = 128
+     elsif bitrate_index == 13 then
+        sta015_bitrate = 144
+     elsif bitrate_index == 14 then
+        sta015_bitrate = 160
+     elsif bitrate_index == 15 then
+        sta015_bitrate = 0
+     end if
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- send a command from the list of command constants
+--------------------------------------------------------------------------------
+procedure sta015_write_command(byte in command) is
+   var byte base_x, treble_x
+   base_x = 0
+   treble_x = 0
+   
+   if command == STA015_RESET then                               -- Reset the sta015
+      sta015_init(sta015_crystal)
+   elsif command == STA015_START_PLAY then                       -- Start Playing
+      sta015_write_register (_STA015_PLAY, 0x01)
+   elsif command == STA015_STOP_PLAY then                        -- Stop Playing
+      sta015_write_register (_STA015_PLAY, 0x00)
+   elsif command == STA015_MUTE then                             -- mute
+      sta015_write_register (_STA015_MUTE, 0x01)
+   elsif command == STA015_NO_MUTE then                          -- no mute
+      sta015_write_register (_STA015_MUTE, 0x00)
+   elsif command == STA015_VOLUME_UP then                        -- volume up
+      if !(sta015_attenuation == STA015_DEFAULT_ATTENUATION) then
+         sta015_attenuation = sta015_attenuation - 1
+         sta015_write_register (_STA015_TONE_ATTEN, sta015_attenuation)
+      end if
+   elsif command == STA015_VOLUME_DOWN then                       -- volume down
+      sta015_attenuation = sta015_attenuation + 1
+      sta015_write_register (_STA015_TONE_ATTEN, sta015_attenuation)
+   elsif command == STA015_BASE_UP then
+      sta015_base = sta015_base + 1
+      base_x = base_x + sta015_base
+      sta015_write_register (_STA015_BASS_ENHANCE, base_x)
+   elsif command == STA015_BASE_DOWN then
+      sta015_base = sta015_base - 1
+      base_x = base_x + sta015_base
+      sta015_write_register (_STA015_BASS_ENHANCE, base_x)
+   elsif command == STA015_TREBLE_UP then
+      sta015_treble = sta015_treble + 1
+      treble_x = treble_x + sta015_treble
+      sta015_write_register (_STA015_TREBLE_ENHANCE, treble_x)
+   elsif command == STA015_TREBLE_DOWN then
+      sta015_treble = sta015_treble - 1
+      treble_x = treble_x + sta015_treble
+      sta015_write_register (_STA015_TREBLE_ENHANCE, treble_x)
+   elsif command == STA015_LEFT_DOWN then
+      sta015_left = sta015_left + 1
+      sta015_write_register (_STA015_DRA, sta015_left)
+   elsif command == STA015_LEFT_UP then
+      if !(sta015_left == 0) then
+         sta015_left = sta015_left - 1
+         sta015_write_register (_STA015_DRA, sta015_left)
+      end if
+   elsif command == STA015_RIGHT_DOWN then
+      sta015_right = sta015_right + 1
+      sta015_write_register (_STA015_DRB, sta015_right)
+   elsif command == STA015_RIGHT_UP then
+      if !(sta015_right == 0) then
+         sta015_right = sta015_right - 1
+         sta015_write_register (_STA015_DRB, sta015_right)
+      end if
+   elsif command == STA015_READ_INFO then
+      sta015_read_mp3_info()
+   end if
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- send volume info, bitrate info and stereo/mono info to serial port
+--------------------------------------------------------------------------------
+procedure sta015_send_volume() is -- send the current volume to the serial port
+
+   serial_hw_write ("V")
+   serial_hw_write ("O")
+   serial_hw_write ("L")
+   serial_hw_write (":")
+   format_word_dec(serial_hw_data,sta015_attenuation,3,0)
+
+   serial_hw_write (0x20)
+   serial_hw_write (0x20)
+   serial_hw_write ("B")
+   serial_hw_write ("A")
+   serial_hw_write ("S")
+   serial_hw_write ("E")
+   serial_hw_write (":")
+   format_sword_dec(serial_hw_data,sta015_base,4,0)
+
+   serial_hw_write (0x20)
+   serial_hw_write (0x20)
+   serial_hw_write ("T")
+   serial_hw_write ("R")
+   serial_hw_write ("E")
+   serial_hw_write ("B")
+   serial_hw_write ("L")
+   serial_hw_write ("E")
+   serial_hw_write (":")
+   format_sword_dec(serial_hw_data,sta015_treble,4,0)
+
+   serial_hw_write (0x20)
+   serial_hw_write (0x20)
+   serial_hw_write ("L")
+   serial_hw_write ("E")
+   serial_hw_write ("F")
+   serial_hw_write ("T")
+   serial_hw_write (":")
+   format_word_dec(serial_hw_data,sta015_left,3,0)
+
+   serial_hw_write (0x20)
+   serial_hw_write (0x20)
+   serial_hw_write ("R")
+   serial_hw_write ("I")
+   serial_hw_write ("G")
+   serial_hw_write ("H")
+   serial_hw_write ("T")
+   serial_hw_write (":")
+   format_word_dec(serial_hw_data,sta015_right,3,0)
+
+   serial_hw_write (13)
+   serial_hw_write (10)
+
+   sta015_write_command (STA015_READ_INFO)
+   format_word_dec(serial_hw_data,sta015_bitrate,3,0)
+   serial_hw_write ("K")
+   serial_hw_write ("B")
+   serial_hw_write ("P")
+   serial_hw_write ("S")
+   
+   serial_hw_write (0x20)
+   serial_hw_write (0x20)
+   
+   -- send stereo/mono
+   if sta015_mode == STA015_STEREO then
+      serial_hw_write ("S")
+      serial_hw_write ("T")
+      serial_hw_write ("E")
+      serial_hw_write ("R")
+      serial_hw_write ("E")
+      serial_hw_write ("O")
+   elsif sta015_mode == STA015_JOINT_STEREO then
+      serial_hw_write ("J")
+      serial_hw_write ("O")
+      serial_hw_write ("I")
+      serial_hw_write ("N")
+      serial_hw_write ("T")
+      serial_hw_write (" ")
+      serial_hw_write ("S")
+      serial_hw_write ("T")
+      serial_hw_write ("E")
+      serial_hw_write ("R")
+      serial_hw_write ("E")
+      serial_hw_write ("O")
+   elsif sta015_mode == STA015_DUAL_CHANNEL then
+      serial_hw_write ("D")
+      serial_hw_write ("U")
+      serial_hw_write ("A")
+      serial_hw_write ("L")
+      serial_hw_write (" ")
+      serial_hw_write ("C")
+      serial_hw_write ("H")
+      serial_hw_write ("A")
+      serial_hw_write ("N")
+      serial_hw_write ("N")
+      serial_hw_write ("E")
+      serial_hw_write ("L")
+   else
+      serial_hw_write ("M")
+      serial_hw_write ("O")
+      serial_hw_write ("N")
+      serial_hw_write ("O")
+   end if
+
+   serial_hw_write (13)
+   serial_hw_write (10)
+end procedure
+

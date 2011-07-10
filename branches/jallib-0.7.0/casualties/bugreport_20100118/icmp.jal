@@ -1,0 +1,212 @@
+-- Title: Internet control message protocol (ICMP)
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: sends, receives and replys to icmp ECHO or PING messages
+--
+-- Sources:
+-- http://www.faqs.org/rfcs/rfc792.html
+--
+-- Notes:
+--
+
+-- ICMP message types
+const ICMP_ECHO_REPLY = 0
+const ICMP_DESTINATION_UNREACHABLE = 3
+const ICMP_SOURCE_QUENCH = 4
+const ICMP_REDIRECT = 5
+const ICMP_ECHO = 8
+const ICMP_TIME_EXCEEDED = 11
+const ICMP_PARAMETER_PROBLEM = 12
+const ICMP_TIMESTAMP = 13
+const ICMP_TIMESTAMP_REPLY = 14
+const ICMP_INFORMATION_REQUEST = 15
+const ICMP_INFORMATION_REPLY = 16
+
+-----
+
+const byte ICMP_TYPE = 0
+const byte ICMP_CODE = 1
+const word ICMP_CHECKSUM = 2
+const word ICMP_IDENTIFIER = 4
+const word ICMP_SEQUENCE_NUMBER = 6
+
+const byte ECHO_HEADER_LENGTH = 8
+
+--------------------------------------------------------------------------------
+-- Sends an echo (PING) message
+--------------------------------------------------------------------------------
+procedure icmp_send_echo() is
+   -- print a debug message
+   var byte sending_ping[] = "---------- sending ping... ----------"
+   debug_string(DEBUG_2,sending_ping)
+   debug_crlf(DEBUG_2)
+
+   network_var_offset = 0
+   
+   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
+      ethernet_header_create(0,
+      network_remote_mac[0],
+      network_remote_mac[1],
+      network_remote_mac[2],
+      network_remote_mac[3],
+      network_remote_mac[4],
+      network_remote_mac[5]
+      )
+   end if
+
+   -- create the ip header
+   ip_header_create(ICMP,ECHO_HEADER_LENGTH+ICMP_ECHO_DATA_LENGTH)
+
+   -- set network variable values
+   network_byte[ICMP_TYPE]            = ICMP_ECHO
+   network_byte[ICMP_CODE]            = 0x00
+   network_word[ICMP_CHECKSUM]        = 0x00_00
+   network_word[ICMP_IDENTIFIER]      = 0x00_01
+   network_word[ICMP_SEQUENCE_NUMBER] = 0x00_00
+   
+   -- set some data
+   var word count1 = network_var_offset + ECHO_HEADER_LENGTH
+   for ICMP_ECHO_DATA_LENGTH loop
+      network_data[count1] = byte(count1)
+      count1 = count1 + 1
+   end loop
+
+   -- calculate and set the checksum
+   network_word[ICMP_CHECKSUM] = network_checksum_16_byte_calc(network_var_offset,ECHO_HEADER_LENGTH+ICMP_ECHO_DATA_LENGTH)
+
+   -- send the packet
+   network_send_packet(network_var_offset+ECHO_HEADER_LENGTH+ICMP_ECHO_DATA_LENGTH)
+   
+   ;print_crlf(serial_hw_data)
+   ;print_byte_dec(serial_hw_data,network_var_offset+ECHO_HEADER_LENGTH)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Sends an echo reply message
+--------------------------------------------------------------------------------
+procedure icmp_send_echo_reply() is
+   var word message_size = network_packet_size
+
+   -- set reply ip address in ip header. was the source ip of the
+   -- echo ip header that we just recieved.
+   network_var_offset = network_var_offset - ip_header_size
+   network_set_remote_ip(
+   network_byte[IP_HEADER_SOURCE_IP_3],
+   network_byte[IP_HEADER_SOURCE_IP_2],
+   network_byte[IP_HEADER_SOURCE_IP_1],
+   network_byte[IP_HEADER_SOURCE_IP_0]
+   )
+   
+   -- print the data
+   var word count1 = network_var_offset
+   for network_packet_size loop               -- for each byte in packet
+      debug_byte_hex(DEBUG_4, network_data[count1])
+      debug_char(DEBUG_4," ")
+      count1 = count1 + 1
+   end loop
+   
+   debug_crlf(DEBUG_2)
+   const byte icmp_str1[] = "---------- sending ping reply! ----------"
+   debug_string(DEBUG_2, icmp_str1)
+   debug_crlf(DEBUG_2)
+
+   network_var_offset = 0
+
+   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
+      ethernet_header_create(0,
+      network_remote_mac[0],
+      network_remote_mac[1],
+      network_remote_mac[2],
+      network_remote_mac[3],
+      network_remote_mac[4],
+      network_remote_mac[5]
+      )
+   end if
+
+   -- create the ip header
+   ip_header_create(ICMP,message_size)
+
+   -- set the ICMP header data
+   network_byte[ICMP_TYPE] = ICMP_ECHO_REPLY
+   network_word[ICMP_CHECKSUM] = 0
+
+   -- calculate and set the checksum
+   network_word[ICMP_CHECKSUM] = network_checksum_16_byte_calc(network_var_offset,message_size)
+
+   ;34-74
+   
+   -- print the data
+   count1 = network_var_offset
+   for message_size loop               -- for each byte in packet
+      debug_byte_hex(DEBUG_4, network_data[count1])
+      debug_char(DEBUG_4," ")
+      count1 = count1 + 1
+   end loop
+   
+   -- send the packet
+   network_send_packet(network_var_offset + message_size)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Read an ICMP packet and do something with it's data
+--------------------------------------------------------------------------------
+procedure icmp_read_packet() is
+;   var word packet_size = network_packet_size - network_var_offset
+   
+   const byte str2[] = "-- ICMP Packet: "
+   debug_string(debug_lvl_3, str2)
+   debug_word_dec(debug_lvl_3, network_packet_size)
+   const byte str3[] = " bytes --"
+   debug_string(debug_lvl_3, str3)
+   debug_crlf(DEBUG_3)
+         
+   -- set network variable offsets                                              ------------- TO BE CHECKED
+
+   if network_byte[ICMP_TYPE] == ICMP_ECHO_REPLY then
+      debug_crlf(DEBUG_2)
+      const byte icmp_str1[] = "---------- ping reply received! ----------"
+   
+      debug_string(DEBUG_2, icmp_str1)
+      debug_crlf(DEBUG_2)
+
+      -- print the data
+      var word count1 = network_var_offset
+      for network_packet_size loop               -- for each byte in packet
+         debug_byte_hex(DEBUG_4, network_data[count1])
+         debug_char(DEBUG_4," ")
+         count1 = count1 + 1
+      end loop
+      
+      -- call the ping reply callback
+      if defined(icmp_ping_reply_callback) then
+         icmp_ping_reply_callback()
+      end if
+      
+   elsif network_byte[ICMP_TYPE] == ICMP_ECHO then
+      debug_crlf(DEBUG_2)
+      const byte icmp_str1[] = "---------- ping received! ----------"
+      debug_string(DEBUG_2, icmp_str1)
+      debug_crlf(DEBUG_2)
+
+      -- send a ping reply
+      icmp_send_echo_reply()
+      
+      if defined(icmp_ping_callback) then
+         -- call ping callback
+         icmp_ping_callback()
+      end if
+   else
+      -- print unknown ICMP message
+      var byte count1 = ip_header_size
+      for network_packet_size - 1 loop               -- for each byte in packet
+         debug_byte_hex(DEBUG_4, network_data[count1])
+         debug_char(DEBUG_4," ")
+         count1 = count1 + 1
+      end loop
+   end if
+end procedure

@@ -1,0 +1,78 @@
+-- ------------------------------------------------------
+-- Title: Test program for testing a combination of PWM and ADC (2 channels both)
+--
+-- Author: Rob Hamerling, Copyright (c) 2009..2009, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4l
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Using a combination of 2 ADC and PWM channels.
+-- Two potmeters determine the luminosity of 2 LEDs.
+-- Two different PWM frequencies are set, both allowing only low
+-- resolution PWM dutycycle setting.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+
+include 16f767
+
+enable_digital_io()                             -- disable analog I/O (if any)
+
+-- Internal oscillator at 4 MHz
+pragma target clock       4_000_000             -- oscillator frequency
+
+-- Configuration bits:
+pragma target OSC      INTOSC_NOCLKOUT          -- internal, no clock out
+pragma target WDT      disabled                 -- no watchdog
+pragma target PWRTE    disabled                 -- startup delay
+pragma target MCLR     external                 -- reset externally
+pragma target BROWNOUT enabled                  -- brown out
+pragma target VOLTAGE  V42                      -- 4.2 Volt brownout
+pragma target DEBUG    disabled                 -- not needed
+pragma target CCP2MUX  pin_C1                   -- CCP2 output on pin_C1
+pragma target CP       disabled                 -- no code protection
+pragma target FCMEN    disabled                 -- no fail safe clock monitoring
+pragma target IESO     disabled                 -- no clock switch over
+pragma target BORSEN   disabled                 -- no software bor
+--
+OSCCON_IRCF = 0b110                             -- 4 MHz
+OSCCON_SCS  = 0b00                              -- oscillator determined by config bits
+
+-- -------- ADC setup -----------
+const ADC_CHANNEL_A           = 11              -- AN11 (pin_B4)
+const ADC_CHANNEL_B           = 13              -- AN13 (pin_B5)
+const byte ADC_NCHANNEL       = 11              -- max, for use of AN11 and AN13
+const byte ADC_NVREF          = ADC_NO_EXT_VREF -- no external Vref
+const word ADC_RSOURCE        = 5_000           -- 5K potmeters
+const bit ADC_HIGH_RESOLUTION = false          -- low resolution
+include adc                                     -- include ADC library
+adc_init()                                      -- init ADC library
+
+-- ---- PWM setup -------
+pin_CCP1_direction     = output                 -- ) set PWM-pins output!
+pin_CCP2_RC1_direction = output                 -- )
+include pwm_hardware
+
+var byte measure_a                              -- ADC channel A
+var byte measure_b                              -- ADC channel B
+
+forever loop
+
+   measure_a = adc_read_low_res(ADC_CHANNEL_A)  -- read potmeter 1
+   measure_b = adc_read_low_res(ADC_CHANNEL_B)  -- read potmeter 2
+
+   pwm_set_frequency(10000)                     -- PWM frequency
+
+   pwm1_set_dutycycle_lowres(measure_a)         -- max 8 bits!
+   pwm2_set_dutycycle_lowres(measure_b)
+
+end loop
+

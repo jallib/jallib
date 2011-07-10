@@ -1,0 +1,223 @@
+-- Title: CAN bus monitor with Sterm LCD
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- adapted by Eur van Andel, eur@fiwihex.nl
+-- Compiler: 2.4
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- Monitor CAN bus, using can_legacy library.
+-- 
+-- Our monitor can be configured to either participate with ACKs
+-- (normal mode), or operate in 'listen-only' mode.
+-- EUR: I think listen-only mode is best here.
+--
+-- In order for CAN bus hardware to work properly, there must
+-- be at least two active nodes on the bus.
+--
+-- So, in listen-only mode, you will need at least two other nodes
+-- or the CAN bus will not operate.
+
+const byte version_h = 1
+const byte version_l = 06
+
+--1.04 only monitor now, no resending
+-- 1.03 now with 4 lines on LCD, since can_id can be 4 as well
+-- 1.02 modifed to combine bus monitor and PC adapter
+-- 1.01 first version compiled by Eur
+
+include 18f4585
+pragma target clock 20_000_000
+pragma target OSC  HS
+pragma target XINST disabled
+pragma target WDT  disabled
+pragma target LVP  disabled
+pragma target MCLR external
+include delay
+include format
+include print
+
+const byte banner[] = " CAN Listener"
+
+enable_digital_io()
+
+const down  = 0
+const green = 1
+const red   = 2
+
+var bit led      is pin_b1
+var bit led_dir  is pin_b1_direction
+
+led_dir = input
+led = low
+
+const byte LCD_ROWS = 4
+const byte LCD_CHARS = 20
+var bit lcd_sterm_pin is pin_C0
+var bit lcd_sterm_pin_dir is pin_C0_direction
+include lcd_sterm_master
+
+var bit toggle
+var bit got_msg
+var byte a,b,c,d, i, len
+var byte rxdata[8]
+var dword can_id
+
+-- ECAN controller is built-in to 18F2585
+-- but we will operate in 'legacy' mode 0.
+pin_B2 = high -- set CANTX high for recessive level
+pin_B2_direction = output
+pin_B3_direction = input
+include can_legacy
+include can_ascii
+
+can_reset()
+
+-- 125K bps
+can_set_config(4, 0x9E, 3)
+CIOCON = 0x20; -- TXCAN, high when recessive
+
+-- in this example we combine the hardware buffers.
+RXB0CON = 0x04 -- rollover/ double-buffer
+RXB1CON = 0x00 -- all valid frames go to buffer #1.
+
+-- RXB0 will match all msgs by default
+can_set_rxb0_mask(0,0,0,0)
+can_set_rxb0_filter0(0xff, 0xff, 0xff, 0xff)
+can_set_rxb0_filter1(0xff, 0xff, 0xff, 0xff)
+
+-- disable RXB1
+can_set_rxb1_mask(0xff,0xff,0xff,0xff)
+can_set_rxb1_filter2(0xff, 0xff, 0xff, 0xff)
+can_set_rxb1_filter3(0xff, 0xff, 0xff, 0xff)
+can_set_rxb1_filter4(0xff, 0xff, 0xff, 0xff)
+can_set_rxb1_filter5(0xff, 0xff, 0xff, 0xff)
+
+TXB0CON = 0;
+TXB1CON = 0;
+TXB2CON = 0;
+
+CANCON = 0x60; -- listen-only mode
+
+-- start of procedure block --------------------------------------------------
+
+procedure pdec8(volatile byte out device, byte in n) is
+   device = "0" + n / 100
+   n = n % 100
+   
+   device = "0" + n / 10
+   n = n % 10
+   
+   device = "0" + n
+end procedure
+
+procedure leds(byte in x) is
+   if x == down then 
+      led_dir  = input
+   elsif x == red then 
+      led_dir  = output
+      led      = low
+   elsif x == green then
+      led_dir  = output
+      led     = high
+   end if
+end procedure
+
+-- end of procedure block --------------------------------------------------
+
+-- wait for STERM Slave to power-up and initialize.
+for 10 loop
+   leds(green)
+   delay_100ms(2)
+   leds(red)
+   delay_100ms(2)
+end loop
+leds(down)
+
+lcd_home()
+lcd_clear_screen()
+lcd_home()
+print_string(lcd, banner)
+const byte str2[]="Version "
+lcd_cursor_position(2,0)
+print_string(lcd, str2)
+pdec8(lcd,version_h)
+lcd = "."
+pdec8(lcd,version_l)
+
+-- leave banner up for a while
+for 25 loop
+   leds(green)
+   delay_100ms(2)
+   leds(down)
+   delay_100ms(2)
+end loop
+
+-- monitor loop
+forever loop
+   var bit got_msg
+   var bit toggle
+   var byte a,b,c,d, i, len
+   var byte rxdata[8]
+   var byte hb[4]
+   var dword can_id
+   
+   a = CANSTAT
+   b = COMSTAT
+   c = RXB0CON
+   d = RXB1CON
+   -- wiggle the top-left corner
+   lcd_home()
+   if toggle then
+      lcd = "/"
+   else
+      lcd = "-"
+   end if
+   
+   -- now the status line
+   -- lcd_cursor_position(1,0)
+   -- print_byte_hex(lcd, a)
+   -- lcd = " "
+   -- print_byte_hex(lcd, b)
+   -- lcd = " "
+   -- print_byte_hex(lcd, c)
+   -- lcd = " "
+   -- print_byte_hex(lcd, d)
+   -- lcd = " "
+   
+   -- check for a message
+   got_msg = can_receive(1, can_id, rxdata, len)
+   
+   if got_msg then
+      var byte row
+      row = byte(can_id) & 3
+      
+      lcd_cursor_position(row,0)
+      -- print only the low 8-bits of CAN-ID
+      print_byte_hex(lcd, byte(can_id) )
+      if (hb[row] & 1) != 0 then
+         lcd = "/"
+      else
+         lcd = "-"
+      end if
+      hb[row] = hb[row] ^ 1
+      
+      for 8 using i loop
+         var byte v
+         if i < len then
+            print_byte_hex(lcd, rxdata[i])
+         else
+            lcd = " "
+            lcd = " "
+         end if
+      end loop
+   end if
+   
+   toggle = ! toggle 
+   if toggle then
+      leds(green)
+   else
+      leds(down)
+   end if
+end loop
+

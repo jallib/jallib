@@ -1,0 +1,80 @@
+-- Title: random
+-- Author: Joep Suijs, Copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4i
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides a (decent) random function.
+-- The formula is provided by *the* George Marsaglia.
+-- (see http://coding.derkeiler.com/Archive/C_CPP/comp.lang.c/2008-03/msg03691.html) 
+-- --
+-- /* initialize with any 32-bit seed x and any 32-bit y not 0 */
+-- static unsigned long x=2282008, y=362436069;
+-- #define sK ( x=69069*x+123, y^=y<<13, y^=y>>17, y^=y<<5, x+y )
+-- --
+-- function random_byte returns an 8-bit random number
+-- function random_word returns a 16-bit random number
+-- functon dice         returns a number from 1 to 6
+-- --
+-- Note: this library will recreate the same sequence. If this is undesired, assign a
+--       different (non-zero!) startup-value to _rndx and/or _rndy at startup.
+-- --
+-- Note2: If you don't care about random quality and want to save a few processor cycles or
+--        memory bytes, define random_downgrade to select a basic random algorithm.
+--
+--
+-- Sources:
+-- Interface Copyright (C) 2005 Stef Mientki
+--
+
+var volatile dword _rndx =   2282008
+if (defined(random_downgrade) == false) then
+   var volatile dword _rndy = 362436069     
+end if   
+
+-- -----------------------------------------------------------------------------
+-- random_word - return a 16-bit random number
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+function random_word() return word is
+   _rndx = 69069 * _rndx + 123
+
+   if (defined(random_downgrade) == false) then
+      _rndy = _rndy ^ (_rndy << 13)
+      _rndy = _rndy ^ (_rndy >> 17)
+      _rndy = _rndy ^ (_rndy <<  5)      
+      
+      return word(_rndx + _rndy)
+      
+      else 
+
+      return word(_rndx)
+         
+   end if                  
+   
+end function          
+
+-- -----------------------------------------------------------------------------
+-- random_byte - return an 8-bit random number
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+function random_byte() return byte is
+   ;pragma inline
+   return byte(random_word())
+end function      
+
+-- -----------------------------------------------------------------------------
+-- dice - return a random number in the range [1..6]
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+function dice() return byte is
+var byte nr
+  nr = 0
+  while (nr < 1) | (nr > 6) loop
+    nr = (random_byte & 0x07)
+  end loop
+  return nr
+end function
+-- -----------------------------------------------------------------------------

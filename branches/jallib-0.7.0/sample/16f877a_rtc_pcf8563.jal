@@ -1,0 +1,360 @@
+-- ------------------------------------------------------
+-- Title: Example program for RTC PCF8563.jal
+--
+-- Author: Andy Brooker, Copyright (c) 2008..2011, all rights reserved.
+--
+-- Adapted-by: (Joep Suijs)
+--
+-- Compiler: >=2.4m  
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Example program for RTC PCF8563.jal
+--
+-- Sources:
+--
+
+
+-- chip setup
+include 16f877a
+
+pragma target clock 20_000_000                  -- xtal frequency
+pragma target OSC        hs
+pragma target   LVP disabled
+pragma target   WDT disabled
+
+-- generic setup (see releated examples for more details);@jallib section serial
+const serial_hw_baudrate = 9600
+include serial_hardware
+serial_hw_init()
+include print
+include format
+include delay
+
+;Hardware setup.
+;First you have to setup the i2c bus hardware.
+;The first thing to concider is if you can and want to use the MSSP to handle
+;i2c (i2c hardware) or handle i2c in software.
+;The first option - i2c hardware - is possible for most (but not all) PICs with MSSP.
+;The advantage is that this option is generally faster then software i2c.
+;If you choose i2c hardware, you will use the pre-defined i2c clock and i2c data pins. (scl and sda).
+;With i2c in software, pick any free io pin for i2c clock and i2c data.
+;
+;Now you have choosen the pins, you need to setup the hardware.
+;Connect clock, data and ground from the PIC to the i2c slave, place pull-up resistors
+;(e.g. 1k5) from both clock and data to the pic power supply and power the slave device.
+;For more details on this, check the i2c slave datasheet or look on the Internet.
+;
+;Software setup
+;Now you have the hardware ready, you need to configure the software.
+;
+;First, define the pins used, for example on an 16F877a:
+
+var volatile bit i2c_scl is pin_c3
+var volatile bit i2c_scl_direction is pin_c3_direction
+var volatile bit i2c_sda is pin_c4
+var volatile bit i2c_sda_direction is pin_c4_direction
+
+;Second, define the next two constants:
+const word _i2c_bus_speed = 1 ; * 100kHz
+const bit _i2c_level = true ; i2c levels (not SMB)
+
+;And now you can include the 'level0' i2c library.
+;This is the library that creates the i2c signals and comes in two flavors:
+
+;include i2c_software
+;i2c_initialize()
+
+;or
+
+include i2c_hardware
+i2c_initialize()
+;Both libraries have the same interface to send and receive bytes.
+
+pin_d4_direction=output
+alias led is pin_d4
+
+pin_c0_direction=input
+pin_c1_direction=input
+pin_c2_direction=input
+
+alias up is pin_c0
+alias set is pin_c1
+alias down is pin_c2
+
+led = on
+delay_100ms(50)
+led = off
+
+const byte str1[] = "Clock running OK"      -- define strings
+const byte time[] = "Set Time?"
+const byte date[] = "Set Day?"
+
+const byte weekday0[] = "Sunday"    ; 0 0 0
+const byte weekday1[] = "Monday"    ; 0 0 1
+const byte weekday2[] = "Tuesday"   ; 0 1 0
+const byte weekday3[] = "Wednesday" ; 0 1 1
+const byte weekday4[] = "Thursday"  ; 1 0 0
+const byte weekday5[] = "Friday"    ; 1 0 1
+const byte weekday6[] = "Saturday"  ; 1 1 1
+
+const byte month1[] = "January"  ; 0 0 0 0 1
+const byte month2[] = "February" ; 0 0 0 1 0
+const byte month3[] = "March"    ; 0 0 0 1 1
+const byte month4[] = "April"    ; 0 0 1 0 0
+const byte month5[] = "May"      ; 0 0 1 0 1
+const byte month6[] = "June"     ; 0 0 1 1 0
+const byte month7[] = "July"     ; 0 0 1 1 1
+const byte month8[] = "August"   ; 0 1 0 0 0
+const byte month9[] = "September"; 0 1 0 0 1
+const byte month10[] = "October" ; 1 0 0 0 0
+const byte month11[] = "November"; 1 0 0 0 1
+const byte month12[] = "December"; 1 0 0 1 0
+
+const byte extn1[] = "st"
+const byte extn2[] = "nd"
+const byte extn3[] = "rd"
+const byte extn4[] = "th"
+
+var byte i, d1, sec, min, hour, day, weekday, month, year, old_years
+var byte char, char1, number_char
+var byte extn[2]
+var byte month_name[9]
+var bit r, fail
+var byte old_set
+
+const byte pcf8563_address = 0xA2
+const byte years = 20
+include rtc_pcf8563
+
+procedure display_weekday() is
+
+   if weekday == 0 then print_string(serial_hw_data,weekday0) end if
+   if weekday == 1 then print_string(serial_hw_data,weekday1) end if
+   if weekday == 2 then print_string(serial_hw_data,weekday2) end if
+   if weekday == 3 then print_string(serial_hw_data,weekday3) end if
+   if weekday == 4 then print_string(serial_hw_data,weekday4) end if
+   if weekday == 5 then print_string(serial_hw_data,weekday5) end if
+   if weekday == 6 then print_string(serial_hw_data,weekday6) end if
+   serial_hw_data = " "
+
+end procedure
+
+procedure display_day_of_month() is
+   print_byte_dec(serial_hw_data,day)
+   extn = extn4
+   if day == 1 then extn = extn1 end if
+   if day == 21 then extn = extn1 end if
+   if day == 31 then extn = extn1 end if
+   if day == 2 then extn = extn2 end if
+   if day == 22 then extn = extn2 end if
+   if day == 3 then extn = extn3 end if
+   if day == 23 then extn = extn3 end if
+   print_string(serial_hw_data,extn)
+   serial_hw_data = " "
+end procedure
+
+procedure display_month() is
+   if month == 1 then print_string(serial_hw_data,month1) end if
+   if month == 2 then print_string(serial_hw_data,month2) end if
+   if month == 3 then print_string(serial_hw_data,month3) end if
+   if month == 4 then print_string(serial_hw_data,month4) end if
+   if month == 5 then print_string(serial_hw_data,month5) end if
+   if month == 6 then print_string(serial_hw_data,month6) end if
+   if month == 7 then print_string(serial_hw_data,month7) end if
+   if month == 8 then print_string(serial_hw_data,month8) end if
+   if month == 9 then print_string(serial_hw_data,month9) end if
+   if month == 10 then print_string(serial_hw_data,month10) end if
+   if month == 11 then print_string(serial_hw_data,month11) end if
+   if month == 12 then print_string(serial_hw_data,month12) end if
+   serial_hw_data = " "
+end procedure
+
+procedure set_date() is
+
+   old_set = weekday
+   display_weekday()
+   while set loop
+      if !up then weekday = weekday + 1 end if
+      if !down then weekday = weekday - 1 end if
+      delay_100ms(3)
+      if weekday > 6 then weekday = 0 end if
+      if weekday == 255 then weekday = 6 end if
+      if weekday != old_set then
+         old_set = weekday
+         display_weekday()
+      end if
+   end loop
+   pcf8563_register_write(pcf8563_address,0x06,weekday)
+   delay_100ms(10)
+
+   old_set = day
+   display_day_of_month()
+   while set loop
+      if !up then day = day + 1 end if
+      if !down then day = day - 1 end if
+      delay_100ms(3)
+      if day > 31 then day = 1 end if
+      if day == 0 then day = 31 end if
+      if day != old_set then
+         old_set = day
+         display_day_of_month()
+      end if
+   end loop
+   pcf8563_register_write(pcf8563_address,0x05,day)
+   delay_100ms(10)
+
+   old_set = month
+   display_month()
+   while set loop
+      if !up then month = month + 1 end if
+      if !down then month = month - 1 end if
+      delay_100ms(3)
+      if month == 13 then month = 1 end if
+      if month == 0 then month = 12 end if
+      if month != old_set then
+         old_set = month
+         display_month()
+      end if
+   end loop
+   pcf8563_register_write(pcf8563_address,0x07,month)
+   delay_100ms(10)
+   
+   old_set = year
+   print_byte_dec(serial_hw_data,years)
+   print_byte_dec(serial_hw_data,year)
+   serial_hw_data = " "
+   while set loop
+      if !up then year = year + 1 end if
+      if !down then year = year - 1 end if
+      delay_100ms(3)
+      if year == 100 then year = 0 end if
+      if year == 255 then year = 99 end if
+      if year != old_set then
+         old_set = year
+         print_byte_dec(serial_hw_data,year)
+         serial_hw_data = " "
+      end if
+   end loop
+   pcf8563_register_write(pcf8563_address,0x08,year)
+   print_byte_dec(serial_hw_data,years)
+   print_byte_dec(serial_hw_data,year)
+   serial_hw_data = " "
+
+end procedure
+
+procedure set_time() is
+
+   old_set = hour
+   print_byte_dec(serial_hw_data,hour)
+   serial_hw_data = " "
+   delay_100ms(10)
+   while set loop
+      if !up then hour = hour + 1 end if
+      if !down then hour = hour - 1 end if
+      delay_100ms(3)
+      if hour == 24 then hour = 0 end if
+      if hour == 255 then hour = 23 end if
+      if hour != old_set then
+         old_set = hour
+         print_byte_dec(serial_hw_data,hour)
+         serial_hw_data = " "
+      end if
+   end loop
+   pcf8563_register_write(pcf8563_address,0x04,hour)
+   delay_100ms(10)
+   old_set = min
+   print_byte_dec(serial_hw_data,min)
+   serial_hw_data = " "
+   while set loop
+      if !up then min = min + 1 end if
+      if !down then min = min - 1 end if
+      delay_100ms(3)
+      if min == 60 then min = 0 end if
+      if min == 255 then min = 59 end if
+      if min != old_set then
+         old_set = min
+         print_byte_dec(serial_hw_data,min)
+         serial_hw_data = " "
+      end if
+   end loop
+   pcf8563_register_write(pcf8563_address,0x03,min)
+   delay_100ms(10)
+   old_set = sec
+   while set loop
+      if !up | !down then sec = 00 end if
+      delay_100ms(3)
+      format_time_hms(serial_hw_data,hour,min,sec)
+      serial_hw_data = " "
+      if sec != old_set then
+         old_set = sec
+         pcf8563_register_write(pcf8563_address,0x02,00)
+      end if
+   end loop
+end procedure
+
+; read time and date registers
+
+procedure menu() is
+
+   print_string(serial_hw_data, time)
+   serial_hw_data = " "
+   while down loop
+      delay_100ms(3)
+      if !up then
+         set_time()
+         print_string(serial_hw_data, time)
+         serial_hw_data = " "
+      end if
+   end loop
+   delay_100ms(10)
+   
+   print_string(serial_hw_data, date)
+   serial_hw_data = " "
+   while down loop
+      delay_100ms(3)
+      if !up then
+         set_date()
+         print_string(serial_hw_data, date)
+         serial_hw_data = " "
+      end if
+   end loop
+   delay_100ms(10)
+
+;   while down loop
+;       delay_100ms(3)
+;      if !up then set_shack()
+;   end loop
+   
+end procedure
+
+forever loop
+
+   if !set then menu() end if
+   read_pcf8563(pcf8563_address,fail,sec,min,hour,day,month,weekday,year)
+
+   if != fail then
+      print_string(serial_hw_data, str1)
+      serial_hw_data = " "
+   end if
+
+   format_time_hms(serial_hw_data,hour,min,sec)
+   serial_hw_data = " "
+
+   display_weekday()
+   display_day_of_month()
+   display_month()
+
+   print_byte_dec(serial_hw_data,years)
+   print_byte_dec(serial_hw_data,year)
+   serial_hw_data = " "
+   
+   print_crlf(serial_hw_data)
+   led = on
+   delay_100ms(9)
+   led = off
+
+end loop
+
+

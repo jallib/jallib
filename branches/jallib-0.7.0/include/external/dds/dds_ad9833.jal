@@ -1,0 +1,228 @@
+-- Title: Analog Devices AD9833 DDS Chip library
+-- Author: Tijs van Roon@RedSam, Copyright (c) 2010, all rights reserved.
+-- Compiler: >=2.4m
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: 
+--   Analog Devices AD9833 Direct-Digital-Synthesis (DDS) chip library.
+-- --
+--   The library assumes that the AD9833 chip is clocked 25Mhz (MCLK). If not, read the 
+-- last section to know how to change the constants to your needs.
+-- The library is probably a very good start for other Analog DDS chips as well since
+-- all work from the same principal.
+-- --
+-- Setup:
+-- Assure that you are using a 25 Mhz oscillator on the dds chip. Otherwise change
+-- the constant. See below (in the source) on how to do this.
+-- 
+-- First define to which pins the data,clock and fsync pins are connected and 
+-- make those pins outputs: 
+--  > pin_A4_direction = output  
+--  > pin_B7_direction = output  
+--  > pin_B5_direction = output 
+--  > alias dds_fsync_pin is pin_A4
+--  > alias dds_sclk_pin  is pin_B7
+--  > alias dds_sdata_pin is pin_B5
+-- 
+--   Then, include the dds library
+--  > include dds_ad9833
+-- 
+--   Reset the dds chip. This is mandatory to make it operate!
+--  > dds_reset()
+-- 
+--   And then output a frequence with:
+--  > dds_frequency(<freq in hz>)
+-- 
+--   Change the output shape with:
+--  > dds_square();
+--  > dds_sine();
+--  > dds_triangle();
+-- 
+--   Or return to sleep mode:
+--  > dds_sleep();
+-- 
+-- TODO:
+--  * Automaticly calculate the constants from a dds_mclk value.
+--  * The frequency register calculation might be done more efficient and maybe
+--    more correct. The output frequency always seems to be a bit lower than what
+--    is given. (I used to add a 'correction' to the FREQ0 reg, of about 2)
+-- 
+-- Other MASTERCLOCK, Changing the constants:
+--   The DDS chip has 28-bit frequence word. When the clockspeed is known a constant
+-- needs to be calculated which defines how many 'steps' per hz are needed to calculate
+-- the value of the freq0 register.
+--
+-- The constant is calculated as follows:
+--   <freq. output in hz> = (MCLK / 2^28) * Freg 
+-- Therefore: 
+--   Freq0 = (2^28 / MCLK) * <desired frequency output in hz>
+--
+-- Then 2^28 / MCLK is the constant we need.
+-- Since this is fractional number and because at least 6 (preferably more!) digits
+-- are needed for the calculation, the freq0 register is calculated in two steps
+-- which together serve as a fixed point calculation. First the integral part, second
+-- the fractional part. The fractional part is multiplied by 2^24 to gain precision
+-- in the calculation and to make the division easier later (>>24).
+--
+-- Example for 25 Mhz: 
+--    steps_per_hz = 10.7274182; @ 25Mhz
+-- Intergral part:
+--    const dword _dds_const_int = 10;
+-- Fractional part:
+--    = 0.7274182 * 2^24 = 12371824
+--    const dword _dds_const_dec = 12_371_824 
+--
+-- CONFIGURE FREQUENCY CONSTANTS HERE!! (If needed..)
+--------------------------------------------------------------------------------
+-- f = (MCLK / 2^28) * Freg => Freg = (2^28 / MCLK) * f = steps_per_hz * f
+-- steps_per_hz = 10.73741824 @ 25Mhz
+-- const MCLK = 25_000_000
+-- const _dds_const_int = (1<<28) / MCLK
+-- const _dds_const_dec = ((1<<28 / MCLK) - _dds_const_int) << 24
+const dword _dds_const_int = 10
+const dword _dds_const_dec = 12_371_825
+-- STOP
+
+-- Info on the Control Word: ---------------------------------------------------
+-- bit		we use	descr
+-- 15/14	xx		register select: 00 = control, 01 = freq0, 10 = freq1, 11 = phase0&1 (use bit 13
+-- 13		1		B28: 	0 = select LSB/MSB via bit 12, 1 = write MSB&LSB in consecutive write, 
+-- 					B28: 	0 = write phase0, 1 = write phase1
+-- 12		0		HLB: select LSB/MSB: ignored in 28-bit mode
+-- 11		0		FSELECT: 0 = freq0, 1 = freq1
+-- 10		0		PSELECT: 0 = phase0, 1 = phase1
+--  9		0		reserved
+--  8		x		RESET: 1 = reset state, 0 = no reset. 1 on init, 0 on running
+--  7 		0		SLEEP1: 0 = MCLK enabled, 1 = MCLK disabled (device freezes)
+--  6		0		SLEEP12: 0 = DAC on, 1 = DAC disabled
+--  5		x		OPBITEN: 0 = DAC (sine/triangle), 1 = MSB (square) 
+--  4 		0		reserved
+--  3		0		DIV2: 0 = MSB/2, 1 = MSB 
+--  2		0		reserved
+--  1		x		MODE: 0 = Sine, 1 = triangle
+--  0		0		reserved
+--   init:  0b_0010_0001_0000_1000
+--   square:0b_0010_0000_0011_1000
+--   triang:0b_0010_0000_0000_1010
+--   sine:  0b_0010_0000_0000_1000
+--
+-- write freq0:
+--   write 0b_01mm_mmmm_mmmm
+-- CONTROL:                   0b_0010_000R_SDO0_10M0
+const _dds_control_base     = 0b_0010_0000_0000_1000 -- MSB+LSB write, MSB:1
+const _dds_control_reset    = 0b_0000_0001_0000_0000 -- reset
+const _dds_control_sleep    = 0b_0000_0000_1100_0000	-- Sleep on, DAC off
+const _dds_control_square   = 0b_0000_0000_0110_0000 -- DAC off, MSB on
+const _dds_control_sine     = 0b_0000_0000_0000_0000 -- DAC ON, MSB off, Mode=sine
+const _dds_control_triangle = 0b_0000_0000_0000_0010 -- DAC ON, MSB off, Mode=triangle
+--------------------------------------------------------------------------------
+
+-- PRIVATES --------------------------------------------------------------------
+PROCEDURE _dds_send_word(word in msg) IS
+	-- clock high
+	dds_sclk_pin = high
+	-- fsync low, we start data
+	dds_fsync_pin = low
+	
+	var bit mbit at msg : 15
+	-- for each bit
+	for 16 loop
+		-- set bit on sdata
+		dds_sdata_pin = mbit
+
+		-- clock low
+		dds_sclk_pin = low
+		
+		-- since we're waiting a while, we can shift instead of nop
+		msg = msg << 1
+		
+		-- clock high
+		dds_sclk_pin = high
+	end loop
+	
+	-- fsync high
+	dds_fsync_pin = high	
+END PROCEDURE
+
+-- PUBLIC ----------------------------------------------------------------------
+
+--  resets the dds chip and prepares it for operation. In will start in 'sleep' mode.
+PROCEDURE dds_reset() IS
+	PRAGMA inline
+	_dds_send_word(_dds_control_base + _dds_control_reset)
+END PROCEDURE
+
+-- instructs the dds chip to sleep: the dac will go off and the device freezes. 
+-- This reduces power consumption.
+-- Calling dds_squeare/dds_sine/dds_triangle will wake the device up again.
+PROCEDURE dds_sleep() IS
+	PRAGMA inline
+	_dds_send_word(_dds_control_base + _dds_control_sleep)
+END PROCEDURE
+
+-- Puts the device into MSB-mode. The device outputs the value of the MSB bit of the
+-- phase accumulator. Note that this output is not generated by the DAC and the Vpp is 
+-- more than the 0.6V of the other modes which do use the DAC.
+-- The DAC is put to sleep in this mode.
+PROCEDURE dds_square() IS
+	PRAGMA inline
+	_dds_send_word(_dds_control_base + _dds_control_square)
+END PROCEDURE
+
+-- Puts the device into triangle mode. The device uses the phase accumulator to derive
+-- the DAC value.
+PROCEDURE dds_triangle() IS
+	PRAGMA inline
+	_dds_send_word(_dds_control_base + _dds_control_triangle)
+END PROCEDURE
+
+-- Puts the device into sine mode. The device uses the lookup table to output a sine wave.
+PROCEDURE dds_sine() IS
+	PRAGMA inline
+	_dds_send_word(_dds_control_base + _dds_control_sine)
+END PROCEDURE
+
+-- calculates the FREQ0 register word from the input frequency in hz
+-- and sends the two control words containing the FREQ0 register to the device.
+PROCEDURE dds_frequency(dword in hz) IS
+	-- integer part
+	var dword data = hz * _dds_const_int
+
+	-- decimal part: data = data + (hz * _dds_const_dec) >> 24,
+	-- but direct calculation causes overflow (the >>24 is too late)
+	var dword part;
+	var byte n = 0
+	for 4 using n loop
+		part = hz & 0x00_00_00_FF
+		part = part * _dds_const_dec
+		if n == 0 then
+			part = part >> 24 -- >> 24 << 0
+		end if
+		if n == 1 then
+			part = part >> 16 -- >> 24 << 8
+		end if
+		if n == 2 then
+			part = part >> 8  -- >> 24 << 16
+		end if
+		-- n = 3 -> no shift
+		data = data + part
+		hz = hz >> 8
+	end loop
+
+	-- send via 2 freq0 words	
+	var word freqmsg -- only 2+14 bits at a time	
+
+	freqmsg = word(data & 0b_00000000_00000000_00111111_11111111) -- 14 lsb
+	freqmsg = freqmsg | 0b_0100_0000_0000_0000 -- register = FREQ0
+	_dds_send_word(freqmsg)
+	data = data >> 14 -- next 14 bits
+	freqmsg = word(data & 0b_00000000_00000000_00111111_11111111) -- 14 lsb
+	freqmsg = freqmsg | 0b_0100_0000_0000_0000 -- register = FREQ0
+	_dds_send_word(freqmsg)
+	
+	-- done
+END PROCEDURE
+
+

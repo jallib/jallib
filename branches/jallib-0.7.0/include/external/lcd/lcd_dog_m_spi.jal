@@ -1,0 +1,199 @@
+-- ------------------------------------------------------
+-- Title: control for DOG-M (ST7036 based) LCD's
+--
+-- Author: Richard Zengerink,  Copyright (c) 2008, all rights reserved
+-- Adapted-by:
+--
+-- Compiler: =2.4
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+--
+--
+-- Description:
+--    Simple interface for DOG-M (st7036) alphanumeric LCD screens.
+--    Screens can range from 1x8  (1 lines, 8 chars), 2x16 and 3x16.
+--    Uses spi interface SI (data line), CLK (clock) RS (register select) and
+--    if necesery CSB (chip select) (total 4 PIC pins max.).
+--    Expects: - 1 pin for data: 'lcd_data'
+--             - 1 pin for clock: 'lcd_clk'
+--             - 1 pin for register/data select: 'lcd_rs'
+--             - 1 pin for Chip Select 'lcd_csb'  (if necesery, or CSB to gnd on lcd)
+--             - 1 var bit named not_connected to assign to lcd_csb if this pin
+--               is connected to ground.
+--    Directions for use of this library in application programs
+--    (in this sequence):
+--    1. Declare the following constants:
+--          const byte LCD_ROWS     = 2              -- 1, 2 or 3 lines
+--          const byte LCD_CHARS    = 16             -- 8, or 16 chars per line
+--       and variables (aliases):
+--          var   bit not_connected
+--          var   bit  lcd_data      is  pin_A0      -- 1 data pin
+--          var   bit  lcd_clk       is  pin_A1      -- 1 data pin
+--          var   bit  lcd_rs        is  pin_A2      -- 1 data pin
+--          var   bit  lcd_csb       is  pin_A3      -- 1 data pin
+--      or if csb is connected to gnd:
+--          var   bit  lcd_csb       is  not_connected
+-- --
+--    2. Include this library.
+--    and somewhere before actually using the lcd:
+--    3. Set the chosen LCD data and control pins to output:
+--          portA_low_direction = all_output  (in above case this is OK)
+--     OR assign each pin seperatly (when not every pin is on the same port):
+--          pin_A0_direction    = output      (each pin separately assigned)
+--          pin_A1_direction    = output
+--          pin_b0_direction    = output
+--          pin_b1_direction    = output
+--    4. Call lcd_init() to initialize the lcd controller.
+--    Above is an example for a 2x16 LCD:
+-- --
+--    Available functions for application programs:
+-- --
+-- --
+--      _lcd_write(<byte>)                     ends byte from value to
+--                                             register of the lcd  and
+--                                             shift cursor position 1 right
+-- --
+--      _lcd_write_data(<byte>)                write data to lcd using
+--                                             _lcd_write(<byte>) lcd_rs high
+-- --
+--      _lcd_write_data(<byte>)                write command to lcd using
+--                                             _lcd_write(<byte>) lcd_rs low
+-- --
+--      lcd_init()                             initialize the LCD controller
+-- --
+--
+-- Dependencies: delay.jal
+--
+-- -----------------------------------------------------------------------------
+
+--
+-- Notes:
+--
+-- this type can be attached to your microcontroller serial with only 3 or
+-- 4 lines in total
+-- example type name: EA DOG-M   http://www.lcd-module.com/products/dog.html
+--
+--
+include delay                    --  include standard delay lib
+--
+--
+--
+-- -----------------------------------------------------------------------------
+-- delay's necessary for initialisation and some commands
+-- -----------------------------------------------------------------------------
+const lcd_normal_delay    = 3   -- delay in 10 usec units     = 30uS
+const lcd_long_delay      = 120 -- delay in 10 usec units     = 1,2mS
+-- -----------------------------------------------------------------------------
+--
+--
+-- ----------------------------------------------------------------------------
+-- sends byte from value to register of the lcd
+-- (this procedure is only used inside this file)
+-- ----------------------------------------------------------------------------
+procedure  _lcd_write(byte in value) is
+   pragma inline
+   lcd_csb = low                      		-- select lcd (wake him up)
+      for 8 loop                      		-- loop for sending serial information
+          var bit bit7 at value : 7
+          lcd_data = bit7
+          lcd_clk = high              		-- clock the data
+          asm nop                     		-- delay (> 400 ns depending on your xtal)
+          lcd_clk = low
+          value = value << 1            	-- shift data to MSB
+      end loop
+    delay_10us(lcd_normal_delay)      		-- required normal delay
+    lcd_csb = low                    		-- unselect lcd (let him sleep)
+end procedure
+
+
+
+-- ----------------------------------------------------------------------------
+-- sends data byte in value to LCD
+-- for slow commands an extra delay should be added --
+-- ----------------------------------------------------------------------------
+procedure _lcd_write_data(byte in value) is
+    lcd_rs = high 							-- select instruction
+    _lcd_write( value )     				-- output byte
+end procedure 
+--------------------------------------------------------------------------- 
+
+
+-- ---------------------------------------------------------------------------- 
+-- sends command byte in value to LCD 
+-- for slow commands an extra delay should be added 
+-- 
+-- ---------------------------------------------------------------------------- 
+procedure _lcd_write_command(byte in value) is ;
+   pragma inline
+   lcd_rs = low                             -- select instruction
+   _lcd_write( value )                      -- output byte
+
+   if value < 4 then                			-- "clear display' and 'return home'
+      delay_10us( lcd_long_delay ) 			-- require extra delay
+   end if
+
+end procedure 
+-- ----------------------------------------------------------------------------  
+
+
+
+-- now we defined the interface, add the API 
+include lcd_hd44780_common 
+
+
+-- ----------------------------------------------------------------------------
+-- Initialize display in 1 and 2 or 3 line, display on, no cursor shown an cursor
+-- moves to the right.
+-- ----------------------------------------------------------------------------
+procedure lcd_init() is
+    pragma inline
+    delay_1ms( 45 )                    	-- powerup delay for 45mS
+
+       if LCD_ROWS == 1 then
+          _lcd_write_command( 0b_0011_0000 ) -- function set lcd port
+          delay_10us ( 3 )                       -- extra delay
+          _lcd_write_command( 0b_0011_0001 ) -- function set lcd port
+          delay_10us ( 3 )                      -- extra delay
+          _lcd_write_command( 0b_0001_0100 ) -- BIAS
+          delay_10us ( 3 )                      -- extra delay
+
+       end if
+
+       if LCD_ROWS == 2 then
+          _lcd_write_command( 0b_0011_1000 ) -- function set lcd port
+          delay_10us ( 3 )                       -- extra delay
+          _lcd_write_command( 0b_0011_1001 ) -- function set lcd port
+          delay_10us ( 3 )                      -- extra delay
+          _lcd_write_command( 0b_0001_0100 ) -- BIAS
+          delay_10us ( 3 )                      -- extra delay
+
+       end if
+
+       if LCD_ROWS == 3 then
+          _lcd_write_command( 0b_0011_1000 ) -- function set lcd port
+          delay_10us ( 3 )                       -- extra delay
+          _lcd_write_command( 0b_0011_1001 ) -- function set lcd port
+          delay_10us ( 3 )                      -- extra delay
+          _lcd_write_command( 0b_0001_0101 ) -- BIAS
+          delay_10us ( 3 )                      -- extra delay
+       end if
+
+       _lcd_write_command( 0b_0111_0000 ) -- contrast set
+       delay_10us( 3)                    -- extra delay
+       _lcd_write_command( 0b_0101_1110 ) -- power/ICON/contrast control
+       delay_10us( 3 )
+       _lcd_write_command( 0b_0110_1010 ) -- follower control
+       delay_1ms( 210 )                   -- extra delay to let display settle
+       _lcd_write_command( 0b_0011_1000 ) -- function set lcd port
+       delay_10us ( 3 )                      -- extra delay
+       _lcd_write_command( 0b_0000_1100 )-- display on/off control
+  	   delay_10us( 3 )
+       _lcd_write_command( 0b_0000_0001 )-- clear display
+  	   delay_10us( 40 )
+       _lcd_write_command( 0b_0000_0110 )-- entry mode set, cursor moves to right
+  	   delay_10us( 40 )
+end procedure
+-- ----------------------------------------------------------------------------
+

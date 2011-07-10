@@ -1,0 +1,103 @@
+-- Title: Sample program to show usage of rtc_isr_tmr0
+-- Author: Eur van Andel, Copyright (c) 2008, all rights reserved.
+-- Adapted-by: Albert Faber, Rob Hamerling
+-- Compiler: 2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Sources:  http://www.romanblack.com/one_sec.htm, http://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+--
+-- Description: This program shows how to get Real Time in a PIC
+--
+-- Notes: there is no way to set the time in this program, other than before compiling
+-- for more options, including automatic initialisation and timesetting, see sample_rtc_timeset.jal
+--
+-- ------------------- SELECT PIC ----------------------------
+include 16f886
+
+pragma target clock      4_000_000          -- oscillator speed
+pragma target OSC       INTOSC_NOCLKOUT     -- internal oscillator
+pragma target WDT       disabled            -- no watchdog, please
+pragma target LVP       disabled            -- no low voltage programming
+
+enable_digital_io()                         -- no analog pins used in this sample
+
+T0CON_T0CS = 0                               -- internal instruction cycle clock
+T0CON_PSA = 1                                -- prescaler assigned to Timer0 module
+T0CON_T0PS = 0                               -- no prescaling
+
+OSCCON_IRCF = 0b110                         -- internal oscillator: 4 MHz
+OSCCON_SCS  = 0                             -- config bits determine clock source
+
+-- ------------------------ LIBRARIES ------------------------
+
+include rtc_isr_tmr0
+
+var byte minutes  = 14                      -- seconds defined in RTC lib
+var byte hours    = 20                      -- arbitrary time
+
+var byte date     = 24
+var byte month    = 10
+var word year     = 2009                    -- today
+
+include calendar                            -- 60/24/27..31/12 range limits
+
+const byte  LCD_ROWS = 4
+const byte  LCD_CHARS = 20
+alias lcd_rs           is pin_c4            -- lcd command/data select.
+alias lcd_en           is pin_c5            -- lcd data trigger
+alias lcd_d4           is pin_b0
+alias lcd_d5           is pin_b1            -- lcd data nibble
+alias lcd_d6           is pin_b2
+alias lcd_d7           is pin_b3
+portB_low_direction    = all_output
+pin_C4_direction       = output
+pin_C5_direction       = output
+include lcd_hd44780_4                       -- lcd library with 4 data lines
+lcd_init()
+
+include print                               -- nice formatted output
+include format                              -- more nice formatting
+
+-- -------------------------- START PROGRAM -----------------
+
+INTCON_TMR0IE = on                          -- if your PIC freezes, move these lines
+INTCON_GIE = on                             -- to see if the ISR causes trouble
+
+const byte str1[] = "Time RTC sample "
+const byte str2[] = "Fosc "
+const byte str3[] = " Hz"
+
+lcd_clear_screen()
+lcd_cursor_position(0,0)                    -- line 1
+print_string(lcd, str1)
+lcd_cursor_position(1,0)                    -- line 2
+print_string(lcd, str2)
+print_dword_dec(lcd,target_clock)
+print_string(lcd, str3)
+
+forever loop
+   lcd_cursor_position(2,0)                 -- line 3
+   print_byte_dec(lcd, date)
+   lcd = "-"
+   print_byte_dec(lcd, month)
+   lcd = "-"
+   print_word_dec(lcd, year)
+   lcd = " "
+   if seconds > 59 then                     -- once every minute
+      calendar()
+   end if
+   format_time_hms(lcd, hours, minutes, seconds)
+
+   lcd_cursor_position(3,0)                 -- line 4
+   if ((seconds & 0b0000_0001) == 0) then
+      lcd = "*"                             -- on
+   else
+      lcd = " "                             -- off
+   end if
+end loop
+
+
+
+

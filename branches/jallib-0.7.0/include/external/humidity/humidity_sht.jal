@@ -1,0 +1,365 @@
+-- Title: SHTxx, for Sensirion humidity and temperature sensors
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2008
+-- Compiler: =2.4h
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: http://www.sensirion.com/en/01_humidity_sensors/00_humidity_sensors.htm
+--
+-- Description: The Sensirion SHT1x/SHT7x is a single chip relative humidity and
+-- temperature multi sensor module comprising a calibrated digital output.
+-- It comes in 5 flavors, with different accuracy and package style:
+-- sensor   hum acc  temp acc    package
+-- SHT10    4.5%     0.5C        SMD (LCC)
+-- SHT11    3.0%     0.4C        SMD (LCC) 
+-- SHT15    2.0%     0.3C        SMD (LCC) 
+-- SHT71    3.0%     0.4C        4-pin single-in-line 
+-- SHT75    1.8%     0.3C        4-pin single-in-line 
+-- all consist of the same silicon: the less accurate models are sold cheaper.
+-- My experience is mixed: I've seen some consistent +2C offset in temperature,
+-- but good humidty measurements. The 4-pin package breaks when you touch it.
+-- The SMD package has naked tracks underneath: you can't route under it!
+-- If exposed to >95% RH for 10 minutes, these sensors will go beserk and need 
+-- <60% RH for an hour to recover. You might try heating them. 
+-- protocol is close to I2C, but not the same. Remember to pull up DATA.
+-- 0b0000_0011  starts temperature measurement
+-- 0b0000_0101  starts humidity measurement
+-- device returns three bytes: MSB, LSB and CRC
+-- this library doesn't perform any CRC check
+--
+-- Declarations: 
+-- var bit SHT_SCK         -- output pin, clock signal to sensor
+-- var bit SHT_DATA        -- data pin, data flows in both directions
+-- var bit SHT_DATA_DIR    -- direction of data pin
+--
+-- Still to do: switching heating on/off
+
+include delay
+
+
+-- ---------------------- COMMUNICATION ROUTINES ----------------------
+
+-- send start
+--       _____         ________ 
+-- DATA:      |_______| 
+--           ___     ___ 
+-- SCK : ___|   |___|   |______ 
+--
+procedure sht_start() is
+   SHT_DATA_DIR = output
+   SHT_DATA = high 
+   delay_1us()
+   SHT_SCK = high    -- \
+   delay_1us()       --  \
+   SHT_DATA = low    --   \
+   delay_1us()       --    \
+   SHT_SCK = low     --      required sequence
+   delay_1us()       --    /
+   SHT_SCK = high    --   /
+   delay_1us()       --  /
+   SHT_DATA = high   -- /
+   delay_1us()
+   SHT_SCK = low
+end procedure
+
+
+-- send one byte to the SHT
+procedure sht_put_data(byte in x) is
+   var bit b at x: 7
+   SHT_DATA_DIR = output
+   for 8 loop
+      SHT_DATA = b
+      SHT_SCK = high
+      delay_1us()
+      SHT_SCK = low
+      delay_1us()
+      x = x << 1
+   end loop
+end procedure 
+
+-- receive one byte from the SHT
+procedure sht_get_data(byte out x) is
+   var bit b at x: 0
+   SHT_DATA_DIR = input
+   delay_1us()
+   for 8 loop
+      x = x << 1           -- 8 bits, but only 7 shifts
+      b = SHT_DATA 
+      SHT_SCK = high
+      delay_1us()
+      SHT_SCK = low
+      delay_1us()
+   end loop
+end procedure 
+
+-- pretend to wait for ACK
+procedure sht_wait_ack() is
+   SHT_DATA_DIR = input
+   SHT_SCK = high 
+-- if !data then loop         -- don't touch this. if no reply
+-- end loop                   -- routine could become stuck here
+   delay_1us()
+   SHT_SCK = low
+   delay_1us()
+   SHT_DATA_DIR = output
+   SHT_DATA = high
+end procedure
+
+-- send ACK
+procedure sht_put_ack() is
+   SHT_DATA_DIR = output
+   SHT_DATA  = low
+   delay_1us()
+   SHT_SCK = high 
+   delay_1us()
+   SHT_SCK = low
+   delay_1us()
+end procedure
+
+-- reset SHT
+procedure sht_reset() is
+   sht_start()
+   sht_put_data(0b000_11110)   -- soft reset of SHT
+   sht_wait_ack
+end procedure
+
+-- reset SHT interface, must be followed with sht_start and command
+procedure sht_conn_reset() is
+   SHT_DATA = high   
+   for 9 loop
+      SHT_SCK = high
+      delay_1us()
+      SHT_SCK = low
+      delay_1us()
+   end loop
+end procedure
+
+
+-- ------------------- HUMIDITY ROUTINES -------------------------------
+
+-- read raw 12-bit humidity from SHT
+-- default value of resolution bit is 12 bit RH
+-- SHT takes 55 ms for measurement @ 12 bits
+-- we will wait 70 ms
+-- SHT may only be switched on for 10% of the time because of self-heating
+-- so this measurement can only happen every 500ms
+procedure read_raw_hum_sht(byte out MSB, byte out LSB, byte out CRC) is
+   var byte counter = 8
+   sht_start()
+   sht_put_data(0b000_00101)   -- start humidity measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
+
+   while ((SHT_DATA == high)  & (counter > 1)) loop  
+      delay_1ms(10)
+      counter = counter - 1
+   end loop
+
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
+   SHT_DATA = high         -- no ack, end transmission
+   delay_1us()
+   SHT_SCK = high
+   delay_1us()
+   SHT_SCK = low
+end procedure
+
+
+-- read humidity from SHT, result in byte precision 1%RH
+-- SHT may only be switched on for 10% of the time because of self-heating
+-- so this measurement can only happen every 500ms
+procedure read_hum_sht(byte out hum) is
+   var byte MSB, LSB, CRC
+   var dword tmp 
+   var byte counter = 8
+   sht_start()
+   sht_put_data(0b000_00101)   -- start humidity measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
+
+   while ((SHT_DATA == high)  & (counter > 1)) loop  
+      delay_1ms(10)
+      counter = counter - 1
+   end loop
+
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
+   SHT_DATA = high         -- no ack, end transmission
+   delay_1us()
+   SHT_SCK = high
+   delay_1us()
+   SHT_SCK = low
+   
+   tmp = MSB
+   tmp = tmp *  256 + LSB
+   tmp = -4 + ((tmp * 10) / 247) - (tmp * tmp / 357143)     -- 3 digit precision
+   hum = byte (tmp)
+      
+end procedure
+
+-- read humidity from SHT, result in word precision 0.01%RH
+-- SHT may only be switched on for 10% of the time because of self-heating
+-- so this measurement can only happen every 500ms
+procedure read_hum_word_sht(word out hum) is
+   var byte MSB, LSB, CRC
+   var dword tmp 
+   var byte counter = 8
+   sht_start()
+   sht_put_data(0b000_00101)   -- start humidity measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
+
+   while ((SHT_DATA == high)  & (counter > 1)) loop  
+      delay_1ms(10)
+      counter = counter - 1
+   end loop
+
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
+   SHT_DATA = high         -- no ack, end transmission
+   delay_1us()
+   SHT_SCK = high
+   delay_1us()
+   SHT_SCK = low
+   
+   tmp = MSB
+   tmp = tmp *  256 + LSB
+   tmp = -400 + ((tmp * 10000) / 2469) - (tmp * tmp /3571)  -- 4-digit precision
+   hum = word (tmp)
+      
+end procedure
+
+
+-- --------------------------- TEMPERATURE ROUTINES ----------------------------
+
+-- read raw 14-bit temperature from SHT
+-- default value of resolution bit is 14 bit temperature
+-- SHT takes 320 ms for measurement @ 14 bits
+-- we will wait 400 ms
+-- SHT may only be switched on for 10% of the time because of self-heating
+-- so this measurement can only happen every two seconds!
+procedure read_raw_temp_sht(byte out MSB, byte out LSB, byte out CRC) is
+   var byte counter = 41
+   sht_start()
+   sht_put_data(0b000_00011)   -- start temperature measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
+
+   while (SHT_DATA == high)  & (counter > 1) loop  
+      delay_1ms(10)
+      counter = counter - 1
+   end loop
+
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
+   SHT_DATA = high         -- no ack, end transmission
+   delay_1us()
+   SHT_SCK = high
+   delay_1us()
+   SHT_SCK = low
+end procedure
+
+
+-- read Celcius temperature from SHT
+-- with 1 C resolution, result is sbyte type, so -126...+127C
+-- SHT takes 320 ms for measurement @ 14 bits
+-- we will wait 400 ms
+-- SHT may only be switched on for 10% of the time because of self-heating
+-- so this measurement can only happen every four seconds!
+procedure read_celsius_temp_sht(sbyte out celsius) is
+   var byte MSB, LSB, CRC
+   var sdword tmp 
+
+   var byte counter = 32
+   sht_start()
+   sht_put_data(0b000_00011)   -- start temperature measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
+
+   while (SHT_DATA == high)  & (counter > 1) loop  
+      delay_1ms(10)
+      counter = counter - 1
+   end loop
+
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
+   SHT_DATA = high         -- no ack, end transmission
+   delay_1us()
+   SHT_SCK = high
+   delay_1us()
+   SHT_SCK = low
+
+-- equation is T = -40.1 + 14_bits/100
+--  we'll do -401 + 14 bits/10 and divide by ten after that
+   
+   tmp = sword(MSB)
+   tmp = tmp *  256 + LSB
+   tmp = -401 + (tmp/10) 
+   tmp = tmp /10 
+   celsius = sbyte(tmp)
+      
+end procedure
+
+
+-- read Celcius temperature from SHT
+-- with 0.01 C resolution, result is sword type, so -327.68 .. +327.68 C
+-- SHT takes 320 ms for measurement @ 14 bits
+-- we will wait 400 ms
+-- SHT may only be switched on for 10% of the time because of self-heating
+-- so this measurement can only happen every four seconds!
+procedure read_centicelsius_temp_sht(sword out centicelsius) is
+   var byte MSB, LSB, CRC
+   var sdword tmp 
+
+   var byte counter = 32
+   sht_start()
+   sht_put_data(0b000_00011)   -- start temperature measurement
+   sht_wait_ack
+   SHT_DATA_DIR = input
+
+   while (SHT_DATA == high)  & (counter > 1) loop  
+      delay_1ms(10)
+      counter = counter - 1
+   end loop
+
+   sht_get_data( MSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( LSB )      -- read SHT_DATA
+   sht_put_ack()
+   sht_get_data( CRC )      -- read SHT_DATA
+   SHT_DATA_DIR = output
+   SHT_DATA = high         -- no ack, end transmission
+   delay_1us()
+   SHT_SCK = high
+   delay_1us()
+   SHT_SCK = low
+   
+-- equation is T = -40.1 + 0.01 * 14_bits
+--  we'll do -4010 + 14 bits and place the decimal point while printing
+   
+   centicelsius = sword(MSB) 
+   centicelsius = centicelsius *  256 + LSB 
+   centicelsius = -4010 + centicelsius             
+      
+end procedure

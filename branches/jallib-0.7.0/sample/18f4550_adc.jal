@@ -1,0 +1,112 @@
+-- Title: Sample showing how to use adc_library
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by: Rob Hamerling
+-- Compiler: >=2.4k
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this program shows how to use adc library. It regurlarly performs an
+-- Analog-to-Digital Conversion, on pin RA0/AN0 and sends the result through serial.
+--
+-- Notes: as output, this sample produces characters on a serial link, and uses delay library.
+-- First be sure you're able to run serial and delay tests.
+--
+--
+-- Few words about diagram: this program performs ADC on channels AN0, so you can measure
+-- any voltage source connected to these channels (no more than 5V please).
+-- To test the whole, you can use a voltage divider:
+--
+--     5V
+--     |
+--     Z
+--     Z R1        -----------
+--     Z           |
+--     |------ AN0-|   PIC
+--     Z           |
+--     Z R2        |
+--     Z
+--     |
+--    GND
+--
+--
+--    - R1=1K, R2=1K: you should get ~127/~512 as ADC value (low/high)
+--       - R1=1K, R2=2.2K: you should get ~175/~704 as ADC value (low/high)
+--
+
+include 18f4550
+pragma target clock 48_000_000
+-- magical statements: using a 20MHz Xtal, you can run @48MHz !
+pragma target PLLDIV    P5
+pragma target CPUDIV    P2
+pragma target USBPLL    F48MHZ
+pragma target OSC       HS_PLL
+
+pragma target WDT  disabled        -- no watchdog
+pragma target LVP  disabled        -- no Low Voltage Programming
+pragma target MCLR external        -- reset externally
+
+-- We'll start to set all pins as digital
+-- then, using ADC lib, we'll configure needed
+-- ones as analog.
+enable_digital_io()
+
+include print
+include delay
+
+-- ok, now setup serial, we'll use this
+-- to get ADC measures
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+
+
+-- ok, now let's configure ADC
+-- we want to measure using high resolution
+-- (that's our choice, we could use low resolution as well)
+const bit ADC_HIGH_RESOLUTION = low
+-- we said we want 1 analog channel...
+const byte ADC_NCHANNEL = 1
+-- and no external voltage reference
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+-- We want the fastest possible ADC timing, so we specify here the
+-- minimum TAD value for this chip, which is 0.8 microseconds.
+-- (see datasheet 39632 parameter 130 in table 28-29)
+-- We don't care setting the actual maximum Tad value.
+const ADC_MIN_TAD = 8          -- see documentation of adc_clock.jal
+-- Note: this is the default with the newest ADC library, but it
+--       won't harm to specify this constant here!
+-- now we can include the library
+include adc
+-- and run the initialization step
+adc_init()
+
+
+-- will periodically send those chars
+var word wmeasure
+var byte bmeasure
+const byte wprefix[] = "Result in high resolution: "
+const byte bprefix[] = "Result in low  resolution: "
+forever loop
+   -- get ADC result, on channel 0
+   -- this means we're currently reading on pin AN0 !
+
+   -- access results in high resolution
+   wmeasure = adc_read(0)
+   -- wmeasure contains the result, as a word (byte*2)
+   print_string(serial_hw_data,wprefix)
+   print_word_dec(serial_hw_data,wmeasure)
+   print_crlf(serial_hw_data)
+
+   -- though we are in high resolution mode,
+   -- we can still get a result as a byte, as though
+   -- it were in low resolution.
+   bmeasure = adc_read_low_res(0)
+   print_string(serial_hw_data,bprefix)
+   print_byte_dec(serial_hw_data,bmeasure)
+   print_crlf(serial_hw_data)
+
+   -- and sleep a litte to prevent flooding serial...
+   delay_1ms(200)
+end loop
+

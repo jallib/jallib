@@ -1,0 +1,175 @@
+-- Title: HTTP - Hypertext Transfer Protocol Server
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: HTTP server for serving web pages.
+--
+-- Sources:
+-- http://www.faqs.org/rfcs/rfc793.html
+-- http://www.8051projects.net/out.php?link=http://www.sics.se/~adam/uip/index.php/Main_Page
+--
+-- Web pages must be < 1kb. I have not tested larger http transfers.
+--
+
+include strings
+
+var byte http_command[8]
+var byte http_requested_file_name[HTTP_FILE_NAME_LENGHT]
+var word webpage_size = 0
+
+const byte HTTP_STRING_POST[] = "POST"
+const byte HTTP_STRING_GET[] = "GET"
+
+-- start of header set by lib.
+const byte HTTP_LIB_HEADER[] = {
+-- "HTTP/1.1 200 OK\r\n"
+0x48, 0x54, 0x54, 0x50, 0x2f, 0x31, 0x2e, 0x31, 0x20, 0x32, 0x30, 0x30, 0x20, 0x4f, 0x4b, 0x0d, 0x0a
+
+-- "Content-Length: 8\r\n"
+,0x43, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x2d, 0x4c, 0x65, 0x6e, 0x67, 0x74, 0x68, 0x3a, 0x20, "0", "0", "0", "0", "0", "0", "8", 0x0d, 0x0a
+
+}
+
+--37
+
+const byte HTTP_HEADER_OUT_SIZE = count(HTTP_HEADER) + count(HTTP_LIB_HEADER)
+var word _http_header_in_length
+var word http_data_size
+
+var word http_file_size
+
+-- create prototypes for callback procedures
+if defined(HTTP_USE_GET_CALLBACK) then
+   procedure http_callback(byte in socket,byte in http_file_name[])
+end if
+
+--------------------------------------------------------------------------------
+-- Fake array http_data[] to read/write to TCP Data space.
+--------------------------------------------------------------------------------
+function http_data'get(word in address) return byte is
+   return tcp_data[address + _http_header_in_length]
+end function
+--
+procedure http_data'put(word in address, byte in data) is
+   tcp_data[address + HTTP_HEADER_OUT_SIZE] = data
+end procedure
+
+
+procedure http_server(byte in socket, word in data_size) is
+   if tcp_socket_local_port[socket] == HTTP_SERVER_PORT then
+
+      -- get http command such as GET, PUT
+      var byte step
+      for 10 using step loop
+         http_command[step] = tcp_data[step]
+         if tcp_data[step] == " " then
+            exit loop
+         end if
+      end loop
+
+      -- if http POST command
+      if string_compare_mid(http_command,0,HTTP_STRING_POST) then
+
+      
+         -- get post data
+         var word down_step = data_size
+         while tcp_data[down_step] != 0x0A loop -- step down till beginning of post data
+            down_step = down_step - 1
+         end loop
+         
+         -- set incomming header size (needed for http_data'get)
+         _http_header_in_length = down_step + 1
+         
+         -- get size of post data
+         http_data_size = data_size - down_step - 1
+      end if
+
+      -- clear file name
+      var word step2
+      for count(http_requested_file_name) using step2 loop
+         http_requested_file_name[step2] = " "
+      end loop
+
+      -- get file name
+      step2 = 0
+      for count(http_requested_file_name) using step2 loop
+         step = step + 1
+         if tcp_data[step] == " " then
+            exit loop
+         end if
+         http_requested_file_name[step2] = tcp_data[step]
+         ;serial_data = http_requested_file_name[step2]
+      end loop
+
+      -- set http header data
+      ;var word step
+      for count(HTTP_LIB_HEADER) using step loop
+         tcp_data[step] = HTTP_LIB_HEADER[step]
+      end loop
+
+      -- run callback so user can send set webpage data
+      http_callback(socket,http_requested_file_name)
+
+      -- set http header data
+      for count(HTTP_HEADER) using step2 loop
+         tcp_data[step] = HTTP_HEADER[step2]
+         STEP = STEP + 1
+      end loop
+
+      -- put data size into the http header data as an ascii number.
+      -- maybe should use format.jal instead (didn't work for me)
+      var byte step3 = 0
+      var byte num_string[7]
+      --
+      for count(num_string) using step loop
+         num_string[step] = " "
+      end loop
+      --
+      procedure _size'put(byte in data) is
+         num_string[step3] = data
+         step3 = step3 + 1
+      end procedure
+      print_word_dec(_size,webpage_size)
+      --
+      tcp_data[33] = num_string[0]
+      tcp_data[34] = num_string[1]
+      tcp_data[35] = num_string[2]
+      tcp_data[36] = num_string[3]
+      tcp_data[37] = num_string[4]
+      tcp_data[38] = num_string[5]
+      tcp_data[39] = num_string[6]
+
+      -- send reply data
+      ;tcp_send_ack(socket)
+      tcp_send_ack(socket, count(HTTP_HEADER) + count(HTTP_LIB_HEADER) + webpage_size)
+
+      tcp_socket_remove(socket) -- delete the socket
+
+;     -- display entire packet out (for debugging)
+;      for 500 using step loop
+;         ;serial_data = network_data[step]
+;         print_byte_hex(serial_data,network_data[step])
+;         serial_data = " "
+;      end loop
+   
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Check file name requested by client
+--------------------------------------------------------------------------------
+function http_is_filename(byte in file_name[]) return bit is
+   if string_compare_mid(http_requested_file_name,0,file_name) then
+      if http_requested_file_name[count(file_name) + 1] == " " then
+         return 1
+      else
+         return 0
+      end if
+   else
+      return 0
+   end if
+end function

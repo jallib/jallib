@@ -1,0 +1,191 @@
+-- ------------------------------------------------------
+-- Title:  DS1307 - Real Time Clock
+--
+-- Author: Enzo SERAFINI, Copyright (c) 2011, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- This sample show an example to setup hours, minutes and seconds and display on LCD
+--
+-- Sources:  Jean-Bernard - DS1307 lib.
+--
+-- Notes:
+--  - File creation date/time: 13 Jun 2011.
+--
+-- ------------------------------------------------------
+
+include 16f877a                    -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+-- (unspecified configuration bits may cause a different frequency!)
+pragma target clock 20_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC      HS               -- HS crystal or resonator
+pragma target WDT      disabled     -- no watchdog
+pragma target DEBUG    disabled     -- no debugging
+pragma target LVP      disabled     -- no Low Voltage Programming
+-- These configuration bit settings are only a selection, sufficient for
+-- this program, but other programs may need more or different settings.
+--
+enable_digital_io()                -- make all pins digital I/O
+
+
+-- lcd config
+const byte LCD_ROWS    =  4           -- LCD with 4 lines
+const byte LCD_CHARS   =  20          -- and 20 characters per line
+--
+alias     lcd_en       is pin_D4      -- data trigger
+alias     lcd_rs       is pin_D5      -- command/data select.
+pin_D4_direction       = output
+pin_D5_direction       = output
+--
+alias     lcd_d4       is pin_D0
+alias     lcd_d5       is pin_D1
+alias     lcd_d6       is pin_D2
+alias     lcd_d7       is pin_D3
+--
+pin_D0_direction       = output
+pin_D1_direction       = output
+pin_D2_direction       = output
+pin_D3_direction       = output
+--
+include lcd_hd44780_4
+--
+lcd_init()                            -- init the lcd controller
+
+-- i2c config
+alias i2c_scl            is pin_c3
+alias i2c_scl_direction  is pin_c3_direction
+alias i2c_sda            is pin_c4
+alias i2c_sda_direction  is pin_c4_direction
+--
+const word _i2c_bus_speed = 1 ; * 100kHz
+const bit _i2c_level = true   ; i2c levels (not SMB)
+
+include i2c_hardware    -- include i2c hardware lib
+
+i2c_initialize()
+
+include delay           -- include delay lib
+include print           -- include print lib
+include format          -- include format lib
+
+include rtc_ds1307          -- include ds1307 rtc lib
+
+ds1307_init()
+
+-- define strings
+
+var byte str1[] = "Set Time"
+var byte str2[] = "hours"
+var byte str3[] = "minutes"
+var byte str4[] = "seconds"
+var byte str5[] = "RTC :"
+
+-- define variables
+
+var byte h , m , s
+
+-- define pins
+
+alias     sw1       is pin_A0
+alias     sw2       is pin_A1
+alias     sw3       is pin_A2
+--
+pin_A0_direction       = input
+pin_A1_direction       = input
+pin_A2_direction       = input
+
+
+-- Setup hours, minutes and seconds
+
+lcd_cursor_position( 0,0 )
+print_string(lcd,str1)                        -- Display "Set Time"
+delay_100ms(10)
+h = 0
+while sw1 != high loop                        -- Setup hours
+   
+   if sw2 == high then h = h + 1  end if
+   while sw2 == high loop
+      delay_1ms(10)
+   end loop
+   if sw3 == high then h = h - 1  end if
+   while sw3 == high loop
+      delay_1ms(10)
+   end loop
+   
+   if h == 24 then h = 0 end if
+   if h == 255 then h = 23 end if
+   lcd_cursor_position( 1,0 )
+   print_string(lcd,str2)                    -- Display "hours"
+   lcd_cursor_position( 1,9 )
+   format_byte_dec(lcd,h,2,0)               -- Display set hours
+end loop
+delay_100ms(10)
+m = 0
+while sw1 != high loop                        -- Setup minutes
+   if sw2 == high then m = m + 1  end if
+   while sw2 == high loop
+      delay_1ms(10)
+   end loop
+   if sw3 == high then m = m - 1  end if
+   while sw3 == high loop
+      delay_1ms(10)
+   end loop
+   
+   if m == 60 then m = 0 end if
+   if m == 255 then m = 59 end if
+   lcd_cursor_position( 2,0 )
+   print_string(lcd,str3)                    -- Display "minutes"
+   lcd_cursor_position( 2,9 )
+   format_byte_dec(lcd,m,2,0)               -- Display set minutes
+end loop
+delay_100ms(10)
+s = 0
+while sw1 != high loop                        -- Setup seconds
+   if sw2 == high then s = s + 1  end if
+   while sw2 == high loop
+      delay_1ms(10)
+   end loop
+   if sw3 == high then s = s - 1  end if
+   while sw3 == high loop
+      delay_1ms(10)
+   end loop
+   
+   if s == 60 then s = 0 end if
+   if s == 255 then s = 59 end if
+   lcd_cursor_position( 3,0 )
+   print_string(lcd,str4)                    -- Display "seconds"
+   lcd_cursor_position( 3,9)
+   format_byte_dec(lcd,s,2,0)               -- Dsiplay set seconds
+end loop
+
+-- write hours, minutes and seconds in the DS1307
+
+ds1307_write( 0x00 , s )      -- seconds
+ds1307_write( 0x01 , m )      -- minutes
+ds1307_write( 0x02 , h )      -- hours
+
+lcd_clear_line(0)
+
+
+forever loop
+   
+   ds1307_read( 0x00 , s )      -- seconds
+   ds1307_read( 0x01 , m )      -- minutes
+   ds1307_read( 0x02 , h )      -- hours
+   
+   lcd_cursor_position( 0,0 )
+   print_string(lcd,str5)        -- Display "RTC :"
+   lcd_cursor_position( 0,7 )
+   format_time_hms(lcd,h, m,s)   -- Display hh:mm:ss
+   
+end loop
+

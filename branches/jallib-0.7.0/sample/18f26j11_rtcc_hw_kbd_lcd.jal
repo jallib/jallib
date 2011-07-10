@@ -1,0 +1,762 @@
+-- =====================================================================
+-- Title: Alarm clock using the RTCC module of PIC and rtc_hardware library.
+--
+-- Author: Rob Hamerling, Copyright (c) 2010..2011, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4n
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+-- Alarm clock program using the RTCC module of the 18f26j11
+-- (or of any other PIC with compatible RTCC module).
+-- Date, time, alarm-time and other settings are displayed on 4x20 LCD display
+-- and can be controlled with a numeric 3x4 keyboard via a simple menu system:
+--  *  key is for menu selection (when repeated: next menu item)
+--     Functions as backspace during keying of a new value!
+--  #  key is end of operation (accept new value, return to normal operation).
+--  Numeric keys determine the new value.
+--  All keys except '*' are ignored when not in a menu.
+--  The oscillator calibration value has the range -128..+127, Since the
+--  keyboard has no '- and '+' keys only an unsigned number 0..255 can be
+--  entered. A value x above 127 is interpreted as (x - 256).
+--  For example: 200 is interpreted as -56 (and shown as such).
+--
+-- .
+-- Some error checking is implemented: out of range keys are ignored.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- =====================================================================
+--
+include  18f26j11                                  -- target chip
+
+-- Internal oscillator at 8 MHz
+
+pragma target clock         8_000_000              -- intosc at 8 MHz
+
+-- configuration bits
+
+pragma target WDT           DISABLED               -- watchdog software controlled!
+pragma target STVR          DISABLED               -- reset on stack over/under flow
+pragma target XINST         DISABLED               -- extended instruction set
+pragma target DEBUG         DISABLED               -- background debugging
+pragma target CP0           DISABLED               -- code block 0 not protected
+pragma target SIGN          AREA_COMPLETE          -- bulk erase
+pragma target OSC           INTOSC_NOCLKOUT        -- oscillator type
+pragma target T1DIG         ENABLED                -- timer1 oscillator
+pragma target LPT1OSC       LOW_POWER              -- low power timer 1
+pragma target FCMEN         DISABLED               -- fail safe clock monitor
+pragma target IESO          DISABLED               -- osc switch over
+pragma target WDTPS         P64                    -- watchdog timeout 256 msec
+pragma target DSWDTOSC      T1                     -- for deep sleep WDT
+pragma target RTCOSC        T1OSC                  -- 32768 Hz crystal at T1OSI/T1OSO
+pragma target BROWNOUT      DISABLED               -- no brownout detection
+pragma target DSWDTEN       DISABLED               -- no deep sleep WDT
+pragma target DSWDTPS       P2                     -- (no deep sleep WDT)
+pragma target IOL1WAY       DISABLED               -- no I/O lock
+pragma target MSSPMASK      B5                     -- (no ext ram)
+pragma target WPFP          P0                     -- start of code protection
+pragma target WPEND         PWPFP_END              -- code protection from ... to end
+pragma target WPCFG         DISABLED               -- no code protection!
+pragma target WPDIS         DISABLED               -- no write protection
+
+-- pin assignments
+
+--    pin_A0                 LDR (not yet used)
+--    pin_A1                 )
+--    pin_A2                 ) LCD_data
+--    pin_A3                 )
+--    ------ (Vcap)
+--    pin_A5                 )
+--    pin_A6                 LCD_rs
+--    pin_A7                 LCD-en
+
+--    pin_B0
+--    pin_B1                 RTCC output
+--    pin_B2
+--    pin_B3
+--    pin_B4                 kbd row 1
+--    pin_B5                 kbd row 2
+--    pin_B6                 kbd row 3
+--    pin_B7                 kbd row 4
+
+--    pin_C0                 T1OSO
+--    pin_C1                 T1OSI
+--    pin_C2
+--    pin_C3
+--    pin_C4                 kbd col 1
+--    pin_C5                 kbd col 2
+--    pin_C6                 kbd col 3
+--    pin_C7                    (col 4 not used)
+
+
+-- keyboard interface
+
+alias    keydrive           is  portC_high
+alias    keydrive_direction is  portC_high_direction
+alias    keyscan            is  portB_high
+alias    keyscan_direction  is  portB_high_direction
+
+const    byte    ROW1       = 0b0000_0001
+const    byte    ROW2       = 0b0000_0010
+const    byte    ROW3       = 0b0000_0100
+const    byte    ROW4       = 0b0000_1000
+const    byte    COL1       = 0b0000_0001
+const    byte    COL2       = 0b0000_0010
+const    byte    COL3       = 0b0000_0100
+const    byte    COL4       = 0b0000_0000       -- (no fourth column)
+
+include  keyboard                               -- keyboard support library
+
+-- LCD interface
+
+const    byte    LCD_ROWS   = 4                 -- 4 rows of ..
+const    byte    LCD_CHARS  = 20                -- .. 20 characters
+
+alias    lcd_d4  is  pin_A5                     -- )
+alias    lcd_d5  is  pin_A3                     -- )
+alias    lcd_d6  is  pin_A2                     -- ) 4 data lines
+alias    lcd_d7  is  pin_A1                     -- )
+alias    lcd_rs  is  pin_A6                     --  )
+alias    lcd_en  is  pin_A7                     --  ) control lines
+
+include  lcd_hd44780_4                          -- 4 bits LCD support library
+
+
+-- real time clock interface
+
+include  rtcc_hw                                -- RTCC support library
+
+
+-- data formatting
+
+include  print                                  -- data conversion
+
+
+-- local function and procedure prototypes
+
+procedure  keyboard_handling(byte in key)       -- handle keyboard activity
+procedure  setup_pic()                          -- global PIC initialisation
+procedure  show_byte_bcd(volatile byte out device, byte in data)   -- display byte in bcd notation
+procedure  show_3byte_bcd(volatile byte out device, byte in data[3], byte in separator)
+
+
+-- global constants
+
+const    byte    KBD_IDLE           = 0         -- valid values of kbd_state
+const    byte    KBD_ALARM_ONOFF    = 1
+const    byte    KBD_DATE           = 3
+const    byte    KBD_TIME           = 2
+const    byte    KBD_ALARM_TIME     = 4
+const    byte    KBD_ALARM_INTERVAL = 5
+const    byte    KBD_ALARM_REPEAT   = 6
+const    byte    KBD_CALIBRATE      = 7
+
+const byte  PROGRAM_TITLE[]       = "RTCC_hardware_sample"    -- sample title
+const byte  DAY_OF_WEEK[]         = "SuMoTuWeThFrSa"          -- weekday abbreviations
+const byte  ALARM_INTERVAL_STR[]  = "1/2sec10smin10mhr daywk monyr "   -- interval abbr.
+const byte  ALARM_SIGN            = 0b0101_1100               -- Yen(?)
+
+
+-- ===============================================================
+--
+--   M A I N L I N E
+--
+-- ===============================================================
+
+enable_digital_io()                             -- disable all analog I/O
+
+setup_pic()                                     -- globally init PIC
+
+keyscan_direction = all_input                   -- keyboard scan
+keydrive_direction = all_output                 -- keyboard drive pins
+
+lcd_init()                                      -- initialize LCD display
+
+-- dates and times are stored as 3-byte arrays with
+-- sequence year-month-date resp. hour-minute-second sequence.
+
+var  byte    date[3]      = { 0x11,0x04,0x23 }  -- actual date: 2011 April 23
+var  byte    time[3]      = { 0x13,0x30,0x00 }  -- actual time: 13:30:00    (24hr clock)
+var  byte    weekday                            -- day of week
+var  byte    alarmtime[3] = { 0x07,0x30,0x00 }  -- actual alarmtime: 07:30:00
+var  byte    alarm_interval = RTC_ALARM_INTERVAL_HALFSECOND  -- init: 1/2 sec
+var  byte    alarm_repeat = 0                   -- alarm-repeat, init: 0
+var  byte    calibrate    = 0                   -- calibration value
+
+var  byte    newdate[3]                         -- new date (yymmdd bcd format)
+var  byte    newtime[3]                         -- new time (hhmmss bcd format)
+var  byte    newcalibrate                       -- new calibrate value
+var  byte    newalarmtime[3]                    -- new alarm time (hhmmss bcd format)
+var  byte    newalarminterval                   -- new alarm interval
+var  byte    newalarmrepeat                     -- new alarm repeat value
+
+var  byte    kbd_state = KBD_IDLE               -- initial keyboard state
+var  byte    kbd_count = 0                      -- key ('offset') counter
+var  byte    key                                -- keyboard key value
+
+rtc_set_date(date[0], date[1], date[2])         -- )
+rtc_set_time(time[0], time[1], time[2])         -- ) initial values
+rtc_calibrate(15)                               -- oscillator correction
+rtc_set_clock(enabled)                          -- enable RTCC module
+
+rtc_set_alarm_time(alarmtime[0], alarmtime[1], alarmtime[2])
+rtc_pin_signal(RTC_PIN_SECONDS)                 -- function of pin_RTCC
+rtc_set_alarm(disabled)                         -- de-activate alarm
+
+forever loop
+
+   -- handle realtime clock
+
+   rtc_get_date(date[0], date[1], date[2])      -- get current      ( date
+   rtc_get_time(time[0], time[1], time[2])      --                  ( time
+   weekday = rtc_get_dayofweek()                --                  ( weekday
+   rtc_get_alarm_time(alarmtime[0], alarmtime[1], alarmtime[2])  -- ( alarm time
+
+   lcd_cursor_position(0,0)                     -- first line
+   lcd = DAY_OF_WEEK[weekday * 2]               -- day of week
+   lcd = DAY_OF_WEEK[weekday * 2 + 1]
+   lcd = " "
+   lcd = "2"                                    -- ) 20.. only
+   lcd = "0"                                    -- )
+   show_3byte_bcd(lcd, date, "/")               -- current date (yy/mm/dd)
+
+   lcd = " "
+-- print_byte_dec(lcd, rtc_get_dayofmonth())
+   print_word_dec(lcd, rtc_get_dayofyear())
+-- print_sbyte_dec(lcd, sbyte(calibrate))       -- calibration value
+   lcd = " "
+   lcd = " "
+
+   lcd_cursor_position(0,LCD_CHARS - 1)         -- top right corner
+   if (ALRMCFG_ALRMEN == ON) then               -- check if alarm on
+      lcd = ALARM_SIGN                          -- alarm symbol on
+   else
+      lcd = " "                                 -- alarm symbol off
+   end if
+
+   lcd_cursor_position(1,0)                     -- second line
+   lcd_clear_line(1)                            -- clear it
+   show_3byte_bcd(lcd, time, ":")               -- current time
+   lcd_cursor_position(1,10)
+   print_dword_dec(lcd,rtc_get_secondofday())   -- )
+   lcd_cursor_position(1,16)
+   print_word_dec(lcd,rtc_get_minuteofday())    -- )
+
+   lcd_cursor_position(2,0)                     -- third line
+   show_3byte_bcd(lcd, alarmtime, ":")          -- current alarm time
+
+   lcd_cursor_position(2,9)                     -- position
+   lcd = "I"                                    -- 'Interval'
+   lcd = "="
+   lcd = ALARM_INTERVAL_STR[alarm_interval * 3]
+   lcd = ALARM_INTERVAL_STR[alarm_interval * 3 + 1]
+   lcd = ALARM_INTERVAL_STR[alarm_interval * 3 + 2]
+
+   lcd_cursor_position(2,15)                    -- position
+   lcd = "R"                                    -- 'Repeat count'
+   lcd = "="                                    -- separator
+   if (ALRMCFG_CHIME == ON) then                -- chime on
+      lcd = "2"
+      lcd = "5"                                 -- repeat irrelevant
+      lcd = "5"
+   else
+     print_byte_dec(lcd,alarm_repeat)           -- current alarm interval
+     lcd = " "                                  -- erase previous
+     lcd = " "
+   end if
+
+   -- display pending change, if any
+
+   lcd_cursor_position(LCD_ROWS - 1,0)          -- lower left corner
+
+   if (kbd_state != KBD_IDLE) then              -- modification pending?
+     if (kbd_state == KBD_ALARM_ONOFF) then     -- alarm on/off
+       lcd = "A"
+       lcd = "l"
+       lcd = "a"
+       lcd = "r"
+       lcd = "m"
+       lcd = " "
+       lcd = "O"
+       if (ALRMCFG_ALRMEN == ON) then
+         lcd = "n"
+         lcd = " "
+       else
+         lcd = "f"
+         lcd = "f"
+       end if
+     elsif (kbd_state == KBD_DATE) then         -- time mod.
+       lcd = "D"
+       lcd = " "
+       lcd = "["
+       lcd = "2"
+       lcd = "0"
+       lcd = "]"
+       show_3byte_bcd(lcd,newdate,"/")
+     elsif (kbd_state == KBD_TIME) then         -- time mod.
+       lcd = "T"
+       lcd = " "
+       show_3byte_bcd(lcd,newtime,":")
+     elsif (kbd_state == KBD_ALARM_TIME) then     -- alarm mod.
+       lcd = "A"
+       lcd = " "
+       show_3byte_bcd(lcd,newalarmtime,":")
+     elsif (kbd_state == KBD_ALARM_INTERVAL) then -- alarm interval
+       lcd = "I"
+       lcd = " "
+       lcd = ALARM_INTERVAL_STR[newalarminterval * 3]
+       lcd = ALARM_INTERVAL_STR[newalarminterval * 3 + 1]
+       lcd = ALARM_INTERVAL_STR[newalarminterval * 3 + 2]
+     elsif (kbd_state == KBD_ALARM_REPEAT) then   -- alarm repeat mod.
+       lcd = "R"
+       lcd = " "
+       print_byte_dec(lcd,newalarmrepeat)
+     elsif (kbd_state == KBD_CALIBRATE) then    -- calibration
+       lcd = "C"
+       lcd = " "
+       print_sbyte_dec(lcd,sbyte(newcalibrate))
+     end if
+
+   else                                         -- no keyboard I/O pending
+--   print_string(lcd, PROGRAM_TITLE)           -- program title
+
+     lcd = "C"
+     lcd = "="
+     print_byte_hex(lcd, RTCCFG)                -- for debugging purposes
+     lcd = " "
+     lcd = "P"
+     lcd = "="
+     print_byte_hex(lcd, PADCFG1)               --
+     lcd = " "
+     lcd = "A"
+     lcd = "="
+     print_byte_hex(lcd, ALRMCFG)               --
+     lcd = " "
+     lcd = "R"
+     lcd = "="
+     print_byte_hex(lcd, ALRMRPT)               --
+
+   end if
+
+   -- handle keyboard activity, if any
+
+   key = getkey_once()                          -- determine key pressed
+   if (key < 16) then                           -- valid key
+      keyboard_handling(key)                    -- specific key handling
+   end if
+
+   if (kbd_state == KBD_IDLE) then              -- no pending keyboard activity
+      asm sleep                                 -- enter sleep mode
+   else
+      asm clrwdt                                -- reset watchdog timeout
+   end if
+
+end loop
+
+
+-- -------------------------------------------------------
+--  Handle keyboard activity
+--  Contains some input validation checking,
+--  but does not intercept all faulty input.
+-- -------------------------------------------------------
+procedure keyboard_handling(byte in key) is
+
+   -- handle new key, based on active menu and previous progress within menu
+
+   case kbd_state of
+
+      KBD_IDLE:                                 -- no keyboard action pending
+         block
+            if (key == 10) then                 -- asterisk
+               kbd_state = KBD_ALARM_ONOFF      -- to next menu
+               kbd_count = 0                    -- no change pending
+               lcd_clear_line(LCD_ROWS - 1)     -- clear bottom line
+            end if
+         end block
+
+      KBD_ALARM_ONOFF:                          -- switch alarm on/off
+         block
+            if (key == 10) then                 -- asterisk
+               if (kbd_count == 0) then         -- first key
+                  kbd_state = KBD_TIME          -- to next menu
+                  newtime[0] = time[0]          -- prepare for time changed
+                  newtime[1] = time[1]
+                  newtime[2] = time[2]
+                  lcd_clear_line(LCD_ROWS - 1)  -- clear bottom line
+               else
+                  kbd_count = kbd_count - 1     -- back
+               end if
+            elsif (key == 11) then              -- 'Enter'
+               kbd_state = KBD_IDLE             -- reset state
+               kbd_count = 0                    -- done
+            else                                -- any other key
+               if (ALRMCFG_ALRMEN == OFF) then  -- currently off
+                  rtc_set_alarm(ON)             -- alarm on
+                  rtc_pin_signal(RTC_PIN_ALARM) -- pin_RTCC signals alarm
+               else                             -- currently on
+                  rtc_set_alarm(OFF)            -- alarm off
+                  rtc_pin_signal(RTC_PIN_SECONDS)  -- pin_RTCC signals seconds
+               end if
+               kbd_count = 1                    -- single key input
+            end if
+         end block
+
+      KBD_TIME:                                 -- time setting pending
+         block
+            if (key == 10) then                 -- asterisk
+               if (kbd_count == 0) then         -- no time action pending
+                  kbd_state = KBD_DATE          -- to next menu
+                  newdate[0] = date[0]          -- perpare for date change
+                  newdate[1] = date[1]
+                  newdate[2] = date[2]
+                  lcd_clear_line(LCD_ROWS - 1)  -- clear bottom line
+               else                             -- alarm action pending
+                  kbd_count = kbd_count - 1     -- 'backspace'
+               end if
+            elsif (key < 10) then
+               case kbd_count of
+                  0: block
+                        newtime[0] = 0
+                        newtime[1] = 0
+                        newtime[2] = 0
+                        if (key <= 2) then
+                           newtime[0] = key << 4
+                           kbd_count = 1        -- next key action
+                        end if
+                     end block
+                  1: block
+                        if (newtime[0] < 0x20) then
+                           newtime[0] = newtime[0] | key
+                           kbd_count = 2
+                        elsif (key < 4) then
+                           newtime[0] = newtime[0] | key
+                           kbd_count = 2
+                        end if
+                     end block
+                  2: block
+                        if (key < 6) then
+                           newtime[1] = key << 4
+                           kbd_count = 3
+                        end if
+                     end block
+                  3: block
+                        newtime[1] = newtime[1] | key
+                        kbd_count = 4
+                     end block
+                  4: block
+                        if (key < 6) then
+                           newtime[2] = key << 4
+                           kbd_count = 5
+                        end if
+                     end block
+                  5: block
+                        newtime[2] = newtime[2] | key
+                        kbd_count = 6
+                     end block
+                  otherwise                     -- nothing
+               end case
+            elsif (key == 11) then              -- number sign
+               if (kbd_count > 0) then          -- new time prepared
+                  rtc_set_time(newtime[0], newtime[1], newtime[2])     -- store new time
+               end if
+               kbd_count = 0                    -- reset progress counter
+               kbd_state = KBD_IDLE             -- reset state
+            end if
+         end block
+
+      KBD_DATE:                                 -- date setting pending
+         block
+            if (key == 10) then                 -- asterisk
+               if (kbd_count == 0) then         -- no date action pending
+                  kbd_state = KBD_ALARM_TIME    -- to next menu
+                  newalarmtime[0] = alarmtime[0] -- prepare for alarm time change
+                  newalarmtime[1] = alarmtime[1]
+                  newalarmtime[2] = alarmtime[2]
+                  lcd_clear_line(LCD_ROWS - 1)  -- clear bottom line
+               else                             -- alarm action pending
+                  kbd_count = kbd_count - 1     -- 'backspace'
+               end if
+            elsif (key < 10) then
+               case kbd_count of                -- selection on previous kbd input
+                  0: block                      -- tens of year
+                        newdate[0] = key << 4
+                        kbd_count = 1
+                     end block
+                  1: block                      -- units of year
+                        newdate[0] = newdate[0] | key
+                        kbd_count = 2
+                     end block
+                  2: block                      -- tens of month
+                        if (key == 0  |  key == 1) then
+                           newdate[1] = key << 4
+                           kbd_count = 3
+                        end if
+                     end block
+                  3: block                      -- units of month
+                        if (newdate[1] == 0x00) then      -- months 1..9
+                           if (key > 0) then
+                              newdate[1] = key
+                              kbd_count = 4
+                           end if
+                        elsif (key <= 2) then   -- months 10,11,12
+                           newdate[1] = newdate[1] | key
+                           kbd_count = 4
+                        end if
+                     end block
+                  4: block                      -- tens of day of month
+                        if (key < 4) then       -- limit to 31 days
+                           newdate[2] = key << 4
+                           kbd_count = 5
+                        end if
+                     end block
+                  5: block                      -- units of day of month
+                        if (newdate[2] == 0x00) then      -- days 1..9
+                           if (key > 0) then
+                              newdate[2] = key
+                              kbd_count = 6
+                           end if
+                        elsif (newdate[2] == 0x10  | newdate[2] == 0x20) then  -- days 10..29
+                           newdate[2] = newdate[2] | key
+                           kbd_count = 6
+                        elsif (key <= 1) then            -- days 30,31
+                           newdate[2] = newdate[2] | key
+                           kbd_count = 6
+                        end if
+                     end block
+                  otherwise                     -- nothing
+               end case
+            elsif (key == 11) then              -- number sign
+               if (kbd_count > 0) then          -- new time prepared
+                  rtc_set_date(newdate[0], newdate[1], newdate[2])  -- store new date
+               end if
+               kbd_count = 0                    -- reset progress counter
+               kbd_state = KBD_IDLE             -- reset state
+            end if
+         end block
+
+      KBD_ALARM_TIME:                           -- alarm time setting pending
+         block
+            if (key == 10) then                 -- asterisk
+               if (kbd_count == 0) then         -- no alarm action pending
+                  kbd_state = KBD_ALARM_INTERVAL  -- to next menu
+                  newalarminterval = alarm_interval  -- prepare for interval change
+                  lcd_clear_line(LCD_ROWS - 1)  -- clear bottom line
+               else                             -- alarm action pending
+                  kbd_count = kbd_count - 1     -- 'backspace'
+               end if
+            elsif (key < 10) then
+               case kbd_count of
+                  0: block
+                        if (key <= 2) then
+                           newalarmtime[0] = key << 4
+                           kbd_count = 1        -- next key action
+                        end if
+                     end block
+                  1: block
+                        if (newalarmtime[0] < 0x20) then
+                           newalarmtime[0] = newalarmtime[0] | key
+                           kbd_count = kbd_count + 1
+                        elsif (key < 4) then
+                           newalarmtime[0] = newalarmtime[0] | key
+                           kbd_count = 2
+                        end if
+                     end block
+                  2: block
+                        if (key < 6) then
+                           newalarmtime[1] = key << 4
+                           kbd_count = 3
+                        end if
+                     end block
+                  3: block
+                        newalarmtime[1] = newalarmtime[1] | key
+                        kbd_count = 4
+                     end block
+                  4: block
+                        if (key < 6) then
+                           newalarmtime[2] = key << 4
+                           kbd_count = 5
+                        end if
+                     end block
+                  5: block
+                        newalarmtime[2] = newalarmtime[2] | key
+                        kbd_count = 6
+                     end block
+                  otherwise                     -- nothing
+               end case
+            elsif (key == 11) then              -- number sign
+               if (kbd_count > 0) then          -- alarm clock prepared
+                  rtc_set_alarm_time(newalarmtime[0],newalarmtime[1],newalarmtime[2])  -- store it
+                  rtc_pin_signal(RTC_PIN_ALARM)           -- output: alarm signal
+                  rtc_set_alarm_repeat(alarm_repeat)      -- repeated alarm events
+                  rtc_set_alarm_interval(alarm_interval)  -- alarm interval
+                  rtc_set_alarm(true)           -- activate alarm function
+               else
+                  rtc_set_alarm(false)          -- disable alarm
+               end if
+               kbd_count = 0                    -- reset progress counter
+               kbd_state = KBD_IDLE             -- reset state
+            end if
+         end block
+
+      KBD_ALARM_INTERVAL:                       -- alarm interval
+         block
+            if (key == 10) then                 -- asterisk
+               if (kbd_count == 0) then         -- reset progress counter
+                  kbd_state = KBD_ALARM_REPEAT  -- to next menu
+                  newalarmrepeat = 0            -- prepare for new alarm repeat count
+                  lcd_clear_line(LCD_ROWS - 1)  -- clear bottom line
+               else                             -- alarm_repeat action pending
+                  kbd_count = 0                 -- 'backspace'
+               end if
+            elsif (key <= RTC_ALARM_INTERVAL_YEAR) then
+                newalarminterval = key          -- accept new key
+                kbd_count = 1                   -- one digit only!
+            elsif (key == 11) then              -- number sign
+               if (kbd_count > 0) then          -- alarm_repeat prepared
+                  alarm_interval = newalarminterval  -- accept new value
+                  rtc_set_alarm_interval(alarm_interval)  -- write to rtc
+               end if
+               kbd_count = 0                    -- reset progress counter
+               kbd_state = KBD_IDLE             -- reset state
+            end if
+         end block
+
+      KBD_ALARM_REPEAT:                         -- alarm repeat value
+         block
+            if (key == 10) then                 -- asterisk
+               if (kbd_count == 0) then         -- reset progress counter
+                  kbd_state = KBD_CALIBRATE     -- to next menu
+                  newcalibrate = 0              -- prepare for new calibration
+                  lcd_clear_line(LCD_ROWS - 1)  -- clear bottom line
+               else                             -- alarm_repeat action pending
+                  newalarmrepeat = newalarmrepeat / 10  -- discard previous key
+                  kbd_count = kbd_count - 1     -- backspace
+               end if
+               lcd_clear_line(LCD_ROWS - 1)     -- clear bottom line
+            elsif (key < 10) then               -- numeric
+               if (newalarmrepeat < 25) then     -- max repeat is 255!
+                  newalarmrepeat = newalarmrepeat * 10 + key
+                  kbd_count = kbd_count + 1     -- progress counter
+               elsif (newalarmrepeat == 25  &  key < 6) then
+                  newalarmrepeat = newalarmrepeat * 10 + key
+                  kbd_count = kbd_count + 1     -- progress counter
+               end if
+            elsif (key == 11) then              -- number sign
+               if (kbd_count > 0) then          -- alarm_repeat prepared
+                  alarm_repeat = newalarmrepeat
+                  rtc_set_alarm_repeat(alarm_repeat)
+               end if
+               kbd_count = 0                    -- reset progress counter
+               kbd_state = KBD_IDLE             -- reset state
+            end if
+         end block
+
+      KBD_CALIBRATE:                            -- calibration value
+         block
+            if (key == 10) then                 -- asterisk
+               if (kbd_count == 0) then         -- no more input pending
+                  kbd_state = KBD_IDLE          -- end of menu
+               else                             -- calibration setting pending
+                  newcalibrate = newcalibrate / 10  -- discard previous key
+                  kbd_count = kbd_count - 1     -- backspace
+               end if
+               lcd_clear_line(LCD_ROWS - 1)     -- clear bottom line
+            elsif (key < 10) then               -- numeric
+               if (newcalibrate < 25) then      -- max calibration is 255!
+                  newcalibrate = newcalibrate * 10 + key
+                  kbd_count = kbd_count + 1     -- progress counter
+               elsif (newcalibrate == 25  &  key < 6) then
+                  newcalibrate = newcalibrate * 10 + key
+                  kbd_count = kbd_count + 1     -- progress counter
+               end if
+            elsif (key == 11) then              -- number sign
+               if (kbd_count > 0) then          -- alarm_repeat prepared
+                  calibrate = newcalibrate
+                  rtc_calibrate(sbyte(calibrate))
+               end if
+               kbd_count = 0                    -- reset progress counter
+               kbd_state = KBD_IDLE             -- reset state
+            end if
+         end block
+
+      otherwise
+         kbd_state = KBD_IDLE                   -- catch undefined keyboard states
+
+   end case
+
+   return
+
+end procedure
+
+
+-- -------------------------------------------------------
+--  Globally initialize PIC, specific init details in mainline
+-- -------------------------------------------------------
+procedure  setup_pic() is
+
+  INTCON        = 0b0000_0000                   -- no interrupts
+
+  portA         = 0b0000_0000
+  portB         = 0b0000_0000
+  portC         = 0b0000_0000
+
+  portA_direction = all_output
+  portB_direction = all_output
+  portC_direction = all_output
+
+  T1CON         = 0b0000_0000                   -- Tmr1 off
+  T1CON_T1OSCEN = TRUE                          -- Tmr1 oscillator enabled
+  T2CON         = 0b0000_0000                   -- Tmr2 off
+
+  OSCCON_IRCF   = 0b111                         -- INTOSC at 8 MHz
+  OSCCON_SCS    = 0b00                          -- primary clock source INTOSC
+  OSCCON_IDLEN  = 0                             -- sleep (not idle) mode
+
+  OSCTUNE_PLLEN = FALSE                         -- no PLL
+
+  REFOCON_ROON  = FALSE                         -- no oscillator output
+
+  WDTCON        = 0b0000_0000                   -- all off
+  WDTCON_REGSLP = 1                             -- voltage regulator off in sleep
+  WDTCON_SWDTEN = 1                             -- enable watchdog
+                                                -- even when config bit disabled
+
+  DSCONH_DSEN   = 1                             -- 0=normal, 1=deep sleep mode
+
+end procedure
+
+
+-- -------------------------------------------------------
+--  Show one byte in bcd notation as two decimal digits.
+--  Simple alternative for print_byte_hex() in the print library
+--  (without check for valid bcd notation).
+-- -------------------------------------------------------
+procedure  show_byte_bcd(volatile byte out device, byte in data) is
+
+   device = "0" + (data >> 4)                   -- high order nibble
+   device = "0" + (data & 0x0F)                 -- low order nibble
+
+end procedure
+
+-- -------------------------------------------------------
+--  Show array of 3 bytes in bcd notation, with separator
+-- -------------------------------------------------------
+procedure  show_3byte_bcd(volatile byte out device,
+                          byte  in data[3],
+                          byte  in separator) is
+
+   show_byte_bcd(device, data[0])
+   device = separator
+   show_byte_bcd(device, data[1])
+   device = separator
+   show_byte_bcd(device, data[2])
+
+end procedure
+

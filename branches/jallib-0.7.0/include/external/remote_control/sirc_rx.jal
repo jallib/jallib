@@ -1,0 +1,93 @@
+-- Title: SIRC receiver library for decoding  SIRC protocol
+-- Author: Mike Reynolds, Copyright (C) 2009, all rights reserved.
+-- Adapted by: Joep Suijs
+-- Compiler: >=2.4l
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides functions for receiving SIRC 
+-- infrared remote control codes. See sirc.jal for more info.
+--
+-- Sources:
+-- http://www.sbprojects.com/knowledge/ir/sirc.htm
+-- http://www.ustr.net/infrared/sony.shtml
+-- http://web.archive.org/web/20071212170236/http://www.geocities.com/CapeCanaveral/Launchpad/4652/sircs.htm
+--
+-- Notes: See sirc.jal for more info.
+--
+
+procedure get_sirc(byte out sirc_addr_rx, byte out sirc_cmd_rx)  is
+   var byte low_time
+   var byte ir_add
+   var byte ir_cmd
+
+   var bit ie_old       -- status of interrupt enable on entrance
+   ie_old = INTCON_GIE  -- save old interrupt status
+
+   asm local start_look
+   asm start_look:
+
+   ir_add = 0
+   ir_cmd = 0
+
+   while(sirc_pulse_in == 1) loop
+      low_time = 0
+      -- wait for it to be low and reset the counter
+   end loop
+
+   while(sirc_pulse_in == 0) loop
+      -- while the pin is low which is our pulse count
+      low_time = low_time + 1   -- increment every 200uS until pin is high
+      _usec_delay (200)
+   end loop
+
+   if (low_time <= 10) then asm goto start_look  end if
+   if (low_time >= 14) then asm goto start_look  end if
+   -- Start too short or too long so restart
+
+   low_time = 0
+
+   for 7 loop  -- repeat 7 times for command
+      ir_cmd = ir_cmd >> 1
+      -- if it was skipped or is done OR'ing then shift over the 1
+      while(sirc_pulse_in == 1) loop -- wait for it to be low and reset the counter
+         low_time = 0
+      end loop
+
+      while(sirc_pulse_in == 0) loop   -- while the pin is low which is our pulse count
+         low_time = low_time + 1       -- increment every 200uS until pin is high
+         _usec_delay (200)             -- 200uS delay
+      end loop
+
+      if (low_time >= 6) then ir_cmd = (ir_cmd | 0x40) end if
+      -- If its high then OR a 1 in else skip
+      -- if its less than 6 its a 0 so dont OR it
+
+   end loop
+
+   for 5 loop  -- repeat 5 times for address/device
+      ir_add = ir_add >> 1
+      -- if it was skipped or is done OR'ing then shift over the 1
+      while(sirc_pulse_in == 1) loop
+         low_time = 0   -- wait for it to be low reset the counter
+      end loop
+
+      while(sirc_pulse_in == 0) loop   -- while the pin is low which is our pulse count
+         low_time = low_time + 1       -- increment every 200uS until pin is high
+         _usec_delay (200)             -- 200uS delay
+      end loop
+
+      if(low_time >= 6) then ir_add = (ir_add | 0x10) end if
+
+      -- If its high then OR a 1 in else skip
+      -- if its less than 6 its a 0 so dont OR it
+   end loop
+
+   sirc_cmd_rx  = ir_cmd
+   sirc_addr_rx = ir_add
+
+   -- restore old interrupt status
+   INTCON_GIE = ie_old
+
+end procedure

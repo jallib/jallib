@@ -1,0 +1,451 @@
+-- Title: array_storage  reading/writing of devices as Arrays
+-- Author: Michael Watterson Copyright (c) 2010
+-- Compiler: >=2.4m
+--
+--
+-- Released under the Lesser GNU license (http://www.gnu.org/licenses/lgpl.html)
+-- Original source idea / code:
+--       Stef Mientki, Matthew Schinkel Copyright (c) 2002..2010, all rights reserved.
+--       and  Sebastien Lelong, Rob Hamerling, Matthew Schinkel
+--       under similar Zlib licence
+-- Description:
+-- Read from or write to PIC Internal eeprom a byte, word or double word.
+-- read and write to Microchip/Atmel "smart" i2c eeproms
+--
+-- ALL read/write uses pseudo Array variable
+
+-- Must have included first if using i2c
+--        Alias   i2c_scl            is pin_b1
+--        Alias   i2c_scl_direction is pin_b1_direction
+--        Alias   i2c_sda            is pin_b0
+--        Alias   i2c_sda_direction is pin_b0_direction
+--        include i2c_sw
+
+
+--
+-- Functions descriptions:
+-- EepromExtByteInit         -- setup number, type and base address of EEPROMS
+                          -- all must be same size annd A0, A1, A2 contigious
+
+-- EepromExtCount            -- used instead of count(EepromExtByte)
+-- EepromIntCount         -- used instead of count(EepromIntByte)
+--
+-- EepromExtPageSize         -- not really needed by user
+--
+-- PseudoVars
+-- EepromExtByte[address]    -- dword addressed Array. Up to 512K bytes
+                          -- if using 8 x 24LC512
+-- EepromIntByte[address]    -- word addressed Array. Up to 64K bytes
+                          -- size depends on PIC version.
+                          
+-- Notes:
+--  from an idea by Matthew Schinkel
+--
+-- - Write-protect bits in configuration memory may prohibit writing.
+-- - Writing to locations outside the available memory range may have
+--   unexpected effects!
+-- - Summary of changes
+
+-- see also dev_sram_23k256_spi.jal or sram_23k256.jal
+--
+-- ------------------------------------------------------------
+--               Internal EEPROM on PIC
+-- ------------------------------------------------------------
+
+
+
+function EepromIntCount() return dword is
+pragma inline
+    return(COUNT(_eeprom))
+end function
+-- ------------------------------------------------------------------------
+-- Set memory region bits in EECON1 and load offset register(s)
+-- Wait (spin) until any previous write completed before proceeding.
+-- ------------------------------------------------------------------------
+procedure _prepare_eeprom_access(word in offset) is
+
+--   pragma inline
+   var byte tempoffset[2] at offset             -- type cast
+
+   while EECON1_WR loop                         -- allow any previous
+     -- spin as long as any previous write is not completed
+   end loop                                     -- before this write
+
+   if (defined(EEADR) == TRUE) then
+      EEADR = tempoffset[0]                     -- low order byte of offset
+   elsif (defined(EEADRL) == TRUE) then
+      EEADRL = tempoffset[0]                    -- low order byte of offset
+   end if
+
+   if (defined(EEADRH) == TRUE) then            -- PIC with large EEPROM
+      EEADRH = tempoffset[1]                    -- high order byte of offset
+   end if
+
+   if (defined(EECON1_CFGS) == TRUE) then       -- config memory supported
+      EECON1_CFGS = FALSE                       -- deselect config region
+   end if
+
+   if (defined(EECON1_EEPGD) == TRUE) then      -- code memory supported
+      EECON1_EEPGD = FALSE                      -- deselect code region
+   end if
+
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Read byte from datab EEPROM at given offset
+-- ------------------------------------------------------------------------
+function  EepromIntByte'get(word in offset)return byte is
+var byte datab
+   if (offset < COUNT(_eeprom))  then
+       _prepare_eeprom_access(offset)               -- make ready for rea
+
+       EECON1_RD = TRUE                             -- initiate read operation
+
+       if (defined(EEDATA) == TRUE) then
+          datab = EEDATA                             -- obtain byte
+       elsif (defined(EEDAT) == TRUE) then
+          datab = EEDAT                              -- obtain byte
+       elsif (defined(EEDATL) == TRUE) then
+          datab = EEDATL                             -- obtain byte
+       end if
+   else
+       datab = 0xFF
+   end if
+   return (datab)
+end function
+
+
+-- ------------------------------------------------------------------------
+-- Write byte to datab EEPROM at given offset
+-- ------------------------------------------------------------------------
+procedure EepromIntByte'put(word in offset, byte in datab) is
+var bit gie_old  -- GIE state
+   if (offset < COUNT(_eeprom))  then
+       _prepare_eeprom_access(offset)               -- make ready for write
+       if (defined(EEDATA) == TRUE) then
+          EEDATA = datab                             -- store byte
+       elsif (defined(EEDAT) == TRUE) then
+          EEDAT = datab                              -- store byte
+       elsif (defined(EEDATL) == TRUE) then
+          EEDATL = datab                             -- store byte
+       end if
+       EECON1_WREN = TRUE                           -- write enable
+       gie_old = INTCON_GIE                         -- save GIE state
+       INTCON_GIE = FALSE                           -- disable interrupts
+       EECON2    = 0x55                             -- \ required sequence
+       EECON2    = 0xAA                             -- /
+       EECON1_WR = TRUE                             -- initiate write operation
+       INTCON_GIE = gie_old                         -- restore interrupt status
+       EECON1_WREN = FALSE                          -- disable further writing
+   end if
+end procedure
+
+-- ------------------------------------------------------------------------
+-- Read word from datab eeprom at given offset
+-- Result is stored in the passed in-argument
+-- ------------------------------------------------------------------------
+function EepromIntWord'get(word in offset)return word is
+var word datas
+var byte tempbyte[2] at datas
+   tempbyte[0]= EepromIntByte[offset]
+   tempbyte[1]= EepromIntByte[offset+1]
+   return(datas)
+end function
+
+
+-- ------------------------------------------------------------------------
+-- Write word to datab eeprom at given offset
+-- ------------------------------------------------------------------------
+procedure EepromIntWord'put(word in offset, word in datab) is
+var byte tempbyte[2] at datab                 -- type cast
+   EepromIntByte[offset] = tempbyte[0]
+   EepromIntByte[offset+1] = tempbyte[1]
+
+end procedure
+
+
+
+-- defaults are for 1 x 24LC512 with A0, A1 and A2 pins = 0V
+const _EEPROM_ERROR_NONE = 0
+const _EEPROM_ERROR_TX = 1
+const _EEPROM_ERROR_RX = 2
+const _EEPROM_ERROR_BOUNDS = 3
+
+const _EEPROM_WAIT_FOR_BUS_INIT = 10_000_000  -- 10 seconds
+var dword _EepromExtArraySize = 65536
+var byte _EepromExtBaseAddress = 0
+var byte _EepromExtChipAddressBits = 16
+var word _EepromExtPageSize = 128
+var byte _EepromExtControl = 0b1010_0000
+var byte _EepromExtLastError = 0
+-- All eeproms must be contigious addressed and same size
+
+-- only need to call if not  1 x 24LC512 with A0, A1 and A2 pins = 0V
+-- lower four bits of "control" are ignored
+function EepromExtByteInit(byte in numChips, byte in baseAddress, byte in chipAddressBits, word in pageSize, byte in control) return  byte  is
+var byte controlUpper
+    controlUpper =  numChips + baseAddress
+    if controlUpper > 7 then
+        return (controlUpper -7)
+    else
+        _EepromExtBaseAddress = baseAddress
+        _EepromExtChipAddressBits = chipAddressBits
+        _EepromExtPageSize = pageSize
+        _EepromExtArraySize = dword(1)<< dword(chipAddressBits) * dword(numChips)
+        _EepromExtControl = control & byte(0b1111_0000) -- addres is zero
+        _EepromExtLastError = _EEPROM_ERROR_NONE
+     end if
+    return(0)
+end function
+
+-- ------------------------------------------------------------
+--               External EEPROM via I2C
+-- ------------------------------------------------------------
+
+function EepromExtCount() return dword is
+    return(_EepromExtArraySize)
+end function
+
+function EepromExtPageSize() return word is
+    return(_EepromExtPageSize)
+end function
+
+function EepromExtByte'get(dword in address) return  byte  is
+var volatile bit commOK
+var byte datab
+var byte controlDevice, addressLow, addressHigh
+var byte addressBytes[3] at address   -- split the memory address
+var dword timeout = _EEPROM_WAIT_FOR_BUS_INIT
+   var byte ch, id
+      datab = 255
+   if address < _EepromExtArraySize then
+       controlDevice = _EepromExtControl    -- address zero & read
+       -- now add in the 3 bit address only
+       controlDevice = controlDevice | ((addressBytes[2]<1) & byte(0b0000_1110))
+       addressHigh  = addressBytes[1]
+       addressLow = addressBytes[0]
+       if _EepromExtChipAddressBits < 16 then
+          -- fixup addressHigh and ControlDevice
+       end if  -- else all of AddressHigh is used
+       if _EepromExtBaseAddress > 0 then
+          -- fixup controlDevice
+       end if  -- else controlDevice is either 3rd byte of address or part of 2nd byte
+       --commOK =
+       while ! i2c_Seize(400_000_000, true) & ( timeout > 0) loop
+            timeout = timeout -1
+            _usec_delay(1)
+       end loop
+       if timeout > 0 then       i2c_start()                -- send start bit
+           commOK = i2c_transmit_byte(controlDevice)         -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressHigh)       -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressLow)        -- transmit datab & wait for ack
+
+           i2c_start()                -- send start bit
+           commOK = i2c_transmit_byte(controlDevice + 1)     -- transmit datab & wait for ack
+           datab = i2c_receive_byte(0)                     -- nack (no ack)
+           i2c_stop()                                     -- send stop bit
+           i2c_Release()
+           _EepromExtLastError = _EEPROM_ERROR_NONE
+       else
+           _EepromExtLastError = _EEPROM_ERROR_RX
+       end if
+   else
+       _EepromExtLastError = _EEPROM_ERROR_BOUNDS
+   end if
+   return (datab)
+end function
+
+--------------------------------------------------------------------------------
+-- write byte to Eeprom at device+ 16 bit adress
+-- if less big than a 24LC512, address map has holes
+-- multiple 24LC512 will look like one big array.
+--------------------------------------------------------------------------------
+procedure EepromExtByte'put(dword in address, byte in datab) is
+var volatile bit commOK
+var byte controlDevice, addressLow, addressHigh
+var byte addressBytes[3] at address   -- split the memory address
+var dword timeout = _EEPROM_WAIT_FOR_BUS_INIT
+   var byte ch, id
+      if address < _EepromExtArraySize then
+       controlDevice = _EepromExtControl    -- address zero & read
+       -- now add in the 3 bit address only
+       controlDevice = controlDevice | ((addressBytes[2]<1) & byte(0b0000_1110))
+       addressHigh  = addressBytes[1]
+       addressLow = addressBytes[0]
+       if _EepromExtChipAddressBits < 16 then
+          -- fixup addressHigh and ControlDevice
+       end if  -- else all of AddressHigh is used
+       if _EepromExtBaseAddress > 0 then
+          -- fixup controlDevice
+       end if  -- else controlDevice is either 3rd byte of address or part of 2nd byte
+       while ! i2c_Seize(400_000_000, true) & ( timeout > 0) loop
+            timeout = timeout -1
+            _usec_delay(1)
+       end loop
+       if timeout > 0 then
+           i2c_start()                -- send start bit
+           commOK = i2c_transmit_byte(controlDevice)    -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressHigh) -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressLow)  -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(datab)         -- transmit datab & wait for ack
+           i2c_stop                               -- send stop bit
+           -- change to a timer driving a signal
+           _usec_delay(5_000)                      -- datasheet says writes take 5ms
+           i2c_Release()
+           _EepromExtLastError = _EEPROM_ERROR_NONE
+       else
+           _EepromExtLastError = _EEPROM_ERROR_TX
+       end if
+   else
+       _EepromExtLastError = _EEPROM_ERROR_BOUNDS
+   end if
+end procedure
+
+function EepromExtWord'get(dword in address) return  word  is
+var volatile bit commOK
+var byte datab[2]
+var word datas at datab
+var byte controlDevice, addressLow, addressHigh
+var byte addressBytes[3] at address   -- split the memory address
+var dword timeout = _EEPROM_WAIT_FOR_BUS_INIT
+   var byte ch, id
+   datas = 65535
+   if ((address+1) < _EepromExtArraySize) then
+       controlDevice = _EepromExtControl    -- address zero & read
+       -- now add in the 3 bit address only
+       controlDevice = controlDevice | ((addressBytes[2]<1) & byte(0b0000_1110))
+       addressHigh  = addressBytes[1]
+       addressLow = addressBytes[0]
+       if _EepromExtChipAddressBits < 16 then
+          -- fixup addressHigh and ControlDevice
+       end if  -- else all of AddressHigh is used
+       if _EepromExtBaseAddress > 0 then
+          -- fixup controlDevice
+       end if  -- else controlDevice is either 3rd byte of address or part of 2nd byte
+       --commOK =
+       while ! i2c_Seize(400_000_000, true) & ( timeout > 0) loop
+            timeout = timeout -1
+            _usec_delay(1)
+       end loop
+       if timeout > 0 then       i2c_start()                -- send start bit
+           commOK = i2c_transmit_byte(controlDevice)         -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressHigh)       -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressLow)        -- transmit datab & wait for ack
+
+           i2c_start()                -- send start bit
+           commOK = i2c_transmit_byte(controlDevice + 1)     -- transmit datab & wait for ack
+           datab[0] = i2c_receive_byte(1)                     -- ack (no ack)
+           datab[1] = i2c_receive_byte(0)                     -- nack (no ack)
+           i2c_stop()                                     -- send stop bit
+           i2c_Release()
+           _EepromExtLastError = _EEPROM_ERROR_NONE
+       else
+           _EepromExtLastError = _EEPROM_ERROR_RX
+       end if
+   else
+       _EepromExtLastError = _EEPROM_ERROR_BOUNDS
+   end if
+   return (datas)
+end function
+
+--------------------------------------------------------------------------------
+-- write byte to Eeprom at device+ 16 bit adress
+-- if less big than a 24LC512, address map has holes
+-- multiple 24LC512 will look like one big array.
+--------------------------------------------------------------------------------
+procedure EepromExtWord'put(dword in address, word in datas) is
+var volatile bit commOK
+var byte datab[2] at datas
+var byte controlDevice, addressLow, addressHigh
+var byte addressBytes[3] at address   -- split the memory address
+var dword timeout = _EEPROM_WAIT_FOR_BUS_INIT
+   var byte ch, id
+      if ((address +1) < _EepromExtArraySize) then
+       controlDevice = _EepromExtControl    -- address zero & read
+       -- now add in the 3 bit address only
+       controlDevice = controlDevice | ((addressBytes[2]<1) & byte(0b0000_1110))
+       addressHigh  = addressBytes[1]
+       addressLow = addressBytes[0]
+       if _EepromExtChipAddressBits < 16 then
+          -- fixup addressHigh and ControlDevice
+       end if  -- else all of AddressHigh is used
+       if _EepromExtBaseAddress > 0 then
+          -- fixup controlDevice
+       end if  -- else controlDevice is either 3rd byte of address or part of 2nd byte
+       while ! i2c_Seize(400_000_000, true) & ( timeout > 0) loop
+            timeout = timeout -1
+            _usec_delay(1)
+       end loop
+       if timeout > 0 then
+           i2c_start()                -- send start bit
+           commOK = i2c_transmit_byte(controlDevice)    -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressHigh) -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressLow)  -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(datab[0])         -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(datab[1])
+           i2c_stop                               -- send stop bit
+           -- change to a timer driving a signal
+           _usec_delay(5_000)                      -- datasheet says writes take 5ms
+           i2c_Release()
+           _EepromExtLastError = _EEPROM_ERROR_NONE
+       else
+           _EepromExtLastError = _EEPROM_ERROR_TX
+       end if
+   else
+       _EepromExtLastError = _EEPROM_ERROR_BOUNDS
+   end if
+end procedure
+
+
+
+procedure EepromExtArray'put(dword in address, byte in datab[]) is
+-- to do: check page boundary
+var volatile bit commOK
+var byte controlDevice, addressLow, addressHigh
+var byte addressBytes[3] at address   -- split the memory address
+var dword timeout = _EEPROM_WAIT_FOR_BUS_INIT
+var word idx
+   var byte ch, id
+      if ((address + count(datab)) < _EepromExtArraySize)  then
+       controlDevice = _EepromExtControl    -- address zero & read
+       -- now add in the 3 bit address only
+       controlDevice = controlDevice | ((addressBytes[2]<1) & byte(0b0000_1110))
+       addressHigh  = addressBytes[1]
+       addressLow = addressBytes[0]
+       if _EepromExtChipAddressBits < 16 then
+          -- fixup addressHigh and ControlDevice
+       end if  -- else all of AddressHigh is used
+       if _EepromExtBaseAddress > 0 then
+          -- fixup controlDevice
+       end if  -- else controlDevice is either 3rd byte of address or part of 2nd byte
+       while ! i2c_Seize(400_000_000, true) & ( timeout > 0) loop
+            timeout = timeout -1
+            _usec_delay(1)
+       end loop
+       if (timeout > 0) then
+           i2c_start()                -- send start bit
+           commOK = i2c_transmit_byte(controlDevice)    -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressHigh) -- transmit datab & wait for ack
+           commOK = i2c_transmit_byte(addressLow)  -- transmit datab & wait for ack
+           for count(datab) using idx loop
+               commOK = i2c_transmit_byte(datab[idx])         -- transmit datab & wait for ack
+               if !commOK then
+                   _EepromExtLastError = _EEPROM_ERROR_TX
+                   exit loop
+               end if
+           end loop
+           i2c_stop                               -- send stop bit
+           -- change to a timer driving a signal
+           _usec_delay(5_000)                      -- datasheet says writes take 5ms
+           i2c_Release()
+           _EepromExtLastError = _EEPROM_ERROR_NONE
+       else
+           _EepromExtLastError = _EEPROM_ERROR_TX
+       end if
+   else
+       _EepromExtLastError = _EEPROM_ERROR_BOUNDS
+   end if
+end procedure
+
+

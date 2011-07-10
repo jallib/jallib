@@ -1,0 +1,510 @@
+-- Title: Writes formatted values to output device
+-- Author: Stef Mientki, Copyright (c) 2002 .. 2006, all rights reserved.
+-- Adapted-by: Joep Suijs, Albert Faber, Eur van Andel
+-- Compiler: >=2.2
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: 
+-- 
+-- Description: Outputs variables to output device.
+-- Writes formatted signed/unsiged bytes/words to the specified output device.
+-- Decimal (with fraction), Hex and Time formats available.
+-- --  
+-- Example:
+-- --     
+-- var sword BHL = -684
+-- --     
+-- ; send the signed word to the LCD display
+-- ; total field width 6 chars, including sign and decimal
+-- ; with 2 digits behind the decimal point
+-- format_sword_dec(LCD_char,BHL,6,2)
+-- --     
+-- ; and now send the same signed word to the serial port
+-- format_sword_dec(Serial_HW_data,BHL,6,2)  
+--   
+-- Notes:  
+--
+
+-- -----------------------------------------------------------------------------
+-- global vars
+-- -----------------------------------------------------------------------------
+var byte _format_leader
+var byte _format_digit
+var byte _format_sign
+var bit  _format_signed = false
+-- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+procedure _write_real_digit(volatile byte out device) is
+
+   if _format_signed then
+      device = _format_sign
+      _format_signed = false
+   end if
+
+   if _format_digit < 10 then
+      device = "0" + _format_digit
+   else
+      device = "A" + _format_digit - 10
+   end if
+
+   -- after writing a real digit, always make leader a "0" !!
+   _format_leader = "0"
+
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+procedure _write_digit(volatile byte out device, byte in digit, bit in point) is
+
+   _format_digit = digit
+   if point then
+      _write_real_digit(device)
+      device = "."
+   else
+      if _format_digit == 0 then device = _format_leader
+      else _write_real_digit(device)
+      end if
+   end if
+
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted byte to output device
+-- the output can be specified as a fraction
+--   n_tot = the total length (including sign and decimal point)
+--   n2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_byte_dec(volatile byte out device, byte in data, byte in n_tot, byte in n2) is
+
+   const word c100   = 100
+   const word c10    = 10
+   var byte digit
+
+   -- start with spaces as a leader
+   _format_leader = " "
+
+   -- determine the next digit and display it
+   if n_tot >= 3 then
+      digit = byte(data / c100)
+      data  = byte(data % c100)
+      _write_digit(device, digit, n2==2)
+   end if
+
+   if n_tot >= 2 then
+      digit = byte(data / c10)
+      data  = byte(data % c10)
+      _write_digit(device, digit, n2==1)
+   end if
+
+   -- last digit must always be written
+   _format_digit = data
+   _write_real_digit(device)
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted word to output device
+-- the output can be specified as a fraction
+--   n_tot = the total length (including sign and decimal point)
+--   n2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_word_dec(volatile byte out device, word in data, byte in n_tot, byte in n2) is
+
+   const word c10000 = 10000
+   const word c1000  = 1000
+   const word c100   = 100
+   const word c10    = 10
+   var byte digit
+
+   -- start with spaces as a leader
+   _format_leader = " "
+
+   -- determine the next digit and display it
+   if n_tot >=5 then
+      digit = byte(data / c10000)
+      data  = data % c10000
+      _write_digit(device, digit, n2==4)
+   end if
+
+   if n_tot >= 4 then
+      digit = byte(data / c1000)
+      data  = data % c1000
+      _write_digit(device, digit, n2==3)
+   end if
+
+   if n_tot >= 3 then
+      digit = byte(data / c100)
+      data  = data % c100
+      _write_digit(device, digit, n2==2)
+   end if
+
+   if n_tot >= 2 then
+      digit = byte(data / c10)
+      data  = data % c10
+      _write_digit(device, digit, n2==1)
+   end if
+
+   -- last digit must always be written
+   _format_digit = byte(data)
+   _write_real_digit(device)
+end procedure
+-- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted dword to output device
+-- the output can be specified as a fraction
+--   n_tot = the total length (including sign and decimal point)
+--   n2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_dword_dec(volatile byte out device, dword in data, byte in n_tot, byte in n2) is
+
+   const dword c1_000_000_000    = 1_000_000_000
+   const dword c100_000_000      = 100_000_000
+   const dword c10_000_000       = 10_000_000
+   const dword c1_000_000        = 1_000_000
+   const dword c100_000          = 100_000
+   const word  c10_000           = 10_000
+   const word  c1000             = 1000
+   const word  c100              = 100
+   const word  c10               = 10
+   var byte digit
+
+   -- start with spaces as a leader
+   _format_leader = " "
+
+   -- determine the next digit and display it
+   if n_tot >=10 then
+      digit = byte(data / c1_000_000_000)
+      data  = data % c1_000_000_000
+      _write_digit(device, digit, n2==9)
+   end if
+
+   if n_tot >=9 then
+      digit = byte(data / c100_000_000)
+      data  = data % c10_000_000
+      _write_digit(device, digit, n2==8)
+   end if
+
+   if n_tot >=8 then
+      digit = byte(data / c10_000_000)
+      data  = data % c10_000_000
+      _write_digit(device, digit, n2==7)
+   end if
+
+   if n_tot >=7 then
+      digit = byte(data / c1_000_000)
+      data  = data % c1_000_000
+      _write_digit(device, digit, n2==6)
+   end if
+
+   if n_tot >=6 then
+      digit = byte(data / c100_000)
+      data  = data % c100_000
+      _write_digit(device, digit, n2==5)
+   end if
+
+   if n_tot >=5 then
+      digit = byte(data / c10_000)
+      data  = data % c10_000
+      _write_digit(device, digit, n2==4)
+   end if
+
+   if n_tot >= 4 then
+      digit = byte(data / c1000)
+      data  = data % c1000
+      _write_digit(device, digit, n2==3)
+   end if
+
+   if n_tot >= 3 then
+      digit = byte(data / c100)
+      data  = data % c100
+      _write_digit(device, digit, n2==2)
+   end if
+
+   if n_tot >= 2 then
+      digit = byte(data / c10)
+      data  = data % c10
+      _write_digit(device, digit, n2==1)
+   end if
+
+   -- last digit must always be written
+   _format_digit = byte(data)
+   _write_real_digit(device)
+end procedure
+-- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted signed byte to output device
+-- the output can be specified as a fraction
+--   n_tot = the total length (including sign and decimal point)
+--   n2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_sbyte_dec(volatile byte out device, sbyte in data, byte in n_tot, byte in n2) is
+
+   var bit sign at data:7
+
+   if sign then
+      _format_sign = "-"
+      data = -data
+   else
+      _format_sign = " "
+   end if
+
+   _format_signed = true
+   format_byte_dec(device, byte( data ), n_tot-1, n2)
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted signed word to output device
+-- the output can be specified as a fraction
+--   n_tot = the total length (including sign and decimal point)
+--   n2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_sword_dec(volatile byte out device, sword in data, byte in n_tot, byte in n2) is
+
+   ;var byte digit
+   ;var byte B[2] at data
+   ;var bit sign at B[1]:7
+   var bit sign at data:15
+
+
+   if sign then
+      _format_sign = "-"
+      data = -data
+   else
+      _format_sign = " "
+   end if
+
+   _format_signed = true
+   format_word_dec(device, word( data ), n_tot-1, n2)
+end procedure
+-- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted signed word to output device
+-- output can be specified in length of string and position
+-- values -32767 to +32768, so lenght = 5 max
+-- last digit is position 0, first is 4 = max
+-- 32768, len=3, pos=2 gives 327
+-- 32768, len=1, pos=0 gives 6
+-- 32768, len=2, pos=4 gives 32
+-- added by Eur van Andel, eur@fiwihex.nl, 23 NOV 2009
+-- -----------------------------------------------------------------------------
+procedure format_sword_dec_length(volatile byte out device, sword in data, 
+                                  bit in sign, byte in len, byte in pos) is
+
+   var bit data_sign at data:15
+   var byte char[5]
+   var byte i
+
+   if sign then
+      if data_sign then
+         device = "-"
+         data = - data
+      else
+         device = "+"
+      end if
+   else
+      if data_sign then
+         data = - data
+      end if
+   end if
+
+   if len == 0 then            -- nothing more will be printed
+      return
+   end if
+
+   char[0]= byte("0" + data/10_000)
+   data = data % 10_000
+   char[1] = byte("0" + data/1_000)
+   data = data % 1_000
+   char[2] = byte("0" + data/100)
+   data = data % 100
+   char[3] = byte("0" + data/10)
+   data = data % 10
+   char[4] = byte("0" + data)
+
+   i = 0
+   while i + pos < 5 loop        -- no more than 5 digits
+      device = char[i + pos]
+      i = i + 1
+      len = len - 1
+      if len == 0 then  
+         i = 5
+      end if
+   end loop
+      
+
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+
+
+-- -----------------------------------------------------------------------------
+-- writes decimal formatted signed dword to output device
+-- the output can be specified as a fraction
+--   n_tot = the total length (including sign and decimal point)
+--   n2   = number of digits behind the point
+-- -----------------------------------------------------------------------------
+procedure format_sdword_dec(volatile byte out device, sdword in data, byte in n_tot, byte in n2) is
+
+   var bit sign at data:31
+
+   if sign then
+      _format_sign = "-"
+      data = -data
+   else
+      _format_sign = " "
+   end if
+
+   _format_signed = true
+   format_dword_dec(device, dword( data ), n_tot-1, n2)
+end procedure
+-- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- writes hex formatted byte to output device
+-- -----------------------------------------------------------------------------
+procedure format_byte_hex(volatile byte out device, byte in data) is
+
+   var byte digit
+
+   -- start with zeroes as a leader
+   _format_leader = "0"
+
+   -- determine the next digit and display it
+   for 2 loop
+      digit = (data & 0xF0) >> 4
+      data  = data << 4
+      _write_digit(device,digit,false)
+   end loop
+
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- writes hex formatted word to output device
+-- -----------------------------------------------------------------------------
+procedure format_word_hex(volatile byte out device, word in data) is
+
+   var byte digit
+   var byte B[2] at data
+
+   -- start with zeroes as a leader
+   _format_leader = "0"
+
+   -- determine the next digit and display it
+   for 4 loop
+      digit = (B[1] & 0xF0) >> 4
+      data  = data << 4
+      _write_digit(device,digit,false)
+   end loop
+
+end procedure
+-- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- writes hex formatted dword to output device
+-- -----------------------------------------------------------------------------
+procedure format_dword_hex(volatile byte out device, dword in data) is
+
+   var byte digit
+   var byte B[4] at data
+
+   -- start with zeroes as a leader
+   _format_leader = "0"
+
+   -- determine the next digit and display it
+   for 8 loop
+      digit = (B[3] & 0xF0) >> 4
+      data  = data << 4
+      _write_digit(device,digit,false)
+   end loop
+
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- Displays a time in HH:MM notation at specified position
+-- Hours and minutes are specified separate
+-- -----------------------------------------------------------------------------
+procedure format_time_hm(volatile byte out device,byte in HH, byte in MM) is
+   var byte D10
+
+   D10 = HH / 10
+   HH  = HH % 10
+
+   -- always dsiplay Zeroes
+   device = "0" + D10
+   device = "0" + HH
+   device = ":"
+
+   D10 = MM / 10
+   MM  = MM % 10
+
+   device = "0" + D10
+   device = "0" + MM
+end procedure
+-- -----------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
+-- Displays a time in HH:MM:SS notation at specified position
+-- Hours and minutes are specified separate
+-- -----------------------------------------------------------------------------
+procedure format_time_hms(volatile byte out device,byte in HH, byte in MM, byte in SS) is
+   var byte D10
+
+   D10 = HH / 10
+   HH  = HH % 10
+
+   -- always display Zeroes
+   device = "0" + D10
+   device = "0" + HH
+   device = ":"
+
+   D10 = MM / 10
+   MM  = MM % 10
+
+   device = "0" + D10
+   device = "0" + MM
+   device = ":"
+
+   D10 = SS / 10
+   SS  = SS % 10
+
+   device = "0" + D10
+   device = "0" + SS
+end procedure
+-- -----------------------------------------------------------------------------
+
+
+-- -----------------------------------------------------------------------------
+-- Displays a time in HH:MM notation at specified position
+-- the input is specified in minutes
+-- -----------------------------------------------------------------------------
+procedure format_time_hm_word(volatile byte out device,word in minutes) is
+   var byte D10
+   var byte HH
+   var byte MM
+
+   HH = byte(minutes / 60)
+   MM = byte(minutes % 60)
+   HH = HH % 24
+
+   format_time_hm(device, HH, MM)
+end procedure
+-- -----------------------------------------------------------------------------

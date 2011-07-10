@@ -1,0 +1,84 @@
+-- Title: TX test of CANopen library and external can_mpc2515 controller
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4m
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- Sends a CANopen 'Heartbeat' twice a second and blinks LED
+--
+-- Note:  uses SPI Master library and also needs a 'chip select' pin such as:
+--              var bit can_sel is pin_B0
+--
+
+include 16f819
+pragma target fuses 0x3F30
+pragma target clock 8_000_000
+include delay
+
+OSCCON = 0x70
+asm nop
+asm nop
+
+enable_digital_io()
+
+var bit led is pin_A0
+pin_A0_direction = output
+
+var bit can_sel is pin_B0
+pin_B0_direction = output
+pin_B1_direction = input
+pin_B2_direction = output
+pin_B4_direction = output
+include spi_master_hw
+include can_mcp2515
+include canopen
+
+for 3 loop
+   led = on
+   delay_100ms(2)
+   led = off
+   delay_100ms(2)
+end loop
+
+
+spi_init(SPI_MODE_00, SPI_RATE_FOSC_64)
+delay_100ms(1)
+can_reset()
+delay_100ms(1)
+
+-- 125K bps
+can_set_config(0x01, 0x89, 0x82)
+can_write(CAN_TXB0CTRL, 0)
+can_write(CAN_TXB1CTRL, 0)
+can_write(CAN_TXB2CTRL, 0)
+can_write(CANCTRL, 0x07) -- Normal mode
+delay_100ms(1)
+
+-- build the CANopen "COB-ID" for Heartbeat message
+const byte NODE_ID = 1  -- valid nodes: 1-127
+const byte HB_FUNC = 0x0E
+var dword cob_id
+co_encode_cob_id(HB_FUNC, NODE_ID, cob_id)
+
+forever loop
+   var byte hb_state
+   var byte txdata[8] -- for this test, we only use 1 byte of 8 possible.
+   
+   -- mimic changing our node's 'state'.
+   -- this is just for testing.
+   if hb_state == 4 then
+      hb_state = 5
+   else 
+      hb_state = 4
+   end if
+   txdata[0] = hb_state
+   
+   -- send the CANopen heartbeat message
+   co_send(cob_id, txdata, 1)
+   
+   led = led ^ 1
+   delay_100ms(5)
+end loop
+

@@ -1,0 +1,46 @@
+-- Title: CANopen library
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- a small CAN library compatible with CANopen
+--
+-- Sources: Cia DS 301 version 4.02
+--
+
+-- Note that we are using dword (32-bit) for cob_id for socket-CAN compatibility.
+
+-- FIXME: how to truly support 'extended' 29-bit CAN identifiers?
+
+-- format the COB-ID, which is a 'standard' 11-bit CAN identifier. 
+-- the function code is upper 4 bits, the node_id is lower 7 bits.
+procedure co_encode_cob_id(byte in func, byte in node_id, dword out cob_id) is
+   func = func & 0x0F
+   node_id = node_id & 0x7F
+   cob_id = ( dword(func) << 7 ) | dword(node_id)
+end procedure
+
+-- extract function code and node_id from 11-bit cob_id
+procedure co_decode_cob_id(dword in cob_id, byte out func, byte out node_id) is
+   cob_id = cob_id & 0x7FF
+   func = byte(cob_id >> 7)
+   node_id = byte(cob_id & 0x7F)
+end procedure
+
+-- send standard 11-bit CANopen message
+-- FIXME: we are only using one of the TX buffers (3 are available)
+-- FIXME: handle timeout
+procedure co_send(dword in cob_id, byte in data[8], byte in len) is
+   while can_send(0, cob_id, data, len) == 0 loop end loop
+end procedure
+
+-- receive standard 11-bit CANopen message
+-- FIXME: we are assuming rollover is set up from RXB0 to RXB1
+-- FIXME: handle timeout
+procedure co_receive(dword out cob_id, byte out data[8], byte out len) is
+   while can_receive(1, cob_id, data, len) == 0 loop end loop
+end procedure
+

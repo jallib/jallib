@@ -1,0 +1,70 @@
+-- Title: Checksum
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4l
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library calculates checksums for data error detection.
+--
+-- Sources:
+-- http://www.faqs.org/rfcs/rfc1071.html
+--
+
+--------------------------------------------------------------------------------
+-- Computes a 16bit checksum from a byte array using every 2 bytes in the array.
+-- Mostly used for IP header checksums.
+--------------------------------------------------------------------------------
+function checksum_16_byte_calc(byte in buff[], word in start, word in size) return word is
+   var word checksum
+   alias count1 is size
+   ;var word i = 0
+   alias i is start
+   var word word16
+   var dword sum = 0
+   var byte _sum[2] at sum
+
+   -- make 16 bit words out of every two adjacent 8 bit words in the packet
+   -- and add them up
+   while (count1 > 1) loop
+      sum = sum + word((word(buff[i + 0]) << 8) + buff[i + 1])
+      i = i + 2
+      count1 = count1 - 2
+
+      if sum > 0xFFFF then
+         sum = word(sum) + 1
+      end if
+   end loop
+
+   -- also check odd numbered buffer
+   if count1 == 1 then
+      sum = sum + (word(buff[i + 0]) << 8)
+      if sum > 0xFFFF then
+         sum = word(sum) + 1
+      end if
+   end if
+
+   -- ones complement the result
+   sum = word(!sum)
+
+   -- set the out bytes
+   checksum = word(sum)
+   
+   return checksum
+end function
+
+--------------------------------------------------------------------------------
+-- Verify 16bit checksum from a byte array using every 2 bytes in the array.
+-- Mostly used for IP header checksums.
+--------------------------------------------------------------------------------
+function checksum_16_byte_verify(byte in buff[], word in start, word in size) return bit is
+   var word data
+   data = checksum_16_byte_calc(buff,start,size)
+
+   if (data == 0) | data == 0xFFFF then
+      return 1
+   else
+      return 0
+   end if
+end function

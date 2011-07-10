@@ -1,0 +1,104 @@
+-- ------------------------------------------------------
+-- Title: one wire JAL library
+--
+-- Author: Vasile Surducan, Copyright (c) 2009..2010, all rights reserved.
+--
+-- Adapted-by: Jean Marchaudon, Joep Suijs
+--
+-- Compiler: >=2.4m
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library to interface with Dallas / Maxim one-wire-bus devices
+-- -- 
+-- Pin used for the 1-wire bus must be define these in your program 
+-- before including the library. E.g.:
+-- alias d1w_bus   is pin_c1
+-- alias d1w_bus_out  is pin_c1_direction
+--
+-- Sources:
+--
+-- Notes: 
+--
+-- ------------------------------------------------------
+
+procedure d1w_init() is
+   -- Prepare the bus
+   d1w_bus              = low
+   d1w_bus_direction    = input
+end procedure
+
+procedure _d1w_write_bit( bit in x ) is
+   d1w_bus = low
+   d1w_bus_direction = output
+   delay_10us( 1 )
+   if x == high then d1w_bus_direction = input end if
+   delay_10us( 8 )
+   d1w_bus_direction = input
+   delay_10us( 1 )
+end procedure
+
+procedure _d1w_read_bit( bit out x ) is
+   x = high
+   d1w_bus = low
+   d1w_bus_direction = output
+   delay_10us( 1 )
+   d1w_bus_direction = input
+   delay_10us( 1 )
+   if d1w_bus == low then x = low end if
+   delay_10us( 7 )
+end procedure
+
+procedure d1w_write_byte( byte in e ) is
+   var bit x at e : 0
+   for 8 loop
+      _d1w_write_bit( x )
+      e = e >> 1
+   end loop   
+   
+   -- power bus after byte is written
+   d1w_bus = high
+   d1w_bus_direction = output
+   
+end procedure
+
+procedure d1w_read_byte( byte out c ) is
+   var bit x at c : 7
+   for 8 loop
+      c = c >> 1
+      _d1w_read_bit( x )
+   end loop
+
+   -- power bus after byte is read
+   d1w_bus = high
+   d1w_bus_direction = output
+
+end procedure
+
+procedure d1w_reset() is   
+   d1w_bus = low
+   d1w_bus_direction = output
+   delay_10us( 70 )
+   d1w_bus_direction = input
+   delay_10us( 70 )
+end procedure
+
+function d1w_present() return bit is
+   var bit x = false
+   d1w_bus = low
+   d1w_bus_direction = output
+   delay_10us( 70 )
+   d1w_bus_direction = input
+   delay_10us( 3 )
+   if d1w_bus == low then 
+      x = true 
+   end if
+   delay_10us( 3 )
+   if d1w_bus == low then 
+      x = true 
+   end if
+   delay_10us( 70 )
+   return x
+end function
+

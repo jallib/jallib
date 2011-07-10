@@ -1,0 +1,159 @@
+-- Title: Read back the EUI-48 address and display on STERM or other LCD display
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- Read back the 'MAC address' from the serial EEprom, also do a simple
+--                 test of writing to eeprom and reading back.
+-- 
+
+include 16f819
+pragma target fuses 0x3F30
+pragma target clock 8_000_000
+include delay
+
+OSCCON = 0x70
+asm nop
+asm nop
+
+include format
+include print
+
+const byte banner[] = "    EUI-48 "
+
+enable_digital_io()
+
+alias led is pin_A0
+pin_A0_direction =  output
+
+const byte LCD_ROWS = 4
+const byte LCD_CHARS = 20
+var bit lcd_sterm_pin is pin_A4
+var bit lcd_sterm_pin_dir is pin_A4_direction
+include lcd_sterm_master
+
+-- disable external CAN controller which
+-- is present on this prototype board.
+alias can_sel is pin_B0
+can_sel = 1
+pin_B0_direction = output
+
+alias ee25_sel is pin_A1
+ee25_sel = 1
+pin_A1_direction = output
+pin_B1_direction = input
+pin_B2_direction = output
+pin_B4_direction = output
+include spi_master_hw
+include ee_25aa02e48
+
+spi_init(SPI_MODE_00, SPI_RATE_FOSC_64)
+delay_100ms(1)
+
+-- wait for STERM Slave to power-up and initialize.
+for 10 loop
+   led = led ^ 1
+   delay_100ms(5)
+end loop
+
+lcd_home()
+lcd_clear_screen()
+lcd_home()
+print_string(lcd, banner)
+
+const byte pattern_expected[4] = { 0xAA, 0x55, 0x00, 0xFF }
+var byte mac_expected[6], mac[6], pattern[4]
+var word mac_errs = 0
+var word pat_errs = 0
+var byte i
+
+-- read mac address from eeprom
+for 6 using i loop
+   var byte data
+   data = ee25_read(0xFA + i)
+   mac_expected[i] = data
+end loop
+
+-- write data pattern to EEprom, loc: 0-3
+for 4 using i loop
+   ee25_write(i, pattern_expected[i])
+end loop
+
+-- display initial values
+lcd_cursor_position(2,0)
+for 6 using i loop
+   print_byte_hex(lcd, mac_expected[i])
+end loop
+
+lcd_cursor_position(3,0)
+for 4 using i loop
+   print_byte_hex(lcd, pattern_expected[i])
+end loop
+
+-- leave banner up for a while
+for 25 loop
+   led = led ^ 1
+   delay_100ms(2)
+end loop
+
+forever loop
+   
+   -- read mac address from eeprom
+   for 6 using i loop
+      var byte data
+      data = ee25_read(0xFA + i)
+      mac[i] = data
+   end loop
+   
+   -- read the data pattern back from loc: 0-3
+   for 4 using i loop
+      var byte data
+      data = ee25_read(i)
+      pattern[i] = data
+   end loop
+   
+   -- compare
+   for 6 using i loop
+      if mac[i] != mac_expected[i] then
+         mac_errs = mac_errs + 1
+      end if
+   end loop
+   
+   for 4 using i loop
+      if pattern[i] != pattern_expected[i] then
+         pat_errs = pat_errs + 1
+      end if
+   end loop
+   
+   -- wiggle the top-left corner
+   lcd_home()
+   if led != 0 then
+      lcd = "/"
+   else
+      lcd = "-"
+   end if
+   
+   -- now the status line
+   lcd_cursor_position(1,0)
+   print_word_hex(lcd, mac_errs)
+   lcd = " "
+   print_word_hex(lcd, pat_errs)
+   
+   -- display current value
+   lcd_cursor_position(2,0)
+   for 6 using i loop
+      print_byte_hex(lcd, mac[i])
+   end loop
+   
+   lcd_cursor_position(3,0)
+   for 4 using i loop
+      print_byte_hex(lcd, pattern[i])
+   end loop
+   
+   led = led ^ 1
+   delay_100ms(1)
+end loop
+

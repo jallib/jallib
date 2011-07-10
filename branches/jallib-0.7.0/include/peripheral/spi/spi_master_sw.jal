@@ -1,0 +1,142 @@
+-- Title: SPI Master Software
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Compiler: 2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: SPI Master software control.
+-- Routines for sending and receiving through SPI software in master mode
+--
+-- Sources:
+-- Jallib spi_master_hw library - Written by William Welch
+-- http://www.justanotherlanguage.org/content/jallib/tutorials/tutorial_spi_introduction
+-- http://ww1.microchip.com/downloads/en/devicedoc/spi.pdf
+--
+-- Notes:
+-- alias spi_master_sw_sdi              is pin_sdi
+-- alias spi_master_sw_sdi_direction    is pin_sdi_direction
+-- alias spi_master_sw_sdo              is pin_sdo
+-- alias spi_master_sw_sdo_direction    is pin_sdo_direction
+-- alias spi_master_sw_sck              is pin_sck
+-- alias spi_master_sw_sck_direction    is pin_sck_direction
+-- -- define spi inputs/outputs
+-- spi_master_sw_sdi_direction = input    -- spi input
+-- spi_master_sw_sdo_direction = output   -- spi output
+-- spi_master_sw_sck_direction = output   -- spi clock
+-- --
+-- include spi_master_sw
+-- spi_init(SPI_MODE_11) -- init spi, choose mode
+--
+
+include spi_common
+
+var byte _spi_mode
+var byte _spi_rate
+
+--------------------------------------------------------------------------------
+-- init spi
+--------------------------------------------------------------------------------
+procedure spi_init(byte in spi_mode) is
+   _spi_mode = spi_mode
+   if _spi_mode == SPI_MODE_00 then
+      spi_master_sw_sck = LOW
+   elsif _spi_mode == SPI_MODE_01 then
+      spi_master_sw_sck = LOW
+   elsif _spi_mode == SPI_MODE_10 then
+      spi_master_sw_sck = HIGH
+   else ;spi_mode == SPI_MODE_11 then
+      spi_master_sw_sck = HIGH
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- exchange data on the spi bus.
+--------------------------------------------------------------------------------
+function spi_master_sw_exchange(byte in data) return byte is
+   var bit bit_out at data : 7
+   var bit bit_in at data : 0
+   if (_spi_mode == SPI_MODE_00) | (_spi_mode == SPI_MODE_01) then
+      for 8 loop
+         spi_master_sw_sdo = bit_out
+         data = data << 1
+         spi_master_sw_sck = high
+         spi_master_sw_sck = low
+         bit_in = spi_master_sw_sdi
+      end loop
+   else ;(_spi_mode == SPI_MODE_11 then) | (_spi_mode == SPI_MODE_10) then
+      for 8 loop
+         spi_master_sw_sdo = bit_out
+         data = data << 1
+         spi_master_sw_sck = low
+         spi_master_sw_sck = high
+         bit_in = spi_master_sw_sdi
+      end loop
+   end if
+   
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- put one byte of data onto the spi bus (pseudo variable)
+--------------------------------------------------------------------------------
+procedure spi_master_sw'put(byte in data) is
+   var bit bit_out at data : 7
+   if (_spi_mode == SPI_MODE_00) | (_spi_mode == SPI_MODE_01) then
+      for 8 loop
+         spi_master_sw_sdo = bit_out
+         data = data << 1
+         spi_master_sw_sck = high
+         spi_master_sw_sck = low
+      end loop
+   else ;(_spi_mode == SPI_MODE_11 then) | (_spi_mode == SPI_MODE_10) then
+      for 8 loop
+         spi_master_sw_sdo = bit_out
+         data = data << 1
+         spi_master_sw_sck = low
+         spi_master_sw_sck = high
+      end loop
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- read one byte of data from the spi bus (pseudo variable)
+--------------------------------------------------------------------------------
+function spi_master_sw'get() return byte is
+   var byte data
+   
+   var bit bit_out at data : 0
+   if (_spi_mode == SPI_MODE_00) | (_spi_mode == SPI_MODE_01) then
+      for 8 loop
+         data = data << 1
+         spi_master_sw_sck = high
+         spi_master_sw_sck = low
+         bit_out = spi_master_sw_sdi
+      end loop
+   else ;(_spi_mode == SPI_MODE_11 then) | (_spi_mode == SPI_MODE_10) then
+      for 8 loop
+         data = data << 1
+         spi_master_sw_sck = low
+         spi_master_sw_sck = high
+         bit_out = spi_master_sw_sdi
+      end loop
+   end if
+   return data
+end function
+
+
+--------------------------------------------------------------------------------
+-- set spi mode
+--------------------------------------------------------------------------------
+procedure spi_master_sw_set_mode(byte in spi_mode) is
+   pragma inline
+   _spi_mode = spi_mode
+end procedure
+
+--------------------------------------------------------------------------------
+-- set spi speed (not actually implemented yet, just here for compatibility)
+--------------------------------------------------------------------------------
+procedure spi_master_sw_set_speed(byte in spi_rate) is
+   pragma inline
+   _spi_rate = spi_rate
+end procedure

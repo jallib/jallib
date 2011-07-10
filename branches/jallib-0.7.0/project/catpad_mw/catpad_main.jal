@@ -1,0 +1,764 @@
+-- Title: catpad_main
+-- inserted in main program just before we have any commands
+-- variables
+
+const byte S_METER_HEIGHT = 37
+const byte P_METER_HEIGHT = 29
+var byte mycall[16]
+
+var byte char	-- will store received char
+var byte lastPress = 0
+
+var byte press
+var byte keyPresses[8] -- raw user entry
+var byte digitEntryIndex   -- index to last press
+
+var bit clock_on = false
+
+--Used by ISR and Widgets
+var byte CheckTime = 0   -- semaphore
+var byte CheckRadio = 0   -- semaphore
+var byte CheckUser = 0 -- semaphore
+var byte CheckRDS = 0  -- semaphore
+
+
+procedure welcome() is
+var byte digits, xd, yd
+    for count(myCall) using xd loop
+       if xd < count(str0) then
+           EepromIntByte[IO_MyCall+xd] = str0[xd]
+       else
+           EepromIntByte[IO_MyCall+xd] = 255
+       end if
+    end loop
+    ClockSave()
+    DrawClockFace(25,24,23, on, on)
+    CharStyleBold = on
+    ScreenCharXY(10,6)
+    --CharStyleDouble = on
+    for count(myCall) using xd loop
+        myCall[xd]= EepromIntByte[IO_MyCall+xd]
+    end loop
+    print_string(ScreenChar,myCall)
+    print_string(ScreenChar,str1)
+    --CharStyleDouble = off
+
+    ScreenCharXY(1,7)
+    print_string(ScreenChar, str2)
+    CharStyleBold = off
+    ScreenCharXY(7, 0)
+    _charSpacing = 4
+    for 32 using digits loop
+        ScreenChar = digits
+    end loop
+    _charSpacing = 6
+    const byte welMsg[] = "Hello"
+    drawbutton (57,22, 36,11, welMsg, on)
+
+    clock_on = true
+end procedure
+
+procedure ImportEeprom(dword in dest, word in blockCount) is
+-- use 32 byte blocks
+-- use USB
+-- up to 2Mbyte per transfer
+
+const byte IMP_START = 0
+const byte IMP_OK= 1
+const byte IMP_ERROR =2
+const byte IMP_FULL = 3
+var dword calcCRC32, rxCRC
+var byte buffer[32]
+var byte rxCRCbuffer[4] at rxCRC
+var byte blockIndex
+var byte calcCRC8
+var byte blockAddress[4] at dest
+var byte blocks[2] at blockCount
+var byte transferCmd[7]
+    if ( usb_cdc_line_status() !=  0x00 ) then
+        transferCmd[0] = IMP_START
+        transferCmd[1] = blockAddress[0]
+        transferCmd[2] = blockAddress[1]
+        transferCmd[3] = blockAddress[2]
+        transferCmd[4] = blockAddress[3]
+        transferCmd[5] = blocks[0]
+        transferCmd[6] = blocks[1]
+        calcCRC8 = getCRC8(transferCmd)
+        for count(transferCmd) using blockIndex loop
+            usb_serial_data = transferCmd[blockIndex]
+        end loop
+        usb_serial_data = calcCRC8
+        for count(buffer) using blockIndex loop
+            buffer[blockIndex] = usb_serial_data
+        end loop
+         for count(rxCRCbuffer) using blockCount loop
+            rxCRCbuffer[blockCount] = usb_serial_data
+        end loop
+        calcCRC32 = getcrc32(buffer)
+
+        if  ( usb_cdc_line_status() !=  0x00 ) & _usb_serial_read(char)then
+            serial_hw_write(char)
+        end if
+
+         calcCRC32 = getcrc32(buffer )
+    end if
+end procedure
+
+
+procedure ExportEeprom(dword in dest, word in blockCount)is
+
+
+end procedure
+
+-- must be global
+var volatile byte vMeter = 20
+var volatile byte pMeter = 70
+var volatile  byte alcMeter, modMeter
+var volatile byte smeter = 50
+var volatile byte modMode   -- used by user imput to change Mode
+
+const byte  LINK_RETRIES = 10     -- 10 is about 2s with 684 = 175ms as poll
+var byte linkFailTime =  LINK_RETRIES
+
+Procedure DisplayWait() is
+const byte waitText[10] = "Waiting..."
+    ScreenCharXY(0,0)
+    CharStyleDouble = on
+    print_string(ScreenChar,waitText)
+    CharStyleDouble = off
+end procedure
+
+var bit timedOut = false
+
+Procedure DisplayFrequency() is
+var volatile byte rigFreq[4]
+var byte rigFreqText[10] = "430.125,00"
+var byte modmodeText[3]
+var byte newMode
+    if CAT_FreqBCDRd(newMode,  rigfreq) then
+        if BCD4toString10 (rigFreq, rigFreqText) then
+            timedOut = false
+            if newMode < 15 then
+                modMode = newMode
+            end if
+            ScreenCharXY(0,0)
+            CharStyleDouble = on
+            print_string(ScreenChar,rigFreqText)
+            CharStyleDouble = off
+            ScreenCharXY(20,1)
+            CharStyleBold = on
+            ScreenChar ="0"
+            CharStyleBold = off
+        end if
+        ScreenCharXY(15,7)
+        if RIG_ModeText(modMode,modmodeText) then
+            ScreenChar = "n"
+        else
+            ScreenChar = " "
+        end if
+        print_string(ScreenChar,modmodeText)
+        linkFailTime = LINK_RETRIES
+    elsif (linkFailTime < 1) then
+        if ! timedOut then
+           DisplayWait()
+           timedOut = true
+        end if
+    else
+        linkfailtime = linkfailtime -1
+    end if
+end procedure
+
+
+
+function ScaleMeter (byte in meter) return byte  is
+        if meter < 16 then
+           return (meter *7)
+        else
+            return (255)
+        end if
+end function
+
+procedure RIG_TxPoll() is
+-- pragma inline
+var volatile bit squelch, toneSql, discrim
+var byte newVmeter, newPmeter
+    if CAT_TXmeters(newVmeter, newPmeter, alcMeter, modMeter) then
+        DrawMeterNeedle(1,16,P_METER_HEIGHT,pMeter, off)     -- Txmeters
+        DrawMeterNeedle(64, 16, P_METER_HEIGHT,vMeter, off)
+        vMeter = ScaleMeter(newVmeter)
+        pMeter = ScaleMeter(newPmeter)
+        DrawMeterNeedle(1,16,P_METER_HEIGHT,pmeter, on)
+        DrawMeterNeedle(64, 16, P_METER_HEIGHT,vmeter, on)
+        ScreenCharXY(10,7)
+        CharStyleBold = on
+        ScreenChar = "_"
+        ScreenChar = "_"
+        CharStyleBold = off
+    end if
+    DisplayFrequency()
+end procedure
+
+
+procedure RIG_RxPoll() is
+--pragma inline
+var bit squelch, toneSql, discrim
+var byte newSmeter
+    if  CAT_RXstats(newSmeter, squelch, toneSql, discrim) then
+        DrawMeterNeedle(42, 16, S_METER_HEIGHT, smeter, off)
+        --smeter is only 0 .. 15, x7 = 105, 14x7 = 98
+        smeter = ScaleMeter(newSmeter)
+        DrawMeterNeedle(42, 16, S_METER_HEIGHT, smeter, on)
+        ScreenCharXY(10,7)
+        CharStyleBold = on
+        if squelch then
+        ScreenChar =  "S"
+        else
+        ScreenChar =  "_"
+        end if
+        if toneSql then
+        ScreenChar =  "T"
+        else
+        ScreenChar =  "_"
+        end if
+        if discrim then
+        ScreenChar =  "D"
+        else
+        ScreenChar =  "_"
+        end if
+        CharStyleBold = off
+    end if
+    DisplayFrequency()
+end procedure
+
+
+
+--task
+procedure ClockWidget () is
+var word temp
+   --forever loop
+        if CheckTime > 0 then
+            if seconds > 59 then
+               calendar()
+               if clock_on then
+
+                end if
+            end if
+            if clock_on then
+                DrawHands (off)
+                UpdateHands(hours, minutes, seconds)
+                DrawHands (on)
+                If rigModeNow == RIGMODE_OFF then
+                        --ScreenCharXY(5,0)
+                        --ScreenCharClearEOL()
+                        --temp = rand()
+                        -- ScreenCharXY(10-digitsWord(temp),0)
+                        -- print_word_dec (ScreenChar, temp)
+                        -- temp =word(genrand() >> 16)
+                        --ScreenCharXY(11,0)
+                        -- print_dword_dec (ScreenChar, genrand())
+
+                        ScreenCharXY(9,1)
+                    else
+                        ScreenCharXY(0,7)
+                    end if
+                    _charSpacing = 4
+                    print_byte_dec(ScreenChar,date)
+                    ScreenChar =DIGITS_SPACE
+                    print_byte_dec(ScreenChar,month)
+                    ScreenChar =DIGITS_SPACE
+                    print_word_dec(ScreenChar,(year))
+                    _charSpacing = 6
+                    ScreenChar = " "
+            end if
+            CheckTime = CheckTime -1
+            if  CheckTime == 0 then
+               --suspend
+            end if
+         else
+             --suspend
+         end if
+  --end loop
+end procedure
+
+ --task
+procedure RDSWidget () is
+   --forever loop
+        if CheckRDS > 0 then
+            -- do sample of RDS clock pin
+            -- if 1 to 0 change then
+                -- inputTo26bitbuffer
+                -- syndromes
+                -- crc correction
+                -- update RX msg carosel
+            -- end if
+            CheckRDS = CheckRDS -1
+            if  CheckRDS == 0 then
+                --suspend
+            end if
+         else
+            --suspend
+         end if
+   --end loop
+end procedure
+
+
+--task
+procedure RadioWidget () is
+const byte Mhz[] = "0MHz"
+CONST byte MENU1[] = " Tune Lamp Redo OFF"
+CONST byte MENU2_1[] = "CTCS"
+CONST byte MENU2_2[] = "DCS"
+CONST byte MENU2_3[] = "Sql"
+CONST byte MENU2_4[] = "Anay"
+
+CONST byte MENU3_1[] = "Ant"
+CONST byte MENU3_2[] = "PreA
+CONST byte MENU3_3[] = "Pwr"
+CONST byte MENU3_4[] = "Band"
+
+CONST byte MENU4_1[] = "Tone"
+CONST byte MENU4_2[] = "Msg"
+CONST byte MENU4_3[] = " "
+CONST byte MENU4_4[] = "Mems"
+
+CONST byte MENU5_1[] = "More"
+CONST byte MENU5_2[] = "Spli"
+CONST byte MENU5_3[] = "Exit"
+CONST byte MENU5_4[] = "Defs"
+
+CONST byte S_MENU1[] = " Settings & PC I/O"
+CONST byte S_MENU2_1[] = "Time"
+CONST byte S_MENU2_2[] = "Date"
+CONST byte S_MENU2_3[] = "CAT"
+CONST byte S_MENU2_4[] = "USB"
+
+CONST byte S_MENU3_1[] = "Sleep"
+CONST byte S_MENU3_2[] = "Lamp"
+CONST byte S_MENU3_3[] = " "
+CONST byte S_MENU3_4[] = " "
+
+CONST byte S_MENU4_1[] = "Save"
+CONST byte S_MENU4_2[] = "Rest"
+CONST byte S_MENU4_3[] = "Exp"
+CONST byte S_MENU4_4[] = "Imp "
+
+CONST byte S_MENU5_1[] = "Main"
+CONST byte S_MENU5_2[] = " "
+CONST byte S_MENU5_3[] = "Exit"
+CONST byte S_MENU5_4[] = "Call"
+const byte LBL_PMETER[] = "Power W"
+const byte LBL_VMETER[] = "VSWR"
+const byte S_METER_SCALE[] ={0,2,4,6,8,DIGITS_PLUS,1,2,3,4,5}
+const byte P_METER_SCALE[] ={0,DIGITS_SPACE,1,2,3,4,5,6,7,8,9}
+const byte V_METER_SCALE[] ={1,DIGITS_SPACE,5,DIGITS_SPACE ,7,DIGITS_SPACE ,2,3,5,9,DIGITS_PLUS}
+var volatile bit  pttStatus, success
+   -- loop
+        if CheckRadio > 0 then
+            case rigModeNow of
+            RIGMODE_RX: block
+                     if !(rigModeNow  == rigModeOld) then
+                          if ! clock_on then
+                              DrawClockFace(19,35,17, on, off)
+                              clock_on = true
+                              DisplayWait()
+                              DrawMeterFace(42, 16, S_METER_HEIGHT,S_METER_SCALE, on)
+                          end if
+                          pttStatus = off
+                          if CAT_PTT(pttStatus) then
+                               rigModeOld = rigModeNow
+                               linkFailTime = LINK_RETRIES
+                          end if
+                     else
+                         RIG_RxPoll()
+                     end if
+
+                 end block
+            RIGMODE_TX: block
+                     if !(rigModeNow  == rigModeOld) then
+                          clock_on = off
+                          ScreenClear()
+                          DisplayWait()
+                          DrawMeterFace(1,16,P_METER_HEIGHT, P_METER_SCALE,on)
+                          DrawMeterFace(64, 16, P_METER_HEIGHT,V_METER_SCALE, on)
+                          ScreenCharXY(2,6)
+                          print_string(ScreenChar,LBL_PMETER)
+                          ScreenCharXY(12,6)
+                          print_string(ScreenChar,LBL_vMETER)
+                          pttStatus = on
+                          if CAT_PTT(pttStatus) then
+                                rigModeOld = rigModeNow
+                                linkFailTime = LINK_RETRIES
+                          end if
+                     else
+                         RIG_TxPoll()
+                     end if
+
+                 end block
+            RIGMODE_FREQ: block
+                  if !(rigModeNow  == rigModeOld) then
+                     rigModeOld = rigModeNow
+                   end if
+                  end block
+            RIGMODE_REMOTE: block
+                  if !(rigModeNow  == rigModeOld) then
+                     rigModeOld = rigModeNow
+                     LCD_Cmd = PANEL_CLEAR
+                     ScreenCharXY(0, 4)
+                     const byte USB_MODE_MSG []= "USB to Radio Cat"
+                     print_string(ScreenChar,USB_MODE_MSG)
+                     DrawButton (64, 11+39, 27, 11, MENU5_3, True)
+                   end if
+                  end block
+            --RIGMODE_IMPORT: ImportEeprom(0, 2048)
+            RIGMODE_OFF: block
+                  if !(rigModeNow  == rigModeOld) then
+                     rigModeOld = rigModeNow
+                     welcome()
+                   end if
+                  end block
+            RIGMODE_MAIN_MENU: block
+                  if !(rigModeNow  == rigModeOld) then
+                        rigModeOld = rigModeNow
+                        clock_on = false
+                        CharStyleBold = on
+                        CharStyleDouble= off
+                        LCD_Cmd = PANEL_CLEAR
+                        ScreenCharXY(0, 0)
+                        print_string(ScreenChar, MENU1)
+                        CharStyleBold = off
+                        DrawButton (4,  11, 27, 11, MENU2_1, True )
+                        DrawButton (34, 11, 27, 11, MENU2_2, True)
+                        DrawButton (64, 11, 27, 11, MENU2_3, True)
+                        DrawButton (94, 11, 27, 11, MENU2_4, True )
+                        DrawButton (4,  11+13, 27, 11, MENU3_1, True )
+                        DrawButton (34, 11+13, 27, 11, MENU3_2, True)
+                        DrawButton (64, 11+13, 27, 11, MENU3_3, True)
+                        DrawButton (94, 11+13, 27, 11, MENU3_4, True )
+                        DrawButton (4,  11+26, 27, 11, MENU4_1, True )
+                        DrawButton (34, 11+26, 27, 11, MENU4_2, True)
+                        DrawButton (64, 11+26, 27, 11, MENU4_3, True)
+                        DrawButton (94, 11+26, 27, 11, MENU4_4, True )
+                        DrawButton (4,  11+39, 27, 11, MENU5_1, True )
+                        DrawButton (34, 11+39, 27, 11, MENU5_2, True)
+                        DrawButton (64, 11+39, 27, 11, MENU5_3, True)
+                        DrawButton (94, 11+39, 27, 11, MENU5_4, True )
+                   end if
+                  end block
+            RIGMODE_S_MENU: block
+                  if !(rigModeNow  == rigModeOld) then
+                        rigModeOld = rigModeNow
+                        clock_on = false
+                        CharStyleBold = on
+                        CharStyleDouble= off
+                        LCD_Cmd = PANEL_CLEAR
+                        ScreenCharXY(0, 0)
+                        print_string(ScreenChar, S_MENU1)
+                        CharStyleBold = off
+                        DrawButton (4,  11, 27, 11, S_MENU2_1, True )
+                        DrawButton (34, 11, 27, 11, S_MENU2_2, True)
+                        DrawButton (64, 11, 27, 11, S_MENU2_3, True)
+                        DrawButton (94, 11, 27, 11, S_MENU2_4, True )
+                        DrawButton (4,  11+13, 27, 11, S_MENU3_1, True )
+                        DrawButton (34, 11+13, 27, 11, S_MENU3_2, True)
+                        DrawButton (64, 11+13, 27, 11, S_MENU3_3, True)
+                        DrawButton (94, 11+13, 27, 11, S_MENU3_4, True )
+                        DrawButton (4,  11+26, 27, 11, S_MENU4_1, True )
+                        DrawButton (34, 11+26, 27, 11, S_MENU4_2, True)
+                        DrawButton (64, 11+26, 27, 11, S_MENU4_3, True)
+                        DrawButton (94, 11+26, 27, 11, S_MENU4_4, True )
+                        DrawButton (4,  11+39, 27, 11, S_MENU5_1, True )
+                        DrawButton (34, 11+39, 27, 11, S_MENU5_2, True)
+                        DrawButton (64, 11+39, 27, 11, S_MENU5_3, True)
+                        DrawButton (94, 11+39, 27, 11, S_MENU5_4, True )
+                   end if
+                  end block
+            end case
+            CheckRadio = CheckRadio -1
+            if  CheckRadio == 0 then
+                --suspend
+            end if
+        else
+           --suspend
+        end if
+   --end loop
+end procedure
+
+
+procedure UserInput ()  is
+var byte plotIdx
+var volatile bit  pttStatus, success
+
+  --forever loop
+    if CheckUser > 0 then
+   	    press = getkey_once()
+        if (press == 254) Then
+            -- uncomment next line ?
+            --if (lastKey == 255) then lastpress = 255 end if
+            if lastkey != lastpress  then   -- new command
+                 Case rigModeNow of
+                 RIGMODE_OFF, RIGMODE_REMOTE: block
+                          if lastKey =="*" then
+                              clock_on = false
+                              CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+                              rigModeNow = RIGMODE_RX
+                          elsif lastKey == "g" then
+                              GLCD_LED = !GLCD_LED
+                          elsif lastKey =="#" then
+                              if rigModeNow == RIGMODE_REMOTE then
+                                  rigModeNow = RIGMODE_OFF
+                                  
+                              else
+                                  rigModeNow = RIGMODE_REMOTE
+                                  clock_on = off
+                              end if
+                         end if
+                     end block
+                 RIGMODE_MAIN_MENU: block
+                         if lastKey =="*" then
+                            rigModeNow = RIGMODE_S_MENU
+                         elsif lastKey =="#" then
+                            CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+
+                            rigModeNow = RIGMODE_RX
+                         elsif lastKey == "g" then
+                            GLCD_LED = !GLCD_LED
+                         elsif lastKey == "b" then
+                            rigModeNow = RIGMODE_OFF
+                         end if
+                     end block
+                 RIGMODE_S_MENU: block
+                         if lastKey =="*" then
+                             rigModeNow = RIGMODE_MAIN_MENU
+                         elsif lastKey =="#" then
+                             CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+                             rigModeNow = RIGMODE_RX
+                         elsif lastKey =="1" then
+                              -- enter time
+                              ClockSave()
+                         elsif lastKey =="2" then
+                              -- enter date
+                              ClockSave()
+                          elsif lastKey =="3" then
+                              -- enter CAT baud rate
+                         elsif lastKey == "A" then
+                             rigModeNow = RIGMODE_REMOTE
+                         elsif lastKey == "D" then
+                             rigModeNow = RIGMODE_IMPORT
+                         end if
+                     end block
+                 RIGMODE_TX: block
+                          if lastKey =="#" then
+                             CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+                             pttStatus = off
+                             success = CAT_PTT(pttStatus)
+                             CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+                             rigModeNow = RIGMODE_RX
+                          end if
+                     end block
+                 RIGMODE_RX: Block
+                      if (lastKey >="0") & (lastKey <= "9") then
+                         rigModeNow = RIGMODE_FREQ
+                         clock_on = false
+                         for count(keypresses) using digitEntryIndex loop
+                            keypresses[digitEntryIndex] = "0"
+                         end loop
+                         keypresses[0] = lastKey
+                         CharStyleBold = off
+                         CharStyleDouble= on
+                         ScreenCharXY(0,0)
+                         ScreenCharClearEOL()
+                         digitEntryIndex = 0
+                         CharStyleDouble= on
+                         ScreenChar = lastKey
+                         CharStyleDouble= off
+                     elsif (lastKey =="A") then
+                            -- Scan band
+                     elsif (lastKey =="B") then
+                            -- new band
+                     elsif (lastKey =="C") then
+                            -- new channel
+
+                     elsif (lastKey =="D") then
+                           CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+                           clock_on = false
+                           rigModeNow = RIGMODE_TX
+                      elsif (lastKey =="*") then
+                            -- menu
+                        clock_on = false
+                        rigModeNow = RIGMODE_MAIN_MENU
+                      elsif (lastKey =="r") then
+                            ScreenCharXY(20,7)
+                            ScreenChar = "r"
+                            -- proir band/channel
+                      elsif (lastKey =="g") then
+                           -- next band/channel
+                             ScreenCharXY(20,7)
+                            ScreenChar = "g"
+                      elsif (lastKey =="y") then
+                           -- prior mode
+                            --CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+                            modMode = RIG_ModePrior(modMode)
+                       elsif (lastKey =="b") then
+                            -- next mode
+                            --CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+                            modMode = RIG_ModeNext(modMode)
+                       elsif (lastKey =="v") then
+                           ScreenCharXY(20,7)
+                           ScreenChar = lastkey
+                      elsif (lastKey =="^") then
+                           ScreenCharXY(20,7)
+                           ScreenChar = lastkey
+                      elsif (lastKey =="<") then
+                           ScreenCharXY(20,7)
+                           ScreenChar = lastkey
+                      elsif (lastKey ==">") then
+                           ScreenCharXY(20,7)
+                           ScreenChar = lastkey
+                      elsif (lastKey ==1) then
+                           ScreenCharXY(20,7)
+                           ScreenChar = lastkey + "0"
+                      elsif (lastKey ==2) then
+                           ScreenCharXY(20,7)
+                           ScreenChar = lastkey + "0"
+                      elsif (lastKey ==3) then
+                           ScreenCharXY(20,7)
+                           ScreenChar = lastkey + "0"
+                      elsif (lastKey ==4) then
+                           ScreenCharXY(20,7)
+                           ScreenChar = lastkey + "0"
+                      elsif (lastKey ==13) then
+                           ScreenCharXY(20,7)
+                           ScreenChar = "E"
+                      end if
+                  end block
+
+                 RIGMODE_FREQ: block
+                         var  byte rigFreq[4]
+                         if (lastKey >="0") & (lastKey <= "9") then
+                             digitEntryIndex = digitEntryIndex + 1
+                             keypresses[digitEntryIndex] = lastKey
+                             ScreenCharXY(digitEntryIndex*2,0)
+                             CharStyleDouble = on
+                             ScreenChar = lastkey
+                             CharStyleDouble = off
+                             if  digitEntryIndex >= (count(keyPresses)-1) then
+                                          --all done
+                                   if StringToBCD4 (keypresses,rigFreq) then
+                                      CAT_FreqBCDWr (rigFreq)
+                                   end if
+                                  CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+                                  rigModeNow = RIGMODE_RX
+                             end if
+                         elsif (lastkey == "*") & (digitEntryIndex < 2) then  --decimal
+                               if digitEntryIndex == 0 then
+                                    keypresses[2] =  keypresses[0]
+                                    keypresses[1] = "0"
+                                    keypresses[0] = "0"
+                               elsif digitEntryIndex == 1 then
+                                    keypresses[2] =  keypresses[1]
+                                    keypresses[1] =  keypresses[0]
+                                    keypresses[0] = "0"
+                               end if
+                               digitEntryIndex = 2
+                               ScreenCharXY(digitEntryIndex*2,0)
+                               CharStyleDouble = on
+                               ScreenChar = "."
+                               CharStyleDouble = off
+                         elsif (lastkey == "#") then
+                              -- all done pad to zero
+                               if StringToBCD4 (keypresses,rigFreq) then
+                                  CAT_FreqBCDWr (rigFreq)
+                               end if
+                               CAT_SendCmd (CAT_NO_PARAM, CMD_NONE, true)
+                               rigModeNow = RIGMODE_RX
+                         end if
+                     end block
+                   end case
+                   lastpress = lastkey
+               end if
+           end if
+           CheckUser = CheckUser -1
+        end if
+        --suspend
+   --end loop
+end procedure
+
+procedure CommsEchoWidget()  is
+    if (rigModeNow == RIGMODE_REMOTE) then
+        if (serial_hw_data_available) &( usb_cdc_line_status() !=  0x00 ) then
+           usb_serial_data = serial_hw_data
+        end if
+        if  ( usb_cdc_line_status() !=  0x00 ) & usb_cdc_rx_avail() then
+            serial_hw_data =  usb_serial_data
+        end if
+       	GLCD_LED = !GLCD_LED
+    end if
+end procedure
+
+-- The RTC always increments a Semaphore by 1 if it's time to do a task
+-- The Task always decrements the Semaphore by 1 when it has completed.
+
+
+CONST USB_POLL_RATE = 4   -- 1024us = 1.024ms
+var byte usbPollTimer = USB_POLL_RATE
+
+const POLL_INTERVAL = 300      -- 684 = 175ms  if two calls, each is about 1/4speed
+const TICK_INIT = 12
+const USER_INIT = 100
+var volatile word userCount = USER_INIT       -- debounce keys
+var volatile byte ticks  = TICK_INIT
+var volatile word poll_count = POLL_INTERVAL -1
+const RTC_LOW = 3096
+const RTC_HIGH = 3097
+var volatile word rtc_count = RTC_LOW   -- should be 3906.25
+var byte rtc_error = 0
+
+-- every 21.333 us at 48MHz  x 3 = 64us
+-- x12 = 256 us = RDS oversample
+-- radio poll is 350ms  1368  x 256 us = 350.208 ms
+
+-- Timer to Poll
+  --  Radio Control/Status, RDS decoder data, User Input
+  -- and update a Real Time Clock
+  
+procedure RTC() is
+   pragma interrupt
+   if INTCON_TMR0IF then
+       INTCON_TMR0IF = off        -- clear the timer 0 interrupt flag
+       ticks = ticks -1           -- 256us counter
+       if (ticks < 1) then
+    	   ticks = TICK_INIT
+    	   CheckRDS = CheckRDS +1
+    	   poll_count = poll_count -1
+    	   if (poll_count<1) then
+              poll_count = POLL_INTERVAL
+              CheckRadio = CheckRadio +1
+           end if
+           userCount = userCount -1
+           if userCount < 1 then
+                 userCount = USER_INIT
+                 checkUser = CheckUser +1
+           end if
+    	   usbPollTimer = usbPollTimer -1
+    	   if (usbPollTimer < 1) then
+    	       usbPollTimer = USB_POLL_RATE
+    	       usb_serial_flush()
+    	       CommsEchoWidget()
+    	   end if
+           rtc_count = rtc_count -1
+           if rtc_count < 1 then
+                 rtc_error = rtc_error + 1
+                 if rtc_error == 4 then
+                      rtc_error = 0
+                      rtc_count = RTC_HIGH
+                 else
+                      rtc_count = RTC_LOW
+                 end if
+                 seconds = seconds +1
+                 checkTime = CheckTime +1
+           end if
+       end if
+   end if
+end procedure                   -- end of ISR
+
+

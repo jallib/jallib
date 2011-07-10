@@ -1,0 +1,381 @@
+-- Title: SPI Slave Hardware
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Compiler: 2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: SPI Hardware Slave library for exchanging data through SPI bus.
+--
+-- Sources:
+-- http://www.justanotherlanguage.org/content/jallib/tutorials/tutorial_spi_introduction
+-- Jallib spi_master_hw library - Written by William Welch
+-- http://ww1.microchip.com/downloads/en/devicedoc/spi.pdf
+--
+-- Notes:
+--
+-- Watch your master speed! SPI master will not slow down for slow slave.
+-- Use a high osc speed on slave or maybe tx a byte back to the master
+-- when slave is ready for more.
+--
+-- When SPI_SLAVE_HW_ENABLE_INTERRUPT are disabled, calling of any spi procedure
+-- will pause your main program until the master does a spi exchange.
+--
+-- When SPI_SLAVE_HW_ENABLE_INTERRUPT are enabled, all input/output bytes will be
+-- placed into a buffer. Data will get transferred whenever the master does a
+-- spi exchange. Your main program will be paused while data is arriving
+-- untill chip select goes active again. You will know when data is in the
+-- buffer by reading the variable spi_slave_hw_rx_queue_is_empty or
+-- spi_slave_hw_rx_queue_nr_used. You should also monitor
+-- spi_slave_hw_tx_queue_is_full and not send data if it is set to TRUE.
+--
+-- When SYNCHRONOUS_SLAVE_MODE is disabled, you can choose any chip select pin.
+-- You must control & listen to your chip select pin in software. You can do
+-- sync by calling spi_slave_hw_sync(). I do suggest you use pin_ss.
+--
+-- When SYNCHRONOUS_SLAVE_MODE is enabled, The pin_ss (slave select / chip
+-- select pin) must be used. PIC will listen on this pin (active low). This
+-- will also reset the PIC's SPI module each time ss pin is disabled.
+-- This ensures correct synchronization of input bytes.
+--
+-- You could use a interrupt on change pin to detect the start and end
+-- of a packet. I have not tried this yet.
+--
+-- Here is an example setup for this library:
+--
+-- -- Setup SPI Slave Hardware
+-- --
+-- pin_sdi_direction = input    -- spi input
+-- pin_sdo_direction = output   -- spi output
+-- pin_sck_direction = input    -- spi clock
+-- --
+-- alias spi_slave_hw_chip_select is pin_ss -- slave select / chip select pin.
+-- alias spi_slave_hw_chip_select_direction is pin_ss_direction
+-- spi_slave_hw_chip_select_direction = input
+-- const SPI_SLAVE_HW_SS_ACTIVE_STATE = LOW -- chip select pin is active low
+-- --
+-- -- chip select must be pin_ss & active low if TRUE. See more notes in library.
+-- const SPI_SLAVE_HW_SYNCHRONOUS = TRUE
+-- --
+-- const SPI_SLAVE_HW_ENABLE_INTERRUPT = TRUE -- enable spi interrupt
+-- --
+-- if SPI_SLAVE_HW_ENABLE_INTERRUPT == TRUE then
+--    const SPI_SLAVE_HW_TX_QUEUE_SIZE = 50 -- tx queue
+--    const SPI_SLAVE_HW_RX_QUEUE_SIZE = 50 -- rx queue
+-- end if
+-- --
+-- -- Enable/Disable Packets. Currently only works with interrupts enabled.
+-- -- (pin_ss = inactive) marks end of packet.
+-- const SPI_SLAVE_ENABLE_ISR_PACKETS = TRUE
+-- --
+-- if SPI_SLAVE_ENABLE_ISR_PACKETS == TRUE then
+--    const SPI_SLAVE_HW_RX_PACKET_SIZES = 5 -- packet size queue
+-- end if
+-- --
+-- include spi_slave_hw
+-- spi_slave_init(SPI_MODE_11)
+-- --
+-- spi_slave_hw = 255 -- the first byte to go out
+--
+
+include spi_common
+
+-- tx out buffer state
+const byte _SPI_SLAVE_HW_EMPTY = 0
+const byte _SPI_SLAVE_HW_FULL = 1
+var byte _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_EMPTY
+
+-- include a queue for interrupts
+if SPI_SLAVE_HW_ENABLE_INTERRUPT == TRUE then
+   const byte QUEUE01_SIZE = SPI_SLAVE_HW_RX_QUEUE_SIZE
+   include queue01 -- include the queue/buffer library
+   alias spi_slave_hw_rx_queue is queue01_nb  -- alias buffer for recieved data
+   alias spi_slave_hw_rx_queue_clear is  queue01_clear    -- clear queue (makes queue empty)
+   alias spi_slave_hw_rx_queue_is_empty is  queue01_is_empty -- returns true if queue is emtpy
+   alias spi_slave_hw_rx_queue_is_full is  queue01_is_full  -- returns true if queue is full
+   alias spi_slave_hw_rx_queue_nr_free is  queue01_nr_free  -- returns nr of free places in queue
+   alias spi_slave_hw_rx_queue_nr_used is  queue01_nr_used  -- returns nr of used places in queue
+
+   const byte QUEUE02_SIZE = SPI_SLAVE_HW_TX_QUEUE_SIZE
+   include queue02 -- include the queue/buffer library
+   alias spi_slave_hw_tx_queue is queue02_nb  -- alias buffer for recieved data
+   alias spi_slave_hw_tx_queue_clear is  queue02_clear    -- clear queue (makes queue empty)
+   alias spi_slave_hw_tx_queue_is_empty is queue02_is_empty -- returns true if queue is emtpy
+   alias spi_slave_hw_tx_queue_is_full is queue02_is_full  -- returns true if queue is full
+   alias spi_slave_hw_tx_queue_nr_free is queue02_nr_free  -- returns nr of free places in queue
+   alias spi_slave_hw_tx_queue_nr_used is queue02_nr_used  -- returns nr of used places in queue
+   alias spi_slave_hw_in_pointer is queue02_in_pointer
+   alias spi_slave_hw_out_pointer is queue02_out_pointer
+
+   if SPI_SLAVE_ENABLE_ISR_PACKETS == TRUE then
+      const byte QUEUE03_SIZE = SPI_SLAVE_HW_RX_PACKET_SIZES
+      include queue03 -- include the queue/buffer library
+      alias spi_slave_hw_rx_packet_size is queue03_nb  -- alias buffer for recieved data
+      alias spi_slave_hw_rx_packet_size_clear is  queue03_clear    -- clear queue (makes queue empty)
+      alias spi_slave_hw_rx_packet_size_is_empty is queue03_is_empty -- returns true if queue is emtpy
+      alias spi_slave_hw_rx_packet_size_is_full is queue03_is_full  -- returns true if queue is full
+      alias spi_slave_hw_rx_packet_size_free is queue03_nr_free  -- returns nr of free places in queue
+      alias spi_slave_hw_rx_packet_size_used is queue03_nr_used  -- returns nr of used places in queue
+   end if
+end if
+
+--------------------------------------------------------------------------------
+-- wait to exchange data through the spi port
+-- (wait for chip select to go low, and clock pulses to come in from master)
+--------------------------------------------------------------------------------
+function spi_slave_hw_exchange(byte in data) return byte is
+   if SPI_SLAVE_HW_ENABLE_INTERRUPT == FALSE then
+      SSPBUF = data
+
+      while SSPSTAT_BF == 0 loop ; while sspbuf is not full
+      end loop
+
+      return SSPBUF  -- get data from the buffer
+   else
+      -- transmit
+      spi_slave_hw_tx_queue = data
+      if _spi_slave_hw_buffer_tx_status == _SPI_SLAVE_HW_EMPTY then
+         SSPBUF = spi_slave_hw_tx_queue
+         _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_FULL
+      end if
+
+      -- receive
+      if spi_slave_hw_rx_queue_is_empty == TRUE then
+         return 0xFF
+      else
+         return spi_slave_hw_rx_queue
+      end if
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- wait to receive data from the spi port
+-- (wait for chip select to go low, and clock pulses to come in from master)
+--------------------------------------------------------------------------------
+procedure spi_slave_hw'put(byte in data) is
+   if SPI_SLAVE_HW_ENABLE_INTERRUPT == FALSE then
+      var byte dummy
+      dummy = spi_slave_hw_exchange(data)
+   else
+      spi_slave_hw_tx_queue = data
+      if _spi_slave_hw_buffer_tx_status == _SPI_SLAVE_HW_EMPTY then
+         SSPBUF = spi_slave_hw_tx_queue
+         _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_FULL
+      end if
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- wait to transmit data to spi port
+-- (wait for chip select to go low, and clock pulses to come in from master)
+--------------------------------------------------------------------------------
+function spi_slave_hw'get() return byte is
+   if SPI_SLAVE_HW_ENABLE_INTERRUPT == FALSE then
+      var byte data
+      data = spi_slave_hw_exchange(0xFF)
+      return data
+   else
+      if spi_slave_hw_rx_queue_is_empty == TRUE then
+         return 0xFF
+      else
+         return spi_slave_hw_rx_queue
+      end if
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- spi slave init
+--------------------------------------------------------------------------------
+procedure spi_slave_init(byte in spi_mode) is
+   SSPCON = 0
+   SSPSTAT_SMP = 0
+
+   if spi_mode == SPI_MODE_00 then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   elsif spi_mode == SPI_MODE_01 then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 0
+   elsif spi_mode == SPI_MODE_10 then
+      SSPCON_CKP = 1
+      SSPSTAT_CKE = 1
+   else ;spi_mode == SPI_MODE_11 then
+      SSPCON_CKP = 1
+      SSPSTAT_CKE = 0
+   end if
+
+   if SPI_SLAVE_HW_SYNCHRONOUS == TRUE then
+      SSPCON_SSPM = 4        -- Select slave mode with chip select (pin_SS)
+   else
+      SSPCON_SSPM = 5        -- Select slave mode without chip select
+   end if
+
+   SSPCON_SSPEN = 1       -- Enables SPI
+
+   if SPI_SLAVE_HW_ENABLE_INTERRUPT == true then
+      -- setup interrupts
+      INTCON_PEIE = 1 -- Peripheral Interrupt Enable bit
+      INTCON_GIE  = 1 -- Enables all unmasked interrupts
+      PIE1_SSPIE  = 1 -- Master Synchronous Serial Port Interrupt Enable bit
+
+      -- first byte must be set to something
+      if spi_slave_hw_tx_queue_is_empty then
+         SSPBUF = 255
+      else
+         SSPBUF = spi_slave_hw_tx_queue
+      end if
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- spi slave initerrupt
+--------------------------------------------------------------------------------
+var byte spi_slave_hw_rx_byte_count = 0
+var byte spi_slave_hw_rx_byte_count_old = 0
+procedure spi_slave_initerrupt() is
+   pragma interrupt
+
+   -- notes: If you see any way to reduce the current code,
+   -- please let me know!
+
+   spi_slave_hw_rx_byte_count = 0
+
+   if SPI_SLAVE_HW_ENABLE_INTERRUPT == TRUE then
+   
+      if PIR1_SSPIF == FALSE then
+         return
+      end if
+
+      if SPI_SLAVE_ENABLE_ISR_PACKETS == TRUE then  -- If packets are enabled
+
+         procedure exchange1() is
+            pragma inline
+            
+            -- get new data, put it in the rx buffer
+            spi_slave_hw_rx_queue = SSPBUF
+
+            spi_slave_hw_rx_byte_count = spi_slave_hw_rx_byte_count + 1
+            
+            -- fill PIC SPI output buffer if there is data in the tx buffer
+            --
+            ;if spi_slave_hw_tx_queue_is_empty == FALSE then
+            ;if spi_slave_hw_tx_queue_nr_used == 0 then
+            if (spi_slave_hw_in_pointer != spi_slave_hw_out_pointer) then -- faster then above if statement
+               SSPBUF = spi_slave_hw_tx_queue
+               _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_FULL
+            end if
+
+         end procedure
+
+         -- continue while there is still data comming in.
+         ;while SSPSTAT_BF == 1 loop
+         forever loop
+
+            exchange1()
+
+            -- check SSPSTAT_BF again to see if buffer is empty
+            -- data may have been shifted in/out by master
+            if SSPSTAT_BF == 0 then
+
+               -- wait for more data or for pin_ss to go inactive
+               while (SSPSTAT_BF == 0) & (spi_slave_hw_chip_select == SPI_SLAVE_HW_SS_ACTIVE_STATE) loop
+               end loop
+
+               -- if pin_ss went inactive
+               if spi_slave_hw_chip_select != SPI_SLAVE_HW_SS_ACTIVE_STATE then
+
+                  -- check once more if there is more data
+                  if  (SSPSTAT_BF == 1) then
+                     exchange1()
+                  end if
+
+                  -- exit, we're done with this packet.
+                  exit loop
+               end if
+            end if
+
+         end loop
+
+         PIR1_SSPIF = FALSE -- clear interrupt bit
+
+         -- save packet size
+         spi_slave_hw_rx_packet_size = spi_slave_hw_rx_byte_count
+
+      else -- If packets are not enabled
+
+         -- continue while there is still data comming in.
+         ;while SSPSTAT_BF == 1 loop
+         forever loop
+
+            procedure exchange2() is
+               pragma inline
+               
+               -- get new data
+               spi_slave_hw_rx_queue = SSPBUF
+
+               -- fill PIC SPI output buffer if there is data in the tx buffer
+               --
+               ;if spi_slave_hw_tx_queue_is_empty == FALSE then
+               ;if spi_slave_hw_tx_queue_nr_used == 0 then
+               if (spi_slave_hw_in_pointer != spi_slave_hw_out_pointer) then -- faster then above if statement
+                  SSPBUF = spi_slave_hw_tx_queue
+                  _spi_slave_hw_buffer_tx_status = _SPI_SLAVE_HW_FULL
+               end if
+            end procedure
+
+            exchange2()
+
+            -- check SSPSTAT_BF again to see if buffer is empty
+            -- data may have been shifted in/out by master
+            if SSPSTAT_BF == 0 then
+
+               -- wait for more data or for pin_ss to go inactive
+               while (SSPSTAT_BF == 0) & (spi_slave_hw_chip_select == SPI_SLAVE_HW_SS_ACTIVE_STATE) loop
+               end loop
+
+               -- if pin_ss went inactive
+               if spi_slave_hw_chip_select != SPI_SLAVE_HW_SS_ACTIVE_STATE then
+
+                  -- check once more if there is more data
+                  if  (SSPSTAT_BF == 1) then
+                     exchange2()
+                  end if
+
+                  -- exit, we're done with this packet.
+                  exit loop
+               end if
+            end if
+
+         end loop
+
+      end if
+   end if
+
+   PIR1_SSPIF = FALSE -- clear interrupt bit
+end procedure
+
+--------------------------------------------------------------------------------
+-- Synchronize SPI. Sets SPI bit counter to 0 to sync received data. You should
+-- use this if you set SPI_SLAVE_HW_SYNCHRONOUS == FALSE, or if you don't use
+-- pin_ss for chip select. On a stable wire, you don't need to use this but it
+-- is recommended that you use it once per packet. On an unstable wire, you
+-- should use this more often. Maybe even after every byte recieved.
+--------------------------------------------------------------------------------
+procedure spi_slave_hw_sync() is
+   pragma inline
+   -- reset SPI port
+   SSPCON_SSPEN = 0       -- Disable SPI
+   SSPCON_SSPEN = 1       -- Enables SPI
+end procedure
+
+--------------------------------------------------------------------------------
+-- check if there is a packet available, for interrupts + packets enabled.
+--------------------------------------------------------------------------------
+function spi_slave_hw_packet_available'get() return bit is
+   if (SPI_SLAVE_HW_ENABLE_INTERRUPT == TRUE) & (SPI_SLAVE_ENABLE_ISR_PACKETS == TRUE) then
+     return !spi_slave_hw_rx_packet_size_is_empty
+   else
+      return 0
+   end if
+end function
+

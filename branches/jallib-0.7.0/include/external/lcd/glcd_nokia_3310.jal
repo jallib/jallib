@@ -1,0 +1,314 @@
+-- Title: library for GLCD with pcd8544 controller used in Nokia 3310
+-- Author: Andre Miller Copyright (c) 2008..2010, all rights reserved.
+-- Adapted-by: Richard Zengerink, Sebastien Lelong, Paul D'haene
+-- Compiler:  >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: http://www.amontec.com/lcd_nokia_3310.shtml
+--
+-- Description: library for Nokia 3310 display with pcd8544 controller
+--
+-- Notes: cache usage has bugs, only half of screen is considered...
+--
+
+include delay
+
+-- ------------------
+-- GLCD parameters --
+-- ------------------
+
+-- GLCD specifications
+const byte GLCD_X_PIXELS = 84
+const byte GLCD_Y_PIXELS = 48
+const byte GLCD_COLOR_BITS = 1 -- monochrome display
+
+-- According to datasheet, pcd8544 controller already deals with auto-wrap,
+-- so we musn't interfere with its logic.
+if defined(FONT_AUTO_WRAP) then
+   if FONT_AUTO_WRAP == FALSE then
+       _warn "FONT_AUTO_WRAP must be set to TRUE because this is\n\tthe default behavior for this GLCD controller"
+   end if
+else
+    const bit FONT_AUTO_WRAP = TRUE
+end if
+
+-- colors constants
+-- black & white are official value for display controller
+const GLCD_BLACK = 0x00
+const GLCD_WHITE = 0xFF
+-- this color is a special, internal to this library (not part
+-- of controller specs). When using this color, what's black becomes
+-- white (off), what's white becomes black (on)
+const GLCD_XOR = 0x01
+
+-- Default background color
+var byte glcd_background_color = GLCD_WHITE
+-- Default pen color
+var byte glcd_pen_color = GLCD_BLACK
+
+
+-- -------------
+-- GLCD cache --
+-- -------------
+-- TODO: maybe this cache code could be extracted as a generic cache.
+--       For now, prefixed with "glcd_"
+
+-- Cache definition
+const word CACHE_SIZE = GLCD_X_PIXELS * (GLCD_Y_PIXELS/8)
+-- Cache array, defaulting when not previously defined
+if !defined(glcd_cache) then
+    const dword LARGE_ARRAY_1_SIZE = CACHE_SIZE -- number of array variables
+    const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1 -- size of variables (byte*1)
+    ;include large_array_1
+    var byte glcd_cache[CACHE_SIZE]
+    ;alias glcd_cache is large_array_1
+end if
+-- track current changed (dirty) area
+var word glcd_lo_watermark = cache_size - 1
+var word glcd_hi_watermark = 0
+var bit glcd_cache_changed = true
+
+
+-- -----------------------
+-- Private/Internal API --
+-- -----------------------
+
+procedure _nokia_glcd_write(byte in value) is
+-- Clock in 8 bits of data
+  for 8 loop
+     nokia_sclk = low
+     if((value & 0x80) == 0)then
+        nokia_sda = low
+     else
+        nokia_sda = high
+     end if
+     nokia_sclk = high
+     value = value << 1
+     delay_1us()            -- max dataspeed is 4Mhz so delay for safety
+  end loop
+end procedure
+
+
+-- Write a data byte to the LCD
+procedure _nokia_glcd_write_data(byte in value) is
+   nokia_dc = high     -- d/c line high for data
+   _nokia_glcd_write(value)
+end procedure
+
+
+-- Write a command byte to the LCD
+procedure _nokia_glcd_write_command(byte in value) is
+   nokia_dc = low     -- d/c line low for command
+   _nokia_glcd_write(value)
+   nokia_dc = high   -- set d/c to data
+end procedure
+
+-- -------------
+-- Public API -- 
+-- -------------
+
+-- Set the current position for data (x = 0->83, y = 0->5)
+procedure nokia_goto(byte in x, byte in y) is
+   _nokia_glcd_write_command(0x40 | (y & 0x07))
+   _nokia_glcd_write_command(0x80 | (x & 0x7f))
+end procedure
+
+
+-- Clear the LCD data memory
+procedure nokia_clear_screen() is
+   nokia_sda = low ;; Data bit is low
+   nokia_dc = high ;; Data mode
+   nokia_cs = low
+   for 6 loop  -- 6 rows
+      for 84 loop  -- 84 columns or 'pages'
+         for 8 loop --Clock for the 8 bits of the 'page'
+            nokia_sclk = low
+            nokia_sclk = high
+         end loop
+      end loop
+   end loop
+end procedure
+
+-- Send LCD initialization commands
+procedure nokia_init() is
+   -- Set initial status of LCD pins
+   nokia_sclk = low
+   nokia_sda = low
+   nokia_dc = low
+   nokia_cs = low
+   nokia_res = low
+
+   -- Toggle LCD Reset
+   delay_1ms(10)
+   nokia_res = low
+   delay_1ms(250)
+   nokia_res = high
+
+   _nokia_glcd_write_command(0x21) -- Extended commands
+   _nokia_glcd_write_command(0xc5) -- LCD Vop
+   _nokia_glcd_write_command(0x06) -- Temp coef
+   _nokia_glcd_write_command(0x13) -- LCD Bias 1:48
+   _nokia_glcd_write_command(0x20) -- Standard commands
+   _nokia_glcd_write_command(0x0c) -- Normal Mode
+
+   -- Clear and position at top of LCD
+   nokia_clear_screen()
+   nokia_goto(0,0);
+end procedure
+
+
+-- prints any bitmap graphics (for instance created with fastLCD
+-- http://www.amontec.com/lcd_nokia_3310.shtml) to lcd
+-- just create: const byte graphic[] = { graphic max 504 bytes} and call
+-- graphic_to_nokia( graphic)
+procedure graphic_to_nokia(byte in graph[]) is
+   var word len = count(graph)
+   var word i
+
+   for len using i loop
+      _nokia_glcd_write_data(graph[i])
+   end loop
+
+end procedure
+
+
+-- should only be available if using fonts
+if defined(GLCD_FONT_USAGE) then
+-- write a char at position (x,y), using font previously selected with
+-- glcd_font_use(FONT_ID). Honor glcd_background_color variable, and indirectly
+-- glcd_pen_color, such as:
+--    * glcd_background_color can be GLCD_BLACK. If so, pen color will be white (inverted)
+--    * if glcd_background_color isn't GLCD_BLACK, then background color will be white, and
+--      pen color will be white ("normal").
+-- when using glcd_common library, a glcd'put pseudo-variable will be defined,
+-- and be called as an output device (eg. glcd = "x")
+procedure glcd_write_char(byte in x, byte in y, byte in char) is
+
+   var word index = 0
+   var byte offset
+   var byte ch
+
+   offset = char - 32 ;; Fix for ascii value
+
+   for offset loop
+      index = index + _glcd_font_current_byte_per_char
+   end loop
+
+   for _glcd_font_current_byte_per_char loop
+      ch = glcd_font_lookup(index)
+      if glcd_background_color == GLCD_BLACK then
+         ch = ch ^ 0xFF
+      end if
+      _nokia_glcd_write_data(ch)
+      index = index + 1
+   end loop
+
+   -- Add blank space between characters
+   _nokia_glcd_write_data(byte(glcd_background_color) ^ 0xFF)
+
+end procedure
+end if
+
+-- Clear the display. glcd_cache_update must be called next.
+procedure glcd_clear_cache() is
+   var dword i
+   for cache_size using i loop
+      glcd_cache[i] = 0x00
+   end loop
+   -- reset watermark pointers
+   glcd_hi_watermark = cache_size - 1
+   glcd_lo_watermark = 0
+ 
+   glcd_cache_changed = true
+end procedure
+
+-- Set display contrast
+-- contrast -> value from 0x00 to 0x7F
+procedure nokia_contrast(byte in contrast) is
+   -- lcd extended commands
+   _nokia_glcd_write_command(0x21)
+   -- set lcd Vop (contrast)
+   _nokia_glcd_write_command(0x80 | contrast)
+   -- lcd std. cmd. mode, hor. addressing mode
+   _nokia_glcd_write_command(0x20)
+end procedure
+
+-- Copy the changed area of the cache to the lcd.
+-- Call this procedure after writing to cache.
+-- When the glcd_cache_changed flag has not been set, lcd_cache_update simply
+-- returns. Only the cache between the low & high watermark pointers is
+-- updated
+procedure glcd_cache_update() is
+
+  -- don't do unnecessary updates
+  if !glcd_cache_changed then return end if
+  
+  var word i
+  
+  if glcd_lo_watermark >= CACHE_SIZE then
+      glcd_lo_watermark = CACHE_SIZE - 1
+  end if
+
+  if glcd_hi_watermark >= CACHE_SIZE then
+      glcd_hi_watermark = CACHE_SIZE - 1
+  end if
+
+  -- set base address(cursor) to low water mark
+  _nokia_glcd_write_command(0x40 | (byte(glcd_lo_watermark / GLCD_X_PIXELS)))
+  _nokia_glcd_write_command(0x80 | (byte(glcd_lo_watermark % GLCD_X_PIXELS)))
+  
+  -- copy video buffer
+  i = glcd_lo_watermark
+  while i <= glcd_hi_watermark loop
+    _nokia_glcd_write_data(glcd_cache[i] )
+    i = i + 1
+  end loop
+  
+  -- reset water mark pointers
+  glcd_lo_watermark = CACHE_SIZE -1
+  glcd_hi_watermark = 0
+
+  glcd_cache_changed = false
+end procedure
+
+-- Plot a pixel at given absolute (x, y) location.
+-- x, y -> Absolute pixel coordinates
+-- glcd_pen_color should be set before calling, to plot 
+-- appropriate pixel colors.
+procedure glcd_write_pixel(byte in x, byte in y) is
+   var byte pdata,offset
+   var word index
+
+   if x >= GLCD_X_PIXELS then return end if
+   if y >= GLCD_Y_PIXELS then return end if
+   
+   index = (y/8 * GLCD_X_PIXELS) + x
+   offset = y % 8
+ 
+   pdata = glcd_cache[ index ]
+ 
+   if glcd_pen_color == GLCD_BLACK then
+      pdata = pdata | (0x01 << offset)
+   elsif glcd_pen_color == GLCD_WHITE then
+      pdata = pdata & (255 ^ (0x01 << offset))
+   elsif glcd_pen_color == GLCD_XOR then
+      pdata = pdata ^ (0x01 << offset)
+   end if
+ 
+   glcd_cache[ index ] = pdata
+ 
+   if index < glcd_lo_watermark then
+      -- update low water mark
+      glcd_lo_watermark = index
+   end if
+ 
+   if index > glcd_hi_watermark then
+      -- update high water mark
+      glcd_hi_watermark = index
+   end if
+ 
+   glcd_cache_changed = true
+end procedure
+

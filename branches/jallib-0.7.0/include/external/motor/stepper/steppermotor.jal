@@ -1,0 +1,449 @@
+--------------------------------------------------------
+-- Title: steppermotor library
+-- Author: Richard Zengerink, Copyright (c) 2009..2010, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4m
+--
+-- This file is part of jaluino  (http://jaluino.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library can be used with steppermotor bipolair unipolair
+--              with or without stepperdriver ic
+--
+--
+-- Sources:
+--
+-- Notes:
+--
+-- variable declare in main program:
+--
+--   var word step_rate = 200         -- define number of steps of steppermotor
+--                                    -- before including stepper shield
+--   const byte full_step_array[4] =  -- Bit patern for full step
+--   {
+--   0b0000_1100,        -- 1100
+--   0b0000_1101,        -- 1101
+--   0b0000_1111,        -- 1111
+--   0b0000_1110         -- 1110
+--   }
+--
+--   const byte half_step_array[8] =  -- bit patern for half step
+--   {
+--   0b0000_0101,      -- 0101
+--   0b0000_1111,      -- 1111
+--   0b0000_1010,      -- 1010
+--   0b0000_1110,      -- 1110
+--   0b0000_0100,      -- 0100
+--   0b0000_1100,      -- 1100
+--   0b0000_1000,      -- 1000
+--   0b0000_1101       -- 1101
+--   }
+--
+--   -- pin assignments
+--
+--   var volatile bit stepper_a1   is pin_b0     -- phase coil1, with driver ic
+--   var volatile bit stepper_b1   is pin_b1     -- phase coil2, with driver ic
+--   var volatile bit stepper_a2   is pin_b2     -- coil1 enable, with driver ic
+--   var volatile bit stepper_b2   is pin_b3     -- coil2 enable, with driver ic
+
+--   var byte stepper_control  is  portb_low   -- always use low or high nibble of a port
+
+--   portb_low_direction = output  -- direction of low nibble
+--
+--   include steppermotor          -- include this steppermotor library
+--
+--   full_step = true              -- true for full step, false for halve step
+--   cw = true                     -- set for clockwise (also depands on wiring)
+--                                 -- set wiring motor so, that cw is cw turn
+-------------------------------------------------------------------------------
+--
+--
+-------------------------------------------------------------------------------
+--
+--
+
+INTCON2_TMR0IP = on      -- set high priority interrupt on timer0
+--------------------------------------------------------
+--------------------  timer0   -------------------------
+--------------------------------------------------------
+-- timer0 use for driving steppermotor
+--
+T0CON = 0b0000_0000
+-- T0CON_TMR0ON     at T1CON : 7  = 0     1 = enables T0, 0 = stops T0
+-- T0CON_T08BIT     at T1CON : 6  = 0     1 = T0 is 8bit, 0 = T0 is 16bit
+-- T0CON_T0CS       at T1CON : 5  = 0     source, 1 = T0CKI pin, 0 = Foc/4
+-- T0CON_T0SE       at T1CON : 4  = 0     1 = H=>L on T0CKI pin, 0 = L=>H on T0CKI pin
+-- T0CON_PSA        at T1CON : 3  = 0     1 = no prescaller,  0 = with prescaler
+-- T0CON_T0PS       at T1CON : 0  = 0     T0PS * 3 is prescaler
+--
+-- in is Foc/4
+-- with 200 stepper motor max rpm =
+-- (48_000_000/4/prescaler/TMR0_register(min)/step_rate)* 60Sec
+-- = (48_000_000/4/2/(TMR1L*TMR1H)(min)/200)*60 = (12_000_000/2/1/200)*60 =
+-- 30000*60 = 1800000 rpm (!)
+--
+-- with 200 stepper motor min rpm =
+-- (48_000_000/4/prescaler/TMR0_register(max)/step_rate)* 60Sec
+-- = (48_000_000/4/256/(TMR1L*TMR1H)(max)/200)*60 = (12_000_000/256/65535/200)*60 =
+-- 0.00358*60 = 0.21 rpm (!)
+--
+-- better keep speed setting between 0.3 to 300 rpm (is max of my tested motor)
+
+
+
+--------------------------------------------------------
+--------------------  timer1   -------------------------
+--------------------------------------------------------
+-- timer1 for 0.01Sec timing interupt
+T1CON = 0b0011_0000
+-- T1CON_RD16       at T1CON : 7  = 0     1 = register rd/wr in one 16 bit operation
+--                                        0 = register rd/wr in two 8 bit operation
+-- T1CON_T1RUN      at T1CON : 6  = 0     1 = device clock derived from T1 oscillator
+--                                        0 = device clock derived from another source
+-- T1CON_T1CKPS     at T1CON : 4  = 1     T1CKPS * 2 prescaler  1,2,4,8
+-- T1CON_T1OSCEN    at T1CON : 3  = 0     1 = osc is enabled 0 = osc is shut off
+-- T1CON_NT1SYNC    at T1CON : 2  = 0     1 = do not sync ext. clk  0 = sync ext.clk
+-- T1CON_TMR1CS     at T1CON : 1  = 0     1 = ext. clock 0 = int. clock (Fosc/4)
+-- T1CON_TMR1ON     at T1CON : 0  = 0     1 = enables timer1 0 =  disables timer 1
+--
+-- in is Foc/4
+-- set timer1 at 0.01Sec =  48_000_000/4/prescaler = 48_000_000/4/8 = 1500000
+-- 1500000 * 0.01Sec = 15000/256 = 58,5.. so TMR1H = 256-58 = 198
+-- 58 x 256 = 14848, 15000 - 14848 = 152 so TMR1L = 256-152 = 104
+-- total result is (20_000_000/4/8/((24*256) + 106) = 100.0Hz is 0.01Sec
+--
+
+--------------------------------------------------------
+------------- Variable ---------------------------------
+--------------------------------------------------------
+
+var bit cw = true             -- true is clockwise, false = counter clockwise
+                              -- it also depands on wiring
+var bit full_step = true      -- if true than full step not true then half step
+var bit accel_active = true   -- is set during acceleration
+var bit decel_active = true   -- is set during deceleration
+var bit high_prescal = false  -- wil be set when prescaler is 256 and reset at 2
+var bit run = false           -- is set during run and reset after stop
+var bit stop = false          -- is set during stop ramp and reset after stop
+var bit ramp_speedset = false -- set if new speed is because of ramping
+
+var byte steppointer = 0      -- points to position in full_step or half_step array
+
+var word accel_ramp = 0       -- holds acceleration ramp in 1/100rpm per 1/100Sec
+var word decel_ramp = 0       -- holds deceleration ramp in 1/100rpm per 1/100Sec
+var word tmr1register = 0     -- holds actual 16bit value for TMR1L and TMR1H
+var word tmr1register_new = 0 -- holds 16bit new calculated value for TMR1L and TMR1H
+var word set_vel = 0          -- holds desired speed in 1/100rpm
+var word actual_vel = 0       -- holds now speed in 1/100rpm
+
+var dword pulses_sec = 0      -- holds calculation of number of pulses per second
+var dword calculate = 0       -- use for calculation of register with 2 decimals
+
+var sdword distance = 100     -- holds distance in pulses
+
+
+if defined(step_rate)== false then
+   _WARN -- Variable step_rate not defined in main program
+end if
+   
+--------------------------------------------------------
+-- Bit patern for full step
+--------------------------------------------------------
+if defined( full_step_array ) == false then
+   const byte full_step_array[4] =   -- Bit patern for full step
+   {
+   0b0000_0001,        --
+   0b0000_0011,        --
+   0b0000_0010,        --
+   0b0000_0000         --
+   }
+end if
+
+--------------------------------------------------------
+-- Bit patern for half step
+--------------------------------------------------------
+if defined( half_step_array ) == false then
+   const byte half_step_array[8] =  -- bit patern for half step
+   {
+   0b0000_1001,
+   0b0000_0011,
+   0b0000_0110,
+   0b0000_0010,
+   0b0000_1000,
+   0b0000_0000,
+   0b0000_0100,
+   0b0000_0001
+   }
+end if
+
+--------------------------------------------------------
+------------- Procedures -------------------------------
+--------------------------------------------------------
+  
+  
+procedure _timer0_01s_on()  is
+   INTCON_PEIE = 1        -- Peripheral interupt enabled
+   INTCON_GIE = 1         -- general interupt enabled
+   TMR1H = 198            -- set timer register for start 0.01Sec  256-58 = 198
+   TMR1L = 104            -- 256-152 = 104
+   T1CON_TMR1ON = on      -- set timer1 on
+   PIR1_TMR1IF = off      -- clear interupt flag for next interrupt
+   PIE1_TMR1IE = on       -- enable timer1 interrupt
+end procedure
+
+
+procedure _timer0_01s_off()  is
+   T1CON_TMR1ON = off     -- set timer1 off
+   PIE1_TMR1IE = off      -- disable timer1 interrupt
+   PIR1_TMR1IF = off      -- clear interupt flag
+end procedure
+
+
+procedure hold_stepper() is  -- steppermotor stop direct
+   T0CON_TMR0ON = off        -- stop timer0 and thus stop steppermotor
+   INTCON_TMR0IE = off       -- disable timer0 interupt
+   run = false
+   stop = false              -- reset flag
+   decel_active = false      -- reset
+   accel_active = false      -- reset
+   ramp_speedset = false      -- reset
+   _timer0_01s_off()
+end procedure
+  
+
+procedure coil_stepper(bit in data) is
+   if data then
+      stepper_a1 = off    --low is activated coil
+      stepper_b1 = off    --low is activated coil
+      stepper_a2 = off    --low is activated coil
+      stepper_b2 = off    --low is activated coil
+   else
+      hold_stepper()
+      stepper_a1 = on    --high is deactivated coil
+      stepper_b1 = on    --high is deactivated coil
+      stepper_a2 = on    --high is deactivated coil
+      stepper_b2 = on    --high is deactivated coil
+   end if
+end procedure
+
+
+procedure stop_stepper() is   -- stepper speeding down in decel time to stop
+   if decel_ramp == 0 then
+      hold_stepper()          -- decel = 0 thus stop stepper direct
+      return
+   end if
+   accel_active = false       -- reset
+   decel_active = true        -- set during deceleration
+   stop = true
+   set_vel = 0                -- set set value to 0
+   _timer0_01s_on()           -- start timer1 for ramping down
+end procedure
+
+
+procedure _velocity(word in data) is  -- sets new tmr1register for new velocity
+   if full_step then           -- pulses_sec = (rpm*step_rate)/60Sec at full step
+      pulses_sec = (dword(data) * dword(step_rate))/600  -- pulses_sec holds pulsrate
+   else                        -- at velocity on full step. velocity in 0.1rpm => 60*10 = 600
+      pulses_sec = (dword(data) * dword(step_rate))/300  -- pulses_sec holds pulsrate
+   end if                      -- at velocity on half step. velocity in 0.1rpm => 60*10/2 = 300
+   T0CON_TMR0ON = off     -- stop timer0 for changing T0CON
+   if pulses_sec > 100 then    -- select higher prescaler for low speed
+      T0CON = 0b0000_0000  -- prescaler => 2
+      high_prescal = false
+   else
+      T0CON = 0b0000_0111  -- prescaler => 256
+      high_prescal = true
+   end if
+   if high_prescal then
+      tmr1register_new = word(target_clock/4/256/pulses_sec) -- prescaler is 256 so divide by 256
+   else
+      tmr1register_new = word(target_clock/4/2/pulses_sec)  -- prescaler is 2 so divide by 2
+   end if
+end procedure
+
+
+
+procedure run_stepper(word in data) is  -- data in is velocity speed in 0.1Sec
+   if ramp_speedset then            -- if ramp_speed set then increase/decrease speed
+      ramp_speedset = false         -- because it is ramp_up/ramp_down speed
+      _velocity(data)               -- calculate register value voor this speed
+      T0CON_TMR0ON = on     -- start timer0, was stopped bij _velocity(data)
+      INTCON_TMR0IE = on    -- enable timer0 interupt was disabled bij _velocity(data)
+      tmr1register = tmr1register_new  -- set tmr1register_new in tmr1register
+      return
+   end if
+
+   if run then              --
+      if data == 0 then     -- is speed is 0 then stop stepper
+         stop_stepper()
+         return
+      end if
+      _velocity(data)       -- calculate register value voor this speed
+      T0CON_TMR0ON = on     -- start timer0, was stopped bij _velocity(data)
+      INTCON_TMR0IE = on    -- enable timer0 interupt was disabled bij _velocity(data)
+      set_vel = (data * 10)              -- set_vel is 10 times data because of accuracy
+      if set_vel > actual_vel then       -- if true than new speed is faster
+         if accel_ramp == 0 then         -- check for using ramp or not
+            tmr1register = tmr1register_new  --
+         else
+            accel_active = true        -- set during acceleration
+            decel_active = false       -- reset
+            _timer0_01s_on()           -- start timer1 for ramping up
+         end if
+      elsif set_vel < actual_vel then  -- if true than new speed is slower
+         if decel_ramp == 0 then                  -- check for using ramp or not
+            tmr1register = tmr1register_new
+         else
+            decel_active = true        -- set during deceleration
+            accel_active = false       -- reset
+            _timer0_01s_on()           -- start timer1 for ramping down
+         end if
+      end if
+      if data == 0 then
+        stop_stepper()
+        return
+      end if
+      return
+   end if
+
+   set_vel = (data * 10)            -- set_vel is 10 times data because of accuracy
+   actual_vel = 0                   -- start so actual velosity is 0
+   if accel_ramp == 0 then          -- no accel so set timer0 registers for velosity speed
+      _velocity(data)
+   else
+      _velocity(1)                  -- start accel ramp with 0.1 rpm
+      accel_active = true           -- flag set for acceleration
+      decel_active = false          -- and therfor deceleration is false
+      _timer0_01s_on()              -- start timer1 for ramping up
+   end if
+
+   tmr1register = tmr1register_new  -- set tmr1register_new in tmr1register
+   TMR0H = 255                      -- set register as high as posible to go fast to timer0 interupt
+   TMR0L = 255
+   T0CON_TMR0ON = on                -- start timer0 and thus start steppermotor
+   INTCON_TMR0IE = on               -- enable timer0 interupt
+   run = true
+
+end procedure
+
+
+
+procedure accel(word in sec, word in velocity) is  -- input is 0.1 Sec and 0.1rpm
+   if sec > 0 then               -- calculates accelaration ramp (x 0.1 rpm per 10mS)
+      accel_ramp = velocity/sec   -- at input velocity
+   end if                         --
+end procedure
+
+
+
+procedure decel(word in sec, word in velocity) is   -- data in is 0.1 Seconds
+   if sec > 0 then                -- calculates accelaration ramp (x 0.1 rpm per 10mS)
+      decel_ramp = velocity/sec    -- at input velocity
+   end if                          --
+end procedure
+
+
+
+--------------------------------------------------------
+------------- interupt Procedures ----------------------
+--------------------------------------------------------
+
+
+-----   Interupt Timer 0  1 delay between steps   ------
+procedure timer0() is
+   pragma interrupt
+   if !INTCON_TMR0IF then return end if -- if not timer0 flag then exit
+ -- first load TMR0H and than TMR0L because register load 16bit in one, on TMR0L load
+   TMR0H = 255 - byte(tmr1register >> 8) -- shift high byte to low byte on tmr1register
+                                        -- and reload TMR1H with now low byte
+   TMR0L = 255 - byte(tmr1register)     -- reload TMR1L from low byte original tmr1register
+                                        -- at this moment complete 16bit wil be loaded in register
+   if full_step then
+      stepper_control = full_step_array[steppointer]  -- output half step
+   else
+      stepper_control = half_step_array[steppointer]  -- output next full step
+   end if
+
+
+   if cw then                       -- select next step, depending on rotation and step size
+      if steppointer == 0 then
+         if full_step then
+            steppointer = 3
+         else
+            steppointer = 7
+         end if
+      else
+         steppointer = steppointer - 1
+      end if
+   else
+      if full_step then
+         if steppointer == 3 then
+            steppointer = 0
+         else
+            steppointer = steppointer + 1
+         end if
+      else
+         if steppointer == 7 then
+            steppointer = 0
+         else
+            steppointer = steppointer + 1
+         end if
+      end if
+   end if
+   INTCON_TMR0IF = off    -- clear interupt flag for next interrupt
+end procedure
+--------------------------------------------------------
+
+
+
+
+
+
+
+----------- Interupt Timer   =>  0.01Sec  --------------
+procedure timer1() is
+   pragma interrupt
+   if !PIR1_TMR1IF then return end if -- if not timer1 flag then exit
+   PIR1_TMR1IF = off      -- clear interupt flag for next interrupt
+   TMR1H = 198            -- set timer register for start 0.01Sec  256-58 = 198
+   TMR1L = 104            -- 256-152 = 104
+
+   if accel_active then
+      if set_vel > (actual_vel + accel_ramp) then -- if true than increase 1 step
+         actual_vel = actual_vel + accel_ramp     -- because target speed is not yet reached
+      else
+         actual_vel = set_vel                     -- else target speed is reached and
+         accel_active = false                     -- stop accelerating
+         _timer0_01s_off()
+      end if
+      ramp_speedset = true                        -- set flag to know its a rampspeed set
+      run_stepper(actual_vel/10)                  -- divide by 10 to get real speed
+   end if
+   if decel_active then
+      if decel_ramp > actual_vel then             -- if true than 0 speed is reached
+         hold_stepper()                           -- and hold stepper and reset flags
+      else
+         if set_vel < (actual_vel - decel_ramp) then   -- if true than decel 1 step
+            actual_vel = actual_vel - decel_ramp       -- yet reached
+         else
+            if stop then
+               hold_stepper()
+            else
+               actual_vel = set_vel                       -- else target speed is reached and
+               decel_active = false                       -- stop decelerating
+            end if
+            _timer0_01s_off()
+         end if
+         ramp_speedset = true                          -- set new/final speed
+         run_stepper(actual_vel/10)
+      end if
+   end if
+end procedure
+--------------------------------------------------------
+
+
+
+
+

@@ -1,0 +1,224 @@
+-- Title: reading/writing of PIC's data EEPROM
+-- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
+-- Adapted-by: Sebastien Lelong, Rob Hamerling, Joep Suijs (on behalf of Tijs van Roon).
+-- Compiler: >=2.4i
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+-- Read from or write to EEPROM/data a byte, word or double word.
+-- Available procedures:
+--   * data_eeprom_read(<offset>,<byte>)
+--   * data_eeprom_write(<offset>,<byte>)
+--   * data_eeprom_read_word(<offset>,<word>)
+--   * data_eeprom_write_word(<ofset>,<word>)
+--   * data_eeprom_read_dword(<offset>,<dword>)
+--   * data_eeprom_write_dword(<offset>,<dword>)
+-- Available functions:
+--   * <byte> = data_eeprom(<offset>)
+--   * <word> = data_eeprom_word(<offset>)
+--   * <dword> = data_eeprom_dword(<offset>)
+-- In all cases <offset> is a position relative to the beginning of
+-- EEPROM/data memory, thus starts at 0.
+-- Examples of use:
+--   * Read a byte of EEPROM at offset 7 into x:
+--         var byte x
+--         data_eeprom_read(7, x)
+--   * Read a word from EEPROM at offset 4 into y:
+--         var word y
+--         y = data_eeprom_word(4)
+--   * Write a byte to EEPROM at offset 18:
+--         data_eeprom_write(18, 0b1111_0000)
+--
+-- Notes:
+-- - Write-protect bits in configuration memory may prohibit writing.
+-- - Writing to locations outside the available memory range may have
+--   unexpected effects!
+-- - Summary of changes
+--   + Changed byte-offset to word-offset for larger EEPROMs with 18Fs
+--   + Offset and flags settings for read and write in separate procedure.
+--   + Moved check for write completed ahead of read and write, for
+--     performance (ahead of read needed for read back of same offset).
+--   + added 'pragma inline' to several procedures
+--   + some other code optimizations
+--   + added support for PICs with deviating register names, like 'EEDAT'
+--     or EEDATL in stead of 'EEDATA' and EEADRL in stead of EEADR.
+--
+--
+-- ------------------------------------------------------------------------
+-- Set memory region bits in EECON1 and load offset register(s)
+-- Wait (spin) until any previous write completed before proceeding.
+-- ------------------------------------------------------------------------
+procedure _prepare_eeprom_access(word in offset) is
+
+   pragma inline
+   var byte tempoffset[2] at offset             -- type cast
+
+   while EECON1_WR loop                         -- allow any previous
+     -- spin as long as any previous write is not completed
+   end loop                                     -- before this write
+
+   if (defined(EEADR) == TRUE) then
+      EEADR = tempoffset[0]                     -- low order byte of offset
+   elsif (defined(EEADRL) == TRUE) then
+      EEADRL = tempoffset[0]                    -- low order byte of offset
+   end if
+
+   if (defined(EEADRH) == TRUE) then            -- PIC with large EEPROM
+      EEADRH = tempoffset[1]                    -- high order byte of offset
+   end if
+
+   if (defined(EECON1_CFGS) == TRUE) then       -- config memory supported
+      EECON1_CFGS = FALSE                       -- deselect config region
+   end if
+
+   if (defined(EECON1_EEPGD) == TRUE) then      -- code memory supported
+      EECON1_EEPGD = FALSE                      -- deselect code region
+   end if
+
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Read byte from data EEPROM at given offset
+-- Result is stored in the passed in-argument
+-- ------------------------------------------------------------------------
+procedure  data_eeprom_read(word in offset, byte out data) is
+
+   _prepare_eeprom_access(offset)               -- make ready for rea
+
+   EECON1_RD = TRUE                             -- initiate read operation
+
+   if (defined(EEDATA) == TRUE) then
+      data = EEDATA                             -- obtain byte
+   elsif (defined(EEDAT) == TRUE) then
+      data = EEDAT                              -- obtain byte
+   elsif (defined(EEDATL) == TRUE) then
+      data = EEDATL                             -- obtain byte
+   end if
+
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Write byte to data EEPROM at given offset
+-- ------------------------------------------------------------------------
+procedure data_eeprom_write(word in offset, byte in data) is
+
+   var bit gie_old                              -- GIE state
+
+   _prepare_eeprom_access(offset)               -- make ready for write
+
+   if (defined(EEDATA) == TRUE) then
+      EEDATA = data                             -- store byte
+   elsif (defined(EEDAT) == TRUE) then
+      EEDAT = data                              -- store byte
+   elsif (defined(EEDATL) == TRUE) then
+      EEDATL = data                             -- store byte
+   end if
+
+   EECON1_WREN = TRUE                           -- write enable
+
+   gie_old = INTCON_GIE                         -- save GIE state
+   INTCON_GIE = FALSE                           -- disable interrupts
+
+   EECON2    = 0x55                             -- \ required sequence
+   EECON2    = 0xAA                             -- /
+
+   EECON1_WR = TRUE                             -- initiate write operation
+
+   INTCON_GIE = gie_old                         -- restore interrupt status
+   EECON1_WREN = FALSE                          -- disable further writing
+
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Read byte from data EEPROM at given offset and return result
+-- ------------------------------------------------------------------------
+function  data_eeprom(word in offset) return byte is
+
+   pragma inline
+   var byte data
+   data_eeprom_read(offset, data)
+   return data
+
+end function
+
+
+-- ------------------------------------------------------------------------
+-- Read word from data eeprom at given offset
+-- Result is stored in the passed in-argument
+-- ------------------------------------------------------------------------
+procedure data_eeprom_read_word(word in offset, word out data) is
+
+   var byte tempbyte[2] at data
+   data_eeprom_read(offset+0, tempbyte[0])
+   data_eeprom_read(offset+1, tempbyte[1])
+
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Read word from data eeprom at given offset and return result
+-- ------------------------------------------------------------------------
+function data_eeprom_word(word in offset) return word is
+
+   pragma inline
+   var word data
+   data_eeprom_read_word(offset, data)
+   return data
+
+end function
+
+
+-- ------------------------------------------------------------------------
+-- Write word to data eeprom at given offset
+-- ------------------------------------------------------------------------
+procedure data_eeprom_write_word(word in offset, word in data) is
+
+   var byte tempbyte[2] at data                 -- type cast
+   data_eeprom_write(offset+0, tempbyte[0])
+   data_eeprom_write(offset+1, tempbyte[1])
+
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Read a dword from data eeprom at given offset
+-- Result is stored in the passed in-argument
+-- ------------------------------------------------------------------------
+procedure data_eeprom_read_dword(word in offset, dword out data) is
+
+   pragma inline
+   var word tempword[2] at data
+   data_eeprom_read_word(offset+0, tempword[0])
+   data_eeprom_read_word(offset+2, tempword[1])
+
+end procedure
+
+-- ------------------------------------------------------------------------
+-- Read dword from data eeprom at given offset and return result
+-- ------------------------------------------------------------------------
+function data_eeprom_dword(word in offset) return dword is
+
+   pragma inline
+   var dword data
+   data_eeprom_read_dword(offset, data)
+   return data
+
+end function
+
+-- ------------------------------------------------------------------------
+-- Write dword to data eeprom at given offset
+-- ------------------------------------------------------------------------
+procedure data_eeprom_write_dword(word in offset, dword in data) is
+
+   pragma inline
+   var word tempword[2] at data
+   data_eeprom_write_word(offset+0, tempword[0])
+   data_eeprom_write_word(offset+2, tempword[1])
+
+end procedure
+

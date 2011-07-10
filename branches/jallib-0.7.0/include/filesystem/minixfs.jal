@@ -1,0 +1,1207 @@
+-- Title: Minix v2 filesystem implementation
+-- Author: Sebastien Lelong, Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Minix v2 implementation
+-- Partitions aren't supported, so you have to create a filesystem on the whole
+-- available memory. Typically, instead of "mkfs.minix -v /dev/sdX1", you'll
+-- have to "mkfs.minix -v /dev/sdX" (and remove sdX1 partition with fdisk)
+-- Some useful commands:
+--  - fsck.minix -f -v -s /dev/sdX
+--       will print Super-Block and some other information about files, dirs, state
+--  - hexdump -C /dev/sdX
+--       will dump Minix FS content (only changing lines)
+--  - hexdump -v -C /dev/sdX
+--       will do the same, but dump all lines, even if identical
+-- .
+-- In order to test your setup, you can untar minix_data.tar.bz2 available at:
+-- ... 
+-- This archive contains directories and files of different size, used to test
+-- data zone and helping to understand how Minix filesystem is designed.
+--    1. prepare your device, no partition (replace /dev/sdX with appropriate device):
+--          mkfs.minix -v /dev/sdX
+--          mount /dev/sdX /mnt/tmp
+--    2. untar test data:
+--          cd /mnt/tmp && tar xjfv path/to/minix_data.tar.bz2
+--          cd && umount /mnt/tmp
+--    3. check content:
+--          fsck.minix -f -v -s /dev/sdX
+--       should report something like (1GB SD-card used here):
+-- .
+-- Forcing filesystem check on /dev/sdX.
+-- 65535 inodes
+-- 992000 blocks
+-- Firstdatazone=4227 (4227)
+-- Zonesize=1024
+-- Maxsize=2147483647
+-- Filesystem state=1
+-- namelen=30
+-- .
+--     20 inodes used (0%)
+--  70858 zones used (7%)
+-- .
+--     16 regu
+--     16 regular files
+--      2 directories
+--      0 character device files
+--      0 block device files
+--      1 links
+--      2 symbolic links
+--      ------
+--      21 files
+-- .
+-- Vocabulary: these are the terms I'm using in this code, may be wrong...
+--    * storage:  this is the underlying storage layer. Link between MinixFS and storage is done
+--                by creating aliases to some spefici proc/funcs. Typically, storage is sd_card.jal
+--                library. It could also be hard-disk too.
+--    * sector:   this is a unit in underlying storage (eg. for SD cards, 512 bytes)
+--    * block:    this is a unit in minixfs (typically 1024 bytes, that is, 2 * sector's size with SD cards)
+--    * zone:     same as a block in case of Minix v2
+--    * inode:    well, that's an inode, a kind of meta description of a file
+--    * file descriptor: a structure composed with an inode and several information to track how file was
+--                opened and where we are within a file (well, again, that's a file descriptor)
+--
+-- Notes:
+--    * I developped this lib and tested it with sd_card storage. It should be possible to use other
+--    * storages though not tested nor even tried.
+--    * to developpers: this piece of code is tricky... If you plan to modify this lib, take huge care
+--                      at variables initialization, there are special values I used, mostly to rollover
+--                      to 0 when first accessed. It could have been simpler but would have used more 
+--                      variables and thus more resources. There are many counters which, when reaching 
+--                      a specific value, trigger actions (like flushing data, going to next zone, allocate
+--                      a new zone, etc...). Just don't assume it'll work just because you added a small
+--                      little line, because everything is quite tied together and you could be victim
+--                      of an (un)expected butterfly effect :) I myself broke features many times with 
+--                      supposedly minor changes, hurting my brain a lot. Being polite...
+--
+-- TODO:
+--  * update atime/mtime/ctime while reading & writing
+--  * update mode bits while saving inode 
+--  * rename open_block_byte
+--  * support for file creation
+--  * support for file deletion
+--
+
+include strings
+
+
+-- Magic numbers used to idenfity filesystem version
+const word MINIX_SUPER_MAGIC   = 0x137F      -- original minix fs
+const word MINIX_SUPER_MAGIC2  = 0x138F      -- minix fs, 30 char names
+const word MINIX2_SUPER_MAGIC  = 0x2468      -- minix V2 fs
+const word MINIX2_SUPER_MAGIC2 = 0x2478      -- minix V2 fs, 30 char names
+const word MINIX3_SUPER_MAGIC  = 0x4D5A      -- minix V3 fs
+
+const word MINIX_BYTES_PER_BLOCK = 0x400     -- 1KB per block
+const word MINIX_BYTES_PER_INODE = 0x40      -- 64B per inode
+-- Super Block is one block after boot block
+const word MINIX_BOOT_BLOCK_ADDRESS = 0x00
+const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BOOT_BLOCK_ADDRESS + MINIX_BYTES_PER_BLOCK
+-- max filename size according to minix v2
+const byte MINIX_MAX_FILENANE_LEN = 30
+const byte MINIX_MAX_DIRECT_ZONE_IDX        = 6
+const word MINIX_MAX_INDIRECT_ZONE_IDX      = 0x03FC  -- 0x400 - 4 == one block - one location
+const word MINIX_MAX_DOUBLE_DIRECT_ZONE_IDX = 0x03FC  -- 0x400 - 4 == one block - one location
+const byte MINIX_NUM_DIRECT_ZONES           = 7
+const dword MINIX_NUM_INDIRECT_ZONES         = 256
+const dword MINIX_NUM_DOUBLE_INDIRECT_ZONES  = 65536
+const dword MINIX_MAX_DIRECT_ZONE_SIZE      = MINIX_NUM_DIRECT_ZONES * MINIX_BYTES_PER_BLOCK
+const dword MINIX_MAX_INDIRECT_ZONE_SIZE    = (MINIX_NUM_INDIRECT_ZONES * MINIX_BYTES_PER_BLOCK) + MINIX_MAX_DIRECT_ZONE_SIZE
+const byte MINIX_ZONE_NONE             = 0b_0000
+const byte MINIX_ZONE_DIRECT           = 0b_0001
+const byte MINIX_ZONE_INDIRECT         = 0b_0010
+const byte MINIX_ZONE_DOUBLE_INDIRECT  = 0b_0100
+const byte MINIX_ZONE_TRIPLE_INDIRECT  = 0b_1000
+const dword MINIX_NUM_ZONE_BITS_PER_BLOCK = MINIX_BYTES_PER_BLOCK * 8
+
+-- File descriptor constants
+const byte MINIX_MODE_READ   = 0b001
+const byte MINIX_MODE_WRITE  = 0b010
+const byte MINIX_MODE_APPEND = 0b100  -- write implied
+
+-- Error constants. Following "mkfs" convention, errors are added, so
+-- minix_last_error can embed several errors
+const byte MINIX_ERR_NONE = 0b_0000_0000
+const byte MINIX_ERR_BAD_MAGIC_NUMBER     = 0b_0000_0001 -- magic number unsupported
+const byte MINIX_ERR_BAD_ZONE_LOCATION    = 0b_0000_0010 -- something is wrong about declared and computed data location
+const byte MINIX_ERR_NOT_DIRECTORY        = 0b_0000_0100 -- try to act on a directory, but inode isn't a directory
+const byte MINIX_ERR_NO_SUCH_FILE         = 0b_0000_1000 -- try to access invalid/unexisting filename or inode
+const byte MINIX_ERR_END_OF_FILE          = 0b_0001_0000 -- reached EOF
+const byte MINIX_ERR_BAD_ADDRESS          = 0b_0010_0000 -- bad block address
+
+-- Auto-resetting variable: errors are added, and when read, reset to 0
+var byte _minix_last_error = MINIX_ERR_NONE
+procedure minix_last_error'put(byte in val) is
+   _minix_last_error = _minix_last_error | val
+end procedure
+function minix_last_error'get() return byte is
+   var byte tmp = _minix_last_error
+   _minix_last_error = 0
+   return tmp
+end function
+
+-- -----------------
+-- DATA STRUCTURE -- 
+-- -----------------
+
+-- Super Block parameters --
+record minix_superblock is
+   word num_inodes
+   word num_zones_v1
+   word num_inode_bitmap_blocks
+   word num_zone_bitmap_blocks
+   word first_data_zone
+   ;word log2 -- ignored because #blocks == #zones
+   dword max_file_size
+   word magic_number -- used to identify Minix version
+   ;word padding -- ignored
+   dword num_zones_v2
+   -- following are custom variables implied by super-block
+   dword first_inode_bitmap_block
+   dword first_zone_bitmap_block
+   dword first_inode_block
+   -- Stores the block address and byte index containing the last 
+   -- assigned zone bitmap. This way we don't have to explore zone 
+   -- bitmap each time we request a new zone
+   dword last_zone_bitmap_block
+   word last_zone_bitmap_byte
+   byte zone_current_bits
+   dword last_full_zone
+   dword last_alloc_zone_address
+
+end record
+
+-- Inode --
+const word MINIX_INODE_ROOT_ID = 1
+
+record minix_inode_mode is
+   byte filetype
+   bit isdir
+   bit isfile
+   bit issymlink
+   bit iswhat  -- dunno...
+   byte user
+   byte group
+   byte other
+   byte all
+   -- there are other bits, but I give up on them...
+end record
+
+record minix_inode is
+   -- INTERNAL
+   word id
+   dword block_address  --)
+   word byte_address    --) remember where inode is stores to save it back
+   -- SPECS
+   minix_inode_mode mode
+   word mode_bytes -- same as mode, but raw bytes
+   word num_links
+   -- user/group owner
+   word uid
+   word gid
+   dword filesize
+   -- access/modification/change times
+   dword atime
+   dword mtime
+   dword ctime
+   -- where actual data lies
+   dword zone[MINIX_MAX_DIRECT_ZONE_IDX + 1]
+   dword indirect_zone
+   dword double_indirect_zone
+   dword triple_indirect_zone -- unimplemented (minix v3)
+   -- STATE
+   -- address of original indirect zone: when in double indirect zone, we
+   -- also use indirect zones, but those are different from the indirect one 
+   -- defined as inode's field here. Still, we want to benefit from all the
+   -- existing code, as indirect zones, being inode's or within indirect zones
+   -- are pretty much the same. So we'll keep original indirect zone as inode's 
+   -- field, this will be the one saved.
+   dword indirect_zone_orig
+   -- track type of zone being accessed (direct, indirect, double indirect)
+   byte zone_type   
+   -- track current direct zone in use or, if indirect, the address
+   -- of data location within indirect zone
+   word zone_idx
+   word zone_dbl_idx
+   -- track current index within current zone (0<x<block_size)
+   word zone_content_idx
+end record
+
+-- Directory entry (dir listing)
+record minix_dir_entry is
+   word inode_num
+   byte filename[MINIX_MAX_FILENANE_LEN]
+end record
+
+-- File descriptor
+record minix_fd is
+   byte mode      -- read/write/...
+   dword read     
+   bit dirty
+   minix_inode inode
+end record
+
+-- ----------
+-- Globals --
+-- ----------
+
+var dword minix_curzone
+var byte minix_curzonetab[4] at minix_curzone
+
+var word minix_sector_progress = 0  -- track progress while accessing underlying storage sector
+                                    -- (should never be accessed directly as it's manager incrementally
+                                    -- with write operations and trigger block/sector opening)
+                                    -- If you need skip a value while writing, use open_block_byte() instead
+var dword minix_storage_address = 0 -- track underlying storage address
+
+-- super-block
+var minix_superblock minix_sb
+-- file descriptor currently being accessed (file)
+var minix_fd minix_filefd
+-- current working directory (CWD) inode number
+var word minix_cwd
+
+
+-- move to block number and open read access on underlying storage
+procedure minix_open_block(dword in num) is
+
+   if num == 0 then
+      minix_last_error = MINIX_ERR_BAD_ADDRESS
+      -- tmp: make sure it reset it case of troubles (safety in a sense)
+      asm goto 0
+      return
+   end if
+   -- TODO: check if block number is within memory storage bound !
+   minix_storage_address  = (MINIX_BYTES_PER_BLOCK / MINIX_STORAGE_SECTOR_SIZE) * num
+   minix_sector_progress = 0
+end procedure
+
+-- move to block number, then to byte number within the block
+procedure minix_open_block_byte(dword in blocknum, word in bytenum) is
+
+   minix_open_block(blocknum)
+
+   -- won't cross underlying storage sector boundaries
+   if bytenum > MINIX_STORAGE_SECTOR_SIZE then
+      minix_storage_address = minix_storage_address + (bytenum / MINIX_STORAGE_SECTOR_SIZE)
+      bytenum = bytenum - MINIX_STORAGE_SECTOR_SIZE
+   end if
+
+   -- fill in buffer
+   if bytenum != 0 then
+      minix_start_read(minix_storage_address)
+      minix_read_sector()
+      minix_stop_read()
+   end if
+   minix_sector_progress = bytenum
+end procedure
+
+
+procedure minix_storage_flush() is
+   minix_start_write(minix_storage_address)
+   minix_write_sector()
+   minix_stop_write()
+end procedure
+
+-- "Raw" read one byte from underlying storage.
+function minix_storage_read_byte() return byte is
+
+   if minix_sector_progress == MINIX_STORAGE_SECTOR_SIZE then
+      -- reached end of underlying sector. To be clean, we open a new sector
+      minix_storage_address = minix_storage_address + 1
+      minix_sector_progress = 0
+   end if
+
+   if minix_sector_progress == 0 then
+      -- fill in buffer
+      minix_start_read(minix_storage_address)
+      minix_read_sector()
+      minix_stop_read()
+   end if
+
+   minix_sector_progress = minix_sector_progress + 1
+   return minix_sector_buffer[minix_sector_progress - 1]
+
+end function
+
+-- "Raw" read one byte from underlying storage.
+procedure minix_storage_write_byte(byte in data) is
+
+   if minix_sector_progress == MINIX_STORAGE_SECTOR_SIZE then
+      -- reached end of underlying sector. Write current sector (write)
+      -- and open a new one (read)
+      minix_storage_flush()
+      minix_storage_address = minix_storage_address + 1
+      minix_sector_progress = 0
+   end if
+
+   if minix_sector_progress == 0 then
+      -- fill in buffer
+      minix_start_read(minix_storage_address)
+      minix_read_sector()
+      minix_stop_read()
+   end if
+
+   minix_sector_buffer[minix_sector_progress] = data
+   minix_sector_progress = minix_sector_progress + 1
+
+end procedure
+
+-- Save current file desc's inode (minix_filefd.inode)
+procedure minix_save_inode() is
+
+   -- sanity check: make sure passed inode has been properly init
+   if minix_filefd.inode.id == 0 then
+      return
+   end if
+
+   minix_open_block_byte(minix_filefd.inode.block_address,minix_filefd.inode.byte_address)
+
+   -- MSB first, then LSB
+   -- Mode bytes
+   minix_storage_write_byte(byte( minix_filefd.inode.mode_bytes & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.mode_bytes & 0x0000FF00) >> 8) )
+
+   -- Number of links
+   minix_storage_write_byte(byte( minix_filefd.inode.num_links & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.num_links & 0x0000FF00) >> 8) )
+
+   -- UID/GID bytes (will it ever be supported ? does it make sense
+   --       to have a multiple user system in a microcontroller ? :)
+   minix_storage_write_byte(byte( minix_filefd.inode.uid & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.uid & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte( minix_filefd.inode.gid & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.gid & 0x0000FF00) >> 8) )
+
+   -- Update file size
+   minix_storage_write_byte(byte( minix_filefd.inode.filesize & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.filesize & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.filesize & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.filesize & 0xFF000000) >> 24))
+
+   -- atime/mtime/ctime
+   minix_storage_write_byte(byte( minix_filefd.inode.atime & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.atime & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.atime & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.atime & 0xFF000000) >> 24))
+   minix_storage_write_byte(byte( minix_filefd.inode.mtime & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.mtime & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.mtime & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.mtime & 0xFF000000) >> 24))
+   minix_storage_write_byte(byte( minix_filefd.inode.ctime & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.ctime & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.ctime & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.ctime & 0xFF000000) >> 24))
+
+   -- Update direct zones
+   var byte i
+   for MINIX_NUM_DIRECT_ZONES using i loop
+      minix_storage_write_byte(byte( minix_filefd.inode.zone[i] & 0x000000FF)       )
+      minix_storage_write_byte(byte((minix_filefd.inode.zone[i] & 0x0000FF00) >> 8) )
+      minix_storage_write_byte(byte((minix_filefd.inode.zone[i] & 0x00FF0000) >> 16))
+      minix_storage_write_byte(byte((minix_filefd.inode.zone[i] & 0xFF000000) >> 24))
+   end loop
+   -- Indirect zone (we're saving the original value, see comments in inode's record
+   -- to understand why)
+   minix_storage_write_byte(byte( minix_filefd.inode.indirect_zone_orig & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.indirect_zone_orig & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.indirect_zone_orig & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.indirect_zone_orig & 0xFF000000) >> 24))
+
+   -- double indirect zone
+   minix_storage_write_byte(byte( minix_filefd.inode.double_indirect_zone & 0x000000FF)       )
+   minix_storage_write_byte(byte((minix_filefd.inode.double_indirect_zone & 0x0000FF00) >> 8) )
+   minix_storage_write_byte(byte((minix_filefd.inode.double_indirect_zone & 0x00FF0000) >> 16))
+   minix_storage_write_byte(byte((minix_filefd.inode.double_indirect_zone & 0xFF000000) >> 24))
+
+   -- triple indirect zone
+   -- TODO: not used for now, will be with v3
+
+   minix_storage_flush()
+
+end procedure
+
+
+procedure minix_flush() is
+
+   if minix_filefd.mode >= MINIX_MODE_WRITE then
+      if minix_filefd.dirty then
+         -- close current filefd by flushing changes
+         minix_storage_flush()
+         -- now closed
+         minix_filefd.dirty = false
+
+         -- write new inode state
+         -- save current inode state
+         -- Important Note: read-only file desc means data is read-only, but
+         -- inode itself should be updated even if fd is read-only. Why ? Because
+         -- you'd need, for instance, to update access time (atime). Because, atime
+         -- isn't supported (I'd need to run RTCC + get times from RTP ?), inode state
+         -- is only saved when in write mode. This prevent having too much write operations
+         -- for nothing.
+         minix_save_inode()
+      end if
+   end if
+end procedure
+
+-- Walk accross zone bitmap, searching for a free zone number (identified by 0s)
+-- and return available zone number. 
+-- /!\ zone bitmap and file's content obviously aren't located the same. This means when 
+-- allocating, we're moving in a different place (zone bitmap) than we previously were
+-- while writing into the file. It's the caller's responsability to move the correct location
+-- once allocation is done. Yes, that's right: it's dirty, as zone_alloc() won't let the system
+-- in its previous state. ("why ?" you may ask... because it's simpler like that, and anyway,
+-- this procedure is somewhat internal, so it shouldn't be a problem in the end).
+function minix_zone_alloc() return dword is
+   var byte databck = 0
+   var byte numone = 0
+   var byte zeroplace
+   var byte opened
+   -- TODO: check if zone bitmap is full !
+   opened = 0  -- first time: didn't opened block
+   if minix_sb.zone_current_bits == 0xFF then   -- current byte is full, search for another one
+      while true loop
+         minix_sb.last_zone_bitmap_byte = minix_sb.last_zone_bitmap_byte + 1
+         -- prevent opening block again and again
+         if opened == 0 then
+            minix_open_block_byte(minix_sb.last_zone_bitmap_block,minix_sb.last_zone_bitmap_byte)
+            opened = 1
+         end if
+         minix_sb.zone_current_bits = minix_storage_read_byte()
+         -- data contains some zeros, compute number of "1" previously found
+         -- how many "1" in it ?
+         if minix_sb.zone_current_bits == 0xFF then
+            -- shortcut as most of the time, zone is filled bit by bit so 0xFF
+            -- is a very usual value zone bitmap.
+            minix_sb.last_full_zone = minix_sb.last_full_zone + 8
+            -- bitmap_byte only gets incremented here, as we want to track the last filled byte
+            if minix_sb.last_zone_bitmap_byte == MINIX_BYTES_PER_BLOCK then
+               minix_sb.last_zone_bitmap_byte = 0
+               minix_sb.last_zone_bitmap_block = minix_sb.last_zone_bitmap_block + 1
+               -- force block re-opening
+               opened = 0
+            end if
+         else
+            exit loop
+         end if
+      end loop
+   end if
+
+   minix_open_block_byte(minix_sb.last_zone_bitmap_block,minix_sb.last_zone_bitmap_byte)
+
+   -- found bits marked as free zone
+   databck = minix_sb.zone_current_bits
+   zeroplace = 0
+   while databck != 0 loop
+      if bit(databck) == 0 then
+         exit loop
+      end if
+      zeroplace = zeroplace + 1
+      databck = databck >> 1
+   end loop
+
+   -- Write "1" at proper place in zone bitmap
+   minix_sb.zone_current_bits = minix_sb.zone_current_bits | (1 << zeroplace)
+
+   -- save new bits
+   -- TODO: *could* be optimized by moving this into next "if", testing when bits
+   -- are full. But... in case partially filled, user has to "umount" device to flush 
+   -- bits. If not, already allocated zone will be allocated again ! So, let's be on the
+   -- safe side and dump change each time we're allocation a zone bit.
+   minix_storage_write_byte(minix_sb.zone_current_bits)
+   minix_storage_flush()
+
+   -- the place where we set "1" is identified by zeroplace (because there 
+   -- previously was a "0" here). In order to update the next zone number, we
+   -- need to consider the following enumeration within a byte in zone bitmap:
+   --                      *
+   -- Ex:         0b_1100_1011
+   --                1111 1111
+   -- We'll allocate the "0" marked with "*", because this is the first 0 met.
+   -- This corresponds the zone number 3 within this byte. So new zone number
+   -- is: previous number + 3, that is:
+   minix_sb.last_alloc_zone_address = dword(minix_sb.last_full_zone + zeroplace) + minix_sb.first_data_zone
+
+   if minix_sb.zone_current_bits == 0xFF then
+      -- end of current byte, adjust zone number
+      minix_sb.last_full_zone = minix_sb.last_full_zone + 8
+   end if
+
+   return minix_sb.last_alloc_zone_address
+   
+end function
+
+-- Read Super-Block and fill record
+procedure minix_read_super_block(bit in check_data_zone) is
+
+   minix_open_block(1)
+
+   var dword data
+   var byte datatab[4] at data
+   -- read number of inodes
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_sb.num_inodes = word(data)
+   -- read number of zones (Minix v1)
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_sb.num_zones_v1 = word(data)
+   -- read number of inode bitmap blocks
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_sb.num_inode_bitmap_blocks = word(data)
+   -- read number of zone bitmap blocks
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_sb.num_zone_bitmap_blocks = word(data)
+   -- read first data zone (it's a block number)
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_sb.first_data_zone = word(data)
+   -- log2 field is ignored
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   -- read maximum file size
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_sb.max_file_size = data
+   -- read magic number (only one Minix currently supported)
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_sb.magic_number = word(data)
+   if minix_sb.magic_number != MINIX2_SUPER_MAGIC2 then
+      minix_last_error = MINIX_ERR_BAD_MAGIC_NUMBER
+   end if
+   -- padding field is ignored
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   -- read number of zones (Minix v2)
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_sb.num_zones_v2 = data
+
+   -- compute location of first inode
+   -- Inode bitmap blocks are located just after super-block
+   minix_sb.first_inode_bitmap_block = 2
+   -- Zone bitmap  blocks are located just after inode bitmap blocks
+   minix_sb.first_zone_bitmap_block = minix_sb.first_inode_bitmap_block + minix_sb.num_inode_bitmap_blocks
+   -- Then inode themselves...
+   minix_sb.first_inode_block = minix_sb.first_zone_bitmap_block + minix_sb.num_zone_bitmap_blocks
+
+   var dword computed_data_zone
+   if check_data_zone == true then
+      -- Then actual zone block (where data lies). Stored in super-block, just
+      -- perform a sanity check
+      computed_data_zone = minix_sb.first_inode_block + (((dword(minix_sb.num_inodes) + 1) * MINIX_BYTES_PER_INODE)  / MINIX_BYTES_PER_BLOCK)
+      if minix_sb.first_data_zone != computed_data_zone then
+         minix_last_error = MINIX_ERR_BAD_ZONE_LOCATION
+      end if
+   end if
+   
+   -- init special vars
+   minix_sb.last_zone_bitmap_block = minix_sb.first_zone_bitmap_block   -- beginning of zone bitmap
+   minix_sb.last_zone_bitmap_byte = 0xFFFF   -- ) rollover to 0 on 1st access
+   minix_sb.zone_current_bits = 0xFF         -- )
+   minix_sb.last_full_zone = 0
+   minix_sb.last_alloc_zone_address = minix_sb.first_data_zone    -- beginning of actual data
+
+end procedure
+
+-- Load inode data, identified by inode_num, into file descriptor's 
+-- (minix_filefd) inode parameter
+procedure minix_load_inode(word in inode_num) is
+
+   if inode_num == 0 then
+      minix_last_error = MINIX_ERR_NO_SUCH_FILE
+      return
+   end if
+
+   -- inodes are 64-bytes long, so there can be multiple inodes on one block
+   -- /!\ inode n°0 doesn't exist (and it's a special value)
+   var dword byteaddr = (minix_sb.first_inode_block * MINIX_BYTES_PER_BLOCK) + ((inode_num - 1) * MINIX_BYTES_PER_INODE)
+   minix_filefd.inode.block_address = byteaddr / MINIX_BYTES_PER_BLOCK
+   minix_filefd.inode.byte_address = word(byteaddr - (minix_filefd.inode.block_address * MINIX_BYTES_PER_BLOCK))
+
+   minix_open_block_byte(minix_filefd.inode.block_address,minix_filefd.inode.byte_address)
+
+   -- internal
+   minix_filefd.inode.id = inode_num
+
+   -- TODO: use minix_curzone global var to save ram ?
+   var dword data
+   var byte datatab[4] at data
+   -- read inode mode
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_filefd.inode.mode_bytes = word(datatab)
+
+   -- read file/dir/symlink bit
+   -- init values (if given inode record has already been used
+   -- it may be polluted by previous data)
+   minix_filefd.inode.mode.isfile = false
+   minix_filefd.inode.mode.isdir = false
+   minix_filefd.inode.mode.issymlink = false
+   minix_filefd.inode.mode.iswhat = false
+
+   minix_filefd.inode.mode.filetype = (datatab[1] & 0b_1111_0000) >> 4
+   if minix_filefd.inode.mode.filetype == 0b_1000 then
+       minix_filefd.inode.mode.isfile = true
+   elsif minix_filefd.inode.mode.filetype == 0b_0100 then
+       minix_filefd.inode.mode.isdir = true
+   elsif minix_filefd.inode.mode.filetype == 0b_1010 then
+       minix_filefd.inode.mode.issymlink = true
+   else
+       minix_filefd.inode.mode.iswhat = true
+   end if
+
+   -- read augo rwx bits
+   minix_filefd.inode.mode.all = (datatab[1] & 0b_0000_1110) >> 1
+   minix_filefd.inode.mode.user = byte((word(data) & 0b_0000_0001_1100_0000) >> 6)
+   minix_filefd.inode.mode.group = (datatab[0] & 0b_0011_1000) >> 3
+   minix_filefd.inode.mode.other = datatab[0] & 0b_0000_0111
+
+   -- read number of links
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_filefd.inode.num_links = word(data)
+   
+   -- read UID/GID
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_filefd.inode.uid = word(data)
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   minix_filefd.inode.gid= word(data)
+   
+   -- File size
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.filesize = data
+
+   -- atime
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.atime = data
+
+   -- mtime
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.mtime = data
+
+   -- ctime
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.ctime = data
+
+   -- zone0
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.zone[0] = data
+
+   -- zone1
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.zone[1] = data
+
+   -- zone2
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.zone[2] = data
+
+   -- zone3
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.zone[3] = data
+
+   -- zone4
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.zone[4] = data
+
+   -- zone5
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.zone[5] = data
+
+   -- zone6
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.zone[6] = data
+
+   -- indirect zone
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.indirect_zone = data
+   -- backup (see comments in inode record declaration)
+   minix_filefd.inode.indirect_zone_orig = data
+
+   -- double indirect zone
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.double_indirect_zone = data
+
+   -- triple indirect zone
+   -- TODO: not used for now, will be with v3
+   datatab[0] = minix_storage_read_byte()
+   datatab[1] = minix_storage_read_byte()
+   datatab[2] = minix_storage_read_byte()
+   datatab[3] = minix_storage_read_byte()
+   minix_filefd.inode.triple_indirect_zone = data
+
+   -- init state
+   minix_filefd.inode.zone_type = MINIX_ZONE_DIRECT
+   -- Zone indexes serve different purpose, depending on data is
+   -- accessed with direct data zones, indirect data zones, or double
+   -- indirect data zones. To save memory, some indexes are used to track
+   -- states on zones not related to their name !
+
+   -- track direct and indirect zone locations.
+   -- Init this way so it will rollover to 0 when direct zone is accessed.
+   -- Increment one by one when in direct zone, then 4 by 4 when in indirect
+   minix_filefd.inode.zone_idx = 0xFFFF         
+   -- track double indirect locations.
+   -- Init this way so rollover to 0 when first accessed. Increment
+   -- 4 by 4 as always used in indirect zones
+   minix_filefd.inode.zone_dbl_idx = 0xFFFC
+   -- track content location within a zone.
+   -- Init this way so it will trigger a move to next zone
+   -- ie. first data zone (save one "if" test)
+   minix_filefd.inode.zone_content_idx = 0x0400
+
+end procedure
+
+procedure minix_close() is
+   minix_flush()
+   -- because filefd.mode is used globally in order to know how to 
+   -- open block (read|write mode), set it back to read-only as default
+   minix_filefd.mode = MINIX_MODE_READ
+end procedure
+
+-- move to next data zone, being direct, indirect ou double
+-- indirect
+procedure minix_next_zone(bit in create_zone) is
+
+   -- if in write mode, we can move to another sector in underlying storage
+   -- and loose changes. In order to avoid this, flush, just in case.
+   minix_flush()
+
+   -- reset zone content
+   minix_filefd.inode.zone_content_idx = 0
+
+   -- do we need to switch to indirect zone ?
+   if minix_filefd.inode.zone_type == MINIX_ZONE_DIRECT then
+      if minix_filefd.inode.zone_idx == MINIX_MAX_DIRECT_ZONE_IDX then
+         minix_filefd.inode.zone_type = MINIX_ZONE_INDIRECT
+         -- now will track address location within 
+         -- indirect zone and will rollover to 0
+         minix_filefd.inode.zone_idx = 0xFFFC
+      end if
+   end if
+
+   -- do we need to switch to double indirect zone ?
+   if minix_filefd.inode.zone_type == MINIX_ZONE_INDIRECT then
+      if minix_filefd.inode.zone_idx == MINIX_MAX_INDIRECT_ZONE_IDX then
+         minix_filefd.inode.zone_type = MINIX_ZONE_DOUBLE_INDIRECT
+         -- now will track address location within 
+         -- indirect zone and will rollover to 0
+         minix_filefd.inode.zone_idx = 0x03FC
+      end if
+   end if
+
+   -- triple/double/single indirect zones
+   -- Single indirect zone logic is comprised with double indirect zone logic
+   -- (and same for triple indirect zones) that's why tests are ">="
+   if minix_filefd.inode.zone_type >= MINIX_ZONE_DOUBLE_INDIRECT then
+      -- do we need to switch to the next single indirect zone ?
+      if minix_filefd.inode.zone_idx == MINIX_MAX_INDIRECT_ZONE_IDX then
+         -- increment by size of dword, since data locations are 32-bits long
+         minix_filefd.inode.zone_dbl_idx = minix_filefd.inode.zone_dbl_idx + 4
+         minix_filefd.inode.zone_idx = 0xFFFC -- rollover to 0 when accessing single indirect
+                                              -- (needed ? We tested MINIX_MAX_INDIRECT_ZONE_IDX,
+                                              -- so it should be 0xFFFC already ?)
+         if create_zone then
+            if minix_filefd.inode.double_indirect_zone == 0 then
+               if minix_filefd.inode.double_indirect_zone == 0 then -- no double indirect zone yet
+                  minix_filefd.inode.double_indirect_zone = minix_zone_alloc()
+                  -- once here, we're in zone bitmap location, not within file's content.
+                  -- No problem, next instruction will move back to previous location !
+               end if
+            end if
+            -- generate a new zone within double indirect block, it'll be saved in next "create_zone" test
+            minix_curzone = minix_zone_alloc()
+         end if
+
+         minix_open_block_byte(minix_filefd.inode.double_indirect_zone,minix_filefd.inode.zone_dbl_idx)
+
+         -- read indirect zone address
+         if create_zone then
+            minix_storage_write_byte(minix_curzonetab[0])
+            minix_storage_write_byte(minix_curzonetab[1])
+            minix_storage_write_byte(minix_curzonetab[2])
+            minix_storage_write_byte(minix_curzonetab[3])
+            minix_storage_flush()
+         else
+            minix_curzonetab[0] = minix_storage_read_byte()
+            minix_curzonetab[1] = minix_storage_read_byte()
+            minix_curzonetab[2] = minix_storage_read_byte()
+            minix_curzonetab[3] = minix_storage_read_byte()
+         end if
+         -- and replace previous indirect location
+         minix_filefd.inode.indirect_zone = minix_curzone
+      end if
+   end if
+
+   if minix_filefd.inode.zone_type >= MINIX_ZONE_INDIRECT then
+      -- increment by size of dword, since data locations are 32-bits long
+      minix_filefd.inode.zone_idx = minix_filefd.inode.zone_idx + 4
+      if create_zone then
+         if minix_filefd.inode.indirect_zone == 0 then -- no indirect zone yet
+            minix_filefd.inode.indirect_zone = minix_zone_alloc()
+            -- backup. (remember: should be the same logic for double indirect with minix v3)
+            minix_filefd.inode.indirect_zone_orig = minix_filefd.inode.indirect_zone
+            -- once here, we're in zone bitmap location, not within file's content.
+            -- No problem, next instruction will move back to previous location !
+         end if
+         -- generate a new zone within indirect block, it'll be saved in next "create_zone" test
+         minix_curzone = minix_zone_alloc()
+      end if
+
+      -- NB: on 1st indirect zone access, this will just open/create a new block (zone_idx == 0)
+      minix_open_block_byte(minix_filefd.inode.indirect_zone,minix_filefd.inode.zone_idx)
+
+      -- yet another create_zone test, I tested the following:
+      -- if both tests are refactored (thus minix_open_block_byte() is duplicated), 
+      -- it produces a bigger code (44 bytes more). so it's better to have one
+      -- minix_open_block_byte() call and the same "if" test twice.
+      if create_zone then
+         -- save it back to storage
+         minix_storage_write_byte(minix_curzonetab[0])
+         minix_storage_write_byte(minix_curzonetab[1])
+         minix_storage_write_byte(minix_curzonetab[2])
+         minix_storage_write_byte(minix_curzonetab[3])
+         minix_storage_flush()
+      else
+         -- read indirect zone address
+         minix_curzonetab[0] = minix_storage_read_byte()
+         minix_curzonetab[1] = minix_storage_read_byte()
+         minix_curzonetab[2] = minix_storage_read_byte()
+         minix_curzonetab[3] = minix_storage_read_byte()
+      end if
+      -- and move to this location
+      minix_open_block(minix_curzone)
+   end if
+
+   if minix_filefd.inode.zone_type == MINIX_ZONE_DIRECT then
+      minix_filefd.inode.zone_idx = minix_filefd.inode.zone_idx + 1
+      -- in direct zone mode, we need to get a new block address and fill
+      -- zone0, zone1, etc...
+      if create_zone == true then
+         minix_filefd.inode.zone[minix_filefd.inode.zone_idx] = minix_zone_alloc()
+         -- once here, we're located within zone bitmap, not file's content.
+         -- no problem, we'll moved to content on the few next instructions
+      end if
+      minix_curzone = minix_filefd.inode.zone[minix_filefd.inode.zone_idx]
+      minix_open_block(minix_curzone)
+   end if
+end procedure
+
+-- Read bytes from file descriptor.
+-- Walk over memory zones given, returning content
+-- byte by byte. firt walk over direct zones, then 
+-- swith indirect then double indirect zones. Keep
+-- track of progress within inode
+function minix_read() return byte is
+
+   -- assuming: if can read, then can write
+   if minix_filefd.mode < MINIX_MODE_READ then
+      return 0
+   end if
+
+   if minix_filefd.read == minix_filefd.inode.filesize then
+      minix_last_error = MINIX_ERR_END_OF_FILE
+      return 0
+   end if
+
+   -- need to move to next data zone ?
+   if minix_filefd.inode.zone_content_idx == MINIX_BYTES_PER_BLOCK then
+       minix_next_zone(false) -- on first call will rollover to zone[0]
+   end if
+
+   -- adjust current content index within the zone to next byte
+   minix_filefd.inode.zone_content_idx = minix_filefd.inode.zone_content_idx + 1
+   minix_filefd.read = minix_filefd.read + 1
+
+   return minix_storage_read_byte()
+
+end function
+
+-- write a byte to current opened file descriptor
+procedure minix_write(byte in data) is
+
+   if minix_filefd.mode < MINIX_MODE_WRITE then
+      return
+   end if
+
+   -- if we're writing onto existing data, don't need to create zones
+   -- that's why we track what we read/write in order to know if we go beyond
+   -- file size.
+   var bit create = false
+   if minix_filefd.read == minix_filefd.inode.filesize then
+      minix_filefd.inode.filesize = minix_filefd.inode.filesize + 1
+      create = true
+   end if
+
+   if minix_filefd.inode.zone_content_idx == MINIX_BYTES_PER_BLOCK then
+      minix_next_zone(create)  -- true: write operation, ie. can create new zone
+   end if
+
+   minix_filefd.inode.zone_content_idx = minix_filefd.inode.zone_content_idx + 1
+   minix_filefd.read = minix_filefd.read + 1
+   
+   minix_storage_write_byte(data)
+   minix_filefd.dirty = true
+
+end procedure
+
+-- move to byte bytenum within a file
+-- Notes: assuming file was just opened, no data read
+-- bytenum must be <= filesize, if greater, expect troubles
+procedure minix_seek(dword in bytenum) is
+
+   -- TODO: are there really "dword" ? ain't just "word" enough ?
+   -- init to impossible value to detect is previously set
+   var dword mbytes = 0xFFFF_FFFF   
+   var dword kbytes = 0xFFFF_FFFF
+   var word bytes = 0
+   
+   -- if in write mode, we can move to another sector in underlying storage
+   -- and loose changes. Flush in case.
+   minix_flush()
+   
+   -- manual read content update
+   minix_filefd.read = bytenum
+
+   -- special case for direct zone
+   if bytenum <= MINIX_MAX_DIRECT_ZONE_SIZE then
+      kbytes = bytenum / MINIX_BYTES_PER_BLOCK
+      bytes = word(bytenum - (kbytes * MINIX_BYTES_PER_BLOCK))
+      -- very end of zone ? Then it's zone before. 
+      -- Ex: if 5120 bytes, 5120/1024 = 5. So last content is in zone[4] + 1024
+      -- Ex: if 5100 bytes, 5100/1024 = 4 + some bytes (so bytes != 0).
+      --     We directly have correct offset, zone[4], + 1004 (previously computed)
+      if bytes == 0 then  
+         kbytes = kbytes -1
+         bytes = MINIX_BYTES_PER_BLOCK
+      end if
+      minix_curzone = minix_filefd.inode.zone[kbytes]
+      -- manual update inode state
+      minix_filefd.inode.zone_idx = word(kbytes)
+      minix_filefd.inode.zone_content_idx = bytes
+      minix_open_block_byte(minix_curzone,bytes)
+      return 
+   end if
+   -- check offset location: indirect ou double indirect addressed
+   if bytenum > MINIX_MAX_INDIRECT_ZONE_SIZE then
+       -- in double indirect zones
+       bytenum = bytenum - MINIX_MAX_INDIRECT_ZONE_SIZE
+       -- now bytenum is an offset fully located in double indirect zones
+       -- indirect & double indirect zones stores block address. Convert so
+       -- indexes are actual block numbers
+       kbytes = bytenum / MINIX_BYTES_PER_BLOCK
+       bytes = word(bytenum - (kbytes * MINIX_BYTES_PER_BLOCK))
+       mbytes = kbytes / MINIX_NUM_INDIRECT_ZONES
+       kbytes = kbytes - (mbytes*MINIX_NUM_INDIRECT_ZONES)
+   elsif bytenum > MINIX_MAX_DIRECT_ZONE_SIZE then
+      -- in indirect zones
+      bytenum = bytenum - MINIX_MAX_DIRECT_ZONE_SIZE
+      -- now bytenum is an offset fully located in a single indirect zone
+      kbytes = bytenum / MINIX_BYTES_PER_BLOCK
+      bytes = word(bytenum - (kbytes * MINIX_BYTES_PER_BLOCK))
+   end if
+
+   -- adjust when very end of zone (see comments above)
+   if bytes == 0 then  
+       kbytes = kbytes -1
+       bytes = MINIX_BYTES_PER_BLOCK
+   end if
+   
+   -- we've modified double indirect addresses ?
+   if mbytes != 0xFFFF_FFFF then
+      -- go to double indirect zone and read indirect zone address
+      minix_open_block_byte(minix_filefd.inode.double_indirect_zone,word(mbytes*4))  -- mbytes is an index, one element weighs a dword
+      minix_curzonetab[0] = minix_storage_read_byte()
+      minix_curzonetab[1] = minix_storage_read_byte()
+      minix_curzonetab[2] = minix_storage_read_byte()
+      minix_curzonetab[3] = minix_storage_read_byte()
+      -- now minix_curzone stores indirect zone
+      -- manual update regarding double indirect addressing
+      -- FIXME: NO !!!! don't write over indirect_zone, it must be saved as its
+      -- first allocation so next access, this will be the very first assigned (good)
+      -- address, not one used while exploring indirect zones *within* double indirect (bad)
+      minix_filefd.inode.zone_type = MINIX_ZONE_DOUBLE_INDIRECT
+      minix_filefd.inode.indirect_zone = minix_curzone
+      minix_filefd.inode.zone_dbl_idx = word(mbytes*4)
+   end if
+   
+   -- we've modified single indirect addresses ?
+   if kbytes != 0xFFFF_FFFF then
+       -- go to indirect zone and read block address
+       minix_open_block_byte(minix_filefd.inode.indirect_zone,word(kbytes*4))
+       minix_curzonetab[0] = minix_storage_read_byte()
+       minix_curzonetab[1] = minix_storage_read_byte()
+       minix_curzonetab[2] = minix_storage_read_byte()
+       minix_curzonetab[3] = minix_storage_read_byte()
+       minix_open_block(minix_curzone)
+       -- manual update
+       minix_filefd.inode.zone_idx = word(kbytes*4)
+       minix_filefd.inode.zone_type = MINIX_ZONE_INDIRECT
+   end if
+   
+   -- finally move within block until correct offet
+   var byte _trash
+   for bytes loop
+       _trash = minix_storage_read_byte()
+   end loop
+   
+   -- manual inode state update for content
+   minix_filefd.inode.zone_content_idx = bytes
+
+end procedure
+   
+procedure minix_openi(word in inode_num,byte in mode) is
+   minix_load_inode(inode_num)
+   minix_filefd.read = 0
+   minix_filefd.mode = mode
+   minix_filefd.dirty = false -- needs to be written back to storage
+   -- append: seek to the end
+   if minix_filefd.mode >= MINIX_MODE_APPEND then
+      minix_seek(minix_filefd.inode.filesize)
+   end if
+end procedure
+
+-- list current working directory (cwd), returning a 
+-- directory entry each time it's called, until no more
+-- entry found.
+function minix_next_entry'get() return minix_dir_entry is
+
+   var minix_dir_entry entry
+   entry.inode_num = 0
+   entry.filename[0] = 0
+
+   -- now read directory entry
+   var byte counter
+   var word data
+   var byte datatab[2] at data
+   -- read number of inodes
+   datatab[0] = minix_read()
+   datatab[1] = minix_read()
+   -- is there an entry ? (inode #0 is impossible by specs)
+   if data == 0 then
+      minix_close()
+   else
+      entry.inode_num = data
+      for MINIX_MAX_FILENANE_LEN using counter loop
+         entry.filename[counter] = minix_read()
+      end loop
+   end if
+
+   return entry
+
+end function
+
+
+-- return inode number found for given filename
+-- can be a file or a dir name) in current directory
+function minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word is
+   minix_openi(minix_cwd,MINIX_MODE_READ)
+   var minix_dir_entry entry
+   var byte fncp[MINIX_MAX_FILENANE_LEN]
+   var word inode_num = 0
+   entry = minix_next_entry
+   while entry.inode_num != 0 loop
+      -- compiler bug (2.4o beta May 8 2011): array within record
+      -- aren't considered as array, need to copy
+      fncp = entry.filename
+      if string_compare(fncp,filename) then
+         inode_num = entry.inode_num
+      end if
+      entry = minix_next_entry
+   end loop
+   minix_close()
+   if inode_num == 0 then
+      minix_last_error = MINIX_ERR_NO_SUCH_FILE
+   end if
+   return inode_num
+end function
+
+procedure minix_open(byte in filename[MINIX_MAX_FILENANE_LEN],byte in mode) is
+   var word inode_num = minix_find_in_cwd(filename)
+   if inode_num != 0 then
+      minix_openi(inode_num,mode)
+   end if
+end procedure
+
+procedure minix_cdi(word in inode_num) is
+   minix_openi(inode_num,MINIX_MODE_READ)
+   if minix_filefd.inode.mode.isdir == true then
+      minix_cwd = inode_num
+   else
+      minix_last_error = MINIX_ERR_NOT_DIRECTORY
+   end if
+   minix_close()
+end procedure
+
+procedure minix_cd(byte in dirname[MINIX_MAX_FILENANE_LEN]) is
+   var word inode_num = minix_find_in_cwd(dirname)
+   if inode_num != 0 then
+      minix_cdi(inode_num)
+   end if
+end procedure
+
+
+procedure minix_init(bit in check) is
+
+   minix_filefd.mode = MINIX_MODE_READ
+   minix_filefd.dirty = false
+   
+   minix_read_super_block(check)
+   -- init root directory
+   minix_cwd = MINIX_INODE_ROOT_ID
+
+end procedure
+
+

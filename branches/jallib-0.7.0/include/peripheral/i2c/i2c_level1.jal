@@ -1,0 +1,106 @@
+-- Title: i2c_hardware
+-- Author: Joep Suijs, Copyright (C) 2008 Joep Suijs
+-- Adapted-by:
+-- Compiler: >=2.4g
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Level1 implementation of I2C (single) master.
+--
+-- User must define the rx and tx buffer like:
+--    var byte i2c_tx_buffer[10]
+--    var byte i2c_rx_buffer[10]
+--
+-- tx_buffer[] should be at least 2 bytes long to support i2c_receive_wordaddr.
+-- if you desperatly want to use a 1-byte tx buffer, define (besides the buffer):
+-- const single_byte_tx_buffer = 1
+--
+
+-- some validations
+if (defined(single_byte_tx_buffer) ==  false) then
+   if (count(i2c_tx_buffer) < 2) then
+      _error "Please make i2c_tx_buffer[] at least 2 bytes long"
+   end if
+end if
+
+-- -----------------------------------------------------------------------------
+-- i2c_send_receive - send a string to an i2c slave and receive bytes back
+-- -----------------------------------------------------------------------------
+-- This funtion uses two global i2c buffers, one for transmit (tx) and one for
+-- receive (rx). The address of the slave (higher 7 bits), number of bytes to
+-- transmit and number of bytes to receive are parameters.
+-- returns true if all went well.
+-- -----------------------------------------------------------------------------
+function i2c_send_receive(byte in i2c_address, byte in i2c_tx_count, byte in i2c_rx_count) return bit is
+   var byte i
+   var bit r = true -- okay
+
+   if ((i2c_tx_count == 0) & (i2c_rx_count == 0)) then return false end if   
+   -- send START and i2c device address for write
+   i2c_start()
+
+   if (i2c_tx_count > 0) then
+      r = i2c_transmit_byte(i2c_address & 0xFE) 
+      if (r == false) then i2c_stop() return false end if     
+   
+      -- write data
+      for i2c_tx_count using i loop
+         r = r & i2c_transmit_byte(i2c_tx_buffer[i]) 
+         if (r == false) then i2c_stop() return false end if
+      end loop 
+   
+      -- if we also need to receive
+      if (i2c_rx_count > 0) then
+      
+         -- send RESTART & i2c device address for read
+         i2c_restart()
+      end if
+   end if
+   
+   if (i2c_rx_count > 0) then
+      r = r & i2c_transmit_byte(i2c_address | 0x01) 
+      if (r == false) then i2c_stop() return false end if
+
+      if (i2c_rx_count > 1) then
+         for (i2c_rx_count-1) using i loop
+            i2c_rx_buffer[i] = i2c_receive_byte(true)
+         end loop
+      end if
+
+      -- read with NACK, to signal it is the last byte.   
+      i2c_rx_buffer[i2c_rx_count-1] = i2c_receive_byte(false)
+   end if
+
+   -- send STOP to end communication sequence with device.   
+   i2c_stop()
+
+   return true;   // signal succes
+
+end function
+
+
+
+-- -----------------------------------------------------------------------------
+-- i2c_receive_byteaddr - send a byte address and receive a string from an i2c slave
+-- -----------------------------------------------------------------------------
+function i2c_receive_byteaddr(byte in i2c_address, byte in addr, byte in i2c_rx_count) return bit is
+
+   i2c_tx_buffer[0] = addr
+   return i2c_send_receive(i2c_address, 1, i2c_rx_count)
+   
+end function
+
+
+if (defined(single_byte_tx_buffer) == false) then -- conditional compile
+-- -----------------------------------------------------------------------------
+-- i2c_receive_wordaddr - send a word address and receive a string from an i2c slave
+-- -----------------------------------------------------------------------------
+function i2c_receive_wordaddr(byte in i2c_address, word in addr, byte in i2c_rx_count) return bit is
+
+   i2c_tx_buffer[0] = byte(addr >> 8)
+   i2c_tx_buffer[1] = byte(addr & 0xFF)
+   return i2c_send_receive(i2c_address, 2, i2c_rx_count)
+   
+end function
+end if -- conditional compile 

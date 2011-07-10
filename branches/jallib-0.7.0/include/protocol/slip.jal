@@ -1,0 +1,206 @@
+-- Title: Library for SLIP (Serial Line IP)
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library sends and receives SLIP (Serial Line IP) packets
+--              for communication with serial data in packet form.
+--
+-- Sources:
+-- http://tools.ietf.org/html/rfc1055
+--
+
+-- SLIP special character codes
+const byte _SLIP_END = 0xC0 --192
+const byte _SLIP_ESC = 0xDB -- 219
+const byte _SLIP_ESC_END = 0xDC --220
+const byte _SLIP_ESC_ESC = 0xDD --221
+
+-- it is good to use an end character at the beginning of a packet to flush out
+-- any data that may have accumulated in the receiver due to line noise
+alias _SLIP_START is _SLIP_END
+
+-- Allow large arrays
+if SLIP_MTU <= 0xFF then
+   const byte SLIP_BYTE_WIDTH = 1
+elsif (SLIP_MTU > 0xFF) & (SLIP_MTU <= 0xFFFF) then
+   const byte SLIP_BYTE_WIDTH = 2
+else
+    pragma error  -- SLIP_MTU is too large
+end if
+
+-- some global vars
+var byte _slip_rx_packet_finished = FALSE
+var byte _slip_last_char
+var byte _slip_rx_packet_data_count = 0
+var byte _slip_tx_packet_data_count = 0
+
+--------------------------------------------------------------------------------
+-- initalize slip
+--------------------------------------------------------------------------------
+procedure slip_init() is
+   -- enable interrupts for serial hw
+   if defined(SLIP_USE_SERIAL_HW_ISR) then
+      if SLIP_USE_SERIAL_HW_ISR == TRUE then
+         INTCON_GIE  = on        -- Enables all unmasked interrupts
+         INTCON_PEIE = on        -- Enables all unmasked peripheral interrupts
+         PIE1_RCIE = enabled     -- UART receive interrupt enable
+      end if
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Sends one byte of packet data
+--------------------------------------------------------------------------------
+procedure slip_send_data(byte in data) is
+   var byte*SLIP_BYTE_WIDTH  position = 0
+
+   _slip_tx_packet_data_count = _slip_tx_packet_data_count + 1
+   if _slip_tx_packet_data_count == 1 then
+      slip_serial_data = _SLIP_START -- same as _SLIP_END char
+   elsif _slip_tx_packet_data_count == SLIP_MTU then
+      -- send a _end character to let the receiver know that we are finished
+      -- sending our packet
+      slip_serial_data = _SLIP_END
+      _slip_tx_packet_data_count = 0 -- reset packet data counter
+      return
+   end if
+   
+   -- if it's the same code as an END character, we send a
+   -- special two character code so as not to make the
+   -- receiver think we sent an END
+   if data == _SLIP_END then
+      slip_serial_data = _SLIP_ESC
+      slip_serial_data = _SLIP_ESC_END
+      
+   elsif data == _SLIP_ESC then
+      -- if it's the same code as an _SLIP_ESC character,
+      -- we send a special two character code so as not
+      -- to make the receiver think we sent an _SLIP_ESC
+      slip_serial_data = _SLIP_ESC
+      slip_serial_data = _SLIP_ESC_ESC
+      
+   else -- otherwise, we just send the character
+      slip_serial_data = data
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Sends end of packet data
+--------------------------------------------------------------------------------
+procedure slip_end_packet() is
+   pragma inline
+   -- send a _end character to let the receiver know that we are finished
+   -- sending our packet
+   slip_serial_data = _SLIP_END
+   _slip_tx_packet_data_count = 0 -- reset packet data counter
+end procedure
+
+--------------------------------------------------------------------------------
+-- poll procedure for receiving data
+--------------------------------------------------------------------------------
+procedure slip_poll() is
+   var byte char
+
+   if slip_data_available then
+      char = slip_serial_data    -- get the character
+
+      -- if it's an END character then we're done with the packet
+      if char == _SLIP_END then
+         _slip_rx_packet_finished = TRUE
+         if defined (slip_received_packet_callback) then
+            ;slip_received_packet_callback(_slip_rx_packet_data_count) -- do the users callback
+            slip_packet_size_buffer = _slip_rx_packet_data_count
+            slip_received_packet_callback() -- do the users callback
+         end if
+         _slip_rx_packet_data_count = 0
+         return
+      end if
+
+      if char == _SLIP_ESC then
+         _slip_last_char = _SLIP_ESC
+         return
+      end if
+
+      if _slip_last_char == _SLIP_ESC then
+         if char == _SLIP_ESC_END then
+            slip_rx_buffer = _SLIP_END
+         elsif char == _SLIP_ESC_ESC then
+            slip_rx_buffer = _SLIP_ESC
+         else
+            slip_rx_buffer = char
+         end if
+         _slip_last_char = char
+      else
+         slip_rx_buffer = char
+      end if
+      _slip_rx_packet_data_count = _slip_rx_packet_data_count + 1
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- interrupt procedure for receiving data
+--------------------------------------------------------------------------------
+if defined (SLIP_USE_SERIAL_HW_ISR) then
+   if SLIP_USE_SERIAL_HW_ISR == TRUE then
+      procedure slip_serial_hw_isr() is
+      pragma interrupt
+
+         if (PIR1_RCIF == TRUE)  then
+            var byte char
+               char = slip_serial_data    -- get the character
+               -- if it's an END character then we're done with the packet
+               if char == _SLIP_END then
+                  _slip_rx_packet_finished = TRUE
+                  if defined (slip_packet_size_buffer) then
+                     if _slip_rx_packet_data_count > 0 then -- no packet data = no packet
+                        slip_packet_size_buffer = _slip_rx_packet_data_count
+                        if defined (SLIP_DO_CALLBACK_IN_ISR) then
+                           if SLIP_DO_CALLBACK_IN_ISR == TRUE then
+                              slip_received_packet_callback(_slip_rx_packet_data_count)
+                           end if
+                        end if
+                     end if
+                  end if
+                  _slip_rx_packet_data_count = 0
+                  return
+               end if
+
+               if char == _SLIP_ESC then
+                  _slip_last_char = _SLIP_ESC
+                  return
+               end if
+
+               if _slip_last_char == _SLIP_ESC then
+                  if char == _SLIP_ESC_END then
+                     slip_rx_buffer = _SLIP_END
+                  elsif char == _SLIP_ESC_ESC then
+                     slip_rx_buffer = _SLIP_ESC
+                  else
+                  slip_rx_buffer = char
+                  end if
+                  _slip_last_char = char
+               else
+                  slip_rx_buffer = char
+               end if
+               _slip_rx_packet_data_count = _slip_rx_packet_data_count + 1
+         end if
+      end procedure
+   end if
+end if
+
+--------------------------------------------------------------------------------
+-- return TRUE if a packet is avalable in slip_rx_buffer
+--------------------------------------------------------------------------------
+if defined (slip_packets_available) then
+   function slip_packet_available'get() return bit is
+      if slip_packets_available > 0 then
+         return 1
+      else
+         return 0
+      end if
+   end function
+end if

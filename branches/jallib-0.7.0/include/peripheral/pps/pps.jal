@@ -1,0 +1,233 @@
+-- Title: Peripheral Pin Select (PPS) library
+-- Author: Sebastien Lelong, Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library provides several utility functions to deal with
+-- Peripheral Pin Select (PPS) module. PPS is a special feature implemented on
+-- recent PIC (currently 18FXXJ11, 18FXXJ13, 18FXXJ50, 18FXXJ53). PPS allows
+-- to dynamically assign function to pins known as "remappable pins". These pins are
+-- easily identified as they're name "RPn".
+-- .
+-- Assigning function to pins is done differently wheter function is an input
+-- or output. When function is an input (eg. serial RX), PPS is used by
+-- specifying, for this function, what is the RP pins to be used. On the other
+-- side, when function is an output (eg. serial TX), PPS is used by
+-- specifying, for this RP pin, what is the function it should
+-- carry. As a consequence, several RP pins can carry the same output function.
+-- .
+-- In order to configure RP pins, PPS module must be unlocked using pps_begin(),
+-- pins should be remapped calling corresponding procedure and setting
+-- appropriate function ID number, then locked again using pps_commit().
+-- This is a security guard used to prevent any unintentional changes.
+-- When PPS uses 1-way locking (default behavior), pins can be remapped only
+-- once (when PPS is becoming locked again, any further changes are ignored).
+-- When PPS don't use 1-way locking, several unlock/lock sequences can occur
+-- at runtime. If this behavior is wanted, the following fuse setting should be
+-- used:
+--          pragma target IOL1WAY disabled
+-- .
+-- Please refer to datasheet in order to have a better overview of PPS.
+--
+
+if PPS_GROUP == PPS_0 then
+   _error "PIC doesn't have PPS module"
+end if
+
+var bit _pps_gie_state = INTCON_GIE
+
+-- For convenience, aliases for output functions. Careful, not all may be
+-- available depending on the involved PIC
+
+-- Lock/unlock PPS module, allowing pins to be remapped. If 1-way locking is used
+-- this procedure must only be called once. Once remappable pins are configured
+-- PPS must be locked again to apply changes
+-- Note: interrupts are temporarily disabled. When pps_lock(true) is called
+-- interrupts are restored back to previous state
+procedure pps_control_lock(bit in state) is
+
+   if (state == TRUE) then
+      asm bank PPSCON
+      EECON2 = 0x55
+      EECON2 = 0xAA
+      PPSCON_IOLOCK = TRUE
+      INTCON_GIE = _pps_gie_state   -- restore interrupt state
+   else
+      _pps_gie_state = INTCON_GIE   -- save interrupt state
+      asm bank PPSCON
+      INTCON_GIE = DISABLED         -- disable interrupts
+      EECON2 = 0x55
+      EECON2 = 0xAA
+      PPSCON_IOLOCK = FALSE
+   end if
+
+end procedure
+
+
+-- PPS module differs between devices, currently we can build 2 groups whom devices behave the same
+if PPS_GROUP == PPS_1 then
+
+   -- ----------------------------
+   -- OUTPUT FUNCTION CONSTANTS --
+   -- ----------------------------
+   const byte PPS_NULL    = 0    -- Disable RPn output function
+   const byte PPS_C1OUT   = 1    -- Comparator 1 Output
+   const byte PPS_C2OUT   = 2    -- Comparator 2 Output
+   const byte PPS_TX2CK2  = 5    -- EUSART2 Asynchronous Transmit/Asynchronous Clock Output
+   const byte PPS_DT2     = 6    -- EUSART2 Synchronous Transmit
+   const byte PPS_SDO2    = 9    -- SPI2 Data Output
+   const byte PPS_SCK2    = 10   -- SPI2 Clock Output
+   const byte PPS_SSDMA   = 12   -- SPI DMA Slave Select
+   const byte PPS_ULPOUT  = 13   -- Ultra Low-Power Wake-Up Event
+   const byte PPS_CCP1P1A = 14   -- ECCP1 Compare or PWM Output Channel A
+   const byte PPS_P1B     = 15   -- ECCP1 Enhanced PWM Output, Channel B
+   const byte PPS_P1C     = 16   -- ECCP1 Enhanced PWM Output, Channel C
+   const byte PPS_P1D     = 17   -- ECCP1 Enhanced PWM Output, Channel D
+   const byte PPS_CCP2P2A = 18   -- ECCP2 Compare or PWM Output Channel A
+   const byte PPS_P2B     = 19   -- ECCP1 Enhanced PWM Output, Channel B
+   const byte PPS_P2C     = 20   -- ECCP1 Enhanced PWM Output, Channel C
+   const byte PPS_P2D     = 21   -- ECCP1 Enhanced PWM Output, Channel D
+
+elsif PPS_GROUP == PPS_2 then
+
+   -- ----------------------------
+   -- OUTPUT FUNCTION CONSTANTS --
+   -- ----------------------------
+   const byte PPS_NULL    = 0    -- Disable RPn output function
+   const byte PPS_C1OUT   = 1    -- Comparator 1 Output
+   const byte PPS_C2OUT   = 2    -- Comparator 2 Output
+   const byte PPS_C3OUT   = 3    -- Comparator 3 Output
+   const byte PPS_TX2CK2  = 6    -- EUSART2 Asynchronous Transmit/Asynchronous Clock Output
+   const byte PPS_DT2     = 7    -- EUSART2 Synchronous Transmit
+   const byte PPS_SDO2    = 10   -- SPI2 Data Output
+   const byte PPS_SCK2    = 11   -- SPI2 Clock Output
+   const byte PPS_SSDMA   = 12   -- SPI DMA Slave Select
+   const byte PPS_ULPOUT  = 13   -- Ultra Low-Power Wake-Up Event
+   const byte PPS_CCP1P1A = 14   -- ECCP1 Compare or PWM Output Channel A
+   const byte PPS_P1B     = 15   -- ECCP1 Enhanced PWM Output, Channel B
+   const byte PPS_P1C     = 16   -- ECCP1 Enhanced PWM Output, Channel C
+   const byte PPS_P1D     = 17   -- ECCP1 Enhanced PWM Output, Channel D
+   const byte PPS_CCP2P2A = 18   -- ECCP2 Compare or PWM Output Channel A
+   const byte PPS_P2B     = 19   -- ECCP1 Enhanced PWM Output, Channel B
+   const byte PPS_P2C     = 20   -- ECCP1 Enhanced PWM Output, Channel C
+   const byte PPS_P2D     = 21   -- ECCP1 Enhanced PWM Output, Channel D
+   const byte PPS_CCP3P3A = 22   -- ECCP3 Compare or PWM Output Channel A
+   const byte PPS_P3B     = 23   -- ECCP3 Enhanced PWM Output, Channel B
+   const byte PPS_P3C     = 24   -- ECCP3 Enhanced PWM Output, Channel C
+   const byte PPS_P3D     = 25   -- ECCP3 Enhanced PWM Output, Channel D
+
+else
+   _error "Unsupported PPS_GROUP, please report !"
+end if
+
+
+-- -----------------
+-- INPUT FUNCTION --
+-- -----------------
+alias PPS_MAP_INT1 is RPINR1_INT1         -- External Interrupt 1
+alias PPS_MAP_INT2 is RPINR2_INT2         -- External Interrupt 2
+alias PPS_MAP_INT3 is RPINR3_INT3         -- External Interrupt 3
+alias PPS_MAP_T0CKI is RPINR4_T0CKI       -- Timer0 External Clock Input
+alias PPS_MAP_T3CKI is RPINR6_T3CKI       -- Timer3 External Clock Input
+alias PPS_MAP_CCP1 is RPINR7_IC1          -- Input Capture 1
+alias PPS_MAP_CCP2 is RPINR8_IC2          -- Input Capture 2
+alias PPS_MAP_T1G is RPINR12_T1G          -- Timer1 Gate Input
+alias PPS_MAP_T3G is RPINR13_T3G          -- Timer3 Gate Input
+alias PPS_MAP_RX2DT2 is RPINR16_RX2DT2    -- EUSART2 RX2/DT2
+alias PPS_MAP_CK2 is RPINR17_CK2          -- EUSART2 CK2
+alias PPS_MAP_SDI2 is RPINR21_SDI2        -- SPI2 Data Input
+alias PPS_MAP_SCK2IN is RPINR22_SCK2      -- SPI2 Clock Input
+alias PPS_MAP_SS2IN is RPINR23_SS2        -- SPI2 Slave Select Input
+alias PPS_MAP_FLT0 is RPINR24_FLT0        -- PWM Fault Input
+-- not available in all PICs
+if defined(RPINR9_IC3) then
+   alias PPS_MAP_CCP3 is RPINR9_IC3          -- Input Capture 3
+end if
+if defined(RPINR14_T5G) then
+   alias PPS_MAP_T5G is RPINR14_T5G          -- Timer5 Gate Input
+end if
+if defined(RPINR15_T5CKI) then
+   alias PPS_MAP_T5CKI is RPINR15_T5CKI      -- Timer5 External Clock Input
+end if
+
+-- ------------------
+-- OUTPUT FUNCTION --
+-- ------------------
+alias PPS_MAP_RP0 is RPOR0_RPOR
+alias PPS_MAP_RP1 is RPOR1_RPOR
+alias PPS_MAP_RP2 is RPOR2_RPOR
+alias PPS_MAP_RP3 is RPOR3_RPOR
+alias PPS_MAP_RP4 is RPOR4_RPOR
+alias PPS_MAP_RP5 is RPOR5_RPOR
+alias PPS_MAP_RP6 is RPOR6_RPOR
+alias PPS_MAP_RP7 is RPOR7_RPOR
+alias PPS_MAP_RP8 is RPOR8_RPOR
+alias PPS_MAP_RP9 is RPOR9_RPOR
+alias PPS_MAP_RP10 is RPOR10_RPOR
+alias PPS_MAP_RP11 is RPOR11_RPOR
+alias PPS_MAP_RP12 is RPOR12_RPOR
+alias PPS_MAP_RP13 is RPOR13_RPOR
+-- not available in all PICs
+if defined(RPOR14_RPOR) then
+   alias PPS_MAP_RP14 is RPOR14_RPOR
+end if
+if defined(RPOR15_RPOR) then
+   alias PPS_MAP_RP15 is RPOR15_RPOR
+end if
+if defined(RPOR16_RPOR) then
+   alias PPS_MAP_RP16 is RPOR16_RPOR
+end if
+alias PPS_MAP_RP17 is RPOR17_RPOR
+alias PPS_MAP_RP18 is RPOR18_RPOR
+if defined(RPOR19_RPOR) then
+   alias PPS_MAP_RP19 is RPOR19_RPOR
+end if
+if defined(RPOR20_RPOR) then
+   alias PPS_MAP_RP20 is RPOR20_RPOR
+end if
+if defined(RPOR21_RPOR) then
+   alias PPS_MAP_RP21 is RPOR21_RPOR
+end if
+if defined(RPOR22_RPOR) then
+   alias PPS_MAP_RP22 is RPOR22_RPOR
+end if
+if defined(RPOR23_RPOR) then
+   alias PPS_MAP_RP23 is RPOR23_RPOR
+end if
+if defined(RPOR24_RPOR) then
+   alias PPS_MAP_RP24 is RPOR24_RPOR
+end if
+
+-- --------------------------
+-- PPS PINS ENUM CONSTANTS -- 
+-- --------------------------
+-- So you can use eg. "RP10" instead of 10
+
+const byte RP0 = 0
+const byte RP1 = 1
+const byte RP2 = 2
+const byte RP3 = 3
+const byte RP4 = 4
+const byte RP5 = 5
+const byte RP6 = 6
+const byte RP7 = 7
+const byte RP8 = 8
+const byte RP9 = 9
+const byte RP10 = 10
+const byte RP11 = 11
+const byte RP12 = 12
+const byte RP13 = 13
+const byte RP14 = 14
+const byte RP15 = 15
+const byte RP16 = 16
+const byte RP17 = 17
+const byte RP18 = 18
+const byte RP19 = 19
+const byte RP20 = 20
+const byte RP21 = 21
+const byte RP22 = 22
+const byte RP23 = 23
+const byte RP24 = 24

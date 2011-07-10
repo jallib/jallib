@@ -1,0 +1,398 @@
+-- -------------------------------------------------------------------------
+-- Title: SM bus library for Melexis IR sensor MLX90615
+--
+-- Author: Vasile Surducan, Copyright (c) 2010...2012, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: >=2.4m
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: software implementation for single SMbus master, use 4 hw stack
+--
+-- define SM_bus pins like:
+-- alias SM_SCL is pin_C3
+-- alias SM_SCL_direction is pin_C3_direction
+
+-- alias SM_SDA is pin_C4
+-- alias SM_SDA_direction is pin_C4_direction
+-- ATTENTION: both SM_SDA and SM_SCL must have pull-up resistors
+--
+--  Procedures which can be used by the application program:
+
+-- procedure SM_START_bit
+-- procedure SM_STOP_bit
+-- function SM_transmit_byte( byte in TX_buffer )return bit
+-- function SM_receive_byte( bit in ack_noack ) return byte
+-- procedure read_MEM ( byte in senzor_address, byte in MEM_address )
+-- procedure write_MEM ( byte in senzor_address, byte in MEM_address,
+--                      byte in MEM_high, byte in MEM_low, byte in PEC )is
+-- procedure MLX90615_sleep ( byte in senzor_address )
+-- procedure MLX90615_wake
+-- procedure calculate_temp_C
+-- procedure calculate_temp_K
+-- todo: procedure calculate_CRC8 and/or procedure SM_receive_byte_with_CRC8
+--
+
+;@jallib section
+include delay
+
+-- -----------------------------------------------------
+-- MLX90615 EEPROM addresses
+-- -----------------------------------------------------
+
+const smbus_sa = 0 ; SMbus Slave Address 7 bit, 0 to 6; 0x5b factory default
+const pwm_t_range = 0x01
+const config_reg = 0x02
+const emissivity = 0x03
+                        ; 0x04 to 0x0D factory reserved, do not alter!
+const id_number0 = 0x0E ; read only
+const id_number1 = 0x0F ; read only
+
+-- -----------------------------------------------------
+
+var word config
+var volatile bit mode_select at config: 0     ; 1=SMbus,    0=PWM
+var volatile bit pwm_frequency at config: 1   ; 1=low,      0=high
+var volatile bit pwm_output_temp at config: 2 ; 1=Tambiant, 0=Tobject
+var volatile bit*9 factory_cal at config: 3   ; do not alter
+var volatile bit*3 iir_setting at config: 12  ; see table below
+var volatile bit zero at config: 15           ; keep 0
+
+-- binary   settling time  spike response
+--          (samples)      (percent %)
+-- --------------------------------------
+-- 001      1              100
+-- 010      10             50
+-- 011      18             33.3
+-- 100      24             25
+-- 101      31             20
+-- 110      38             16.6
+-- 111      45             14.286
+-- --------------------------------------
+
+-- -----------------------------------------------------
+-- MLX90615 RAM addresses
+-- -----------------------------------------------------
+
+--  0x04 to 0x4h Melexis reserved
+const raw_ir_data = 0x05
+const tambiant = 0x06
+const tobject = 0x07
+--  0x08 to 0x0F Melexis reserved
+
+-- -----------------------------------------------------
+
+-- -----------------------------------------------------
+-- MLX90615 commands
+-- -----------------------------------------------------
+
+const eeprom_access = 0b0001_0000
+const ram_access = 0b0010_0000
+const sleep_mode = 0b1100_0110
+
+-- -----------------------------------------------------
+
+
+-- -----------------------------------------------------
+-- SMbus bit config, SMbus direction config
+-- -----------------------------------------------------
+
+const bit ACK = low
+const bit NACK = high
+
+
+procedure _sda_high() is
+      sm_sda_direction = input
+end procedure
+
+procedure _sda_low() is
+      sm_sda_direction = output
+      sm_sda = low
+end procedure
+
+procedure _scl_high() is
+      sm_scl_direction = input
+end procedure
+
+procedure _scl_low() is
+      sm_scl_direction = output
+      sm_scl = low
+end procedure
+
+procedure sm_bus_initialize() is ; not necesary if SMbus is POR default
+      sm_sda_direction = input ; SM_SDA = high from pull-up
+      sm_scl_direction = input ; SM_SCL = high from pull-up
+
+      _scl_low
+      delay_1ms ( 30 )
+      _scl_high            ; SM_bus mode
+end procedure
+-- -------------------------------------------------------------------
+
+-- -----------------------------
+-- SMbus start bit
+-- -----------------------------
+procedure sm_start_bit() is
+      _sda_high
+      _usec_delay ( 2 )
+      _scl_high
+      _usec_delay ( 5 )
+      _sda_low
+      _usec_delay ( 4 )
+      _scl_low
+      _usec_delay ( 2 )
+end procedure
+-- -----------------------------
+
+-- -----------------------------
+-- SMbus stop bit
+-- -----------------------------
+procedure sm_stop_bit() is
+      _scl_low
+      _usec_delay ( 2 )
+      _sda_low
+      _usec_delay ( 2 )
+      _scl_high
+      _usec_delay ( 4 )
+      _sda_high
+end procedure
+-- -----------------------------
+
+-- ---------------------------------------------------
+-- Transmit one bit on SM bus (for internal use only )
+-- ---------------------------------------------------
+procedure _sm_send_bit(bit in x) is
+;       SM_SDA_direction = x
+      if x == low then
+         _sda_low
+      else
+         _sda_high
+      end if
+      _usec_delay ( 3 )
+      _scl_high
+      _usec_delay ( 11 )
+      _scl_low
+      _usec_delay ( 4 )   ; 11 + 4   18uS clk
+end procedure
+-- ---------------------------------------------------
+
+-- -------------------------------------------------
+-- Receive one bit on SM bus (for internal use only)
+-- -------------------------------------------------
+procedure _sm_receive_bit(bit out x) is
+      sm_sda_direction = input
+      _scl_high
+      _usec_delay ( 11 )
+      x = sm_sda
+      _scl_low
+      _usec_delay ( 4 )
+end procedure
+-- -------------------------------------------------
+
+-- --------------------------------------------------------
+-- Transmit one byte on SM bus
+-- --------------------------------------------------------
+function sm_transmit_byte(byte in tx_buffer) return bit is
+   var bit b at tx_buffer : 7
+   var bit ack_noack
+   
+   for 8 loop
+      _sm_send_bit( b )
+      tx_buffer = tx_buffer << 1
+   end loop
+     _sm_receive_bit ( ack_noack )
+   return ack_noack  ; 0=ack received, 1=no ack received
+end function
+
+-- ---------------------------------------------------------
+
+-- ---------------------------------------------------------
+-- Receive one byte on SM bus
+-- ---------------------------------------------------------
+function sm_receive_byte(bit in ack_noack) return byte is
+   var byte rx_buffer
+   var bit b at rx_buffer : 0
+   for 8 loop
+       rx_buffer = rx_buffer << 1
+       _sm_receive_bit ( b )
+   end loop
+       _sm_send_bit (ack_noack); 0=ack, 1 = no_ack
+       return rx_buffer
+end function
+-- ---------------------------------------------------------
+
+var bit mlx90615_ack = high
+var byte mem_low = 0
+var byte mem_high = 0
+-- var byte t_low = 0
+var byte t_high = 0
+var sword s_t_high = 0
+var word  w_t_high = 0
+var byte pec = 0
+var sword temperature = 0
+var word temp = 0
+var sword temperature_c = 0
+var word temperature_k = 0
+var byte nack_counter = 0
+
+-- -------------------------------------------------------------------
+-- read RAM & EEPROM routine
+-- MLX90615 senzor_address = 0x5b and 0x00
+-- examples:
+-- MEM_address = RAM_access + Tobject ; read Tobject
+-- MEM_address = RAM_access + Tambiant; read Tambiant (senzor package temperature)
+-- MEM_address = EEPROM_access + config_address; read config
+-- -------------------------------------------------------------------
+
+procedure read_mem( byte in senzor_address, byte in mem_address )is
+sm_start_bit
+mlx90615_ack = sm_transmit_byte ((senzor_address << 1)& 0b1111_1110 + 0) ; address, wr
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+mlx90615_ack = sm_transmit_byte ( mem_address );
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+sm_start_bit
+mlx90615_ack = sm_transmit_byte ((senzor_address << 1)& 0b1111_1110 + 1) ; address, rd
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+mem_low = sm_receive_byte (ACK)
+mem_high = sm_receive_byte (ACK)
+pec = sm_receive_byte (ACK)
+sm_stop_bit
+end procedure
+
+-- ------------------------------------------------------------------
+
+-- ------------------------------------------------------------------
+-- write EEPROM routine
+-- ------------------------------------------------------------------
+procedure write_mem ( byte in senzor_address, byte in mem_address,
+                      byte in mem_high, byte in mem_low, byte in pec )is
+sm_start_bit
+mlx90615_ack = sm_transmit_byte ((senzor_address << 1)& 0b1111_1110 + 0) ; address, wr
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+mlx90615_ack = sm_transmit_byte ( mem_address );
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+mlx90615_ack = sm_transmit_byte ( mem_low );
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+mlx90615_ack = sm_transmit_byte ( mem_high );
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+mlx90615_ack = sm_transmit_byte ( PEC );
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+sm_stop_bit
+delay_1ms ( 5 )
+end procedure
+-- -------------------------------------------------------------------
+
+-- ----------------------------------
+-- put MLX90615 in sleep mode
+-- ----------------------------------
+
+procedure mlx90615_sleep( byte in senzor_address ) is
+sm_start_bit
+mlx90615_ack = sm_transmit_byte ((senzor_address << 1)& 0b1111_1110 + 0) ; address, wr
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+mlx90615_ack = sm_transmit_byte ( sleep_mode );
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+mlx90615_ack = sm_transmit_byte ( 0x49 ); PEC value
+   if mlx90615_ack == nack then
+      nack_counter = nack_counter + 1
+      sm_stop_bit
+      return
+   end if
+sm_stop_bit
+_scl_low
+end procedure
+
+-- ----------------------------------
+
+-- ----------------------------------------------------------------------
+-- exit from sleep
+-- ----------------------------------------------------------------------
+
+procedure mlx90615_wake() is
+_scl_low
+ delay_1ms ( 60 )
+_scl_high
+sm_start_bit
+mlx90615_ack = sm_transmit_byte (0b1111_1110) ; send a dummy
+sm_stop_bit
+end procedure
+
+-- ----------------------------------------------------------------------
+
+-- ----------------------------------
+-- conversion to celsius
+-- ----------------------------------
+
+procedure calculate_temp_c() is
+const sword c27315 = 27315
+; t_low = mem_low
+ s_t_high = sword (mem_high)
+; make it word (positive temperature only) or sword (positive or negative temperature)
+; temperature = 256*s_t_high + t_low
+ temperature = 256*s_t_high + mem_low
+ temperature_c = (temperature * 2 - c27315) / 10
+end procedure
+
+-- ----------------------------------
+
+-------------------------------------
+-- conversion to kelvin
+-- ----------------------------------
+procedure calculate_temp_k() is
+
+; t_low = mem_low
+ w_t_high = word (mem_high)
+; temperature = 256*w_t_high + t_low
+ temp = word (temperature) ; make it word (positive temperature only)
+ temp = 256*w_t_high + mem_low
+ temperature_k = temp* 2 / 100
+end procedure
+
+-------------------------------------
+
+      
+         
+
