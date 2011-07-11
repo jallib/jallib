@@ -38,7 +38,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.21'
+   ScriptVersion   = '0.1.22'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
 /* ------------------------------------------------------------------------ */
@@ -55,7 +55,7 @@ msglevel = 1
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab866/'                      /* base directory of MPLAB */
+MPLABbase  = 'k:/mplab873a/'                     /* base directory of MPLAB */
 JALLIBbase = 'k:/jallib/'               /* base directory of JALLIB (local) */
 
 /* When using 'standard' installations no other changes are needed,         */
@@ -3044,7 +3044,8 @@ else if core = '14H' then do                                /* extended midrange
       when reg = 'ANSELC' then do
          if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' then
             ansx = word('99 99 14 15 16 17 18 19', ansx + 1)
-         else if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
+         else if left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
+                 left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('4 5 6 7 99 99 8 9', ansx + 1)
       end
       when reg = 'ANSELB' then do
@@ -3052,7 +3053,8 @@ else if core = '14H' then do                                /* extended midrange
             PicName = '16f1827' | PicName = '16lf1827' |,
             PicName = '16f1847' | PicName = '16lf1847' then
             ansx = word('99 11 10 9 8 7 5 6', ansx + 1)
-         else if left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
+         else if left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
+                 left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('99 99 99 99 10 11 99 99 ', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
                  left(PicName,6) = '16f178' | left(PicName,7) = '16lf178' |,
@@ -3069,6 +3071,7 @@ else if core = '14H' then do                                /* extended midrange
             ansx = ansx + 0
          else if left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
                  left(PicName,6) = '12f184' | left(PicName,7) = '12lf184' |,
+                 left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
                  left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
