@@ -27,6 +27,9 @@
 -- queue01_is_full()  -- returns true if queue is full
 -- queue01_nr_free()  -- returns nr of free places in queue
 -- queue01_nr_used()  -- returns nr of used places in queue
+-- --       
+-- Option:
+-- const queue01_element_size = n ; define Queue elements are n bytes wide (default is one byte)
 --
 -- Sources:
 -- 
@@ -36,8 +39,13 @@ if (defined(queue01_size) == false) then
    const byte  queue01_size = 10
 end if
 
+if (defined(queue01_element_size) == false) then
+   -- queue size default
+   const byte  queue01_element_size = 1
+end if
+
 -- queue vars
-var volatile byte queue01_data[queue01_size + 1]
+var volatile byte*queue01_element_size queue01_data[queue01_size + 1]
 var volatile byte queue01_in_pointer  = 0 ; wijst naar vrije locatie
 var volatile byte queue01_out_pointer = 0 ; wijst naar databyte
 
@@ -121,7 +129,7 @@ end function
 -- returns: true  when we read a byte from the queue              
 --          false when the queue is empty (byte is not read from queue)
 -- -----------------------------------------------------------------------
-function queue01_nb_get(byte out v) return bit is
+function queue01_nb_get(byte*queue01_element_size out v) return bit is
    var byte pntr
    
    if (queue01_in_pointer == queue01_out_pointer) then
@@ -148,7 +156,7 @@ end function
 -- return:  true  when the byte is put into the queue
 --          false when the queue is full (byte is not put in queue)
 -- -----------------------------------------------------------------------
-function queue01_nb_put(byte in v) return bit is
+function queue01_nb_put(byte*queue01_element_size in v) return bit is
 
    var byte pntr = queue01_in_pointer + 1
    if (pntr > queue01_size) then
@@ -172,8 +180,8 @@ end function
 -- -----------------------------------------------------------------------
 -- returns byte from queue, 0 if queue empty
 -- -----------------------------------------------------------------------
-function queue01_nb'get() return byte is
-   var byte v
+function queue01_nb'get() return byte*queue01_element_size is
+   var byte*queue01_element_size v
    var byte pntr
    
    if (queue01_in_pointer == queue01_out_pointer) then
@@ -197,7 +205,7 @@ end function
 -- queue01_nb'put - put one byte into queue (non-blocking)
 -- -----------------------------------------------------------------------
 -- -----------------------------------------------------------------------
-procedure queue01_nb'put(byte in v) is
+procedure queue01_nb'put(byte*queue01_element_size in v) is
 
    var byte pntr = queue01_in_pointer + 1
    if (pntr > queue01_size) then
@@ -219,7 +227,7 @@ end procedure
 -- -----------------------------------------------------------------------
 -- When the queue is full, it waits until a byte is removed from the queue.
 -- -----------------------------------------------------------------------
-procedure queue01'put(byte in v) is
+procedure queue01'put(byte*queue01_element_size in v) is
    
    var byte pntr = queue01_in_pointer + 1
    if (pntr > queue01_size) then
@@ -240,8 +248,8 @@ end procedure
 -- returns byte from queue.
 -- When the queue is empty, it waits until a byte is put into the queue.
 -- -----------------------------------------------------------------------
-function queue01'get() return byte is
-   var byte v
+function queue01'get() return byte*queue01_element_size is
+   var byte*queue01_element_size v
    var byte pntr
    
    -- wait if there are no bytes in the queue
