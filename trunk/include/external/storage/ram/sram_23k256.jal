@@ -1,6 +1,6 @@
 -- Title: 23K256 sram library
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
--- Adapted-by:
+-- Adapted-by: Sebastien Lelong
 -- Compiler: >=2.4l
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -60,6 +60,10 @@ const byte SRAM_23K256_WRITE_COMMAND = 0b_0000_0010   -- Write data to memory ar
 const byte SRAM_23K256_READ_STATUS  = 0b_0000_0101    -- Read STATUS register
 const byte SRAM_23K256_WRITE_SETTINGS  = 0b_0000_0001 -- Write STATUS register
 
+-- carrier used to access SRAM (pseudo-var dealing with SPI)
+if !defined(spi_master) then
+   alias spi_master is spi_master_hw
+end if
 
 -- ----------------------------------------------------------------------------
 -- initialize startup settings & spi mode 00
@@ -74,16 +78,16 @@ procedure sram_23k256_init(byte in sram_23k256_mode, byte in sram_23k256_hold_di
    
    -- choose the 23k256 read & write mode depending on mode input
    if sram_23k256_mode == SRAM_23K256_BYTE_MODE then
-      spi_master_hw = SRAM_23K256_WRITE_SETTINGS
-      spi_master_hw = 0x00 + SRAM_23K256_HOLD_DISABLE
+      spi_master = SRAM_23K256_WRITE_SETTINGS
+      spi_master = 0x00 + SRAM_23K256_HOLD_DISABLE
    end if
    if sram_23k256_mode == SRAM_23K256_SEQUENTIAL_MODE then
-      spi_master_hw = SRAM_23K256_WRITE_SETTINGS
-      spi_master_hw = 0x40 + SRAM_23K256_HOLD_DISABLE
+      spi_master = SRAM_23K256_WRITE_SETTINGS
+      spi_master = 0x40 + SRAM_23K256_HOLD_DISABLE
    end if
    if sram_23k256_mode == SRAM_23K256_PAGE_MODE then
-      spi_master_hw = SRAM_23K256_WRITE_SETTINGS
-      spi_master_hw = 0x80 + SRAM_23K256_HOLD_DISABLE
+      spi_master = SRAM_23K256_WRITE_SETTINGS
+      spi_master = 0x80 + SRAM_23K256_HOLD_DISABLE
    end if
    
    sram_23k256_chip_select = high        -- disable the chip
@@ -103,8 +107,8 @@ procedure sram_23k256_read_settings(byte out mode, byte out hold_is_disabled) is
    end if
    
    sram_23k256_chip_select = low           -- enable the chip
-   spi_master_hw = SRAM_23K256_READ_STATUS -- send read status command
-   settings = spi_master_hw                -- get the status byte
+   spi_master = SRAM_23K256_READ_STATUS -- send read status command
+   settings = spi_master                -- get the status byte
    sram_23k256_chip_select = high          -- disable the chip
    
    var bit read_hold at settings : 0       -- get bit "hold is disabled" from 23k256 status register byte
@@ -131,10 +135,10 @@ procedure sram_23k256_write(word in address, byte in data) is
    var byte addr[4] at address
    
    sram_23k256_chip_select = low             -- enable the chip
-   spi_master_hw = SRAM_23K256_WRITE_COMMAND -- send the write command
-   spi_master_hw = addr[1]                   -- send the address
-   spi_master_hw = addr[0]
-   spi_master_hw = data                      -- send the data byte
+   spi_master = SRAM_23K256_WRITE_COMMAND -- send the write command
+   spi_master = addr[1]                   -- send the address
+   spi_master = addr[0]
+   spi_master = data                      -- send the data byte
    
    sram_23k256_chip_select = high            -- disable the chip
 end procedure
@@ -151,10 +155,10 @@ procedure sram_23k256_read(word in address, byte out data) is
    var byte addr[4] at address
    
    sram_23k256_chip_select = low              -- enable the chip
-   spi_master_hw = SRAM_23K256_READ_COMMAND   -- send the read command
-   spi_master_hw = addr[1]                    -- send the address
-   spi_master_hw = addr[0]
-   data = spi_master_hw                       -- get the data
+   spi_master = SRAM_23K256_READ_COMMAND   -- send the read command
+   spi_master = addr[1]                    -- send the address
+   spi_master = addr[0]
+   data = spi_master                       -- get the data
    sram_23k256_chip_select = high             -- disable the chip
 end procedure
 
@@ -170,10 +174,10 @@ procedure sram_23k256_byte'put(word in address, byte in data) is
    var byte addr[4] at address
    
    sram_23k256_chip_select = low             -- enable the chip
-   spi_master_hw = SRAM_23K256_WRITE_COMMAND -- send the write command
-   spi_master_hw = addr[1]                   -- send the address
-   spi_master_hw = addr[0]
-   spi_master_hw = data                      -- send the data byte
+   spi_master = SRAM_23K256_WRITE_COMMAND -- send the write command
+   spi_master = addr[1]                   -- send the address
+   spi_master = addr[0]
+   spi_master = data                      -- send the data byte
    
    sram_23k256_chip_select = high            -- disable the chip
 end procedure
@@ -192,10 +196,10 @@ function sram_23k256_byte'get(word in address) return byte is
    var byte addr[4] at address
    
    sram_23k256_chip_select = low              -- enable the chip
-   spi_master_hw = SRAM_23K256_READ_COMMAND   -- send the read command
-   spi_master_hw = addr[1]                    -- send the address
-   spi_master_hw = addr[0]
-   data = spi_master_hw                       -- get the data
+   spi_master = SRAM_23K256_READ_COMMAND   -- send the read command
+   spi_master = addr[1]                    -- send the address
+   spi_master = addr[0]
+   data = spi_master                       -- get the data
    sram_23k256_chip_select = high             -- disable the chip
    
    return data                                -- return the byte data
@@ -217,12 +221,12 @@ procedure sram_23k256_word'put(word in address, word in data) is
    var byte addr[4] at address
    
    sram_23k256_chip_select = low             -- enable the chip
-   spi_master_hw = SRAM_23K256_WRITE_COMMAND -- send the write command
-   spi_master_hw = addr[1]                   -- send the address
-   spi_master_hw = addr[0]
+   spi_master = SRAM_23K256_WRITE_COMMAND -- send the write command
+   spi_master = addr[1]                   -- send the address
+   spi_master = addr[0]
    
-   spi_master_hw = full_data[1]              -- send byte 1
-   spi_master_hw = full_data[0]              -- send byte 0
+   spi_master = full_data[1]              -- send byte 1
+   spi_master = full_data[0]              -- send byte 0
    
    sram_23k256_chip_select = high            -- disable the chip
 end procedure
@@ -245,12 +249,12 @@ function sram_23k256_word'get(word in address) return word is
    var byte addr[4] at address
    
    sram_23k256_chip_select = low             -- enable the chip
-   spi_master_hw = SRAM_23K256_READ_COMMAND  -- send the read command
-   spi_master_hw = addr[1]                   -- send the address
-   spi_master_hw = addr[0]
+   spi_master = SRAM_23K256_READ_COMMAND  -- send the read command
+   spi_master = addr[1]                   -- send the address
+   spi_master = addr[0]
    
-   full_data[1] = spi_master_hw              -- get byte 1
-   full_data[0] = spi_master_hw              -- get byte 0
+   full_data[1] = spi_master              -- get byte 1
+   full_data[0] = spi_master              -- get byte 0
    
    sram_23k256_chip_select = high            -- disable the chip
    
@@ -273,14 +277,14 @@ procedure sram_23k256_dword'put(word in address, dword in data) is
    var byte addr[4] at address
    
    sram_23k256_chip_select = low             -- enable the chip
-   spi_master_hw = SRAM_23K256_WRITE_COMMAND -- send the write command
-   spi_master_hw = addr[1]                   -- send the address
-   spi_master_hw = addr[0]
+   spi_master = SRAM_23K256_WRITE_COMMAND -- send the write command
+   spi_master = addr[1]                   -- send the address
+   spi_master = addr[0]
    
-   spi_master_hw = full_data[3]              -- send byte 3
-   spi_master_hw = full_data[2]              -- send byte 2
-   spi_master_hw = full_data[1]              -- send byte 1
-   spi_master_hw = full_data[0]              -- send byte 0
+   spi_master = full_data[3]              -- send byte 3
+   spi_master = full_data[2]              -- send byte 2
+   spi_master = full_data[1]              -- send byte 1
+   spi_master = full_data[0]              -- send byte 0
    
    sram_23k256_chip_select = high            -- disable the chip
 end procedure
@@ -303,14 +307,14 @@ function sram_23k256_dword'get(word in address) return dword is
    var byte addr[4] at address
    
    sram_23k256_chip_select = low             -- enable the chip
-   spi_master_hw = SRAM_23K256_READ_COMMAND  -- send the read command
-   spi_master_hw = addr[1]                   -- send the address
-   spi_master_hw = addr[0]
+   spi_master = SRAM_23K256_READ_COMMAND  -- send the read command
+   spi_master = addr[1]                   -- send the address
+   spi_master = addr[0]
    
-   full_data[3] = spi_master_hw              -- get byte 3
-   full_data[2] = spi_master_hw              -- get byte 2
-   full_data[1] = spi_master_hw              -- get byte 1
-   full_data[0] = spi_master_hw              -- get byte 0
+   full_data[3] = spi_master              -- get byte 3
+   full_data[2] = spi_master              -- get byte 2
+   full_data[1] = spi_master              -- get byte 1
+   full_data[0] = spi_master              -- get byte 0
    
    sram_23k256_chip_select = high            -- disable the chip
    
@@ -330,17 +334,17 @@ procedure sram_23k256_start_write(word in address) is
    var byte addr[2] at address
    
    sram_23k256_chip_select = low             -- enable the chip
-   spi_master_hw = SRAM_23K256_WRITE_COMMAND -- send the write command
-   spi_master_hw = addr[1]                   -- send the address
-   spi_master_hw = addr[0]
+   spi_master = SRAM_23K256_WRITE_COMMAND -- send the write command
+   spi_master = addr[1]                   -- send the address
+   spi_master = addr[0]
 end procedure  
 
 -- ----------------------------------------------------------------------------
 -- write byte to the 23K256
--- you may use spi_master_hw directly instead.
+-- you may use spi_master directly instead.
 -- ----------------------------------------------------------------------------
 procedure sram_23k256_do_write(byte in data) is
-   spi_master_hw = data                      -- send the data byte
+   spi_master = data                      -- send the data byte
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -363,16 +367,16 @@ procedure sram_23k256_start_read(word in address) is
    var byte addr[2] at address
    
    sram_23k256_chip_select = low              -- enable the chip
-   spi_master_hw = SRAM_23K256_READ_COMMAND   -- send the read command
-   spi_master_hw = addr[1]                    -- send the address
-   spi_master_hw = addr[0]
+   spi_master = SRAM_23K256_READ_COMMAND   -- send the read command
+   spi_master = addr[1]                    -- send the address
+   spi_master = addr[0]
 end procedure
 
 -- ----------------------------------------------------------------------------
 -- read byte from the 23K256
 -- ----------------------------------------------------------------------------  
 procedure sram_23k256_do_read(byte out data) is
-   data = spi_master_hw                       -- get the data
+   data = spi_master                       -- get the data
 end procedure  
 
 -- ----------------------------------------------------------------------------
