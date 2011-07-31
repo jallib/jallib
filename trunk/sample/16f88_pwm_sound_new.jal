@@ -1,0 +1,73 @@
+-- Title: Test program for hardware (built-in) PWM. Plays sound
+-- Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this sample show how to use PWM with a constant duty cycle and 
+-- a variable frequency. It plays a "nice" melody (connect a small piezzo)
+-- Frequencies from 0 to 100_000Hz are played. At the beginning, no sound will come
+-- the buzzer, because frequency is too low (no valid combination of PR2/T2CON)
+--
+--
+--
+-- This file has been generated from:
+--    * board: board_16f88_js.jal
+--    * test : test_pwm_sound.jal
+--
+
+;@jallib section chipdef
+-- chip setup
+include 16f88
+
+;--
+;-- This setup assumes a 20 MHz resonator or crystal
+;-- is connected to pins OSC1 and OSC2.
+pragma target OSC       HS             -- HS crystal or resonator
+pragma target clock     20_000_000     -- oscillator frequency
+pragma target WDT       disabled       -- no watchdog
+pragma target LVP       disabled       -- no low-voltage programming
+pragma target CCP1MUX   pin_B3         -- ccp1 pin on B3
+
+--
+-- This setup uses the internal oscillator
+;pragma target OSC       INTOSC_NOCLKOUT   -- HS crystal or resonator
+;pragma target clock     8_000_000         -- oscillator frequency
+;pragma target WDT       disabled          -- no watchdog
+;pragma target LVP       disabled          -- no low-voltage programming
+;pragma target CCP1MUX   pin_B3            -- ccp1 pin on B3
+;OSCCON_IRCF = 7                           -- set prescaler to 1 (8 MHz)
+
+;@jallib section ccp
+-- ccp setup: since CCP1 is multiplexed, we need to define
+-- alias pointing to the active CCP1 pin
+alias pin_ccp1_direction is pin_ccp1_rb3_direction
+
+-- backlight control (can be variable and digital on this pin)
+alias lcd_bl is pin_b3
+alias lcd_bl_direction is pin_b3_direction
+enable_digital_io()
+
+-- Configure PWM
+pin_ccp1_direction = output
+include pwm_hardware
+-- Let's go !!!
+pwm1_on()
+
+
+var dword counter = 0
+forever loop
+   
+   for 100_000 using counter loop
+      pwm_set_frequency(counter)
+      -- Setting @50% gives max volume
+      -- must be re-computed each time the frequency
+      -- changes, because it depends on PR2 value
+      pwm1_set_percent_dutycycle(50)
+   end loop
+   
+end loop
+
