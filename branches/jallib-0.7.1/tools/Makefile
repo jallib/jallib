@@ -11,7 +11,7 @@
 all : clean test
 
 WEEKLYBUILDCODENAME=bee
-VERSION=dev
+VERSION=0.7.1
 SAMPLIR_DIR=../sample
 TEST_DIR=../test
 INCLUDE_DIR=../include
@@ -94,11 +94,11 @@ export:
 	echo ${VERSION} > distrib/jallib-all_devices-${VERSION}/VERSION
 	# get clean source from repos
 	# (svn export gets the sources, but without any .svn dir (no svn metadata)
-	svn export http://jallib.googlecode.com/svn/trunk distrib/jallib-export
+	svn export http://jallib.googlecode.com/svn/branches/jallib-0.7.1 distrib/jallib-export
 	# license is common for both svn and release
-	svn export -N http://jallib.googlecode.com/svn/trunk distrib/jallib-extra
+	svn export -N http://jallib.googlecode.com/svn/branches/jallib-0.7.1 distrib/jallib-extra
 	# get readme for the release (force because target dir already exists)
-	svn export --force http://jallib.googlecode.com/svn/trunk/tools distrib/jallib-extra
+	svn export --force http://jallib.googlecode.com/svn/branches/jallib-0.7.1/tools distrib/jallib-extra
 
 prepare:
 	# flatten library files
