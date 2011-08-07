@@ -1,0 +1,405 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html>
+    <head>
+		<title>serial_hw_int_cts - jallib API doc</title>
+    </head>
+    <body>
+		
+		        <div id="page">
+        
+            <div id="pagecontent">
+
+			    
+	<a href="#toc" name="serial_hw_int_cts">
+    <h1>serial_hw_int_cts</h1>
+	</a>
+
+    <div>
+		<font size="+1"><i>serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.</i></font>
+	</div>
+
+	<br/>
+
+    <div class="narrow">
+        
+	<table>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Author</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Adapted-by</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			Joep Suijs
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Compiler</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			=2.4h
+		</td>
+	</tr>
+	</table>
+
+	<br/>
+	
+	<b>Description</b>
+	<p>
+		<pre>Serial communications:
+  - receive and transmit data transfer is interrupt driven
+  - receive and transmit data transfer uses circular buffers
+  - automatic CTS flow control with spare free space for FiFo buffer
+</pre>
+
+	</p>
+	<br/>
+
+
+	<b>Notes</b>
+	<p>
+		<pre> - For data transmit and receive the pins TX and RX are used
+   automatically, these have not to be assigned by the application.
+ - The selection of the CTS pin above is an example, any other pin
+   which is configurable for output can be used.
+ - When CTS flow control is not desired then assign serial_ctsinv
+   to a dummy bit, for example:
+       var  bit  dummy_cts_bit
+       alias serial_ctsinv  is  dummy_cts_bit
+ - The serial_overflow_discard flag may be dynamically changed
+   (depending on how important the data is for the receiving party).
+ - Do not touch the following interrupt bits: TXIE, RCIE, PEIE and GIE
+</pre>
+
+	</p>
+	<br/>
+	
+	<b>Dependencies</b>
+	<p>
+		<ul>
+			<li><a href="usart_common.html">usart_common</a></li>
+		</ul>
+
+
+			<br/>
+				<h2><a name="summary">Summary</a></h2>
+
+		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#f70c6ca6165fc2d133d75d94b8aee814">var  byte  _serial_offsetxmthead                -- offset next byte from appl
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#c46b12c6a90fed3e0829f13d3eb439ee">var  byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]    -- circular input buffer
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#9fac42ebc310ef79e5909f4fc198223f">var  byte  _serial_offsetxmttail                -- offset next byte to port
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#ef7d4c233a714870313f51ef3fa3efe5">var  byte  _serial_offsetrcvhead                -- offset next byte from port
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#7a7d3d18df3253a5c28d3a149b5a49f3">var  byte  _serial_offsetrcvtail                -- offset next byte to appl
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#17de77477fe7fa05ae55495260acbf7d">var bit serial_send_success   -- serial_send_success is used internally
+</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#6985352400dbf212c4fa78d67ce593eb">var  byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]    -- circular output buffer
+</a></code></b>
+		</li>
+	</ul>
+
+
+		<h3><a name="Procedures">Procedures</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#28cb07a978a6fcca5e605f0ad520828e">serial_init()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#9c4436d14f56c4adcbe5c8ed9df54543">serial_hw_data'put(byte in data)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#c226cf7c88d829d242f6fa20db05aaa1">serial_hw_init()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#8bd2c619e16d85ae1bee277645842959">serial_hw_write(byte in data)</a></code></b>
+		</li>
+	</ul>
+
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#85b19760d0805fc1744964273e1c734b">_serial_transmit_interrupt_handler()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#1919352ad15a35407f8ae9d0a91590f9">_serial_receive_interrupt_handler()</a></code></b>
+		</li>
+	</ul>
+
+	<br/>
+
+		<h3><a name="Functions">Functions</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#d634974eb95dab7b188c1f605747583a">serial_hw_read(byte out data) return bit</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#53a6c21cd59de67adb0fb30ceed24834">serial_hw_data'get() return byte</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#652e34ed7b319ca8c20acdae0b5fbf98">serial_receive_byte(byte out data) return bit</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#683333bec13a6604a8224dff857cc10b">serial_send_byte(byte in data) return byte</a></code></b>
+		</li>
+	</ul>
+
+
+
+			<br/>
+				<h2><a name="api">API details</a></h2>
+
+		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="f70c6ca6165fc2d133d75d94b8aee814" href="#summary">var  byte  _serial_offsetxmthead                -- offset next byte from appl
+</a></code></b>
+				<p>	<pre>variable keeping track of next free position in transmit buffer
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="c46b12c6a90fed3e0829f13d3eb439ee" href="#summary">var  byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]    -- circular input buffer
+</a></code></b>
+				<p>	<pre>Local circular receive buffer
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="9fac42ebc310ef79e5909f4fc198223f" href="#summary">var  byte  _serial_offsetxmttail                -- offset next byte to port
+</a></code></b>
+				<p>	<pre>variable keeping track of next byte to be transmitted by interrupt handler
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="ef7d4c233a714870313f51ef3fa3efe5" href="#summary">var  byte  _serial_offsetrcvhead                -- offset next byte from port
+</a></code></b>
+				<p>	<pre>variable keeping track of next free byte in receive buffer
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="7a7d3d18df3253a5c28d3a149b5a49f3" href="#summary">var  byte  _serial_offsetrcvtail                -- offset next byte to appl
+</a></code></b>
+				<p>	<pre>variable keeping track of next byte available to application program
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="17de77477fe7fa05ae55495260acbf7d" href="#summary">var bit serial_send_success   -- serial_send_success is used internally
+</a></code></b>
+				<p>	<pre>Flag indicating if transmission was successful
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="6985352400dbf212c4fa78d67ce593eb" href="#summary">var  byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]    -- circular output buffer
+</a></code></b>
+				<p>	<pre>Local circular transmit buffer
+</pre>
+</p>
+		</li>
+	</ul>
+
+
+		<h3><a name="Procedures">Procedures</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="28cb07a978a6fcca5e605f0ad520828e" href="#summary">serial_init()</a></code></b>
+				<p>	<pre>Deprecated
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="9c4436d14f56c4adcbe5c8ed9df54543" href="#summary">serial_hw_data'put(byte in data)</a></code></b>
+				<p>	<pre>Transmit byte
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="c226cf7c88d829d242f6fa20db05aaa1" href="#summary">serial_hw_init()</a></code></b>
+				<p>	<pre>
+serial_init - procedure to initialize library functionality
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="8bd2c619e16d85ae1bee277645842959" href="#summary">serial_hw_write(byte in data)</a></code></b>
+				<p>	<pre>Transmit byte
+</pre>
+</p>
+		</li>
+	</ul>
+
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="85b19760d0805fc1744964273e1c734b" href="#summary">_serial_transmit_interrupt_handler()</a></code></b>
+				<p>	<pre>
+ USART serial transmit interrupt handler
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="1919352ad15a35407f8ae9d0a91590f9" href="#summary">_serial_receive_interrupt_handler()</a></code></b>
+				<p>	<pre>
+ USART serial receive interrupt handler
+
+ notes: - Sets CTS low when receive buffer has less than <SERIAL_DELTA>
+          bytes free space.
+
+
+</pre>
+</p>
+		</li>
+	</ul>
+
+	<br/>
+
+		<h3><a name="Functions">Functions</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="d634974eb95dab7b188c1f605747583a" href="#summary">serial_hw_read(byte out data) return bit</a></code></b>
+				<p>	<pre>
+ Return byte (if any) from circular receive buffer for UART
+
+ input:   nothing
+
+ output:  received byte (if any)
+
+ returns: TRUE  when byte returned
+          FALSE if no byte available
+
+ notes: - Sets CTS high when receive buffer has more than <SERIAL_DELTA>
+          bytes free space after delivering byte to caller.
+
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="53a6c21cd59de67adb0fb30ceed24834" href="#summary">serial_hw_data'get() return byte</a></code></b>
+				<p>	<pre>Return next received byte
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="652e34ed7b319ca8c20acdae0b5fbf98" href="#summary">serial_receive_byte(byte out data) return bit</a></code></b>
+				<p>	<pre>Deprecated
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="683333bec13a6604a8224dff857cc10b" href="#summary">serial_send_byte(byte in data) return byte</a></code></b>
+				<p>	<pre>
+ Put a single byte in circular transmit buffer for UART
+
+ input:   byte to transmit
+
+ returns: transmitted byte (or 0x00 when data discarded)
+
+ notes: - Activates transmit interrupt handler when data buffered
+        - When buffer full act as indicated in 'serial_overflow_discard'
+          * TRUE:  discard data
+                   (and return 0x00 as data byte)
+          * FALSE: wait for free buffer space
+                   (returns only after data has been stored in buffer)
+
+
+</pre>
+</p>
+		</li>
+	</ul>
+
+
+
+			<br/>
+				<h2><a name="related_samples">Related samples</a></h2>
+	Here are the list of samples which use this library:<br/><br/>
+	<table border=1>
+			<tr>
+			<td><b>16f1937</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f1937_serial_hardware.jal" target="_blank">16f1937_serial_hardware.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f1937</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f1937_serial_hw_int_cts.jal" target="_blank">16f1937_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f648a_serial_hw_int_cts.jal" target="_blank">16f648a_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f723</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f723_serial_hw_int_cts.jal" target="_blank">16f723_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f73</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f73_serial_hw_int_cts.jal" target="_blank">16f73_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f877</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877_serial_hw_int_cts.jal" target="_blank">16f877_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_serial_hw_int_cts.jal" target="_blank">16f877a_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_serial_hw_int_cts.jal" target="_blank">16f88_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_serial_hw_int_cts_echo.jal" target="_blank">16f88_serial_hw_int_cts_echo.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f14k50</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f14k50_serial_hw_int_cts.jal" target="_blank">18f14k50_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f2450</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f2450_serial_hw_int_cts.jal" target="_blank">18f2450_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f2585</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f2585_can_serial_adapter.jal" target="_blank">18f2585_can_serial_adapter.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f2585</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f2585_canid4_serial_adapter.jal" target="_blank">18f2585_canid4_serial_adapter.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_serial_hw_int_cts.jal" target="_blank">18f4550_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f6310</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f6310_serial_hw_int_cts.jal" target="_blank">18f6310_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f6520</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f6520_serial_hw_int_cts.jal" target="_blank">18f6520_serial_hw_int_cts.jal</a></td>
+			</tr>
+	</table>
+
+			<br/>
+
+            </div>
+        </div>
+
+
+	</body>
+</html>
+

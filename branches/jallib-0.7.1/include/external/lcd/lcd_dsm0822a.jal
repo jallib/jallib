@@ -1,0 +1,247 @@
+-- Title: dsm0822a - i2c star burst dispay driver
+-- Author: Joep Suijs, Copyright (c) 2009-2010, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4i
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides a i2c star burst display driver
+-- The dm0822a is a star burst display driver with an i2c interface.
+-- To use this library:
+-- - setup i2c comms to the display
+-- - include this libraray and call dsm_init()
+-- --
+-- Now you can use the display. A char assigned to dsm_data like:
+--    dsm_data = "A"
+-- is displayed on the next free location. And with 
+--    dsm_data = ASCII_CR
+-- you start printing at the first location again.
+-- --
+-- The indicator fields of the display can be switched on with
+--    dsm_set_indicator(DSM_I1)   
+-- and turned off with
+--    dsm_clear_indicator(DSM_I1)                     
+-- --
+-- The two procedures above support the next constants:
+--    DSM_1   : channel 1 indication
+--    DSM_2   : channel 2 indication
+--    DSM_3   : channel 3 indication
+--    DSM_4   : channel 4 indication
+--    DSM_5   : channel 5 indication
+--    DSM_6   : channel 6 indication
+--    DSM_I1  : left signal indication
+--    DSM_I2  : central signal indication
+--    DSM_I3  : right signal indication
+--    DSM_RDS : rds indicator
+--    DSM_TP  : tp indication
+--    DSM_TA  : ta indication
+--    DSM_OO  : stereo indication
+--    DSM_FM  : fm indication
+--    DSM_DOT : decimal point
+-- Multiple of these constants can be OR-ed together to one parameter
+-- --
+-- 
+-- Sources:
+-- based on C program of Michael Dworkin  
+-- Info on the display at http://hobbyelektronik.org/VB/LCD/DS/index.htm
+--
+
+; defintion of separate fields
+const DSM_1     = 0x0100       ; channel 1 indication
+const DSM_2     = 0x0400       ; channel 2 indication
+const DSM_3     = 0x0200       ; channel 3 indication
+const DSM_4     = 0x0800       ; channel 4 indication
+const DSM_5     = 0x8000       ; channel 5 indication
+const DSM_6     = 0x2000       ; channel 6 indication
+const DSM_I1    = 0x1000       ; left signal indication
+const DSM_I2    = 0x0001       ; central signal indication
+const DSM_I3    = 0x0004       ; right signal indication
+const DSM_RDS   = 0x0002       ; rds indicator
+const DSM_TP    = 0x0020       ; tp indication
+const DSM_TA    = 0x0040       ; ta indication
+const DSM_OO    = 0x8000       ; stereo indication
+const DSM_FM    = 0x4000       ; fm indication
+const DSM_DOT   = 0x0010       ; decimal point
+
+
+-- Translation table of ascci to two bytes, which indicate
+-- which segment have to be switched on.     
+const byte dsm_tab[] =
+{
+    0x00,0x00,   -- (offset 00) 0x20 (32) <space>
+    0x04,0x20,   -- (offset 01) 0x21 (33) !
+    0x80,0x20,   -- (offset 02) 0x22 (34) "
+    0xa8,0x8c,   -- (offset 03) 0x23 (35) # 
+    0xad,0xb5,   -- (offset 04) 0x24 (36) $
+    0xec,0x37,   -- (offset 05) 0x25 (37) %
+    0x3b,0x71,   -- (offset 06) 0x26 (38) &
+    0x00,0x02,   -- (offset 07) 0x27 (39) '
+    0x00,0x42,   -- (offset 08) 0x28 (40) (
+    0x42,0x00,   -- (offset 09) 0x29 (41) )
+    0x66,0x66,   -- (offset 10) 0x2a (42) *
+    0x24,0x24,   -- (offset 11) 0x2b (43) +
+    0x40,0x00,   -- (offset 12) 0x2c (44) ,
+    0x00,0x04,   -- (offset 13) 0x2d (45) -
+    0x01,0x00,   -- (offset 14) 0x2e (46) .
+    0x40,0x02,   -- (offset 15) 0x2f (47) /
+    0x99,0x99,   -- (offset 16) 0x30 (48) 0
+    0x00,0x0b,   -- (offset 17) 0x31 (49) 1
+    0x39,0x9c,   -- (offset 18) 0x32 (50) 2
+    0x29,0x9d,   -- (offset 19) 0x33 (51) 3
+    0xa0,0x0d,   -- (offset 20) 0x34 (52) 4
+    0xa9,0x95,   -- (offset 21) 0x35 (53) 5
+    0xb9,0x95,   -- (offset 22) 0x36 (54) 6
+    0x08,0x89,   -- (offset 23) 0x37 (55) 7
+    0xb9,0x9d,   -- (offset 24) 0x38 (56) 8
+    0xa9,0x9d,   -- (offset 25) 0x39 (57) 9
+    0x21,0x00,   -- (offset 26) 0x3a (58) :
+    0x21,0x00,   -- (offset 27) 0x3b (59) ;
+    0x00,0x42,   -- (offset 28) 0x3c (60) <
+    0x21,0x00,   -- (offset 29) 0x3d (61) =
+    0x42,0x00,   -- (offset 30) 0x3e (62) >
+    0x8c,0x8c,   -- (offset 31) 0x3f (63) ?
+    0x3d,0x99,   -- (offset 32) 0x40 (64) @
+    0xb8,0x8d,   -- (offset 33) 0x41 (65) A
+    0x0d,0xbd,   -- (offset 34) 0x42 (66) B
+    0x99,0x90,   -- (offset 35) 0x43 (67) C
+    0x0d,0xb9,   -- (offset 36) 0x44 (68) D
+    0xb9,0x94,   -- (offset 37) 0x45 (69) E
+    0xb8,0x84,   -- (offset 38) 0x46 (70) F
+    0x99,0x95,   -- (offset 39) 0x47 (71) G
+    0xb0,0x0d,   -- (offset 40) 0x48 (72) H
+    0x0d,0xb0,   -- (offset 41) 0x49 (73) I
+    0x11,0x19,   -- (offset 42) 0x4a (74) J
+    0xb0,0x42,   -- (offset 43) 0x4b (75) K
+    0x91,0x10,   -- (offset 44) 0x4c (76) L
+    0x92,0x0b,   -- (offset 45) 0x4d (77) M
+    0x92,0x49,   -- (offset 46) 0x4e (78) N
+    0x99,0x99,   -- (offset 47) 0x4f (79) O
+    0xb8,0x8c,   -- (offset 48) 0x50 (80) P
+    0x99,0xd9,   -- (offset 49) 0x51 (81) Q
+    0xb8,0xcc,   -- (offset 50) 0x52 (82) R
+    0xa9,0x95,   -- (offset 51) 0x53 (83) S
+    0x0c,0xa0,   -- (offset 52) 0x54 (84) T
+    0x91,0x19,   -- (offset 53) 0x55 (85) U
+    0xd0,0x02,   -- (offset 54) 0x56 (86) V
+    0xd0,0x49,   -- (offset 55) 0x57 (87) W
+    0x42,0x42,   -- (offset 56) 0x58 (88) X
+    0xa1,0x1d,   -- (offset 57) 0x59 (89) Y
+    0x49,0x92,   -- (offset 58) 0x5a (90) Z
+    0x99,0x00,   -- (offset 59) 0x5b (91) [
+    0x02,0x40,   -- (offset 60) 0x5c (92) \
+    0x00,0x99,   -- (offset 61) 0x5d (93) ]
+    0x40,0x40,   -- (offset 62) 0x5e (94) ^
+    0x01,0x10    -- (offset 63) 0x5f (95) _
+};
+
+
+var byte dsm_pos = 0    
+var word dsm_indicator_cache = 0
+
+-- init & clear display
+procedure dsm_init() is
+
+   var bit flag;
+   
+   i2c_start()
+   flag = i2c_transmit_byte (112)
+   flag = i2c_transmit_byte (0xE0)  ; 0b.1110.0000 Device select
+   flag = i2c_transmit_byte (0xC8)  ; 0b.1100.1000 Mode set(enabled)
+   for 20 loop
+      flag = i2c_transmit_byte (0)  ; clear LCD 
+   end loop
+   i2c_stop()
+
+   dsm_pos = 0   
+end procedure
+
+alias dsm_clear_screen is dsm_init
+
+-- ----------------------------------------------------------------------------
+-- dsm_ou - Put a character at the designated position
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure dsm_out(byte in pos, byte in a) is
+   var bit flag;
+   
+   ; check range of a
+   if (a > 0x7F) then
+      a = 0x5F
+   elsif (a > 0x5F) then
+      a = a - 0x20   ; from lower to upper case
+   elsif (a < 0x20) then
+      a = 0x5F
+   end if
+   
+   i2c_start()
+   flag = i2c_transmit_byte (112)
+   flag = i2c_transmit_byte (pos * 4)
+   a=a-32                                    -- calculate position of ascii char in table
+   if (a > 64) then a = 0 end if             -- force range valid
+   a=a*2 
+   flag = i2c_transmit_byte(dsm_tab[a])      -- byte 1
+   flag = i2c_transmit_byte(dsm_tab[a+1])    -- byte 2
+   i2c_stop()
+
+end procedure
+
+ 
+
+-- ----------------------------------------------------------------------------
+-- dsm_data'put - put a char at the next position
+-- ----------------------------------------------------------------------------
+-- CR or LF puts postion back to start.
+-- ----------------------------------------------------------------------------
+procedure dsm_data'put(byte in data) is
+
+   if ((data == ASCII_CR) | (data == ASCII_LF)) then
+      ; position to start
+      dsm_pos = 0
+      return;
+   end if
+
+   dsm_out(dsm_pos, data)
+
+   dsm_pos = dsm_pos + 1
+   if (dsm_pos > 7) then 
+      dsm_pos = 0
+   end if
+
+end procedure
+
+procedure _dsm_write_cache() is
+   var bit flag
+   
+   i2c_start()
+   flag = i2c_transmit_byte (112)
+   flag = i2c_transmit_byte (0x20)
+
+   flag = i2c_transmit_byte(byte(dsm_indicator_cache))      -- byte 1
+   flag = i2c_transmit_byte(byte(dsm_indicator_cache>>8))   -- byte 2
+
+   i2c_stop()
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- dsm_set_indicator - set one or more indicators
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure dsm_set_indicator(word in data) is
+   dsm_indicator_cache = dsm_indicator_cache | data
+
+   _dsm_write_cache()
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- dsm_clear_indicator - set one or more indicators
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure dsm_clear_indicator(word in data) is
+   dsm_indicator_cache = dsm_indicator_cache & (data ^ 0xFFFF)
+
+   _dsm_write_cache()
+end procedure
+
+   

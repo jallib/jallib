@@ -1,0 +1,181 @@
+-- Title: motor speed control by skipping periods of AC mains 
+-- Author: Eur van Andel, eur@fiwihex.nl (c) 2009
+-- Compiler: >=2.4g
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: AC induction motors are low-priced, very reliable and widely available.
+-- This library provides a way to control the speed of these motors, if they have reasonably
+-- angular momentum.
+-- --
+-- Explanation: this is *NOT* phase control: http://en.wikipedia.org/wiki/Phase_control
+-- Phase control makes a lot of noise, both audible and electrical. 
+-- --
+-- This is deliberate skipping of half-waves. There are only 100 half-waves per second
+-- @ 50 Hz and bit-fine control of motor speed would result in long duty cycles (2.55s)
+-- with varying motor speeds and audible pitch change. 
+-- So we keep the period cycle at 32 half waves, with 8 duty cycles that only differ 
+-- one half-wave to minimise audible noise. 
+-- Electrical noise is minimized by zero-voltage switching.
+-- 
+-- Sources:
+-- Fairchild Application Note AN-3004, http://www.fairchildsemi.com/an/AN/AN-3004.pdf
+-- http://www.sullivan-county.com/ele/triacs2.htm for schematics and examples how 
+-- to generate a zero-crossing signal. 
+--
+
+
+-- speed    duty cycle on              duty cycle off
+--
+--    0     0  0  0  0  0  0  0  0     32 32 32 32 32 32 32 32
+--    1     1  0  0  0  0  0  0  0     31 32 32 32 32 32 32 32
+--    2     1  0  0  0  1  0  0  0     31 32 32 32 31 32 32 32
+--    3     1  0  0  1  0  0  1  0     31 32 32 31 32 32 31 32
+--    4     1  0  1  0  1  0  1  0     31 32 31 32 31 32 31 32
+--    5     1  0  1  0  1  1  0  1     31 32 31 32 31 31 32 31
+--    6     1  1  0  1  1  0  1  1     31 31 32 31 31 32 31 31
+--    7     1  1  0  1  1  1  1  1     31 31 32 31 31 31 31 31
+--    8     1  1  1  1  1  1  1  1     31 31 31 31 31 31 31 31
+--
+--    9     2  1  1  1  1  1  1  1     30 31 31 31 31 31 31 31
+
+-- all the way to 255:
+
+-- 255      32 32 31 32 32 32 32 32    0  0  1  0  0  0  0  0  
+
+-- Since 256 would be full speed. At 255 the motor misses one half wave every 2.55 seconds,
+-- which is 99.6% of full speed. 
+
+
+-- Requirements:
+ 
+-- 1) output pin labeled "triac", connected to a TRIAC, for instance via a MOC3042
+-- zero-crossing opto-isolated triac driver, so that the TRIAC is on when the pin is high.  
+
+-- 2) zero-crossing interrupt pin (B0), rising where mains voltage is zero, for instance
+-- with an HPCL354 optocoupler and a 10k pullup resistor.
+
+-- 3) byte variable labeled "speed" with value ranging from 0...255
+
+-- 4) if speed changes, the procedure ps_adjust_period() should be called
+
+-- 5) ps_check_period() should be called at least every 320 ms, not once a month :-)
+-- for 60 Hz mains frequency, call this procedure at least every 266 ms
+
+-- var bit triac is pin_a0    -- pin connected to optotriac
+-- pin_a0_direction = output
+-- pin_b0_direction = input
+-- var byte ps_speed = 0      -- 0..255 speed control, should be declared in main app
+
+var byte ps_counter        -- 1..32 ISR period counter
+                           -- 32 periods to minimise noise
+var byte ps_total_duty_cycle  -- position in total duty cycle  
+
+var byte ps_on_period = 0
+var byte ps_on_1, ps_on_2, ps_on_3, ps_on_4, ps_on_5, ps_on_6, ps_on_7, ps_on_8 
+
+INTCON_INTE    = on     -- pin_b0 rising edge
+INTCON_GIE     = on     -- check if your PIC has these interrupt enable bits
+
+
+-- start procedures --------------------------------------------------
+
+procedure RTC() is
+pragma interrupt           -- every 10ms, triggered by zero-cross
+   INTCON_INTF = false
+   if ps_counter > ps_on_period then
+      triac = off
+   else
+      triac = on
+   end if
+   ps_counter = ps_counter + 1 
+   if ps_counter == 33 then
+      ps_counter = 1
+   end if
+   ps_total_duty_cycle = ps_total_duty_cycle + 1
+end procedure
+
+
+procedure ps_adjust_period() is
+var byte div8, mod8
+   div8 = ps_speed/8
+   mod8 = ps_speed % 8
+   ps_on_1 = div8
+   ps_on_2 = div8
+   ps_on_3 = div8
+   ps_on_4 = div8
+   ps_on_5 = div8
+   ps_on_6 = div8
+   ps_on_7 = div8
+   ps_on_8 = div8
+   if    mod8 == 0 then 
+      return
+   elsif mod8 == 1 then
+      ps_on_1 = ps_on_1 + 1
+      return
+   elsif mod8 == 2 then
+      ps_on_1 = ps_on_1 + 1
+      ps_on_4 = ps_on_4 + 1
+      return
+   elsif mod8 == 3 then
+      ps_on_1 = ps_on_1 + 1
+      ps_on_4 = ps_on_4 + 1
+      ps_on_7 = ps_on_7 + 1
+      return
+   elsif mod8 == 4 then
+      ps_on_1 = ps_on_1 + 1
+      ps_on_3 = ps_on_3 + 1
+      ps_on_5 = ps_on_5 + 1
+      ps_on_7 = ps_on_7 + 1
+      return
+   elsif mod8 == 5 then
+      ps_on_1 = ps_on_1 + 1
+      ps_on_3 = ps_on_3 + 1
+      ps_on_5 = ps_on_5 + 1
+      ps_on_6 = ps_on_6 + 1
+      ps_on_8 = ps_on_8 + 1
+      return
+   elsif mod8 == 6 then
+      ps_on_1 = ps_on_1 + 1
+      ps_on_2 = ps_on_2 + 1
+      ps_on_4 = ps_on_4 + 1
+      ps_on_5 = ps_on_5 + 1
+      ps_on_6 = ps_on_6 + 1
+      ps_on_8 = ps_on_8 + 1
+      return
+   elsif mod8 == 7 then
+      ps_on_1 = ps_on_1 + 1
+      ps_on_2 = ps_on_2 + 1
+      ps_on_4 = ps_on_4 + 1
+      ps_on_5 = ps_on_5 + 1
+      ps_on_6 = ps_on_6 + 1
+      ps_on_7 = ps_on_7 + 1
+      ps_on_8 = ps_on_8 + 1
+      return
+   end if
+end procedure
+
+
+
+procedure ps_check_period() is               -- should be called every 320 ms @ 50 Hz!
+   if    ps_total_duty_cycle < 32 then       -- counting from 0 to 255
+      ps_on_period = ps_on_1
+   elsif ps_total_duty_cycle > 32 then
+      ps_on_period = ps_on_2
+   elsif ps_total_duty_cycle > 64 then
+      ps_on_period = ps_on_3
+   elsif ps_total_duty_cycle > 96 then
+      ps_on_period = ps_on_4
+   elsif ps_total_duty_cycle > 128 then
+      ps_on_period = ps_on_5
+   elsif ps_total_duty_cycle > 160 then
+      ps_on_period = ps_on_6
+   elsif ps_total_duty_cycle > 192 then
+      ps_on_period = ps_on_7
+   elsif ps_total_duty_cycle > 224 then
+      ps_on_period = ps_on_8
+   end if
+end procedure
+

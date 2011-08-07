@@ -1,0 +1,108 @@
+-- Title: Basic usage of interrupt on change pin
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This example shows basic usage of an interrupt on change pin.
+--
+-- Sources:
+--
+-- notes:
+-- PIC must have interrupt on change pins on port B. If you are using another
+-- port, INTCON_RBIE & INTCON_RBIF may be named differently.
+-- Check your datasheet for a interrupt-on-change pin.
+-- This doesn't seem to work well with a switch, input should be clear.
+--
+-- Connect clock_out pin directly to int_on_change pin.
+--
+
+-- include chip
+include 18f4620                   -- target picmicro
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
+;pragma target osc hs              -- hs crystal or resonator
+;pragma target clock 20_000_000    -- oscillator frequency
+pragma target clock 32_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
+pragma target MCLR external        -- reset externally
+--
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+--
+
+-- set all IO as digital
+enable_digital_io()
+
+Alias led                       is pin_a0
+alias led_direction             is pin_a0_direction
+
+Alias int_on_change           is pin_b4
+Alias int_on_change_direction is pin_b4_direction
+
+alias clock_out           is pin_a1
+alias clock_out_direction is pin_a1_direction
+
+int_on_change_direction = input
+led_direction = output
+clock_out_direction = output
+
+-- enable global interrupts
+INTCON_GIE  = TRUE        -- Enables all unmasked interrupts
+INTCON_PEIE = TRUE        -- Enables all unmasked peripheral interrupts
+
+INTCON_RBIE = TRUE  -- port b interrupt on change enable bit
+INTCON_RBIF = FALSE -- clear interrupt on change pin bit
+
+-- interrupt procedure
+var byte int_on_change_pin_state
+procedure int_on_change_isr() is
+   pragma interrupt
+   
+   -- if it was a interrupt on change
+   if INTCON_RBIF == TRUE then
+   
+      -- check if your pin changed, ignore other pin changes.
+      if int_on_change_pin_state != int_on_change then
+         led = int_on_change
+         int_on_change_pin_state = int_on_change
+      end if
+      
+      INTCON_RBIF = FALSE -- clear interrupt on change pin bit
+   end if
+end procedure
+
+-- main loop
+forever loop
+   clock_out = high
+   _usec_delay(250_000)
+   clock_out = low
+   _usec_delay(250_000)
+end loop
+
+
+
+
+
+
+
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   

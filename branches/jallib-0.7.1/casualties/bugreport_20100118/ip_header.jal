@@ -1,0 +1,261 @@
+-- Title: Creates a IP Header
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library creates a IP header
+--
+-- Sources:
+-- http://www.faqs.org/rfcs/rfc791.html
+-- http://www.tekelec.com/ss7/protocols/ip2.asp
+-- http://www.networksorcery.com/enp/protocol/ip.htm
+--
+
+var byte ip_header_size = 20
+
+-- ip_header is always the first bytes of the network data
+alias ip_header is network_data
+--
+
+const IP_HEADER_VERSION_LENGTH = 0 --byte
+;var bit*4 ip_header_version at ip_header : 4                -- ip version
+;var bit*4 ip_header_length  at ip_header : 0                -- Internet header length in 32-bit words.
+
+const IP_HEADER_SERVICE = 1 --byte
+;var byte ip_header_service  at ip_header : 8                -- Type of Service.
+
+const IP_HEADER_TOTAL_LENGTH = 2 --word
+;var word ip_header_total_length at ip_header : 16           -- length of the internet header in 32 bit dwords
+
+const IP_HEADER_IDENTIFICATION = 4 --word
+;var word ip_header_identification at ip_header : 32         -- Packet Identification (Used in fragmentation)
+
+const IP_HEADER_FLAGS_OFFSET = 6 --word
+;var bit*3 ip_header_flags at ip_header : 53                 -- Various Control Flags
+;var bit*5 ip_header_fragment_offset_high at ip_header : 48
+;var byte ip_header_fragment_offset_low at ip_header : 56
+
+const IP_HEADER_TTL = 8 --byte
+;var byte ip_header_ttl at ip_header : 64                    -- Time to live in seconds
+
+const IP_HEADER_PROTOCOL = 9 --byte
+;var byte ip_header_protocol at ip_header : 72               -- next level protocol such as ICMP,UDP
+
+const IP_HEADER_CHECKSUM = 10
+;var word ip_header_checksum at ip_header : 80             -- checksum of ip header
+
+const IP_HEADER_SOURCE_IP_3 = 12
+const IP_HEADER_SOURCE_IP_2 = 13
+const IP_HEADER_SOURCE_IP_1 = 14
+const IP_HEADER_SOURCE_IP_0 = 15
+;var dword ip_header_source_ip at ip_header : 96              -- source ip address (PIC's ip address) as dword.
+;var byte ip_header_source_ip_3 at ip_header : 96             -- source ip address (PIC's ip address) as 4 bytes
+;var byte ip_header_source_ip_2 at ip_header : 104
+;var byte ip_header_source_ip_1 at ip_header : 112
+;var byte ip_header_source_ip_0 at ip_header : 120
+
+const IP_HEADER_DESTINATION_IP_3 = 16
+const IP_HEADER_DESTINATION_IP_2 = 17
+const IP_HEADER_DESTINATION_IP_1 = 18
+const IP_HEADER_DESTINATION_IP_0 = 19
+;var dword ip_header_destination_ip at ip_header : 128        -- destination ip address as dword.
+;var byte ip_header_destination_ip_3 at ip_header : 128       -- destination ip address as 4 bytes.
+;var byte ip_header_destination_ip_2 at ip_header : 136
+;var byte ip_header_destination_ip_1 at ip_header : 144
+;var byte ip_header_destination_ip_0 at ip_header : 152
+
+--------------------------------------------------------------------------------
+-- Set source ip address in ip header
+--------------------------------------------------------------------------------
+procedure ip_header_set_source_ip() is
+   pragma inline
+
+   network_byte[IP_HEADER_SOURCE_IP_3] = network_local_ip[0]
+   network_byte[IP_HEADER_SOURCE_IP_2] = network_local_ip[1]
+   network_byte[IP_HEADER_SOURCE_IP_1] = network_local_ip[2]
+   network_byte[IP_HEADER_SOURCE_IP_0] = network_local_ip[3]
+end procedure
+
+--------------------------------------------------------------------------------
+-- Send a ip header
+--------------------------------------------------------------------------------
+procedure ip_header_create(byte in protocol_select, word in data_length) is
+
+   network_data_in_use = TRUE
+
+   -- gets the length of the ip header into bytes
+   data_length = data_length + 20
+   var byte _data_length[2] at data_length
+
+   -- set data bits of ip header
+   ;ip_header_version              = 0b0100
+   ;ip_header_length               = 0b0101
+   network_byte[IP_HEADER_VERSION_LENGTH] = 0x45
+   
+   ;ip_header_service              = 0b0000_0000
+   network_byte[IP_HEADER_SERVICE] = 0
+
+   ;ip_header_total_length = data_length
+   ;network_switch_word_bytes(ip_header_total_length) -- switch bytes for network out format
+   network_word[IP_HEADER_TOTAL_LENGTH] = data_length
+
+   ;ip_header_identification = 0b1000_1000_0001_0000
+   ;network_switch_word_bytes(ip_header_identification) -- switch bytes for network out format
+   network_word[IP_HEADER_IDENTIFICATION] = 0b1000_1000_0001_0000
+
+   ;ip_header_flags                = 0b010          -- dont' fragment
+   ;ip_header_fragment_offset_high = 0b0_0000
+   ;ip_header_fragment_offset_low  = 0b_0000_0000
+   network_word[IP_HEADER_FLAGS_OFFSET] = 0b010__0_0000__0000_0000
+
+   network_byte[IP_HEADER_TTL] = 0b0111_1111
+   ;ip_header_ttl                  = 0b0111_1111
+   
+   network_byte[IP_HEADER_PROTOCOL] = protocol_select
+   ;ip_header_protocol             = protocol_select
+   
+   network_word[IP_HEADER_CHECKSUM] = 0
+
+   -- set destination ip addresses
+   network_byte[IP_HEADER_DESTINATION_IP_3] = network_remote_ip[0]
+   network_byte[IP_HEADER_DESTINATION_IP_2] = network_remote_ip[1]
+   network_byte[IP_HEADER_DESTINATION_IP_1] = network_remote_ip[2]
+   network_byte[IP_HEADER_DESTINATION_IP_0] = network_remote_ip[3]
+   
+   -- set source ip
+   ip_header_set_source_ip()
+
+   -- set the checksum bytes for transmit
+   network_word[IP_HEADER_CHECKSUM] = network_checksum_16_byte_calc(network_var_offset,ip_header_size)
+   ;network_switch_word_bytes(ip_header_checksum)  -- switch bytes for network out format
+   
+   network_var_offset = network_var_offset + ip_header_size
+end procedure
+
+--------------------------------------------------------------------------------
+-- Verify incomming ip header. Checks that ip header ip address is
+-- the same as our local ip address. checks ip header checksum
+--------------------------------------------------------------------------------
+function ip_header_verify() return byte is
+
+   if NETWORK_LINK_LAYER_ETHERNET == FALSE then
+      network_var_offset = 0 -- reset network offset
+   end if
+
+   ;ip_header_size = ip_header_length * 4
+   ip_header_size = (network_byte[IP_HEADER_VERSION_LENGTH] & 0x0F) * 4
+
+   -- check if the destination ip is the PIC's ip address
+   -- also check for ip version 4 with length of 20 bytes
+   if (network_byte[IP_HEADER_DESTINATION_IP_3] == network_local_ip[0]) &
+      (network_byte[IP_HEADER_DESTINATION_IP_2] == network_local_ip[1]) &
+      (network_byte[IP_HEADER_DESTINATION_IP_1] == network_local_ip[2]) &
+      (network_byte[IP_HEADER_DESTINATION_IP_0] == network_local_ip[3])
+
+      & (network_byte[IP_HEADER_VERSION_LENGTH] == 0x45)
+      then
+      
+   -- check the checksum
+   -- checksum may be wrong if recieved ip header is longer then usual (needs to be fixed)
+   ;if checksum_16_verify(ip_header,count(ip_header)) then
+         return 1
+   ;   end if
+   else
+      const byte str2[] = "-- IP Header: "
+      debug_string(DEBUG_3,str2)
+      debug_byte_dec(DEBUG_3, ip_header_size)
+      const byte str_size[] = " bytes --"
+      debug_string(DEBUG_3,str_size)
+   end if
+
+   network_var_offset = network_var_offset + ip_header_size
+   
+   return 0
+end function
+
+procedure ip_header_read_packet() is
+   network_packet_size = network_packet_size - network_var_offset
+   var byte ip_header_size = (network_byte[IP_HEADER_VERSION_LENGTH] & 0x0F) * 4
+
+   const byte str2[] = "-- IP Header: "
+   debug_string(DEBUG_3,str2)
+   debug_byte_dec(DEBUG_3, ip_header_size)
+   const byte str_size[] = " bytes --"
+   debug_string(DEBUG_3,str_size)
+   --
+   const byte str4[] = ", data size: "
+   debug_string(DEBUG_3,str4)
+   debug_word_dec(DEBUG_3, network_packet_size - ip_header_size)
+   const byte str_size2[] = " bytes --"
+   debug_string(DEBUG_3,str_size2)
+   debug_crlf(DEBUG_3)
+
+   -- print the entire ip header
+   var word count1 = network_var_offset
+   for ip_header_size loop
+      debug_byte_hex(DEBUG_4,network_data[count1])
+      debug_char(DEBUG_4," ")
+      count1 = count1 + 1
+   end loop
+
+;   debug_crlf(DEBUG_3)
+;   -- print data after ip header
+;   count1 = network_var_offset + ((network_byte[IP_HEADER_VERSION_LENGTH] & 0x0F) * 4)
+;   for network_packet_size - ((network_byte[IP_HEADER_VERSION_LENGTH] & 0x0F) * 4) loop
+;      debug_byte_hex(DEBUG_4,network_data[count1])
+;      debug_char(DEBUG_4," ")
+;      count1 = count1 + 1
+;   end loop
+
+   -- check if the header destination ip matches PIC ip,
+   -- and check if ip_header checksum is ok.
+   if ip_header_verify() == 1 then
+
+      debug_crlf(debug_lvl_3)
+
+      -- save source ip as destination ip address (the IP we can will reply to)
+      network_remote_ip[0] = network_byte[IP_HEADER_SOURCE_IP_0]
+      network_remote_ip[1] = network_byte[IP_HEADER_SOURCE_IP_1]
+      network_remote_ip[2] = network_byte[IP_HEADER_SOURCE_IP_2]
+      network_remote_ip[3] = network_byte[IP_HEADER_SOURCE_IP_3]
+      
+      -- check what type of packet it is (what protocol)
+      if network_byte[IP_HEADER_PROTOCOL] == ICMP then -- ICMP protocol
+         if NETWORK_USE_ICMP == TRUE then
+            -- send the data to ICMP lib for reading
+            network_packet_size = network_packet_size - ip_header_size
+            network_var_offset = network_var_offset + ip_header_size
+            icmp_read_packet()
+         end if
+      elsif network_byte[IP_HEADER_PROTOCOL] == UDP then -- UDP protocol
+         if NETWORK_USE_UDP == TRUE then
+            -- send the data to UDP lib for reading
+            network_packet_size = network_packet_size - ip_header_size
+            network_var_offset = network_var_offset + ip_header_size
+            udp_read_packet()
+         end if
+      elsif network_byte[IP_HEADER_PROTOCOL] == TCP then -- TCP protocol
+         if NETWORK_USE_TCP == TRUE then
+            -- send the data to TCP lib for reading
+            network_packet_size = network_packet_size - ip_header_size
+            network_var_offset = network_var_offset + ip_header_size
+            tcp_read_packet()
+         end if
+      else                               -- unknown protocol
+         const byte str3[] = "-- unknown ip header protocol --"
+         debug_string(debug_lvl_3, str3)
+         debug_crlf(debug_lvl_3)
+      end if
+   else
+      -- ignore the packet, it wasn't for us, or ip header checksum failed.
+      -- must read all packet data to keep buffer in sync.
+      debug_crlf(debug_lvl_3)
+      const byte str2[] = "-- packet ignored --"
+      debug_string(debug_lvl_3, str2)
+      debug_crlf(2)
+   end if
+end procedure

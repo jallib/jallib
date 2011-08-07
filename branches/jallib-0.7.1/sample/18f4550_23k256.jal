@@ -1,0 +1,151 @@
+-- Title: 23k256 sram example
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4l
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This library provides example usage for 23k256 sram
+--
+-- includes examples for:             : initalize
+--                                    : read settings from status register
+--                                    : write address
+--                                    : read address
+--                                    ; Do a large fast write
+--                                    ; Do a large fast read
+--                                    : Use as a 32K byte array
+--                                    : Use as a 16K word array
+--                                    : Use as a 8K dword array
+--
+-- Sources:
+-- http://ww1.microchip.com/downloads/en/DeviceDoc/22100D.pdf
+-- http://www.microchip.com/stellent/groups/techpub_sg/documents/devicedoc/en026368.pdf
+--
+
+include 18f4550                    -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target clock 20_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target PLLDIV  P1           -- PLL off
+pragma target CPUDIV  P2           -- no cycle divisor
+pragma target WDT  disabled        -- no watchdog
+pragma target XINST disabled       -- not supported by JalV2
+pragma target LVP  disabled        -- no Low Voltage Programming
+pragma target MCLR external        -- reset externally
+--
+enable_digital_io()                -- make all pins digital I/O
+_usec_delay (100_000) -- wait for power to stablilize
+
+
+include delay
+
+-- setup serial software
+const serial_sw_baudrate = 115200
+alias serial_sw_tx_pin is pin_B4
+alias serial_sw_rx_pin is pin_B5
+pin_B4_direction = output
+pin_B5_direction = input
+include serial_software
+serial_sw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_sw_write
+alias serial_read is serial_sw_read
+alias serial_data is serial_sw_data
+
+
+include print
+
+include spi_master_hw         -- includes the spi library
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+--
+spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+alias spi_master is spi_master_hw
+
+
+-- setup 23k256 for external memory
+-- setup chip select pin
+ALIAS sram_23k256_chip_select             is pin_a1
+ALIAS sram_23k256_chip_select_direction   is pin_a1_direction
+-- initial settings
+sram_23k256_chip_select_direction = output    -- chip select/slave select pin
+sram_23k256_chip_select = high                -- start chip slect high (chip disabled)
+-- initalize 23k256 in byte mode
+alias sram_23k256_force_spi_mode is spi_master_hw_set_mode_00 -- always set spi mode to 0,0
+include sram_23k256 -- setup Microchip 23k256 sram
+sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
+
+-- example: read the settings that where selected during init
+var byte mode, hold_is_disabled
+sram_23k256_read_settings (mode, hold_is_disabled)
+
+serial_write (mode)                -- send mode to serial port
+serial_write (hold_is_disabled)    -- send hold value (true 1 or false 0)
+
+-- example write then read from address 1
+sram_23k256_write(1,0xAA)   -- write byte
+
+var byte data1
+sram_23k256_read (1, data1) -- read byte
+
+-- send result via serial port
+serial_write (data1)
+serial_write (data1)
+serial_write (data1)
+serial_write (data1)
+
+-- Example using 23k256 as a 32KByte array (at array address 2)
+sram_23k256_byte[2] = 0xBB   -- set array byte 2 to value 0xBB
+data1 = sram_23k256_byte[2]  -- read array dword 2, data2 should = 0xBB
+
+-- send byte result via serial port
+serial_write (data1)
+serial_write (data1)
+serial_write (data1)
+serial_write (data1)
+
+-- procedure for sending dword via serial port
+procedure SEND_DWORD(DWORD in dval1) is
+  var byte dval2[4] at dval1
+  serial_write (dval2[3])
+  serial_write (dval2[2])
+  serial_write (dval2[1])
+  serial_write (dval2[0])
+end procedure
+
+-- Example using 23k256 as a 8K dword array
+var dword data2
+sram_23k256_dword[3] = 0xCCDDEEFF -- set array dword 3 to value 0xCCDDEEFF
+data2 = sram_23k256_dword[3]      -- read array dword 3, data2 should = 0xCCDDEEFF
+
+-- send dword result via serial port
+send_dword (data2)
+send_dword (data2)
+send_dword (data2)
+send_dword (data2)
+
+-- Example fast write lots of data
+sram_23k256_start_write (10)
+for 1024 loop
+  sram_23k256_do_write (0x11)
+end loop
+sram_23k256_stop_write()
+
+-- Example fast read lots of data
+sram_23k256_start_read (10)
+for 1024 loop
+  sram_23k256_do_read (data1)
+  serial_write (data1)
+end loop
+sram_23k256_stop_read()
+
+-- send 0xFF to serial port twice
+serial_write (0xFF)
+serial_write (0xFF)

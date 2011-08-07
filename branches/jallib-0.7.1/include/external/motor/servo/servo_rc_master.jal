@@ -1,0 +1,1028 @@
+-- Title: servo control library
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library controls up to 24 servos that are the type used in
+--              radio control (RC). This is the main servo library.
+--
+-- Sources:
+-- http://www.horrorseek.com/home/halloween/wolfstone/Motors/svoint_RCServos.html
+--
+-- usage notes:
+-- 1. Set your servo_min values to restrict movement.
+--    This step should be completed. First use code as follows
+--    directly after you call servo_init()
+--
+--    servo_move(0,1)
+--    forever loop
+--    end loop
+--
+--    Now run your circuit and gradually increase servo_min value so the servo
+--    is at the correct location on one side. Try to get the servo to be
+--    1mm from it's min location.
+-- 2. Repeat step 1 by decreasing servo_max but use this:
+--
+--    servo_move(255,1)
+--    forever loop
+--    end loop
+--
+-- other notes:
+-- This lib uses timer0, timer1 or timer3
+-- Up to 24 servos are supported
+--
+
+-- check if current pic has selected timers
+if SERVO_USE_TIMER == 0 then
+   if !(defined(tmr0) == TRUE) then
+      _error "target pic does not have a timer0 module"
+   end if
+elsif SERVO_USE_TIMER == 1 then
+   if !(defined(tmr1) == TRUE) then
+      _error "target pic does not have a timer1 module"
+   end if
+elsif SERVO_USE_TIMER == 3 then
+   if !(defined(tmr3) == TRUE) then
+       _error "target pic does not have a timer3 module"
+   end if
+end if
+--
+if defined(SERVO_9_TO_16_USE_TIMER) == TRUE then
+   if SERVO_9_TO_16_USE_TIMER== 0 then
+      if !(defined(tmr0) == TRUE) then
+         _error "target pic does not have a timer0 module"
+      end if
+   elsif SERVO_9_TO_16_USE_TIMER == 1 then
+      if !(defined(tmr1) == TRUE) then
+         _error "target pic does not have a timer1 module"
+      end if
+   elsif SERVO_9_TO_16_USE_TIMER == 3 then
+      if !(defined(tmr3) == TRUE) then
+         _error "target pic does not have a timer3 module"
+      end if
+   end if
+end if
+--
+if defined(SERVO_17_TO_24_USE_TIMER) == TRUE then
+   if SERVO_17_TO_24_USE_TIMER == 0 then
+      if !(defined(tmr0) == TRUE) then
+         _error "target pic does not have a timer0 module"
+      end if
+   elsif SERVO_17_TO_24_USE_TIMER == 1 then
+      if !(defined(tmr1) == TRUE) then
+         _error "target pic does not have a timer1 module"
+      end if
+   elsif SERVO_17_TO_24_USE_TIMER == 3 then
+      if !(defined(tmr3) == TRUE) then
+         _error "target pic does not have a timer3 module"
+      end if
+   end if
+end if
+
+-- use these bit variables to reverse servo direction
+var byte servo_reverse = 0x00             -- All servo's on by default
+var bit servo_1_reverse at servo_reverse : 0
+var bit servo_2_reverse at servo_reverse : 1
+var bit servo_3_reverse at servo_reverse : 2
+var bit servo_4_reverse at servo_reverse : 3
+var bit servo_5_reverse at servo_reverse : 4
+var bit servo_6_reverse at servo_reverse : 5
+var bit servo_7_reverse at servo_reverse : 6
+var bit servo_8_reverse at servo_reverse : 7
+
+-- use these variables to turn servo's on or off
+var byte servo_1_to_8_on = 0xFF             -- All servo's on by default
+var bit servo_1_on at servo_1_to_8_on : 0
+var bit servo_2_on at servo_1_to_8_on : 1
+var bit servo_3_on at servo_1_to_8_on : 2
+var bit servo_4_on at servo_1_to_8_on : 3
+var bit servo_5_on at servo_1_to_8_on : 4
+var bit servo_6_on at servo_1_to_8_on : 5
+var bit servo_7_on at servo_1_to_8_on : 6
+var bit servo_8_on at servo_1_to_8_on : 7
+
+-- create an array for servo location
+if SERVO_USE_TIMER == 0 then
+   var byte servo_1_to_8_steps_per_2_5_msec -- holds number of steps within 2.5ms
+   var byte _servo_1_to_8_pulse[8]
+   var byte _servo_1_to_8_low[8]
+else
+   var word servo_1_to_8_steps_per_2_5_msec -- holds number of steps within 2.5ms
+   var word _servo_1_to_8_pulse[8]
+   var word _servo_1_to_8_low[8]
+end if
+
+-- setup servo 1 to 8 timer aliases for the timer the user selected
+if SERVO_USE_TIMER == 0 then
+   -- set special timer0 settings
+   t0con_psa  = 0  -- assign prescaler to timer0
+   -- set timer registers to timer0
+   alias servo_1_to_8_tmr      is TMR0            -- timer interval
+   alias servo_1_to_8_cs       is T0CON_T0CS      -- timer clock source bit
+   alias servo_1_to_8_ie       is INTCON_TMR0IE   -- interrupt enable
+   alias servo_1_to_8_if       is INTCON_TMR0IF   -- interrupt overflow bit
+   alias servo_1_to_8_ps       is T0CON_T0PS      -- timer prescaler select bits
+elsif SERVO_USE_TIMER == 1 then
+   -- set special timer1 settings
+   t1con_tmr1on = 1               -- enables timer 1
+   -- set timer registers to timer1
+   alias servo_1_to_8_tmr      is TMR1             -- timer interval
+   alias servo_1_to_8_cs       is T1CON_TMR1CS     -- timer clock source bit
+   alias servo_1_to_8_ie       is PIE1_TMR1IE      -- interrupt enable
+   alias servo_1_to_8_if       is PIR1_TMR1IF      -- interrupt overflow bit
+   alias servo_1_to_8_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+elsif SERVO_USE_TIMER == 3 then
+   t3con_tmr3on = 1               -- enables timer 3
+   -- set timer registers to timer3
+   alias servo_1_to_8_tmr      is TMR3             -- timer interval
+   alias servo_1_to_8_cs       is T3CON_TMR3CS     -- timer clock source bit
+   alias servo_1_to_8_ie       is PIE2_TMR3IE      -- interrupt enable
+   alias servo_1_to_8_if       is PIR2_TMR3IF      -- interrupt overflow bit
+   alias servo_1_to_8_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+end if
+
+var bit _servo_1_to_8_isr_count = 0     -- ISR step count (0 - servo pulse / 1 - idle state)
+var byte _servo_1_to_8_number_count = 0 -- ISR servo control count 0 to 7
+
+----------
+if defined(servo_9) == TRUE then
+   -- use these bit variables to reverse servo direction
+   var byte servo_9_to_16_reverse = 0x00
+   var bit servo_9_reverse at servo_9_to_16_reverse : 0
+   var bit servo_10_reverse at servo_9_to_16_reverse : 1
+   var bit servo_11_reverse at servo_9_to_16_reverse : 2
+   var bit servo_12_reverse at servo_9_to_16_reverse : 3
+   var bit servo_13_reverse at servo_9_to_16_reverse : 4
+   var bit servo_14_reverse at servo_9_to_16_reverse : 5
+   var bit servo_15_reverse at servo_9_to_16_reverse : 6
+   var bit servo_16_reverse at servo_9_to_16_reverse : 7
+
+   -- use these variables to turn servo's on or off
+   var byte servo_9_to_16_on = 0xFF             -- All servo's on by default
+   var bit servo_9_on at servo_9_to_16_on : 0
+   var bit servo_10_on at servo_9_to_16_on : 1
+   var bit servo_11_on at servo_9_to_16_on : 2
+   var bit servo_12_on at servo_9_to_16_on : 3
+   var bit servo_13_on at servo_9_to_16_on : 4
+   var bit servo_14_on at servo_9_to_16_on : 5
+   var bit servo_15_on at servo_9_to_16_on : 6
+   var bit servo_16_on at servo_9_to_16_on : 7
+   
+   -- create an array for servo location
+   if SERVO_9_TO_16_USE_TIMER == 0 then
+      var byte servo_9_to_16_steps_per_2_5_msec -- holds number of steps within 2.5ms
+      var byte _servo_9_to_16_pulse[8]
+      var byte _servo_9_to_16_low[8]
+   else
+      var word servo_9_to_16_steps_per_2_5_msec -- holds number of steps within 2.5ms
+      var word _servo_9_to_16_pulse[8]
+      var word _servo_9_to_16_low[8]
+   end if
+
+
+   -- setup servo 1 to 8 timer aliases for the timer the user selected
+   if SERVO_9_TO_16_USE_TIMER == 0 then
+      -- set special timer0 settings
+      t0con_psa  = 0  -- assign prescaler to timer0
+      -- set timer registers to timer0
+      alias servo_9_to_16_tmr      is TMR0            -- timer interval
+      alias servo_9_to_16_cs       is T0CON_T0CS      -- timer clock source bit
+      alias servo_9_to_16_ie       is INTCON_TMR0IE   -- interrupt enable
+      alias servo_9_to_16_if       is INTCON_TMR0IF   -- interrupt overflow bit
+      alias servo_9_to_16_ps       is T0CON_T0PS      -- timer prescaler select bits
+   elsif SERVO_9_TO_16_USE_TIMER == 1 then
+      -- set special timer1 settings
+      t1con_tmr1on = 1               -- enables timer 1
+      -- set timer registers to timer1
+      alias servo_9_to_16_tmr      is TMR1             -- timer interval
+      alias servo_9_to_16_cs       is T1CON_TMR1CS     -- timer clock source bit
+      alias servo_9_to_16_ie       is PIE1_TMR1IE      -- interrupt enable
+      alias servo_9_to_16_if       is PIR1_TMR1IF      -- interrupt overflow bit
+      alias servo_9_to_16_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+   elsif SERVO_9_TO_16_USE_TIMER == 3 then
+      t3con_tmr3on = 1               -- enables timer 3
+      -- set timer registers to timer3
+      alias servo_9_to_16_tmr      is TMR3             -- timer interval
+      alias servo_9_to_16_cs       is T3CON_TMR3CS     -- timer clock source bit
+      alias servo_9_to_16_ie       is PIE2_TMR3IE      -- interrupt enable
+      alias servo_9_to_16_if       is PIR2_TMR3IF      -- interrupt overflow bit
+      alias servo_9_to_16_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+   end if
+
+   var bit _servo_9_to_16_isr_count = 0     -- ISR step count (0 - servo pulse / 1 - idle state)
+   var byte _servo_9_to_16_number_count = 8 -- ISR servo control count 0 to 7
+end if
+-------------------
+
+if defined(servo_17) == TRUE then
+
+   -- use these bit variables to reverse servo direction
+   var byte servo_17_to_24_reverse = 0x00
+   var bit servo_17_reverse at servo_17_to_24_reverse : 0
+   var bit servo_18_reverse at servo_17_to_24_reverse : 1
+   var bit servo_19_reverse at servo_17_to_24_reverse : 2
+   var bit servo_20_reverse at servo_17_to_24_reverse : 3
+   var bit servo_21_reverse at servo_17_to_24_reverse : 4
+   var bit servo_22_reverse at servo_17_to_24_reverse : 5
+   var bit servo_23_reverse at servo_17_to_24_reverse : 6
+   var bit servo_24_reverse at servo_17_to_24_reverse : 7
+
+   -- use these variables to turn servo's on or off
+   var byte servo_17_to_24_on = 0xFF             -- All servo's on by default
+   var bit servo_17_on at servo_17_to_24_on : 0
+   var bit servo_18_on at servo_17_to_24_on : 1
+   var bit servo_19_on at servo_17_to_24_on : 2
+   var bit servo_20_on at servo_17_to_24_on : 3
+   var bit servo_21_on at servo_17_to_24_on : 4
+   var bit servo_22_on at servo_17_to_24_on : 5
+   var bit servo_23_on at servo_17_to_24_on : 6
+   var bit servo_24_on at servo_17_to_24_on : 7
+
+   -- create an array for servo location
+   if SERVO_17_TO_24_USE_TIMER == 0 then
+      var byte servo_17_to_24_steps_per_2_5_msec -- holds number of steps within 2.5ms
+      var byte _servo_17_to_24_pulse[8]
+      var byte _servo_17_to_24_low[8]
+   else
+      var word servo_17_to_24_steps_per_2_5_msec -- holds number of steps within 2.5ms
+      var word _servo_17_to_24_pulse[8]
+      var word _servo_17_to_24_low[8]
+   end if
+
+   -- setup servo 1 to 8 timer aliases for the timer the user selected
+   if SERVO_17_TO_24_USE_TIMER == 0 then
+      -- set special timer0 settings
+      t0con_psa  = 0  -- assign prescaler to timer0
+      -- set timer registers to timer0
+      alias servo_17_to_24_tmr      is TMR0            -- timer interval
+      alias servo_17_to_24_cs       is T0CON_T0CS      -- timer clock source bit
+      alias servo_17_to_24_ie       is INTCON_TMR0IE   -- interrupt enable
+      alias servo_17_to_24_if       is INTCON_TMR0IF   -- interrupt overflow bit
+      alias servo_17_to_24_ps       is T0CON_T0PS      -- timer prescaler select bits
+   elsif SERVO_17_TO_24_USE_TIMER == 1 then
+      -- set special timer1 settings
+      t1con_tmr1on = 1               -- enables timer 1
+      -- set timer registers to timer1
+      alias servo_17_to_24_tmr      is tmr1             -- timer interval
+      alias servo_17_to_24_cs       is T1CON_TMR1CS     -- timer clock source bit
+      alias servo_17_to_24_ie       is PIE1_TMR1IE      -- interrupt enable
+      alias servo_17_to_24_if       is PIR1_TMR1IF      -- interrupt overflow bit
+      alias servo_17_to_24_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+   elsif SERVO_17_TO_24_USE_TIMER == 3 then
+      t3con_tmr3on = 1               -- enables timer 3
+      -- set timer registers to timer3
+      alias servo_17_to_24_tmr      is tmr3             -- timer interval
+      alias servo_17_to_24_cs       is T3CON_TMR3CS     -- timer clock source bit
+      alias servo_17_to_24_ie       is PIE2_TMR3IE      -- interrupt enable
+      alias servo_17_to_24_if       is PIR2_TMR3IF      -- interrupt overflow bit
+      alias servo_17_to_24_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+   end if
+
+   var bit _servo_17_to_24_isr_count = 0    -- ISR step count (0 - servo pulse / 1 - idle state)
+   var byte _servo_17_to_24_number_count = 16 -- ISR servo control count 0 to 7
+end if
+--------------------------------------------------------------------------------
+-- Sets servo level high or low. Servo numbers 0 to 7
+-- only set level if servo_1_to_8_x_on = true
+--------------------------------------------------------------------------------
+procedure _servo_1_to_8_set_level(byte in servo_1_to_8_num, bit in level) is
+   pragma inline
+
+   if servo_1_to_8_num < 8 then
+      if servo_1_to_8_num == 0 & servo_1_on then
+         servo_1 = level
+      end if
+
+      if defined(servo_2) == TRUE then
+         if servo_1_to_8_num == 1 & servo_2_on then
+            servo_2 = level
+         end if
+      end if
+
+      if defined(servo_3) == TRUE then
+         if servo_1_to_8_num == 2 & servo_3_on then
+            servo_3 = level
+         end if
+      end if
+
+      if defined(servo_4) == TRUE then
+         if servo_1_to_8_num == 3 & servo_4_on then
+            servo_4 = level
+         end if
+      end if
+
+      if defined(servo_5) == TRUE then
+         if servo_1_to_8_num == 4 & servo_5_on then
+            servo_5 = level
+         end if
+      end if
+
+      if defined(servo_6) == TRUE then
+         if servo_1_to_8_num == 5 & servo_6_on then
+            servo_6 = level
+         end if
+      end if
+
+      if defined(servo_7) == TRUE then
+         if servo_1_to_8_num == 6 & servo_7_on then
+            servo_7 = level
+         end if
+      end if
+
+      if defined(servo_8) == TRUE then
+         if servo_1_to_8_num == 7 & servo_8_on then
+            servo_8 = level
+         end if
+      end if
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Sets servo level high or low. Servo numbers 0 to 7
+-- only set level if servo_9_to_16_x_on = true
+--------------------------------------------------------------------------------
+
+if defined(servo_9) == TRUE then
+   procedure _servo_9_to_16_set_level(byte in servo_9_to_16_num, bit in level) is
+      pragma inline
+
+      if (servo_9_to_16_num > 7) & (servo_9_to_16_num < 16) then
+         if servo_9_to_16_num == 8 & servo_9_on then
+            servo_9 = level
+         end if
+
+         if defined(servo_10) == TRUE then
+            if servo_9_to_16_num == 9 & servo_10_on then
+               servo_10 = level
+            end if
+         end if
+
+         if defined(servo_11) == TRUE then
+            if servo_9_to_16_num == 10 & servo_11_on then
+               servo_11 = level
+            end if
+         end if
+
+         if defined(servo_12) == TRUE then
+            if servo_9_to_16_num == 11 & servo_12_on then
+               servo_12 = level
+            end if
+         end if
+
+         if defined(servo_13) == TRUE then
+            if servo_9_to_16_num == 12 & servo_13_on then
+               servo_13 = level
+            end if
+         end if
+
+         if defined(servo_14) == TRUE then
+            if servo_9_to_16_num == 13 & servo_14_on then
+               servo_14 = level
+            end if
+         end if
+
+         if defined(servo_15) == TRUE then
+            if servo_9_to_16_num == 14 & servo_15_on then
+               servo_15 = level
+            end if
+         end if
+
+         if defined(servo_16) == TRUE then
+            if servo_9_to_16_num == 15 & servo_16_on then
+               servo_16 = level
+            end if
+         end if
+      end if
+   end procedure
+end if
+--------------------------------------------------------------------------------
+-- Sets servo level high or low. Servo numbers 0 to 7
+-- only set level if servo_17_to_24_x_on = true
+--------------------------------------------------------------------------------
+
+if defined(servo_17) == TRUE then
+   procedure _servo_17_to_24_set_level(byte in servo_17_to_24_num, bit in level) is
+      pragma inline
+
+      if (servo_17_to_24_num > 15) & (servo_17_to_24_num < 24) then
+         if servo_17_to_24_num == 16 & servo_17_on then
+            servo_17 = level
+         end if
+
+         if defined(servo_18) == TRUE then
+            if servo_17_to_24_num == 17 & servo_18_on then
+               servo_18 = level
+            end if
+         end if
+
+         if defined(servo_19) == TRUE then
+            if servo_17_to_24_num == 18 & servo_19_on then
+               servo_19 = level
+            end if
+         end if
+
+         if defined(servo_20) == TRUE then
+            if servo_17_to_24_num == 19 & servo_20_on then
+               servo_20 = level
+            end if
+         end if
+
+         if defined(servo_21) == TRUE then
+            if servo_17_to_24_num == 20 & servo_21_on then
+               servo_21 = level
+            end if
+         end if
+
+         if defined(servo_22) == TRUE then
+            if servo_17_to_24_num == 21 & servo_22_on then
+               servo_22 = level
+            end if
+         end if
+
+         if defined(servo_23) == TRUE then
+            if servo_17_to_24_num == 22 & servo_23_on then
+               servo_23 = level
+            end if
+         end if
+
+         if defined(servo_24) == TRUE then
+            if servo_17_to_24_num == 23 & servo_24_on then
+               servo_24 = level
+            end if
+         end if
+      end if
+   end procedure
+end if
+--------------------------------------------------------------------------------
+-- Interupt procedure to pulse servo
+--------------------------------------------------------------------------------
+
+procedure _servo_isr() is
+   pragma interrupt
+
+   if servo_1_to_8_if then -- check if it is a timer interrupt
+      servo_1_to_8_if = off                                                 -- reset counter
+      if _servo_1_to_8_isr_count == 0 then                                  -- do the servo pulse (high)
+         servo_1_to_8_tmr = _servo_1_to_8_pulse[_servo_1_to_8_number_count] -- set timer to pulse high width
+         _servo_1_to_8_set_level (_servo_1_to_8_number_count,HIGH)          -- set level to high
+         _servo_1_to_8_isr_count = _servo_1_to_8_isr_count + 1              -- go to next step
+      elsif _servo_1_to_8_isr_count == 1 then                               -- do the servo idle state (low)
+         servo_1_to_8_tmr = _servo_1_to_8_low[_servo_1_to_8_number_count]   -- set timer to pulse low width
+         _servo_1_to_8_set_level (_servo_1_to_8_number_count,LOW)           -- set level to low
+         _servo_1_to_8_isr_count = _servo_1_to_8_isr_count + 1              -- go to next step
+         _servo_1_to_8_number_count = _servo_1_to_8_number_count + 1        -- change to next servo
+         if _servo_1_to_8_number_count == 8 then                            -- change to first servo if needed
+            _servo_1_to_8_number_count = 0                                  -- go back to first servo
+         end if
+         _servo_1_to_8_isr_count = 0                                        -- go to first step
+      end if
+   end if
+
+
+   if defined(servo_9) == TRUE then
+      if servo_9_to_16_if then -- check if it is a timer interrupt
+         servo_9_to_16_if = off                                                        -- reset counter
+         if _servo_9_to_16_isr_count == 0 then                                         -- do the servo pulse (high)
+            servo_9_to_16_tmr = _servo_9_to_16_pulse[_servo_9_to_16_number_count - 8]  -- set timer to pulse high width
+            _servo_9_to_16_set_level (_servo_9_to_16_number_count,HIGH)                -- set level to high
+            _servo_9_to_16_isr_count = _servo_9_to_16_isr_count + 1                    -- go to next step
+         elsif _servo_9_to_16_isr_count == 1 then                                      -- do the servo idle state (low)
+            servo_9_to_16_tmr = _servo_9_to_16_low[_servo_9_to_16_number_count - 8]    -- set timer to pulse low width
+            _servo_9_to_16_set_level (_servo_9_to_16_number_count,LOW)                 -- set level to low
+            _servo_9_to_16_isr_count = _servo_9_to_16_isr_count + 1                    -- go to next step
+            _servo_9_to_16_number_count = _servo_9_to_16_number_count + 1              -- change to next servo
+            if _servo_9_to_16_number_count == 16 then                                  -- change to first servo if needed
+               _servo_9_to_16_number_count = 8                                         -- go back to first servo
+            end if
+            _servo_9_to_16_isr_count = 0                                               -- go to first step
+         end if
+      end if
+   end if
+
+
+   if defined(servo_17) == TRUE then
+      if servo_17_to_24_if then                                                           -- check if it is a timer interrupt
+         servo_17_to_24_if = off                                                          -- reset counter
+         if _servo_17_to_24_isr_count == 0 then                                           -- do the servo pulse (high)
+            servo_17_to_24_tmr = _servo_17_to_24_pulse[_servo_17_to_24_number_count - 16] -- set timer to pulse high width
+            _servo_17_to_24_set_level (_servo_17_to_24_number_count,HIGH)                 -- set level to high
+            _servo_17_to_24_isr_count = _servo_17_to_24_isr_count + 1                     -- go to next step
+         elsif _servo_17_to_24_isr_count == 1 then                                        -- do the servo idle state (low)
+            servo_17_to_24_tmr = _servo_17_to_24_low[_servo_17_to_24_number_count - 16]   -- set timer to pulse low width
+            _servo_17_to_24_set_level (_servo_17_to_24_number_count,LOW)                  -- set level to low
+            _servo_17_to_24_isr_count = _servo_17_to_24_isr_count + 1                     -- go to next step
+            _servo_17_to_24_number_count = _servo_17_to_24_number_count + 1               -- change to next servo
+            if _servo_17_to_24_number_count == 24 then                                    -- change to first servo if needed
+               _servo_17_to_24_number_count = 16                                          -- go back to first servo
+            end if
+            _servo_17_to_24_isr_count = 0                                                 -- go to first step
+         end if
+      end if
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Move a servo to any location from 0 to 255
+--------------------------------------------------------------------------------
+procedure servo_move(byte in location, byte in servo_number) is
+
+
+   -- reverse direction if needed
+   if servo_number == 1 then           -- check servo number
+      if servo_1_reverse == TRUE then  -- check reverse bit
+         location = !location          -- invert the location
+      end if
+   elsif servo_number == 2 then
+      if servo_2_reverse == TRUE then
+         location = !location
+      end if
+   elsif servo_number == 3 then
+      if servo_3_reverse == TRUE then
+         location = !location
+      end if
+   elsif servo_number == 4 then
+      if servo_4_reverse == TRUE then
+         location = !location
+      end if
+   elsif servo_number == 5 then
+      if servo_5_reverse == TRUE then
+         location = !location
+      end if
+   elsif servo_number == 6 then
+      if servo_6_reverse == TRUE then
+         location = !location
+      end if
+   elsif servo_number == 7 then
+      if servo_7_reverse == TRUE then
+         location = !location
+      end if
+   elsif servo_number == 8 then
+      if servo_8_reverse == TRUE then
+         location = !location
+      end if
+   end if
+
+   if defined(servo_9) == TRUE then
+      if servo_number == 9 then
+         if servo_9_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 10 then
+         if servo_10_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 11 then
+         if servo_11_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 12 then
+         if servo_12_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 13 then
+         if servo_13_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 14 then
+         if servo_14_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 15 then
+         if servo_15_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 16 then
+         if servo_16_reverse == TRUE then
+            location = !location
+         end if
+      end if
+   end if
+   
+   if defined(servo_17) == TRUE then
+      if servo_number == 17 then
+         if servo_17_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 18 then
+         if servo_18_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 19 then
+         if servo_19_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 20 then
+         if servo_20_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 21 then
+         if servo_21_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 22 then
+         if servo_22_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 23 then
+         if servo_23_reverse == TRUE then
+            location = !location
+         end if
+      elsif servo_number == 24 then
+         if servo_24_reverse == TRUE then
+            location = !location
+         end if
+      end if
+   end if
+
+   
+   var dword calc1, calc2
+   var dword final
+   var word location2 = location -- change location to word for overflow
+
+   -- map input location to 0-255 according to servo_min/servo_max
+   -- calculate difference between min & max
+   var byte servo_calc_diff = servo_max - servo_min
+   calc1 = (location2 * servo_calc_diff)
+   calc2 = calc1 / 255
+   final = calc2 + servo_min
+
+   if servo_number < 9 then
+      if SERVO_USE_TIMER == 0 then -- if 8 bit timer 0
+        var byte final2
+
+         -- change final into a byte
+         var byte  val[1] at final
+         final2 = val[0]
+
+         ;calculate the pulse length
+         calc1 = (final2 * servo_1_to_8_steps_per_2_5_msec)
+         final = calc1 / 255
+
+         -- change final into a byte
+         var byte  val2[2] at final
+         final2 = val2[0]
+
+         -- set the timer value
+        _servo_1_to_8_pulse[servo_number - 1] = (255 - final2) -- move servo 1 by pulse length
+        _servo_1_to_8_low[servo_number - 1] = (255 - _servo_1_to_8_pulse[servo_number - 1]) + (255 - servo_1_to_8_steps_per_2_5_msec)
+      else                   -- if 16 bit timer1 or timer3
+         var dword final2
+         var word final3
+
+         -- change final into a word
+         var byte  val[2] at final
+         final2 = (val[1] << 8) + val[0]
+
+         ;calculate the pulse length
+         calc1 = (final2 * servo_1_to_8_steps_per_2_5_msec)
+         final = calc1 / 255
+
+         -- change final into a word
+         var byte  val2[2] at final
+         final3 =  val2[1]
+         final3 = (final3 <<8) + val2[0]
+
+         -- set the timer value
+         _servo_1_to_8_pulse[servo_number - 1] = (65535 - final3) -- move servo 1 by pulse length
+         _servo_1_to_8_low[servo_number - 1] = (65535 - _servo_1_to_8_pulse[servo_number - 1]) + (65535 - servo_1_to_8_steps_per_2_5_msec)
+     end if
+   end if
+   -----
+
+   if defined(servo_9) == TRUE then
+      if (servo_number > 8) & (servo_number < 17) then
+         if SERVO_9_TO_16_USE_TIMER == 0 then -- if 8 bit timer 0
+           var byte final2
+
+            -- change final into a byte
+            var byte  val[1] at final
+            final2 = val[0]
+
+            ;calculate the pulse length
+            calc1 = (final2 * servo_9_to_16_steps_per_2_5_msec)
+            final = calc1 / 255
+
+            -- change final into a byte
+            var byte  val2[2] at final
+            final2 = val2[0]
+
+            -- set the timer value
+           _servo_9_to_16_pulse[servo_number - 1 - 8] = (255 - final2) -- move servo 1 by pulse length
+           _servo_9_to_16_low[servo_number - 1 - 8] = (255 - _servo_9_to_16_pulse[servo_number - 1 - 8]) + (255 - servo_9_to_16_steps_per_2_5_msec)
+         else                   -- if 16 bit timer1 or timer3
+            var dword final2
+            var word final3
+
+            -- change final into a word
+            var byte  val[2] at final
+            final2 = (val[1] << 8) + val[0]
+
+            ;calculate the pulse length
+            calc1 = (final2 * servo_9_to_16_steps_per_2_5_msec)
+            final = calc1 / 255
+
+            -- change final into a word
+            var byte  val2[2] at final
+            final3 =  val2[1]
+            final3 = (final3 <<8) + val2[0]
+
+            -- set the timer value
+            _servo_9_to_16_pulse[servo_number - 1 - 8] = (65535 - final3) -- move servo 1 by pulse length
+            _servo_9_to_16_low[servo_number - 1 - 8] = (65535 - _servo_9_to_16_pulse[servo_number - 1 - 8]) + (65535 - servo_9_to_16_steps_per_2_5_msec)
+        end if
+      end if
+   end if
+   -----
+
+   if defined(servo_17) == TRUE then
+      if (servo_number > 16) & (servo_number < 25) then
+         if SERVO_17_TO_24_USE_TIMER == 0 then -- if 8 bit timer 0
+           var byte final2
+
+            -- change final into a byte
+            var byte  val[1] at final
+            final2 = val[0]
+
+            ;calculate the pulse length
+            calc1 = (final2 * servo_17_to_24_steps_per_2_5_msec)
+            final = calc1 / 255
+
+            -- change final into a byte
+            var byte  val2[2] at final
+            final2 = val2[0]
+
+            -- set the timer value
+           _servo_17_to_24_pulse[servo_number - 1 - 16] = (255 - final2) -- move servo 1 by pulse length
+           _servo_17_to_24_low[servo_number - 1 - 16] = (255 - _servo_17_to_24_pulse[servo_number - 1 - 16]) + (255 - servo_17_to_24_steps_per_2_5_msec)
+         else                   -- if 16 bit timer1 or timer3
+            var dword final2
+            var word final3
+
+            -- change final into a word
+            var byte  val[2] at final
+            final2 = (val[1] << 8) + val[0]
+
+            ;calculate the pulse length
+            calc1 = (final2 * servo_17_to_24_steps_per_2_5_msec)
+            final = calc1 / 255
+
+            -- change final into a word
+            var byte  val2[2] at final
+            final3 =  val2[1]
+            final3 = (final3 <<8) + val2[0]
+
+            -- set the timer value
+            _servo_17_to_24_pulse[servo_number - 1 - 16] = (65535 - final3) -- move servo 1 by pulse length
+            _servo_17_to_24_low[servo_number - 1 - 16] = (65535 - _servo_17_to_24_pulse[servo_number - 1 - 16]) + (65535 - servo_17_to_24_steps_per_2_5_msec)
+        end if
+      end if
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Move the servo using a percentage value 0 to 100
+--------------------------------------------------------------------------------
+procedure servo_move_percent(byte in percent, byte in servo_number) is
+   var word x,y
+   y = percent
+   x = (255 * y) / 100          -- map percent to 255
+   
+   var byte _location[2] at x          -- change from word to byte
+   var byte location = _location[0]
+
+   servo_move (location,servo_number)  -- move the servo
+end procedure
+
+--------------------------------------------------------------------------------
+-- Initialize  the servo
+--------------------------------------------------------------------------------
+procedure servo_init() is
+   -- enable global interupts
+   INTCON_GIE  = on        -- Enables all unmasked interrupts
+   INTCON_PEIE = on        -- Enables all unmasked peripheral interrupts
+
+   servo_1_to_8_if = off   -- clear interrupt overflow bit
+   servo_1_to_8_ie = on    -- timer overflow interrupt enable
+   servo_1_to_8_cs = 0     -- use internal clock for timer
+
+   if SERVO_USE_TIMER == 0 then
+      -- timer0 min step time of (1/osc)*8. (0.4us at 20mhz)
+
+      -- calculate number of steps available within 2.5ms ;example on 20mhz
+      const dword SERVO_1_TO_8_CALC_1 = target_clock / 10_000           ;= 2000
+      const dword SERVO_1_TO_8_CALC_2 = SERVO_1_TO_8_CALC_1 / 4         ;= 500
+      const dword SERVO_1_TO_8_CALC_3 = 10_000 / SERVO_1_TO_8_CALC_2    ;= 20
+      const dword SERVO_1_TO_8_CALC_4 = SERVO_1_TO_8_CALC_3 * 2         ;= 40
+      var dword servo_1_to_8_steps = 250_000 / SERVO_1_TO_8_CALC_4      ;= 6250
+
+      -- increase prescaler if 256 clock pulses is not enough time
+      var byte servo_1_to_8_prescaler = 0
+      forever loop
+         if servo_1_to_8_steps > 255 then
+            servo_1_to_8_prescaler = servo_1_to_8_prescaler + 1 -- increase prescaler
+            servo_1_to_8_steps = servo_1_to_8_steps / 2         -- decrease timer steps needed
+         else
+            exit loop
+         end if
+      end loop
+
+      -- servo_1_to_8_steps is now calculated, set the prescaler
+      servo_1_to_8_ps = servo_1_to_8_prescaler
+
+      -- put it into a byte for the 8 bit timer
+      var byte value[1] at servo_1_to_8_steps
+      servo_1_to_8_steps_per_2_5_msec = value[0]
+   else
+      -- timer1 & timer3 min step time is (1/osc)*4. (0.2us at 20mhz)
+
+      -- calculate number of steps available within 2.5ms ;example on 20mhz
+      const dword SERVO_1_TO_8_CALC_1 = target_clock / 40_000           ;500
+      const dword SERVO_1_TO_8_CALC_2 = 10_000 / SERVO_1_TO_8_CALC_1    ;20
+      var dword servo_1_to_8_steps = 250_000 / SERVO_1_TO_8_CALC_2      ;12500
+
+      -- increase prescaler if 65535 clock pulses is not enouf time
+      var byte servo_1_to_8_prescaler = 0
+      forever loop
+         if servo_1_to_8_steps > 65535 then
+            servo_1_to_8_prescaler = servo_1_to_8_prescaler + 1 -- increase prescaler
+            servo_1_to_8_steps = servo_1_to_8_steps / 2         -- decrease timer steps needed
+         else
+            exit loop
+         end if
+      end loop
+
+      -- servo_1_to_8_steps is now calculated, set the prescaler
+      servo_1_to_8_ps = servo_1_to_8_prescaler
+
+      -- put it into a word for the 16 bit timer
+      var word value[2] at servo_1_to_8_steps
+      servo_1_to_8_steps_per_2_5_msec = (value[1] << 8) + value[0] ; equals 12500 on 20mhz
+
+   end if
+
+   -- center servo's
+   servo_move(127,1)
+   servo_move(127,2)
+   servo_move(127,3)
+   servo_move(127,4)
+   servo_move(127,5)
+   servo_move(127,6)
+   servo_move(127,7)
+   servo_move(127,8)
+
+   -----
+
+   if defined(servo_9) == TRUE then
+      servo_9_to_16_if = off   -- clear interrupt overflow bit
+      servo_9_to_16_ie = on    -- timer overflow interrupt enable
+      servo_9_to_16_cs = 0     -- use internal clock for timer
+
+      if SERVO_9_TO_16_USE_TIMER == 0 then
+         -- timer0 min step time of (1/osc)*8. (0.4us at 20mhz)
+
+         -- calculate number of steps available within 2.5ms ;example on 20mhz
+         const dword SERVO_9_TO_16_CALC_1 = target_clock / 10_000    ;= 2000
+         const dword SERVO_9_TO_16_CALC_2 = SERVO_9_TO_16_CALC_1 / 4         ;= 500
+         const dword SERVO_9_TO_16_CALC_3 = 10_000 / SERVO_9_TO_16_CALC_2    ;= 20
+         const dword SERVO_9_TO_16_CALC_4 = SERVO_9_TO_16_CALC_3 * 2         ;= 40
+         var dword servo_9_to_16_steps = 250_000 / SERVO_9_TO_16_CALC_4      ;= 6250
+
+         -- increase prescaler if 256 clock pulses is not enouf time
+         var byte servo_9_to_16_prescaler = 0
+         forever loop
+            if servo_9_to_16_steps > 255 then
+               servo_9_to_16_prescaler = servo_9_to_16_prescaler + 1 -- increase prescaler
+               servo_9_to_16_steps = servo_9_to_16_steps / 2         -- decrease timer steps needed
+            else
+               exit loop
+            end if
+         end loop
+
+         -- servo_9_to_16_steps is now calculated, set the prescaler
+         servo_9_to_16_ps = servo_9_to_16_prescaler
+
+         -- put it into a byte for the 8 bit timer
+         var byte valuex[1] at servo_9_to_16_steps
+         servo_9_to_16_steps_per_2_5_msec = valuex[0]
+      else
+         -- timer1 & timer3 min step time is (1/osc)*4. (0.2us at 20mhz)
+
+         -- calculate number of steps available within 2.5ms ;example on 20mhz
+         const dword SERVO_9_TO_16_CALC_1 = target_clock / 40_000            ;500
+         const dword SERVO_9_TO_16_CALC_2 = 10_000 / SERVO_9_TO_16_CALC_1    ;20
+         var dword servo_9_to_16_steps = 250_000 / SERVO_9_TO_16_CALC_2      ;12500
+
+         -- increase prescaler if 65535 clock pulses is not enouf time
+         var byte servo_9_to_16_prescaler = 0
+         forever loop
+            if servo_9_to_16_steps > 65535 then
+               servo_9_to_16_prescaler = servo_9_to_16_prescaler + 1 -- increase prescaler
+               servo_9_to_16_steps = servo_9_to_16_steps / 2         -- decrease timer steps needed
+            else
+               exit loop
+            end if
+         end loop
+
+         -- servo_9_to_16_steps is now calculated, set the prescaler
+         servo_9_to_16_ps = servo_9_to_16_prescaler
+
+         -- put it into a word for the 16 bit timer
+         var word value2[2] at servo_9_to_16_steps
+         servo_9_to_16_steps_per_2_5_msec = (value2[1] << 8) + value2[0] ; equals 12500 on 20mhz
+
+      end if
+
+      -- center servo's
+      servo_move(127,9)
+      servo_move(127,10)
+      servo_move(127,11)
+      servo_move(127,12)
+      servo_move(127,13)
+      servo_move(127,14)
+      servo_move(127,15)
+      servo_move(127,16)
+   end if
+   -------------------
+
+   if defined(servo_17) == TRUE then
+      servo_17_to_24_if = off   -- clear interrupt overflow bit
+      servo_17_to_24_ie = on    -- timer overflow interrupt enable
+      servo_17_to_24_cs = 0     -- use internal clock for timer
+
+      if SERVO_17_TO_24_USE_TIMER == 0 then
+         -- timer0 min step time of (1/osc)*8. (0.4us at 20mhz)
+
+         -- calculate number of steps available within 2.5ms ;example on 20mhz
+         const dword SERVO_17_TO_24_CALC_1 = target_clock / 10_000    ;= 2000
+         const dword SERVO_17_TO_24_CALC_2 = SERVO_17_TO_24_CALC_1 / 4         ;= 500
+         const dword SERVO_17_TO_24_CALC_3 = 10_000 / SERVO_17_TO_24_CALC_2    ;= 20
+         const dword SERVO_17_TO_24_CALC_4 = SERVO_17_TO_24_CALC_3 * 2         ;= 40
+         var dword servo_17_to_24_steps = 250_000 / SERVO_17_TO_24_CALC_4      ;= 6250
+
+         -- increase prescaler if 256 clock pulses is not enouf time
+         var byte servo_17_to_24_prescaler = 0
+         forever loop
+            if servo_17_to_24_steps > 255 then
+               servo_17_to_24_prescaler = servo_17_to_24_prescaler + 1 -- increase prescaler
+               servo_17_to_24_steps = servo_17_to_24_steps / 2         -- decrease timer steps needed
+            else
+               exit loop
+            end if
+         end loop
+
+         -- servo_17_to_24_steps is now calculated, set the prescaler
+         servo_17_to_24_ps = servo_17_to_24_prescaler
+
+         -- put it into a byte for the 8 bit timer
+         var byte valuey[1] at servo_17_to_24_steps
+         servo_17_to_24_steps_per_2_5_msec = valuey[0]
+      else
+         -- timer1 & timer3 min step time is (1/osc)*4. (0.2us at 20mhz)
+
+         -- calculate number of steps available within 2.5ms ;example on 20mhz
+         const dword SERVO_17_TO_24_CALC_1 = target_clock / 40_000            ;500
+         const dword SERVO_17_TO_24_CALC_2 = 10_000 / SERVO_17_TO_24_CALC_1   ;20
+         var dword servo_17_to_24_steps = 250_000 / SERVO_17_TO_24_CALC_2     ;12500
+
+         -- increase prescaler if 65535 clock pulses is not enouf time
+         var byte servo_17_to_24_prescaler = 0
+         forever loop
+            if servo_17_to_24_steps > 65535 then
+               servo_17_to_24_prescaler = servo_17_to_24_prescaler + 1 -- increase prescaler
+               servo_17_to_24_steps = servo_17_to_24_steps / 2         -- decrease timer steps needed
+            else
+               exit loop
+            end if
+         end loop
+
+         -- servo_17_to_24_steps is now calculated, set the prescaler
+         servo_17_to_24_ps = servo_17_to_24_prescaler
+
+         -- put it into a word for the 16 bit timer
+         var word value3[2] at servo_17_to_24_steps
+         servo_17_to_24_steps_per_2_5_msec = (value3[1] << 8) + value3[0] ; equals 12500 on 20mhz
+
+      end if
+
+      -- center servo's
+      servo_move(127,17)
+      servo_move(127,18)
+      servo_move(127,19)
+      servo_move(127,20)
+      servo_move(127,21)
+      servo_move(127,22)
+      servo_move(127,23)
+      servo_move(127,24)
+
+   end if
+end procedure
+
+
+
+
+
+

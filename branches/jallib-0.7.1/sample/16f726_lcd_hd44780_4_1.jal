@@ -1,0 +1,86 @@
+-- ------------------------------------------------------
+-- Title: LCD sample program for the Microchip PIC 16f726
+--
+-- Author: Rob Hamerling, Copyright (c) 2009, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4l
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+--    LCD sample program for Microchip PIC 16f726.
+--    Shows some texts on a 2 lines LCD display.
+--    Blinks also a LED on pin_A0 to show program is running.
+--    Uses:  - LCD library lcd_hd44780_4.jal
+--           - 4 LCD data lines
+--           - DataPath: 4 individual bits
+--
+-- Sources:
+--
+-- Notes:
+--  - File creation date/time: 16 Aug 2009 22:07:56
+--
+-- ------------------------------------------------------
+--
+include 16f726                       -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target OSC HS                  -- HS crystal or resonator
+pragma target clock 20_000_000        -- oscillator frequency
+pragma target WDT  disabled           -- WDT off
+--
+enable_digital_io()                   -- disable analog I/O (if any)
+--
+pin_A0_direction       =  output      -- blinking LED
+--
+const byte LCD_ROWS    =  2           -- LCD with 2 lines
+const byte LCD_CHARS   =  16          -- and 16 characters per line
+--
+alias     lcd_en       is pin_C5      -- data trigger
+alias     lcd_rs       is pin_C4      -- command/data select.
+pin_C5_direction       = output
+pin_C4_direction       = output
+--
+alias     lcd_d4       is pin_B0
+alias     lcd_d5       is pin_B1
+alias     lcd_d6       is pin_B2
+alias     lcd_d7       is pin_B3
+--
+pin_B0_direction       = output
+pin_B1_direction       = output
+pin_B2_direction       = output
+pin_B3_direction       = output
+--
+include lcd_hd44780_4
+--
+lcd_init()                            -- init the lcd controller
+--
+include delay                         -- fetch delay library
+--
+-- --- generate LCD screen activity ---------
+var byte line1[LCD_CHARS] = "<= 2 x 16 LCD =>"
+var byte line2[LCD_CHARS] = "0123456789ABCDEF"
+var byte i, k
+forever loop
+   lcd_clear_screen()             -- (to first line)
+   delay_100ms(5)
+   for LCD_CHARS using i loop
+      lcd_write_char(line1[i])    -- write using procedure
+   end loop
+   delay_100ms(5)
+   lcd_cursor_position(1,0)       -- to second line
+   for LCD_CHARS using i loop
+      k = (i * 7) & 0x0F          -- "random" character(index)
+      lcd_cursor_position(1,k)    -- corresponding position
+      lcd = line2[k]              -- write using pseudo variable
+      delay_100ms(3)              -- pause between bytes
+      pin_A0 = !pin_A0            -- flip the LED
+   end loop
+   delay_100ms(10)
+end loop
+--

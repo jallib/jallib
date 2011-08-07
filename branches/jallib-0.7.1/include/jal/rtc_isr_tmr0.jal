@@ -1,0 +1,87 @@
+-- Title: Real Time Clock running from ISR on TMR0
+-- Author: Eur van Andel, Copyright (c) 2003..2008, all rights reserved.
+-- Adapted-by: Rob Hamerling
+-- Compiler: 2.4l
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: http://www.romanblack.com/one_sec.htm
+--          http://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+--
+-- Description: This Interrupt Service Routine updates the variable seconds
+-- about once per second. The precision is 0.2 ppm, the accuracy depends
+-- on the Xtal used.
+--
+-- Notes: This is the Bresenham Line Algorithm, invented at IBM in 1962,
+-- which gets an accurate end result by summing the small errors resulting of
+-- taking discrete steps and correcting when the error gets too large. This
+-- means that individual second lengths may show some jitter, but that long-term
+-- timekeeping is accurate. Original assembler by Roman Black.
+-- .
+-- At 20 MHz, so 200ns/clock, so 5 000 000 clocks/second
+-- Rhe RTC has three bytes: bres_hi, bres_mid, bres_lo
+-- timer 0 runs on internal clock speed and interrupts on overflow
+-- every timer 0 interrupt decreases bres_mid by one.
+-- The  5 000 000 value is added when bres_hi en bres_mid are zero
+-- note that remainder is added to bres_lo, which can overflow in bres_mid
+-- this keeps clock count accurate, although interrupts happen every 256 clock
+-- counts the ISR subtracts 1 from the mid byte. It first checks
+-- the mid byte for zero and borrows a bit from bres_hi if needed.
+-- .
+-- Required PIC settings: T0CON_PSA = 1
+--                        T0CON_PS = 0
+--                        T0CON_T0CS = 0   -- Timer0 on instruction cycle clock
+--
+
+var volatile byte seconds               -- global variable updated by ISR
+
+const  _rtc_cycles_per_second = (target_clock / 4)
+
+const  byte  _rtc_hi  = _rtc_cycles_per_second / 65536
+const  byte  _rtc_mid = _rtc_cycles_per_second % 65536 / 256
+const  byte  _rtc_lo  = _rtc_cycles_per_second % 256
+
+var volatile byte _rtc_bres_hi  = _rtc_hi      -- \
+var volatile byte _rtc_bres_mid = _rtc_mid     --  > init 3-byte counter
+var volatile byte _rtc_bres_lo  = _rtc_lo      -- /
+
+procedure RTC() is
+
+   pragma interrupt
+
+   assembler                            -- fast ISR: so assembler
+      local int_exit                    -- labels for jumping
+
+      bcf    INTCON_TMR0IF              -- clear the timer 0 interrupt flag
+      movf   _rtc_bres_mid,f                 -- mid == 0 ?
+      btfsc  STATUS_Z                   -- not zero?
+      decf   _rtc_bres_hi, f            -- zero, borrow one from high byte
+      decfsz _rtc_bres_mid, f           -- this is the count of the interrupts
+      goto   int_exit                   -- mid byte is not zero, so exit
+      movf   _rtc_bres_hi, f            -- mid == 0, might hi == 0 too ?
+      btfss  STATUS_Z
+      goto   int_exit                   -- high byte not zero, so exit
+                                        -- high byte zero, mid also zero
+                                        -- we need to load the one-second timer
+
+      movlw _rtc_hi                     -- add  cycles_per_second to hi-mid-lo
+      movwf _rtc_bres_hi                -- hi & mid are both zero
+      movlw _rtc_mid
+      movwf _rtc_bres_mid
+      movlw _rtc_lo                     -- lo is not zero, and must be added
+      addwf _rtc_bres_lo, f             -- bres_lo can overflow
+      btfsc STATUS_C                    -- does it?
+      incf  _rtc_bres_mid, f            -- yes, but mid was 0x4B, so will not overflow
+      incf  seconds, f                  -- main routine should check seconds
+                                        -- and call calendar when seconds > 59
+                                        -- and take care of minutes, etc.
+      int_exit:
+   end assembler
+
+end procedure                           -- end of ISR
+
+
+
+

@@ -1,0 +1,163 @@
+-- Title: How to use format lib with an LCD
+-- Author: Eur Van Andel, Copyright (c) 2008, all rights reserved.
+-- Adapted-by: Joep Suijs, Albert Faber
+-- Compiler: >=2.4l
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this sample shows how to use the format lib with
+-- an LCD
+--
+
+include 16f877a
+
+pragma target   CLOCK 20_000_000                  -- xtal frequency
+pragma target   OSC   HS
+pragma target   LVP disabled
+pragma target   WDT disabled
+
+enable_digital_io()
+
+const byte LCD_CHARS = 20
+const byte LCD_ROWS  = 4
+
+alias lcd_rs        is pin_b5       -- LCD command/data select.
+alias lcd_en        is pin_b4       -- LCD data trigger
+alias lcd_dataport  is portb_low    -- LCD data
+portb_direction     = all_output    -- LCD data is portb_low
+include lcd_hd44780_4               -- LCD library
+lcd_init()
+
+
+include format
+include delay
+
+var byte counter = 0
+
+forever loop                                  -- loop forever
+
+   lcd_cursor_position(0, 0)
+   lcd = "T"    lcd = "e"    lcd = "s"    lcd = "t"    lcd = ":"    lcd = " "
+   format_byte_dec (lcd, counter, 3, 1)  -- print a byte as fixed point var with 1 decimal,
+   --   3 positions (including decimal point) in total
+   -- clear first part of lower line
+   lcd_cursor_position(1, 0)
+   for 8 loop
+      lcd = " "
+   end loop
+
+   -- set cursor at start of line1
+   lcd_cursor_position(1, 0)
+
+   CASE counter OF
+
+      0 : block
+         -- hex byte output
+         format_byte_hex(lcd, 0xEA)
+         counter = counter + 1
+      end block
+
+      1 : block
+         -- hex word output
+         format_word_hex(lcd, 0xFD22) -- VIC20 reset vector ;-)
+         counter = 10
+      end block
+
+      10 : block
+         -- decimal output ' 1.2'
+         format_byte_dec(lcd, 12, 3, 1)
+         counter = counter + 1
+      end block
+
+      11 : block
+         -- decimal output '0.12'
+         format_byte_dec(lcd, 12, 3, 2)
+         counter = counter + 1
+      end block
+
+      12 : block
+         -- decimal output ' 12'
+         format_byte_dec(lcd, 12, 3, 0)
+         counter = counter + 1
+      end block
+
+      13 : block
+         -- decimal output '12.0'
+         format_byte_dec(lcd, 120, 3, 1)
+         counter = 20
+      end block
+
+      20 : block
+         -- decimal output '-12'
+         format_sbyte_dec(lcd, -12, 3, 0)
+         counter = counter + 1
+      end block
+
+      21 : block
+         -- decimal output '-1.2'
+         format_sbyte_dec(lcd, -12, 3, 1)
+         counter = counter + 1
+      end block
+
+      22 : block
+         -- decimal output '-12'
+         format_sbyte_dec(lcd, -12, 3, 2)
+         counter = 30
+      end block
+
+      30 : block
+         -- decimal output ' 0.012'
+         format_word_dec(lcd, 12, 6, 3)
+         counter = counter + 1
+      end block
+
+      31 : block
+         -- decimal output '   1.2'
+         format_word_dec(lcd, 12, 6, 1)
+         counter = counter + 1
+      end block
+
+      32 : block
+         -- decimal output '   12'
+         format_word_dec(lcd, 12, 6, 0)
+         counter = 40
+      end block
+
+
+      40 : block
+         -- decimal output ' -0.012'
+         format_sword_dec(lcd, -12, 6, 3)
+         counter = 50  -- (no more examples in this group - you should get it by now...)
+      end block
+
+      50 : block
+         -- decimal output '23:55'
+         format_time_hm(lcd, 23, 55)  -- 5 minutes to midnight
+         counter = counter + 1
+      end block
+
+      51 : block
+         -- decimal output '23:56'
+         format_time_hm_word(lcd, 23 * 60 + 56)  -- 4 minutes to midnight
+         counter = 99
+      end block
+
+      OTHERWISE block
+         lcd = "E"    lcd = "n"    lcd = "d"
+         counter = 0
+      end block
+
+
+   END CASE
+
+   delay_100ms(30)
+
+end loop
+
+
+
+
+
+

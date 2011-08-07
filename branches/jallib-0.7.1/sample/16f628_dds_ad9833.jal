@@ -1,0 +1,80 @@
+-- ------------------------------------------------------
+-- Title: Sample the AD9833 dds chip with the Microchip pic16f628
+--
+-- Author: Tijs van Roon@RedSam, Copyright (c) 2010, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: >2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Control an Analog Devices AD9833 Digital Direct Synthesis chip with a Microchip PIC16f628.
+--
+-- Sources:
+--
+-- Notes:
+--  - File creation date/time: 16 Okt 2010 23:30
+--
+-- ------------------------------------------------------
+--
+include 16f628                    -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target clock 20_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target WDT  disabled        -- no watchdog
+pragma target LVP  disabled        -- no Low Voltage Programming
+pragma target MCLR external        -- reset externally
+-- These configuration bit settings are only a selection, sufficient for
+-- this program, but other programs may need more or different settings.
+--
+include delay
+
+enable_digital_io()                -- make all pins digital I/O
+--
+-- Specify the pin to which the AD9833 is connected
+pin_A4_direction = output  
+pin_B7_direction = output  
+pin_B5_direction = output 
+alias dds_fsync_pin is pin_A4
+alias dds_sclk_pin  is pin_B7
+alias dds_sdata_pin is pin_B5
+
+-- Include the DDS lib
+include dds_ad9833
+
+-- Reset the DDS chip.
+dds_reset()
+
+-- Initial frequency
+var dword freq = 1000 -- 1 Khz
+
+-- Loop
+forever loop
+   dds_frequency(freq)
+
+   -- output triangle (Vpp = 0.6 V)
+   dds_triangle()
+   
+   delay_1ms(250)
+   
+   -- output sine (Vpp = 0.6 V)
+   dds_sine()
+
+   delay_1ms(250)
+
+   -- output square (Vpp >> 0.6 V)
+   dds_square()
+
+   delay_1ms(250)
+   
+   freq = freq + 1000
+end loop
+
+--

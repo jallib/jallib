@@ -1,0 +1,127 @@
+-- Title: Library for use with a dedicated RC servo PIC
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library controls an external PIC that works as a slave device
+-- and is a dedicated PIC to servo movements.
+--
+-- Notes:
+-- Also see servo_rc_master library, this is not the main servo library.
+--
+-- Master clock/oscillator should be equal or less then slave clock/osc
+-- otherwise you may need to run a slower I2C bus.
+--
+-- if you set servo_rc_master_dedicated_wait to false, you will need to check
+-- if the slave is ready by using the servo_rc_is_ready_i2c() function before
+-- sending another command. device must be setting this as false will allow your
+-- main program to continue while slave is still busy. Slave will stay busy for
+-- about 1ms
+--
+-- Sources:
+-- http://www.horrorseek.com/home/halloween/wolfstone/Motors/svoint_RCServos.html
+--
+
+-- servo commands that you may pass to the send_command procedure
+const byte SERVO_RC_COMMAND_MOVE = 0            -- move command
+const byte SERVO_RC_COMMAND_REVERSE = 32        -- reverse servo command
+const byte SERVO_RC_COMMAND_ON_OFF = 64         -- turn servo on/off
+const byte SERVO_RC_COMMAND_MIN = 96            -- set servo min movement
+const byte SERVO_RC_COMMAND_MAX = 128           -- set servo max movement
+
+-- holds error & ready bit recieved from slave, internal use only
+var byte _servo_rc_master_dedicated_data
+var bit _servo_rc_master_dedicated_error at _servo_rc_master_dedicated_data : 7
+var bit _servo_rc_master_dedicated_ready at _servo_rc_master_dedicated_data : 6
+var bit _servo_rc_master_dedicated_error2 at _servo_rc_master_dedicated_data : 5
+var bit _servo_rc_master_dedicated_ready2 at _servo_rc_master_dedicated_data : 4
+var bit _servo_rc_master_dedicated_error3 at _servo_rc_master_dedicated_data : 3
+var bit _servo_rc_master_dedicated_ready3 at _servo_rc_master_dedicated_data : 2
+var bit _servo_rc_master_dedicated_error4 at _servo_rc_master_dedicated_data : 1
+var bit _servo_rc_master_dedicated_ready4 at _servo_rc_master_dedicated_data : 0
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+--------------------------------------------------------------------------------
+-- Check if dedicated servo pic is ready via I2C. returns true/false
+--------------------------------------------------------------------------------
+function servo_rc_is_ready_i2c(byte in servo_ic_address) return bit is
+   var byte ack_ok
+
+   -- get the data
+   i2c_start()                                            -- send start bit
+   ack_ok = i2c_transmit_byte(servo_ic_address + 1)       -- transmit data & wait for ack
+   _servo_rc_master_dedicated_data = i2c_receive_byte(0)  -- nack (no ack)
+   i2c_stop()                                             -- send stop bit
+
+   -- do some _servo_rc_master_dedicated_error checking on recieved data
+   if (_servo_rc_master_dedicated_ready == _servo_rc_master_dedicated_ready2) & (_servo_rc_master_dedicated_ready2 == !_servo_rc_master_dedicated_ready3) & (_servo_rc_master_dedicated_ready3 == _servo_rc_master_dedicated_ready4) then
+      return _servo_rc_master_dedicated_ready    -- return the ready bit
+   else
+      return false                               -- error check failed, return false
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- Check if dedicated servo pic has an error via I2C. returns true/false. For
+-- internal use only.
+--------------------------------------------------------------------------------
+function servo_rc_error_i2c(byte in servo_ic_address) return bit is
+   var byte ack_ok
+   
+   -- get the data
+   i2c_start()                                            -- send start bit
+   ack_ok = i2c_transmit_byte(servo_ic_address + 1)       -- transmit data & wait for ack
+   _servo_rc_master_dedicated_data = i2c_receive_byte(0)  -- nack (no ack)
+   i2c_stop()                                             -- send stop bit
+
+   -- do some _servo_rc_master_dedicated_error checking on recieved data
+   if (_servo_rc_master_dedicated_error == _servo_rc_master_dedicated_error2) & (_servo_rc_master_dedicated_error2 == !_servo_rc_master_dedicated_error3) & (_servo_rc_master_dedicated_error3 == _servo_rc_master_dedicated_error4) then
+      return _servo_rc_master_dedicated_error     -- return the error bit
+   else
+      return true                                 -- error check failed, return true
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- send a command to the dedicated servo pic such as move, reverse, on/off
+-- via I2C
+--------------------------------------------------------------------------------
+procedure servo_rc_send_command_i2c(byte in servo_ic_address, byte in command, byte in command_data, byte in servo_num) is
+   var byte ack_ok
+
+   _servo_rc_master_dedicated_error = TRUE
+   _servo_rc_master_dedicated_ready = FALSE
+
+   forever loop -- send data till dedicated servo pic recieved data ok
+      -- send servo command_data and servo number to slave
+      i2c_start()                                     -- send start bit
+      ack_ok = i2c_transmit_byte(servo_ic_address)    -- transmit data & wait for ack
+
+      -- send servo number and command
+      ack_ok = i2c_transmit_byte(command + servo_num)                     -- transmit command + servo number
+      ack_ok = i2c_transmit_byte(command_data)                            -- transmit transmit servo command_data or command
+      ack_ok = i2c_transmit_byte( (command + servo_num) ^ command_data )  -- transmit _servo_rc_master_dedicated_error check data
+      
+      i2c_stop()                                      -- send stop bit
+
+      -- check if dedicated servo pic recieved data ok, if so, exit loop.
+      if !servo_rc_error_i2c(servo_ic_address) then
+         exit loop
+      end if
+   end loop
+   
+   -- check if dedicated servo pic is ready for the next command
+   if SERVO_RC_MASTER_DEDICATED_WAIT == TRUE then
+      while !servo_rc_is_ready_i2c(servo_ic_address) loop
+      end loop
+   end if
+   
+end procedure

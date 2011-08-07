@@ -1,0 +1,700 @@
+-- Title: USB HID easy keyboard interface
+-- Author: Albert Faber, Copyright (c) 2010, all rights reserved.
+-- Adapted-by: -
+-- Compiler: >=2.4j
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- 
+-- Description: An easy to use USB HID keyboard library
+-- the USB interface. By default nothing has to be defined by the user, below
+-- an example how to use the library
+-- --                                                                        
+-- include usb_keyboard
+-- ..
+-- usb_keyboard_init()
+-- ..
+-- ;-- wait till USB becomes available
+-- while ( !usb_is_configured() )  loop
+-- end loop
+-- ..
+-- ;-- main loop
+-- var byte ch
+-- forever loop
+-- ;   -- call the flush routine on a regular base in the main loop
+-- ;   -- in order to keep the USB communicaiton alive
+--     usb_keyboard_flush()
+--     .....
+--     if ( usb_is_configured() )
+--        if ( pin_x )
+--			   ush_keyboard_send_key( 0x00, USB_KEYBOARD_KEY_A )
+--        else
+--			   ush_keyboard_send_key( 0x00, USB_KEYBOARD_KEY_NONE )
+--       
+--		 end if
+--     .....
+-- end loop
+-- 
+-- Sources: http://www.usb.org for USB specifications
+-- 
+-- Notes: -
+--                                                                        
+
+const byte USB_HID_ENDPOINT = 0x01
+
+if defined( USB_DEBUG_KEYBOARD_LIB ) == TRUE then
+   const HAS_SERIAL_DEBUG_PORT = 1
+   const bit USB_DEBUG = true
+   const bit USB_DEBUG_HIGH = false
+   const bit USB_HID_DEBUG = false
+   const bit USB_HID_DEBUG_HIGH = false
+else
+   const bit USB_DEBUG = false
+   const bit USB_DEBUG_HIGH = false
+   const bit USB_HID_DEBUG = false
+   const bit USB_HID_DEBUG_HIGH = false
+end if
+
+
+
+if defined( HAS_SERIAL_DEBUG_PORT ) == true then
+
+   if defined( serial_hw_baudrate ) == false then
+      const serial_hw_baudrate = 115_200
+   end if
+	
+	include serial_hardware
+	include format
+	include print
+	
+	-- intialze serial device
+	serial_hw_init()
+
+	procedure serial_print_spc() is 
+		serial_hw_write( " " )
+	end procedure
+
+	procedure serial_newline() is
+		serial_hw_write( 10 )
+		-- serial_hw_write( 13 )
+	end procedure
+end if
+
+
+include usb_defs
+
+const bit USB_EP0 = 1
+const byte USB_EP0_OUT_SIZE = 8
+const word USB_EP0_OUT_ADDR = ( USB_BASE_ADDRESS + 0x0010 )
+const byte USB_EP0_IN_SIZE  = 8
+const word USB_EP0_IN_ADDR  = ( USB_EP0_OUT_ADDR + USB_EP0_OUT_SIZE )
+
+const bit USB_EP1 = 1
+const byte USB_EP1_OUT_SIZE = 8
+const word USB_EP1_OUT_ADDR = ( USB_EP0_IN_ADDR + USB_EP0_IN_SIZE )
+const byte USB_EP1_IN_SIZE  = 8
+const word USB_EP1_IN_ADDR  = ( USB_EP1_OUT_ADDR + USB_EP1_OUT_SIZE )
+
+var volatile byte  usb_ep1in_buf[ 8 ] at USB_EP1_IN_ADDR
+
+const bit USB_EP2 = 0
+const byte USB_EP2_OUT_SIZE = 8
+const word USB_EP2_OUT_ADDR = 0x0000
+const byte USB_EP2_IN_SIZE  = 8
+const word USB_EP2_IN_ADDR  = 0x0000
+
+const bit USB_EP3 = 0
+const byte USB_EP3_OUT_SIZE = 8
+const word USB_EP3_OUT_ADDR = 0x0000
+const byte USB_EP3_IN_SIZE = 8
+const word USB_EP3_IN_ADDR  = 0x0000
+
+-- -----------------------------------------------------------------------
+-- List with modifier keyboard code definitions
+-- -----------------------------------------------------------------------   
+const USB_KEYBOARD_MKEY_LEFT_CTRL   = 0b_00000001
+const USB_KEYBOARD_MKEY_LEFT_SHIFT  = 0b_00000010
+const USB_KEYBOARD_MKEY_LEFT_ALT    = 0b_00000100
+const USB_KEYBOARD_MKEY_LEFT_GUI    = 0b_00001000
+const USB_KEYBOARD_MKEY_RIGHT_CTRL  = 0b_00010000
+const USB_KEYBOARD_MKEY_RIGHT_SHIFT = 0b_00100000
+const USB_KEYBOARD_MKEY_RIGHT_ALT   = 0b_01000000
+const USB_KEYBOARD_MKEY_RIGHT_GUI   = 0b_10000000
+
+-- -----------------------------------------------------------------------
+-- List with keyboard code definitions, note keycodes are not equivalent
+-- with the ASCII codes
+-- -----------------------------------------------------------------------   
+const USB_KEYBOARD_KEY_NONE          = 0x00
+const USB_KEYBOARD_KEY_A             = 0x04
+const USB_KEYBOARD_KEY_B             = 0x05
+const USB_KEYBOARD_KEY_C             = 0x06
+const USB_KEYBOARD_KEY_D             = 0x07
+const USB_KEYBOARD_KEY_E             = 0x08
+const USB_KEYBOARD_KEY_F             = 0x09
+const USB_KEYBOARD_KEY_G             = 0x0A
+const USB_KEYBOARD_KEY_H             = 0x0B
+const USB_KEYBOARD_KEY_I             = 0x0C
+const USB_KEYBOARD_KEY_J             = 0x0D
+const USB_KEYBOARD_KEY_K             = 0x0E
+const USB_KEYBOARD_KEY_L             = 0x0F
+const USB_KEYBOARD_KEY_M             = 0x10
+const USB_KEYBOARD_KEY_N             = 0x11
+const USB_KEYBOARD_KEY_O             = 0x12
+const USB_KEYBOARD_KEY_P             = 0x13
+const USB_KEYBOARD_KEY_Q             = 0x14
+const USB_KEYBOARD_KEY_R             = 0x15
+const USB_KEYBOARD_KEY_S             = 0x16
+const USB_KEYBOARD_KEY_T             = 0x17
+const USB_KEYBOARD_KEY_U             = 0x18
+const USB_KEYBOARD_KEY_V             = 0x19
+const USB_KEYBOARD_KEY_W             = 0x1A
+const USB_KEYBOARD_KEY_X             = 0x1B
+const USB_KEYBOARD_KEY_Y             = 0x1C
+const USB_KEYBOARD_KEY_Z             = 0x1D
+
+const USB_KEYBOARD_KEY_1             = 0x1E
+const USB_KEYBOARD_KEY_2             = 0x1F
+const USB_KEYBOARD_KEY_3             = 0x20
+const USB_KEYBOARD_KEY_4             = 0x21
+const USB_KEYBOARD_KEY_5             = 0x22
+const USB_KEYBOARD_KEY_6             = 0x23
+const USB_KEYBOARD_KEY_7             = 0x24
+const USB_KEYBOARD_KEY_8             = 0x25
+const USB_KEYBOARD_KEY_9             = 0x26
+const USB_KEYBOARD_KEY_0             = 0x27
+
+const USB_KEYBOARD_KEY_SPACE         = 0x2C
+
+const USB_KEYBOARD_KEY_F1            = 0x3A
+const USB_KEYBOARD_KEY_F2            = 0x3B
+const USB_KEYBOARD_KEY_F3            = 0x3C
+const USB_KEYBOARD_KEY_F4            = 0x3D
+const USB_KEYBOARD_KEY_F5            = 0x3E
+const USB_KEYBOARD_KEY_F6            = 0x3F
+const USB_KEYBOARD_KEY_F7            = 0x40
+const USB_KEYBOARD_KEY_F8            = 0x41
+const USB_KEYBOARD_KEY_F9            = 0x42
+const USB_KEYBOARD_KEY_F10           = 0x43
+const USB_KEYBOARD_KEY_F11           = 0x44
+const USB_KEYBOARD_KEY_F12           = 0x45
+
+const USB_KEYBOARD_KEY_CAPS_LOCK     = 0x82
+const USB_KEYBOARD_KEY_NUM_LOCK      = 0x83
+const USB_KEYBOARD_KEY_SCROLL_LOCK   = 0x84
+const USB_KEYBOARD_KEY_COMMA         = 0x85
+const USB_KEYBOARD_KEY_EQUAL_SIGN    = 0x86
+
+const USB_KEYBOARD_KEY_PAGEUP        = 0x4B
+const USB_KEYBOARD_KEY_PAGEDOWN      = 0x4E
+
+const USB_KEYBOARD_KEY_LEFT_CONTROL  = 0xE0
+const USB_KEYBOARD_KEY_LEFT_SHIFT    = 0xE1
+const USB_KEYBOARD_KEY_LEFT_ALT      = 0xE2
+const USB_KEYBOARD_KEY_LEFT_GUI      = 0xE3
+
+const USB_KEYBOARD_KEY_RIGHT_CONTROL = 0xE4
+const USB_KEYBOARD_KEY_RIGHT_SHIFT   = 0xE5
+const USB_KEYBOARD_KEY_RIGHT_ALT     = 0xE6
+const USB_KEYBOARD_KEY_RIGHT_GUI     = 0xE7
+
+
+var byte _usb_keyboard_led_status = 0x00
+var volatile bit _usb_keyboard_led_num_lock at _usb_keyboard_led_status:0
+var volatile bit _usb_keyboard_led_caps_lock at _usb_keyboard_led_status:1
+var volatile bit _usb_keyboard_led_compose at _usb_keyboard_led_status:2
+var volatile bit _usb_keyboard_led_kana at _usb_keyboard_led_status:3
+
+
+const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
+	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
+	USB_DT_DEVICE, 	-- DEVICE 01h
+	0x00,
+	0x02,		-- usb version 2.00
+	0x00,		-- class
+	0x00,		-- subclass
+	0x00,		-- protocol
+	USB_EP0_OUT_SIZE,		-- max packet size for end point 0
+	0xd8,
+	0x04,		-- Microchip's vendor
+	0x55,
+	0x00,		-- Microchip keyboard demo
+	0x01,
+	0x00, 	     -- version 1.0 of the product
+	0x01,		-- string 1 for manufacturer
+	0x02,		-- string 2 for product
+	0x00,		-- string 3 for serial number
+	0x01		-- number of configurations
+}
+
+
+const byte USB_HID_REPORT1[]=
+{
+   0x05, 0x01,                    -- USAGE_PAGE (Generic Desktop)
+   0x09, 0x06,                    -- USAGE (Keyboard)
+   0xa1, 0x01,                    -- COLLECTION (Application)
+   0x05, 0x07,                    -- USAGE_PAGE (Keyboard)
+   0x19, 0xe0,                    -- USAGE_MINIMUM (Keyboard LeftControl)
+   0x29, 0xe7,                    -- USAGE_MAXIMUM (Keyboard Right GUI)
+   0x15, 0x00,                    -- LOGICAL_MINIMUM (0)
+   0x25, 0x01,                    -- LOGICAL_MAXIMUM (1)
+   0x75, 0x01,                    -- REPORT_SIZE (1)
+   0x95, 0x08,                    -- REPORT_COUNT (8)
+   0x81, 0x02,                    -- INPUT (Data,Var,Abs)
+   0x95, 0x01,                    -- REPORT_COUNT (1)
+   0x75, 0x08,                    -- REPORT_SIZE (8)
+   0x81, 0x03,                    -- INPUT (Cnst,Var,Abs)
+   0x95, 0x05,                    -- REPORT_COUNT (5)
+   0x75, 0x01,                    -- REPORT_SIZE (1)
+   0x05, 0x08,                    -- USAGE_PAGE (LEDs)
+   0x19, 0x01,                    -- USAGE_MINIMUM (Num Lock)
+   0x29, 0x05,                    -- USAGE_MAXIMUM (Kana)
+   0x91, 0x02,                    -- OUTPUT (Data,Var,Abs)
+   0x95, 0x01,                    -- REPORT_COUNT (1)
+   0x75, 0x03,                    -- REPORT_SIZE (3)
+   0x91, 0x03,                    -- OUTPUT (Cnst,Var,Abs)
+   0x95, 0x06,                    -- REPORT_COUNT (6)
+   0x75, 0x08,                    -- REPORT_SIZE (8)
+   0x15, 0x00,                    -- LOGICAL_MINIMUM (0)
+   0x25, 0x65,                    -- LOGICAL_MAXIMUM (101)
+   0x05, 0x07,                    -- USAGE_PAGE (Keyboard)
+   0x19, 0x00,                    -- USAGE_MINIMUM (Reserved (no event indicated))
+   0x29, 0x65,                    -- USAGE_MAXIMUM (Keyboard Application)
+   0x81, 0x00,                    -- INPUT (Data,Ary,Abs)
+   0xc0  
+}
+
+const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x09 + 0x07
+
+const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
+{	
+	-- configuration descriptor - - - - - - - - - - 
+	0x09,	-- length,
+   USB_DT_CONFIGURATION,	-- descriptor_type
+
+   USB_CONFIGURATION_DESCRIPTOR_SIZE,
+   0x00,	-- total_length;
+
+   0x01,	-- num_interfaces,
+   0x01,	-- configuration_value,
+   0x00,	-- configuration_string_id,
+   0b10000000, -- attributes (bus powered, no remote wake up)
+   100,	-- max_power; (200ma)
+
+   -- interface descriptor - - - - - - - - - - - -
+   0x09,						-- length,
+   USB_DT_INTERFACE,			-- descriptor_type,
+   0x00,						-- interface_number, (starts at zero)
+   0x00,						-- alternate_setting, (no alternatives)
+   0x01,						-- num_endpoints,
+   USB_HID_INTF,				-- interface_class, (HID)
+   USB_BOOT_INTF_SUBCLASS,		-- interface_subclass, (boot)
+   USB_HID_PROTOCOL_KEYBOARD,	-- interface_protocol, (keyboard)
+   0x00,	-- interface_string_id;
+
+   -- hid descriptor - - - - - - - - - - - - - - -
+   0x09,				-- length,
+   USB_DT_HID,			-- descriptor_type;
+   0x11,
+   0x01,				-- hid_spec in BCD (1.11)
+   0x00,				-- country_code, (0=not country specific)
+   0x01,				-- num_class_descriptors, (1)
+   USB_DT_HID_REPORT,	-- class_descriptor_type; (0x22 = report)
+   (count( USB_HID_REPORT1 ) & 0xFF ),
+   (count( USB_HID_REPORT1 ) >> 8 ),
+
+   0x07,				-- length,
+   USB_DT_ENDPOINT,	-- descriptor_type,
+   0b10000001,			-- endpoint_address, (Endpoint 1, IN)
+   USB_EPT_INT,		-- attributes; (Interrupt)
+   USB_EP1_IN_SIZE,				
+   0x00,				-- max_packet_size
+   0x01				-- interval (1ms)
+}
+
+const byte USB_STRING0[] = 
+{
+	0x04,	-- bLength
+	USB_DT_STRING,	-- bDescriptorType
+	0x09,	-- wLANGID[0] (low byte)
+	0x04	-- wLANGID[0] (high byte)
+}
+
+if ( defined(USB_STRING1) == false ) then
+   const byte USB_STRING1[0x36] = 
+   {
+      0x36,	-- bLength
+      USB_DT_STRING,	-- bDescriptorType
+      "M", 0x00, 
+      "i", 0x00, 
+      "c", 0x00, 
+      "r", 0x00, 
+      "o", 0x00, 
+      "c", 0x00, 
+      "h", 0x00, 
+      "i", 0x00, 
+      "p", 0x00, 
+      " ", 0x00,
+      "T", 0x00, 
+      "e", 0x00, 
+      "c", 0x00, 
+      "h", 0x00, 
+      "n", 0x00, 
+      "o", 0x00, 
+      "l", 0x00, 
+      "o", 0x00, 
+      "g", 0x00, 
+      "y", 0x00, 
+      ",", 0x00, 
+      " ", 0x00,
+      "I", 0x00, 
+      "n", 0x00, 
+      "c", 0x00, 
+      ".", 0x00
+   }
+end if
+
+if ( defined(USB_STRING2) == false ) then
+   const byte USB_STRING2[42] = 
+   {
+      42,	-- bLength
+      USB_DT_STRING,	-- bDescriptorType
+      "J", 0x00, 
+      "A", 0x00, 
+      "L", 0x00, 
+      " ", 0x00, 
+      "H", 0x00, 
+      "I", 0x00, 
+      "D", 0x00, 
+      " ", 0x00, 
+      "K", 0x00, 
+      "e", 0x00,
+      "b", 0x00, 
+      "o", 0x00, 
+      "a", 0x00, 
+      "r", 0x00, 
+      "d", 0x00, 
+      " ", 0x00, 
+      "D", 0x00, 
+      "e", 0x00, 
+      "m", 0x00, 
+      "o", 0x00
+   }
+end if
+
+
+include usb_drv_core
+
+var volatile bit _usb_hid_can_tx = true
+
+const byte USB_HID_REQ_HID 			= 0x21
+const byte USB_HID_REQ_REPORT 		= 0x22
+const byte USB_HID_REQ_PHYSDISCR	= 0x23
+
+const byte USB_HCR_GET_REPORT		= 0x01
+const byte USB_HCR_GET_IDLE		= 0x02
+const byte USB_HCR_GET_PROTOCOL	= 0x03
+const byte USB_HCR_SET_REPORT		= 0x09
+const byte USB_HCR_SET_IDLE		= 0x0A
+const byte USB_HCR_SET_PROTOCOL	= 0x0B
+
+procedure usb_handle_class_request_callback() is
+    
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+
+
+
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " HID CL CALLBACK REQ: "
+        const byte str1[] = " bytes "
+        print_string(serial_hw_data,str)
+        print_byte_hex(serial_hw_data, byte( len ) )
+        print_string(serial_hw_data,str1)
+        print_byte_hex(serial_hw_data, byte( val >> 8 ) )
+        print_byte_hex(serial_hw_data, byte( val ) )
+        serial_hw_write( " " )
+        print_byte_hex(serial_hw_data,req01 )
+    end if
+        
+	case (req01) of
+
+
+		USB_HCR_GET_REPORT:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "GET_REPORT "
+				print_string(serial_hw_data,str)
+			end if
+		end block
+		
+		USB_HCR_GET_IDLE:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "GET_IDLE "
+				print_string(serial_hw_data,str)
+			end if
+		end block
+
+		USB_HCR_GET_PROTOCOL:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "GET_PROTOCOL "
+				print_string(serial_hw_data,str)
+			end if
+		end block
+		
+		USB_HCR_SET_REPORT:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_REPORT "
+				print_string(serial_hw_data,str)
+				
+			end if
+         if ( len > 0 ) then
+            usb_control_mode = USB_CM_CTRL_WRITE_DATA_STAGE_CLASS
+         end if
+		end block
+		
+		USB_HCR_SET_IDLE:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_IDLE "
+				print_string(serial_hw_data,str)
+			end if
+		end block
+
+		USB_HCR_SET_PROTOCOL:
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_PROTOCOL "
+				print_string(serial_hw_data,str)
+			end if
+		end block
+		
+		otherwise
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "UNKNOWN CL REQUEST "
+				print_string(serial_hw_data,str)
+			end if
+		end block
+	end case
+	
+end procedure
+
+var byte usb_kbd_report[8]
+
+procedure usb_handle_class_ctrl_write_callback() is
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " HID CL CALLBACK WR: "
+        print_byte_hex(serial_hw_data,req01 )
+    end if
+    
+	case (req01) of
+		USB_HCR_SET_REPORT:
+		block
+
+			var byte bd0_out_buffer[8] at USB_EP0_OUT_ADDR
+			_usb_keyboard_led_status = bd0_out_buffer[0]
+
+			if USB_HID_DEBUG then
+				const byte str[] = "SET_REPORT "
+				print_string(serial_hw_data,str)
+								
+				var byte idx
+				
+				for count( usb_kbd_report ) loop
+					print_byte_hex(serial_hw_data, bd0_out_buffer[idx] )
+					usb_kbd_report[ idx ] = bd0_out_buffer[idx]
+				end loop
+			end if
+			
+         usb_control_mode = USB_CM_CTRL_WRITE_SENDING_STATUS
+         usb_send_status_ack()
+         
+		end block
+
+		otherwise
+		block
+			if USB_HID_DEBUG then
+				const byte str[] = "UNKNOWN CL REQUEST "
+				print_string(serial_hw_data,str)
+			end if
+		end block
+
+	end case
+    
+end procedure
+
+procedure usb_handle_class_ctrl_read_callback() is
+    -- compiler issue, do local assignment to resolve
+    var byte req01 = usb_sdp_request
+    var word len = usb_sdp_length
+    var word val = usb_sdp_value
+    var byte valbt[2] at usb_sdp_value
+
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " HID CL CALLBACK RD: "
+        const byte str1[] = " bytes "
+        print_string(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,byte( len ))
+        print_string(serial_hw_data,str1)
+        print_byte_hex(serial_hw_data, byte( val >> 8 ) )
+        print_byte_hex(serial_hw_data, byte( val ) )
+        serial_hw_write( " " )
+        print_byte_hex(serial_hw_data,req01 )
+    end if
+end procedure
+
+procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
+	pragma inline
+    
+    if USB_HID_DEBUG_HIGH then
+        const byte str[] = " EP data in: "
+        const byte str1[] = " bytes "
+        print_string(serial_hw_data,str)
+        print_byte_hex(serial_hw_data,byte_count & 0xFF)
+        print_string(serial_hw_data,str1)
+    end if
+    
+    -- data has been sent, so do we need to send more?
+    if (end_point == USB_HID_ENDPOINT) then
+        -- it's the data end point
+        _usb_hid_can_tx = true
+    end if
+end procedure
+
+
+include usb_drv
+
+
+-- -----------------------------------------------------------------------
+-- usb_keyboard_flush shall be called on a regular base (millisecond range)
+-- in order to keep the USB communcation alive. Therfore it is adviced to
+-- call the usb_keyboard _flush procedure in the main loop of your 
+-- application
+-- -----------------------------------------------------------------------
+procedure usb_keyboard_flush() is    
+	pragma inline
+    usb_handle_isr()
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- _usb_hid_tx_report, internal function to send a HID report
+-- -----------------------------------------------------------------------
+procedure _usb_hid_tx_report( byte in hid_report_in[], byte in cnt ) is
+	
+	while ( _usb_hid_can_tx == false ) loop
+		usb_keyboard_flush()
+	end loop
+	_usb_hid_can_tx = false
+	usb_send_data(USB_HID_ENDPOINT, hid_report_in, cnt , low )
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- usb_keyboard_init will setup the HID USB communication with the HOST, 
+-- however, this can be a time consuming process, therefore this call 
+-- is non blocking. In order to check if communication with the HOST 
+-- has been established, one can call the usb_is_configured() function, see
+-- usb_is_configured() documentation for additional details.
+-- -----------------------------------------------------------------------
+procedure usb_keyboard_init() is
+   -- setup the USB device
+   usb_setup()
+
+   -- enable USB device
+   usb_enable_module()
+end procedure
+
+-- -----------------------------------------------------------------------
+-- ush_keyboard_send_key - send a key code (blocking!)
+-- -----------------------------------------------------------------------   
+-- ush_keyboard_send_key() sends a key code toward the USB HID host
+-- the call is blocking and assumes that the HID communcation channel
+-- has been established. See also definitions for key codes (starting
+-- with USB_KEYBOARD_KEY_xxxx) and for the modifier key definitions
+-- starting with USB_KEYBOARD_MKEY_. Note that once a key code has been
+-- send, the HID host assumes that the key remains pressed, until a
+-- USB_KEYBOARD_KEY_NONE (or other key) is send towards the HID host
+-- -----------------------------------------------------------------------
+procedure ush_keyboard_send_key( byte in modifier_key, byte in key ) is
+
+   -- -----------------------------------------------------------------------
+   -- HID report structure layout
+   -- -----------------------------------------------------------------------
+   -- 0 Modifier byte
+   -- 1 reserved
+   -- 2 keycode array (0)
+   -- 3 keycode array (1)
+   -- 4 keycode array (2)
+   -- 5 keycode array (3)
+   -- 6 keycode array (4)
+   -- 7 keycode array (5)
+   -- -----------------------------------------------------------------------
+   var byte hid_report_in[8]
+
+   -- setup HID report
+   hid_report_in[0] = modifier_key
+   hid_report_in[1] = 0
+   hid_report_in[2] = key
+   hid_report_in[3] = 0
+   hid_report_in[4] = 0
+   hid_report_in[5] = 0
+   hid_report_in[6] = 0
+   hid_report_in[7] = 0
+   
+   -- send HID report
+   _usb_hid_tx_report( hid_report_in, count( hid_report_in ) )	
+end procedure
+
+
+
+-- -----------------------------------------------------------------------
+-- usb_keyboard_led_num_lock - return the keyboard LED status
+-- of the num lock LED ( 0 = off, 1 = on )
+-- -----------------------------------------------------------------------   
+function usb_keyboard_led_num_lock'get() return bit is
+   pragma inline
+   return _usb_keyboard_led_num_lock
+end function
+
+-- -----------------------------------------------------------------------
+-- usb_keyboard_led_caps_lock - return the keyboard LED status
+-- of the caps lock LED ( 0 = off, 1 = on )
+-- -----------------------------------------------------------------------   
+function usb_keyboard_led_caps_lock'get() return bit is
+   pragma inline
+   return _usb_keyboard_led_caps_lock
+end function
+
+-- -----------------------------------------------------------------------
+-- usb_keyboard_led_compose - return the keyboard LED status
+-- of the compose LED ( 0 = off, 1 = on )
+-- -----------------------------------------------------------------------   
+function usb_keyboard_led_compose'get() return bit is
+   pragma inline
+   return _usb_keyboard_led_compose
+end function
+
+-- -----------------------------------------------------------------------
+-- usb_keyboard_led_kana - return the keyboard LED status
+-- of the kana LED ( 0 = off, 1 = on )
+-- -----------------------------------------------------------------------   
+function usb_keyboard_led_kana'get() return bit is
+   pragma inline
+   return _usb_keyboard_led_kana
+end function
+

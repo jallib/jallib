@@ -1,0 +1,96 @@
+-- -----------------------------------------------------------------------------
+-- Title: profiler.jal
+-- Author: Joep Suijs, Copyright (c) 2009..2009, all rights reserved.
+-- Adapted-by:
+-- Compiler:  >=2.4g
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description:
+--    This library provides procedures to profile code parts.
+--    Intended for software development, uses timer1.
+--
+-- -----------------------------------------------------------------------------
+
+
+
+procedure profiler_setup(byte in resolution) is
+
+   case resolution of
+      0 : block
+         t1con = 0x00   ; TMR1 off, prescaler 1 (1 tick = 0.2 us @ 20 MHz, 32k = 6,5 ms )
+      end block
+      1 : block
+         t1con = 0x10   ; TMR1 off, prescaler 2 (1 tick = 0.4 us @ 20 MHz, 32k = 13 ms )
+      end block
+      2 : block
+         t1con = 0x20   ; TMR1 off, prescaler 4 (1 tick = 0.8 us @ 20 MHz, 32k = 26 ms )
+      end block
+      otherwise block
+         t1con = 0x30   ; TMR1 off, prescaler 8 (1 tick = 1.6 us @ 20 MHz, 32k = 52 ms )
+      end block
+
+   end case
+end procedure
+
+
+const byte m1[] = "Profiler "
+const byte m2[] = " us"
+
+procedure profiler_report(volatile byte out device) is
+-- note: device does not work, probably due to compiler bug...
+-- left it in to be fixed in time.
+
+   ; calculate tick time in 1ns steps
+   var dword tick = target_clock
+   tick = 2000_000_000 / tick
+   case ((t1con & 0x30) / 0x10) of
+      1 : block
+         tick = tick * 2
+      end block
+
+      2 : block
+         tick = tick * 4
+      end block
+
+      3 : block
+         tick = tick * 8
+      end block
+
+   end case
+
+   tick = tick * TMR1
+   tick = tick / 50 ; scale from ns to .1 us
+
+   print_string(serial_hw_data, m1)
+   print_word_dec(serial_hw_data, word(tick / 10))
+   serial_hw_data = "."
+   print_word_dec(serial_hw_data, word(tick % 10))
+   print_string(serial_hw_data, m2)
+   print_crlf(serial_hw_data)
+
+end procedure
+
+procedure profiler_start() is
+   pragma inline
+
+   TMR1 = 0
+   T1CON_TMR1ON = true
+end procedure
+
+procedure profiler_stop() is
+   pragma inline
+
+   T1CON_TMR1ON = false
+end procedure
+
+procedure profiler_stop_and_report(volatile byte in out device) is
+   pragma inline
+
+   profiler_stop
+   profiler_report(device)
+end procedure

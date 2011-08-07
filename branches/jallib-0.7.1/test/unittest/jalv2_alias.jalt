@@ -1,0 +1,189 @@
+-- Title: unittest to check test new alias feature
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this unittest is intended to perform several tests about
+-- new alias feature coming with jalv2 2.4k compiler version.
+--
+
+
+;@jallib section pic
+include 16f88
+pragma target OSC HS           
+pragma target clock 20_000_000 
+pragma target WDT  disabled
+enable_digital_io()            
+
+-- define what should be aliases
+-- variables
+var byte	abyte
+var word	aword
+var byte*2	a2byte
+var sword	asword
+var dword	adword
+var byte*4	a4byte
+var sdword	asdword
+-- constants
+const bit constbit = false
+const byte constbyte = 76
+const word constword = 57
+const dword constdword = 234
+const constuniv = 42
+-- pseudo-variables
+var byte pseudo_shadow = 0
+function pseudo'get() return byte is
+   return pseudo_shadow
+end function
+procedure pseudo'put(byte in val) is
+   pseudo_shadow = val
+end procedure
+-- procedures
+-- functions
+
+
+-- This unittest is a "self test". It should always be run and
+-- give a success. It not, current PIC is probably not supported
+-- by PICShell.
+;@jallib section self_test
+include unittest
+var byte a = 120
+test_byte(a)		 ;@assertEquals 120 test_test
+
+
+;@jallib testcase test_alias_variables
+;@jallib use pic
+;@jallib use self_test
+alias a_abyte is abyte
+alias a_aword is aword
+alias a_a2byte is a2byte
+alias a_asword is asword
+alias a_adword is adword
+alias a_a4byte is a4byte
+alias a_asdword is asdword
+var byte r
+
+-- byte
+a_abyte = 10
+asm nop
+test_byte(abyte) ;@assertEquals 10 test_alias_byte
+
+-- word
+-- PICShell does not seem to be able to check value
+-- greater than a byte, need to split it
+var byte split_aword[2] at aword
+a_aword = 1037
+asm nop
+r = split_aword[0]
+test_byte(r) ;@assertEquals 13 test_alias_word_b0
+asm nop
+r = split_aword[1]
+test_byte(r) ;@assertEquals 4 test_alias_word_b1
+
+-- byte*2
+var byte split_a2byte[2] at a2byte
+a_a2byte = 2314
+asm nop
+r = split_a2byte[0]
+test_byte(r) ;@assertEquals 10 test_alias_byte*2_b0
+asm nop
+r = split_a2byte[1]
+test_byte(r) ;@assertEquals 9 test_alias_byte*2_b1
+
+-- sword
+var byte split_asword[2] at asword
+a_asword = -3045
+asm nop
+r = split_asword[0]
+test_byte(r) ;@assertEquals 27 test_alias_sword_b0
+asm nop
+r = split_asword[1]
+test_byte(r) ;@assertEquals 244 test_alias_sword_b1
+
+-- dword
+var byte split_adword[4] at adword
+a_adword = 104726
+asm nop
+r = split_adword[0]
+test_byte(r) ;@assertEquals 22 test_alias_dword_b0
+asm nop
+r = split_adword[1]
+test_byte(r) ;@assertEquals 153 test_alias_dword_b1
+asm nop
+r = split_adword[2]
+test_byte(r) ;@assertEquals 1 test_alias_dword_b2
+asm nop
+r = split_adword[3]
+test_byte(r) ;@assertEquals 0 test_alias_dword_b3
+
+-- byte*4
+var byte split_a4byte[4] at a4byte
+a_a4byte = 883378932
+asm nop
+r = split_a4byte[0]
+test_byte(r) ;@assertEquals 244 test_alias_byte*4_b0
+asm nop
+r = split_a4byte[1]
+test_byte(r) ;@assertEquals 74 test_alias_byte*4_b1
+r = split_a4byte[2]
+test_byte(r) ;@assertEquals 167 test_alias_byte*4_b2
+r = split_a4byte[3]
+test_byte(r) ;@assertEquals 52 test_alias_byte*4_b3
+
+-- sdword
+var byte split_asdword[4] at asdword
+a_asdword = -134899032
+asm nop
+r = split_asdword[0]
+test_byte(r) ;@assertEquals 168 test_alias_sdword_b0
+asm nop
+r = split_asdword[1]
+test_byte(r) ;@assertEquals 154 test_alias_sdword_b1
+asm nop
+r = split_asdword[2]
+test_byte(r) ;@assertEquals 245 test_alias_sdword_b2
+asm nop
+r = split_asdword[3]
+test_byte(r) ;@assertEquals 247 test_alias_sdword_b3
+
+
+;@jallib testcase test_alias_constants
+;@jallib use pic
+;@jallib use self_test
+alias a_constbit is constbit
+alias a_constbyte is constbyte
+alias a_constword is constword
+alias a_constdword is constdword
+alias a_constuniv is constuniv
+
+if a_constbit != false then
+   _error "alias const bit failed"
+end if
+if a_constbyte != 76 then
+   _error "alias const byte failed"
+end if
+if a_constword != 57 then
+   _error "alias const word failed"
+end if
+if a_constdword != 234 then
+   _error "alias const dword failed"
+end if
+if a_constuniv != 42 then
+   _error "alias const universal failed"
+end if
+
+
+;@jallib testcase test_alias_pseudovars
+;@jallib use pic
+;@jallib use self_test
+
+alias a_pseudo is pseudo
+a_pseudo = 100
+test_byte(pseudo_shadow)   ;@assertEquals 100 test_pseudo_alias_put
+var byte tp
+tp = a_pseudo
+test_byte(tp)  ;@assertEquals 100 test_pseudo_alias_get
+

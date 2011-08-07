@@ -1,0 +1,106 @@
+-- Title: CAN to UART adapter example
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: gateway between RS232 and CAN bus. Uses ASCII encapsulation, 
+--          compatible with the Socket-CAN SLCAN API.
+-- 
+-- Sources: Socket-CAN, in particular the SLCAN API. http://developer.berlios.de/projects/socketcan/ 
+--          also, the LAWICEL CAN-USB adapter.
+--
+-- For this example, the UART is only running at 9600. You may wish to increase to 115200 and re-test.
+--
+
+include 18f2585
+pragma target clock 16_000_000
+pragma target OSC  HS_PLL
+pragma target XINST disabled
+pragma target WDT  disabled
+pragma target LVP  disabled
+pragma target MCLR external
+include delay
+include format
+include print
+
+enable_digital_io()
+
+var bit led is pin_A0
+pin_A0_direction =  output
+
+const usart_hw_serial = true
+const serial_hw_baudrate = 9600
+include serial_hardware
+serial_hw_init()
+
+-- ECAN controller is built-in to 18F2585
+-- but we will operate in 'legacy' mode 0.
+pin_B2 = high -- set CANTX high for recessive level
+pin_B2_direction = output
+pin_B3_direction = input
+include can_legacy
+include can_ascii
+
+can_reset()
+
+-- 125K bps
+can_set_config(3, 0x9E, 3)
+CIOCON = 0x20; -- TXCAN, high when recessive
+
+-- in this example we combine the hardware buffers.
+RXB0CON = 0x04 -- rollover/ double-buffer
+RXB1CON = 0x00 -- all valid frames go to buffer #1.
+
+-- match all msgs
+can_set_rxb0_mask(0,0,0,0)
+can_set_rxb1_mask(0,0,0,0)
+
+TXB0CON = 0;
+TXB1CON = 0;
+TXB2CON = 0;
+CANCON = 0; -- normal mode
+
+-- gateway loop
+
+var byte s_rxcnt, s_rxbuf[32]
+var byte s_txcnt, s_txbuf[32]
+s_rxcnt = 0
+
+forever loop
+   var bit got_msg, txstat
+   var byte i, data_len, c
+   var byte can_data[8]
+   var dword can_id
+   
+   got_msg = can_receive(1, can_id, can_data, data_len)
+   
+   if got_msg then
+      s_txcnt = can_to_ascii(can_id, can_data, data_len, s_txbuf)
+      for s_txcnt using i loop
+         serial_hw_data = s_txbuf[i]
+      end loop
+      -- serial_hw_data = 10
+   end if
+   
+   if serial_hw_read(c) then
+      s_rxbuf[s_rxcnt] = c
+      s_rxcnt = s_rxcnt + 1
+      if s_rxcnt >= 32 then
+         s_rxcnt = 0
+      end if
+      if c == 13 then
+         if ascii_to_can(s_rxbuf, can_id, can_data, data_len) then
+            -- FIXME: should retry can_send if busy
+            txstat = can_send(0, can_id, can_data, data_len)
+         end if
+         s_rxcnt = 0
+      end if
+   end if
+   
+   led = led ^ 1
+end loop
+

@@ -1,0 +1,194 @@
+-- ----------------------------------------------------------------------------
+-- Title: lcd_backlight.jal 
+-- Author: Joep Suijs, Copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4g
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+-- Provides standard interface to backlight of (directly connected) lcd.    
+-- First, setup the pin for the backlight:
+--    var volatile bit lcd_bl is pin_b0
+--    pin_b0_direction = output              
+-- --
+-- If the backlight line is inverted (that is low output turn the backlight on),
+-- you must define:
+--    const bit lcd_bl_inverted = true
+-- --
+-- If you want digital backlight (on or off), then you can include this library.
+-- But if you want variable backlight (256 steps from off to on), the pin above 
+-- must be a pwm (ccp) output pin. And you have to tell the library, which pwm:
+--    const byte lcd_backlight_pwm = 1                                        
+-- --
+-- now include the library & init it:
+--    include lcd_backlight
+--    pwm_backlight_init()        
+--
+-- Sources:
+--
+-- Notes: 
+-- 
+-- ----------------------------------------------------------------------------
+      
+-- define default
+if (defined(lcd_bl_inverted) == false) then
+   const bit lcd_bl_inverted = false
+end if
+
+
+-- ----------------------------------------------------------------------------
+-- conditional compile for backlight_variable procedures
+-- ----------------------------------------------------------------------------
+if (defined(lcd_backlight_pwm) == true) then
+
+   -- backlight pwm is requested
+   include pwm_hardware
+   
+   if (lcd_backlight_pwm == 1) then
+      
+      -- ----------------------------------------------------------------------
+      -- pwm on ccp1        
+      ;pin_ccp1_direction = output   
+      procedure pwm_backlight_init() is
+         pwm_max_resolution(1)
+         pwm1_on() 
+      end procedure
+      
+      -- next procedure is unindented to have the definition included into the documentation      
+-- ----------------------------------------------------------------------------
+-- lcd_backlight_variable - set backlight level (0 =off, 255 = max on)
+-- ----------------------------------------------------------------------------       
+procedure lcd_backlight_variable(byte in value) is
+   pragma inline    
+   if (lcd_bl_inverted == false) then
+      pwm1_set_dutycycle(value)
+   else
+      pwm1_set_dutycycle(255 - value)
+   end if            
+end procedure
+-- ----------------------------------------------------------------------             
+      -- end of unindented part
+
+   elsif (lcd_backlight_pwm == 2) then
+
+      -- ----------------------------------------------------------------------
+      -- pwm on ccp2
+      procedure pwm_backlight_init() is
+         pwm_max_resolution(1)
+         pwm2_on() 
+      end procedure
+
+      procedure lcd_backlight_variable(byte in value) is
+         pragma inline    
+         if (lcd_bl_inverted == false) then
+            pwm2_set_dutycycle(value)
+         else
+            pwm2_set_dutycycle(255 - value)
+         end if            
+      end procedure
+      -- ----------------------------------------------------------------------
+
+   elsif (lcd_backlight_pwm == 3) then
+
+      -- ----------------------------------------------------------------------
+      -- pwm on ccp3
+      procedure pwm_backlight_init() is
+         pwm_max_resolution(1)
+         pwm3_on() 
+      end procedure
+
+      procedure lcd_backlight_variable(byte in value) is
+         pragma inline    
+         if (lcd_bl_inverted == false) then
+            pwm3_set_dutycycle(value)
+         else
+            pwm3_set_dutycycle(255 - value)
+         end if            
+      end procedure
+      -- ----------------------------------------------------------------------
+
+   elsif (lcd_backlight_pwm == 4) then
+
+      -- ----------------------------------------------------------------------
+      -- pwm on ccp4
+      procedure pwm_backlight_init() is
+         pwm_max_resolution(1)
+         pwm4_on() 
+      end procedure
+
+      procedure lcd_backlight_variable(byte in value) is
+         pragma inline    
+         if (lcd_bl_inverted == false) then
+            pwm4_set_dutycycle(value)
+         else
+            pwm4_set_dutycycle(255 - value)
+         end if            
+      end procedure
+      -- ----------------------------------------------------------------------
+
+   elsif (lcd_backlight_pwm == 5) then
+
+      -- ----------------------------------------------------------------------
+      -- pwm on ccp5
+      procedure pwm_backlight_init() is
+         pwm_max_resolution(1)
+         pwm5_on() 
+      end procedure
+
+      procedure lcd_backlight_variable(byte in value) is
+         pragma inline    
+         if (lcd_bl_inverted == false) then
+            pwm5_set_dutycycle(value)
+         else
+            pwm5_set_dutycycle(255 - value)
+         end if            
+      end procedure
+      -- ----------------------------------------------------------------------
+   else
+      _error "invalid value of lcd_backlight_pwm (no such cpp)"
+   end if
+   
+end if
+
+if (defined(pwm_backlight_init) == false) then
+   
+   -- next procedure is unindented to have the definition included into the documentation      
+-- ----------------------------------------------------------------------------
+-- pwm_backlight_init - init backlight functions
+-- ----------------------------------------------------------------------------
+procedure pwm_backlight_init() is
+   -- this procedure is empty for digital backlight
+   -- (the user must set the bl pin as output)
+   -- the procedure is provided for compatibility with variable backlight
+end procedure
+   -- end of unindented part
+end if   
+
+
+-- ----------------------------------------------------------------------------
+-- lcd_backlight - turn backlite on/off
+-- ----------------------------------------------------------------------------
+procedure lcd_backlight(bit in onoff) is    
+   if(defined(lcd_backlight_variable) == true) then  
+      -- lcd_backlight_variable exists
+      if (onoff) then
+         lcd_backlight_variable(255)
+      else
+         lcd_backlight_variable(0)
+      end if   
+      return
+   end if
+   
+   if(defined(lcd_bl) == true) then
+      -- backlight pin exists
+      if (lcd_bl_inverted == true) then
+         -- lcd_bl_inverted is true
+         lcd_bl = ! onoff
+         return
+      end if
+      lcd_bl = onoff
+   end if
+end procedure

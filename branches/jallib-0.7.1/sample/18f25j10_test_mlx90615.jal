@@ -1,0 +1,140 @@
+-- ------------------------------------------------------
+-- Title: Test program MLX90615 IR thermometer
+--
+-- Author: Vasile Surducan, Copyright (c) 2010...2012, all rights reserved.
+--
+-- Adapted-by: Joep Suijs
+--
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: MLX90612 test program
+--    interact with an IR senzor on SMbus
+--
+--
+-- Sources:
+--
+-- Notes:
+--    setup:
+--      this test program require a 20x4 HD44780 compatible LCD
+--      and a MLX90515 IR sensor connected on a SMbus
+--      both SMbus data and SMbus clk must be pulled up to 3.3V
+-- ------------------------------------------------------------------
+--
+-- This file has been created for:
+--    *test SMbus_MLX90615.jal
+--
+
+ include 18f25j10  -- include file definition
+
+
+pragma target clock         10_000_000
+pragma target OSC           HS          -- run in HS mode at 10Mhz
+pragma target FOSC2         OSC
+pragma target WDTPS         P128        -- watch dog saler setting
+pragma target WDT           DISABLED    -- no watchdog
+pragma target CCP2MUX       pin_C1      -- CCP2 pin io muxed with RC1
+pragma target STVR          DISABLED    -- reset on stack over/under flow
+pragma target DEBUG         DISABLED    -- background debugging
+pragma target CP0           DISABLED    -- code block 0 not protected
+pragma target FCMEN         DISABLED
+pragma target IESO          DISABLED
+pragma target XINST         DISABLED    -- extended instruction set disabled
+
+----------------------------------------------------------------------------
+-- board LCD IO definition
+----------------------------------------------------------------------------
+
+var bit lcd_rs           is pin_b2              -- LCD command/data select.
+var bit lcd_rs_direction is pin_b2_direction
+var bit lcd_en           is pin_a3              -- LCD data trigger
+var bit lcd_en_direction is pin_a3_direction
+
+
+var   bit  lcd_d4        is  pin_B4      -- databit d4 pin
+var   bit  lcd_d5        is  pin_B5      -- databit d5 pin
+var   bit  lcd_d6        is  pin_B6      -- databit d6 pin
+var   bit  lcd_d7        is  pin_B7      -- databit d7 pin
+
+const byte LCD_ROWS     = 4              -- 4 lines
+const byte LCD_CHARS    = 20             -- 20 chars per line
+
+
+enable_digital_io()  -- make all AD/comparator IO as digital IO
+
+
+lcd_rs_direction    = output           -- set data pins output
+lcd_en_direction    = output
+
+pin_B4_direction    = output
+pin_B5_direction    = output
+pin_B6_direction    = output
+pin_B7_direction    = output
+
+include lcd_hd44780_4                   -- LCD library with 4 data lines
+
+include print
+include format
+lcd_init()                              -- initialize LCD
+----------------------------------------------------------------------------
+
+
+-----------------------------------------------------
+-- board MLX90615 definitions
+-----------------------------------------------------
+var volatile bit sm_scl is pin_C3
+var volatile bit sm_scl_direction is pin_C3_direction
+var volatile bit sm_sda is pin_C4
+var volatile bit sm_sda_direction is pin_C4_direction
+
+sm_sda_direction = input
+sm_scl_direction = input
+-----------------------------------------------------
+
+include smbus_mlx90615
+
+
+forever loop
+
+if nack_counter == 0 then
+   read_mem (0x5b, ram_access + raw_ir_data) ; read RAM, IR data
+   lcd_cursor_position(0,0)
+   print_byte_hex ( LCD, mem_high )
+   lcd = " "
+   print_byte_hex ( LCD, mem_low )
+   lcd = " "
+   print_byte_hex ( LCD, pec ) ; read PEC
+
+   read_mem (0x5b, eeprom_access + config_reg); read EEPROM, MX90615 config_reg
+   lcd_cursor_position(1,0)
+   print_byte_hex ( LCD, mem_high )
+   lcd = " "
+   print_byte_hex ( LCD, mem_low )
+   lcd = " "
+   print_byte_hex ( LCD, pec ) ; read PEC
+
+   read_mem (0x5b, ram_access + tobject) ; read RAM, Tobject
+   calculate_temp_c
+   lcd_cursor_position(2,0)
+   format_sword_dec ( LCD, temperature_c, 5, 1 )
+   lcd_cursor_position(2,6)
+   lcd = 0b_1101_1111        -- celsius (square) symbol
+   lcd = "C"
+
+   read_mem (0x5b, ram_access + tambiant) ; read RAM, Tambiant
+   calculate_temp_k
+   lcd_cursor_position(3,0)
+   format_word_dec ( LCD, temperature_k, 3, 0 )
+   lcd_cursor_position(3,4)
+   lcd = 0b_1101_1111        -- Kelvin (square) symbol
+   lcd = "K"
+else
+   lcd_clear_screen
+   lcd_cursor_position(0,0)
+   lcd = "E" lcd = "r" lcd = "r"
+end if
+end loop
+

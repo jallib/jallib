@@ -1,0 +1,126 @@
+-- Title: Ethernet Header
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: creates an ethernet header. contains destination/source
+--              and next protocol type.
+--
+-- Sources:
+--
+-- Notes:
+--
+
+const ETHERNET_PROTOCOL_IP = 0x0800
+const ETHERNET_PROTOCOL_ARP = 0x0806
+
+const ETHERNET_PROTOCOL = 12
+const ETHERNET_HEADER_SIZE = 14
+
+----------------------------------------------------------------
+-- create an ethernet header
+----------------------------------------------------------------
+procedure ethernet_header_create(byte in type, byte in mac_0, byte in mac_1, byte in mac_2, byte in mac_3, byte in mac_4, byte in mac_5) is
+   -- set source and destination MAC addresses
+   var byte step
+   for 6 using step loop
+      ;network_data[step] = 0xFF -- broadcast
+      network_data[step + 6] = network_local_mac[step]
+   end loop
+
+   -- destination mac address
+   network_data[0] = mac_0
+   network_data[1] = mac_1
+   network_data[2] = mac_2
+   network_data[3] = mac_3
+   network_data[4] = mac_4
+   network_data[5] = mac_5
+
+   network_data[12] = 0x08 -- set ip version 4
+   network_data[13] = type
+
+   -- set network array offset
+   network_var_offset = 14
+end procedure
+
+----------------------------------------------------------------
+-- verify an ethernet header
+----------------------------------------------------------------
+function ethernet_verify_header() return bit is
+   pragma inline -- this proc is only called once
+   if defined(ENC28J60_READ_CTRL_REG) then
+      -- enc_28j60 packet match filter will verify
+      -- ethernet header mac address
+      return 1
+   else
+      -- verify ethernet header mac address
+      -- must be our mac or broadcast mac
+      if (network_data[0] == network_local_mac[0] &
+         network_data[1] == network_local_mac[1] &
+         network_data[2] == network_local_mac[2] &
+         network_data[3] == network_local_mac[3] &
+         network_data[4] == network_local_mac[4] &
+         network_data[5] == network_local_mac[5])
+         |
+         (network_data[0] == 0xFF &
+         network_data[1] == 0xFF &
+         network_data[2] == 0xFF &
+         network_data[3] == 0xFF &
+         network_data[4] == 0xFF &
+         network_data[5] == 0xFF)
+         then
+
+         return 1
+      else
+         return 0
+      end if
+   end if
+end function
+
+----------------------------------------------------------------
+-- read an ethernet header and pass to next protocol
+----------------------------------------------------------------
+procedure ethernet_read_packet() is
+
+   -- check mac address
+   -- this check may not be needed tanks to "enc28j60 pattern match filter"
+   if ethernet_verify_header() then
+   
+      -- go to next protocol
+      if network_word[ETHERNET_PROTOCOL] == ETHERNET_PROTOCOL_IP then
+         -- IP protocol
+         network_var_offset = network_var_offset + ETHERNET_HEADER_SIZE
+         ip_header_read_packet()
+      elsif network_word[ETHERNET_PROTOCOL] == ETHERNET_PROTOCOL_ARP then
+         -- ARP protocol
+         network_var_offset = network_var_offset + ETHERNET_HEADER_SIZE
+         arp_read_packet()
+      else
+         -- unknown protocol
+         network_var_offset = network_var_offset + ETHERNET_HEADER_SIZE
+
+         -- print a debug message
+         var byte sending_ping[] = "---------- unrecognized protocol type ----------"
+         debug_string(DEBUG_2,sending_ping)
+         debug_crlf(DEBUG_2)
+
+         -- print all data after the 14 byte ehternet data
+         var byte count4 = ETHERNET_HEADER_SIZE
+         for network_packet_size - ETHERNET_HEADER_SIZE using count4 loop
+            debug_byte_hex(3, network_data[count4])
+            debug_char(3," ")
+         end loop
+      end if
+      
+   else
+      debug_crlf(DEBUG_2)
+      const byte str1[] = "---------- ethernet packet was not for us ----------"
+      debug_string(DEBUG_3, str1)
+      debug_crlf(DEBUG_3)
+   end if
+
+end procedure

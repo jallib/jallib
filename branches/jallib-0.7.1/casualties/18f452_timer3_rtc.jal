@@ -1,0 +1,123 @@
+-- Title: Basic usage of timer3 module
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This example shows basic usage of timer3 to output a 1khz
+--              square wave using timer3, while blinking a led
+--
+-- Sources:
+--
+-- notes:
+--
+
+-- include chip
+include 18F452                   -- target picmicro
+
+-- This program assumes a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target clock 20_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target WDT  disabled        -- no watchdog
+pragma target LVP  disabled        -- no Low Voltage Programming
+
+-- set all IO as digital
+enable_digital_io()
+
+-- led def
+alias led             is pin_a1
+alias led_direction   is pin_a1_direction
+--
+led_direction = output
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200  -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+serial_hw_data = 0xAA
+serial_hw_data = 0xAA
+serial_hw_data = 0xAA
+serial_hw_data = 0xAA
+
+include print
+
+-- init pic interrupt settings
+intcon_gie  = on    ; enables all unmasked interrupts
+intcon_peie = on    ; enables all unmasked peripheral interrupts
+
+-- Set this to desired interval. timer3 will count up.
+-- Interupt will occur when timer_interval rolls
+-- over from 65535 to 0
+var word timer_interval = 0
+
+-- timer3 setup
+tmr3 = timer_interval  -- timer interval
+t3con_tmr3cs = 0       -- use internal clock
+pie2_tmr3ie  = 1       -- enable the timer3 interrupt bit
+t3con_tmr3on = 1       -- 1 = enables timer 3
+pir2_tmr3if  = off     -- clear overflow to start timer
+
+-- set timer3 clock prescaler
+-- each increment slows clock by a multiple of 2
+t3con_t3ckps = 1 -- set prscal of 1:1
+
+-- holds value of one second 1.0000000
+var dword one_sec = 10000000
+
+-- interrupt will occur every 0.0262144 seconds for 20mhz clock
+var dword interrupt_occur_time = 262144
+
+-- counts the remainder up to one second (up to 10000000)
+-- after count is > 1 second, we will minus 1 second within interrupt.
+var byte*6 time_count = 0
+var byte time_count_array[6] at time_count
+
+-- second counter, allow it to roll over to 0
+var byte second_count = 255
+-----------
+
+procedure timer_isr() is
+   pragma interrupt          -- interupt procedure
+   
+   if !PIR2_TMR3IF then      -- check if this is a timer3 interupt
+      return                 -- exit interupt if it is not
+   end if
+
+   PIR2_TMR3IF = off         -- clear timer overflow
+
+   -- if time_count is > 1 sec
+   if time_count > one_sec then
+      -- remove one second from time_count since it went over 1 sec
+      time_count = time_count - one_sec
+      
+      -- add one second to displayed time
+      second_count = second_count + 1
+      
+      -- reset seconds to 0 each min
+      if second_count >= 60 then
+         second_count = 0
+      end if
+
+      -- send seconds to serial port
+      print_byte_dec (serial_hw_data,second_count)
+      serial_hw_data = 0x0D
+      serial_hw_data = 0x0A
+
+      led = !led -- switch led on/off each second
+   else
+      -- add 0.0262144 seconds
+      time_count = time_count + interrupt_occur_time
+   end if
+
+end procedure
+
+-- main program here
+forever loop
+end loop
+
