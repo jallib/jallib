@@ -1,0 +1,119 @@
+-- Title: RC Servo Slave sample
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4o
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This sample allows your PIC to read pulses given by a RC
+--              receiver. Connect your PIC to a rc receiver the same way you
+--              would connect a RC servo. This will use the rc_servo_slave
+--              library to output a value to the serial port dependant on
+--              where your fingers are moving the controls on your remote
+--              transmitter. It will read the pulse width at the receiver.
+--
+-- Sources:
+--
+-- notes:
+-- PIC must have interrupt on change pins on port B. If you are using another
+-- port, INTCON_RBIE & INTCON_RBIF may be named differently.
+-- Check your datasheet for a interrupt-on-change pin.
+--
+-- Connect clock_out pin directly to int_on_change pin for an example without
+-- an actual RC receiver.
+--
+
+-- include chip
+include 18f4620                   -- target picmicro
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
+;pragma target osc hs              -- hs crystal or resonator
+;pragma target clock 20_000_000    -- oscillator frequency
+pragma target clock 32_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
+pragma target MCLR external        -- reset externally
+--
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+--
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+include print
+include format
+
+-- set all IO as digital
+enable_digital_io()
+
+alias led0                is pin_a0
+alias led0_direction      is pin_a0_direction
+led0_direction = output
+
+alias clock_out           is pin_a2
+alias clock_out_direction is pin_a2_direction
+clock_out_direction = output
+
+-- choose pins to use for int on change
+const byte int_on_change_pins[] = {"B",4}
+include interrupt_on_change
+int_on_change_init()
+
+const SERVO_SLAVE_USE_INT_ON_CHANGE_PIN = 0 -- pulse input pin
+const SERVO_SLAVE_USE_TIMER = 1             -- choose a timer
+include servo_rc_slave
+servo_slave_init()
+
+-- main loop
+forever loop
+   -- create a pulse to measure
+   clock_out = high
+   _usec_delay(2_500) -- max 2_500 (2.5ms)
+   clock_out = low
+   _usec_delay(20_000)
+
+   if servo_slave_is_valid == TRUE then
+      -- send the value to the serial port
+      print_dword_dec(serial_data,servo_slave)
+   else
+      -- there must be no pulse, send a message
+      const byte str1[] = "No Signal!"
+      print_string(serial_data, str1)
+   end if
+   
+   print_crlf(serial_data)
+end loop
+
+
+
+
+
+
+
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   

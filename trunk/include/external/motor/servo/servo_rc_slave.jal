@@ -1,0 +1,252 @@
+-- Title: RC Servo Slave
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library allows your PIC to read pulses given by a RC
+--              receiver. Connect your PIC to a rc receiver the same way you
+--              would connect a RC servo. This library will output a value
+--              dependant on where your fingers are moving the controls
+--              on your remote transmitter. It will read the pulse width
+--              at the receiver.
+--
+-- Sources:
+-- http://www.horrorseek.com/home/halloween/wolfstone/Motors/svoint_RCServos.html
+--
+-- notes:
+--
+
+var byte servo_slave_off_count = 0
+var byte servo_slave_is_valid = TRUE
+
+-- check if current pic has selected timers
+if SERVO_SLAVE_USE_TIMER == 0 then
+   if !(defined(tmr0) == TRUE) then
+      _error "target pic does not have a timer0 module"
+   end if
+elsif SERVO_SLAVE_USE_TIMER == 1 then
+   if !(defined(tmr1) == TRUE) then
+      _error "target pic does not have a timer1 module"
+   end if
+elsif SERVO_SLAVE_USE_TIMER == 3 then
+   if !(defined(tmr3) == TRUE) then
+       _error "target pic does not have a timer3 module"
+   end if
+end if
+
+-- setup servo 1 to 8 timer aliases for the timer the user selected
+if SERVO_SLAVE_USE_TIMER == 0 then
+   -- set special timer0 settings
+   t0con_psa  = 0  -- assign prescaler to timer0
+   -- set timer registers to timer0
+   alias servo_slave_tmr      is TMR0            -- timer interval
+   alias servo_slave_cs       is T0CON_T0CS      -- timer clock source bit
+   alias servo_slave_ie       is INTCON_TMR0IE   -- interrupt enable
+   alias servo_slave_if       is INTCON_TMR0IF   -- interrupt overflow bit
+   alias servo_slave_ps       is T0CON_T0PS      -- timer prescaler select bits
+   alias servo_slave_on       is T0CON_TMR0ON    -- timer on
+   
+   if defined(TMR0H) then
+      const SERVO_SLAVE_TIMER_SIZE = 16
+   else
+      const SERVO_SLAVE_TIMER_SIZE = 8
+   end if
+   
+elsif SERVO_SLAVE_USE_TIMER == 1 then
+   -- set special timer1 settings
+   ;t1con_tmr1on = 1               -- enables timer 1
+   -- set timer registers to timer1
+   alias servo_slave_tmr      is TMR1             -- timer interval
+   alias servo_slave_cs       is T1CON_TMR1CS     -- timer clock source bit
+   alias servo_slave_ie       is PIE1_TMR1IE      -- interrupt enable
+   alias servo_slave_if       is PIR1_TMR1IF      -- interrupt overflow bit
+   alias servo_slave_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+   alias servo_slave_on       is T1CON_TMR1ON     -- timer on
+
+   if defined(TMR1H) then
+      const SERVO_SLAVE_TIMER_SIZE = 16
+   else
+      const SERVO_SLAVE_TIMER_SIZE = 8
+   end if
+elsif SERVO_SLAVE_USE_TIMER == 3 then
+   ;t3con_tmr3on = 1               -- enables timer 3
+   -- set timer registers to timer3
+   alias servo_slave_tmr      is TMR3             -- timer interval
+   alias servo_slave_cs       is T3CON_TMR3CS     -- timer clock source bit
+   alias servo_slave_ie       is PIE2_TMR3IE      -- interrupt enable
+   alias servo_slave_if       is PIR2_TMR3IF      -- interrupt overflow bit
+   alias servo_slave_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+   alias servo_slave_on       is T3CON_TMR3ON    -- timer on
+
+   if defined(TMR3H) then
+      const SERVO_SLAVE_TIMER_SIZE = 16
+   else
+      const SERVO_SLAVE_TIMER_SIZE = 8
+   end if
+end if
+
+-- create an array for servo location
+if SERVO_SLAVE_TIMER_SIZE == 8 then
+   var byte servo_slave
+   var byte servo_slave_steps_per_2_5_msec -- holds number of steps within 2.5ms
+else
+   var word servo_slave
+   var word servo_slave_steps_per_2_5_msec -- holds number of steps within 2.5ms
+end if
+
+--------------------------------------------------------------------------------
+-- interrupt on change pin callback, reset or read the timer.
+--------------------------------------------------------------------------------
+if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN == 0 then
+   -- interrupt for pin B4
+   procedure int_on_change_callback_0() is
+      if int_on_change_pin_state_0 == LOW then
+         servo_slave = servo_slave_tmr
+      else
+         servo_slave_tmr = 0
+         servo_slave_off_count = 0
+         servo_slave_is_valid = TRUE
+      end if
+   end procedure
+end if
+
+if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN == 1 then
+   -- interrupt for pin B4
+   procedure int_on_change_callback_1() is
+      if int_on_change_pin_state_1 == LOW then
+         servo_slave = servo_slave_tmr
+      else
+         servo_slave_tmr = 0
+         servo_slave_off_count = 0
+         servo_slave_is_valid = TRUE
+      end if
+   end procedure
+end if
+
+if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN == 2 then
+   -- interrupt for pin B4
+   procedure int_on_change_callback_2() is
+      if int_on_change_pin_state_2 == LOW then
+         servo_slave = servo_slave_tmr
+      else
+         servo_slave_tmr = 0
+         servo_slave_off_count = 0
+         servo_slave_is_valid = TRUE
+      end if
+   end procedure
+end if
+
+if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN == 3 then
+   -- interrupt for pin B4
+   procedure int_on_change_callback_3() is
+      if int_on_change_pin_state_3 == LOW then
+         servo_slave = servo_slave_tmr
+      else
+         servo_slave_tmr = 0
+         servo_slave_off_count = 0
+      end if
+   end procedure
+end if
+
+--------------------------------------------------------------------------------
+-- Initialize the servo
+--------------------------------------------------------------------------------
+procedure servo_slave_init() is
+   -- enable global interupts
+;   INTCON_GIE  = on        -- Enables all unmasked interrupts
+;   INTCON_PEIE = on        -- Enables all unmasked peripheral interrupts
+
+   servo_slave_if = off   -- clear interrupt overflow bit
+   servo_slave_ie = on    -- timer overflow interrupt enable
+   servo_slave_cs = 0     -- use internal clock for timer
+   servo_slave_on = on    -- enable the timer
+   
+   if SERVO_SLAVE_USE_TIMER == 0 then
+      -- timer0 min step time of (1/osc)*4*2. (0.4us at 20mhz)
+
+      -- calculate number of steps available within 2.5ms ;example on 20mhz
+      const dword SERVO_SLAVE_CALC_1 = target_clock / 10_000           ;= 2000
+      const dword SERVO_SLAVE_CALC_2 = SERVO_SLAVE_CALC_1 / 4         ;= 500
+      const dword SERVO_SLAVE_CALC_3 = 10_000 / SERVO_SLAVE_CALC_2    ;= 20
+      const dword SERVO_SLAVE_CALC_4 = SERVO_SLAVE_CALC_3 * 2         ;= 40
+      var dword servo_slave_steps = 250_000 / SERVO_SLAVE_CALC_4      ;= 6250
+
+      -- increase prescaler if 256 clock pulses is not enough time
+      var byte servo_slave_prescaler = 0
+      forever loop
+         if servo_slave_steps > 255 then
+            servo_slave_prescaler = servo_slave_prescaler + 1 -- increase prescaler
+            servo_slave_steps = servo_slave_steps / 2         -- decrease timer steps needed
+         else
+            exit loop
+         end if
+      end loop
+
+      -- servo_slave_steps is now calculated, set the prescaler
+      servo_slave_ps = servo_slave_prescaler
+
+      -- put it into a byte for the 8 bit timer
+      var byte value[1] at servo_slave_steps
+      servo_slave_steps_per_2_5_msec = value[0]
+   else
+      -- timer1 & timer3 min step time is (1/osc)*4*1. (0.2us at 20mhz)
+
+      -- calculate number of steps available within 2.5ms ;example on 20mhz
+      const dword SERVO_SLAVE_CALC_1 = target_clock / 40_000          ;500
+      const dword SERVO_SLAVE_CALC_2 = 10_000 / SERVO_SLAVE_CALC_1    ;20
+      var dword servo_slave_steps = 250_000 / SERVO_SLAVE_CALC_2      ;12500
+
+      -- increase prescaler if 65535 clock pulses is not enouf time
+      var byte servo_slave_prescaler = 0
+      forever loop
+         if servo_slave_steps > 65535 then
+            servo_slave_prescaler = servo_slave_prescaler + 1 -- increase prescaler
+            servo_slave_steps = servo_slave_steps / 2         -- decrease timer steps needed
+         else
+            exit loop
+         end if
+      end loop
+
+;      print_dword_dec(serial_data, servo_slave_steps)
+;      print_crlf(serial_data)
+
+      -- servo_slave_steps is now calculated, set the prescaler
+      servo_slave_ps = servo_slave_prescaler
+
+      -- put it into a word for the 16 bit timer
+      var word value[2] at servo_slave_steps
+      servo_slave_steps_per_2_5_msec = (value[1] << 8) + value[0] ; equals 12500 on 20mhz
+
+   end if
+end procedure
+
+-- future procedure to detect no pulses
+procedure servo_slave_timer_isr() is
+   pragma interrupt
+
+   if servo_slave_if then -- check if it is a timer interrupt
+
+      servo_slave_off_count = servo_slave_off_count + 1
+      
+      if servo_slave_off_count > 50 then
+         servo_slave_is_valid = FALSE
+      end if
+      
+      servo_slave_if = off
+   end if
+end procedure
+
+
+
+
+
+
+
+
+
+
+
