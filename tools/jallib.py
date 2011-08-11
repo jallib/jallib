@@ -249,8 +249,6 @@ def content_not_empty(val):
     return val.strip() != ''
 def compiler_version(val):
     return re.match("^(>|<|>=|<=|=)?\d+(\.\d+\w*)+\s+$",val)
-def revision_number(val):
-    return re.match("^\$Revision:\s+\d+\s+\$",val)
 
 JALLIB = """^-- This file is part of (jallib|jaluino)\s+\(http://(jallib|jaluino).googlecode.com\)"""
 LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
@@ -264,7 +262,6 @@ FIELDS = [
         {'field':"Author",'predicate':content_not_empty,'mandatory':True,'multiline':False},
         {'field':"Adapted-by",'predicate':content_not_empty,'mandatory':False,'multiline':False},
         {'field':"Compiler",'predicate':compiler_version,'mandatory':True,'multiline':False},
-        {'field':"Revision",'predicate':revision_number,'mandatory':True,'multiline':False},
         {'field':"Description",'predicate':content_not_empty,'mandatory':True,'multiline':True},
         {'field':"Sources",'predicate':content_not_empty,'mandatory':False,'multiline':True},
         {'field':"Notes",'predicate':content_not_empty,'mandatory':False,'multiline':True},
