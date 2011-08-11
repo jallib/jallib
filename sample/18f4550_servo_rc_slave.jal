@@ -1,0 +1,147 @@
+-- Title: RC Servo Slave sample
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4o
+-- Revision: $Revision 1111$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This sample allows your PIC to read pulses given by a RC
+--              receiver. Connect your PIC to a rc receiver the same way you
+--              would connect a RC servo. This will use the rc_servo_slave
+--              library to output a value to the serial port dependant on
+--              where your fingers are moving the controls on your remote
+--              transmitter. PIC will read the pulse width at the receiver.
+--
+-- Sources:
+--
+-- notes:
+-- PIC must have interrupt on change pins on port B. If you are using another
+-- port, INTCON_RBIE & INTCON_RBIF may be named differently.
+-- Check your datasheet for a interrupt-on-change pin.
+--
+-- Connect clock_out pin directly to int_on_change pin for an example without
+-- an actual RC receiver.
+--
+
+include 18f4550                    -- target PICmicro
+--
+-- Compiler directives
+pragma target CLOCK    48_000_000  -- CPU frequency
+--
+-- Configuration memory settings (fuses)
+pragma target OSC      HS_PLL      -- HS crystal or resonator
+--                                    and using PLL
+pragma target PLLDIV   P5          -- reduce OSC 20->4 MHz for PLL input
+pragma target CPUDIV   P1          -- CPU freq. from PLL(96)/2 -> 48 MHz
+--                                    (without PLL: CPU freq. = OSC freq.)
+pragma target USBPLL   F48MHZ      -- USB clock from PLL module
+pragma target FCMEN    DISABLED    -- no fail-safe clock monitoring
+pragma target IESO     DISABLED    -- no int/ext clock switchover
+pragma target BROWNOUT DISABLED    -- no brownout detection
+pragma target VREGEN   ENABLED     -- enable USB voltage regulator
+--                                    (when no external regulator at Vusb)
+pragma target WDT      DISABLED    -- no watchdog
+pragma target XINST    DISABLED    -- not supported by JalV2
+pragma target DEBUG    DISABLED    -- no debugging
+pragma target LVP      DISABLED    -- no Low Voltage Programming
+pragma target ICPRT    DISABLED    -- no In Circuit Debug
+pragma target MCLR     EXTERNAL    -- reset externally
+--
+-- Note: Not specified:
+--       Code protection, Boot Block Code protection, Data EEPROM protection,
+--       Write protection, Configuration Memory write protection,
+--       Table Read protection, Boot Block Table Read protection,
+--       and maybe some other configuration bits.
+--
+OSCCON_SCS = 0b00                  -- select primary clock source
+--
+enable_digital_io()                -- make all pins digital I/O
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+-- include print lib
+include print
+
+-- define clock out pin
+alias clock_out           is pin_a2
+alias clock_out_direction is pin_a2_direction
+clock_out_direction = output
+
+-- choose pins to use for interrupt on change
+const byte int_on_change_pins[] = {"B",4} -- interrupt on change pin0 = B4
+include interrupt_on_change
+int_on_change_init()
+
+const SERVO_SLAVE_USE_INT_ON_CHANGE_PIN = 0 -- use interrupt on change pin0 = B4
+const SERVO_SLAVE_USE_TIMER = 1             -- choose a timer
+--
+-- set your min/max values (0 to 100)
+-- adjust SERVO_SLAVE_MIN first, then adjust SERVO_SLAVE_MAX
+-- so output values will range from 0 to 255.
+const SERVO_SLAVE_MIN = 0 -- default is 0
+const SERVO_SLAVE_MAX = 0 -- default is 0
+--
+include servo_rc_slave
+servo_slave_init()
+
+-- Configure PWM for the LED brightness
+pin_ccp1_direction = output
+include pwm_hardware
+pwm_max_resolution(1)
+pwm1_on() -- turn on PWM1
+
+-- main loop
+forever loop
+   -- create a pulse to measure
+   -- if your receiver is not connected, you may use this signal.
+   clock_out = high
+   _usec_delay(1500) -- 500 to 2_500 (0.5ms to 2.5ms)
+   clock_out = low
+   _usec_delay(20_000)
+
+   -- test if there is a signal. If no signal, the transmitter
+   -- may be out of range, off or low on batteries.
+   if servo_slave_is_valid == TRUE then
+      -- set the led brightness
+      pwm1_set_dutycycle( servo_slave )
+      -- send the value to the serial port
+      print_dword_dec(serial_data, servo_slave)
+   else
+      -- there must be no pulse, send a message
+      const byte str1[] = "No Signal!"
+      print_string(serial_data, str1)
+      pwm1_set_dutycycle(0) -- turn led off
+   end if
+
+   -- send crlf to serial port
+   print_crlf(serial_data)
+end loop
+
+
+
+
+
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
