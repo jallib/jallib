@@ -12,7 +12,7 @@
 --              would connect a RC servo. This will use the rc_servo_slave
 --              library to output a value to the serial port dependant on
 --              where your fingers are moving the controls on your remote
---              transmitter. It will read the pulse width at the receiver.
+--              transmitter. PIC will read the pulse width at the receiver.
 --
 -- Sources:
 --
@@ -33,6 +33,7 @@ pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
 ;pragma target osc hs              -- hs crystal or resonator
 ;pragma target clock 20_000_000    -- oscillator frequency
 pragma target clock 32_000_000    -- oscillator frequency
+;pragma target clock 8_000_000    -- oscillator frequency
 --
 pragma target wdt  disabled
 pragma target lvp  disabled
@@ -53,51 +54,66 @@ alias serial_read is serial_hw_read
 alias serial_data is serial_hw_data
 alias serial_data_available is serial_hw_data_available
 
+-- include print lib
 include print
-include format
 
 -- set all IO as digital
 enable_digital_io()
 
-alias led0                is pin_a0
-alias led0_direction      is pin_a0_direction
-led0_direction = output
-
+-- define clock out pin
 alias clock_out           is pin_a2
 alias clock_out_direction is pin_a2_direction
 clock_out_direction = output
 
--- choose pins to use for int on change
-const byte int_on_change_pins[] = {"B",4}
+-- choose pins to use for interrupt on change
+const byte int_on_change_pins[] = {"B",4} -- interrupt on change pin0 = B4
 include interrupt_on_change
 int_on_change_init()
 
-const SERVO_SLAVE_USE_INT_ON_CHANGE_PIN = 0 -- pulse input pin
+const SERVO_SLAVE_USE_INT_ON_CHANGE_PIN = 0 -- use interrupt on change pin0 = B4
 const SERVO_SLAVE_USE_TIMER = 1             -- choose a timer
+--
+-- set your min/max values (0 to 100)
+-- adjust SERVO_SLAVE_MIN first, then adjust SERVO_SLAVE_MAX
+-- so output values will range from 0 to 255.
+const SERVO_SLAVE_MIN = 0 -- default is 0
+const SERVO_SLAVE_MAX = 0 -- default is 0
+--
 include servo_rc_slave
 servo_slave_init()
+
+-- Configure PWM for the LED brightness
+pin_ccp1_direction = output
+include pwm_hardware
+pwm_max_resolution(1)
+pwm1_on() -- turn on PWM1
 
 -- main loop
 forever loop
    -- create a pulse to measure
+   -- if your receiver is not connected, you may use this signal.
    clock_out = high
-   _usec_delay(2_500) -- max 2_500 (2.5ms)
+   _usec_delay(1500) -- 500 to 2_500 (0.5ms to 2.5ms)
    clock_out = low
    _usec_delay(20_000)
 
+   -- test if there is a signal. If no signal, the transmitter
+   -- may be out of range, off or low on batteries.
    if servo_slave_is_valid == TRUE then
+      -- set the led brightness
+      pwm1_set_dutycycle( servo_slave )
       -- send the value to the serial port
-      print_dword_dec(serial_data,servo_slave)
+      print_dword_dec(serial_data, servo_slave)
    else
       -- there must be no pulse, send a message
       const byte str1[] = "No Signal!"
       print_string(serial_data, str1)
+      pwm1_set_dutycycle(0) -- turn led off
    end if
-   
+
+   -- send crlf to serial port
    print_crlf(serial_data)
 end loop
-
-
 
 
 
