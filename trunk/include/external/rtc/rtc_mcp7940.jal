@@ -1,0 +1,220 @@
+-- Title: Real time clock MCP7940
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library provides functions for I2C real time clock mcp7940.
+--              A nice small RTC with a backup power supply pin to keep time
+--              during power outage. 64bytes sram is also kept during power
+--              outage.
+--
+-- Notes: Works, but not complete. Still need to add procedures to set time
+--        and calabrate.
+--
+-- Sources:
+--
+
+const byte _RTC_MCP7940_ADDRESS = 0b11011110
+const byte _RTC_MCP7940_READ = 1
+const byte _RTC_MCP7940_WRITE = 0
+
+var byte rtc_mcp7940_array[]
+
+--------------------------------------------------------------------------------
+-- Read data from mcp7940 at input address
+--------------------------------------------------------------------------------
+function rtc_mcp7940_read(byte in address) return byte is
+   var byte data
+   var byte ack_ok
+   
+   i2c_start()                                      -- send start bit
+   ack_ok = i2c_transmit_byte(_RTC_MCP7940_ADDRESS) -- transmit data & wait for ack
+   ack_ok = i2c_transmit_byte(address)              -- transmit data & wait for ack
+   
+   i2c_restart()                                        -- send start bit
+   ack_ok = i2c_transmit_byte(_RTC_MCP7940_ADDRESS + 1) -- transmit data & wait for ack
+   data = i2c_receive_byte(0)                           -- nack (no ack)
+   i2c_stop()                                           -- send stop bit
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- Write data to mcp7940 at input address
+--------------------------------------------------------------------------------
+procedure rtc_mcp7940_write(byte in address, byte in data) is
+   
+   var byte ack_ok
+   var byte address_low
+   var byte address_high
+   
+   i2c_start()                                      -- send start bit
+   ack_ok = i2c_transmit_byte(_RTC_MCP7940_ADDRESS) -- transmit data & wait for ack
+   ack_ok = i2c_transmit_byte(address)              -- transmit data & wait for ack
+   ack_ok = i2c_transmit_byte(data)                 -- transmit data & wait for ack
+   i2c_stop()                                       -- send stop bit
+   
+   _usec_delay(5_000)                               -- datasheet says writes take 5ms
+end procedure
+
+--------------------------------------------------------------------------------
+-- Init mcp7940 (start it's clock)
+--------------------------------------------------------------------------------
+procedure rtc_mcp7940_init() is
+   var byte data
+   
+   -- start the clock (only if it is off)
+   var byte osc_state at data : 7
+   data = rtc_mcp7940_read(0x00)
+   if osc_state == OFF then
+      osc_state = ON                              -- turn on oscillator
+      rtc_mcp7940_write(0x00, data)               -- write data
+   end if
+
+   -- turn on battery backup (only if it is off)
+   var byte vbaten at data : 3
+   data = rtc_mcp7940_read(0x03)
+   if vbaten == OFF then
+      vbaten = ON
+      rtc_mcp7940_write(0x03, data)
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Use supply voltage, not VBAT battery backup. This must be used after any
+-- power outage. Using this procedure will clear the time stamp registers (the
+-- time the outage occurred).
+--------------------------------------------------------------------------------
+procedure rtc_mcp7940_select_supply_voltage() is
+   -- clear Vbat bit (use supply voltage, not battery)
+   -- this bit gets set when main supply fails.
+   var byte vbat at data : 4
+   data = rtc_mcp7940_read(0x04)
+   vbat = OFF
+   rtc_mcp7940_write(0x03, data)
+end procedure
+
+--------------------------------------------------------------------------------
+-- read clock second
+--------------------------------------------------------------------------------
+function rtc_second'get() return byte is
+   var byte data
+
+   -- read seconds
+   data = rtc_mcp7940_read(0x00)
+   data = (data & 0b1111) + ((data & 0b0111_0000) >> 4) * 10
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- read clock minute
+--------------------------------------------------------------------------------
+function rtc_minute'get() return byte is
+   var byte data
+
+   -- read seconds
+   data = rtc_mcp7940_read(0x01)
+   data = (data & 0b1111) + ((data & 0b0111_0000) >> 4) * 10
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- read clock hour
+--------------------------------------------------------------------------------
+function rtc_hour'get() return byte is
+   var byte data
+
+   -- read seconds
+   data = rtc_mcp7940_read(0x02)
+   data = (data & 0b1111) + ((data & 0b0001_0000) >> 4) * 10
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- read clock week day (1-7)
+--------------------------------------------------------------------------------
+function rtc_week_day'get() return byte is
+   var byte data
+
+   -- read seconds
+   data = rtc_mcp7940_read(0x03)
+   data = data & 0b111
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- read day of month
+--------------------------------------------------------------------------------
+function rtc_day_of_month'get() return byte is
+   var byte data
+
+   -- read seconds
+   data = rtc_mcp7940_read(0x04)
+   data = (data & 0b1111) + ((data & 0b0011_0000) >> 4) * 10
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- read clock month
+--------------------------------------------------------------------------------
+function rtc_month'get() return byte is
+   var byte data
+
+   -- read seconds
+   data = rtc_mcp7940_read(0x05)
+   data = (data & 0b1111) + ((data & 0b0001_0000) >> 4) * 10
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- read clock year
+--------------------------------------------------------------------------------
+function rtc_year'get() return word is
+   var word data
+
+   -- read seconds
+   data = rtc_mcp7940_read(0x06)
+   data = (data & 0b1111) + ((data & 0b1111_0000) >> 4) * 10
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- Write to SRAM memory. SRAM is backed up during power outage if VBAT is
+-- connected. There are 64 bytes available.
+--------------------------------------------------------------------------------
+procedure rtc_mem'put(byte in address, byte in data) is
+   rtc_mcp7940_write(address + 0x20, data)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Read from SRAM memory. SRAM is backed up during power outage if VBAT is
+-- connected. There are 64 bytes available.
+--------------------------------------------------------------------------------
+function rtc_mem'get(byte in address) return byte is
+   return rtc_mcp7940_read(address + 0x20)
+end function
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,146 @@
+-- Title: Real time clock MCP7940
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This sample reads time from I2C real time clock mcp7940.
+--              A nice small RTC with a backup power supply pin to keep time
+--              during power outage. 64bytes sram is also kept during power
+--              outage.
+--
+-- Notes: Works, but not complete. Still need to add procedures to set time
+--        and calabrate.
+--
+
+-- include chip
+include 18f4620                   -- target picmicro
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+pragma target osc INTOSC_NOCLKOUT  -- hs crystal or resonator
+;pragma target osc hs              -- hs crystal or resonator
+;pragma target clock 20_000_000    -- oscillator frequency
+pragma target clock 32_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
+pragma target MCLR external        -- reset externally
+--
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+--
+enable_digital_io()                -- make all pins digital I/O
+--
+_usec_delay(100_000) -- wait for power to settle
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+include print
+
+-- setup i2c software
+const word _i2c_bus_speed = 1 ; * 100kHz
+const bit _i2c_level = true   ; i2c levels (not SMB)
+-- I2C PINS
+alias i2c_scl            is pin_scl
+alias i2c_scl_direction  is pin_scl_direction
+alias i2c_sda            is pin_sda
+alias i2c_sda_direction  is pin_sda_direction
+--
+include i2c_software
+i2c_initialize()
+
+-- setup RTC MCP7940
+include rtc_mcp7940
+rtc_mcp7940_init()                  -- init rtc_mcp7940
+--
+rtc_mcp7940_select_supply_voltage() -- use normal supply, not vbat.
+
+const byte hello_world[] = "HELLO WORLD!"
+print_string(serial_data, hello_world)
+print_crlf(serial_data)
+print_crlf(serial_data)
+
+--
+-- Specify the pin to which the LED (with serial resistor!) is connected:
+alias   led      is pin_A0
+pin_A0_direction =  output
+--
+
+-- read/write sram memory.
+-- sram is kept by backup supply during main power failure.
+rtc_mem[0] = 0xAA
+print_byte_hex(serial_data, rtc_mem[0])
+print_crlf(serial_data)
+
+var byte time_check
+forever loop
+
+   -- wait for next second
+   ;time_check = rtc_read_second()
+   ;while time_check == rtc_read_second() loop
+   ;end loop
+
+   const byte date[] = "YYYY/MM/DD: "
+   print_string(serial_data, date)
+   
+   print_word_dec(serial_hw_data,rtc_year)
+   serial_data = "/"
+   if rtc_month < 10 then
+   serial_data = "0"
+   end if
+   print_byte_dec(serial_hw_data,rtc_month)
+   serial_data = "/"
+   if rtc_day_of_month < 10 then
+   serial_data = "0"
+   end if
+   print_byte_dec(serial_hw_data,rtc_day_of_month)
+   print_crlf(serial_data)
+
+   const byte week_day[] = "Week Day: "
+   print_string(serial_data, week_day)
+   print_byte_dec(serial_hw_data,rtc_week_day)
+   print_crlf(serial_data)
+   
+   -- print "Time: "
+   const byte time[] = "Time: "
+   print_string(serial_data, time)
+   
+   -- print the hour
+   print_byte_dec(serial_hw_data,rtc_hour)
+   
+   -- print the minute
+   serial_data = ":"
+   if rtc_minute < 10 then
+   serial_data = "0"
+   end if
+   print_byte_dec(serial_hw_data,rtc_minute)
+   
+   -- print the second
+   serial_data = ":"
+   if rtc_second < 10 then
+   serial_data = "0"
+   end if
+   print_byte_dec(serial_hw_data,rtc_second)
+   print_crlf(serial_data)
+
+   const byte seperator[] = "----------------------"
+   print_string(serial_data, seperator)
+   print_crlf(serial_data)
+   _usec_delay(1_000_000)
+end loop
+
+
+
+
+--
