@@ -1,0 +1,274 @@
+-- Title: PS2 library
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library allows a user to read data from a PS2 Keyboard.
+--
+-- Sources:
+-- http://www.computer-engineering.org/ps2protocol/
+-- http://www.computer-engineering.org/ps2keyboard/
+-- http://www.computer-engineering.org/ps2keyboard/scancodes2.html
+--
+-- Note: 10k pull-up resistor on clock line.
+--
+
+var byte ps2_lookup_table[132] = {
+0x0,
+0x1, -- PS2_F9
+0, --
+0x3, -- PS2_F5
+0x4, -- PS2_F3
+0x5, -- PS2_F1
+0x6, -- PS2_F2
+0x7, -- PS2_F12
+0, --
+0x9, -- PS2_F10
+0x0A, -- PS2_F8
+0x0B, -- PS2_F6
+0x0C, -- PS2_F4
+0x9, -- TAB
+"`", --
+0, --
+0, --
+0x11, -- PS2_L_ALT
+0x12, -- PS2_L_SHIFT
+0, --
+0x14, -- PS2_L_CTRL
+"q",
+"1",
+0, --
+0, --
+0, --
+"z",
+"s",
+"a",
+"w",
+"2",
+0, --
+0, --
+"c",
+"x",
+"d",
+"e",
+"4",
+"3",
+0, --
+0, --
+" ",
+"v",
+"f",
+"t",
+"r",
+"5",
+0, --
+0, --
+"n",
+"b",
+"h",
+"g",
+"y",
+"6",
+0, --
+0, --
+0, --
+"m",
+"j",
+"u",
+"7",
+"8",
+0, --
+0, --
+",",
+"k",
+"i",
+"o",
+"0",
+"9",
+0, --
+0, --
+".",
+"/",
+"l",
+";",
+"p",
+"-",
+0, --
+0, --
+0, --
+"'",
+0, --
+"[",
+"=",
+0, --
+0, --
+0x58, -- PS2_CAPS
+0x59, -- PS2_R_SHIFT
+0x5A, -- PS2_ENTER
+"]", --
+0, --
+0x5C, -- \
+0, --
+0, --
+0, --
+0, --
+0, --
+0, --
+0, --
+0, --
+0x66, -- PS2_BACKSPACE
+0, --
+0, --
+0x69, -- PS2_KP1
+0, --
+0x6B, -- PS2_KP4
+0x6C, -- PS2_KP7
+0, --
+0, --
+0, --
+0x70, -- PS2_KP0
+0x71, -- PS2_KP_PERIOD
+0x72, -- PS2_KP2
+0x73, -- PS2_KP5
+0x74, -- PS2_KP6
+0x75, -- PS2_KP8
+0x76, -- PS2_ESC
+0x77, -- PS2_NUM_LOCK
+0x78, -- PS2_F11
+0x79, -- PS2_KP_PLUS
+0x7A, -- PS2_KP3
+0x7B, -- PS2_KP_MINUS
+0x7C, -- PS2_KP_ASTRISK
+0x7D, -- PS2_KP9
+0x7E, -- PS2_SCROLL
+0, --
+0, --
+0, --
+0, --
+0x83 -- PS2_F7
+}
+
+const byte PS2_F9 = 0x1 --
+const byte PS2_F5 =  0x3 --
+const byte PS2_F3 =  0x4 --
+const byte PS2_F1 =  0x5 --
+const byte PS2_F2 =  0x6 --
+const byte PS2_F12 =  0x7 --
+const byte PS2_F10 =  0x9 --
+const byte PS2_F8 =  0x0A --
+const byte PS2_F6 =  0x0B --
+const byte PS2_F4 =  0x0C --
+const byte PS2_L_ALT =  0x11 --
+const byte PS2_L_SHIFT =  0x12 --
+const byte PS2_L_CTRL =  0x14 --
+const byte PS2_CAPS =  0x58 --
+const byte PS2_R_SHIFT =  0x59 --
+const byte PS2_ENTER =  0x5A --
+const byte PS2_BACKSPACE =  0x66 --
+
+const byte PS2_KP_1 =  0x69 --
+const byte PS2_KP_4 =  0x6B --
+const byte PS2_KP7 =  0x6C --
+const byte PS2_KP0 =  0x70 --
+const byte PS2_KP_PERIOD =  0x71 --
+const byte PS2_KP2 =  0x72 --
+const byte PS2_KP5 =  0x73 --
+const byte PS2_KP6 =  0x74 --
+const byte PS2_KP8 =  0x75 --
+const byte PS2_ESC =  0x76 --
+const byte PS2_NUM_LOCK =  0x77 --
+const byte PS2_F11 =  0x78 --
+const byte PS2_KP_PLUS =  0x79 --
+const byte PS2_KP3 =  0x7A --
+const byte PS2_KP_MINUS =  0x7B --
+const byte PS2_KP_ASTRISK =  0x7C --
+const byte PS2_KP9 =  0x7D --
+const byte PS2_SCROLL =  0x7E --
+const byte PS2_F7 =  0x83 --
+
+-- not implemented yet
+;   const byte PS2_R ALT =  0xE0 0x11
+;   const byte PS2_PRINT_SCREEN =  0xE0 0x12 0xE0 0x7C
+;   const byte PS2_R CTRL =  0xE0 0x14
+;   const byte PS2_L GUI =  0xE0 0x1F
+;   const byte PS2_R GUI =  0xE0 0x27
+;   const byte PS2_APPS =  0xE0 0x2F
+;   const byte PS2_KP / =  0xE0 0x4A
+;   const byte PS2_KP EN =  0xE0 0x5A
+;   const byte PS2_END =  0xE0 0x69
+;   const byte PS2_LEFT_ARROW =  0xE0 0x6B
+;   const byte PS2_HOME =  0xE0 0x6C
+;   const byte PS2_INSERT =  0xE0 0x70
+;   const byte PS2_DELETE =  0xE0 0x71
+;   const byte PS2_DOWN_ARROW =  0xE0 0x72
+;   const byte PS2_RIGHT_ARROW =  0xE0 0x72
+;   const byte PS2_UP_ARROW =  0xE0 0x75
+;   const byte PS2_PAGE_DOWN =  0xE0 0x7A
+;   const byte PS2_PAGE_UP =  0xE0 0x7D
+;   const byte PS2_PAUSE =  0xE1 0x14 0x77 0xE1 0xF0 0x14 0xF0 0x77
+
+-----------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- Reads one bit from PS2.
+--------------------------------------------------------------------------------
+function _ps2_read_bit() return bit is
+   var bit data = pin_data
+   var byte timeout        -- timeout keeps data in sync
+
+   -- wait for data to go high
+   timeout = 0
+   forever loop
+      timeout = timeout + 1
+      if (pin_clock == high) | (timeout == 30) then
+         exit loop
+      end if
+      _usec_delay(1)
+   end loop
+
+   -- wait for data to go low
+   timeout = 0
+   forever loop
+      timeout = timeout + 1
+      if (pin_clock == low) | (timeout == 30) then
+         exit loop
+      end if
+      _usec_delay(1)
+   end loop
+
+   ;serial_data = "!"
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- Waits for a byte to be received via PS2
+--------------------------------------------------------------------------------
+function ps2_read_byte() return byte is
+
+   -- wait for start of transmission
+   while (pin_clock) loop
+   end loop
+
+   -- ignore start bit
+   var byte start_bit = _ps2_read_bit()
+
+   -- get data byte
+   var byte data = 0
+   var bit data_7 at data : 7
+   for 8 loop
+      data = data >> 1
+      data_7 = _ps2_read_bit()
+   end loop
+
+   -- ignore parity bit and stop bit
+   var byte parity_bit = _ps2_read_bit()
+   var byte stop_bit = _ps2_read_bit()
+
+   ;_usec_delay(5_000)
+
+   return data
+end function
