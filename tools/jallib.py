@@ -108,7 +108,7 @@ def split_repos(repos):
         gdirs = repos.split(";")
     else:
         gdirs = repos.split(":")
-   
+
     return gdirs
 
 
@@ -261,6 +261,7 @@ FIELDS = [
         {'field':"Title",'predicate' : content_not_empty,'mandatory': True, 'multiline' :False},
         {'field':"Author",'predicate':content_not_empty,'mandatory':True,'multiline':False},
         {'field':"Adapted-by",'predicate':content_not_empty,'mandatory':False,'multiline':False},
+        {'field':"Revision",'predicate':content_not_empty,'mandatory':True,'multiline':False},
         {'field':"Compiler",'predicate':compiler_version,'mandatory':True,'multiline':False},
         {'field':"Description",'predicate':content_not_empty,'mandatory':True,'multiline':True},
         {'field':"Sources",'predicate':content_not_empty,'mandatory':False,'multiline':True},
@@ -833,7 +834,7 @@ def unittest(filename,verbose=False):
             jal = filename
             asm = filename.replace(".jal",".asm")
             hex = filename.replace(".jal",".hex")
-            
+
             try:
                 from picshell.console.picshell_unittest import picshell_unittest
                 oracle = picshell_unittest(jal,asm,hex)
@@ -1131,7 +1132,7 @@ def jalapi_extract_comments(i,origline,content):
         return (origline,None)
     # back to human readable content
     doc.reverse()
-    # clean documented line with 
+    # clean documented line with
     return (origline,"".join(doc)) or (origline,None)
 
 def jalapi_generate(infos,tmpl_file,sampledir,locallinks):
@@ -1240,7 +1241,7 @@ def api_parse_content(lines,strict=True):
         for param in params:
             dsign.append({'type' : param[0], 'context' : param[1], 'name' : param[2]})
         return dsign
-    
+
     desc = {"include" : {}, "procedure" : {}, "function" : {},
             "var" : {}, "const" : {}, 'alias' : {}, 'pseudovar' : {}}
     level = 0
@@ -1312,7 +1313,7 @@ def api_parse(filenames,filelist=[]):
         apis[basefn] = api_parse_content(lines,strict=False)
 
     return apis
-    
+
 def api2xml(py,elem=None,doc=None,libname=None):
     import xml.dom.minidom as minidom
     if not doc:
@@ -1331,7 +1332,7 @@ def api2xml(py,elem=None,doc=None,libname=None):
             api2xml(val,node,doc)
     if isinstance(py,pytypes.StringType) or isinstance(py,pytypes.IntType):
         elem.setAttribute("value",str(py))
-    
+
     return doc
 
 def api2json(py):
@@ -1396,9 +1397,9 @@ def do_api(args):
 #--------------#
 # MONITOR FUNC #
 #--------------#
-# Parse and compare compiler output. Used 
+# Parse and compare compiler output. Used
 # to monitor and compare different parameters
-# (ram, program, stack,...) accross different 
+# (ram, program, stack,...) accross different
 # program or compiler versions
 
 METRIC_KEYS = ["compiler_path","compiler_version","tokens","chars","lines","files",\
@@ -1434,7 +1435,7 @@ def parse_compiler_output(out,err="",compiler=None,filename=None):
             hw = l.split()                # ex: "Hardware stack depth 2 of 31"
             dout["soft_stack_used"] = int(hw[3])
             dout["soft_stack_avail"] = int(hw[5])
-            
+
     return dout
 
 def compare_compiler_outputs(douts):
@@ -1455,7 +1456,7 @@ def monitor_display_human(results):
         print "%35s" % results["filename"][x],
     print
     print
-    for param in METRIC_KEYS: 
+    for param in METRIC_KEYS:
         if param == "filename":
             continue
         print "%20s" % param,
@@ -1469,14 +1470,14 @@ def monitor_display_csv(results):
     for x in range(nelem):
         print "%s," % results["filename"][x],
     print
-    for param in METRIC_KEYS: 
+    for param in METRIC_KEYS:
         if param == "filename":
             continue
         print "%s," % param,
         for x in range(nelem):
             print "%s," % results[param][x],
         print
- 
+
 def do_monitor(args):
 
     try:
@@ -1745,7 +1746,7 @@ def list_help():
 List JAL libraries found according to JALLIB_REPOS variable.
 JALLIB_REPOS represents the root(s) from which *.jal files are
 search, recursively. If multiple repositories are specified, first
-have precedence. So listing libraries also take into account this 
+have precedence. So listing libraries also take into account this
 precedence rule.
 
 Output contains one line per library.
@@ -1754,7 +1755,7 @@ Output contains one line per library.
 
 def api_help():
     print """
-    jallib api [-x|-j|-p] [-o output] ([-l flist|-] | (-|f1.jal f2.jal ...)) 
+    jallib api [-x|-j|-p] [-o output] ([-l flist|-] | (-|f1.jal f2.jal ...))
 
 Takes a JAL file (or read stdin if "-" is specified), parses and
 extracts API information about const, var, procedure, function,
@@ -1781,9 +1782,9 @@ def monitor_help():
     print """
     jallib monitor [-f format] [compiler1[,repos1]:]file1.jal [compiler2[,repos2]:]file2.jal [...]
 
-Compiles file1.jal using compiler1 binary against lib repository repos1, 
+Compiles file1.jal using compiler1 binary against lib repository repos1,
 file2.jal using compiler2 binary  against lib repository repos2, etc...
-and display output results and comparisons. 
+and display output results and comparisons.
 
 "compiler" is a path to a jalv2 compiler binary. If not specified,
 it assumes "jalv2" is available on PATH.
