@@ -5,6 +5,8 @@
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
+ * Revision: $Revision$                                                     *
+ *                                                                          *
  * Compiler: N/A                                                            *
  *                                                                          *
  * This file is part of jallib  http://jallib.googlecode.com                *
@@ -16,12 +18,13 @@
  *   the file chipdef_jallib.jal, included by each of these.                *
  *   Apart from declaration of all registers, register-subfields, ports     *
  *   and pins of the chip the device files contain shadowing procedures     *
- *   to prevent the 'read-modify-write' problems of midrange PICs and       *
- *   for the 18F force the use of LATx for output in stead of PORTx.        *
+ *   to prevent the 'read-modify-write' problems and use the LATx register  *
+ *   (for PICS which have such registers) for output in stead of PORTx.     *
  *   In addition some device dependent procedures are provided              *
  *   for common operations, like enable-digital-io().                       *
- *   Also a number of pin-aliases are declared to provide device            *
- *   independent logical names for some pins, registers and bitfields.      *
+ *   Also various aliases are declared to 'normalize' the names of          *
+ *   registers and bit fields, which makes it easier to build device        *
+ *   independent libraries.                                                 *
  *                                                                          *
  * Sources:  MPLAB .dev and .lkr files                                      *
  *                                                                          *
@@ -38,7 +41,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.22'
+   ScriptVersion   = '0.1.23'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
 /* ------------------------------------------------------------------------ */
@@ -55,8 +58,8 @@ msglevel = 1
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab873a/'                     /* base directory of MPLAB */
-JALLIBbase = 'k:/jallib/'               /* base directory of JALLIB (local) */
+MPLABbase  = 'k:/mplab876/'                      /* base directory of MPLAB */
+JALLIBbase = 'k:/jallib/'          /* base directory of JALLIB (local copy) */
 
 /* When using 'standard' installations no other changes are needed,         */
 /* but you may check below which specific sources of information are used,  */
@@ -119,7 +122,7 @@ else do                                           /* PROD run with selection */
    return 1                                      /* unrecoverable: terminate */
 end
 
-
+/* --------------- here the real process begins  --------------------------- */
 
 call time 'R'                                               /* reset 'elapsed' timer */
 
@@ -611,7 +614,7 @@ return
 /* input:   - nothing                             */
 /* output:  - core (0, 12, 14, 14H, 16)           */
 /* ---------------------------------------------- */
-load_config_info: procedure expose Dev. CfgAddr. Core
+load_config_info: procedure expose Dev. CfgAddr. PicName Core
 CfgAddr.0 = 0                                               /* empty */
 Core = 0                                                    /* reset: undetermined */
 do i = 1 to Dev.0
@@ -928,50 +931,58 @@ return
 /* --------------------------------------------------------------- */
 list_shared_data_range: procedure expose Lkr. jalfile Core MaxSharedRAM PicName msglevel
 select                                                      /* exceptions first */
-   when Left(PicName,3) = '10f' |,
-        PicName = '12f508'   then do
-      DataRange = '0x1E-0x1F'                               /* 1 bank: some pseudo shared RAM */
-      MaxSharedRAM = X2D(1F)
+   when left(PicName,4) = '10f2' then do
+      DataRange = '0x1E-0x1F'
+      MaxSharedRAM = X2D('1F')
+   end
+   when left(PicName,4) = '10f3'  |,
+        left(PicName,5) = '10lf3'  then do
+      DataRange = '0x7E-0x7F'
+      MaxSharedRAM = X2D('7F')
+   end
+   when PicName = '12f508'   then do
+      DataRange = '0x1E-0x1F'
+      MaxSharedRAM = X2D('1F')
    end
    when PicName = '12f629'  |,
         PicName = '12f675'  |,
         PicName = '16f630'  |,
         PicName = '16f676' then do
-      DataRange = '0x5E-0x5F'                               /* for _pic_accum and _pic_isr_w */
-      MaxSharedRAM = X2D(5F)
+      DataRange = '0x5E-0x5F'
+      MaxSharedRAM = X2D('5F')
    end
    when PicName = '16f72'   |,
         PicName = '16f73'   |,
         PicName = '16f74'  then do
       DataRange = '0x7E-0x7F'
-      MaxSharedRAM = X2D(7F)
+      MaxSharedRAM = X2D('7F')
    end
    when PicName = '16f83'  then do
       DataRange = '0x2E-0x2F'
-      MaxSharedRAM = X2D(2F)
+      MaxSharedRAM = X2D('2F')
    end
    when PicName = '16f84'   |,
         PicName = '16f84a' then do
       DataRange = '0x4E-0x4F'
-      MaxSharedRAM = X2D(4F)
+      MaxSharedRAM = X2D('4F')
    end
    when PicName = '16f818' then do
       DataRange = '0x7E-0x7F'
-      MaxSharedRAM = X2D(7F)
+      MaxSharedRAM = X2D('7F')
    end
    when PicName = '16f819'  |,
         PicName = '16f870'  |,
         PicName = '16f871'  |,
         PicName = '16f872' then do
       DataRange = '0x70-0x7F'
-      MaxSharedRAM = X2D(7F)
+      MaxSharedRAM = X2D('7F')
    end
    when PicName = '16f873'  |,
         PicName = '16f873a' |,
         PicName = '16f874'  |,
         PicName = '16f874a' then do
       DataRange = '0x7E-0x7F'
-      MaxSharedRAM = X2D(7F)
+      MaxSharedRAM = X2D('7F')
    end
    otherwise                                                /* scan .lkr file */
       DataRange = ''                                        /* set defaults */
@@ -1012,37 +1023,42 @@ select                                                      /* exceptions first 
    when PicName = '10f200'  |,
         PicName = '10f204'  |,
         PicName = '10f220' then do
-      DataRange = '0x10-0x1D'                               /* 1 bank: 'unshared' part */
-      MaxUnSharedRAM = X2D(1D)
+      DataRange = '0x10-0x1D'
+      MaxUnSharedRAM = X2D('1D')
    end
    when PicName = '10f202'  |,
         PicName = '10f206' then do
       DataRange = '0x08-0x1D'
-      MaxUnSharedRAM = X2D(1D)
+      MaxUnSharedRAM = X2D('1D')
    end
    when PicName = '10f222' then do
       DataRange = '0x09-0x1D'
-      MaxUnSharedRAM = X2D(1D)
+      MaxUnSharedRAM = X2D('1D')
+   end
+   when left(PicName,4) = '10f3'  |,
+        left(PicName,5) = '10lf3'  then do
+      DataRange = '0x40-0x7D'
+      MaxUnSharedRAM = X2D('7D')
    end
    when PicName = '12f508' then do
       DataRange = '0x07-0x1D'
-      MaxUnSharedRAM = X2D(1D)
+      MaxUnSharedRAM = X2D('1D')
    end
-   when PicName = '12f629'  |,                              /* have only shared RAM */
+   when PicName = '12f629'  |,
         PicName = '12f675'  |,
         PicName = '16f630'  |,
         PicName = '16f676' then do
-      DataRange = '0x20-0x5D'                               /* 1 bank: 'unshared' part */
-      MaxUnsharedRAM = X2D(5D)
+      DataRange = '0x20-0x5D'
+      MaxUnsharedRAM = X2D('5D')
    end
    when PicName = '16f72' then do
       DataRange = '0x20-0x7D,0xA0-0xBF'
-      MaxUnsharedRAM = X2D(7D)
+      MaxUnsharedRAM = X2D('7D')
    end
    when PicName = '16f73'   |,
         PicName = '16f74'  then do
       DataRange = '0x20-0x7D,0xA0-0xFD'
-      MaxUnSharedRAM = X2D(7D)
+      MaxUnSharedRAM = X2D('7D')
    end
    when PicName = '16f83'  then do
       DataRange = '0x0C-0x2D'
@@ -1051,28 +1067,28 @@ select                                                      /* exceptions first 
    when PicName = '16f84'   |,
         PicName = '16f84a' then do
       DataRange = '0x0C-0x4D'
-      MaxUnSharedRAM = X2D(4D)
+      MaxUnSharedRAM = X2D('4D')
    end
    when PicName = '16f818' then do
       DataRange = '0x20-0x7D,0xA0-0xBF'
-      MaxUnsharedRAM = X2D(7D)
+      MaxUnsharedRAM = X2D('7D')
    end
    when PicName = '16f819' then do
       DataRange = '0x20-0x6F,0xA0-0xEF,0x120-0x16F'
-      MaxUnsharedRAM = X2D(6F)
+      MaxUnsharedRAM = X2D('6F')
    end
    when PicName = '16f870'  |,
         PicName = '16f871'  |,
         PicName = '16f872'  then do
       DataRange = '0x20-0x6F,0xA0-0xBF'
-      MaxUnsharedRAM = X2D(6F)
+      MaxUnsharedRAM = X2D('6F')
    end
    when PicName = '16f873'  |,
         PicName = '16f873a' |,
         PicName = '16f874'  |,
         PicName = '16f874a' then do
       DataRange = '0x20-0x7D,0xA0-0xFD'
-      MaxUnsharedRAM = X2D(7D)
+      MaxUnsharedRAM = X2D('7D')
    end
    otherwise                                                /* scan .lkr file */
       DataRange = ''                                        /* default */
@@ -1192,14 +1208,15 @@ call lineout jalfile, '--'
 return
 
 
-/* -------------------------------------------------- */
-/* procedure to list special function registers       */
-/* input:  - nothing                                  */
-/* Note: name is stored but not checked on duplicates */
-/* 12-bit and 14-bit core                             */
-/* -------------------------------------------------- */
+/* ---------------------------------------------------- */
+/* procedure to list special function registers         */
+/* input:  - nothing                                    */
+/* Note: - name is stored but not checked on duplicates */
+/* 12-bit and 14-bit core                               */
+/* ---------------------------------------------------- */
 list_sfr1x: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
                              adcs_bitcount jalfile BANKSIZE NumBanks msglevel
+PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then                           /* skip non SFRs */
       iterate
@@ -1215,23 +1232,37 @@ do i = 1 to Dev.0
       Ram.addr = addr                                       /* mark address in use */
       addr = sfr_mirror(addr)                               /* add mirror addresses */
       size = strip(val3)                                    /* field size */
-      if size = 1 then
+      if size = 1 then                                      /* one byte */
          field = 'byte  '
-      else if size = 2 then
+      else if size = 2 then                                 /* two bytes */
          field = 'word  '
-      else
+      else if size = 3 then                                 /* three bytes */
+         field = 'byte*3'
+      else                                                  /* otherwise 4 bytes assumed */
          field = 'dword '
       call lineout jalfile, '-- ------------------------------------------------'
-      if left(reg,4) \= 'PORT' & reg \= 'GPIO' then
+      if left(reg,4) \= 'PORT' & reg \= 'GPIO' then         /* not for PORTx and GPIO */
          call lineout jalfile, 'var volatile' field left(reg,25) 'at' addr
       select
          when reg = 'BAUDCTL' then do                       /* for 16f687,88,89,690 */
                                                             /*     16f882,3,4,6,7   */
             call lineout jalfile, 'alias              ' left('BAUDCON',25) 'is' reg
          end
+         when left(reg,3) = 'LAT' then do                   /* LATx register (only with 10F3xx) */
+            call list_port16_shadow reg                     /* force use of LATx (core 16 like) */
+                                                            /* for output to PORTx */
+         end
          when left(reg,4) = 'PORT' then do                  /* port */
-            call lineout jalfile, 'var volatile' field left('_'reg,25) 'at' addr
-            call list_port1x_shadow reg
+            if (left(PicName,4) \= '10f3' & left(PicName,5) \= '10lf3') then do
+               call lineout jalfile, 'var volatile' field left('_'reg,25) 'at' addr
+               call list_port1x_shadow reg
+            end
+            else do                                         /* 10f3xx and 10lf3xx only */
+               call lineout jalfile, 'var volatile' field left(reg,25) 'at' addr
+               PortLetter = right(reg,1)
+               PortLat.PortLetter. = 0                      /* init: zero pins in PORTx */
+                                                            /* updated in list_sfr_subfields1x */
+            end
          end
          when reg = 'GPIO' then do                          /* port */
             call lineout jalfile, 'var volatile' field left('_'reg,25) 'at' addr
@@ -1289,7 +1320,7 @@ return 0
 /* Note: part of code relies on:                     */
 /*       - ADCON0 comes before ADCON1 (in .dev file) */
 /* ------------------------------------------------- */
-list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. ,
+list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
                                 adcs_bitcount Core PicName jalfile msglevel
 i = arg(1) + 1                                              /* first after reg */
 reg = arg(2)                                                /* register (name) */
@@ -1307,7 +1338,18 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
       offset = 7                                            /* MSbit first */
       do j = 1 to 8 while offset >= 0                       /* max 8 bits */
          if n.j = '-' then do                               /* bit not used */
-           nop
+            if left(reg,3) = 'LAT' then do                  /* LATx register */
+               PortLetter = right(reg,1)
+               PinNumber  = right(n.j,1)
+               pin = 'pin_'PortLat.PortLetter.offset
+               if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
+                  if duplicate_name(pin,'PORT'portletter) = 0 then
+                     call lineout jalfile, 'var volatile bit   ',
+                          left(pin,25) 'at' 'PORT'portletter ':' offset
+                  call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
+                  call lineout jalfile, '--'
+               end
+            end
          end
          else if s.j = 1 then do                            /* single bit */
             if (pos('/', n.j) > 0 | pos('_', n.j) > 0)  &,  /* check for twin name */
@@ -1350,7 +1392,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                   end
                   when pos('CCP',reg) > 0  & right(reg,3) = 'CON'  &,   /* [E]CCPxCON */
                        left(n.j,3) = 'CCP'                         &,
-                            (right(n.j,1) = 'X' | right(n.j,1) = 'Y') then do   /* CCP.X/Y */
+                       (right(n.j,1) = 'X' | right(n.j,1) = 'Y') then do   /* CCP.X/Y */
                      nop                                    /* suppress */
                   end
                   when (reg = 'T1CON' & n.j = 'T1SYNC') then do
@@ -1363,15 +1405,19 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                     call lineout jalfile, 'var volatile bit   ',
                                  left(field,25) 'at' '_'reg ':' offset
                   end
-                  otherwise
-                     if duplicate_name(field,reg) = 0 then do  /* unique */
-                        if left(reg,4) \= 'PORT' & reg \= 'GPIO' then    /* not for PORTx or GPIO */
-                           call lineout jalfile, 'var volatile bit   ',
-                                              left(field,25) 'at' reg ':' offset
-                        else
+                  when (reg = 'OSCCON' & left(n.j,4) = 'IRCF') then do
+                    nop                                     /* suppress enumerated IRCF */
+                  end
+                  when (left(reg,4) = 'PORT' | reg = 'GPIO') & ,    /* for PORTx or GPIO, not */
+                      \(left(PicName,4) = '10f3' | left(PicName,5) = '10lf3') then do  /* 10f3x */
                            call lineout jalfile, 'var volatile bit   ',
                                               left(field,25) 'at' '_'reg ':' offset
-                     end
+                  end
+                  otherwise
+                     if duplicate_name(field,reg) = 0 then  /* unique */
+                        call lineout jalfile, 'var volatile bit   ',
+                                              left(field,25) 'at' reg ':' offset
+
                end
 
                                                             /* additional declarations */
@@ -1433,11 +1479,6 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                         call lineout jalfile, 'var volatile bit*2 ',
                                      left(field,25) 'at' reg ':' offset - s.j + 1
                   end
-                  when reg = 'OPTION_REG' &,
-                     (n.j = 'T0CS' | n.j = 'T0SE' | n.j = 'PSA') then do
-                      call lineout jalfile, 'alias              ',
-                                     left('T0CON_'n.j,25) 'is' reg'_'n.j
-                  end
                   when reg = 'GPIO' then do
                      shadow = '_PORTA_shadow'
                      pin = 'pin_A'right(n.j,1)
@@ -1457,22 +1498,58 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                         call lineout jalfile, 'var volatile bit   ',
                              left(reg'_TMR0'substr(n.j,3),25) 'at' reg ':' offset
                   end
+                  when reg = 'OPTION_REG' &,
+                     (n.j = 'T0CS' | n.j = 'T0SE' | n.j = 'PSA') then do
+                      call lineout jalfile, 'alias              ',
+                                     left('T0CON_'n.j,25) 'is' reg'_'n.j
+                  end
+                  when reg = 'OSCCON' then do               /* enumerated -> bit*3 */
+                     if  n.j = 'IRCF0' then
+                        call lineout jalfile, 'var volatile bit*3 ',
+                             left(reg'_IRCF',25) 'at' reg ':' offset
+                  end
+                  when left(reg,3) = 'LAT' then do          /* LATx (only 10F3xx 10LF3xx) */
+                     PortLetter = right(reg,1)
+                     PinNumber  = right(n.j,1)
+                     pin = 'pin_'PortLat.PortLetter.offset
+                     if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
+                        if duplicate_name(pin,'PORT'portletter) = 0 then
+                           call lineout jalfile, 'var volatile bit   ',
+                                left(pin,25) 'at' 'PORT'portletter ':' offset
+                        call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
+                        call lineout jalfile, '--'
+                     end
+                     if left(right(n.j,2),1) = PortLetter  &,      /* port letter */
+                        datatype(PinNumber) = 'NUM' then do   /* pin number */
+                        call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                   'at' reg ':' offset') is'
+                        call lineout jalfile, '   pragma inline'
+                        call lineout jalfile, 'end procedure'
+                        call lineout jalfile, '--'
+                     end
+                  end
                   when left(reg,4) = 'PORT' then do
                      if left(n.j,1) = 'R'  &,
-                         substr(n.j,2,1) = right(reg,1) then do   /* prob. I/O pin */
+                        left(right(n.j,2),1) = right(reg,1) then do   /* prob. I/O pin */
                         shadow = '_PORT'right(reg,1)'_shadow'
-                        pin = 'pin_'substr(n.j,2)
-                        call lineout jalfile, 'var volatile bit   ',
-                                              left(pin,25) 'at' '_'reg ':' offset
-                        call insert_pin_alias reg, n.j, pin
-                        call lineout jalfile, '--'
-                        call lineout jalfile, 'procedure' pin"'put"'(bit in x',
-                                                       'at' shadow ':' offset') is'
-                        call lineout jalfile, '   pragma inline'
-                        call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
-                        call lineout jalfile, 'end procedure'
+                        pin = 'pin_'right(n.j,2)
+                        if left(PicName,4) \= '10f3' & left(PicName,5) \= '10lf3' then do
+                           call lineout jalfile, 'var volatile bit   ',
+                                                 left(pin,25) 'at' '_'reg ':' offset
+                           call insert_pin_alias reg, 'R'right(n.j,2), pin
+                           call lineout jalfile, '--'
+                           call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                          'at' shadow ':' offset') is'
+                           call lineout jalfile, '   pragma inline'
+                           call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
+                           call lineout jalfile, 'end procedure'
+                           call lineout jalfile, '--'
+                        end
+                        else do
+                           PortLetter = right(reg,1)
+                           PortLat.PortLetter.offset = PortLetter||offset
+                        end
                      end
-                     call lineout jalfile, '--'
                   end
                   when reg = 'TRISIO' then do
                      pin = 'pin_A'substr(n.j,7)'_direction'
@@ -1612,11 +1689,13 @@ do i = 1 to Dev.0
       addr = X2D(strip(val2))                               /* decimal */
       Ram.addr = addr                                       /* mark address in use */
       size = strip(val3)                                    /* field size */
-      if size = 1 then
+      if size = 1 then                                      /* one byte */
          field = 'byte  '
-      else if size = 2 then
+      else if size = 2 then                                 /*t wo bytes */
          field = 'word  '
-      else
+      else if size = 3 then                                 /* three bytes */
+         field = 'byte*3'
+      else                                                  /* otherwise four bytes assumed */
          field = 'dword '
       call lineout jalfile, '-- ------------------------------------------------'
       if addr < 12 then                                     /* 'CORE' register */
@@ -1624,8 +1703,6 @@ do i = 1 to Dev.0
       else
          memtype = ''
       call lineout jalfile, 'var volatile' field left(reg,25) memtype'at 0x'D2X(addr,3)
-      if left(reg,5) = 'ADCON' & left(n.j,4) = ADCS then
-         adcs_bitcount = s.j                                /* variable # ADCS bits */
       select
          when left(reg,4) = 'PORT' then do                  /* port */
             PortLetter = right(reg,1)
@@ -1800,7 +1877,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                         if left(reg,4) = 'PORT' then do
                            PortLetter = right(reg,1)
                            if left(n.j,2) = 'R'portletter  &,  /* probably pin */
-                              substr(n.j,3) = offset  then     /* matching pin number */
+                              right(n.j,1) = offset  then     /* matching pin number */
                               PortLat.PortLetter.offset = Portletter||offset
                         end
                      end
@@ -1848,8 +1925,8 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                            call lineout jalfile, '--'
                         end
                      end
-                     if substr(n.j,4,1) = PortLetter  &,    /* port letter */
-                        datatype(PinNumber) = 'NUM' then do /* pin number */
+                     if left(right(n.j,2),1) = PortLetter  &,      /* port letter */
+                        datatype(PinNumber) = 'NUM' then do   /* pin number */
                         call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                    'at' reg ':' offset') is'
                         call lineout jalfile, '   pragma inline'
@@ -2034,8 +2111,10 @@ do i = 1 to Dev.0
          field = 'byte  '
       else if size = 2 then                                 /* two bytes */
          field = 'word  '
-      else
+      else if size = 3 then                                 /* three bytes */
          field = 'byte*3'
+      else                                                  /* otherwise dword assumed */
+         field = 'dword '
       Ram.k = k                                             /* mark in use */
       call lineout jalfile, '-- ------------------------------------------------'
       if  k < AccessBankSplitOffset + X2D('F00') then
@@ -3194,13 +3273,11 @@ port = 'PORT'substr(lat,4)                                  /* corresponding por
 call lineout jalfile, '--'
 call lineout jalfile, 'procedure' port"'put"'(byte in x at' lat') is'
 call lineout jalfile, '   pragma inline'
-/* call lineout jalfile, '   'lat '= x' */
 call lineout jalfile, 'end procedure'
 call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_low'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '   pragma inline'
-/* call lineout jalfile, '   'lat '= ('port '& 0xF0) | (x & 0x0F)' */
 call lineout jalfile, '   'lat '= ('lat '& 0xF0) | (x & 0x0F)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
@@ -3211,7 +3288,6 @@ call lineout jalfile, '--'
 half = 'PORT'substr(lat,4)'_high'
 call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
 call lineout jalfile, '   pragma inline'
-/* call lineout jalfile, '   'lat '= ('port '& 0x0F) | (x << 4)' */
 call lineout jalfile, '   'lat '= ('lat '& 0x0F) | (x << 4)'
 call lineout jalfile, 'end procedure'
 call lineout jalfile, 'function' half"'get()" 'return byte is'
@@ -3743,11 +3819,11 @@ do i = i + 1  while i <= dev.0  &,
 
       when key = 'CPUDIV' then do
          if word(val2,1) = 'NO' then
-            kwd = 'P1'
+            kwd = 'P1'                                      /* no division */
          else if pos('DIVIDE',val2) > 0 & wordpos('BY',val2) > 0 then
             kwd = P||word(val2,words(val2))                 /* last word */
          else if pos('/',val2) > 0 then
-            kwd = 'P'substr(val2,pos('/',val2)+1,1)
+            kwd = 'P'substr(val2,pos('/',val2)+1,1)         /* digit after '/' */
          else
             kwd = val2u
       end
@@ -4723,6 +4799,8 @@ call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2011,',
                        'all rights reserved.'
 call lineout listfile, '--'
 call lineout listfile, '-- Adapted-by:'
+call lineout listfile, '--'
+call lineout listfile, '-- Revision: $Revision$'
 call lineout listfile, '--'
 call lineout listfile, '-- Compiler:' CompilerVersion
 call lineout listfile, '--'

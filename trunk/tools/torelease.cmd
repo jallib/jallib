@@ -5,6 +5,8 @@
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
+ * Revision: $Revision$                                                     *
+ *                                                                          *
  * Compiler: N/A                                                            *
  *                                                                          *
  * This file is part of jallib  http://jallib.googlecode.com                *
@@ -361,6 +363,7 @@ do i = 1 to f.part.0 - 1
     end
     else if lo = hi then do                                 /* equal */
       call lineout newrelease, '#' f.part.k '     (duplicate)'
+      leave
     end
   end
 end
