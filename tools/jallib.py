@@ -261,7 +261,7 @@ FIELDS = [
         {'field':"Title",'predicate' : content_not_empty,'mandatory': True, 'multiline' :False},
         {'field':"Author",'predicate':content_not_empty,'mandatory':True,'multiline':False},
         {'field':"Adapted-by",'predicate':content_not_empty,'mandatory':False,'multiline':False},
-        {'field':"Revision",'predicate':content_not_empty,'mandatory':True,'multiline':False},
+        ##{'field':"Revision",'predicate':content_not_empty,'mandatory':True,'multiline':False},
         {'field':"Compiler",'predicate':compiler_version,'mandatory':True,'multiline':False},
         {'field':"Description",'predicate':content_not_empty,'mandatory':True,'multiline':True},
         {'field':"Sources",'predicate':content_not_empty,'mandatory':False,'multiline':True},
