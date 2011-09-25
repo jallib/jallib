@@ -2,7 +2,6 @@
 -- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4k
--- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
@@ -20,18 +19,21 @@ include 18f4550                    -- target PICmicro
 --
 -- This program assumes that a 20 MHz resonator or crystal
 -- is connected to pins OSC1 and OSC2.
+-- (unspecified configuration bits may cause a different frequency!)
 pragma target clock 20_000_000     -- oscillator frequency
 -- configuration memory settings (fuses)
-pragma target OSC  HS              -- HS crystal or resonator
-pragma target PLLDIV  P1           -- PLL off
-pragma target CPUDIV  P2           -- no cycle divisor
-pragma target WDT  disabled        -- no watchdog
-pragma target XINST disabled       -- not supported by JalV2
-pragma target LVP  disabled        -- no Low Voltage Programming
-pragma target MCLR external        -- reset externally
+pragma target OSC      HS               -- HS crystal or resonator
+pragma target PLLDIV   P1           -- no divide
+pragma target CPUDIV   P1           -- no Fosc divisor
+pragma target WDT      disabled     -- no watchdog
+pragma target XINST    disabled     -- not supported by JalV2
+pragma target DEBUG    disabled     -- no debugging
+pragma target LVP      disabled     -- no Low Voltage Programming
+pragma target MCLR     external     -- reset externally
+-- These configuration bit settings are only a selection, sufficient for
+-- this program, but other programs may need more or different settings.
 --
 enable_digital_io()                -- make all pins digital I/O
-_usec_delay (100_000) -- wait for power to stablilize
 
 
 include delay
@@ -61,6 +63,19 @@ pin_sck_direction = output   -- spi clock
 spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
 alias spi_master is spi_master_hw
 alias spi_master_exchange is spi_master_hw_exchange
+
+
+-- setup 23k256 for external memory
+-- setup chip select pin
+ALIAS sram_23k256_chip_select             is pin_a1
+ALIAS sram_23k256_chip_select_direction   is pin_a1_direction
+-- initial settings
+sram_23k256_chip_select_direction = output    -- chip select/slave select pin
+sram_23k256_chip_select = high                -- start chip slect high (chip disabled)
+-- initalize 23k256 in byte mode
+alias sram_23k256_force_spi_mode is spi_master_hw_set_mode_00 -- always set spi mode to 0,0
+include sram_23k256 -- setup Microchip 23k256 sram
+sram_23k256_init(SRAM_23K256_SEQUENTIAL_MODE, SRAM_23K256_HOLD_DISABLE)  -- init 23k256 in sequential mode
 
 
 -- setup the sd card pins
