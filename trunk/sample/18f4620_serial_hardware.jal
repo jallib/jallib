@@ -1,5 +1,5 @@
 -- Title: Test program for serial_hardware.jal
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4o
 --
@@ -11,25 +11,22 @@
 -- Sources:
 -- Jallib serial hardware sample by Joep Suijs
 --
+-- Notes:
+-- Main loop was written by Joep Suijs
+--
 
 -- include chip
 include 18f4620                   -- target picmicro
--- this program assumes a 20 mhz resonator or crystal
--- is connected to pins osc1 and osc2.
-pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
-;pragma target osc hs              -- hs crystal or resonator
-;pragma target clock 20_000_000    -- oscillator frequency
+pragma target osc INTOSC_NOCLKOUT -- internal oscillator
 pragma target clock 32_000_000    -- oscillator frequency
---
 pragma target wdt  disabled
 pragma target lvp  disabled
 pragma target MCLR external        -- reset externally
---;
-;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
-OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
-OSCTUNE_PLLEN = true  -- multiply internal osc by 4
-;--
-enable_digital_io()                -- make all pins digital I/O
+--
+OSCCON_IRCF = 0b111  -- set internal osc to 8mhz
+OSCTUNE_PLLEN = true -- enable PPL, multiply internal osc by 4
+--
+enable_digital_io()  -- make all pins digital I/O
 --
 _usec_delay(100_000) -- wait for power to settle
 
@@ -48,8 +45,6 @@ alias serial_read is serial_hw_read
 alias serial_data is serial_hw_data
 alias serial_data_available is serial_hw_data_available
 
-include print                       -- output library
-
 const byte str1[] = "Hello serial world"   -- define a string
 print_string(serial_hw_data, str1)  -- output string to serial
 
@@ -60,13 +55,17 @@ serial_hw_write("!")
 var byte char	-- will store received char
 var word counter = 10
 forever loop
+
+   -- if there is a char, echo it back.
 	if (serial_hw_read(char))	then
 		serial_hw_write(char)	-- that's the echo...
 	end if
-	
-	counter = counter - 1;
-	if (counter == 0) then
-	   counter = 50000
-      serial_hw_data = "."	
+
+   -- code block below prints a dot, every now and then, to signal
+   -- the pic is alive, waiting to receiver character from the host
+	counter = counter - 1      ; count down
+	if (counter == 0) then     ; until zero
+	   counter = 50000         ; then start over counting from 50000
+      serial_hw_data = "."	   ; and output a dot to the serial port
    end if
 end loop
