@@ -71,6 +71,7 @@ procedure i2c_start() is
    i2c_scl_direction = high       -- clock high
    _i2c_wait()
 
+   -- wait until clock is high (or optional timeout)
    if (defined(_i2c_scl_timeout) == true) then
       for _i2c_scl_timeout loop
          if i2c_scl == high then
@@ -112,8 +113,22 @@ procedure i2c_stop() is
    i2c_scl_direction   = low        -- clock low
    _i2c_wait()
    i2c_scl_direction   = high       -- clock high
-   _i2c_wait()
-   i2c_sda_direction   = high       -- data high
+   _i2c_wait()       
+
+   -- wait until clock is high (or optional timeout)   
+   if (defined(_i2c_scl_timeout) == true) then
+      for _i2c_scl_timeout loop
+         if i2c_scl == high then
+            exit loop
+         end if
+         _i2c_wait()
+      end loop
+   else
+      while i2c_scl == low loop 
+      end loop                     -- wait for slow slave
+   end if   
+
+   i2c_sda_direction   = high       -- data high    
    _i2c_wait()
 end procedure
 
@@ -137,7 +152,9 @@ function i2c_transmit_byte( byte in x ) return bit is
    i2c_sda_direction    = high       -- data open
    _i2c_wait()
    i2c_scl_direction    = high       -- clock high
-   _i2c_wait()   
+   _i2c_wait()               
+   
+   -- wait until clock is high (or optional timeout)
    if (defined(_i2c_scl_timeout) == true) then
       for _i2c_scl_timeout loop
          if i2c_scl == high then
@@ -229,7 +246,8 @@ procedure _i2c_bit_out(bit in x) is
    i2c_sda_direction   = x          -- high data bit
    _i2c_wait()
    i2c_scl_direction  = high        -- clock high
-   _i2c_wait()
+   
+   -- wait until clock is high (or optional timeout)
    if (defined(_i2c_scl_timeout) == true) then
       for _i2c_scl_timeout loop
          if i2c_scl == high then
@@ -241,6 +259,7 @@ procedure _i2c_bit_out(bit in x) is
       while i2c_scl == low loop 
       end loop                     -- wait for slow slave
    end if
+   
    _i2c_wait()
    i2c_scl_direction  = low         -- clock low
    _i2c_wait()
@@ -256,7 +275,8 @@ procedure _i2c_bit_in(bit out x) is
    i2c_sda_direction   = high -- data open
    _i2c_wait()
    i2c_scl_direction  = high  -- clock high
-   _i2c_wait()
+
+   -- wait until clock is high (or optional timeout)
    if (defined(_i2c_scl_timeout) == true) then
       for _i2c_scl_timeout loop
          if i2c_scl == high then
@@ -268,6 +288,7 @@ procedure _i2c_bit_in(bit out x) is
       while i2c_scl == low loop 
       end loop                     -- wait for slow slave
    end if
+
    _i2c_wait()
    x = i2c_sda                -- sample data
    _i2c_wait()
