@@ -1,0 +1,188 @@
+-- -----------------------------------------------------------------------------
+-- Title: LCD library for HD44780 compatible LCDs, interfaced with pcf8574
+-- Author: Joep Suijs, Copyright (c) 2008..2011, all rights reserved.
+-- Adapted-by:Richard Zengerink (lcd_init)
+-- Compiler:  >=2.4g
+-- Revision: $Revision: 2760 $
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description:
+--    Software serial interface for HD44780 compatible alphanumeric LCD screens.  
+--  --
+--    Directions for use of this library in application programs
+--    (in this sequence):
+--    1. Declare the following constants:
+--          const byte LCD_ROWS     = 2              -- 1, 2 or 4 lines
+--          const byte LCD_CHARS    = 16             -- 8, 16 or 20 chars per line
+--       and variables (aliases):
+--          var bit serial_sw_tx_pin  is  pin_d0     -- pin on which lcd is connected
+-- --
+--    2. Set the chosen LCD dataport and handshake pins to output:
+--          pin_d0_direction = output
+-- --
+--    3. Include this library.
+-- --
+--    4. Call lcd_init() to initialize the lcd controller.
+-- --
+--    Above is an example for a 2x16 LCD, connected to pin d0
+-- --
+--    See hd_44780_common for the LCD API.
+--
+-- Dependencies: delay.jal
+--               i2c
+--               lcd_interface.jal - the application that converts serial to the LCD interface
+--
+-- -----------------------------------------------------------------------------
+
+include delay                        
+
+var byte lcd_shadow 
+
+var bit*4 lcds_nibble    at lcd_shadow:4
+var bit   lcds_backlight at lcd_shadow:3
+var bit   lcds_enable    at lcd_shadow:2
+var bit   lcds_rw        at lcd_shadow:1
+var bit   lcds_rs        at lcd_shadow:0
+
+
+-- ----------------------------------------------------------------------------
+-- write_lcd_shadow() - write content of shadow to lcd (actually: pca8574)
+-- ----------------------------------------------------------------------------
+-- note: i2c errors are ignored here, since there the lcd api has no way 
+-- to propagate them to the user.
+-- ----------------------------------------------------------------------------
+procedure write_lcd_shadow() is
+
+   lcds_rw = 0  -- force write
+
+;   print_byte_hex(serial_hw_data, lcd_shadow)
+;   print_crlf(serial_hw_data)
+
+   var bit r = true -- okay
+
+   -- send START and i2c device address for write
+   i2c_start()
+
+   r = i2c_transmit_byte(0x27 * 2) ;i2c_address & 0xFE) 
+   if (r == false) then i2c_stop() return end if     
+   
+   -- write data
+   r = r & i2c_transmit_byte(lcd_shadow) 
+   if (r == false) then i2c_stop() return end if
+   
+   i2c_stop()
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- sends low nibble from value to the LCD
+-- can be used for both commands and data
+-- (requires no wait cycli inbetween upper and lower nibble)
+-- (this routine is only used inside this file)
+-- ----------------------------------------------------------------------------
+procedure __lcd_write_nibble( byte in value ) is
+
+   lcds_nibble = value & 0x0F  ; put data at appriopriate place in lcd_shadow
+   lcds_enable = high
+   write_lcd_shadow()
+
+   ; i2c comms provides more than the required 400 ns delay, so no additional one required
+
+   lcds_enable = low          
+   write_lcd_shadow()
+
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- ----------------------------------------------------------------------------
+-- sends byte from value to register of the LCD
+-- (this procedure is only used inside this file)
+--
+-- ----------------------------------------------------------------------------
+procedure __lcd_write( byte in value ) is
+   __lcd_write_nibble(value >> 4)               -- write high nibble
+   __lcd_write_nibble(value)                    -- write low nibble
+   ; delay of 37 us is not required, due to i2c transfer delay 
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- ----------------------------------------------------------------------------
+-- sends data byte in value to LCD
+-- for slow commands an extra delay should be added
+--
+-- ----------------------------------------------------------------------------
+procedure _lcd_write_data(byte in value) is
+   lcds_rs = high                               -- select instruction
+   __lcd_write( value )                         -- output byte
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- ----------------------------------------------------------------------------
+-- sends command byte in value to LCD
+-- for slow commands an extra delay should be added
+--
+-- ----------------------------------------------------------------------------
+procedure _lcd_write_command(byte in value) is
+;   pragma inline
+   lcds_rs = low                             -- select instruction
+   __lcd_write( value )                      -- output byte
+end procedure
+-- ----------------------------------------------------------------------------
+
+
+-- now we defined the interface, add the API
+include lcd_hd44780_common
+
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure lcd_init() is
+
+   -- first, init the interface
+   lcds_rs = LOW                                -- set to control char mode
+   delay_1ms(25)                                -- power-up delay (> 15 ms)
+   __lcd_write_nibble(0b0000_0011)              -- function set
+   delay_1ms(5)                                 -- > 4.1 milliseconds
+   __lcd_write_nibble(0b0000_0011)              -- function set
+   delay_10us(10)                               -- > 100 us
+   __lcd_write_nibble(0b0000_0011)              -- function set
+   delay_10us(4)                                -- > 37 us
+   __lcd_write_nibble(0b0000_0010)              -- to 4-bit mode
+   delay_10us(4)                                -- > 37 us
+   _lcd_write_command(0b_0010_1000)             -- 2 lines, 5x7 pattern
+   _lcd_write_command(0b_0001_1100)             -- cursor move right
+   _lcd_write_command(0b_0000_1100)             -- display on, cursor,blink off
+   _lcd_write_command(0b_0000_0110)             -- cursor->right, no shift
+   lcd_clear_screen()                           -- clear screen
+                                                -- (incl switch to data char mode)
+
+end procedure
+               
+-- ----------------------------------------------------------------------------
+-- lcd_backlight_variable - set backlight level
+-- ----------------------------------------------------------------------------
+procedure lcd_backlight_variable(byte in value) is
+
+   lcds_backlight = (value > 127)
+   write_lcd_shadow()
+   
+end procedure
+-- ------------
+
+-- ----------------------------------------------------------------------------
+-- lcd_backlight - turn backlite on/off
+-- ----------------------------------------------------------------------------
+procedure lcd_backlight(bit in onoff) is    
+   if (onoff) then
+      lcd_backlight_variable(255)
+   else
+      lcd_backlight_variable(0)
+   end if   
+end procedure
+
