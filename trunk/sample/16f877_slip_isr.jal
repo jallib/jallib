@@ -1,0 +1,125 @@
+-- Title: Sample for SLIP (Serial Line IP)
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This sample sends and receives SLIP (Serial Line IP) packets
+--              for communication with serial data in packet form. This sample
+--              will receive packets with a serial interrupt.
+--
+-- Sources:
+-- http://tools.ietf.org/html/rfc1055
+--
+-- Notes:
+-- 1. The program will send hex 01 02 03 C0 05 06 DB 08 09 0A through SLIP which
+--    will be encoded into slip format then sent via the serial port.
+--    If you have your PC serial port connected, you will get this hex data:
+--    C0 01 02 03 DB DC 05 06 DB DD 08 09 0A C0
+-- 2. Now send back an encoded message:
+--    C0 01 02 03 DB DC 05 06 DB DD 08 09 0A C0 (same as above).
+--    SLIP will decode the data and echo back your original message:
+--    01 02 03 C0 05 06 DB 08 09 0A
+--
+
+include 16f877                    -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target clock 20_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target WDT  disabled        -- no watchdog
+pragma target LVP  disabled        -- no Low Voltage Programming
+-- These configuration bit settings are only a selection, sufficient for
+-- this program, but other programs may need more or different settings.
+--
+enable_digital_io()   -- disable all analog pins if any
+_usec_delay (100_000) -- wait for power to stablilize
+
+
+include delay
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+
+include print
+
+-- setup SLIP
+const word SLIP_MTU = 10  -- Max bytes per packet (Max Transfer Unit)
+--
+-- choose your interrupt routine. you may ignore this and create your own
+-- isr or use polling method slip_poll()
+const bit SLIP_USE_SERIAL_HW_ISR = TRUE -- TRUE = receive data via serial hw interrupt
+--
+-- choose your data carrier
+alias slip_serial_data is serial_data
+alias slip_data_available is serial_data_available
+--
+-- Choose the size of your receive buffer.
+-- Should be the same as SLIP MTU if slip interrupts are not enabled
+const byte QUEUE01_SIZE = 50
+include queue01 -- include the queue/buffer library
+alias slip_rx_buffer is queue01_nb  -- alias buffer for received data
+--
+-- Choose buffer to hold packet sizes
+const byte QUEUE02_SIZE = 10
+include queue02 -- include the queue/buffer library
+alias slip_packet_size_buffer is queue02_nb     -- alias buffer for packet sizes
+alias slip_packets_available is queue02_nr_used -- alias for number of packets avail
+--
+-- callback for when a full slip packet is received (not required for isr)
+;procedure slip_received_packet_callback() -- prototype
+--
+include slip -- include the library
+--
+slip_init() -- init the slip library
+
+-- main program --
+
+-- send some junk to ensure serial port is working
+for 4 loop
+   serial_data = 0
+end loop
+
+-- Send some data to the serial port in slip packet form
+const byte test_data[SLIP_MTU] = {0x01,0x02,0x03,0xC0,0x05,0x06,0xDB,0x08,0x09,0x0A}
+var byte count1 = 0
+for SLIP_MTU loop                    -- loop through all bytes in packet
+   slip_send_data(test_data[count1]) -- send slip packet data via serial port
+   count1 = count1 + 1
+end loop
+-- if you don't send SLIP_MTU bytes, then you
+-- must call slip_end_packet()
+;slip_end_packet()
+
+-- callback for when a full slip packet is received
+procedure slip_received_packet_callback() is
+   -- get the packet size
+   var byte packet_size = slip_packet_size_buffer
+   if packet_size > SLIP_MTU then
+      -- your packet may have a problem, it is too large
+   end if
+
+   for packet_size loop               -- for each byte in packet
+      serial_data = slip_rx_buffer -- do something with the packet data
+   end loop
+end procedure
+
+-- your main loop
+forever loop
+   if slip_packet_available then -- if a packet is available
+      slip_received_packet_callback()
+   end if
+   -- do other stuff here
+end loop
