@@ -502,7 +502,7 @@ procedure usb_msd_command_received() is
    	msd_tx_buffer[2] = 0x00
    	msd_tx_buffer[3] = 0x08	-- (8 bytes) x (1 descriptor)   	
    	-- Current/Maximum Capacity Descriptor
-   	msd_tx_buffer[4] = 0x00   -- 5000 blocks (2.56MB to ensure FAT16)
+   	msd_tx_buffer[4] = 0x01   -- 5000 blocks (2.56MB to ensure FAT16)
    	msd_tx_buffer[5] = 0x00
    	msd_tx_buffer[6] = 0x13
    	msd_tx_buffer[7] = 0x88
@@ -527,7 +527,7 @@ procedure usb_msd_command_received() is
       debug_crlf(2)
 
       -- prepare the data response
-      msd_tx_buffer[0] = 0x00 -- number of blocks	-- 5000 blocks
+      msd_tx_buffer[0] = 0x01 -- number of blocks	-- 5000 blocks
       msd_tx_buffer[1] = 0x00 -- number of blocks
       msd_tx_buffer[2] = 0x13 -- number of blocks
       msd_tx_buffer[3] = 0x88 -- number of blocks
@@ -540,10 +540,99 @@ procedure usb_msd_command_received() is
       usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
       usb_msd_state = USB_MSD_DATA_IN
 
+;   -- WITH JUNK DATA
+;   elsif _usb_msd_cbw_command[0] == USB_MSD_READ_10 then	
+;      -- decode CBWCB to get LBA address and size to read from storage medium
+;      -- then reads data in 512 byte chunks to be sent in 64 byte
+;      -- chunks to host.
+;
+;      debug_crlf(2)
+;      var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_READ_10"
+;      debug_string(2,command)
+;      debug_crlf(2)
+;
+;      usb_msd_data_residue = usb_msd_cbw_data_transfer_length
+;
+;      while usb_msd_data_residue != 0 loop
+;
+;         debug_crlf(2)
+;         var byte command[] = "READING 64 BYTES FROM DISK"
+;         debug_string(2,command)
+;
+;         -- read data from drive in 64 byte chunks and place it
+;         -- into the usb tx buffer.   		
+;         var byte step
+;         for 64 using step loop
+;            msd_tx_buffer[step] = 0xAA
+;         end loop
+;
+;         -- success if all data was read from the data device ok.
+;         usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
+;         usb_msd_state = USB_MSD_DATA_IN
+;
+;         msddatain()
+;      end loop
+
+
+;   -- WITH SD CARD SECTOR READS. FAST. (NOT WORKING)
+;   elsif _usb_msd_cbw_command[0] == USB_MSD_READ_10 then	
+;      -- decode CBWCB to get LBA address and size to read from storage medium
+;      -- then reads data in 512 byte chunks to be sent in 64 byte
+;      -- chunks to host.
+;
+;      debug_crlf(2)
+;      var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_READ_10"
+;      debug_string(2,command)
+;      debug_crlf(2)
+;
+;      usb_msd_data_residue = usb_msd_cbw_data_transfer_length
+;
+;      var dword address
+;      var byte _address[4] at address
+;      _address[0] = _usb_msd_cbw_command[5]
+;      _address[1] = _usb_msd_cbw_command[4]
+;      _address[2] = _usb_msd_cbw_command[3]
+;      _address[3] = _usb_msd_cbw_command[2]
+;
+;      var word step = 0
+;      var dword sector_step = 0
+;      while usb_msd_data_residue != 0 loop
+;
+;         debug_crlf(2)
+;         var byte command[] = "READING 64 BYTES FROM DISK"
+;         debug_string(2,command)
+;
+;         if step == 0 then
+;            -- read sector into the sector buffer
+;            sd_read_sector_address(address + sector_step)
+;            sector_step = sector_step + 1
+;         end if
+;
+;         -- read data from drive buffer in 64 byte chunks and place it
+;         -- into the usb tx buffer.   		
+;         var byte step2
+;         for 64 using step2 loop
+;            msd_tx_buffer[step] = sd_sector_buffer[step2 + (step * 64)]
+;         end loop
+;
+;         -- success if all data was read from the data device ok.
+;         usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
+;         usb_msd_state = USB_MSD_DATA_IN
+;
+;         msddatain()
+;
+;         step = step + 1
+;
+;         if step == 8 then
+;            step = 0
+;         end if
+;      end loop
+
+;  --  WITH SD CARD BYTE READS (SLOWER)
    elsif _usb_msd_cbw_command[0] == USB_MSD_READ_10 then	
-      -- decode CBWCB to get LBA address and size to read from storage medium
-      -- then reads data in 512 byte chunks to be sent in 64 byte
-      -- chunks to host.
+;     --  decode CBWCB to get LBA address and size to read from storage medium
+;     --  then reads data in 512 byte chunks to be sent in 64 byte
+;     --  chunks to host.
 
       debug_crlf(2)
       var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_READ_10"
@@ -552,24 +641,48 @@ procedure usb_msd_command_received() is
 
       usb_msd_data_residue = usb_msd_cbw_data_transfer_length
 
+      var dword address
+      var byte _address[4] at address
+      _address[0] = _usb_msd_cbw_command[5]
+      _address[1] = _usb_msd_cbw_command[4]
+      _address[2] = _usb_msd_cbw_command[3]
+      _address[3] = _usb_msd_cbw_command[2]
+
+      var word step = 0
+      var dword sector_step = 0
       while usb_msd_data_residue != 0 loop
 
          debug_crlf(2)
          var byte command[] = "READING 64 BYTES FROM DISK"
          debug_string(2,command)
-      
-         -- read data from drive in 64 byte chunks and place it
-         -- into the usb tx buffer.   		
-         var byte step
-         for 64 using step loop
-            msd_tx_buffer[step] = 0xAA
+
+         if step == 0 then
+            --  read sector into the sector buffer
+            sd_stop_read() -- stop reading if already reading
+            sd_start_read(address + sector_step)
+            sector_step = sector_step + 1
+         end if
+
+         --  read data from drive buffer in 64 byte chunks and place it
+         --  into the usb tx buffer.   		
+         var byte step2
+         for 64 using step2 loop
+            msd_tx_buffer[step2] = sd_data_byte
          end loop
 
-         usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS       -- success if all data was read from the data device ok.
+         -- success if all data was read from the data device ok.
+         usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
          usb_msd_state = USB_MSD_DATA_IN
 
          msddatain()
+
+         step = step + 1
+
+         if step == 8 then
+            step = 0
+         end if
       end loop
+      sd_stop_read() -- stop reading
       
    elsif _usb_msd_cbw_command[0] == USB_MSD_WRITE_10 then	 	
       -- decode CBWCB to get LBA address and size to write to sd card
