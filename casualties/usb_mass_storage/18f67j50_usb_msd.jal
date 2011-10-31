@@ -69,20 +69,7 @@ spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
 alias spi_master is spi_master_hw
 alias spi_master_exchange is spi_master_hw_exchange
 
-
--- setup the sd card pins
-alias sd_chip_select is pin_SS
-alias sd_chip_select_direction is pin_SS_direction
-sd_chip_select = high
-sd_chip_select_direction = output
---
--- setup the sd card library
-alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
-;const bit SD_ALWAYS_SET_SPI_MODE = TRUE -- old constant, replaced by sd_force_spi_mode
-;const bit SD_EXTRA_SPEED = TRUE
-const bit SD_DELAY_AFTER_WRITE = TRUE
-include sd_card              -- include the sd card ide hard disk library
-sd_init()                    -- initialize startup settings
+-- doesn't work if sd card is included here. why?????
 
 -- whether or not using the serial port
 const HAS_SERIAL_DEBUG_PORT = 1
@@ -118,8 +105,21 @@ procedure serial_newline() is
    debug_crlf(1)
 end procedure
 
-include usb_drv_msd_class
 
+-- setup the sd card pins
+alias sd_chip_select is pin_SS
+alias sd_chip_select_direction is pin_SS_direction
+sd_chip_select = high
+sd_chip_select_direction = output
+--
+-- setup the sd card library
+alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
+const bit SD_EXTRA_SPEED = TRUE
+const bit SD_DELAY_AFTER_WRITE = TRUE
+include sd_card              -- include the sd card ide hard disk library
+sd_init()                    -- initialize startup settings
+
+include usb_drv_msd_class
 -- -----------------------------------------------------------------------------
 
 var bit adc_enabled = false
@@ -148,7 +148,7 @@ procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte i
 ;        usb_hid_can_tx = true
 ;    end if
          
-   msd_data_sent = true
+   msd_data_sent = TRUE
 
    debug_crlf(2) -- crlf
 end procedure
@@ -213,9 +213,10 @@ procedure msd_send_data(byte in size) is
    usb_send_data(1, msd_tx_buffer, size , low )
    msd_data_sent = false
    while msd_data_sent == false loop
-      usb_handle_isr
+      usb_handle_isr()
    end loop
 end procedure
+
 
 -- constants
 const  byte str_welcome[] = "JAL USB MSD demo! Please wait (takes about 10 seconds) before the device is fully configured"
@@ -242,6 +243,7 @@ procedure usb_send_csw() is
    msd_tx_buffer[12] = usb_msd_csw_status
 
    usb_send_data(1, msd_tx_buffer, 13, low )
+   ;msd_send_data(13)
    usb_msd_state = USB_MSD_WAIT
 end procedure
 
@@ -254,12 +256,13 @@ procedure msddatain() is
       debug_dword_dec(2,usb_msd_data_residue - 64)
       var byte bytes_left[] = " BYTES LEFT!"
       debug_string(2,bytes_left)
-      
+
       -- send some drive data
-      usb_send_data(1, msd_tx_buffer, 64 , low )
-      ;msd_send_data(64)
+      ;usb_send_data(1, msd_tx_buffer, 64 , low )
+      msd_send_data(64)
 
       usb_msd_data_residue = usb_msd_data_residue - 64
+
    else
       if usb_msd_csw_status == USB_MSD_CSW_STATUS_SUCCESS then
          -- wait till data has been sent
@@ -328,13 +331,13 @@ procedure usb_tasks() is
    if (usb_msd_state == USB_MSD_DATA_IN) then
       ;if usb_msd_cbw_data_transfer_length == 0 then
       if usb_msd_data_residue == 0 then
-         -- finnished sending the data, now send the status
-         usb_send_csw()
-
          debug_crlf(2)
          debug_crlf(2)
          var byte command[] = "Sending CSW!"
          debug_string(2,command)
+         
+         -- finnished sending the data, now send the status
+         usb_send_csw()
       else
          -- send the data, in 64byte chunks of what host
          -- is expecting to receive.
