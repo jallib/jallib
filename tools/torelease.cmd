@@ -57,18 +57,18 @@ dev.       = '-'                                            /* PIC names in devi
 smppic.    = '-'                                            /* PIC names in sample files */
 blinkpic.  = '-'                                            /* PIC names in blink sample files */
 
-f.                 = 0                                      /* common counpund variable */
-f.device.0         = 0
-f.doc.0            = 0
-f.external.0       = 0
-f.filesystem.0     = 0
-f.jal.0            = 0
-f.peripheral.0     = 0
-f.protocol.0       = 0
-f.project.0        = 0
-f.sample.0         = 0
+f.                 = 0                                      /* common compound variable */
+f.device.0         = 0                                      /* */
+f.doc.0            = 0                                      /* */
+f.external.0       = 0                                      /* */
+f.filesystem.0     = 0                                      /* */
+f.jal.0            = 0                                      /* counts */
+f.peripheral.0     = 0                                      /* */
+f.protocol.0       = 0                                      /* */
+f.project.0        = 0                                      /* */
+f.sample.0         = 0                                      /* */
 
-blink_sample_count = 0
+blink_sample_count = 0                                      /* */
 
 say 'Checking contents of' torelease 'against' base
 
@@ -142,7 +142,7 @@ do i = 1 to f.device.0                                      /* all device files 
   parse value filespec('n',f.device.i) with PicName '.jal' .   /* PIC name */
   PicNameUpper = translate(PicName,xrange('A','Z'),xrange('a','z'))
   if blinkpic.PicNameUpper \= PicName then
-    call lineout list, 'No blink sample for' PicName
+    call lineout list, 'No basic blink sample for' PicName
   dev.PicNameUpper = PicName                                /* remember device file */
 end
 
@@ -169,7 +169,7 @@ do i = 1 to f.sample.0                                      /* all samples */
     when pos(PicName'_usb_',PicSamp) > 0 then               /* check for USB sample */
       count.usb = count.usb + 1
     otherwise
-      count.othersamples = count.othersamples + 1             /* other sample */
+      count.othersamples = count.othersamples + 1           /* other sample */
       if left(PicSamp,2) \= '10' &,
          left(PicSamp,2) \= '12' &,
          left(PicSamp,2) \= '16' &,
@@ -284,7 +284,6 @@ else
 call lineout list, ''
 call lineout list, ''
 
-
 call lineout list, 'Unreleased Project files'
 call lineout list, '------------------------'
 call SysFileTree projdir'/*', 'fls', 'FSO'         /* project files */
@@ -343,6 +342,7 @@ do k = 1 to f.part.0                                        /* list this collect
 end
 call lineout newrelease, ''
 return
+
 
 /* --------------------------------------------- */
 /* Sorting members of 1st level subdirectory     */

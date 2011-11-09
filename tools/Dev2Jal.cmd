@@ -41,7 +41,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.23'
+   ScriptVersion   = '0.1.24'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
 /* ------------------------------------------------------------------------ */
@@ -58,7 +58,7 @@ msglevel = 1
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab876/'                      /* base directory of MPLAB */
+MPLABbase  = 'k:/mplab880/'                      /* base directory of MPLAB */
 JALLIBbase = 'k:/jallib/'          /* base directory of JALLIB (local copy) */
 
 /* When using 'standard' installations no other changes are needed,         */
@@ -73,9 +73,10 @@ lkrdir = MPLABbase'mpasm suite/lkr/'           /* dir with MPLAB .lkr files */
 
 /* Some information is collected from files in JALLIB tools directory       */
 
-PicSpecFile = JALLIBbase'tools/devicespecific.json'    /* pic specific data */
-PinMapFile  = JALLIBbase'tools/pinmap_pinsuffix.json'        /* pin aliases */
-FuseDefFile = JALLIBbase'tools/fusedefmap.cmd'          /* fuse_def mapping */
+PicSpecFile   = JALLIBbase'tools/devicespecific.json'  /* pic specific data */
+PinMapFile    = JALLIBbase'tools/pinmap_pinsuffix.json'      /* pin aliases */
+FuseDefFile   = JALLIBbase'tools/fusedefmap.cmd'        /* fuse_def mapping */
+DataSheetFile = JALLIBbase'tools/datasheet.list'       /* actual datasheets */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                             /* load Rexx system functions */
@@ -249,6 +250,8 @@ end
 call lineout chipdef, '--'                                  /* last line */
 call stream  chipdef, 'c', 'close'                          /* done */
 
+call stream DataSheetFile, 'c', 'close'                     /* done */
+
 call msg 0, ''
 call msg 1, 'Generated' listcount 'device files in' format(time('E'),,2) 'seconds'
 if DSMissCount > 0 then
@@ -274,7 +277,7 @@ return 0
 /*                      1 2 - B I T S   C O R E                         */
 /* ==================================================================== */
 dev2jal12: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
-                            Core PicName JalFile ChipDef DevFile LkrFile,
+                            Core PicName JalFile ChipDef DevFile LkrFile DataSheetFile,
                             msglevel,
                             xChipDef. Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
                             PicSpec. PinMap. PinANMap. Fuse_Def.
@@ -303,7 +306,7 @@ return 0
 /*                      1 4 - B I T S   C O R E                         */
 /* ==================================================================== */
 dev2jal14: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
-                            Core PicName JalFile ChipDef DevFile LkrFile,
+                            Core PicName JalFile ChipDef DevFile LkrFile DataSheetFile,
                             msglevel,
                             xChipDef. Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
                             PicSpec. PinMap. PinANMap. Fuse_Def.
@@ -332,7 +335,7 @@ return 0
 /*             E X T E N D E D   1 4 - B I T S   C O R E                */
 /* ==================================================================== */
 dev2jal14h: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
-                             Core PicName JalFile ChipDef DevFile LkrFile,
+                             Core PicName JalFile ChipDef DevFile LkrFile DataSheetFile,
                              msglevel,
                              xChipDef. Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
                              PicSpec. PinMap. PinANMap. Fuse_Def.
@@ -361,7 +364,7 @@ return 0
 /*                      1 6 - B I T S   C O R E                         */
 /* ==================================================================== */
 dev2jal16: procedure expose ScriptVersion ScriptAuthor CompilerVersion,
-                            Core PicName JalFile ChipDef DevFile LkrFile,
+                            Core PicName JalFile ChipDef DevFile LkrFile DataSheetFile,
                             msglevel,
                             xChipDef. Dev. Lkr. Ram. Name. CfgAddr. IDAddr.,
                             PicSpec. PinMap. PinANMap. Fuse_Def.
@@ -1325,8 +1328,8 @@ list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
 i = arg(1) + 1                                              /* first after reg */
 reg = arg(2)                                                /* register (name) */
 PicUpper = toupper(PicName)                                 /* for alias handling */
-do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records */
-                     word(Dev.i,1) \= 'NMMR')               /* other type */
+do k = 0 to 8,                                              /* max # of lines, while */
+   while \(word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* not next register */
    parse var Dev.i 'BIT' val0 'NAMES' '=' val1 'WIDTH' '=' val2 ')' .
    if val1 \= ''   &,                                       /* found */
       pos('SCL', val0) = 0  then do                         /* not 'scl' */
@@ -1718,7 +1721,12 @@ do i = 1 to Dev.0
                                   left('PORT'substr(reg,5)'_direction',25) 'at' reg
             call list_tris_nibbles reg                      /* nibble direction */
          end
-         when left(reg,4) = 'SSP1' then do                  /* first or only SSP module */
+         when reg = 'SSPCON1' then do                       /* probably one MSSP module */
+            alias = strip(reg,'T','1')                      /* remove trailing '1' */
+            if duplicate_name(alias,reg) = 0 then
+               call lineout jalfile, 'alias               'left(alias,25) 'is' reg
+         end
+         when left(reg,4) = 'SSP1' then do                  /* first or only MSSP module */
             alias = delstr(reg,4,1)                         /* remove intermediate '1' */
             alias = strip(alias,'T','1')                    /* remove trailing '1' if any */
             if duplicate_name(alias,reg) = 0 then
@@ -1790,11 +1798,10 @@ i = arg(1) + 1                                              /* first after reg *
 reg = arg(2)                                                /* register (name) */
 memtype = arg(3)                                            /* shared/blank */
 PicUpper = toupper(PicName)                                 /* for alias handling */
-do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records */
-                     word(Dev.i,1) \= 'NMMR')               /* other type */
+do k = 0 to 8,                                              /* max # of lines, while */
+   while \(word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* not next register */
    parse var Dev.i 'BIT' val0 'NAMES' '=' val1 'WIDTH' '=' val2 ')' .
-   if val1 \= ''   &,                                       /* found */
-      pos('SCL', val0) = 0  then do                         /* not 'scl' */
+   if val1 \= ''  &  pos('SCL', val0) = 0  then do          /* found, not 'scl' */
       names = strip(strip(val1), 'B', "'")                  /* strip blanks */
       sizes = strip(strip(val2), 'B', "'")                  /* and quotes */
       n. = '-'                                              /* reset */
@@ -1827,24 +1834,23 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                  parse var n.j val1'_'val2 .
                if val1 \= '' then do                        /* present */
                   field = reg'_'val1                        /* new name */
-                  if duplicate_name(field,reg) = 0 then do  /* unique */
+                  if duplicate_name(field,reg) = 0 then     /* unique */
                      call lineout jalfile, 'var volatile bit   ',
                                   left(field,25) memtype'at' reg ':' offset
-                  end
                end
                if val2 \= '' & val2 \= 'SHAD' then do
                   field = reg'_'val2
-                  if duplicate_name(field,reg) = 0 then do  /* unique */
+                  if duplicate_name(field,reg) = 0 then     /* unique */
                     call lineout jalfile, 'var volatile bit   ',
                                  left(field,25) memtype'at' reg ':' offset
-                  end
                end
             end
             else do                                         /* not twin name */
                field = reg'_'n.j
                select                                       /* intercept */
                   when (left(reg,5) = 'ADCON'   & left(n.j,3) = 'CHS')                       |,
-                       (left(reg,5) = 'ADCON' & left(n.j,4) = 'ADCS')                        |,
+                       (left(reg,5) = 'ADCON'   & left(n.j,4) = 'ADCS')                      |,
+                       (left(reg,6) = 'SSPCON'  & left(n.j,4) = 'SSPM')                      |,
                        (left(reg,7) = 'SSP1CON' & left(n.j,4) = 'SSPM')                      |,
                        (left(reg,7) = 'SSP2CON' & left(n.j,4) = 'SSPM')                      |,
                        (reg = 'OPTION_REG'      & (n.j = 'PS0' | n.j = 'PS1' | n.j = 'PS2')) |,
@@ -1853,7 +1859,7 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                        (reg = 'OSCCON'          & left(n.j,3) = 'SCS')                       |,
                        (reg = 'OSCTUNE'         & left(n.j,3) = 'TUN')                       |,
                        (reg = 'WDTCON'          & left(n.j,5) = 'WDTPS')            then do
-                     nop                                    /* suppress enumerated bitfields */
+                     nop                                    /* suppress enumerated bitfield  */
                   end
                   when left(reg,3) = 'CCP'  &  right(reg,3) = 'CON'  &, /* CCPxCON */
                        datatype(substr(reg,4,1)) = 'NUM'        then do
@@ -1968,14 +1974,14 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                      call lineout jalfile, 'alias              ',
                                   left(reg'_'delstr(n.j,4,1),25) 'is' reg'_'n.j
                   end
-                  when (left(reg,7) = 'SSP1CON' & n.j = 'SSPM0') |,
+                  when (left(reg,6) = 'SSPCON'  & n.j = 'SSPM0') |,
+                       (left(reg,7) = 'SSP1CON' & n.j = 'SSPM0') |,
                        (left(reg,7) = 'SSP2CON' & n.j = 'SSPM0') then do
                      call lineout jalfile, 'var volatile bit*4 ',
                           left(reg'_SSPM',25) memtype'at' reg ':' offset
-                     if left(reg,4) = 'SSP1' then do
+         /* test     if left(reg,4) = 'SSP1' then
                         call lineout jalfile, 'alias              ',
-                             left('SSPCON_SSPM',25) 'is' reg'_SSPM'
-                     end
+                             left('SSPCON_SSPM',25) 'is' reg'_SSPM'     */
                   end
                   when reg = 'T1CON' & n.j = 'TMR1CS0' then do
                      call lineout jalfile, 'var volatile bit*2 ',
@@ -2028,13 +2034,16 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                end
             end
          end
-
-         if reg = 'SSP1CON'  |,
+                                                            /* additional (alias) declarations */
+         if reg = 'SSPCON1'  |,
+            reg = 'SSP1CON'  |,
             reg = 'SSP1CON1' |,
             reg = 'SSP1CON2' |,                             /* selected SSP1 regs */
             reg = 'SSP1CON3' |,
             reg = 'SSP1STAT' then do
-            regalias = delstr(reg,4,1)                      /* remove intermediate '1' */
+            regalias = reg                                  /* alias base */
+            if left(regalias,4) = 'SSP1' then
+               regalias = delstr(regalias,4,1)              /* remove intermediate '1' */
             regalias = strip(regalias,'T','1')              /* remove trailing '1' */
             if (pos('/', n.j) > 0 | pos('_', n.j) > 0)  &,  /* check for twin name */
                 left(n.j,4) \= 'PRI_' then do               /* exception */
@@ -2056,12 +2065,17 @@ do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records 
                end
             end
             else do                                         /* not twin name */
-               if left(n.j,4) \= 'SSPM' then do
+               if left(n.j,4) \= 'SSPM' then do             /* not an enumerated SSPM bit */
                   alias = regalias'_'n.j
                   if alias \= '' then do                    /* alias to be generated */
                      if duplicate_name(alias,reg) = 0 then
                         call lineout jalfile, 'alias               'left(alias,25) 'is' reg'_'n.j
                   end
+               end
+               else if n.j = 'SSPM' | n.j = 'SSPM0' then do    /* SSPM field */
+                  alias = regalias'_SSPM'
+                  if duplicate_name(alias,reg) = 0 then
+                     call lineout jalfile, 'alias               'left(alias,25) 'is' reg'_SSPM'
                end
             end
          end
@@ -2261,8 +2275,8 @@ list_sfr_subfields16: procedure expose Dev. Name. PinMap. PinANMap. PortLat. Cor
 i = arg(1) + 1                                              /* 1st after reg */
 reg = strip(arg(2))                                         /* register (name) */
 memtype = arg(3)                                            /* shared/blank */
-do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records */
-                     word(Dev.i,1) \= 'NMMR')               /* other register */
+do k = 0 to 8,                                              /* max # of lines, while */
+   while \(word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* not next register */
    parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
    if val1 \= ''  &,                                        /* found */
       pos('SCL', val0) = 0  &,                              /* not 'scl' */
@@ -2653,8 +2667,8 @@ list_sfr_subfields16_aliases: procedure expose Dev. Name. PinMap. PinANMap. Port
 i = arg(1) + 1                                              /* 1st after reg */
 reg_alias = arg(2)                                          /* register */
 reg = arg(3)                                                /* original register */
-do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records */
-                     word(Dev.i,1) \= 'NMMR')               /* other register */
+do k = 0 to 8,                                              /* max # of lines, while */
+   while \(word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* not next register */
    parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
    if val1 \= ''  &,                                        /* found */
       pos('SCL', val0) = 0  &,                              /* not 'scl' */
@@ -2811,8 +2825,8 @@ list_nmmr_sub12_tris: procedure expose Dev. Name. PinMap. PicName,
                                        jalfile msglevel
 i = arg(1) + 1                                              /* 1st after reg */
 reg = arg(2)                                                /* register (name) */
-do k = 0 to 3 while (word(Dev.i,1) \= 'SFR'   &,            /* max # of records */
-                     word(Dev.i,1) \= 'NMMR')               /* other register */
+do k = 0 to 3,                                              /* max # of lines, while */
+   while \(word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* not next register */
    parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
    if val1 \= '' then do                                    /* found */
       names = strip(strip(val1), 'B', "'")                  /* strip blanks .. */
@@ -2857,8 +2871,8 @@ list_nmmr_sub12_option: procedure expose Dev. Name. PinMap. PicName,
                                          jalfile msglevel
 i = arg(1) + 1                                              /* first after reg */
 reg = arg(2)                                                /* register (name) */
-do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records */
-                     word(Dev.i,1) \= 'NMMR')               /* other type */
+do k = 0 to 8,                                              /* max # of lines, while */
+   while \(word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* not next regsiter */
    parse var Dev.i 'BIT' val0 'NAMES' '=' val1 'WIDTH' '=' val2 ')' .
    if val1 \= '' then do                                    /* found */
       names = strip(strip(val1), 'B', "'")                  /* strip blanks */
@@ -2963,8 +2977,8 @@ return 0
 list_nmmr_sub16: procedure expose Dev. Name. PinMap. PicName jalfile msglevel
 i = arg(1) + 1                                              /* first after reg */
 reg = arg(2)                                                /* register (name) */
-do k = 0 to 8 while (word(Dev.i,1) \= 'SFR'  &,             /* max # of records */
-                     word(Dev.i,1) \= 'NMMR')               /* other type */
+do k = 0 to 8,                                              /* max # of lines, while */
+   while \(word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* not next register */
    parse var Dev.i 'BIT' val0 'NAMES' '=' val1 'WIDTH' '=' val2 ')' .
    if val1 \= '' then do                                    /* found */
       names = strip(strip(val1), 'B', "'")                  /* strip blanks */
@@ -3148,9 +3162,9 @@ else if core = '14H' then do                                /* extended midrange
             PicName = '16f1827' | PicName = '16lf1827' |,
             PicName = '16f1847' | PicName = '16lf1847' then
             ansx = ansx + 0
-         else if left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
+         else if left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
+                 left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
                  left(PicName,6) = '12f184' | left(PicName,7) = '12lf184' |,
-                 left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
                  left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
@@ -3336,6 +3350,7 @@ return
 /*         - pinname for aliases (pin_Xy)                        */
 /* create alias definitions for all synonyms in pinmap.          */
 /* create extra aliases for first of multiple I2C or SPI modules */
+/* create extra aliases for TX and RX pins of only USART module  */
 /* returns index of alias (0 if none)                            */
 /* ------------------------------------------------------------- */
 insert_pin_alias: procedure expose  PinMap. Name. PicName jalfile msglevel
@@ -3359,6 +3374,9 @@ if PinMap.PicUpper.PinName.0 > 0 then do
             call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),25) 'is' Pin
          else if pinalias = 'pin_SS1'  then                 /* 1st SPI module */
             call lineout jalfile, 'alias              ' left(delstr(pinalias,7,1),25) 'is' Pin
+         else if pinalias = 'pin_TX' |,                     /* unqualified TX pin */
+                 pinalias = 'pin_RX' then                   /*             RX     */
+            call lineout jalfile, 'alias              ' left(pinalias'1',25) 'is' Pin
       end
    end
 end
@@ -3396,6 +3414,9 @@ if PinMap.PicUpper.PinName.0 > 0 then do
             call lineout jalfile, 'alias              ' left(delstr(pinalias,8,1),max(25,length(pinalias))) 'is' Pin
          else if pinalias = 'pin_SS1_direction'  then       /* 1st SPI module */
             call lineout jalfile, 'alias              ' left(delstr(pinalias,7,1),max(25,length(pinalias))) 'is' Pin
+         else if pinalias = 'pin_TX_direction' |,           /* unqualified TX pin */
+                 pinalias = 'pin_RX_direction' then         /*             RX     */
+            call lineout jalfile, 'alias              ' left(insert('1',pinalias,6),25) 'is' Pin
       end
    end
 end
@@ -4677,12 +4698,18 @@ if DataSheet = '?' then do
    call msg 3, 'Datasheet not listed in devicespecific.cmd!'
    exit 1
 end
+call SysFileSearch DataSheet, DataSheetFile, 'sheet.'       /* search actual DS */
+if sheet.0 > 0 then
+  DataSheet = word(sheet.1,1)                               /* first (only) occurrence */
 call lineout jalfile, 'const byte DATASHEET[] = "'DataSheet'"'
 PgmSpec = PicSpec.PicNameCaps.PgmSpec
 if PgmSpec = '?' then do
    call msg 3, 'PgmSpec not listed in devicespecific.cmd!'
    exit 1
 end
+call SysFileSearch PgmSpec, DataSheetFile, 'sheet.'
+if sheet.0 > 0 then
+  PgmSpec = word(sheet.1,1)
 call lineout jalfile, 'const byte PGMSPEC[]   = "'PgmSpec'"'
 call lineout jalfile, '--'
 call list_Vdd
