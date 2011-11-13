@@ -5,7 +5,7 @@
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
- * Revision: $Revision$                                                     *
+ * Revision: $Revision$                                              *
  *                                                                          *
  * Compiler: N/A                                                            *
  *                                                                          *
@@ -154,19 +154,20 @@ do i = 1 to f.sample.0                                      /* all samples */
      call lineout list, 'Device file' PicName'.jal',
                         'for sample' PicSamp'.jal not released'
   select
-    when pos(PicName'_adc',PicSamp) > 0 then                /* check for ADC sample */
+    when pos(PicName'_adc',PicSamp) > 0 then                /* ADC sample */
       count.adc = count.adc + 1
-    when pos(PicName'_blink',PicSamp) > 0 then              /* check for BLINK sample */
+    when pos(PicName'_blink',PicSamp) > 0 then              /* BLINK sample */
       count.blink = count.blink + 1
-    when pos(PicName'_i2c_',PicSamp) > 0 then               /* check for I2C sample */
+    when pos(PicName'_i2c_',PicSamp) > 0 then               /* I2C sample */
       count.i2c = count.i2c + 1
-    when pos(PicName'_lcd_',PicSamp) > 0 then               /* check for LCD sample */
+    when pos(PicName'_lcd_',PicSamp) > 0  |,                /* LCD sample */
+         pos(PicName'_glcd_',PicSamp) > 0 then              /* GLCD sample */
       count.lcd = count.lcd + 1
-    when pos(PicName'_pwm_',PicSamp) > 0 then               /* check for PWM sample */
+    when pos(PicName'_pwm_',PicSamp) > 0 then               /* PWM sample */
       count.pwm = count.pwm + 1
-    when pos(PicName'_serial_',PicSamp) > 0 then            /* check for SERIAL sample */
+    when pos(PicName'_serial_',PicSamp) > 0 then            /* SERIAL sample */
       count.serial = count.serial + 1
-    when pos(PicName'_usb_',PicSamp) > 0 then               /* check for USB sample */
+    when pos(PicName'_usb_',PicSamp) > 0 then               /* USB sample */
       count.usb = count.usb + 1
     otherwise
       count.othersamples = count.othersamples + 1           /* other sample */
@@ -191,7 +192,7 @@ call lineout list, '                  ' format(total_samples,4) 'samples in foll
 call lineout list, '                      ' format(count.adc,4) 'ADC samples'
 call lineout list, '                      ' format(count.blink,4) 'blink samples'
 call lineout list, '                      ' format(count.i2c,4) 'I2C samples'
-call lineout list, '                      ' format(count.lcd,4) 'LCD samples'
+call lineout list, '                      ' format(count.lcd,4) '[G]LCD samples'
 call lineout list, '                      ' format(count.pwm,4) 'PWM samples'
 call lineout list, '                      ' format(count.serial,4) 'Serial samples'
 call lineout list, '                      ' format(count.usb,4) 'USB samples'
