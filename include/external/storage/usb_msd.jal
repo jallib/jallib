@@ -1,4 +1,4 @@
--- Title: USB Mass Storage
+-- Title: USB Mass Storage Device
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4o
@@ -8,65 +8,79 @@
 --
 -- Description: Test program for mass storage with SD Card.
 --
+-- Sources:
+-- http://www.usb.org/developers/devclass_docs/usbmassbulk_10.pdf
+-- http://www.usb.org/developers/devclass_docs/usbmass-ufi10.pdf
+-- http://direction.scene-double.com/2008/07/08/usb-msd-bootloader-for-pic-microcontrollers.aspx
+--
+-- Notes:
+-- Important: SEE usb_reset_callback() procedure notes!
+-- A fix needs to be made to usb lib.
+--
 
-intcon_gie = FALSE
+include usb_defs -- USB Definitions
 
-include usb_defs
+-- set storage device
+const STORAGE_DEVICE = MSD_STORAGE_DEVICE -- select storage device
+include storage_drivers
 
--- my msd variables
+-- msd status
 const USB_MSD_STATE_WAIT      = 0   -- waiting for a CBW from host
 const USB_MSD_STATE_DATA_IN   = 1   -- data in state (time for device to send data to host)
 const USB_MSD_STATE_DATA_OUT  = 2   -- data out state (time for device to receive from host)
 var byte usb_msd_state  = USB_MSD_STATE_WAIT
-var bit usb_msd_can_tx = TRUE       -- msd must wait till previous data has been sent before sending more.
+
+-- size of the storage device
 var byte _usb_msd_num_of_blocks[4] at usb_msd_num_of_blocks
 var byte _usb_msd_block_size[4] at usb_msd_block_size
-var dword usb_msd_data_transfer_length -- may be able to get rid of this and only use data resedue
 
--- own bit
+-- UOWN bit
+-- When SAE owns, we cannot use the endpoint. SAE is the usb module or  output interface.
+-- When CPU owns, we can use the endpoint to write or send data. 
+-- We must give ownership back to SAE when we're done with it.
 var volatile bit usb_msd_sae_owns_bit_in at usb_bd1in_stat : USB_BDSTATUS_UOWN	
 var volatile bit usb_msd_sae_owns_bit_out at usb_bd1out_stat : USB_BDSTATUS_UOWN	
  	
--- prototypes
-procedure usb_msd_data_in()
+-- prototypes. can't live without them :)
+procedure usb_msd_process_data()
 procedure usb_handle_isr()
 procedure usb_send_csw()
 
 -- CBW variables
-const dword USB_MSD_CBW = 0x43425355
-var dword usb_msd_cbw_signature = 0
+const dword USB_MSD_CBW = 0x43425355      -- signature that helps identify data packet as a CBW
+var dword usb_msd_cbw_signature = 0       -- variable to receive a CBW signature before checking
 var byte _usb_msd_cbw_signature[4] at usb_msd_cbw_signature
-var dword usb_msd_cbw_tag = 0 -- a value that relates a SBW with a CSW
+var dword usb_msd_cbw_tag = 0             -- relat a SBW with a CSW at end of packet
 var byte _usb_msd_cbw_tag[4] at usb_msd_cbw_tag
-var dword usb_msd_cbw_data_transfer_length = 0 -- The number of bytes of data that the host expects to transfer on the Bulk-In or Bulk-Out endpoint
+var dword usb_msd_cbw_data_transfer_length = 0 -- # of bytes of data that the host expects to transfer on the Bulk-In or Bulk-Out endpoint 1
 var byte _usb_msd_cbw_data_transfer_length[4] at usb_msd_cbw_data_transfer_length
 var volatile byte usb_msd_cbw_flags = 0   -- must be volatile otherwise compiler throws it away
 var volatile byte usb_msd_cbw_cbw_lun = 0 -- must be volatile otherwise compiler throws it away
 var volatile byte usb_msd_cbw_length = 0  -- must be volatile otherwise compiler throws it away
-var byte*16 usb_msd_cbw_command = 0
+var byte*16 usb_msd_cbw_command = 0       -- command and parameters for a received CBW
 var byte _usb_msd_cbw_command[16] at usb_msd_cbw_command
 
-var bit usb_host_direction at usb_msd_cbw_flags : 7
+var bit usb_host_direction at usb_msd_cbw_flags : 7 -- direction the host wishes to transefer
 const USB_HOST_DIRECTION_RECEIVE = TRUE
 const USB_HOST_DIRECTION_SEND = FALSE
 
 -- CSW variables
-const USB_MSD_CSW = 0x53425355
-var dword usb_msd_csw_signature = 0
-var byte _usb_msd_csw_signature[4] at usb_msd_cbw_signature
+const USB_MSD_CSW = 0x53425355      -- signature that helps identify data packet as a CSW
+var dword usb_msd_csw_signature = 0 -- relate CSW with a SBW at the end of packet
+var byte _usb_msd_csw_signature[4] at usb_msd_csw_signature
 var dword usb_msd_csw_tag = 0
 var byte _usb_msd_csw_tag[4] at usb_msd_cbw_tag
 var dword usb_msd_data_residue = 0
 var byte _usb_msd_data_residue[4] at usb_msd_data_residue
-var byte usb_msd_csw_status = 0
+var byte usb_msd_csw_status = 0          -- status of the command excecuted
 
 -- status values for usb_msd_csw_status
-const USB_MSD_CSW_STATUS_FAIL = 0x01
-const USB_MSD_CSW_STATUS_SUCCESS = 0x00
+const USB_MSD_CSW_STATUS_FAIL = 0x01     -- comand failed)
+const USB_MSD_CSW_STATUS_SUCCESS = 0x00  -- command success
 
--- MSD commands from host
+-- MSD commands we may get from host
 const byte USB_MSD_INQUIRY                       = 0x12
-const byte USB_MSD_READ_FORMAT_CAPACITY 		    = 0x23			
+const byte USB_MSD_READ_FORMAT_CAPACITY          = 0x23			
 const byte USB_MSD_READ_CAPACITY                 = 0x25
 const byte USB_MSD_READ_10                       = 0x28
 const byte USB_MSD_WRITE_10                      = 0x2a
@@ -81,113 +95,81 @@ const byte USB_MSD_STOP_START                    = 0x1b
 var byte usb_msd_sense_response_valid
 var bit*7 usb_msd_sense_response_code at usb_msd_sense_response_valid : 0 -- bits 0..6
 var bit usb_msd_sense_valid at usb_msd_sense_response_code : 7 -- bit 7
-
+--
 var byte usb_msd_sense_obsolete
-
+--
 var byte usb_msd_sense_filemark_eom_ili_reserved_key
 var bit usb_msd_sense_filemark  at usb_msd_sense_filemark_eom_ili_reserved_key : 7
 var bit usb_msd_sense_eom       at usb_msd_sense_filemark_eom_ili_reserved_key : 6
 var bit usb_msd_sense_ili       at usb_msd_sense_filemark_eom_ili_reserved_key : 5
 var bit usb_msd_sense_reserved  at usb_msd_sense_filemark_eom_ili_reserved_key : 4
 var bit*4 usb_msd_sense_key     at usb_msd_sense_filemark_eom_ili_reserved_key : 0
-
+--
 var dword usb_msd_sense_information
 var byte _usb_msd_sense_information[4] at usb_msd_sense_information
-
+--
 var byte usb_msd_sense_add_sense_len
-
+--
 var dword usb_msd_sense_command_spacific
 var byte _usb_msd_sense_command_spacific[4] at usb_msd_sense_command_spacific
-
+--
 var byte usb_msd_sense_asc
-var byte usb_msd_sense_ascQ
+var byte usb_msd_sense_ascq
 var byte usb_msd_sense_fruc
 var byte usb_msd_sense_key_specific[3]
 var bit usb_msd_sense_key_specific_sksv at usb_msd_sense_key_specific[0] : 7
-
--- reset sense data. used for request sense command to
--- report our status
-procedure usb_msd_reset_sense_data() is
-   usb_msd_sense_response_valid       = 0x70
-;   usb_msd_sense_response_code        = 0x70
-;   usb_msd_sense_valid                = 0
-
-   usb_msd_sense_obsolete             = 0
-   
-   usb_msd_sense_filemark_eom_ili_reserved_key = 0
-   ;usb_msd_sense_key                  = 0
-   ;usb_msd_sense_reserved             = 0
-   ;usb_msd_sense_ili                  = 0
-   ;usb_msd_sense_eom                  = 0
-   ;usb_msd_sense_filemark             = 0
-   
-   usb_msd_sense_information          = 0
-   usb_msd_sense_add_sense_len        = 0x0A
-   usb_msd_sense_command_spacific     = 0
-   usb_msd_sense_asc                  = 0
-   usb_msd_sense_ascQ                 = 0
-   usb_msd_sense_fruc                 = 0  -- field replaceable unit code
-   usb_msd_sense_key_specific[0] = 0 -- LSB
-   usb_msd_sense_key_specific[1] = 0
-   usb_msd_sense_key_specific[2] = 0
-   ;usb_msd_sense_key_specific_sksv = 0 -- located at usb_msd_sense_key_specific[0] : 7 (already set)
-end procedure
---
-usb_msd_reset_sense_data() -- reset sense data on startup
 
 -- sense codes
 const byte USB_MSD_SENSE_NOT_READY                        = 0x02
 const byte USB_MSD_SENSE_MEDIUM_ERROR                     = 0x03
 const byte USB_MSD_SENSE_ILLEGAL_REQUEST                  = 0x05
 const byte USB_MSD_SENSE_UNIT_ATTENTION                   = 0x06
-const byte usb_msd_sense_asc_LOGICAL_BLOCK_OUT_OF_RANGE   = 0x21
-const byte usb_msd_sense_ascQ_LOGICAL_BLOCK_OUT_OF_RANGE  = 0x00
-const byte usb_msd_sense_asc_MEDIUM_NOT_PRESENT           = 0x3A
-const byte usb_msd_sense_ascQ_MEDIUM_NOT_PRESENT          = 0x00
-const byte usb_msd_sense_asc_DEVICE_WRITE_FAULT           = 0x03
-const byte usb_msd_sense_ascQ_DEVICE_WRITE_FAULT          = 0x00
-const byte usb_msd_sense_asc_READ_ERROR                   = 0x11
-const byte usb_msd_sense_ascQ_READ_ERROR                  = 0x00
-const byte usb_msd_sense_asc_WRITE_PROTECTED              = 0x27
-const byte usb_msd_sense_ascQ_WRITE_PROTECTED             = 0x00
-const byte usb_msd_sense_asc_INVALID_COMMAND_OPCODE       = 0x20
-const byte usb_msd_sense_ascQ_INVALID_COMMAND_OPCODE      = 0x00
-
--- some unused sense codes
-;   const byte ASC_LOGICAL_UNIT_NOT_SUPPORTED = 0x25
-;   const byte ASCQ_LOGICAL_UNIT_NOT_SUPPORTED = 0x00
-;   const byte ASC_LOGICAL_UNIT_DOES_NOT_RESPOND = 0x05
-;   const byte ASCQ_LOGICAL_UNIT_DOES_NOT_RESPOND = 0x00
-;   const byte ASC_MEDIUM_NOT_PRESENT = 0x3a
-;   const byte ASCQ_MEDIUM_NOT_PRESENT = 0x00
-;   const byte ASC_LOGICAL_UNIT_NOT_READY_CAUSE_NOT_REPORTABLE = 0x04
-;   const byte ASCQ_LOGICAL_UNIT_NOT_READY_CAUSE_NOT_REPORTABLE = 0x00
-;   const byte ASC_LOGICAL_UNIT_IN_PROCESS = 0x04
-;   const byte ASCQ_LOGICAL_UNIT_IN_PROCESS = 0x01
-;   const byte ASC_LOGICAL_UNIT_NOT_READY_INIT_REQD = 0x04
-;   const byte ASCQ_LOGICAL_UNIT_NOT_READY_INIT_REQD = 0x02
-;   const byte ASC_LOGICAL_UNIT_NOT_READY_INTERVENTION_REQD = 0x04
-;   const byte ASCQ_LOGICAL_UNIT_NOT_READY_INTERVENTION_REQD = 0x03
-;   const byte ASC_LOGICAL_UNIT_NOT_READY_FORMATTING = 0x04
-;   const byte ASCQ_LOGICAL_UNIT_NOT_READY_FORMATTING = 0x04
-;   const byte ASC_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE = 0x21
-;   const byte ASCQ_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE = 0x00
-;   const byte ASC_WRITE_PROTECTED = 0x27
+const byte USB_MSD_SENSE_ASC_LOGICAL_BLOCK_OUT_OF_RANGE   = 0x21
+const byte USB_MSD_SENSE_ASCQ_LOGICAL_BLOCK_OUT_OF_RANGE  = 0x00
+const byte USB_MSD_SENSE_ASC_MEDIUM_NOT_PRESENT           = 0x3A
+const byte USB_MSD_SENSE_ASCQ_MEDIUM_NOT_PRESENT          = 0x00
+const byte USB_MSD_SENSE_ASC_DEVICE_WRITE_FAULT           = 0x03
+const byte USB_MSD_SENSE_ASCQ_DEVICE_WRITE_FAULT          = 0x00
+const byte USB_MSD_SENSE_ASC_READ_ERROR                   = 0x11
+const byte USB_MSD_SENSE_ASCQ_READ_ERROR                  = 0x00
+const byte USB_MSD_SENSE_ASC_WRITE_PROTECTED              = 0x27
+const byte USB_MSD_SENSE_ASCQ_WRITE_PROTECTED             = 0x00
+const byte USB_MSD_SENSE_ASC_INVALID_COMMAND_OPCODE       = 0x20
+const byte USB_MSD_SENSE_ASCQ_INVALID_COMMAND_OPCODE      = 0x00
+;const byte ASC_LOGICAL_UNIT_NOT_SUPPORTED = 0x25
+;const byte ASCQ_LOGICAL_UNIT_NOT_SUPPORTED = 0x00
+;const byte ASC_LOGICAL_UNIT_DOES_NOT_RESPOND = 0x05
+;const byte ASCQ_LOGICAL_UNIT_DOES_NOT_RESPOND = 0x00
+;const byte ASC_MEDIUM_NOT_PRESENT = 0x3a
+;const byte ASCQ_MEDIUM_NOT_PRESENT = 0x00
+;const byte ASC_LOGICAL_UNIT_NOT_READY_CAUSE_NOT_REPORTABLE = 0x04
+;const byte ASCQ_LOGICAL_UNIT_NOT_READY_CAUSE_NOT_REPORTABLE = 0x00
+;const byte ASC_LOGICAL_UNIT_IN_PROCESS = 0x04
+;const byte ASCQ_LOGICAL_UNIT_IN_PROCESS = 0x01
+;const byte ASC_LOGICAL_UNIT_NOT_READY_INIT_REQD = 0x04
+;const byte ASCQ_LOGICAL_UNIT_NOT_READY_INIT_REQD = 0x02
+;const byte ASC_LOGICAL_UNIT_NOT_READY_INTERVENTION_REQD = 0x04
+;const byte ASCQ_LOGICAL_UNIT_NOT_READY_INTERVENTION_REQD = 0x03
+;const byte ASC_LOGICAL_UNIT_NOT_READY_FORMATTING = 0x04
+;const byte ASCQ_LOGICAL_UNIT_NOT_READY_FORMATTING = 0x04
+;const byte ASC_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE = 0x21
+;const byte ASCQ_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE = 0x00
+;const byte ASC_WRITE_PROTECTED = 0x27
 
 -------------------------------------------------------------------------
--- Setup USB endpoints, 1 enpoint is required for a MSD class
+-- Setup USB endpoints, endpoint 0 and 1 are required for a MSD class
 -------------------------------------------------------------------------
 const bit USB_EP0 = ENABLED
 const byte USB_EP0_OUT_SIZE = 64
-const word USB_EP0_OUT_ADDR = ( USB_BASE_ADDRESS + 0x0010 )
+const word USB_EP0_OUT_ADDR = (USB_BASE_ADDRESS + 0x0010)
 const byte USB_EP0_IN_SIZE  = 64
-const word USB_EP0_IN_ADDR  = ( USB_EP0_OUT_ADDR + USB_EP0_OUT_SIZE )
+const word USB_EP0_IN_ADDR  = (USB_EP0_OUT_ADDR + USB_EP0_OUT_SIZE )
 
 const bit USB_EP1 = ENABLED
 const byte USB_EP1_OUT_SIZE = 64
-const word USB_EP1_OUT_ADDR = ( USB_EP0_IN_ADDR + USB_EP0_IN_SIZE )
+const word USB_EP1_OUT_ADDR = (USB_EP0_IN_ADDR + USB_EP0_IN_SIZE)
 const byte USB_EP1_IN_SIZE  = 64
-const word USB_EP1_IN_ADDR  = ( USB_EP1_OUT_ADDR + USB_EP1_OUT_SIZE )
+const word USB_EP1_IN_ADDR  = (USB_EP1_OUT_ADDR + USB_EP1_OUT_SIZE)
 
 const bit USB_EP2 = DISABLED
 const byte USB_EP2_OUT_SIZE = 8
@@ -201,97 +183,104 @@ const word USB_EP3_OUT_ADDR = 0x0000
 const byte USB_EP3_IN_SIZE = 8
 const word USB_EP3_IN_ADDR  = 0x0000
 
-const byte USB_MSD_OUT_SIZE = 64
-var byte msd_tx_buffer[ USB_MSD_OUT_SIZE ]
+var volatile byte msd_tx_buffer[USB_EP1_IN_SIZE]; at USB_EP1_IN_ADDR
 
-var volatile byte usb_ep1in_buf[ USB_EP1_IN_SIZE ] at USB_EP1_IN_ADDR
-var volatile byte usb_ep1out_buf[ USB_EP1_OUT_SIZE ] at USB_EP1_OUT_ADDR
+var volatile byte usb_ep1in_buf[USB_EP1_IN_SIZE] at USB_EP1_IN_ADDR
+var volatile byte usb_ep1out_buf[USB_EP1_OUT_SIZE] at USB_EP1_OUT_ADDR
 ;var byte msd_tx_buffer[ USB_MSD_OUT_SIZE ]
 
--- -----------------------------------------------------------------------
--- Sets the default USB_DEVICE_DESCRIPTOR record.
+-- fix some memory space so varibles don't get overwritten. needs a perminant fix
+var byte usb_msd_temp at 0x400 + 255
+var volatile byte reserve_array[0x10] at 0x400 + 256
+usb_msd_temp = reserve_array[0]
+
+-- ---------------------------------------------------------------------
+-- Default USB_DEVICE_DESCRIPTOR
 -- -----------------------------------------------------------------------
 const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] =
 {
-0x12, -- Descriptor size in bytes (18)
-0x01, --Descriptor type (DEVICE)
+0x12, -- Size of this descriptor in bytes
+0x01, -- Descriptor Type - DEVICE
 0x00,
-0x02, -- USB specification release (BCD) (2.00)
-0x00, -- Class (specified at interface level)
-0x00, -- Subclass (specified at interface level)
-0x00, -- Protocol (specified at interface level)
-0x40, -- Maximum packet size for endpoint zero (64)
+0x02, -- USB Specification Release Number - BCD 2.00
+0x00, -- Class is specified in the interface level
+0x00, -- Subclass is specified at interface level
+0x00, -- Protocol isspecified at interface level
+0x40, -- Maximum packet size for endpoint zero - 64
 0xD8,
-0x04, -- Vendor ID (Microchip Technology; assigned by USB-IF)
+0x04, -- Vendor ID - Assigned by the USB-IF - Microchip Technology
 0x09,
-0x01, -- Product ID (assigned by vendor)
+0x01, -- Product ID - assigned by vendor
 0x00,
-0x01, -- Device release number (BCD, assigned by vendor) (1.00)
-0x01, -- Manufacturer string index
-0x02, -- Product string index
-0x03, -- Serial number string index
-0x01 -- Number of possible configurations
+0x01, -- Device release number in BCD - assigned by vendor 1.00
+0x01, -- Index of string descriptor describing the manufacturer
+0x02, -- Index of string descriptor describing this product
+0x03, -- Index of string descriptor describing the device.s serial number
+0x01  -- Number of possible configurations
 }
 
 -- -----------------------------------------------------------------------
--- Sets the default USB_CONFIGURATION_DESCRIPTOR record.
+-- Default USB_CONFIGURATION_DESCRIPTOR
 -- -----------------------------------------------------------------------
 const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x07 + 0x07
 const byte USB_CONFIGURATION_DESCRIPTOR[USB_CONFIGURATION_DESCRIPTOR_SIZE] =
 {
---Configuration Descriptor
-0x09, -- Descriptor size in bytes (9)
-0x02, -- Descriptor type (CONFIGURATION)
+--  Configuration Descriptor
+0x09, -- Descriptor size in bytes
+0x02, -- Descriptor type - CONFIGURATION
 0x20,
-0x00, -- Total length of this and subordinate descriptors
-0x01, -- Number of interfaces in this configuration
-0x01, -- Identifier for this configuration
-0x00, -- Configuration string index (no string defined)
-0xC0, -- Attributes: self powered, no remote wakeup
-0x32, -- Maximum power consumption (100 mA)
+0x00, -- Total length of data returned for this configuration
+0x01, -- Number of interfaces supported by this configuration
+0x01, -- Value to use as an argument to the SetConfiguration() request to select this configuration
+0x00, -- Index of string descriptor describing this configuration. 0 = none
+0xC0, -- Configuration characteristics. Self-powered with no remote wakeup
+0x32, -- Maximum power consumption - 100mA
 
---Interface Descriptor
-0x09, -- Descriptor size in bytes (9)
-0x04, -- Descriptor type (INTERFACE)
-0x00, -- Interface Number
-0x00, -- Alternate Setting Number
-0x02, -- Number of endpoints in this interface
-0x08, -- Class code (mass storage)
-0x06, -- Subclass code (SCSI transparent command set)
-0x50, -- Protocol code (bulk-only transport)
-0x00, -- Interface string index (no string defined)
+-- Bulk-Only Data Interface Descriptor
+0x09, -- Descriptor size in bytes
+0x04, -- Descriptor type - INTERFACE
+0x00, -- Number of interface
+0x00, -- Value used to select alternate setting for the interface identified in the prior field
+0x02, -- Number of endpoints used by this interface (excluding endpoint zero)
+0x08, -- Class code - Mass Storage
+0x06, -- Subclass code - SCSI Transparent Command Set
+0x50, -- Protocol - BULK-ONLY TRANSPORT
+0x00, -- Index to string descriptor describing this interface - none
 
---Endpoint Descriptor
-0x07, -- Descriptor size in bytes (7)
-0x05, -- Descriptor type (ENDPOINT)
-0x81, -- Endpoint number and direction (1 IN)
-0x02, -- Transfer type (bulk)
+-- Endpoint Descriptor (ENDPOINT 1 IN)
+0x07, -- Descriptor size in bytes
+0x05, -- Descriptor type - ENDPOINT
+0x81, -- The address of this endpoint on the USB device (bit 3..0 = endpoint number 1) (bit 7 = 1 = in)
+0x02, -- Transfer type - Bulk
 0x40,
-0x00, -- Maximum packet size (64)
-0x00, -- Maximum latency (doesn't apply to full-speed bulk endpoints)
+0x00, -- Maximum packet size - 64
+0x00, -- Does not apply to Bulk endpoints
 
---Endpoint Descriptor
-0x07, -- Descriptor size in bytes (7)
-0x05, -- Descriptor type (ENDPOINT)
-0x01, -- Endpoint number and direction (1 OUT)
-0x02, -- Transfer type (bulk)
+-- Endpoint Descriptor (ENDPOINT 1 OUT)
+0x07, -- Descriptor size in bytes
+0x05, -- Descriptor type - ENDPOINT
+0x01, -- The address of this endpoint on the USB device (bit 3..0 = endpoint number 1) (bit 7 = 0 = out)
+0x02, -- Transfer type - Bulk
 0x40,
-0x00, -- Maximum packet size (64)
-0x00 -- Maximum latency/high-speed OUT NAK rate (doesn't apply to full-speed bulk endpoints)
+0x00, -- Maximum packet size - 64
+0x00  -- Does not apply to Bulk endpoints
 }
 
+
+-- STRING 0
 const byte USB_STRING0[] =
 {
-0x04,   -- bLength
-USB_DT_STRING,   -- bDescriptorType
-0x09,   -- wLANGID[0] (low byte)
-0x04   -- wLANGID[0] (high byte)
+0x04,            -- Descriptor size in bytes
+USB_DT_STRING,   -- Descriptor type - STRING
+0x09,            -- wLANGID[0] (low byte)
+0x04             -- wLANGID[0] (high byte)
 }
 
+-- String descriptor describing the manufacturer
 const byte USB_STRING1[0x34] =
 {
-0x34,   -- bLength
-USB_DT_STRING,   -- bDescriptorType
+0x34,            -- Descriptor size in bytes
+USB_DT_STRING,   -- Descriptor type - STRING
 "M", 0x00,
 "i", 0x00,
 "c", 0x00,
@@ -319,11 +308,11 @@ USB_DT_STRING,   -- bDescriptorType
 ".", 0x00
 }
 
-
+-- String descriptor describing this product
 const byte USB_STRING2[0x3A] =
 {
-0x3A,   -- bLength
-USB_DT_STRING,   -- bDescriptorType
+0x3A,            -- Descriptor size in bytes
+USB_DT_STRING,   -- Descriptor type - STRING
 "M", 0x00,
 "i", 0x00,
 "c", 0x00,
@@ -354,10 +343,11 @@ USB_DT_STRING,   -- bDescriptorType
 "e", 0x00
 }
 
+-- String descriptor describing the device serial number
 const byte USB_STRING3[0x1A] =
 {
-0x1A,   -- bLength
-USB_DT_STRING,   -- bDescriptorType
+0x1A,            -- Descriptor size in bytes
+USB_DT_STRING,   -- Descriptor type - STRING
 "0", 0x00,
 "2", 0x00,
 "3", 0x00,
@@ -374,26 +364,72 @@ USB_DT_STRING,   -- bDescriptorType
 
 include usb_drv_core
 
--- Reset Callback. Must add the following lines to USB_DRV
+-- -----------------------------------------------------------------------
+-- reset sense data. used for request sense command to
+-- report our status
+-- -----------------------------------------------------------------------
+procedure usb_msd_reset_sense_data() is
+   usb_msd_sense_response_valid       = 0x70
+;   usb_msd_sense_response_code        = 0x70
+;   usb_msd_sense_valid                = 0
+
+   usb_msd_sense_obsolete             = 0
+
+   usb_msd_sense_filemark_eom_ili_reserved_key = 0
+   ;usb_msd_sense_key                  = 0
+   ;usb_msd_sense_reserved             = 0
+   ;usb_msd_sense_ili                  = 0
+   ;usb_msd_sense_eom                  = 0
+   ;usb_msd_sense_filemark             = 0
+
+   usb_msd_sense_information          = 0
+   usb_msd_sense_add_sense_len        = 0x0A
+   usb_msd_sense_command_spacific     = 0
+   usb_msd_sense_asc                  = 0
+   usb_msd_sense_ascq                 = 0
+   usb_msd_sense_fruc                 = 0  -- field replaceable unit code
+   usb_msd_sense_key_specific[0] = 0 -- LSB
+   usb_msd_sense_key_specific[1] = 0
+   usb_msd_sense_key_specific[2] = 0
+   ;usb_msd_sense_key_specific_sksv = 0 -- located at usb_msd_sense_key_specific[0] : 7 (already set)
+end procedure
+
+-- -----------------------------------------------------------------------
+-- init procedure
+-- -----------------------------------------------------------------------
+procedure usb_msd_init() is
+   INTCON_GIE = FALSE -- no interrupts.
+
+   usb_msd_reset_sense_data() -- reset sense data on startup
+end procedure
+
+-- -----------------------------------------------------------------------
+-- Reset Callback. Must add the following lines to USB_DRV reset procedure
 --   if defined (usb_reset_callback) then
 --	     usb_reset_callback()
 --   end if
+--
+-- with good code, you should not receive any resets from USB. You
+-- will get a reset if you are slow to respond to a command
+-- -----------------------------------------------------------------------
 procedure usb_reset_callback() is
-   usb_msd_can_tx = TRUE
-   usb_msd_data_transfer_length = 0
-   usb_msd_data_residue = 0
-
    -- release EP OUT uown to SIE to allow more data to arrive.
    usb_prime_epx_out(1,USB_EP1_OUT_SIZE)
    
+   -- no data left to send
+   usb_msd_data_residue = 0
+   
+   -- wait for a command
    usb_msd_state = USB_MSD_STATE_WAIT
 
    const byte reset[] = "!!!RESET!!!"
-   print_string(serial_data,reset)
-   debug_crlf(1)
+   debug_string(0,reset)
+   debug_crlf(0)
 end procedure	
 
+-- -----------------------------------------------------------------------
 -- Check if the CBW received is valid.
+-- -----------------------------------------------------------------------
 function msd_cbw_is_valid() return bit is
    pragma inline
    var byte step
@@ -405,7 +441,10 @@ function msd_cbw_is_valid() return bit is
    _usb_msd_cbw_signature[3] = POSTINC1
 
    if usb_msd_cbw_signature == USB_MSD_CBW then
-      serial_data = "B"
+;   if (_usb_msd_cbw_signature[0] == POSTINC1) & (_usb_msd_cbw_signature[1] == POSTINC1) &
+;      (_usb_msd_cbw_signature[2] == POSTINC1) & (_usb_msd_cbw_signature[3] == POSTINC1) then
+
+      debug_char(0,"B")
 
       debug_crlf(1)
       const byte cbw_str[] = "CBW RECEIVED FROM HOST!"
@@ -488,31 +527,35 @@ function msd_cbw_is_valid() return bit is
    end if
 end function
 
+-- -----------------------------------------------------------------------
 -- Do whatever needs to be done with a command received.
+-- -----------------------------------------------------------------------
 procedure usb_msd_command_received() is
-               serial_data = "C"
+   debug_char(0,"C")
+
    var byte step
    
    if _usb_msd_cbw_command[0] == USB_MSD_INQUIRY then
-               serial_data = "I"
+      debug_char(0,"I")
+      
       debug_crlf(2)
       var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_INQUIRY"
       debug_string(2,command)
       debug_crlf(2)
 
       const byte usb_msd_inq[36] = {
-   	0x00,	-- peripheral device is connected, direct access block device
-   	0x80, -- removable
-   	0x04,	-- version = 00=> does not conform to any standard, 4=> SPC-2
-   	0x02,	-- response is in format specified by SPC-2
-   	0x1F,	-- n-4 = 0x1F
-   	0x00,	-- sccs etc.
+   	0x00,	-- Peripheral Device Type
+   	0x80,   -- set removable media bit
+   	0x04,	-- ISO version SPC-2
+   	0x02,	-- Response Data Format SPC-2
+   	0x1F,	-- Additional Length
+   	0x00,	-- reserved
    	0x00,	-- bque=1 and cmdque=0,indicates simple queueing 00 is obsolete,
-   		   -- but as in case of other device, we are just using 00
+   		-- but as in case of other device, we are just using 00
    	0x00,	-- 00 obsolete, 0x80 for basic task queueing
-   	"F","i","r","m","w","a","r","e", 	-- Vendor ID (not T10 assigned)
-   	"L","o","a","d","e","r"," "," "," "," "," "," "," "," "," "," ",
-   	"0","0","0","1"}
+   	"J","a","l","l","i","b"," "," ", 	-- Vendor Identification
+   	"M","a","s","s"," ","S","t","o","r","a","g","e"," "," "," "," ", -- Product Identification
+   	"0","0","0","1"} -- Product Revision
 
       -- set the data to send
       for count(usb_msd_inq) using step loop
@@ -524,41 +567,42 @@ procedure usb_msd_command_received() is
       usb_msd_state = USB_MSD_STATE_DATA_IN           -- send data to host
       
    elsif _usb_msd_cbw_command[0] == USB_MSD_READ_FORMAT_CAPACITY then
-               serial_data = "P"
-   	-- capacities device can be formatted in.
+      debug_char(0,"P")
+      
+      -- send capacities device can be formatted in.
 
       debug_crlf(2)
       var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_READ_FORMAT_CAPACITY"
       debug_string(2,command)
       debug_crlf(2)
 
-      -- Descriptor Code definition
+      -- constants
       const byte UNFORMATTED_MEDIA     = 0b01
       const byte FORMATTED_MEDIA       = 0b10
       const byte NO_CARTRIDGE_IN_DRIVE = 0b11
 
       -- Capacity List Header
-   	msd_tx_buffer[0] = 0x00
-   	msd_tx_buffer[1] = 0x00
-   	msd_tx_buffer[2] = 0x00
-   	msd_tx_buffer[3] = 0x08	-- (8 bytes) x (1 descriptor)   	
-   	-- Current/Maximum Capacity Descriptor
-   	msd_tx_buffer[4] = _usb_msd_num_of_blocks[3];0x01   -- 5000 blocks (2.56MB to ensure FAT16)
-   	msd_tx_buffer[5] = _usb_msd_num_of_blocks[2] ;0x00
-   	msd_tx_buffer[6] = _usb_msd_num_of_blocks[1] ;0x13
-   	msd_tx_buffer[7] = _usb_msd_num_of_blocks[0] ;0x88
-   	msd_tx_buffer[8] = FORMATTED_MEDIA
-   	msd_tx_buffer[9] = _usb_msd_block_size[2];0x00	 -- 512 bytes per block (from media's CSD register)
-   	msd_tx_buffer[10] = _usb_msd_block_size[1];0x02
-   	msd_tx_buffer[11] = _usb_msd_block_size[0];0x00
+      msd_tx_buffer[0] = 0x00
+      msd_tx_buffer[1] = 0x00
+      msd_tx_buffer[2] = 0x00
+      msd_tx_buffer[3] = 0x08	-- (8 bytes) x (1 descriptor)   	
+      -- Current/Maximum Capacity Descriptor
+      msd_tx_buffer[4] = _usb_msd_num_of_blocks[3];0x01   -- 5000 blocks (2.56MB to ensure FAT16)
+      msd_tx_buffer[5] = _usb_msd_num_of_blocks[2] ;0x00
+      msd_tx_buffer[6] = _usb_msd_num_of_blocks[1] ;0x13
+      msd_tx_buffer[7] = _usb_msd_num_of_blocks[0] ;0x88
+      msd_tx_buffer[8] = FORMATTED_MEDIA
+      msd_tx_buffer[9] = _usb_msd_block_size[2];0x00	  -- 512 bytes per block (from media's CSD register)
+      msd_tx_buffer[10] = _usb_msd_block_size[1];0x02
+      msd_tx_buffer[11] = _usb_msd_block_size[0];0x00
 
-   	usb_msd_data_residue = 12  -- amount of data left to send
+      usb_msd_data_residue = 12                       -- amount of data left to send
       usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS -- command success
-      usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
+      usb_msd_state = USB_MSD_STATE_DATA_IN           -- waiting to send data to host
 
       
    elsif _usb_msd_cbw_command[0] == USB_MSD_READ_CAPACITY then
-               serial_data = "P"		
+      debug_char(0,"P")
 
       -- send the size of the device (number of sectors)
       -- and also the sector size. (0x200 = 512)
@@ -584,113 +628,112 @@ procedure usb_msd_command_received() is
 
    -- works
    elsif _usb_msd_cbw_command[0] == USB_MSD_READ_10 then
-               serial_data = "R"	
-;     --  decode CBWCB to get LBA address and size to read from storage medium
-;     --  then reads data in 512 byte chunks to be sent in 64 byte
-;     --  chunks to host.
+      debug_char(0,"R")	
+      
+      --  decode CBWCB to get LBA address and size to read from storage medium
+      --  then reads data in 512 byte chunks to be sent in 64 byte
+      --  chunks to host.
 
-      debug_crlf(2)
-      var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_READ_10"
-      debug_string(2,command)
-      debug_crlf(2)
+      if USB_MSD_SECTOR_READS == FALSE then
+         debug_crlf(2)
+         var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_READ_10"
+         debug_string(2,command)
+         debug_crlf(2)
 
-      usb_msd_data_transfer_length = usb_msd_cbw_data_transfer_length -- not sure if it should be truncated to word
-      usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
+         usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
 
+         var dword address
+         var byte _address[4] at address
+         _address[0] = _usb_msd_cbw_command[5]
+         _address[1] = _usb_msd_cbw_command[4]
+         _address[2] = _usb_msd_cbw_command[3]
+         _address[3] = _usb_msd_cbw_command[2]
 
-      var dword address
-      var byte _address[4] at address
-      _address[0] = _usb_msd_cbw_command[5]
-      _address[1] = _usb_msd_cbw_command[4]
-      _address[2] = _usb_msd_cbw_command[3]
-      _address[3] = _usb_msd_cbw_command[2]
+         var word step = 0
+         var dword sector_step = 0
 
-      var word step = 0
-      var dword sector_step = 0
+         for usb_msd_cbw_data_transfer_length / 512 loop
+            storage_start_read(address + sector_step)
+            sector_step = sector_step + 1
 
-      for usb_msd_data_transfer_length / 512 loop
-      ;while usb_msd_data_transfer_length != 0 loop
-         sd_start_read(address + sector_step)
-         sector_step = sector_step + 1
+            usb_msd_data_residue = 512
 
-         ;usb_msd_data_residue = usb_msd_data_transfer_length
-         usb_msd_data_residue = 512
+            while usb_msd_data_residue != 0 loop
 
-         while usb_msd_data_residue != 0 loop
+               for 8 loop
+                  debug_crlf(0)
+                  debug_string(0,command)
 
-            for 8 loop
-               debug_crlf(0)
-               debug_string(0,command)
+                 --  read data from drive buffer in 64 byte chunks and place it
+                  --  into the usb tx buffer.   		
+                  var byte step2
+                  for 64 using step2 loop
+                     ;msd_tx_buffer[step2] = 0xAA
+                     msd_tx_buffer[step2] = storage_data_byte
+                  end loop
 
-              --  read data from drive buffer in 64 byte chunks and place it
-               --  into the usb tx buffer.   		
-               var byte step2
-               for 64 using step2 loop
-                  ;msd_tx_buffer[step2] = 0xAA;sd_data_byte
-                  msd_tx_buffer[step2] = sd_data_byte
+                  -- success if all data was read from the data device ok.
+                  usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
+
+                  usb_msd_process_data()
+
                end loop
 
-               -- success if all data was read from the data device ok.
-               usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
-
-               usb_msd_data_in()
-
-;               if !(usb_msd_state == USB_MSD_STATE_DATA_IN) then
-;                  -- The PC must have interrupted us with a reset!
-;                  usb_msd_csw_status = USB_MSD_CSW_STATUS_FAIL
-;                  return
-;               end if
-
             end loop
-
+            usb_msd_data_residue = 0 -- done sending all data
+            storage_stop_read() -- stop reading if already reading
          end loop
-         usb_msd_data_transfer_length = usb_msd_data_transfer_length - 512
+
+      elsif USB_MSD_SECTOR_READS == TRUE then -- Sector Reads
+         debug_crlf(2)
+         var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_READ_10"
+         debug_string(2,command)
+         debug_crlf(2)
+
+         var dword address
+         var byte _address[4] at address
+         _address[0] = _usb_msd_cbw_command[5]
+         _address[1] = _usb_msd_cbw_command[4]
+         _address[2] = _usb_msd_cbw_command[3]
+         _address[3] = _usb_msd_cbw_command[2]
+
+         var dword sector_step = 0
+
+         for usb_msd_cbw_data_transfer_length / 512 loop
+            storage_raw_read_sector_address(address + sector_step)
+
+            sector_step = sector_step + 1
+
+            usb_msd_data_residue = 512
+
+            while usb_msd_data_residue != 0 loop
+
+               var word step64 = 0
+               for 8 loop
+                  debug_crlf(0)
+                  debug_string(0,command)
+
+                  --  read data from drive buffer in 64 byte chunks and place it
+                  --  into the usb tx buffer.   		
+                  var byte step2
+                  for 64 using step2 loop
+                     ;msd_tx_buffer[step2] = 0xAA -- for testing
+                     msd_tx_buffer[step2] = storage_sector_buffer[step64 + step2]
+                  end loop
+
+                  -- success if all data was read from the data device ok.
+                  usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
+
+                  usb_msd_process_data()
+                  step64 = step64 + 64
+               end loop
+            end loop
+         end loop
+
          usb_msd_data_residue = 0 -- done sending all data
-         sd_stop_read() -- stop reading if already reading
-      ;end loop
-      end loop
+         usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
 
-      ;usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
-
-;
-;
-;   -- testing
-;   elsif _usb_msd_cbw_command[0] == USB_MSD_READ_10 then	
-;;     --  decode CBWCB to get LBA address and size to read from storage medium
-;;     --  then reads data in 512 byte chunks to be sent in 64 byte
-;;     --  chunks to host.
-;
-;      debug_crlf(2)
-;      var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_READ_10"
-;      debug_string(2,command)
-;      debug_crlf(2)
-;
-;      usb_msd_data_transfer_length = usb_msd_cbw_data_transfer_length -- not sure if it should be truncated to word
-;
-;
-;      var dword address
-;      var byte _address[4] at address
-;      _address[0] = _usb_msd_cbw_command[5]
-;      _address[1] = _usb_msd_cbw_command[4]
-;      _address[2] = _usb_msd_cbw_command[3]
-;      _address[3] = _usb_msd_cbw_command[2]
-;
-;
-;      -- prepare the data response
-;      var byte step
-;      for 64 using step loop
-;        msd_tx_buffer[step] = 0xAA
-;      end loop
-;
-;
-;      usb_msd_data_residue = 512 -- amount of data left to send
-;      usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
-;      usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
-;
-;
-;
-;               usb_msd_data_in()
-
+      end if
 
 
 
@@ -701,7 +744,7 @@ procedure usb_msd_command_received() is
 ;      -- then reads in 64 byte chunks from host to be written to the sd
 ;      -- card in 512 byte chunks.
 ;
-;      serial_data = "}"
+;      debug_char(0,"}")
 ;
 ;      debug_crlf(2)
 ;      var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_WRITE_10"
@@ -716,7 +759,7 @@ procedure usb_msd_command_received() is
 
 
    elsif _usb_msd_cbw_command[0] == USB_MSD_REQUEST_SENSE then	
-               serial_data = "S"
+      debug_char(0,"S")
 
       debug_crlf(2)
       var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_REQUEST_SENSE"
@@ -734,20 +777,20 @@ procedure usb_msd_command_received() is
       ;usb_msd_sense_key =
       msd_tx_buffer[2] = usb_msd_sense_filemark_eom_ili_reserved_key
 
-      msd_tx_buffer[3] = _usb_msd_sense_information[0]  -- I hope i got the MSD/LSD right!
+      msd_tx_buffer[3] = _usb_msd_sense_information[0]
       msd_tx_buffer[4] = _usb_msd_sense_information[1]
       msd_tx_buffer[5] = _usb_msd_sense_information[2]
       msd_tx_buffer[6] = _usb_msd_sense_information[3]
       
       msd_tx_buffer[7] = usb_msd_sense_add_sense_len
 
-      msd_tx_buffer[8] = _usb_msd_sense_command_spacific[0] -- I hope i got the MSD/LSD right!
+      msd_tx_buffer[8] = _usb_msd_sense_command_spacific[0]
       msd_tx_buffer[9] = _usb_msd_sense_command_spacific[1]
       msd_tx_buffer[10] = _usb_msd_sense_command_spacific[2]
       msd_tx_buffer[11] = _usb_msd_sense_command_spacific[3]
       
       msd_tx_buffer[12] = usb_msd_sense_asc
-      msd_tx_buffer[13] = usb_msd_sense_ascQ
+      msd_tx_buffer[13] = usb_msd_sense_ascq
       msd_tx_buffer[14] = usb_msd_sense_fruc
       msd_tx_buffer[15] = usb_msd_sense_key_specific[0]
       msd_tx_buffer[16] = usb_msd_sense_key_specific[1]
@@ -756,8 +799,9 @@ procedure usb_msd_command_received() is
       usb_msd_data_residue = 18	-- size of this response
       usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
       usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
+
    elsif _usb_msd_cbw_command[0] == USB_MSD_MODE_SENSE then	
-               serial_data = "M"
+      debug_char(0,"M")
 
       debug_crlf(2)
       var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_MODE_SENSE"
@@ -774,7 +818,7 @@ procedure usb_msd_command_received() is
       usb_msd_state = USB_MSD_STATE_DATA_IN
     	
    elsif _usb_msd_cbw_command[0] == USB_MSD_PREVENT_ALLOW_MEDIUM_REMOVAL then
-               serial_data = "A"	
+      debug_char(0,"A")
 
       debug_crlf(2)
       var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_PREVENT_ALLOW_MEDIUM_REMOVAL"
@@ -787,9 +831,9 @@ procedure usb_msd_command_received() is
       usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
       
    elsif _usb_msd_cbw_command[0] == USB_MSD_TEST_UNIT_READY then
-               serial_data = "U"	
+      debug_char(0,"U")
       -- only send back csw with sucess or failure depending
-      -- on state of data medium
+      -- on state of the storage device
 
       debug_crlf(2)
       var byte command[] = "MSD COMMAND RECEIVED - USB_MSD_TEST_UNIT_READY"
@@ -814,7 +858,7 @@ procedure usb_msd_command_received() is
       usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
       
    elsif _usb_msd_cbw_command[0] == USB_MSD_VERIFY then
-               serial_data = "V"
+      debug_char(0,"V")
       -- just reply success with csw, for media ok
 
       debug_crlf(2)
@@ -827,7 +871,7 @@ procedure usb_msd_command_received() is
       usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
       	 		
    elsif _usb_msd_cbw_command[0] == USB_MSD_STOP_START then
-               serial_data = "S"	
+      debug_char(0,"S")
       -- just reply success with csw
 
       debug_crlf(2)
@@ -839,8 +883,8 @@ procedure usb_msd_command_received() is
       usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
       usb_msd_state = USB_MSD_STATE_DATA_IN  -- waiting to send data to host
    else
-               serial_data = "D"
-      -- error! don't know that command.
+      debug_char(0,"D")
+      -- Hey! I don't know that command!
 
       debug_crlf(2)
       var byte command[] = "MSD COMMAND RECEIVED - DON'T KNOW THIS COMMAND!"
@@ -849,19 +893,19 @@ procedure usb_msd_command_received() is
       
       usb_msd_reset_sense_data()
       usb_msd_sense_key = USB_MSD_SENSE_ILLEGAL_REQUEST
-      usb_msd_sense_asc = usb_msd_sense_asc_INVALID_COMMAND_OPCODE
-      usb_msd_sense_ascq = usb_msd_sense_ascQ_INVALID_COMMAND_OPCODE
+      usb_msd_sense_asc = USB_MSD_SENSE_ASC_INVALID_COMMAND_OPCODE
+      usb_msd_sense_ascq = USB_MSD_SENSE_ASCQ_INVALID_COMMAND_OPCODE
       usb_msd_csw_status = USB_MSD_CSW_STATUS_FAIL
       usb_msd_data_residue = 0x00	
       usb_msd_state = USB_MSD_STATE_DATA_IN	
-      ;usb_msd_state = USB_MSD_STATE_WAIT -- waiting receive a command
    end if
 
 end procedure
 
-----
 
+-- -----------------------------------------------------------------------
 -- Handeles data going out from PIC and into the host.
+-- -----------------------------------------------------------------------
 procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
    pragma inline
 
@@ -892,15 +936,12 @@ procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte i
       end loop
    end if
 
-    -- data has been sent, alow us to send more
-    if (end_point == 1) then
-      usb_msd_can_tx = TRUE
-    end if
-
    debug_crlf(2) -- crlf
 end procedure
 
+-- -----------------------------------------------------------------------
 -- Handeles data going out of host to the PIC.
+-- -----------------------------------------------------------------------
 procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
    pragma inline
             
@@ -930,9 +971,6 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
          ;usb_msd_data_received()
       ;end if
 
-      -- if we CPU owns buffer and we are waiting for data
-      ;if !usb_msd_sae_owns_bit_in & (usb_msd_state == USB_MSD_STATE_WAIT) then
-
       -- set buffer pointer to next data address
       var byte src_ptr[2] AT buffer_addr
       FSR1L = src_ptr[0]
@@ -941,13 +979,11 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
       if (usb_msd_state == USB_MSD_STATE_WAIT) then
 
          -- wait till we own it
-         serial_data = "&"
+         debug_char(0,"&")
          while usb_msd_sae_owns_bit_out loop  -- will read with is_valid
-            serial_data = "&"
+            debug_char(0,"&")
          end loop
-         serial_data = "&"
-      
-         serial_data = "&"
+         debug_char(0,"&")
 
          -- check if CBW is good.
          -- CBW hold a command and command parameters that comes from the host.
@@ -963,70 +999,85 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
             end if
 
             const byte str3[] = " STATE: "
-            print_string(serial_data,str3)
-            print_byte_dec(serial_data, usb_msd_state)
+            debug_string(1,str3)
+            debug_byte_dec(1, usb_msd_state)
          
-            -- Do whatever needs to be done with the command received.
+            -- Do what we gotta do with the command received.
             usb_msd_command_received()
 
          else
 
-            serial_data = "!"
+            debug_char(0,"!")
             usb_prime_epx_out(1,USB_EP1_OUT_SIZE)
          end if
-
-         -- see if there is anything else waiting (very important)
-         ;while UIR_TRNIF loop
-         ;   usb_handle_isr()	
-         ;   ;usb_msd_data_in()
-         ;   ;usb_handle_isr()	
-         ;end loop
          
       end if
-      serial_data = "F"
+      debug_char(0,"F")
 
    else
-      usb_prime_epx_out(0,USB_EP1_OUT_SIZE) -- don't need this?
+      usb_prime_epx_out(0,USB_EP1_OUT_SIZE) -- do we need this? 
    end if
 end procedure
 
 include usb_drv
+
+
+-- --------------------------------------------------------------------------------------
+-- This procedure will transmit the content of an array to USB end point 1.
+-- --------------------------------------------------------------------------------------
+procedure usb_transmit_data(byte in data[], byte in byte_cnt) is
+	pragma inline
+	
+   -- copy the array to the bulk endpoiint (endpoint 1)
+	FSR1L = byte(USB_EP1_IN_ADDR)
+	FSR1H = byte(USB_EP1_IN_ADDR >> 8)
+   var byte index
+	for byte_cnt using index loop
+		POSTINC1 = data[index]
+	end loop
+
+   -- send the data
+	usb_bd1in_addr = USB_EP1_IN_ADDR
+	
+	usb_bd1in_cnt = byte_cnt
+	var volatile bit dts_bit at usb_bd1in_stat : USB_BDSTATUS_DTS
+
+	if (dts_bit) then
+		usb_bd1in_stat = 0b_1000_1000
+	else
+		usb_bd1in_stat = 0b_1100_1000
+	end if
+
+end procedure
+
+-- -----------------------------------------------------------------------
 -- send data to the host
+-- -----------------------------------------------------------------------
 procedure msd_send_data(byte in size) is
    pragma inline
 
-   serial_data = "*"	
+   debug_char(0,"*")
 
    -- note: I don't like blocking loops!
    -- does usb_send_data do this?
    while usb_msd_sae_owns_bit_in loop
-      serial_data = "*"	
+      debug_char(0,"*")
    end loop
 
-   serial_data = "*"	
-   serial_data = "*"	
+   debug_char(0,"*")
 
    -- send the array of data (msd_tx_buffer). It will be sent next time
    -- usb_handle_isr() -> usb_ep_data_in_callback are called.
-   usb_send_data(1, msd_tx_buffer, size , low)
-
-   ;usb_handle_isr()
-
-;  -- wait till it is ok to transmit
-;  while (usb_msd_can_tx == FALSE) loop  -- maybe I dono't need to wait? usb_bd1in_stat is set in usb_send_data
-;		usb_handle_isr()
-;      serial_data = "."		
-;	end loop	
-;	usb_msd_can_tx = FALSE
+   usb_transmit_data(msd_tx_buffer, size)
 
 end procedure
 
--- send command block wrapper.
+-- -----------------------------------------------------------------------
+-- send command status wrapper.
 -- basically sends the status of a command that
 -- was completed by the PIC.
+-- -----------------------------------------------------------------------
 procedure usb_send_csw() is
-         
-   ;serial_data = "&"
 
    -- send csw (31 bytes)
    msd_tx_buffer[0] = 0x55
@@ -1043,10 +1094,6 @@ procedure usb_send_csw() is
    msd_tx_buffer[11] = _usb_msd_cbw_tag[3]
    msd_tx_buffer[12] = usb_msd_csw_status
 
-
-   ;while usb_msd_sae_owns_bit_in loop
-   ;end loop
-
    -- send the CBW.
    msd_send_data(13)
    ;usb_send_data(1, msd_tx_buffer, 13 , low)
@@ -1058,13 +1105,16 @@ procedure usb_send_csw() is
 
    -- release EP OUT uown to SIE to allow more data to arrive.
    usb_prime_epx_out(1,USB_EP1_OUT_SIZE)
-               serial_data = "W"
+   
+   debug_char(0,"W")
 end procedure
 
+-- -----------------------------------------------------------------------
 -- set the amount of data to be sent to the host through msd_send_data
 -- and update the amount of data left to be sent.
-procedure usb_msd_data_in() is
-   serial_data = "I"
+-- -----------------------------------------------------------------------
+procedure usb_msd_process_data() is
+   debug_char(0,"I")
    
    -- if there is more the 64 bytes to be sent (the size of the in endpoint)
    if (usb_msd_data_residue >= 64) & (usb_msd_csw_status == USB_MSD_CSW_STATUS_SUCCESS) then
@@ -1085,9 +1135,6 @@ procedure usb_msd_data_in() is
       if usb_msd_csw_status == USB_MSD_CSW_STATUS_SUCCESS then
          -- wait till data has been sent
 
-         ;if usb_msd_cbw_data_transfer_length == 0 then -- if hosts only wants csw
-         ;   usb_msd_data_residue = 0                   -- 0 data to send, only csw
-         ;else                              -- if > 0 and <= 64 bytes to send
             debug_crlf(2)
             var byte command[] = "SENDING "
             debug_string(2,command)
@@ -1101,9 +1148,6 @@ procedure usb_msd_data_in() is
 
             msd_send_data(byte(usb_msd_data_residue))
             usb_msd_data_residue = 0
-
-            ;usb_msd_cbw_data_transfer_length = 0
-         ;end if
       elsif usb_msd_csw_status == USB_MSD_CSW_STATUS_FAIL then
          -- if there was an error (usually during reading or writing data)
          -- at the moment, there should be no USB_MSD_CSW_STATUS_FAIL,
@@ -1144,60 +1188,71 @@ procedure usb_msd_data_in() is
    usb_handle_isr()	
 end procedure
 
--- handel USB MSD events.
--- poll this procedure in your main loop
+-- -----------------------------------------------------------------------
+-- Poll USB MSD for tasks
+-- -----------------------------------------------------------------------
 procedure usb_msd_tasks() is
    -- Servicing Hardware
    -- use polling method
 
-    ;if (usb_msd_data_residue > 0) then
-    ;   serial_data = "$"
-    ;end if
    usb_handle_isr()
 
+   -- If we have data to send to the host
+   if (usb_msd_state == USB_MSD_STATE_DATA_IN) then
 
-   ;if (usb_msd_can_tx == TRUE) then
+      -- if there is no more data to send
+      ;if usb_msd_cbw_data_transfer_length == 0 then
+      if usb_msd_data_residue == 0 then
+         debug_crlf(2)
+         debug_crlf(2)
+         var byte command[] = "Sending CSW!"
+         debug_string(2,command)
 
-      -- If we have data to send to the host
-      if (usb_msd_state == USB_MSD_STATE_DATA_IN) then
+         -- finnished sending the data, now send the status
+         usb_send_csw()
 
-         -- if there is no more data to send
-         ;if usb_msd_cbw_data_transfer_length == 0 then
-         if usb_msd_data_residue == 0 then
-   ;   usb_handle_isr()
-            debug_crlf(2)
-            debug_crlf(2)
-            var byte command[] = "Sending CSW!"
-            debug_string(2,command)
-
-            -- finnished sending the data, now send the status
-            usb_send_csw()
-
-         else  -- if there is data to send
-            -- set the amount of data to be sent to the host through msd_send_data
-            -- and update the amount of data left to be sent.
-            usb_msd_data_in()
-         end if
-
-      elsif !usb_msd_sae_owns_bit_in & (usb_msd_state == USB_MSD_STATE_WAIT) then
-         -- do nothing, we are just waiting for data
-         -- it will be received through next call of usb_handle_isr()
-      elsif usb_msd_state == USB_MSD_STATE_DATA_OUT then
-         -- not supported yet, so lets just go to wait state??
-         -- the previous command received was probobly not supported anyways,
-         -- so we should never be in this state.
-         usb_msd_state = USB_MSD_STATE_WAIT
+      else
+         -- if there is data to send
+         -- set the amount of data to be sent to the host through msd_send_data
+         -- and update the amount of data left to be sent.
+         usb_msd_process_data()
       end if
-   ;end if
-end procedure
 
--- no interrupts
-while INTCON_GIE loop
-   INTCON_GIE = FALSE
-end loop
+   elsif !usb_msd_sae_owns_bit_in & (usb_msd_state == USB_MSD_STATE_WAIT) then
+      -- do nothing, we are just waiting for data
+      -- it will be received through next call of usb_handle_isr()
+   elsif usb_msd_state == USB_MSD_STATE_DATA_OUT then
+      -- not supported yet, so lets just go to wait state??
+      -- the previous command received was probobly not supported anyways,
+      -- so we should never be in this state.
+      usb_msd_state = USB_MSD_STATE_WAIT
+   end if
+end procedure
 
 -- setup the USB device
 usb_setup()
 
 -- enable USB device
 usb_enable_module()
+
+-- -----------------------------------------------------------------------
+-- check if MSD is configured
+-- -----------------------------------------------------------------------
+alias msd_is_configured is usb_is_configured
+
+-- -----------------------------------------------------------------------
+-- Wait till msd is configured
+-- -----------------------------------------------------------------------
+procedure usb_msd_wait_configured() is
+   while !msd_is_configured loop
+      -- poll the usb ISR function on a regular base, in order to
+      -- serve the USB requests
+      usb_msd_tasks()
+      -- check if USB device has been configured by the HOST
+      if usb_is_configured()  then
+         exit loop
+      end if
+   end loop
+end procedure
+
+

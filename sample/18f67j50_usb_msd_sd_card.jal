@@ -1,4 +1,4 @@
--- Title: USB Mass Storage
+-- Title: USB Mass Storage Device Sample (SD Card)
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4o
@@ -7,6 +7,15 @@
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description: Test program for mass storage with SD Card.
+--
+-- Sources:
+-- http://www.usb.org/developers/devclass_docs/usbmassbulk_10.pdf
+-- http://www.usb.org/developers/devclass_docs/usbmass-ufi10.pdf
+-- http://direction.scene-double.com/2008/07/08/usb-msd-bootloader-for-pic-microcontrollers.aspx
+--
+-- Notes:
+-- Important: SEE usb_reset_callback() procedure notes!
+-- A fix needs to be made to usb lib.
 --
 
 include 18f67j50                    -- target PICmicro
@@ -30,8 +39,10 @@ enable_digital_io()                -- make all pins digital I/O
 
 include delay
 
+include print
+
 -- setup uart for communication
-const serial_hw_baudrate  = 115200*2   -- set the baudrate
+const serial_hw_baudrate  = 115200   -- set the baudrate
 include serial_hardware
 serial_hw_init()
 -- some aliases so it is easy to change from serial hw to serial sw.
@@ -69,22 +80,14 @@ const bit DEBUG_MASTER_ENABLE = OFF    -- enables debugging
 include debug
 --
 -- turn on and off debug levels.
-debug_lvl_0 = OFF
+debug_lvl_0 = ON
 debug_lvl_1 = OFF -- display data in/out
 debug_lvl_2 = OFF  -- display commands
-debug_lvl_3 = OFF  -- display commands
+debug_lvl_3 = OFF  -- short debug info
 --
 var byte debug_text1[] = "DEBUG STARTED"
 debug_string(DEBUG_1,debug_text1)
 debug_crlf(DEBUG_1)
-
-;procedure serial_print_spc() is
-;   debug_char(1, " ")
-;end procedure
-;
-;procedure serial_newline() is
-;   debug_crlf(1)
-;end procedure
 
 -- setup the sd card pins
 alias sd_chip_select is pin_SS
@@ -99,13 +102,16 @@ const bit SD_DELAY_AFTER_WRITE = TRUE
 include sd_card              -- include the sd card ide hard disk library
 sd_init()                    -- initialize startup settings
 
--- include MSD library
+
+-- setup MSD library
+const MSD_STORAGE_DEVICE = SD_CARD
 var dword usb_msd_block_size = 512
 var dword usb_msd_num_of_blocks = 2097152 -- 2097152 * 512 = 1gb
-include usb_drv_msd_class
--- -----------------------------------------------------------------------------
-
-
+--
+-- sector reading is faster, takes more ram. currently sector reads don't work!
+const USB_MSD_SECTOR_READS = TRUE
+include usb_msd
+usb_msd_init()
 
 -- main program
 
@@ -115,45 +121,32 @@ const  byte str_welcome[] = "JAL USB MSD demo! Please wait (takes about 10 secon
 print_string(serial_data, str_welcome )
 print_crlf(serial_data)
 
--- variables
-var bit usb_initialized = false
-var word char_count = 0
+-- wait till MSD is configured
+usb_msd_wait_configured()
+
+-- notify user
+const  byte str[] = "Mass Storage Device (MSD) has been configured by the HOST!"
+print_string(serial_data, str )
+print_crlf(serial_data)
+
 
 -- main loop
+var word char_count = 0
 forever loop
    -- poll the usb ISR function on a regular base, in order to 
-   -- serve the USB requests
+   -- serve the USB MSD requests
    usb_msd_tasks()
    
-   -- check if USB device has been configured by the HOST
-   if usb_is_configured()  then
-      
-      -- note user via serial line that USB has been configured
-      if usb_initialized == false then
-         usb_initialized = true
-         
-         if defined( HAS_SERIAL_DEBUG_PORT ) == true then			
-            const  byte str[] = "USB device has been configured by the HOST!"
-            print_string(serial_data, str )
-            print_crlf(serial_data)
-         end if		
-         
-      end if
-      
-   end if
-
-
-   if defined( HAS_SERIAL_DEBUG_PORT ) == true then
-      if PIR1_RCIF then
-      end if
-   end if	
-
    -- let us know the PIC is actually doing something
    -- by sending char "_" to serial port
    if char_count == 40000 then
-      print_byte_dec(serial_data,usb_msd_state)
+      serial_data = "."
       _usec_delay(100)
       char_count = 0
    end if
    char_count = char_count + 1
 end loop
+
+
+
+
