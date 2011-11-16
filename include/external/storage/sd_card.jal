@@ -52,6 +52,7 @@ var dword sd_sector_select
 -- Basic Commands
 const byte SD_GO_IDLE_STATE = 0
 const byte SD_SEND_OP_COND = 1
+const byte SD_SEND_IF_COND = 8  -- for SDHC only
 const byte SD_SEND_CSD = 9      -- sd sends "Card Specific Data" standard or high capacity
 const byte SD_SEND_CID = 10
 const byte SD_STOP_TRANSMISSION = 12
@@ -1197,3 +1198,104 @@ procedure sd_print_sector_hex(volatile byte out device,word in bytes_per_line,dw
    end loop
    sd_stop_read
 end procedure
+
+;   --------------------------------------------------------------------------------
+;   -- read CSD or CID to serial port. Example:
+;   -- sd_read_csd_cid(SD_SEND_CSD)
+;   -- sd_read_csd_cid(SD_SEND_CSD)
+;   --------------------------------------------------------------------------------
+;   procedure sd_read_csd_cid(byte in command) is
+;      sd_chip_select = low  -- enable the sd card
+;
+;      var byte response,data, step
+;      send_command(command,0,response)
+;
+;      -- wait till ready
+;      while spi_master != 0xFE loop      -- wait till data is ready to read
+;      end loop
+;
+;      -- get data
+;      for 16 using step loop
+;         data = spi_master
+;         print_byte_hex(serial_data, data)
+;         serial_data = " "
+;      end loop
+;
+;      -- get crc
+;      data = spi_master
+;      data = spi_master
+;
+;      sd_chip_select = high  -- enable the sd card
+;   end procedure
+
+;   --------------------------------------------------------------------------------
+;   -- send SD_READ_IF_COND command
+;   --------------------------------------------------------------------------------
+;   procedure sd_read_if_cond() is
+;      sd_chip_select = low   -- enable the sd card
+;
+;      var byte response
+;      send_command(SD_SEND_IF_COND, 0x1AA, response)
+;      print_byte_hex(serial_data,response)
+;
+;      print_byte_hex(serial_data,spi_master)
+;      print_byte_hex(serial_data,spi_master)
+;      print_byte_hex(serial_data,spi_master)
+;      print_byte_hex(serial_data,spi_master)
+;
+;      spi_master = 0xFF            -- send 8 clock pulses
+;
+;      sd_chip_select = high   -- enable the sd card
+;   end procedure
+
+
+--------------------------------------------------------------------------------
+-- returns sd card size in number of sectors.
+-- Total size in bytes = sd_number_of_sectors * 512
+--------------------------------------------------------------------------------
+function sd_number_of_sectors'get() return dword is
+   sd_chip_select = low  -- enable the sd card
+
+   var byte x
+   var byte*4 c_size = 0
+   var byte _c_size[3] at c_size
+   var byte*2 c_size_mult
+   var byte _c_size_mult[2] at c_size_mult
+
+   send_command(SD_SEND_CSD,0,x)
+
+   -- wait till ready
+   while spi_master != 0xFE loop      -- wait till data is ready to read
+   end loop
+
+   -- throw data we dont' need
+   for 6 loop
+      x = spi_master
+   end loop
+
+   _c_size[2] = spi_master
+   _c_size[1] = spi_master
+   _c_size[0] = spi_master
+
+   _c_size[2] = _c_size[2] & 0b00000111
+   c_size = c_size >> 6
+
+   -- get c_size_mult
+   _c_size_mult[1] = spi_master
+   _c_size_mult[0] = spi_master
+
+   c_size_mult = (c_size_mult >> 7) & 0b00000111
+
+   -- throw the rest of data we dont' need
+   for 5 loop
+      x = spi_master
+   end loop
+
+   -- get crc
+   x = spi_master
+   x = spi_master
+
+   sd_chip_select = high  -- enable the sd card
+
+   return (c_size << (c_size_mult + 2))
+end function
