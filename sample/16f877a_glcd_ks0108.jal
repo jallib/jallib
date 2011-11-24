@@ -1,0 +1,141 @@
+-- ------------------------------------------------------
+-- Title: Graphics LCD sample of the Microchip pic16f877a
+--
+-- Author: Rob Hamerling, Copyright (c) 2011..2011, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4o
+-- Revision: $Revision:$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Sample program for use with 128x64 graphics LCD
+-- with KS0108 chipset, like the GDM12864A
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+-- chip setup
+include 16f877a
+
+pragma target clock   20_000_000                   -- Fosc
+
+pragma target OSC     hs
+pragma target WDT     disabled
+pragma target LVP     disabled
+
+-- GRAPHIC_LCD IO definition ------------------------
+var volatile byte GLCD_DATAPRT     is portD
+var volatile byte GLCD_DATAPRT_DIR is portD_direction
+
+var volatile bit GLCD_RW  is pin_b4
+var volatile bit GLCD_CS1 is pin_b0
+var volatile bit GLCD_E   is pin_b5
+var volatile bit GLCD_DI  is pin_b2
+var volatile bit GLCD_RST is pin_c0
+var volatile bit GLCD_CS2 is pin_b1
+
+var volatile bit GLCD_RW_DIRECTION  is pin_b4_direction
+var volatile bit GLCD_CS1_DIRECTION is pin_b0_direction
+var volatile bit GLCD_E_DIRECTION   is pin_b5_direction
+var volatile bit GLCD_DI_DIRECTION  is pin_b2_direction
+var volatile bit GLCD_RST_DIRECTION is pin_c0_direction
+var volatile bit GLCD_CS2_DIRECTION is pin_b1_direction
+
+enable_digital_io()                                -- all pins digital I/O
+
+include delay
+include math
+include print
+
+include glcd_5x7_font                              -- font to be used
+include glcd_font                                  -- common font stuff
+glcd_font_use(FONT_5X7)                            -- activate font
+
+include glcd_ks0108                                -- glcd device dependent library
+include glcd_common                                -- device independent glcd library
+
+glcd_init()                                        -- initialize display
+
+const byte str[] = "GLCD_TEST "
+
+lcd_background_color = GLCD_WHITE                  -- background color
+
+var byte i = 0
+var sword dy = 0
+
+forever loop
+
+   glcd_pen_color = GLCD_BLACK                     -- pixel color
+
+   lcd_fill(0x00)
+   for GLCD_X_PIXELS / 5 using i loop
+      glcd_write_char(i*5, 0, "A" + i)             -- draw range of characters
+   end loop
+   for GLCD_X_PIXELS / 5 using i loop
+      glcd_write_char(i*5, 16, "a" + i)            -- same, but lower case
+   end loop
+   delay_100ms(25)
+
+   lcd_fill(0x00)
+   glcd_box(GLCD_X_PIXELS / 4, GLCD_Y_PIXELS / 4,
+            GLCD_X_PIXELS / 4 * 3, GLCD_Y_PIXELS / 4 * 3)     -- draw a box
+   delay_100ms(10)
+   glcd_char_goto(GLCD_X_PIXELS/4 + 5, GLCD_Y_PIXELS/4 + 8)
+   print_string(glcd, str)                                    -- draw a string
+   delay_100ms(10)
+   glcd_char_goto(GLCD_X_PIXELS/4 + 5, GLCD_Y_PIXELS/4 + 16)
+   print_string(glcd, PICTYPE)                                -- another string
+   delay_100ms(25)
+
+   lcd_fill(0x00)                                             -- full circle
+   glcd_circle(GLCD_X_PIXELS / 2, GLCD_Y_PIXELS / 2, GLCD_Y_PIXELS / 2 - 1)
+   delay_100ms(10)
+
+   lcd_fill(0x00)                                             -- half a circle
+   glcd_circle(GLCD_X_PIXELS / 2, GLCD_Y_PIXELS, GLCD_Y_PIXELS - 1)
+   delay_100ms(10)
+
+   lcd_fill(0x00)                                             -- another half circle
+   glcd_circle(0, GLCD_Y_PIXELS / 2, GLCD_Y_PIXELS / 2 - 1)
+   delay_100ms(10)
+
+   lcd_fill(0x00)
+   glcd_ellipse(GLCD_X_PIXELS / 2, GLCD_Y_PIXELS / 2,         -- full ellipse
+                GLCD_X_PIXELS / 2 - 1, GLCD_Y_PIXELS / 2 - 1)
+   delay_100ms(10)
+
+   lcd_fill(0x00)
+   glcd_ellipse(0, GLCD_Y_PIXELS / 2,                         -- half ellipse
+                GLCD_X_PIXELS - 1, GLCD_Y_PIXELS / 2 - 1)
+   delay_100ms(10)
+
+   lcd_fill(0x00)
+   for GLCD_X_PIXELS using i loop                             -- sine wave
+      dy = rsin8(sword(GLCD_Y_PIXELS / 2 - 1), sword(i) * 3)
+      glcd_write_pixel(i, byte(GLCD_Y_PIXELS / 2 - dy))
+   end loop
+   delay_100ms(10)
+
+   lcd_fill(0x00)
+   for 2 loop
+      for ((GLCD_X_PIXELS / 2) - 1) using i loop              -- line animation
+         glcd_line(i * 2, 0, GLCD_X_PIXELS - i * 2 - 1, GLCD_Y_PIXELS - 1)
+         delay_1ms(50)
+      end loop
+      for (GLCD_Y_PIXELS - 1) using i loop
+         glcd_line(GLCD_X_PIXELS - 1, i, 0, GLCD_Y_PIXELS - i)
+         delay_1ms(50)
+      end loop
+      glcd_pen_color = GLCD_WHITE                  -- 'erase' first pattern
+   end loop
+   delay_100ms(30)
+
+end loop
+
