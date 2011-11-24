@@ -1,6 +1,6 @@
 -- Title: glcd_common - generic routines for graphic lcd
 -- Author: Stef Mientki, Serkan Ayyýldýz Copyright (c) 2006..2009, all rights reserved.
--- Adapted-by: Joep Suijs, Matthew Schinkel
+-- Adapted-by: Joep Suijs, Matthew Schinkel, Rob Hamerling
 -- Compiler: >=2.2
 -- Revision: $Revision$
 --
@@ -10,17 +10,22 @@
 -- Sources:
 --
 -- Description: Generic routines for graphic lcd
--- glcd_box
 -- glcd_line
--- --
--- Defines a common API, a common interface, where several parameters and procedures remains
--- device specific and should be implemented in device library. Once interface is implemented,
--- many features come for "free". This common API is defined in glcd_common.jal and glcd_font.jal
--- --
--- In order to honor this common interface, and benefit its features, the following must be implemented
--- in device specific library:
---   * GLCD_X_PIXELS: (const) specifies display's width, in pixels
---   * GLCD_Y_SIZE: (const) specifies display's height, in pixels
+-- glcd_box
+-- glcd_box_fill
+-- glcd_ellipse
+-- glcd_circle
+-- glcd_draw_image
+-- .
+-- Defines a common API, a common interface, where several parameters and
+-- procedures remain device specific and should be implemented in device library.
+-- Once interface is implemented, many features come for "free".
+-- This common API is defined in glcd_common.jal and glcd_font.jal
+-- .
+-- In order to honor this common interface, and benefit its features, the following
+-- must be implemented in device specific library:
+--   * GLCD_X_PIXELS: (const) specifies display's width in pixels
+--   * GLCD_Y_PIXELS: (const) specifies display's height in pixels
 --   * GLCD_COLOR_BITS: (const) specifies the number of bits required
 --     for colors (1 for black & white), (16 for 16 bit color)
 --   * glcd_pen_color: (var|const) specifies color of the pen
@@ -28,19 +33,30 @@
 --   * glcd_write_char(x,y,char): (proc) draw "char" at position (x,y). If no
 --     glcd_write_char is defined in the device specific library, pixel by
 --     pixel method will be used by default for glcd_font.jal.
---   * glcd_write_pixel(x,y): (proc) assuming pen and background color previously set, draw
---     a pixel at position (x,y) using defined colors. This is the main procedure used by pixel-related
---     features, like drawing a line, circle, etc... In some cases, where glcd_write_char() can't be used
---     glcd_write_pixel() can also be used to draw chars. If not implemented, pixel-related features won't
---     be available.
---                                  
+--   * glcd_write_pixel(x,y): (proc) assuming pen and background color
+--     previously set, draw a pixel at position (x,y) using defined colors.
+--     This is the main procedure used by pixel-related features, like drawing
+--     a line, circle, etc... In some cases, where glcd_write_char() can't be
+--     used glcd_write_pixel() can also be used to draw chars. If not implemented,
+--     pixel-related features won't be available.
 --
 -- Notes:
+--   Changes by Rob Hamerling:
+--   - fixed typo in comments above (GLCD_Y_SIZE -> GLCD_Y_PIXELS)
+--   - corrected irrelevant comments (artifacts of older versions)
+--   - changed sword to sbyte*3 of local variables in ellipse procedure
+--     to prevent overflow of intermediate results.
+--   - added clipping of ellipse when drawing beyond display boundaries
+--   - minor code optimisations (incl some add/remove pragma inline)
 --
 
+-- --------------------------------------------------------------
+-- Defining default constants when not defined by user
+-- and defining constants derived from these.
+-- --------------------------------------------------------------
 -- set width of pixel x,y variables
 if !defined(GLCD_X_PIXELS) then
-   const GLCD_X_SIZE = 1
+   const GLCD_X_SIZE = 1                           -- assume lcd max 256 pixels wide
 else
    if GLCD_X_PIXELS < 256 then
       const GLCD_X_SIZE = 1
@@ -48,9 +64,9 @@ else
       const GLCD_X_SIZE = 2
    end if
 end if
---
+
 if !defined(GLCD_Y_PIXELS) then
-   const GLCD_Y_SIZE = 1
+   const GLCD_Y_SIZE = 1                           -- assume lcd max 256 pixels high
 else
    if GLCD_Y_PIXELS < 256 then
       const GLCD_Y_SIZE = 1
@@ -60,16 +76,16 @@ else
 end if
 
 if !defined(GLCD_USE_BLOCK_WRITE) then
-   const GLCD_USE_BLOCK_WRITE = FALSE
+   const GLCD_USE_BLOCK_WRITE = FALSE              -- assume block wwriting not supported
 end if
 
 -- set width of color variables
-if !defined(GLCD_COLOR_BITS) then  -- 1 bit
+if !defined(GLCD_COLOR_BITS) then                  -- assume monochrome display
    const GLCD_COLOR_SIZE = 1
 else
-   if GLCD_COLOR_BITS == 1 then    -- 1 bit
+   if GLCD_COLOR_BITS == 1 then                    -- 1 bit
       const GLCD_COLOR_SIZE = 1
-   elsif GLCD_COLOR_BITS == 16 then   -- 16 bit
+   elsif GLCD_COLOR_BITS == 16 then                -- 16 bit
       const GLCD_COLOR_SIZE = 2
    else
       pragma error "GLCD_COLOR_BITS VALUE NOT SUPPORTED"
@@ -78,27 +94,32 @@ end if
 
 -- define foreground and background colors, if not defined already
 if !defined(glcd_background_color) then
-   const byte GLCD_BACKGROUND_COLOR = 0
+   const byte GLCD_BACKGROUND_COLOR = 0            -- white
 end if
 if !defined(GLCD_PEN_COLOR) then
-   const GLCD_PEN_COLOR = 1
+   const GLCD_PEN_COLOR = 1                        -- black
 end if
 
--- variables for text positioning
+
+-- ----------------------------------------------------------------------------
+-- Global variables for text processing
+-- ----------------------------------------------------------------------------
 var byte*GLCD_X_SIZE glcd_char_x_pos = 0;
 var byte*GLCD_Y_SIZE glcd_char_y_pos = 0;
 
-include glcd_font
+
+include glcd_font                                  -- common font library
 
 --------------------------------------------------------------------------------
--- draw one character pixel by pixel. slowest method.
+-- Draw one character pixel by pixel - slowest method.
 --
 -- Requires this procedure to be defined within your glcd library
---    glcd_write_pixel - draw one pixel to glcd
+--    glcd_write_pixel() - draw one pixel to glcd
 --------------------------------------------------------------------------------
 procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte in value) is
+
    var byte*GLCD_COLOR_SIZE color = glcd_pen_color -- save pen color
-   
+
    if _glcd_font_current_bit_direction == FONT_TOP_LEFT_HORIZONTAL then
 
       -- generic font printing (bit by bit)
@@ -106,13 +127,13 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte i
       -- currently only tested for with width of 8 or less, any height
       var word i,j,k
       var word step = 0
-      
-      ;for _glcd_font_current_byte_per_char using k loop -- wrong!
+
+      -- for _glcd_font_current_byte_per_char using k loop -- wrong!
       for _glcd_font_current_height using k loop         -- right!
          -- get each byte from character
          var byte char_byte = glcd_font_lookup( (word(value - 32) * _glcd_font_current_byte_per_char) + k )
          var byte bit_y_address = 128 -- y bit mask
-         
+
          -- get each bit from each character byte and print it to glcd
          for _glcd_font_current_width using j loop
             if( ( char_byte & bit_y_address) > 0 ) then
@@ -124,7 +145,7 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte i
             bit_y_address = bit_y_address >> 1
          end loop
       end loop
-      
+
    elsif _glcd_font_current_bit_direction == FONT_BOTTOM_LEFT_VERTICAL then
       -- generic font printing (bit by bit)
       -- this will work for any glcd that has a glcd_write_pixel procedure
@@ -132,12 +153,11 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte i
       -- currently only tested for fonts 8x8 or smaller.
       var word i,j,k
       var word step = 0
-      
-      ;for _glcd_font_current_byte_per_char using k loop -- wrong!
-      for _glcd_font_current_width using k loop          -- right!
+
+      for _glcd_font_current_width using k loop
          -- get each byte from character
          var byte char_byte = glcd_font_lookup( (word(value - 32) * _glcd_font_current_byte_per_char) + k )
-         
+
          -- get each bit from each character byte and print it to glcd
          var byte bit_y_address = 1 -- y bit mask
          for _glcd_font_current_height using j loop
@@ -153,18 +173,19 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte i
    else
       -- not supported yet!
    end if
-   glcd_pen_color = color -- restore pen color
+   glcd_pen_color = color                          -- restore pen color
 end procedure
 
+
 --------------------------------------------------------------------------------
--- draw one character with block write. Efficient font printing.
---
+-- Draw one character with block write - efficient font printing.
+-- .
 -- Only FONT_TOP_LEFT_HORIZONTAL is supported so far.
---
--- here's a list of procedures reqired in your glcd device library:
---    glcd_block_address - set start x,y and end x,y address
---    glcd_block_write_color - write data to each pixel in order
--- also must define this constant in your glcd device library and
+-- .
+-- Here's a list of procedures reqired in your glcd device library:
+--    glcd_block_address() - set start x,y and end x,y address
+--    glcd_block_write_color() - write data to each pixel in order
+-- Also must define this constant in your glcd device library and
 -- set your most efficient font type.
 --    const GLCD_BLOCK_WRITE_TYPE = FONT_TOP_LEFT_HORIZONTAL
 --------------------------------------------------------------------------------
@@ -176,9 +197,8 @@ if GLCD_USE_BLOCK_WRITE == TRUE then
          var word i,j
          var word step = 0
 
-         ;glcd_block_address(x,y,x+(_glcd_font_current_width-1),y+(_glcd_font_current_height - 1))
          glcd_block_set_address(x,y,x+(_glcd_font_current_width-1),y+(_glcd_font_current_height - 1))
-         
+
          step = step + word(value-32)*_glcd_font_current_height;
 
          for _glcd_font_current_height using j loop
@@ -199,6 +219,7 @@ if GLCD_USE_BLOCK_WRITE == TRUE then
    end procedure
 end if
 
+
 --------------------------------------------------------------------------------
 -- Pseudo variable 'lcd' for writing characters.
 --------------------------------------------------------------------------------
@@ -211,12 +232,11 @@ procedure glcd'put(byte in char) is
          end if
       end if
    end if
-   
+
    -- custom font procedure defined in glcd device library
    if defined(glcd_write_char) then
       glcd_write_char(glcd_char_x_pos, glcd_char_y_pos, char)
    else
-   
       -- a common efficient way to draw fonts.
       -- here's a list of procedures reqired in your glcd device library.
       --    glcd_block_address - set start x,y and end x,y address
@@ -234,6 +254,7 @@ procedure glcd'put(byte in char) is
    -- move the cursor
    glcd_char_x_pos = glcd_char_x_pos + _glcd_font_current_width
 end procedure
+
 
 --------------------------------------------------------------------------------
 -- Clear screen and character position to the upper left corner: row 0, column 0)
@@ -275,7 +296,7 @@ if !defined(glcd_clear_screen) then
          end loop
          glcd_pen_color = color
       end if
-      
+
       glcd_char_x_pos = 0;
       glcd_char_y_pos = 0;
    end procedure
@@ -285,42 +306,69 @@ end if
 -- Set location of next character to write
 --------------------------------------------------------------------------------
 procedure glcd_char_goto(byte in x, byte in y) is
+   pragma inline
    glcd_char_x_pos = x
    glcd_char_y_pos = y
 end procedure
 
+
 --------------------------------------------------------------------------------
--- name        : glcd_ellipse( cx, cy, xradius, yradius, mode )
+-- Write 4 pixels of ellipse
+-- Arguments: - pixel co-ordinates of centre of the ellipse (cx,cy)
+--            - x- and y-offsets (dx,dy) of one pixel relative to center of the ellipse
+--              (the 4 pixel co-ordinates are derived from these)
+-- Note: do not write pixel when its location is outside physical glcd area
+--------------------------------------------------------------------------------
+procedure _glcd_write_4_ellipse_pixels(byte*GLCD_X_SIZE in cx, sbyte*3 in dx,
+                                      byte*GLCD_Y_SIZE in cy, sbyte*3 in dy) is
+   if (cx + dx) >= 0 & (cx + dx) < GLCD_X_PIXELS  then
+      if (cy + dy) >= 0 & (cy + dy) < GLCD_Y_PIXELS  then
+         glcd_write_pixel(byte*GLCD_X_SIZE(cx + dx), byte*GLCD_Y_SIZE(cy + dy))
+      end if
+      if (cy - dy) >= 0 & (cy - dy) < GLCD_Y_PIXELS  then
+        glcd_write_pixel(byte*GLCD_X_SIZE(cx + dx), byte*GLCD_Y_SIZE(cy - dy))
+      end if
+   end if
+   if (cx - dx) >= 0 & (cx - dx) < GLCD_X_PIXELS  then
+      if (cy + dy) >= 0 & (cy + dy) < GLCD_Y_PIXELS  then
+        glcd_write_pixel(byte*GLCD_X_SIZE(cx - dx), byte*GLCD_Y_SIZE(cy + dy))
+      end if
+      if (cy - dy) >= 0 & (cy - dy) < GLCD_Y_PIXELS  then
+         glcd_write_pixel(byte*GLCD_X_SIZE(cx - dx), byte*GLCD_Y_SIZE(cy - dy))
+      end if
+   end if
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- name        : glcd_ellipse(cx, cy, xradius, yradius)
 -- description : Bresenham ellipse plot
--- argument(s) : cx, cy -> 	center of the ellipse
---				       xradius, yradius -> x & y radius of the ellipse
---               mode -> off(erase), on or xor
+-- arguments   : cx, cy ->    center of the ellipse
+--               xradius, yradius -> x & y radii of the ellipse
 -- return value: none
--- notes       : Would be nice to draw filled ellipses to.. :-)
+-- notes       : using actual pixel color <glcd_pen_color>
+--             : Would be nice to draw filled ellipses too :-)
 -- Author      : Paul D'haene
 --------------------------------------------------------------------------------
-procedure glcd_ellipse(byte*GLCD_X_SIZE in cx,byte*GLCD_Y_SIZE in cy, byte in xradius,byte in yradius) is
-   var sword xr = sword(xradius), yr = sword(yradius)
-   var sword x = xr, y = 0
-   var sword two_a_square = 2 * xr * xr
-   var sword two_b_square = 2 * yr * yr
-   var sword x_change = yr * yr * (1 - 2 * xr)
-   var sword y_change = xr * xr
-   var sword ellipse_error = 0
-   var sword stopping_x = two_b_square * xr
-   var sword stopping_y = 0
-   
-   while stopping_x >= stopping_y loop -- 1st set of points, Y' > -1
-      glcd_write_pixel(byte(cx + x), byte(cy + y))
-      glcd_write_pixel(byte(cx - x), byte(cy + y))
-      glcd_write_pixel(byte(cx - x), byte(cy - y))
-      glcd_write_pixel(byte(cx + x), byte(cy - y))
-      
+procedure glcd_ellipse(byte*GLCD_X_SIZE in cx, byte*GLCD_Y_SIZE in cy,
+                       byte in xradius, byte in yradius) is
+
+   var sbyte*3 xr = sbyte*3(xradius), yr = sbyte*3(yradius)
+   var sbyte*3 x = xr, y = 0
+   var sbyte*3 two_a_square = 2 * xr * xr
+   var sbyte*3 two_b_square = 2 * yr * yr
+   var sbyte*3 x_change = yr * yr * (1 - 2 * xr)
+   var sbyte*3 y_change = xr * xr
+   var sbyte*3 ellipse_error = 0
+   var sbyte*3 stopping_x = two_b_square * xr
+   var sbyte*3 stopping_y = 0
+
+   while stopping_x >= stopping_y loop             -- 1st set of points, Y' > -1
+      _glcd_write_4_ellipse_pixels(cx, x, cy, y)
       y = y + 1
       stopping_y = stopping_y + two_a_square
       ellipse_error = ellipse_error + y_change
       y_change = y_change + two_a_square
-      
       if (ellipse_error + ellipse_error + x_change) > 0 then
          x = x - 1
          stopping_x = stopping_x - two_b_square
@@ -328,7 +376,7 @@ procedure glcd_ellipse(byte*GLCD_X_SIZE in cx,byte*GLCD_Y_SIZE in cy, byte in xr
          x_change = x_change + two_b_square
       end if
    end loop
-   -- 1st set done. start 2nd set of points
+
    x = 0
    y = yr
    x_change = yr * yr
@@ -336,18 +384,14 @@ procedure glcd_ellipse(byte*GLCD_X_SIZE in cx,byte*GLCD_Y_SIZE in cy, byte in xr
    ellipse_error = 0
    stopping_x = 0
    stopping_y = two_a_square * yr
-   
-   while stopping_x <= stopping_y loop -- 2st set of points, Y' < -1
-      glcd_write_pixel(byte(cx + x), byte(cy + y))
-      glcd_write_pixel(byte(cx - x), byte(cy + y))
-      glcd_write_pixel(byte(cx - x), byte(cy - y))
-      glcd_write_pixel(byte(cx + x), byte(cy - y))
-      
+
+   while stopping_x <= stopping_y loop             -- 2nd set of points, Y' < -1
+      _glcd_write_4_ellipse_pixels(cx, x, cy, y)
       x = x + 1
       stopping_x = stopping_x + two_b_square
       ellipse_error = ellipse_error + x_change
       x_change = x_change + two_b_square
-      
+
       if (ellipse_error + ellipse_error + y_change) > 0 then
          y = y - 1
          stopping_y = stopping_y - two_a_square
@@ -355,13 +399,15 @@ procedure glcd_ellipse(byte*GLCD_X_SIZE in cx,byte*GLCD_Y_SIZE in cy, byte in xr
          y_change = y_change + two_a_square
       end if
    end loop
+
 end procedure
+
 
 --------------------------------------------------------------------------------
 -- name        : lcd_circle( cx, cy, radius, glcd_pen_color )
 -- description : Bresenham circle draw
--- argument(s) : cx, cy -> 	center of the circle
---				       radius -> radius of the circle
+-- argument(s) : cx, cy ->    center of the circle
+--                 radius -> radius of the circle
 --               glcd_pen_color -> off(erase), on or xor
 -- return value: none
 -- notes       : the circle code does not give a round circle on
@@ -369,20 +415,24 @@ end procedure
 -- Author      : Paul D'haene
 --------------------------------------------------------------------------------
 procedure glcd_circle(byte*GLCD_X_SIZE in cx, byte*GLCD_Y_SIZE in cy, byte in radius) is
+   pragma  inline
    glcd_ellipse(cx, cy, radius, radius) -- approx scaled y radius
 end procedure
 
+
 --------------------------------------------------------------------------------
--- name        : glcd_line( x0, y0, x1, y1, glcd_pen_color )
+-- name        : glcd_line(x0, y0, x1, y1)
 -- description : fast integer only line draw
--- argument(s) : x0 -> start x  0 >= x < 84
---               y0 -> start y  0 >= y < 48
+-- argument(s) : x0 -> start x
+--               y0 -> start y
 --               x1 -> end x
 --               y1 -> end y
---               glcd_pen_color -> draw, erase or xor
+-- Notes       : using current pixel color <glcd_pen_color>
 -- Author      : Paul D'haene
 --------------------------------------------------------------------------------
-procedure  glcd_line(byte*GLCD_X_SIZE in x0,byte*GLCD_Y_SIZE in y0, byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
+procedure  glcd_line(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0,
+                     byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
+
    var sword dx = sword(x1) - sword(x0)
    var sword dy = sword(y1) - sword(y0)
    var sword two_ds = dx + dx
@@ -390,7 +440,7 @@ procedure  glcd_line(byte*GLCD_X_SIZE in x0,byte*GLCD_Y_SIZE in y0, byte*GLCD_X_
    var sword currentx = sword(x0), currenty = sword(y0)
    var sword xinc = 1, yinc = 1
    var sword two_ds_accumulated_error, two_dy_accumulated_error
-   
+
    if dx < 0 then
       xinc = -1
       dx = -dx
@@ -402,7 +452,7 @@ procedure  glcd_line(byte*GLCD_X_SIZE in x0,byte*GLCD_Y_SIZE in y0, byte*GLCD_X_
       two_dy = -two_dy
    end if
    glcd_write_pixel(x0,y0) -- first point is special case
-   
+
    if (dx != 0) | (dy != 0) then -- are there other points on the line?
       if dy <= dx then -- is the slope <= 1 ?
          two_ds_accumulated_error = 0 -- initialize error
@@ -430,32 +480,33 @@ procedure  glcd_line(byte*GLCD_X_SIZE in x0,byte*GLCD_Y_SIZE in y0, byte*GLCD_X_
    end if
 end procedure
 
+
 --------------------------------------------------------------------------------
 -- Draw a box (x0,y0,x1,y1).
 --------------------------------------------------------------------------------
-procedure glcd_box(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0, byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
-   pragma inline
-
-   glcd_line ( x0,y0, x1,y0 )
-   glcd_line ( x1,y0, x1,y1 )
-   glcd_line ( x1,y1, x0,y1 )
-   glcd_line ( x0,y1, x0,y0 )
+procedure glcd_box(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0,
+                   byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
+   glcd_line(x0,y0, x1,y0)
+   glcd_line(x1,y0, x1,y1)
+   glcd_line(x1,y1, x0,y1)
+   glcd_line(x0,y1, x0,y0)
 end procedure
 
 --------------------------------------------------------------------------------
 -- Draw a filled box (x0,y0,x1,y1).
 --------------------------------------------------------------------------------
-procedure glcd_box_fill(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0, byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
-   pragma inline
+procedure glcd_box_fill(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0,
+                        byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
 
    while y0 != (y1 + 1) loop
       glcd_line ( x0,y0, x1,y0 )
       y0 = y0 + 1
    end loop
-   
+
    -- todo: add block write capability.
 
 end procedure
+
 
 --------------------------------------------------------------------------------
 -- Draw an image from a byte array. Same requirements as lcd_clear_screen(),
@@ -470,7 +521,7 @@ if !defined(glcd_draw_image) then
          if GLCD_BLOCK_WRITE_TYPE == FONT_TOP_LEFT_HORIZONTAL then
             if GLCD_COLOR_BITS == 16 then
                glcd_block_set_address(x,y,x + width - 1,y + height - 1)
-               
+
                var word i
                for (count(image)/2) using i loop
 
