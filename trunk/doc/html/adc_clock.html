@@ -28,7 +28,7 @@
 			<b>Author</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			Sebastien Lelong, Copyright (c) 2009, all rights reserved.
+			Rob Hamerling , Copyright (c) 2010, all rights reserved.
 		</td>
 	</tr>
 	<tr>
@@ -36,7 +36,7 @@
 			<b>Adapted-by</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			Sebastien Lelong.
+			Rob Hamerling (set ACQT bits to 0b000).
 		</td>
 	</tr>
 	<tr>
@@ -44,7 +44,7 @@
 			<b>Compiler</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			>=2.4k
+			2.4n
 		</td>
 	</tr>
 	</table>
@@ -53,14 +53,61 @@
 	
 	<b>Description</b>
 	<p>
-		<pre>this library provides a procedure to configure
-ADC clock according to ADC constraints about Tad values and PIC's clock speed
+		<pre>This library provides a procedure to configure ADC clock
+according to ADC constraints about Tad values and PIC's clock speed
+.
+Selecting the appropriate ADC clocking is critical.
+Not all PICs have the same min/max values for Tad.
+See the ADC-chapter in the datasheet for the actual limits.
+Some PICs can go faster than 20MHz, like 18F. LF-PICs don't follow
+the same rules as the F-PICS (see 18F4550 and 18LF4550 for instance).
+How to obtain a general rule of thumb? For some popular PICs we find:
+For 16F88, and for many other PICs: 1.6 < Tad < 6.4 (microseconds)
+For 18F4550 (and other 18F PICs):   0.8 < Tad < 25  (microseconds)
+.
+The ADC libraries use 2 constants as minimum and maximum Tad values.
+The constants should contain a value 10 times as large as these
+limits expressed in microseconds.
+The following values are used by the library as defaults:
+.
+for 18F family:     ADC_MIN_TAD = 8      (0.8 us)
+                    ADC_MAX_TAD = 250    (25 us)
+.
+for other PICs:     ADC_MIN_TAD = 16     (1.6 us)
+                    ADC_MAX_TAD = 250    (16  us)
+.
+When these values are not acceptable alternate values may be specified
+by the user  *** before *** including the ADC library.
+.
+The library will select the shortest possible Tad.
+A warning will be issued when it is not possible to derive a value
+for Tad within the limits of ADC_TAD_MIN and ADC_TAD_MAX with the
+current clock speed. In that case the internal RC oscillator of the
+ADC module will be selected automatically (Frc). When this is not
+desired alternate values for ADC_TAD_MIN and/or ADC_TAD_MAX must be
+specified, or an alternate clock speed must be used.
 </pre>
 
 	</p>
 	<br/>
 
 
+	<b>Notes</b>
+	<p>
+		<pre>- This is a rewrite of a previous version of this library.
+       - The device files contain a constant ADC_ADCS_BITCOUNT to
+         indicate the number of bits of the ADCS variable of 'this' PIC.
+         Clock devider selection bits (ADCS) can bit*2 or bit*3 or none.
+           - when bit*2: divisor is 2, 8 or 32
+           - when bit*3: divisor is 2, 4, 8, 16, 32 or 64
+         ADCS bits may be scattered over different registers. When this is
+         the case the device file contains a pseudo-variable ADCON0_ADCS
+         to hide the scattering.
+         Some PICs with ADC module have no ADCS bits at all (10F220/220)!
+</pre>
+
+	</p>
+	<br/>
 	
 	<b>Dependencies</b>
 	<p>
@@ -75,8 +122,7 @@ ADC clock according to ADC constraints about Tad values and PIC's clock speed
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#9a8cdccfe4401acdbc32bff74677749d">var byte tad_value
-</a></code></b>
+				<b><code name="code" class="python"><a href="#b700ef062df0d2004f8bc09df5195a21">var byte tad_value                              </a></code></b>
 		</li>
 	</ul>
 
@@ -98,14 +144,6 @@ ADC clock according to ADC constraints about Tad values and PIC's clock speed
 		<ul>
 	</ul>
 
-	<i><small>Private</small></i>
-		<ul>
-		<li>
-				<b><code name="code" class="python"><a href="#66e8e9eb7e7954a41ef975de122536da">_adc_eval_tad(word in factor) return bit</a></code></b>
-		</li>
-	</ul>
-
-	<br/>
 
 
 			<br/>
@@ -114,9 +152,10 @@ ADC clock according to ADC constraints about Tad values and PIC's clock speed
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="9a8cdccfe4401acdbc32bff74677749d" href="#summary">var byte tad_value
-</a></code></b>
-				<p><i>No documentation found</i></p>
+				<b><code name="code" class="python"><a name="b700ef062df0d2004f8bc09df5195a21" href="#summary">var byte tad_value                              </a></code></b>
+				<p>	<pre>Calculated Tad value (result of procedure _adc_init_clock())
+</pre>
+</p>
 		</li>
 	</ul>
 
@@ -129,7 +168,11 @@ ADC clock according to ADC constraints about Tad values and PIC's clock speed
 		<ul>
 		<li>
 				<b><code name="code" class="python"><a name="598d5b9f71ab300184271db63c4853eb" href="#summary">_adc_init_clock()</a></code></b>
-				<p><i>No documentation found</i></p>
+				<p>	<pre>
+Set ADCS bits to obtain correct ADC timing
+
+</pre>
+</p>
 		</li>
 	</ul>
 
@@ -139,15 +182,6 @@ ADC clock according to ADC constraints about Tad values and PIC's clock speed
 		<ul>
 	</ul>
 
-	<i><small>Private</small></i>
-		<ul>
-		<li>
-				<b><code name="code" class="python"><a name="66e8e9eb7e7954a41ef975de122536da" href="#summary">_adc_eval_tad(word in factor) return bit</a></code></b>
-				<p><i>No documentation found</i></p>
-		</li>
-	</ul>
-
-	<br/>
 
 
 			<br/>

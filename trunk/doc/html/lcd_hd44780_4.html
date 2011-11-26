@@ -44,7 +44,7 @@
 			<b>Compiler</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			>=2.4g
+			2.4n
 		</td>
 	</tr>
 	</table>
@@ -54,41 +54,42 @@
 	<b>Description</b>
 	<p>
 		<pre>   Nibble interface for HD44780 compatible alphanumeric LCD screens.
+   Uses 4 bits wide datapath + 2 handshake lines (total 6 PIC pins).
+   Expects: 2 pins for handshake: 'lcd_rs' and 'lcd_en'
+            and
+                 1 port nibble for data: 'lcd_dataport'
+              or
+                 4 individual pins for data: 'lcd_d4' .. 'lcd_d7'
 .
-   Expects: - 2 pins for handshake: 'lcd_rs' and 'lcd_en'
-        and
-            - 1 port nibble for data: 'lcd_dataport'
-        or
-            - 4 lines for data: 'lcd_d4' .. 'lcd_d7'
-   note:    a 'port nibble' - the lower or higher 4 bits of a port - give
-            faster and more compact code then random selected data lines.
+   Note:  a 'port nibble' (the lower or higher 4 bits of a port)
+          gives faster and more compact code than 4 individual pins.
 .
    Directions for use of this library in application programs
    (in this sequence):
    1. Declare the following constants:
-         const byte LCD_ROWS     = 2              -- 1, 2 or 4 lines
-         const byte LCD_CHARS    = 16             -- 8, 16 or 20 chars per line
-      and variables (aliases):
-         var   bit  lcd_en        is  pin_A4      -- trigger
-         var   bit  lcd_rs        is  pin_A5      -- cmd/data select
-      and variables (aliases):
-         var   byte lcd_dataport  is  portA_low   -- 4 data pins
-      or
-         var   bit  lcd_d4        is  pin_A3      -- databit d4 pin
-         var   bit  lcd_d5        is  pin_A1      -- databit d5 pin
-         var   bit  lcd_d6        is  pin_C0      -- databit d6 pin
-         var   bit  lcd_d7        is  pin_C2      -- databit d7 pin
+         const byte LCD_ROWS     = 2               -- 1, 2 or 4 lines
+         const byte LCD_CHARS    = 16              -- 8, 16 or 20 chars per line
+      and aliases for handshake lines:
+         alias   lcd_rs          is  pin_A5        -- cmd/data select
+         alias   lcd_en          is  pin_A4        -- trigger
+      and aliases for 4 data lines:
+            alias lcd_dataport  is  portA_low      -- 4 databits
+         or
+            alias  lcd_d4       is  pin_A3         -- lcd databit d4
+            alias  lcd_d5       is  pin_A1         -- lcd databit d5
+            alias  lcd_d6       is  pin_C0         -- lcd databit d6
+            alias  lcd_d7       is  pin_C2         -- lcd databit d7
 .
    2. Set the chosen LCD dataport and handshake pins to output:
-         pin_A4_direction    = output
-         pin_A5_direction    = output
-      and
-         portA_low_direction = all_output
-      or
-         pin_A3_direction    = output            -- set data pin as output
-         pin_A1_direction    = output            -- set data pin as output
-         pin_C0_direction    = output            -- set data pin as output
-         pin_C2_direction    = output            -- set data pin as output
+         pin_A4_direction       = output
+         pin_A5_direction       = output
+      and the data port nibble to output:
+            portA_low_direction = all_output
+         or the 4 individual datapins to output:
+            pin_A3_direction    = output
+            pin_A1_direction    = output
+            pin_C0_direction    = output
+            pin_C2_direction    = output
 .
    3. Include this library.
 .
@@ -125,24 +126,21 @@
 		<li>
 				<b><code name="code" class="python"><a href="#4410092e4a5aa77dfdbe318daf02653d">lcd_init()</a></code></b>
 		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#261800f5e10f1f652cddd98e6758daaa">lcd_debug_hardware_interface(byte in speed)</a></code></b>
-		</li>
 	</ul>
 
 	<i><small>Private</small></i>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#6894201db0dea63be78ef1e0ee331a81">__lcd_write_nibble( byte in value )</a></code></b>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#22976e287f46fb244c08ba13aed60ed3">__lcd_write( byte in value )</a></code></b>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#08afb6b553518b98d5de22b408045927">_lcd_write_command(byte in value)</a></code></b>
+				<b><code name="code" class="python"><a href="#a1d340369ae40cc32df6e8eb596da6bd">__lcd_write_nibble(byte in value)</a></code></b>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a href="#887e1be593e095a6363a48df31fd9dd0">_lcd_write_data(byte in value)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#0085a3aeecddda6c4a545b3c0686e241">__lcd_write(byte in value)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#08afb6b553518b98d5de22b408045927">_lcd_write_command(byte in value)</a></code></b>
 		</li>
 	</ul>
 
@@ -167,17 +165,7 @@
 		<li>
 				<b><code name="code" class="python"><a name="4410092e4a5aa77dfdbe318daf02653d" href="#summary">lcd_init()</a></code></b>
 				<p>	<pre>
-Initialize LCD controller to 4-bit mode
-
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="261800f5e10f1f652cddd98e6758daaa" href="#summary">lcd_debug_hardware_interface(byte in speed)</a></code></b>
-				<p>	<pre>
-Pulse interface lines in sequence d0 .. d3, en, rs. Use an
-oscilloscope (speed = 1) or leds (speed = 200) to check signal.
-Note: procedure contains 'forever loop', so never returns. 
+Initialize LCD controller to 4-bits mode and default operational settings
 
 </pre>
 </p>
@@ -187,30 +175,10 @@ Note: procedure contains 'forever loop', so never returns.
 	<i><small>Private</small></i>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="6894201db0dea63be78ef1e0ee331a81" href="#summary">__lcd_write_nibble( byte in value )</a></code></b>
+				<b><code name="code" class="python"><a name="a1d340369ae40cc32df6e8eb596da6bd" href="#summary">__lcd_write_nibble(byte in value)</a></code></b>
 				<p>	<pre>
 Sends low nibble in <value> to LCD
-Can be used for both commands and data
-(requires no wait cycli inbetween upper and lower nibble)
-(this routine is only used inside this file)
-
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="22976e287f46fb244c08ba13aed60ed3" href="#summary">__lcd_write( byte in value )</a></code></b>
-				<p>	<pre>
-Sends byte in <value> to LCD
-(this procedure is only used inside this library)
-
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="08afb6b553518b98d5de22b408045927" href="#summary">_lcd_write_command(byte in value)</a></code></b>
-				<p>	<pre>
-Sends command byte in <value> to LCD
-For slow commands an extra delay should be added
+Can be used for both commands and data (nibbles).
 
 </pre>
 </p>
@@ -219,6 +187,24 @@ For slow commands an extra delay should be added
 				<b><code name="code" class="python"><a name="887e1be593e095a6363a48df31fd9dd0" href="#summary">_lcd_write_data(byte in value)</a></code></b>
 				<p>	<pre>
 Sends data byte in <value> to LCD
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="0085a3aeecddda6c4a545b3c0686e241" href="#summary">__lcd_write(byte in value)</a></code></b>
+				<p>	<pre>
+Sends byte in <value> to LCD
+Wait cycle only required after lower nibble (not between nibbles).
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="08afb6b553518b98d5de22b408045927" href="#summary">_lcd_write_command(byte in value)</a></code></b>
+				<p>	<pre>
+Sends command byte in <value> to LCD
+For slow commands an extra delay should be added.
 
 </pre>
 </p>
@@ -237,6 +223,12 @@ Sends data byte in <value> to LCD
 				<h2><a name="related_samples">Related samples</a></h2>
 	Here are the list of samples which use this library:<br/><br/>
 	<table border=1>
+			<tr>
+			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f648a_ds18b20_single.jal" target="_blank">16f648a_ds18b20_single.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f648a_lcd_hd44780_custom.jal" target="_blank">16f648a_lcd_hd44780_custom.jal</a></td>
+			</tr>
 			<tr>
 			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f648a_lcd_hd44780_4_4.jal" target="_blank">16f648a_lcd_hd44780_4_4.jal</a></td>
 			</tr>
@@ -283,12 +275,6 @@ Sends data byte in <value> to LCD
 			<td><b>16f876a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f876a_keyboard_lcd.jal" target="_blank">16f876a_keyboard_lcd.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f876a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f876a_t6603.jal" target="_blank">16f876a_t6603.jal</a></td>
-			</tr>
-			<tr>
-			<td><b>16f876a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f876a_lcd_hd44780_4_1.jal" target="_blank">16f876a_lcd_hd44780_4_1.jal</a></td>
-			</tr>
-			<tr>
 			<td><b>16f876a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f876a_rtc_timeset.jal" target="_blank">16f876a_rtc_timeset.jal</a></td>
 			</tr>
 			<tr>
@@ -304,10 +290,22 @@ Sends data byte in <value> to LCD
 			<td><b>16f876a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f876a_lcd_hd44780_4_4.jal" target="_blank">16f876a_lcd_hd44780_4_4.jal</a></td>
 			</tr>
 			<tr>
+			<td><b>16f876a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f876a_lcd_hd44780_4_1.jal" target="_blank">16f876a_lcd_hd44780_4_1.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f876a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f876a_t6603.jal" target="_blank">16f876a_t6603.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>16f877</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877_backlight.jal" target="_blank">16f877_backlight.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f877</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877_lcd_hd44780_4bit.jal" target="_blank">16f877_lcd_hd44780_4bit.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f877</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877_ds18b20_single.jal" target="_blank">16f877_ds18b20_single.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f877</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877_lcd_hd44780_custom.jal" target="_blank">16f877_lcd_hd44780_custom.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_lcd_format.jal" target="_blank">16f877a_lcd_format.jal</a></td>
@@ -322,25 +320,43 @@ Sends data byte in <value> to LCD
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_rtc_lcd.jal" target="_blank">16f877a_rtc_lcd.jal</a></td>
 			</tr>
 			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_ds1307_sw.jal" target="_blank">16f877a_ds1307_sw.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_lcd_hd44780_4bit.jal" target="_blank">16f877a_lcd_hd44780_4bit.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_ds18b20_single.jal" target="_blank">16f877a_ds18b20_single.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_lcd_hd44780_4_1.jal" target="_blank">16f877a_lcd_hd44780_4_1.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_backlight.jal" target="_blank">16f877a_backlight.jal</a></td>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_ds1307_hw.jal" target="_blank">16f877a_ds1307_hw.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_rtc_timeset.jal" target="_blank">16f877a_rtc_timeset.jal</a></td>
 			</tr>
 			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_backlight.jal" target="_blank">16f877a_backlight.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_lcd_hd44780_4_4.jal" target="_blank">16f877a_lcd_hd44780_4_4.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_lcd_hd44780_custom.jal" target="_blank">16f877a_lcd_hd44780_custom.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_lcd_hd44780_4_4.jal" target="_blank">16f88_lcd_hd44780_4_4.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_lcd_hd44780_4_1.jal" target="_blank">16f88_lcd_hd44780_4_1.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_lcd_hd44780_4_4.jal" target="_blank">16f88_lcd_hd44780_4_4.jal</a></td>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_ds18b20_single.jal" target="_blank">16f88_ds18b20_single.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_lcd_hd44780_custom.jal" target="_blank">16f88_lcd_hd44780_custom.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_lcd_hd44780_4bit.jal" target="_blank">16f88_lcd_hd44780_4bit.jal</a></td>
@@ -349,7 +365,16 @@ Sends data byte in <value> to LCD
 			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_backlight.jal" target="_blank">16f88_backlight.jal</a></td>
 			</tr>
 			<tr>
+			<td><b>16f88</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f88_lcd_hd44780_4_4_custom.jal" target="_blank">16f88_lcd_hd44780_4_4_custom.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>16f886</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f886_rtc_lcd_4mhz.jal" target="_blank">16f886_rtc_lcd_4mhz.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f886</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f886_pwm_adc_res.jal" target="_blank">16f886_pwm_adc_res.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>16f886</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f886_rtc_lcd_125khz.jal" target="_blank">16f886_rtc_lcd_125khz.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f886</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f886_pwm_adc_freq.jal" target="_blank">16f886_pwm_adc_freq.jal</a></td>
@@ -358,16 +383,10 @@ Sends data byte in <value> to LCD
 			<td><b>16f886</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f886_rtc_lcd_20mhz.jal" target="_blank">16f886_rtc_lcd_20mhz.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f886</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f886_rtc_lcd_125khz.jal" target="_blank">16f886_rtc_lcd_125khz.jal</a></td>
-			</tr>
-			<tr>
-			<td><b>16f886</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f886_pwm_adc_res.jal" target="_blank">16f886_pwm_adc_res.jal</a></td>
+			<td><b>16f887</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f887_lcd_hd44780_4_1.jal" target="_blank">16f887_lcd_hd44780_4_1.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f887</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f887_lcd_hd44780_4_4.jal" target="_blank">16f887_lcd_hd44780_4_4.jal</a></td>
-			</tr>
-			<tr>
-			<td><b>16f887</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f887_lcd_hd44780_4_1.jal" target="_blank">16f887_lcd_hd44780_4_1.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>18f1230</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f1230_lcd_hd44780_4_1.jal" target="_blank">18f1230_lcd_hd44780_4_1.jal</a></td>
@@ -379,22 +398,34 @@ Sends data byte in <value> to LCD
 			<td><b>18f2320</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f2320_lcd_hd44780_4_4.jal" target="_blank">18f2320_lcd_hd44780_4_4.jal</a></td>
 			</tr>
 			<tr>
+			<td><b>18f2450</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f2450_lcd_hd44780_custom.jal" target="_blank">18f2450_lcd_hd44780_custom.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f2450</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f2450_ds18b20_single.jal" target="_blank">18f2450_ds18b20_single.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>18f2450</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f2450_lcd_hd44780_4bit.jal" target="_blank">18f2450_lcd_hd44780_4bit.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>18f25j10</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f25j10_test_mlx90615.jal" target="_blank">18f25j10_test_mlx90615.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>18f26j11</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f26j11_rtc_hardware.jal" target="_blank">18f26j11_rtc_hardware.jal</a></td>
+			<td><b>18f26j11</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f26j11_rtcc_hw_kbd_lcd.jal" target="_blank">18f26j11_rtcc_hw_kbd_lcd.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_lcd_hd44780_4bit.jal" target="_blank">18f4550_lcd_hd44780_4bit.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>18f4685</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4685_lcd_hd44780_4_1.jal" target="_blank">18f4685_lcd_hd44780_4_1.jal</a></td>
+			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_lcd_hd44780_custom.jal" target="_blank">18f4550_lcd_hd44780_custom.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_ds18b20_single.jal" target="_blank">18f4550_ds18b20_single.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>18f4685</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4685_lcd_hd44780_4_4.jal" target="_blank">18f4685_lcd_hd44780_4_4.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f4685</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4685_lcd_hd44780_4_1.jal" target="_blank">18f4685_lcd_hd44780_4_1.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>18f6310</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f6310_lcd_hd44780_4_1.jal" target="_blank">18f6310_lcd_hd44780_4_1.jal</a></td>
