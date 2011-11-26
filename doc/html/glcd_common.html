@@ -36,7 +36,7 @@
 			<b>Adapted-by</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			Joep Suijs
+			Joep Suijs, Matthew Schinkel, Rob Hamerling
 		</td>
 	</tr>
 	<tr>
@@ -53,27 +53,61 @@
 	
 	<b>Description</b>
 	<p>
-		<pre>Generic routines for graphic lcd.
-glcd_box
+		<pre>Generic routines for graphic lcd
 glcd_line
-
-
-
-And mapping to char based lcd:
-lcd_put
-lcd_...
+glcd_box
+glcd_box_fill
+glcd_ellipse
+glcd_circle
+glcd_draw_image
+.
+Defines a common API, a common interface, where several parameters and
+procedures remain device specific and should be implemented in device library.
+Once interface is implemented, many features come for "free".
+This common API is defined in glcd_common.jal and glcd_font.jal
+.
+In order to honor this common interface, and benefit its features, the following
+must be implemented in device specific library:
+  * GLCD_X_PIXELS: (const) specifies display's width in pixels
+  * GLCD_Y_PIXELS: (const) specifies display's height in pixels
+  * GLCD_COLOR_BITS: (const) specifies the number of bits required
+    for colors (1 for black & white), (16 for 16 bit color)
+  * glcd_pen_color: (var|const) specifies color of the pen
+  * glcd_background_color: (var|const) specifies the background color
+  * glcd_write_char(x,y,char): (proc) draw "char" at position (x,y). If no
+    glcd_write_char is defined in the device specific library, pixel by
+    pixel method will be used by default for glcd_font.jal.
+  * glcd_write_pixel(x,y): (proc) assuming pen and background color
+    previously set, draw a pixel at position (x,y) using defined colors.
+    This is the main procedure used by pixel-related features, like drawing
+    a line, circle, etc... In some cases, where glcd_write_char() can't be
+    used glcd_write_pixel() can also be used to draw chars. If not implemented,
+    pixel-related features won't be available.
 </pre>
 
 	</p>
 	<br/>
 
 
+	<b>Notes</b>
+	<p>
+		<pre>  Changes by Rob Hamerling:
+  - fixed typo in comments above (GLCD_Y_SIZE -> GLCD_Y_PIXELS)
+  - corrected irrelevant comments (artifacts of older versions)
+  - changed sword to sbyte*3 of local variables in ellipse procedure
+    to prevent overflow of intermediate results.
+  - added clipping of ellipse when drawing beyond display boundaries
+  - minor code optimisations (incl some add/remove pragma inline)
+</pre>
+
+	</p>
+	<br/>
 	
 	<b>Dependencies</b>
 	<p>
-		<i>No dependency found</i>
-	</p>
-	<br/>
+		<ul>
+			<li><a href="glcd_font.html">glcd_font</a></li>
+		</ul>
 
 
 			<br/>
@@ -82,12 +116,10 @@ lcd_...
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#77d398d0e86cc6ef3febb3f4044d55e9">var byte glcd_char_x_pos = 0;
-</a></code></b>
+				<b><code name="code" class="python"><a href="#f442e376256483e60185d0b164cfda30">var byte*GLCD_X_SIZE glcd_char_x_pos = 0;</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#5e3db78fa6d08963cacdc38047fba8c7">var byte glcd_char_y_pos = 0;
-</a></code></b>
+				<b><code name="code" class="python"><a href="#b4673cbf9358c6e14616885f9b29f7e0">var byte*GLCD_Y_SIZE glcd_char_y_pos = 0;</a></code></b>
 		</li>
 	</ul>
 
@@ -95,22 +127,16 @@ lcd_...
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#08d41f0b2112a61a7a4297008be72e7f">lcd_box(byte in x0, byte in y0, byte in x1, byte in y1)</a></code></b>
+				<b><code name="code" class="python"><a href="#502f89834217325949d59690f1910a96">glcd_circle(byte*GLCD_X_SIZE in cx, byte*GLCD_Y_SIZE in cy, byte in radius)</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#787db9fec36f177a36cd9f7d36df7c12">lcd'put(byte in char)</a></code></b>
+				<b><code name="code" class="python"><a href="#41d5aabf67c2b65dca0d00e45cf0c0b3">glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte in value)</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#a577b1da04835e35b7222d83b29a9969">lcd_setcursor(byte in row, byte in col) </a></code></b>
+				<b><code name="code" class="python"><a href="#aeff2e490ab88381c8c5045f0892b057">glcd'put(byte in char)</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#a2048579b18ee2d6bce7a85198811cba">lcd_clearscreen()</a></code></b>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#1e00a72bbf8b23b9caa387369647867a">lcd_home() </a></code></b>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#1e7b90a261a56cf9759466d65de3b73d">lcd_line(byte in x0, byte in y0, byte in x1, byte in y1)</a></code></b>
+				<b><code name="code" class="python"><a href="#50d706794c2fe88e8aedfb62b3b58fb9">glcd_char_goto(byte in x, byte in y)</a></code></b>
 		</li>
 	</ul>
 
@@ -127,13 +153,15 @@ lcd_...
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="77d398d0e86cc6ef3febb3f4044d55e9" href="#summary">var byte glcd_char_x_pos = 0;
-</a></code></b>
-				<p><i>No documentation found</i></p>
+				<b><code name="code" class="python"><a name="f442e376256483e60185d0b164cfda30" href="#summary">var byte*GLCD_X_SIZE glcd_char_x_pos = 0;</a></code></b>
+				<p>	<pre>
+Global variables for text processing
+
+</pre>
+</p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="5e3db78fa6d08963cacdc38047fba8c7" href="#summary">var byte glcd_char_y_pos = 0;
-</a></code></b>
+				<b><code name="code" class="python"><a name="b4673cbf9358c6e14616885f9b29f7e0" href="#summary">var byte*GLCD_Y_SIZE glcd_char_y_pos = 0;</a></code></b>
 				<p><i>No documentation found</i></p>
 		</li>
 	</ul>
@@ -142,52 +170,20 @@ lcd_...
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="08d41f0b2112a61a7a4297008be72e7f" href="#summary">lcd_box(byte in x0, byte in y0, byte in x1, byte in y1)</a></code></b>
-				<p>	<pre>
-
-</pre>
-</p>
+				<b><code name="code" class="python"><a name="502f89834217325949d59690f1910a96" href="#summary">glcd_circle(byte*GLCD_X_SIZE in cx, byte*GLCD_Y_SIZE in cy, byte in radius)</a></code></b>
+				<p><i>No documentation found</i></p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="787db9fec36f177a36cd9f7d36df7c12" href="#summary">lcd'put(byte in char)</a></code></b>
-				<p>	<pre>
-Pseudo variable 'lcd' as alternative for lcd_writechar(<byte>)
-
-</pre>
-</p>
+				<b><code name="code" class="python"><a name="41d5aabf67c2b65dca0d00e45cf0c0b3" href="#summary">glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte in value)</a></code></b>
+				<p><i>No documentation found</i></p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="a577b1da04835e35b7222d83b29a9969" href="#summary">lcd_setcursor(byte in row, byte in col) </a></code></b>
-				<p>	<pre>
-Set cursor position
-Specify row and column in base-0 notation (first line is 0).
-
-</pre>
-</p>
+				<b><code name="code" class="python"><a name="aeff2e490ab88381c8c5045f0892b057" href="#summary">glcd'put(byte in char)</a></code></b>
+				<p><i>No documentation found</i></p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="a2048579b18ee2d6bce7a85198811cba" href="#summary">lcd_clearscreen()</a></code></b>
-				<p>	<pre>
-Clear screen
-(and set the cursor to the upper left corner: row 0, column 0)
-
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="1e00a72bbf8b23b9caa387369647867a" href="#summary">lcd_home() </a></code></b>
-				<p>	<pre>
-cursor returns home(line 1, position 1)
-
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="1e7b90a261a56cf9759466d65de3b73d" href="#summary">lcd_line(byte in x0, byte in y0, byte in x1, byte in y1)</a></code></b>
-				<p>	<pre>
-
-</pre>
-</p>
+				<b><code name="code" class="python"><a name="50d706794c2fe88e8aedfb62b3b58fb9" href="#summary">glcd_char_goto(byte in x, byte in y)</a></code></b>
+				<p><i>No documentation found</i></p>
 		</li>
 	</ul>
 
@@ -203,13 +199,25 @@ cursor returns home(line 1, position 1)
 	Here are the list of samples which use this library:<br/><br/>
 	<table border=1>
 			<tr>
-			<td><b>16f877</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877_glcd_ks0108.jal" target="_blank">16f877_glcd_ks0108.jal</a></td>
-			</tr>
-			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_glcd_ks0108.jal" target="_blank">16f877a_glcd_ks0108.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_glcd_ks0108.jal" target="_blank">18f4550_glcd_ks0108.jal</a></td>
+			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_nokia_3310_font.jal" target="_blank">18f4550_nokia_3310_font.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_nokia_3310_gfx.jal" target="_blank">18f4550_nokia_3310_gfx.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_nokia_3310_sprite.jal" target="_blank">18f4550_nokia_3310_sprite.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_nokia_3310_pixel.jal" target="_blank">18f4550_nokia_3310_pixel.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f4620</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4620_glcd_touch_stm032qvt_003.jal" target="_blank">18f4620_glcd_touch_stm032qvt_003.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f6310</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f6310_glcd_ks0108.jal" target="_blank">18f6310_glcd_ks0108.jal</a></td>
 			</tr>
 	</table>
 
