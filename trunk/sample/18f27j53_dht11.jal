@@ -1,0 +1,107 @@
+-- Title: DHT11 sample
+-- Author: Sebastien Lelong, Copyright (c) 2008..2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+--
+-- This file is part of jaluino  (http://jaluino.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this program show how to access DHT11 temperature & humidity sensor.
+-- Using Seeedstudio's Grove brick 
+-- (http://www.seeedstudio.com/depot/grove-temphumi-sensor-p-745.html?cPath=144_147)
+-- just power the sensor with 5V or 3V3, connect RA3 pin to SIG pin on the sensor.
+-- Results are printed through serial.
+--
+-- Notes: sample adapted from a Jaluino Bee sample
+
+include 18f27j53
+
+pragma target clock 48_000_000   -- oscillator frequency
+-- magical statements
+pragma target PLLDIV	   P4
+pragma target CPUDIV	   P1
+pragma target PLLEN  P1          -- PLL via fuse turned off
+pragma target OSC	   HS_PLL
+pragma target WDT  disabled      -- no watchdog
+pragma target IOL1WAY disabled   -- Mapping allowed multiple time at runtime
+OSCTUNE_PLLEN = on               -- PLL via OSCTUNE enabled
+-- declare secondary oscillator on T1OSI/T1OSO pins
+pragma target RTCOSC T1OSC
+pragma target SOSCSEL HS_CP
+_usec_delay(2000) -- PLL needs 2ms before stable
+
+enable_digital_io()
+
+include delay
+
+-- LED connected on C2
+pin_C2_direction =  output
+alias led is pin_C2
+
+-- pin A3 is connected to SIG pin on sensor side
+alias pin_dht11 is pin_A3
+alias pin_dht11_direction is pin_A3_direction
+include temperature_humidity_dht11
+
+-- we'll print results through serial
+const SERIAL_HW_BAUDRATE = 9600
+include serial_hardware
+serial_hw_init()
+
+include print
+
+const byte welcome[] = "-- DHT11 sample --"
+const byte str_status[] = "Reading status: "
+const byte str_status_ok[] = "OK"
+const byte str_status_err[] = "CHECKSUM ERROR"
+const byte str_status_timeout[] = "TIMEOUT"
+const byte str_status_unknown[] = "Unknown (weird !)"
+const byte str_temperature[] = "Temperature: "
+const byte str_humidity[] = "Humidity: "
+const byte str_buffer[] = "Raw buffer: "
+
+var byte dht11_status
+
+print_string(serial_hw_data,welcome)
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+
+forever loop
+   led = on
+   
+   dht11_status = dht11_read()
+   print_string(serial_hw_data,str_status)
+   if dht11_status == DHT11_OK then
+      print_string(serial_hw_data,str_status_ok)
+   elsif dht11_status == DHT11_ERR then
+      print_string(serial_hw_data,str_status_err)
+   elsif dht11_status == DHT11_TIMEOUT then
+      print_string(serial_hw_data,str_status_timeout)
+   else
+      print_string(serial_hw_data,str_status_unknown)
+   end if
+   print_crlf(serial_hw_data)
+   
+   print_string(serial_hw_data,str_temperature)
+   print_byte_dec(serial_hw_data,dht11_temperature)
+   print_crlf(serial_hw_data)
+
+   print_string(serial_hw_data,str_humidity)
+   print_byte_dec(serial_hw_data,dht11_humidity)
+   print_crlf(serial_hw_data)
+   
+   var byte i
+   print_string(serial_hw_data,str_buffer)
+   for 5 using i loop
+       print_byte_dec(serial_hw_data,_dht11_buffer[i])
+       serial_hw_data = " "
+   end loop
+   print_crlf(serial_hw_data)
+
+   print_crlf(serial_hw_data)
+   led = off
+   
+   delay_1s(5)
+end loop
+
+--
