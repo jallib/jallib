@@ -41,7 +41,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.24'
+   ScriptVersion   = '0.1.25'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
 /* ------------------------------------------------------------------------ */
@@ -1251,16 +1251,17 @@ do i = 1 to Dev.0
                                                             /*     16f882,3,4,6,7   */
             call lineout jalfile, 'alias              ' left('BAUDCON',25) 'is' reg
          end
-         when left(reg,3) = 'LAT' then do                   /* LATx register (only with 10F3xx) */
+         when left(reg,3) = 'LAT' then do                   /* LATx register (10F3xx, 12F/HV752) */
             call list_port16_shadow reg                     /* force use of LATx (core 16 like) */
                                                             /* for output to PORTx */
          end
          when left(reg,4) = 'PORT' then do                  /* port */
-            if (left(PicName,4) \= '10f3' & left(PicName,5) \= '10lf3') then do
+            if \(left(PicName,4) = '10f3'   | left(PicName,5) = '10lf3'  |,
+                      PicName    = '12f752' |      PicName = '12hv752')  then do
                call lineout jalfile, 'var volatile' field left('_'reg,25) 'at' addr
                call list_port1x_shadow reg
             end
-            else do                                         /* 10f3xx and 10lf3xx only */
+            else do                                         /* 10f3xx, 12f752 */
                call lineout jalfile, 'var volatile' field left(reg,25) 'at' addr
                PortLetter = right(reg,1)
                PortLat.PortLetter. = 0                      /* init: zero pins in PORTx */
@@ -1411,8 +1412,9 @@ do k = 0 to 8,                                              /* max # of lines, w
                   when (reg = 'OSCCON' & left(n.j,4) = 'IRCF') then do
                     nop                                     /* suppress enumerated IRCF */
                   end
-                  when (left(reg,4) = 'PORT' | reg = 'GPIO') & ,    /* for PORTx or GPIO, not */
-                      \(left(PicName,4) = '10f3' | left(PicName,5) = '10lf3') then do  /* 10f3x */
+                  when (left(reg,4) = 'PORT' | reg = 'GPIO') & ,    /* exceptions for PORTx or GPIO */
+                      \(left(PicName,4) = '10f3'   | left(PicName,5) = '10lf3'    |,
+                             PicName    = '12f752' |      PicName    = '12hv752') then do
                            call lineout jalfile, 'var volatile bit   ',
                                               left(field,25) 'at' '_'reg ':' offset
                   end
@@ -1511,7 +1513,7 @@ do k = 0 to 8,                                              /* max # of lines, w
                         call lineout jalfile, 'var volatile bit*3 ',
                              left(reg'_IRCF',25) 'at' reg ':' offset
                   end
-                  when left(reg,3) = 'LAT' then do          /* LATx (only 10F3xx 10LF3xx) */
+                  when left(reg,3) = 'LAT' then do          /* LATx (10F3xx, 12f752) */
                      PortLetter = right(reg,1)
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
@@ -1536,7 +1538,8 @@ do k = 0 to 8,                                              /* max # of lines, w
                         left(right(n.j,2),1) = right(reg,1) then do   /* prob. I/O pin */
                         shadow = '_PORT'right(reg,1)'_shadow'
                         pin = 'pin_'right(n.j,2)
-                        if left(PicName,4) \= '10f3' & left(PicName,5) \= '10lf3' then do
+                        if \(left(PicName,4) = '10f3'   | left(PicName,5) = '10lf3'    |,
+                                  PicName    = '12f752' |      PicName    = '12hv752') then do
                            call lineout jalfile, 'var volatile bit   ',
                                                  left(pin,25) 'at' '_'reg ':' offset
                            call insert_pin_alias reg, 'R'right(n.j,2), pin
@@ -1827,7 +1830,8 @@ do k = 0 to 8,                                              /* max # of lines, w
 
          else if s.j = 1 then do                            /* single bit */
             if (pos('/', n.j) > 0 | pos('_', n.j) > 0)  &,  /* check for twin name */
-                left(n.j,4) \= 'PRI_' then do               /* exception */
+                left(n.j,4) \= 'PRI_'                   &,  /* exception */
+                reg \= 'ICDIO' then do                      /* exception */
                if pos('/', n.j) > 0 then                    /* splitted with '/' */
                  parse var n.j val1'/'val2 .
                else                                         /* splitted with '_' */
@@ -3093,7 +3097,8 @@ if core = '12' | core = '14' then do                        /* baseline, midrang
             ansx = ansx + 6
       end
       when reg = 'ANSELA' | reg = 'ANSEL' | reg = 'ANSEL0' | reg = 'ADCON0' then do
-         if right(PicName,4) = 'f720' | right(PicName,4) = 'f721' then
+         if right(PicName,4) = 'f752' | right(PicName,5) = 'hv752' |,
+            right(PicName,4) = 'f720' | right(PicName,4) = 'f721' then
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,5) = '16f70' | left(PicName,6) = '16lf70' |,
                  left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then do
@@ -3619,7 +3624,7 @@ do i = 1 to dev.0                                           /* scan .dev file */
                   key = 'EXCLKMUX'
                when key = 'FLTAMX' then
                   key = 'FLTAMUX'
-               when key = 'FOSC' then
+               when key = 'FOSC' | key = 'FOSC0' then
                   key = 'OSC'
                when key = 'FSCM' then
                   key = 'FCMEN'
