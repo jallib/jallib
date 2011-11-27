@@ -1,7 +1,7 @@
 -- Title: glcd_common - generic routines for graphic lcd
 -- Author: Stef Mientki, Serkan Ayyýldýz Copyright (c) 2006..2009, all rights reserved.
 -- Adapted-by: Joep Suijs, Matthew Schinkel, Rob Hamerling
--- Compiler: >=2.2
+-- Compiler: 2.40
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -9,7 +9,7 @@
 --
 -- Sources:
 --
--- Description: Generic routines for graphic lcd
+-- Description: Generic routines for graphic lcds
 -- glcd_line
 -- glcd_box
 -- glcd_box_fill
@@ -22,8 +22,8 @@
 -- Once interface is implemented, many features come for "free".
 -- This common API is defined in glcd_common.jal and glcd_font.jal
 -- .
--- In order to honor this common interface, and benefit its features, the following
--- must be implemented in device specific library:
+-- In order to honor this common interface, and benefit its features,
+-- the following must be implemented in the device specific library.
 --   * GLCD_X_PIXELS: (const) specifies display's width in pixels
 --   * GLCD_Y_PIXELS: (const) specifies display's height in pixels
 --   * GLCD_COLOR_BITS: (const) specifies the number of bits required
@@ -37,17 +37,27 @@
 --     previously set, draw a pixel at position (x,y) using defined colors.
 --     This is the main procedure used by pixel-related features, like drawing
 --     a line, circle, etc... In some cases, where glcd_write_char() can't be
---     used glcd_write_pixel() can also be used to draw chars. If not implemented,
---     pixel-related features won't be available.
+--     used glcd_write_pixel() can also be used to draw chars. If not
+--     implemented pixel-related features won't be available.
+-- .
+-- The device library or user program may also specify:
+--   * GLCD_CLIPPING: (const) specifies if clipping is desired.
+--                    TRUE means that pixels of an ellipse beyond display
+--                    boundaries will not be sent to the display
+--                    (thus not shown on the wrong places).
+--                    When not declared, or set FALSE, no clipping is
+--                    performed and pixels may be written at unexpected
+--                    places.
 --
 -- Notes:
 --   Changes by Rob Hamerling:
 --   - fixed typo in comments above (GLCD_Y_SIZE -> GLCD_Y_PIXELS)
 --   - corrected irrelevant comments (artifacts of older versions)
---   - changed sword to sbyte*3 of local variables in ellipse procedure
+--   - changed sword to sbyte*3 of local variables in glcd_ellipse procedure
 --     to prevent overflow of intermediate results.
---   - added clipping of ellipse when drawing beyond display boundaries
---   - minor code optimisations (incl some add/remove pragma inline)
+--   - added [optional] clipping of pixels (of ellipse) when attempting
+--     to draw beyond display boundaries
+--   - minor code optimizations (incl some add/remove pragma inline)
 --
 
 -- --------------------------------------------------------------
@@ -100,6 +110,11 @@ if !defined(GLCD_PEN_COLOR) then
    const GLCD_PEN_COLOR = 1                        -- black
 end if
 
+-- define clipping FALSE, if not defined already
+if !defined(GLCD_CLIPPING) then
+   const GLCD_CLIPPING = FALSE                     -- no clipping required
+end if
+
 
 -- ----------------------------------------------------------------------------
 -- Global variables for text processing
@@ -110,12 +125,12 @@ var byte*GLCD_Y_SIZE glcd_char_y_pos = 0;
 
 include glcd_font                                  -- common font library
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Draw one character pixel by pixel - slowest method.
 --
 -- Requires this procedure to be defined within your glcd library
 --    glcd_write_pixel() - draw one pixel to glcd
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte in value) is
 
    var byte*GLCD_COLOR_SIZE color = glcd_pen_color -- save pen color
@@ -128,7 +143,6 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte i
       var word i,j,k
       var word step = 0
 
-      -- for _glcd_font_current_byte_per_char using k loop -- wrong!
       for _glcd_font_current_height using k loop         -- right!
          -- get each byte from character
          var byte char_byte = glcd_font_lookup( (word(value - 32) * _glcd_font_current_byte_per_char) + k )
@@ -177,7 +191,7 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte i
 end procedure
 
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Draw one character with block write - efficient font printing.
 -- .
 -- Only FONT_TOP_LEFT_HORIZONTAL is supported so far.
@@ -188,7 +202,7 @@ end procedure
 -- Also must define this constant in your glcd device library and
 -- set your most efficient font type.
 --    const GLCD_BLOCK_WRITE_TYPE = FONT_TOP_LEFT_HORIZONTAL
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 if GLCD_USE_BLOCK_WRITE == TRUE then
    procedure glcd_write_char_block(byte*GLCD_X_SIZE in x,byte*GLCD_Y_SIZE in y,byte in value) is
       if GLCD_BLOCK_WRITE_TYPE == FONT_TOP_LEFT_HORIZONTAL then
@@ -220,9 +234,9 @@ if GLCD_USE_BLOCK_WRITE == TRUE then
 end if
 
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Pseudo variable 'lcd' for writing characters.
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 procedure glcd'put(byte in char) is
    if defined(FONT_AUTO_WRAP) then
       if FONT_AUTO_WRAP == TRUE then
@@ -256,26 +270,26 @@ procedure glcd'put(byte in char) is
 end procedure
 
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Clear screen and character position to the upper left corner: row 0, column 0)
 -- If block writes are not supported by your glcd, it is highly recommended
 -- that you define a custom define a glcd_clear_screen()
 -- procedure within your glcd's library otherwise this procedure will clear
 -- the screen pixel by pixel which is very slow.
---
+-- .
 -- here's a list of procedures reqired in your glcd device library:
 --    glcd_block_address - set start x,y and end x,y address
 --    glcd_block_write_color - write data to each pixel in order
 -- also must define this constant in your glcd device library and
 -- set your most efficient font type.
 --    const GLCD_BLOCK_WRITE_TYPE = FONT_TOP_LEFT_HORIZONTAL
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 if !defined(glcd_clear_screen) then
    procedure glcd_clear_screen() is
       -- fill using glcd's block write procedures
       if GLCD_USE_BLOCK_WRITE == TRUE then
          if GLCD_BLOCK_WRITE_TYPE == FONT_TOP_LEFT_HORIZONTAL then
-            glcd_block_set_address(0,0,GLCD_X_PIXELS - 1,GLCD_Y_PIXELS - 1)
+            glcd_block_set_address(0, 0, GLCD_X_PIXELS - 1, GLCD_Y_PIXELS - 1)
             for GLCD_Y_PIXELS loop
                for GLCD_X_PIXELS loop
                    glcd_block_write_color(glcd_background_color)
@@ -302,9 +316,9 @@ if !defined(glcd_clear_screen) then
    end procedure
 end if
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Set location of next character to write
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 procedure glcd_char_goto(byte in x, byte in y) is
    pragma inline
    glcd_char_x_pos = x
@@ -312,49 +326,66 @@ procedure glcd_char_goto(byte in x, byte in y) is
 end procedure
 
 
---------------------------------------------------------------------------------
--- Write 4 pixels of ellipse
--- Arguments: - pixel co-ordinates of centre of the ellipse (cx,cy)
---            - x- and y-offsets (dx,dy) of one pixel relative to center of the ellipse
---              (the 4 pixel co-ordinates are derived from these)
--- Note: do not write pixel when its location is outside physical glcd area
---------------------------------------------------------------------------------
-procedure _glcd_write_4_ellipse_pixels(byte*GLCD_X_SIZE in cx, sbyte*3 in dx,
-                                      byte*GLCD_Y_SIZE in cy, sbyte*3 in dy) is
-   if (cx + dx) >= 0 & (cx + dx) < GLCD_X_PIXELS  then
-      if (cy + dy) >= 0 & (cy + dy) < GLCD_Y_PIXELS  then
-         glcd_write_pixel(byte*GLCD_X_SIZE(cx + dx), byte*GLCD_Y_SIZE(cy + dy))
+-- -----------------------------------------------------------------------------
+-- Name:      Write 4 pixels of ellipse
+-- Arguments: - co-ordinates of centre of the ellipse (cx,cy in pixels)
+--            - x- and y-offsets (dx,dy in pixels) of one pixel relative
+--              to center of the ellipse/
+--              Coordinates of the other 3 pixels are derived from these.
+-- Notes:     - When clipping requested a pixel is written only when its
+--              coordinates are within physical glcd boundaries.
+--              Otherwise pixels are written unconditionally.
+-- -----------------------------------------------------------------------------
+procedure _glcd_write_4_ellipse_pixels( byte*GLCD_X_SIZE       in cx,
+                                       sbyte*(GLCD_X_SIZE + 1) in dx,
+                                        byte*GLCD_Y_SIZE       in cy,
+                                       sbyte*(GLCD_Y_SIZE + 1) in dy) is
+   var sbyte*(GLCD_X_SIZE + 1) cx14 = cx + dx,     -- x-coord quadrant 1 and 4
+                               cx23 = cx - dx      --    "       "     2 and 3
+   var sbyte*(GLCD_Y_SIZE + 1) cy12 = cy + dy,     -- y-coord    "     1 and 2
+                               cy34 = cy - dy      --    "       "     3 and 4
+   if GLCD_CLIPPING == TRUE then
+      if cx14 >= 0 & cx14 < GLCD_X_PIXELS then
+         if cy12 >= 0 & cy12 < GLCD_Y_PIXELS  then
+            glcd_write_pixel(byte*GLCD_X_SIZE(cx14), byte*GLCD_Y_SIZE(cy12))
+         end if
+         if cy34 >= 0 & cy34 < GLCD_Y_PIXELS  then
+            glcd_write_pixel(byte*GLCD_X_SIZE(cx14), byte*GLCD_Y_SIZE(cy34))
+         end if
       end if
-      if (cy - dy) >= 0 & (cy - dy) < GLCD_Y_PIXELS  then
-        glcd_write_pixel(byte*GLCD_X_SIZE(cx + dx), byte*GLCD_Y_SIZE(cy - dy))
+      if cx23 >= 0 & cx23 < GLCD_X_PIXELS  then
+         if cy12 >= 0 & cy12 < GLCD_Y_PIXELS  then
+            glcd_write_pixel(byte*GLCD_X_SIZE(cx23), byte*GLCD_Y_SIZE(cy12))
+         end if
+         if cy34 >= 0 & cy34 < GLCD_Y_PIXELS  then
+            glcd_write_pixel(byte*GLCD_X_SIZE(cx23), byte*GLCD_Y_SIZE(cy34))
+         end if
       end if
-   end if
-   if (cx - dx) >= 0 & (cx - dx) < GLCD_X_PIXELS  then
-      if (cy + dy) >= 0 & (cy + dy) < GLCD_Y_PIXELS  then
-        glcd_write_pixel(byte*GLCD_X_SIZE(cx - dx), byte*GLCD_Y_SIZE(cy + dy))
-      end if
-      if (cy - dy) >= 0 & (cy - dy) < GLCD_Y_PIXELS  then
-         glcd_write_pixel(byte*GLCD_X_SIZE(cx - dx), byte*GLCD_Y_SIZE(cy - dy))
-      end if
+   else
+      glcd_write_pixel(byte*GLCD_X_SIZE(cx14), byte*GLCD_Y_SIZE(cy12))
+      glcd_write_pixel(byte*GLCD_X_SIZE(cx14), byte*GLCD_Y_SIZE(cy34))
+      glcd_write_pixel(byte*GLCD_X_SIZE(cx23), byte*GLCD_Y_SIZE(cy12))
+      glcd_write_pixel(byte*GLCD_X_SIZE(cx23), byte*GLCD_Y_SIZE(cy34))
    end if
 end procedure
 
 
---------------------------------------------------------------------------------
--- name        : glcd_ellipse(cx, cy, xradius, yradius)
--- description : Bresenham ellipse plot
--- arguments   : cx, cy ->    center of the ellipse
---               xradius, yradius -> x & y radii of the ellipse
--- return value: none
--- notes       : using actual pixel color <glcd_pen_color>
+-- -----------------------------------------------------------------------------
+-- Name:         glcd_ellipse(cx, cy, xradius, yradius)
+-- Description:  Bresenham ellipse plot
+-- Arguments:  : cx, cy ->  center of the ellipse in pixels
+--               xradius, yradius -> x & y radii of the ellipse in pixels
+-- Notes:      : Using actual pixel color <glcd_pen_color>
 --             : Would be nice to draw filled ellipses too :-)
 -- Author      : Paul D'haene
---------------------------------------------------------------------------------
-procedure glcd_ellipse(byte*GLCD_X_SIZE in cx, byte*GLCD_Y_SIZE in cy,
-                       byte in xradius, byte in yradius) is
+-- -----------------------------------------------------------------------------
+procedure glcd_ellipse(byte*GLCD_X_SIZE in cx,      byte*GLCD_Y_SIZE in cy,
+                       byte*GLCD_X_SIZE in xradius, byte*GLCD_Y_SIZE in yradius) is
 
-   var sbyte*3 xr = sbyte*3(xradius), yr = sbyte*3(yradius)
-   var sbyte*3 x = xr, y = 0
+   var sbyte*3 xr = sbyte*3(xradius)
+   var sbyte*3 yr = sbyte*3(yradius)
+   var sbyte*3 x = xr
+   var sbyte*3 y = 0
    var sbyte*3 two_a_square = 2 * xr * xr
    var sbyte*3 two_b_square = 2 * yr * yr
    var sbyte*3 x_change = yr * yr * (1 - 2 * xr)
@@ -403,7 +434,7 @@ procedure glcd_ellipse(byte*GLCD_X_SIZE in cx, byte*GLCD_Y_SIZE in cy,
 end procedure
 
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- name        : lcd_circle( cx, cy, radius, glcd_pen_color )
 -- description : Bresenham circle draw
 -- argument(s) : cx, cy ->    center of the circle
@@ -413,14 +444,14 @@ end procedure
 -- notes       : the circle code does not give a round circle on
 --               the lcd.
 -- Author      : Paul D'haene
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 procedure glcd_circle(byte*GLCD_X_SIZE in cx, byte*GLCD_Y_SIZE in cy, byte in radius) is
    pragma  inline
    glcd_ellipse(cx, cy, radius, radius) -- approx scaled y radius
 end procedure
 
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- name        : glcd_line(x0, y0, x1, y1)
 -- description : fast integer only line draw
 -- argument(s) : x0 -> start x
@@ -429,7 +460,7 @@ end procedure
 --               y1 -> end y
 -- Notes       : using current pixel color <glcd_pen_color>
 -- Author      : Paul D'haene
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 procedure  glcd_line(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0,
                      byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
 
@@ -481,9 +512,9 @@ procedure  glcd_line(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0,
 end procedure
 
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Draw a box (x0,y0,x1,y1).
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 procedure glcd_box(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0,
                    byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
    glcd_line(x0,y0, x1,y0)
@@ -492,9 +523,9 @@ procedure glcd_box(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0,
    glcd_line(x0,y1, x0,y0)
 end procedure
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Draw a filled box (x0,y0,x1,y1).
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 procedure glcd_box_fill(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0,
                         byte*GLCD_X_SIZE in x1, byte*GLCD_Y_SIZE in y1) is
 
@@ -508,11 +539,11 @@ procedure glcd_box_fill(byte*GLCD_X_SIZE in x0, byte*GLCD_Y_SIZE in y0,
 end procedure
 
 
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Draw an image from a byte array. Same requirements as lcd_clear_screen(),
 -- You can currently only draw an image that contains the same number of colors
 -- as your glcd supports.
---------------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 if !defined(glcd_draw_image) then
    procedure glcd_draw_image(byte in image[], byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte*GLCD_X_SIZE in width, byte*GLCD_Y_SIZE in height) is
 
