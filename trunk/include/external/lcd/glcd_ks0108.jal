@@ -1,4 +1,4 @@
--- Title: lcd_ks0108 - Library for KS0108 compatible LCD
+-- Title: glcd_ks0108 - Library for KS0108 compatible graphic LCDs
 -- Author: Serkan Ayyýldýz Copyright (c) 2006..2009, all rights reserved.
 -- Adapted-by: Sebastien Lelong, Rob Hamerling.
 -- Compiler: 2.4o
@@ -9,18 +9,18 @@
 --
 -- Sources:
 --
--- Description: Library for KS0108 compatible graphic lcd with 128x64 resolution
+-- Description: Library for KS0108 compatible graphic lcds with 128x64 resolution
 --              for example the GDM12864A.
 --
 --
--- Notes: Modifications by Rob Hamerling:
+-- Notes: Modifications by Rob Hamerling (nov 2011):
 --        - slight timing changes in _ks0108_read() and _ks0108_write()
 --          according to datasheet schemes for MPU Write timing and Read timing.
 --          Replaced hard coded ASM NOPs by _usec_delay()
 --        - all private procedures/function prefixed with underscore
---        - removed absolute values for loops and offsets
+--        - replaced absolute values for loops and offsets by symbolic values
 --        - minor code optimisations, incl add/remove of some 'pragma inline'
---        - comments: added, improved, aligned
+--        - comments: extended, corrected, aligned
 --
 -- ----------------------------------------------------------------------------
 -- technical (library internal) details
@@ -34,7 +34,7 @@
 -- ----------------------------------------------------------------------------
 
 const byte GLCD_X_PIXELS   = 128                   -- ) display dimensions
-const byte GLCD_Y_PIXELS   = 64                    -- )
+const byte GLCD_Y_PIXELS   = 64                    -- ) in number of pixels
 const byte GLCD_COLOR_BITS = 1                     -- black & white (monochrome)
 
 const KS0108_LEFT          = 0
@@ -54,13 +54,13 @@ var byte glcd_pen_color       = GLCD_BLACK         -- default pen color
 
 
 -- ----------------------------------------------------------------------------
--- _ks0108_write - Write a byte of data to the specified chip
--- arguments"  1) side - which chip to write the data to
---                0 = left, 1 = right
---             2) data - the byte of data to write
--- Notes: GLCD_E is set low for 1/4 cycle upon call and kept low for 1/4 cycle
---        before returning such that successive calls to read or write
---        have GLCD_E low for at least 1/2 cycle between calls.
+-- Purpose:   Write a byte of data to the specified chip
+-- Arguments: - side (which chip to write the data to: 0 = left, 1 = right)
+--            - data (the byte of data to write)
+-- Notes:     GLCD_E is set low for 1/4 cycle upon call and kept low
+--            for 1/4 cycle before returning such that successive calls
+--            to read or write have GLCD_E low for at least 1/2 cycle
+--            between calls.
 -- ----------------------------------------------------------------------------
 procedure _ks0108_write(byte in side, byte in data) is
 
@@ -86,12 +86,14 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Reads a byte of data from the specified chip
--- returns:    A byte of data read from the chip (vertical row of 8 pixels)
---             at current position (to be set previously).
--- Notes: GLCD_E is set low for 1/4 cycle upon call and kept low for 1/4 cycle
---        before returning such that subsequent calls to read or write have
---        GLCD_E low for at least 1/2 cycle between calls.
+-- Purpose:   Reads a byte of data from the specified chip
+-- Arguments: side (which chip to read, 0 = left, 1 = right)
+-- returns:   A byte of data read from the chip (vertical row of 8 pixels)
+--            at current position (to be set previously).
+-- Notes:     GLCD_E is set low for 1/4 cycle upon call and kept low
+--            for 1/4 cycle before returning such that successive calls
+--            to read or write have GLCD_E low for at least 1/2 cycle
+--            between calls.
 -- ----------------------------------------------------------------------------
 function _ks0108_read(byte in side) return byte  is
 
@@ -120,7 +122,9 @@ end function
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Turn the display on
+-- Purpose:   turn the display on
+-- Arguments: none
+-- Notes:     both sides are activated
 -- ----------------------------------------------------------------------------
 procedure lcd_on() is
    _ks0108_write(KS0108_LEFT,  KS0108_CMD_ON)
@@ -129,7 +133,9 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Turn the display off
+-- Purpose:   turn the display off
+-- Arguments: none
+-- Notes:     both sides are de-activated
 -- ----------------------------------------------------------------------------
 procedure lcd_off() is
    _ks0108_write(KS0108_LEFT,  KS0108_CMD_OFF)
@@ -138,8 +144,9 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Set the page number
--- Inputs:     page number (y-coordinate: 0..7)
+-- Purpose:   Set the page number
+-- Arguments: - side (selected chip, 0 = left, 1 = right)
+--            - page number (y-coordinate: 0..7)
 -- ----------------------------------------------------------------------------
 procedure _ks0108_page(byte in side, byte in page) is
    pragma inline
@@ -158,7 +165,8 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Specify reads and writes are instructions
+-- Purpose:   Specify subsequent reads and writes are instructions
+-- Arguments: none
 -- ----------------------------------------------------------------------------
 procedure _ks0108_inst() is
    pragma inline
@@ -167,7 +175,8 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Specify reads and writes are data
+-- Purpose:   Specify subsequent reads and writes are data
+-- Arguments: none
 -- ----------------------------------------------------------------------------
 procedure  _ks0108_data() is
    pragma inline
@@ -176,10 +185,9 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Turn a pixel on a graphic LCD on or off
--- ----------------------------------------------------------------------------
--- Inputs:     1) x - the x coordinate of the pixel
---             2) y - the y coordinate of the pixel
+-- Purpose:    write (modify) a single pixel of the display
+-- Arguments:  - x-coordinate of the pixel
+--             - y-coordinate of the pixel (will be converted to page number)
 -- ----------------------------------------------------------------------------
 procedure glcd_write_pixel(byte in x, byte in y) is
 
@@ -191,10 +199,10 @@ procedure glcd_write_pixel(byte in x, byte in y) is
       side = KS0108_RIGHT                          -- select right half
    end if
 
-   _ks0108_inst()                                  -- Set for instruction
-   _ks0108_column(side, x)                         -- Set the horizontal address
-   _ks0108_page(side, y / 8)                       -- Set the page address
-   _ks0108_data()                                  -- Set for data
+   _ks0108_inst()                                  -- set for instruction
+   _ks0108_column(side, x)                         -- set the horizontal address
+   _ks0108_page(side, y / 8)                       -- set the page address
+   _ks0108_data()                                  -- set for data
    data = _ks0108_read(side)                       -- ignore; need two reads to get data at new address
    data = _ks0108_read(side)                       -- read byte
 
@@ -204,37 +212,38 @@ procedure glcd_write_pixel(byte in x, byte in y) is
    else                                            -- or
       data = data & ! (1 << yy )
    end if
-   _ks0108_inst()                                  -- Set for instruction
-   _ks0108_column(side,x)                          -- Set the horizontal address
-   _ks0108_page(side, y / 8)                       -- Set the page address
-   _ks0108_data()                                  -- Set for data
-   _ks0108_write(side, data)                       -- Write the pixel data
+   _ks0108_inst()                                  -- set for instruction
+   _ks0108_column(side,x)                          -- set the horizontal address
+   _ks0108_page(side, y / 8)                       -- set the page address
+   _ks0108_data()                                  -- set for data
+   _ks0108_write(side, data)                       -- write the pixel data
 end procedure
 
 
 -- ----------------------------------------------------------------------------
--- ks0108_write_byte - write byte to display
--- Arguments:   x = pixel column
---              y = pixel row (will be converted to page number)
+-- Putpose:   write byte (column of pixels) to display
+-- Arguments: - x-coordinate of the pixel
+--            - y-coordinate of the pixel (will be converted to page number)
 -- ----------------------------------------------------------------------------
 procedure _ks0108_write_byte(byte in x, byte in y, byte in veri) is
-   var byte side = KS0108_LEFT                     -- Select display half
-   if x >= (GLCD_X_PIXELS / 2) then                -- Check if second display half
-      x = x - (GLCD_X_PIXELS / 2)
-      side = KS0108_RIGHT
+   var byte side = KS0108_LEFT                     -- Select left display half
+   if x >= (GLCD_X_PIXELS / 2) then                -- check if second display half
+      x = x - (GLCD_X_PIXELS / 2)                  -- adapt x-coordinate
+      side = KS0108_RIGHT                          -- select right display half
    end if
-   _ks0108_inst()                                  -- Set for instruction
-   _ks0108_column(side, x)                         -- Set horizontal address
-   _ks0108_page(side, (y / 8))                     -- Set page
-   _ks0108_data()                                  -- Set for data
-   _ks0108_write(side, veri)                       -- Write the pixel data
+   _ks0108_inst()                                  -- set for instruction
+   _ks0108_column(side, x)                         -- set horizontal address
+   _ks0108_page(side, y / 8)                       -- set page
+   _ks0108_data()                                  -- set for data
+   _ks0108_write(side, veri)                       -- write the pixel data
 end procedure
 
 
 -- ----------------------------------------------------------------------------
--- ks0108_read_byte - read byte to display
+-- Purpose:    read byte (column of pixels) from display
 -- Arguments:  x = pixel column
 --             y = pixel row (will be converted to page number)
+-- Returns:    byte, row of pixels on current location
 -- ----------------------------------------------------------------------------
 function _ks0108_read_byte(byte in x, byte in y) return byte is
    var byte data
@@ -246,7 +255,7 @@ function _ks0108_read_byte(byte in x, byte in y) return byte is
 
    _ks0108_inst()                                  -- Set for instruction
    _ks0108_column(side,x)                          -- Set the horizontal address
-   _ks0108_page(side,(y / 8))                      -- Set the page address
+   _ks0108_page(side, y / 8)                       -- Set the page address
 
     _ks0108_data()                                 -- Set for data
    data = _ks0108_read(side)                       -- ignore; need two reads to get data at new address
@@ -258,8 +267,9 @@ end function
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Fill the LCD screen with the passed in color
--- Arguments:  bit pattern (8-bit column)
+-- Purpose:    Fill the GLCD screen with a pixel pattern (usually 0x00 or 0xFF)
+-- Arguments:  bit pattern (8 pixel column)
+-- Notes:      Uses to auto-increment of x-coordinate for fast write of rows
 -- ----------------------------------------------------------------------------
 procedure lcd_fill(byte in data) is
    var byte i                                      -- loop counter
@@ -279,8 +289,9 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- lcd_init - Initialize the graphic LCD.
--- Call before using any other GLCD function.
+-- Purpose:   Initialize the graphic LCD.
+-- Arguments: none
+-- Notes:     to be called before using any other GLCD function.
 -- ----------------------------------------------------------------------------
 procedure glcd_init() is
 
@@ -315,8 +326,6 @@ end procedure
 
 -- ----------------------------------------------------------------------------
 -- _font_5x7_table[] - character table
---
--- 91 * 5 bytes = 455
 -- ----------------------------------------------------------------------------
 const byte _font_5x7_table[] = {
    0x00, 0x00, 0x00, 0x00, 0x00,    -- space, 32 (decimal)
@@ -410,25 +419,22 @@ const byte _font_5x7_table[] = {
    0x44, 0x28, 0x10, 0x28, 0x44,    -- x, 120
    0x0C, 0x50, 0x50, 0x50, 0x3C,    -- y, 121
    0x44, 0x64, 0x54, 0x4C, 0x44     -- z, 122
-
 }
 
 -- ----------------------------------------------------------------------------
--- Writes a character to the display using internal font definition.
+-- Putpose:   Write character to the display using internal font definition.
 -- Arguments: - x- and y-coordinates (upper left corner of character pattern)
 --            - character to display
--- note: For characters the display is 8 lines, each 8 bits high;
---       specify for y-coordinate a multiple of 8.
+-- Notes:     For characters the display is 8 lines, each 8 bits high;
+--            specify for y-coordinate a multiple of 8.
 -- ----------------------------------------------------------------------------
 procedure _ks0108_write_char(byte in x, byte in y, byte in ch) is
    var word indx
    var byte cx
-
    if (ch <  32) | (ch > 122) then                 -- only supported characters
       return
    end if
-
-   indx = 5 * word(ch - 32)                        -- offset of char in font table
+   indx = 5 * word(ch - 32)                        -- non proportional font, 5 pixels wide
    for 5 loop                                      -- 5 colums per character
       cx = _font_5x7_table[indx]                   -- column of character
       if glcd_pen_color == GLCD_WHITE then         -- white on black
@@ -437,24 +443,24 @@ procedure _ks0108_write_char(byte in x, byte in y, byte in ch) is
       _ks0108_inst()                               -- Set for instruction
       if (x < (GLCD_X_PIXELS / 2)) then            -- left half
          _ks0108_column(KS0108_LEFT, x)            -- Set horizontal coordinate
-         _ks0108_page(KS0108_LEFT, (y / 8))        -- Set page
+         _ks0108_page(KS0108_LEFT, y / 8)          -- Set page
          _ks0108_data()                            -- Set for data
          _ks0108_write(KS0108_LEFT, cx)            -- Write column
       elsif (x < GLCD_X_PIXELS) then               -- right half
          _ks0108_column(KS0108_RIGHT, x - GLCD_X_PIXELS)  -- Set horizontal coord.
-         _ks0108_page(KS0108_RIGHT, (y / 8))       -- Set page
+         _ks0108_page(KS0108_RIGHT, y / 8)         -- Set page
          _ks0108_data()                            -- Set for data
          _ks0108_write(KS0108_RIGHT, cx)           -- Write column
       end if
+      -- ignore x > GLCD_X_PIXELS (clip text)
       x = x + 1                                    -- next display column
-      indx = indx + 1                              -- next column in font table
-      -- x > 128 is ignored (allows to write partial chars on the edge)
+      indx = indx + 1                              -- next byte in font table
    end loop
 end procedure
 
 
 
-if defined(GLCD_FONT_USAGE) then                   -- when using font libraries
+if defined(GLCD_FONT_USAGE) then                   -- for use with font library
 
 -- ----------------------------------------------------------------------------
 -- Same as _ks0108_write_char, but uses external font.
@@ -462,38 +468,38 @@ if defined(GLCD_FONT_USAGE) then                   -- when using font libraries
 --            - y-coordinate (in pixels) of upper most pixel-row (range 0..63)
 --              Note: will be rounded down to a multiple of 8 ('page' boundary)
 --            - character (binary value in range 32..122)
+-- Notes:     For characters the display is 8 lines, each 8 bits high;
+--            specify for y-coordinate a multiple of 8.
 -- ----------------------------------------------------------------------------
-  procedure glcd_write_char(byte in x, byte in y, byte in ch ) is
-     var word indx
-     var byte cx
+procedure glcd_write_char(byte in x, byte in y, byte in ch ) is
+   var word indx                                   -- position of bit pattern
+   var byte cx                                     -- bit pattern
+   if (ch <  32) | (ch > 122) then                 -- skip unsupported chars
+      return
+   end if
+   indx = _glcd_font_current_byte_per_char * word(ch - 32)  -- non proportional font
+   for _glcd_font_current_byte_per_char loop       -- whole character
+      cx = glcd_font_lookup(indx)                  -- obtain bit pattern
+      if glcd_pen_color == GLCD_WHITE then         -- white pen
+         cx = !cx                                  -- invert bit pattern
+      end if
+      _ks0108_inst()                               -- Set for instruction
+      if (x < (GLCD_X_PIXELS / 2)) then            -- left half
+         _ks0108_column(KS0108_LEFT, x)            -- Set the horizontal address
+         _ks0108_page(KS0108_LEFT, y / 8)          -- Set the page address
+         _ks0108_data()                            -- Set for data
+         _ks0108_write(KS0108_LEFT, cx)            -- Write the pixel data
+      elsif (x < GLCD_X_PIXELS) then               -- right half
+         _ks0108_column(KS0108_RIGHT, x - (GLCD_X_PIXELS / 2))  -- horizontal address
+         _ks0108_page(KS0108_RIGHT, y / 8)         -- Set the page address
+         _ks0108_data()                            -- Set for data
+         _ks0108_write(KS0108_RIGHT, cx)           -- Write the pixel data
+      end if
+      -- ignore x > GLCD_X_PIXELS (clip text)
+      x = x + 1                                    -- position of next pixel row
+      indx = indx + 1                              -- next byte in font table
+   end loop
+end procedure
 
-     if (ch <  32) | (ch > 122) then
-        return
-     end if
-
-     indx = _glcd_font_current_byte_per_char * word(ch - 32)  -- fixed pattern width!
-     for _glcd_font_current_byte_per_char loop
-        cx = glcd_font_lookup(indx)                -- obtain bit pattern
-        if glcd_pen_color == GLCD_WHITE then       -- white pen
-           cx = !cx                                -- invert bit pattern
-        end if
-        _ks0108_inst()                             -- Set for instruction
-        if (x < (GLCD_X_PIXELS / 2)) then          -- left half
-           _ks0108_column(KS0108_LEFT,x)           -- Set the horizontal address
-           _ks0108_page(KS0108_LEFT, (y / 8))      -- Set the page address
-           _ks0108_data()                          -- Set for data
-           _ks0108_write(KS0108_LEFT, cx)          -- Write the pixel data
-        elsif (x < GLCD_X_PIXELS) then             -- right half
-           _ks0108_column(KS0108_RIGHT, x-64)      -- Set the horizontal address
-           _ks0108_page(KS0108_RIGHT, (y / 8))     -- Set the page address
-           _ks0108_data()                          -- Set for data
-           _ks0108_write(KS0108_RIGHT, cx)         -- Write the pixel data
-        end if
-        -- x > 128 is ignored (allows to write partial chars on the edge)
-        x = x + 1                                  -- position of next pixel row
-        indx = indx + 1                            -- next pattern
-     end loop
-  end procedure
-
-end if
+end if     -- (when using a font library)
 
