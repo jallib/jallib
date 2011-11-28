@@ -18,13 +18,14 @@
 --          according to datasheet schemes for MPU Write timing and Read timing.
 --          Replaced hard coded ASM NOPs by _usec_delay()
 --        - all private procedures/function prefixed with underscore
+--        - added procedure glcd_clear_screen() and use it in glcd_init()
 --        - replaced absolute values for loops and offsets by symbolic values
 --        - minor code optimisations, incl add/remove of some 'pragma inline'
 --        - comments: extended, corrected, aligned
 --
 -- ----------------------------------------------------------------------------
 -- technical (library internal) details
--- An 128x64 graphic LCD consists of 2 controllers (KS0108_LEFT and KS0108_RIGHT),
+-- An 128x64 graphic LCD consists with 2 controllers (KS0108_LEFT and KS0108_RIGHT),
 -- each take care of 64x64 bits.
 -- Addressing: - upper left corner is coordinate (0,0)
 --
@@ -49,8 +50,8 @@ const KS0108_CMD_TOP_RAM   = 0xC0
 const byte GLCD_BLACK      = 0x01
 const byte GLCD_WHITE      = 0x00
 
-var byte lcd_background_color = GLCD_WHITE         -- default background color
-var byte glcd_pen_color       = GLCD_BLACK         -- default pen color
+var byte glcd_background_color = GLCD_WHITE        -- default background color
+var byte glcd_pen_color        = GLCD_BLACK        -- default pen color
 
 
 -- ----------------------------------------------------------------------------
@@ -97,7 +98,7 @@ end procedure
 -- ----------------------------------------------------------------------------
 function _ks0108_read(byte in side) return byte  is
 
-   var byte data                                   -- Stores the data read from the LCD
+   var byte data                                   -- for the data from the display
 
    GLCD_E = low                                    -- start cycle in low state
    _usec_delay(1)                                  -- Twl/2
@@ -126,7 +127,7 @@ end function
 -- Arguments: none
 -- Notes:     both sides are activated
 -- ----------------------------------------------------------------------------
-procedure lcd_on() is
+procedure _ks0108_on() is
    _ks0108_write(KS0108_LEFT,  KS0108_CMD_ON)
    _ks0108_write(KS0108_RIGHT, KS0108_CMD_ON)
 end procedure
@@ -137,7 +138,7 @@ end procedure
 -- Arguments: none
 -- Notes:     both sides are de-activated
 -- ----------------------------------------------------------------------------
-procedure lcd_off() is
+procedure _ks0108_off() is
    _ks0108_write(KS0108_LEFT,  KS0108_CMD_OFF)
    _ks0108_write(KS0108_RIGHT, KS0108_CMD_OFF)
 end procedure
@@ -267,11 +268,11 @@ end function
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Fill the GLCD screen with a pixel pattern (usually 0x00 or 0xFF)
--- Arguments:  bit pattern (8 pixel column)
+-- Purpose:    Fill the GLCD screen with a pixel pattern
+-- Arguments:  bit pattern (8 pixel column, usually 0x00 or 0xFF)
 -- Notes:      Uses to auto-increment of x-coordinate for fast write of rows
 -- ----------------------------------------------------------------------------
-procedure lcd_fill(byte in data) is
+procedure glcd_fill(byte in data) is
    var byte i                                      -- loop counter
    for GLCD_Y_PIXELS / 8 using i loop              -- all pages
       _ks0108_inst()                               -- set for instruction
@@ -285,6 +286,23 @@ procedure lcd_fill(byte in data) is
          _ks0108_write(KS0108_RIGHT, data)         -- right half
       end loop
    end loop
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Purpose:    Clear the screen, set cursor position to upper left corner
+-- Arguments:  none
+-- Notes:      Uses current glcd_background_color setting as fill character
+-- ----------------------------------------------------------------------------
+procedure glcd_clear_screen() is
+   glcd_fill(glcd_background_color)                -- set to all background color
+   _ks0108_inst()                                  -- Set for instruction
+   _ks0108_write(KS0108_LEFT,  KS0108_CMD_TOP_RAM | 0)
+   _ks0108_write(KS0108_RIGHT, KS0108_CMD_TOP_RAM | 0)
+   _ks0108_page(KS0108_LEFT ,0)                    -- Set the page address to 0
+   _ks0108_page(KS0108_RIGHT,0)
+   _ks0108_column(KS0108_LEFT ,0)                  -- Set the column address to 0
+   _ks0108_column(KS0108_RIGHT,0)
 end procedure
 
 
@@ -311,16 +329,10 @@ procedure glcd_init() is
    GLCD_RST_DIRECTION = output
    GLCD_CS2_DIRECTION = output
 
-   _ks0108_inst()                                  -- Set for instruction
-   _ks0108_write(KS0108_LEFT,  KS0108_CMD_TOP_RAM | 0)
-   _ks0108_write(KS0108_RIGHT, KS0108_CMD_TOP_RAM | 0)
-   _ks0108_page(KS0108_LEFT ,0)                    -- Set the page address to 0
-   _ks0108_page(KS0108_RIGHT,0)
-   _ks0108_column(KS0108_LEFT ,0)                  -- Set the column address to 0
-   _ks0108_column(KS0108_RIGHT,0)
-   lcd_on()                                        -- Turn the display on
+   _ks0108_on()                                    -- Turn the display on
 
-   lcd_fill(0x00)                                  -- Clear the display
+   glcd_clear_screen()                             -- Clear the display
+
 end procedure
 
 
