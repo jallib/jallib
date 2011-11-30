@@ -1109,7 +1109,7 @@ def jalapi_extract_comments(i,origline,content):
     # this regex is used to detect the end of comments,
     # and remove the comment chars, but also to clean
     # long-dash lines.
-    stillcomment = re.compile("^--\s-*")
+    stillcomment = re.compile("^--\s*-*")
     for _,line in content:
         if not stillcomment.match(line) or line.strip() == "":
             break
