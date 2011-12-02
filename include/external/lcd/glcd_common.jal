@@ -64,10 +64,14 @@
 -- --------------------------------------------------------------
 -- Defining default constants when not defined by user
 -- and defining constants derived from these.
+-- Note: For documentation generation the constants must be
+--       declared without indention and the description must
+--       appear immediately ahead of it.
 -- --------------------------------------------------------------
 -- set width of pixel x,y variables
 if !defined(GLCD_X_PIXELS) then
-const GLCD_X_SIZE = 1                              -- assume lcd max 256 pixels wide
+-- Width of the variables for x-coordinates
+const GLCD_X_SIZE = 1                              -- # bytes for x-coordinate variables
 else
    if GLCD_X_PIXELS < 256 then
       const GLCD_X_SIZE = 1
@@ -77,7 +81,8 @@ else
 end if
 
 if !defined(GLCD_Y_PIXELS) then
-const GLCD_Y_SIZE = 1                              -- assume lcd max 256 pixels high
+-- Width of the variables for y-coordinates (byte for max 256 pixels vertically)
+const GLCD_Y_SIZE = 1                              -- # bytes for y-coordinate variables
 else
    if GLCD_Y_PIXELS < 256 then
       const GLCD_Y_SIZE = 1
@@ -87,14 +92,16 @@ else
 end if
 
 if !defined(GLCD_USE_BLOCK_WRITE) then
-const GLCD_USE_BLOCK_WRITE = FALSE                 -- assume block wwriting not supported
+-- Block writing capability of the glcd device specific library
+const GLCD_USE_BLOCK_WRITE = FALSE                 -- flag for block writing
 end if
 
 -- set width of color variables
-if !defined(GLCD_COLOR_BITS) then                  -- assume monochrome display
-const GLCD_COLOR_SIZE = 1
+if !defined(GLCD_COLOR_BITS) then
+-- Number of colors of the specific glcd device
+const GLCD_COLOR_SIZE = 1                          -- # bytes for color variables
 else
-   if GLCD_COLOR_BITS == 1 then                    -- 1 bit
+   if GLCD_COLOR_BITS == 1 then                    -- 1 bit (monochrome)
       const GLCD_COLOR_SIZE = 1
    elsif GLCD_COLOR_BITS == 16 then                -- 16 bit
       const GLCD_COLOR_SIZE = 2
@@ -104,17 +111,19 @@ else
 end if
 
 -- define foreground and background colors, if not defined already
-if !defined(glcd_background_color) then
-const byte GLCD_BACKGROUND_COLOR = 0               -- white
+if !defined(GLCD_BACKGROUND_COLOR) then
+-- Background color setting
+const byte GLCD_BACKGROUND_COLOR = 0               -- background color
 end if
 
 if !defined(GLCD_PEN_COLOR) then
-const GLCD_PEN_COLOR = 1                           -- black
+-- Foreground (pen) color setting
+const GLCD_PEN_COLOR = 1                           -- pen color
 end if
 
--- define clipping FALSE, if not defined already
 if !defined(GLCD_CLIPPING) then
-const GLCD_CLIPPING = FALSE                        -- no clipping required
+-- Clipping requested (TRUE) or not (FALSE)
+const GLCD_CLIPPING = FALSE                        -- clipping flag
 end if
 
 
@@ -136,17 +145,16 @@ include glcd_font                                  -- common font library
 -- -----------------------------------------------------------------------------
 procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte in value) is
 
-   var byte*GLCD_COLOR_SIZE color = glcd_pen_color -- save pen color
+   var byte*GLCD_COLOR_SIZE color = glcd_pen_color -- save current pen color
 
    if _glcd_font_current_bit_direction == FONT_TOP_LEFT_HORIZONTAL then
-
       -- generic font printing (bit by bit)
       -- this will work for any glcd that has a lcd_write_pixel procedure
       -- currently only tested for with width of 8 or less, any height
       var word i,j,k
       var word step = 0
 
-      for _glcd_font_current_height using k loop         -- right!
+      for _glcd_font_current_height using k loop
          -- get each byte from character
          var byte char_byte = glcd_font_lookup((word(value-32) * _glcd_font_current_byte_per_char) + k)
          var byte bit_y_address = 128 -- y bit mask
@@ -190,6 +198,7 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte
    else
       -- not supported yet!
    end if
+
    glcd_pen_color = color                          -- restore pen color
 
 end procedure
@@ -210,6 +219,7 @@ if GLCD_USE_BLOCK_WRITE == TRUE then               -- only when supported by glc
 --               const GLCD_BLOCK_WRITE_TYPE = FONT_TOP_LEFT_HORIZONTAL
 -- -----------------------------------------------------------------------------
 procedure glcd_write_char_block(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte in value) is
+
    if GLCD_BLOCK_WRITE_TYPE == FONT_TOP_LEFT_HORIZONTAL then
       -- this is the most efficient bit direction for this GLCD
       -- currently only works for fonts with width of 8 or less, any height
