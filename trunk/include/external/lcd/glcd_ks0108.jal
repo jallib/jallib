@@ -12,43 +12,46 @@
 -- Description: Library for KS0108 compatible graphic lcds with 128x64 resolution
 --              for example the GDM12864A.
 --
---
 -- Notes: Modifications by Rob Hamerling (nov 2011):
 --        - slight timing changes in _ks0108_read() and _ks0108_write()
 --          according to datasheet schemes for MPU Write timing and Read timing.
 --          Replaced hard coded ASM NOPs by _usec_delay()
 --        - all private procedures/function prefixed with underscore
 --        - added procedure glcd_clear_screen() and use it in glcd_init()
+--          uses the reset line to set Z-address to zero
 --        - replaced absolute values for loops and offsets by symbolic values
 --        - minor code optimisations, incl add/remove of some 'pragma inline'
 --        - comments: extended, corrected, aligned
---
--- ----------------------------------------------------------------------------
--- technical (library internal) details
--- An 128x64 graphic LCD consists with 2 controllers (KS0108_LEFT and KS0108_RIGHT),
--- each take care of 64x64 bits.
--- Addressing: - upper left corner is coordinate (0,0)
---
--- A byte of data represents a column of 8 bits, so the vertical 64 bits are
--- represented by 8 bytes ('pages').
+-- .
+--        Technical (library internal) details
+--        - A 128x64 graphic LCD consists with 2 controllers (KS0108_LEFT and
+--          KS0108_RIGHT), each take care of 64x64 bits.
+--        - Addressing: upper left corner is coordinate (0,0)
+--        - A byte of data represents a column of 8 pixels, so the vertical
+--          64 pixels are represented by 8 bytes (a row of 8 bits is called
+--          'page' in the datasheet).
 --
 -- ----------------------------------------------------------------------------
 
-const byte GLCD_X_PIXELS   = 128                   -- ) display dimensions
-const byte GLCD_Y_PIXELS   = 64                    -- ) in number of pixels
-const byte GLCD_COLOR_BITS = 1                     -- black & white (monochrome)
+const byte GLCD_X_PIXELS   = 128                   -- display x-dimension
+const byte GLCD_Y_PIXELS   = 64                    -- display y-dimension
+const byte GLCD_COLOR_BITS = 1                     -- monochrome display
 
-const KS0108_LEFT          = 0
-const KS0108_RIGHT         = 1
-const KS0108_CMD_ON        = 0x3F
-const KS0108_CMD_OFF       = 0x3E
-const KS0108_CMD_PAGE      = 0xB8
-const KS0108_CMD_COLUMN    = 0x40
-const KS0108_CMD_TOP_RAM   = 0xC0
+const KS0108_LEFT          = 0                     -- select left part of display
+const KS0108_RIGHT         = 1                     -- select right part of display
+const KS0108_CMD_ON        = 0x3F                  -- command to enable the display
+const KS0108_CMD_OFF       = 0x3E                  -- command to disable the display
+const KS0108_CMD_PAGE      = 0xB8                  -- command to select page (y-coord / 8)
+const KS0108_CMD_COLUMN    = 0x40                  -- command to select column (x-coord)
+const KS0108_CMD_TOP_RAM   = 0xC0                  -- command to set startline
 
 -- constant colors
-const byte GLCD_BLACK      = 0x01
-const byte GLCD_WHITE      = 0x00
+const byte GLCD_BLACK      = 0x01                  -- normal pen color
+const byte GLCD_WHITE      = 0x00                  -- alternate pen color
+
+-- data/instruction selection of DI line
+const byte GLCD_DI_DATA    = high                  -- select data to display
+const byte GLCD_DI_INST    = low                   -- select command
 
 var byte glcd_background_color = GLCD_WHITE        -- default background color
 var byte glcd_pen_color        = GLCD_BLACK        -- default pen color
@@ -58,7 +61,10 @@ var byte glcd_pen_color        = GLCD_BLACK        -- default pen color
 -- Purpose:   Write a byte of data to the specified chip
 -- Arguments: - side (which chip to write the data to: 0 = left, 1 = right)
 --            - data (the byte of data to write)
--- Notes:     GLCD_E is set low for 1/4 cycle upon call and kept low
+-- Notes:     The 'data' byte may be display data or a command.
+--            When it is data to be displayed its coordinates must
+--            have been been set on beforehand.
+--            GLCD_E is set low for 1/4 cycle upon call and kept low
 --            for 1/4 cycle before returning such that successive calls
 --            to read or write have GLCD_E low for at least 1/2 cycle
 --            between calls.
@@ -90,7 +96,7 @@ end procedure
 -- Purpose:   Reads a byte of data from the specified chip
 -- Arguments: side (which chip to read, 0 = left, 1 = right)
 -- returns:   A byte of data read from the chip (vertical row of 8 pixels)
---            at current position (to be set previously).
+--            at current coordinates (to be set on beforehand).
 -- Notes:     GLCD_E is set low for 1/4 cycle upon call and kept low
 --            for 1/4 cycle before returning such that successive calls
 --            to read or write have GLCD_E low for at least 1/2 cycle
@@ -156,8 +162,8 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Set the column address
--- Arguments:  The column address (x-coordinate: 0..63)
+-- Purpose:   Set the column address
+-- Arguments: The column address (x-coordinate: 0..63)
 -- ----------------------------------------------------------------------------
 procedure _ks0108_column(byte in side, byte in column) is
    pragma inline
@@ -171,7 +177,7 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure _ks0108_inst() is
    pragma inline
-   GLCD_DI = low
+   GLCD_DI = GLCD_DI_INST                          -- select instruction / command
 end procedure
 
 
@@ -181,12 +187,12 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure  _ks0108_data() is
    pragma inline
-   GLCD_DI = high
+   GLCD_DI = GLCD_DI_DATA                          -- select data
 end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    write (modify) a single pixel of the display
+-- Purpose:    Write (modify) a single pixel of the display
 -- Arguments:  - x-coordinate of the pixel
 --             - y-coordinate of the pixel (will be converted to page number)
 -- ----------------------------------------------------------------------------
@@ -222,7 +228,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Putpose:   write byte (column of pixels) to display
+-- Putpose:   Write byte (column of pixels) to display
 -- Arguments: - x-coordinate of the pixel
 --            - y-coordinate of the pixel (will be converted to page number)
 -- ----------------------------------------------------------------------------
@@ -268,9 +274,9 @@ end function
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Fill the GLCD screen with a pixel pattern
+-- Purpose:    Fill the whole GLCD with a pixel pattern (horizontal lines!)
 -- Arguments:  bit pattern (8 pixel column, usually 0x00 or 0xFF)
--- Notes:      Uses to auto-increment of x-coordinate for fast write of rows
+-- Notes:      Uses auto-increment of x-coordinate for fast write of rows
 -- ----------------------------------------------------------------------------
 procedure glcd_fill(byte in data) is
    var byte i                                      -- loop counter
@@ -292,17 +298,20 @@ end procedure
 -- ----------------------------------------------------------------------------
 -- Purpose:    Clear the screen, set cursor position to upper left corner
 -- Arguments:  none
--- Notes:      Uses current glcd_background_color setting as fill character
+-- Notes:      Resets the display with the RST line
+--             Uses current glcd_background_color setting as fill character
 -- ----------------------------------------------------------------------------
 procedure glcd_clear_screen() is
-   glcd_fill(glcd_background_color)                -- set to all background color
+   GLCD_RST = low                                  -- hardware reset
+   _usec_delay(2)                                  -- Trs
+   GLCD_RST = high                                 -- hardware enable
+   glcd_fill(glcd_background_color)                -- current! background color
    _ks0108_inst()                                  -- Set for instruction
-   _ks0108_write(KS0108_LEFT,  KS0108_CMD_TOP_RAM | 0)
-   _ks0108_write(KS0108_RIGHT, KS0108_CMD_TOP_RAM | 0)
-   _ks0108_page(KS0108_LEFT ,0)                    -- Set the page address to 0
-   _ks0108_page(KS0108_RIGHT,0)
-   _ks0108_column(KS0108_LEFT ,0)                  -- Set the column address to 0
-   _ks0108_column(KS0108_RIGHT,0)
+   _ks0108_page(KS0108_LEFT,0)                     -- Set the left page address to 0
+   _ks0108_page(KS0108_RIGHT,0)                    --  "   "  right  "     "
+   _ks0108_column(KS0108_LEFT,0)                   -- Set the left column address to 0
+   _ks0108_column(KS0108_RIGHT,0)                  --  "   "  right   "      "
+   _ks0108_on()                                    -- turn the display on
 end procedure
 
 
@@ -313,25 +322,24 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure glcd_init() is
 
-   GLCD_DATAPRT = 0x00
-   GLCD_DATAPRT_DIR = all_output
+   GLCD_DATAPRT = 0b0000_0000                      -- all zero
+   GLCD_DATAPRT_DIR = all_output                   -- output
 
-   GLCD_RST  = high                                -- clear /reset
+   GLCD_DI   = high                                -- set for data
    GLCD_RW   = low                                 -- set read mode
-   GLCD_E    = high                                --
+   GLCD_E    = high                                -- quisce
    GLCD_CS1  = low                                 -- deselect both halves
    GLCD_CS2  = low                                 --
+   GLCD_RST  = high                                -- enable
 
    GLCD_RW_DIRECTION  = output
-   GLCD_CS1_DIRECTION = output
-   GLCD_E_DIRECTION   = output
    GLCD_DI_DIRECTION  = output
-   GLCD_RST_DIRECTION = output
+   GLCD_E_DIRECTION   = output
+   GLCD_CS1_DIRECTION = output
    GLCD_CS2_DIRECTION = output
+   GLCD_RST_DIRECTION = output
 
-   _ks0108_on()                                    -- Turn the display on
-
-   glcd_clear_screen()                             -- Clear the display
+   glcd_clear_screen()                             -- reset and clear the display
 
 end procedure
 
@@ -434,7 +442,7 @@ const byte _font_5x7_table[] = {
 }
 
 -- ----------------------------------------------------------------------------
--- Putpose:   Write character to the display using internal font definition.
+-- Purpose:   Write character to the display using internal font definition.
 -- Arguments: - x- and y-coordinates (upper left corner of character pattern)
 --            - character to display
 -- Notes:     For characters the display is 8 lines, each 8 bits high;
@@ -444,7 +452,7 @@ procedure _ks0108_write_char(byte in x, byte in y, byte in ch) is
    var word indx
    var byte cx
    if (ch <  32) | (ch > 122) then                 -- only supported characters
-      return
+      ch = " "                                     -- replace it by a space
    end if
    indx = 5 * word(ch - 32)                        -- non proportional font, 5 pixels wide
    for 5 loop                                      -- 5 colums per character
@@ -475,7 +483,7 @@ end procedure
 if defined(GLCD_FONT_USAGE) then                   -- for use with font library
 
 -- ----------------------------------------------------------------------------
--- Same as _ks0108_write_char, but uses external font.
+-- Purpose:   Same as _ks0108_write_char, but uses external font.
 -- Arguments: - x-coordinate (in pixels) of left most pixel columm (range 0..127)
 --            - y-coordinate (in pixels) of upper most pixel-row (range 0..63)
 --              Note: will be rounded down to a multiple of 8 ('page' boundary)
@@ -486,8 +494,8 @@ if defined(GLCD_FONT_USAGE) then                   -- for use with font library
 procedure glcd_write_char(byte in x, byte in y, byte in ch ) is
    var word indx                                   -- position of bit pattern
    var byte cx                                     -- bit pattern
-   if (ch <  32) | (ch > 122) then                 -- skip unsupported chars
-      return
+   if (ch <  32) | (ch > 122) then                 -- unsupported char
+      ch = " "                                     -- replace it by a space
    end if
    indx = _glcd_font_current_byte_per_char * word(ch - 32)  -- non proportional font
    for _glcd_font_current_byte_per_char loop       -- whole character
