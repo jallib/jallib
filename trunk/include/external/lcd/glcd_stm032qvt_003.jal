@@ -2,7 +2,6 @@
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4k
--- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -52,18 +51,31 @@ const GLCD_COLOR_BITS = 16 -- 16bit color, 65535 colors
 ;const STM_CMD_TOP_RAM   = 0xC0
 
 --------------------------------------------------------------------------------
+-- Send a write pulse
+--------------------------------------------------------------------------------
+procedure stm_glcd_write_pulse() is
+   pragma inline
+   glcd_wr = 0
+   glcd_wr = 1
+end procedure
+
+--------------------------------------------------------------------------------
 -- Write a command
 --------------------------------------------------------------------------------
 procedure stm_glcd_write_command(word in data) is
    pragma inline
    var byte _data[2] at data
-   glcd_rs = 0
-	glcd_cs = 0	
+
+   glcd_rs = 0 -- select the command port
 	glcd_high_port = _data[1]	
-	glcd_low_port = _data[0]	
-	glcd_wr = 0
-	glcd_wr = 1
-	glcd_cs = 1	
+	glcd_low_port = _data[0]
+	
+	;glcd_cs = 0
+	stm_glcd_write_pulse()
+	;glcd_cs = 1	
+	
+	-- assume that data will be next
+   glcd_rs = 1 -- select the data port
 end procedure
 
 --------------------------------------------------------------------------------
@@ -73,19 +85,16 @@ procedure stm_glcd_write_data(word in data) is
    pragma inline -- pragma inline for faster color data writes
 
    var byte _data[2] at data
-   glcd_rs = 1
-   glcd_cs = 0	  				
-   
    glcd_high_port = _data[1]	
-   glcd_low_port = _data[0]					
-   glcd_wr = 0
-   glcd_wr = 1
+   glcd_low_port = _data[0]
    
-   glcd_cs = 1	
+   ;glcd_cs = 0	  				
+   stm_glcd_write_pulse()
+   ;glcd_cs = 1	
 end procedure
 
 --------------------------------------------------------------------------------
--- Write color in bytes
+-- Write color.
 --------------------------------------------------------------------------------
 procedure glcd_write_color(word in data) is
    ;pragma inline -- pragma inline not working
@@ -94,25 +103,30 @@ procedure glcd_write_color(word in data) is
 
    -- bug fix, don't know why this is needed
    -- maybe a problem with my lcd? already tested another PIC.
-   _data[1] = _data[1] | 1
+   ;_data[1] = _data[1] | 1
+   -- works after putting it on PCB. Maybe I should remove these notes?
 
-   glcd_rs= 1
-   glcd_cs = 0	  				
+   ;glcd_rs = 1
    glcd_high_port = _data[1]
-   glcd_low_port = _data[0]					
-   glcd_wr=0
-   glcd_wr=1
-   glcd_cs =1	
+   glcd_low_port = _data[0]
+   
+   ;glcd_cs = 0	  									
+   stm_glcd_write_pulse()
+   ;glcd_cs = 1	
 end procedure
 
+
+--------------------------------------------------------------------------------
+-- Write color in bytes
+--------------------------------------------------------------------------------
 procedure glcd_write_color_byte(byte in data_high,byte in data_low) is
-   glcd_rs=1
-   glcd_cs =0	  				
+   ;glcd_rs = 1
    glcd_high_port = data_high	
-   glcd_low_port = data_low					
-   glcd_wr=0
-   glcd_wr=1
-   glcd_cs =1	
+   glcd_low_port = data_low
+   
+   ;glcd_cs = 0	  									
+   stm_glcd_write_pulse()
+   ;glcd_cs = 1	
 end procedure
 
 --------------------------------------------------------------------------------
@@ -145,28 +159,28 @@ procedure glcd_write_pixel(byte in x,word in y) is
    glcd_write_color(glcd_pen_color)
 end procedure
 
-      --------------------------------------------------------------------------------
-      -- set start x,y and end x,y addresses
-      --------------------------------------------------------------------------------
-      procedure glcd_block_set_address(byte in x1,word in y1,byte in x2,word in y2) is
-         var byte _y1[2] at y1
-         var byte _y2[2] at y2
+--------------------------------------------------------------------------------
+-- set start x,y and end x,y addresses
+--------------------------------------------------------------------------------
+procedure glcd_block_set_address(byte in x1,word in y1,byte in x2,word in y2) is
+   var byte _y1[2] at y1
+   var byte _y2[2] at y2
 
-         stm_glcd_write_command_data(0x0002,0);	 -- Column address start2
-         stm_glcd_write_command_data(0x0003,x1);	 -- Column address start1
-         stm_glcd_write_command_data(0x0004,0);	 -- Column address end2
-         stm_glcd_write_command_data(0x0005,x2);	 -- Column address end1
-         stm_glcd_write_command_data(0x0006,_y1[1]);	 -- Row address start2
-         stm_glcd_write_command_data(0x0007,_y1[0]);	 -- Row address start1
-         stm_glcd_write_command_data(0x0008,_y2[1]);	 -- Row address end2
-         stm_glcd_write_command_data(0x0009,_y2[0]);	 -- Row address end1
-         stm_glcd_write_command(0x0022);	
-      end procedure
+   stm_glcd_write_command_data(0x0002,0);	 -- Column address start2
+   stm_glcd_write_command_data(0x0003,x1);	 -- Column address start1
+   stm_glcd_write_command_data(0x0004,0);	 -- Column address end2
+   stm_glcd_write_command_data(0x0005,x2);	 -- Column address end1
+   stm_glcd_write_command_data(0x0006,_y1[1]);	 -- Row address start2
+   stm_glcd_write_command_data(0x0007,_y1[0]);	 -- Row address start1
+   stm_glcd_write_command_data(0x0008,_y2[1]);	 -- Row address end2
+   stm_glcd_write_command_data(0x0009,_y2[0]);	 -- Row address end1
+   stm_glcd_write_command(0x0022);	
+end procedure
 
-      --------------------------------------------------------------------------------
-      -- draw a color after calling glcd_block_set_address
-      --------------------------------------------------------------------------------
-      alias glcd_block_write_color is glcd_write_color
+--------------------------------------------------------------------------------
+-- draw a color after calling glcd_block_set_address
+--------------------------------------------------------------------------------
+alias glcd_block_write_color is glcd_write_color
 
 
 
@@ -209,100 +223,107 @@ end procedure
 -- initalize glcd settings
 --------------------------------------------------------------------------------
 procedure stm_glcd_init() is
-   glcd_reset = 1;
-   delay_1ms(5);	
-   glcd_reset = 0;
-   delay_1ms(10);
-   glcd_reset = 1;
-   delay_1ms(20);
+   glcd_cs = 0 -- enable the glcd
+   
+   -- do it a few times, incase of data reception problems.
+   for 10 loop
 
-    --  VENDOR
-   stm_glcd_write_command_data(0x0046,0x00A4);
-   stm_glcd_write_command_data(0x0047,0x0053);
-   stm_glcd_write_command_data(0x0048,0x0000);
-   stm_glcd_write_command_data(0x0049,0x0044);
-   stm_glcd_write_command_data(0x004a,0x0004);
-   stm_glcd_write_command_data(0x004b,0x0067);
-   stm_glcd_write_command_data(0x004c,0x0033);
-   stm_glcd_write_command_data(0x004d,0x0077);
-   stm_glcd_write_command_data(0x004e,0x0012);
-   stm_glcd_write_command_data(0x004f,0x004C);
-   stm_glcd_write_command_data(0x0050,0x0046);
-   stm_glcd_write_command_data(0x0051,0x0044);
+      glcd_reset = 1
+      delay_1ms(5)	
+      glcd_reset = 0
+      delay_1ms(10)
+      glcd_reset = 1
+      delay_1ms(20)
 
-   --240x320 window setting
-   stm_glcd_write_command_data(0x0002,0x0000) -- Column address start2
-   stm_glcd_write_command_data(0x0003,0x0000) -- Column address start1
-   stm_glcd_write_command_data(0x0004,0x0000) -- Column address end2
-   stm_glcd_write_command_data(0x0005,0x00ef) -- Column address end1
-   stm_glcd_write_command_data(0x0006,0x0000) -- Row address start2
-   stm_glcd_write_command_data(0x0007,0x0000) -- Row address start1
-   stm_glcd_write_command_data(0x0008,0x0001) -- Row address end2
-   stm_glcd_write_command_data(0x0009,0x003f) -- Row address end1
+      -- Vendor
+      stm_glcd_write_command_data(0x0046,0x00A4)
+      stm_glcd_write_command_data(0x0047,0x0053)
+      stm_glcd_write_command_data(0x0048,0x0000)
+      stm_glcd_write_command_data(0x0049,0x0044)
+      stm_glcd_write_command_data(0x004a,0x0004)
+      stm_glcd_write_command_data(0x004b,0x0067)
+      stm_glcd_write_command_data(0x004c,0x0033)
+      stm_glcd_write_command_data(0x004d,0x0077)
+      stm_glcd_write_command_data(0x004e,0x0012)
+      stm_glcd_write_command_data(0x004f,0x004C)
+      stm_glcd_write_command_data(0x0050,0x0046)
+      stm_glcd_write_command_data(0x0051,0x0044)
 
-   -- Display Setting
-   stm_glcd_write_command_data(0x0001,0x0006) -- IDMON=0, INVON=1, NORON=1, PTLON=0
-   stm_glcd_write_command_data(0x0016,0x00C8) -- MY=0, MX=0, MV=0, ML=1, BGR=0, TEON=0   0048
-   stm_glcd_write_command_data(0x0023,0x0095) -- N_DC=1001 0101
-   stm_glcd_write_command_data(0x0024,0x0095) -- PI_DC=1001 0101
-   stm_glcd_write_command_data(0x0025,0x00FF) -- I_DC=1111 1111
+      --240x320 window size
+      stm_glcd_write_command_data(0x0002,0x0000) -- Column address start2
+      stm_glcd_write_command_data(0x0003,0x0000) -- Column address start1
+      stm_glcd_write_command_data(0x0004,0x0000) -- Column address end2
+      stm_glcd_write_command_data(0x0005,0x00ef) -- Column address end1
+      stm_glcd_write_command_data(0x0006,0x0000) -- Row address start2
+      stm_glcd_write_command_data(0x0007,0x0000) -- Row address start1
+      stm_glcd_write_command_data(0x0008,0x0001) -- Row address end2
+      stm_glcd_write_command_data(0x0009,0x003f) -- Row address end1
 
-   stm_glcd_write_command_data(0x0027,0x0002) -- N_BP=0000 0010
-   stm_glcd_write_command_data(0x0028,0x0002) -- N_FP=0000 0010
-   stm_glcd_write_command_data(0x0029,0x0002) -- PI_BP=0000 0010
-   stm_glcd_write_command_data(0x002a,0x0002) -- PI_FP=0000 0010
-   stm_glcd_write_command_data(0x002C,0x0002) -- I_BP=0000 0010
-   stm_glcd_write_command_data(0x002d,0x0002) -- I_FP=0000 0010
+      -- Display Setting
+      stm_glcd_write_command_data(0x0001,0x0006) -- IDMON=0, INVON=1, NORON=1, PTLON=0
+      stm_glcd_write_command_data(0x0016,0x00C8) -- MY=0, MX=0, MV=0, ML=1, BGR=0, TEON=0   0048
+      stm_glcd_write_command_data(0x0023,0x0095) -- N_DC=1001 0101
+      stm_glcd_write_command_data(0x0024,0x0095) -- PI_DC=1001 0101
+      stm_glcd_write_command_data(0x0025,0x00FF) -- I_DC=1111 1111
 
-   stm_glcd_write_command_data(0x003a,0x0001) -- N_RTN=0000, N_NW=001    0001
-   stm_glcd_write_command_data(0x003b,0x0000) -- P_RTN=0000, P_NW=001
-   stm_glcd_write_command_data(0x003c,0x00f0) -- I_RTN=1111, I_NW=000
-   stm_glcd_write_command_data(0x003d,0x0000) -- DIV=00
-   delay_1ms(1);
-   stm_glcd_write_command_data(0x0035,0x0038) -- EQS=38h
-   stm_glcd_write_command_data(0x0036,0x0078) -- EQP=78h
-   stm_glcd_write_command_data(0x003E,0x0038) -- SON=38h
-   stm_glcd_write_command_data(0x0040,0x000F) -- GDON=0Fh
-   stm_glcd_write_command_data(0x0041,0x00F0) -- GDOFF
+      stm_glcd_write_command_data(0x0027,0x0002) -- N_BP=0000 0010
+      stm_glcd_write_command_data(0x0028,0x0002) -- N_FP=0000 0010
+      stm_glcd_write_command_data(0x0029,0x0002) -- PI_BP=0000 0010
+      stm_glcd_write_command_data(0x002a,0x0002) -- PI_FP=0000 0010
+      stm_glcd_write_command_data(0x002C,0x0002) -- I_BP=0000 0010
+      stm_glcd_write_command_data(0x002d,0x0002) -- I_FP=0000 0010
 
-   -- Power Supply Setting
-   stm_glcd_write_command_data(0x0019,0x0049) -- CADJ=0100, CUADJ=100, OSD_EN=1 ,60Hz
-   stm_glcd_write_command_data(0x0093,0x000F) -- RADJ=1111, 100%
-   delay_1ms(1);
-   stm_glcd_write_command_data(0x0020,0x0040) -- BT=0100
-   stm_glcd_write_command_data(0x001D,0x0007) -- VC1=111   0007
-   stm_glcd_write_command_data(0x001E,0x0000) -- VC3=000
-   stm_glcd_write_command_data(0x001F,0x0004) -- VRH=0011
+      stm_glcd_write_command_data(0x003a,0x0001) -- N_RTN=0000, N_NW=001    0001
+      stm_glcd_write_command_data(0x003b,0x0000) -- P_RTN=0000, P_NW=001
+      stm_glcd_write_command_data(0x003c,0x00f0) -- I_RTN=1111, I_NW=000
+      stm_glcd_write_command_data(0x003d,0x0000) -- DIV=00
+      delay_1ms(1);
+      stm_glcd_write_command_data(0x0035,0x0038) -- EQS=38h
+      stm_glcd_write_command_data(0x0036,0x0078) -- EQP=78h
+      stm_glcd_write_command_data(0x003E,0x0038) -- SON=38h
+      stm_glcd_write_command_data(0x0040,0x000F) -- GDON=0Fh
+      stm_glcd_write_command_data(0x0041,0x00F0) -- GDOFF
 
-   --VCOM SETTING
-   stm_glcd_write_command_data(0x0044,0x004D) -- VCM=101 0000  4D
-   stm_glcd_write_command_data(0x0045,0x000E) -- VDV=1 0001   0011
-   delay_1ms(1);
-   stm_glcd_write_command_data(0x001C,0x0004) -- AP=100
-   delay_1ms(2);
+      -- Power Supply Setting
+      stm_glcd_write_command_data(0x0019,0x0049) -- CADJ=0100, CUADJ=100, OSD_EN=1 ,60Hz
+      stm_glcd_write_command_data(0x0093,0x000F) -- RADJ=1111, 100%
+      delay_1ms(1);
+      stm_glcd_write_command_data(0x0020,0x0040) -- BT=0100
+      stm_glcd_write_command_data(0x001D,0x0007) -- VC1=111   0007
+      stm_glcd_write_command_data(0x001E,0x0000) -- VC3=000
+      stm_glcd_write_command_data(0x001F,0x0004) -- VRH=0011
 
-   stm_glcd_write_command_data(0x001B,0x0018) -- GASENB=0, PON=0, DK=1, XDK=0, Vglcd_TRI=0, STB=0
-   delay_1ms(1);
-   stm_glcd_write_command_data(0x001B,0x0010) -- GASENB=0, PON=1, DK=0, XDK=0, Vglcd_TRI=0, STB=0
-   delay_1ms(1);
-   stm_glcd_write_command_data(0x0043,0x0080) --set VCOMG=1
-   delay_1ms(2);
+      --VCOM SETTING
+      stm_glcd_write_command_data(0x0044,0x004D) -- VCM=101 0000  4D
+      stm_glcd_write_command_data(0x0045,0x000E) -- VDV=1 0001   0011
+      delay_1ms(1);
+      stm_glcd_write_command_data(0x001C,0x0004) -- AP=100
+      delay_1ms(2);
 
-   -- Display ON Setting
-   stm_glcd_write_command_data(0x0090,0x007F) -- SAP=0111 1111
-   stm_glcd_write_command_data(0x0026,0x0004) --GON=0, DTE=0, D=01
-   delay_1ms(1);
-   stm_glcd_write_command_data(0x0026,0x0024) --GON=1, DTE=0, D=01
-   stm_glcd_write_command_data(0x0026,0x002C) --GON=1, DTE=0, D=11
-   delay_1ms(1);
-   stm_glcd_write_command_data(0x0026,0x003C) --GON=1, DTE=1, D=11
+      stm_glcd_write_command_data(0x001B,0x0018) -- GASENB=0, PON=0, DK=1, XDK=0, Vglcd_TRI=0, STB=0
+      delay_1ms(1);
+      stm_glcd_write_command_data(0x001B,0x0010) -- GASENB=0, PON=1, DK=0, XDK=0, Vglcd_TRI=0, STB=0
+      delay_1ms(1);
+      stm_glcd_write_command_data(0x0043,0x0080) --set VCOMG=1
+      delay_1ms(2);
 
-   -- INTERNAL REGISTER SETTING
-   stm_glcd_write_command_data(0x0057,0x0002) -- TEST_Mode=1: into TEST mode
-   stm_glcd_write_command_data(0x0095,0x0001) -- SET DISPLAY CLOCK AND PUMPING CLOCK TO SYNCHRONIZE
-   stm_glcd_write_command_data(0x0057,0x0000) -- TEST_Mode=0: exit TEST mode
-   --stm_glcd_write_command_data(0x0021,0x0000);
-   stm_glcd_write_command(0x0022);
+      -- Display ON Setting
+      stm_glcd_write_command_data(0x0090,0x007F) -- SAP=0111 1111
+      stm_glcd_write_command_data(0x0026,0x0004) --GON=0, DTE=0, D=01
+      delay_1ms(1);
+      stm_glcd_write_command_data(0x0026,0x0024) --GON=1, DTE=0, D=01
+      stm_glcd_write_command_data(0x0026,0x002C) --GON=1, DTE=0, D=11
+      delay_1ms(1);
+      stm_glcd_write_command_data(0x0026,0x003C) --GON=1, DTE=1, D=11
+
+      -- INTERNAL REGISTER SETTING
+      stm_glcd_write_command_data(0x0057,0x0002) -- TEST_Mode=1: into TEST mode
+      stm_glcd_write_command_data(0x0095,0x0001) -- SET DISPLAY CLOCK AND PUMPING CLOCK TO SYNCHRONIZE
+      stm_glcd_write_command_data(0x0057,0x0000) -- TEST_Mode=0: exit TEST mode
+
+      --stm_glcd_write_command_data(0x0021,0x0000)
+      stm_glcd_write_command(0x0022);
+   end loop
 end procedure
 
 --------------------------------------------------------------------------------
@@ -310,13 +331,18 @@ end procedure
 --------------------------------------------------------------------------------
 procedure glcd_clear_screen() is
    glcd_block_set_address(0,0,239,319)
+
+   ;glcd_cs = 0	
    for 320 loop
       for 240 loop
-          stm_glcd_write_data(glcd_background_color)
+      
+         ;stm_glcd_write_data(glcd_background_color)
+         var byte _data[2] at glcd_background_color
+         glcd_high_port = _data[1]	
+         glcd_low_port = _data[0]
+         stm_glcd_write_pulse()
+          
       end loop
    end loop
+   ;glcd_cs = 1	
 end procedure
-
-
-
-
