@@ -13,7 +13,7 @@
 --
 -- Description:
 -- Sample program for use with 128x64 graphics LCD
--- with KS0108 chipset, like the GDM12864A
+-- with KS0108 chipset, like the GDM12864A, using external fonts.
 --
 -- Sources:
 --
@@ -60,88 +60,50 @@ include delay
 include math
 include print
 
-include glcd_5x7_font                              -- font to be used
+include glcd_6x8_font                              -- font to be used
 include glcd_font                                  -- common font stuff
-glcd_font_use(FONT_5X7)                            -- activate font
+glcd_font_use(FONT_6X8)                            -- activate font
 
 include glcd_ks0108                                -- glcd device dependent library
-include glcd_common                                -- device independent glcd library
 
 glcd_init()                                        -- initialize display
 
 const byte str[] = "GLCD_TEST "
 
-glcd_background_color = GLCD_WHITE                  -- background color
+glcd_background_color = GLCD_WHITE                 -- background color
+glcd_pen_color = GLCD_BLACK                        -- pixel color
 
 var byte i = 0
-var sword dy = 0
+var byte d
 
 forever loop
 
-   glcd_pen_color = GLCD_BLACK                     -- pixel color
-
    glcd_clear_screen()
-   for GLCD_X_PIXELS / 5 using i loop
-      glcd_write_char(i*5, 0, "A" + i)             -- draw range of characters
+   delay_100ms(10)
+
+   for (GLCD_X_PIXELS / _glcd_font_current_width + 1) using i loop
+      glcd_write_char(i * _glcd_font_current_width, i, "A" + i)   -- every char 1 pixel-line lower
+      delay_100ms(1)
    end loop
-   for GLCD_X_PIXELS / 5 using i loop
-      glcd_write_char(i*5, 16, "a" + i)            -- same, but lower case
+
+   for (GLCD_X_PIXELS / _glcd_font_current_width + 1) using i loop
+      glcd_write_char(i * _glcd_font_current_width, 12 + i, "a" + i)  -- every char 1 pixel-line lower
+      delay_100ms(1)
    end loop
-   delay_100ms(10)
 
-   glcd_clear_screen()
-   glcd_box(GLCD_X_PIXELS / 4, GLCD_Y_PIXELS / 4,
-            GLCD_X_PIXELS / 4 * 3, GLCD_Y_PIXELS / 4 * 3)     -- draw a box
-   delay_100ms(10)
-   glcd_char_goto(GLCD_X_PIXELS/4 + 5, GLCD_Y_PIXELS/4 + 8)
-   print_string(glcd, str)                                    -- draw a string
-   delay_100ms(10)
-   glcd_char_goto(GLCD_X_PIXELS/4 + 5, GLCD_Y_PIXELS/4 + 16)
-   print_string(glcd, PICTYPE)                                -- another string
-   delay_100ms(10)
+-- Test to see if reads work also properly
 
-   glcd_clear_screen()                                             -- full circle
-   glcd_circle(GLCD_X_PIXELS / 2, GLCD_Y_PIXELS / 2, GLCD_Y_PIXELS / 2 - 1)
-   delay_100ms(10)
+-- for (GLCD_X_PIXELS - 1) using i loop
+--    d = _ks0108_read_byte(i, 8)                  -- page boundary: simple read
+--    _ks0108_write_byte(i, 44, d)
+-- end loop
+--
+-- for (GLCD_X_PIXELS - 1) using i loop
+--    d = _ks0108_read_byte(i, 12)                 -- page crossing: double read
+--    _ks0108_write_byte(i, 56, d)
+-- end loop
 
-   glcd_clear_screen()                                             -- half a circle
-   glcd_circle(GLCD_X_PIXELS / 2, GLCD_Y_PIXELS, GLCD_Y_PIXELS - 1)
-   delay_100ms(10)
-
-   glcd_clear_screen()                                             -- another half circle
-   glcd_circle(0, GLCD_Y_PIXELS / 2, GLCD_Y_PIXELS / 2 - 1)
-   delay_100ms(10)
-
-   glcd_clear_screen()
-   glcd_ellipse(GLCD_X_PIXELS / 2, GLCD_Y_PIXELS / 2,         -- full ellipse
-                GLCD_X_PIXELS / 2 - 1, GLCD_Y_PIXELS / 2 - 1)
-   delay_100ms(10)
-
-   glcd_clear_screen()
-   glcd_ellipse(0, GLCD_Y_PIXELS / 2,                         -- half ellipse
-                GLCD_X_PIXELS - 1, GLCD_Y_PIXELS / 2 - 1)
-   delay_100ms(10)
-
-   glcd_clear_screen()
-   for GLCD_X_PIXELS using i loop                             -- sine wave
-      dy = rsin8(sword(GLCD_Y_PIXELS / 2 - 1), sword(i) * 3)
-      glcd_write_pixel(i, byte(GLCD_Y_PIXELS / 2 - dy))
-   end loop
-   delay_100ms(10)
-
-   glcd_clear_screen()
-   for 2 loop
-      for ((GLCD_X_PIXELS / 2) - 1) using i loop              -- line animation
-         glcd_line(i * 2, 0, GLCD_X_PIXELS - i * 2 - 1, GLCD_Y_PIXELS - 1)
-         delay_1ms(10)
-      end loop
-      for (GLCD_Y_PIXELS - 1) using i loop
-         glcd_line(GLCD_X_PIXELS - 1, i, 0, GLCD_Y_PIXELS - i)
-         delay_1ms(10)
-      end loop
-      glcd_pen_color = GLCD_WHITE                  -- 'erase' first pattern
-   end loop
-   delay_100ms(10)
+   delay_100ms(50)
 
 end loop
 
