@@ -1,0 +1,111 @@
+-- ------------------------------------------------------
+-- Title: Graphics LCD sample of the Microchip pic18f6310
+--
+-- Author: Rob Hamerling, Copyright (c) 2011..2011, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4o
+-- Revision: $Revision:$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Sample program for use with 128x64 graphics LCD
+-- with KS0108 chipset, like the GDM12864A, using external fonts.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+-- chip setup
+include 18f6310
+
+pragma target clock   20_000_000                   -- Fosc
+
+pragma target OSC     hs
+pragma target FCMEN   disabled
+pragma target IESO    disabled
+pragma target WDT     disabled
+pragma target CCP2MUX pin_C1
+pragma target MCLR    external
+pragma target DEBUG   disabled
+
+-- GRAPHIC_LCD IO definition ------------------------
+var volatile byte GLCD_DATAPRT     is portD
+var volatile byte GLCD_DATAPRT_DIR is portD_direction
+
+var volatile bit GLCD_DI  is pin_E7
+var volatile bit GLCD_RW  is pin_E3
+var volatile bit GLCD_E   is pin_E5
+var volatile bit GLCD_CS1 is pin_B0
+var volatile bit GLCD_CS2 is pin_B1
+var volatile bit GLCD_RST is pin_B2
+
+var volatile bit GLCD_DI_DIRECTION  is pin_E7_direction
+var volatile bit GLCD_RW_DIRECTION  is pin_E3_direction
+var volatile bit GLCD_E_DIRECTION   is pin_E5_direction
+var volatile bit GLCD_CS1_DIRECTION is pin_B0_direction
+var volatile bit GLCD_CS2_DIRECTION is pin_B1_direction
+var volatile bit GLCD_RST_DIRECTION is pin_B2_direction
+
+const GLCD_CLIPPING = TRUE                         -- enable clipping (of ellipse)
+
+enable_digital_io()                                -- all pins digital I/O
+
+include delay
+include math
+include print
+
+include glcd_6x8_font                              -- font to be used
+include glcd_font                                  -- common font stuff
+glcd_font_use(FONT_6X8)                            -- activate font
+
+include glcd_ks0108                                -- glcd device dependent library
+include glcd_common                                -- common glcd library
+
+glcd_init()                                        -- initialize display
+
+const byte str[] = "GLCD_TEST"
+
+
+var byte  i
+var byte  x,y
+var sword dx,dy,r
+
+forever loop
+
+   glcd_clear_screen()
+   delay_100ms(2)
+   glcd_pen_color = GLCD_BLACK                     -- pixel color
+   glcd_background_color = GLCD_WHITE              -- background color
+
+   for GLCD_X_PIXELS using i loop                  -- sine wave
+      dy = rsin8(sword(GLCD_Y_PIXELS / 2 - 1), sword(i) * 3)
+      glcd_write_pixel(i, byte(GLCD_Y_PIXELS / 2 - dy))
+      dy = rcos8(sword(GLCD_Y_PIXELS / 2 - 1), sword(i) * 3)
+      glcd_write_pixel(i, byte(GLCD_Y_PIXELS / 2 - dy))
+   end loop
+   delay_100ms(20)
+
+   glcd_clear_screen()
+   delay_100ms(2)
+   x = GLCD_X_PIXELS / 2                           -- x-coord. center
+   y = GLCD_Y_PIXELS / 2                           -- y-coord. center
+   r = sword(GLCD_Y_PIXELS / 2 - 2)                -- radius
+   glcd_circle(x, y, byte(r) + 1)                  -- clock border
+   for 60 using i loop                             -- 'minutes' of the
+     polar_to_cartesian(r, sword(i) * 6 - 90, dx, dy)   -- delta-x, delta-y of hand
+     glcd_pen_color = GLCD_BLACK
+     glcd_line(x, y, byte(x + dx), byte(y + dy))   -- draw hand
+     delay_100ms(3)
+     glcd_pen_color = GLCD_WHITE
+     glcd_line(x, y, byte(x + dx), byte(y + dy))   -- erase hand
+   end loop
+   delay_100ms(10)
+
+end loop
+
