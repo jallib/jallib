@@ -1,338 +1,597 @@
+-- ---------------------------------------------------------------------------
 -- Title: Writes variables to output device
--- Author: Joep Suijs, Copyright (c) 2007..2008, all rights reserved.
--- Adapted-by: Joep Suijs, Michael Watterson
--- Compiler: >=2.2
+-- Author: Oliver "Kiste" Seitz, Copyright (c) 2011, all rights reserved.
+-- Based on the original print.jal library by Joep Suijs and Michael Watterson
+-- Adapted-by: Rob Hamerling
+-- Compiler: 2.4o
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Sources: 
--- 
--- Description: Outputs variables to output device.
--- formats: _decimal and _hex
--- vars:    bit, byte, sbyte, word, sword, dword, sdword
--- --  
--- Example:
--- --     
+-- Sources:
+--
+-- Description: .
+-- Prints variables to output device, typically an lcd or a serial port
+-- Input variables: bit, byte, sbyte, word, sword, dword, sdword
+-- Output formats: decimal, hexadecimal, binary and some specials
+-- .
+-- For decimal output an arbitrary variable size supported.
+-- The user may define a constant with a positive value greater than one.
+--   const PRINT_MAX_VAR_SIZE
+-- before including this library to specify the highest variable size
+-- is required for his program.
+-- When not specified by the user a default of 4 is used, which means
+-- variables upto dword or sdword are supported.
+-- .
+-- Examples:
+-- .
 -- var sword bhl = -684
--- --     
--- ; print the signed word to the LCD display
--- print_sword_dec(lcd_char, bhl)
--- --     
--- ; and now print the same signed word to the serial port
--- print_sword_dec(serial_hw_data, bhl)
--- --
--- ; Specials:
--- print_crlf(serial_hw_data)  -- print cr + lf to device
--- ; 
--- const byte str1[] = "JalLibWorld V1.0\n"     
--- print_string(serial_hw_data, str1) -- print string to device
--- ;
--- ; Note - the whole string - that is the length of the array - 
--- ; is printed. When you use a variable array to construct strings,
--- ; you might want to terminate at a termination character, like 0.
--- ; You can set this termination character with:
--- ; const print_string_terminator = 255
--- ; (or use a var if you want to change it runtime.)
--- ;
--- include print      
+-- .
+-- Print the signed word in decimal notation on an LCD
+--   print_sword_dec(lcd, bhl)
+-- will send "-684" to device 'lcd'
+-- .
+-- To send the same signed word to a serial port:
+--   print_sword_dec(serial_hw_data, bhl)
+-- .
+-- Specials:
+-- print_crlf(serial_hw_data) will send CR + LF to the device 'serial_hw_data'.
+-- .
+-- const byte str1[] = "JalLibWorld V1.0"
+-- print_string(lcd, str1) will display the string 'str' on an lcd.
+-- .
+-- . Note - the whole string - that is the length of the array -
+-- . is printed. When you use a variable array to construct strings,
+-- . you might want to terminate at a termination character like 0x00.
+-- . You can set this termination character with:
+-- . const byte print_string_terminator = 0x00
+-- . (or use a var if you want to change it at runtime.)
 --
--- Notes: 
---  print_sword_fp_dec uses "fixed point" integer, -127.256 to +127.256
---  Imagine the decimal. Thus 0x110 = 1.5 as 128 = 0.5 and 256 = 1
+-- Notes: .
+-- - This library replaces an older version which had no scalability.
+--   It should be compatible with the old library except for:
+--   * All procedures for binary output have been renamed to
+--     print_xxxx_bin() for name consistency with '_dec' and '_hex'.
+--   * print_bit_truefalse() has been renamed to print_bit_logic()
+--   * print_bit_highlow() has been renamed to print_bit_level()
+--   * print_bit_10() has been renamed to print_bit_level()
+--   * For renamed procedures a procedure issuing a deprecation
+--     warning is provided for compatibility.
+--   * The procedure print_sword_fp_dec() has been dropped.
+--     For output of fixed point numbers use the format library.
+--   * Some procedures are added to print signed bytes, words and double
+--     words in binary and hexadecimal format (without sign!).
 --
+--
+-- ---------------------------------------------------------------------------
 
-include jascii         
-         
-; prototypes
-procedure _print_universal_dec(volatile byte out device, dword in data, sbyte in divisor_index)
-procedure _print_suniversal_dec(volatile byte out device, sdword in data, sbyte in divisor_index)
-procedure print_byte_binary(volatile byte out device, byte in data)
+if !defined(PRINT_MAX_VAR_SIZE) then               -- not user defined
+-- Constant to define the maximum supported variable size (in bytes)
+-- to be supported by this library.
+const  PRINT_MAX_VAR_SIZE = 4                      -- default for compatibility with old print.jal
+end if
 
-const byte nibble2hex[] = "0123456789ABCDEF"   -- conversion string
+include jascii                                     -- symbolic ASCII character definitions
 
-var bit print_prefix = false        
+-- Variable to indicate if formatted variables should have a prefix.
+-- When specified 'TRUE' the following prefixes will be part of the output:
+--   - binary formats will be prefixed with '0b'
+--   - hexadecimal formats will be prefixed with '0x'
+--   - (decimal formats never have prefixes)
+var bit print_prefix = FALSE                       -- default: no '0x' or '0b' prefixes
 
+
+
+-- --------------------------------------------------------------
+-- Title:     Print Carriage Return + LineFeed
+-- Arguments: - device name
+-- Returns:   nothing
+-- --------------------------------------------------------------
 procedure print_crlf(volatile byte out device) is
-   device = ASCII_CR -- cariage return
-   device = ASCII_LF -- line feed
+   device = ASCII_CR                               -- cariage return
+   device = ASCII_LF                               -- line feed
 end procedure
 
+
+-- --------------------------------------------------------------
+-- Title:     Print string
+-- Arguments: - device name
+--            - string (array of bytes)
+-- Returns:   nothing
+-- --------------------------------------------------------------
 procedure print_string(volatile byte out device, byte in str[]) is
    var word len = count(str)
    var byte i
-   
-   for len using i loop           
-      if (defined(print_string_terminator) == true) then
-         if (str[i] == print_string_terminator) then exit loop end if
-      end if         
+   for len using i loop
+      if (defined(print_string_terminator) == TRUE) then
+         if (str[i] == print_string_terminator) then
+            exit loop
+         end if
+      end if
       device = str[i]
    end loop
-      
 end procedure
 
+
+-- --------------------------------------------------------------
+-- Title:     Print logical value of a bit
+-- Arguments: - device name
+--            - bit
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_bit_logic(volatile byte out device, bit in data) is
+   const byte str1[] = "TRUE"
+   const byte str0[] = "FALSE"
+   if (data == TRUE) then
+      print_string(device, str1)
+   else
+      print_string(device, str0)
+   end if
+end procedure
+
+-- Deprecated
 procedure print_bit_truefalse(volatile byte out device, bit in data) is
-   
-   const byte str1[] = "true"   
-   const byte str0[] = "false"   
+   _warn "print_bit_truefalse() is deprecated - please use print_bit_logic()"
+   print_bit_logic(device, data)
+end procedure
 
-   if (data) then
+
+-- --------------------------------------------------------------
+-- Title:     Print voltage level of a bit
+-- Arguments: - device name
+--            - bit
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_bit_level(volatile byte out device, bit in data) is
+   const byte str1[] = "HIGH"
+   const byte str0[] = "LOW"
+   if (data == HIGH) then
       print_string(device, str1)
    else
       print_string(device, str0)
    end if
-         
 end procedure
 
+-- Deprecated
 procedure print_bit_highlow(volatile byte out device, bit in data) is
-   
-   const byte str1[] = "high"   
-   const byte str0[] = "low"   
-
-   if (data) then
-      print_string(device, str1)
-   else
-      print_string(device, str0)
-   end if
-         
+   _warn "print_bit_highlow() is deprecated - please use print_bit_level()"
+   print_bit_level(device, data)
 end procedure
 
-procedure print_bit_10(volatile byte out device, bit in data) is
-   
-   if (data) then
+
+-- --------------------------------------------------------------
+-- Title:     Print binary value of a bit
+-- Arguments: - device name
+--            - bit
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_bit_bin(volatile byte out device, bit in data) is
+   if (print_prefix == TRUE) then
+      device = "0"
+      device = "b"
+   end if
+   if (data == 1) then
       device = "1"
    else
       device = "0"
    end if
-         
 end procedure
 
-procedure print_dword_binary(volatile byte out device, dword in data) is
-   
-   if (print_prefix) then
+-- Deprecated
+procedure print_bit_10(volatile byte out device, bit in data) is
+   _warn "print_bit_10() is deprecated - please use print_bit_bin()"
+   print_bit_bin(device, data)
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print nibble binary
+-- Arguments: - device name
+--            - nibble (bit*4 variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_nibble_bin(volatile byte out device, byte in data) is
+   if (print_prefix == TRUE) then
       device = "0"
       device = "b"
    end if
-
-   print_byte_binary(device, byte(data>>24))
-   print_byte_binary(device, byte(data>>16))
-   print_byte_binary(device, byte(data>>8))
-   print_byte_binary(device, byte(data))
-   
-end procedure
-
-procedure print_word_binary(volatile byte out device, word in data) is
-
-   if (print_prefix) then
-      device = "0"
-      device = "b"
-   end if
-   
-   print_byte_binary(device, byte(data>>8))
-   print_byte_binary(device, byte(data))
-   
-end procedure
-
-
-procedure print_byte_binary(volatile byte out device, byte in data) is
-   
-   if (print_prefix) then
-      device = "0"
-      device = "b"
-   end if
-
-   for 8 loop    
-      if ((data & 0x80) != 0) then
-         device = "1"
-      else
-         device = "0"
-      end if
-      data = data * 2
-   end loop
-   
-end procedure
-
-
-procedure print_nibble_binary(volatile byte out device, byte in data) is
-   
-   for 4 loop    
-      if ((data & 0x08) != 0) then
+   var bit high_bit at data:3
+   for 4 loop
+      if (high_bit) then
          device = "1"
       else
          device = "0"
       end if
       data = data << 1
    end loop
-   
+end procedure
+
+-- Deprecated
+procedure print_nibble_binary(volatile byte out device, bit in data) is
+   _warn "print_nibble_binary() is deprecated - please use print_nibble_bin()"
+   print_nibble_bin(device, data)
 end procedure
 
 
-
-procedure print_dword_hex(volatile byte out device, dword in data) is
-
-   if (print_prefix) then
+-- --------------------------------------------------------------
+-- Title:     Print unsigned byte binary
+-- Arguments: - device name
+--            - byte
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_byte_bin(volatile byte out device, byte in data) is
+   if (print_prefix == TRUE) then
       device = "0"
-      device = "x"
+      device = "b"
    end if
-      
-   device = nibble2hex[0x0F & (data>>28)]
-   device = nibble2hex[0x0F & (data>>24)]
-   device = nibble2hex[0x0F & (data>>20)]
-   device = nibble2hex[0x0F & (data>>16)]
-   device = nibble2hex[0x0F & (data>>12)]
-   device = nibble2hex[0x0F & (data>>8)]
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
-   
-end procedure
-
-procedure print_sdword_hex(volatile byte out device, sdword in data) is
-
-   if (print_prefix) then
-      device = "0"
-      device = "x"
-   end if
-      
-   device = nibble2hex[0x0F & (data>>28)]
-   device = nibble2hex[0x0F & (data>>24)]
-   device = nibble2hex[0x0F & (data>>20)]
-   device = nibble2hex[0x0F & (data>>16)]
-   device = nibble2hex[0x0F & (data>>12)]
-   device = nibble2hex[0x0F & (data>>8)]
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
-   
-end procedure
-
-
-procedure print_word_hex(volatile byte out device, word in data) is
-
-   if (print_prefix) then
-      device = "0"
-      device = "x"
-   end if
-   
-   device = nibble2hex[0x0F & (data>>12)]
-   device = nibble2hex[0x0F & (data>>8)]
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
-   
-end procedure
-
-
-procedure print_sword_hex(volatile byte out device, sword in data) is
-
-   if (print_prefix) then
-      device = "0"
-      device = "x"
-   end if
-   
-   device = nibble2hex[0x0F & (data>>12)]
-   device = nibble2hex[0x0F & (data>>8)]
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
-   
-end procedure
-
-
-
-
-procedure print_byte_hex(volatile byte out device, byte in data) is             
-
-   if (print_prefix) then
-      device = "0"
-      device = "x"
-   end if
-
-   device = nibble2hex[0x0F & (data>>4)]
-   device = nibble2hex[0x0F & (data)]
-   
-end procedure
-
-procedure print_sdword_dec(volatile byte out device, sdword in data) is
-
-   _print_suniversal_dec(device, data, 9)
-
-end procedure
-
-procedure print_sword_dec(volatile byte out device, sword in data) is
-
-   _print_suniversal_dec(device, data, 4)
-
-end procedure
-
--- 8 bit fixed point integer math
-procedure print_sword_fp_dec(volatile byte out device, sword in data) is
-
-   _print_suniversal_dec(device, (data >> 8), 4) -- whole part
-   device = "."
-   _print_suniversal_dec(device, (data & 0xFF), 4) -- decimal part
-end procedure
-
-procedure print_sbyte_dec(volatile byte out device, sbyte in data) is
-
-   _print_suniversal_dec(device, data, 2)
-      
-end procedure
-
-procedure print_dword_dec(volatile byte out device, dword in data) is
-
-   _print_universal_dec(device, data, 9)
-
-end procedure
-
-procedure print_word_dec(volatile byte out device, word in data) is
-
-   _print_universal_dec(device, data, 4)
-
-end procedure
-
-procedure print_byte_dec(volatile byte out device, byte in data) is
-
-   _print_universal_dec(device, data, 2)
-      
-end procedure
-
-
-
-
-procedure _print_suniversal_dec(volatile byte out device, sdword in data, sbyte in divisor_index) is
-   
-   if (data < 0) then
-      data = -data
-      device = "-"      
-   end if
-
-   _print_universal_dec(device, dword( data ), divisor_index)
-      
-end procedure
-
-const dword digit_divisor[] = { 1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000 }
-procedure _print_universal_dec(volatile byte out device, dword in data, sbyte in divisor_index) is
-   var byte digit
-   var bit  no_digits_printed_yet;
-   
-   if (data == 0) then
-      device = "0"      
-      return
-   end if
-
-   no_digits_printed_yet = true
-   while (divisor_index >= 0) loop   
-      if (data >= digit_divisor[divisor_index]) then
-         digit = byte ( data / digit_divisor[divisor_index] )
-         data = data % digit_divisor[divisor_index]  
+   var bit high_bit at data:7
+   for 8 loop
+      if (high_bit) then
+         device = "1"
       else
-         digit = 0
+         device = "0"
       end if
-;      digit_divisor = digit_divisor / 10
-      divisor_index = divisor_index - 1
-      
-      if ((digit != 0) | (no_digits_printed_yet == false)) then
-         device = digit | "0"
-         no_digits_printed_yet = false
-      end if
+      data = data << 1
    end loop
-      
 end procedure
+
+-- Deprecated
+procedure print_byte_binary(volatile byte out device, byte in data) is
+   _warn "print_byte_binary() is deprecated - please use print_byte_bin()"
+   print_byte_bin(device, data)
+end procedure
+
+-- --------------------------------------------------------------
+-- Title:     Print signed byte binary
+-- Arguments: - device name
+--            - sbyte
+-- Returns:   nothing
+-- Notes:     Sign is ignored for binary format
+-- --------------------------------------------------------------
+procedure print_sbyte_bin(volatile byte out device, sbyte in data) is
+   print_byte_bin(device, byte(data))
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned word binary
+-- Arguments: - device name
+--            - word (byte*2 variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_word_bin(volatile byte out device, word in data) is
+   var bit save_prefix = print_prefix              -- save prefix
+   if (print_prefix == TRUE) then
+      device = "0"
+      device = "b"
+   end if
+   print_prefix = FALSE                            -- no more prefixes
+   var byte a_data[2] at data
+   print_byte_bin(device, a_data[1])
+   print_byte_bin(device, a_data[0])
+   print_prefix = save_prefix                      -- restore prefix
+end procedure
+
+-- Deprecated
+procedure print_word_binary(volatile byte out device, word in data) is
+   _warn "print_word_binary() is deprecated - please use print_word_bin()"
+   print_word_bin(device, data)
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print signed word binary
+-- Arguments: - device name
+--            - sword (byte*2 variable)
+-- Returns:   nothing
+-- Notes:     Sign is ignored for binary format
+-- --------------------------------------------------------------
+procedure print_sword_bin(volatile byte out device, sword in data) is
+   print_word_bin(device, word(data))
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned double word binary
+-- Arguments: - device name
+--            - dword (byte*4 variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_dword_bin(volatile byte out device, dword in data) is
+   var bit save_prefix = print_prefix              -- save prefix
+   if (print_prefix == TRUE) then
+      device = "0"
+      device = "b"
+   end if
+   print_prefix = FALSE                            -- no more prefixes
+   var word a_data[2] at data
+   print_word_bin(device, a_data[1])
+   print_word_bin(device, a_data[0])
+   print_prefix = save_prefix                      -- restore prefix
+end procedure
+
+-- Deprecated
+procedure print_dword_binary(volatile byte out device, dword in data) is
+   _warn "print_dword_binary() is deprecated - please use print_dword_bin()"
+   print_dword_bin(device, data)
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print signed double word binary
+-- Arguments: - device name
+--            - sdword (byte*4 variable)
+-- Returns:   nothing
+-- Notes:     Sign is ignored for binary format
+-- --------------------------------------------------------------
+procedure print_sdword_bin(volatile byte out device, dword in data) is
+   print_dword_bin(device, dword(data))
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Convert nibble to hexadecimal digit (ASCII printable)
+-- Arguments: nibble (bit*4 variable)
+-- Returns:   byte
+-- --------------------------------------------------------------
+function nibble2hex(bit*4 in nibble) return byte is
+   pragma inline
+   var byte convert = byte(nibble) + "0"
+   if (convert > "9") then
+     convert=convert + ( "A" - "0" - 10)
+   end if
+   return convert
+end function
+
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned byte hexadecimal
+-- Arguments: - device name
+--            - byte
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_byte_hex(volatile byte out device, byte in data) is
+   if (print_prefix == TRUE) then
+      device = "0"
+      device = "x"
+   end if
+   device = nibble2hex(data>>4)
+   device = nibble2hex(data)
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print signed byte hexadecimal
+-- Arguments: - device name
+--            - sbyte
+-- Returns:   nothing
+-- Notes:     Sign is ignored for hexadecimal format
+-- --------------------------------------------------------------
+procedure print_sbyte_hex(volatile byte out device, sbyte in data) is
+   print_byte_hex(device, byte(data))              -- sign ignored
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned word hexadecimal
+-- Arguments: - device name
+--            - word (byte*2 variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_word_hex(volatile byte out device, word in data) is
+   var bit save_prefix = print_prefix              -- save prefix
+   if (print_prefix == TRUE) then
+      device = "0"
+      device = "x"
+   end if
+   print_prefix = FALSE                            -- no more prefixes
+   var byte a_data[2] at data
+   print_byte_hex(device,a_data[1])
+   print_byte_hex(device,a_data[0])
+   print_prefix = save_prefix                      -- restore prefix
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print signed word hexadecimal
+-- Arguments: - device name
+--            - sword (sbyte*2 variable)
+-- Returns:   nothing
+-- Notes:     Sign is ignored for hexadecimal format
+-- --------------------------------------------------------------
+procedure print_sword_hex(volatile byte out device, sword in data) is
+   print_word_hex(device, word(data))              -- sign ignored
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned double word hexadecimal
+-- Arguments: - device name
+--            - dword (byte*4 variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_dword_hex(volatile byte out device, dword in data) is
+   var bit save_prefix = print_prefix              -- save prefix
+   if (print_prefix == TRUE) then
+      device = "0"
+      device = "x"
+   end if
+   print_prefix = FALSE                            -- no more prefixes
+   var byte a_data[4] at data
+   print_byte_hex(device,a_data[3])
+   print_byte_hex(device,a_data[2])
+   print_byte_hex(device,a_data[1])
+   print_byte_hex(device,a_data[0])
+   print_prefix = save_prefix                      -- restore original prefix
+end procedure
+
+
+
+-- --------------------------------------------------------------
+-- Title:     Print signed double word hexadecimal
+-- Arguments: - device name
+--            - sdword (sbyte*4 variable)
+-- Returns:   nothing
+-- Notes:     Sign is ignored for hexadecimal format
+-- --------------------------------------------------------------
+procedure print_sdword_hex(volatile byte out device, sdword in data) is
+   print_dword_hex(device, dword(data))            -- sign ignored
+end procedure
+
+
+
+-- Global variable to determine number of decimal digits
+var byte*PRINT_MAX_VAR_SIZE  _print_dec_divisor
+
+
+-- --------------------------------------------------------------
+-- Title:     Multiply _print_dec_divisor by 10
+-- Arguments: none
+-- Returns:   nothing
+-- Notes:     Used to determine the number of decimal digits
+-- --------------------------------------------------------------
+procedure _make_tenfold_divisor() is
+--  _print_dec_divisor = (_print_dec_divisor<<1)+(_print_dec_divisor<<3)
+--  This is the line that did limit the variable size to 128 bytes.
+--  The new approach is also cheaper on code and ram
+  var byte*PRINT_MAX_VAR_SIZE temp                 -- intermediate value
+  _print_dec_divisor = _print_dec_divisor << 1     -- old * 2
+  temp = _print_dec_divisor << 2                   -- old * 8
+  _print_dec_divisor = _print_dec_divisor + temp   -- new = old * 10
+--  could perhaps be replaced by ...*10 on PIC_16 cores from compiler 2.4p on.
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned decimal value
+-- Arguments: - device name
+--            - decimal variable (byte*PRINT_MAX_VAR_SIZE variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_maxvar_dec(volatile byte out device, byte*PRINT_MAX_VAR_SIZE in data) is
+  var word counter
+  var byte digit
+  --  max_digits = word((dword(PRINT_MAX_VAR_SIZE)*240824)/100_000)+1
+  --  this result is accurate to up to 12499 byte or 30101 decimal digits
+  _print_dec_divisor = 1
+  counter = 0
+  -- find number of really needed digits
+  while (_print_dec_divisor <= data)  &
+        (counter < PRINT_MAX_VAR_SIZE * 240824 / 100_000 + 1) loop
+     _make_tenfold_divisor()                       -- * 10
+     counter = counter + 1
+  end loop
+  if counter == 0 then                             -- Data is 0, print one digit then
+     counter=1
+  end if
+  repeat
+     counter = counter - 1
+     _print_dec_divisor = 1
+     for counter loop                              -- set divisor to ten to the power of counter
+        _make_tenfold_divisor()
+     end loop
+     digit = "0"
+     while data >= _print_dec_divisor loop
+        data = data - _print_dec_divisor
+        digit = digit + 1
+     end loop
+     device = digit
+  until counter == 0
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print signed decimal value
+-- Arguments: - device name
+--            - decimal variable (byte*PRINT_MAX_VAR_SIZE variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_maxsvar_dec(volatile byte out device, sbyte*PRINT_MAX_VAR_SIZE in data) is
+   if data<0 then
+      device = "-"                                 -- sign (when negative)
+      data = -data                                 --
+   end if
+   print_maxvar_dec(device, byte*PRINT_MAX_VAR_SIZE(data))
+end procedure
+
+
+
+if (PRINT_MAX_VAR_SIZE > 3) then
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned double word decimal
+-- Arguments: - device name
+--            - dword (byte*4 variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_dword_dec(volatile byte out device, dword in data) is
+   print_maxvar_dec(device, byte*PRINT_MAX_VAR_SIZE(data))
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print signed double word decimal
+-- Arguments: - device name
+--            - sdword (sbyte*4 variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_sdword_dec(volatile byte out device, sdword in data) is
+   print_maxsvar_dec(device, sbyte*PRINT_MAX_VAR_SIZE(data))
+end procedure
+
+end if     -- (PRINT_MAX_VAR_SIZE > 3)
+
+
+if PRINT_MAX_VAR_SIZE > 1 then
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned word decimal
+-- Arguments: - device name
+--            - word (byte*2 variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_word_dec(volatile byte out device, word in data) is
+   print_maxvar_dec(device, byte*PRINT_MAX_VAR_SIZE(data))
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print signed word decimal
+-- Arguments: - device name
+--            - sword (sbyte*2 variable)
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_sword_dec(volatile byte out device, sword in data) is
+   print_maxsvar_dec(device, sbyte*PRINT_MAX_VAR_SIZE(data))
+end procedure
+
+end if     -- (PRINT_MAX_VAR_SIZE > 1)
+
+
+if PRINT_MAX_VAR_SIZE > 0 then
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned byte decimal
+-- Arguments: - device name
+--            - byte
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_byte_dec(volatile byte out device, byte in data) is
+   print_maxvar_dec(device, byte*PRINT_MAX_VAR_SIZE(data))
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Print unsigned byte decimal
+-- Arguments: - device name
+--            - byte
+-- Returns:   nothing
+-- --------------------------------------------------------------
+procedure print_sbyte_dec(volatile byte out device, sbyte in data) is
+   print_maxsvar_dec(device, sbyte*PRINT_MAX_VAR_SIZE(data))
+end procedure
+
+end if     -- (PRINT_MAX_VAR_SIZE > 0)
+
+
