@@ -1,4 +1,4 @@
--- Title: IR capture from TSOP receiver, with conversion to USB serial 
+-- Title: IR capture from TSOP receiver, with conversion to USB serial
 -- Author: Alexey Studenikin stalex@gmail.com , Copyright (c) 2011, all rights reserved.
 -- Adapted-by:
 -- Compiler: 2.4o
@@ -8,7 +8,7 @@
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description: demo showing how to analyze of IR-remote timing between interrupts from
--- TSOP IR receiver connected to INT0 input. Footprint of signals of different keys from 
+-- TSOP IR receiver connected to INT0 input. Footprint of signals of different keys from
 -- IR-remote are displayed though serial over USB
 --
 
@@ -60,10 +60,10 @@ var byte realtrainlen=0 -- real length of train
 
 procedure int_isr() is
    pragma interrupt
-   
+
    if INTCON_INT0IF then -- if interrupt from INT0
       INTCON_INT0IF = off -- flushing flag
-      
+
       if (buttonnumber == 0) then -- if first packet in train - initialize timer and variables
          buttonnumber = buttonnumber+1
          trainnum = 0
@@ -71,24 +71,24 @@ procedure int_isr() is
          TMR1L = 0
          T1CON_TMR1ON = on
       end if
-      
+
       if  (buttonnumber>0) then
          T1CON_TMR1ON = off   -- stopping timer while writing
          trainh[trainnum] = TMR1H
          trainl[trainnum] = TMR1L
          trainnum = trainnum+1
-         
+
          TMR1H = 0  --  zeroing timer
          TMR1L = 0
          T1CON_TMR1ON = on -- starting timer again
       end if
    end if
-   
+
    if PIR1_TMR1IF then -- if we have interrupt from timer that means that train of packets have finished
       PIR1_TMR1IF = off -- flushing flag
       T1CON_TMR1ON = off --  stopping timers
       PIE1_TMR1IE = off  --  disabling interrupt from timer
-      
+
       realtrainlen = trainnum
       trainnum = len --  making 'flag' to start procedure of analyzing whole train
    end if
@@ -108,20 +108,20 @@ var dword keynum = 0
 -- main loop
 forever loop
 
-   -- poll the usb ISR function on a regular base, in order to 
+   -- poll the usb ISR function on a regular base, in order to
    -- serve the USB requests
    usb_serial_flush()
-   
+
    -- check if USB device has been configured by the HOST
    if (usb_cdc_line_status() !=  0x00)  then
       if !has_shown_welcome_msg then
          has_shown_welcome_msg = true
          print_string(usb_serial_data, str_welcome)
-      end if	
+      end if
    else
       has_shown_welcome_msg = false
    end if
-   
+
    -- if we already have len(full) 'bits' and 'ticks'
    var word t = 0
    if (trainnum >= len) then
@@ -130,12 +130,12 @@ forever loop
       T1CON_TMR1ON = off
       PIE1_TMR1IE = off
       keynum = 0
-      
+
       -- clearing double press
       -- comment this if you need to works with long press of button, such as Volume up|down
-      if (realtrainlen > 30) then 
+      if (realtrainlen > 30) then
          if (realtrainlen < 50) then
-            
+
             print_crlf(usb_serial_data)
             -- in my IR-remote the meaningful information is between 17 and 17+17 "bits" , change it for your case
             -- so lets convert from high byte of timer ticks between int0 to binary dword 'keynumber' of button of IR-transmitter
@@ -143,9 +143,9 @@ forever loop
                i1 = i+17
                -- convert intervals between changes of input from IR receiver from hight timer ticks to 'bits'
                -- in your case there may be another values, you can see 'raw' intervals in code below
-               if (trainh[i1] > 0) then 
+               if (trainh[i1] > 0) then
                   if (trainh[i1] <= 7) then
-                     t = 0 
+                     t = 0
                   end if
                end if
                if (trainh[i1] > 7) then
@@ -158,38 +158,38 @@ forever loop
                      t = 2
                   end if
                end if
-               
-               
+
+
                -- convert from binary array to one  dword
                if (t == 1) then
                   keynum = keynum + 1
                end if
                keynum = keynum << 1
-               
+
                -- let's see binary 'keynumber'
                print_word_dec(usb_serial_data,t)
-               
-               -- if needed we can print whole array of numbers of 
+
+               -- if needed we can print whole array of numbers of
                -- timer ticks between interrupts from int0
                print_byte_dec(usb_serial_data,trainh[i1])
                usb_serial_data = "_"
                print_byte_dec(usb_serial_data,trainl[i1])
-               
+
                usb_serial_data = "["
                print_byte_dec(usb_serial_data,i1)
                usb_serial_data = "]"
                usb_serial_data = " "
 
             end loop
-            
+
             -- print resulting 'keynber' and real length of train
             usb_serial_data = "_"
-            print_dword_binary(usb_serial_data,keynum)
+            print_dword_bin(usb_serial_data,keynum)
             usb_serial_data = "_"
             print_dword_dec(usb_serial_data,keynum)
             usb_serial_data = "_"
             print_byte_dec(usb_serial_data, realtrainlen )
-            
+
             -- do something on different keynumber - optional,
             -- change keynumber to what are you receive from your IR-remote
             case keynum of
@@ -223,17 +223,17 @@ forever loop
                   delay_1ms(5)
                   led3 = off
                end block
-               
-               
+
+
             end case
             delay_1ms(300)
-            
+
             -- getting ready to receive another button
 
             -- end of clearing double press
 
          end if
-      end if 
+      end if
 
       trainnum = 0
       i = 0
@@ -241,8 +241,8 @@ forever loop
       keynum = 0
       INTCON_INT0IE = on
       PIE1_TMR1IE = on
-      
+
    end if
-   
+
 end loop
 
