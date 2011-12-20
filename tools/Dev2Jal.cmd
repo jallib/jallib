@@ -44,6 +44,7 @@
    ScriptVersion   = '0.1.25'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
+   MPlabVersion    = '8.83'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated               */
@@ -58,7 +59,7 @@ msglevel = 1
 /* For any system or platform the following base information must be        */
 /* specified as a minimum.                                                  */
 
-MPLABbase  = 'k:/mplab880/'                      /* base directory of MPLAB */
+MPLABbase  = 'k:/mplab'left(MPlabVersion,1)||right(MPlabVersion,2)'/'
 JALLIBbase = 'k:/jallib/'          /* base directory of JALLIB (local copy) */
 
 /* When using 'standard' installations no other changes are needed,         */
@@ -126,6 +127,8 @@ end
 /* --------------- here the real process begins  --------------------------- */
 
 call time 'R'                                               /* reset 'elapsed' timer */
+
+call msg 0, 'Creating Jallib device files based on MPLAB version' MPlabVersion
 
 '@erase' translate(dstdir'*.jal','\','/') '1>nul 2>nul'     /* empty destination dir */
 
@@ -289,6 +292,7 @@ DataStart  = '0x400'                                        /* default */
 NumBanks   = 1                                              /* default */
 StackDepth = 2                                              /* default */
 adcs_bitcount = 0                                           /* # ADCONx_ADCS bits */
+HasLATReg  = 0                                              /* no LAT registers found yet */
 
 call load_stackdepth                                        /* check stack depth */
 call load_sfr1x                                             /* load sfr + mirror info */
@@ -318,6 +322,7 @@ DataStart  = '0x2100'                                       /* default */
 NumBanks   = 1                                              /* default */
 StackDepth = 8                                              /* default */
 adcs_bitcount = 0                                           /* # ADCONx_ADCS bits */
+HasLATReg  = 0                                              /* no LAT registers found yet */
 
 call load_stackdepth                                        /* check stack depth */
 call load_sfr1x                                             /* load sfr + mirror info */
@@ -347,6 +352,7 @@ DataStart  = '0xF000'                                       /* default */
 NumBanks   = 32                                             /* default */
 StackDepth = 16                                             /* default */
 adcs_bitcount = 0                                           /* # ADCONx_ADCS bits */
+HasLATReg  = 0                                              /* no LAT registers found yet */
 
 call load_stackdepth                                        /* check stack depth */
 call load_sfr1x                                             /* load sfr + mirror info */
@@ -664,7 +670,7 @@ return
 /* input:  - nothing                                          */
 /* 12-bit and 14-bit core                                     */
 /* ---------------------------------------------------------- */
-load_sfr1x: procedure expose Dev. Name. Ram. core MAXRAM NumBanks msglevel
+load_sfr1x: procedure expose Dev. Name. Ram. core MAXRAM NumBanks HasLATReg msglevel
 do i = 0 to MAXRAM - 1                                      /* whole range */
    Ram.i = 0                                                /* mark whole RAM as unused */
 end
@@ -736,6 +742,11 @@ do i = 1 to Dev.0
          Ram.k = -1                                         /* mark 'unused' */
       end
       iterate
+   end
+   parse var Dev.i  val0 '(KEY='reg .
+   if left(reg,3) = 'LAT' then do
+      HasLATReg = HasLATReg + 1
+/*    call msg  1, 'LATx register found:' reg   */
    end
 end
 return 0
@@ -1218,7 +1229,7 @@ return
 /* 12-bit and 14-bit core                               */
 /* ---------------------------------------------------- */
 list_sfr1x: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
-                             adcs_bitcount jalfile BANKSIZE NumBanks msglevel
+                             adcs_bitcount jalfile BANKSIZE HasLATReg NumBanks msglevel
 PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then                           /* skip non SFRs */
@@ -1251,17 +1262,18 @@ do i = 1 to Dev.0
                                                             /*     16f882,3,4,6,7   */
             call lineout jalfile, 'alias              ' left('BAUDCON',25) 'is' reg
          end
-         when left(reg,3) = 'LAT' then do                   /* LATx register (10F3xx, 12F/HV752) */
+         when left(reg,3) = 'LAT' then do                   /* LATx register (10F3xx, 12xx752) */
             call list_port16_shadow reg                     /* force use of LATx (core 16 like) */
                                                             /* for output to PORTx */
          end
          when left(reg,4) = 'PORT' then do                  /* port */
-            if \(left(PicName,4) = '10f3'   | left(PicName,5) = '10lf3'  |,
-                      PicName    = '12f752' |      PicName = '12hv752')  then do
+/*          if \(left(PicName,4) = '10f3'   | left(PicName,5) = '10lf3'  |,        */
+/*                    PicName    = '12f752' |      PicName = '12hv752')  then do   */
+            if HasLATReg = 0 then do                        /* PIC without LAT registers */
                call lineout jalfile, 'var volatile' field left('_'reg,25) 'at' addr
                call list_port1x_shadow reg
             end
-            else do                                         /* 10f3xx, 12f752 */
+            else do                                         /* PIC with LAT registers */
                call lineout jalfile, 'var volatile' field left(reg,25) 'at' addr
                PortLetter = right(reg,1)
                PortLat.PortLetter. = 0                      /* init: zero pins in PORTx */
@@ -1325,7 +1337,7 @@ return 0
 /*       - ADCON0 comes before ADCON1 (in .dev file) */
 /* ------------------------------------------------- */
 list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
-                                adcs_bitcount Core PicName jalfile msglevel
+                                adcs_bitcount Core PicName jalfile HasLATReg msglevel
 i = arg(1) + 1                                              /* first after reg */
 reg = arg(2)                                                /* register (name) */
 PicUpper = toupper(PicName)                                 /* for alias handling */
@@ -1412,9 +1424,10 @@ do k = 0 to 8,                                              /* max # of lines, w
                   when (reg = 'OSCCON' & left(n.j,4) = 'IRCF') then do
                     nop                                     /* suppress enumerated IRCF */
                   end
-                  when (left(reg,4) = 'PORT' | reg = 'GPIO') & ,    /* exceptions for PORTx or GPIO */
-                      \(left(PicName,4) = '10f3'   | left(PicName,5) = '10lf3'    |,
-                             PicName    = '12f752' |      PicName    = '12hv752') then do
+                  when (left(reg,4) = 'PORT' | reg = 'GPIO') &,    /* exceptions for PORTx or GPIO */
+                      HasLATReg = 0 then do                        /* PIC without LAT registers */
+/*                    \(left(PicName,4) = '10f3'   | left(PicName,5) = '10lf3'    |,        */
+/*                           PicName    = '12f752' |      PicName    = '12hv752') then do   */
                            call lineout jalfile, 'var volatile bit   ',
                                               left(field,25) 'at' '_'reg ':' offset
                   end
@@ -1535,11 +1548,12 @@ do k = 0 to 8,                                              /* max # of lines, w
                   end
                   when left(reg,4) = 'PORT' then do
                      if left(n.j,1) = 'R'  &,
-                        left(right(n.j,2),1) = right(reg,1) then do   /* prob. I/O pin */
-                        shadow = '_PORT'right(reg,1)'_shadow'
-                        pin = 'pin_'right(n.j,2)
-                        if \(left(PicName,4) = '10f3'   | left(PicName,5) = '10lf3'    |,
-                                  PicName    = '12f752' |      PicName    = '12hv752') then do
+                        left(right(n.j,2),1) = right(reg,1) then do  /* prob. I/O pin */
+                        if HasLATReg = 0 then do                        /* PIC without LAT registers */
+         /*               if \(left(PicName,4) = '10f3'   | left(PicName,5) = '10lf3'    |,       */
+         /*                         PicName    = '12f752' |      PicName    = '12hv752') then do  */
+                           shadow = '_PORT'right(reg,1)'_shadow'
+                           pin = 'pin_'right(n.j,2)
                            call lineout jalfile, 'var volatile bit   ',
                                                  left(pin,25) 'at' '_'reg ':' offset
                            call insert_pin_alias reg, 'R'right(n.j,2), pin
@@ -1551,7 +1565,7 @@ do k = 0 to 8,                                              /* max # of lines, w
                            call lineout jalfile, 'end procedure'
                            call lineout jalfile, '--'
                         end
-                        else do
+                        else do                                /* PIC with LAT registers */
                            PortLetter = right(reg,1)
                            PortLat.PortLetter.offset = PortLetter||offset
                         end
@@ -1736,7 +1750,8 @@ do i = 1 to Dev.0
                call lineout jalfile, 'alias               'left(alias,25) 'is' reg
          end
          when reg = 'SPBRGL' then do                        /* for backward compatibility */
-            call lineout jalfile, 'alias              ' left('SPBRG',25) 'is' reg
+            if duplicate_name('SPBRG',reg) = 0 then         /* alias if not declared before! */
+               call lineout jalfile, 'alias              ' left('SPBRG',25) 'is' reg
          end
          otherwise                                          /* others */
             nop                                             /* can be ignored */
@@ -4219,9 +4234,11 @@ do i = i + 1  while i <= dev.0  &,
             end
          end
          if j > words(val2) then do                         /* no voltage value found */
-            if pos('MINIMUM',val2) > 0 then
+            if pos('MINIMUM',val2) > 0  |,
+               pos(' LOW ',val2) > 0 then
                kwd = 'MINIMUM'
-            else if pos('MAXIMUM',val2) > 0 then
+            else if pos('MAXIMUM',val2) > 0 |,
+               pos(' HIGH ',val2) > 0 then
                kwd = 'MAXIMUM'
             else
                kwd = val2u
@@ -4271,7 +4288,7 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'WPEND' then do
-         if pos('TO_WP',val2u) > 0 then
+         if left(val2u,7) = 'PAGES_0' | left(val2u,6) = 'PAGE_0' then
             kwd = 'P0_WPFP'
          else
             kwd = 'PWPFP_END'
@@ -4632,9 +4649,11 @@ return
 
 /* --------------------------------------------- */
 /* Signal duplicates names                       */
-/* Collect all names in Name. compound variable  */
+/* Arguments: - new name                         */
+/*            - register                         */
 /* Return - 0 when name is unique                */
 /*        - 1 when name is duplicate             */
+/* Collect all names in Name. compound variable  */
 /* --------------------------------------------- */
 duplicate_name: procedure expose Name. PicName msglevel
 newname = arg(1)
