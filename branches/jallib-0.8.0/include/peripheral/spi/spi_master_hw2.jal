@@ -1,0 +1,106 @@
+-- Title: SPI Master, driving MSSP2 module
+-- Author: Sebastien Lelong Copyright (c) 2011, all rights reserved.
+-- Compiler: 2.4n
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: SPI Master hardware control.
+-- Routines for sending and receiving through the SPI in master mode, using MSSP2
+--
+-- Sources: good overview of SPI at http://en.wikipedia.org/wiki/Serial_Peripheral_Interface_Bus
+-- also at: http://elm-chan.org/docs/spi_e.html
+--
+-- Notes: this is a rough duplication of spi_master_hw.jal at rev 1537, 
+-- (http://code.google.com/p/jallib/source/browse/trunk/include/peripheral/spi/spi_master_hw.jal?r=1537)
+-- originally written by William Welch, from which MSSP1 registers were modified to match MSSP2 names.
+--
+
+include spi_common
+
+-- SPI is full-duplex, so we exchange master and slave data byte
+function spi_master_hw2_exchange(byte in m_data) return byte is
+
+   SSP2BUF = m_data
+
+   if ( SSP2CON_WCOL != 0 ) then
+      -- FIXME how to report error???
+      return 0xFF
+   end if
+
+   while ( SSP2STAT_BF == 0 ) loop end loop
+
+   -- return slave data
+   return SSP2BUF
+end function
+
+-- half-duplex convenience function. send data to slave, discard reply
+procedure spi_master_hw2'put(byte in data) is
+   var byte dummy
+   dummy = spi_master_hw2_exchange(data)
+end procedure
+
+-- half-duplex convenience function. send 0xFF, get slave data
+function spi_master_hw2'get() return byte is
+   var byte data
+   data = spi_master_hw2_exchange(0xFF)
+   return data
+end function
+
+procedure spi_master_hw2_set_mode_00() is
+   pragma inline
+   SSP2CON_CKP = 0
+   SSP2STAT_CKE = 1
+end procedure
+
+procedure spi_master_hw2_set_mode_01() is
+   pragma inline
+   SSP2CON_CKP = 0
+   SSP2STAT_CKE = 0
+end procedure
+
+procedure spi_master_hw2_set_mode_10() is
+   pragma inline
+   SSP2CON_CKP = 1
+   SSP2STAT_CKE = 1
+end procedure
+
+procedure spi_master_hw2_set_mode_11() is
+   pragma inline
+   SSP2CON_CKP = 1
+   SSP2STAT_CKE = 0
+end procedure
+
+-- Specify SPI mode (see spi_common for predefined constant you can use
+-- as parameters)
+procedure spi_master_hw2_set_mode(byte in spi_mode) is
+   if spi_mode == SPI_MODE_00 then
+      spi_master_hw2_set_mode_00()
+   elsif spi_mode == SPI_MODE_01 then
+      spi_master_hw2_set_mode_01()
+   elsif spi_mode == SPI_MODE_10 then
+      spi_master_hw2_set_mode_10()
+   else
+      spi_master_hw2_set_mode_11()
+   end if
+end procedure
+
+procedure spi_master_hw2_set_speed(byte in spi_rate) is
+   pragma inline
+   SSP2CON_SSPM = spi_rate
+end procedure
+
+-- Initialize the SPI registers.
+-- Note: check your datasheet -- TRIS settings, any SPI errata?
+procedure spi2_init(byte in spi_mode, byte in spi_rate) is
+   pragma inline
+   SSP2CON = 0
+   SSP2STAT_SMP = 0
+
+   spi_master_hw2_set_mode(spi_mode)
+   spi_master_hw2_set_speed(spi_rate)
+
+   SSP2CON_SSPEN = 1
+end procedure
+

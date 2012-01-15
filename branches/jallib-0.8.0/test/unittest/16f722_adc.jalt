@@ -1,0 +1,129 @@
+-- Title: unittest to check ADC libs for 16F777
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this describes multiple unittests (a testcase), to test the 
+-- many different combination while setting up ADC.
+-- 16f7x7 family (datasheet 30498C) is quite a weird one, many exceptions can be found about it...
+-- Just some thoughts...
+--
+-- Notes: see jallib wiki page about unit testing to learn how to use this file
+--
+
+;@jallib section pic
+include 16f722   ;@no_debug     
+pragma target OSC HS           
+pragma target clock 20_000_000 
+pragma target WDT  disabled
+enable_digital_io()            
+-- force analog pin/port to be output, so we can check they are 
+-- automagically set as input when configured (else it can be optimized away)
+porta_direction = all_output
+portb_direction = all_output
+porte_direction = all_output
+
+
+;@jallib section self_test
+include unittest
+var byte a = 120
+test_byte(a)		 ;@assertEquals 120 test_test
+
+
+;@jallib testcase test_all_analog_pins
+;@jallib use pic
+;@jallib use self_test
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+const bit ADC_HIGH_RESOLUTION = false
+const word ADC_RSOURCE = 2_500
+porta_direction = all_output
+portb_direction = all_output
+
+include adc
+adc_init()
+set_analog_pin(0)
+-- check pin on PORTA configured as inputs (0b0000_0001 => RA0)
+asm nop
+test_byte(TRISA)  ;@assertEquals 1 test_porta_pin_an0_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an0_input
+
+set_analog_pin(1)
+-- check pin on PORTA configured as inputs (0b0000_0011 => RA{0,1})
+asm nop
+test_byte(TRISA)  ;@assertEquals 3 test_porta_pin_an01_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an01_input
+
+set_analog_pin(2)
+-- check pin on PORTA configured as inputs (0b0000_0111 => RA{0,1,2})
+asm nop
+test_byte(TRISA)  ;@assertEquals 7 test_porta_pin_an012_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an012_input
+
+set_analog_pin(3)
+-- check pin on PORTA configured as inputs (0b0000_1111 => RA{0,1,2,3})
+asm nop
+test_byte(TRISA)  ;@assertEquals 15 test_porta_pin_an0123_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an0123_input
+
+set_analog_pin(4)
+-- check pin on PORTA configured as inputs (0b0010_1111 => RA{0,1,2,3,5})
+asm nop
+test_byte(TRISA)  ;@assertEquals 47 test_porta_pin_an01234_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an01234_input
+
+set_analog_pin(12)
+-- check pin on PORTA configured as inputs (0b0010_1111 => RA{0,1,2,3,5})
+-- check pin on PORTB configured as inputs (0b0000_0001 => RB{0})
+asm nop
+test_byte(TRISA)  ;@assertEquals 47 test_porta_pin_an01234-12_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 1 test_portb_pin_an01234-12_input
+
+set_analog_pin(10)
+-- check pin on PORTA configured as inputs (0b0010_1111 => RA{0,1,2,3,5})
+-- check pin on PORTB configured as inputs (0b0000_0011 => RB{0,1})
+asm nop
+test_byte(TRISA)  ;@assertEquals 47 test_porta_pin_an01234-12-10_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 3 test_portb_pin_an01234-12-10_input
+
+set_analog_pin(8)
+-- check pin on PORTA configured as inputs (0b0010_1111 => RA{0,1,2,3,5})
+-- check pin on PORTB configured as inputs (0b0000_0111 => RB{0,1,2})
+asm nop
+test_byte(TRISA)  ;@assertEquals 47 test_porta_pin_an01234-12-10-8_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 7 test_portb_pin_an01234-12-10-8_input
+
+set_analog_pin(9)
+-- check pin on PORTA configured as inputs (0b0010_1111 => RA{0,1,2,3,5})
+-- check pin on PORTB configured as inputs (0b0000_1111 => RB{0,1,2,3})
+asm nop
+test_byte(TRISA)  ;@assertEquals 47 test_porta_pin_an01234-12-10-8-9_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 15 test_portb_pin_an01234-12-10-8-9_input
+
+set_analog_pin(11)
+-- check pin on PORTA configured as inputs (0b0010_1111 => RA{0,1,2,3,5})
+-- check pin on PORTB configured as inputs (0b0000_1111 => RB{0,1,2,3,4})
+asm nop
+test_byte(TRISA)  ;@assertEquals 47 test_porta_pin_an01234-12-10-8-9-11_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 31 test_portb_pin_an01234-12-10-8-9-11_input
+
+set_analog_pin(13)
+-- check pin on PORTA configured as inputs (0b0010_1111 => RA{0,1,2,3,5})
+-- check pin on PORTB configured as inputs (0b0000_1111 => RB{0,1,2,3,4,5})
+asm nop
+test_byte(TRISA)  ;@assertEquals 47 test_porta_pin_an01234-12-10-8-9-11-13_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 63 test_portb_pin_an01234-12-10-8-9-11-13_input
+

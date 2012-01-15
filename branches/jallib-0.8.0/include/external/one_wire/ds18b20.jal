@@ -1,0 +1,341 @@
+-- ----------------------------------------------------------------------------
+-- Title: 1 wire library for DS18b20
+--
+-- Author: Jean Marchaudon, Copyright (c) 2010..2010, all rights reserved.
+--
+-- Adapted-by: And-Tech.pl, Bert van Dam, Jean Marchaudon, Olivier Seit, 
+--             Vasile Surducan, Joep Suijs
+--
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: 1 wire routines for the DS18b20 temperature probe
+--    Read sensor temperature DS18b20 from a specific device using the
+--    drive's ID
+-- --        
+-- use _s_ procedures when there is only one device on the bus.   
+-- use _m_ procedures when there is more than one device on the bus. 
+--
+-- Sources: ds18b20 datasheet (http://datasheets.maxim-ic.com/en/ds/DS18B20.pdf)
+--
+-- Notes: requires 1_wire.jal
+--
+-- ----------------------------------------------------------------------------
+
+; handle library parameter defaults
+if (defined( ds18b20_ignore_crc        ) == false) then const ds18b20_ignore_crc       = 0 end if
+if (defined( ds18b20_max_retries       ) == false) then const ds18b20_max_retries      = 0 end if
+if (defined( ds18b20_value_raw         ) == false) then const ds18b20_value_raw        = 0 end if
+if (defined( ds18b20_value_celcius     ) == false) then const ds18b20_value_celcius    = 0 end if
+if (defined( ds18b20_value_farenheit   ) == false) then const ds18b20_value_farenheit  = 0 end if
+
+; data storage area
+var byte scratchpad[9]
+
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- START of internal procedures
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+        
+-----------------------------------------------------------------------
+-- _ds18b20_match_rom - activate specified device
+-- ----------------------------------------------------------------------------
+-- Parameter: 8-byte ID of device to operate on
+-- ----------------------------------------------------------------------------
+procedure _ds18b20_match_rom(byte in id[]) is
+   d1w_reset()
+   d1w_write_byte( 0x55 )
+
+   -- send id of required device
+   d1w_write_byte(id[0])
+   d1w_write_byte(id[1])
+   d1w_write_byte(id[2])
+   d1w_write_byte(id[3])
+   d1w_write_byte(id[4])
+   d1w_write_byte(id[5])
+   d1w_write_byte(id[6])
+   d1w_write_byte(id[7])
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- _ds18b20_skip_rom - activate all devices on the bus
+-- ----------------------------------------------------------------------------
+-- Note: not sure if 'all devices' means all ds18b20 devices or all one_wire
+-- devices. I guess this is beyond the scope of this library though ;)
+-- ----------------------------------------------------------------------------
+procedure _ds18b20_skip_rom() is
+   d1w_reset()
+   d1w_write_byte( 0xCC )
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- _ds18b20_read - read the requested number of bytes 
+-- ----------------------------------------------------------------------------
+-- The result is stored in scratchpad for further processiong.
+-- crc of received data is calculated. 
+-- --
+-- parameter: nbre_byte:   8 when you read rom ID
+--                         9 when you read the scratchpad
+-- --
+-- return:  true if success (crc okay).
+-- ----------------------------------------------------------------------------
+function _ds18b20_read( byte in nbre_byte ) return bit is
+   -- read a number of bytes and calculate the CRC value of
+   -- the complete group          
+   var byte bb = 0, i
+   if (ds18b20_ignore_crc == 0) then  
+      var byte n = 0 , crcbyte = 0
+      var bit  bb_bit0 at bb : 0
+      var bit  crcbyte_bit0 at crcbyte : 0
+      var bit  crcbyte_bit2 at crcbyte : 2
+      var bit  crcbyte_bit3 at crcbyte : 3
+      var bit  crcbyte_bit7 at crcbyte : 7
+      var bit  crcbit
+   end if
+   
+   for nbre_byte using i loop -- 8 bytes for readrom ID, 9 bytes for read temp
+      d1w_read_byte( bb )
+      scratchpad[i]= bb
+      
+      if (ds18b20_ignore_crc == 0) then  
+         -- optionally, calculate the CRC value
+         -- if this value is zero than the CRC is correct
+         for 8 loop
+            crcbit = crcbyte_bit0 ^ bb_bit0
+            crcbyte = (crcbyte >> 1)
+            crcbyte_bit7 = crcbit
+            crcbyte_bit2 = crcbyte_bit2 ^ crcbit
+            crcbyte_bit3 = crcbyte_bit3 ^ crcbit
+            bb = (bb >> 1)
+         end loop
+      end if
+   end loop
+
+   if nbre_byte == 9 then
+     if scratchpad[4]==0x_FF & scratchpad[5]==0x_FF & scratchpad[6]==0x_FF &
+        scratchpad[7]==0x_FF & scratchpad[8]==0x_FF  then
+       -- probe is not present, all read to 1 == 0x_FF
+       -- set the CRC value to false, and reset temp with error scale 99°c
+       scratchpad[0]=198  
+       return false; -- fail
+     end if
+   end if             
+
+   if (ds18b20_ignore_crc == 0) then  
+      return (crcbyte == 0)
+   else
+      return true
+   end if
+end function
+
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- END of internal procedures
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- ds18b20_setup -- !!! UNTESTED !!! 
+-- ----------------------------------------------------------------------------
+-- 
+-- ***** YOU DON'T NEED THIS FUNCTION FOR TEMPERATURE *****
+-- *****   READING WITH 12 BIT (DEFAULT) RESOLUTION   *****
+--                                             
+-- *** PLEASE REPORT IF YOU TESTED THIS FUNCTION (PARTLY OR FULL) ***
+--
+-- resolution can be 9, 10, 11, 12
+-- TL = minimum -55
+-- TH = maximum 124
+-- ----------------------------------------------------------------------------
+procedure ds18b20_setup(sbyte in th, sbyte in tl, byte in resolution) is
+   var byte i
+   var byte reg[3]
+   
+   reg[2] = 0x7F ; default resolution is 12 bits
+
+   if (resolution == 9) then
+      reg[2] = 0x1F
+   elsif (resolution == 10) then
+      reg[2] = 0x3F
+   elsif (resolution == 11) then
+      reg[2] = 0x5F
+   end if
+
+   reg[0] = byte(th)
+   reg[1] = byte(tl)
+  
+   d1w_write_byte(0x4e)
+   d1w_write_byte(reg[0])
+   d1w_write_byte(reg[1])
+   d1w_write_byte(reg[2])
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- ds18b20_convert - start conversion of all devices on the bus.
+-- ----------------------------------------------------------------------------
+-- This is actually like an _s_ procedure. When it is executed on a bus with 
+-- multiple ds18b20 devices, all will start conversion.
+-- ----------------------------------------------------------------------------
+procedure ds18b20_convert() is    
+   _ds18b20_skip_rom()
+   d1w_write_byte(0x44)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- ds18b20_m_convert - start conversion of a specific devices on the bus.
+-- ----------------------------------------------------------------------------
+-- Parameter: 8-byte ID of device to operate on
+-- ----------------------------------------------------------------------------
+procedure ds18b20_m_convert(byte in id[]) is    
+   _ds18b20_match_rom(id)
+   d1w_write_byte(0x44)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- ds18b20_s_read_rom - read ID from single device on bus
+-- ----------------------------------------------------------------------------
+-- Only use this procedure when there is only one device on the one_wire bus.
+--
+-- result is 8-byte ID in the scratchpad area 
+-- return:  true if success (crc okay).
+-- ----------------------------------------------------------------------------
+function ds18b20_s_read_rom() return bit is
+   var bit success_flag
+   
+   -- ---------------------
+   -- read with retry logic
+   -- ---------------------
+   var byte i = 0
+   repeat 
+      d1w_reset()
+      d1w_write_byte(0x33)             -- read ID command
+      success_flag = _ds18b20_read(8)  -- 8 bytes for ID 
+      i = i + 1           
+   until (success_flag) | (i > ds18b20_max_retries)
+
+   return success_flag
+end function
+
+-- ----------------------------------------------------------------------------
+-- ds18b20_s_temp - read temperature from single device on bus
+-- ----------------------------------------------------------------------------
+-- Only use this procedure when there is only one device on the one_wire bus.
+-- behavior of this procedure (retry, converions) is influenced by 
+-- constants, see lib header.
+-- 
+-- return:  true if success (crc okay).
+-- ----------------------------------------------------------------------------
+function ds18b20_s_temp(sword out temperature) return bit is
+   var byte b[2] at temperature
+   var bit success_flag -- return value 
+   
+   if (ds18b20_ignore_crc != 0) then
+      -- no crc checking, so just read the two temperature bytes   
+      _ds18b20_skip_rom()
+      d1w_write_byte(0xBE)
+      d1w_read_byte(b[0]) ; low byte
+      d1w_read_byte(b[1]) ; high byte
+      d1w_reset()
+      success_flag = true -- by definition (since we ignore crc)
+   else            
+      -- -----------------------------------
+      -- read with crc check and retry logic
+      -- -----------------------------------
+      var byte i = 0
+      repeat 
+         -- crc checking means reading whole scratchpad   
+         _ds18b20_skip_rom()
+         d1w_write_byte(0xBE)
+         success_flag = _ds18b20_read(9) 
+         i = i + 1           
+      until (success_flag) | (i > ds18b20_max_retries)
+
+      -- copy temperature to return value
+      b[0] = scratchpad[0]
+      b[1] = scratchpad[1]
+   end if 
+   
+   if (ds18b20_value_raw != 0) then
+      -- no conversion
+      return success_flag  -- true if success
+   end if
+ 
+   if (ds18b20_value_celcius != 0) then
+      -- convert to scaled decimal temperature; 215 means 21.5 degrees celcius
+      temperature = (temperature * 10) >> 4
+      return success_flag  -- true if success
+   end if
+   
+   if (ds18b20_value_farenheit != 0) then
+      pragma error "TODO - convert to farenheit"
+      return success_flag  -- true if success
+   end if
+   
+   -- no conversion at all is also raw
+   return success_flag  -- true if success
+end function
+
+-- ----------------------------------------------------------------------------
+-- ds18b20_m_temp - read temperature from single device on bus
+-- ----------------------------------------------------------------------------
+-- Only use this procedure when there is only one device on the one_wire bus.
+-- behavior of this procedure (retry, converions) is influenced by 
+-- constants, see lib header.
+-- 
+-- return:  true if success (crc okay).
+-- ----------------------------------------------------------------------------
+function ds18b20_m_temp(byte in id[], sword out temperature) return bit is
+   var byte b[2] at temperature
+   var bit success_flag = false -- return value 
+   
+   if (ds18b20_ignore_crc != 0) then
+      -- no crc checking, so just read the two temperature bytes   
+      _ds18b20_match_rom(id)
+      d1w_write_byte(0xBE)
+      d1w_read_byte(b[0]) ; low byte
+      d1w_read_byte(b[1]) ; high byte
+      d1w_reset()                
+      if (temperature != -1) then
+         success_flag = true -- we received something, so probably okay
+      end if
+   else            
+      -- -----------------------------------
+      -- read with crc check and retry logic
+      -- -----------------------------------
+      var byte i = 0
+      repeat 
+         -- crc checking means reading whole scratchpad   
+         _ds18b20_match_rom(id)
+         d1w_write_byte(0xBE)
+         success_flag = _ds18b20_read(9) 
+         i = i + 1           
+      until (success_flag) | (i > ds18b20_max_retries)
+
+      -- copy temperature to return value
+      b[0] = scratchpad[0]
+      b[1] = scratchpad[1]
+   end if 
+   
+   if (ds18b20_value_raw != 0) then
+      -- no conversion
+      return success_flag  -- true if success
+   end if
+ 
+   if (ds18b20_value_celcius != 0) then
+      -- convert to scaled decimal temperature; 215 means 21.5 degrees celcius
+      temperature = (temperature * 10) >> 4
+      return success_flag  -- true if success
+   end if
+   
+   if (ds18b20_value_farenheit != 0) then
+      pragma error "TODO - convert to farenheit"
+      return success_flag  -- true if success
+   end if
+   
+   -- no conversion at all is also raw
+   return success_flag  -- true if success
+end function

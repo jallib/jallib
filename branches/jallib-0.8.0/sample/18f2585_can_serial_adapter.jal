@@ -1,0 +1,181 @@
+-- Title: CAN bus translator from 3 wire CAN bus to RS232
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- adapted by Eur van Andel, eur@fiwihex.nl
+-- Compiler: 2.4m
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- Implements bridge/gateway between RS232 and CAN bus.
+-- 
+const byte version_h = 1
+const byte version_l = 04
+
+const serial_hw_baudrate = 57600
+-- const serial_hw_baudrate = 115200
+
+include 18f2585
+pragma target clock 20_000_000
+pragma target OSC  HS
+pragma target XINST disabled
+pragma target WDT  disabled
+pragma target LVP  disabled
+pragma target MCLR external
+include delay
+include format
+include print
+
+const byte banner[] = "Bus translator"
+const byte baudstr[] = " baud"
+
+enable_digital_io()
+
+const down  = 0
+const green = 1
+const red   = 2
+
+var bit led      is pin_b1
+var bit led_dir  is pin_b1_direction
+
+led_dir = input
+led = low
+
+procedure leds(byte in x) is
+   if x == down then 
+      led_dir  = input
+   elsif x == red then 
+      led_dir  = output
+      led      = low
+   elsif x == green then
+      led_dir  = output
+      led     = high
+   end if
+end procedure
+
+var bit toggle
+
+const byte LCD_ROWS = 4
+const byte LCD_CHARS = 20
+var bit lcd_sterm_pin is pin_C0
+var bit lcd_sterm_pin_dir is pin_C0_direction
+include lcd_sterm_master
+
+const usart_hw_serial = true
+var bit serial_ctsinv
+var  bit serial_overflow_discard = false
+include serial_hw_int_cts
+serial_hw_init()
+
+-- ECAN controller is built-in to 18F2585
+-- but we will operate in 'legacy' mode 0.
+pin_B2 = high -- set CANTX high for recessive level
+pin_B2_direction = output
+pin_B3_direction = input
+include can_legacy
+include can_ascii
+
+can_reset()
+
+-- FIXME: use EEprom instead.
+-- 125K bps
+can_set_config(4, 0x9E, 3)
+CIOCON = 0x20; -- TXCAN, high when recessive
+
+-- in this example we combine the hardware buffers.
+RXB0CON = 0x04 -- rollover/ double-buffer
+RXB1CON = 0x00 -- all valid frames go to buffer #1.
+
+-- FIXME: use EEprom instead.
+-- RXB0 will match all msgs by default
+can_set_rxb0_mask(0,0,0,0)
+can_set_rxb0_filter0(0xff, 0xff, 0xff, 0xff)
+can_set_rxb0_filter1(0xff, 0xff, 0xff, 0xff)
+
+-- disable RXB1
+can_set_rxb1_mask(0xff,0xff,0xff,0xff)
+can_set_rxb1_filter2(0xff, 0xff, 0xff, 0xff)
+can_set_rxb1_filter3(0xff, 0xff, 0xff, 0xff)
+can_set_rxb1_filter4(0xff, 0xff, 0xff, 0xff)
+can_set_rxb1_filter5(0xff, 0xff, 0xff, 0xff)
+
+TXB0CON = 0;
+TXB1CON = 0;
+TXB2CON = 0;
+
+CANCON = 0; -- normal mode
+
+include can_adapter
+
+-- start of procedure block --------------------------------------------------
+
+procedure pdec8(volatile byte out device, byte in n) is
+   device = "0" + n / 100
+   n = n % 100
+   
+   device = "0" + n / 10
+   n = n % 10
+   
+   device = "0" + n
+end procedure
+
+-- end of procedure block --------------------------------------------------
+
+-- wait for STERM Slave to power-up and initialize.
+for 10 loop
+   leds(green)
+   delay_100ms(2)
+   leds(red)
+   delay_100ms(2)
+end loop
+leds(down)
+
+lcd_home()
+lcd_clear_screen()
+lcd_home()
+print_string(lcd, banner)
+const byte str2[]="Version "
+lcd_cursor_position(2,0)
+print_string(lcd, str2)
+pdec8(lcd,version_h)
+lcd = "."
+pdec8(lcd,version_l)
+lcd_cursor_position(3,0)
+print_word_dec(lcd, serial_hw_baudrate)
+print_string(lcd, baudstr)
+
+-- leave banner up for a while
+for 25 loop
+   leds(green)
+   delay_100ms(2)
+   leds(down)
+   delay_100ms(2)
+end loop
+
+-- monitor loop
+forever loop
+   var bit got_ch, got_msg
+   var byte ch,i,len
+   var byte rxdata[8]
+   var dword can_id
+   
+   -- check for a msg from PC/UART
+   got_ch = serial_hw_read(ch)
+   while got_ch loop
+      can_check_uart_rx(serial_hw_data, ch)
+      got_ch = serial_hw_read(ch)
+   end loop
+   
+   -- check for CAN message and handle it.
+   got_msg = can_check_can_rx(serial_hw_data, can_id, rxdata, len)
+   
+   toggle = ! toggle 
+   if toggle then
+      leds(green)
+   else
+      leds(down)
+   end if
+   
+   delay_100ms(1) -- slow down blinking leds
+end loop
+

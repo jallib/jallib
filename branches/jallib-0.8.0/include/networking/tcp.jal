@@ -1,0 +1,623 @@
+-- Title: TCP - TRANSMISSION CONTROL PROTOCOL
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: implements TCP/IP
+--
+-- Sources:
+-- http://www.faqs.org/rfcs/rfc793.html
+-- http://www.8051projects.net/out.php?link=http://www.sics.se/~adam/uip/index.php/Main_Page
+--
+-- Notes:
+-- Works, but may still have issues.
+-- Packet must fit within transmit buffer, I have not tested large transfers.
+--
+-- Todo:
+-- add checksum verify on incomming TCP packets
+--
+
+var byte TCP_CLIENT_MAC[6]
+
+var byte tcp_header_length = 20
+var bit _tcp_error = FALSE
+const TCP_NO_ERROR = 0
+const TCP_NO_SOCKET_AVAILABLE = 1
+
+-- socket table (you can use these in your main program)
+var byte tcp_socket_status[TCP_MAX_SOCKETS]                  -- connection status
+var byte*4 tcp_socket_ip[TCP_MAX_SOCKETS]                    -- ip of remote pc
+var word tcp_socket_local_port[TCP_MAX_SOCKETS]              -- local port
+var word tcp_socket_remote_port[TCP_MAX_SOCKETS]             -- remote port
+--  other socket data for internal use
+var dword _tcp_socket_acnowledgement_number[TCP_MAX_SOCKETS]
+var dword _tcp_socket_sequence_number[TCP_MAX_SOCKETS]
+var byte _tcp_socket_flags[TCP_MAX_SOCKETS]
+var byte _tcp_socket_mac_0[TCP_MAX_SOCKETS]
+var byte _tcp_socket_mac_1[TCP_MAX_SOCKETS]
+var byte _tcp_socket_mac_2[TCP_MAX_SOCKETS]
+var byte _tcp_socket_mac_3[TCP_MAX_SOCKETS]
+var byte _tcp_socket_mac_4[TCP_MAX_SOCKETS]
+var byte _tcp_socket_mac_5[TCP_MAX_SOCKETS]
+
+-- status of TCP connection
+const TCP_STATUS_UNKNOWN      = 0     -- not in RFC
+const TCP_STATUS_LISTEN       = 1
+const TCP_STATUS_SYN_SENT     = 2
+const TCP_STATUS_SYN_RECEIVED = 3
+const TCP_STATUS_ESTABLISHED  = 4
+const TCP_STATUS_FIN_WAIT_1   = 5
+const TCP_STATUS_FIN_WAIT_2   = 6
+const TCP_STATUS_CLOSE_WAIT   = 7
+const TCP_STATUS_CLOSING      = 8
+const TCP_STATUS_LAST_ACK     = 9
+const TCP_STATUS_CLOSED       = 10
+
+-- TCP HEADER FORMAT
+const TCP_SOURCE_PORT = 0
+const TCP_DESTINATION_PORT = 2
+const TCP_SEQUENCE_NUMBER = 4
+const TCP_ACKNOWLEDGEMENT_NUBMER = 8
+const TCP_DATA_OFFSET = 12
+const TCP_FLAGS = 13    -- UAPRSF
+const TCP_WINDOW = 14
+const TCP_CHECKSUM = 16
+const TCP_URGENT_POINTER = 18
+const TCP_OPTIONS = 20
+const TCP_PADDING = 23
+--
+const TCP_HEADER_SIZE = 12 -- location of header size in packet
+
+-- bit locations of flags
+const TCP_FIN =    0b00000001
+const TCP_SYN =    0b00000010
+const TCP_RESET =  0b00000100
+const TCP_PUSH =   0b00001000
+const TCP_ACK =    0b00010000 -- Acknowlegement
+const TCP_URGENT = 0b00100000 -- Urgent
+const TCP_ECN =    0b01000000 -- ECN-Echo
+const TCP_CWR =    0b10000000 -- Congestion window reduced
+
+-- TCP Flags
+const FIN = 0x01
+const SYN = 0x02
+const RST = 0x04
+const PSH = 0x08
+const ACK = 0x10
+const URG = 0x20
+
+--------------------------------------------------------------------------------
+-- Read TCP error status. clears error after reading
+--------------------------------------------------------------------------------
+function tcp_error'get() return byte is
+   var byte return_value
+   return_value = _tcp_error
+   _tcp_error = FALSE
+   return return_value
+end function
+
+--------------------------------------------------------------------------------
+-- Init procedure
+--------------------------------------------------------------------------------
+procedure tcp_init() is
+   -- start all sockets as disconnected
+   var byte tcp_step = 0
+   for TCP_MAX_SOCKETS using tcp_step loop
+      tcp_socket_status[tcp_step] = TCP_STATUS_CLOSED
+      _tcp_socket_mac_0[tcp_step] = 0
+      _tcp_socket_mac_1[tcp_step] = 0
+      _tcp_socket_mac_2[tcp_step] = 0
+      _tcp_socket_mac_3[tcp_step] = 0
+      _tcp_socket_mac_4[tcp_step] = 0
+      _tcp_socket_mac_5[tcp_step] = 0
+   end loop
+   
+   tcp_header_length = 20 -- set default header length
+end procedure
+
+--------------------------------------------------------------------------------
+-- Create a new socket. If a socket was not created, var tcp_error gets set.
+-- remote_port - the port number the remote server uses
+-- local_port - any port number that is avalable locally.
+--------------------------------------------------------------------------------
+function tcp_socket_create(word in local_port, word in remote_port) return byte is
+   var byte step
+
+   -- check if socket already exists
+   for TCP_MAX_SOCKETS using step loop
+      if (tcp_socket_ip[step] == _network_remote_ip) &
+         (tcp_socket_local_port[step] == local_port) &
+         (tcp_socket_remote_port[step] == remote_port) then
+         
+         ;const byte str1[] = "TEST"
+         ;print_string(serial_data,str1)
+         ;print_byte_dec(serial_data,tcp_socket_status[step])
+
+         _tcp_error = TCP_NO_ERROR -- no error
+         return step               -- return socket number
+      end if
+   end loop
+
+   -- search for an available socket, if it didn't exist already
+   for TCP_MAX_SOCKETS using step loop
+      if tcp_socket_status[step] == TCP_STATUS_CLOSED then -- if socket not in use
+
+         -- save socket info
+         tcp_socket_ip[step]          = _network_remote_ip
+         tcp_socket_local_port[step]  = local_port
+         tcp_socket_remote_port[step] = remote_port
+         tcp_socket_status[step]      = TCP_STATUS_UNKNOWN
+
+         _tcp_error = TCP_NO_ERROR -- no error
+         return step               -- return socket number
+      end if
+   end loop
+
+   tcp_socket_status[step] = TCP_STATUS_CLOSED
+   _tcp_error = TCP_NO_SOCKET_AVAILABLE -- there was an error creating the socket
+   return                               -- just return anything
+end function
+
+--------------------------------------------------------------------------------
+-- print info about a socket
+--------------------------------------------------------------------------------
+alias tcp_data_size is network_packet_size
+procedure print_tcp_socket_info(bit in received_sent, byte in socket) is
+   -- store error code since we can only read it once
+   var byte error_temp = _tcp_error
+
+   const byte str1[] = "----------------------------------------"
+   print_string(serial_data,str1)
+   print_crlf(serial_data)
+   --
+
+   if received_sent == 0 then
+      const byte str2[] = "tcp data received. local/remote port: "
+      print_string(serial_data,str2)
+   else
+      const byte str2[] = "Sending tcp data. local/remote port: "
+      print_string(serial_data,str2)
+   end if
+
+   print_word_dec(serial_data, tcp_socket_local_port[socket])
+   serial_data = "/"
+   print_word_dec(serial_data, tcp_socket_remote_port[socket])
+   --
+   const byte str_size[] = ", bytes: "
+   print_string(serial_data,str_size)
+   print_word_dec(serial_data, tcp_data_size)
+   print_crlf(serial_data)
+   --
+   const byte str_socket[] = ", socket: "
+   print_string(serial_data,str_socket)
+   print_word_dec(serial_data, socket)
+   --
+   const byte str_error[] = ", error: "
+   print_string(serial_data,str_error)
+   print_word_dec(serial_data, error_temp)
+   --
+   ;const byte str_ip[] = ", ip hex: "
+   ;print_string(serial_data,str_ip)
+   ;print_dword_hex(serial_data, tcp_socket_ip[socket])
+   ;print_crlf(serial_data)
+
+   const byte str_ip[] = ", ip address: "
+   print_string(serial_data,str_ip)
+   var byte _tcp_socket_ip[4] at tcp_socket_ip
+   print_byte_dec(serial_data,_tcp_socket_ip[0])
+   serial_data = "."
+   print_byte_dec(serial_data,_tcp_socket_ip[1])
+   serial_data = "."
+   print_byte_dec(serial_data,_tcp_socket_ip[2])
+   serial_data = "."
+   print_byte_dec(serial_data,_tcp_socket_ip[3])
+
+   if error_temp != 0 then     -- if there was an error
+      print_crlf(serial_data)
+      const byte str2[] = "An error occurred while creating a socket"
+      print_string(serial_data,str2)
+   end if
+
+   print_crlf(serial_data)
+
+   -- re-store error code
+   _tcp_error = error_temp
+end procedure
+
+--------------------------------------------------------------------------------
+-- Fake array tcp_data[] to read/write to TCP Data space.
+--------------------------------------------------------------------------------
+function tcp_data'get(word in address) return byte is
+   ;pragma inline
+   return network_data[network_var_offset + tcp_header_length + address]
+end function
+--
+procedure tcp_data'put(word in address, byte in data) is
+   ;pragma inline
+   network_data[(NETWORK_GLOBAL_OFFSET + ip_header_size) + tcp_header_length + address] = data
+end procedure
+
+--------------------------------------------------------------------------------
+-- Calculate TCP checksum
+--------------------------------------------------------------------------------
+procedure tcp_set_checksum(word in header_size, word in data_size) is
+   -- note: I should remove word in header_size and use tcp_header_length.
+
+   var byte _header_size[2] at header_size
+   
+   -- add the size of data
+   header_size = header_size + data_size -- tcp size
+
+   -- ammend pseudo header for checksum calc
+   -- note: two ip addresses are stored at end of ip_header
+   -- 4 bytes stored at end of header & data
+   network_data[network_var_offset + header_size] = 0 -- reserved
+   network_data[network_var_offset + header_size + 1] = 6 -- protocol
+   network_data[network_var_offset + header_size + 2] = _header_size[1] -- tcp size
+   network_data[network_var_offset + header_size + 3] = _header_size[0] -- tcp size
+   --
+   const word IP_LENGTH_TIMES_TWO = 8 -- length in bytes of two ip addresses
+   network_word[TCP_CHECKSUM] = 0 -- Set checksum to zero
+   network_word[TCP_CHECKSUM] = network_checksum_16_byte_calc(network_var_offset - IP_LENGTH_TIMES_TWO,IP_LENGTH_TIMES_TWO + header_size + 4)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Send a TCP packet
+--------------------------------------------------------------------------------
+procedure tcp_send(byte in socket, word in data_size) is
+
+      -- fix odd data size (not sure if this is the right place for this
+      -- since checksum also checks for odd number of bytes)
+      if (data_size % 2) == 1 then
+         tcp_data[data_size] = 0
+         data_size = data_size + 1
+      end if
+
+      var word tcp_size = tcp_header_length + data_size
+
+      -- create the ip header
+      ip_header_create(TCP,tcp_size)
+
+      -- store the client's mac address
+      -- apparently: "all implementations of TCP/IP include an ARP cache to hold IP address to MAC address mappings"
+      -- see - http://www.softpanorama.org/Net/Internet_layer/arp.shtml
+       if NETWORK_LINK_LAYER == NETWORK_ETHERNET then
+         if (_tcp_socket_mac_4[socket] != 0) & (_tcp_socket_mac_5[socket] != 0) then
+         ;if tcp_socket_status[socket] == TCP_STATUS_ESTABLISHED then
+            network_data[0] = _tcp_socket_mac_0[socket]
+            network_data[1] = _tcp_socket_mac_1[socket]
+            network_data[2] = _tcp_socket_mac_2[socket]
+            network_data[3] = _tcp_socket_mac_3[socket]
+            network_data[4] = _tcp_socket_mac_4[socket]
+            network_data[5] = _tcp_socket_mac_5[socket]
+         end if
+      end if
+   
+      -- set the TCP header data
+      --
+      -- set flags
+      -- always set ACK while sending data, else use set flags
+      if data_size != 0 then
+         network_byte[TCP_FLAGS] = TCP_ACK
+      else
+         network_byte[TCP_FLAGS] = _tcp_socket_flags[socket]
+      end if
+      --
+      -- set local/remote ports
+      network_word[TCP_SOURCE_PORT] = tcp_socket_local_port[socket]
+      network_word[TCP_DESTINATION_PORT] = tcp_socket_remote_port[socket]
+      --
+      -- set ack/seq numbers
+      network_dword[TCP_ACKNOWLEDGEMENT_NUBMER] = _tcp_socket_acnowledgement_number[socket]
+      network_dword[TCP_SEQUENCE_NUMBER] =        _tcp_socket_sequence_number[socket]
+      --
+      -- set size of tcp header
+      network_byte[TCP_HEADER_SIZE] = (tcp_header_length << 2)
+      --
+      -- set window to max (needs to be fixed)
+      -- should be:
+      -- "The number of data octets beginning with the one indicated in the
+      -- acknowledgment field which the sender of this segment is willing to
+      -- accept."
+      network_word[TCP_WINDOW] = 0xFF_FF
+      --
+      -- set tcp header checksum
+      tcp_set_checksum(tcp_header_length,data_size)
+
+      -- send the packet
+      network_send_packet(network_var_offset + tcp_header_length + data_size)
+
+      -- add data size to sequence number for next data transmission
+      -- should be only adding if ACK was recieved?
+      ;if data_size != 0 then
+      ;   tcp_socket_last_data_size_sent[socket] = data_size
+      ;end if
+      _tcp_socket_sequence_number[socket] = _tcp_socket_sequence_number[socket] + data_size
+
+      tcp_header_length = 20  -- set default header length
+end procedure
+
+--------------------------------------------------------------------------------
+-- Send ack or reply to TCP
+--------------------------------------------------------------------------------
+procedure tcp_send_ack(byte in socket, word in data_size) is
+   -- send an ack
+   tcp_header_length = 20 -- set header length
+   -- set socket settings
+   network_word[TCP_WINDOW] = 65531
+   ;_tcp_socket_sequence_number[socket] = _tcp_socket_sequence_number[socket]
+   _tcp_socket_acnowledgement_number[socket] = network_dword[TCP_SEQUENCE_NUMBER] + tcp_data_size
+   _tcp_socket_sequence_number[socket] = network_dword[TCP_ACKNOWLEDGEMENT_NUBMER]
+   _tcp_socket_flags[socket] = TCP_ACK
+
+   -- send the packet
+   tcp_send(socket,data_size)
+end procedure
+
+--------------------------------------------------------------------------------
+-- delete/disconnect a socket.
+--------------------------------------------------------------------------------
+procedure tcp_socket_remove(byte in socket) is
+   pragma inline
+   
+   -- close the connection & reset
+   tcp_socket_status[socket] = TCP_STATUS_CLOSED
+   
+   -- send ACK/FIN to the other side
+   _tcp_socket_flags[socket] = TCP_ACK + TCP_FIN
+   tcp_send(socket, 0)
+
+   -- reset mac address
+   _tcp_socket_mac_0[socket] = 0
+   _tcp_socket_mac_1[socket] = 0
+   _tcp_socket_mac_2[socket] = 0
+   _tcp_socket_mac_3[socket] = 0
+   _tcp_socket_mac_4[socket] = 0
+   _tcp_socket_mac_5[socket] = 0
+end procedure
+
+--------------------------------------------------------------------------------
+-- Read a TCP packet
+--------------------------------------------------------------------------------
+procedure tcp_read_packet() is
+
+   -- Default header size is 20
+   tcp_header_length = (network_byte[TCP_HEADER_SIZE] >> 2)
+   tcp_data_size = network_packet_size - tcp_header_length
+      
+   -- print a debug message
+   var byte sending_ping[] = "---------- TCP data recieved! ----------"
+   debug_string(DEBUG_2,sending_ping)
+   debug_crlf(DEBUG_2)
+
+   ;possible bug in compiler, this fixed it.
+   var word temp = network_word[TCP_DESTINATION_PORT]
+
+   -- create a socket, or see if one already exists.
+   -- if an error occurs, tcp_error will be set.
+   var byte socket = tcp_socket_create(temp,network_word[TCP_SOURCE_PORT])
+
+   -- store the client's mac address
+   -- apparently: "all implementations of TCP/IP include an ARP cache to hold IP address to MAC address mappings"
+   -- see - http://www.softpanorama.org/Net/Internet_layer/arp.shtml
+   _tcp_socket_mac_0[socket] = network_data[6]
+   _tcp_socket_mac_1[socket] = network_data[7]
+   _tcp_socket_mac_2[socket] = network_data[8]
+   _tcp_socket_mac_3[socket] = network_data[9]
+   _tcp_socket_mac_4[socket] = network_data[10]
+   _tcp_socket_mac_5[socket] = network_data[11]
+
+   ;print_byte_dec(serial_data,tcp_socket_status[socket])
+
+   -- if there is an error creating or checking this socket
+   -- from tcp_socket_create()
+   if tcp_error != 0 then
+   end if
+
+   -----------------------------------------------------------------------------
+   -- print info about the socket received
+   print_tcp_socket_info(0,socket)
+
+   var byte flags = network_byte[TCP_FLAGS]
+
+   -- Check if the socket has a problem
+   if ((flags & TCP_RESET) != 0) & ((flags & TCP_ACK) != 0) then   ; | ((flags & TCP_FIN) != 0)
+      tcp_socket_remove(socket) -- delete the socket
+      tcp_header_length = 20 -- set default header size
+      return
+   end if
+
+   -- Check if the socket has been closed
+   if ((flags & TCP_FIN) != 0) & ((flags & TCP_ACK) != 0) then   ; | ((flags & TCP_FIN) != 0)
+      -- set values of seq and ack
+      _tcp_socket_acnowledgement_number[socket] = network_dword[TCP_SEQUENCE_NUMBER] + 1
+      _tcp_socket_sequence_number[socket] = network_dword[TCP_ACKNOWLEDGEMENT_NUBMER]
+      
+      -- send an ack for this closing connection
+      _tcp_socket_flags[socket] = TCP_ACK
+      tcp_send(socket, 0)
+
+      tcp_socket_remove(socket) -- delete the socket
+      tcp_header_length = 20    -- set default header size
+      return
+   end if
+   
+   -- check connection status
+   if tcp_socket_status[socket] == TCP_STATUS_UNKNOWN then
+      -- We must have recieved a TCP_SYN
+      -- Reply with TCP_ACK + TCP_SYN
+      -- Then set status as TCP_STATUS_SYN_RECEIVED
+      --
+      -- if not, close the connection
+   
+      if (flags & TCP_SYN) != 0 then           -- if client is sending SYN
+         -- set socket settings
+         tcp_header_length = 28  -- set header length
+         _tcp_socket_sequence_number[socket] =       0 + 1
+         _tcp_socket_acnowledgement_number[socket] = network_dword[TCP_SEQUENCE_NUMBER] + 1
+         _tcp_socket_flags[socket] = TCP_ACK + TCP_SYN
+
+         -- send the packet
+         tcp_send(socket,0)
+
+         -- set a new status for this new connection
+         tcp_socket_status[socket] = TCP_STATUS_SYN_RECEIVED
+      else
+         -- close the connection, there must be something wrong.
+         -- something else should be done here as well to let
+         -- the client know there is a problem.
+         tcp_socket_remove(socket) -- delete the socket
+         return
+      end if
+         
+   elsif tcp_socket_status[socket] ==  TCP_STATUS_SYN_SENT then
+      -- we must have gottan a reply form new connection from tcp_connect
+      -- send back an ack.
+      -- if we get a reply we didn't expect, send reset and set tcp_error
+
+      if flags == (TCP_ACK + TCP_SYN) then -- if reply is ok
+         -- send an ack
+         tcp_header_length = 20 -- set header length
+         -- set socket settings
+         network_word[TCP_WINDOW] = 17520
+         _tcp_socket_acnowledgement_number[socket] = network_dword[TCP_SEQUENCE_NUMBER] + 1
+         _tcp_socket_sequence_number[socket] = network_dword[TCP_ACKNOWLEDGEMENT_NUBMER]
+         ;_tcp_socket_acnowledgement_number[socket] = 1
+         ;_tcp_socket_sequence_number[socket] = _tcp_socket_acnowledgement_number[socket] + 1
+         
+         _tcp_socket_flags[socket] = TCP_ACK
+
+         -- send the packet
+         tcp_send(socket,0)
+      else                                -- if reply is NOT ok
+         -- bad socket, send RESET, and set an error
+         _tcp_error = TRUE
+
+         -- send an ack
+         tcp_header_length = 20 -- set header length
+         -- set socket settings
+         network_word[TCP_WINDOW] = 17520
+         _tcp_socket_acnowledgement_number[socket] = network_dword[TCP_SEQUENCE_NUMBER] + 1
+         _tcp_socket_sequence_number[socket] = network_dword[TCP_ACKNOWLEDGEMENT_NUBMER]
+         ;_tcp_socket_acnowledgement_number[socket] = 1
+         ;_tcp_socket_sequence_number[socket] = _tcp_socket_acnowledgement_number[socket] + 1
+
+         _tcp_socket_flags[socket] = TCP_RESET
+
+         -- send the packet
+         tcp_send(socket,0)
+
+         -- remove the socket
+         ;tcp_socket_remove(socket)
+      end if
+
+      tcp_socket_status[socket] =  TCP_STATUS_ESTABLISHED
+      ;_tcp_socket_flags[socket] = TCP_ACK -- we will send ACK from now on.
+   elsif tcp_socket_status[socket] ==  TCP_STATUS_SYN_RECEIVED then
+      -- We must have gotten an ACK from our TCP_ACK + TCP_SYN
+      -- Set status as TCP_STATUS_ESTABLISHED
+
+      ;if (flags & TCP_ACK) != 0 then           -- if client is sending ACK
+         tcp_socket_status[socket] = TCP_STATUS_ESTABLISHED
+         _tcp_socket_sequence_number[socket] = network_dword[TCP_SEQUENCE_NUMBER]
+         ;_tcp_socket_flags[socket] = TCP_ACK -- we will send ACK from now on.
+      ;end if
+
+      -- store the client's mac address
+      -- apparently: "all implementations of TCP/IP include an ARP cache to hold IP address to MAC address mappings"
+      -- see - http://www.softpanorama.org/Net/Internet_layer/arp.shtml
+      _tcp_socket_mac_0[socket] = network_data[6]
+      _tcp_socket_mac_1[socket] = network_data[7]
+      _tcp_socket_mac_2[socket] = network_data[8]
+      _tcp_socket_mac_3[socket] = network_data[9]
+      _tcp_socket_mac_4[socket] = network_data[10]
+      _tcp_socket_mac_5[socket] = network_data[11]
+         
+   elsif tcp_socket_status[socket] == TCP_STATUS_ESTABLISHED then
+      -- We must have recieved DATA or an ACK
+      -- Call our callback, then send an ACK (or other way around?)
+   
+;      -- Send an ACK if data in was not an ACK from something we sent.
+;      -- OR send ACK if data recieved.
+;      if !(_tcp_socket_acnowledgement_number[socket] == network_dword[TCP_SEQUENCE_NUMBER]) then
+;         tcp_send_ack(socket)
+;      end if
+
+
+      -- call the tcp callback so the user may do something with the data.
+      if defined(tcp_receive_callback) then
+         if tcp_data_size > 0 then
+            tcp_receive_callback(socket,tcp_data_size)
+         end if
+      else
+         tcp_send_ack(socket)
+      end if
+      
+   end if
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- Connect to a TCP server. Input a blank variable to be used as a socket name.
+--------------------------------------------------------------------------------
+procedure tcp_connect(byte in socket) is
+
+   -- print a debug message
+   var byte sending_tcp[] = "---------- sending TCP connection request... ----------"
+   debug_string(DEBUG_2,sending_tcp)
+   debug_crlf(DEBUG_2)
+
+   tcp_header_length = 28
+
+   -- create the ip header
+   ip_header_create(TCP,tcp_header_length)
+
+   ;network_data[0] = 0x00
+   ;network_data[1] = 0x13
+   ;network_data[2] = 0xd4
+   ;network_data[3] = 0xc6
+   ;network_data[4] = 0x53
+   ;network_data[5] = 0x15
+
+   -- Set TCP Header data
+   network_word[TCP_SOURCE_PORT]              = tcp_socket_local_port[socket]
+   network_word[TCP_DESTINATION_PORT]         = tcp_socket_remote_port[socket]
+   network_dword[TCP_SEQUENCE_NUMBER]         = random_word() ;0x00_11_00_01 -- any random value
+   network_dword[TCP_ACKNOWLEDGEMENT_NUBMER]  = 0
+   network_byte[TCP_HEADER_SIZE] = tcp_header_length << 2     -- set header size
+   network_byte[TCP_FLAGS] = TCP_SYN          -- send SYN
+   network_word[TCP_WINDOW] = 16384
+   network_word[TCP_URGENT_POINTER] = 0
+
+   -- set options
+   tcp_header_length = 20
+   tcp_data[0] = 0x02
+   tcp_data[1] = 0x04
+   tcp_data[2] = 0x05
+   tcp_data[3] = 0xb4
+   tcp_data[4] = 0x01
+   tcp_data[5] = 0x01
+   tcp_data[6] = 0x04
+   tcp_data[7] = 0x02
+   tcp_header_length = 28
+
+   -- set checksum
+   tcp_set_checksum(tcp_header_length,0)
+
+   -- send the packet
+   network_send_packet(network_var_offset + tcp_header_length)
+
+   tcp_header_length = 20  -- set default header length
+
+   -- set status
+   tcp_socket_status[socket] = TCP_STATUS_SYN_SENT
+end procedure
+
+
+
+
+

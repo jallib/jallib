@@ -1,0 +1,151 @@
+-- Title: DHT11 library
+-- Author: Sebastien Lelong, Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4o
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: DHT11 is a cheap temperature and humidity sensor. This library
+-- accesses this module and reads values from it.
+-- .
+-- Accessing the module is quite straight forward and requires one signal
+-- pin and a pullup resistor. This pin will be set as output and input by the
+-- library itself, and is used to activate the sensor, then actually getting
+-- values. Temp & humidity values comes in one frame from the sensor. Library
+-- split both value type and set global variables. This means these global
+-- variables store the last accessed value.
+--
+-- Sources:
+--   - datasheet: http://www.robotshop.com/PDF/dht11.pdf
+--   - arduino playground: http://arduino.cc/playground/Main/DHT11Lib
+--
+
+include delay
+
+-- user-friendly status
+const byte DHT11_OK = 0
+const byte DHT11_ERR = 1
+const byte DHT11_TIMEOUT = 2
+
+-- global variables to store temperature and humidity values
+var byte dht11_temperature = 0
+var byte dht11_humidity = 0
+var byte _dht11_buffer[5] = {0,0,0,0,0}
+
+if !defined(DHT11_TIMEOUT_TRY) then
+   -- we will try many times to read value before giving up
+   const word DHT11_TIMEOUT_TRY = 1000
+end if
+
+
+-- Read temperature and humidity value. Expect existing aliases on a signal pin:
+--  * pin_dht11
+--  * pin_dht11_direction
+--
+-- Returns a byte showing result status,using constants defined by the lib:
+-- DHT11_OK: successful reading, global variables are set
+-- DHT11_ERR: checksum error while reading
+-- DHT11_TIMEOUT: too many time occurs before readings, give up.
+--
+-- Calling code must check these returned value in order to know if
+-- global variables are actually storing updated values
+function dht11_read() return byte is
+
+   var word counter = 0
+   var byte buf_idx = 0
+   var byte bit_idx = 7 -- MSb first
+   
+   -- reset buffer
+   for 5 using buf_idx loop
+      _dht11_buffer[buf_idx] = 0
+   end loop
+   buf_idx = 0
+
+   -- activate sensor
+   pin_dht11_direction = output
+   pin_dht11 = low
+   delay_1ms(18)
+   pin_dht11 = high
+   delay_10us(4)
+   
+   -- read sensor response
+   pin_dht11_direction = input
+   -- wait for sensor: pin must go high, then low
+   while pin_dht11 == low loop
+         counter = counter + 1
+         if counter == DHT11_TIMEOUT_TRY then
+            return DHT11_TIMEOUT
+         end if
+   end loop
+   counter = 0
+   while pin_dht11 == high loop
+         counter = counter + 1
+         if counter == DHT11_TIMEOUT_TRY then
+            return DHT11_TIMEOUT
+         end if
+   end loop
+
+   -- ok, sensor is happy to share results whith us, let's read
+   for 40 loop
+      
+      -- low -> high: one bit to read
+      counter = 0
+      while pin_dht11 == low loop
+         counter = counter + 1
+         if counter == DHT11_TIMEOUT_TRY then
+            return DHT11_TIMEOUT
+         end if
+      end loop
+
+      -- as soon as we detect it's going high, we need to measure duration:
+      --   * 26-28us means 0
+      --   * 70us means 1
+      -- If we wait 40us and check pin level, we should be able to know
+      -- if it was a '1' (pin is still high) or a '0' (pin is low)
+      -- (ok, we're assuming there won't be any timeouts here...)
+      delay_10us(4)
+      if pin_dht11 == high then
+         -- '1'
+         _dht11_buffer[buf_idx] = _dht11_buffer[buf_idx] | (1 << bit_idx)
+      else
+         -- '0'
+      end if
+      
+      if bit_idx == 0 then
+         bit_idx = 7
+         buf_idx = buf_idx + 1
+      else
+         bit_idx = bit_idx - 1
+      end if
+      
+      -- wait until it becomes low again (we may be still into
+      -- '1' duration signal
+      counter = 0
+      while pin_dht11 == high loop
+         counter = counter + 1
+         if counter == DHT11_TIMEOUT_TRY then
+            return DHT11_TIMEOUT
+         end if
+      end loop
+
+   end loop
+   
+   -- ok, reading is done, store values
+   
+   -- checksum
+   var byte sum = byte(_dht11_buffer[0] + _dht11_buffer[2])
+   if _dht11_buffer[4] != sum then
+      return DHT11_ERR
+   else
+		dht11_humidity    = _dht11_buffer[0];
+	   dht11_temperature = _dht11_buffer[2];
+	   return DHT11_OK
+   end if
+   
+   -- can't get there...
+   return DHT11_ERR
+   
+end function
+
+

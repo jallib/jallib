@@ -1,0 +1,261 @@
+-- Title: queue07 - fifo queue (number 01 is the template)
+-- Author: Joep Suijs, Copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4i
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides a (one) byte fifo queue. 
+-- This queue is interrupt-safe in the sense that you can write to the queue from the interrupt and
+-- read from the main program or vice versa without special precautions.
+-- Reading (or writing) from both interrupt and main program might not work properly.
+-- --
+-- The basic interface is pseudo var:
+-- queue07 = x -- put x into queue; block if queue is full
+-- x = queue07 -- read x from queue; block if queue is empty
+-- --
+-- non-blocking access to the same queue is provided by
+-- queue07_nb_put()
+-- and
+-- queue07_nb_get()
+-- --
+-- other methods:
+-- queue07_clear()    -- clear queue (makes queue empty)
+-- queue07_empty()    -- returns true if queue is emtpy (depricated, use queue1_is_empty())
+-- queue07_is_empty() -- returns true if queue is emtpy 
+-- queue07_is_full()  -- returns true if queue is full
+-- queue07_nr_free()  -- returns nr of free places in queue
+-- queue07_nr_used()  -- returns nr of used places in queue
+--
+-- Sources:
+-- 
+
+if (defined(queue07_size) == false) then
+   -- queue size default
+   const byte  queue07_size = 10
+end if
+
+-- queue vars
+var volatile byte queue07_data[queue07_size + 1]
+var volatile byte queue07_in_pointer  = 0 ; wijst naar vrije locatie
+var volatile byte queue07_out_pointer = 0 ; wijst naar databyte
+
+-- deprecated
+procedure queue07_clear() is
+
+   queue07_in_pointer  = 0
+   queue07_out_pointer = 0
+
+end procedure
+
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+function queue07_empty() return bit is
+
+   _warn "queue07_empty() is deprecated - please use queue07_is_empty()"
+   return (queue07_in_pointer == queue07_out_pointer) 
+
+end function
+
+-- -----------------------------------------------------------------------
+-- queue07_nr_used - returns nr of used places in queue
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+function queue07_nr_used() return byte is
+
+   if (queue07_in_pointer <  queue07_out_pointer) then 
+      return queue07_in_pointer - queue07_out_pointer + queue07_size
+   end if      
+
+   return queue07_in_pointer - queue07_out_pointer
+
+end function
+
+-- ----------------------------------------------------------------------- 
+--  queue07_nr_free - returns nr of free places in queue
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+function queue07_nr_free() return byte is
+
+
+   if (queue07_in_pointer <  queue07_out_pointer) then 
+      return  queue07_out_pointer - 1 - queue07_in_pointer
+   end if      
+
+   return queue07_size - 1 - queue07_in_pointer + queue07_out_pointer
+
+end function
+
+-- ----------------------------------------------------------------------- 
+-- queue07_is_empty() -- returns true if queue is emtpy 
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+function queue07_is_empty() return bit is
+
+    return (queue07_in_pointer == queue07_out_pointer) 
+
+end function
+
+-- ----------------------------------------------------------------------- 
+-- queue07_is_full()  -- returns true if queue is full
+-- ----------------------------------------------------------------------- 
+-- ----------------------------------------------------------------------- 
+function queue07_is_full() return bit is
+
+   var byte pntr = queue07_in_pointer + 1
+   if (pntr > queue07_size) then
+      pntr = 0
+   end if
+
+   return (pntr == queue07_out_pointer)
+   
+end function
+
+-- -----------------------------------------------------------------------
+-- queue07_nb_get - get one byte from queue (non-blocking)
+-- -----------------------------------------------------------------------
+-- The byte read is put into v (calling param)
+--
+-- returns: true  when we read a byte from the queue              
+--          false when the queue is empty (byte is not read from queue)
+-- -----------------------------------------------------------------------
+function queue07_nb_get(byte out v) return bit is
+   var byte pntr
+   
+   if (queue07_in_pointer == queue07_out_pointer) then
+      -- queue is empty
+      return false;
+   end if
+
+   ; data in queue
+   v = queue07_data[queue07_out_pointer]
+   pntr = queue07_out_pointer + 1
+   if (pntr > queue07_size) then
+      pntr = 0
+   end if  
+
+   queue07_out_pointer = pntr
+   
+   return true;
+   
+end function
+
+-- -----------------------------------------------------------------------
+-- queue07_nb_put - put one byte into queue (non-blocking)
+-- -----------------------------------------------------------------------
+-- return:  true  when the byte is put into the queue
+--          false when the queue is full (byte is not put in queue)
+-- -----------------------------------------------------------------------
+function queue07_nb_put(byte in v) return bit is
+
+   var byte pntr = queue07_in_pointer + 1
+   if (pntr > queue07_size) then
+      pntr = 0
+   end if
+
+   if (pntr == queue07_out_pointer) then
+      -- queue full
+      return false;
+   end if
+
+   queue07_data[queue07_in_pointer] = v
+   queue07_in_pointer = pntr
+      
+   return true;
+   
+end function
+
+-- -----------------------------------------------------------------------
+-- queue07_nb'get - get one byte from queue (non-blocking)
+-- -----------------------------------------------------------------------
+-- returns byte from queue, 0 if queue empty
+-- -----------------------------------------------------------------------
+function queue07_nb'get() return byte is
+   var byte v
+   var byte pntr
+   
+   if (queue07_in_pointer == queue07_out_pointer) then
+      -- queue is empty
+      return 0;
+   end if
+
+   ; data in queue
+   v = queue07_data[queue07_out_pointer]
+   pntr = queue07_out_pointer + 1
+   if (pntr > queue07_size) then
+      pntr = 0
+   end if  
+
+   queue07_out_pointer = pntr
+   return v
+   
+end function
+
+-- -----------------------------------------------------------------------
+-- queue07_nb'put - put one byte into queue (non-blocking)
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+procedure queue07_nb'put(byte in v) is
+
+   var byte pntr = queue07_in_pointer + 1
+   if (pntr > queue07_size) then
+      pntr = 0
+   end if
+
+   if (pntr == queue07_out_pointer) then
+      -- queue full
+      return;
+   end if
+
+   queue07_data[queue07_in_pointer] = v
+   queue07_in_pointer = pntr
+      
+end procedure
+
+-- -----------------------------------------------------------------------
+-- queue07'put - put one byte into queue
+-- -----------------------------------------------------------------------
+-- When the queue is full, it waits until a byte is removed from the queue.
+-- -----------------------------------------------------------------------
+procedure queue07'put(byte in v) is
+   
+   var byte pntr = queue07_in_pointer + 1
+   if (pntr > queue07_size) then
+      pntr = 0
+   end if
+
+   -- wait until there is a free space in the queue
+   while (pntr == queue07_out_pointer) loop end loop
+
+   queue07_data[queue07_in_pointer] = v
+   queue07_in_pointer = pntr
+
+end procedure
+
+-- -----------------------------------------------------------------------
+-- queue07'get - get one byte from queue
+-- -----------------------------------------------------------------------
+-- returns byte from queue.
+-- When the queue is empty, it waits until a byte is put into the queue.
+-- -----------------------------------------------------------------------
+function queue07'get() return byte is
+   var byte v
+   var byte pntr
+   
+   -- wait if there are no bytes in the queue
+   while (queue07_in_pointer == queue07_out_pointer) loop end loop
+   
+   ; data in queue07_
+   v = queue07_data[queue07_out_pointer]
+   pntr = queue07_out_pointer + 1
+   if (pntr > queue07_size) then
+      pntr = 0
+   end if  
+
+   queue07_out_pointer = pntr
+
+   return v
+end function

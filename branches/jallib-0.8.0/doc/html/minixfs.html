@@ -1,0 +1,759 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html>
+    <head>
+		<title>minixfs - jallib API doc</title>
+    </head>
+    <body>
+		
+		        <div id="page">
+        
+            <div id="pagecontent">
+
+			    
+	<a href="#toc" name="minixfs">
+    <h1>minixfs</h1>
+	</a>
+
+    <div>
+		<font size="+1"><i>Minix v2 filesystem implementation</i></font>
+	</div>
+
+	<br/>
+
+    <div class="narrow">
+        
+	<table>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Author</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			Sebastien Lelong, Copyright (c) 2011, all rights reserved.
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Adapted-by</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Compiler</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			2.4o
+		</td>
+	</tr>
+	</table>
+
+	<br/>
+	
+	<b>Description</b>
+	<p>
+		<pre>Minix v2 implementation
+Partitions aren't supported, so you have to create a filesystem on the whole
+available memory. Typically, instead of "mkfs.minix -v /dev/sdX1", you'll
+have to "mkfs.minix -v /dev/sdX" (and remove sdX1 partition with fdisk)
+Some useful commands:
+ - fsck.minix -f -v -s /dev/sdX
+      will print Super-Block and some other information about files, dirs, state
+ - hexdump -C /dev/sdX
+      will dump Minix FS content (only changing lines)
+ - hexdump -v -C /dev/sdX
+      will do the same, but dump all lines, even if identical
+.
+In order to test your setup, you can untar minix_data.tar.bz2 available at:
+... 
+This archive contains directories and files of different size, used to test
+data zone and helping to understand how Minix filesystem is designed.
+   1. prepare your device, no partition (replace /dev/sdX with appropriate device):
+         mkfs.minix -v /dev/sdX
+         mount /dev/sdX /mnt/tmp
+   2. untar test data:
+         cd /mnt/tmp && tar xjfv path/to/minix_data.tar.bz2
+         cd && umount /mnt/tmp
+   3. check content:
+         fsck.minix -f -v -s /dev/sdX
+      should report something like (1GB SD-card used here):
+.
+Forcing filesystem check on /dev/sdX.
+65535 inodes
+992000 blocks
+Firstdatazone=4227 (4227)
+Zonesize=1024
+Maxsize=2147483647
+Filesystem state=1
+namelen=30
+.
+    20 inodes used (0%)
+ 70858 zones used (7%)
+.
+    16 regu
+    16 regular files
+     2 directories
+     0 character device files
+     0 block device files
+     1 links
+     2 symbolic links
+     ------
+     21 files
+.
+Vocabulary: these are the terms I'm using in this code, may be wrong...
+   * storage:  this is the underlying storage layer. Link between MinixFS and storage is done
+               by creating aliases to some spefici proc/funcs. Typically, storage is sd_card.jal
+               library. It could also be hard-disk too.
+   * sector:   this is a unit in underlying storage (eg. for SD cards, 512 bytes)
+   * block:    this is a unit in minixfs (typically 1024 bytes, that is, 2 * sector's size with SD cards)
+   * zone:     same as a block in case of Minix v2
+   * inode:    well, that's an inode, a kind of meta description of a file
+   * file descriptor: a structure composed with an inode and several information to track how file was
+               opened and where we are within a file (well, again, that's a file descriptor)
+</pre>
+
+	</p>
+	<br/>
+
+
+	<b>Notes</b>
+	<p>
+		<pre>   * I developped this lib and tested it with sd_card storage. It should be possible to use other
+   * storages though not tested nor even tried.
+   * to developpers: this piece of code is tricky... If you plan to modify this lib, take huge care
+                     at variables initialization, there are special values I used, mostly to rollover
+                     to 0 when first accessed. It could have been simpler but would have used more 
+                     variables and thus more resources. There are many counters which, when reaching 
+                     a specific value, trigger actions (like flushing data, going to next zone, allocate
+                     a new zone, etc...). Just don't assume it'll work just because you added a small
+                     little line, because everything is quite tied together and you could be victim
+                     of an (un)expected butterfly effect :) I myself broke features many times with 
+                     supposedly minor changes, hurting my brain a lot. Being polite...
+</pre>
+
+	</p>
+	<br/>
+	
+	<b>Dependencies</b>
+	<p>
+		<ul>
+			<li><a href="strings.html">strings</a></li>
+		</ul>
+
+
+			<br/>
+				<h2><a name="summary">Summary</a></h2>
+
+		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#5e4c17954ad99fbd1ba7ea661151bc89">var word minix_sector_progress = 0  </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#05fe8496acba532fff2b40eb3767d614">const byte MINIX_ZONE_TRIPLE_INDIRECT  = 0b_1000</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#ef7dfe440d934ff51d1d40936042a881">const word MINIX_SUPER_MAGIC   = 0x137F      </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#fb09cd699cad2cc2c40708a6efc98f9f">const word MINIX_SUPER_MAGIC2  = 0x138F      </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#687dc19bcefd2cf2486a79b96cbe4adb">const dword MINIX_MAX_DIRECT_ZONE_SIZE      = MINIX_NUM_DIRECT_ZONES * MINIX_BYTES_PER_BLOCK</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#2dd6fbded62aba59b5247bc6a999ad2c">const byte MINIX_ERR_NONE = 0b_0000_0000</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#818dcc380963151c75407ed3be5f5da5">const word MINIX_BOOT_BLOCK_ADDRESS = 0x00</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#de93a7f3e9f58e3545319d721eb6399b">const dword MINIX_NUM_ZONE_BITS_PER_BLOCK = MINIX_BYTES_PER_BLOCK * 8</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#279c0aa65c7ebdc2a5a3563aa78e9c81">var byte _minix_last_error = MINIX_ERR_NONE</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#093f13726433eef7f1ae8568c2e90602">const word MINIX2_SUPER_MAGIC  = 0x2468      </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#d81355b3d685e90bf33d980cf6b23259">const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BOOT_BLOCK_ADDRESS + MINIX_BYTES_PER_BLOCK</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#51e7bbf1ee9b4f031790c043944f0eda">const word MINIX_INODE_ROOT_ID = 1</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#54af1fa8df910083f3d8def79560e6bb">const byte MINIX_MODE_WRITE  = 0b010</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#866c8ab1f2d01d1b841225d710df240a">const word MINIX_BYTES_PER_INODE = 0x40      </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#5e3d50f21b4482a82955dea5e4f43009">const byte MINIX_ERR_NO_SUCH_FILE         = 0b_0000_1000 </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#4c90bb68d0d04e1bcfeb8fef33d9eb7a">var minix_superblock minix_sb</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#9e26a7c1ccea74a11ba5062e465aa35e">const byte MINIX_ERR_NOT_DIRECTORY        = 0b_0000_0100 </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#1c2fe137a1f92c13ae1a67dc122017ee">const word MINIX_BYTES_PER_BLOCK = 0x400     </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#569281d6bdf99d4d5d11fca418d95bfe">const word MINIX_MAX_INDIRECT_ZONE_IDX      = 0x03FC  </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#fd5d4ebf5f8e27443ae0a22ff5d7a8a1">const byte MINIX_MAX_FILENANE_LEN = 30</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#c527e6de1fa8686fed5df1e8984389dd">const byte MINIX_NUM_DIRECT_ZONES           = 7</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#6c0b21337542ac408f5364545568ccb6">const word MINIX2_SUPER_MAGIC2 = 0x2478      </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#608819ca6b8bc5f3852b7c54f6189c6a">const byte MINIX_MODE_APPEND = 0b100  </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#75d6c2b50f5931c1c44adda7f005ccad">const byte MINIX_ZONE_NONE             = 0b_0000</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#b4dae4517e8ab4e5c09bec26c62cbb32">var dword minix_storage_address = 0 </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#0c2b138d9c39a3010781ba3ff251b12a">const byte MINIX_ZONE_INDIRECT         = 0b_0010</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#266034dd535ad36ae49eb7d0d455ecda">const byte MINIX_ZONE_DOUBLE_INDIRECT  = 0b_0100</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#1bcdc1e794308e22e15e01bce1c94752">const byte MINIX_ERR_BAD_ADDRESS          = 0b_0010_0000 </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#afd4284cfafff37e9fc12e8aec38e175">var minix_fd minix_filefd</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#42fd7c73c88e8a2322337714d9b6a7c0">var dword minix_curzone</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#0879b39788e63ae563e1a296f9dc2679">var word minix_cwd</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#14ec012da6f0e8db77315c7317311590">const dword MINIX_NUM_INDIRECT_ZONES         = 256</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#e838d5a590c710cef564a58655affe7b">const dword MINIX_NUM_DOUBLE_INDIRECT_ZONES  = 65536</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#29759980a5d342b11c47fb94e5bc807a">const dword MINIX_MAX_INDIRECT_ZONE_SIZE    = (MINIX_NUM_INDIRECT_ZONES * MINIX_BYTES_PER_BLOCK) + MINIX_MAX_DIRECT_ZONE_SIZE</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#c91f081072e09e0a1c91b8c2e56f30ed">const word MINIX3_SUPER_MAGIC  = 0x4D5A      </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#79b856be0fcd66a05b6894bf38b569ec">const byte MINIX_ZONE_DIRECT           = 0b_0001</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#dafe8e59a97c747c69e568437a21238d">const byte MINIX_MODE_READ   = 0b001</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#88820c918bb70c2c9a0360bee89bc782">const byte MINIX_ERR_END_OF_FILE          = 0b_0001_0000 </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#993b67e00d46c66aedc5a3e589e715b7">var byte minix_curzonetab[4] at minix_curzone</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#c4786245b2e0c71e4530ca116545f6eb">const byte MINIX_MAX_DIRECT_ZONE_IDX        = 6</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#87c88c556fcf0f06b468ff188d480abd">const word MINIX_MAX_DOUBLE_DIRECT_ZONE_IDX = 0x03FC  </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#6df3f5903e102962a371fe23017f35fd">const byte MINIX_ERR_BAD_ZONE_LOCATION    = 0b_0000_0010 </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#0df09ae73b8cdd17f11f6a99b8cd4baa">const byte MINIX_ERR_BAD_MAGIC_NUMBER     = 0b_0000_0001 </a></code></b>
+		</li>
+	</ul>
+
+
+		<h3><a name="Procedures">Procedures</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#4cdbb601bd791163bb195e3a91fa76ae">minix_read_super_block(bit in check_data_zone)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#ab9d199e8b59bc18c47a388d27c89fec">minix_close()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#2a9a73d68c6b660e1e3622cbf712a809">minix_init(bit in check)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#697097b439ae84d4e78c6668ef5124c5">minix_next_zone(bit in create_zone)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#6883382d3b1094b8c6c8c0345dd687c6">minix_open_block_byte(dword in blocknum, word in bytenum)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#4a753d7ea0dbab00ad5dd1516a07f0e9">minix_flush()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#74b5b9cbf13ffd0fb3734e37f6e0f974">minix_storage_write_byte(byte in data)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#8f3c80e52e4d6c0806a0ff4dade5315e">minix_seek(dword in bytenum)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#39863b564dea2508e36d3c6201b6a16e">minix_load_inode(word in inode_num)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#622f535babdf04ea37efbb8986e89a19">minix_cd(byte in dirname[MINIX_MAX_FILENANE_LEN])</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#0da8d4809d4adea84b65c74891b5dd88">minix_storage_flush()</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#b252b3579ecea46f345b7c78fe348412">minix_last_error'put(byte in val)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#f43d6ab74e64813fdd1d490e5c69ccb0">minix_openi(word in inode_num,byte in mode)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#a9938a8fa8bcf7e6af379556b1278438">minix_cdi(word in inode_num)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#e3535f0108eb7575f28c7bc50befffa6">minix_write(byte in data)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#998b3ee43fb5f79db75e1d9f1f0f824f">minix_open_block(dword in num)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#5ff7ad3ca7d69889e62508c4369036b2">minix_open(byte in filename[MINIX_MAX_FILENANE_LEN],byte in mode)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#7e9efb6668c0328d851760e957f6cfd5">minix_save_inode()</a></code></b>
+		</li>
+	</ul>
+
+
+		<h3><a name="Functions">Functions</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#1d1bdfc10ed6e62d78cf696b98327891">minix_zone_alloc() return dword</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#67f8736ff87ac245a22bd24b36dd8288">minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#d6dcc8b2342b0dd9357bf005fed76d38">minix_last_error'get() return byte</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#fa1e4edd80848d4f662161cc5f24344a">minix_read() return byte</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#3fbbea2be7eed2ca5d51fe2b60c88037">minix_next_entry'get() return minix_dir_entry</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#51ef21ba31df1376c92c3554119a6d8e">minix_storage_read_byte() return byte</a></code></b>
+		</li>
+	</ul>
+
+
+
+			<br/>
+				<h2><a name="api">API details</a></h2>
+
+		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="5e4c17954ad99fbd1ba7ea661151bc89" href="#summary">var word minix_sector_progress = 0  </a></code></b>
+				<p>	<pre>track progress while accessing underlying storage sector</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="05fe8496acba532fff2b40eb3767d614" href="#summary">const byte MINIX_ZONE_TRIPLE_INDIRECT  = 0b_1000</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="ef7dfe440d934ff51d1d40936042a881" href="#summary">const word MINIX_SUPER_MAGIC   = 0x137F      </a></code></b>
+				<p>	<pre>Magic numbers used to idenfity filesystem version
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="fb09cd699cad2cc2c40708a6efc98f9f" href="#summary">const word MINIX_SUPER_MAGIC2  = 0x138F      </a></code></b>
+				<p>	<pre>minix fs, 30 char names</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="687dc19bcefd2cf2486a79b96cbe4adb" href="#summary">const dword MINIX_MAX_DIRECT_ZONE_SIZE      = MINIX_NUM_DIRECT_ZONES * MINIX_BYTES_PER_BLOCK</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="2dd6fbded62aba59b5247bc6a999ad2c" href="#summary">const byte MINIX_ERR_NONE = 0b_0000_0000</a></code></b>
+				<p>	<pre>Error constants. Following "mkfs" convention, errors are added, so
+minix_last_error can embed several errors
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="818dcc380963151c75407ed3be5f5da5" href="#summary">const word MINIX_BOOT_BLOCK_ADDRESS = 0x00</a></code></b>
+				<p>	<pre>Super Block is one block after boot block
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="de93a7f3e9f58e3545319d721eb6399b" href="#summary">const dword MINIX_NUM_ZONE_BITS_PER_BLOCK = MINIX_BYTES_PER_BLOCK * 8</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="279c0aa65c7ebdc2a5a3563aa78e9c81" href="#summary">var byte _minix_last_error = MINIX_ERR_NONE</a></code></b>
+				<p>	<pre>Auto-resetting variable: errors are added, and when read, reset to 0
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="093f13726433eef7f1ae8568c2e90602" href="#summary">const word MINIX2_SUPER_MAGIC  = 0x2468      </a></code></b>
+				<p>	<pre>minix V2 fs</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="d81355b3d685e90bf33d980cf6b23259" href="#summary">const word MINIX_SUPER_BLOCK_ADDRESS = MINIX_BOOT_BLOCK_ADDRESS + MINIX_BYTES_PER_BLOCK</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="51e7bbf1ee9b4f031790c043944f0eda" href="#summary">const word MINIX_INODE_ROOT_ID = 1</a></code></b>
+				<p>	<pre>Inode --
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="54af1fa8df910083f3d8def79560e6bb" href="#summary">const byte MINIX_MODE_WRITE  = 0b010</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="866c8ab1f2d01d1b841225d710df240a" href="#summary">const word MINIX_BYTES_PER_INODE = 0x40      </a></code></b>
+				<p>	<pre>64B per inode</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="5e3d50f21b4482a82955dea5e4f43009" href="#summary">const byte MINIX_ERR_NO_SUCH_FILE         = 0b_0000_1000 </a></code></b>
+				<p>	<pre>try to access invalid/unexisting filename or inode</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="4c90bb68d0d04e1bcfeb8fef33d9eb7a" href="#summary">var minix_superblock minix_sb</a></code></b>
+				<p>	<pre>super-block
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="9e26a7c1ccea74a11ba5062e465aa35e" href="#summary">const byte MINIX_ERR_NOT_DIRECTORY        = 0b_0000_0100 </a></code></b>
+				<p>	<pre>try to act on a directory, but inode isn't a directory</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="1c2fe137a1f92c13ae1a67dc122017ee" href="#summary">const word MINIX_BYTES_PER_BLOCK = 0x400     </a></code></b>
+				<p>	<pre>1KB per block</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="569281d6bdf99d4d5d11fca418d95bfe" href="#summary">const word MINIX_MAX_INDIRECT_ZONE_IDX      = 0x03FC  </a></code></b>
+				<p>	<pre>0x400 - 4 == one block - one location</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="fd5d4ebf5f8e27443ae0a22ff5d7a8a1" href="#summary">const byte MINIX_MAX_FILENANE_LEN = 30</a></code></b>
+				<p>	<pre>max filename size according to minix v2
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="c527e6de1fa8686fed5df1e8984389dd" href="#summary">const byte MINIX_NUM_DIRECT_ZONES           = 7</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="6c0b21337542ac408f5364545568ccb6" href="#summary">const word MINIX2_SUPER_MAGIC2 = 0x2478      </a></code></b>
+				<p>	<pre>minix V2 fs, 30 char names</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="608819ca6b8bc5f3852b7c54f6189c6a" href="#summary">const byte MINIX_MODE_APPEND = 0b100  </a></code></b>
+				<p>	<pre>write implied</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="75d6c2b50f5931c1c44adda7f005ccad" href="#summary">const byte MINIX_ZONE_NONE             = 0b_0000</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="b4dae4517e8ab4e5c09bec26c62cbb32" href="#summary">var dword minix_storage_address = 0 </a></code></b>
+				<p>	<pre>track underlying storage address</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="0c2b138d9c39a3010781ba3ff251b12a" href="#summary">const byte MINIX_ZONE_INDIRECT         = 0b_0010</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="266034dd535ad36ae49eb7d0d455ecda" href="#summary">const byte MINIX_ZONE_DOUBLE_INDIRECT  = 0b_0100</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="1bcdc1e794308e22e15e01bce1c94752" href="#summary">const byte MINIX_ERR_BAD_ADDRESS          = 0b_0010_0000 </a></code></b>
+				<p>	<pre>bad block address</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="afd4284cfafff37e9fc12e8aec38e175" href="#summary">var minix_fd minix_filefd</a></code></b>
+				<p>	<pre>file descriptor currently being accessed (file)
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="42fd7c73c88e8a2322337714d9b6a7c0" href="#summary">var dword minix_curzone</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="0879b39788e63ae563e1a296f9dc2679" href="#summary">var word minix_cwd</a></code></b>
+				<p>	<pre>current working directory (CWD) inode number
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="14ec012da6f0e8db77315c7317311590" href="#summary">const dword MINIX_NUM_INDIRECT_ZONES         = 256</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="e838d5a590c710cef564a58655affe7b" href="#summary">const dword MINIX_NUM_DOUBLE_INDIRECT_ZONES  = 65536</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="29759980a5d342b11c47fb94e5bc807a" href="#summary">const dword MINIX_MAX_INDIRECT_ZONE_SIZE    = (MINIX_NUM_INDIRECT_ZONES * MINIX_BYTES_PER_BLOCK) + MINIX_MAX_DIRECT_ZONE_SIZE</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="c91f081072e09e0a1c91b8c2e56f30ed" href="#summary">const word MINIX3_SUPER_MAGIC  = 0x4D5A      </a></code></b>
+				<p>	<pre>minix V3 fs</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="79b856be0fcd66a05b6894bf38b569ec" href="#summary">const byte MINIX_ZONE_DIRECT           = 0b_0001</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="dafe8e59a97c747c69e568437a21238d" href="#summary">const byte MINIX_MODE_READ   = 0b001</a></code></b>
+				<p>	<pre>File descriptor constants
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="88820c918bb70c2c9a0360bee89bc782" href="#summary">const byte MINIX_ERR_END_OF_FILE          = 0b_0001_0000 </a></code></b>
+				<p>	<pre>reached EOF</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="993b67e00d46c66aedc5a3e589e715b7" href="#summary">var byte minix_curzonetab[4] at minix_curzone</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="c4786245b2e0c71e4530ca116545f6eb" href="#summary">const byte MINIX_MAX_DIRECT_ZONE_IDX        = 6</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="87c88c556fcf0f06b468ff188d480abd" href="#summary">const word MINIX_MAX_DOUBLE_DIRECT_ZONE_IDX = 0x03FC  </a></code></b>
+				<p>	<pre>0x400 - 4 == one block - one location</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="6df3f5903e102962a371fe23017f35fd" href="#summary">const byte MINIX_ERR_BAD_ZONE_LOCATION    = 0b_0000_0010 </a></code></b>
+				<p>	<pre>something is wrong about declared and computed data location</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="0df09ae73b8cdd17f11f6a99b8cd4baa" href="#summary">const byte MINIX_ERR_BAD_MAGIC_NUMBER     = 0b_0000_0001 </a></code></b>
+				<p>	<pre>magic number unsupported</pre>
+</p>
+		</li>
+	</ul>
+
+
+		<h3><a name="Procedures">Procedures</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="4cdbb601bd791163bb195e3a91fa76ae" href="#summary">minix_read_super_block(bit in check_data_zone)</a></code></b>
+				<p>	<pre>Read Super-Block and fill record
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="ab9d199e8b59bc18c47a388d27c89fec" href="#summary">minix_close()</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="2a9a73d68c6b660e1e3622cbf712a809" href="#summary">minix_init(bit in check)</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="697097b439ae84d4e78c6668ef5124c5" href="#summary">minix_next_zone(bit in create_zone)</a></code></b>
+				<p>	<pre>move to next data zone, being direct, indirect ou double
+indirect
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="6883382d3b1094b8c6c8c0345dd687c6" href="#summary">minix_open_block_byte(dword in blocknum, word in bytenum)</a></code></b>
+				<p>	<pre>move to block number, then to byte number within the block
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="4a753d7ea0dbab00ad5dd1516a07f0e9" href="#summary">minix_flush()</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="74b5b9cbf13ffd0fb3734e37f6e0f974" href="#summary">minix_storage_write_byte(byte in data)</a></code></b>
+				<p>	<pre>"Raw" read one byte from underlying storage.
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="8f3c80e52e4d6c0806a0ff4dade5315e" href="#summary">minix_seek(dword in bytenum)</a></code></b>
+				<p>	<pre>move to byte bytenum within a file
+Notes: assuming file was just opened, no data read
+bytenum must be <= filesize, if greater, expect troubles
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="39863b564dea2508e36d3c6201b6a16e" href="#summary">minix_load_inode(word in inode_num)</a></code></b>
+				<p>	<pre>Load inode data, identified by inode_num, into file descriptor's 
+(minix_filefd) inode parameter
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="622f535babdf04ea37efbb8986e89a19" href="#summary">minix_cd(byte in dirname[MINIX_MAX_FILENANE_LEN])</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="0da8d4809d4adea84b65c74891b5dd88" href="#summary">minix_storage_flush()</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="b252b3579ecea46f345b7c78fe348412" href="#summary">minix_last_error'put(byte in val)</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="f43d6ab74e64813fdd1d490e5c69ccb0" href="#summary">minix_openi(word in inode_num,byte in mode)</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="a9938a8fa8bcf7e6af379556b1278438" href="#summary">minix_cdi(word in inode_num)</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="e3535f0108eb7575f28c7bc50befffa6" href="#summary">minix_write(byte in data)</a></code></b>
+				<p>	<pre>write a byte to current opened file descriptor
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="998b3ee43fb5f79db75e1d9f1f0f824f" href="#summary">minix_open_block(dword in num)</a></code></b>
+				<p>	<pre>move to block number and open read access on underlying storage
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="5ff7ad3ca7d69889e62508c4369036b2" href="#summary">minix_open(byte in filename[MINIX_MAX_FILENANE_LEN],byte in mode)</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="7e9efb6668c0328d851760e957f6cfd5" href="#summary">minix_save_inode()</a></code></b>
+				<p>	<pre>Save current file desc's inode (minix_filefd.inode)
+</pre>
+</p>
+		</li>
+	</ul>
+
+
+		<h3><a name="Functions">Functions</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="1d1bdfc10ed6e62d78cf696b98327891" href="#summary">minix_zone_alloc() return dword</a></code></b>
+				<p>	<pre>Walk accross zone bitmap, searching for a free zone number (identified by 0s)
+and return available zone number. 
+/!\ zone bitmap and file's content obviously aren't located the same. This means when 
+allocating, we're moving in a different place (zone bitmap) than we previously were
+while writing into the file. It's the caller's responsability to move the correct location
+once allocation is done. Yes, that's right: it's dirty, as zone_alloc() won't let the system
+in its previous state. ("why ?" you may ask... because it's simpler like that, and anyway,
+this procedure is somewhat internal, so it shouldn't be a problem in the end).
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="67f8736ff87ac245a22bd24b36dd8288" href="#summary">minix_find_in_cwd(byte in filename[MINIX_MAX_FILENANE_LEN]) return word</a></code></b>
+				<p>	<pre>return inode number found for given filename
+can be a file or a dir name) in current directory
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="d6dcc8b2342b0dd9357bf005fed76d38" href="#summary">minix_last_error'get() return byte</a></code></b>
+				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="fa1e4edd80848d4f662161cc5f24344a" href="#summary">minix_read() return byte</a></code></b>
+				<p>	<pre>Read bytes from file descriptor.
+Walk over memory zones given, returning content
+byte by byte. firt walk over direct zones, then 
+swith indirect then double indirect zones. Keep
+track of progress within inode
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="3fbbea2be7eed2ca5d51fe2b60c88037" href="#summary">minix_next_entry'get() return minix_dir_entry</a></code></b>
+				<p>	<pre>list current working directory (cwd), returning a 
+directory entry each time it's called, until no more
+entry found.
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="51ef21ba31df1376c92c3554119a6d8e" href="#summary">minix_storage_read_byte() return byte</a></code></b>
+				<p>	<pre>"Raw" read one byte from underlying storage.
+</pre>
+</p>
+		</li>
+	</ul>
+
+
+
+			<br/>
+				<h2><a name="related_samples">Related samples</a></h2>
+	Here are the list of samples which use this library:<br/><br/>
+	<table border=1>
+			<tr>
+			<td><b>18f27j53</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f27j53_sd_card_minix_demo.jal" target="_blank">18f27j53_sd_card_minix_demo.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f27j53</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f27j53_sd_card_minix_readi.jal" target="_blank">18f27j53_sd_card_minix_readi.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f27j53</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f27j53_sd_card_minix_read.jal" target="_blank">18f27j53_sd_card_minix_read.jal</a></td>
+			</tr>
+	</table>
+
+			<br/>
+
+            </div>
+        </div>
+
+
+	</body>
+</html>
+

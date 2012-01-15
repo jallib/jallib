@@ -1,0 +1,132 @@
+-- Title: test humidty values from Sensirion SHTxx humidity sensor, results on 4x20 LCD
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2008, all rights reserved.
+-- Adapted-by: Albert Faber
+-- Compiler: =2.4l
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this sample shows how to read the humidity values using the humidity_sht.jal library.
+-- But the byte procedure with 1% RH precision and the word procedure with 0.01% RH precision are used.
+-- Humidty is read every second: doing this every 500ms or faster heats the sensor, lowers the value,
+-- so does not give accurate readings.
+--
+
+-- select PIC
+include 16f876a
+
+pragma target clock     4_000_000            -- 4 MHz xtal
+pragma target OSC       HS                   -- high speed
+pragma target WDT       disabled             -- no watchdog, please
+pragma target LVP       disabled             -- no low voltage programming
+
+enable_digital_io()                          -- no analog pins used in this sample
+
+include delay                                -- used by LCD lib and sht lib
+
+const byte  LCD_ROWS = 4
+const byte  LCD_CHARS = 20
+alias LCD_RS           is pin_b5             -- LCD command/data select.
+alias LCD_EN           is pin_b4             -- LCD data trigger
+alias LCD_dataport     is portb_low          -- LCD data nibble
+portb_direction        = all_output          -- LCD data is portb_low
+include lcd_hd44780_4                        -- LCD library with 4 data lines
+lcd_init()
+
+include print                                -- nice formatted output
+include format                               -- more nice formatting
+
+alias SHT_DATA         is pin_a0             -- data in/out of SHTxx
+alias SHT_DATA_DIR     is pin_a0_direction   -- fake-I2C requires bi-dir comms
+alias SHT_SCK          is pin_a1             -- clock of SHTxx
+pin_a1_direction       = output              -- pin_a4 needs pullup on some PICs
+include humidity_sht                         -- library
+
+-- -------------- VARIABLES ------------------------------
+
+var byte humidity_8
+var word humidity_16
+
+var byte hum1, hum2, crc
+var byte t1, t2
+
+var sbyte temperature_7
+var sword temperature_15
+
+var byte counter
+
+-- --------------- START PROGRAM ---------------------------
+
+lcd_clear_screen()
+const byte str1[] = "Temperature and"
+const byte str2[] = "humidity test."
+const byte str3[] = "Sensirion SHT10"
+const byte str4[] = "Thanks to jallib!"
+
+lcd_cursor_position(0,0)
+print_string(lcd, str1)
+lcd_cursor_position(1,0)
+print_string(lcd, str2)
+lcd_cursor_position(2,0)
+print_string(lcd, str3)
+lcd_cursor_position(3,0)
+print_string(lcd, str4)
+
+delay_100ms(10)                              -- splash screen
+
+lcd_clear_screen()
+
+forever loop
+
+   lcd_cursor_position(0, 0)              -- row 1, position = 1
+
+   read_raw_hum_sht(hum1, hum2, crc)
+   print_byte_hex(lcd, hum1)
+   print_byte_hex(lcd, hum2)
+   lcd = " "
+   delay_1s(1)                              -- because of self-heating
+
+   read_hum_sht(humidity_8)                      
+   print_byte_dec(lcd, humidity_8)
+   lcd = "%"
+   lcd = "R"
+   lcd = "H"
+   lcd = " "
+   delay_1s(1)
+   
+   read_hum_word_sht(humidity_16)
+   format_word_dec(lcd, humidity_16, 4, 2)
+   lcd = "%"
+   lcd = "R"
+   lcd = "H"
+   lcd = " "   
+   delay_1s(1)
+   
+      
+
+   lcd_cursor_position(1, 0)           -- row 2, position = 1
+
+   read_raw_temp_sht(t1, t2, crc)      -- 320ms "on" time
+   print_byte_hex(lcd, t1)
+   print_byte_hex(lcd, t2)
+   lcd = " "
+   delay_1s(3)                         -- 3s off time, so no self-heating
+
+   read_celsius_temp_sht(temperature_7)
+   print_sbyte_dec(lcd, temperature_7)
+   lcd = 0b1101_1111                   -- japanese char, resembles "degree" symbol
+   lcd = "C"
+   lcd = " "   
+   delay_1s(3)
+
+   read_centicelsius_temp_sht(temperature_15)
+   format_sword_dec(lcd, temperature_15, 5, 2)
+   lcd = 0b1101_1111                   
+   lcd = "C"
+   lcd = " "   
+   lcd = " "   
+   delay_1s(3)
+   
+
+end loop

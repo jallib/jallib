@@ -1,0 +1,94 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- This document was created with Syntext Serna Free. --><!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd" []>
+<topic id="topic-1">
+  <title>I²C (Part 2) - Setting up and checking an I²C bus</title>
+  <prolog>
+    <author>Sébastien Lelong</author>
+    <publisher>Jallib Group</publisher>
+  </prolog>
+  <body>
+    <p>In <xref href="tutorial_i2c1.xml">previous tutorial</xref>, we saw a basic overview of how to implement an i2c slave, using a finite state machine implementation. This time, we&apos;re going to get our hands a little dirty, and starts connecting our master/slave together.</p>
+    <section>
+      <title>Checking the hardware and the i2c bus... </title>
+      <p>First of all, i2c is quite hard to debug, especially if you don&apos;t own an oscilloscope (like me). So you have to be accurate and rigorous. That&apos;s why, in this second part of this tutorial, we&apos;re going to setup the hardware, and just make sure the i2c bus is properly operational.</p>
+      <p>Connecting two PIC together through i2c is quite easy from a hardware point of view. Just connect SDA and SCL together, and <b>don&apos;t forget pull-ups resistors</b>. There are many differents values for these resistors, depending on <i>how long the bus is</i>, or the <i>speed you want to reach</i>. Most people use 2.2K resistors, so let&apos;s do the same ! The following schematics is here to help:</p>
+      <p><image href="images/i2c_check_bus_schematic.png" placement="break" width="400" otherprops="clickable"/></p>
+      <p>In this circuit, both PIC have a LED connected, which will help us understand what&apos;s going on. On a breadboard, this looks like that:</p>
+      <p><image href="images/i2c_breadboard_top.jpg" placement="break"/></p>
+      <p>The master is on the right side, the slave on the left. I&apos;ve put the two pull-ups resistors near the master:</p>
+      <p><image href="images/i2c_pullups.jpg" placement="break"/></p>
+      <p>Green and orange wires connect the two PICs together through SDA and SCL lines:</p>
+      <p><image href="images/i2c_wires.jpg" placement="break"/></p>
+      <p>The goal of this test is simple: check if the i2c bus is properly built and operational. How ? PIC 16F88 and its SSP peripheral is able to be configured so it triggers an interrupts when a Start or Stop signal is detected. Read <xref href="http://www.esacademy.com/faq/i2c/busevents/i2cstast.htm" format="html">this page</xref> (part of an nice article on i2c, from previous tutorial&apos;s recommandations).</p>
+      <p>How are we gonna test this ? The idea of this test is simple:<ol>
+          <li>On power, master will blink a LED a little, just to inform you it&apos;s alive</li>
+          <li>On the same time, slave is doing the same</li>
+          <li>Once master has done blinking, it sends a i2c frame through the bus</li>
+          <li>If the bus is properly built and configured, slave will infinitely blink its LED, at high speed</li>
+        </ol></p>
+      <p>Note master will send its i2c frame to a specific address, which don&apos;t necessarily need to be the same as the slave one (and I recommand to use different addresses, just to make sure you understand what&apos;s going on).</p>
+      <p>What about the sources ? <xref href="http://code.google.com/p/jallib/downloads/list" format="html">Download</xref> latest jallib pack, and check the following files (either in <filepath>lib</filepath> or <filepath>sample</filepath> directories):<ul>
+          <li><xref href="http://jallib.googlecode.com/svn/trunk/include/peripheral/i2c/i2c_hw_slave.jal" format="jal">i2c_hw_slave.jal</xref>: main i2c library</li>
+          <li><xref href="http://jallib.googlecode.com/svn/trunk/sample/16f88_i2c_sw_master_check_bus.jal" format="jal">16f88_i2c_sw_master_check_bus.jal</xref>: code for master</li>
+          <li><xref href="http://jallib.googlecode.com/svn/trunk/sample/16f88_i2c_hw_slave_check_bus.jal" format="jal">16f88_i2c_hw_slave_check_bus.jal</xref>: code for slave</li>
+        </ul></p>
+      <p>The main part of the slave code is the way the initialization is done. A constant is declared, telling the library to enable Start/Stop interrupts.</p>
+      <p><codeblock>const SLAVE_ADDRESS = 0x23 -- whatever, it&apos;s not important, and can be
+                           -- different from the address the master wants
+                           -- to talk to
+-- with Start/Stop interrupts
+const bit i2c_enable_start_stop_interrupts = true
+-- this init automatically sets global/peripherals interrupts
+i2c_hw_slave_init(SLAVE_ADDRESS)</codeblock></p>
+      <p>And, of course, the Interrupt Service Routine (ISR):</p>
+      <p><codeblock>procedure i2c_isr() is
+   pragma interrupt
+   if ! PIR1_SSPIF then
+      return
+   end if
+   -- reset flag
+   PIR1_SSPIF = false
+   -- tmp store SSPSTAT
+   var byte tmpstat
+   tmpstat = SSPSTAT
+   -- check start signals
+   if (tmpstat == 0b_1000) then
+      -- If we get there, this means this is an SSP/I2C interrupts
+      -- and this means i2c bus is properly operational !!!
+      while true loop
+         led = on
+         _usec_delay(100000)
+         led = off
+         _usec_delay(100000)
+      end loop
+   end if
+end procedure
+</codeblock></p>
+      <p>The important thing is to:<ul>
+          <li>check if interrupt is currently a SSP interrupts (I2C)</li>
+          <li>reset the interrupt flag,</li>
+          <li>analyze SSPSTAT to see if Start bit is detected</li>
+          <li>if so, blinks &apos;til the end of time (or your battery)</li>
+        </ul></p>
+      <p>Now, go compile both samples, and program two PICs with them. With a correct i2c bus setting, you should see the following:</p>
+      <p><xref href="http://www.youtube.com/watch?v=NalAkRhFP-s" format="html">http://www.youtube.com/watch?v=NalAkRhFP-s</xref></p>
+      <p>
+        <object width="480" height="385">
+            <param name="movie" value="http://www.youtube.com/v/NalAkRhFP-s"></param>
+            <param name="allowFullScreen" value="true"></param>
+            <param name="allowscriptaccess" value="always"></param>
+        </object>
+      </p>
+      <p>On this next video, I&apos;ve removed the pull-ups resistors, and it doesn&apos;t work anymore (slave doesn&apos;t high speed blink its LED).</p>
+      <p><xref href="http://www.youtube.com/watch?v=cNK_cCgWctY" format="html">http://www.youtube.com/watch?v=cNK_cCgWctY</xref></p>
+      <p>
+        <object width="480" height="385">
+            <param name="movie" value="http://www.youtube.com/v/cNK_cCgWctY"></param>
+            <param name="allowFullScreen" value="true"></param>
+            <param name="allowscriptaccess" value="always"></param>
+        </object>
+      </p>
+      <p>Next time (and last time on this topic), we&apos;ll see how to implement the state machine using jallib, defining callback for each states.</p>
+    </section>
+  </body>
+</topic>

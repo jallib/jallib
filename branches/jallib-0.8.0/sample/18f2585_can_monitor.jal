@@ -1,0 +1,146 @@
+-- Title: CAN bus monitor for STERM or other LCD display
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- Monitor CAN bus, using can_legacy library.
+-- 
+-- Our monitor can be configured to either participate with ACKs
+-- (normal mode), or operate in 'listen-only' mode.
+--
+-- In order for CAN bus hardware to work properly, there must
+-- be at least two active nodes on the bus.
+--
+-- So, in listen-only mode, you will need at least two other nodes
+-- or the CAN bus will not operate.
+--
+
+include 18f2585
+pragma target clock 16_000_000
+pragma target OSC  HS_PLL
+pragma target XINST disabled
+pragma target WDT  disabled
+pragma target LVP  disabled
+pragma target MCLR external
+include delay
+include format
+include print
+
+const byte banner[] = "  CAN monitor"
+
+enable_digital_io()
+
+var bit led is pin_A0
+pin_A0_direction =  output
+
+const byte LCD_ROWS = 4
+const byte LCD_CHARS = 20
+var bit lcd_sterm_pin is pin_A4
+var bit lcd_sterm_pin_dir is pin_A4_direction
+include lcd_sterm_master
+
+-- ECAN controller is built-in to 18F2585
+-- but we will operate in 'legacy' mode 0.
+pin_B2_direction = output
+pin_B3_direction = input
+include can_legacy
+include canopen
+
+can_reset()
+can_set_config(3, 0x9E, 3) -- 125K bps
+CIOCON = 0x20 -- TXCAN, high when recessive
+
+RXB0CON = 0x40 -- for this example, we route all extended frames to buffer #0.
+RXB1CON = 0x00 -- standard frames go to buffer #1.
+
+can_set_rxb0_mask(0,0,0,0)
+can_set_rxb1_mask(0,0,0,0)
+
+TXB0CON = 0;
+TXB1CON = 0;
+TXB2CON = 0;
+
+CANCON_REQOP = 0; -- normal mode ( we will ACK messages )
+-- CANCON_REQOP = 3; -- listen only ( no acks on bus )
+
+-- wait for STERM Slave to power-up and initialize.
+for 10 loop
+   led = led ^ 1
+   delay_100ms(5)
+end loop
+
+lcd_home()
+lcd_clear_screen()
+lcd_home()
+print_string(lcd, banner)
+
+-- leave banner up for a while
+for 25 loop
+   led = led ^ 1
+   delay_100ms(2)
+end loop
+
+-- monitor loop
+forever loop
+   var bit got_msg
+   var byte a,b,c,d, i, len
+   var byte rxdata[8]
+   var dword can_id
+   
+   a = CANSTAT
+   b = COMSTAT
+   c = RXB0CON
+   d = RXB1CON
+   
+   -- wiggle the top-left corner
+   lcd_home()
+   if led != 0 then
+      lcd = "/"
+   else
+      lcd = "-"
+   end if
+   
+   -- now the status line
+   lcd_cursor_position(1,0)
+   print_byte_hex(lcd, a)
+   lcd = " "
+   print_byte_hex(lcd, b)
+   lcd = " "
+   print_byte_hex(lcd, c)
+   lcd = " "
+   print_byte_hex(lcd, d)
+   lcd = " "
+   
+   -- check for a message
+   if led != 0 then
+      got_msg = can_receive(0, can_id, rxdata, len)
+   else 
+      got_msg = can_receive(1, can_id, rxdata, len)
+   end if
+   
+   if got_msg then
+      if can_is_std_id(can_id) then
+         lcd_cursor_position(2,0)
+      else
+         lcd_cursor_position(3,0)
+      end if
+      print_dword_hex(lcd, can_id)
+      lcd = " "
+      for 8 using i loop
+         var byte v
+         if i < len then
+            print_byte_hex(lcd, rxdata[i])
+         else
+            lcd = " "
+            lcd = " "
+         end if
+      end loop
+   end if
+   
+   led = led ^ 1
+end loop
+

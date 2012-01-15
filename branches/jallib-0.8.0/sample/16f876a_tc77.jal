@@ -1,0 +1,93 @@
+-- Title: read TC77 temperatures, show on LCD
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2008
+-- Adapted-by: Albert Faber
+-- Compiler: =2.4l
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this sample shows how to read the temperature in Celsius
+-- with different precisions from the TC77 sensor.
+-- It demonstrates the different routines in the TC77 library.
+--
+
+-- select PIC
+include 16f876a
+
+pragma target clock      20_000_000  -- 20 MHz xtal
+pragma target OSC       HS
+pragma target WDT       disabled    -- no watchdog, please
+pragma target LVP       disabled    -- no low voltage programming
+
+enable_digital_io()                 -- no analog pins here
+
+
+-- ------------------- INCLUDE LIBRARIES --------------------------
+const byte LCD_ROWS = 4
+const byte LCD_CHARS = 20
+
+alias LCD_RS           is pin_b5          -- LCD command/data select.
+pin_b5_direction = output
+alias LCD_EN           is pin_b4          -- LCD data trigger
+pin_b4_direction = output
+
+alias lcd_dataport    is portb_low        -- LCD data nibble
+portb_low_direction = all_output
+include lcd_hd44780_4                     -- LCD library with 4 data lines
+lcd_init()
+
+include print                             -- nice formatted output
+include format                            -- more nice formatted output
+
+alias CS                 is pin_a0        -- chip select of TC77, active low
+CS                       = high
+pin_a0_direction         = output
+alias SIO                is pin_a2        -- data in/out of TC77
+pin_a2_direction         = input          -- only used as input here
+alias SCK                is pin_a1        -- clock of TC77
+pin_a1_direction         = output
+include temperature_tc77                  -- TC77 library
+
+-- ------------------- VARIABLES --------------------------------------
+
+var word    temperature_raw             -- raw 13-bit value, with sign
+var sbyte   temperature_8               -- signed Celsius, precision 1C
+var sword   temperature_16              -- signed Celsius, precision 0.01C
+var sdword  temperature_32              -- signed Celsius, precision 0.0001C
+
+-- --------------- START PROGRAM ---------------------------
+
+lcd_clear_screen()
+
+forever loop
+   lcd_cursor_position(0,0)
+   CS = low
+   tc77_read_raw(temperature_raw)
+   CS = high
+   print_word_bin(lcd, temperature_raw)
+
+   lcd_cursor_position(1,0)
+   CS = low
+   tc77_read_celsius_sbyte(temperature_8)
+   CS = high
+   print_sbyte_dec(lcd, temperature_8)    -- prints minus if below 0
+   lcd =" "                               -- to wipe out old digits
+
+   lcd_cursor_position(0, 20)                   -- row 3, position = 1
+   CS = low
+   tc77_read_celsius_sword(temperature_16)
+   CS = high
+   format_sword_dec(lcd, temperature_16, 5, 2)  -- width 6: -xx.xx or xxx.xx
+   lcd =" "
+
+   lcd_cursor_position(1, 20)                   -- row 4, position = 1
+   CS = low
+   tc77_read_celsius_sdword(temperature_32)
+   CS = high
+   format_sdword_dec(lcd, temperature_32, 7, 4)  -- 8 wide: -xx.xxxx or xxx.xxxx
+   lcd = " "
+
+   delay_100ms(2)                         -- for proper display viewing
+
+end loop

@@ -1,0 +1,183 @@
+-- Title: i2c hardware slave Message Interface
+-- Author: Sebastien Lelong, Joep Suijs, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4i
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides an message interface to i2c hardware slave. 
+-- It relies on the jalv2 implementation of Microchip Application Note AN734.
+-- --                                        
+-- The user needs to supply a procedure to process the received message. 
+-- Basically, this i2c slave waits for a full message to arrive. Then it calls 
+-- the user procedure to process the message and (optional) prepare a response.
+-- Subsequently, this lib will pass the response data over to the master, if 
+-- it wants to have them.
+-- See corresponding sample for more details.
+-- --
+--
+-- Sources:
+--   - AN734: http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1824&appnote=en011798
+-- 
+
+-- prototype
+procedure i2c_process_message(byte in byte_count)
+
+const bit i2c_enable_start_stop_interrupts = true
+include i2c_hw_slave
+
+-- vars
+var byte i2c_index         -- i2c index (pointer)
+var bit  i2c_datapresent   -- datapresent flag
+var byte i2c_buffer[I2C_BUFFER_SIZE]
+
+procedure i2c_call_process_message() is
+   pragma inline
+   
+   -- let user process buffer
+   if (i2c_datapresent == true) then
+
+      if(defined(i2c_debug) == true) then
+         queue01_nb = "@" 
+      end if
+
+      i2c_process_message(i2c_index)      
+      i2c_datapresent = false
+
+   end if
+
+  i2c_index = 0
+   
+end procedure
+
+-- this callback is used when something wrong happened 
+-- during communication between master and us
+procedure i2c_hw_slave_on_error() is
+   pragma inline
+   -- Just tell user user something's got wrong
+
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "E" 
+   end if
+
+end procedure
+
+procedure i2c_hw_slave_on_start() is
+   pragma inline
+
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "S" 
+   end if
+                                  
+end procedure
+
+procedure i2c_hw_slave_on_stop() is
+   pragma inline
+
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "P" 
+   end if
+
+   -- let user process buffer
+   i2c_call_process_message()
+                                  
+end procedure
+                                
+-- this callback is used when master wants to talk to us
+-- and our i2c address has been recognized
+procedure i2c_hw_slave_on_state_1(byte in _trash) is
+   pragma inline
+
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "1" 
+   end if 
+
+   -- let user process buffer (there should not be one if the proper procedure is executed)
+   i2c_call_process_message()
+   
+end procedure
+
+
+-- This callback is used when master sends a data byte
+procedure i2c_hw_slave_on_state_2(byte in rcv) is
+   pragma inline
+
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "2" 
+   end if
+
+   i2c_datapresent   = true      -- Indicate we received data
+
+   -- store data
+   i2c_buffer[i2c_index] = rcv  
+
+   if (i2c_index < I2C_BUFFER_SIZE) then
+      i2c_index = i2c_index + 1   -- point to next position
+   end if
+
+end procedure
+
+
+-- this callback is used when master wants to read something
+-- from us. It should use i2c_hw_slave_write() to send something
+procedure i2c_hw_slave_on_state_3() is
+   pragma inline
+
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "3" 
+   end if
+      
+   -- let user process buffer
+   i2c_call_process_message()
+
+   -- send first byte to master
+   i2c_hw_slave_write_i2c(i2c_buffer[0])  -- send first databyte
+   i2c_index = 1                          -- point to next position
+
+end procedure
+
+
+-- this callback is used when master, after having read something,
+-- still wants to read and get data from us.
+procedure i2c_hw_slave_on_state_4() is
+   pragma inline
+
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "4" 
+   end if
+
+   -- This shouldn't occur in our i2c echo example
+   i2c_hw_slave_write_i2c(i2c_buffer[i2c_index])    -- send data 
+
+   if (i2c_index < I2C_BUFFER_SIZE) then
+      i2c_index = i2c_index + 1   -- point to next position
+   end if
+
+
+end procedure
+
+-- this callback is used when master does not want to talk
+-- with us anymore... This is an appropriate place to reset
+-- data for instance
+procedure i2c_hw_slave_on_state_5() is
+   pragma inline
+   -- data = 0 
+
+   if(defined(i2c_debug) == true) then
+      queue01_nb = "#" 
+      queue01_nb = "5" 
+   end if
+   
+end procedure
+
+-- callbacks are defined, now include ISR
+include i2c_hw_slave_isr

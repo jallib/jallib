@@ -1,0 +1,349 @@
+-- Title: CANbus bicolor LED library
+-- Author: William Welch and Eur van Andel Copyright (c) 2010, all rights reserved.
+-- Compiler: 2.4m
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: implements LED blinks compatible with CANopen spec.
+-- 
+-- Sources: Cia Draft Recommendation 303, Part 3, Indicator specification
+--
+-- This library leverages a timer 'interval' library, such as timer0_isr_interval or
+-- timer0_poll_interval. Either one may be used. The isr version will be provide the most
+-- precise timing, but the polled version should be adequate also. This library requires
+-- two interval 'slots', but you may use additional interval slots for your own application.
+--
+-- Since this library does not require an ISR, it depends on occasional 'polling' from your
+-- application.  If you need to make a lengthy 'delay' in your application, please use the
+-- 100mS delay routine provided by this library whenever possible.
+--
+-- This library requires the following constants:
+--
+--    CANLED_BLINK_INTERVAL_SLOT  used in the call to 'set_delay' and 'check_delay' for LED blinking.
+--    CANLED_DELAY_INTERVAL_SLOT  used to implement the 100mS delay described above.
+--    CANLED_INTERVAL_100MS       the number of 'interval ticks' equal to 100mS
+--
+-- And the LED I/O pin:
+--
+--    alias can_led     is pin_b1
+--    alias can_led_dir is pin_b1_direction
+--
+
+const CANLED_OFF = 0
+const CANLED_GREEN_ON = 1
+const CANLED_RED_ON = 2
+const CANLED_BLINK = 4
+const CANLED_FLASH = 8
+const CANLED_1FLASH = 0x18
+const CANLED_2FLASH = 0x28
+const CANLED_3FLASH = 0x38
+const CANLED_4FLASH = 0x48
+
+var byte can_led_state = 0
+var byte can_led_red_func = CANLED_OFF
+var byte can_led_green_func = CANLED_OFF
+var byte can_led_red_opcode = CANLED_OFF
+var byte can_led_green_opcode = CANLED_OFF
+
+-- Internal routine to control the bicolor led I/O pin.
+-- four leds, all connected in series between +5V and GND.
+-- PIC pin is tied to the middle, via 150 Ohm resistor.
+-- at 1.7V Vf, they will not light up (both are off)
+-- so HIGH will light both lower green LEDs
+-- LOW will light both higher RED leds
+-- pin_direction = input will light no LEDs. 
+procedure can_set_leds(byte in x) is
+   var bit green at x:0
+   var bit red at x:1
+   if green then
+      can_led_dir = output
+      can_led     = high
+   elsif red then
+      can_led_dir = output
+      can_led     = low
+   else
+      can_led_dir = input
+   end if
+end procedure
+
+-- implements blinking of CAN leds. call this routine somewhere in your main loop.
+-- can led blink states are typically 200ms each, so try to call more often than 200ms.
+procedure can_led_poll() is
+   
+   if can_led_state == 0 then
+      can_led_red_opcode = can_led_red_func
+      can_led_green_opcode = can_led_green_func
+   end if
+   
+   -- the spec says that red-on-steady trumps all others: indicates a serious 'bus off' error.
+   if (can_led_red_opcode == CANLED_RED_ON) then
+      can_set_leds(CANLED_RED_ON)
+      return
+   end if
+   
+   -- red is off, green-on-steady 
+   if (can_led_red_opcode == CANLED_OFF) & (can_led_green_opcode == CANLED_GREEN_ON) then
+      can_set_leds(CANLED_GREEN_ON)
+      return
+   end if
+   
+   -- both are off
+   if (( can_led_red_opcode == CANLED_OFF) & (can_led_green_opcode == CANLED_OFF) ) then
+      can_set_leds(CANLED_OFF)
+      return
+   end if
+   
+   -- use the interval library to delay for 200mS in each state.
+   if check_delay(CANLED_BLINK_INTERVAL_SLOT) == false then
+      return
+   end if
+   set_delay(CANLED_BLINK_INTERVAL_SLOT, CANLED_INTERVAL_100MS*2)
+   
+   var bit green_on at can_led_green_opcode:0
+   var bit green_blink at can_led_green_opcode:2
+   var bit green_flash at can_led_green_opcode:3
+   var bit*3 green_flash_cnt at can_led_green_opcode:4
+   var bit red_on at can_led_red_opcode:1
+   var bit red_blink at can_led_red_opcode:2
+   var bit red_flash at can_led_red_opcode:3
+   var bit*3 red_flash_cnt at can_led_red_opcode:4
+   
+   -- In the case red and green are both 'active', we give priority to the red, 
+   -- but will attempt to activate green as well.
+   -- In general RED on even states, GREEN on odd states.
+   
+   if can_led_state == 0 then
+      if (red_blink | red_flash) then
+         can_set_leds(CANLED_RED_ON)
+      elsif ( green_blink | green_flash | (green_on == false) ) then
+         can_set_leds(CANLED_OFF)
+      end if
+      can_led_state = 1
+      return
+   end if
+   
+   if can_led_state == 1 then
+      if (green_flash | green_blink | green_on) then
+         can_set_leds(CANLED_GREEN_ON)
+      else
+         can_set_leds(CANLED_OFF)
+      end if
+      if (red_flash | green_flash) then
+         can_led_state = 2
+      else
+         can_led_state = 0
+      end if
+      return
+   end if
+   
+   -- flash states follow. RED on even states, GREEN on odd states.
+   -- We also support green-blink while red is flashing.
+   -- Note: don't try both RED and GREEN flashing at the same time.
+   
+   if can_led_state == 2 then
+      if ( red_blink | (red_flash_cnt > 1) ) then
+         can_set_leds(CANLED_RED_ON)
+      elsif ( green_blink | green_flash | (green_on == false) ) then
+         can_set_leds(CANLED_OFF)
+      end if
+      can_led_state = 3
+      return
+   end if
+   
+   if can_led_state == 3 then
+      if ( green_blink | (green_flash_cnt > 1) | green_on ) then
+         can_set_leds(CANLED_GREEN_ON)
+      else
+         can_set_leds(CANLED_OFF)
+      end if
+      can_led_state = 4
+      return
+   end if
+   
+   if can_led_state == 4 then
+      if ( red_blink | (red_flash_cnt > 2) ) then
+         can_set_leds(CANLED_RED_ON)
+      elsif ( green_blink | green_flash | (green_on == false) ) then
+         can_set_leds(CANLED_OFF)
+      end if
+      can_led_state = 5
+      return
+   end if
+   
+   if can_led_state == 5 then
+      if ( green_blink | (green_flash_cnt > 2) | green_on ) then
+         can_set_leds(CANLED_GREEN_ON)
+      else
+         can_set_leds(CANLED_OFF)
+      end if
+      if red_flash_cnt == 1 then
+         can_led_state = 0
+      else
+         can_led_state = 6
+      end if
+      return
+   end if
+   
+   if can_led_state == 6 then
+      if ( red_blink | (red_flash_cnt > 3) ) then
+         can_set_leds(CANLED_RED_ON)
+      elsif ( green_blink | green_flash | (green_on == false) ) then
+         can_set_leds(CANLED_OFF)
+      end if
+      if (red_flash == false) & (green_flash_cnt == 1) then
+         can_led_state = 0
+      else
+         can_led_state = 7
+      end if
+      return
+   end if
+   
+   if can_led_state == 7 then
+      if ( green_blink | green_on ) then
+         can_set_leds(CANLED_GREEN_ON)
+      else
+         can_set_leds(CANLED_OFF)
+      end if
+      if red_flash_cnt == 2 then
+         can_led_state = 0
+      else
+         can_led_state = 8
+      end if
+      return
+   end if
+   
+   if can_led_state == 8 then
+      if red_blink then
+         can_set_leds(CANLED_RED_ON)
+      elsif ( green_blink | green_flash | (green_on == false) ) then
+         can_set_leds(CANLED_OFF)
+      end if
+      if (red_flash == false) & (green_flash_cnt == 2) then
+         can_led_state = 0
+      else
+         can_led_state = 9
+      end if
+      return
+   end if
+   
+   if can_led_state == 9 then
+      if ( green_blink | green_on ) then
+         can_set_leds(CANLED_GREEN_ON)
+      else
+         can_set_leds(CANLED_OFF)
+      end if
+      if red_flash_cnt == 3 then
+         can_led_state = 0
+      else
+         can_led_state = 10
+      end if
+      return
+   end if
+   
+   if can_led_state == 10 then
+      if red_blink then
+         can_set_leds(CANLED_RED_ON)
+      elsif ( green_blink | green_flash | (green_on == false) ) then
+         can_set_leds(CANLED_OFF)
+      end if
+      if (red_flash == false) & (green_flash_cnt == 3) then
+         can_led_state = 0
+      else
+         can_led_state = 11
+      end if
+      return
+   end if
+   
+   if can_led_state == 11 then
+      if (green_blink | green_on) then
+         can_set_leds(CANLED_GREEN_ON)
+      else
+         can_set_leds(CANLED_OFF)
+      end if
+      can_led_state = 0
+      return
+   end if
+   
+   -- should never get here.
+   can_led_state = 0
+end procedure
+
+-- Delays for n * 100 mSec, while maintaining CAN leds
+procedure can_led_delay100ms(word in n) is
+   for n loop
+      set_delay(CANLED_DELAY_INTERVAL_SLOT, CANLED_INTERVAL_100MS)
+      while check_delay(CANLED_DELAY_INTERVAL_SLOT) == false loop
+         can_led_poll()
+      end loop
+   end loop
+end procedure
+
+-- green led: on steady
+procedure can_green_on() is
+   can_led_green_func = CANLED_GREEN_ON
+end procedure
+
+-- green led: off
+procedure can_green_off() is
+   can_led_green_func = CANLED_OFF
+end procedure
+
+-- green led: blink 200ms off, 200ms on
+procedure can_green_blink() is
+   can_led_green_func = CANLED_BLINK
+end procedure
+
+-- green led: 1 200ms flash
+procedure can_green_1flash() is
+   can_led_green_func = CANLED_1FLASH
+end procedure
+
+-- green led: 2 200ms flashes
+procedure can_green_2flash() is
+   can_led_green_func = CANLED_2FLASH
+end procedure
+
+-- green led: 3 200ms flashes
+procedure can_green_3flash() is
+   can_led_green_func = CANLED_3FLASH
+end procedure
+
+-- red led: on steady
+procedure can_red_on() is
+   -- note: resets the state machine
+   can_led_state = 0
+   can_led_red_func = CANLED_RED_ON
+end procedure
+
+-- red led: off
+procedure can_red_off() is
+   can_led_red_func = CANLED_OFF
+end procedure
+
+-- red led: blink 200ms on, 200ms off
+procedure can_red_blink() is
+   can_led_red_func = CANLED_BLINK
+end procedure
+
+-- red led: 1 200ms flash
+procedure can_red_1flash() is
+   can_led_red_func = CANLED_1FLASH
+end procedure
+
+-- red led: 2 200ms flashes
+procedure can_red_2flash() is
+   can_led_red_func = CANLED_2FLASH
+end procedure
+
+-- red led: 3 200ms flashes
+procedure can_red_3flash() is
+   can_led_red_func = CANLED_3FLASH
+end procedure
+
+-- red led: 4 200ms flashes
+procedure can_red_4flash() is
+   can_led_red_func = CANLED_4FLASH
+end procedure
+

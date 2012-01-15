@@ -1,0 +1,184 @@
+#import os, sys, re
+
+#def header(libname,dhead,ddeps)
+	## Single line header: strip
+	#set title = dhead['Title'].strip()
+	#set author = dhead['Author'].strip()
+	## Adapted-by is not mandatory
+	#set adapted_by = dhead.get('Adapted-by') and dhead.get('Adapted-by').strip() or ""
+	#set compiler = dhead['Compiler'].strip()
+	## Multiline header
+	#set description = dhead['Description']
+	#if dhead.has_key('Sources') and dhead['Sources']
+		#set sources = dhead['Sources']
+	#else
+		#set sources = ""
+	#end if
+	#if dhead.has_key('Notes') and dhead['Notes']
+		#set notes = dhead['Notes']
+	#else
+		#set notes = ""
+	#end if
+
+    #silent libname = libname.upper()
+    
+$libname |  $title
+
+Overview
+
+Author:		$author
+Adapted-By:	$adapted_by
+Compiler:	$compiler
+
+Description: $description
+#if $sources
+Sources: $sources
+#end if
+#if $notes
+Notes: $notes
+#end if
+#if $ddeps
+Dependencies:
+  #for d in ddeps.keys()
+  - |$d|
+  #end for
+
+#else
+Dependencies: no dependency found
+#end if
+
+#end def
+
+
+#def findtag(val,procfunc)
+#if procfunc
+#set pat = re.compile("(\w+'?(get|put)?)\s*\(?")
+#set tag = pat.findall(val)[0]
+#set tag = tag[0]
+#else
+#set pat = re.compile("(var|const)\s+(volatile)?\s*((bit|s?byte|s?word|s?dword)?(\*\w+)?)\s*(\w+)")
+#set tag = pat.findall(val)[0]
+#set tag = tag[5]
+#end if
+#silent print "val: %s, tag: %s" % (repr(val),repr(tag))
+#return tag
+#end def
+
+
+#def _display(libname,ltup,procfunc)
+#for v,doc in ltup
+#silent v = v.strip()
+#try
+    #set tag = $findtag(v,procfunc)
+#except IndexError
+    #silent print >> sys.stderr, "Incorrect formatting, can't extract doc tag in %s" % $libname
+    #continue
+#end try
+#set val = v.replace(tag,"|%s|" % tag)
+#silent tag = "*%s.%s*" % ($libname,tag)
+###set l = val.ljust(50," ") + tag.rjust(50," ")
+##- $l
+  $tag
+- $val
+#if $doc
+  #silent doc = doc.replace(os.linesep,"%s     " % os.linesep).strip()
+     $doc
+#end if
+
+#end for
+#end def
+
+#def display_dict(libname,title,ddict,procfunc)
+    #set dashes = "-" * len(title)
+
+$title
+##$dashes
+	#set private = [(v,doc) for v,doc in $ddict.items() if v.startswith("_")]
+	#set public = [(v,doc) for v,doc in $ddict.items() if not v.startswith("_")]
+$_display($libname,$public,procfunc)
+	#if private
+Private
+$_display($libname,$private,procfunc)
+	#end if
+#end def
+
+
+#def api(libname,dvarconst,dproc,dfunc)
+API details
+
+$display_dict($libname,"Global variables/contants",$dvarconst,procfunc=False)
+
+$display_dict($libname,"Procedures",$dproc,procfunc=True)
+
+$display_dict($libname,"Functions",$dfunc,procfunc=True)
+
+#end def
+
+
+#def samples(dsamples)
+Related samples
+
+#if dsamples
+Samples using this library:
+    #for (pic,file),url in sorted(dsamples.items(),lambda x,y: cmp(x[0][0],y[0][0]))
+        #if $locallinks
+            ## ensure it actually exists !
+            #set samplefile = os.path.join('%s' % $sampledir,'%s' % $file)
+            #if not os.path.isfile(samplefile)
+                #silent print >> sys.stderr, "sample %s does not exist" % samplefile
+                #continue
+            #end if
+ - $pic     $file
+			##<td><b>$pic</b></td><td><a href="../../sample/$file" target="_blank">$file</a></td>
+        #else
+ - $pic     $url
+			##<td><b>$pic</b></td><td><a href="$url" target="_blank">$file</a></td>
+        #end if
+    #end for
+#else
+No sample found
+#end if
+#end def
+
+
+#def content(dhead,dproc,dfunc,dvarconst,ddeps,libname,dsamples)
+$header($libname,$dhead,$ddeps)
+$api($libname,$dvarconst,$dproc,$dfunc)
+$samples($dsamples)
+#end def
+
+
+#def main
+*$libname*
+
+
+		  $libname API documentation
+
+		$content($dhead,$dproc,$dfunc,$dvarconst,$ddeps,$libname,$dsamples)
+#end def
+
+
+#def main_singlepage
+                    ~ Jalapi - Jallib API documenation ~
+
+  
+Table of Content ~
+
+#set libnames = [l[1][0] for l in $infos]
+#for l in libnames
+  - |$l|
+#end for
+
+==============================================================================
+
+#for (dhead,dproc,dfunc,dvarconst,ddeps),(libname,dsamples) in $infos
+*$libname*
+
+		  $libname API documentation
+
+$content($dhead,$dproc,$dfunc,$dvarconst,$ddeps,$libname,$dsamples)
+
+===============================================================================
+#end for
+
+#end def

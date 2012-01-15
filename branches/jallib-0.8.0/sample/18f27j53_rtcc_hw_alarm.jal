@@ -1,0 +1,80 @@
+-- Title: RTCC hardware demo/test for 18F27J53
+-- Author: Sébastien Lelong, Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this program sets an alarm using RTC hardware peripheral, and 
+-- flashes a LED connected on pin_C2 when alarm is active.
+--
+
+-- Xtal 16MHz w/ PLL, system clock 48MHz
+include 18f27j53
+pragma target clock 48_000_000   -- oscillator frequency
+-- magical statements
+pragma target PLLDIV	   P4
+pragma target CPUDIV	   P1
+pragma target PLLEN  P1          -- PLL via fuse turned off
+pragma target OSC	   HS_PLL
+pragma target WDT  disabled      -- no watchdog
+OSCTUNE_PLLEN = on               -- PLL via OSCTUNE enabled
+-- declare secondary oscillator on T1OSI/T1OSO pins
+pragma target RTCOSC T1OSC
+pragma target SOSCSEL HS_CP
+_usec_delay(2000) -- PLL needs 2ms before stable
+
+enable_digital_io()
+
+-- Set interrupts so we can react when alarm is ringing
+PIE3_RTCCIE = enabled
+INTCON_GIE = enabled
+INTCON_PEIE = true
+
+include delay
+
+pin_C2_direction =  output
+pin_C2 = low
+
+include rtcc_hw
+
+-- RTC can be calibrated, 32KHz Xtal must be measured
+-- in order to determine the deviation. This is specific to 
+-- the crystal itself. We're assuming no deviation.
+rtc_calibrate(0)
+
+-- let's say we're April 23rd 2011, it's 10:56:12 o'clock.
+-- Alarm is set at 10:56:17
+rtc_set_date(0x11,0x04,0x23)           -- YY/MM/DD )
+rtc_set_time(0x10,0x56,0x12)           -- HH:MM:SS ) BCD format
+rtc_set_alarm_time(0x10,0x56,0x17)     -- HH:MM:SS )
+rtc_set_alarm(ON)                      -- enable alarm
+rtc_set_clock(ON)                      -- enable RTCC module
+
+-- ISR: will be triggered at each RTC event
+procedure school_is_over() is
+   pragma interrupt
+   
+   -- only reply to RTC interrupts
+   if ! PIR3_RTCCIF then
+      return
+   end if
+
+   -- alarm interrupt triggered
+   pin_C2 = high
+   delay_1ms(200)
+   pin_C2 = low
+   delay_1ms(200)
+
+   PIR3_RTCCIF = false -- clear flag
+
+end procedure
+
+
+forever loop
+   asm nop
+end loop
+
+

@@ -1,0 +1,131 @@
+-- ------------------------------------------------------
+-- Title: Test program for testing a combination of PWM and ADC (2 channels both)
+--
+-- Author: Rob Hamerling, Copyright (c) 2009..2009, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4l
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Using a combination of 2 ADC and PWM channels.
+-- First ADC-PWM combination is used for LCD backlight,
+-- second combination uses an LED as output.
+-- Two different PWM frequencies are set, both allowing only low
+-- resolution PWM dutycycle setting.
+-- The channels are (should be!) completely independent.
+-- An LCD display is used to show some debugging data.
+--
+-- Sources:
+--
+-- Notes:
+-- 1. HD44780 compatible display, used in 4-bit mode.
+--    The LCD backlight is controlled directly (not with the backlight library)
+--
+-- ------------------------------------------------------
+
+include 16f886
+
+enable_digital_io() -- disable analog I/O (if any)
+
+--
+-- This program assumes a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target OSC   HS             -- HS crystal or resonator
+pragma target clock 20_000_000     -- oscillator frequency
+pragma target MCLR  external
+pragma target WDT   disabled
+pragma target LVP   disabled
+
+
+-- -------- LCD setup -----------
+const byte LCD_ROWS   = 2                       -- 2 lines
+const byte LCD_CHARS  = 16                      -- 16 chars per line
+
+alias    lcd_d4   is pin_B0                     -- LCD data  port
+alias    lcd_d5   is pin_B1                     -- LCD data  port
+alias    lcd_d6   is pin_B2                     -- LCD data  port
+alias    lcd_d7   is pin_B3                     -- LCD data  port
+alias    lcd_en   is pin_C5                     -- LCD command/data select.
+alias    lcd_rs   is pin_C4                     -- LCD data trigger
+PORTB_low_direction   = all_output
+PORTC_high_direction  = all_output
+
+include lcd_hd44780_4                           -- include LCD library
+lcd_init()                                      -- initialize LCD
+
+-- -------- ADC setup -----------
+const ADC_CHANNEL_A           = 11              -- AN11 (pin_B4)
+const ADC_CHANNEL_B           = 13              -- AN13 (pin_B5)
+const byte ADC_NVREF          = ADC_NO_EXT_VREF -- no external Vref
+const word ADC_RSOURCE        = 5_000           -- 5K potmeter
+const bit ADC_HIGH_RESOLUTION = TRUE            -- high resolution
+include adc                                     -- include ADC library
+adc_init()                                      -- init library
+set_analog_pin(ADC_CHANNEL_A)                   -- init used ADC channel
+set_analog_pin(ADC_CHANNEL_B)                   -- init used ADC channel
+
+-- ---- PWM setup -------
+pin_CCP1_direction = output                     -- set PWM-pins output!
+pin_CCP2_direction = output
+include pwm_hardware
+
+include print                                   -- data formatting
+include format                                  -- data formatting
+include delay                                   -- delay library
+
+const byte strpr2[]     = "PR2="
+const byte strr1l[]     = "R1L="
+const byte strr2l[]     = "R2L="
+
+var word measure_a                              -- ADC channel A
+var word measure_b                              -- ADC channel B
+
+procedure show_data(byte in no) is
+   lcd_clear_screen()
+   lcd = "0" + no
+   lcd = "."
+   print_string(lcd, strpr2)
+   format_byte_hex(lcd, PR2)
+   format_word_dec(lcd, measure_a, 4, 0)
+   format_word_dec(lcd, measure_b, 4, 0)
+   lcd_cursor_position(1,0)
+   print_string(lcd, strr1l)
+   format_byte_hex(lcd, CCPR1L)
+   lcd = " "
+   print_string(lcd, strr2l)
+   format_byte_hex(lcd, CCPR2L)
+   delay_100ms(30)
+end procedure
+
+forever loop
+
+   measure_a = adc_read(ADC_CHANNEL_A)                      -- read potmeter 1
+   measure_b = adc_read(ADC_CHANNEL_B)                      -- read potmeter 2
+
+   pwm_set_frequency(75000)                                 -- set high PWM frequency
+
+   pwm1_set_dutycycle_lowres(byte(measure_a / 4))           -- max 8 bits!
+   pwm2_set_dutycycle_lowres(byte(measure_b / 4))
+   show_data(1)
+
+   pwm1_set_percent_dutycycle(byte(measure_a / 32))         -- limit value!
+   pwm2_set_percent_dutycycle(byte(measure_b / 32))
+   show_data(2)
+
+   pwm_set_frequency(150000)                                -- set high PWM frequency
+
+   pwm1_set_dutycycle_lowres(byte(measure_a / 8))           -- max 7 bits!
+   pwm2_set_dutycycle_lowres(byte(measure_b / 8))
+   show_data(3)
+
+   pwm1_set_percent_dutycycle(byte(measure_a / 32))         -- limit value!
+   pwm2_set_percent_dutycycle(byte(measure_b / 32))
+   show_data(4)
+
+end loop
+
