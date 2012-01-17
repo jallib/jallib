@@ -291,10 +291,10 @@ function enc_spi_read_command(byte in operation, byte in address) return byte is
 
    -- put spi into mode 00
    if ENC_ALWAYS_SET_SPI_MODE == TRUE then
-      SSPCON_CKP = 0
+      SSPCON1_CKP = 0
       SSPSTAT_CKE = 1
    end if
-   
+
    -- enable the device
    enc_cs = 0 -- enable chip
 
@@ -303,15 +303,15 @@ function enc_spi_read_command(byte in operation, byte in address) return byte is
 
    -- read data
    data = spi_master_hw
-   
+
    -- previous read was a dummy read for mac and mii registers (see datasheet page 27)
    if (address & 0x80) != 0 then
       data = spi_master_hw
    end if
-   
+
    -- disable the device
    enc_cs = 1 -- disable chip
-   
+
    return data
 end function
 
@@ -323,18 +323,18 @@ procedure enc_spi_write_command(byte in operation, byte in address, byte in data
 
    -- put spi into mode 00
    if ENC_ALWAYS_SET_SPI_MODE == TRUE then
-      SSPCON_CKP = 0
+      SSPCON1_CKP = 0
       SSPSTAT_CKE = 1
    end if
-   
+
    enc_cs = 0 -- enable chip
-   
+
    -- choose register to write
    spi_master_hw = operation | (address & ADDR_MASK)
-   
+
    -- write data
    spi_master_hw = data
-   
+
    enc_cs = 1 -- disable chip
 end procedure
 
@@ -394,11 +394,11 @@ end procedure
 -- complete packet read
 --------------------------------------------------------------------------------
 procedure enc_complete_packet_read() is
-	-- move the receive read pointer to the start of the next packet
-	enc_write_register(ERXRDPTL, _enc_packet_pointer[0])
-	enc_write_register(ERXRDPTH, _enc_packet_pointer[1])
-	-- decrement the count of number of packets
-	enc_spi_write_command(ENC28J60_BIT_SET, ECON2, ECON2_PKTDEC) -- decrement packet count by 1 (EPKTCNT)
+   -- move the receive read pointer to the start of the next packet
+   enc_write_register(ERXRDPTL, _enc_packet_pointer[0])
+   enc_write_register(ERXRDPTH, _enc_packet_pointer[1])
+   -- decrement the count of number of packets
+   enc_spi_write_command(ENC28J60_BIT_SET, ECON2, ECON2_PKTDEC) -- decrement packet count by 1 (EPKTCNT)
 end procedure
 
 --------------------------------------------------------------------------------
@@ -408,7 +408,7 @@ procedure enc_read_buffer(word in len) is
 
    -- put spi into mode 00
    if ENC_ALWAYS_SET_SPI_MODE == TRUE then
-      SSPCON_CKP = 0
+      SSPCON1_CKP = 0
       SSPSTAT_CKE = 1
    end if
 
@@ -437,7 +437,7 @@ procedure enc_write_buffer(word in len) is
 
    -- put spi into mode 00
    if ENC_ALWAYS_SET_SPI_MODE == TRUE then
-      SSPCON_CKP = 0
+      SSPCON1_CKP = 0
       SSPSTAT_CKE = 1
    end if
 
@@ -477,60 +477,60 @@ end procedure
 
 procedure enc_init() is
    -- put spi into mode 00
-   SSPCON_CKP = 0
+   SSPCON1_CKP = 0
    SSPSTAT_CKE = 1
 
    ;enc_cs = 0 -- enable chip
- 	
- 	enc_set_bank(ECON1)
 
-	-- soft reset
- 	enc_spi_write_command(ENC28J60_SOFT_RESET, 0, ENC28J60_SOFT_RESET)
- 	delay_1ms(50) 	
- 	
-	-- setup receive buffer
+   enc_set_bank(ECON1)
+
+   -- soft reset
+   enc_spi_write_command(ENC28J60_SOFT_RESET, 0, ENC28J60_SOFT_RESET)
+   delay_1ms(50)
+
+   -- setup receive buffer
    -- set receive buffer start address to 0
-	enc_write_register(ERXSTL, 0)
-	enc_write_register(ERXSTH, 0)
-	-- set receive pointer address
-	enc_write_register(ERXRDPTL, 0)
-	enc_write_register(ERXRDPTH, 0)
-	-- set rx buffer end address
-	enc_write_register(ERXNDL, RXSTOP_INIT_L)
-	enc_write_register(ERXNDH, RXSTOP_INIT_H)
-	
-	-- setup transmit buffer
+   enc_write_register(ERXSTL, 0)
+   enc_write_register(ERXSTH, 0)
+   -- set receive pointer address
+   enc_write_register(ERXRDPTL, 0)
+   enc_write_register(ERXRDPTH, 0)
+   -- set rx buffer end address
+   enc_write_register(ERXNDL, RXSTOP_INIT_L)
+   enc_write_register(ERXNDH, RXSTOP_INIT_H)
+
+   -- setup transmit buffer
    -- set transmit buffer start address
-	enc_write_register(ETXSTL, TXSTART_INIT_L)
-	enc_write_register(ETXSTH, TXSTART_INIT_H)
+   enc_write_register(ETXSTL, TXSTART_INIT_L)
+   enc_write_register(ETXSTH, TXSTART_INIT_H)
    -- set transmit buffer end address
-	enc_write_register(ETXNDL, TXSTOP_INIT_L)
-	enc_write_register(ETXNDH, TXSTOP_INIT_H)
-	
+   enc_write_register(ETXNDL, TXSTOP_INIT_L)
+   enc_write_register(ETXNDH, TXSTOP_INIT_H)
+
    -- packet match filter
    -- only allow packets for our mac address
    -- also allow broadcasted ARP packets
-	enc_write_register(ERXFCON, ERXFCON_UCEN|ERXFCON_CRCEN|ERXFCON_PMEN)
-	enc_write_register(EPMM0, 0x3f)
-	enc_write_register(EPMM1, 0x30)
-	enc_write_register(EPMCSL, 0xf9)
-	enc_write_register(EPMCSH, 0xf7)
+   enc_write_register(ERXFCON, ERXFCON_UCEN|ERXFCON_CRCEN|ERXFCON_PMEN)
+   enc_write_register(EPMM0, 0x3f)
+   enc_write_register(EPMM1, 0x30)
+   enc_write_register(EPMCSL, 0xf9)
+   enc_write_register(EPMCSH, 0xf7)
 
-	-- enable MAC receive
-	enc_write_register(MACON1, MACON1_MARXEN|MACON1_TXPAUS|MACON1_RXPAUS)
-	-- bring MAC out of reset
-	enc_write_register(MACON2, 0x00)
-	-- enable automatic padding to 60bytes and CRC operations
-	enc_spi_write_command(ENC28J60_BIT_SET, MACON3, MACON3_PADCFG0|MACON3_TXCRCEN|MACON3_FRMLNEN)
-	-- set inter-frame gap (non-back-to-back)
-	enc_write_register(MAIPGL, 0x12)
-	enc_write_register(MAIPGH, 0x0C)
-	-- set inter-frame gap (back-to-back)
-	enc_write_register(MABBIPG, 0x12)
-	-- Set the maximum packet size the controller will accept
+   -- enable MAC receive
+   enc_write_register(MACON1, MACON1_MARXEN|MACON1_TXPAUS|MACON1_RXPAUS)
+   -- bring MAC out of reset
+   enc_write_register(MACON2, 0x00)
+   -- enable automatic padding to 60bytes and CRC operations
+   enc_spi_write_command(ENC28J60_BIT_SET, MACON3, MACON3_PADCFG0|MACON3_TXCRCEN|MACON3_FRMLNEN)
+   -- set inter-frame gap (non-back-to-back)
+   enc_write_register(MAIPGL, 0x12)
+   enc_write_register(MAIPGH, 0x0C)
+   -- set inter-frame gap (back-to-back)
+   enc_write_register(MABBIPG, 0x12)
+   -- Set the maximum packet size the controller will accept
    -- Do not send packets longer than ENC_MAX_FRAMELEN
-	enc_write_register(MAMXFLL, ENC_MAX_FRAMELEN_L)	
-	enc_write_register(MAMXFLH, ENC_MAX_FRAMELEN_H)
+   enc_write_register(MAMXFLL, ENC_MAX_FRAMELEN_L)
+   enc_write_register(MAMXFLH, ENC_MAX_FRAMELEN_H)
 
    -- write MAC address
    enc_write_register(MAADR5, enc_local_mac[0])
@@ -539,22 +539,22 @@ procedure enc_init() is
    enc_write_register(MAADR2, enc_local_mac[3])
    enc_write_register(MAADR1, enc_local_mac[4])
    enc_write_register(MAADR0, enc_local_mac[5])
-        
+
    -- don't write our output into the input buffer, only onto the twisted pair.
-	enc_write_phy_register(PHCON2, PHCON2_HDLDIS)
-		
-	enc_set_bank(ECON1)
-	-- enable interrut output pin, although we may not use it.
-	enc_spi_write_command(ENC28J60_BIT_SET, EIE, EIE_INTIE|EIE_PKTIE)
-	-- allow us to receive packets
-	enc_spi_write_command(ENC28J60_BIT_SET, ECON1, ECON1_RXEN)
+   enc_write_phy_register(PHCON2, PHCON2_HDLDIS)
+
+   enc_set_bank(ECON1)
+   -- enable interrut output pin, although we may not use it.
+   enc_spi_write_command(ENC28J60_BIT_SET, EIE, EIE_INTIE|EIE_PKTIE)
+   -- allow us to receive packets
+   enc_spi_write_command(ENC28J60_BIT_SET, ECON1, ECON1_RXEN)
 end procedure
 
 --------------------------------------------------------------------------------
 -- read the revision of the device
 --------------------------------------------------------------------------------
 function enc_read_revision() return byte is
-	return(enc_read_register(EREVID))
+   return(enc_read_register(EREVID))
 end function
 
 --------------------------------------------------------------------------------
@@ -571,14 +571,14 @@ end function
 --------------------------------------------------------------------------------
 function enc_packet_available'get() return bit is
    if enc_packets_available() > 0 then
-   
+
       -- Set the read pointer to the start of the received packet
-   	enc_write_register(ERDPTL, _enc_packet_pointer[0])
-   	enc_write_register(ERDPTH, _enc_packet_pointer[1])
-   	-- read the next packet pointer
-   	enc_packet_pointer  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
-   	enc_packet_pointer  = enc_packet_pointer | (word( enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0) )<<8)
-   
+      enc_write_register(ERDPTL, _enc_packet_pointer[0])
+      enc_write_register(ERDPTH, _enc_packet_pointer[1])
+      -- read the next packet pointer
+      enc_packet_pointer  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
+      enc_packet_pointer  = enc_packet_pointer | (word( enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0) )<<8)
+
       return 1
    else
       return 0
@@ -589,20 +589,20 @@ end function
 -- End Packet/Send packet from transmit buffer onto twisted pair
 --------------------------------------------------------------------------------
 procedure enc_end_packet(word in network_current_packet_size) is
-	-- move the write pointer to start of transmit buffer area
-	enc_write_register(EWRPTL, TXSTART_INIT_L)
-	enc_write_register(EWRPTH, TXSTART_INIT_H)
-	-- Set the TXND to last bye in data payload
-	enc_write_register(ETXNDL, byte((TXSTART_INIT+network_current_packet_size)&0xFF))
-	enc_write_register(ETXNDH, byte((TXSTART_INIT+network_current_packet_size)>>8))
-	-- write per-packet control byte (0x00 means use macon3 settings)
-	enc_spi_write_command(ENC28J60_WRITE_BUF_MEM, 0, 0x00)
-	-- copy the packet into the transmit buffer
-	enc_write_buffer(network_current_packet_size)
-	-- send the contents of the transmit buffer onto the network
-	enc_spi_write_command(ENC28J60_BIT_SET, ECON1, ECON1_TXRTS)
+   -- move the write pointer to start of transmit buffer area
+   enc_write_register(EWRPTL, TXSTART_INIT_L)
+   enc_write_register(EWRPTH, TXSTART_INIT_H)
+   -- Set the TXND to last bye in data payload
+   enc_write_register(ETXNDL, byte((TXSTART_INIT+network_current_packet_size)&0xFF))
+   enc_write_register(ETXNDH, byte((TXSTART_INIT+network_current_packet_size)>>8))
+   -- write per-packet control byte (0x00 means use macon3 settings)
+   enc_spi_write_command(ENC28J60_WRITE_BUF_MEM, 0, 0x00)
+   -- copy the packet into the transmit buffer
+   enc_write_buffer(network_current_packet_size)
+   -- send the contents of the transmit buffer onto the network
+   enc_spi_write_command(ENC28J60_BIT_SET, ECON1, ECON1_TXRTS)
    -- when done, reset the transmission process bit
-	if ((enc_read_register(EIR) & EIR_TXERIF)) != 0 then
+   if ((enc_read_register(EIR) & EIR_TXERIF)) != 0 then
       enc_spi_write_command(ENC28J60_BIT_CLEAR, ECON1, ECON1_TXRTS)
    end if
 end procedure
@@ -614,18 +614,18 @@ end procedure
 function enc_packet_size'get() return word is
    var word packet_size
    var word recieve_status
-   
-	-- read the packet length
-	packet_size = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
-	packet_size = packet_size | word(enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0))<<8
-	-- subtract 4 (size of crc) from packet length
+
+   -- read the packet length
+   packet_size = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
+   packet_size = packet_size | word(enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0))<<8
+   -- subtract 4 (size of crc) from packet length
    packet_size = packet_size - 4
 
    -- read the receive status
-	recieve_status  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
-	recieve_status = recieve_status | word(enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0))<<8
-	
-	-- limit packet length
+   recieve_status  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
+   recieve_status = recieve_status | word(enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0))<<8
+
+   -- limit packet length
    ;if !(packet_size > enc_array_SIZE-1) then
    ;   packet_size = enc_array_SIZE - 1
    ;end if
@@ -639,7 +639,7 @@ function enc_packet_size'get() return word is
    if (recieve_status & 0x80) == 0 then
        packet_size = 0
    end if
-   
+
    return packet_size
 end function
 
@@ -649,40 +649,40 @@ end function
 -- Needs work, I may be able to remove some lines.
 --------------------------------------------------------------------------------
 procedure enc_clear_rx_buffer() is
- 	enc_set_bank(ECON1) 	
-	enc_spi_write_command(ENC28J60_BIT_CLEAR, ECON1, ECON1_RXEN)
-	
-	-- setup receive buffer
+   enc_set_bank(ECON1)
+   enc_spi_write_command(ENC28J60_BIT_CLEAR, ECON1, ECON1_RXEN)
+
+   -- setup receive buffer
    -- set receive buffer start address to 0
-	enc_write_register(ERXSTL, 0)
-	enc_write_register(ERXSTH, 0)
-	-- set receive pointer address
-	enc_write_register(ERXRDPTL, 0)
-	enc_write_register(ERXRDPTH, 0)
-	-- set rx buffer end address
-	enc_write_register(ERXNDL, RXSTOP_INIT_L)
-	enc_write_register(ERXNDH, RXSTOP_INIT_H)
-	
-;	-- reset transmit buffer. should not be here???
+   enc_write_register(ERXSTL, 0)
+   enc_write_register(ERXSTH, 0)
+   -- set receive pointer address
+   enc_write_register(ERXRDPTL, 0)
+   enc_write_register(ERXRDPTH, 0)
+   -- set rx buffer end address
+   enc_write_register(ERXNDL, RXSTOP_INIT_L)
+   enc_write_register(ERXNDH, RXSTOP_INIT_H)
+
+;  -- reset transmit buffer. should not be here???
 ;   -- set transmit buffer start address
-;	enc_write_register(ETXSTL, TXSTART_INIT_L)
-;	enc_write_register(ETXSTH, TXSTART_INIT_H)
+;  enc_write_register(ETXSTL, TXSTART_INIT_L)
+;  enc_write_register(ETXSTH, TXSTART_INIT_H)
 ;   -- set transmit buffer end address
-;	enc_write_register(ETXNDL, TXSTOP_INIT_L)
-;	enc_write_register(ETXNDH, TXSTOP_INIT_H)
-	
-	enc_packet_pointer = 0
+;  enc_write_register(ETXNDL, TXSTOP_INIT_L)
+;  enc_write_register(ETXNDH, TXSTOP_INIT_H)
+
+   enc_packet_pointer = 0
 
    while enc_read_register(EPKTCNT) != 0 loop
-	   enc_spi_write_command(ENC28J60_BIT_SET, ECON2, ECON2_PKTDEC) -- decrement packet count by 1 (EPKTCNT)
+      enc_spi_write_command(ENC28J60_BIT_SET, ECON2, ECON2_PKTDEC) -- decrement packet count by 1 (EPKTCNT)
    end loop
 
    debug_crlf(DEBUG_2)
-	const byte str1[] = "BUFFER OVERFLOW - Buffer has been cleared!"
-	debug_string(1,str1)
+   const byte str1[] = "BUFFER OVERFLOW - Buffer has been cleared!"
+   debug_string(1,str1)
    debug_crlf(DEBUG_2)
 
-	enc_spi_write_command(ENC28J60_BIT_SET, ECON1, ECON1_RXEN)
+   enc_spi_write_command(ENC28J60_BIT_SET, ECON1, ECON1_RXEN)
 end procedure
 ;
 ;   --------------------------------------------------------------------------------
@@ -692,7 +692,7 @@ end procedure
 ;
 ;      -- put spi into mode 00
 ;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
-;         SSPCON_CKP = 0
+;         SSPCON1_CKP = 0
 ;         SSPSTAT_CKE = 1
 ;      end if
 ;
@@ -711,7 +711,7 @@ end procedure
 ;
 ;      -- put spi into mode 00
 ;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
-;         SSPCON_CKP = 0
+;         SSPCON1_CKP = 0
 ;         SSPSTAT_CKE = 1
 ;      end if
 ;
@@ -728,16 +728,16 @@ end procedure
 ;
 ;      -- put spi into mode 00
 ;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
-;         SSPCON_CKP = 0
+;         SSPCON1_CKP = 0
 ;         SSPSTAT_CKE = 1
 ;      end if
 ;
 ;      enc_cs = 0 -- enable chip
 ;
-;   	-- move the write pointer to write location
-;   	enc_write_register(EWRPTL, _address[0])
-;   	enc_write_register(EWRPTH, _address[1])
-;   	
+;     -- move the write pointer to write location
+;     enc_write_register(EWRPTL, _address[0])
+;     enc_write_register(EWRPTH, _address[1])
+;
 ;      -- send write command
 ;      spi_master_hw = ENC28J60_WRITE_BUF_MEM
 ;      var word step = len
