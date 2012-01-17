@@ -312,6 +312,10 @@ say 'See' list 'for the results'
 if stream(newrelease,'c','query exists') \= '' then
   call SysFileDelete newrelease
 call stream newrelease, 'c', 'open write'
+call lineout newrelease, '# Title: List of files to release'
+call lineout newrelease, '#'
+call lineout newrelease, '# $Revision$'
+call lineout newrelease, '#'
 call listpart 'device', 'Device files'
 call listpart 'external', 'Externals'
 call listpart 'filesystem', 'FileSystems'
@@ -352,8 +356,9 @@ return
 /* --------------------------------------------- */
 sortpart: procedure expose f. newrelease
 parse arg part .
-do i = 1 to f.part.0 - 1
-  do j = 1 to f.part.0 - i
+do i = f.part.0 - 1 to 1 by -1 until OK                     /* upper bound: one but last */
+  OK = 1                                                    /* default: done! */
+  do j = 1 to i                                             /* begin to upper bound */
     k = j + 1
     lo = translate(f.part.j,'/','_')                        /* underscore higher than ASCII digit */
     hi = translate(f.part.k,'/','_')
@@ -361,6 +366,7 @@ do i = 1 to f.part.0 - 1
       tmp = f.part.k
       f.part.k = f.part.j
       f.part.j = tmp
+      OK = 0                                                /* not done yet! */
     end
     else if lo = hi then do                                 /* equal */
       call lineout newrelease, '#' f.part.k '     (duplicate)'
