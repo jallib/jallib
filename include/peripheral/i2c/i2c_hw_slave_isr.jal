@@ -3,11 +3,11 @@
 -- Adapted-by: Joep Suijs, Albert Faber
 -- Compiler: >=2.4i
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: this library provides an ISR to implement 
+-- Description: this library provides an ISR to implement
 -- a stateful i2c hardware slave. This is a jalv2 implementation of
 -- Microchip Application Note AN734.
 -- --
@@ -46,7 +46,7 @@
 --
 -- Sources:
 --   - AN734: http://www.microchip.com/stellent/idcplg?IdcService=SS_GET_PAGE&nodeId=1824&appnote=en011798
--- 
+--
 
 -- enable line below to enable testing of the clock stretching feature
 -- it will add an additional delay of 200us in the interrupt handler
@@ -71,190 +71,190 @@ procedure i2c_hw_slave_isr_handler() is
    if defined( I2C_HW_SLAVE_TEST_CLOCK_STRETCHING ) == true then
       delay_10us( 20 )
    end if
-   
+
    PIR1_SSPIF = false
-   tmpstat = SSPSTAT              
+   tmpstat = SSPSTAT
 
    if(defined(i2c_debug) == true) then
 ;      queue01_nb = "*"
 ;      print_byte_hex(queue01_nb, tmpstat)
       queue01_nb = "#"
-      print_byte_hex(queue01_nb, sspcon)
+      print_byte_hex(queue01_nb, sspcon1)
    end if
 
    ; check for overflow
-   if (SSPCON_SSPOV) then
-	   var byte _trash = i2c_hw_slave_read_i2c()
-	   _trash = i2c_hw_slave_read_i2c()
-	   SSPCON_SSPOV = false
+   if (SSPCON1_SSPOV) then
+      var byte _trash = i2c_hw_slave_read_i2c()
+      _trash = i2c_hw_slave_read_i2c()
+      SSPCON1_SSPOV = false
    end if
-                                
-   -- if this constant is defined and true, call start & stop handlers.                             
-   if(defined(i2c_enable_start_stop_interrupts) == true) then
-	  if i2c_enable_start_stop_interrupts == true then
 
-         if (tmpstat & 0b_0000_1111) == 0b_0000_1000 then    
-            i2c_hw_slave_on_start();    
+   -- if this constant is defined and true, call start & stop handlers.
+   if(defined(i2c_enable_start_stop_interrupts) == true) then
+     if i2c_enable_start_stop_interrupts == true then
+
+         if (tmpstat & 0b_0000_1111) == 0b_0000_1000 then
+            i2c_hw_slave_on_start();
             return
          end if
-         if (tmpstat & 0b_0011_0000) == 0b_0011_0000 then    
-            i2c_hw_slave_on_stop();    
+         if (tmpstat & 0b_0011_0000) == 0b_0011_0000 then
+            i2c_hw_slave_on_stop();
             return
          end if
-         
+
       end if
    end if
-   
+
    -- mask out unimportant bit
    tmpstat = tmpstat & 0b_0010_1101
 
    -- State machine for PIC18f is slightly different, therefore specific
    -- code for PIC16 and PIC18
-	if defined(i2c_old_statemachine) == true then
+   if defined(i2c_old_statemachine) == true then
 
-	   -- state 1: write operation, last byte is address, buffer full
-	   -- byte is an address, it we get here, we just know master
-	   -- wants to talk to us, in a new write operation...
-	   -- and we also know address is recognized (BF is set, see spec)
-	   -- anyway, we must read buffer to reset BF bit
-	   -- (buffer actually contains previously detected address, that's
-	   -- why it's usually ignored)
-	   -- 
-	   --     => call i2c_hw_slave_on_state_1(byte)
-	   if (tmpstat ^ 0b_0000_1001) == false
-	   then
-	       var byte _trash = i2c_hw_slave_read_i2c()
-	       i2c_hw_slave_on_state_1(_trash)
-	
-	   -- state 2: write operation, last byte is data, buffer full
-	   -- master wants to write, it sends a byte
-	   --
-	   --     => call i2c_hw_slave_on_state_2(byte)  
-	   --  
-	   -- (note: at a write-only sequence, fast masters give a stop (clearing bit3) 
-	   --  before we can read the register. The or statment is handles this)
-	   elsif ((tmpstat | 0b_0000_1000) ^ 0b_0010_1001) == false
-	   then
-		  var byte rcv = i2c_hw_slave_read_i2c()
-		  i2c_hw_slave_on_state_2(rcv)
-	
-	   if ((tmpstat & 0b_0000_1000) == false) then
-	      SSPCON_CKP = 1                          
-	   end if
-	   -- state 3: read operation, last byte is address, buffer empty
-	   -- master wants to get a value from us
-	   --
-	   --     => call i2c_hw_slave_on_state_3()
-	   elsif (tmpstat ^ 0b_0000_1100) == false
-	   then
-		  i2c_hw_slave_on_state_3()
-	
-	   -- state 4: read operation, last byte is data, buffer empty
-	   -- master still wants to get a value from us
-	   --
-	   --     => call i2c_hw_slave_on_state_4()
-	   elsif (tmpstat ^ 0b_00101100) == false
-	   then
-		  i2c_hw_slave_on_state_4()
-	
-	   -- state 5: nack
-	   -- master doesn't want to talk with us anymore
-	   --
-	   --     => call i2c_hw_slave_on_state_5()
-	   elsif (tmpstat ^ 0b_0010_1000) == false
-	   then
-		  -- AN734 does not talk about setting CKP, whereas spec says
-	      -- it must be set. Some people say it can be error prone.
-	      SSPCON_CKP = 1
-		  i2c_hw_slave_on_state_5()
-	
-	   -- state not recognized... Error !
-	   else
-		  -- something went wrong, that is, XOR operations did not match
-		  -- SSPSTAT bits        
-	     SSPCON_CKP = 1
-		  i2c_hw_slave_on_error()
-	   end if
-	else
-		-- slightly modified statemachine for PIC18F devices
-		-- see AN734 revision B for additional details
-		
-	   -- state 1: write operation, last byte is address, buffer full
-	   -- byte is an address, it we get here, we just know master
-	   -- wants to talk to us, in a new write operation...
-	   -- and we also know address is recognized (BF is set, see spec)
-	   -- anyway, we must read buffer to reset BF bit
-	   -- (buffer actually contains previously detected address, that's
-	   -- why it's usually ignored)
-	   -- 
-	   --     => call i2c_hw_slave_on_state_1(byte)
-	   if (tmpstat ^ 0b_0000_1001) == false
-	   then
-	       var byte _trash = i2c_hw_slave_read_i2c()
-	       i2c_hw_slave_on_state_1(_trash)
-	
-	   -- state 2: write operation, last byte is data, buffer full
-	   -- master wants to write, it sends a byte
-	   --
-	   --     => call i2c_hw_slave_on_state_2(byte)  
-	   --  
-	   -- (note: at a write-only sequence, fast masters give a stop (clearing bit3) 
-	   --  before we can read the register. The or statment is handles this)
-	   elsif ((tmpstat | 0b_0000_1000) ^ 0b_0010_1001) == false
-	   then
-		  var byte rcv = i2c_hw_slave_read_i2c()
-		  i2c_hw_slave_on_state_2(rcv)
-        	
-	   -- state 3: read operation, last byte is address, buffer empty
-	   -- master wants to get a value from us
-	   --
-	   --     => call i2c_hw_slave_on_state_3()
-	   -- Mask BF flag for newer statemachines
-	   elsif ((tmpstat & 0b_1111_1110) ^ 0b_0000_1100) == false
-	   then
-	      -- clear BF flag by clearing SSPBUF, required for PIC18f devices 
-	      -- with a new version of the i2c statemachine (see also AN734)			
-			var byte _trash = i2c_hw_slave_read_i2c()
-			
-			i2c_hw_slave_on_state_3()
+      -- state 1: write operation, last byte is address, buffer full
+      -- byte is an address, it we get here, we just know master
+      -- wants to talk to us, in a new write operation...
+      -- and we also know address is recognized (BF is set, see spec)
+      -- anyway, we must read buffer to reset BF bit
+      -- (buffer actually contains previously detected address, that's
+      -- why it's usually ignored)
+      --
+      --     => call i2c_hw_slave_on_state_1(byte)
+      if (tmpstat ^ 0b_0000_1001) == false
+      then
+          var byte _trash = i2c_hw_slave_read_i2c()
+          i2c_hw_slave_on_state_1(_trash)
+
+      -- state 2: write operation, last byte is data, buffer full
+      -- master wants to write, it sends a byte
+      --
+      --     => call i2c_hw_slave_on_state_2(byte)
+      --
+      -- (note: at a write-only sequence, fast masters give a stop (clearing bit3)
+      --  before we can read the register. The or statment is handles this)
+      elsif ((tmpstat | 0b_0000_1000) ^ 0b_0010_1001) == false
+      then
+        var byte rcv = i2c_hw_slave_read_i2c()
+        i2c_hw_slave_on_state_2(rcv)
+
+      if ((tmpstat & 0b_0000_1000) == false) then
+         SSPCON1_CKP = 1
+      end if
+      -- state 3: read operation, last byte is address, buffer empty
+      -- master wants to get a value from us
+      --
+      --     => call i2c_hw_slave_on_state_3()
+      elsif (tmpstat ^ 0b_0000_1100) == false
+      then
+        i2c_hw_slave_on_state_3()
+
+      -- state 4: read operation, last byte is data, buffer empty
+      -- master still wants to get a value from us
+      --
+      --     => call i2c_hw_slave_on_state_4()
+      elsif (tmpstat ^ 0b_00101100) == false
+      then
+        i2c_hw_slave_on_state_4()
+
+      -- state 5: nack
+      -- master doesn't want to talk with us anymore
+      --
+      --     => call i2c_hw_slave_on_state_5()
+      elsif (tmpstat ^ 0b_0010_1000) == false
+      then
+        -- AN734 does not talk about setting CKP, whereas spec says
+         -- it must be set. Some people say it can be error prone.
+         SSPCON1_CKP = 1
+        i2c_hw_slave_on_state_5()
+
+      -- state not recognized... Error !
+      else
+        -- something went wrong, that is, XOR operations did not match
+        -- SSPSTAT bits
+        SSPCON1_CKP = 1
+        i2c_hw_slave_on_error()
+      end if
+   else
+      -- slightly modified statemachine for PIC18F devices
+      -- see AN734 revision B for additional details
+
+      -- state 1: write operation, last byte is address, buffer full
+      -- byte is an address, it we get here, we just know master
+      -- wants to talk to us, in a new write operation...
+      -- and we also know address is recognized (BF is set, see spec)
+      -- anyway, we must read buffer to reset BF bit
+      -- (buffer actually contains previously detected address, that's
+      -- why it's usually ignored)
+      --
+      --     => call i2c_hw_slave_on_state_1(byte)
+      if (tmpstat ^ 0b_0000_1001) == false
+      then
+          var byte _trash = i2c_hw_slave_read_i2c()
+          i2c_hw_slave_on_state_1(_trash)
+
+      -- state 2: write operation, last byte is data, buffer full
+      -- master wants to write, it sends a byte
+      --
+      --     => call i2c_hw_slave_on_state_2(byte)
+      --
+      -- (note: at a write-only sequence, fast masters give a stop (clearing bit3)
+      --  before we can read the register. The or statment is handles this)
+      elsif ((tmpstat | 0b_0000_1000) ^ 0b_0010_1001) == false
+      then
+        var byte rcv = i2c_hw_slave_read_i2c()
+        i2c_hw_slave_on_state_2(rcv)
+
+      -- state 3: read operation, last byte is address, buffer empty
+      -- master wants to get a value from us
+      --
+      --     => call i2c_hw_slave_on_state_3()
+      -- Mask BF flag for newer statemachines
+      elsif ((tmpstat & 0b_1111_1110) ^ 0b_0000_1100) == false
+      then
+         -- clear BF flag by clearing SSPBUF, required for PIC18f devices
+         -- with a new version of the i2c statemachine (see also AN734)
+         var byte _trash = i2c_hw_slave_read_i2c()
+
+         i2c_hw_slave_on_state_3()
 
 
-	   elsif ((tmpstat & 0b_1111_1011) ^ 0b_0010_1000) == false
-	   then
-		
+      elsif ((tmpstat & 0b_1111_1011) ^ 0b_0010_1000) == false
+      then
+
          -- check CKP bit to distinguish between state 4 and 5
-			if ( SSPCON_CKP == 0 ) then
+         if ( SSPCON1_CKP == 0 ) then
 
-			   -- state 4: read operation, last byte is data, buffer empty
-			   -- master still wants to get a value from us
-			   --
-			   --     => call i2c_hw_slave_on_state_4()
-			   -- Don't check R/W flag, use CKP bit instead
-			  i2c_hw_slave_on_state_4()
+            -- state 4: read operation, last byte is data, buffer empty
+            -- master still wants to get a value from us
+            --
+            --     => call i2c_hw_slave_on_state_4()
+            -- Don't check R/W flag, use CKP bit instead
+           i2c_hw_slave_on_state_4()
 
-			else
-				
-			   -- state 5: nack
-			   -- master doesn't want to talk with us anymore
-			   --
-			   --     => call i2c_hw_slave_on_state_5()
-				-- AN734 does not talk about setting CKP, whereas spec says
-				-- it must be set. Some people say it can be error prone.
-				-- SSPCON_CKP = 1
-				i2c_hw_slave_on_state_5()
-			end if
-			
-	   -- state not recognized... Error !
-	   else
-		  -- something went wrong, that is, XOR operations did not match
-		  -- SSPSTAT bits        
-		  i2c_hw_slave_on_error()
-	   end if
-	   
-	   -- always clear CKP so clock line will be released (HW will set CKP
-	   -- bit when clock stretching feature is enabled
-      SSPCON_CKP = 1
-	end if
-	
+         else
+
+            -- state 5: nack
+            -- master doesn't want to talk with us anymore
+            --
+            --     => call i2c_hw_slave_on_state_5()
+            -- AN734 does not talk about setting CKP, whereas spec says
+            -- it must be set. Some people say it can be error prone.
+            -- SSPCON1_CKP = 1
+            i2c_hw_slave_on_state_5()
+         end if
+
+      -- state not recognized... Error !
+      else
+        -- something went wrong, that is, XOR operations did not match
+        -- SSPSTAT bits
+        i2c_hw_slave_on_error()
+      end if
+
+      -- always clear CKP so clock line will be released (HW will set CKP
+      -- bit when clock stretching feature is enabled
+      SSPCON1_CKP = 1
+   end if
+
 end procedure
 
