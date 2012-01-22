@@ -104,7 +104,7 @@ do i=1 to dir.0                                /* a line for every Jallib PIC de
   if DS \= '-'  &  DS \= '?' then do
     call SysFileSearch DS, titles, dsnum.               /* lookup ds# & title */
     if dsnum.0 > 0 then do
-      call lineout wiki, '||' left(PicName,9),
+      call lineout wiki, '||' left(PicName,12),
                          '|| <a href="'url||word(dsnum.1,1)'.pdf">'left(word(dsnum.1,1),6)'</a>',
                          '||'delword(dsnum.1,1,1) '||'
       call SysFileTree pdfdir||word(dsnum.1,1).pdf, 'dsfile', 'FO'
@@ -112,13 +112,13 @@ do i=1 to dir.0                                /* a line for every Jallib PIC de
         say 'Datasheet' dsnum.1 'not found in' pdfdir
     end
     else do
-      call lineout wiki, '||' left(PicName,9),
+      call lineout wiki, '||' left(PicName,12),
                          '||' left(DS,6),
                          '|| - ||'
     end
   end
   else                                      /* no datasheet number found */
-    call lineout wiki, '||' left(PicName,9),
+    call lineout wiki, '||' left(PicName,12),
                        '||' left('-',6),
                        '|| - ||'
 
