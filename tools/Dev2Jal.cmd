@@ -1,4 +1,4 @@
-/* ------------------------------------------------------------------------ *
+/* ----------------------------------------------------------------------- *
  * Title: Dev2Jal.cmd - Create JalV2 device include files for flash PICs    *
  *                                                                          *
  * Author: Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.    *
@@ -37,12 +37,12 @@
  *     See the embedded comments below for instructions for possibly        *
  *     required changes, you don't have to look further than the line which *
  *     says "Here the device file generation actually starts" (approx 125). *
- *     Note with Linux some system command must be changed (erase -> rm ).  *
+ *     Note with Linux some system command must be changed (erase -> rm).   *
  *   - A summary of changes of this script is maintained in 'changes.txt'   *
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.28'
+   ScriptVersion   = '0.1.29'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
    MPlabVersion    = '883'
@@ -124,7 +124,7 @@ else do                                                     /* PROD run with sel
    return 1                                                 /* unrecoverable: terminate */
 end
 
-/* ------ here the real device file generation process begins  ------------------------ */
+/* ------ Here the device file generation actually starts ------------------------ */
 
 call time 'R'                                               /* reset 'elapsed' timer */
 
@@ -749,7 +749,7 @@ do i = 1 to Dev.0
          reg = tolower(reg)                                 /* to lower case */
          call list_variable 'byte', '_'reg, addr
          if reg = 'status' then                             /* status register */
-            call list_status1x i                            /* extra for compiler */
+            call list_status i                              /* extra for compiler */
       end
 
       call multi_module_register_alias i, reg               /* even though there are no  */
@@ -791,8 +791,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                PinNumber  = right(n.j,1)
                pin = 'pin_'PortLat.PortLetter.offset
                if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
-                  if duplicate_name(pin,'PORT'portletter) = 0 then
-                     call list_bitfield 1, pin, 'PORT'portletter, offset
+                  call list_bitfield 1, pin, 'PORT'portletter, offset
                   call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                   call lineout jalfile, '--'
                end
@@ -802,20 +801,16 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
             if (pos('/', n.j) > 0 | pos('_', n.j) > 0)  &,  /* check for twin name */
                 left(n.j,4) \= 'PRI_' then do               /* exception */
                if pos('/', n.j) > 0 then                    /* splitted with '/' */
-                 parse var n.j val1'/'val2 .
+                  parse var n.j val1'/'val2 .
                else                                         /* splitted with '_' */
-                 parse var n.j val1'_'val2 .
+                  parse var n.j val1'_'val2 .
                if val1 \= '' then do                        /* present */
                   field = reg'_'val1                        /* new name */
-                  if duplicate_name(field,reg) = 0 then do  /* unique */
-                     call list_bitfield 1, field, reg, offset
-                  end
+                  call list_bitfield 1, field, reg, offset
                end
                if val2 \= '' & val2 \= 'SHAD' then do
                   field = reg'_'val2
-                  if duplicate_name(field,reg) = 0 then do  /* unique */
-                     call list_bitfield 1, field, reg, offset
-                  end
+                  call list_bitfield 1, field, reg, offset
                end
             end
             else do                                         /* not twin name */
@@ -830,9 +825,10 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                                                             /* but not a 'loose' ADCS2 */
                   end
                   when left(reg,5) = 'ANSEL'  &  left(n.j,3) = 'ANS' then do
+                     call list_bitfield 1, reg'_'n.j, reg, offset
                      ansx = ansel2j(reg, n.j)
                      if ansx < 99 then                      /* valid number */
-                        call list_bitfield 1, 'JANSEL_ANS'ansx, reg, offset
+                        call list_alias 'JANSEL_ANS'ansx, field
                   end
                   when pos('CCP',reg) > 0  & right(reg,3) = 'CON'  &,   /* [E]CCPxCON */
                        left(n.j,3) = 'CCP'                         &,
@@ -855,8 +851,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                      call list_bitfield 1, field, reg, offset
                   end
                   otherwise
-                     if duplicate_name(field,reg) = 0 then  /* unique */
-                        call list_bitfield 1, field, reg, offset
+                     call list_bitfield 1, field, reg, offset
                end
 
                                                             /* additional declarations */
@@ -865,7 +860,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                        pos('VCFG',field) > 0  then do       /* VCFG field */
                      p = j - 1                              /* previous bit */
                      if right(n.j,5) = 'VCFG0' & right(n.p,5) = 'VCFG1' then
-                       call list_bitfield 2, left(field,length(field)-1), reg, offset
+                        call list_bitfield 2, left(field,length(field)-1), reg, offset
                   end
                   when reg = 'ADCON1'  &,                   /* ADCON1 */
                       (n.j = 'ADCS2' & next_subfield \= ADCS1)  then do    /* scattered ADCS bits */
@@ -907,8 +902,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                         field = reg'_DC'substr(n.j,3,1)'B'
                      else
                         field = reg'_DC'substr(n.j,4,1)'B'
-                     if duplicate_name(field,reg) = 0 then  /* unique */
-                        call list_bitfield 2, field, reg, (offset - s.j + 1)
+                     call list_bitfield 2, field, reg, (offset - s.j + 1)
                   end
                   when reg = 'GPIO' then do
                      shadow = '_PORTA_shadow'
@@ -928,8 +922,8 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                         call list_bitfield 1, reg'_TMR0'substr(n.j,3), reg, offset
                   end
                   when reg = 'OPTION_REG' &,
-                     (n.j = 'T0CS' | n.j = 'T0SE' | n.j = 'PSA') then do
-                      call list_alias 'T0CON_'n.j, reg'_'n.j
+                       (n.j = 'T0CS' | n.j = 'T0SE' | n.j = 'PSA') then do
+                     call list_alias 'T0CON_'n.j, reg'_'n.j
                   end
                   when reg = 'OSCCON' then do                     /* enumerated -> bit*3 */
                      if  n.j = 'IRCF0' then
@@ -940,8 +934,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
                      if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
-                        if duplicate_name(pin,reg) = 0 then
-                           call list_alias pin, 'PORT'PortLetter'_R'PortLetter||offset
+                        call list_alias pin, 'PORT'PortLetter'_R'PortLetter||offset
                         call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                         call lineout jalfile, '--'
                      end
@@ -1028,46 +1021,41 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                     PicName \= '16f886'          &,
                     PicName \= '16f887'         then do
                   field = reg'_ADCS10'
-                  if duplicate_name(field,reg) = 0 then do  /* renamed subfield */
-                     call list_bitfield s.j, field, reg, (offset - s.j + 1)
-                  end
+                  call list_bitfield s.j, field, reg, (offset - s.j + 1)
                end
                when left(reg,5) = 'ADCON'  &,               /* ADCON0/1 */
                     n.j = 'CHS'            &,               /* (multibit) CHS field */
                     pos('CHS3',Dev.i) > 0  then do          /* 'loose' 4th bit present */
                   field = field'210'                        /* rename! */
-                  if duplicate_name(field,reg) = 0 then     /* renamed subfield */
-                     call list_bitfield s.j, field, reg, (offset - s.j + 1)
+                  call list_bitfield s.j, field, reg, (offset - s.j + 1)
                end
                when left(reg,5) = 'ADCON' &,                /* ADCONx */
                     pos('VCFG',field) > 0  then do          /* multibit VCFG present */
                   call list_bitfield 1, field'1', reg, offset
                   call list_bitfield 1, field'0', reg, (offset - 1)
-                  if duplicate_name(field,reg) = 0 then     /* unique */
-                     call list_bitfield s.j, field, reg, (offset - s.j + 1)
+                  call list_bitfield s.j, field, reg, (offset - s.j + 1)
                end
                when (left(n.j,2) = 'AN')    &,              /* AN(S) subfield and */
                     (left(reg,5) = 'ADCON'  |,              /* ADCONx reg */
                      left(reg,5) = 'ANSEL')  then do        /* or ANSELx reg */
                   k = s.j - 1
-                  do while k >= 0
-                     ansx = ansel2j(reg,n.j||k)
+                  do while k >= 0                           /* enumerate */
+                     call list_bitfield 1, reg'_'n.j||k, reg, (offset + k + 1 - s.j)
+                     ansx = ansel2j(reg, n.j||k)
                      if ansx < 99 then
-                        call list_bitfield 1, 'JANSEL_ANS'ansx, reg, (offset +k + 1 - s.j)
+                        call list_alias 'JANSEL_ANS'ansx, field||k
                      k = k - 1
                   end
                end
                when reg = 'OPTION_REG' &  n.j = 'PS' then do
                   call list_bitfield s.j, field, reg, (offset - s.j + 1)
-                  call list_alias  'T0CON_T0'n.j, reg'_'n.j
+                  call list_alias  'T0CON_T0'n.j, field
                end
                otherwise                                    /* other */
-                  if duplicate_name(field,reg) = 0 then do  /* unique */
-                     call list_bitfield s.j, field, reg, (offset - s.j + 1)
-                     if  left(n.j,4) = ADCS  &,
-                        (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
-                        adcs_bitcount = s.j                 /* variable # ADCS bits */
-                     end
+                  call list_bitfield s.j, field, reg, (offset - s.j + 1)
+                  if  left(n.j,4) = ADCS  &,
+                     (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
+                     adcs_bitcount = s.j                 /* variable # ADCS bits */
                   end
             end
          end
@@ -1134,8 +1122,7 @@ do i = 1 to Dev.0
             call list_tris_nibbles reg                      /* nibble direction */
          end
          when reg = 'SPBRGL' then do                        /* for backward compatibility */
-            if duplicate_name('SPBRG',reg) = 0 then         /* alias if not declared before! */
-               call list_alias 'SPBRG', reg
+            call list_alias 'SPBRG', reg
          end
          otherwise                                          /* others */
             nop                                             /* can be ignored */
@@ -1155,20 +1142,18 @@ do i = 1 to Dev.0
          if reg = 'INDF0' then
             reg = 'IND'                                     /* compiler wants '_ind' */
          reg = tolower(reg)                                 /* to lower case */
-           call list_variable 'byte', '_'reg, addr
+         call list_variable 'byte', '_'reg, addr
          if reg = 'status' then                             /* status register */
-            call list_status1x i                            /* extra for compiler */
+            call list_status i                              /* extra for compiler */
       end
 
       else if reg = 'PORTE' then do                            /* esp. for  pin_E3 */
          parse var access 'ACCESS' '=' "'" a7 a6 a5 a4 a3 a2 a1 a0 "'" ')' .
          if a7='U' & a6='U' & a5='U' & a4='U' & a3\='U' & a2='U' & a1='U' & a0='U' then do
             pin = 'pin_E3'
-            if duplicate_name(pin, reg) = 0 then do
-               call list_bitfield 1, pin, reg, 3, addr
-               call insert_pin_alias reg, 'RE3', pin
-               call msg 1, pin 'is declared under' reg
-            end
+            call list_bitfield 1, pin, reg, 3, addr
+            call insert_pin_alias reg, 'RE3', pin
+            call msg 1, pin 'is declared under' reg
          end
       end
 
@@ -1211,7 +1196,6 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                PinNumber  = right(n.j,1)
                pin = 'pin_'PortLat.PortLetter.offset
                if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
-                  if duplicate_name(pin,'PORT'portletter) = 0 then
                   call list_bitfield 1, pin, 'PORT'portletter, offset, addr
                   call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                   call lineout jalfile, '--'
@@ -1229,13 +1213,11 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                  parse var n.j val1'_'val2 .
                if val1 \= '' then do                        /* present */
                   field = reg'_'val1                        /* new name */
-                  if duplicate_name(field,reg) = 0 then     /* unique */
-                     call list_bitfield 1, field, reg, offset, addr
+                  call list_bitfield 1, field, reg, offset, addr
                end
                if val2 \= '' & val2 \= 'SHAD' then do
                   field = reg'_'val2
-                  if duplicate_name(field,reg) = 0 then     /* unique */
-                    call list_bitfield 1, field, reg, offset, addr
+                  call list_bitfield 1, field, reg, offset, addr
                end
             end
             else do                                         /* not twin name */
@@ -1264,19 +1246,18 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                      nop                                    /* suppress enumerated bitfields */
                   end
                   when left(reg,5) = 'ANSEL'  &  left(n.j,3) = 'ANS' then do
-                     ansx = ansel2j(reg,n.j)
+                     call list_bitfield 1, reg'_'n.j, reg, offset, addr
+                     ansx = ansel2j(reg, n.j)
                      if ansx < 99 then
-                        call list_bitfield 1, 'JANSEL_ANS'ansx, reg, offset, addr
+                        call list_alias 'JANSEL_ANS'ansx, field
                   end
                   when n.j \= '-' then do                   /* bit present */
-                     if duplicate_name(field,reg) = 0 then do /* unique */
-                        call list_bitfield 1, field, reg, offset, addr
-                        if left(reg,4) = 'PORT' then do
-                           PortLetter = right(reg,1)
-                           if left(n.j,2) = 'R'portletter  &,  /* probably pin */
-                              right(n.j,1) = offset  then     /* matching pin number */
-                              PortLat.PortLetter.offset = Portletter||offset
-                        end
+                     call list_bitfield 1, field, reg, offset, addr
+                     if left(reg,4) = 'PORT' then do
+                        PortLetter = right(reg,1)
+                        if left(n.j,2) = 'R'portletter  &,  /* probably pin */
+                           right(n.j,1) = offset  then      /* matching pin number */
+                           PortLat.PortLetter.offset = Portletter||offset
                      end
                   end
                   otherwise
@@ -1309,11 +1290,9 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
                      if PortLat.PortLetter.offset \= 0 then do  /* pin present in PORTx */
-                        if duplicate_name(pin,reg) = 0 then do     /* unique */
-                           call list_alias pin, reg'_'n.j
-                           call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
-                           call lineout jalfile, '--'
-                        end
+                        call list_alias pin, reg'_'n.j
+                        call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
+                        call lineout jalfile, '--'
                      end
                      if left(right(n.j,2),1) = PortLetter  &,      /* port letter */
                         datatype(PinNumber) = 'NUM' then do   /* pin number */
@@ -1379,15 +1358,13 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
 
          else if s.j < 8 | reg = 'ANSEL' then do            /* multi-bit subfield */
             field = reg'_'n.j
-            if duplicate_name(field,reg) = 0 then do        /* unique */
-               call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
-               if  left(n.j,4) = ADCS  &,
-                  (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
-                  adcs_bitcount = s.j                       /* variable # ADCS bits */
-               end
-               else if reg = 'OPTION_REG' &  n.j = 'PS' then do
-                  call list_alias 'T0CON_T0'n.j, field
-               end
+            call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
+            if  left(n.j,4) = ADCS  &,
+               (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
+               adcs_bitcount = s.j                       /* variable # ADCS bits */
+            end
+            else if reg = 'OPTION_REG' &  n.j = 'PS' then do
+               call list_alias 'T0CON_T0'n.j, field
             end
          end
 
@@ -1472,8 +1449,7 @@ do i = 1 to Dev.0
             end
             else
                alias = substr(reg,2)                        /* simply strip 'E' prefix */
-            if duplicate_name(alias,reg) = 0 then           /* unique */
-               call list_alias alias, reg
+            call list_alias alias, reg
          end
          otherwise                                          /* others */
             nop                                             /* can be ignored */
@@ -1490,27 +1466,24 @@ do i = 1 to Dev.0
           reg = 'PCL'    |,
           reg = 'PCLATH' |,
           reg = 'PCLATU' |,
+          reg = 'STATUS' |,             /* test */
           reg = 'TABLAT' |,
           reg = 'TBLPTR') then do
          if reg = 'INDF0' then
             reg = 'IND'                                  /* compiler wants '_ind' */
          reg = tolower(reg)                              /* to lower case */
          call list_variable field, '_'reg, addr
-      end
-
-      else if reg = 'STATUS' then do                        /* status register */
-         call list_status16 i, addr                         /* extra for compiler */
+         if reg = 'status' then                             /* status register */
+            call list_status i                              /* extra for compiler */
       end
 
       else if reg = 'PORTE' then do                         /* esp. for pin_E3 */
          parse var access 'ACCESS' '=' "'" a7 a6 a5 a4 a3 a2 a1 a0 "'" ')' .
          if a7='U' & a6='U' & a5='U' & a4='U' & a3\='U' & a2='U' & a1='U' & a0='U' then do
             pin = 'pin_E3'
-            if duplicate_name(pin, reg) = 0 then do
-               call list_bitfield 1, pin, reg, 3, addr
-               call insert_pin_alias reg, 'RE3', pin
-               call msg 1, pin 'is declared under' reg
-            end
+            call list_bitfield 1, pin, reg, 3, addr
+            call insert_pin_alias reg, 'RE3', pin
+            call msg 1, pin 'is declared under' reg
          end
       end
 
@@ -1560,15 +1533,11 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                  parse var n.j val1'_'val2 .
                if val1 \= '' then do
                   field = reg'_'val1
-                  if duplicate_name(field,reg) = 0 then do  /* unique */
-                     call list_bitfield 1, field, reg, offset, addr
-                  end
+                  call list_bitfield 1, field, reg, offset, addr
                end
                if val2 \= '' & val2 \= 'SHAD' then do
                   field = reg'_'val2
-                  if duplicate_name(field,reg) = 0 then do  /* unique */
-                     call list_bitfield 1, field, reg, offset, addr
-                  end
+                  call list_bitfield 1, field, reg, offset, addr
                end
             end
             else do                                         /* not twin name */
@@ -1593,61 +1562,55 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                         field = reg'_DC'substr(n.j,3,1)'B'
                      else
                         field = reg'_DC'substr(n.j,4,1)'B'
-                     if duplicate_name(reg'_DC'n'B',reg) = 0 then  /* unique */
-                        call list_bitfield 2, field, reg, (offset - s.j + 1), addr
+                     call list_bitfield 2, field, reg, (offset - s.j + 1), addr
                   end
                   when (left(reg,5) = 'ANSEL' | left(reg,5) = 'ANCON')  &,
                        left(n.j,3) = 'ANS' then do
+                     call list_bitfield 1, reg'_'n.j, reg, offset, addr
                      ansx = ansel2j(reg, n.j)
                      if ansx < 99 then
-                        call list_bitfield 1, 'JANSEL_ANS'ansx, reg, offset, addr
+                        call list_alias 'JANSEL_ANS'ansx, field
                   end
                   when (left(reg,6) = 'SSPCON'  & left(n.j,4) = 'SSPM')   |,
                        (left(reg,7) = 'SSP1CON' & left(n.j,4) = 'SSPM')   |,
                        (left(reg,7) = 'SSP2CON' & left(n.j,4) = 'SSPM')   then do
                      nop                                    /* suppress enumerated bitfield  */
                   end
-                  when left(reg,1) = 'T' & right(reg,3) = 'CON'   &, /* TxCON */
-                       left(n.j,1) = 'T' & right(n.j,4) = 'SYNC' then do /* TxSYNC */
+                  when left(reg,1) = 'T' & right(reg,3) = 'CON'   &,       /* TxCON */
+                       left(n.j,1) = 'T' & right(n.j,4) = 'SYNC' then do   /* TxSYNC */
                      call list_bitfield 1,  reg'_N'n.j, reg, offset, addr
                   end
                   when n.j \= '-' then do                   /* bit present */
-                     if duplicate_name(field,reg) = 0 then do  /* unique */
-                        call list_bitfield 1, field, reg, offset, addr
-                        if left(reg,4) = 'PORT' then do
-                           PortLetter = right(reg,1)
-                           if left(n.j,2) = 'R'portletter  &, /* probably pin */
-                              substr(n.j,3) = offset  then  /* matching pin number */
-                              PortLat.PortLetter.offset = Portletter||offset
-                        end
+                     call list_bitfield 1, field, reg, offset, addr
+                     if left(reg,4) = 'PORT' then do
+                        PortLetter = right(reg,1)
+                        if left(n.j,2) = 'R'portletter  &,  /* probably pin */
+                           substr(n.j,3) = offset  then     /* matching pin number */
+                           PortLat.PortLetter.offset = Portletter||offset
                      end
                   end
                   otherwise
                      nop                                    /* others can be ignored */
                end
 
-               if field = 'WDTCON_ADSHR' then do            /* NMMR mapping bit */
+               if field = 'WDTCON_ADSHR' then               /* NMMR mapping bit */
                   call lineout jalfile, field '= FALSE                ',
                                        '-- ensure default (legacy) SFR mapping'
-               end
 
                                                             /* additional declarations */
                select
                   when reg = 'INTCON' then do
-                     if left(n.j,2) = 'T0' then do
+                     if left(n.j,2) = 'T0' then
                         call list_bitfield 1, reg'_TMR0'substr(n.j,3), reg, offset, addr
-                     end
                   end
                   when left(reg,3) = 'LAT' then do          /* LATx register */
                      PortLetter = right(reg,1)
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
                      if PortLat.PortLetter.offset \= 0 then do   /* pin present in PORTx */
-                        if duplicate_name(pin,reg) = 0 then do
-                           call list_alias pin, reg'_'n.j
-                           call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
-                           call lineout jalfile, '--'
-                        end
+                        call list_alias pin, reg'_'n.j
+                        call insert_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
+                        call lineout jalfile, '--'
                      end
                      if substr(n.j,4,1) = portletter  &,    /* port letter */
                         datatype(pinnumber) = 'NUM' then do /* pin number */
@@ -1660,8 +1623,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                   end
                   when reg = 'OSCCON'  &  n.j = 'SCS0' then do
                      field = reg'_SCS'
-                     if duplicate_name(field,reg) = 0 then  /* unique */
-                        call list_bitfield 2, field, reg, offset, addr
+                     call list_bitfield 2, field, reg, offset, addr
                   end
                   when (left(reg,6) = 'SSPCON'  & n.j = 'SSPM0') |,
                        (left(reg,7) = 'SSP1CON' & n.j = 'SSPM0') |,
@@ -1671,14 +1633,14 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                   when left(reg,4) = 'TRIS' then do         /* TRISx register */
                      portletter = right(reg,1)
                      pinnumber  = right(n.j,1)
-                     if PortLat.PortLetter.offset \= 0 then do /* pin present in PORTx */
+                     if PortLat.PortLetter.offset \= 0 then do  /* pin present in PORTx */
                         pin = 'pin_'PortLat.PortLetter.offset'_direction'
                         if  left(n.j,4) = 'TRIS' then do    /* only 'TRIS' bits */
                            call list_alias pin, reg'_'n.j
                            call insert_pin_direction_alias 'PORT'substr(reg,5),,
                                            'R'substr(n.j,5), pin
                            call lineout jalfile, '--'
-                       end
+                        end
                      end
                   end
                   otherwise                                 /* others */
@@ -1705,11 +1667,9 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
             select
                when left(reg,5) = 'ADCON'  &,               /* ADCON0/1 */
                     pos('VCFG',n.j) > 0  then do            /* VCFG field */
-                  if duplicate_name(field,reg) = 0 then do   /* unique */
-                     call list_bitfield 1, field'1', reg, (offset - 0), addr
-                     call list_bitfield 1, field'0', reg, (offset - 1), addr
-                     call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
-                  end
+                  call list_bitfield 1, field'1', reg, (offset - 0), addr
+                  call list_bitfield 1, field'0', reg, (offset - 1), addr
+                  call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
                end
                when reg = 'ADCON0'               &,         /* ADCON0 */
                     (n.j = 'ADCS' &  s.j = '2')  &,         /* 2 bits of ADCS */
@@ -1725,9 +1685,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                      PicName = '18f452'   |,
                      PicName = '18f4539'  |,
                      PicName = '18f458')  then do
-                  if duplicate_name(field,reg) = 0 then do  /* unique */
-                     call list_bitfield s.j, field'10', reg, (offset - s.j + 1), addr
-                  end
+                  call list_bitfield s.j, field'10', reg, (offset - s.j + 1), addr
                   call lineout jalfile, 'var  byte  ADCON0_ADCS'
                   call lineout jalfile, 'procedure  ADCON0_ADCS'"'put"'(byte in x) is'
                   call lineout jalfile, '   pragma inline'
@@ -1740,37 +1698,32 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                     (left(reg,5) = 'ADCON'  |,              /* ADCON* reg */
                      left(reg,5) = 'ANSEL')    then do      /* ANSELx reg */
                   k = s.j - 1
-                  do while k >= 0
-                     ansx = ansel2j(reg,n.j||k)
+                  do while k >= 0                           /* enumerate */
+                     call list_bitfield 1, reg'_'n.j||k, reg, (offset + k + 1 - s.j), addr
+                     ansx = ansel2j(reg, n.j||k)
                      if ansx < 99 then
-                        call list_bitfield 1, 'JANSEL_ANS'ansx, reg, (offset + k + 1 - s.j), addr
+                        call list_alias 'JANSEL_ANS'ansx, field||k
                      k = k - 1
                   end
                end
                when reg = 'T0CON'  &,                       /* T0CON register */
                     n.j = 'T0PS' & s.j = 4 then do          /* PSA and T0PS glued */
                   field = reg'_PSA'
-                  if duplicate_name(field,reg) = 0 then     /* unique */
-                     call list_bitfield 1, field, reg, offset, addr
+                  call list_bitfield 1, field, reg, offset, addr
                   field = reg'_T0PS'
-                  if duplicate_name(field,reg) = 0 then     /* unique */
-                     call list_bitfield 3, field, reg, 0, addr
+                  call list_bitfield 3, field, reg, 0, addr
                end
                when left(reg,1) = 'T' & right(reg,3) = 'CON' &, /* TxCON */
                     n.j = 'TOUTPS' then do                  /* unqualified name */
                   parse var reg 'T'tmrno'CON' .             /* extract TMR number */
                   field = reg'_T'tmrno'OUTPS'
-                  if duplicate_name(field,reg) = 0 then     /* unique */
-                     call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
+                  call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
                end
                otherwise                                    /* others */
-                  if duplicate_name(field,reg) = 0 then do  /* unique */
-                     call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
-                     if  left(n.j,4) = ADCS  &,
-                        (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
-                        adcs_bitcount = s.j                 /* variable (2 or 3) */
-                     end
-                  end
+                  call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
+                  if  left(n.j,4) = ADCS  &,
+                     (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then
+                     adcs_bitcount = s.j                 /* variable (2 or 3) */
             end
          end
                                                             /* additional declarations */
@@ -1796,20 +1749,16 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                else
                   alias = substr(reg,2)'_'n.j               /* take whole field name */
             end
-            if s.j \= 8 & s.j \= 16 then do                 /* not full byte/word */
-               if duplicate_name(alias,regalias) = 0 then   /* unique */
-                  call list_alias alias, field
-            end
+            if s.j \= 8 & s.j \= 16 then                    /* not full byte/word */
+               call list_alias alias, field
          end
          else if reg = 'RTCCFG' then do
-            if n.j = 'RTCPTR0' then do
+            if n.j = 'RTCPTR0' then
                call list_bitfield 2, reg'_'left(n.j,6), reg, offset, addr
-            end
          end
          else if reg = 'PADCFG1' then do
-            if n.j = 'RTSECSEL0' then do
+            if n.j = 'RTSECSEL0' then
                call list_bitfield 2, reg'_'left(n.j,8), reg, offset, addr
-            end
          end
          else if reg = 'ALRMCFG'  &,                        /* ALARMCFG */
                  n.j = 'ALRMPTR' then do                    /* ALRMPTR field */
@@ -1849,18 +1798,16 @@ end
 if PinMap.PicUpper.PinName.0 > 0 then do
    do k = 1 to PinMap.PicUpper.PinName.0                    /* all aliases */
       pinalias = 'pin_'PinMap.PicUpper.PinName.k
-      if duplicate_name(pinalias,reg) = 0 then do           /* unique */
-         call list_alias pinalias, Pin
-         if pinalias = 'pin_SDA1' |,                        /* 1st I2C module */
-            pinalias = 'pin_SDI1' |,                        /* 1st SPI module */
-            pinalias = 'pin_SDO1' |,
-            pinalias = 'pin_SCK1' |,
-            pinalias = 'pin_SCL1' |,
-            pinalias = 'pin_SS1'  |,                        /* 1st SPI module */
-            pinalias = 'pin_TX1'  |,                        /* TX pin first USART */
-            pinalias = 'pin_RX1' then                       /* RX                 */
-            call list_alias strip(pinalias,'T',1), Pin
-      end
+      call list_alias pinalias, Pin
+      if pinalias = 'pin_SDA1' |,                        /* 1st I2C module */
+         pinalias = 'pin_SDI1' |,                        /* 1st SPI module */
+         pinalias = 'pin_SDO1' |,
+         pinalias = 'pin_SCK1' |,
+         pinalias = 'pin_SCL1' |,
+         pinalias = 'pin_SS1'  |,                        /* 1st SPI module */
+         pinalias = 'pin_TX1'  |,                        /* TX pin first USART */
+         pinalias = 'pin_RX1' then                       /* RX                 */
+         call list_alias strip(pinalias,'T',1), Pin
    end
 end
 return k                                                    /* k-th alias */
@@ -1887,22 +1834,20 @@ end
 if PinMap.PicUpper.PinName.0 > 0 then do
    do k = 1 to PinMap.PicUpper.PinName.0                    /* all aliases */
       pinalias = 'pin_'PinMap.PicUpper.PinName.k'_direction'
-      if duplicate_name(pinalias,reg) = 0 then do           /* unique */
-         call list_alias  pinalias, Pin
-         if pinalias = 'pin_SDA1_direction' |,              /* 1st I2C module */
-            pinalias = 'pin_SDI1_direction' |,              /* 1st SPI module */
-            pinalias = 'pin_SDO1_direction' |,
-            pinalias = 'pin_SCK1_direction' |,
-            pinalias = 'pin_SCL1_direction' then do
-            pinalias = delstr(pinalias,8,1)
-            call list_alias pinalias, Pin
-         end
-         else if pinalias = 'pin_SS1_direction' |,          /* 1st SPI module */
-                 pinalias = 'pin_TX1_direction' |,          /* TX pin first USART */
-                 pinalias = 'pin_RX1_direction' then do     /* RX   "  "     "    */
-            pinalias = delstr(pinalias,7,1)
-            call list_alias pinalias, Pin
-         end
+      call list_alias  pinalias, Pin
+      if pinalias = 'pin_SDA1_direction' |,              /* 1st I2C module */
+         pinalias = 'pin_SDI1_direction' |,              /* 1st SPI module */
+         pinalias = 'pin_SDO1_direction' |,
+         pinalias = 'pin_SCK1_direction' |,
+         pinalias = 'pin_SCL1_direction' then do
+         pinalias = delstr(pinalias,8,1)
+         call list_alias pinalias, Pin
+      end
+      else if pinalias = 'pin_SS1_direction' |,          /* 1st SPI module */
+              pinalias = 'pin_TX1_direction' |,          /* TX pin first USART */
+              pinalias = 'pin_RX1_direction' then do     /* RX   "  "     "    */
+         pinalias = delstr(pinalias,7,1)
+         call list_alias pinalias, Pin
       end
    end
 end
@@ -1990,10 +1935,8 @@ end
 
 if alias \= '' then do                                      /* alias to be declared */
    call lineout jalfile, '--'                               /* separator line */
-   if duplicate_name(alias,reg) = 0 then do                 /* not duplicate */
-      call list_alias alias, reg
-      call list_sfr_subfield_alias i, alias, reg            /* declare subfield aliases */
-   end
+   call list_alias alias, reg
+   call list_sfr_subfield_alias i, alias, reg               /* declare subfield aliases */
 end
 
 return
@@ -2010,7 +1953,7 @@ return
 list_variable: procedure expose Core JalFile AccessBankSplitOffset
 parse arg type, var, addr                                   /* addr can be string with spaces */
 if addr = '' then do
-   say 'list_variable(): less than 3 arguments found, no output generated!'
+   call msg 3, 'list_variable(): less than 3 arguments found, no output generated!'
    return
 end
 call charout jalfile, 'var volatile' left(type,max(6,length(type))),
@@ -2043,16 +1986,18 @@ return
 /* returns:   nothing                                        */
 /* Notes:     all cores                                      */
 /* --------------------------------------------------------- */
-list_bitfield: procedure expose Core JalFile AccessBankSplitOffset
+list_bitfield: procedure expose Core JalFile AccessBankSplitOffset Name.
 parse arg width, bitfield, reg, offset, addr .
 if offset = '' then do
-   say 'list_bitfield(): less than 4 arguments found, no output generated!'
+   call msg 3, 'list_bitfield(): less than 4 arguments found, no output generated!'
    return
 end
 if datatype(width) \= 'NUM'  |  width < 1  |  width > 8 then do
-   say 'list_bitfield(): bitfield width' width 'not supported, no output generated!'
+   call msg 3, 'list_bitfield(): bitfield width' width 'not supported, no output generated!'
    return
 end
+if duplicate_name(bitfield,reg) \= 0 then                   /* name already declared */
+   return
 call charout jalfile, 'var volatile '
 if width = 1 then
    call charout jalfile, left('bit',7)
@@ -2082,16 +2027,18 @@ return
 /* returns:   nothing                                      */
 /* Notes:     all cores                                    */
 /* ------------------------------------------------------- */
-list_alias: procedure expose Core JalFile
+list_alias: procedure expose Core JalFile Name. reg msglevel
 parse arg alias, original .
 if orininal = '' then do
-   say 'list_alias(): 2 arguments expected, no output generated!'
+   call msg 3, 'list_alias(): 2 arguments expected, no output generated!'
    return
 end
-if Core = '16' | Core = '14H' then
-   call lineout jalfile, left('alias',19) left(alias,max(32,length(alias))) 'is' original
-else
-   call lineout jalfile, left('alias',19) left(alias,max(25,length(alias))) 'is' original
+if duplicate_name(alias,reg) = 0 then do
+   if Core = '16' | Core = '14H' then
+      call lineout jalfile, left('alias',19) left(alias,max(32,length(alias))) 'is' original
+   else
+      call lineout jalfile, left('alias',19) left(alias,max(25,length(alias))) 'is' original
+end
 return
 
 
@@ -2145,8 +2092,7 @@ if j = 0 then                                            /* no module number fou
 if j = 1 then                                            /* first module */
    j = ''                                                /* no suffix */
 alias = reg'_'strippedfield||j                           /* alias name (with suffix) */
-if duplicate_name(alias,reg) = 0 then                    /* unique */
-   call list_alias alias, reg'_'bitfield
+call list_alias alias, reg'_'bitfield
 
 return
 
@@ -2214,9 +2160,9 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                end
             end
 
-            if alias \= '' & duplicate_name(alias, reg_alias) = 0 then do
+            if alias \= '' then do
                call list_alias alias, original
-               if alias2 \= '' &  duplicate_name(alias2, reg_alias) = 0 then
+               if alias2 \= '' then
                   call list_alias alias2, original2
             end
          end
@@ -2506,7 +2452,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                call lineout jalfile, 'end function'
                call lineout jalfile, '--'
             end
-            else if s.j > 1  &  s.j < 8  then do            /* multi-bit */
+            else if s.j < 8  then do                        /* multi-bit */
                call lineout jalfile, 'procedure' field"'put"'(bit*'s.j 'in x) is'
                call lineout jalfile, '   pragma inline'
                call lineout jalfile, '   var  bit*'s.j 'y at' subst ':' offset - s.j + 1
@@ -2525,8 +2471,37 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                call lineout jalfile, 'end function'
                call lineout jalfile, '--'
             end
-            else if s.j = 8 then                            /* synonym */
-              nop                                           /* ignore */
+            else if left(reg,5) = 'ANCON' then do           /* (8-bits wide) ANCONx */
+               do offset = 7 to 0 by -1                     /* enumerate */
+                  call lineout jalfile, 'procedure' field||offset"'put"'(bit in x) is'
+                  call lineout jalfile, '   pragma inline'
+                  call lineout jalfile, '   var  bit   y at' subst ':' offset
+                  call lineout jalfile, '   WDTCON_ADSHR = TRUE'
+                  call lineout jalfile, '   y = x'
+                  call lineout jalfile, '   WDTCON_ADSHR = FALSE'
+                  call lineout jalfile, 'end procedure'
+                  call lineout jalfile, 'function ' field||offset"'get"'() return bit is'
+                  call lineout jalfile, '   pragma inline'
+                  call lineout jalfile, '   var  bit   x at' subst ':' offset
+                  call lineout jalfile, '   var  bit   y'
+                  call lineout jalfile, '   WDTCON_ADSHR = TRUE'
+                  call lineout jalfile, '   y = x'
+                  call lineout jalfile, '   WDTCON_ADSHR = FALSE'
+                  call lineout jalfile, '   return y'
+                  call lineout jalfile, 'end function'
+                  if left(n.j, 3) = 'ANS' then do
+                     ansx = ansel2j(reg, n.j||offset)
+                     if ansx < 99 then
+                        call list_alias 'JANSEL_ANS'ansx, field||offset
+                  end
+                  if n.j = 'PCFGH' then                     /* high bits */
+                     call list_alias reg'_'PCFG||offset+8, field||offset
+                  else if n.j = 'PCFGL' then do             /* low bits */
+                     call list_alias reg'_'PCFG||offset, field||offset
+                  end
+                  call lineout jalfile, '--'
+               end
+            end
          end
          offset = offset - s.j
       end
@@ -2598,9 +2573,10 @@ if core = '12' | core = '14' then do                        /* baseline, midrang
             right(PicName,4) = 'f720' | right(PicName,4) = 'f721' then
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,5) = '16f70' | left(PicName,6) = '16lf70' |,
-                 left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then do
+                 left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
             ansx = word('0 1 2 3 99 4 99 99', ansx + 1)
-         end
+         else
+            ansx = ansx + 0                                 /* no change of ansx */
       end
       otherwise
          call msg 3, 'Unsupported ADC register for' PicName ':' reg
@@ -2664,9 +2640,10 @@ else if core = '14H' then do                                /* extended midrange
             PicName = '16f1827' | PicName = '16lf1827' |,
             PicName = '16f1847' | PicName = '16lf1847' then
             ansx = ansx + 0
-         else if left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
+         else if left(PicName,6) = '12f150' | left(PicName,7) = '12lf150' |,
                  left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
                  left(PicName,6) = '12f184' | left(PicName,7) = '12lf184' |,
+                 left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
                  left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
@@ -2850,9 +2827,8 @@ return
 /* input:  - index in .dev                                  */
 /* remark: Is extra set of definitions for compiler only.   */
 /*         Not intended for use by application programs.    */
-/* 12-bit and 14-bit core                                   */
 /* -------------------------------------------------------- */
-list_status1x: procedure expose Dev. jalfile msglevel
+list_status: procedure expose Dev. jalfile Core msglevel
 parse arg i .
 do 4 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 4 until next register */
    parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
@@ -2861,24 +2837,28 @@ do 4 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 4 until next
       sizes = strip(strip(val2), 'B', "'")
       parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
       parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
+      if Core = '12' | Core = '14' then                     /* baseline, midrange */
+         fwidth = 25
+      else
+         fwidth = 32                                        /* core 14H */
       offset = 7                                            /* MSbit */
-      do i = 1 to 8                                         /* all individual bits */
+      do i = 1 to 8 while offset >= 0                       /* all bits */
          if n.i = '-' then do                               /* bit not present */
-           offset = offset - 1
+           offset = offset - s.i
          end
          else if datatype(s.i) = 'NUM' then do              /* field size */
             n.i = tolower(n.i)                              /* to lower case */
             if s.i = 1 then do                              /* single bit */
                if n.i = 'nto' then
-                  call lineout jalfile, 'const        byte  ' left('_not_to',25) '= ' offset
+                  call lineout jalfile, 'const        byte  ' left('_not_to',fwidth) '= ' offset
                else if n.i = 'npd' then
-                  call lineout jalfile, 'const        byte  ' left('_not_pd',25) '= ' offset
+                  call lineout jalfile, 'const        byte  ' left('_not_pd',fwidth) '= ' offset
                else
-                  call lineout jalfile, 'const        byte  ' left('_'n.i,25) '= ' offset
+                  call lineout jalfile, 'const        byte  ' left('_'n.i,fwidth) '= ' offset
                offset = offset - 1                          /* next bit */
             end
             else do j = s.i - 1  to  0  by  -1              /* enumerate */
-               call lineout jalfile, 'const        byte  ' left('_'n.i||j,25) '= ' offset
+               call lineout jalfile, 'const        byte  ' left('_'n.i||j,fwidth) '= ' offset
                offset = offset - 1
             end
          end
@@ -2886,43 +2866,10 @@ do 4 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 4 until next
    end
    i = i + 1                                                /* next record */
 end
-return
-
-
-/* -------------------------------------------------------- */
-/* Special _extra_ formatting of STATUS register            */
-/* input:  - index in .dev                                  */
-/*         - address (decimal)                              */
-/* remark: Is extra set of definitions for compiler only.   */
-/*         Not intended for use by application programs.    */
-/* 16-bit core                                              */
-/* -------------------------------------------------------- */
-list_status16: procedure expose Dev. jalfile msglevel
-parse upper arg i, addr .
-call lineout jalfile, 'var volatile byte  ' left('_status',25),
-                                    'shared at 0x'D2X(addr)
-do 4 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 4 until next register */
-   parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
-   if val1 \= '' then do
-      names = strip(strip(val1), 'B', "'")                  /* strip blanks */
-      sizes = strip(strip(val2), 'B', "'")                  /* .. and quotes */
-      parse  var names n.1 n.2 n.3 n.4 n.5 n.6 n.7 n.8 .
-      parse  var sizes s.1 s.2 s.3 s.4 s.5 s.6 s.7 s.8 .
-      offset = 7                                            /* MSbit */
-      do i = 1 to 8 while offset >= 0                       /* all individual bits */
-         if n.i = '-' then                                  /* bit not present */
-            offset = offset - 1                             /* skip */
-         else if datatype(s.i) = 'NUM' then do              /* field size */
-            n.i = tolower(n.i)                              /* to lowercase */
-            call lineout jalfile, 'const        byte  ' left('_'n.i,32) '= ' offset
-            offset = offset - 1                             /* next bit */
-         end
-      end
-   end
-   i = i + 1                                                /* next record */
+if Core = '16' then do
+   call lineout jalfile, 'const        byte  ' left('_banked',32) '=  1'
+   call lineout jalfile, 'const        byte  ' left('_access',32) '=  0'
 end
-call lineout jalfile, 'const        byte  ' left('_banked',32) '=  1'
-call lineout jalfile, 'const        byte  ' left('_access',32) '=  0'
 return
 
 
@@ -3788,22 +3735,23 @@ return
 
 /* ----------------------------------------------------------------------------- *
  * Generate functions w.r.t. analog modules.                                     *
- * First individual procedures for different analog modules,                     *
- * then a procedure to invoke these procedures.                                  *
+ * First individual procedures for different analog modules                      *
+ * to put the  corresponding pins in digital-I/O mode,                           *
+ * then the procedure 'enable_digital_io()' which invokes these procedures       *
+ * as far as present in this device file.                                        *
  *                                                                               *
  * Possible combinations for the different PICS:                                 *
  * ANSEL   [ANSELH]                                                              *
  * ANSEL0  [ANSEL1]                                                              *
- * ANSELA   ANSELB [ANSELD  ANSELE]                                              *
- * ADCON0  [ADCON1 [ADCON2 [ADCON3]]]                                            *
- * ANCON0   ANCON1                                                               *
+ * ANSELA  [ANSELB  ANSELC  ANSELD  ANSELE  ANSELF  ANSELG]                      *
+ * ANCON0  [ANCON1  ANCON2  ANCON3]                                              *
+ * ADCON0  [ADCON1  ADCON2  ADCON3]  (more with 18f66j94 !)                      *
  * CMCON                                                                         *
  * CMCON0  [CMCON1]                                                              *
- * CM1CON  [CM2CON]  [CM2CON]                                                    *
- * CM1CON0 [CM1CON1] [CM2CON0 CM2CON1] [CM3CON0 CM3CON1]                         *
- * CM1CON0 [CM1CON1] [CM2CON0] [CM2CON1] [CM3CON0] [CM3CON1]                     *
+ * CM1CON  [CM2CON]                                                              *
+ * CM1CON0 [CM1CON1  CM2CON0 CM2CON1 CM3CON0 CM3CON1]                            *
  * CM1CON1 [CM2CON1]                                                             *
- * Between brackets optional, otherwise always together.                         *
+ * Between brackets not always present.                                          *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - *
  * PICs are classified in groups for ADC module settings.                        *
  * Below the register settings for all-digital I/O:                              *
@@ -3833,6 +3781,8 @@ return
  * ADC_V13   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
  * ADC_V13_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
  * ADC_V13_2 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
+ * ADC_V14   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
+ * ADC_V14_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
  * ----------------------------------------------------------------------------- */
 list_analog_functions: procedure expose jalfile Name. Core DevSpec. PinMap. ,
                                         adcs_bitcount PicName msglevel
@@ -3882,65 +3832,72 @@ if (ADCgroup = '0'  & PinMap.PicNameCaps.ANCOUNT > 0) |,
 end
 analog. = '-'                                               /* no analog modules */
 
-if Name.ANSEL  \= '-' | Name.ANSEL1 \= '-' |,               /* check on presence */
-   Name.ANSELA \= '-' | Name.ANCON0 \= '-'  then do
+if Name.ANSEL  \= '-' |,                                    /*                       */
+   Name.ANSEL1 \= '-' |,                                    /*                       */
+   Name.ANSELA \= '-' |,                                    /* any of these declared */
+   Name.ANCON0 \= '-' then do                               /*                       */
    analog.ANSEL = 'analog'                                  /* analog functions present */
    call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
    call lineout jalfile, '-- Change analog I/O pins into digital I/O pins.'
    call lineout jalfile, 'procedure analog_off() is'
    call lineout jalfile, '   pragma inline'
-   if Name.ANSEL \= '-' then do                             /* ANSEL declared */
-      call lineout jalfile, '   ANSEL  = 0b0000_0000       -- all digital'
-      if Name.ANSELH \= '-' then
-         call lineout jalfile, '   ANSELH = 0b0000_0000       -- all digital'
+   if Name.ANSEL \= '-' then                                /* ANSEL declared */
+      call lineout jalfile, '   ANSEL  = 0b0000_0000       -- digital I/O'
+   do i = 0 to 9                                            /* ANSEL0..ANSEL9 */
+      qname = 'ANSEL'i                                      /* qualified name */
+      if Name.qname \= '-' then                             /* ANSELi declared */
+         call lineout jalfile, '   'qname '= 0b0000_0000       -- digital I/O'
    end
-   if Name.ANSEL0 \= '-' then do                            /* ANSEL0 declared */
-      suffix = '0123456789'                                 /* suffix numbers */
-      do i = 1 to length(suffix)
-         qname = 'ANSEL'substr(suffix,i,1)                  /* qualified name */
-         if Name.qname \= '-' then                          /* ANSELx declared */
-            call lineout jalfile, '   'qname '= 0b0000_0000        -- all digital'
+   suffix = XRANGE('A','Z')                                 /* suffix letters A..Z */
+   do i = 1 to length(suffix)
+      qname = 'ANSEL'substr(suffix,i,1)                     /* qualified name */
+      if Name.qname \= '-' then                             /* ANSELx declared */
+         call lineout jalfile, '   'qname '= 0b0000_0000        -- digital I/O'
+   end
+   do i = 0 to 9                                            /* ANCON0..ANCON9 */
+      qname = 'ANCON'i                                      /* qualified name */
+      if Name.qname \= '-' then do                          /* ANCONi declared */
+         j = 8 * i                                          /* AN pin number */
+         bitname = qname'_PCFG'j
+         if Name.bitname \= '-' then                        /* ANCON has PCFG bits */
+            call lineout jalfile, '   'qname '= 0b1111_1111        -- digital I/O'
+         else do
+            bitname = 'JANSEL_ANS'j                         /* bits have JANSEL prefix */
+            if Name.bitname \= '-' then                     /* ANCON has ANS(EL) bits */
+               call lineout jalfile, '   'qname '= 0b0000_0000        -- digital I/O'
+         end
       end
    end
-   if Name.ANSELA \= '-' then do                            /* ANSELA declared */
-      suffix = XRANGE('A','Z')                              /* suffix letters A..Z */
-      do i = 1 to length(suffix)
-         qname = 'ANSEL'substr(suffix,i,1)                  /* qualified name */
-         if Name.qname \= '-' then                          /* ANSELx declared */
-            call lineout jalfile, '   'qname '= 0b0000_0000        -- all digital'
-      end
-   end
-   if Name.ANCON0 \= '-' then                               /* ANCON0 declared */
-      call lineout jalfile, '   ANCON0 = 0b1111_1111        -- all digital'
-   if Name.ANCON1 \= '-' then                               /* ANCON1 declared */
-      call lineout jalfile, '   ANCON1 = 0b1111_1111        -- all digital'
    call lineout jalfile, 'end procedure'
    call lineout jalfile, '--'
 end
 
-if Name.ADCON0 \= '-' then do                               /* check on presence */
+if Name.ADCON0 \= '-' |,                                    /* check on presence */
+   Name.ADCON  \= '-' then do
    analog.ADC = 'adc'                                       /* ADC module present */
    call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
    call lineout jalfile, '-- Disable ADC module'
    call lineout jalfile, 'procedure adc_off() is'
    call lineout jalfile, '   pragma inline'
-   call lineout jalfile, '   ADCON0 = 0b0000_0000         -- disable ADC'
+   if Name.ADCON0 \= '-' then
+      call lineout jalfile, '   ADCON0 = 0b0000_0000         -- disable ADC'
+   else
+      call lineout jalfile, '   ADCON  = 0b0000_0000         -- disable ADC'
    if Name.ADCON1 \= '-' then do                            /* ADCON1 declared */
-      select
-         when ADCgroup = 'ADC_V0' then
-            call lineout jalfile, '   ADCON1 = 0b0000_0000'
-         when ADCgroup = 'ADC_V1' then
-            call lineout jalfile, '   ADCON1 = 0b0000_0111         -- digital I/O'
-         when ADCgroup = 'ADC_V2'  |,
-              ADCgroup = 'ADC_V4'  |,
-              ADCgroup = 'ADC_V5'  |,
-              ADCgroup = 'ADC_V6'  |,
-              ADCgroup = 'ADC_V12' then
-            call lineout jalfile, '   ADCON1 = 0b0000_1111         -- digital I/O'
-         when ADCgroup = 'ADC_V3' then
-            call lineout jalfile, '   ADCON1 = 0b0111_1111         -- digital I/O'
-         otherwise                                          /* ADC_V7,7_1,8,9,10,11 */
-            call lineout jalfile, '   ADCON1 = 0b0000_0000'
+      if ADCgroup = 'ADC_V1' then
+         call lineout jalfile, '   ADCON1 = 0b0000_0111         -- digital I/O'
+      else if ADCgroup = 'ADC_V2'     |,
+              ADCgroup = 'ADC_V4'     |,
+              ADCgroup = 'ADC_V5'     |,
+              ADCgroup = 'ADC_V6'     |,
+              ADCgroup = 'ADC_V12'    then
+         call lineout jalfile, '   ADCON1 = 0b0000_1111'
+      else if ADCgroup = 'ADC_V3' then
+         call lineout jalfile, '   ADCON1 = 0b0111_1111'
+      else do                                               /* all other ADC groups */
+         call lineout jalfile, '   ADCON1 = 0b0000_0000'
+         if Name.ADCON1_PCFG \= '-' then
+            msg 2, 'ADCON1_PCFG field present: PIC maybe in wrong ADC_GROUP'
       end
       if Name.ADCON2 \= '-' then                            /* ADCON2 declared */
          call lineout jalfile, '   ADCON2 = 0b0000_0000'    /* all groups */
@@ -3979,7 +3936,7 @@ if Name.CMCON   \= '-' |,
          else
             call lineout jalfile, '   CM1CON = 0b0000_0000        -- disable comparator'
          if Name.CM2CON \= '-' then
-            call lineout jalfile, '   CM2CON = 0b0000_0000'
+            call lineout jalfile, '   CM2CON = 0b0000_0000        -- digital I/O'
          if Name.CM3CON \= '-' then
             call lineout jalfile, '   CM3CON = 0b0000_0000'
       end
@@ -3997,8 +3954,6 @@ if Name.CMCON   \= '-' |,
             if Name.CM3CON1 \= '-' then
                call lineout jalfile, '   CM3CON1 = 0b0000_0000'
          end
-         if Name.CM4CON0 \= '-' then
-            call msg 2, 'Comparator 4 detected, not handled. Check for more!'
       end
       when Name.CM1CON1 \= '-' then do
          call lineout jalfile, '   CM1CON1 = 0b0000_0000       -- disable comparator'
@@ -4113,7 +4068,7 @@ parse var srange '0x' val1 '-' '0x' val2                    /* lower and upper b
 if Core = '12'  |  Core = '14' then do
    if val2 = '' |,                                          /* not present! */
       (X2D(val2) - X2D(val1)) < 1 then
-      call msg 3, 'At least 2 bytes of shared memory required! Now:' srange
+      call msg 3, 'At least 2 bytes of shared memory required! Found:' srange
    else do
       call lineout jalfile, 'var volatile byte _pic_accum shared at',
                                '0x'D2X(X2D(val2)-1)'      -- (compiler)'
@@ -4123,7 +4078,7 @@ if Core = '12'  |  Core = '14' then do
 end
 else if Core = '14H'  |  Core = '16' then do
    if val2 = '' then                                        /* not present */
-      call msg 3, 'At least 1 byte of shared memory required! Now:' srange
+      call msg 3, 'At least 1 byte of shared memory required! Found:' srange
    else do
       call lineout jalfile, 'var volatile byte _pic_accum shared at',
                             '0x'val2'      -- (compiler)'
@@ -4387,6 +4342,7 @@ if reg \= newname then do                                   /* not alias of regi
    call msg 2, 'Duplicate name:' newname 'in' reg'. First occurence:' Name.newname
    return 1                                                 /* duplicate */
 end
+return 0
 
 
 /* ---------------------------------------------- */
