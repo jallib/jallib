@@ -42,7 +42,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.29'
+   ScriptVersion   = '0.1.30'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
    MPlabVersion    = '883'
@@ -217,7 +217,7 @@ do i=1 to dir.0                                             /* all relevant .dev
    AccessBankSplitOffset = 128                              /* 0x80 */
    CodeSize              = 0
    DataSize              = 0
-   IDSpec                = ''                               /* address, size */
+   IDSpec                = ''                               /* hexaddress, size (dec) */
    VddRange              = 0
    VddNominal            = 0
    VppRange              = 0
@@ -227,7 +227,7 @@ do i=1 to dir.0                                             /* all relevant .dev
    HasLATReg             = 0                                /* no LAT registers found yet */
 
 
-   /* ------------ collect information about this PIC ------------ */
+   /* collect information about this PIC */
 
    core = load_config_info()                                /* core + cfg info */
 
@@ -322,9 +322,7 @@ call SysDropFuncs                                           /* release Rexxutil 
 
 return 0
 
-/* -------------------------------------------------------------------- */
-/* This is the end of the mainline of dev2jal                           */
-/* -------------------------------------------------------------------- */
+/* ---------- This is the end of the mainline of dev2jal --------------- */
 
 
 
@@ -453,39 +451,38 @@ do i = 0 to MaxRam - 1                                      /* whole range */
    Ram.i = 0                                                /* mark whole RAM as unused */
 end
 do i = 1 to Dev.0
-   ln = Dev.i                                               /* copy line */
-   parse var ln 'MIRRORREGS' '(' '0X' lo.1  '-' '0X' hi.1,
-                                 '0X' lo.2  '-' '0X' hi.2,
-                                 '0X' lo.3  '-' '0X' hi.3,
-                                 '0X' lo.4  '-' '0X' hi.4,
-                                 '0X' lo.5  '-' '0X' hi.5,
-                                 '0X' lo.6  '-' '0X' hi.6,
-                                 '0X' lo.7  '-' '0X' hi.7,
-                                 '0X' lo.8  '-' '0X' hi.8,
-                                 '0X' lo.9  '-' '0X' hi.9,
-                                 '0X' lo.10 '-' '0X' hi.10,
-                                 '0X' lo.11 '-' '0X' hi.11,
-                                 '0X' lo.12 '-' '0X' hi.12,
-                                 '0X' lo.13 '-' '0X' hi.13,
-                                 '0X' lo.14 '-' '0X' hi.14,
-                                 '0X' lo.15 '-' '0X' hi.15,
-                                 '0X' lo.16 '-' '0X' hi.16,
-                                 '0X' lo.17 '-' '0X' hi.17,
-                                 '0X' lo.18 '-' '0X' hi.18,
-                                 '0X' lo.19 '-' '0X' hi.19,
-                                 '0X' lo.20 '-' '0X' hi.20,
-                                 '0X' lo.21 '-' '0X' hi.21,
-                                 '0X' lo.22 '-' '0X' hi.22,
-                                 '0X' lo.23 '-' '0X' hi.23,
-                                 '0X' lo.24 '-' '0X' hi.24,
-                                 '0X' lo.25 '-' '0X' hi.25,
-                                 '0X' lo.26 '-' '0X' hi.26,
-                                 '0X' lo.27 '-' '0X' hi.27,
-                                 '0X' lo.28 '-' '0X' hi.28,
-                                 '0X' lo.29 '-' '0X' hi.29,
-                                 '0X' lo.30 '-' '0X' hi.30,
-                                 '0X' lo.31 '-' '0X' hi.31,
-                                 '0X' lo.32 '-' '0X' hi.32 ')' .
+   parse var Dev.i 'MIRRORREGS' '(' '0X' lo.1  '-' '0X' hi.1,
+                                    '0X' lo.2  '-' '0X' hi.2,
+                                    '0X' lo.3  '-' '0X' hi.3,
+                                    '0X' lo.4  '-' '0X' hi.4,
+                                    '0X' lo.5  '-' '0X' hi.5,
+                                    '0X' lo.6  '-' '0X' hi.6,
+                                    '0X' lo.7  '-' '0X' hi.7,
+                                    '0X' lo.8  '-' '0X' hi.8,
+                                    '0X' lo.9  '-' '0X' hi.9,
+                                    '0X' lo.10 '-' '0X' hi.10,
+                                    '0X' lo.11 '-' '0X' hi.11,
+                                    '0X' lo.12 '-' '0X' hi.12,
+                                    '0X' lo.13 '-' '0X' hi.13,
+                                    '0X' lo.14 '-' '0X' hi.14,
+                                    '0X' lo.15 '-' '0X' hi.15,
+                                    '0X' lo.16 '-' '0X' hi.16,
+                                    '0X' lo.17 '-' '0X' hi.17,
+                                    '0X' lo.18 '-' '0X' hi.18,
+                                    '0X' lo.19 '-' '0X' hi.19,
+                                    '0X' lo.20 '-' '0X' hi.20,
+                                    '0X' lo.21 '-' '0X' hi.21,
+                                    '0X' lo.22 '-' '0X' hi.22,
+                                    '0X' lo.23 '-' '0X' hi.23,
+                                    '0X' lo.24 '-' '0X' hi.24,
+                                    '0X' lo.25 '-' '0X' hi.25,
+                                    '0X' lo.26 '-' '0X' hi.26,
+                                    '0X' lo.27 '-' '0X' hi.27,
+                                    '0X' lo.28 '-' '0X' hi.28,
+                                    '0X' lo.29 '-' '0X' hi.29,
+                                    '0X' lo.30 '-' '0X' hi.30,
+                                    '0X' lo.31 '-' '0X' hi.31,
+                                    '0X' lo.32 '-' '0X' hi.32 ')' .
    if lo.1 \= '' & hi.1 \= '' then do
       a = X2D(strip(lo.1))
       b = X2D(strip(strip(hi.1),'B',')'))
@@ -501,7 +498,7 @@ do i = 1 to Dev.0
       end
       iterate
    end
-   parse var ln 'UNUSEDREGS' '(' '0X' lo '-' '0X' hi ')' .
+   parse var Dev.i 'UNUSEDREGS' '(' '0X' lo '-' '0X' hi ')' .
    if lo \= '' & hi \= '' then do
       a = X2D(strip(lo))
       b = X2D(strip(hi))
@@ -1038,13 +1035,11 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                when (left(n.j,2) = 'AN')    &,              /* AN(S) subfield and */
                     (left(reg,5) = 'ADCON'  |,              /* ADCONx reg */
                      left(reg,5) = 'ANSEL')  then do        /* or ANSELx reg */
-                  k = s.j - 1
-                  do while k >= 0                           /* enumerate */
+                  do k = s.j - 1 to 0 by -1                 /* enumerate */
                      call list_bitfield 1, reg'_'n.j||k, reg, (offset + k + 1 - s.j)
                      ansx = ansel2j(reg, n.j||k)
                      if ansx < 99 then
                         call list_alias 'JANSEL_ANS'ansx, field||k
-                     k = k - 1
                   end
                end
                when reg = 'OPTION_REG' &  n.j = 'PS' then do
@@ -1234,7 +1229,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                        (reg = 'OSCCON'          & left(n.j,3) = 'SCS')                       |,
                        (reg = 'OSCTUNE'         & left(n.j,3) = 'TUN')                       |,
                        (reg = 'WDTCON'          & left(n.j,5) = 'WDTPS')            then do
-                     nop                                    /* suppress enumerated bitfield  */
+                     nop                                    /* suppress enumerated bitfields  */
                   end
                   when left(reg,3) = 'CCP'  &  right(reg,3) = 'CON'  &, /* CCPxCON */
                        datatype(substr(reg,4,1)) = 'NUM'        then do
@@ -1358,14 +1353,22 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
 
          else if s.j < 8 | reg = 'ANSEL' then do            /* multi-bit subfield */
             field = reg'_'n.j
-            call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
-            if  left(n.j,4) = ADCS  &,
+            if n.j = 'ADPREF'  &  reg = 'ADCON1' then do
+               do k = s.j - 1 to 0 by -1                    /* enumerate */
+                  call list_bitfield 1, reg'_'n.j||k, reg, (offset + k + 1 - s.j), addr
+               end
+            end
+            else if  left(n.j,4) = ADCS  &,
                (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
-               adcs_bitcount = s.j                       /* variable # ADCS bits */
+               call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
+               adcs_bitcount = s.j                          /* variable # ADCS bits */
             end
             else if reg = 'OPTION_REG' &  n.j = 'PS' then do
-               call list_alias 'T0CON_T0'n.j, field
+               call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
+               call list_alias 'T0CON_T0'n.j, field         /* additional alias */
             end
+            else
+               call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
          end
 
          call multi_module_bitfield_alias reg, n.j          /* possibly extra aliases */
@@ -1697,13 +1700,11 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                when (left(n.j,3) = 'ANS')   &,              /* ANS subfield */
                     (left(reg,5) = 'ADCON'  |,              /* ADCON* reg */
                      left(reg,5) = 'ANSEL')    then do      /* ANSELx reg */
-                  k = s.j - 1
-                  do while k >= 0                           /* enumerate */
+                  do k = s.j - 1 to 0 by -1                 /* enumerate */
                      call list_bitfield 1, reg'_'n.j||k, reg, (offset + k + 1 - s.j), addr
                      ansx = ansel2j(reg, n.j||k)
                      if ansx < 99 then
                         call list_alias 'JANSEL_ANS'ansx, field||k
-                     k = k - 1
                   end
                end
                when reg = 'T0CON'  &,                       /* T0CON register */
@@ -2857,7 +2858,7 @@ do 4 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 4 until next
                   call lineout jalfile, 'const        byte  ' left('_'n.i,fwidth) '= ' offset
                offset = offset - 1                          /* next bit */
             end
-            else do j = s.i - 1  to  0  by  -1              /* enumerate */
+            else do j = s.i - 1 to 0 by -1                  /* enumerate */
                call lineout jalfile, 'const        byte  ' left('_'n.i||j,fwidth) '= ' offset
                offset = offset - 1
             end
@@ -2910,7 +2911,6 @@ do i = 1 to dev.0                                           /* scan .dev file */
    ln = Dev.i
    parse var ln 'CFGBITS' '(' 'KEY' '=' val0 ' ADDR' '=' '0X' val1 'UNUSED' '=' '0X' val2 ')' .
    if val1 \= '' then do                                    /* address found */
-      k = k + 1                                             /* count fuse words */
       cfgword = strip(val0)                                 /* byte or word name */
       addr = strip(val1)                                    /* hex addr */
       call lineout jalfile, '--'
@@ -3054,8 +3054,9 @@ return
 
 /* ------------------------------------------------------------------------ */
 /* Detailed formatting of configuration bits settings                       */
-/* input:  - line index in dev.                                             */
+/* input:  - index of line in compound variable dev.                        */
 /*         - keyword                                                        */
+/*         - keyword mask (hex)                                             */
 /* output: lines in jalfile                                                 */
 /*                                                                          */
 /* notes: val2 contains keyword description with undesired chars and blanks */
@@ -3745,7 +3746,7 @@ return
  * ANSEL0  [ANSEL1]                                                              *
  * ANSELA  [ANSELB  ANSELC  ANSELD  ANSELE  ANSELF  ANSELG]                      *
  * ANCON0  [ANCON1  ANCON2  ANCON3]                                              *
- * ADCON0  [ADCON1  ADCON2  ADCON3]  (more with 18f66j94 !)                      *
+ * ADCON0  [ADCON1  ADCON2  ADCON3]  (more with 18fxxj94 !)                      *
  * CMCON                                                                         *
  * CMCON0  [CMCON1]                                                              *
  * CM1CON  [CM2CON]                                                              *
@@ -4047,7 +4048,7 @@ call lineout jalfile, 'pragma  stack   'StackDepth
 call lineout jalfile, 'pragma  code    'CodeSize
 if DataSize > 0 then                                        /* any EEPROM present */
    call lineout jalfile, 'pragma  eeprom  'DataStart','DataSize
-if IDSpec \= '' then
+if IDSpec \= '' then                                        /* PIC has ID memory */
    call lineout jalfile, 'pragma  ID      'IDSpec
 
 drange = DevSpec.PicNameCaps.NONSHAREDDATA
