@@ -3,6 +3,7 @@
 -- Author: Sebastien Lelong, Copyright (C) 2009, all rights reserved. 
 -- Adapted-by: 
 -- Compiler: 2.4n
+-- Revision: \$Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -511,7 +512,7 @@
    --     - set_analog_pin(4) will do the same for AN4
    procedure set_analog_pin(byte in an_pin_num) is
       #set conds = []
-      #for i in range(28)
+      #for i in range(30)
       if defined(JANSEL_ANS$i) then
          if an_pin_num == $i then
             JANSEL_ANS$i = true
@@ -538,7 +539,7 @@
    -- 
    -- Note: the pin direction is not modified
    procedure set_digital_pin(byte in an_pin_num) is
-      #for i in range(28)
+      #for i in range(30)
       if defined(JANSEL_ANS$i) then
          if an_pin_num == $i then
             JANSEL_ANS$i = false
@@ -676,14 +677,13 @@ end procedure
 procedure _adc_vref_adpref_adnref() is
 
     if defined(ADCON1_ADPREF0) then
-        if ADC_NVREF > ADC_VREF_POS & !defined(ADCON1_ADNREF) then
-            _error "You seem to want to configure a Vref- pin, but selected PIC doesn't support this feature"
-        end if
 
         if ADC_NVREF == ADC_NO_EXT_VREF then
             ADCON1_ADPREF0 = 0b0
             ADCON1_ADPREF1 = 0b0
-            ADCON1_ADNREF = 0b0
+            if defined(ADCON1_ADNREF) then
+               ADCON1_ADNREF = 0b0
+            end if
         elsif ADC_NVREF == ADC_VREF_POS then
             -- Vref+ is one Vref+ pin
             ADCON1_ADPREF0 = 0b0
@@ -693,10 +693,18 @@ procedure _adc_vref_adpref_adnref() is
             -- Vref- is on Vref- pin
             ADCON1_ADPREF0 = 0b0
             ADCON1_ADPREF1 = 0b1
-            ADCON1_ADNREF = 0b1
+            if !defined(ADCON1_ADNREF) then
+               _error "You seem to want to configure a Vref- pin, but selected PIC doesn't support this feature"
+            else
+               ADCON1_ADNREF = 0b1
+            end if
         elsif ADC_NVREF == ADC_VREF_NEG then
             -- Vref- is on Vref- pin (no Vref+)
-            ADCON1_ADNREF = 0b1    
+            if !defined(ADCON1_ADNREF) then
+               _error "You seem to want to configure a Vref- pin, but selected PIC doesn't support this feature"
+            else
+               ADCON1_ADNREF = 0b1    
+            end if
         end if
     end if
 

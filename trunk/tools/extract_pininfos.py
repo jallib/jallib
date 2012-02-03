@@ -1,7 +1,7 @@
 import sys
 import pprint
-# port simplejson
-import json
+import simplejson as json
+#import json
 
 from pinmap import pinmap
 
