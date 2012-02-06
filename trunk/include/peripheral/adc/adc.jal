@@ -1,208 +1,194 @@
 -- Title: ADC hardware, built-in PIC ADC module
 -- Author: Stef Mientki, Copyright (c) 2002..2008, all rights reserved.
--- Adapted-by: Sebastien Lelong.
--- Compiler: >=2.4k
+-- Adapted-by: Sebastien Lelong, Rob Hamerling.
+-- Compiler: 2.4o
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: library to handle ADC peripheral.
---   - support both low and high resolution mode
---   - support a large number of PICs, with
---       - ADC pin configuration
---       - channel selection
---       - clock selection
---   - support Vref
+-- Description:
+-- Library to handle ADC peripheral, supporting:
+-- - low (8-bits) and high (16-bits) resolution (whatever the PIC supports)
+-- - ADC pin configuration
+-- - channel selection
+-- - clock selection
+-- - reference voltage selection
 -- --
--- How to use it ? See http://justanotherlanguage.org/content/jallib/tutorials/tutorial_adc_intro
---
--- Notes: this is a heavy refactoring/rewriting of original library from Stef Mientki.
--- The main changes are about ADC configuration, which are essentially handled in
--- adc_channels.jal and adc_clock.jal.
+-- Q: How to use it?
+-- A: See http://justanotherlanguage.org/content/jallib/tutorials/tutorial_adc_intro
 -- --
 -- About Vref setup:
 --   - when ADC_NVREF = ADC_NO_VREF : there's no Vref pin used, vref is done
---                      internally, using power supply (Vdd, Vss)
---   - when ADC_NVREF = ADC_VREF_POS ): there's only one Vref pin, this is Vref+
---   - when ADC_NVREF = ADC_VREF_POS_NEG : two Vref pins are used, Vref+ and Vref-
---   - when ADC_NVREF = ADC_VREF_NEG : there's only one Vref pin, this is Vref-
+--                      internally, using power supply (Vdd <-> Vss)
+--   - when ADC_NVREF = ADC_VREF_POS: there's only one Vref pin, this is Vref+
+--   - when ADC_NVREF = ADC_VREF_POS_NEG: two Vref pins are used, Vref+ and Vref-
+--   - when ADC_NVREF = ADC_VREF_NEG: there's only one Vref pin, this is Vref-
+--   - when ADC_NVREF = ADC_VREF_FVR: Vref pin internally connected to FVR module if present
+--                                    (user should setup FVRCON as desired).
 -- --
--- --
--- A major trigger is when using ADC libs is ADC_DYNAMIC. When declared, several parameters
--- become dynamic and can be changed at runtime. This includes:
---    - ADC_NCHANNEL, the number of ADC channels (when they are dependent channels,
---      as independent channels are always selected at runtime with set_analog_pin()
---    - ADC_TEMP (careful, computation related to temperature very approximative
---    - ADC_RESOLUTION (8-bits or 10-bits)
+-- A major trigger is when using ADC libs is ADC_DYNAMIC.
+-- When declared, several parameters become dynamic and can be changed
+-- at runtime. This includes:
+--    - ADC_NCHANNEL: the number of used ADC channels (dependent channels only,
+--       independent channels are always selected at runtime with set_analog_pin() ).
+--    - ADC_TEMP  Careful, computation related to temperature very approximative
 --    - ADC_RSOURCE
--- --
+--
+-- Notes: This is a heavy refactoring/rewriting of original library of Stef Mientki.
+-- adc_channels.jal and adc_clock.jal.
 -- The original library can be found:
 --    - Stef's: http://mientki.ruhosting.nl/pic-tools/jal/libs2/adc_hardware.jal
---    - jallib issue tracker: http://code.google.com/p/jallib/issues/detail?id=7
+--    - Jallib issue tracker: http://code.google.com/p/jallib/issues/detail?id=7
+-- The main changes are about ADC configuration, which are essentially handled in
+-- adc_channels.jal and adc_clock.jal.
 --
 -- -- -----------------------------------------------------------------------------
 
 include delay
 
--- including this will configure many (many) things
--- specific to the selected chip
+-- This will configure many things specific to the selected chip.
 include adc_channels
 
--- include clock selection bits specific procedures
+-- Clock selection bits specific procedures.
 include adc_clock
 
 -- By default Rsource is max
-if defined(ADC_RSOURCE) == false then
+if defined(ADC_RSOURCE) == false then              -- not defined by user
    const word ADC_RSOURCE = 10_000
 end if
 
--- standard value: 25°C
-if defined(ADC_TEMP) == false then
+-- standard value: 25 degrees C
+if defined(ADC_TEMP) == false then                 -- not defined by user
    const byte ADC_TEMP = 25
-end if
-
--- sanity check
-if ADC_HIGH_RESOLUTION & ! defined(ADRESH) == true then
-   if defined(ADC_DYNAMIC) == false then
-      _warn "This PIC does not seem to handle 10-bits ADC"
-   end if
-end if
-
--- some PICs don't handle high resolution (8bits only) *and*
--- don't have ADRESL register. Normalize !
-if defined(ADRESL) == false then
-   alias ADRESL is ADRES
 end if
 
 -- local variables
 
-var volatile byte _adcon0_shadow = 0
-var byte adc_conversion_delay
+var byte  adc_conversion_delay
 
 
--- Does an AD conversion with low resolution (8 bit) on the selected channel
-procedure _adc_read_low_res(byte in adc_chan, byte out adc_byte) is
+const bit _ADC_JUSTIFY_LEFT  = 0                   -- internally used
+const bit _ADC_JUSTIFY_RIGHT = 1                   -- constants
 
-   ADCON0_CHS = adc_chan
-   ADCON0_ADON = true                -- turn on ADC module
-   delay_10us(adc_conversion_delay)  -- wait acquisition time
-   ADCON0_GO = true                  -- start conversion
-   while ADCON0_GO loop end loop     -- wait till conversion finished
-   -- 2 cases:
-   --   - PIC has 10-bits ADC: since low resoltion if left
-   --     justified, need to read ADRESH
-   --   - PIC has only a 8-bits ADC: don't bother consider
-   --     justification, there's only one ADC register
-   if defined(ADRESH) == true then
-      adc_byte = ADRESH                  -- read high byte
-      --   (low resolution is left justified !!
-   else
-      adc_byte = ADRES
+
+-- --------------------------------------------------------------
+-- Title:     Analog to Digital conversion of the selected channel.
+-- Arguments: - channel number (byte)
+--            - justification (bit 0=left, 1=right)
+-- Returns:   word with ADC value
+-- Notes:     - When PIC supports high resolution (more than 8 bits)
+--              all bits of the ADC conversion are stored straight over
+--              from ADRESH and ADRESL.  When PIC supports only 8-bits
+--              resolution only the contents of ADRES are stored.
+--            - With right justification the result is immediately
+--              usable as binary value.
+--            - Left justification allows easy selection of the 8 most
+--              significant bits of the result, regardless which
+--              resolution the PIC supports.
+-- --------------------------------------------------------------
+function _adc_read(byte in adc_chan, bit in justify) return word is
+
+   var word adc_word                               -- return value
+   var byte adc_byte[2] at adc_word                -- byte array overlay
+
+   if    defined(ADCON0_ADFM) == TRUE then         -- )
+      ADCON0_ADFM = justify                        -- )
+   elsif defined(ADCON1_ADFM) == TRUE then         -- ) The ADFM bits can be in any
+      ADCON1_ADFM = justify                        -- ) of the ADCONx registers,
+   elsif defined(ADCON2_ADFM) == TRUE then         -- ) or may not exist at all.
+      ADCON2_ADFM = justify                        -- )
    end if
-   -- Honor 2*Tad time
-   -- tad_value comes from adc_clock
-   -- we won't be that accurate here (mostly because there's no delay_usec(byte in x) procedure)
+
+   ADCON0_CHS = adc_chan                           -- select channel
+   ADCON0_ADON = TRUE                              -- turn on ADC module
+   delay_10us(adc_conversion_delay)                -- wait acquisition time
+   ADCON0_GO = TRUE                                -- start conversion
+   while ADCON0_GO == TRUE loop                    -- wait until conversion completed
+   end loop
+   -- 2 cases:
+   --   - PIC has high resolution ADC: need to read ADRESH and ADRESL
+   --   - PIC has only a 8-bits ADC: need to read only ADRES
+   if defined(ADRESH) == true then                 -- PIC supports high resolution
+      adc_byte[1] = ADRESH                         -- copy high order bits
+      adc_byte[0] = ADRESL                         -- copy low order bits
+   else                                            -- (PIC has no high resolution)
+      if justify == _ADC_JUSTIFY_LEFT then         -- left justified
+         adc_byte[1] = byte(ADRES)                 -- result in high order byte
+         adc_byte[0] = 0b0000_0000                 -- zero low order byte
+      else                                         -- (right justified)
+         adc_byte[1] = 0b0000_0000                 -- zero high order byte
+         adc_byte[0] = byte(ADRES)                 -- result in low order byte
+      end if
+   end if
+   -- Honor 2*Tad time  (Tad_value calculated by adc_clock)
+   -- Note the value is not very accurate, but safe.
    if tad_value >= (ADC_MAX_TAD + ADC_MIN_TAD) / 2 then
       _usec_delay(2 * ADC_MAX_TAD)
    else
       _usec_delay(2 * ADC_MIN_TAD)
    end if
-   ADCON0_ADON = false               -- turn off ADC module
-end procedure
-
-
--- Does an AD conversion on the selected channel
--- returns the result as a 10-bits word
--- It doesn't matter if ADC is set to low or high resolution
-function adc_read(byte in adc_chan) return word is
-   var word ad_value
-   var byte ax[2] at ad_value
-
-   if ADC_HIGH_RESOLUTION then
-      _adc_read_low_res(adc_chan,ax[1])   -- do conversion and get high byte
-      ax[0] = ADRESL                       -- get low byte
-   else
-      _adc_read_low_res(adc_chan,ax[0])   -- do conversion and get low byte
-      ax[1] = 0                            -- clear high byte
-      -- shift 2 highest order bits form low byte to high byte,
-      -- to get a 10-bit result
-      ad_value = ad_value <<  2
-   end if
-
-   return ad_value
+   ADCON0_ADON = false                             -- turn off ADC module
+   return adc_word                                 -- back to caller
 end function
 
 
--- Does an AD conversion on the selected channel
--- returns the 10-bit result as 2 byte parameters
--- It doesn't matter if ADC is set to low or high resolution
-procedure adc_read_bytes(byte in adc_chan, byte out adc_hbyte, byte out adc_lbyte) is
-   var word ad_value
-   var byte ax[2] at ad_value
-   ad_value = adc_read(adc_chan)
-   adc_hbyte = ax[1]
-   adc_lbyte = ax[0]
-end procedure
-
-
--- Returns Low Resolution ADC-value as the RESULT
--- It doesn't matter if ADC is set to low or high resolution
+-- --------------------------------------------------------------
+-- Title:     Analog to digital conversion returning an 8-bits value
+-- Arguments: Channel number
+-- Returns:   8-bits ADC value
+-- Notes:     - Uses left justification.
+--            - Returns the 8 most significant bits of the result of ADC
+-- --------------------------------------------------------------
 function adc_read_low_res(byte in adc_chan) return byte is
-   var byte adc_value
-   if ! ADC_HIGH_RESOLUTION then
-      _adc_read_low_res(adc_chan,adc_value)
-   else
-     var word shift_alias
-     var byte ax[2] at shift_alias
-      _adc_read_low_res(adc_chan,ax[1])
-      ax[0] = ADRESL
-      -- shift 2 bits away to remove the 2 LSb
-     shift_alias = shift_alias >> 2
-     adc_value = ax[0]
-   end if
-   return adc_value
+   return byte(_adc_read(adc_chan, _ADC_JUSTIFY_LEFT) >> 8)    -- do conversion, return MSB
 end function
 
 
-procedure _adc_init_justify() is
-   pragma inline
-   -- Seb: justification is done through ADFM bits
-   -- They can be found in:
-   --   - ADCON0_ADFM
-   --   - ADCON1_ADFM
-   --   - ADCON2_ADFM
-   --
-   -- When true (1), it's right justified: the 6 MSb of ADRESH are read as '0'
-   -- When false (0), it's left justified: the 6 LSb of ADRESL are read as '0'
-   --
-   -- The choice here is kept from Stef's logic:
-   --   - if high resolution, right justified, read H + L
-   --   - if low  resolution, left  justified, only read H
+-- --------------------------------------------------------------
+-- Title:     Analog to digital conversion returning a 16-bits value
+-- Arguments: channel number
+-- Returns:   16-bits ADC value
+-- Notes:     - Uses right justification
+--            - Returns a 16-bits value of the result of ADC, of which the
+--              range is dependent of the supported resolution of the PIC
+--              (can be a 8-, 10-, 12-bits value).
+--            - When the PIC supports only 8-bits resolution the
+--              result is the same as of adc_read_low_res().
+-- --------------------------------------------------------------
+function adc_read_high_res(byte in adc_chan) return word is
+   return _adc_read(adc_chan, _ADC_JUSTIFY_RIGHT)              -- do conversion, return word
+end function
 
-   -- first normalize ADFM bit
-   if defined(ADCON0_ADFM) == true then
-     alias JALLIB_ADFM is ADCON0_ADFM
-   elsif defined(ADCON1_ADFM) == true then
-     alias JALLIB_ADFM is ADCON1_ADFM
-   elsif defined(ADCON2_ADFM) == true then
-     alias JALLIB_ADFM is ADCON2_ADFM
-   else
-     var volatile bit JALLIB_ADFM = 0 ; fake
-     if ADC_HIGH_RESOLUTION == true then
-       _error "Couldn't found ADFM bits, can't setup justification. Are you sure this PIC handles high resolution ADC ?"
-     end if
-   end if
 
-   if ADC_HIGH_RESOLUTION == true then
-     JALLIB_ADFM = 1
-   else
-     JALLIB_ADFM = 0
-   end if
+-- --------------------------------------------------------------
+-- Title: Deprecated function, replaced by adc_read_high_res()
+-- --------------------------------------------------------------
+function adc_read(byte in adc_chan) return word is
+   _warn "adc_read() is deprecated - use adc_read_high_res() in stead"
+   return adc_read_high_res(adc_chan)
+end function
 
+
+-- --------------------------------------------------------------
+-- Title: Deprecated procedure, replaced by function adc_read_high_res()
+-- --------------------------------------------------------------
+procedure adc_read_bytes(byte in adc_chan, byte out adc_hbyte, byte out adc_lbyte) is
+   _warn "adc_read_bytes() is deprecated - use adc_read_high_res() in stead"
+   var word adc_word                               -- adc result
+   var byte adc_byte[2] at adc_word                -- byte array overlay
+   adc_word = adc_read_high_res(adc_chan)          -- do conversion
+   adc_lbyte = adc_byte[0]                         -- return ..
+   adc_hbyte = adc_byte[1]                         -- .. result
 end procedure
 
 
+-- --------------------------------------------------------------
+-- Title:     Calculation of acquisition delay
+-- Arguments: (none)
+-- Returns:   nothing
+-- Notes:     result is stored in variable _adc_conversion_delay
+-- --------------------------------------------------------------
 procedure _adc_init_acquisition_delay() is
    pragma inline
    -- Seb: holy datasheet says:
@@ -232,6 +218,7 @@ procedure _adc_init_acquisition_delay() is
    -- Tacq(usecs) = 2 + Tc(usecs) + (0.05usecs * T)
    -- So Tc, expressed in usecs is:
    -- (add 1 so we have value at ceil)
+
    if defined(ADC_DYNAMIC) == true then
       var byte adc_tc = byte(((915 * (8 + (ADC_RSOURCE/1000))) / 1000) + 1)
    else
@@ -239,9 +226,10 @@ procedure _adc_init_acquisition_delay() is
    end if
 
    -- Let's be generous... This is very, very approximative...
-   -- Even if ADC_TEMP = 0, it should be ok at 25°C to 30°C
-   -- It'll give 1usec insteand of 1.25 to 1.5usecs, but since there
-   -- (I even wonder if it makes sens to compute this...)
+   -- Even if ADC_TEMP = 0, it should be ok at 25 C to 30 C
+   -- It'll give 1 usec instead of 1.25 to 1.5 usecs, but since there
+   -- (I even wonder if it makes sense to compute this...)
+
    if defined(ADC_DYNAMIC) == true then
       var byte adc_tcoff = ((ADC_TEMP * 5) / 100) + 1
    else
@@ -251,32 +239,28 @@ procedure _adc_init_acquisition_delay() is
    adc_conversion_delay = 2 + adc_tc + adc_tcoff   -- Tamp seems to be a constant: 2usecs
    -- since we'll use delay_10us, need to divide and adjust
    -- adc_conversion_delay = adc_conversion_delay / 10
-
 end procedure
 
 
--- Pin setup: analog as input, configure Vref, ...
-procedure _adc_setup() is
-   pragma inline
-   _adc_setup_pins()    -- conditionally defined according to PIC
-   _adc_vref()          -- conditionally defined according to PIC
-end procedure
-
+-- --------------------------------------------------------------
+-- Tilte:     Initialise ADC module and default parameters
+-- Arguments: (none)
+-- Returns:   nothing
+-- --------------------------------------------------------------
 -- Initializes the PIC AD-converter,
 -- by calling the correct routine according to the number of external references
 -- Settings are done according to the special ADC constants
--- Sets all the analog pins to input
--- Calculates aquisition time and determines if right or
--- left justification is optimal
+-- Sets analog pins to input
+-- Calculate aquisition time
 procedure adc_init() is
    if defined(ADC_DYNAMIC) == false then
       pragma inline
    end if
-   _adc_setup()
-   -- calculate aquisition delay and optimize justify
-   _adc_init_justify()
+   _adc_setup_pins()
+   _adc_vref()
    _adc_init_clock()
    _adc_init_acquisition_delay()
 end procedure
 
+-- --------------------------------------------------------------
 
