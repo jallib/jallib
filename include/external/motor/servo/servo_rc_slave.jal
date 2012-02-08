@@ -21,9 +21,11 @@
 -- TIMER0 only works as a 8 bit timer.
 --
 
+const _SERVO_SLAVE_NUM_OF_INPUTS = SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_0 + SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_1 + SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_2 + SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_3
+
 -- some vars
-var byte servo_slave_is_valid = TRUE
-var byte _servo_slave_off_count = 0
+var byte servo_slave_is_valid[_SERVO_SLAVE_NUM_OF_INPUTS]; = TRUE
+var byte _servo_slave_off_count[_SERVO_SLAVE_NUM_OF_INPUTS]; = 0
 
 -- check if current pic has selected timers
 if SERVO_SLAVE_USE_TIMER == 0 then
@@ -42,10 +44,12 @@ end if
 
 -- setup servo timer aliase for the timer the user selected
 if SERVO_SLAVE_USE_TIMER == 0 then
+      _error "Timer0 is not supported by servo slave"
+      
    -- set special timer0 settings
    t0con_psa  = 0  -- assign prescaler to timer0
    -- set timer registers to timer0
-   alias servo_slave_tmr      is TMR0            -- timer interval
+   alias servo_slave_tmr      is TMR0L           -- timer interval (note: 16 bit timer0 doesn't work)
    alias servo_slave_cs       is T0CON_T0CS      -- timer clock source bit
    alias servo_slave_ie       is INTCON_TMR0IE   -- interrupt enable
    alias servo_slave_if       is INTCON_TMR0IF   -- interrupt overflow bit
@@ -93,13 +97,15 @@ end if
 
 -- devine variables depending on timer size
 if SERVO_SLAVE_TIMER_SIZE == 8 then
-   var byte _servo_slave
+   var byte _servo_slave[_SERVO_SLAVE_NUM_OF_INPUTS]
+   var byte _servo_last_timer_value[_SERVO_SLAVE_NUM_OF_INPUTS]
    var byte servo_slave_steps_per_2_5_msec -- holds number of steps within 2.5ms
    var byte servo_high_value
    var byte servo_low_value
    var word servo_slave_multiple
 else
-   var word _servo_slave
+   var word _servo_slave[_SERVO_SLAVE_NUM_OF_INPUTS]
+   var word _servo_last_timer_value[_SERVO_SLAVE_NUM_OF_INPUTS]
    var word servo_slave_steps_per_2_5_msec -- holds number of steps within 2.5ms
    var word servo_high_value
    var word servo_low_value
@@ -109,60 +115,122 @@ end if
 --------------------------------------------------------------------------------
 -- interrupt on change pin callback, reset or read the timer.
 --------------------------------------------------------------------------------
-if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN == 0 then
-   -- interrupt for interrupt on change pin0
-   procedure int_on_change_callback_0() is
-      -- note: timer0 will be 8bit since 16bit timer0 doesn't work.
-      if int_on_change_pin_state_0 == LOW then
-         if SERVO_SLAVE_USE_TIMER == 0 then
-            _servo_slave = TMR0L
+
+if _SERVO_SLAVE_NUM_OF_INPUTS == 1 then
+   if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_0 == 1 then
+      -- interrupt for interrupt on change pin0
+      procedure int_on_change_callback_0() is
+         if int_on_change_pin_state_0 == LOW then
+            _servo_slave[0] = servo_slave_tmr
          else
-            _servo_slave = servo_slave_tmr
+            servo_slave_tmr = 0
+            _servo_slave_off_count[0] = 0
+            servo_slave_is_valid[0] = TRUE
          end if
-      else
-         servo_slave_tmr = 0
-         _servo_slave_off_count = 0
-         servo_slave_is_valid = TRUE
-      end if
-   end procedure
-end if
+      end procedure
+   end if
 
-if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN == 1 then
-   -- interrupt for interrupt on change pin1
-   procedure int_on_change_callback_1() is
-      if int_on_change_pin_state_1 == LOW then
-         _servo_slave = servo_slave_tmr
-      else
-         servo_slave_tmr = 0
-         _servo_slave_off_count = 0
-         servo_slave_is_valid = TRUE
-      end if
-   end procedure
-end if
+   if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_1 == 1 then
+      -- interrupt for interrupt on change pin1
+      procedure int_on_change_callback_1() is
+         if int_on_change_pin_state_1 == LOW then
+            _servo_slave[1] = servo_slave_tmr
+         else
+            servo_slave_tmr = 0
+            _servo_slave_off_count[1] = 0
+            servo_slave_is_valid[1] = TRUE
+         end if
+      end procedure
+   end if
 
-if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN == 2 then
-   -- interrupt for interrupt on change pin2
-   procedure int_on_change_callback_2() is
-      if int_on_change_pin_state_2 == LOW then
-         _servo_slave = servo_slave_tmr
-      else
-         servo_slave_tmr = 0
-         _servo_slave_off_count = 0
-         servo_slave_is_valid = TRUE
-      end if
-   end procedure
-end if
+   if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_2 == 1 then
+      -- interrupt for interrupt on change pin2
+      procedure int_on_change_callback_2() is
+         if int_on_change_pin_state_2 == LOW then
+            _servo_slave[2] = servo_slave_tmr
+         else
+            servo_slave_tmr = 0
+            _servo_slave_off_count[2] = 0
+            servo_slave_is_valid[2] = TRUE
+         end if
+      end procedure
+   end if
 
-if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN == 3 then
-   -- interrupt for interrupt on change pin3
-   procedure int_on_change_callback_3() is
-      if int_on_change_pin_state_3 == LOW then
-         _servo_slave = servo_slave_tmr
-      else
-         servo_slave_tmr = 0
-         _servo_slave_off_count = 0
-      end if
-   end procedure
+   if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_3 == 1 then
+      -- interrupt for interrupt on change pin3
+      procedure int_on_change_callback_3() is
+         if int_on_change_pin_state_3 == LOW then
+            _servo_slave[3] = servo_slave_tmr
+         else
+            servo_slave_tmr = 0
+            _servo_slave_off_count[3] = 0
+         end if
+      end procedure
+   end if
+elsif _SERVO_SLAVE_NUM_OF_INPUTS > 1 then
+   if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_0 == 1 then
+      -- interrupt for interrupt on change pin 0
+      procedure int_on_change_callback_0() is
+         if int_on_change_pin_state_0 == LOW then
+            ;_servo_slave = servo_slave_tmr
+            _servo_slave[0] = servo_slave_tmr - _servo_last_timer_value[0]
+         else
+            ;servo_slave_tmr = 0
+            _servo_last_timer_value[0] = servo_slave_tmr
+
+            _servo_slave_off_count[0] = 0
+            servo_slave_is_valid[0] = TRUE
+         end if
+      end procedure
+   end if
+
+   if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_1 == 1 then
+      -- interrupt for interrupt on change pin 1
+      procedure int_on_change_callback_1() is
+         if int_on_change_pin_state_1 == LOW then
+            ;_servo_slave = servo_slave_tmr
+            _servo_slave[1] = servo_slave_tmr - _servo_last_timer_value[1]
+         else
+            ;servo_slave_tmr = 1
+            _servo_last_timer_value[1] = servo_slave_tmr
+
+            _servo_slave_off_count[1] = 1
+            servo_slave_is_valid[1] = TRUE
+         end if
+      end procedure
+   end if
+
+   if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_2 == 1 then
+      -- interrupt for interrupt on change pin 2
+      procedure int_on_change_callback_2() is
+         if int_on_change_pin_state_2 == LOW then
+            ;_servo_slave = servo_slave_tmr
+            _servo_slave[2] = servo_slave_tmr - _servo_last_timer_value[2]
+         else
+            ;servo_slave_tmr = 2
+            _servo_last_timer_value[2] = servo_slave_tmr
+
+            _servo_slave_off_count[2] = 2
+            servo_slave_is_valid[2] = TRUE
+         end if
+      end procedure
+   end if
+
+   if SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_3 == 1 then
+      -- interrupt for interrupt on change pin 3
+      procedure int_on_change_callback_3() is
+         if int_on_change_pin_state_3 == LOW then
+            ;_servo_slave = servo_slave_tmr
+            _servo_slave[3] = servo_slave_tmr - _servo_last_timer_value[3]
+         else
+            ;servo_slave_tmr = 3
+            _servo_last_timer_value[3] = servo_slave_tmr
+
+            _servo_slave_off_count[3] = 3
+            servo_slave_is_valid[3] = TRUE
+         end if
+      end procedure
+   end if
 end if
 
 --------------------------------------------------------------------------------
@@ -264,13 +332,18 @@ end procedure
 procedure servo_slave_timer_isr() is
    pragma interrupt
 
+
    if servo_slave_if then -- check if it is a timer interrupt
 
-      if _servo_slave_off_count > 16 then
-         servo_slave_is_valid = FALSE
-      else
-         _servo_slave_off_count = _servo_slave_off_count + 1
-      end if
+   
+      var byte step
+      for _SERVO_SLAVE_NUM_OF_INPUTS using step loop
+         if _servo_slave_off_count[step] > 16 then
+            servo_slave_is_valid[step] = FALSE
+         else
+            _servo_slave_off_count[step] = _servo_slave_off_count[step] + 1
+         end if
+      end loop
 
       servo_slave_if = off
    end if
@@ -280,14 +353,14 @@ end procedure
 --------------------------------------------------------------------------------
 -- Outputs the value of the rc pulse input
 --------------------------------------------------------------------------------
-function servo_slave'get() return byte is
+function servo_slave'get(byte in input_num) return byte is
    if SERVO_SLAVE_TIMER_SIZE == 8 then
       var byte servo_slave
       -- adjustments
-      if _servo_slave < servo_low_value then
+      if _servo_slave[input_num] < servo_low_value then
          servo_slave = 0
       else
-         servo_slave = _servo_slave - servo_low_value
+         servo_slave = _servo_slave[input_num] - servo_low_value
          var word calc = (word(servo_slave)*servo_slave_multiple) / 100
          if calc > 0xFF then
             servo_slave = 0xFF
@@ -300,10 +373,10 @@ function servo_slave'get() return byte is
    else
       var word servo_slave
       -- adjustments
-      if _servo_slave < servo_low_value then
+      if _servo_slave[input_num] < servo_low_value then
          servo_slave = 0
       else
-         servo_slave = _servo_slave - servo_low_value
+         servo_slave = _servo_slave[input_num] - servo_low_value
          var dword calc = (dword(servo_slave)*servo_slave_multiple) / 100
          if calc > 0xFFFF then
             servo_slave = 0xFFFF
