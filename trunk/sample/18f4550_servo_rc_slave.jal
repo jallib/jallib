@@ -73,13 +73,17 @@ alias serial_data_available is serial_hw_data_available
 include print
 
 -- choose pins to use for interrupt on change
-const byte int_on_change_pins[] = {"B",4} -- interrupt on change pin0 = B4
+const byte int_on_change_pins[] = {"B",4,"B",5} -- interrupt on change pin 0 and 1,  B4 and B5
 include interrupt_on_change
 int_on_change_init()
 
 -- setup servo slave lib
-const SERVO_SLAVE_USE_INT_ON_CHANGE_PIN = 0 -- use interrupt on change pin0 = B4
-const SERVO_SLAVE_USE_TIMER = 1             -- choose a timer
+const byte SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_0 = TRUE -- use interrupt on change pin 0 = B4
+const byte SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_1 = TRUE -- use interrupt on change pin 1 = B5
+const byte SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_2 = 0 -- use interrupt on change pin 2 = B6
+const byte SERVO_SLAVE_USE_INT_ON_CHANGE_PIN_3 = 0 -- use interrupt on change pin 3 = B7
+--
+const SERVO_SLAVE_USE_TIMER = 1     -- choose a timer
 --
 -- set your min/max values (0 to 100)
 -- adjust SERVO_SLAVE_MIN first, then adjust SERVO_SLAVE_MAX
@@ -96,10 +100,11 @@ pin_ccp1_direction = output
 include pwm_hardware
 pwm_max_resolution(1)
 pwm1_on() -- turn on PWM1
+pwm2_on() -- turn on PWM1
 
 -- define clock out pin
-alias clock_out           is pin_a2
-alias clock_out_direction is pin_a2_direction
+alias clock_out           is pin_a1
+alias clock_out_direction is pin_a1_direction
 clock_out_direction = output
 
 -- main loop
@@ -111,18 +116,38 @@ forever loop
    clock_out = low
    _usec_delay(20_000)
 
+   -- SIGNAL 1
    -- test if there is a signal. If no signal, the transmitter
    -- may be out of range, off or low on batteries.
-   if servo_slave_is_valid == TRUE then
+   if servo_slave_is_valid[0] == TRUE then
       -- set the led brightness
-      pwm1_set_dutycycle( servo_slave )
+      pwm1_set_dutycycle( servo_slave[0] )
       -- send the value to the serial port
-      print_dword_dec(serial_data, servo_slave)
+      print_dword_dec(serial_data, servo_slave[0])
    else
       -- there must be no pulse, send a message
       const byte str1[] = "No Signal!"
       print_string(serial_data, str1)
       pwm1_set_dutycycle(0) -- turn led off
+   end if
+
+   serial_data = " "
+   serial_data = "-"
+   serial_data = " "
+
+   -- SIGNAL 2
+   -- test if there is a signal. If no signal, the transmitter
+   -- may be out of range, off or low on batteries.
+   if servo_slave_is_valid[1] == TRUE then
+      -- set the led brightness
+      pwm2_set_dutycycle( servo_slave[1] )
+      -- send the value to the serial port
+      print_dword_dec(serial_data, servo_slave[1])
+   else
+      -- there must be no pulse, send a message
+      const byte str1[] = "No Signal!"
+      print_string(serial_data, str1)
+      pwm2_set_dutycycle(1) -- turn led off
    end if
 
    -- send crlf to serial port
