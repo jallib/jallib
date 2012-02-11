@@ -53,21 +53,24 @@ include adc_channels
 -- Clock selection bits specific procedures.
 include adc_clock
 
--- By default Rsource is max
+-- By default ADC_RSOURCE is the maximum recommended value in the datasheets (10K)
 if defined(ADC_RSOURCE) == false then              -- not defined by user
-   const word ADC_RSOURCE = 10_000
+   const word ADC_RSOURCE = 10_000                 -- set default
 end if
 
--- standard value: 25 degrees C
 if defined(ADC_TEMP) == false then                 -- not defined by user
-   const byte ADC_TEMP = 25
+-- standard value: 25 degrees C
+const byte ADC_TEMP = 25
 end if
 
--- local variables
+-- global variables
 
-var byte  adc_conversion_delay
+-- Time to have the analog signal converted to a digital value.
+-- Value is calculated in _adc_init_acquisition_delay() and
+-- used in _adc_read().
+var byte  adc_conversion_delay                     -- set in
 
-
+-- constants for justification selection
 const bit _ADC_JUSTIFY_LEFT  = 0                   -- internally used
 const bit _ADC_JUSTIFY_RIGHT = 1                   -- constants
 
@@ -85,7 +88,7 @@ const bit _ADC_JUSTIFY_RIGHT = 1                   -- constants
 --              usable as binary value.
 --            - Left justification allows easy selection of the 8 most
 --              significant bits of the result, regardless which
---              resolution the PIC supports.
+--              resolution the PIC supports (can be 8-,10 or 12-bits).
 -- --------------------------------------------------------------
 function _adc_read(byte in adc_chan, bit in justify) return word is
 
@@ -109,10 +112,10 @@ function _adc_read(byte in adc_chan, bit in justify) return word is
    -- 2 cases:
    --   - PIC has high resolution ADC: need to read ADRESH and ADRESL
    --   - PIC has only a 8-bits ADC: need to read only ADRES
-   if defined(ADRESH) == true then                 -- PIC supports high resolution
+   if defined(ADRESH) == true then                 -- PIC has high resolution ADC
       adc_byte[1] = ADRESH                         -- copy high order bits
       adc_byte[0] = ADRESL                         -- copy low order bits
-   else                                            -- (PIC has no high resolution)
+   else                                            -- (PIC has no high resolution ADC)
       if justify == _ADC_JUSTIFY_LEFT then         -- left justified
          adc_byte[1] = byte(ADRES)                 -- result in high order byte
          adc_byte[0] = 0b0000_0000                 -- zero low order byte
@@ -151,9 +154,9 @@ end function
 -- Returns:   16-bits ADC value
 -- Notes:     - Uses right justification
 --            - Returns a 16-bits value of the result of ADC, of which the
---              range is dependent of the supported resolution of the PIC
+--              range is dependent of the supported ADC resolution of the PIC
 --              (can be a 8-, 10-, 12-bits value).
---            - When the PIC supports only 8-bits resolution the
+--            - When the PIC supports only 8-bits ADC resolution the
 --              result is the same as of adc_read_low_res().
 -- --------------------------------------------------------------
 function adc_read_high_res(byte in adc_chan) return word is
@@ -187,7 +190,7 @@ end procedure
 -- Title:     Calculation of acquisition delay
 -- Arguments: (none)
 -- Returns:   nothing
--- Notes:     result is stored in variable _adc_conversion_delay
+-- Notes:     result is stored in global variable _adc_conversion_delay
 -- --------------------------------------------------------------
 procedure _adc_init_acquisition_delay() is
    pragma inline
