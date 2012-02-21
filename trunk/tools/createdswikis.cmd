@@ -86,7 +86,7 @@ if type = 'ps' then
 else
   call lineout wiki, '= PICname - Datasheet cross reference ='
 call lineout wiki, ''
-call lineout wiki, '||  *PIC*    || *Number* || *datasheet title* ||'
+call lineout wiki, '||  *PIC*       || *Number* || *datasheet title* ||'
 
 do i=1 to dir.0                                /* a line for every Jallib PIC device file */
 
@@ -105,7 +105,7 @@ do i=1 to dir.0                                /* a line for every Jallib PIC de
     call SysFileSearch DS, titles, dsnum.               /* lookup ds# & title */
     if dsnum.0 > 0 then do
       call lineout wiki, '||' left(PicName,12),
-                         '|| <a href="'url||word(dsnum.1,1)'.pdf">'left(word(dsnum.1,1),6)'</a>',
+                         '|| <a href="'url||left(word(dsnum.1,1)'.pdf">',12)left(word(dsnum.1,1),6)'</a>',
                          '||'delword(dsnum.1,1,1) '||'
       call SysFileTree pdfdir||word(dsnum.1,1).pdf, 'dsfile', 'FO'
       if dsfile.0 = 0 then                              /* check on presence */
