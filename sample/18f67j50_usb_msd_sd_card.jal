@@ -6,7 +6,12 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: Test program for mass storage with SD Card.
+-- Description: Test program for USB MSD (Mass Storage Device) with SD card.
+--
+--              Here are my speed tests:
+--              Read Speed (SD_READ_EXTRA_SPEED = TRUE)  - 122KB/s
+--              Read Speed (SD_READ_EXTRA_SPEED = FALSE) - 108KB/s
+--              Write Speed                              - 110KB/s
 --
 -- Sources:
 -- http://www.usb.org/developers/devclass_docs/usbmassbulk_10.pdf
@@ -14,11 +19,9 @@
 -- http://direction.scene-double.com/2008/07/08/usb-msd-bootloader-for-pic-microcontrollers.aspx
 --
 -- Notes:
--- Important: SEE usb_reset_callback() procedure notes!
--- A fix needs to be made to usb lib.
 --
 
-include 18f67j50                    -- target PICmicro
+include 18f67j50                   -- target PICmicro
 -- include chip
 pragma target clock 48_000_000     -- oscillator frequency
 -- configuration memory settings (fuses)
@@ -76,18 +79,19 @@ const bit USB_DEBUG_HIGH = FALSE
 
 -- setup debug lib
 alias debug_data is serial_data
-const bit DEBUG_MASTER_ENABLE = OFF    -- enables debugging
+const bit DEBUG_MASTER_ENABLE = FALSE    -- enables debugging
 include debug
 --
 -- turn on and off debug levels.
-debug_lvl_0 = ON
-debug_lvl_1 = OFF -- display data in/out
+debug_lvl_0 = OFF  -- short debugging
+debug_lvl_1 = OFF  -- display data in/out
 debug_lvl_2 = OFF  -- display commands
 debug_lvl_3 = OFF  -- short debug info
 --
-var byte debug_text1[] = "DEBUG STARTED"
-debug_string(DEBUG_1,debug_text1)
-debug_crlf(DEBUG_1)
+var byte debug_text0[] = "DEBUG STARTED"
+debug_string(DEBUG_0,debug_text0)
+debug_crlf(DEBUG_0)
+--
 
 -- setup the sd card pins
 alias sd_chip_select is pin_SS
@@ -97,23 +101,26 @@ sd_chip_select_direction = output
 --
 -- setup the sd card library
 alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
-const bit SD_EXTRA_SPEED = TRUE
-const bit SD_DELAY_AFTER_WRITE = TRUE
+const bit SD_READ_EXTRA_SPEED = FALSE
+const bit SD_DELAY_AFTER_WRITE = FALSE
 include sd_card              -- include the sd card ide hard disk library
 sd_init()                    -- initialize startup settings
 
-
 -- setup MSD library
-const MSD_STORAGE_DEVICE = SD_CARD
-var dword usb_msd_block_size = 512
-var dword usb_msd_num_of_blocks = 2097152 -- 2097152 * 512 = 1gb
 --
--- sector reading is faster, takes more ram. currently sector reads don't work!
-const USB_MSD_SECTOR_READS = TRUE
+-- set storage device
+const STORAGE_DEVICE = SD_CARD -- select storage device
+include storage_drivers
+--
+var dword usb_msd_block_size = 512
+var dword usb_msd_num_of_blocks = storage_number_of_sectors
+--
 include usb_msd
 usb_msd_init()
 
--- main program
+--------------------------------------------------------------------------------
+-- main Program
+--------------------------------------------------------------------------------
 
 -- print welcome string
 print_crlf(serial_data)
@@ -129,16 +136,19 @@ const  byte str[] = "Mass Storage Device (MSD) has been configured by the HOST!"
 print_string(serial_data, str )
 print_crlf(serial_data)
 
-
+--------------------------------------------------------------------------------
 -- main loop
+--------------------------------------------------------------------------------
 var word char_count = 0
 forever loop
    -- poll the usb ISR function on a regular base, in order to 
    -- serve the USB MSD requests
    usb_msd_tasks()
+
+   -- if you do anything else here, don't take to long!
    
    -- let us know the PIC is actually doing something
-   -- by sending char "_" to serial port
+   -- by sending char "." to serial port
    if char_count == 40000 then
       serial_data = "."
       _usec_delay(100)
