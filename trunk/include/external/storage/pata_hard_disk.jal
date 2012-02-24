@@ -592,16 +592,6 @@ procedure pata_hd_stop_write() is
    pata_hd_stop_read() -- same as stop read
 end procedure
 
--- ----------------------------------------------------------------------------
--- initialize startup settings
--- ----------------------------------------------------------------------------
-procedure pata_hd_init() is begin
-  -- set startup setting for read/read pins
-	pata_hd_iowr = low ^ PATA_HD_NO_INVERTER   -- start write pulse pin low
-  pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- start read pulse pin low
-  pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE) -- recalibrate the drive
-end procedure
-
 ---------------------------------------------------------------------------
 -- define the sector buffer. Can be read as pata_hd_sector_buffer[0-511]
 ---------------------------------------------------------------------------
@@ -2112,3 +2102,47 @@ procedure pata_hd_print_sector_hex(volatile byte out device,word in bytes_per_li
    pata_hd_stop_read
 end procedure
 
+-- ----------------------------------------------------------------------------
+-- initialize startup settings
+-- ----------------------------------------------------------------------------
+procedure pata_hd_init() is begin
+  -- set startup setting for read/read pins
+	pata_hd_iowr = low ^ PATA_HD_NO_INVERTER   -- start write pulse pin low
+   pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- start read pulse pin low
+   
+   -- recalibrate the drive
+   pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE)
+
+   -- send some read pulses
+   pata_hd_start_read(0)
+   pata_hd_read_pulse(256)
+   pata_hd_stop_read()
+   
+   pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE) -- recalibrate the drive
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Get the size of the drive (number of sectors).
+-- Multiply by 512 for actual size.
+-- ----------------------------------------------------------------------------
+function pata_hd_number_of_sectors'get() return dword is
+   var dword num_of_sectors
+   var byte _num_of_sectors[4] at num_of_sectors
+
+   -- send the identify drive command
+   pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_IDENTIFY_DRIVE)
+
+   -- check if drive is ready reading and set data ports as inputs
+   -- this MUST be used before reading since we did not use pata_hd_start_read
+   pata_hd_data_request(PATA_HD_WAIT_READ)
+
+   -- Read
+   for 60 loop
+      pata_hd_read_data(_num_of_sectors[0],_num_of_sectors[0])
+   end loop
+
+   pata_hd_read_data(_num_of_sectors[0],_num_of_sectors[1])
+   pata_hd_read_data(_num_of_sectors[2],_num_of_sectors[3])
+
+   return num_of_sectors
+end function
