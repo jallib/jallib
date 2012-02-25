@@ -3,7 +3,7 @@
 -- Adapted-by: Sebastien Lelong.
 -- Compiler: >=2.4g
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
@@ -21,15 +21,22 @@
 
 include usart_common
 
--- Initializes the serial port, calculates baudrate registers.
-procedure serial_hw_init() is 
+-- ------------------------------------------------------------------
+-- Title:     Initialize the serial port, incl. baudrate setting
+-- Arguments: (none)
+-- Returns    (nothing)
+-- Notes:     Before calling this procedure set pin directions:
+--            pin_TX_direction = OUTPUT
+--            pin_RX_direction = INPUT
+-- ------------------------------------------------------------------
+procedure serial_hw_init() is
    -- Calculate and Load baudrate generator
    _calculate_and_set_baudrate()
-   
+
    -- disable all USART interrupts
    PIE1_RCIE = false
    PIE1_TXIE = false
-   
+
    -- Enable transmitter : TXSTA_TXEN=1 (preserve TXSTA_BRGH)
    TXSTA_TXEN = true
 
@@ -58,11 +65,12 @@ end procedure
 
 
 -- -----------------------------------------------------------------------
--- serial_hw_write - write char to serial port, blocking
--- -----------------------------------------------------------------------
--- Asynchronuous serial send routine, using the TX pin
--- Sends byte X (8 bit with no parity) to the serial port
--- First checks (and waits if necessary) if transmit buffer is empty
+-- Title:     serial_hw_write - write char to serial port, blocking
+-- Arguments: data (byte) to be transmitted
+-- Returns:   (nothing)
+-- Notes:     Asynchronuous serial send routine, using the TX pin.
+--            Sends byte X (8 bit with no parity) to the serial port.
+--            First checks (and waits if necessary) if transmit buffer is empty.
 -- -----------------------------------------------------------------------
 procedure serial_hw_write(byte in data) is
    -- wait until TXREG is empty
@@ -72,10 +80,14 @@ procedure serial_hw_write(byte in data) is
 end procedure
 
 
--- like Serial_H_write, but then with a word as input
--- The MSB is outputed first
+-- -----------------------------------------------------------------------
+-- Title:     serial_hw_write_word - write word to serial port, blocking
+-- Arguments: data (word) to be transmitted
+-- Returns:   (nothing)
+-- Notes:     The MSB is transmitted first
+-- -----------------------------------------------------------------------
 procedure serial_hw_write_word(word in data) is
-   var byte DX[2] at data
+   var byte DX[2] at data                          -- overlay
    -- can be blocked by debugging
    while ! PIR1_TXIF loop end loop
    TXREG = DX[1]
@@ -93,30 +105,30 @@ end procedure
 -- Returns true if a character was received, otherwise returns false.
 -- Overrun error flag is cleared.
 -- -----------------------------------------------------------------------
-function _serial_hw_read(byte out data) return bit is   
+function _serial_hw_read(byte out data) return bit is
    pragma inline
-   
+
    -- test if byte available, and if so,
    -- get byte and transport to outer world
    if PIR1_RCIF then
       data = RCREG
-      PIR1_RCIF   = false       -- eur@fiwhex.nl 12-sept-08
+      PIR1_RCIF   = false                          -- eur@fiwhex.nl 12-sept-08
    else
-      return false  ;result = false
+      return false                                 -- signal: no data available
    end if
-   
-   if RCSTA_OERR then
-      RCSTA_CREN = false
-      RCSTA_CREN =true
+
+   if RCSTA_OERR then                              -- overrun
+      RCSTA_CREN = FALSE                           -- reset ..
+      RCSTA_CREN = TRUE                            -- .. USART
    end if
-  
-   return true
+
+   return true                                     -- signal: data available
 end function
 
 
 -- -----------------------------------------------------------------------
 -- serial_hw_read - read char if available (non-blocking)
--- -----------------------------------------------------------------------   
+-- -----------------------------------------------------------------------
 -- Returns true if a character was received, otherwise returns false.
 -- Overrun error flag is cleared.
 -- -----------------------------------------------------------------------
@@ -156,7 +168,7 @@ end function
 
 
 -- -----------------------------------------------------------------------
--- raw interface 
+-- raw interface
 -- -----------------------------------------------------------------------
 
 -- some variables made available under a general (pic-independent) name
