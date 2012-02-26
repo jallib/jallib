@@ -1,0 +1,119 @@
+-- ------------------------------------------------------
+-- Title: Blink-a-led of the Microchip pic16f1827 on INTOSC
+--
+-- Author: Rob Hamerling, Copyright (c) 2010, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4n
+-- Revision: $Revision: 2760 $
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Sample blink-a-led program for Microchip PIC16f1827 on internal oscillator
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+include 16f1827                     -- target PICmicro
+--
+pragma target clock  16_000_000     -- oscillator frequency
+
+pragma target OSC    INTOSC_NOCLKOUT -- internal osc
+pragma target PLLEN  P1             -- PLL off
+pragma target WDT    disabled       -- no watchdog
+pragma target LVP    disabled       -- no Low Voltage Programming
+pragma target MCLR   external       -- reset externally
+--
+OSCCON_SPLLEN = 0                   -- PLL off
+OSCCON_IRCF = 0b1111                -- 16 MHz
+OSCCON_SCS  = 0b00                  -- fuses determine clock source
+--
+enable_digital_io()                 -- make all pins digital I/O
+
+enable_digital_io() -- disable all analog pins if any
+_usec_delay (100_000) -- wait for power to stablilize
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+-- set all IO as digital
+enable_digital_io()
+
+alias led0                       is pin_a0
+alias led0_direction             is pin_a0_direction
+led0_direction = output
+
+alias led1                       is pin_a1
+alias led1_direction             is pin_a1_direction
+led1_direction = output
+
+alias clock_out           is pin_a2
+alias clock_out_direction is pin_a2_direction
+clock_out_direction = output
+
+-- choose pins to use for int on change
+const INT_INTERRUPT_ON_EDGE_PIN  = 0
+const INT_INTERRUPT_ON_CHANGE_PIN = 1
+--
+const byte INT_ON_CHANGE_PINS[] = {
+   "B",0,
+   "B",4
+   }
+--
+include interrupt_on_change
+int_on_change_init()
+
+-- interrupt for pin B0
+procedure int_on_change_callback_0() is
+   pragma inline
+   led0 = int_on_change_0
+end procedure
+
+-- interrupt for pin B4
+procedure int_on_change_callback_1() is
+   pragma inline
+   led1 = int_on_change_1
+end procedure
+
+
+-- main loop
+forever loop
+   clock_out = high
+   _usec_delay(250_000)
+   clock_out = low
+   _usec_delay(250_000)
+end loop
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
