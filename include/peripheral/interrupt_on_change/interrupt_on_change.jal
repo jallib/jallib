@@ -2,7 +2,6 @@
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4o
--- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -16,86 +15,71 @@
 -- to reduce code via constants in if statements.
 --
 
--- constants
-const byte INT_ON_CHANGE_PIN_COUNT = count(INT_ON_CHANGE_PINS) / 2
-const INT_FALLING_EDGE = 0
-const INT_RISING_EDGE = 1
-
--- alias pin interrupt registers
-alias INT_PORTB_ENABLE_BIT is INTCON_RBIE
-alias INT_PORTB_FLAG_BIT is INTCON_RBIF
---
-if defined(INTCON_INT0IE) then
-   alias INT_0_ENABLE_BIT is INTCON_INT0IE
-   alias INT_0_FLAG_BIT is INTCON_INT0IF
-   alias INT_0_EDGE_BIT is INTCON2_INTEDG0
-end if
---
-if defined(INTCON3_INT1IE) then
-   alias INT_1_ENABLE_BIT is INTCON3_INT1IE
-   alias INT_1_FLAG_BIT is INTCON3_INT1IF
-   alias INT_1_EDGE_BIT is INTCON2_INTEDG1
-end if
---
-if defined(INTCON3_INT2IE) then
-   alias INT_2_ENABLE_BIT is INTCON3_INT2IE
-   alias INT_2_FLAG_BIT is INTCON3_INT2IF
-   alias INT_2_EDGE_BIT is INTCON2_INTEDG2
-end if
---
-if defined(INTCON3_INT3IE) then -- only some 18f have this
-   alias INT_3_ENABLE_BIT is INTCON3_INT3IE
-   alias INT_3_FLAG_BIT is INTCON3_INT3IF
-   alias INT_3_EDGE_BIT is INTCON2_INTEDG3
-end if
-
--- check if port B is in use, save it's state right away
-if INT_ON_CHANGE_PINS[0] == "B" | INT_ON_CHANGE_PINS[0] == "b" then
-   const INT_PORT_B_USED = TRUE
-end if
-
-if INT_PORT_B_USED == TRUE then
-   var byte pin_states
-   var bit pin_state_0 at pin_states : 0
-   var bit pin_state_1 at pin_states : 1
-   var bit pin_state_2 at pin_states : 2
-   var bit pin_state_3 at pin_states : 3
-   var bit pin_state_4 at pin_states : 4
-   var bit pin_state_5 at pin_states : 5
-   var bit pin_state_6 at pin_states : 6
-   var bit pin_state_7 at pin_states : 7
-end if
-
-
 --------------------------------------------------------------------------------
--- init interrupt on change pins
+-- 16F Midrange code
 --------------------------------------------------------------------------------
-procedure int_on_change_init() is
-   -- enable global interrupts
-   INTCON_GIE  = TRUE        -- Enables all unmasked interrupts
-   INTCON_PEIE = TRUE        -- Enables all unmasked peripheral interrupts
-end procedure
+if defined(IOCBF_IOCBF0) == TRUE then
+   -- constants
+   const byte INT_ON_CHANGE_PIN_COUNT = count(INT_ON_CHANGE_PINS) / 2
+   const INT_FALLING_EDGE = 0
+   const INT_RISING_EDGE = 1
 
---------------------------------------------------------------------------------
--- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
--- made with mostly constants to reduce code.
---------------------------------------------------------------------------------
-if INT_ON_CHANGE_PIN_COUNT > 0 then
-   procedure int_on_change_callback_0()
-   if INT_ON_CHANGE_PINS[0] == "B" | INT_ON_CHANGE_PINS[0] == "b" then
-      var byte int_on_change_pin_state_0
+   -- alias pin interrupt registers
+   alias INT_0_FLAG_BIT is IOCBF_IOCBF0 -- flag bits
+   alias INT_1_FLAG_BIT is IOCBF_IOCBF1
+   alias INT_2_FLAG_BIT is IOCBF_IOCBF2
+   alias INT_3_FLAG_BIT is IOCBF_IOCBF3
+   alias INT_4_FLAG_BIT is IOCBF_IOCBF4
+   alias INT_5_FLAG_BIT is IOCBF_IOCBF5
+   alias INT_6_FLAG_BIT is IOCBF_IOCBF6
+   alias INT_7_FLAG_BIT is IOCBF_IOCBF7
+   --
+   alias INT_0_ENABLE_RISING_EDGE is IOCBP_IOCBP0  -- edge enable bits
+   alias INT_0_ENABLE_FALLING_EDGE is IOCBN_IOCBN0
+   alias INT_1_ENABLE_RISING_EDGE is IOCBP_IOCBP1
+   alias INT_1_ENABLE_FALLING_EDGE is IOCBN_IOCBN1
+   alias INT_2_ENABLE_RISING_EDGE is IOCBP_IOCBP2
+   alias INT_2_ENABLE_FALLING_EDGE is IOCBN_IOCBN2
+   alias INT_3_ENABLE_RISING_EDGE is IOCBP_IOCBP3
+   alias INT_3_ENABLE_FALLING_EDGE is IOCBN_IOCBN3
+   alias INT_4_ENABLE_RISING_EDGE is IOCBP_IOCBP4
+   alias INT_4_ENABLE_FALLING_EDGE is IOCBN_IOCBN4
+   alias INT_5_ENABLE_RISING_EDGE is IOCBP_IOCBP5
+   alias INT_5_ENABLE_FALLING_EDGE is IOCBN_IOCBN5
+   alias INT_6_ENABLE_RISING_EDGE is IOCBP_IOCBP6
+   alias INT_6_ENABLE_FALLING_EDGE is IOCBN_IOCBN6
+   alias INT_7_ENABLE_RISING_EDGE is IOCBP_IOCBP7
+   alias INT_7_ENABLE_FALLING_EDGE is IOCBN_IOCBN7
+   --
 
+   --------------------------------------------------------------------------------
+   -- init interrupt on change pins
+   --------------------------------------------------------------------------------
+   procedure int_on_change_init() is
+      -- enable global interrupts
+      INTCON_GIE  = TRUE        -- Enables all unmasked interrupts
+      INTCON_PEIE = TRUE        -- Enables all unmasked peripheral interrupts
+
+      INTCON_IOCIE = TRUE -- enable port B interrupts
+   end procedure
+
+   --------------------------------------------------------------------------------
+   -- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
+   -- made with mostly constants to reduce code.
+   --------------------------------------------------------------------------------
+   if INT_ON_CHANGE_PIN_COUNT > 0 then
+      procedure int_on_change_callback_0()
       if INT_ON_CHANGE_PINS[1] == 0 then
          alias int_on_change_0           is pin_b0
          alias int_on_change_0_direction is pin_b0_direction
-         INT_0_EDGE_BIT = INT_RISING_EDGE
-         INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_0_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_0_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_0_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_0() is
             pragma inline
             if INT_0_FLAG_BIT == TRUE then
-               INT_0_EDGE_BIT = !pin_state_0
                int_on_change_callback_0()
                INT_0_FLAG_BIT = FALSE
             end if
@@ -103,47 +87,44 @@ if INT_ON_CHANGE_PIN_COUNT > 0 then
       elsif INT_ON_CHANGE_PINS[1] == 1 then
          alias int_on_change_0           is pin_b1
          alias int_on_change_0_direction is pin_b1_direction
-         INT_1_EDGE_BIT = INT_RISING_EDGE
-         INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_1_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_1_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_1_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_0() is
             pragma inline
             if INT_1_FLAG_BIT == TRUE then
-               INT_1_EDGE_BIT = !pin_state_1
                int_on_change_callback_0()
                INT_1_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[1] == 2 then
-         alias int_on_change_0           is pin_b3
-         alias int_on_change_0_direction is pin_b3_direction
-         INT_2_EDGE_BIT = INT_RISING_EDGE
-         INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+         alias int_on_change_0           is pin_b2
+         alias int_on_change_0_direction is pin_b2_direction
+         INT_2_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_2_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_2_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_0() is
             pragma inline
             if INT_2_FLAG_BIT == TRUE then
-               INT_2_EDGE_BIT = !pin_state_2
                int_on_change_callback_0()
                INT_2_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[1] == 3 then
-         if INT_ON_CHANGE_PINS[1] == 3 then
-            "Pin B3 is not an interrupt pin!!!"
-         end if
          alias int_on_change_0           is pin_b3
          alias int_on_change_0_direction is pin_b3_direction
-         INT_3_EDGE_BIT = INT_RISING_EDGE
-         INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_3_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_3_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_3_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_0() is
             pragma inline
             if INT_3_FLAG_BIT == TRUE then
-               INT_3_EDGE_BIT = !pin_state_3
                int_on_change_callback_0()
                INT_3_FLAG_BIT = FALSE
             end if
@@ -151,78 +132,80 @@ if INT_ON_CHANGE_PIN_COUNT > 0 then
       elsif INT_ON_CHANGE_PINS[1] == 4 then
          alias int_on_change_0           is pin_b4
          alias int_on_change_0_direction is pin_b4_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_0() is
+         INT_4_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_4_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_4_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_0() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_0 != int_on_change_0 then
-               int_on_change_pin_state_0 = int_on_change_0
+            if INT_4_FLAG_BIT == TRUE then
                int_on_change_callback_0()
+               INT_4_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[1] == 5 then
          alias int_on_change_0           is pin_b5
          alias int_on_change_0_direction is pin_b5_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_0() is
+         INT_5_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_5_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_5_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_0() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_0 != int_on_change_0 then
-               int_on_change_pin_state_0 = int_on_change_0
+            if INT_5_FLAG_BIT == TRUE then
                int_on_change_callback_0()
+               INT_5_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[1] == 6 then
          alias int_on_change_0           is pin_b6
          alias int_on_change_0_direction is pin_b6_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_0() is
+         INT_6_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_6_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_6_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_0() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_0 != int_on_change_0 then
-               int_on_change_pin_state_0 = int_on_change_0
+            if INT_6_FLAG_BIT == TRUE then
                int_on_change_callback_0()
+               INT_6_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[1] == 7 then
          alias int_on_change_0           is pin_b7
          alias int_on_change_0_direction is pin_b7_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_0() is
+         INT_7_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_7_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_7_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_0() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_0 != int_on_change_0 then
-               int_on_change_pin_state_0 = int_on_change_0
+            if INT_7_FLAG_BIT == TRUE then
                int_on_change_callback_0()
+               INT_7_FLAG_BIT = FALSE
             end if
          end procedure
       end if
+      int_on_change_0_direction = INPUT
    end if
-   int_on_change_0_direction = INPUT
-end if
 
--- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
--- made with mostly constants.
-if INT_ON_CHANGE_PIN_COUNT > 1 then
-   procedure int_on_change_callback_1()
-   if INT_ON_CHANGE_PINS[2] == "B" | INT_ON_CHANGE_PINS[2] == "b" then
-      var byte int_on_change_pin_state_1
-
+   if INT_ON_CHANGE_PIN_COUNT > 1 then
+      procedure int_on_change_callback_1()
       if INT_ON_CHANGE_PINS[3] == 0 then
          alias int_on_change_1           is pin_b0
          alias int_on_change_1_direction is pin_b0_direction
-         INT_0_EDGE_BIT = INT_RISING_EDGE
-         INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_0_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_0_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_0_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_1() is
             pragma inline
             if INT_0_FLAG_BIT == TRUE then
-               INT_0_EDGE_BIT = !pin_state_0
                int_on_change_callback_1()
                INT_0_FLAG_BIT = FALSE
             end if
@@ -230,47 +213,44 @@ if INT_ON_CHANGE_PIN_COUNT > 1 then
       elsif INT_ON_CHANGE_PINS[3] == 1 then
          alias int_on_change_1           is pin_b1
          alias int_on_change_1_direction is pin_b1_direction
-         INT_1_EDGE_BIT = INT_RISING_EDGE
-         INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_1_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_1_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_1_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_1() is
             pragma inline
             if INT_1_FLAG_BIT == TRUE then
-               INT_1_EDGE_BIT = !pin_state_1
                int_on_change_callback_1()
                INT_1_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[3] == 2 then
-         alias int_on_change_1           is pin_b3
-         alias int_on_change_1_direction is pin_b3_direction
-         INT_2_EDGE_BIT = INT_RISING_EDGE
-         INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+         alias int_on_change_1           is pin_b2
+         alias int_on_change_1_direction is pin_b2_direction
+         INT_2_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_2_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_2_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_1() is
             pragma inline
             if INT_2_FLAG_BIT == TRUE then
-               INT_2_EDGE_BIT = !pin_state_2
                int_on_change_callback_1()
                INT_2_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[3] == 3 then
-         if INT_ON_CHANGE_PINS[3] == 3 then
-            "Pin B3 is not an interrupt pin!!!"
-         end if
          alias int_on_change_1           is pin_b3
          alias int_on_change_1_direction is pin_b3_direction
-         INT_3_EDGE_BIT = INT_RISING_EDGE
-         INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_3_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_3_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_3_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_1() is
             pragma inline
             if INT_3_FLAG_BIT == TRUE then
-               INT_3_EDGE_BIT = !pin_state_3
                int_on_change_callback_1()
                INT_3_FLAG_BIT = FALSE
             end if
@@ -278,80 +258,80 @@ if INT_ON_CHANGE_PIN_COUNT > 1 then
       elsif INT_ON_CHANGE_PINS[3] == 4 then
          alias int_on_change_1           is pin_b4
          alias int_on_change_1_direction is pin_b4_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_1() is
+         INT_4_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_4_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_4_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_1() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_1 != int_on_change_1 then
-               int_on_change_pin_state_1 = int_on_change_1
+            if INT_4_FLAG_BIT == TRUE then
                int_on_change_callback_1()
+               INT_4_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[3] == 5 then
          alias int_on_change_1           is pin_b5
          alias int_on_change_1_direction is pin_b5_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_1() is
+         INT_5_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_5_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_5_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_1() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_1 != int_on_change_1 then
-               int_on_change_pin_state_1 = int_on_change_1
+            if INT_5_FLAG_BIT == TRUE then
                int_on_change_callback_1()
+               INT_5_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[3] == 6 then
          alias int_on_change_1           is pin_b6
          alias int_on_change_1_direction is pin_b6_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_1() is
+         INT_6_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_6_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_6_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_1() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_1 != int_on_change_1 then
-               int_on_change_pin_state_1 = int_on_change_1
+            if INT_6_FLAG_BIT == TRUE then
                int_on_change_callback_1()
+               INT_6_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[3] == 7 then
          alias int_on_change_1           is pin_b7
          alias int_on_change_1_direction is pin_b7_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_1() is
+         INT_7_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_7_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_7_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_1() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_1 != int_on_change_1 then
-               int_on_change_pin_state_1 = int_on_change_1
+            if INT_7_FLAG_BIT == TRUE then
                int_on_change_callback_1()
+               INT_7_FLAG_BIT = FALSE
             end if
          end procedure
       end if
+      int_on_change_1_direction = INPUT
    end if
-   int_on_change_1_direction = INPUT
-end if
 
-
-
--- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
--- made with mostly constants.
-if INT_ON_CHANGE_PIN_COUNT > 2 then
-   procedure int_on_change_callback_2()
-   if INT_ON_CHANGE_PINS[4] == "B" | INT_ON_CHANGE_PINS[4] == "b" then
-      var byte int_on_change_pin_state_2
-
+   if INT_ON_CHANGE_PIN_COUNT > 2 then
+      procedure int_on_change_callback_2()
       if INT_ON_CHANGE_PINS[5] == 0 then
          alias int_on_change_2           is pin_b0
          alias int_on_change_2_direction is pin_b0_direction
-         INT_0_EDGE_BIT = INT_RISING_EDGE
-         INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_0_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_0_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_0_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_2() is
             pragma inline
             if INT_0_FLAG_BIT == TRUE then
-               INT_0_EDGE_BIT = !pin_state_0
                int_on_change_callback_2()
                INT_0_FLAG_BIT = FALSE
             end if
@@ -359,47 +339,44 @@ if INT_ON_CHANGE_PIN_COUNT > 2 then
       elsif INT_ON_CHANGE_PINS[5] == 1 then
          alias int_on_change_2           is pin_b1
          alias int_on_change_2_direction is pin_b1_direction
-         INT_1_EDGE_BIT = INT_RISING_EDGE
-         INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_1_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_1_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_1_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_2() is
             pragma inline
             if INT_1_FLAG_BIT == TRUE then
-               INT_1_EDGE_BIT = !pin_state_1
                int_on_change_callback_2()
                INT_1_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[5] == 2 then
-         alias int_on_change_2           is pin_b3
-         alias int_on_change_2_direction is pin_b3_direction
-         INT_2_EDGE_BIT = INT_RISING_EDGE
-         INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+         alias int_on_change_2           is pin_b2
+         alias int_on_change_2_direction is pin_b2_direction
+         INT_2_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_2_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_2_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_2() is
             pragma inline
             if INT_2_FLAG_BIT == TRUE then
-               INT_2_EDGE_BIT = !pin_state_2
                int_on_change_callback_2()
                INT_2_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[5] == 3 then
-         if INT_ON_CHANGE_PINS[5] == 3 then
-            "Pin B3 is not an interrupt pin!!!"
-         end if
          alias int_on_change_2           is pin_b3
          alias int_on_change_2_direction is pin_b3_direction
-         INT_3_EDGE_BIT = INT_RISING_EDGE
-         INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_3_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_3_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_3_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_2() is
             pragma inline
             if INT_3_FLAG_BIT == TRUE then
-               INT_3_EDGE_BIT = !pin_state_3
                int_on_change_callback_2()
                INT_3_FLAG_BIT = FALSE
             end if
@@ -407,78 +384,80 @@ if INT_ON_CHANGE_PIN_COUNT > 2 then
       elsif INT_ON_CHANGE_PINS[5] == 4 then
          alias int_on_change_2           is pin_b4
          alias int_on_change_2_direction is pin_b4_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_2() is
+         INT_4_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_4_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_4_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_2() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_2 != int_on_change_2 then
-               int_on_change_pin_state_2 = int_on_change_2
+            if INT_4_FLAG_BIT == TRUE then
                int_on_change_callback_2()
+               INT_4_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[5] == 5 then
          alias int_on_change_2           is pin_b5
          alias int_on_change_2_direction is pin_b5_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_2() is
+         INT_5_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_5_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_5_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_2() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_2 != int_on_change_2 then
-               int_on_change_pin_state_2 = int_on_change_2
+            if INT_5_FLAG_BIT == TRUE then
                int_on_change_callback_2()
+               INT_5_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[5] == 6 then
          alias int_on_change_2           is pin_b6
          alias int_on_change_2_direction is pin_b6_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_2() is
+         INT_6_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_6_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_6_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_2() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_2 != int_on_change_2 then
-               int_on_change_pin_state_2 = int_on_change_2
+            if INT_6_FLAG_BIT == TRUE then
                int_on_change_callback_2()
+               INT_6_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[5] == 7 then
          alias int_on_change_2           is pin_b7
          alias int_on_change_2_direction is pin_b7_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_2() is
+         INT_7_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_7_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_7_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_2() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_2 != int_on_change_2 then
-               int_on_change_pin_state_2 = int_on_change_2
+            if INT_7_FLAG_BIT == TRUE then
                int_on_change_callback_2()
+               INT_7_FLAG_BIT = FALSE
             end if
          end procedure
       end if
+      int_on_change_2_direction = INPUT
    end if
-   int_on_change_2_direction = INPUT
-end if
 
--- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
--- made with mostly constants.
-if INT_ON_CHANGE_PIN_COUNT > 3 then
-   procedure int_on_change_callback_3()
-   if INT_ON_CHANGE_PINS[6] == "B" | INT_ON_CHANGE_PINS[6] == "b" then
-      var byte int_on_change_pin_state_3
-
+   if INT_ON_CHANGE_PIN_COUNT > 3 then
+      procedure int_on_change_callback_3()
       if INT_ON_CHANGE_PINS[7] == 0 then
          alias int_on_change_3           is pin_b0
          alias int_on_change_3_direction is pin_b0_direction
-         INT_0_EDGE_BIT = INT_RISING_EDGE
-         INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_0_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_0_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_0_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_3() is
             pragma inline
             if INT_0_FLAG_BIT == TRUE then
-               INT_0_EDGE_BIT = !pin_state_0
                int_on_change_callback_3()
                INT_0_FLAG_BIT = FALSE
             end if
@@ -486,47 +465,44 @@ if INT_ON_CHANGE_PIN_COUNT > 3 then
       elsif INT_ON_CHANGE_PINS[7] == 1 then
          alias int_on_change_3           is pin_b1
          alias int_on_change_3_direction is pin_b1_direction
-         INT_1_EDGE_BIT = INT_RISING_EDGE
-         INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_1_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_1_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_1_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_3() is
             pragma inline
             if INT_1_FLAG_BIT == TRUE then
-               INT_1_EDGE_BIT = !pin_state_1
                int_on_change_callback_3()
                INT_1_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[7] == 2 then
-         alias int_on_change_3           is pin_b3
-         alias int_on_change_3_direction is pin_b3_direction
-         INT_2_EDGE_BIT = INT_RISING_EDGE
-         INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+         alias int_on_change_3           is pin_b2
+         alias int_on_change_3_direction is pin_b2_direction
+         INT_2_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_2_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_2_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_3() is
             pragma inline
             if INT_2_FLAG_BIT == TRUE then
-               INT_2_EDGE_BIT = !pin_state_2
                int_on_change_callback_3()
                INT_2_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[7] == 3 then
-         if INT_ON_CHANGE_PINS[7] == 3 then
-            "Pin B3 is not an interrupt pin!!!"
-         end if
          alias int_on_change_3           is pin_b3
          alias int_on_change_3_direction is pin_b3_direction
-         INT_3_EDGE_BIT = INT_RISING_EDGE
-         INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_3_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_3_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_3_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_3() is
             pragma inline
             if INT_3_FLAG_BIT == TRUE then
-               INT_3_EDGE_BIT = !pin_state_3
                int_on_change_callback_3()
                INT_3_FLAG_BIT = FALSE
             end if
@@ -534,79 +510,80 @@ if INT_ON_CHANGE_PIN_COUNT > 3 then
       elsif INT_ON_CHANGE_PINS[7] == 4 then
          alias int_on_change_3           is pin_b4
          alias int_on_change_3_direction is pin_b4_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_3() is
+         INT_4_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_4_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_4_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_3() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_3 != int_on_change_3 then
-               int_on_change_pin_state_3 = int_on_change_3
+            if INT_4_FLAG_BIT == TRUE then
                int_on_change_callback_3()
+               INT_4_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[7] == 5 then
          alias int_on_change_3           is pin_b5
          alias int_on_change_3_direction is pin_b5_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_3() is
+         INT_5_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_5_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_5_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_3() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_3 != int_on_change_3 then
-               int_on_change_pin_state_3 = int_on_change_3
+            if INT_5_FLAG_BIT == TRUE then
                int_on_change_callback_3()
+               INT_5_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[7] == 6 then
          alias int_on_change_3           is pin_b6
          alias int_on_change_3_direction is pin_b6_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_3() is
+         INT_6_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_6_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_6_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_3() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_3 != int_on_change_3 then
-               int_on_change_pin_state_3 = int_on_change_3
+            if INT_6_FLAG_BIT == TRUE then
                int_on_change_callback_3()
+               INT_6_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[7] == 7 then
          alias int_on_change_3           is pin_b7
          alias int_on_change_3_direction is pin_b7_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_3() is
+         INT_7_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_7_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_7_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_3() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_3 != int_on_change_3 then
-               int_on_change_pin_state_3 = int_on_change_3
+            if INT_7_FLAG_BIT == TRUE then
                int_on_change_callback_3()
+               INT_7_FLAG_BIT = FALSE
             end if
          end procedure
       end if
+      int_on_change_3_direction = INPUT
    end if
-   int_on_change_3_direction = INPUT
-end if
 
-
--- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
--- made with mostly constants.
-if INT_ON_CHANGE_PIN_COUNT > 4 then
-   procedure int_on_change_callback_4()
-   if INT_ON_CHANGE_PINS[8] == "B" | INT_ON_CHANGE_PINS[8] == "b" then
-      var byte int_on_change_pin_state_4
-
+   if INT_ON_CHANGE_PIN_COUNT > 4 then
+      procedure int_on_change_callback_4()
       if INT_ON_CHANGE_PINS[9] == 0 then
          alias int_on_change_4           is pin_b0
          alias int_on_change_4_direction is pin_b0_direction
-         INT_0_EDGE_BIT = INT_RISING_EDGE
-         INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_0_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_0_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_0_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_4() is
             pragma inline
             if INT_0_FLAG_BIT == TRUE then
-               INT_0_EDGE_BIT = !pin_state_0
                int_on_change_callback_4()
                INT_0_FLAG_BIT = FALSE
             end if
@@ -614,47 +591,44 @@ if INT_ON_CHANGE_PIN_COUNT > 4 then
       elsif INT_ON_CHANGE_PINS[9] == 1 then
          alias int_on_change_4           is pin_b1
          alias int_on_change_4_direction is pin_b1_direction
-         INT_1_EDGE_BIT = INT_RISING_EDGE
-         INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_1_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_1_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_1_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_4() is
             pragma inline
             if INT_1_FLAG_BIT == TRUE then
-               INT_1_EDGE_BIT = !pin_state_1
                int_on_change_callback_4()
                INT_1_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[9] == 2 then
-         alias int_on_change_4           is pin_b3
-         alias int_on_change_4_direction is pin_b3_direction
-         INT_2_EDGE_BIT = INT_RISING_EDGE
-         INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+         alias int_on_change_4           is pin_b2
+         alias int_on_change_4_direction is pin_b2_direction
+         INT_2_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_2_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_2_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_4() is
             pragma inline
             if INT_2_FLAG_BIT == TRUE then
-               INT_2_EDGE_BIT = !pin_state_2
                int_on_change_callback_4()
                INT_2_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[9] == 3 then
-         if INT_ON_CHANGE_PINS[9] == 3 then
-            "Pin B3 is not an interrupt pin!!!"
-         end if
          alias int_on_change_4           is pin_b3
          alias int_on_change_4_direction is pin_b3_direction
-         INT_3_EDGE_BIT = INT_RISING_EDGE
-         INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_3_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_3_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_3_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_4() is
             pragma inline
             if INT_3_FLAG_BIT == TRUE then
-               INT_3_EDGE_BIT = !pin_state_3
                int_on_change_callback_4()
                INT_3_FLAG_BIT = FALSE
             end if
@@ -662,79 +636,80 @@ if INT_ON_CHANGE_PIN_COUNT > 4 then
       elsif INT_ON_CHANGE_PINS[9] == 4 then
          alias int_on_change_4           is pin_b4
          alias int_on_change_4_direction is pin_b4_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_4() is
+         INT_4_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_4_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_4_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_4() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_4 != int_on_change_4 then
-               int_on_change_pin_state_4 = int_on_change_4
+            if INT_4_FLAG_BIT == TRUE then
                int_on_change_callback_4()
+               INT_4_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[9] == 5 then
          alias int_on_change_4           is pin_b5
          alias int_on_change_4_direction is pin_b5_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_4() is
+         INT_5_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_5_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_5_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_4() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_4 != int_on_change_4 then
-               int_on_change_pin_state_4 = int_on_change_4
+            if INT_5_FLAG_BIT == TRUE then
                int_on_change_callback_4()
+               INT_5_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[9] == 6 then
          alias int_on_change_4           is pin_b6
          alias int_on_change_4_direction is pin_b6_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_4() is
+         INT_6_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_6_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_6_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_4() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_4 != int_on_change_4 then
-               int_on_change_pin_state_4 = int_on_change_4
+            if INT_6_FLAG_BIT == TRUE then
                int_on_change_callback_4()
+               INT_6_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[9] == 7 then
          alias int_on_change_4           is pin_b7
          alias int_on_change_4_direction is pin_b7_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_4() is
+         INT_7_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_7_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_7_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_4() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_4 != int_on_change_4 then
-               int_on_change_pin_state_4 = int_on_change_4
+            if INT_7_FLAG_BIT == TRUE then
                int_on_change_callback_4()
+               INT_7_FLAG_BIT = FALSE
             end if
          end procedure
       end if
+      int_on_change_4_direction = INPUT
    end if
-   int_on_change_4_direction = INPUT
-end if
 
-
--- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
--- made with mostly constants.
-if INT_ON_CHANGE_PIN_COUNT > 5 then
-   procedure int_on_change_callback_5()
-   if INT_ON_CHANGE_PINS[10] == "B" | INT_ON_CHANGE_PINS[10] == "b" then
-      var byte int_on_change_pin_state_5
-
+   if INT_ON_CHANGE_PIN_COUNT > 5 then
+      procedure int_on_change_callback_5()
       if INT_ON_CHANGE_PINS[11] == 0 then
          alias int_on_change_5           is pin_b0
          alias int_on_change_5_direction is pin_b0_direction
-         INT_0_EDGE_BIT = INT_RISING_EDGE
-         INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_0_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_0_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_0_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_5() is
             pragma inline
             if INT_0_FLAG_BIT == TRUE then
-               INT_0_EDGE_BIT = !pin_state_0
                int_on_change_callback_5()
                INT_0_FLAG_BIT = FALSE
             end if
@@ -742,47 +717,44 @@ if INT_ON_CHANGE_PIN_COUNT > 5 then
       elsif INT_ON_CHANGE_PINS[11] == 1 then
          alias int_on_change_5           is pin_b1
          alias int_on_change_5_direction is pin_b1_direction
-         INT_1_EDGE_BIT = INT_RISING_EDGE
-         INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_1_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_1_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_1_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_5() is
             pragma inline
             if INT_1_FLAG_BIT == TRUE then
-               INT_1_EDGE_BIT = !pin_state_1
                int_on_change_callback_5()
                INT_1_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[11] == 2 then
-         alias int_on_change_5           is pin_b3
-         alias int_on_change_5_direction is pin_b3_direction
-         INT_2_EDGE_BIT = INT_RISING_EDGE
-         INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+         alias int_on_change_5           is pin_b2
+         alias int_on_change_5_direction is pin_b2_direction
+         INT_2_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_2_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_2_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_5() is
             pragma inline
             if INT_2_FLAG_BIT == TRUE then
-               INT_2_EDGE_BIT = !pin_state_2
                int_on_change_callback_5()
                INT_2_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[11] == 3 then
-         if INT_ON_CHANGE_PINS[11] == 3 then
-            "Pin B3 is not an interrupt pin!!!"
-         end if
          alias int_on_change_5           is pin_b3
          alias int_on_change_5_direction is pin_b3_direction
-         INT_3_EDGE_BIT = INT_RISING_EDGE
-         INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_3_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_3_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_3_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_5() is
             pragma inline
             if INT_3_FLAG_BIT == TRUE then
-               INT_3_EDGE_BIT = !pin_state_3
                int_on_change_callback_5()
                INT_3_FLAG_BIT = FALSE
             end if
@@ -790,79 +762,80 @@ if INT_ON_CHANGE_PIN_COUNT > 5 then
       elsif INT_ON_CHANGE_PINS[11] == 4 then
          alias int_on_change_5           is pin_b4
          alias int_on_change_5_direction is pin_b4_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_5() is
+         INT_4_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_4_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_4_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_5() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_5 != int_on_change_5 then
-               int_on_change_pin_state_5 = int_on_change_5
+            if INT_4_FLAG_BIT == TRUE then
                int_on_change_callback_5()
+               INT_4_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[11] == 5 then
          alias int_on_change_5           is pin_b5
          alias int_on_change_5_direction is pin_b5_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_5() is
+         INT_5_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_5_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_5_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_5() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_5 != int_on_change_5 then
-               int_on_change_pin_state_5 = int_on_change_5
+            if INT_5_FLAG_BIT == TRUE then
                int_on_change_callback_5()
+               INT_5_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[11] == 6 then
          alias int_on_change_5           is pin_b6
          alias int_on_change_5_direction is pin_b6_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_5() is
+         INT_6_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_6_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_6_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_5() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_5 != int_on_change_5 then
-               int_on_change_pin_state_5 = int_on_change_5
+            if INT_6_FLAG_BIT == TRUE then
                int_on_change_callback_5()
+               INT_6_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[11] == 7 then
          alias int_on_change_5           is pin_b7
          alias int_on_change_5_direction is pin_b7_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_5() is
+         INT_7_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_7_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_7_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_5() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_5 != int_on_change_5 then
-               int_on_change_pin_state_5 = int_on_change_5
+            if INT_7_FLAG_BIT == TRUE then
                int_on_change_callback_5()
+               INT_7_FLAG_BIT = FALSE
             end if
          end procedure
       end if
+      int_on_change_5_direction = INPUT
    end if
-   int_on_change_5_direction = INPUT
-end if
 
-
--- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
--- made with mostly constants.
-if INT_ON_CHANGE_PIN_COUNT > 6 then
-   procedure int_on_change_callback_6()
-   if INT_ON_CHANGE_PINS[12] == "B" | INT_ON_CHANGE_PINS[12] == "b" then
-      var byte int_on_change_pin_state_6
-
+   if INT_ON_CHANGE_PIN_COUNT > 5 then
+      procedure int_on_change_callback_6()
       if INT_ON_CHANGE_PINS[13] == 0 then
          alias int_on_change_6           is pin_b0
          alias int_on_change_6_direction is pin_b0_direction
-         INT_0_EDGE_BIT = INT_RISING_EDGE
-         INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_0_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_0_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_0_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_6() is
             pragma inline
             if INT_0_FLAG_BIT == TRUE then
-               INT_0_EDGE_BIT = !pin_state_0
                int_on_change_callback_6()
                INT_0_FLAG_BIT = FALSE
             end if
@@ -870,47 +843,44 @@ if INT_ON_CHANGE_PIN_COUNT > 6 then
       elsif INT_ON_CHANGE_PINS[13] == 1 then
          alias int_on_change_6           is pin_b1
          alias int_on_change_6_direction is pin_b1_direction
-         INT_1_EDGE_BIT = INT_RISING_EDGE
-         INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_1_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_1_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_1_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_6() is
             pragma inline
             if INT_1_FLAG_BIT == TRUE then
-               INT_1_EDGE_BIT = !pin_state_1
                int_on_change_callback_6()
                INT_1_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[13] == 2 then
-         alias int_on_change_6           is pin_b3
-         alias int_on_change_6_direction is pin_b3_direction
-         INT_2_EDGE_BIT = INT_RISING_EDGE
-         INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+         alias int_on_change_6           is pin_b2
+         alias int_on_change_6_direction is pin_b2_direction
+         INT_2_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_2_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_2_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_6() is
             pragma inline
             if INT_2_FLAG_BIT == TRUE then
-               INT_2_EDGE_BIT = !pin_state_2
                int_on_change_callback_6()
                INT_2_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[13] == 3 then
-         if INT_ON_CHANGE_PINS[13] == 3 then
-            "Pin B3 is not an interrupt pin!!!"
-         end if
          alias int_on_change_6           is pin_b3
          alias int_on_change_6_direction is pin_b3_direction
-         INT_3_EDGE_BIT = INT_RISING_EDGE
-         INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_3_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_3_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_3_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_6() is
             pragma inline
             if INT_3_FLAG_BIT == TRUE then
-               INT_3_EDGE_BIT = !pin_state_3
                int_on_change_callback_6()
                INT_3_FLAG_BIT = FALSE
             end if
@@ -918,80 +888,80 @@ if INT_ON_CHANGE_PIN_COUNT > 6 then
       elsif INT_ON_CHANGE_PINS[13] == 4 then
          alias int_on_change_6           is pin_b4
          alias int_on_change_6_direction is pin_b4_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_6() is
+         INT_4_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_4_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_4_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_6() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_6 != int_on_change_6 then
-               int_on_change_pin_state_6 = int_on_change_6
+            if INT_4_FLAG_BIT == TRUE then
                int_on_change_callback_6()
+               INT_4_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[13] == 5 then
          alias int_on_change_6           is pin_b5
          alias int_on_change_6_direction is pin_b5_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_6() is
+         INT_5_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_5_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_5_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_6() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_6 != int_on_change_6 then
-               int_on_change_pin_state_6 = int_on_change_6
+            if INT_5_FLAG_BIT == TRUE then
                int_on_change_callback_6()
+               INT_5_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[13] == 6 then
          alias int_on_change_6           is pin_b6
          alias int_on_change_6_direction is pin_b6_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_6() is
+         INT_6_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_6_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_6_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_6() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_6 != int_on_change_6 then
-               int_on_change_pin_state_6 = int_on_change_6
+            if INT_6_FLAG_BIT == TRUE then
                int_on_change_callback_6()
+               INT_6_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[13] == 7 then
          alias int_on_change_6           is pin_b7
          alias int_on_change_6_direction is pin_b7_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_6() is
+         INT_7_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_7_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_7_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_6() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_6 != int_on_change_6 then
-               int_on_change_pin_state_6 = int_on_change_6
+            if INT_7_FLAG_BIT == TRUE then
                int_on_change_callback_6()
+               INT_7_FLAG_BIT = FALSE
             end if
          end procedure
       end if
+      int_on_change_6_direction = INPUT
    end if
-   int_on_change_6_direction = INPUT
-end if
 
-
-
--- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
--- made with mostly constants.
-if INT_ON_CHANGE_PIN_COUNT > 7 then
-   procedure int_on_change_callback_7()
-   if INT_ON_CHANGE_PINS[14] == "B" | INT_ON_CHANGE_PINS[14] == "b" then
-      var byte int_on_change_pin_state_7
-
+   if INT_ON_CHANGE_PIN_COUNT > 7 then
+      procedure int_on_change_callback_7()
       if INT_ON_CHANGE_PINS[15] == 0 then
          alias int_on_change_7           is pin_b0
          alias int_on_change_7_direction is pin_b0_direction
-         INT_0_EDGE_BIT = INT_RISING_EDGE
-         INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_0_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_0_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_0_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_7() is
             pragma inline
             if INT_0_FLAG_BIT == TRUE then
-               INT_0_EDGE_BIT = !pin_state_0
                int_on_change_callback_7()
                INT_0_FLAG_BIT = FALSE
             end if
@@ -999,47 +969,44 @@ if INT_ON_CHANGE_PIN_COUNT > 7 then
       elsif INT_ON_CHANGE_PINS[15] == 1 then
          alias int_on_change_7           is pin_b1
          alias int_on_change_7_direction is pin_b1_direction
-         INT_1_EDGE_BIT = INT_RISING_EDGE
-         INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_1_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_1_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_1_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_7() is
             pragma inline
             if INT_1_FLAG_BIT == TRUE then
-               INT_1_EDGE_BIT = !pin_state_1
                int_on_change_callback_7()
                INT_1_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[15] == 2 then
-         alias int_on_change_7           is pin_b3
-         alias int_on_change_7_direction is pin_b3_direction
-         INT_2_EDGE_BIT = INT_RISING_EDGE
-         INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+         alias int_on_change_7           is pin_b2
+         alias int_on_change_7_direction is pin_b2_direction
+         INT_2_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_2_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_2_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_7() is
             pragma inline
             if INT_2_FLAG_BIT == TRUE then
-               INT_2_EDGE_BIT = !pin_state_2
                int_on_change_callback_7()
                INT_2_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[15] == 3 then
-         if INT_ON_CHANGE_PINS[15] == 3 then
-            "Pin B3 is not an interrupt pin!!!"
-         end if
          alias int_on_change_7           is pin_b3
          alias int_on_change_7_direction is pin_b3_direction
-         INT_3_EDGE_BIT = INT_RISING_EDGE
-         INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
-         INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+         INT_3_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_3_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_3_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
          -- callback procedure
          procedure int_on_edge_proc_7() is
             pragma inline
             if INT_3_FLAG_BIT == TRUE then
-               INT_3_EDGE_BIT = !pin_state_3
                int_on_change_callback_7()
                INT_3_FLAG_BIT = FALSE
             end if
@@ -1047,125 +1014,1293 @@ if INT_ON_CHANGE_PIN_COUNT > 7 then
       elsif INT_ON_CHANGE_PINS[15] == 4 then
          alias int_on_change_7           is pin_b4
          alias int_on_change_7_direction is pin_b4_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_7() is
+         INT_4_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_4_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_4_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_7() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_7 != int_on_change_7 then
-               int_on_change_pin_state_7 = int_on_change_7
+            if INT_4_FLAG_BIT == TRUE then
                int_on_change_callback_7()
+               INT_4_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[15] == 5 then
          alias int_on_change_7           is pin_b5
          alias int_on_change_7_direction is pin_b5_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_7() is
+         INT_5_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_5_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_5_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_7() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_7 != int_on_change_7 then
-               int_on_change_pin_state_7 = int_on_change_7
+            if INT_5_FLAG_BIT == TRUE then
                int_on_change_callback_7()
+               INT_5_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[15] == 6 then
          alias int_on_change_7           is pin_b6
          alias int_on_change_7_direction is pin_b6_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_7() is
+         INT_6_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_6_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_6_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_7() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_7 != int_on_change_7 then
-               int_on_change_pin_state_7 = int_on_change_7
+            if INT_6_FLAG_BIT == TRUE then
                int_on_change_callback_7()
+               INT_6_FLAG_BIT = FALSE
             end if
          end procedure
       elsif INT_ON_CHANGE_PINS[15] == 7 then
          alias int_on_change_7           is pin_b7
          alias int_on_change_7_direction is pin_b7_direction
-         INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
-         INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
-         procedure int_on_change_proc_7() is
+         INT_7_ENABLE_RISING_EDGE = TRUE  -- enable rising edge detect
+         INT_7_ENABLE_FALLING_EDGE = TRUE -- enable falling edge detect
+         INT_7_FLAG_BIT = FALSE           -- clear interrupt pin bit
+
+         -- callback procedure
+         procedure int_on_edge_proc_7() is
             pragma inline
-            -- check if your pin changed, ignore other pin changes.
-            if int_on_change_pin_state_7 != int_on_change_7 then
-               int_on_change_pin_state_7 = int_on_change_7
+            if INT_7_FLAG_BIT == TRUE then
                int_on_change_callback_7()
+               INT_7_FLAG_BIT = FALSE
             end if
          end procedure
       end if
+      int_on_change_7_direction = INPUT
    end if
-   int_on_change_7_direction = INPUT
+
+
+   --------------------------------------------------------------------------------
+   -- init interrupt on change pins
+   --------------------------------------------------------------------------------
+   procedure int_on_change_isr() is
+      pragma interrupt
+
+      -- if it was a interrupt on EDGE
+      if defined(int_on_edge_proc_0) then
+        int_on_edge_proc_0()
+      end if
+
+      -- if it was a interrupt on EDGE
+      if defined(int_on_edge_proc_1) then
+        int_on_edge_proc_1()
+      end if
+
+      -- if it was a interrupt on EDGE
+      if defined(int_on_edge_proc_2) then
+        int_on_edge_proc_2()
+      end if
+
+      -- if it was a interrupt on EDGE
+      if defined(int_on_edge_proc_3) then
+        int_on_edge_proc_3()
+      end if
+
+      -- if it was a interrupt on EDGE
+      if defined(int_on_edge_proc_4) then
+        int_on_edge_proc_4()
+      end if
+
+      -- if it was a interrupt on EDGE
+      if defined(int_on_edge_proc_5) then
+        int_on_edge_proc_5()
+      end if
+
+      -- if it was a interrupt on EDGE
+      if defined(int_on_edge_proc_6) then
+        int_on_edge_proc_6()
+      end if
+
+      -- if it was a interrupt on EDGE
+      if defined(int_on_edge_proc_7) then
+        int_on_edge_proc_7()
+      end if
+   end procedure
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------- 16F and 18F code -----------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+else
+
+   -- constants
+   const byte INT_ON_CHANGE_PIN_COUNT = count(INT_ON_CHANGE_PINS) / 2
+   const INT_FALLING_EDGE = 0
+   const INT_RISING_EDGE = 1
+
+   -- alias pin interrupt registers
+   alias INT_PORTB_ENABLE_BIT is INTCON_RBIE
+   alias INT_PORTB_FLAG_BIT is INTCON_RBIF
+   --
+   if defined(INTCON_INT0IE) then -- 18F
+      alias INT_0_ENABLE_BIT is INTCON_INT0IE
+      alias INT_0_FLAG_BIT is INTCON_INT0IF
+      alias INT_0_EDGE_BIT is INTCON2_INTEDG0
+   else
+      -- 16F
+      alias INT_0_ENABLE_BIT is INTCON_INTE
+      alias INT_0_FLAG_BIT is INTCON_INTF
+      alias INT_0_EDGE_BIT is OPTION_REG_INTEDG
+   end if
+   --
+   if defined(INTCON3_INT1IE) then -- 18F Only
+      alias INT_1_ENABLE_BIT is INTCON3_INT1IE
+      alias INT_1_FLAG_BIT is INTCON3_INT1IF
+      alias INT_1_EDGE_BIT is INTCON2_INTEDG1
+   end if
+   --
+   if defined(INTCON3_INT2IE) then -- 18F Only
+      alias INT_2_ENABLE_BIT is INTCON3_INT2IE
+      alias INT_2_FLAG_BIT is INTCON3_INT2IF
+      alias INT_2_EDGE_BIT is INTCON2_INTEDG2
+   end if
+   --
+   if defined(INTCON3_INT3IE) then -- Some 18f have this
+      alias INT_3_ENABLE_BIT is INTCON3_INT3IE
+      alias INT_3_FLAG_BIT is INTCON3_INT3IF
+      alias INT_3_EDGE_BIT is INTCON2_INTEDG3
+   end if
+
+   -- check if port B is in use, save it's state right away
+   if INT_ON_CHANGE_PINS[0] == "B" | INT_ON_CHANGE_PINS[0] == "b" then
+      const INT_PORT_B_USED = TRUE
+   end if
+
+   if INT_PORT_B_USED == TRUE then
+      var byte pin_states
+      var bit pin_state_0 at pin_states : 0
+      var bit pin_state_1 at pin_states : 1
+      var bit pin_state_2 at pin_states : 2
+      var bit pin_state_3 at pin_states : 3
+      var bit pin_state_4 at pin_states : 4
+      var bit pin_state_5 at pin_states : 5
+      var bit pin_state_6 at pin_states : 6
+      var bit pin_state_7 at pin_states : 7
+   end if
+
+
+   --------------------------------------------------------------------------------
+   -- init interrupt on change pins
+   --------------------------------------------------------------------------------
+   procedure int_on_change_init() is
+      -- enable global interrupts
+      INTCON_GIE  = TRUE        -- Enables all unmasked interrupts
+      INTCON_PEIE = TRUE        -- Enables all unmasked peripheral interrupts
+   end procedure
+
+   --------------------------------------------------------------------------------
+   -- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
+   -- made with mostly constants to reduce code.
+   --------------------------------------------------------------------------------
+   if INT_ON_CHANGE_PIN_COUNT > 0 then
+      procedure int_on_change_callback_0()
+      if INT_ON_CHANGE_PINS[0] == "B" | INT_ON_CHANGE_PINS[0] == "b" then
+         var byte int_on_change_pin_state_0
+
+         if INT_ON_CHANGE_PINS[1] == 0 then
+            alias int_on_change_0           is pin_b0
+            alias int_on_change_0_direction is pin_b0_direction
+            INT_0_EDGE_BIT = INT_RISING_EDGE
+            INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_0() is
+               pragma inline
+               if INT_0_FLAG_BIT == TRUE then
+                  INT_0_EDGE_BIT = !pin_state_0
+                  int_on_change_callback_0()
+                  INT_0_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[1] == 1 then
+            alias int_on_change_0           is pin_b1
+            alias int_on_change_0_direction is pin_b1_direction
+            INT_1_EDGE_BIT = INT_RISING_EDGE
+            INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_0() is
+               pragma inline
+               if INT_1_FLAG_BIT == TRUE then
+                  INT_1_EDGE_BIT = !pin_state_1
+                  int_on_change_callback_0()
+                  INT_1_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[1] == 2 then
+            alias int_on_change_0           is pin_b3
+            alias int_on_change_0_direction is pin_b3_direction
+            INT_2_EDGE_BIT = INT_RISING_EDGE
+            INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_0() is
+               pragma inline
+               if INT_2_FLAG_BIT == TRUE then
+                  INT_2_EDGE_BIT = !pin_state_2
+                  int_on_change_callback_0()
+                  INT_2_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[1] == 3 then
+            if INT_ON_CHANGE_PINS[1] == 3 then
+               "Pin B3 is not an interrupt pin!!!"
+            end if
+            alias int_on_change_0           is pin_b3
+            alias int_on_change_0_direction is pin_b3_direction
+            INT_3_EDGE_BIT = INT_RISING_EDGE
+            INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_0() is
+               pragma inline
+               if INT_3_FLAG_BIT == TRUE then
+                  INT_3_EDGE_BIT = !pin_state_3
+                  int_on_change_callback_0()
+                  INT_3_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[1] == 4 then
+            alias int_on_change_0           is pin_b4
+            alias int_on_change_0_direction is pin_b4_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_0() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_0 != int_on_change_0 then
+                  int_on_change_pin_state_0 = int_on_change_0
+                  int_on_change_callback_0()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[1] == 5 then
+            alias int_on_change_0           is pin_b5
+            alias int_on_change_0_direction is pin_b5_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_0() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_0 != int_on_change_0 then
+                  int_on_change_pin_state_0 = int_on_change_0
+                  int_on_change_callback_0()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[1] == 6 then
+            alias int_on_change_0           is pin_b6
+            alias int_on_change_0_direction is pin_b6_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_0() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_0 != int_on_change_0 then
+                  int_on_change_pin_state_0 = int_on_change_0
+                  int_on_change_callback_0()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[1] == 7 then
+            alias int_on_change_0           is pin_b7
+            alias int_on_change_0_direction is pin_b7_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_0() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_0 != int_on_change_0 then
+                  int_on_change_pin_state_0 = int_on_change_0
+                  int_on_change_callback_0()
+               end if
+            end procedure
+         end if
+      end if
+      int_on_change_0_direction = INPUT
+   end if
+
+   -- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
+   -- made with mostly constants.
+   if INT_ON_CHANGE_PIN_COUNT > 1 then
+      procedure int_on_change_callback_1()
+      if INT_ON_CHANGE_PINS[2] == "B" | INT_ON_CHANGE_PINS[2] == "b" then
+         var byte int_on_change_pin_state_1
+
+         if INT_ON_CHANGE_PINS[3] == 0 then
+            alias int_on_change_1           is pin_b0
+            alias int_on_change_1_direction is pin_b0_direction
+            INT_0_EDGE_BIT = INT_RISING_EDGE
+            INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_1() is
+               pragma inline
+               if INT_0_FLAG_BIT == TRUE then
+                  INT_0_EDGE_BIT = !pin_state_0
+                  int_on_change_callback_1()
+                  INT_0_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[3] == 1 then
+            alias int_on_change_1           is pin_b1
+            alias int_on_change_1_direction is pin_b1_direction
+            INT_1_EDGE_BIT = INT_RISING_EDGE
+            INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_1() is
+               pragma inline
+               if INT_1_FLAG_BIT == TRUE then
+                  INT_1_EDGE_BIT = !pin_state_1
+                  int_on_change_callback_1()
+                  INT_1_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[3] == 2 then
+            alias int_on_change_1           is pin_b3
+            alias int_on_change_1_direction is pin_b3_direction
+            INT_2_EDGE_BIT = INT_RISING_EDGE
+            INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_1() is
+               pragma inline
+               if INT_2_FLAG_BIT == TRUE then
+                  INT_2_EDGE_BIT = !pin_state_2
+                  int_on_change_callback_1()
+                  INT_2_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[3] == 3 then
+            if INT_ON_CHANGE_PINS[3] == 3 then
+               "Pin B3 is not an interrupt pin!!!"
+            end if
+            alias int_on_change_1           is pin_b3
+            alias int_on_change_1_direction is pin_b3_direction
+            INT_3_EDGE_BIT = INT_RISING_EDGE
+            INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_1() is
+               pragma inline
+               if INT_3_FLAG_BIT == TRUE then
+                  INT_3_EDGE_BIT = !pin_state_3
+                  int_on_change_callback_1()
+                  INT_3_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[3] == 4 then
+            alias int_on_change_1           is pin_b4
+            alias int_on_change_1_direction is pin_b4_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_1() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_1 != int_on_change_1 then
+                  int_on_change_pin_state_1 = int_on_change_1
+                  int_on_change_callback_1()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[3] == 5 then
+            alias int_on_change_1           is pin_b5
+            alias int_on_change_1_direction is pin_b5_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_1() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_1 != int_on_change_1 then
+                  int_on_change_pin_state_1 = int_on_change_1
+                  int_on_change_callback_1()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[3] == 6 then
+            alias int_on_change_1           is pin_b6
+            alias int_on_change_1_direction is pin_b6_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_1() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_1 != int_on_change_1 then
+                  int_on_change_pin_state_1 = int_on_change_1
+                  int_on_change_callback_1()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[3] == 7 then
+            alias int_on_change_1           is pin_b7
+            alias int_on_change_1_direction is pin_b7_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_1() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_1 != int_on_change_1 then
+                  int_on_change_pin_state_1 = int_on_change_1
+                  int_on_change_callback_1()
+               end if
+            end procedure
+         end if
+      end if
+      int_on_change_1_direction = INPUT
+   end if
+
+
+
+   -- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
+   -- made with mostly constants.
+   if INT_ON_CHANGE_PIN_COUNT > 2 then
+      procedure int_on_change_callback_2()
+      if INT_ON_CHANGE_PINS[4] == "B" | INT_ON_CHANGE_PINS[4] == "b" then
+         var byte int_on_change_pin_state_2
+
+         if INT_ON_CHANGE_PINS[5] == 0 then
+            alias int_on_change_2           is pin_b0
+            alias int_on_change_2_direction is pin_b0_direction
+            INT_0_EDGE_BIT = INT_RISING_EDGE
+            INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_2() is
+               pragma inline
+               if INT_0_FLAG_BIT == TRUE then
+                  INT_0_EDGE_BIT = !pin_state_0
+                  int_on_change_callback_2()
+                  INT_0_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[5] == 1 then
+            alias int_on_change_2           is pin_b1
+            alias int_on_change_2_direction is pin_b1_direction
+            INT_1_EDGE_BIT = INT_RISING_EDGE
+            INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_2() is
+               pragma inline
+               if INT_1_FLAG_BIT == TRUE then
+                  INT_1_EDGE_BIT = !pin_state_1
+                  int_on_change_callback_2()
+                  INT_1_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[5] == 2 then
+            alias int_on_change_2           is pin_b3
+            alias int_on_change_2_direction is pin_b3_direction
+            INT_2_EDGE_BIT = INT_RISING_EDGE
+            INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_2() is
+               pragma inline
+               if INT_2_FLAG_BIT == TRUE then
+                  INT_2_EDGE_BIT = !pin_state_2
+                  int_on_change_callback_2()
+                  INT_2_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[5] == 3 then
+            if INT_ON_CHANGE_PINS[5] == 3 then
+               "Pin B3 is not an interrupt pin!!!"
+            end if
+            alias int_on_change_2           is pin_b3
+            alias int_on_change_2_direction is pin_b3_direction
+            INT_3_EDGE_BIT = INT_RISING_EDGE
+            INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_2() is
+               pragma inline
+               if INT_3_FLAG_BIT == TRUE then
+                  INT_3_EDGE_BIT = !pin_state_3
+                  int_on_change_callback_2()
+                  INT_3_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[5] == 4 then
+            alias int_on_change_2           is pin_b4
+            alias int_on_change_2_direction is pin_b4_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_2() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_2 != int_on_change_2 then
+                  int_on_change_pin_state_2 = int_on_change_2
+                  int_on_change_callback_2()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[5] == 5 then
+            alias int_on_change_2           is pin_b5
+            alias int_on_change_2_direction is pin_b5_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_2() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_2 != int_on_change_2 then
+                  int_on_change_pin_state_2 = int_on_change_2
+                  int_on_change_callback_2()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[5] == 6 then
+            alias int_on_change_2           is pin_b6
+            alias int_on_change_2_direction is pin_b6_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_2() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_2 != int_on_change_2 then
+                  int_on_change_pin_state_2 = int_on_change_2
+                  int_on_change_callback_2()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[5] == 7 then
+            alias int_on_change_2           is pin_b7
+            alias int_on_change_2_direction is pin_b7_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_2() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_2 != int_on_change_2 then
+                  int_on_change_pin_state_2 = int_on_change_2
+                  int_on_change_callback_2()
+               end if
+            end procedure
+         end if
+      end if
+      int_on_change_2_direction = INPUT
+   end if
+
+   -- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
+   -- made with mostly constants.
+   if INT_ON_CHANGE_PIN_COUNT > 3 then
+      procedure int_on_change_callback_3()
+      if INT_ON_CHANGE_PINS[6] == "B" | INT_ON_CHANGE_PINS[6] == "b" then
+         var byte int_on_change_pin_state_3
+
+         if INT_ON_CHANGE_PINS[7] == 0 then
+            alias int_on_change_3           is pin_b0
+            alias int_on_change_3_direction is pin_b0_direction
+            INT_0_EDGE_BIT = INT_RISING_EDGE
+            INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_3() is
+               pragma inline
+               if INT_0_FLAG_BIT == TRUE then
+                  INT_0_EDGE_BIT = !pin_state_0
+                  int_on_change_callback_3()
+                  INT_0_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[7] == 1 then
+            alias int_on_change_3           is pin_b1
+            alias int_on_change_3_direction is pin_b1_direction
+            INT_1_EDGE_BIT = INT_RISING_EDGE
+            INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_3() is
+               pragma inline
+               if INT_1_FLAG_BIT == TRUE then
+                  INT_1_EDGE_BIT = !pin_state_1
+                  int_on_change_callback_3()
+                  INT_1_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[7] == 2 then
+            alias int_on_change_3           is pin_b3
+            alias int_on_change_3_direction is pin_b3_direction
+            INT_2_EDGE_BIT = INT_RISING_EDGE
+            INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_3() is
+               pragma inline
+               if INT_2_FLAG_BIT == TRUE then
+                  INT_2_EDGE_BIT = !pin_state_2
+                  int_on_change_callback_3()
+                  INT_2_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[7] == 3 then
+            if INT_ON_CHANGE_PINS[7] == 3 then
+               "Pin B3 is not an interrupt pin!!!"
+            end if
+            alias int_on_change_3           is pin_b3
+            alias int_on_change_3_direction is pin_b3_direction
+            INT_3_EDGE_BIT = INT_RISING_EDGE
+            INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_3() is
+               pragma inline
+               if INT_3_FLAG_BIT == TRUE then
+                  INT_3_EDGE_BIT = !pin_state_3
+                  int_on_change_callback_3()
+                  INT_3_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[7] == 4 then
+            alias int_on_change_3           is pin_b4
+            alias int_on_change_3_direction is pin_b4_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_3() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_3 != int_on_change_3 then
+                  int_on_change_pin_state_3 = int_on_change_3
+                  int_on_change_callback_3()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[7] == 5 then
+            alias int_on_change_3           is pin_b5
+            alias int_on_change_3_direction is pin_b5_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_3() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_3 != int_on_change_3 then
+                  int_on_change_pin_state_3 = int_on_change_3
+                  int_on_change_callback_3()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[7] == 6 then
+            alias int_on_change_3           is pin_b6
+            alias int_on_change_3_direction is pin_b6_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_3() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_3 != int_on_change_3 then
+                  int_on_change_pin_state_3 = int_on_change_3
+                  int_on_change_callback_3()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[7] == 7 then
+            alias int_on_change_3           is pin_b7
+            alias int_on_change_3_direction is pin_b7_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_3() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_3 != int_on_change_3 then
+                  int_on_change_pin_state_3 = int_on_change_3
+                  int_on_change_callback_3()
+               end if
+            end procedure
+         end if
+      end if
+      int_on_change_3_direction = INPUT
+   end if
+
+
+   -- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
+   -- made with mostly constants.
+   if INT_ON_CHANGE_PIN_COUNT > 4 then
+      procedure int_on_change_callback_4()
+      if INT_ON_CHANGE_PINS[8] == "B" | INT_ON_CHANGE_PINS[8] == "b" then
+         var byte int_on_change_pin_state_4
+
+         if INT_ON_CHANGE_PINS[9] == 0 then
+            alias int_on_change_4           is pin_b0
+            alias int_on_change_4_direction is pin_b0_direction
+            INT_0_EDGE_BIT = INT_RISING_EDGE
+            INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_4() is
+               pragma inline
+               if INT_0_FLAG_BIT == TRUE then
+                  INT_0_EDGE_BIT = !pin_state_0
+                  int_on_change_callback_4()
+                  INT_0_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[9] == 1 then
+            alias int_on_change_4           is pin_b1
+            alias int_on_change_4_direction is pin_b1_direction
+            INT_1_EDGE_BIT = INT_RISING_EDGE
+            INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_4() is
+               pragma inline
+               if INT_1_FLAG_BIT == TRUE then
+                  INT_1_EDGE_BIT = !pin_state_1
+                  int_on_change_callback_4()
+                  INT_1_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[9] == 2 then
+            alias int_on_change_4           is pin_b3
+            alias int_on_change_4_direction is pin_b3_direction
+            INT_2_EDGE_BIT = INT_RISING_EDGE
+            INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_4() is
+               pragma inline
+               if INT_2_FLAG_BIT == TRUE then
+                  INT_2_EDGE_BIT = !pin_state_2
+                  int_on_change_callback_4()
+                  INT_2_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[9] == 3 then
+            if INT_ON_CHANGE_PINS[9] == 3 then
+               "Pin B3 is not an interrupt pin!!!"
+            end if
+            alias int_on_change_4           is pin_b3
+            alias int_on_change_4_direction is pin_b3_direction
+            INT_3_EDGE_BIT = INT_RISING_EDGE
+            INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_4() is
+               pragma inline
+               if INT_3_FLAG_BIT == TRUE then
+                  INT_3_EDGE_BIT = !pin_state_3
+                  int_on_change_callback_4()
+                  INT_3_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[9] == 4 then
+            alias int_on_change_4           is pin_b4
+            alias int_on_change_4_direction is pin_b4_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_4() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_4 != int_on_change_4 then
+                  int_on_change_pin_state_4 = int_on_change_4
+                  int_on_change_callback_4()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[9] == 5 then
+            alias int_on_change_4           is pin_b5
+            alias int_on_change_4_direction is pin_b5_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_4() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_4 != int_on_change_4 then
+                  int_on_change_pin_state_4 = int_on_change_4
+                  int_on_change_callback_4()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[9] == 6 then
+            alias int_on_change_4           is pin_b6
+            alias int_on_change_4_direction is pin_b6_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_4() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_4 != int_on_change_4 then
+                  int_on_change_pin_state_4 = int_on_change_4
+                  int_on_change_callback_4()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[9] == 7 then
+            alias int_on_change_4           is pin_b7
+            alias int_on_change_4_direction is pin_b7_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_4() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_4 != int_on_change_4 then
+                  int_on_change_pin_state_4 = int_on_change_4
+                  int_on_change_callback_4()
+               end if
+            end procedure
+         end if
+      end if
+      int_on_change_4_direction = INPUT
+   end if
+
+
+   -- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
+   -- made with mostly constants.
+   if INT_ON_CHANGE_PIN_COUNT > 5 then
+      procedure int_on_change_callback_5()
+      if INT_ON_CHANGE_PINS[10] == "B" | INT_ON_CHANGE_PINS[10] == "b" then
+         var byte int_on_change_pin_state_5
+
+         if INT_ON_CHANGE_PINS[11] == 0 then
+            alias int_on_change_5           is pin_b0
+            alias int_on_change_5_direction is pin_b0_direction
+            INT_0_EDGE_BIT = INT_RISING_EDGE
+            INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_5() is
+               pragma inline
+               if INT_0_FLAG_BIT == TRUE then
+                  INT_0_EDGE_BIT = !pin_state_0
+                  int_on_change_callback_5()
+                  INT_0_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[11] == 1 then
+            alias int_on_change_5           is pin_b1
+            alias int_on_change_5_direction is pin_b1_direction
+            INT_1_EDGE_BIT = INT_RISING_EDGE
+            INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_5() is
+               pragma inline
+               if INT_1_FLAG_BIT == TRUE then
+                  INT_1_EDGE_BIT = !pin_state_1
+                  int_on_change_callback_5()
+                  INT_1_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[11] == 2 then
+            alias int_on_change_5           is pin_b3
+            alias int_on_change_5_direction is pin_b3_direction
+            INT_2_EDGE_BIT = INT_RISING_EDGE
+            INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_5() is
+               pragma inline
+               if INT_2_FLAG_BIT == TRUE then
+                  INT_2_EDGE_BIT = !pin_state_2
+                  int_on_change_callback_5()
+                  INT_2_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[11] == 3 then
+            if INT_ON_CHANGE_PINS[11] == 3 then
+               "Pin B3 is not an interrupt pin!!!"
+            end if
+            alias int_on_change_5           is pin_b3
+            alias int_on_change_5_direction is pin_b3_direction
+            INT_3_EDGE_BIT = INT_RISING_EDGE
+            INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_5() is
+               pragma inline
+               if INT_3_FLAG_BIT == TRUE then
+                  INT_3_EDGE_BIT = !pin_state_3
+                  int_on_change_callback_5()
+                  INT_3_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[11] == 4 then
+            alias int_on_change_5           is pin_b4
+            alias int_on_change_5_direction is pin_b4_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_5() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_5 != int_on_change_5 then
+                  int_on_change_pin_state_5 = int_on_change_5
+                  int_on_change_callback_5()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[11] == 5 then
+            alias int_on_change_5           is pin_b5
+            alias int_on_change_5_direction is pin_b5_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_5() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_5 != int_on_change_5 then
+                  int_on_change_pin_state_5 = int_on_change_5
+                  int_on_change_callback_5()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[11] == 6 then
+            alias int_on_change_5           is pin_b6
+            alias int_on_change_5_direction is pin_b6_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_5() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_5 != int_on_change_5 then
+                  int_on_change_pin_state_5 = int_on_change_5
+                  int_on_change_callback_5()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[11] == 7 then
+            alias int_on_change_5           is pin_b7
+            alias int_on_change_5_direction is pin_b7_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_5() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_5 != int_on_change_5 then
+                  int_on_change_pin_state_5 = int_on_change_5
+                  int_on_change_callback_5()
+               end if
+            end procedure
+         end if
+      end if
+      int_on_change_5_direction = INPUT
+   end if
+
+
+   -- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
+   -- made with mostly constants.
+   if INT_ON_CHANGE_PIN_COUNT > 6 then
+      procedure int_on_change_callback_6()
+      if INT_ON_CHANGE_PINS[12] == "B" | INT_ON_CHANGE_PINS[12] == "b" then
+         var byte int_on_change_pin_state_6
+
+         if INT_ON_CHANGE_PINS[13] == 0 then
+            alias int_on_change_6           is pin_b0
+            alias int_on_change_6_direction is pin_b0_direction
+            INT_0_EDGE_BIT = INT_RISING_EDGE
+            INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_6() is
+               pragma inline
+               if INT_0_FLAG_BIT == TRUE then
+                  INT_0_EDGE_BIT = !pin_state_0
+                  int_on_change_callback_6()
+                  INT_0_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[13] == 1 then
+            alias int_on_change_6           is pin_b1
+            alias int_on_change_6_direction is pin_b1_direction
+            INT_1_EDGE_BIT = INT_RISING_EDGE
+            INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_6() is
+               pragma inline
+               if INT_1_FLAG_BIT == TRUE then
+                  INT_1_EDGE_BIT = !pin_state_1
+                  int_on_change_callback_6()
+                  INT_1_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[13] == 2 then
+            alias int_on_change_6           is pin_b3
+            alias int_on_change_6_direction is pin_b3_direction
+            INT_2_EDGE_BIT = INT_RISING_EDGE
+            INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_6() is
+               pragma inline
+               if INT_2_FLAG_BIT == TRUE then
+                  INT_2_EDGE_BIT = !pin_state_2
+                  int_on_change_callback_6()
+                  INT_2_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[13] == 3 then
+            if INT_ON_CHANGE_PINS[13] == 3 then
+               "Pin B3 is not an interrupt pin!!!"
+            end if
+            alias int_on_change_6           is pin_b3
+            alias int_on_change_6_direction is pin_b3_direction
+            INT_3_EDGE_BIT = INT_RISING_EDGE
+            INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_6() is
+               pragma inline
+               if INT_3_FLAG_BIT == TRUE then
+                  INT_3_EDGE_BIT = !pin_state_3
+                  int_on_change_callback_6()
+                  INT_3_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[13] == 4 then
+            alias int_on_change_6           is pin_b4
+            alias int_on_change_6_direction is pin_b4_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_6() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_6 != int_on_change_6 then
+                  int_on_change_pin_state_6 = int_on_change_6
+                  int_on_change_callback_6()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[13] == 5 then
+            alias int_on_change_6           is pin_b5
+            alias int_on_change_6_direction is pin_b5_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_6() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_6 != int_on_change_6 then
+                  int_on_change_pin_state_6 = int_on_change_6
+                  int_on_change_callback_6()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[13] == 6 then
+            alias int_on_change_6           is pin_b6
+            alias int_on_change_6_direction is pin_b6_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_6() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_6 != int_on_change_6 then
+                  int_on_change_pin_state_6 = int_on_change_6
+                  int_on_change_callback_6()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[13] == 7 then
+            alias int_on_change_6           is pin_b7
+            alias int_on_change_6_direction is pin_b7_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_6() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_6 != int_on_change_6 then
+                  int_on_change_pin_state_6 = int_on_change_6
+                  int_on_change_callback_6()
+               end if
+            end procedure
+         end if
+      end if
+      int_on_change_6_direction = INPUT
+   end if
+
+
+
+   -- setup interrupt on change pins from pin selection array (INT_ON_CHANGE_PINS).
+   -- made with mostly constants.
+   if INT_ON_CHANGE_PIN_COUNT > 7 then
+      procedure int_on_change_callback_7()
+      if INT_ON_CHANGE_PINS[14] == "B" | INT_ON_CHANGE_PINS[14] == "b" then
+         var byte int_on_change_pin_state_7
+
+         if INT_ON_CHANGE_PINS[15] == 0 then
+            alias int_on_change_7           is pin_b0
+            alias int_on_change_7_direction is pin_b0_direction
+            INT_0_EDGE_BIT = INT_RISING_EDGE
+            INT_0_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_0_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_7() is
+               pragma inline
+               if INT_0_FLAG_BIT == TRUE then
+                  INT_0_EDGE_BIT = !pin_state_0
+                  int_on_change_callback_7()
+                  INT_0_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[15] == 1 then
+            alias int_on_change_7           is pin_b1
+            alias int_on_change_7_direction is pin_b1_direction
+            INT_1_EDGE_BIT = INT_RISING_EDGE
+            INT_1_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_1_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_7() is
+               pragma inline
+               if INT_1_FLAG_BIT == TRUE then
+                  INT_1_EDGE_BIT = !pin_state_1
+                  int_on_change_callback_7()
+                  INT_1_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[15] == 2 then
+            alias int_on_change_7           is pin_b3
+            alias int_on_change_7_direction is pin_b3_direction
+            INT_2_EDGE_BIT = INT_RISING_EDGE
+            INT_2_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_2_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_7() is
+               pragma inline
+               if INT_2_FLAG_BIT == TRUE then
+                  INT_2_EDGE_BIT = !pin_state_2
+                  int_on_change_callback_7()
+                  INT_2_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[15] == 3 then
+            if INT_ON_CHANGE_PINS[15] == 3 then
+               "Pin B3 is not an interrupt pin!!!"
+            end if
+            alias int_on_change_7           is pin_b3
+            alias int_on_change_7_direction is pin_b3_direction
+            INT_3_EDGE_BIT = INT_RISING_EDGE
+            INT_3_ENABLE_BIT = TRUE  -- interrupt pin enable bit
+            INT_3_FLAG_BIT = FALSE -- clear interrupt pin bit
+            -- callback procedure
+            procedure int_on_edge_proc_7() is
+               pragma inline
+               if INT_3_FLAG_BIT == TRUE then
+                  INT_3_EDGE_BIT = !pin_state_3
+                  int_on_change_callback_7()
+                  INT_3_FLAG_BIT = FALSE
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[15] == 4 then
+            alias int_on_change_7           is pin_b4
+            alias int_on_change_7_direction is pin_b4_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_7() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_7 != int_on_change_7 then
+                  int_on_change_pin_state_7 = int_on_change_7
+                  int_on_change_callback_7()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[15] == 5 then
+            alias int_on_change_7           is pin_b5
+            alias int_on_change_7_direction is pin_b5_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_7() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_7 != int_on_change_7 then
+                  int_on_change_pin_state_7 = int_on_change_7
+                  int_on_change_callback_7()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[15] == 6 then
+            alias int_on_change_7           is pin_b6
+            alias int_on_change_7_direction is pin_b6_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_7() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_7 != int_on_change_7 then
+                  int_on_change_pin_state_7 = int_on_change_7
+                  int_on_change_callback_7()
+               end if
+            end procedure
+         elsif INT_ON_CHANGE_PINS[15] == 7 then
+            alias int_on_change_7           is pin_b7
+            alias int_on_change_7_direction is pin_b7_direction
+            INT_PORTB_ENABLE_BIT = TRUE  -- port b interrupt on change enable bit
+            INT_PORTB_FLAG_BIT = FALSE   -- clear interrupt on change pin bit
+            procedure int_on_change_proc_7() is
+               pragma inline
+               -- check if your pin changed, ignore other pin changes.
+               if int_on_change_pin_state_7 != int_on_change_7 then
+                  int_on_change_pin_state_7 = int_on_change_7
+                  int_on_change_callback_7()
+               end if
+            end procedure
+         end if
+      end if
+      int_on_change_7_direction = INPUT
+   end if
+
+   --------------------------------------------------------------------------------
+   -- init interrupt on change pins
+   --------------------------------------------------------------------------------
+   procedure int_on_change_isr() is
+      pragma interrupt
+
+      if defined(INT_PORT_B_USED) == TRUE  then
+         pin_states = portb
+      end if
+
+      -- if it was a interrupt on EDGE
+      if defined(int_on_edge_proc_0) then
+        int_on_edge_proc_0()
+      end if
+      if defined(int_on_edge_proc_1) then
+         int_on_edge_proc_1()
+      end if
+      if defined(int_on_edge_proc_2) then
+         int_on_edge_proc_2()
+      end if
+      if defined(int_on_edge_proc_3) then
+         int_on_edge_proc_3()
+      end if
+      if defined(int_on_edge_proc_4) then
+         int_on_edge_proc_4()
+      end if
+      if defined(int_on_edge_proc_5) then
+         int_on_edge_proc_5()
+      end if
+      if defined(int_on_edge_proc_6) then
+         int_on_edge_proc_6()
+      end if
+      if defined(int_on_edge_proc_7) then
+         int_on_edge_proc_7()
+      end if
+
+      -- if it was a interrupt on change
+      if INT_PORTB_FLAG_BIT == TRUE then
+
+         if defined(int_on_change_proc_0) then
+            int_on_change_proc_0()
+         end if
+         if defined(int_on_change_proc_1) then
+            int_on_change_proc_1()
+         end if
+         if defined(int_on_change_proc_2) then
+            int_on_change_proc_2()
+         end if
+         if defined(int_on_change_proc_3) then
+            int_on_change_proc_3()
+         end if
+         if defined(int_on_change_proc_4) then
+            int_on_change_proc_4()
+         end if
+         if defined(int_on_change_proc_5) then
+            int_on_change_proc_5()
+         end if
+         if defined(int_on_change_proc_6) then
+            int_on_change_proc_6()
+         end if
+         if defined(int_on_change_proc_7) then
+            int_on_change_proc_7()
+         end if
+
+         INT_PORTB_FLAG_BIT = FALSE -- clear interrupt on change pin bit
+      end if
+
+   end procedure
+
 end if
-
---------------------------------------------------------------------------------
--- init interrupt on change pins
---------------------------------------------------------------------------------
-procedure int_on_change_isr() is
-   pragma interrupt
-
-   if defined(INT_PORT_B_USED) == TRUE  then
-      pin_states = portb
-   end if
-
-   -- if it was a interrupt on EDGE
-   if defined(int_on_edge_proc_0) then
-     int_on_edge_proc_0()
-   end if
-   if defined(int_on_edge_proc_1) then
-      int_on_edge_proc_1()
-   end if
-   if defined(int_on_edge_proc_2) then
-      int_on_edge_proc_2()
-   end if
-   if defined(int_on_edge_proc_3) then
-      int_on_edge_proc_3()
-   end if
-   if defined(int_on_edge_proc_4) then
-      int_on_edge_proc_4()
-   end if
-   if defined(int_on_edge_proc_5) then
-      int_on_edge_proc_5()
-   end if
-   if defined(int_on_edge_proc_6) then
-      int_on_edge_proc_6()
-   end if
-   if defined(int_on_edge_proc_7) then
-      int_on_edge_proc_7()
-   end if
-
-   -- if it was a interrupt on change
-   if INT_PORTB_FLAG_BIT == TRUE then
-
-      if defined(int_on_change_proc_0) then
-         int_on_change_proc_0()
-      end if
-      if defined(int_on_change_proc_1) then
-         int_on_change_proc_1()
-      end if
-      if defined(int_on_change_proc_2) then
-         int_on_change_proc_2()
-      end if
-      if defined(int_on_change_proc_3) then
-         int_on_change_proc_3()
-      end if
-      if defined(int_on_change_proc_4) then
-         int_on_change_proc_4()
-      end if
-      if defined(int_on_change_proc_5) then
-         int_on_change_proc_5()
-      end if
-      if defined(int_on_change_proc_6) then
-         int_on_change_proc_6()
-      end if
-      if defined(int_on_change_proc_7) then
-         int_on_change_proc_7()
-      end if
-
-      INT_PORTB_FLAG_BIT = FALSE -- clear interrupt on change pin bit
-   end if
-
-end procedure
