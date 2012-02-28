@@ -107,6 +107,9 @@ var dword fat32_cluster_begin          -- the location of the beginning of clust
 var bit fat32_init_ok = FALSE          -- tells you if fat32 initalized ok or not.
 alias fat32_dir_cluster_address is fat32_root_dir_first_cluster -- current dir address (re-use fat32_root_dir_first_cluster variable)
 
+var byte _fat32_file_cluster_address[4] at fat32_file_cluster_address
+var byte _fat32_dir_cluster_address[4] at fat32_dir_cluster_address
+
 -- Create file fat32_file_attribute variables
 var byte fat32_file_attrib
 var bit fat32_is_read_only at fat32_file_attrib : 0
@@ -2523,25 +2526,82 @@ procedure fat32_file_remove(word in file_number) is
 end procedure
 
 -- ----------------------------------------------------------------------------
--- Creates a directory. not finnished yet.
+-- Creates a directory.
+-- If a file was open previously, it will be closed.
+-- dir can hold up to 2048 short file names (65536/32), if no long file names.
+-- I have not tested adding more then that.
+-- For now, you may change the line "fat32_set_file_size(65536)" to suit your
+-- needs.
 -- ----------------------------------------------------------------------------
-procedure fat32_dir_create(byte in dirname[]) is
-   if count(dirname) <= 8 then -- It is a short file name
+procedure fat32_dir_create(byte in dirname[8]) is
+   var dword sector_step
+   var word byte_step
 
-      const byte ext[] = "   "
-      fat32_is_directory = TRUE
-      fat32_is_read_only = FALSE
-      fat32_is_hidden = FALSE
-      fat32_is_system = FALSE
-      fat32_is_volume_id = FALSE
-      fat32_is_archive = FALSE
+   -- create the file/dir name.
+   const byte ext[] = "   "
+   fat32_is_directory = FALSE -- It is a file at the moment.
+   fat32_is_read_only = FALSE
+   fat32_is_hidden = FALSE
+   fat32_is_system = FALSE
+   fat32_is_volume_id = FALSE
+   fat32_is_archive = FALSE
+   fat32_file_create(dirname, ext)
 
-      fat32_file_create(dirname, ext)
+   -- refresh the dir.
+   -- note: maybe this could be done in fat32_file_create()?
+   _fat32_read_dir_info()
 
-      -- now go into the dir and create file entries "." and "..", then go to ".."
-   else
-      -- long names not supported yet
-   end if
+   -- open the file
+   var byte ignore_return1 = fat32_file_open(fat32_dir_file_count - 1)
+
+   -- set the file size.
+   -- dir can hold 2048 short file names. (65536/32)
+   fat32_set_file_size(65536)
+
+   -- open the file
+   var byte ignore_return2 = fat32_file_open(fat32_dir_file_count - 1)
+
+   -- set the data to be written (all zero's)
+   for 512 using byte_step loop
+      fat32_sector_buffer[byte_step] = 0x00
+   end loop
+   for 8 using sector_step loop
+      fat32_write_file_sector_number(sector_step)
+   end loop
+
+   -- make the first sector's directories "." and ".."
+   const byte fat32_dir_first_sector[64] = {
+      0x2E,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x10,0x00,0x0E,0xE7,0x8E,
+      0x5A,0x40,0x5A,0x40,0x00,0x00,0xE8,0x8E,0x5A,0x40,0x03,0x00,0x00,0x00,0x00,0x00,
+      0x2E,0x2E,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x10,0x00,0x0E,0xE7,0x8E,
+      0x5A,0x40,0x5A,0x40,0x00,0x00,0xE8,0x8E,0x5A,0x40,0x00,0x00,0x00,0x00,0x00,0x00
+      }
+
+   -- put the constant array into the first sector of the file (soon to be dir)
+   for 64 using byte_step loop
+      var byte temp = fat32_dir_first_sector[byte_step] -- compiler bug? need to assign to variable first.
+      fat32_sector_buffer[byte_step] = temp
+   end loop
+
+   -- set "." cluster location (current dir)
+   fat32_sector_buffer[21] = _fat32_file_cluster_address[3]
+   fat32_sector_buffer[20] = _fat32_file_cluster_address[2]
+   fat32_sector_buffer[27] = _fat32_file_cluster_address[1]
+   fat32_sector_buffer[26] = _fat32_file_cluster_address[0]
+
+   -- set ".." cluster location (parent dir)
+   fat32_sector_buffer[32 + 21] = _fat32_dir_cluster_address[3]
+   fat32_sector_buffer[32 + 20] = _fat32_dir_cluster_address[2]
+   fat32_sector_buffer[32 + 27] = _fat32_dir_cluster_address[1]
+   fat32_sector_buffer[32 + 26] = _fat32_dir_cluster_address[0]
+
+   fat32_write_file_sector_number(0) -- write to file sector 0
+
+   -- change the file into a directory by changing it's attributes
+   fat32_is_directory = TRUE
+   fat32_file_entry_data(FAT32_FILE, _FAT32_PUT, _FAT32_ATTRIB)
+
+   _fat32_read_dir_info() -- refresh current dir
 end procedure
 
 -- ----------------------------------------------------------------------------
