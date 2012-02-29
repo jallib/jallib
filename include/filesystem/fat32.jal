@@ -78,7 +78,6 @@
 -- need dir_referesh procedure. Maybe just alias fat32_read_dir_info()
 -- do we really need to specify what to get/put in fat32_file_entry_data?
 -- make list partitions procedure.
--- something wrong with create short file names < 8 char
 -- create file rename procedure
 -- create file delete procedure
 -- one file does not show size/cluster correctly (#4)
@@ -90,8 +89,9 @@
 ;fat32_file_name[]                     -- holds the long file_name
 var byte fat32_file_name_length        -- holds the size of the long file_name
 var dword fat32_file_size              -- holds file size after file_read_info()
-var byte  fat32_file_extension[3]      -- holds file extension after file_read_info()
-var byte  fat32_short_file_name[8]     -- holds file short name after file_read_info()
+var byte  fat32_full_short_file_name[11]                                -- holds full file short name (name & extension) after file_read_info()
+var byte  fat32_short_file_name[8] at fat32_full_short_file_name[0]     -- holds file short name after file_read_info()
+var byte  fat32_file_extension[3] at fat32_full_short_file_name[8]      -- holds file extension after file_read_info()
 var dword fat32_file_cluster_address   -- hold the location of the files start cluster after file_read_info()
 var bit   fat32_file_has_long_name     -- holds if the file name has a long file name after file_read_info()
 var word  fat32_dir_file_count         -- number of files in current directory
@@ -102,13 +102,10 @@ var volatile dword fat32_current_dir_location -- sector location of last dir rea
 var word fat32_fat_begin               -- the sector location of the file alocation table for current partition
 var byte  fat32_sectors_per_cluster    -- the number of sectors per cluster, usually 8
 var dword fat32_root_dir_first_cluster -- the location of the root dir's first cluster, (should be 2 only after init)
-;var dword fat32_file_location          -- holds file location after file_read_info()
+;var dword fat32_file_location         -- holds file location after file_read_info()
 var dword fat32_cluster_begin          -- the location of the beginning of clusters (where files & folders data is)
 var bit fat32_init_ok = FALSE          -- tells you if fat32 initalized ok or not.
 alias fat32_dir_cluster_address is fat32_root_dir_first_cluster -- current dir address (re-use fat32_root_dir_first_cluster variable)
-
-var byte _fat32_file_cluster_address[4] at fat32_file_cluster_address
-var byte _fat32_dir_cluster_address[4] at fat32_dir_cluster_address
 
 -- Create file fat32_file_attribute variables
 var byte fat32_file_attrib
@@ -147,6 +144,21 @@ var dword  _fat32_file_last_cluster
 var dword  _fat32_dir_last_cluster
 var byte*FAT32_ENTRIES_MAX fat32_current_file_number
 ;var byte*FAT32_ENTRIES_MAX fat32_current_dir_number
+var dword _fat32_dir_sectors           -- holds dir size (in sectors) after _fat32_read_dir_info
+var byte _fat32_file_cluster_address[4] at fat32_file_cluster_address
+var byte _fat32_dir_cluster_address[4] at fat32_dir_cluster_address
+
+const byte FAT32_DIRECTORY = 0
+const byte FAT32_FILE = 1
+const byte FAT32_VALID_CHARACTERS[] = {
+   "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+   "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+   "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+   " ", "`", "&", "'", "@", "{", "}", "[", "]", ",", "$", "=", "!", "-", "#", "(", ")", "%", ".", "+", "~", "_"
+   }
+
+-- prototypes
+procedure _fat32_set_size(bit in file_or_dir, dword in file_size)
 
 -- includes
 -- print and format are needed for some procedures
@@ -455,8 +467,6 @@ end procedure
 -- read fragment locations from fat, store in
 -- fat32_dir_fragments_start & fat32_dir_fragment_cluster_count arrays
 -- ----------------------------------------------------------------------------
-const byte FAT32_DIRECTORY = 0
-const byte FAT32_FILE = 1
 var dword fat32_current_cluster
 --
 -- the user may create these arrays themselves in an external memory source
@@ -1156,6 +1166,7 @@ procedure _fat32_read_dir_info() is
                -- check if max files allowed was reached
                if fat32_dir_file_count > FAT32_FILES_MAX then
                   fat32_dir_file_count = FAT32_FILES_MAX
+                  _fat32_dir_sectors = address -- number of sectors used by this directory
                end if
                return
             end if
@@ -1164,6 +1175,7 @@ procedure _fat32_read_dir_info() is
       end loop
       address = address + 1
    end loop
+   _fat32_dir_sectors = address - 1 -- number of sectors used by this directory
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -1377,30 +1389,55 @@ procedure fat32_file_entry_data(bit in file_or_dir, bit in get_put, byte in data
 
          -- if there is no long filename, put the short filename into the long filename array
          if fat32_file_has_long_name == FALSE then
-
             -- reset the filename
-            var byte step3
-            for count(fat32_file_name) using step3 loop
-               fat32_file_name[step3] = 0
+            var byte step1, step2
+            for count(fat32_file_name) using step1 loop
+               fat32_file_name[step1] = 0
             end loop
 
-            var byte step
-            for count(fat32_short_file_name) using step loop
-               fat32_file_name[step] = fat32_short_file_name[step]
-            end loop
-
-            if fat32_is_directory == TRUE | fat32_is_volume_id == TRUE then
-               fat32_file_name[step + 0] = fat32_file_extension[0]
-               fat32_file_name[step + 1] = fat32_file_extension[1]
-               fat32_file_name[step + 2] = fat32_file_extension[2]
-            else
-               fat32_file_name[step + 0] = "."
-               fat32_file_name[step + 1] = fat32_file_extension[0]
-               fat32_file_name[step + 2] = fat32_file_extension[1]
-               fat32_file_name[step + 3] = fat32_file_extension[2]
-            end if
+           if fat32_is_volume_id == TRUE then
+              -- find location of last " " char
+              step2 = 10
+              for 11 loop
+                 if fat32_full_short_file_name[step1] != " " then
+                    exit loop
+                 end if
+                 step2 = step2 - 1
+              end loop
+              -- put volume id into file name array
+              for step2 using step1 loop
+                    fat32_file_name[step1] = fat32_full_short_file_name[step1]
+              end loop
+           elsif fat32_is_directory == TRUE then
+              -- put 8 byte volume id into file name array
+              for 8 using step1 loop
+                 if fat32_short_file_name[step1] != " " then
+                    fat32_file_name[step1] = fat32_short_file_name[step1]
+                 end if
+              end loop
+           else -- if it is a file
+              -- get 8 byte file name, no spaces
+              var byte step2 = 0
+              for 8 using step1 loop
+                 if (fat32_short_file_name[step1] != " ") then
+                    fat32_file_name[step2] = fat32_short_file_name[step1]
+                    step2 = step2 + 1
+                 end if
+              end loop
+              -- add the extention, if it is not spaces
+              if (fat32_file_extension[0] != " ") then
+                 fat32_file_name[step2] = "."
+                 fat32_file_name[step2 + 1] = fat32_file_extension[0]
+              end if
+              if (fat32_file_extension[1] != " ") then
+                 fat32_file_name[step2 + 2] = fat32_file_extension[1]
+              end if
+              if (fat32_file_extension[2] != " ") then
+                 fat32_file_name[step2 + 3] = fat32_file_extension[2]
+              end if
+           end if
+           
          end if
-
       end if
 
       if (data_type & _FAT32_CLUSTER_LOCATION) > 0 then
@@ -1410,8 +1447,6 @@ procedure fat32_file_entry_data(bit in file_or_dir, bit in get_put, byte in data
          _cluster_address[2] = fat32_sector_buffer[sector_entry_number + 20]
          _cluster_address[1] = fat32_sector_buffer[sector_entry_number + 27]
          _cluster_address[0] = fat32_sector_buffer[sector_entry_number + 26]
-
-
 
 ;         fat32_file_location = fat32_file_cluster_address + (fat32_root_dir_first_cluster * fat32_sectors_per_cluster)
       end if
@@ -1435,8 +1470,9 @@ procedure fat32_file_entry_data(bit in file_or_dir, bit in get_put, byte in data
 
    else -- _FAT32_PUT
 
-      -- check byte 11 of this entry to see if it is a long file name
-      if fat32_sector_buffer[sector_entry_number*32 + 11] == 0x0F then
+      -- check byte 11 of this entry to see if it is a long file name, and make sure it is not a deleted file.
+      var word index = sector_entry_number*32
+      if (fat32_sector_buffer[index + 11] == 0x0F) & (fat32_sector_buffer[index] != 0x00) & (fat32_sector_buffer[index] != FAT32_ENTRY_DELETED) then
 
          fat32_file_has_long_name = TRUE
 
@@ -1921,69 +1957,101 @@ end procedure
 -- Set fat32_attrib before running this procedure
 -- not for directories. see fat32_dir_create()
 -- ----------------------------------------------------------------------------
-procedure fat32_file_create(byte in file_name[], byte in file_extension[]) is
+function fat32_file_create(byte in file_name[], byte in file_extension[3]) return byte is
    var byte step1, step2
-   var word step3
    var word sector_count
    var word sector_byte_location
 
-   if count(file_name) <= 8 then -- It is a short file name
-      -- find somewhere to write the file_name in the current dir
-      sector_count = 0
-      forever loop
-         -- start reading at the beginning of the directory and continue
-         _fat32_read_dir_sector_number(sector_count) -- need to change for fragmented directory
-
-         for 16 using step1 loop -- there are 16 file_name entries per sector
-            -- check for a deleted entry, or an entry at the end of the directory
-            sector_byte_location = word(step1) * 32
-            if fat32_sector_buffer[sector_byte_location] == 0x00 | fat32_sector_buffer[sector_byte_location] == FAT32_ENTRY_DELETED then
-
-               -- save it's location
-               fat32_entry_location[fat32_dir_file_count] = (sector_count << 4) + (step1)
-               fat32_current_file_number = fat32_dir_file_count
-
-               --add an file to the file list
-               fat32_dir_file_count = fat32_dir_file_count + 1
-
-               -- set the short file name
-               for count(file_name) using step2 loop
-                  fat32_short_file_name[step2] = file_name[step2]
-               end loop
-
-               -- add spaces if short file name then 8 characters
-               for 8 - count(file_name) loop
-                  fat32_short_file_name[step2] = " "
-               end loop
-
-               -- write the file extension
-               for 3 using step2 loop
-                  fat32_file_extension[step2] = file_extension[step2]
-                  fat32_sector_buffer[sector_byte_location] = file_extension[step2]
-               end loop
-
-               -- write the file attributes
-               fat32_file_attrib = fat32_file_attrib
-
-               -- write the file cluster high location as 0's
-               fat32_file_cluster_address = 0
-
-               -- write the file size as 0 bytes
-               fat32_file_size = 0
-
-               fat32_file_entry_data(FAT32_FILE, _FAT32_PUT,_FAT32_SHORT_NAME + _FAT32_EXTENSION + _FAT32_ATTRIB + _FAT32_CLUSTER_LOCATION + _FAT32_SIZE)
-
-               return -- all done, lets get out of here!
-            end if
-         end loop
-         sector_count = sector_count + 1
+   -- check if the file name has only valid characters
+   var bit char_is_valid = FALSE
+   for count(file_name) using step1 loop
+      for count(FAT32_VALID_CHARACTERS) using step2 loop
+         if file_name[step1] == FAT32_VALID_CHARACTERS[step2] then
+            char_is_valid = TRUE
+            exit loop
+         end if
       end loop
-   else                          -- It is a long file name
-      -- long file_names are not supported yet
-      if FAT32_WRITE_LONG_FILE_NAMES == TRUE then
+      if char_is_valid == FALSE then
+         return 0
+      else
+         char_is_valid = FALSE
       end if
+   end loop
+   --
+   if FAT32_WRITE_LONG_FILE_NAMES == FALSE then
+      step1 = byte(count(file_name)) - 1
+
+      while file_name[step1] == " " loop
+         step1 = step1 - 1
+      end loop
+      step1 = step1 + 1
+
+      for step1 using step2 loop
+         if file_name[step2] == " " then
+            return 0
+         end if
+      end loop
    end if
-end procedure
+
+   -- find somewhere to write the file_name in the current dir
+   sector_count = 0
+   forever loop
+      
+      -- if the directory size is too small
+      if sector_count > _fat32_dir_sectors then
+         _fat32_set_size(FAT32_DIRECTORY, (_fat32_dir_sectors + 128) * 512)
+      end if
+
+      -- start reading at the beginning of the directory and continue
+      _fat32_read_dir_sector_number(sector_count) -- need to change for fragmented directory
+
+      for 16 using step1 loop -- there are 16 file_name entries per sector
+         -- check for a deleted entry, or an entry at the end of the directory
+         sector_byte_location = word(step1) * 32
+         if fat32_sector_buffer[sector_byte_location] == 0x00 | fat32_sector_buffer[sector_byte_location] == FAT32_ENTRY_DELETED then
+
+            -- save it's location
+            fat32_entry_location[fat32_dir_file_count] = (sector_count << 4) + (step1)
+            fat32_current_file_number = fat32_dir_file_count
+
+            --add a file to the file list
+            fat32_dir_file_count = fat32_dir_file_count + 1
+
+            -- set the short file name
+            for count(file_name) using step2 loop
+               fat32_short_file_name[step2] = file_name[step2]
+            end loop
+
+            -- add spaces if short file name is less then 8 characters
+            for 8 - count(file_name) loop
+               fat32_short_file_name[step2] = " "
+            end loop
+
+            -- write the file extension
+            for 3 using step2 loop
+               fat32_file_extension[step2] = file_extension[step2]
+               fat32_sector_buffer[sector_byte_location] = file_extension[step2]
+            end loop
+
+            -- write the file attributes
+            fat32_file_attrib = fat32_file_attrib
+
+            -- write the file cluster high location as 0's
+            fat32_file_cluster_address = 0
+
+            -- write the file size as 0 bytes
+            fat32_file_size = 0
+
+            fat32_file_entry_data(FAT32_FILE, _FAT32_PUT,_FAT32_SHORT_NAME + _FAT32_EXTENSION + _FAT32_ATTRIB + _FAT32_CLUSTER_LOCATION + _FAT32_SIZE)
+
+            return 1 -- all done, lets get out of here!
+         end if
+      end loop
+      sector_count = sector_count + 1
+   end loop
+
+   return 0
+end function
 
 ------------------------------------------------------------------------------------------------
 
@@ -2305,6 +2373,7 @@ procedure _fat32_set_size(bit in file_or_dir, dword in file_size) is
    var word clusters_current = 0
 
    if file_or_dir == FAT32_DIRECTORY then
+      -- NOT SUPPORTED YET
    else
       -- get how many clusters the file will need to use
       -- maybe this could be optimized by subtracting 1 from file size then remove if statment?
@@ -2326,7 +2395,6 @@ procedure _fat32_set_size(bit in file_or_dir, dword in file_size) is
       -- get the first cluster's location
       fat32_file_entry_data(FAT32_FILE, _FAT32_GET, _FAT32_CLUSTER_LOCATION)
    end if
-
 
 
    if file_or_dir == FAT32_DIRECTORY then
@@ -2401,8 +2469,6 @@ procedure _fat32_set_size(bit in file_or_dir, dword in file_size) is
    ;      fat32_print_sector_buffer_hex(serial_hw_data, 32)
    ;      print_crlf(serial_hw_data)
    ;      print_crlf(serial_hw_data)
-
-
 
          ;_fat32_read_dir_sector_number(address)
          ;fat32_print_sector_buffer_hex(serial_hw_data, 32)
@@ -2533,9 +2599,10 @@ end procedure
 -- For now, you may change the line "fat32_set_file_size(65536)" to suit your
 -- needs.
 -- ----------------------------------------------------------------------------
-procedure fat32_dir_create(byte in dirname[8]) is
+function fat32_dir_create(byte in dirname[]) return byte is
    var dword sector_step
    var word byte_step
+   var byte result
 
    -- create the file/dir name.
    const byte ext[] = "   "
@@ -2545,7 +2612,11 @@ procedure fat32_dir_create(byte in dirname[8]) is
    fat32_is_system = FALSE
    fat32_is_volume_id = FALSE
    fat32_is_archive = FALSE
-   fat32_file_create(dirname, ext)
+   result = fat32_file_create(dirname, ext)
+   
+   if result == 0 then
+      return 0
+   end if
 
    -- refresh the dir.
    -- note: maybe this could be done in fat32_file_create()?
@@ -2557,9 +2628,6 @@ procedure fat32_dir_create(byte in dirname[8]) is
    -- set the file size.
    -- dir can hold 2048 short file names. (65536/32)
    fat32_set_file_size(65536)
-
-   -- open the file
-   var byte ignore_return2 = fat32_file_open(fat32_dir_file_count - 1)
 
    -- set the data to be written (all zero's)
    for 512 using byte_step loop
@@ -2601,8 +2669,8 @@ procedure fat32_dir_create(byte in dirname[8]) is
    fat32_is_directory = TRUE
    fat32_file_entry_data(FAT32_FILE, _FAT32_PUT, _FAT32_ATTRIB)
 
-   _fat32_read_dir_info() -- refresh current dir
-end procedure
+   return result
+end function
 
 -- ----------------------------------------------------------------------------
 -- Delete a fat32 directory entry. not finnished yet.
