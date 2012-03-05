@@ -2,7 +2,6 @@
 -- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4k
--- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -81,6 +80,7 @@
 -- create file rename procedure
 -- create file delete procedure
 -- one file does not show size/cluster correctly (#4)
+-- rename fat32_set_file_size to fat32_file_set_size
 --
 
 ------- GENERAL SETTINGS & VARS -------
@@ -1955,6 +1955,7 @@ end procedure
 -- ----------------------------------------------------------------------------
 -- create a file with a size of 0 bytes in the current directory.
 -- Set fat32_attrib before running this procedure
+-- If there is a file currently opened, it will be closed.
 -- not for directories. see fat32_dir_create()
 -- ----------------------------------------------------------------------------
 function fat32_file_create(byte in file_name[], byte in file_extension[3]) return byte is
@@ -2012,6 +2013,7 @@ function fat32_file_create(byte in file_name[], byte in file_extension[3]) retur
 
             -- save it's location
             fat32_entry_location[fat32_dir_file_count] = (sector_count << 4) + (step1)
+            
             fat32_current_file_number = fat32_dir_file_count
 
             --add a file to the file list
@@ -2428,7 +2430,7 @@ procedure _fat32_set_size(bit in file_or_dir, dword in file_size) is
                -- check for a empty cluster (0x00_00_00_00)
                if (fat32_sector_buffer[step3 + 0]) == 0 & (fat32_sector_buffer[step3 + 1]) == 0 &
                (fat32_sector_buffer[step3 + 2]) == 0 & (fat32_sector_buffer[step3 + 3]) == 0 then
-                  continue = FALSE
+                  continue = FALSE -- we found a empty cluster!
                   exit loop
                end if
                step3 = step3 + 4 -- step 4 ahead in the current sector
@@ -2542,18 +2544,28 @@ end procedure
 -- ----------------------------------------------------------------------------
 -- Sets the size of the currently opened file
 -- ----------------------------------------------------------------------------
-procedure fat32_set_file_size(dword in file_size) is
+procedure fat32_file_set_size(dword in file_size) is
    pragma inline
    _fat32_set_size(FAT32_FILE, file_size)
+   
+   -- maybe I can do this faster in _fat32_set_size by adding values to the
+   -- fat array.
+   _fat32_read_fragments(fat32_file_cluster_address , FAT32_FILE)
 end procedure
+alias fat32_set_file_size is fat32_file_set_size
 
 -- ----------------------------------------------------------------------------
 -- Sets the size of the currently opened directory
 -- ----------------------------------------------------------------------------
-procedure fat32_set_dir_size(dword in dir_size) is
+procedure fat32_dir_set_size(dword in dir_size) is
    pragma inline
    _fat32_set_size(FAT32_DIRECTORY, dir_size)
+   
+   -- maybe I can do this faster in _fat32_set_size by adding values to the
+   -- fat array.
+   _fat32_read_fragments(fat32_dir_cluster_address , FAT32_DIRECTORY)
 end procedure
+alias fat32_set_dir_size is fat32_dir_set_size
 
 -- ----------------------------------------------------------------------------
 -- not working in a for loop, bug?
@@ -2614,13 +2626,10 @@ function fat32_dir_create(byte in dirname[]) return byte is
    fat32_is_archive = FALSE
    result = fat32_file_create(dirname, ext)
    
+   -- return if failed to create file
    if result == 0 then
       return 0
    end if
-
-   -- refresh the dir.
-   -- note: maybe this could be done in fat32_file_create()?
-   _fat32_read_dir_info()
 
    -- open the file
    var byte ignore_return1 = fat32_file_open(fat32_dir_file_count - 1)
@@ -2628,12 +2637,15 @@ function fat32_dir_create(byte in dirname[]) return byte is
    -- set the file size.
    -- dir can hold 2048 short file names. (65536/32)
    fat32_set_file_size(65536)
+   
+   ;fat32_file_close()
+   ;ignore_return1 = fat32_file_open(fat32_dir_file_count - 1)
 
    -- set the data to be written (all zero's)
    for 512 using byte_step loop
       fat32_sector_buffer[byte_step] = 0x00
    end loop
-   for 8 using sector_step loop
+   for 65536/512 using sector_step loop
       fat32_write_file_sector_number(sector_step)
    end loop
 
@@ -2665,9 +2677,17 @@ function fat32_dir_create(byte in dirname[]) return byte is
 
    fat32_write_file_sector_number(0) -- write to file sector 0
 
-   -- change the file into a directory by changing it's attributes
+   ;-- print the sector that was just written to the file
+   ;fat32_read_file_sector_number(0)
+   ;fat32_print_sector_buffer_hex(serial_data,16)
+
+   -- change the file into a directory by changing it's attributes.
+   -- Also set it's size to 0
    fat32_is_directory = TRUE
-   fat32_file_entry_data(FAT32_FILE, _FAT32_PUT, _FAT32_ATTRIB)
+   fat32_file_size = 0
+   fat32_file_entry_data(FAT32_FILE, _FAT32_PUT, _FAT32_ATTRIB + _FAT32_SIZE)
+
+   fat32_file_close()
 
    return result
 end function
