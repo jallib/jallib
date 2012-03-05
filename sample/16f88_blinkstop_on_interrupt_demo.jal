@@ -1,0 +1,61 @@
+-- ------------------------------------------------------
+-- Title: Blink-a-led with stop on INT demo
+--
+-- Author: Sunish Issac, Copyright (c) 2008..2012, all rights reserved.
+--
+-- Adapted-by:
+--
+--
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- This program blinks an led on pin a0 and stops the blink on a high pulse on interrupt
+-- pin 6 with is RB0/INT on 16f88
+--
+include 16f88                    -- target PICmicro
+--
+pragma target clock 8_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC    INTOSC_NOCLKOUT -- internal osc
+pragma target WDT      disabled     -- no watchdog
+pragma target DEBUG    disabled     -- no debugging
+pragma target LVP      disabled     -- no Low Voltage Programming
+pragma target MCLR     Internal     -- reset internal
+
+OSCCON_IRCF = 0b111                -- use 8 MHz internal oscillator
+
+enable_digital_io()                -- make all pins digital I/O
+--
+--
+alias   led      is pin_A0
+pin_A0_direction =  output
+--
+var bit stopblink = false
+
+procedure int_on_change_isr() is
+   pragma interrupt
+if  INTCON_INTF then
+ stopblink = true     ; can be true only in isr
+ INTCON_INTF = false
+end if
+
+end procedure
+
+
+INTCON_GIE  = TRUE        -- Enables all unmasked interrupts
+INTCON_INTE = TRUE        -- enable INT0 PIN for interrupts
+OPTION_REG_INTEDG = 1     -- rising edge
+
+forever loop
+  if ! stopblink then ;make led on only while stopblink bit is false
+     led = on
+  end if
+   _usec_delay(250_000)
+   led = off
+   _usec_delay(250_000)
+
+end loop
+--
