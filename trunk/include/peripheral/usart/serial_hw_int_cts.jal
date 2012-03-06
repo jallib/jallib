@@ -1,6 +1,6 @@
 -- ----------------------------------------------------------------------
 -- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
--- Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.
 -- Adapted-by: Joep Suijs
 -- Compiler: =2.4h
 -- Revision: $Revision$
@@ -8,16 +8,15 @@
 -- This file is part of jallib  (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description:
--- Serial communications:
+-- Description: Serial communications:
 --   - receive and transmit data transfer is interrupt driven
---   - receive and transmit data transfer uses circular buffers
---   - automatic CTS flow control with spare free space for FiFo buffer
+--   - receive and transmit data transfer is buffered (circular buffers)
+--   - provides automatic CTS flow control with spare free space for FiFo buffer
 -- .
 -- This library supports:
 --   - Data format: 8 bits data, 1 start-bit, 1 stop bit
---   - Acceptable baud rate depends on the resonator frequency
---     (see BAUD RATES tables in the datasheet with BRGH=1).
+--   - Acceptable baud rate depends on the oscillator frequency
+--     (see BAUD RATES tables in the datasheet).
 --   - Interrupt bits used: TXIE, RCIE, PEIE and GIE.
 -- .
 -- Available procedures/functions for application programs:
@@ -34,7 +33,6 @@
 --   - serial_hw_data = <byte>                   -- send byte, wait if queue full
 -- .
 --   - <byte> = serial_hw_data                   -- receive byte, wait if queue empty
--- .
 -- .
 -- Directions for use of this library in application programs
 -- (in this sequence):
@@ -55,7 +53,7 @@
 --                                              -- provided the sender has flow control enabled
 -- .
 --    and optional, you could define one or more of the constants below.
---    You should do so if you want different value's then the ones shown.
+--    You should do so if you want different values than the ones shown.
 --    If not defined, the following values are used:
 -- .
 --      const   SERIAL_XMTBUFSIZE  = 32         -- size of transmit buffer
@@ -68,14 +66,14 @@
 -- and somewhere before actually using serial communications:
 -- .
 -- 3. Prepare pins:
---       pin_RX_direction = INPUT               -- receive pin
---       pin_TX_direction = OUTPUT              -- transmit pin
 --       pin_B4_direction = OUTPUT              -- incoming data flow control
 --       serial_overflow_discard = FALSE        -- do not discard output
+--    Notes: - pin_TX and pin_RX are selected automatically
+--           - direction settings of these pins are taken care of by the library
 -- .
 -- 4. Call serial_hw_init() to initialize serial communications.
--- .
--- Some background information:
+--
+-- Notes: Background information:
 -- .
 -- The PIC ports use positive logic: '1' is positive voltage, '0' is ground.
 -- .
@@ -102,12 +100,7 @@
 -- Remember also: RxD of RS232-plug connects to TX of PIC via MAX2x2
 --                TxD of RS232-plug connects to RX of PIC via MAX2x2
 -- .
--- Sources:
---
--- Notes:
---  - For data transmit and receive the pins TX and RX are used
---    automatically, these have not to be assigned by the application
---    (only their directions should be set).
+-- Additional remarks:
 --  - The selection of the CTS pin above is an example, any other pin
 --    which is configurable for output can be used.
 --  - When CTS flow control is not desired then assign serial_ctsinv
@@ -118,26 +111,26 @@
 --    (depending on how important the data is for the receiving party).
 --  - Do not touch the following interrupt bits: TXIE, RCIE, PEIE and GIE
 --
+-- Sources:
 --
 -- ----------------------------------------------------------------------
-
 --
--- setup defaults if no value is specified
+-- Setup defaults when no value is specified before:
 --
-if (defined(SERIAL_XMTBUFSIZE) == false) then
+if (defined(SERIAL_XMTBUFSIZE) == FALSE) then
    const   SERIAL_XMTBUFSIZE  = 32              -- default size of transmit buffer
 end if
 
-if (defined(SERIAL_RCVBUFSIZE) == false) then
+if (defined(SERIAL_RCVBUFSIZE) == FALSE) then
    const   SERIAL_RCVBUFSIZE  = 64              -- default size of receive buffer
 end if
 
-if (defined(SERIAL_DELTA) == false) then
+if (defined(SERIAL_DELTA) == FALSE) then
    const   SERIAL_DELTA   = 17                  -- default spare space receive buffer
 end if
 
-if (defined(serial_hw_baudrate) == false) then
-   if (defined(SERIAL_BPSRATE) == true) then
+if (defined(serial_hw_baudrate) == FALSE) then
+   if (defined(SERIAL_BPSRATE) == TRUE) then
       _warn "SERIAL_BPSRATE is deprecated - please use serial_hw_baudrate"
       const serial_hw_baudrate = SERIAL_BPSRATE
    else
@@ -145,7 +138,7 @@ if (defined(serial_hw_baudrate) == false) then
    end if
 end if
 
-include usart_common
+include usart_common                            -- common serial functions/procedures
 
 -- Local circular transmit buffer
 var  byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]    -- circular output buffer
@@ -174,7 +167,9 @@ var bit serial_send_success   -- serial_send_success is used internally
                               -- without breaking the serial_send_byte API.
 
 -- ----------------------------------------------------------------------
---  USART serial transmit interrupt handler
+-- Title:     USART serial transmit interrupt handler
+-- Arguments: (none)
+-- Returns:   (nothing)
 -- ----------------------------------------------------------------------
 procedure  _serial_transmit_interrupt_handler() is
 
@@ -200,11 +195,11 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
---  USART serial receive interrupt handler
---
---  notes: - Sets CTS low when receive buffer has less than <SERIAL_DELTA>
---           bytes free space.
---
+-- Title:     USART serial receive interrupt handler
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Notes:     Sets CTS low when receive buffer has less than
+--            <SERIAL_DELTA> bytes free space.
 -- ----------------------------------------------------------------------
 procedure  _serial_receive_interrupt_handler() is
 
@@ -229,7 +224,7 @@ procedure  _serial_receive_interrupt_handler() is
       else                                      -- data without errors
          _serial_rcvbuf[_serial_offsetrcvhead] = RCREG      -- move byte to rcv buffer
 
-         if (defined(serial_receive_wedge) == true) then
+         if (defined(serial_receive_wedge) == TRUE) then
             -- receive wedge - a user program can define this procedure.
             --
             --    procedure serial_receive_wedge(byte in char)
@@ -274,25 +269,19 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
---  Return byte (if any) from circular receive buffer for UART
---
---  input:   nothing
---
---  output:  received byte (if any)
---
---  returns: TRUE  when byte returned
---           FALSE if no byte available
---
---  notes: - Sets CTS high when receive buffer has more than <SERIAL_DELTA>
---           bytes free space after delivering byte to caller.
---
+-- Title:     Return byte (if any) from circular receive buffer for UART
+-- Arguments: received byte (if any)
+-- Returns:   - TRUE  when byte returned
+--            - FALSE if no byte available
+-- Notes:     Sets CTS high when receive buffer has more than <SERIAL_DELTA>
+--            bytes free space after delivering byte to caller.
 -- ----------------------------------------------------------------------
 function serial_hw_read(byte out data) return bit is
 
    var  byte  x                                 -- for buffer management
 
    if (_serial_offsetrcvtail == _serial_offsetrcvhead) then  -- receive buffer empty
-      return false                              -- no data available
+      return FALSE                              -- no data available
    end if
 
    data = _serial_rcvbuf[_serial_offsetrcvtail]  -- first available byte
@@ -311,7 +300,7 @@ function serial_hw_read(byte out data) return bit is
       end if
    end if
 
-   return true                                  -- byte available
+   return TRUE                                  -- byte available
 
 end function
 
@@ -324,28 +313,23 @@ end function
 
 
 -- ----------------------------------------------------------------------
---  Put a single byte in circular transmit buffer for UART
---
---  input:   byte to transmit
---
---  returns: transmitted byte (or 0x00 when data discarded)
---
---  notes: - Activates transmit interrupt handler when data buffered
---         - When buffer full act as indicated in 'serial_overflow_discard'
---           * TRUE:  discard data
---                    (and return 0x00 as data byte)
---           * FALSE: wait for free buffer space
---                    (returns only after data has been stored in buffer)
---
+-- Title:     Put a single byte in transmit buffer
+-- Arguments: Data (byte) to transmit
+-- Returns:   transmitted byte (or 0x00 when data discarded)
+-- Notes:     - Activates transmit interrupt handler when data buffered
+--            - When buffer full act as indicated in 'serial_overflow_discard'
+--              * TRUE:  discard data (and return 0x00 as data byte)
+--              * FALSE: wait for free buffer space
+--                       (returns only after data has been stored in buffer)
 -- ----------------------------------------------------------------------
 function  serial_send_byte(byte in data) return byte is
 
    var  byte  newxmthead                        -- offset in circular buffer
 
-   serial_send_success = true                   -- indicate byte sent
+   serial_send_success = TRUE                   -- indicate byte sent
 
    if (_serial_offsetxmthead == _serial_offsetxmttail  &  -- nothing buffered
-       PIR1_TXIF == true) then                  -- and UART not busy
+       PIR1_TXIF == TRUE) then                  -- and UART not busy
       PIE1_TXIE = FALSE                         -- disable xmt interrupt
       TXREG = data                              -- transmit byte immediately
    else                                         -- use circular buffer
@@ -363,7 +347,7 @@ function  serial_send_byte(byte in data) return byte is
             end loop
             _serial_offsetxmthead = newxmthead  -- update offset
          else
-            serial_send_success = false         -- indicate byte discarded
+            serial_send_success = FALSE         -- indicate byte discarded
             data = 0x00                         -- indicate byte discarded
          end if
       end if
@@ -376,7 +360,9 @@ end function
 
 
 -- ----------------------------------------------------------------------
--- serial_init - procedure to initialize library functionality
+-- Title:     Initialize library functionality
+-- Arguments: (none)
+-- Returns:   (nothing)
 -- ----------------------------------------------------------------------
 procedure serial_hw_init() is
 
@@ -385,21 +371,26 @@ procedure serial_hw_init() is
    _serial_offsetrcvhead  = 0                   -- offset next byte from port
    _serial_offsetrcvtail  = 0                   -- offset next byte to appl
 
+   _calculate_and_set_baudrate()                -- set baudrate
+
+   pin_RX_direction = INPUT                     -- make receive pin input
+   pin_TX_direction = INPUT                     -- make transmit pin input!
+                                                -- (required by some older
+                                                --  PICs like 16f628)
+
+   TXSTA                  = 0b0000_0000         -- reset (8 bit, asyn)
+   TXSTA_TXEN             = enabled             -- makes TX pin output
+
    RCSTA                  = 0b0000_0000         -- reset
    RCSTA_SPEN             = enabled             -- serial port enable
    RCSTA_CREN             = enabled             -- continuous receive enable
 
-   TXSTA                  = 0b0000_0000         -- reset (8 bit, asyn)
-   TXSTA_TXEN             = enabled             -- UART transmit enabled
-
-   _calculate_and_set_baudrate()                -- set baudrate
-
    PIE1_RCIE              = enabled             -- UART receive int. enable
-                                                -- (PIE1_TXIE dynamically)
-   INTCON_PEIE            = enabled             -- peripheral
-   INTCON_GIE             = enabled             -- general
+                                                -- (PIE1_TXIE done dynamically)
+   INTCON_PEIE            = enabled             -- peripheral interrupts
+   INTCON_GIE             = enabled             -- general interrupts
 
-   serial_ctsinv          = false               -- CTS true: accept PC data
+   serial_ctsinv          = FALSE               -- CTS true: accept PC data
 
 end procedure
 
@@ -416,36 +407,36 @@ end procedure
 -- serial_hardware compatible interface
 -- ----------------------------------------------------------------------
 
--- Transmit byte
+-- Put byte in transmit buffer as pseudo variable
 procedure serial_hw_data'put(byte in data) is
 
    var byte dummy
 
-   serial_send_success = false
-   while (serial_send_success == false) loop
+   serial_send_success = FALSE
+   while (serial_send_success == FALSE) loop
       dummy = serial_send_byte(data)
    end loop
 
 end procedure
 
 
--- Transmit byte
+-- Put byte in transmit buffer (synonym of serial_send_byte)
 procedure serial_hw_write(byte in data) is
    var byte dummy
 
-   serial_send_success = false
-   while (serial_send_success == false) loop
+   serial_send_success = FALSE
+   while (serial_send_success == FALSE) loop
       dummy = serial_send_byte(data)
    end loop
 
 end procedure
 
 
--- Return next received byte
+-- Return next byte from receive bufer as pseudo variable
 function serial_hw_data'get() return byte is
    var byte data
    while !serial_hw_read(data) loop
-   -- nothing
+      -- nothing
    end loop
    return data
 end function

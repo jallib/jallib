@@ -1,168 +1,195 @@
 -- Title: USART2 hardware control
 -- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
 -- Adapted-by: Sebastien Lelong.
--- Compiler: >=2.4g
+-- Compiler: 2.40
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: USART2 hardware control.
--- Routines for sending and receiving through the EUSART2
--- (2nd EUSART module)
--- both asynchrone and synchrone are supported.
--- Baudrate can simply be set through a human constant,
--- because the baudrate depending registers are calculated by this unit.
--- Baudrate is calculated, starting at the high baudrate flag,
--- which will ensure the highest possible accuracy.
+-- Routines for sending and receiving through the second [E]USART2
 --
--- TODO: should this be configurable ?
--- Transmission parameters are 8 databits, 1 stopbit, no parity, no handshake.
+-- Notes: See also comments in serial_hardware library.
 --
 
 include usart2_common
 
--- Initializes the serial port, calculates baudrate registers.
-procedure serial_hw2_init() is 
+-- -----------------------------------------------------------------------
+-- Title:     Initialize the second serial port, prepare baudrate registers.
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- -----------------------------------------------------------------------
+procedure serial_hw2_init() is
+
    -- Calculate and Load baudrate generator
    _calculate_and_set_baudrate2()
-   
+
    -- disable all USART interrupts
-   PIE3_RC2IE = false
-   PIE3_TX2IE = false
-   
+   PIE3_RC2IE = FALSE
+   PIE3_TX2IE = FALSE
+
+   pin_RX_direction = INPUT                        -- make receive pin input
+   pin_TX_direction = INPUT                        -- make transmit pin input!
+                                                   -- (required by some older
+                                                   --  PICs like 16f628)
+
    -- Enable transmitter : TXSTA2_TXEN=1 (preserve TXSTA_BRGH)
-   TXSTA2_TXEN = true
+   TXSTA2_TXEN = TRUE                              -- (makes transmit pin output)
 
    -- Enable serial port : RCSTA2_SPEN=1
    -- Enable receiving   : RCSTA2_CREN=1
-   RCSTA2 = 0x90
+   RCSTA2 = 0x90                                   -- SYNC bit 0: async mode
+                                                   -- TX9 bit 0: 8 databits
 
 end procedure
 
 
--- Disables USART so ports can be used (temporary) for other purposes.
--- USART can be enabled again by calling serial_hw2_enable()
+
+-- -----------------------------------------------------------------------
+-- Title:     Disable USART2
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Notes:     Allows pins to be used (temporary) for other purposes.
+--            USART can be enabled again by calling serial_hw2_enable()
+-- -----------------------------------------------------------------------
 procedure serial_hw2_disable() is
-   -- wait till running transmissions are finished
-   while !TXSTA_TRMT loop end loop
-   -- Disable Serial port:
-   RCSTA2_SPEN = false
+   while !TXSTA_TRMT loop end loop                 -- wait while transmission pending
+   RCSTA2_SPEN = FALSE                             -- disable serial port
 end procedure
 
 
--- Enables USART
+-- -----------------------------------------------------------------------
+-- Title:     Enable  USART
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Title:     Re-enable USART after use of serial_hw2_disable()
+-- -----------------------------------------------------------------------
 procedure serial_hw2_enable() is
-   -- Enable Serial port
-   RCSTA2_SPEN = true
+   RCSTA2_SPEN = TRUE                              -- enable serial port
 end procedure
 
 
 -- -----------------------------------------------------------------------
--- Write char to serial port, blocking
--- -----------------------------------------------------------------------
--- Asynchronuous serial send routine, using the TX pin
--- Sends byte X (8 bit with no parity) to the serial port
--- First checks (and waits if necessary) if transmit buffer is empty
+-- Title:     Transmit character
+-- Arguments: Data (byte) to transmit
+-- Returns:   (nothing)
+-- Notes:     Hardware transmit buffer must be empty, wait if necessary
 -- -----------------------------------------------------------------------
 procedure serial_hw2_write(byte in data) is
-   -- wait until TXREG2 is empty
-   while ! PIR3_TX2IF loop end loop
-   -- then put new byte in TXREG2 (prepare for transmission)
-   TXREG2 = data
+   while !PIR3_TX2IF loop end loop                 -- wait while transmission pending
+   TXREG2 = data                                   -- transfer data
 end procedure
 
 
--- like Serial_H_write, but then with a word as input
--- The MSB is outputed first
+-- -----------------------------------------------------------------------
+-- Title:     Transmit word
+-- Arguments: Data (word) to transmit
+-- Returns:   (nothing)
+-- Notes:     Send word as 2 bytes, Most Significant Byte first.
+--            See also serial_hw_write()
+-- -----------------------------------------------------------------------
 procedure serial_hw2_write_word(word in data) is
-   var byte DX[2] at data
-   -- can be blocked by debugging
-   while ! PIR3_TX2IF loop end loop
-   TXREG2 = DX[1]
-   asm nop  -- this is necessary for damned good optimized compilers
-            -- loading of the TXREG2 doesn't immediatly set PIR3_TX2IF !!!!
-   while ! PIR3_TX2IF loop end loop
-   TXREG2 = DX[0]
+   var byte dx[2] at data                          -- overlay
+   while !PIR3_TX2IF loop end loop                 -- wait while transmission pending
+   TXREG2 = dx[1]
+   asm nop                  -- this is necessary for damned good optimized compilers
+                            -- loading of the TXREG2 doesn't immediatly set PIR3_TX2IF!!!
+   while !PIR3_TX2IF loop end loop                 -- wait while transmission pending
+   TXREG2 = dx[0]
 end procedure
 
 
 -- -----------------------------------------------------------------------
--- Internal use only!
+-- Title:     Receive byte
+-- Arguments: (none)
+-- Returns:   bit:
+--            -  TRUE data available
+--            -  FALSE no data available
+-- Notes:     Using this inline function for serial_hw_data'get saves a stack level
+--            With overrun error the USART is reset (error(?)byte is returned!)
 -- -----------------------------------------------------------------------
--- (using this inline function for serial_hw2_data'get saves a stack level)
--- Returns true if a character was received, otherwise returns false.
--- Overrun error flag is cleared.
--- -----------------------------------------------------------------------
-function _serial_hw2_read(byte out data) return bit is   
+function _serial_hw2_read(byte out data) return bit is
    pragma inline
-   
-   -- test if byte available, and if so,
-   -- get byte and transport to outer world
-   if PIR3_RC2IF then
-      data = RCREG2
-      PIR3_RC2IF   = false       -- eur@fiwhex.nl 12-sept-08
+
+   if PIR3_RC2IF then                              -- check if data available
+      data = RCREG2                                -- pass received byte to caller
+      PIR3_RC2IF  = FALSE                          -- eur@fiwhex.nl 12-sept-08
    else
-      return false  ;result = false
+      return FALSE                                 -- no data available
    end if
-   
-   if RCSTA2_OERR then
-      RCSTA2_CREN = false
-      RCSTA2_CREN =true
+
+   if RCSTA2_OERR then                             -- reset USART after error
+      RCSTA2_CREN = FALSE
+      RCSTA2_CREN = TRUE
    end if
-  
-   return true
+
+   return TRUE
 end function
 
 
 -- -----------------------------------------------------------------------
--- Read char if available (non-blocking)
--- -----------------------------------------------------------------------   
--- Returns true if a character was received, otherwise returns false.
--- Overrun error flag is cleared.
+-- Title:     Receive byte
+-- Arguments: (none)
+-- Returns:   bit:
+--            -  TRUE data available
+--            -  FALSE no data available
 -- -----------------------------------------------------------------------
 function serial_hw2_read(byte out data) return bit is
    return _serial_hw2_read(data)
 end function
 
 
--- Here Serial read and write are definied as pseudo variables
+-- Here Serial read and write are defined as pseudo variables
 -- so you use them as normal vars, like
 --  * wait for character being received,
---  * then echo the inverted character
+--  * then return the inverted character
 -- {{{
--- serial_hw2_data = ! serial_hw2_data
+-- serial_hw2_data = !serial_hw2_data
 -- }}}
---
+-- .
 -- these procedures will wait till they can perform their action
 -- therefore it's better to use to following construct
 -- {{{
--- -- if charater received, echo the inverted character
+-- -- if character received, echo the inverted character
 -- if  serial_hw2_data_available then
---     serial_hw2_data = ! serial_hw2_data
+--     serial_hw2_data = !serial_hw2_data
 -- end if
 -- -- do other things
 -- }}}
---
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Transmit byte
+-- Arguments: Data (byte) to be transmitted
+-- Returns:   (nothing)
+-- -----------------------------------------------------------------------
 procedure serial_hw2_data'put(byte in data) is
    serial_hw2_write(data)
 end procedure
 
 
+-- -----------------------------------------------------------------------
+-- Title:     Receive byte
+-- Arguments: (none)
+-- Returns:   Data (byte) received
+-- -----------------------------------------------------------------------
 function serial_hw2_data'get() return byte is
    var byte data
-   while ! _serial_hw2_read(data) loop end loop
+   while !_serial_hw2_read(data) loop  end loop
    return data
 end function
 
 
 -- -----------------------------------------------------------------------
--- raw interface 
+-- raw interface
 -- -----------------------------------------------------------------------
 
--- some variables made available under a general (pic-independent) name
+-- generic (pic-independent) variable to check if a byte is received
 alias serial_hw2_data_available is PIR3_RC2IF
-alias serial_hw2_data_ready is PIR3_TX2IF
+
+-- generic (pic-independent) variable to check if transmit buffer is empty
+alias serial_hw2_data_ready     is PIR3_TX2IF
 
 -- These are real raw procedures, declared as pseudo variables
 -- the user is totally responsible for testing the transmit/receive

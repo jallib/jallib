@@ -16,8 +16,8 @@
 -- which will ensure the highest possible accuracy.
 --
 
-if (defined(usart_hw2_serial) == false) then
-   const bit usart_hw2_serial = true -- default is async mode (not sync)
+if (defined(usart_hw2_serial) == FALSE) then
+   const bit usart_hw2_serial = TRUE               -- default is async mode (not sync)
 end if
 
 -- internal function, calculates and sets baudrate divider
@@ -43,16 +43,24 @@ end if
 -- Synchronous baudrate settings:
 --  * TXSTA2_BRGH = 0 (low speed)
 --  * SPBRG2 = ( Fosc / ( 4 * Baudrate ) ) -1
---
+
+
+-- ------------------------------------------------------------------------------
+-- Title:     Calculate and set baudrate
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Notes:     Uses externally defined constant
+-- ------------------------------------------------------------------------------
 procedure _calculate_and_set_baudrate2() is
-   const max_deviation = 5  -- maximum % deviation of the realized baudrate
 
-   if usart_hw2_serial then       -- USART in asynchronous mode
+   const max_deviation = 5                         -- maximum % deviation of the desired baudrate
 
-      if (defined(BAUDCON2_BRG16) == true) then
+   if usart_hw2_serial then                        -- USART2 in asynchronous mode
+
+      if (defined(BAUDCON2_BRG16) == TRUE) then
          -- use 16 bit baudrate register
-         BAUDCON2_BRG16 = true
-         TXSTA2_BRGH = true
+         BAUDCON2_BRG16 = TRUE
+         TXSTA2_BRGH = TRUE
 
          const usart_div = ((5 + ( ( 10 * target_clock ) / ( 4 * serial_hw2_baudrate ))  ) / 10 ) - 1
          const real_baud = target_clock / 4 / ((usart_div & 0xffff) + 1)
@@ -105,7 +113,7 @@ procedure _calculate_and_set_baudrate2() is
             else
                SPBRG2 = 0
             end if
-            TXSTA2_BRGH = true
+            TXSTA2_BRGH = TRUE
             -- try the low-speed mode
          else
               const usart_div_low = ((((10 * target_clock) / ( 64 * serial_hw2_baudrate )) + 5 ) / 10) - 1
@@ -114,7 +122,7 @@ procedure _calculate_and_set_baudrate2() is
             -- if baudrate is just a little too low
             if (usart_div_low > 255) & (100 * ((target_clock / (64 * 256 )) - serial_hw2_baudrate)) / serial_hw2_baudrate < max_deviation then
                SPBRG2 = 255
-               TXSTA2_BRGH = false
+               TXSTA2_BRGH = FALSE
                -- now calculate divider and set high-speed / low-speed bit
               elsif usart_div_low <= 255 then
                if usart_div_low >= 0 then
@@ -122,14 +130,14 @@ procedure _calculate_and_set_baudrate2() is
                else
                   SPBRG2 = 0
                end if
-               TXSTA2_BRGH = false
+               TXSTA2_BRGH = FALSE
               else
                _error "asynchronous baudrate is too low"
               end if
          end if
       end if
 
-   else                          -- USART in synchronous mode
+   else                                            -- USART in synchronous mode
 
       const usart_div_sync = ( target_clock / ( 4 * serial_hw2_baudrate )) - 1
 
