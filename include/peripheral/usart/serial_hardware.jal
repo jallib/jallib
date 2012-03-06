@@ -1,7 +1,7 @@
 -- Title: USART hardware control
 -- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
--- Adapted-by: Sebastien Lelong.
--- Compiler: >=2.4g
+-- Adapted-by: Sebastien Lelong, Rob Hamerling
+-- Compiler: 2.4o
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -9,138 +9,149 @@
 --
 -- Description: USART hardware control.
 -- Routines for sending and receiving through the PIC-usart,
--- both asynchrone and synchrone are supported.
+-- both asynchronous and synchronous are supported.
 -- Baudrate can simply be set through a human constant,
 -- because the baudrate depending registers are calculated by this unit.
 -- Baudrate is calculated, starting at the high baudrate flag,
 -- which will ensure the highest possible accuracy.
---
+-- .
 -- TODO: should this be configurable ?
 -- Transmission parameters are 8 databits, 1 stopbit, no parity, no handshake.
+--
+-- Notes: - pin selection is automatic: pin_TX and pin_RX.
+--        - pin direction setting is taken care of by this library.
 --
 
 include usart_common
 
--- ------------------------------------------------------------------
--- Title:     Initialize the serial port, incl. baudrate setting
+
+-- -----------------------------------------------------------------------
+-- Title:     Initialize the serial port, prepare baudrate registers.
 -- Arguments: (none)
--- Returns    (nothing)
--- Notes:     Before calling this procedure set pin directions:
---            pin_TX_direction = OUTPUT
---            pin_RX_direction = INPUT
--- ------------------------------------------------------------------
+-- Returns:   (nothing)
+-- -----------------------------------------------------------------------
 procedure serial_hw_init() is
+
    -- Calculate and Load baudrate generator
    _calculate_and_set_baudrate()
 
-   -- disable all USART interrupts
-   PIE1_RCIE = false
-   PIE1_TXIE = false
+   -- disable USART interrupts
+   PIE1_RCIE = FALSE
+   PIE1_TXIE = FALSE
+
+   pin_RX_direction = INPUT                        -- make receive pin input
+   pin_TX_direction = INPUT                        -- make transmit pin input!
+                                                   -- (required by some older ..
+                                                   --  .. PICs like 16f628)
 
    -- Enable transmitter : TXSTA_TXEN=1 (preserve TXSTA_BRGH)
-   TXSTA_TXEN = true
+   TXSTA_TXEN = TRUE                               -- (makes transmit pin output)
 
    -- Enable serial port : RCSTA_SPEN=1
    -- Enable receiving   : RCSTA_CREN=1
-   RCSTA = 0x90
-
-end procedure
-
-
--- Disables USART so ports can be used (temporary) for other purposes.
--- USART can be enabled again by calling serial_hw_enable()
-procedure serial_hw_disable() is
-   -- wait till running transmissions are finished
-   while !TXSTA_TRMT loop end loop
-   -- Disable Serial port:
-   RCSTA_SPEN = false
-end procedure
-
-
--- Enables USART
-procedure serial_hw_enable() is
-   -- Enable Serial port
-   RCSTA_SPEN = true
+   RCSTA = 0x90                                    -- SYNC bit 0: async mode
+                                                   -- TX9 bit 0: 8 databits
 end procedure
 
 
 -- -----------------------------------------------------------------------
--- Title:     serial_hw_write - write char to serial port, blocking
--- Arguments: data (byte) to be transmitted
+-- Title:     Disable USART
+-- Arguments: (none)
 -- Returns:   (nothing)
--- Notes:     Asynchronuous serial send routine, using the TX pin.
---            Sends byte X (8 bit with no parity) to the serial port.
---            First checks (and waits if necessary) if transmit buffer is empty.
+-- Notes:     Allows pins to be used (temporary) for other purposes.
+--            USART can be enabled again by calling serial_hw_enable()
+-- -----------------------------------------------------------------------
+procedure serial_hw_disable() is
+   while !TXSTA_TRMT loop  end loop                -- wait while transmission pending
+   RCSTA_SPEN = FALSE                              -- disable serial port
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Enable USART
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Notes:     Re-enable USART after use of serial_hw_disable()
+-- -----------------------------------------------------------------------
+procedure serial_hw_enable() is
+   RCSTA_SPEN = TRUE                               -- enable serial port
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Transmit character
+-- Arguments: Data (byte) to transmit
+-- Returns:   (nothing)
+-- Notes:     Hardware transmit buffer must be empty, wait if necessary
 -- -----------------------------------------------------------------------
 procedure serial_hw_write(byte in data) is
-   -- wait until TXREG is empty
-   while ! PIR1_TXIF loop end loop
-   -- then put new byte in TXREG (prepare for transmission)
-   TXREG = data
+   while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
+   TXREG = data                                    -- transfer data
 end procedure
 
 
 -- -----------------------------------------------------------------------
--- Title:     serial_hw_write_word - write word to serial port, blocking
--- Arguments: data (word) to be transmitted
+-- Title:     Transmit word
+-- Arguments: Data (word) to transmit
 -- Returns:   (nothing)
--- Notes:     The MSB is transmitted first
+-- Notes:     Send word as 2 bytes, Most Significant Byte first.
+--            See also serial_hw_write()
 -- -----------------------------------------------------------------------
 procedure serial_hw_write_word(word in data) is
-   var byte DX[2] at data                          -- overlay
-   -- can be blocked by debugging
-   while ! PIR1_TXIF loop end loop
-   TXREG = DX[1]
-   asm nop  -- this is necessary for damned good optimized compilers
-            -- loading of the TXREG doesn't immediatly set PIR1_TXIF !!!!
-   while ! PIR1_TXIF loop end loop
-   TXREG = DX[0]
+   var byte dx[2] at data                          -- overlay
+   while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
+   TXREG = dx[1]
+   asm nop                  -- necessary for good optimized compilers, loading
+                            -- of TXREG doesn't immediately set PIR1_TXIF
+   while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
+   TXREG = dx[0]
 end procedure
 
 
 -- -----------------------------------------------------------------------
--- _serial_hw_read - internal use only!
--- -----------------------------------------------------------------------
--- (using this inline function for serial_hw_data'get saves a stack level)
--- Returns true if a character was received, otherwise returns false.
--- Overrun error flag is cleared.
+-- Title:     Receive byte
+-- Arguments: (none)
+-- Returns:   bit:
+--            -  TRUE data available
+--            -  FALSE no data available
+-- Notes:     Using this inline function for serial_hw_data'get saves a stack level
+--            With overrun error the USART is reset (error(?)byte is returned!)
 -- -----------------------------------------------------------------------
 function _serial_hw_read(byte out data) return bit is
    pragma inline
 
-   -- test if byte available, and if so,
-   -- get byte and transport to outer world
-   if PIR1_RCIF then
-      data = RCREG
-      PIR1_RCIF   = false                          -- eur@fiwhex.nl 12-sept-08
+   if PIR1_RCIF then                               -- check if data available
+      data = RCREG                                 -- pass received byte to caller
+      PIR1_RCIF = FALSE                            -- eur@fiwhex.nl 12-sept-08
    else
-      return false                                 -- signal: no data available
+      return FALSE                                 -- no data available
    end if
 
-   if RCSTA_OERR then                              -- overrun
-      RCSTA_CREN = FALSE                           -- reset ..
-      RCSTA_CREN = TRUE                            -- .. USART
+   if RCSTA_OERR then                              -- reset USART after overrrun
+      RCSTA_CREN = FALSE
+      RCSTA_CREN = TRUE
    end if
 
-   return true                                     -- signal: data available
+   return TRUE
 end function
 
 
 -- -----------------------------------------------------------------------
--- serial_hw_read - read char if available (non-blocking)
--- -----------------------------------------------------------------------
--- Returns true if a character was received, otherwise returns false.
--- Overrun error flag is cleared.
+-- Title:     Receive byte
+-- Arguments: (none)
+-- Returns:   bit:
+--            -  TRUE data available
+--            -  FALSE no data available
 -- -----------------------------------------------------------------------
 function serial_hw_read(byte out data) return bit is
    return _serial_hw_read(data)
 end function
 
 
--- Here Serial read and write are definied as pseudo variables
--- so you use them as normal vars, like
+-- Here Serial read and write are defined as pseudo variables
+-- so you use them as normal variables, like
 --  * wait for character being received,
---  * then echo the inverted character
+--  * then return the inverted character
 -- {{{
 -- serial_hw_data = ! serial_hw_data
 -- }}}
@@ -148,21 +159,32 @@ end function
 -- these procedures will wait till they can perform their action
 -- therefore it's better to use to following construct
 -- {{{
--- -- if charater received, echo the inverted character
+-- -- if character received, echo the inverted character
 -- if  serial_hw_data_available then
---     serial_hw_data = ! serial_hw_data
+--     serial_hw_data = !serial_hw_data
 -- end if
 -- -- do other things
 -- }}}
---
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Transmit byte
+-- Arguments: Data (byte) to be transmitted
+-- Returns:   (nothing)
+-- -----------------------------------------------------------------------
 procedure serial_hw_data'put(byte in data) is
    serial_hw_write(data)
 end procedure
 
 
+-- -----------------------------------------------------------------------
+-- Title:     Receive byte
+-- Arguments: (none)
+-- Returns:   Data (byte) received
+-- -----------------------------------------------------------------------
 function serial_hw_data'get() return byte is
    var byte data
-   while ! _serial_hw_read(data) loop end loop
+   while !_serial_hw_read(data) loop  end loop
    return data
 end function
 
@@ -171,9 +193,11 @@ end function
 -- raw interface
 -- -----------------------------------------------------------------------
 
--- some variables made available under a general (pic-independent) name
+-- generic (pic-independent) variable to check if a byte is received
 alias serial_hw_data_available is PIR1_RCIF
-alias serial_hw_data_ready is PIR1_TXIF
+
+-- generic (pic-independent) variable to check if transmit buffer is empty
+alias serial_hw_data_ready     is PIR1_TXIF
 
 -- These are real raw procedures, declared as pseudo variables
 -- the user is totally responsible for testing the transmit/receive
