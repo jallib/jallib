@@ -1,0 +1,406 @@
+-- ----------------------------------------------------------------------
+-- Title: serial_hw2_int_cts.jal. Interrupt driven buffered serial interface with flow control.
+-- Author: Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Serial communications for the second USART:
+--   - receive and transmit data transfer is interrupt driven
+--   - receive and transmit data transfer is buffered (circular buffers)
+--   - provides automatic CTS flow control with spare free space for FiFo buffer
+-- .
+-- This library supports:
+--   - Data format: 8 bits data, 1 start-bit, 1 stop bit
+--   - Acceptable baud rate depends on the oscillator frequency
+--     (see BAUD RATES tables in the datasheet).
+--   - Interrupt bits used: TXIE, RCIE, PEIE and GIE.
+-- .
+-- Available procedures/functions for application programs:
+-- .
+--   - serial_hw2_init()                         -- initialise communications
+-- .
+--   - serial_send2_byte(byte out <byte>)        -- send byte
+-- .                                             -- returns the transmitted byte
+--   - serial_hw2_read(byte out <byte>) return bit  -- receive byte
+-- .                                             -- returns TRUE with data,
+-- .                                             -- FALSE when no data available
+--   - serial_hw2_write(byte in <byte>)          -- send byte (wait if queue full)
+-- .
+--   - serial_hw2_data = <byte>                  -- send byte, wait if queue full
+-- .
+--   - <byte> = serial_hw2_data                  -- receive byte, wait if queue empty
+-- .
+-- Directions for use of this library in application programs
+-- (in this sequence):
+-- .
+-- 1. Declare the following constant:
+-- .
+--      const   serial_hw2_baudrate = 115200    -- line speed
+-- .
+--    and variables:
+-- .
+--      alias serial2_ctsinv  is  pin_B4        -- incoming data flow control
+--      var  bit serial2_overflow_discard       -- With transmit buffer overflow:
+--                                              --   TRUE: discard data (non-blocking)
+--                                              --   FALSE: wait for free space (blocking)
+--                                              -- With receive buffer overflow data is
+--                                              -- discarded without notification,
+--                                              -- but prevented with CTS flow control,
+--                                              -- provided the sender has flow control enabled
+-- .
+--    and optional, you could define one or more of the constants below.
+--    You should do so if you want different values than the ones shown.
+--    If not defined, the following values are used:
+-- .
+--      const   SERIAL2_XMTBUFSIZE  = 32        -- size of transmit buffer
+--      const   SERIAL2_RCVBUFSIZE  = 64        -- size of receive buffer
+--      const   SERIAL2_DELTA       = 17        -- spare space receive buffer
+--                                              -- if possible keep SERIAL2_DELTA = 17!
+-- .
+--    When pin_TX2 and pin_RX2 are configurable for a specific PIC, the
+--    device file will probably contain names like pin_TX2_RB2 and pin2_RX_RB1.
+--    In that case the user program must contain alias declarations like:
+--         alias  pin_TX2            is  pin_TX2_RB2
+--         alias  pin_RX2            is  pin_RX2_RB1
+--         alias  pin_TX2_direction  is  pin_TX2_RB2_direction
+--         alias  pin_RX2_direction  is  pin_RX2_RB1_direction
+-- .
+-- 2. Include this library.
+-- .
+-- and somewhere before actually using serial communications:
+-- .
+-- 3. Prepare pins:
+--       pin_B4_direction = OUTPUT              -- incoming data flow control
+--       serial_overflow_discard = FALSE        -- do not discard output
+--    Notes: - pin_TX2 and pin_RX2 are selected automatically
+--           - direction settings of these pins are taken care of by the library
+-- .
+-- 4. Call serial_hw2_init() to initialize serial communications.
+--
+-- Notes: See serial_hw_int_cts library
+--
+-- Sources:
+--
+-- ----------------------------------------------------------------------
+--
+-- Setup defaults when no value is specified before:
+--
+if (defined(SERIAL2_XMTBUFSIZE) == FALSE) then
+   const   SERIAL2_XMTBUFSIZE  = 32              -- default size of transmit buffer
+end if
+
+if (defined(SERIAL2_RCVBUFSIZE) == FALSE) then
+   const   SERIAL2_RCVBUFSIZE  = 64              -- default size of receive buffer
+end if
+
+if (defined(SERIAL2_DELTA) == FALSE) then
+   const   SERIAL2_DELTA   = 17                  -- default spare space receive buffer
+end if
+
+if (defined(serial_hw2_baudrate) == FALSE) then
+   if (defined(SERIAL2_BPSRATE) == TRUE) then
+      _warn "SERIAL2_BPSRATE is deprecated - please use serial_hw2_baudrate"
+      const serial_hw2_baudrate = SERIAL2_BPSRATE
+   else
+      _error "no baudrate defined"
+   end if
+end if
+
+include usart2_common                            -- common serial functions/procedures
+
+-- Local circular transmit buffer
+var  byte  _serial2_xmtbuf[SERIAL2_XMTBUFSIZE]    -- circular output buffer
+
+-- Local circular receive buffer
+var  byte  _serial2_rcvbuf[SERIAL2_RCVBUFSIZE]    -- circular input buffer
+
+-- Declaration of local offsets in circular buffers:
+
+-- variable keeping track of next free position in transmit buffer
+var  byte  _serial2_offsetxmthead                -- offset next byte from appl
+
+-- variable keeping track of next byte to be transmitted by interrupt handler
+var  byte  _serial2_offsetxmttail                -- offset next byte to port
+
+-- variable keeping track of next free byte in receive buffer
+var  byte  _serial2_offsetrcvhead                -- offset next byte from port
+
+-- variable keeping track of next byte available to application program
+var  byte  _serial2_offsetrcvtail                -- offset next byte to appl
+
+-- Flag indicating if transmission was successful
+var bit serial2_send_success   -- serial_send_success is used internally
+                               -- to pass information from serial_send_byte
+                               -- to serial_hw_write and serial_hw_data'put
+                               -- without breaking the serial_send_byte API.
+
+-- ----------------------------------------------------------------------
+-- Title:     USART serial transmit interrupt handler
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- ----------------------------------------------------------------------
+procedure  _serial2_transmit_interrupt_handler() is
+
+   pragma interrupt
+
+   var  byte  x
+
+   if ((PIR3_TXIF2 == TRUE) & (PIE3_TXIE2 == TRUE)) then          -- UART2 xmit interrupt
+      if (_serial2_offsetxmttail != _serial2_offsetxmthead) then  -- data in xmit buffer
+         x = _serial2_xmtbuf[_serial2_offsetxmttail]              -- next byte to xmit
+         _serial2_offsetxmttail = _serial2_offsetxmttail + 1      -- next position
+         if (_serial2_offsetxmttail >= SERIAL2_XMTBUFSIZE) then   -- beyond buffer
+            _serial2_offsetxmttail = 0                            -- wrap to begin
+         end if
+         if (_serial2_offsetxmttail == _serial2_offsetxmthead) then  -- last byte xmt'd
+            PIE3_TXIE2 = FALSE                                    -- disable xmit interrupts
+         end if
+         TXREG2 = x                                               -- actually xmit byte
+      end if
+   end if
+
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title:     USART serial receive interrupt handler
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Notes:     Sets CTS low when receive buffer has less than
+--            <SERIAL2_DELTA> bytes free space.
+-- ----------------------------------------------------------------------
+procedure  _serial2_receive_interrupt_handler() is
+
+   pragma interrupt
+
+   var  byte  x
+
+   if  (PIR3_RCIF2 == TRUE)  then               -- UART2 receive interrupt
+
+      if ((RCSTA2_OERR == TRUE) | (RCSTA2_FERR == TRUE)) then  -- frame/overr error
+         x = RCREG2                             -- flush hardware buffer
+         while RCSTA2_OERR == TRUE loop         -- overrun state
+            RCSTA2_CREN = FALSE                 -- disable UART
+            RCSTA2_CREN = TRUE                  -- re-enable UART
+            x = RCREG2                          -- \  flush hardware buffers
+            x = RCREG2                          -- /
+         end loop                               -- until no more overrun
+         _serial2_offsetrcvtail = 0             -- \  flush circular buffer
+         _serial2_offsetrcvhead = 0             -- /
+         serial2_ctsinv = FALSE                 -- ensure CTS true
+
+      else                                      -- data without errors
+         _serial2_rcvbuf[_serial2_offsetrcvhead] = RCREG2      -- move byte to rcv buffer
+
+         if (defined(serial2_receive_wedge) == TRUE) then
+            -- receive wedge - a user program can define this procedure.
+            --
+            --    procedure serial_receive_wedge(byte in char)
+            --
+            -- If this procedure exisits, it will be called from the
+            -- isr, each time a char is received and put into the rx queue.
+            --
+            -- serial_receive_wedge is used in test_queue_isr.jal
+            -- In general it can be usefull to detect ctrl-c or alike when they
+            -- arive at the pic (and not when you are ready to process them).
+            --
+            -- CAUTION: the wedge is part of the ISR and should be designed
+            -- to behave accordingly (fast, minimal stack use and nonblocking).
+            -- If you are not sure you need this, you probably don't!
+            serial2_receive_wedge(_serial2_rcvbuf[_serial2_offsetrcvhead])
+         end if
+
+         x = _serial2_offsetrcvhead + 1         -- update offset
+         if x >= SERIAL2_RCVBUFSIZE then        -- buffer overflow
+            x = 0                               -- wrap
+         end if
+         if (x != _serial2_offsetrcvtail) then  -- buffer not yet full
+            _serial2_offsetrcvhead = x          -- update offset
+         end if                                 -- (else discard byte,
+                                                --  CTS flow control has failed)
+         if (serial2_ctsinv == FALSE) then      -- CTS is TRUE
+            if _serial2_offsetrcvhead > _serial2_offsetrcvtail then  -- offset difference
+               x = SERIAL2_RCVBUFSIZE - _serial2_offsetrcvhead + _serial2_offsetrcvtail
+            else
+               x = _serial2_offsetrcvtail - _serial2_offsetrcvhead
+            end if
+            if (x < SERIAL2_DELTA) then         -- circular buffer almost full
+               serial2_ctsinv = TRUE            -- set CTS FALSE
+            end if
+         end if
+
+      end if
+
+   end if
+
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Return byte (if any) from circular receive buffer for UART
+-- Arguments: received byte (if any)
+-- Returns:   - TRUE  when byte returned
+--            - FALSE if no byte available
+-- Notes:     Sets CTS high when receive buffer has more than <SERIAL2_DELTA>
+--            bytes free space after delivering byte to caller.
+-- ----------------------------------------------------------------------
+function serial_hw2_read(byte out data) return bit is
+
+   var  byte  x                                 -- for buffer management
+
+   if (_serial2_offsetrcvtail == _serial2_offsetrcvhead) then  -- receive buffer empty
+      return FALSE                              -- no data available
+   end if
+
+   data = _serial2_rcvbuf[_serial2_offsetrcvtail]  -- first available byte
+   _serial2_offsetrcvtail = _serial2_offsetrcvtail + 1
+   if (_serial2_offsetrcvtail >= SERIAL2_RCVBUFSIZE) then  -- buffer overflow
+      _serial2_offsetrcvtail = 0                 -- wrap
+   end if
+   if (serial2_ctsinv == TRUE) then              -- CTS is FALSE
+      if (_serial2_offsetrcvhead > _serial2_offsetrcvtail) then
+         x = SERIAL2_RCVBUFSIZE - _serial2_offsetrcvhead + _serial2_offsetrcvtail
+      else
+         x = _serial2_offsetrcvtail - _serial2_offsetrcvhead  -- offset difference
+      end if
+      if (x >= SERIAL2_DELTA) then               -- enough free space now
+         serial2_ctsinv = FALSE                  -- make CTS TRUE
+      end if
+   end if
+
+   return TRUE                                  -- byte available
+
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Put a single byte in transmit buffer
+-- Arguments: Data (byte) to transmit
+-- Returns:   transmitted byte (or 0x00 when data discarded)
+-- Notes:     - Activates transmit interrupt handler when data buffered
+--            - When buffer full act as indicated in 'serial2_overflow_discard'
+--              * TRUE:  discard data (and return 0x00 as data byte)
+--              * FALSE: wait for free buffer space
+--                       (returns only after data has been stored in buffer)
+-- ----------------------------------------------------------------------
+function  serial2_send_byte(byte in data) return byte is
+
+   var  byte  newxmthead                        -- offset in circular buffer
+
+   serial2_send_success = TRUE                   -- indicate byte sent
+
+   if (_serial2_offsetxmthead == _serial2_offsetxmttail  &  -- nothing buffered
+       PIR3_TXIF2 == TRUE) then                 -- and UART not busy
+      PIE3_TXIE2 = FALSE                        -- disable xmt interrupt
+      TXREG2 = data                             -- transmit byte immediately
+   else                                         -- use circular buffer
+      _serial2_xmtbuf[_serial2_offsetxmthead] = data  -- put byte in buffer
+      newxmthead = _serial2_offsetxmthead + 1    -- offset next char
+      if (newxmthead >= SERIAL2_XMTBUFSIZE) then  -- beyond buffer end
+         newxmthead = 0                         -- wrap to begin
+      end if
+      if (newxmthead != _serial2_offsetxmttail) then  -- buffer not full
+         _serial2_offsetxmthead = newxmthead     -- update offset
+      else                                      -- buffer full!
+         if (serial2_overflow_discard == FALSE) then  -- do not discard data!
+            while (newxmthead == _serial2_offsetxmttail) loop   -- buffer full
+               -- nothing                       -- spin until something xmit'd
+            end loop
+            _serial2_offsetxmthead = newxmthead  -- update offset
+         else
+            serial2_send_success = FALSE         -- indicate byte discarded
+            data = 0x00                         -- indicate byte discarded
+         end if
+      end if
+      PIE3_TXIE2 = TRUE                         -- (re-)enable xmit interrupts
+   end if
+
+   return data                                  -- transmitted byte!
+
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Put a single byte in transmit buffer
+-- Arguments: Data (byte) to transmit
+-- Returns    (nothing)
+-- Notes:     - This is a variant of serial2_send_byte() compatible with
+--              the procedure in the serial_hardware2 library.
+--            - Spins when byte cannot be put in transmit buffer
+--              (in buffer full condition).
+-- ----------------------------------------------------------------------
+procedure serial_hw2_write(byte in data) is
+   var byte dummy
+
+   serial2_send_success = FALSE
+   while (serial2_send_success == FALSE) loop
+      dummy = serial2_send_byte(data)
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Initialize second serial port
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- ----------------------------------------------------------------------
+procedure serial_hw2_init() is
+
+   _serial2_offsetxmthead  = 0                  -- offset next byte from appl
+   _serial2_offsetxmttail  = 0                  -- offset next byte to port
+   _serial2_offsetrcvhead  = 0                  -- offset next byte from port
+   _serial2_offsetrcvtail  = 0                  -- offset next byte to appl
+
+   TXSTA2            = 0b0000_0000              -- reset (8 bit, asyn)
+   RCSTA2            = 0b0000_0000              -- reset (8 bit, asyn)
+
+   _calculate_and_set_baudrate2()               -- set baudrate and control bits
+
+   pin_RX2_direction = INPUT                    -- make receive pin input
+   pin_TX2_direction = INPUT                    -- make transmit pin input!
+
+   TXSTA2_TXEN       = enabled                  -- (makes TX pin output)
+
+   RCSTA2_SPEN       = enabled                  -- activate serial port
+   RCSTA2_CREN       = enabled                  -- continuous receive enable
+
+   PIE3_RCIE2        = enabled                  -- USART receive int. enable
+                                                -- (PIE3_TXIE2 done dynamically)
+   INTCON_PEIE       = enabled                  -- peripheral interrupts
+   INTCON_GIE        = enabled                  -- general interrupts
+
+   serial2_ctsinv    = FALSE                    -- CTS true: accept PC data
+
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- serial2_hardware compatible interface
+-- ----------------------------------------------------------------------
+
+-- Put byte in transmit buffer as pseudo variable
+-- Spin as long as data could not be put in transmit buffer (buffer full)
+procedure serial_hw2_data'put(byte in data) is
+   var byte dummy
+   serial2_send_success = FALSE
+   while (serial2_send_success == FALSE) loop
+      dummy = serial2_send_byte(data)
+   end loop
+end procedure
+
+
+-- Return next byte from receive buffer as pseudo variable
+-- Spin as long as no data available (buffer empty)
+function serial_hw2_data'get() return byte is
+   var byte data
+   while !serial_hw2_read(data) loop
+      -- nothing
+   end loop
+   return data
+end function
+
