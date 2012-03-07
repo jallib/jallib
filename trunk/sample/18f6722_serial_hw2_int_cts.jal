@@ -1,0 +1,67 @@
+-- ------------------------------------------------------
+-- Title: Test program for serial_hw2_int_cts.jal with 18F6722
+--
+-- Author: Rob Hamerling, Copyright (c) 2011..2012, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: test program for serial hardware lib (for second USART)
+--              using interrupts and CTS output flow control
+--
+-- Sources:
+--
+-- Notes: requires a serial connection to a terminal
+--
+-- ------------------------------------------------------
+
+-- chip setup
+include 18f6722
+
+pragma target   clock    20_000_000          -- osc frequency
+
+pragma target   OSC      HS
+pragma target   FCMEN    disabled
+pragma target   IESO     disabled
+pragma target   PWRTE    enabled
+pragma target   BROWNOUT disabled
+pragma target   WDT      disabled
+pragma target   MCLR     external
+pragma target   LVP      disabled
+pragma target   XINST    disabled
+pragma target   DEBUG    disabled
+pragma target   CCP2MUX  pin_E7              -- leave C1 free for USART
+
+include delay
+include print                                -- formatting routines
+
+-- set all IO as digital
+enable_digital_io()
+
+-- setup USART
+const serial_hw2_baudrate =  115_200          -- speed
+alias serial2_ctsinv      is pin_E1           -- incoming data flow control
+pin_E1_direction          =  OUTPUT
+var  bit serial2_overflow_discard = FALSE     -- no transmit buffer overflow
+
+include serial_hw2_int_cts                    -- serial library
+
+serial_hw2_init()
+
+const byte str[] = " PIC "
+
+print_string(serial_hw2_data, str)
+print_string(serial_hw2_data, PICTYPE)
+serial_hw2_data = " "
+
+var byte char
+forever loop
+   if (serial_hw2_read(char) == true) then
+      serial_hw2_write(char)
+   end if
+end loop
+
