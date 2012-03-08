@@ -1,6 +1,6 @@
 -- Title: Sample showing usage of PPS module for 18F27J53
 -- Author: Sébastien Lelong, Copyright (c) 2011, all rights reserved.
--- Adapted-by:
+-- Adapted-by: Rob Hamerling
 -- Compiler: 2.4o
 -- Revision: $Revision$
 --
@@ -16,27 +16,32 @@
 -- Notes: API isn't stable, expect changes
 --
 
-include 18f27j53
-pragma target clock 48_000_000   -- oscillator frequency
+include 18f27j53                                   -- device
+
+pragma target clock     48_000_000                 -- oscillator frequency
+
 -- magical statements
-pragma target PLLDIV	   P4
-pragma target CPUDIV	   P1
-pragma target PLLEN  P1          -- PLL via fuse turned off
-pragma target OSC	   HS_PLL
-pragma target WDT  disabled      -- no watchdog
-pragma target IOL1WAY disabled   -- Mapping allowed multiple time at runtime
-OSCTUNE_PLLEN = on               -- PLL via OSCTUNE enabled
-_usec_delay(2000) -- PLL needs 2ms before stable
+pragma target PLLDIV    P4
+pragma target CPUDIV    P1
+pragma target PLLEN     P1                         -- PLL via fuse turned off
+pragma target OSC       HS_PLL
+pragma target WDT       disabled                   -- no watchdog
+pragma target IOL1WAY   disabled                   -- Mapping allowed multiple time at runtime
+
+OSCTUNE_PLLEN = on                                 -- PLL via OSCTUNE enabled
+
+_usec_delay(2000)                                  -- PLL needs 2ms before stable
 
 enable_digital_io()
 
-include pps
+include pps                                        -- library
 
 -- PPS module writes are protected, we need to first unlock it
 pps_control_lock(false)
 
 -- TX2 is an output function: we assign a function to a RP pin (here RP9)
 PPS_MAP_RP9 = PPS_TX2CK2
+
 -- RX2 is an input function: we assign a RP pin the a function register
 PPS_MAP_RX2DT2 = RP10
 
@@ -45,29 +50,34 @@ pps_control_lock(true)
 
 -- ok, now setup serial
 const serial_hw2_baudrate = 115_200
+-- declare aliases for the remapped RX2 and TX2 pins
+alias pin_RX2            is  pin_RP10
+alias pin_RX2_direction  is  pin_RP10_direction
+alias pin_TX2            is  pin_RP9
+alias pin_TX2_direction  is  pin_RP9_direction
 include serial_hardware2
 serial_hw2_init()
 
-include print                       -- output library
+include print                                      -- output library
 
-const byte str1[] = "Hello serial world"   -- define a string
-print_string(serial_hw2_data, str1)  -- output string to serial
+const byte str1[] = "Hello serial world"           -- define a string
+print_string(serial_hw2_data, str1)                -- output string to serial
 
--- inform user PIC is ready !
-serial_hw2_write("!")
+serial_hw2_write("!")                              -- inform user PIC is ready !
 
--- let's build our loop
-var byte char	-- will store received char
+var byte char                                      -- will store received char
 var word counter = 10
+
 forever loop
-	if (serial_hw2_read(char))	then
-		serial_hw2_write(char)	-- that's the echo...
-	end if
-	
-	counter = counter - 1;
-	if (counter == 0) then
-	   counter = 50000
-      serial_hw2_data = "."	   
+
+   if (serial_hw2_read(char)) then                 -- char received
+      serial_hw2_write(char)                       -- echo it
    end if
+   counter = counter - 1;
+   if (counter == 0) then
+      counter = 50000
+      serial_hw2_data = "."
+   end if
+
 end loop
 
