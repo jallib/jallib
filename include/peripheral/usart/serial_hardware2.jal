@@ -1,6 +1,6 @@
 -- Title: USART2 hardware control
 -- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
--- Adapted-by: Sebastien Lelong.
+-- Adapted-by: Sebastien Lelong, Rob Hamerling.
 -- Compiler: 2.4o
 -- Revision: $Revision$
 --
@@ -11,9 +11,11 @@
 -- Routines for sending and receiving through the second [E]USART2
 --
 -- Notes: - See also the notes in serial_hardware library.
---        - When a PIC has mappable/selectible configurations for pin_TX2 and pin_RX2 the
---          device file will probably contain names like pin_TX2_RC2 and pin_RX2_RC1.
---          In that case the user program must contain aliases declarations like:
+--        - When the physical locations of pin_TX and pin_RX are configurable for
+--          a specific PIC, the device file will probably contain names like
+--          pin_TX2_RC2 and pin_RX2_RC1 and another pair with other pin suffixes.
+--          Depending for which pair of pins the USART is configured aliases
+--          without suffixes have to be specified, like:
 --              alias  pin_TX2            is  pin_TX2_RC2
 --              alias  pin_RX2            is  pin_RX2_RC1
 --              alias  pin_TX2_direction  is  pin_TX2_RC2_direction
@@ -23,7 +25,7 @@
 include usart2_common
 
 -- -----------------------------------------------------------------------
--- Title:     Initialize the second serial port, prepare baudrate registers.
+-- Title:     Initialize second serial port
 -- Arguments: (none)
 -- Returns:   (nothing)
 -- -----------------------------------------------------------------------
@@ -32,23 +34,19 @@ procedure serial_hw2_init() is
    TXSTA2 = 0b0000_0000                            -- reset (8 bit, async)
    RCSTA2 = 0b0000_0000                            -- reset (8 bit, async)
 
-   -- Calculate and Load baudrate generator
-   _calculate_and_set_baudrate2()
+   _calculate_and_set_baudrate2()                  -- transmit and receive speed
 
-   -- disable all USART interrupts
-   PIE3_RC2IE = FALSE
-   PIE3_TX2IE = FALSE
+   PIE3_RC2IE = FALSE                              -- disable receive interrupts
+   PIE3_TX2IE = FALSE                              -- disable transmit interrupts
 
    pin_RX2_direction = INPUT                       -- make receive pin input
    pin_TX2_direction = INPUT                       -- make transmit pin input!
 
-   -- Enable transmitter : TXSTA2_TXEN=1 (preserve TXSTA2_BRGH)
-   TXSTA2_TXEN = TRUE                              -- makes transmit pin output
+   TXSTA2_TXEN = TRUE                              -- Enable transmitter
+                                                   -- (makes transmit pin output)
 
-   -- Enable serial port : RCSTA2_SPEN=1
-   -- Enable receiving   : RCSTA2_CREN=1
-   RCSTA2 = 0x90                                   -- SYNC bit 0: async mode
-                                                   -- TX9 bit 0: 8 databits
+   RCSTA2_SPEN = enabled                           -- activate serial port
+   RCSTA2_CREN = enabled                           -- continuous receive
 
 end procedure
 
@@ -68,7 +66,7 @@ end procedure
 
 
 -- -----------------------------------------------------------------------
--- Title:     Enable  USART
+-- Title:     Enable USART2
 -- Arguments: (none)
 -- Returns:   (nothing)
 -- Title:     Re-enable USART after use of serial_hw2_disable()
@@ -101,8 +99,8 @@ procedure serial_hw2_write_word(word in data) is
    var byte dx[2] at data                          -- overlay
    while !PIR3_TX2IF loop end loop                 -- wait while transmission pending
    TXREG2 = dx[1]
-   asm nop                  -- this is necessary for damned good optimized compilers
-                            -- loading of the TXREG2 doesn't immediatly set PIR3_TX2IF!!!
+   asm nop                  -- necessary for good optimized compiler, loading
+                            -- of TXREG2 doesn't immediatly set PIR3_TX2IF
    while !PIR3_TX2IF loop end loop                 -- wait while transmission pending
    TXREG2 = dx[0]
 end procedure
@@ -127,7 +125,7 @@ function _serial_hw2_read(byte out data) return bit is
       return FALSE                                 -- no data available
    end if
 
-   if RCSTA2_OERR then                             -- reset USART after error
+   if RCSTA2_OERR then                             -- reset USART after overrun
       RCSTA2_CREN = FALSE
       RCSTA2_CREN = TRUE
    end if
@@ -148,29 +146,13 @@ function serial_hw2_read(byte out data) return bit is
 end function
 
 
--- Here Serial read and write are defined as pseudo variables
--- so you use them as normal vars, like
---  * wait for character being received,
---  * then return the inverted character
--- {{{
--- serial_hw2_data = !serial_hw2_data
--- }}}
--- .
--- these procedures will wait till they can perform their action
--- therefore it's better to use to following construct
--- {{{
--- -- if character received, echo the inverted character
--- if  serial_hw2_data_available then
---     serial_hw2_data = !serial_hw2_data
--- end if
--- -- do other things
--- }}}
-
-
 -- -----------------------------------------------------------------------
 -- Title:     Transmit byte
 -- Arguments: Data (byte) to be transmitted
 -- Returns:   (nothing)
+-- Notes:     This pseudo variable allows a language construct like
+--              serial_hw2_data = <byte>
+--            to transmit a byte to the seial port
 -- -----------------------------------------------------------------------
 procedure serial_hw2_data'put(byte in data) is
    serial_hw2_write(data)
@@ -181,6 +163,9 @@ end procedure
 -- Title:     Receive byte
 -- Arguments: (none)
 -- Returns:   Data (byte) received
+-- Notes:     This pseudo variable allows a language construct like
+--              databyte = serial_hw2_data
+--            to receive a byte from the serial port into variable 'databyte'
 -- -----------------------------------------------------------------------
 function serial_hw2_data'get() return byte is
    var byte data

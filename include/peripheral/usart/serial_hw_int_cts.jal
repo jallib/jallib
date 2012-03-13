@@ -61,9 +61,11 @@
 --      const   SERIAL_DELTA       = 17         -- spare space receive buffer
 --                                              -- if possible keep SERIAL_DELTA = 17!
 -- .
---    When a PIC has mappable/selectible configurations for pin_TX and pin_RX the
---    device file will probably contain names like pin_TX_RB2 and pin_RX_RB1.
---    In that case the user program must contain alias declarations like:
+--    When the physical locations of pin_TX and pin_RX are configurable for a specific
+--    PIC, the device file will probably contain names like pin_TX_RB2 and pin_RX_RB1
+--    and another pair with other pin suffixes.
+--    Depending for which pair of pins the USART is configured aliases
+--    without suffixes have to be specified, like:
 --         alias  pin_TX            is  pin_TX_RB2
 --         alias  pin_RX            is  pin_RX_RB1
 --         alias  pin_TX_direction  is  pin_TX_RB2_direction
@@ -190,12 +192,12 @@ procedure  _serial_transmit_interrupt_handler() is
          x = _serial_xmtbuf[_serial_offsetxmttail]              -- next byte to xmit
          _serial_offsetxmttail = _serial_offsetxmttail + 1      -- next position
          if (_serial_offsetxmttail >= SERIAL_XMTBUFSIZE) then   -- beyond buffer
-            _serial_offsetxmttail = 0           -- wrap to begin
+            _serial_offsetxmttail = 0                           -- wrap to begin
          end if
          if (_serial_offsetxmttail == _serial_offsetxmthead) then  -- last byte xmt'd
-            PIE1_TXIE = FALSE                   -- disable xmit interrupts
+            PIE1_TXIE = DISABLED                                -- disable xmit interrupts
          end if
-         TXREG = x                              -- actually xmit byte
+         TXREG = x                                              -- actually xmit byte
       end if
    end if
 
@@ -220,8 +222,8 @@ procedure  _serial_receive_interrupt_handler() is
       if ((RCSTA_OERR == TRUE) | (RCSTA_FERR == TRUE)) then  -- frame/overr error
          x = RCREG                              -- flush hardware buffer
          while RCSTA_OERR == TRUE loop          -- overrun state
-            RCSTA_CREN = FALSE                  -- disable UART
-            RCSTA_CREN = TRUE                   -- re-enable UART
+            RCSTA_CREN = DISABLED               -- disable UART
+            RCSTA_CREN = ENABLED                -- re-enable UART
             x = RCREG                           -- \  flush hardware buffers
             x = RCREG                           -- /
          end loop                               -- until no more overrun
@@ -277,7 +279,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------
--- Title:     Return byte (if any) from circular receive buffer for UART
+-- Title:     Return byte (if any) from circular receive buffer of USART
 -- Arguments: received byte (if any)
 -- Returns:   - TRUE  when byte returned
 --            - FALSE if no byte available
@@ -338,7 +340,7 @@ function  serial_send_byte(byte in data) return byte is
 
    if (_serial_offsetxmthead == _serial_offsetxmttail  &  -- nothing buffered
        PIR1_TXIF == TRUE) then                  -- and UART not busy
-      PIE1_TXIE = FALSE                         -- disable xmt interrupt
+      PIE1_TXIE = DISABLED                      -- disable xmt interrupt
       TXREG = data                              -- transmit byte immediately
    else                                         -- use circular buffer
       _serial_xmtbuf[_serial_offsetxmthead] = data  -- put byte in buffer
@@ -359,7 +361,7 @@ function  serial_send_byte(byte in data) return byte is
             data = 0x00                         -- indicate byte discarded
          end if
       end if
-      PIE1_TXIE = TRUE                          -- (re-)enable xmit interrupts
+      PIE1_TXIE = ENABLED                       -- (re-)enable xmit interrupts
    end if
 
    return data                                  -- transmitted byte!
@@ -368,7 +370,27 @@ end function
 
 
 -- ----------------------------------------------------------------------
--- Title:     Initialize library functionality
+-- Title:     Put a single byte in transmit buffer
+-- Arguments: Data (byte) to transmit
+-- Returns    (nothing)
+-- Notes:     - This is a variant of serial_send_byte() compatible with
+--              the procedure in the serial_hardware library.
+--            - Spins when byte cannot be put in transmit buffer
+--              (buffer full condition).
+-- ----------------------------------------------------------------------
+procedure serial_hw_write(byte in data) is
+   var byte dummy
+
+   serial_send_success = FALSE
+   while (serial_send_success == FALSE) loop
+      dummy = serial_send_byte(data)
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Initialize first or only serial port
 -- Arguments: (none)
 -- Returns:   (nothing)
 -- ----------------------------------------------------------------------
@@ -379,25 +401,25 @@ procedure serial_hw_init() is
    _serial_offsetrcvhead  = 0                   -- offset next byte from port
    _serial_offsetrcvtail  = 0                   -- offset next byte to appl
 
-   TXSTA                  = 0b0000_0000         -- reset (8 bit, asyn)
-   RCSTA                  = 0b0000_0000         -- reset (8 bit, asyn)
+   TXSTA                  = 0b0000_0000         -- reset (8 databits, asyn)
+   RCSTA                  = 0b0000_0000         -- reset (8 databits, asyn)
 
-   _calculate_and_set_baudrate()                -- set baudrate
+   _calculate_and_set_baudrate()                -- set baudrate and control bits
 
    pin_RX_direction       = INPUT               -- make receive pin input
    pin_TX_direction       = INPUT               -- make transmit pin input!
                                                 -- (required by some older
                                                 --  PICs like 16f628)
 
-   TXSTA_TXEN             = enabled             -- (makes TX pin output)
+   TXSTA_TXEN             = ENABLED             -- enable transmit (makes TX pin output)
 
-   RCSTA_SPEN             = enabled             -- serial port enable
-   RCSTA_CREN             = enabled             -- continuous receive enable
+   RCSTA_SPEN             = ENABLED             -- activate serial port
+   RCSTA_CREN             = ENABLED             -- continuous receive enable
 
-   PIE1_RCIE              = enabled             -- UART receive int. enable
-                                                -- (PIE1_TXIE done dynamically)
-   INTCON_PEIE            = enabled             -- peripheral interrupts
-   INTCON_GIE             = enabled             -- general interrupts
+   PIE1_RCIE              = ENABLED             -- USART receive int. enable
+                                                -- (PIE1_TXIE handled dynamically)
+   INTCON_PEIE            = ENABLED             -- peripheral interrupts
+   INTCON_GIE             = ENABLED             -- general interrupts
 
    serial_ctsinv          = FALSE               -- CTS true: accept PC data
 
@@ -417,31 +439,18 @@ end procedure
 -- ----------------------------------------------------------------------
 
 -- Put byte in transmit buffer as pseudo variable
+-- Spin as long as data could not be put in transmit buffer (buffer full)
 procedure serial_hw_data'put(byte in data) is
-
    var byte dummy
-
    serial_send_success = FALSE
    while (serial_send_success == FALSE) loop
       dummy = serial_send_byte(data)
    end loop
-
-end procedure
-
-
--- Put byte in transmit buffer (synonym of serial_send_byte)
-procedure serial_hw_write(byte in data) is
-   var byte dummy
-
-   serial_send_success = FALSE
-   while (serial_send_success == FALSE) loop
-      dummy = serial_send_byte(data)
-   end loop
-
 end procedure
 
 
 -- Return next byte from receive bufer as pseudo variable
+-- Spin as long as no new data has arrived
 function serial_hw_data'get() return byte is
    var byte data
    while !serial_hw_read(data) loop

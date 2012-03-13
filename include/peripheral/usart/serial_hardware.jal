@@ -20,9 +20,11 @@
 --
 -- Notes: - Pin selection is automatic: pin_TX and pin_RX.
 --        - Pin direction setting is taken care of by this library.
---        - When a PIC has mappable/selectible configurations for pin_TX and pin_RX the
---          device file will probably contain names like pin_TX_RB2 and pin_RX_RB1.
---          In that case the user program must contain aliases declarations like:
+--        - When the physical locations of pin_TX and pin_RX are configurable for
+--          a specific PIC, the device file will probably contain names like
+--          pin_TX_RB2 and pin_RX_RB1 and another pair with other pin suffixes.
+--          Depending for which pair of pins the USART is configured aliases
+--          without suffixes have to be specified, like:
 --              alias  pin_TX            is  pin_TX_RB2
 --              alias  pin_RX            is  pin_RX_RB1
 --              alias  pin_TX_direction  is  pin_TX_RB2_direction
@@ -33,34 +35,31 @@ include usart_common
 
 
 -- -----------------------------------------------------------------------
--- Title:     Initialize the serial port, prepare baudrate registers.
+-- Title:     Initialize the (first or only) serial port
 -- Arguments: (none)
 -- Returns:   (nothing)
 -- -----------------------------------------------------------------------
 procedure serial_hw_init() is
 
-   TXSTA = 0b0000_0000                             -- reset (8 bit, async)
-   RCSTA = 0b0000_0000                             -- reset (8 bit, async)
+   TXSTA = 0b0000_0000                             -- reset (8 databits, async)
+   RCSTA = 0b0000_0000                             -- reset (8 databits, async)
 
-   -- Calculate and Load baudrate generator
-   _calculate_and_set_baudrate()
+   _calculate_and_set_baudrate()                   -- transmit and receive speed
 
-   -- disable USART interrupts
-   PIE1_RCIE = FALSE
-   PIE1_TXIE = FALSE
+   PIE1_RCIE = FALSE                               -- disable receive interrupts
+   PIE1_TXIE = FALSE                               -- disable transmit interrupts
 
    pin_RX_direction = INPUT                        -- make receive pin input
    pin_TX_direction = INPUT                        -- make transmit pin input!
                                                    -- (required by some older ..
                                                    --  .. PICs like 16f628)
 
-   -- Enable transmitter : TXSTA_TXEN=1 (preserve TXSTA_BRGH)
-   TXSTA_TXEN = TRUE                               -- (makes transmit pin output)
+   TXSTA_TXEN = TRUE                               -- Enable transmitter
+                                                   -- (makes transmit pin output)
 
-   -- Enable serial port : RCSTA_SPEN=1
-   -- Enable receiving   : RCSTA_CREN=1
-   RCSTA = 0x90                                    -- SYNC bit 0: async mode
-                                                   -- TX9 bit 0: 8 databits
+   RCSTA_SPEN = enabled                            -- activate serial port
+   RCSTA_CREN = enabled                            -- continuous receive
+
 end procedure
 
 
@@ -89,10 +88,10 @@ end procedure
 
 
 -- -----------------------------------------------------------------------
--- Title:     Transmit character
+-- Title:     Transmit byte
 -- Arguments: Data (byte) to transmit
 -- Returns:   (nothing)
--- Notes:     Hardware transmit buffer must be empty, wait if necessary
+-- Notes:     Hardware transmit buffer must be empty, wait if not
 -- -----------------------------------------------------------------------
 procedure serial_hw_write(byte in data) is
    while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
@@ -111,7 +110,7 @@ procedure serial_hw_write_word(word in data) is
    var byte dx[2] at data                          -- overlay
    while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
    TXREG = dx[1]
-   asm nop                  -- necessary for good optimized compilers, loading
+   asm nop                  -- necessary for good optimized compiler, loading
                             -- of TXREG doesn't immediately set PIR1_TXIF
    while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
    TXREG = dx[0]
@@ -158,29 +157,13 @@ function serial_hw_read(byte out data) return bit is
 end function
 
 
--- Here Serial read and write are defined as pseudo variables
--- so you use them as normal variables, like
---  * wait for character being received,
---  * then return the inverted character
--- {{{
--- serial_hw_data = ! serial_hw_data
--- }}}
---
--- these procedures will wait till they can perform their action
--- therefore it's better to use to following construct
--- {{{
--- -- if character received, echo the inverted character
--- if  serial_hw_data_available then
---     serial_hw_data = !serial_hw_data
--- end if
--- -- do other things
--- }}}
-
-
 -- -----------------------------------------------------------------------
 -- Title:     Transmit byte
 -- Arguments: Data (byte) to be transmitted
 -- Returns:   (nothing)
+-- Notes:     This pseudo variable allows a language construct like
+--              serial_hw_data = <byte>
+--            to transmit a byte to the seial port
 -- -----------------------------------------------------------------------
 procedure serial_hw_data'put(byte in data) is
    serial_hw_write(data)
@@ -191,6 +174,9 @@ end procedure
 -- Title:     Receive byte
 -- Arguments: (none)
 -- Returns:   Data (byte) received
+-- Notes:     This pseudo variable allows a language construct like
+--              databyte = serial_hw_data
+--            to receive a byte from the serial port into variable 'databyte'
 -- -----------------------------------------------------------------------
 function serial_hw_data'get() return byte is
    var byte data
