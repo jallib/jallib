@@ -61,13 +61,15 @@
 --      const   SERIAL2_DELTA       = 17        -- spare space receive buffer
 --                                              -- if possible keep SERIAL2_DELTA = 17!
 -- .
---    When pin_TX2 and pin_RX2 are configurable for a specific PIC, the
---    device file will probably contain names like pin_TX2_RB2 and pin2_RX_RB1.
---    In that case the user program must contain alias declarations like:
---         alias  pin_TX2            is  pin_TX2_RB2
---         alias  pin_RX2            is  pin_RX2_RB1
---         alias  pin_TX2_direction  is  pin_TX2_RB2_direction
---         alias  pin_RX2_direction  is  pin_RX2_RB1_direction
+--    When the physical locations of pin_TX2 and pin_RX2 are configurable for a specific
+--    PIC, the device file will probably contain names like pin_TX2_RC2 and pin_RX2_RC1
+--    and another pair with other pin suffixes.
+--    Depending for which pair of pins the USART is configured aliases
+--    without suffixes have to be specified, like:
+--         alias  pin_TX2            is  pin_TX2_RC2
+--         alias  pin_RX2            is  pin_RX2_RC1
+--         alias  pin_TX2_direction  is  pin_TX2_RC2_direction
+--         alias  pin_RX2_direction  is  pin_RX2_RC1_direction
 -- .
 -- 2. Include this library.
 -- .
@@ -157,7 +159,7 @@ procedure  _serial2_transmit_interrupt_handler() is
             _serial2_offsetxmttail = 0                            -- wrap to begin
          end if
          if (_serial2_offsetxmttail == _serial2_offsetxmthead) then  -- last byte xmt'd
-            PIE3_TXIE2 = FALSE                                    -- disable xmit interrupts
+            PIE3_TXIE2 = DISABLED                                 -- disable xmit interrupts
          end if
          TXREG2 = x                                               -- actually xmit byte
       end if
@@ -291,32 +293,32 @@ function  serial2_send_byte(byte in data) return byte is
 
    var  byte  newxmthead                        -- offset in circular buffer
 
-   serial2_send_success = TRUE                   -- indicate byte sent
+   serial2_send_success = TRUE                  -- indicate byte sent
 
    if (_serial2_offsetxmthead == _serial2_offsetxmttail  &  -- nothing buffered
        PIR3_TXIF2 == TRUE) then                 -- and UART not busy
-      PIE3_TXIE2 = FALSE                        -- disable xmt interrupt
+      PIE3_TXIE2 = DISABLED                     -- disable xmt interrupt
       TXREG2 = data                             -- transmit byte immediately
    else                                         -- use circular buffer
       _serial2_xmtbuf[_serial2_offsetxmthead] = data  -- put byte in buffer
-      newxmthead = _serial2_offsetxmthead + 1    -- offset next char
+      newxmthead = _serial2_offsetxmthead + 1   -- offset next char
       if (newxmthead >= SERIAL2_XMTBUFSIZE) then  -- beyond buffer end
          newxmthead = 0                         -- wrap to begin
       end if
       if (newxmthead != _serial2_offsetxmttail) then  -- buffer not full
-         _serial2_offsetxmthead = newxmthead     -- update offset
+         _serial2_offsetxmthead = newxmthead    -- update offset
       else                                      -- buffer full!
          if (serial2_overflow_discard == FALSE) then  -- do not discard data!
             while (newxmthead == _serial2_offsetxmttail) loop   -- buffer full
                -- nothing                       -- spin until something xmit'd
             end loop
-            _serial2_offsetxmthead = newxmthead  -- update offset
+            _serial2_offsetxmthead = newxmthead -- update offset
          else
-            serial2_send_success = FALSE         -- indicate byte discarded
+            serial2_send_success = FALSE        -- indicate byte discarded
             data = 0x00                         -- indicate byte discarded
          end if
       end if
-      PIE3_TXIE2 = TRUE                         -- (re-)enable xmit interrupts
+      PIE3_TXIE2 = ENABLED                      -- (re-)enable xmit interrupts
    end if
 
    return data                                  -- transmitted byte!
@@ -356,25 +358,25 @@ procedure serial_hw2_init() is
    _serial2_offsetrcvhead  = 0                  -- offset next byte from port
    _serial2_offsetrcvtail  = 0                  -- offset next byte to appl
 
-   TXSTA2            = 0b0000_0000              -- reset (8 bit, asyn)
-   RCSTA2            = 0b0000_0000              -- reset (8 bit, asyn)
+   TXSTA2                  = 0b0000_0000        -- reset (8 databits, asyn)
+   RCSTA2                  = 0b0000_0000        -- reset (8 databits, asyn)
 
    _calculate_and_set_baudrate2()               -- set baudrate and control bits
 
-   pin_RX2_direction = INPUT                    -- make receive pin input
-   pin_TX2_direction = INPUT                    -- make transmit pin input!
+   pin_RX2_direction       = INPUT              -- make receive pin input
+   pin_TX2_direction       = INPUT              -- make transmit pin input!
 
-   TXSTA2_TXEN       = enabled                  -- (makes TX pin output)
+   TXSTA2_TXEN             = ENABLED            -- enable transmit (makes TX2 pin output)
 
-   RCSTA2_SPEN       = enabled                  -- activate serial port
-   RCSTA2_CREN       = enabled                  -- continuous receive enable
+   RCSTA2_SPEN             = ENABLED            -- activate serial port
+   RCSTA2_CREN             = ENABLED            -- continuous receive enable
 
-   PIE3_RCIE2        = enabled                  -- USART receive int. enable
-                                                -- (PIE3_TXIE2 done dynamically)
-   INTCON_PEIE       = enabled                  -- peripheral interrupts
-   INTCON_GIE        = enabled                  -- general interrupts
+   PIE3_RCIE2              = ENABLED            -- USART receive int. enable
+                                                -- (PIE3_TXIE2 handled dynamically)
+   INTCON_PEIE             = ENABLED            -- peripheral interrupts
+   INTCON_GIE              = ENABLED            -- general interrupts
 
-   serial2_ctsinv    = FALSE                    -- CTS true: accept PC data
+   serial2_ctsinv          = FALSE              -- CTS true: accept PC data
 
 end procedure
 
