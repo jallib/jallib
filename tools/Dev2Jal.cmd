@@ -42,7 +42,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.32'
+   ScriptVersion   = '0.1.33'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
    MPlabVersion    = '884'
@@ -145,7 +145,7 @@ if file_read_devspec() \= 0 then                            /* read device speci
    return 1                                                 /* terminate with error */
 
 PinMap.   = '?'                                             /* pin mapping data */
-PinANMap. = '---'                                           /* pin_ANx -> RXy mapping */
+PinANMap. = '-'                                             /* pin_ANx -> RXy mapping */
 if file_read_pinmap() \= 0 then                             /* read pin alias names */
    return 1                                                 /* terminate with error */
 
@@ -729,6 +729,10 @@ do i = 1 to Dev.0
             call list_alias  'PORTA_direction', reg
             call list_tris_nibbles 'TRISA'                  /* nibble direction */
          end
+         when reg = 'SPBRG' & size = 1 then do              /* 8-bits wide */
+            if Name.SPBRGL = '-' then                       /* SPBRGL not defined yet */
+               call list_alias 'SPBRGL', reg                /* add alias */
+         end
          when left(reg,4) = 'TRIS' then do                  /* TRISx */
             call list_alias 'PORT'substr(reg,5)'_direction', reg
             call list_tris_nibbles reg                      /* nibble direction */
@@ -1119,9 +1123,13 @@ do i = 1 to Dev.0
             call list_alias 'PORT'substr(reg,5)'_direction', reg
             call list_tris_nibbles reg                      /* nibble direction */
          end
-         when reg = 'SPBRGL' then do                        /* for backward compatibility */
-            if Name.SPBRG = '-' then                        /* SPBRG not defined yet */
-               call list_alias 'SPBRG', reg                 /* add alias */
+  /*     when reg = 'SPBRGL' then do           */           /* for backward compatibility */
+  /*        if Name.SPBRG = '-' then           */           /* SPBRG not defined yet */
+  /*           call list_alias 'SPBRG', reg    */           /* add alias */
+  /*     end                                   */
+         when reg = 'SPBRG' & size = 1 then do              /* 8-bits wide */
+            if Name.SPBRGL = '-' then                       /* SPBRGL not defined yet */
+               call list_alias 'SPBRGL', reg                /* add alias */
          end
          otherwise                                          /* others */
             nop                                             /* can be ignored */
@@ -1435,6 +1443,14 @@ do i = 1 to Dev.0
          when left(reg,3) = 'LAT' then do                   /* LATx register */
             call list_port16_shadow reg                     /* force use of LATx */
                                                             /* for output to PORTx */
+         end
+         when (reg = 'SPBRG' | reg = 'SP1BRG' | reg = 'SPBRG1') & size = 1 then do   /* 8 bits wide */
+            if Name.SPBRGL = '-' then                       /* SPBRGL not defined yet */
+               call list_alias 'SPBRGL', reg                /* add alias */
+         end
+         when (reg = 'SPBRG2' | reg = 'SP2BRG') & size = 1 then do   /* 8 bits wide */
+            if Name.SPBRGL2 = '-' then                      /* SPBRGL2 not defined yet */
+               call list_alias 'SPBRGL2', reg               /* add alias */
          end
          when left(reg,4) = 'TRIS' then do                  /* TRISx */
             call list_alias 'PORT'substr(reg,5)'_direction', reg
@@ -2712,7 +2728,7 @@ end
 
 PicNameCaps = toupper(PicName)
 aliasname    = 'AN'ansx
-if ansx < 99 & PinANMap.PicNameCaps.aliasname = '---' then do /* no match */
+if ansx < 99 & PinANMap.PicNameCaps.aliasname = '-' then do  /* no match */
    call msg 2, 'No "pin_AN'ansx'" alias in pinmap'
    ansx = 99                                                /* error indication */
 end
