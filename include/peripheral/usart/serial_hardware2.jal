@@ -36,8 +36,15 @@ procedure serial_hw2_init() is
 
    _calculate_and_set_baudrate2()                  -- transmit and receive speed
 
-   PIE3_RC2IE = FALSE                              -- disable receive interrupts
-   PIE3_TX2IE = FALSE                              -- disable transmit interrupts
+   if (defined(PIE3_RC2IE) == TRUE) then
+      PIE3_RC2IE = FALSE                           -- disable receive interrupts
+      PIE3_TX2IE = FALSE                           -- disable transmit interrupts
+   elsif (defined(PIE4_RC2IE) == TRUE) then
+      PIE4_RC2IE = FALSE                           -- disable receive interrupts
+      PIE4_TX2IE = FALSE                           -- disable transmit interrupts
+   else
+      _error "Unable to disable interrupts (bits not supported, please report)"
+   end if
 
    pin_RX2_direction = INPUT                       -- make receive pin input
    pin_TX2_direction = INPUT                       -- make transmit pin input!
@@ -83,7 +90,11 @@ end procedure
 -- Notes:     Hardware transmit buffer must be empty, wait if necessary
 -- -----------------------------------------------------------------------
 procedure serial_hw2_write(byte in data) is
-   while !PIR3_TX2IF loop end loop                 -- wait while transmission pending
+   if (defined(PIR3_TX2IF) == TRUE) then
+      while !PIR3_TX2IF loop end loop              -- wait while transmission pending
+   elsif (defined(PIR4_TX2IF) == TRUE) then
+      while !PIR4_TX2IF loop end loop              -- wait while transmission pending
+   end if
    TXREG2 = data                                   -- transfer data
 end procedure
 
@@ -97,12 +108,10 @@ end procedure
 -- -----------------------------------------------------------------------
 procedure serial_hw2_write_word(word in data) is
    var byte dx[2] at data                          -- overlay
-   while !PIR3_TX2IF loop end loop                 -- wait while transmission pending
-   TXREG2 = dx[1]
+   serial_hw2_write(dx[1])
    asm nop                  -- necessary for good optimized compiler, loading
-                            -- of TXREG2 doesn't immediatly set PIR3_TX2IF
-   while !PIR3_TX2IF loop end loop                 -- wait while transmission pending
-   TXREG2 = dx[0]
+                            -- of TXREG2 doesn't immediately set TX2IF
+   serial_hw2_write(dx[0])
 end procedure
 
 
@@ -118,11 +127,20 @@ end procedure
 function _serial_hw2_read(byte out data) return bit is
    pragma inline
 
-   if PIR3_RC2IF then                              -- check if data available
-      data = RCREG2                                -- pass received byte to caller
-      PIR3_RC2IF  = FALSE                          -- eur@fiwhex.nl 12-sept-08
-   else
-      return FALSE                                 -- no data available
+   if (defined(PIR3_RC2IF) == TRUE) then
+      if PIR3_RC2IF then                           -- check if data available
+         data = RCREG2                             -- pass received byte to caller
+         PIR3_RC2IF  = FALSE                       -- eur@fiwhex.nl 12-sept-08
+      else
+         return FALSE                              -- no data available
+      end if
+   elsif (defined(PIR4_RC2IF) == TRUE) then
+      if PIR4_RC2IF then                           -- check if data available
+         data = RCREG2                             -- pass received byte to caller
+         PIR4_RC2IF  = FALSE                       -- eur@fiwhex.nl 12-sept-08
+      else
+         return FALSE                              -- no data available
+      end if
    end if
 
    if RCSTA2_OERR then                             -- reset USART after overrun
@@ -179,10 +197,18 @@ end function
 -- -----------------------------------------------------------------------
 
 -- generic (pic-independent) variable to check if a byte is received
-alias serial_hw2_data_available is PIR3_RC2IF
+if (defined(PIR3_RC2IF) == TRUE) then
+   alias serial_hw2_data_available is PIR3_RC2IF
+elsif (defined(PIR4_RC2IF) == TRUE) then
+   alias serial_hw2_data_available is PIR4_RC2IF
+end if
 
 -- generic (pic-independent) variable to check if transmit buffer is empty
-alias serial_hw2_data_ready     is PIR3_TX2IF
+if (defined(PIR3_TX2IF) == TRUE) then
+  alias serial_hw2_data_ready is PIR3_TX2IF
+elsif (defined(PIR4_TX2IF) == TRUE) then
+  alias serial_hw2_data_ready is PIR4_TX2IF
+end if
 
 -- These are real raw procedures, declared as pseudo variables
 -- the user is totally responsible for testing the transmit/receive

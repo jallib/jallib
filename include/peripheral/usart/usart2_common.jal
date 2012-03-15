@@ -1,7 +1,7 @@
 -- Title: USART2 common
 -- Author: Stef Mientki Copyright (c) 2002..2010, all rights reserved.
 -- Adapted-by: Sebastien Lelong, Joep Suijs, Rob Hamerling
--- Compiler: >=2.4n
+-- Compiler: 2.4o
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -9,7 +9,7 @@
 --
 -- Description: USART2 common functions
 -- This file provides common functions to other libraries.
--- --
+-- .
 -- Baudrate can simply be set through a constant in the application program,
 -- because the baudrate depending registers are calculated by this unit.
 -- Baudrate is calculated, starting at the high baudrate flag,
@@ -24,32 +24,36 @@ end if
 -- and stores it in the appropiate register.
 -- the high-speed / low-speed bit is not stored but returned as the result
 --
--- Special attention is payed to the highest and lowest baudrates,
+-- Special attention is paid to the highest and lowest baudrates,
 -- a deviation of 5% is accepted in these cases
 --
 -- Asynchronous baudrate settings
 -- {{{
 -- for ESUART (with 16 bits baudrate generator)
---  SPBRGH2/SPBRG2 = ( Fosc / ( 4 * Baudrate ) ) -1
+--  (word) <SPBRG2> = ( Fosc / ( 4 * Baudrate ) ) -1
 --
 -- if TXSTA2_BRGH = 1 (high speed)
---  SPBRG2 = ( Fosc / ( 16 * Baudrate ) ) -1
+--  (byte) <SPBRG2> = ( Fosc / ( 16 * Baudrate ) ) -1
 --
 -- if TXSTA2_BRGH = 0 (low speed)
---  SPBRG2 = ( Fosc / ( 64 * Baudrate ) ) -1
+--  (byte) <SPBRG2> = ( Fosc / ( 64 * Baudrate ) ) -1
 --
 -- }}}
 --
 -- Synchronous baudrate settings:
 --  * TXSTA2_BRGH = 0 (low speed)
---  * SPBRG2 = ( Fosc / ( 4 * Baudrate ) ) -1
+--  * SPBRGL2 = ( Fosc / ( 4 * Baudrate ) ) -1
 
 
 -- ------------------------------------------------------------------------------
 -- Title:     Calculate and set baudrate
 -- Arguments: (none)
 -- Returns:   (nothing)
--- Notes:     Uses externally defined constant
+-- Notes:     - Uses externally defined constant 'serial_hw_baudrate' to
+--              set baudrate registers and corresponding control bits
+--            - Uses bit-constant 'usart_hw_serial' to determine mode of operation:
+--              * TRUE:  Asynchronous communications (default)
+--              * FALSE: Synchronous communications
 -- ------------------------------------------------------------------------------
 procedure _calculate_and_set_baudrate2() is
 
@@ -57,8 +61,7 @@ procedure _calculate_and_set_baudrate2() is
 
    if usart_hw2_serial then                        -- USART2 in asynchronous mode
 
-      if (defined(BAUDCON2_BRG16) == TRUE) then
-         -- use 16 bit baudrate register
+      if (defined(BAUDCON2_BRG16) == TRUE) then    -- use 16 bits baudrate register
          BAUDCON2_BRG16 = TRUE
          TXSTA2_BRGH = TRUE
 
@@ -75,65 +78,62 @@ procedure _calculate_and_set_baudrate2() is
             end if
          end if
 
-         SPBRG2 = byte(usart_div)
-         SPBRGH2 = byte(usart_div >> 8)
+         SPBRGL2 = byte(usart_div)                 -- LSB
+         SPBRGH2 = byte(usart_div >> 8)            -- MSB
 
       else
          -- use classic (8 bit) baudrate register
 
-         -- SPBRG2 = ( Fosc / ( 4 * Baudrate ) ) -1
+         -- <SPBRG2> = ( Fosc / ( 4 * Baudrate ) ) -1
          -- first try high baudrate, will generate highest accuarcy
          -- to get the right rounding (5 + 10*f(x)) /10
          const usart_div = ((5 + ( ( 10 * target_clock ) / ( 16 * serial_hw2_baudrate ))  ) / 10 ) - 1
 
-         -- special case if divider is 0,
-         -- test if deviation is not too much
+         -- special case if divider is 0, test if deviation is not too much
          if usart_div <= 0 then
             if (100 * (serial_hw2_baudrate - (target_clock / 16) )) / serial_hw2_baudrate >= max_deviation then
-               _error "asynchronous baudrate is too high"
+               _error "Asynchronous baudrate is too high"
             end if
          end if
 
-         -- if divider small enough,
-         -- calculate divider and set high-speed
+         -- if divider small enough, calculate divider and set high-speed
          const real_baud = target_clock / 16 / (usart_div + 1)
          if usart_div <= 255 then
             if (real_baud > serial_hw2_baudrate) then
                if (100 * (real_baud - serial_hw2_baudrate) / serial_hw2_baudrate >= max_deviation) then
-                  _error "asynchronous baudrate deviation is too large"
+                  _error "Asynchronous baudrate deviation is too large"
                end if
             else
                if (100 * (serial_hw2_baudrate - real_baud) / serial_hw2_baudrate >= max_deviation) then
-                  _error "asynchronous baudrate deviation is too large"
+                  _error "Asynchronous baudrate deviation is too large"
                end if
             end if
-
             if usart_div >= 0 then
-               SPBRG2 = usart_div
+               SPBRGL2 = byte(usart_div)
             else
-               SPBRG2 = 0
+               SPBRGL2 = byte(0)
             end if
             TXSTA2_BRGH = TRUE
             -- try the low-speed mode
          else
-              const usart_div_low = ((((10 * target_clock) / ( 64 * serial_hw2_baudrate )) + 5 ) / 10) - 1
+            const usart_div_low = ((((10 * target_clock) / ( 64 * serial_hw2_baudrate )) + 5 ) / 10) - 1
             -- here divider will never be 0
             -- but special case to consider,
             -- if baudrate is just a little too low
             if (usart_div_low > 255) & (100 * ((target_clock / (64 * 256 )) - serial_hw2_baudrate)) / serial_hw2_baudrate < max_deviation then
-               SPBRG2 = 255
+               SPBRG2 = byte(255)
                TXSTA2_BRGH = FALSE
                -- now calculate divider and set high-speed / low-speed bit
-              elsif usart_div_low <= 255 then
+            elsif usart_div_low <= 255 then
                if usart_div_low >= 0 then
-                  SPBRG2 = usart_div_low
+                  SPBRGL2 = byte(usart_div_low)
                else
-                  SPBRG2 = 0
+                  SPBRGL2 = byte(0)
                end if
                TXSTA2_BRGH = FALSE
-              else
-               _error "asynchronous baudrate is too low"
-              end if
+            else
+               _error "Asynchronous baudrate is too low"
+            end if
          end if
       end if
 
@@ -145,22 +145,21 @@ procedure _calculate_and_set_baudrate2() is
       -- test if baudrate is a little bit too high
       if usart_div_sync <= 0 then
          if (100 * (serial_hw2_baudrate - (target_clock / 4 ) )) / serial_hw2_baudrate >= max_deviation then
-            _error "synchronous baudrate is too high"
+            _error "Synchronous baudrate is too high"
          end if
       end if
 
-      -- special case to consider,
-      -- if baudrate is just a little too high
+      -- special case to consider, if baudrate is just a little too high
       if (usart_div_sync > 255) & (100 * ((target_clock / (4 * 256)  ) - serial_hw2_baudrate)) / serial_hw2_baudrate < max_deviation then
-         SPBRG2 = 255
-      elsif usart_div_sync <= 255 then
-         if SPBRG2 >= 0 then
-            SPBRG2 = usart_div_sync
+         SPBRGL2 = byte(255)
+      elsif (usart_div_sync <= 255) then
+         if (usart_div_sync >= 0) then
+            SPBRGL2 = byte(usart_div_sync)
          else
-            SPBRG2 = 0
+            SPBRGL2 = byte(0)
          end if
       else
-         _error "synchronous baudrate is too low"
+         _error "Synchronous baudrate is too low"
       end if
 
    end if
