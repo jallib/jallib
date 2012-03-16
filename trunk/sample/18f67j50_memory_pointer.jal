@@ -1,0 +1,311 @@
+-- Title: Array copy speed check using memory pointers (indirect registers)
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Compares the speed of copying an array with different methods.
+--              Results are in number of cycles. Here's the output on 18f67j50
+--
+--              Test 1 instruction cycles: 1153
+--              AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+--              Test 2 instruction cycles: 256
+--              BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+--              Test 3 instruction cycles: 519
+--              CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+--              Test 4 instruction cycles: 134
+--              DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD
+--
+-- Sources:
+--
+
+include 18f67j50                    -- target PICmicro
+-- include chip
+pragma target clock 48_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target WDT  disabled        -- no watchdog
+pragma target PLLDIV        P2     -- divide by 2
+pragma target CPUDIV        P1     -- no cpu system clock divide
+pragma target OSC  INTOSC_NOCLKOUT_PLL -- internal resonator
+pragma target IESO  DISABLED
+pragma target FCMEN DISABLED
+OSCTUNE_PLLEN = 1                  -- set 96mhz pll
+OSCCON_SCS = 0b00
+_usec_delay(1_000)                 -- wait for OSC PLL to settle
+--
+enable_digital_io()   -- disable all analog pins if any
+_usec_delay (100_000) -- wait for power to stablilize
+--
+enable_digital_io()                -- make all pins digital I/O
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+include print
+
+include stopwatch -- include the library
+stopwatch_init()
+
+-- start
+const byte string1[] = "--------"
+print_string(serial_data, string1)
+print_crlf(serial_data)
+
+--------------------------------------------------------------------------------
+-- Setup arrays & procs
+--------------------------------------------------------------------------------
+include memory_pointer1
+include memory_pointer2
+
+const byte ARRAY1_SIZE  = 64
+const word ARRAY1_ADDR  = 0x0100
+var byte array1[ARRAY1_SIZE] at ARRAY1_ADDR	
+
+const byte ARRAY2_SIZE  = 64
+const word ARRAY2_ADDR  = 0x0200
+var byte array2[ARRAY2_SIZE] at ARRAY2_ADDR	
+
+-- sets all data in an array to the data given. this is the data
+-- that will get copied to the other array.
+procedure array1_set_data(byte in data) is
+   -- place data into array 1
+   var byte step
+   for ARRAY1_SIZE using step loop
+   	array1[step] = data
+   end loop
+end procedure
+
+--------------------------------------------------------------------------------
+-- TEST1 - copy array 1 to array 2, normal method (SLOW)
+--------------------------------------------------------------------------------
+var byte step
+array1_set_data("A")
+
+stopwatch_start()
+------------------------------- copy the data
+for ARRAY1_SIZE using step loop
+	array2[step] = array1[step]
+end loop
+-------------------------------
+stopwatch_stop()
+
+const byte test1[] = "Test 1 instruction cycles: "
+print_string(serial_data, test1)
+print_dword_dec(serial_hw_data, stopwatch_cycles)
+print_crlf(serial_data)
+
+-- report data in array 1
+for ARRAY1_SIZE using step loop
+   serial_data = array1[step]
+end loop
+print_crlf(serial_data)
+
+--------------------------------------------------------------------------------
+-- TEST2 - copy array 1 to array 2, normal method no loop (FASTER)
+--------------------------------------------------------------------------------
+array1_set_data("B")
+
+stopwatch_start()
+------------------------------- copy the data
+array2[0] = array1[0]
+array2[1] = array1[1]
+array2[2] = array1[2]
+array2[3] = array1[3]
+array2[4] = array1[4]
+array2[5] = array1[5]
+array2[6] = array1[6]
+array2[7] = array1[7]
+array2[8] = array1[8]
+array2[9] = array1[9]
+array2[10] = array1[10]
+array2[11] = array1[11]
+array2[12] = array1[12]
+array2[13] = array1[13]
+array2[14] = array1[14]
+array2[15] = array1[15]
+array2[16] = array1[16]
+array2[17] = array1[17]
+array2[18] = array1[18]
+array2[19] = array1[19]
+array2[20] = array1[20]
+array2[21] = array1[21]
+array2[22] = array1[22]
+array2[23] = array1[23]
+array2[24] = array1[24]
+array2[25] = array1[25]
+array2[26] = array1[26]
+array2[27] = array1[27]
+array2[28] = array1[28]
+array2[29] = array1[29]
+array2[30] = array1[30]
+array2[31] = array1[31]
+array2[32] = array1[32]
+array2[33] = array1[33]
+array2[34] = array1[34]
+array2[35] = array1[35]
+array2[36] = array1[36]
+array2[37] = array1[37]
+array2[38] = array1[38]
+array2[39] = array1[39]
+array2[40] = array1[40]
+array2[41] = array1[41]
+array2[42] = array1[42]
+array2[43] = array1[43]
+array2[44] = array1[44]
+array2[45] = array1[45]
+array2[46] = array1[46]
+array2[47] = array1[47]
+array2[48] = array1[48]
+array2[49] = array1[49]
+array2[50] = array1[50]
+array2[51] = array1[51]
+array2[52] = array1[52]
+array2[53] = array1[53]
+array2[54] = array1[54]
+array2[55] = array1[55]
+array2[56] = array1[56]
+array2[57] = array1[57]
+array2[58] = array1[58]
+array2[59] = array1[59]
+array2[60] = array1[60]
+array2[61] = array1[61]
+array2[62] = array1[62]
+array2[63] = array1[63]
+-------------------------------
+stopwatch_stop()
+
+const byte test2[] = "Test 2 instruction cycles: "
+print_string(serial_data, test2)
+print_dword_dec(serial_hw_data, stopwatch_cycles)
+print_crlf(serial_data)
+
+-- report data in array 1
+for ARRAY1_SIZE using step loop
+   serial_data = array1[step]
+end loop
+print_crlf(serial_data)
+
+--------------------------------------------------------------------------------
+-- TEST3 - copy array 1 to array 2, memory pointer in for loop (FAST)
+--------------------------------------------------------------------------------
+array1_set_data("C")
+
+stopwatch_start()
+------------------------------- copy the data
+-- set memory pointer address
+mem_pointer1_address = ARRAY1_ADDR
+mem_pointer2_address = ARRAY2_ADDR
+for ARRAY1_SIZE loop
+	mem_pointer2 = mem_pointer1
+end loop
+-------------------------------
+stopwatch_stop()
+
+const byte test3[] = "Test 3 instruction cycles: "
+print_string(serial_data, test3)
+print_dword_dec(serial_hw_data, stopwatch_cycles)
+print_crlf(serial_data)
+
+-- report data in array 1
+for ARRAY1_SIZE using step loop
+   serial_data = array1[step]
+end loop
+print_crlf(serial_data)
+
+--------------------------------------------------------------------------------
+-- TEST4 - copy array 1 to array 2, memory pointer no loop (FASTEST)
+--------------------------------------------------------------------------------
+array1_set_data("D")
+
+stopwatch_start()
+------------------------------- copy the data
+-- set memory pointer address
+mem_pointer1_address = ARRAY1_ADDR
+mem_pointer2_address = ARRAY2_ADDR
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+mem_pointer2 = mem_pointer1
+-------------------------------
+stopwatch_stop()
+
+const byte test4[] = "Test 4 instruction cycles: "
+print_string(serial_data, test4)
+print_dword_dec(serial_hw_data, stopwatch_cycles)
+print_crlf(serial_data)
+
+-- report data in array 2
+for ARRAY2_SIZE using step loop
+   serial_data = array2[step]
+end loop
+print_crlf(serial_data)
+print_string(serial_data, string1)
