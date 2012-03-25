@@ -51,34 +51,38 @@ procedure RTC() is
 
    pragma interrupt
 
-   assembler                            -- fast ISR: so assembler
-      local int_exit                    -- labels for jumping
+   if INTCON_TMR0IF == true then
 
-      bcf    INTCON_TMR0IF              -- clear the timer 0 interrupt flag
-      movf   _rtc_bres_mid,f                 -- mid == 0 ?
-      btfsc  STATUS_Z                   -- not zero?
-      decf   _rtc_bres_hi, f            -- zero, borrow one from high byte
-      decfsz _rtc_bres_mid, f           -- this is the count of the interrupts
-      goto   int_exit                   -- mid byte is not zero, so exit
-      movf   _rtc_bres_hi, f            -- mid == 0, might hi == 0 too ?
-      btfss  STATUS_Z
-      goto   int_exit                   -- high byte not zero, so exit
-                                        -- high byte zero, mid also zero
-                                        -- we need to load the one-second timer
+      assembler                            -- fast ISR: so assembler
+         local int_exit                    -- labels for jumping
 
-      movlw _rtc_hi                     -- add  cycles_per_second to hi-mid-lo
-      movwf _rtc_bres_hi                -- hi & mid are both zero
-      movlw _rtc_mid
-      movwf _rtc_bres_mid
-      movlw _rtc_lo                     -- lo is not zero, and must be added
-      addwf _rtc_bres_lo, f             -- bres_lo can overflow
-      btfsc STATUS_C                    -- does it?
-      incf  _rtc_bres_mid, f            -- yes, but mid was 0x4B, so will not overflow
-      incf  seconds, f                  -- main routine should check seconds
-                                        -- and call calendar when seconds > 59
-                                        -- and take care of minutes, etc.
-      int_exit:
-   end assembler
+         bcf    INTCON_TMR0IF              -- clear the timer 0 interrupt flag
+         movf   _rtc_bres_mid,f                 -- mid == 0 ?
+         btfsc  STATUS_Z                   -- not zero?
+         decf   _rtc_bres_hi, f            -- zero, borrow one from high byte
+         decfsz _rtc_bres_mid, f           -- this is the count of the interrupts
+         goto   int_exit                   -- mid byte is not zero, so exit
+         movf   _rtc_bres_hi, f            -- mid == 0, might hi == 0 too ?
+         btfss  STATUS_Z
+         goto   int_exit                   -- high byte not zero, so exit
+                                           -- high byte zero, mid also zero
+                                           -- we need to load the one-second timer
+
+         movlw _rtc_hi                     -- add  cycles_per_second to hi-mid-lo
+         movwf _rtc_bres_hi                -- hi & mid are both zero
+         movlw _rtc_mid
+         movwf _rtc_bres_mid
+         movlw _rtc_lo                     -- lo is not zero, and must be added
+         addwf _rtc_bres_lo, f             -- bres_lo can overflow
+         btfsc STATUS_C                    -- does it?
+         incf  _rtc_bres_mid, f            -- yes, but mid was 0x4B, so will not overflow
+         incf  seconds, f                  -- main routine should check seconds
+                                           -- and call calendar when seconds > 59
+                                           -- and take care of minutes, etc.
+         int_exit:
+      end assembler
+
+   end if
 
 end procedure                           -- end of ISR
 
