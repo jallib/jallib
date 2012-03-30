@@ -1,0 +1,175 @@
+-- Title: 18f452_pressure, sample program for sdp600 Sensirion pressure sensor 
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2012
+-- Adapted-by: 
+-- Compiler: =2.40
+-- Revision: $Revision: 2760 $
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: usage of SDP600 I2C pressure sensor library
+-- Has both serial and LCD output
+-- 
+
+-- include chip
+include 18f452					   -- target picmicro, running at 3V3
+pragma target clock 10_000_000	   -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC  HS			   -- HS crystal or resonator
+pragma target WDT  disabled		   -- no watchdog
+pragma target LVP  disabled		   -- no Low Voltage Programming
+
+-- LCD & 4x4 keyboard
+var bit lcd_sterm_pin is pin_c2		-- Sterm LCD & keyboard
+var bit lcd_sterm_pin_dir is pin_c2_direction
+const LCD_ROWS = 4
+const LCD_CHARS = 20
+include lcd_sterm_master
+
+-- i2c protocol for sensor
+const word _i2c_bus_speed = 1 ; 100 kHz 
+const bit _i2c_level = true	  ; i2c levels (not SMB)
+-- I2C PINS
+alias i2c_scl			 is pin_scl
+alias i2c_scl_direction	 is pin_scl_direction
+alias i2c_sda			 is pin_sda
+alias i2c_sda_direction	 is pin_sda_direction
+--
+include i2c_software
+i2c_initialize()
+
+
+const down  = 0
+const green = 1
+const red   = 2
+
+var bit led     is pin_c5		   -- red and green LED
+var bit led_dir is pin_c5_direction
+led_dir = output                 -- so green at startup
+led = high
+
+procedure leds(byte in x) is     -- two leds in series with two diodes betw +3V3 and GND
+   if x == down then             -- 2*1.7V+2*0.6V = 4.6V Vf, they will not light up
+      led_dir  = input           -- PIC pin is tied to the middle, via 100 Ohm resistor
+   elsif x == red then           -- so HIGH will light lower green LED
+      led_dir  = output          -- LOW will light upper RED led
+      led      = low             -- pin_direction = input will light no LEDs. 
+   elsif x == green then
+      led_dir  = output
+       led     = high
+   end if
+end procedure
+
+
+include delay
+
+-- serial output too
+const serial_hw_baudrate  = 57600	 
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+include print
+
+                         
+include print           -- print to serial port and LCD
+include format          -- format numbers on LCD and serial port
+
+var sword raw_press     -- raw data from sensor
+var sword pressure      -- in Pascal
+
+var byte loop_counter
+var bit toggle
+
+include sdp600
+
+procedure display() is  
+
+   lcd_cursor_position(0,0)   -- LINE 1
+   lcd = "r" lcd = "a" lcd = "w" lcd = ":"      
+   format_sword_dec_length(lcd, raw_press, true, 7, 0) 
+   lcd = " "                        -- 
+   lcd = " "                        -- 
+
+   lcd_cursor_position(1,0)  -- LINE 2
+   lcd = "p" lcd = "r" lcd = "e" lcd = "s" lcd = "s" lcd = "u" lcd = "r" lcd = "e" lcd = ":"     
+   print_sword_dec(lcd, pressure) 
+   lcd = " "                        -- 
+ 
+   lcd_cursor_position(2,0)   -- LINE 3
+   print_byte_dec(lcd, loop_counter)         -- fan
+   lcd = " "                        -- 
+   lcd = " "                        -- 
+
+   lcd_cursor_position(3,0)   -- LINE 4
+   
+ 
+       
+end procedure 
+
+
+-- start of main program 
+
+for 5 loop
+   leds(red)
+   delay_100ms(2)
+   leds(green)
+   delay_100ms(2)
+   lcd_clear_screen()  -- reset Sterm
+end loop
+
+--                   12345678901234567890
+const byte str7[] = "SDP600 pressure test"
+
+lcd_cursor_position(0,0)    -- first line on LCD
+print_string(lcd, str7)
+
+print_string(serial_hw_data, str7)
+serial_hw_data = ASCII_LF
+serial_hw_data = ASCII_CR           
+serial_hw_data = ASCII_LF           -- empty line
+serial_hw_data = ASCII_CR         
+
+delay_1s(3)
+
+lcd_clear_screen()  -- reset Sterm
+
+
+forever loop -- MMMMMMMMMMMMMMMMMMMMMMMMMMMMMM  M A I N   L O O P   MMMMMMMMMMMMMMMMMMMMM
+
+   display
+  
+   raw_press = sdp600_read_press_raw() 
+   pressure = sdp600_read_press_pa() 
+
+   delay_100ms(2)    -- for visibility of display
+
+   loop_counter = loop_counter + 1
+   
+   if loop_counter % 10 == 0 then       -- every 2 seconds
+       serial_hw_data = "r" serial_hw_data = "a" serial_hw_data = "w" serial_hw_data = ":"      
+       format_sword_dec_length(serial_hw_data, raw_press, true, 7, 0) 
+       serial_hw_data = " "                        -- 
+
+       serial_hw_data = "p" serial_hw_data = "r" serial_hw_data = "e" 
+       serial_hw_data = "s" serial_hw_data = "s" serial_hw_data = "u" 
+       serial_hw_data = "r" serial_hw_data = "e" serial_hw_data = ":"     
+       print_sword_dec(serial_hw_data, pressure) 
+       serial_hw_data = ASCII_LF           -- empty line
+       serial_hw_data = ASCII_CR         
+ 
+   end if      
+
+   toggle = ! toggle
+   if toggle then
+      leds(green)
+   else
+      leds(down)
+   end if
+   
+   
+end loop    -- end of main loop
