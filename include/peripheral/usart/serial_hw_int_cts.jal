@@ -128,15 +128,15 @@
 -- Setup defaults when no value is specified before:
 --
 if (defined(SERIAL_XMTBUFSIZE) == FALSE) then
-   const   SERIAL_XMTBUFSIZE  = 32              -- default size of transmit buffer
+   const   SERIAL_XMTBUFSIZE  = 32                 -- default size of transmit buffer
 end if
 
 if (defined(SERIAL_RCVBUFSIZE) == FALSE) then
-   const   SERIAL_RCVBUFSIZE  = 64              -- default size of receive buffer
+   const   SERIAL_RCVBUFSIZE  = 64                 -- default size of receive buffer
 end if
 
 if (defined(SERIAL_DELTA) == FALSE) then
-   const   SERIAL_DELTA   = 17                  -- default spare space receive buffer
+   const   SERIAL_DELTA   = 17                     -- default spare space receive buffer
 end if
 
 if (defined(serial_hw_baudrate) == FALSE) then
@@ -148,33 +148,34 @@ if (defined(serial_hw_baudrate) == FALSE) then
    end if
 end if
 
-include usart_common                            -- common serial functions/procedures
+include usart_common                               -- common serial functions/procedures
 
 -- Local circular transmit buffer
-var byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]    -- circular output buffer
+var byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]        -- circular output buffer
 
 -- Local circular receive buffer
-var byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]    -- circular input buffer
+var byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]        -- circular input buffer
 
 -- Declaration of local offsets in circular buffers:
 
 -- variable keeping track of next free position in transmit buffer
-var volatile byte  _serial_offsetxmthead                -- offset next byte from appl
+var volatile byte  _serial_offsetxmthead           -- offset next byte from appl
 
 -- variable keeping track of next byte to be transmitted by interrupt handler
-var volatile byte  _serial_offsetxmttail                -- offset next byte to port
+var volatile byte  _serial_offsetxmttail           -- offset next byte to port
 
 -- variable keeping track of next free byte in receive buffer
-var volatile byte  _serial_offsetrcvhead                -- offset next byte from port
+var volatile byte  _serial_offsetrcvhead           -- offset next byte from port
 
 -- variable keeping track of next byte available to application program
-var volatile byte  _serial_offsetrcvtail                -- offset next byte to appl
+var volatile byte  _serial_offsetrcvtail           -- offset next byte to appl
 
 -- Flag indicating if transmission was successful
 var bit serial_send_success   -- serial_send_success is used internally
                               -- to pass information from serial_send_byte
                               -- to serial_hw_write and serial_hw_data'put
                               -- without breaking the serial_send_byte API.
+
 
 -- ----------------------------------------------------------------------
 -- Title:     USART serial transmit interrupt handler
@@ -191,15 +192,12 @@ procedure  _serial_transmit_interrupt_handler() is
       if (_serial_offsetxmttail != _serial_offsetxmthead) then  -- data in xmit buffer
          x = _serial_xmtbuf[_serial_offsetxmttail]              -- next byte to xmit
          _serial_offsetxmttail = _serial_offsetxmttail + 1      -- next position
-         if (_serial_offsetxmttail >= SERIAL_XMTBUFSIZE) then   -- beyond buffer
-            _serial_offsetxmttail = 0                           -- wrap to begin
+         if (_serial_offsetxmttail >= SERIAL_XMTBUFSIZE) then   -- end of buffer reached
+            _serial_offsetxmttail = 0                           -- wrap
          end if
-;         if (_serial_offsetxmttail == _serial_offsetxmthead) then  -- last byte xmt'd
-;            PIE1_TXIE = DISABLED                                -- disable xmit interrupts
-;         end if
          TXREG = x                                              -- actually xmit byte
-      else 
-         PIE1_TXIE = DISABLED                                -- disable xmit interrupts      
+      else                                                      -- xmit buffer empty
+         PIE1_TXIE = DISABLED                                   -- disable xmit interrupts
       end if
    end if
 
@@ -255,7 +253,7 @@ procedure  _serial_receive_interrupt_handler() is
          end if
 
          x = _serial_offsetrcvhead + 1          -- update offset
-         if x >= SERIAL_RCVBUFSIZE then         -- buffer overflow
+         if x >= SERIAL_RCVBUFSIZE then         -- end of buffer reached
             x = 0                               -- wrap
          end if
          if (x != _serial_offsetrcvtail) then   -- buffer not yet full
@@ -298,7 +296,7 @@ function serial_hw_read(byte out data) return bit is
 
    data = _serial_rcvbuf[_serial_offsetrcvtail]  -- first available byte
    _serial_offsetrcvtail = _serial_offsetrcvtail + 1
-   if (_serial_offsetrcvtail >= SERIAL_RCVBUFSIZE) then  -- buffer overflow
+   if (_serial_offsetrcvtail >= SERIAL_RCVBUFSIZE) then  -- end of buffer reached
       _serial_offsetrcvtail = 0                 -- wrap
    end if
    if (serial_ctsinv == TRUE) then              -- CTS is FALSE
@@ -347,8 +345,8 @@ function  serial_send_byte(byte in data) return byte is
    else                                         -- use circular buffer
       _serial_xmtbuf[_serial_offsetxmthead] = data  -- put byte in buffer
       newxmthead = _serial_offsetxmthead + 1    -- offset next char
-      if (newxmthead >= SERIAL_XMTBUFSIZE) then  -- beyond buffer end
-         newxmthead = 0                         -- wrap to begin
+      if (newxmthead >= SERIAL_XMTBUFSIZE) then  -- end of buffer reached
+         newxmthead = 0                         -- wrap
       end if
       if (newxmthead != _serial_offsetxmttail) then  -- buffer not full
          _serial_offsetxmthead = newxmthead     -- update offset
