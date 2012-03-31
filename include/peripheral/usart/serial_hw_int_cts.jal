@@ -170,12 +170,6 @@ var volatile byte  _serial_offsetrcvhead           -- offset next byte from port
 -- variable keeping track of next byte available to application program
 var volatile byte  _serial_offsetrcvtail           -- offset next byte to appl
 
--- Flag indicating if transmission was successful
-var bit serial_send_success   -- serial_send_success is used internally
-                              -- to pass information from serial_send_byte
-                              -- to serial_hw_write and serial_hw_data'put
-                              -- without breaking the serial_send_byte API.
-
 
 -- ----------------------------------------------------------------------
 -- Title:     USART serial transmit interrupt handler
@@ -336,8 +330,6 @@ function  serial_send_byte(byte in data) return byte is
 
    var  byte  newxmthead                        -- offset in circular buffer
 
-   serial_send_success = TRUE                   -- indicate byte sent
-
    if (_serial_offsetxmthead == _serial_offsetxmttail  &  -- nothing buffered
        PIR1_TXIF == TRUE) then                  -- and UART not busy
       PIE1_TXIE = DISABLED                      -- disable xmt interrupt
@@ -357,7 +349,6 @@ function  serial_send_byte(byte in data) return byte is
             end loop
             _serial_offsetxmthead = newxmthead  -- update offset
          else
-            serial_send_success = FALSE         -- indicate byte discarded
             data = 0x00                         -- indicate byte discarded
          end if
       end if
@@ -380,12 +371,7 @@ end function
 -- ----------------------------------------------------------------------
 procedure serial_hw_write(byte in data) is
    var byte dummy
-
-   serial_send_success = FALSE
-   while (serial_send_success == FALSE) loop
-      dummy = serial_send_byte(data)
-   end loop
-
+   dummy = serial_send_byte(data)
 end procedure
 
 
@@ -433,29 +419,24 @@ procedure serial_init() is
 end procedure
 
 
-
 -- ----------------------------------------------------------------------
 -- serial_hardware compatible interface
 -- ----------------------------------------------------------------------
 
 -- Put byte in transmit buffer as pseudo variable
--- Spin as long as data could not be put in transmit buffer (buffer full)
 procedure serial_hw_data'put(byte in data) is
    var byte dummy
-   serial_send_success = FALSE
-   while (serial_send_success == FALSE) loop
-      dummy = serial_send_byte(data)
-   end loop
+   dummy = serial_send_byte(data)               -- send data
 end procedure
 
 
--- Return next byte from receive bufer as pseudo variable
--- Spin as long as no new data has arrived
+-- Return next byte from receive buffer as pseudo variable
+-- Spin as long as no data available (buffer empty)
 function serial_hw_data'get() return byte is
    var byte data
    while !serial_hw_read(data) loop
       -- nothing
    end loop
-   return data
+   return data                                  -- return received data
 end function
 

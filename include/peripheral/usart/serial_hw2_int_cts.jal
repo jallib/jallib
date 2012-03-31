@@ -115,10 +115,10 @@ end if
 include usart2_common                              -- common serial functions/procedures
 
 -- Local circular transmit buffer
-var  byte  _serial2_xmtbuf[SERIAL2_XMTBUFSIZE]     -- circular output buffer
+var byte  _serial2_xmtbuf[SERIAL2_XMTBUFSIZE]      -- circular output buffer
 
 -- Local circular receive buffer
-var  byte  _serial2_rcvbuf[SERIAL2_RCVBUFSIZE]     -- circular input buffer
+var byte  _serial2_rcvbuf[SERIAL2_RCVBUFSIZE]      -- circular input buffer
 
 -- Declaration of local offsets in circular buffers:
 
@@ -133,12 +133,6 @@ var volatile byte  _serial2_offsetrcvhead          -- offset next byte from port
 
 -- variable keeping track of next byte available to application program
 var volatile byte  _serial2_offsetrcvtail          -- offset next byte to appl
-
--- Flag indicating if transmission was successful
-var bit serial2_send_success   -- serial_send_success is used internally
-                               -- to pass information from serial_send_byte
-                               -- to serial_hw_write and serial_hw_data'put
-                               -- without breaking the serial_send_byte API.
 
 -- Handling interrupt bits differences between PICs
 if (defined(PIE3_RCIE2) == TRUE) then              -- PIE3/PIR3
@@ -308,8 +302,6 @@ function  serial2_send_byte(byte in data) return byte is
 
    var  byte  newxmthead                        -- offset in circular buffer
 
-   serial2_send_success = TRUE                  -- indicate byte sent
-
    if (_serial2_offsetxmthead == _serial2_offsetxmttail  &  -- nothing buffered
         SERIAL2_TXIF2 == TRUE) then             -- and UART not busy
       SERIAL2_TXIE2 = DISABLED                  -- disable xmt interrupt
@@ -329,7 +321,6 @@ function  serial2_send_byte(byte in data) return byte is
             end loop
             _serial2_offsetxmthead = newxmthead -- update offset
          else
-            serial2_send_success = FALSE        -- indicate byte discarded
             data = 0x00                         -- indicate byte discarded
          end if
       end if
@@ -352,12 +343,7 @@ end function
 -- ----------------------------------------------------------------------
 procedure serial_hw2_write(byte in data) is
    var byte dummy
-
-   serial2_send_success = FALSE
-   while (serial2_send_success == FALSE) loop
-      dummy = serial2_send_byte(data)
-   end loop
-
+   dummy = serial2_send_byte(data)
 end procedure
 
 
@@ -401,13 +387,9 @@ end procedure
 -- ----------------------------------------------------------------------
 
 -- Put byte in transmit buffer as pseudo variable
--- Spin as long as data could not be put in transmit buffer (buffer full)
 procedure serial_hw2_data'put(byte in data) is
    var byte dummy
-   serial2_send_success = FALSE
-   while (serial2_send_success == FALSE) loop
-      dummy = serial2_send_byte(data)
-   end loop
+   dummy = serial2_send_byte(data)              -- send data
 end procedure
 
 
@@ -418,6 +400,6 @@ function serial_hw2_data'get() return byte is
    while !serial_hw2_read(data) loop
       -- nothing
    end loop
-   return data
+   return data                                  -- return received data
 end function
 
