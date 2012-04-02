@@ -8,15 +8,15 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: Hardware implementation of I2C (single) master.
--- --
--- -- Define i2c pins like:
--- alias i2c_scl            is pin_c3  ; optional, but good habit ;)
+-- .
+-- Define i2c pins like:
+-- alias i2c_scl            is pin_c3              -- optional
 -- alias i2c_scl_direction  is pin_c3_direction
--- alias i2c_sda            is pin_c4  ; optional, but good habit ;)
+-- alias i2c_sda            is pin_c4              -- optional
 -- alias i2c_sda_direction  is pin_c4_direction
--- --
--- const word _i2c_bus_speed = 1 ; * 100kHz
--- const bit _i2c_level = true   ; i2c levels (not SMB)
+-- - --
+-- const word _i2c_bus_speed = 1                   -- 100kHz
+-- const bit  _i2c_level     = true                -- i2c levels (not SMB)
 --
 -- TODO:
 --
@@ -24,10 +24,10 @@
 -- --------------------------------------------------------------------
 -- some constants needed for the baudrate generator
 -- --------------------------------------------------------------------
-const _i2c_slowest = 127 -- 40 kHz @ 20 MHz xtal
-const _i2c_100khz = (target_clock / (4 *  100_000)) - 1
-const _i2c_400khz = (target_clock / (4 *  400_000)) - 1
-const _i2c_1mhz   = (target_clock / (4 * 1000_000)) - 1
+const _i2c_slowest = 127                  -- (40 kHz @ 20 MHz Fosc)
+const _i2c_100khz  = target_clock /   100_000 / 4 - 1
+const _i2c_400khz  = target_clock /   400_000 / 4 - 1
+const _i2c_1mhz    = target_clock / 1_000_000 / 4 - 1
 -- --------------------------------------------------------------------
 
 -- --------------------------------------------------------------------
@@ -41,23 +41,24 @@ procedure i2c_initialize() is
    pin_SCL_direction = input
    pin_SDA_direction = input
 
-   sspcon1  = 0b0010_1000   -- set up 16f87x as master device
+   sspcon1 = 0b0010_1000   -- set up as master device
    sspcon2 = 0b0010_0000   -- sets default acknowledge bit value
    -- -----------------------------------------------------------------
 
    -- set correct speed
    if    _i2c_bus_speed == 10 then sspadd = _i2c_1mhz
    elsif _i2c_bus_speed ==  4 then sspadd = _i2c_400khz
-   elsif _i2c_bus_speed ==  1 then  sspad = _i2c_100khz
-   else                             sspad = _i2c_slowest 
+   elsif _i2c_bus_speed ==  1 then sspadd = _i2c_100khz
+   elsif _i2c_bus_speed ==  0 then sspadd = _i2c_slowest
+   else                            sspadd = _i2c_100khz      -- default
    end if
 
    -- set correct level
    -- SMP-bit7 = 0, slew rate enabled, better for EMC
    if _i2c_level then
-      sspstat = 0b_0000_0000   ;i2c bus levels, CKE=0
+      sspstat = 0b_0000_0000                       -- i2c bus levels, CKE=0
    else
-      sspstat = 0b_0100_0000   ;SMbus levels, CKE=1
+      sspstat = 0b_0100_0000                       -- SMbus levels, CKE=1
    end if
 end procedure
 -- -----------------------------------------------------------------------------
