@@ -1,4 +1,4 @@
-/* ----------------------------------------------------------------------- *
+/* ------------------------------------------------------------------------ *
  * Title: Dev2Jal.cmd - Create JalV2 device include files for flash PICs    *
  *                                                                          *
  * Author: Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.    *
@@ -42,7 +42,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.33'
+   ScriptVersion   = '0.1.35'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
    MPlabVersion    = '884'
@@ -96,10 +96,10 @@ if msglevel > 2 then
 parse upper arg destination selection .                     /* commandline arguments */
 
 if destination = 'PROD' then                                /* production run */
-   dstdir = JALLIBbase'include/device/'                     /* local Jallib */
+   dstdir = JALLIBbase'include/device'                      /* local Jallib */
 else if destination = 'TEST' then do                        /* test run */
-   dstdir = 'test/'                                         /* subdir for testing */
-   rx = SysMkDir(strip(dstdir,'T','/'))                     /* create destination dir */
+   dstdir = './test'                                        /* subdir for testing */
+   rx = SysMkDir(dstdir)                                    /* create destination dir */
    if rx \= 0 & rx \= 5 then do                             /* not created, not existing */
       call msg 3, rx 'while creating destination directory' dstdir
       return rx                                             /* unrecoverable: terminate */
@@ -153,19 +153,19 @@ Fuse_Def. = '?'                                             /* Fuse_Def name map
 if file_read_fusedef() \= 0 then                            /* read fuse_def table */
    return 1                                                 /* terminate with error */
 
-if stream(dstdir'chipdef_jallib.jal','c','query exists') \= '' then
-  '@erase' translate(dstdir'*.jal','\','/') '1>nul 2>nul'   /* remove all jal files */
+if stream(dstdir'/chipdef_jallib.jal','c','query exists') \= '' then
+  '@erase' translate(dstdir'/*.jal','\','/') '1>nul 2>nul'   /* remove all jal files */
 
-chipdef = dstdir'chipdef_jallib.jal'                        /* common include file */
+chipdef = dstdir'/chipdef_jallib.jal'                        /* common include for device files */
 if stream(chipdef, 'c', 'query exists') \= '' then          /* old chipdef file present */
    call SysFileDelete chipdef                               /* delete it */
 if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* new chipdef file */
    call msg 3, 'Could not create common include file' chipdef
    return 1                                                 /* unrecoverable: terminate */
 end
-call list_chipdef_header                                    /* create new chipdef file */
+call list_chipdef_header                                    /* header of chipdef file */
 
-xChipDef. = '?'                                             /* devids in chipdef */
+xChipDef. = '?'                                             /* collection of dev IDs in chipdef */
 
 ListCount = 0                                               /* # created device files */
 SpecMissCount = 0                                           /* # missing in devicespecific */
@@ -210,7 +210,7 @@ do i=1 to dir.0                                             /* all relevant .dev
 
    Ram.                  = ''                               /* sfr usage and mirroring */
    Name.                 = '-'                              /* register and subfield names */
-   CfgAddr.              = ''                               /* config memory addresses */
+   CfgAddr.              = ''                               /* config memory addresses (decimal) */
 
    DevID                 = '0000'                           /* no device ID */
    NumBanks              = 0                                /* # memory banks */
@@ -267,7 +267,7 @@ do i=1 to dir.0                                             /* all relevant .dev
 
    /* ------------ produce device file ------------------------ */
 
-   jalfile = dstdir||PicName'.jal'                          /* .jal file */
+   jalfile = dstdir'/'PicName'.jal'                         /* device file */
    if stream(jalfile, 'c', 'query exists') \= '' then       /* previous */
       call SysFileDelete jalfile                            /* delete */
    if stream(jalfile, 'c', 'open write') \= 'READY:' then do
@@ -278,20 +278,20 @@ do i=1 to dir.0                                             /* all relevant .dev
    call list_head                                           /* common header */
 
    if core = '12' then do                                   /* baseline */
-      call list_fuses_words1x
+      call list_fuses
       call list_sfr1x
       call list_nmmr12
    end
    else if core = '14' then do                              /* midrange */
-      call list_fuses_words1x
+      call list_fuses
       call list_sfr1x
    end
    else if core = '14H' then do                             /* extended midrange (Hybrids) */
-      call list_fuses_words1x
+      call list_fuses
       call list_sfr14h
    end
    else do                                                  /* 18Fs */
-      call list_fuses_bytes16
+      call list_fuses
       call list_sfr16
       call list_nmmr16
    end
@@ -335,7 +335,7 @@ return 0
 /* input:   - nothing                             */
 /* output:  - core (0, '12', '14', '14H', '16')   */
 /* ---------------------------------------------- */
-load_config_info: procedure expose Dev. CfgAddr. PicName,
+load_config_info: procedure expose Dev. PicName,
                                    StackDepth NumBanks AccessBankSplitOffset,
                                    CodeSize DataSize IDSpec DevID CfgAddr.,
                                    VddRange VddNominal VppRange VppDefault
@@ -360,9 +360,9 @@ do i = 1 to Dev.0 until word(Dev.i,1) = 'SFR'               /* process only the 
                Core = '14H'
             else                                            /* otherwise */
                Core = '16'
-            CfgAddr.0 = Val2 - Val1 + 1                     /* number of config bytes */
-            do j = 1 to CfgAddr.0                           /* all config bytes */
-               CfgAddr.j = Val1 + j - 1                     /* address */
+            CfgAddr.0 = Val2 - Val1 + 1                     /* number of config words/bytes */
+            do j = 1 to CfgAddr.0                           /* all of 'm */
+               CfgAddr.j = Val1 + j - 1                     /* address (decimal) */
             end
          end
       end
@@ -580,18 +580,30 @@ return
 /* ---------------------------------------------- */
 /* procedure to list Config (fuses) settings      */
 /* input:  - nothing                              */
-/* 12-bit and 14-bit core                         */
-/* uses device specific table                     */
+/* All cores                                      */
 /* ---------------------------------------------- */
-list_fuses_words1x: procedure expose jalfile CfgAddr. DevSpec. PicName msglevel
+list_fuses: procedure expose jalfile Dev. CfgAddr. DevSpec. PicName Core msglevel
 PicNameCaps = toupper(PicName)
-FusesDefault = DevSpec.PicNameCaps.FusesDefault
-if FusesDefault = '?' then do
-   call msg 3, 'FusesDefault not listed in devicespecific.cmd!'
-   exit 1
+FusesDerived = cfgmem_mask()                                /* derive from .dev file */
+if DevSpec.PicNameCaps.FUSESDEFAULT \= '?' then do          /* specified in devicespecific.json */
+   if length(DevSpec.PicNameCaps.FUSESDEFAULT) \= length(FusesDerived) then do
+      call msg 3, 'Fuses in devicespecific.json do not match size of configuration memory'
+      call msg 0, '   <'DevSpec.PicNameCaps.FUSESDEFAULT'>  <-->  <'FusesDerived'>'
+      FusesDefault = FusesDerived                           /* take derived value */
+   end
+   else do
+      if DevSpec.PicNameCaps.FUSESDEFAULT = FusesDerived then
+         call msg 2, 'Superfuous fuses specification in devicespecific.json: Specified = Derived!'
+      FusesDefault = DevSpec.PicNameCaps.FUSESDEFAULT       /* take specified value */
+      call msg 1, 'Using fuses defaults from devicespecific.json:' FusesDefault
+   end
 end
+else do                                                     /* not in devicespecific.json */
+   FusesDefault = FusesDerived                              /* take derived value */
+end
+
 call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
-if CfgAddr.0 = 1 then do
+if CfgAddr.0 = 1 then do                    /* single word/byte only with baseline/midrange ! */
    call lineout jalfile, 'const word  _FUSE_BASE            = 0x'D2X(CfgAddr.1)
    call charout jalfile, 'const word  _FUSES                = 0b'
    do i = 1 to 4
@@ -599,72 +611,198 @@ if CfgAddr.0 = 1 then do
    end
    call lineout jalfile, ''
 end
-else do
-   call charout jalfile, 'const word  _FUSE_BASE[_FUSES_CT] = { '
+else do                                                     /* multiple fuse words/bytes */
+   if core \= '16' then                                     /* baseline,midrange */
+      call charout jalfile, 'const word  _FUSE_BASE[_FUSES_CT] = { '
+   else                                                     /* 18F */
+      call charout jalfile, 'const dword _FUSE_BASE[_FUSES_CT] = { '
    do  j = 1 to CfgAddr.0
       call charout jalfile, '0x'D2X(CfgAddr.j)
-      if j < CfgAddr.0 then
-         call charout jalfile, ','
+      if j < CfgAddr.0 then do
+         call lineout jalfile, ','
+         call charout jalfile, left('',38)
+      end
    end
    call lineout jalfile, ' }'
-   call charout jalfile, 'const word  _FUSES[_FUSES_CT]     = { '
-   do  j = 1 to CfgAddr.0
-      call charout jalfile, '0b'
-      do i = 1 to 4
-         call charout jalfile, '_'X2B(substr(FusesDefault,i+4*(j-1),1,'0'))
+
+   if core \= '16' then do                                     /* baseline,midrange */
+      call charout jalfile, 'const word  _FUSES[_FUSES_CT]     = { '
+      do  j = 1 to CfgAddr.0
+         call charout jalfile, '0b'
+         do i = 1 to 4
+            call charout jalfile, '_'X2B(substr(FusesDefault,i+4*(j-1),1,'0'))
+         end
+         if j < CfgAddr.0 then                                 /* not last word */
+            call charout jalfile, ', '
+         else
+            call charout jalfile, ' }'
+         call lineout jalfile, '        -- CONFIG'||j
+         if j < CfgAddr.0 then
+            call charout jalfile, left('',38,' ')
       end
-      if j < CfgAddr.0 then                                 /* not last word */
-         call charout jalfile, ', '
-      else
-         call charout jalfile, ' }'
-      call lineout jalfile, '        -- CONFIG'||j
-      if j < CfgAddr.0 then
-         call charout jalfile, left('',38,' ')
    end
+
+   else do                                                     /* 18F */
+      call charout jalfile, 'const byte  _FUSES[_FUSES_CT]     = { '
+      do j = 1 to CfgAddr.0
+         call charout jalfile, '0b'
+         do i = 1 to 2
+            call charout jalfile, '_'X2B(substr(FusesDefault,i+2*(j-1),1,'0'))
+         end
+         if j < CfgAddr.0 then
+            call charout jalfile, ', '
+         else
+            call charout jalfile, ' }'
+         call lineout jalfile, '        -- CONFIG'||(j+1)%2||substr('HL',1+(j//2),1)
+         if j < CfgAddr.0 then
+            call charout jalfile, left('',38,' ')
+      end
+   end
+
 end
 call lineout jalfile, '--'
 return
 
 
-/* ---------------------------------------------- */
-/* procedure to list Config (fuses) settings      */
-/* input:  - nothing                              */
-/* 16-bit core                                    */
-/* uses device specific table                     */
-/* ---------------------------------------------- */
-list_fuses_bytes16: procedure expose jalfile CfgAddr. DevSpec. PicName msglevel
-PicNameCaps = toupper(PicName)
-FusesDefault = DevSpec.PicNameCaps.FusesDefault             /* get default */
-if FusesDefault = '?' then do
-  call msg 3, 'FusesDefault not listed in devicespecific.cmd!'
-  exit 1
+/* ----------------------------------------------------------------- */
+/* procedure to extract default config bits setting from .dev file   */
+/* returns   power-on pattern                                        */
+/* notes:                                                            */
+/* ----------------------------------------------------------------- */
+cfgmem_mask: procedure expose  Dev. CfgAddr. Core msglevel
+
+do i = 1 to Dev.0                                  /* whole .dev contents */
+  ln = Dev.i                                       /* next line */
+
+  /* create arrays of cfg words (baseline,midrange) or bytes (18F) */
+  parse var ln 'CFGMEM' '(' 'REGION' '=' '0X' addr1 '-' '0X' addr2 ')' .
+  if addr1 \= '' then do
+    cfglen = 1 + X2D(addr2) - X2D(addr1)
+    if Core \= '16' then do                        /* baseline, (extended) midrange */
+      CfgAct  = copies('0000', cfglen)             /* active bits */
+      CfgZero = copies('3FFF', cfglen)             /* 'and' pattern of fixed zero bits */
+      CfgOne  = copies('3FFF', cfglen)             /* 'or'  pattern of fixed one bits */
+    end
+    else do                                        /* 18Fs */
+      CfgAct  = copies('00', cfglen)               /* active bits */
+      CfgZero = copies('FF', cfglen)               /* 'and' pattern of fixed zero bits */
+      CfgOne  = copies('00', cfglen)               /* 'or' pattern of fixed one bits */
+    end
+    iterate
+  end
+
+  /* initialise CfgOne or CfgZero array, with the following rules: */
+  /* - unused bits read as '0' with baseline,midrange              */
+  /* - unused bits read as '1' with 18f                            */
+  /* Unfortunately this is not always true,                        */
+  /* and MPLAB .dev files contain errors!                          */
+  parse var ln 'CFGBITS' x1 'ADDR=0X' Addr 'UNUSED=0X' Unused ')' .
+  if Addr \= '' then do
+    Addr = strip(Addr)                                   /* address of cfg byte/word */
+    Unused = strip(Unused)                               /* strip blanks */
+    if Core \= '16' then do                              /* baseline, (extended) midrange */
+      if X2D(Addr) <= X2D('FFF') then
+        mask = '0FFF'                                    /* 12 bits core */
+      else if X2D(Addr) <= X2D('200F') then
+        mask = '3FFF'                                    /* 14 bits core */
+      else if X2D(Addr) <= X2D('800F') then
+        mask = '3FFF'                                    /* extended 14 bits core */
+      Offset  = cfgmem_offset(Addr)                      /* word offset in cfg array */
+      Unused  = right(Unused,4,'0')                      /* 4 hex digits */
+      Unused  = C2X(BITXOR(X2C(Unused),X2C('FFFF')))     /* invert mask: 0->1 , 1->0 */
+      Unused  = C2X(BITAND(X2C(Unused),X2C(mask)))       /* unused bits default to 0 */
+      CfgZero = overlay(Unused, CfgZero, 4 * Offset + 1) /* replace ' in fixed-zero array */
+    end
+    else do                                              /* 18F */
+      Offset = cfgmem_offset(Addr)                       /* byte offset in cfg array */
+      Unused = right(Unused,2,'0')                       /* unused bits default to 1 */
+      CfgOne = overlay(Unused, CfgOne, 2 * Offset + 1)   /* replace 'm in fixed-one array */
+    end
+    iterate
+  end
+
+  /* build array of fixed zero and fixed 1 bits        */
+  /* both the CfgZero and CfgOne arrays are modified   */
+  parse var ln 'FIELD' '(' 'KEY=' x1 'MASK=0X' mask 'DESC="' x3 '"' 'INIT=0X' init ')'
+  if init \= '' then do
+    init = word(init,1)                                  /* first item */
+    mask = strip(mask)                                   /* strip blanks */
+    if Core \= '16' then do                              /* baseline, (extended) midrange */
+      mask = right(mask,4,'0')                           /* 4 hex digits */
+      maskinv = C2X(BITXOR(X2C(mask),X2C('FFFF')))       /* inverted mask */
+      init = right(init,4,'0')                           /* 4 hex digits */
+                                                         /* handle 0 bits: */
+      CfgMod  = substr(CfgZero, 4 * Offset + 1, 4)       /* 4 hex digits to modify (partly) */
+      CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero out mask bits */
+      CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
+      CfgZero = overlay(CfgMod, CfgZero, 4 * Offset + 1) /* replace word in string */
+                                                         /* handle 1 bits: */
+      CfgMod  = substr(CfgOne, 4 * Offset + 1, 4)        /* 4 hex digits to modify */
+      CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero init bits */
+      CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
+      CfgOne  = overlay(CfgMod, CfgOne, 4 * Offset + 1)  /* replace word in string */
+    end
+    else do                                              /* 18F series */
+      mask = right(mask,2,'0')                           /* 2 hex digits */
+      maskinv = C2X(BITXOR(X2C(mask),X2C('FF')))         /* inverted mask */
+      init = right(init,2,'0')                           /* 2 hex digits */
+                                                         /* handle 0 bits: */
+      CfgMod  = substr(CfgZero, 2 * Offset + 1, 2)       /* 2 hex digits to modify (partly) */
+      CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero out mask bits */
+      CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
+      CfgZero = overlay(CfgMod, CfgZero, 2 * Offset + 1) /* replace word in string */
+                                                         /* handle 1 bits: */
+      CfgMod  = substr(CfgOne, 2 * Offset + 1, 2)        /* 2 hex digits to modify */
+      CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero init bits */
+      CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
+      CfgOne  = overlay(CfgMod, CfgOne, 2 * Offset + 1)  /* replace word in string */
+    end
+    iterate
+  end
+
+  /* Build array of implemented config bits                    */
+  /* Active bits will be represented as 1 in this mask         */
+  /* Note: Array will be modified for fixed-zero and fixed-one */
+  /*       bits before returning to caller                     */
+  parse var ln 'SETTING (REQ=0X'BitMask 'VALUE' x2 .
+  if BitMask \= '' then do
+    BitMask = strip(BitMask)
+    if Core \= '16' then do                              /* baseline, (extended) midrange */
+      BitMask = right(BitMask,4,'0')                     /* 4 hex digits */
+      CfgMod = substr(CfgAct, 4 * Offset + 1, 4)         /* word to modify */
+      CfgMod = C2X(bitor(X2C(CfgMod), X2C(BitMask)))     /* or the bit(s) */
+      CfgAct = overlay(CfgMod, CfgAct, 4 * Offset + 1)   /* replace word */
+    end
+    else do                                              /* 18F */
+      BitMask = right(BitMask,2,'0')                     /* 2 hex digits */
+      CfgMod = substr(CfgAct, 2 * Offset + 1, 2)         /* byte to modify */
+      CfgMod = C2X(bitor(X2C(CfgMod),X2C(BitMask)))      /* or the bits */
+      CfgAct = overlay(CfgMod, CfgAct, 2 * Offset + 1)   /* replace byte */
+    end
+  end
+
 end
-call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
-call charout jalfile, 'const dword _FUSE_BASE[_FUSES_CT] = { '
-do  j = 1 to CfgAddr.0
-   call charout jalfile, '0x'D2X(CfgAddr.j,6)
-   if j < CfgAddr.0 then do
-      call lineout jalfile, ','
-      call charout jalfile, left('',38,' ')
-   end
-end
-call lineout jalfile, ' }'
-call charout jalfile, 'const byte  _FUSES[_FUSES_CT]     = { '
-do j = 1 to CfgAddr.0
-   call charout jalfile, '0b'
-   do i = 1 to 2
-      call charout jalfile, '_'X2B(substr(FusesDefault,i+2*(j-1),1,'0'))
-   end
-   if j < CfgAddr.0 then
-      call charout jalfile, ', '
-   else
-      call charout jalfile, ' }'
-   call lineout jalfile, '        -- CONFIG'||(j+1)%2||substr('HL',1+(j//2),1)
-   if j < CfgAddr.0 then
-      call charout jalfile, left('',38,' ')
-end
-call lineout jalfile, '--'
-return
+
+CfgAct = C2X(BITOR(X2C(CfgAct),X2C(CfgOne)))             /* set fixed one bits */
+CfgAct = C2X(BITAND(X2C(CfgAct),X2C(CfgZero)))           /* reset fixed zero bits */
+
+return CfgAct                                            /* array with default settings */
+
+
+/* ---------------------------------------------------------------------------- */
+/* Procedure to calculate offset in array of cfg words of baseline and midrange */
+/* Returns (decimal) offset of config memory of the specific PIC (type).        */
+/* Note: will be word-offset for baseline/midrange, byte-offset for 18F         */
+/* ---------------------------------------------------------------------------- */
+cfgmem_offset: procedure expose CfgAddr. msglevel
+parse arg Addr .
+AddrDec = X2D(Addr)                                /* decimal value */
+n = CfgAddr.0                                      /* index of last cfg address */
+if AddrDec >= CfgAddr.1  &  AddrDec <= CfgAddr.n then  /* within range */
+   return AddrDec - CfgAddr.1                      /* offset from first word/byte */
+else
+   call msg 2, 'Configuration byte/word' Addr 'not within address range' CfgAddr.1 '-' CfgAddr.n
+return 0
 
 
 /* ---------------------------------------------------- */
@@ -823,7 +961,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                next_subfield = n.next_j                     /* next subfield name */
                select                                       /* interceptions */
                   when left(reg,5) = 'ADCON' &,             /* ADCON0/1 */
-                       (n.j = 'ADCS0' | n.j = 'ADCS1' |,
+                       (n.j = 'ADCS0' | n.j = 'ADCS1' |,    /* enumerated ADCS bits */
                          (n.j = 'ADCS2' & next_subfield = 'ADCS1')) then do
                      nop                                    /* suppress ADCON_ADCS enumeration */
                                                             /* but not a 'loose' ADCS2 */
@@ -847,7 +985,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                     nop                                     /* suppress enumerated IRCF */
                   end
                   when (left(reg,4) = 'PORT' | reg = 'GPIO') &,    /* exceptions for PORTx or GPIO */
-                        HasLATReg = 0 then do                        /* PIC without LAT registers */
+                        HasLATReg = 0 then do                      /* PIC without LAT registers */
                      call list_bitfield 1, field, '_'reg, offset
                   end
                   when (reg = 'T1CON' & n.j = 'T1SYNC') then do
@@ -868,13 +1006,13 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                      call lineout jalfile, '   ADCON0_ADCS10 = (x & 0x03)      -- low order bits'
                      call lineout jalfile, '   ADCON1_ADCS2  = (x & 0x04)      -- high order bit'
                      call lineout jalfile, 'end procedure'
-                     adcs_bitcount = 3                      /* always 3 bits */
+                     adcs_bitcount = 3                      /* ADCS is 3 bits wide */
                   end
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        n.j = 'ADCS0'  then do               /* enumerated ADCS */
                      field = reg'_ADCS'
                      call list_bitfield 3, field, reg, offset
-                     adcs_bitcount = 3                      /* always 3 bits */
+                     adcs_bitcount = 3                      /* ADCS is 3 bits wide */
                   end
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        n.j = 'CHS3'  then do                /* 'loose' 4th bit */
@@ -909,17 +1047,25 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                      call list_bitfield 2, field, reg, (offset - s.j + 1)
                   end
                   when reg = 'GPIO' then do
-                     shadow = '_PORTA_shadow'
-                     pin = 'pin_A'right(n.j,1)
-                     call list_alias  pin, reg'_'n.j
-                     call list_pin_alias 'PORTA', 'RA'right(n.j,1), pin
-                     call lineout jalfile, '--'
-                     call lineout jalfile, 'procedure' pin"'put"'(bit in x',
-                                                      'at' shadow ':' offset') is'
-                     call lineout jalfile, '   pragma inline'
-                     call lineout jalfile, '   _PORTA =' shadow
-                     call lineout jalfile, 'end procedure'
-                     call lineout jalfile, '--'
+                     if left(n.j,2) = 'GP' then do                /* I/O pin */
+                        if HasLATReg = 0 then do                  /* PIC without LAT registers */
+                           shadow = '_PORTA_shadow'
+                           pin = 'pin_A'right(n.j,1)
+                           call list_bitfield 1, pin, '_'reg, offset
+                           call list_pin_alias 'PORTA', 'RA'right(n.j,1), pin
+                           call lineout jalfile, '--'
+                           call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                            'at' shadow ':' offset') is'
+                           call lineout jalfile, '   pragma inline'
+                           call lineout jalfile, '   _PORTA =' shadow
+                           call lineout jalfile, 'end procedure'
+                           call lineout jalfile, '--'
+                        end
+                        else do                                   /* PIC with LAT registers */
+                           PortLetter = right(reg,1)
+                           PortLat.PortLetter.offset = PortLetter||offset
+                        end
+                     end
                   end
                   when reg = 'INTCON' then do
                      if left(n.j,2) = 'T0' then
@@ -938,7 +1084,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
                      if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
-                        call list_alias pin, 'PORT'PortLetter'_R'PortLetter||offset
+                        call list_bitfield 1, pin, 'PORT'PortLetter, offset
                         call list_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                         call lineout jalfile, '--'
                      end
@@ -954,10 +1100,10 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                   when left(reg,4) = 'PORT' then do
                      if left(n.j,1) = 'R'  &,
                         left(right(n.j,2),1) = right(reg,1) then do  /* prob. I/O pin */
-                        if HasLATReg = 0 then do                        /* PIC without LAT registers */
+                        if HasLATReg = 0 then do                     /* PIC without LAT registers */
                            shadow = '_PORT'right(reg,1)'_shadow'
                            pin = 'pin_'right(n.j,2)
-                           call list_alias  pin, reg'_'n.j
+                           call list_bitfield 1, pin, '_'reg, offset
                            call list_pin_alias reg, 'R'right(n.j,2), pin
                            call lineout jalfile, '--'
                            call lineout jalfile, 'procedure' pin"'put"'(bit in x',
@@ -1024,7 +1170,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                     PicName = '16f884'    |,
                     PicName = '16f886'    |,
                     PicName = '16f887')  then do
-                  field = reg'_ADCS10'
+                  field = reg'_ADCS10'                      /* bits 1 and 0; bit 2 elsewhere! */
                   call list_bitfield s.j, field, reg, (offset - s.j + 1)
                end
                when left(reg,5) = 'ADCON'  &,               /* ADCON0/1 */
@@ -1123,10 +1269,6 @@ do i = 1 to Dev.0
             call list_alias 'PORT'substr(reg,5)'_direction', reg
             call list_tris_nibbles reg                      /* nibble direction */
          end
-  /*     when reg = 'SPBRGL' then do           */           /* for backward compatibility */
-  /*        if Name.SPBRG = '-' then           */           /* SPBRG not defined yet */
-  /*           call list_alias 'SPBRG', reg    */           /* add alias */
-  /*     end                                   */
          when reg = 'SPBRG' & size = 1 then do              /* 8-bits wide */
             if Name.SPBRGL = '-' then                       /* SPBRGL not defined yet */
                call list_alias 'SPBRGL', reg                /* add alias */
@@ -1270,7 +1412,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                   otherwise
                      nop                                    /* can be ignored */
                end
-
+                                                            /* additional declarations */
                select
                   when left(reg,5) = 'ADCON' &  n.j = 'CHS0' then do
                      call list_bitfield 5, reg'_CHS', reg, offset, addr
@@ -2001,10 +2143,10 @@ return
 
 /* --------------------------------------------------------- */
 /* List a line with a volatile bitfield variable             */
-/* arguments: - width (1,2, .. 8)                            */
-/*            - name                                         */
+/* arguments: - width in bits (1,2, .. 8)                    */
+/*            - name if the bit                              */
 /*            - register                                     */
-/*            - offset                                       */
+/*            - offset within the register                   */
 /*            - address (decimal, only for core 14H and 16)  */
 /* returns:   nothing                                        */
 /* Notes:     all cores                                      */
@@ -3095,7 +3237,7 @@ if key = 'WDT' then do
    keybitcount = 0
    keybitcheck = X2C(1)
    do 8
-      if bitand(X2C(keymask),keybitcheck) \= '00'x then do
+      if bitand(X2C(keymask),keybitcheck) \= X2D('00') then do
          keybitcount = keybitcount + 1
       end
       keybitcheck = D2C(2 * C2D(keybitcheck))
@@ -3816,10 +3958,11 @@ call lineout jalfile, '-- Special (device specific) constants and procedures'
 call lineout jalfile, '--'
 PicNameCaps = toupper(PicName)
 if DevSpec.PicNameCaps.ADCgroup = '?' then do
-   call msg 3, 'No ADCgroup for' PicName 'in devicespecific.cmd!'
-   exit 1
+   call msg 2, 'No ADCgroup in devicespecific.cmd, assuming no ADC module present!'
+   ADCgroup = '0'
 end
-ADCgroup = DevSpec.PicNameCaps.ADCgroup
+else
+   ADCgroup = DevSpec.PicNameCaps.ADCgroup
 
 if  PinMap.PicNameCaps.ANCOUNT = '?' |,                     /* PIC not in pinmap.cmd? */
     ADCGroup = '0'  then                                    /* PIC has no ADC module */
