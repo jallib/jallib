@@ -170,10 +170,10 @@ This procedure calls on its turn procedures to disable ADC modules,
 Comparator modules and a procedure to set analog pins to digital,
 all when applicable to the specific PIC.
 
-<p>The device file contains a set of 'default' configuration bits,
-which may be different than the 'Default/Unprogrammed default' in the datasheet!
-<b>Consider 'default' as a synonym of 'undefined'!</b>
-Always specify all configuration bits!
+<p>The device file contains a set of 'default' configuration bits, see
+<a href refid="cfg_defaults">Default Configuration Bits Setting</a>
+for more information!
+
 
 <h2><a name="chipdef_jallib">Common Include File 'chipdef_jallib.jal'</a></h2>
 
@@ -1590,6 +1590,28 @@ with an 18F242.
 of the word or byte must be specified between 'fuses' and the value.
 </ol>
 
+
+<h3><a name="cfg_defaults">Default Configuration Bits Settings</a></h3>
+<p>The device files contain both the address as well as default settings of
+configuration bits.
+For the baseline and midrange this is units of words (16 bits)
+(of which only 12 or 14 bits are available),
+in most cases a single word, but it can be multiple words.
+For the 18F series the configuration bits are in a (varying) number of bytes.
+<p>The specified defaults are those supposed to be found in the datasheets,
+but these derived from the MPLAB .dev files.
+Unfortunately these two sources do not always match!
+When your PIC programmer detects a verifycation error with the configuration
+bits, this is probably caused by a wrong default in the device file.
+Suspect especially the setting of 'reserved' or 'unused' bits!
+The rules for unused configuration bits are:
+<ul>
+<li>Baseline and (extended) midrange: '0'
+<li>18F series: '1'
+</ul>
+<p>But there are exceptions which may not be caught in the device files!
+
+
 <hr>
 
 <h2><a name="compiler">Compiler requirements</a></h2>
@@ -1769,7 +1791,7 @@ To run it:
 <p>The dev2jal script can be executed on other systems (Linux, Windows)
 when a compatible Rexx interpreter is installed.
 The free 'Regina Rexx' has proven to do fine for this script
-(tested under Windows XP).
+(tested under Windows XP and Windows 7).
 For more information about Regina Rexx see:
 <ul>
 <li>http://regina-rexx.sourceforge.net/index.html
@@ -1800,29 +1822,59 @@ directory for each new Datasheet or Programming Specifications.
 <li>Make a new entry or update an existing entry in the file
 'devicespecific.json' in the tools directory for each of the PICs described
 in the new datasheet.
-An entry should contain the following elements:
+An entry may contain the following elements:
 <table>
-<tr><th>Keyword</th><th>Description</th><th>Default</th></tr>
-<tr><td>DATASHEET</td><td>Datasheet number without suffix letter</td><td>?</td></tr>
-<tr><td>PGMSPEC</td><td>Programming Specification without suffix letter</td><td>?</td></tr>
-<tr><td>NONSHAREDDATA</td><td>Range of unshared data memory (RAM)</td><td>&nbsp;</td></tr>
-<tr><td>SHAREDDATA</td><td>Range of shared data memory (RAM)</td><td>&nbsp;</td></tr>
-<tr><td>ADCGROUP</td><td>Analog-to-Digital group number</td><td>&nbsp;</td></tr>
-<tr><td>FUSESDEFAULT</td><td>Default configuration bits contents</td><td>&nbsp;</td></tr>
-<tr><td>PPSGROUP</td><td>Peripheral Pin Selection group</td><td>PPS_0</td></tr>
+<tr><th>Keyword</th>
+    <th>Description</th>
+    <th>Format</th>
+    <th>Remarks</th>
+    </tr>
+<tr><td>DATASHEET</td>
+    <td>Datasheet number</td>
+    <td>5 digits</td>
+    <td>Mandatory</td>
+</tr>
+<tr><td>PGMSPEC</td>
+    <td>Programming Specifications number</td>
+    <td>5 digits</td>
+    <td>Optional, no default</td>
+</tr>
+<tr><td>NONSHAREDDATA</td>
+    <td>Range of unshared data memory (RAM)</td>
+    <td>0x...-0x...</td>
+    <td>Mandatory</td>
+</tr>
+<tr><td>SHAREDDATA</td>
+    <td>Range of shared data memory (RAM)</td>
+    <td>0x...-0x...</td>
+    <td>Mandatory</td>
+</tr>
+<tr><td>ADCGROUP</td>
+    <td>Analog-to-Digital group number</td>
+    <td>ADC_V...</td>
+    <td>Optional, default 0</td>
+    </tr>
+<tr><td>FUSESDEFAULT</td>
+    <td>Default configuration bits contents</td>
+    <td>hexdecimal digits</td>
+    <td>Optional, default from .dev file</td>
+</tr>
+<tr><td>PPSGROUP</td>
+    <td>Peripheral Pin Selection group</td>
+    <td>PPS_. (1 or 2)</td>
+    <td>Optional, default PPS_0</td>
+</tr>
 </table>
-</p>See for details of the specifications the related sections in this document
-and the comments in the Dev2jal script.
+<p>See for more details of the specifications the related sections in this
+document and the comments in the Dev2jal script.
 The usual way to make new entries: copy an existing entry and
 modify the field contents according to the information in the datasheet
 or in this document.
-With the exception of PPSGROUP it is recommended to specify each of the keywords
-and a valid value, otherwise a warning or error message will appear.
 <li>Make a new entry or update an existing entry in the file 'pinmap.py' for
 each of the PICs described in the new datasheet.
 In most cases the datasheet contains a table 'Pinout I/O descriptions' or
 'Pin allocation' with the required information to define aliases.
-Run the python script extract_pininfos.py to obtain an up-to-date
+<li>Run the python script extract_pininfos.py to obtain an up-to-date
 pinmap_pinsuffix.json and some other tools files.
 <li>The dev2jal script may have to be adapted for new device files.
 For example the assigment of pin_ANx (JANSEL) may have to be enhanced
@@ -1836,7 +1888,6 @@ wikis.
 </ul>
 <p>Re-iterate these actions (the whole set or parts of it) until you are
 satisfied and everything is OK.
-<br>Then do the following:
 <li>Run the dev2jal.cmd script with the 'PROD' option,
 SVN-propset keywords (svn propset svn:keywords Revision <device>.jal) of the
 new device files,
@@ -1850,6 +1901,9 @@ files related to datasheets.
 Note: This script needs to be run after new device files have been generated
 because it considers only 'existing' Jallib device files.
 <li>Update CHANGELOG and TORELEASE when relevant.
+Note: TORELEASE may contain only device files and blink samples when at
+least one PIC of a group described in the same datasheet has actually been
+tested with good results.
 </ul>
 
 
