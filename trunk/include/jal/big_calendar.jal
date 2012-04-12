@@ -1,0 +1,207 @@
+-- Title: Universal gregorian calendar routines
+-- Author: Oliver "Kiste" Seitz
+-- Based on the original calendar.jal library by Eur van Andel.
+-- Adapted-by: 
+-- Compiler: >=2.4o
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- The hardware RTCC present in some PIC devices is limited to years 2000...2099. 
+-- If you want to build e.g. a time-travelling vehicle, such a clock is of little use.
+-- This software library implements a RTCC which is valid from friday, October 15, 1582
+-- to presumably at least the year 7000. Earlier, the julian calendar was valid. Later, the 
+-- inaccuracy of the gregorian leap year rules may have accumulated to a whole day. 
+
+
+
+if defined(seconds) == false then    -- define necessary global variables, if this was not done yet
+  var volatile byte seconds = 0 
+end if
+if defined(minutes) == false then
+  var byte minutes = 0 
+end if
+if defined(hours) == false then
+  var byte hours = 0 
+end if
+if defined(day) == false then
+  var byte day = 1 
+end if
+if defined(month) == false then
+  var byte month = 1 
+end if
+if defined(year) == false then
+  var word year = 2012 
+end if
+
+
+
+
+-- --------------------------------------------------------------
+-- Title:     Number of days per month
+-- Arguments: - Year (from 1582 up)
+--            - Month (1 to 12)
+-- Returns:   Number of days in the specified month (28,29,30 or 31)
+-- Notes:     Respects leap years as defined by the gregorian calendar.
+-- --------------------------------------------------------------
+function days_per_month(word in year, byte in month) return byte is
+
+  if month > 7 then --(aug,sep,oct,nov,dec)
+
+    if bit(month) == 1 then --(sep,nov)
+      return 30
+    else --(aug,oct,dec)
+      return 31
+    end if
+
+  else --(jan,feb,mar,apr,may,jun,jul)
+
+    if month == 2 then --(feb)
+      if ( year & 3 )  == 0 then -- calculate month % 4 without division
+        if ( year % 100 ) == 0 then
+          if ( year % 400 ) == 0 then 
+            return 29
+          else -- (four is a divisor of month, and so is 100, but 400 is not)
+            return 28
+          end if
+        else -- (four is a divisor of month, and 100 is not)
+          return 29
+        end if
+      else -- (four is no divisor of month)
+        return 28
+      end if
+    else --(jan,mar,apr,may,jun,jul)
+      if bit(month) == 1 then --(jan,mar,may,jul)
+        return 31
+      else --(apr,jun)
+        return 30
+      end if
+    end if 
+
+  end if
+
+
+end function
+
+-- --------------------------------------------------------------
+-- Title:     Weekday
+-- Arguments: - Year (from 1582 up)
+--            - Month (1 to 12)
+--            - Day (1 to 31)
+-- Returns:   Weekday of the given date (0=sunday, 1=monday...)
+-- Notes:     Based on "Zeller's congruence"
+-- --------------------------------------------------------------
+function weekday(word in dyear, byte in dmonth, byte in dday) return byte is
+
+   if dmonth<3 then
+       dyear  = dyear  - 1
+       dmonth = dmonth + 12
+   end if
+
+   dday   = dday   + 6
+   dmonth = dmonth + 1
+
+
+
+   return byte((dday+(word(dmonth)*26) / 10+((dyear % 100)*5) / 4+((dyear / 100)*21) / 4) % 7 )
+
+end function
+
+
+-- --------------------------------------------------------------
+-- Title:     Alter a given date by a number of days
+-- Arguments: - Year 
+--            - Month 
+--            - Day 
+--            - distance
+-- Returns:   A modified date (year,month,day)
+-- Notes:     distance can be positive, moves date to the future
+--            distance can be negative, moves date to the past
+--            +/-32768 days is a bit more than 89 years
+-- --------------------------------------------------------------
+procedure add_days(word in out dyear, byte in out dmonth, byte in out dday, sword in distance) is
+
+  var byte this_month
+
+  while distance > 0 loop
+
+    this_month=days_per_month(dyear,dmonth) -- might be needed twice
+
+    if (distance+dday) <= this_month then
+      dday=byte(dday+distance)
+      distance=0
+    else
+      distance=distance-this_month
+      if dday != 1 then
+        distance=distance+dday
+        distance=distance-1
+        dday=1
+      end if
+      dmonth=dmonth+1
+      if dmonth == 13 then
+        dmonth=1
+        dyear=dyear+1
+      end if
+    end if
+  end loop
+
+  while distance < 0 loop
+    if (dday+distance) >= 1 then
+      dday=byte(dday+distance)
+      distance=0
+    else
+      dmonth=dmonth-1
+      if dmonth == 0 then
+         dmonth=12
+         dyear=dyear-1
+      end if
+      distance=distance+dday
+      dday=days_per_month(dyear,dmonth)
+    end if 
+  end loop
+
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Calendar
+-- Arguments: none
+-- Returns:   none
+-- Notes:     works on global variables "seconds,minutes,hours,day,month,year"
+--            "seconds" is to be updated somehow, e.g. a timer or the like.
+--            This procedure updates all the other variables, depending on the
+--            rising value of "seconds".
+--            It should be called regularly. Once a second is ok, but not stricktly
+--            necessary. "seconds" should not overflow, so if this procedure is not
+--            called at least once every four minutes, "seconds" should be a word.
+--            Then, one call every four hours would suffice.
+-- --------------------------------------------------------------
+procedure calendar() is       
+   while seconds > 59 loop    
+      seconds = seconds - 60  
+      minutes = minutes + 1
+   end loop
+
+   while minutes > 59 loop
+      minutes = minutes - 60  
+      hours = hours + 1 
+   end loop
+
+   if hours > 23 then 
+      hours = hours - 24
+      day = day + 1
+
+      if day > days_per_month(year,month) then
+         day = 1
+         month = month + 1
+      end if
+
+      if month >= 13 then
+         month = 1
+         year = year + 1 
+      end if
+
+   end if
+   
+end procedure       
+
