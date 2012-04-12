@@ -1,0 +1,154 @@
+-- ------------------------------------------------------
+-- Title: Calendar demo
+--
+-- Author: Oliver "Kiste" Seitz  Copyright (c) 2012, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Demonstration program for Microchip PIC16f688 using big_calendar.jal
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+include 16f688                    -- target PICmicro
+--
+-- This program assumes that a 20 MHz oscillator
+-- is connected to pin OSC1.
+pragma target clock 20_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC      EC_NOCLKOUT  -- External Clock
+pragma target WDT      disabled     -- no watchdog
+pragma target MCLR     internal     -- reset disabled
+-- These configuration bit settings are only a selection, sufficient for
+-- this program, but other programs may need more or different settings.
+--
+enable_digital_io()                -- make all pins digital I/O
+
+include big_calendar
+
+include delay
+
+const serial_hw_baudrate=9600
+include serial_hardware
+
+serial_hw_init
+
+alias serial_data is serial_hw_data
+
+include print
+
+
+year=2009
+month=12
+day=31
+
+
+procedure print_date() is
+  const byte string_sun[]="Sunday"
+  const byte string_mon[]="Monday"
+  const byte string_tue[]="Tuesday"
+  const byte string_wed[]="Wednesday"
+  const byte string_thu[]="Thursday"
+  const byte string_fri[]="Friday"
+  const byte string_sat[]="Saturday"
+
+   case weekday(year,month,day) of
+      0:print_string(serial_data,string_sun)
+      1:print_string(serial_data,string_mon)
+      2:print_string(serial_data,string_tue)
+      3:print_string(serial_data,string_wed)
+      4:print_string(serial_data,string_thu)
+      5:print_string(serial_data,string_fri)
+      6:print_string(serial_data,string_sat)
+   end case
+
+   serial_data=","
+   serial_data=" "                    -- german date format: dd.mm.yyyy
+   print_byte_dec(serial_data,day)
+   serial_data="."
+   print_byte_dec(serial_data,month)
+   serial_data="."
+   print_word_dec(serial_data,year)
+   print_crlf(serial_data)
+
+
+end procedure
+
+
+delay_1s(5)
+
+print_date()  -- print a date, subtract and add different numbers od days
+
+print_sword_dec(serial_data,-30000)
+print_crlf(serial_data)
+
+add_days(year,month,day,-30000)
+print_date
+
+serial_data="+"
+serial_data="6"
+print_crlf(serial_data)
+
+add_days(year,month,day,6)
+print_date
+
+for 30 loop
+
+   serial_data="+"
+   print_word_dec(serial_data,1000)
+   print_crlf(serial_data)
+
+   add_days(year,month,day,1000)
+   print_date
+
+
+end loop
+
+
+print_crlf(serial_data)
+
+month=10
+day=15
+year=1582
+var byte day_of_week=5 -- first day of the gregorian calendar
+
+const byte string_ok[]=": OK!"
+const byte string_error[]=": ERROR!!!!"
+
+
+forever loop -- run through all dates, checking if the weekday is calculated correctly
+       
+   if day_of_week != weekday(year,month,day) then
+      print_crlf(serial_data)
+      print_date()
+      print_string(serial_data,string_error)
+      print_crlf(serial_data)
+      forever loop end loop  -- the program will end here on the first error. 
+                             -- There will be an error, at least when "year" rolls over.
+   end if
+
+   if day==31 then           -- on new years eve of every year, print a success message
+      if month==12 then
+         print_word_dec(serial_data,year)
+         print_string(serial_data,string_ok)
+         print_crlf(serial_data)
+      end if
+   end if
+
+ 
+   add_days(year,month,day,1)  -- move calendar forward one day
+   day_of_week=day_of_week+1   -- and update the "counted" weekday
+   if day_of_week==7 then
+      day_of_week=0
+   end if 
+end loop
+
