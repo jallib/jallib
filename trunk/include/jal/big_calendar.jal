@@ -14,24 +14,37 @@
 -- inaccuracy of the gregorian leap year rules may have accumulated to a whole day. 
 -- 
 
+if defined(datetype) == false then
+  record datetype is
+     word	year
+     byte	month
+     byte	day
+  end record
+end if
 
-if defined(seconds) == false then    -- define necessary global variables, if this was not done yet
-  var volatile byte seconds = 0 
+if defined(timetype) == false then
+  record timetype is
+    byte	hour
+    byte	minute
+    byte	second
+  end record
 end if
-if defined(minutes) == false then
-  var byte minutes = 0 
+
+
+
+if defined(current_time) == false then    -- define necessary global variables, if this was not done yet
+  var volatile timetype current_time 
+  current_time.second = 0
+  current_time.minute = 0
+  current_time.hour   = 8
 end if
-if defined(hours) == false then
-  var byte hours = 0 
-end if
-if defined(day) == false then
-  var byte day = 1 
-end if
-if defined(month) == false then
-  var byte month = 1 
-end if
-if defined(year) == false then
-  var word year = 2012 
+
+
+if defined(current_date) == false then
+  var datetype current_date
+  current_date.day    = 1 
+  current_date.month  = 1 
+  current_date.year   = 2012 
 end if
 
 
@@ -44,7 +57,7 @@ end if
 -- Returns:   Number of days in the specified month (28,29,30 or 31)
 -- Notes:     Respects leap years as defined by the gregorian calendar.
 -- --------------------------------------------------------------
-function days_per_month(word in year, byte in month) return byte is
+function bigcal_days_per_month(word in year, byte in month) return byte is
 
   var bit month_8 at month:3
 
@@ -93,19 +106,19 @@ end function
 -- Returns:   Weekday of the given date (0=sunday, 1=monday...)
 -- Notes:     Based on "Zeller's congruence"
 -- --------------------------------------------------------------
-function weekday(word in dyear, byte in dmonth, byte in dday) return byte is
+function bigcal_weekday(datetype in ddate) return byte is
 
-   if dmonth<3 then
-       dyear  = dyear  - 1
-       dmonth = dmonth + 12
+   if ddate.month<3 then
+       ddate.year  = ddate.year  - 1
+       ddate.month = ddate.month + 12
    end if
 
-   dday   = dday   + 6
-   dmonth = dmonth + 1
+   ddate.day   = ddate.day   + 6
+   ddate.month = ddate.month + 1
 
 
 
-   return byte((dday+(word(dmonth)*26) / 10+((dyear % 100)*5) / 4+((dyear / 100)*21) / 4) % 7 )
+   return byte((ddate.day+(word(ddate.month)*26) / 10+((ddate.year % 100)*5) / 4+((ddate.year / 100)*21) / 4) % 7 )
 
 end function
 
@@ -121,44 +134,44 @@ end function
 --            distance can be negative, moves date to the past
 --            +/-32768 days is a bit more than 89 years
 -- --------------------------------------------------------------
-procedure add_days(word in out dyear, byte in out dmonth, byte in out dday, sword in distance) is
+procedure bigcal_add_days(datetype in out ddate, sword in distance) is
 
   var byte this_month
 
   while distance > 0 loop
 
-    this_month=days_per_month(dyear,dmonth) -- might be needed twice
+    this_month=bigcal_days_per_month(ddate.year,ddate.month) -- might be needed twice
 
-    if (distance+dday) <= this_month then
-      dday=byte(dday+distance)
+    if (distance+ddate.day) <= this_month then
+      ddate.day=byte(ddate.day+distance)
       distance=0
     else
       distance=distance-this_month
-      if dday != 1 then
-        distance=distance+dday
+      if ddate.day != 1 then
+        distance=distance+ddate.day
         distance=distance-1
-        dday=1
+        ddate.day=1
       end if
-      dmonth=dmonth+1
-      if dmonth == 13 then
-        dmonth=1
-        dyear=dyear+1
+      ddate.month=ddate.month+1
+      if ddate.month == 13 then
+        ddate.month=1
+        ddate.year=ddate.year+1
       end if
     end if
   end loop
 
   while distance < 0 loop
-    if (dday+distance) >= 1 then
-      dday=byte(dday+distance)
+    if (ddate.day+distance) >= 1 then
+      ddate.day=byte(ddate.day+distance)
       distance=0
     else
-      dmonth=dmonth-1
-      if dmonth == 0 then
-         dmonth=12
-         dyear=dyear-1
+      ddate.month=ddate.month-1
+      if ddate.month == 0 then
+         ddate.month=12
+         ddate.year=ddate.year-1
       end if
-      distance=distance+dday
-      dday=days_per_month(dyear,dmonth)
+      distance=distance+ddate.day
+      ddate.day=bigcal_days_per_month(ddate.year,ddate.month)
     end if 
   end loop
 
@@ -166,41 +179,40 @@ end procedure
 
 
 -- --------------------------------------------------------------
--- Title:     Calendar
+-- Title:     Update current time and date
 -- Arguments: none
 -- Returns:   none
--- Notes:     works on global variables "seconds,minutes,hours,day,month,year"
---            "seconds" is to be updated somehow, e.g. a timer or the like.
+-- Notes:     works on global variables current_date and current_time.
+--            "current_time.seconds" is to be updated somehow, e.g. a timer or the like.
 --            This procedure updates all the other variables, depending on the
---            rising value of "seconds".
+--            rising value of "current_time.seconds".
 --            It should be called regularly. Once a second is ok, but not stricktly
---            necessary. "seconds" should not overflow, so if this procedure is not
---            called at least once every four minutes, "seconds" should be a word.
---            Then, one call every four hours would suffice.
+--            necessary. "seconds" should not overflow, so this procedure must
+--            be called at least once every four minutes.
 -- --------------------------------------------------------------
-procedure calendar() is       
-   while seconds > 59 loop    
-      seconds = seconds - 60  
-      minutes = minutes + 1
+procedure bigcal_update_current() is       
+   while current_time.second > 59 loop    
+      current_time.second = current_time.second - 60  
+      current_time.minute = current_time.minute + 1
    end loop
 
-   while minutes > 59 loop
-      minutes = minutes - 60  
-      hours = hours + 1 
+   while current_time.minute > 59 loop
+      current_time.minute = current_time.minute - 60  
+      current_time.hour   = current_time.hour + 1 
    end loop
 
-   if hours > 23 then 
-      hours = hours - 24
-      day = day + 1
+   if current_time.hour > 23 then 
+      current_time.hour = current_time.hour - 24
+      current_date.day  = current_date.day + 1
 
-      if day > days_per_month(year,month) then
-         day = 1
-         month = month + 1
+      if current_date.day > bigcal_days_per_month(current_date.year,current_date.month) then
+         current_date.day = 1
+         current_date.month = current_date.month + 1
       end if
 
-      if month >= 13 then
-         month = 1
-         year = year + 1 
+      if current_date.month >= 13 then
+         current_date.month = 1
+         current_date.year = current_date.year + 1 
       end if
 
    end if
