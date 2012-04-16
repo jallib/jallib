@@ -35,6 +35,31 @@ enable_digital_io()                -- make all pins digital I/O
 
 include big_calendar
 
+var byte*3 timer_counts = 0 
+
+procedure timer1_isr() is
+  pragma interrupt
+
+  if PIR1_TMR1IF == true then
+
+    PIR1_TMR1IF=false
+
+    timer_counts=timer_counts+65536
+
+    if timer_counts > ( target_clock / 32 ) then -- 32 = 4*8, 4= Fosc/Fc; 8=prescaler value 
+
+      timer_counts=timer_counts-( target_clock / 32 )
+      bigcal_current_time.second = bigcal_current_time.second + 1
+
+    end if 
+
+
+  end if
+
+end procedure
+
+
+
 include delay
 
 const serial_hw_baudrate=9600
@@ -53,13 +78,17 @@ bigcal_current_date.day=31
 
 
 procedure print_date() is
-  const byte string_sun[]="Sunday"
-  const byte string_mon[]="Monday"
-  const byte string_tue[]="Tuesday"
+  
+  print_crlf(serial_data)
+
+
+  const byte string_sun[]="   Sunday"
+  const byte string_mon[]="   Monday"
+  const byte string_tue[]="  Tuesday"
   const byte string_wed[]="Wednesday"
-  const byte string_thu[]="Thursday"
-  const byte string_fri[]="Friday"
-  const byte string_sat[]="Saturday"
+  const byte string_thu[]=" Thursday"
+  const byte string_fri[]="   Friday"
+  const byte string_sat[]=" Saturday"
 
    case bigcal_weekday(bigcal_current_date) of
       0:print_string(serial_data,string_sun)
@@ -71,14 +100,41 @@ procedure print_date() is
       6:print_string(serial_data,string_sat)
    end case
 
+   const byte string_jan[]="  January"
+   const byte string_feb[]=" February"
+   const byte string_mar[]="    March"
+   const byte string_apr[]="    April"
+   const byte string_may[]="      May"
+   const byte string_jun[]="     June"
+   const byte string_jul[]="     July"
+   const byte string_aug[]="   August"
+   const byte string_sep[]="September"
+   const byte string_oct[]="  October"
+   const byte string_nov[]=" November"
+   const byte string_dec[]=" December"  -- Wouldn't it be nice to have 2-dimensional constant arrays...? ;-)
+
    serial_data=","
+   serial_data=" "
+
+   case bigcal_current_date.month of
+      1:print_string(serial_data,string_jan)
+      2:print_string(serial_data,string_feb)
+      3:print_string(serial_data,string_mar)
+      4:print_string(serial_data,string_apr)
+      5:print_string(serial_data,string_may)
+      6:print_string(serial_data,string_jun)
+      7:print_string(serial_data,string_jul)
+      8:print_string(serial_data,string_aug)
+      9:print_string(serial_data,string_sep)
+     10:print_string(serial_data,string_oct)
+     11:print_string(serial_data,string_nov)
+     12:print_string(serial_data,string_dec)
+   end case
+
    serial_data=" "
    print_byte_dec(serial_data,bigcal_current_date.day)
    serial_data="."
-   print_byte_dec(serial_data,bigcal_current_date.month)
-   serial_data="."
    print_word_dec(serial_data,bigcal_current_date.year)
-   print_crlf(serial_data)
 
 
 end procedure
@@ -116,20 +172,13 @@ end loop
 
 print_crlf(serial_data)
 
-bigcal_current_date.month=10
-bigcal_current_date.day=15
-bigcal_current_date.year=1582
-var byte day_of_week=5 -- first day of the gregorian calendar
-
-const byte string_ok[]=": OK!"
-const byte string_error[]=": ERROR!!!!"
 
 
 bigcal_current_date.year=1980
 
 
 
-for 50 loop
+for 50 loop -- display some dates for easter sunday
 
    bigcal_find_easter(bigcal_current_date)  
    print_date()
@@ -140,9 +189,19 @@ for 50 loop
 
 end loop
 
-delay_1s(240)
+delay_1s(5)
 
-for 500 loop
+
+bigcal_current_date.month=10
+bigcal_current_date.day=15
+bigcal_current_date.year=1582
+var byte day_of_week=5 -- first day of the gregorian calendar
+
+const byte string_ok[]=": OK!"
+const byte string_error[]=": ERROR!!!!"
+
+
+for 10000 loop -- check a few weekday calculations
 
        
    if day_of_week != bigcal_weekday(bigcal_current_date) then
@@ -156,7 +215,7 @@ for 500 loop
 
    if bigcal_current_date.day==31 then
       if bigcal_current_date.month==12 then
-         print_word_dec(serial_data,bigcal_current_date.year)
+         print_word_dec(serial_data,bigcal_current_date.year)  -- output the number of each successfully checked year
          print_string(serial_data,string_ok)
          print_crlf(serial_data)
       end if
@@ -168,6 +227,54 @@ for 500 loop
    if day_of_week==7 then
       day_of_week=0
    end if 
+end loop
+
+-- now, run the clock normally
+
+bigcal_current_date.year=1999
+bigcal_current_date.month=12
+bigcal_current_date.day=31
+
+bigcal_current_time.hour=23
+bigcal_current_time.minute=58
+bigcal_current_time.second=0
+
+TMR1=0
+
+T1CON_TMR1GE = false	-- no gate
+T1CON_T1CKPS = 3	-- 1:8 prescaler
+T1CON_TMR1CS = 0	-- internal clock
+T1CON_TMR1ON = 1	-- aaaaand GO!
+
+INTCON_GIE  = true
+INTCON_PEIE = true
+PIR1_TMR1IF = false
+PIE1_TMR1IE = true	-- enable interrupt
+
+var byte old_second=100
+
+forever loop
+
+  if old_second != bigcal_current_time.second then
+
+    bigcal_update_current()    
+
+    old_second = bigcal_current_time.second
+
+    print_date()
+    
+    serial_data=" "
+    print_byte_dec(serial_data,bigcal_current_time.hour)
+    serial_data=":"
+    print_byte_dec(serial_data,bigcal_current_time.minute)
+    serial_data=":"
+    print_byte_dec(serial_data,bigcal_current_time.second)
+
+
+
+  end if
+  
+
 end loop
 
 
