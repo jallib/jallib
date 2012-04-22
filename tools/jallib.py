@@ -1084,7 +1084,7 @@ def jalapi_extract_doc(filename):
     dhead = {}
     for field_dict in FIELDS:
         # Special case: when still '--' comment chars,this means new paragraph
-        c = validate_field(header,**field_dict)
+        c,_ = validate_field(header,**field_dict)
         c = c and "\n".join(map(lambda c: re.sub("^--","\n\n",c),c.split("\n"))) or c
         dhead[field_dict['field']] = c
 
