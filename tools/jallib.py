@@ -4,7 +4,7 @@
 # Title: jallib main wrapper script
 # Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
 # Adapted-by:
-# Compiler:
+# Compiler: 
 #
 # This file is part of jallib (http://jallib.googlecode.com)
 # Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
