@@ -268,9 +268,6 @@ FIELDS = [
         {'field':"Notes",'predicate':content_not_empty,'mandatory':False,'multiline':True},
     ]
 
-errors = []
-warnings = []
-
 def extract_header(content):
     # reverse() to pop header lines (no such shift())
     content.reverse()
@@ -289,6 +286,7 @@ def extract_header(content):
 
 def validate_field(data,field,predicate,mandatory,multiline=False):
 
+    errors = []
     syntax = "^-- %s:\s*(.*)" % field
 
     def single_line_content(line):
@@ -332,10 +330,12 @@ def validate_field(data,field,predicate,mandatory,multiline=False):
         if mandatory:
             errors.append("Cannot find field %s (searched for '%s')" % (field,syntax))
 
-    return c
+    return c,errors
 
 
 def validate_header(content):
+
+    errors = [] 
     header = extract_header(content)
 
     # check stuff about jallib and license
@@ -351,21 +351,27 @@ def validate_header(content):
     not jallib and errors.append("Cannot find references to jallib (should have: %s)" % repr(JALLIB))
     not license and errors.append("Cannot find references to license")
     for field_dict in FIELDS:
-        validate_field(header,**field_dict)
-
+        c,errs = validate_field(header,**field_dict)
+        errors.extend(errs)
+    
+    return errors
 
 def validate_filename(filename):
-    # must be lowercase
+    errors = []
+    warnings = []
+    # must be lowercase   
     filename = os.path.basename(filename)
     if filename.lower() != filename:
         errors.append("Filename is not lowercase: %s" % filename)
     # should have "jal" extention
     if not filename.endswith(".jal"):
         warnings.append("Filename doesn't have '*.jal' extention: %s" % filename)
-    pass
+    
+    return errors,warnings
 
 
 def validate_lower_case(content):
+    errors = []
     # tokenize content, searching for infamous CamelCase words
     # Also search Capitalized ones...
     tokenizer = re.compile("\w+")
@@ -414,8 +420,11 @@ def validate_lower_case(content):
     for s,nums in weird.items():
         err = "%s: %s" % (",".join(map(str,nums)),s)
         errors.append(err)
+        
+    return errors
 
 def validate_procfunc_defs(content):
+    errors = []
     # no () in definition
     func_proc = re.compile("^(procedure|function)")
     no_spaces = re.compile(".*\s+\(.*is")
@@ -425,26 +434,32 @@ def validate_procfunc_defs(content):
             errors.append("%d: %s missing (). Calls must also be explicit" % (i,repr(line)))
         if func_proc.match(line) and no_spaces.match(line):
             errors.append("%d: found a space before parenthesis: %s" % (i,repr(line)))
+    
+    return errors
 
 def validate_code(content):
-    validate_lower_case(content)
-    validate_procfunc_defs(content)
+    errslw = validate_lower_case(content)
+    errspf  = validate_procfunc_defs(content)
     # ...
+    return errslw + errspf
 
 def validate(filename):
-    global errors
-    global warnings
     errors = []
     warnings = []
-    validate_filename(filename)
+    errs,warns = validate_filename(filename)
+    errors.extend(errs)
+    warnings.extend(warns)
     # also extract line number (enumerate from 0, count from 1)
     content = [(i + 1,l) for i,l in enumerate(open(filename,"r").readlines())]
-    validate_header(content)
+    errors.extend(validate_header(content))
     # remaining content has no more header
-    validate_code(content)
+    errs = validate_code(content)
+    errors.extend(errs)
+    
+    return errors,warnings
 
 
-def report(filename):
+def report(filename,errors,warnings):
     print >> sys.stderr, "File: %s" % filename
     print >> sys.stderr, "%d errors found" % len(errors)
     for err in errors:
@@ -464,8 +479,8 @@ def do_validate(args):
 
     at_least_one_failed = False
     for filename in args:
-        validate(filename)
-        if report(filename):
+        errs,warns = validate(filename)
+        if report(filename,errs,warns):
             at_least_one_failed = True
 
     if at_least_one_failed:
