@@ -1,0 +1,241 @@
+-- ------------------------------------------------------
+-- Title: Eeprom 24lc* common code
+--
+-- Author: Joep Suijs, Copyright (c) 2008..2012, all rights reserved.
+--
+-- Adapted-by: 
+--
+-- Compiler: >=2.4m
+-- Revision: $Revision: 2902 $
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: 24lc* enhanced library common code
+--
+-- Sources: Microchip datasheet for supported devices:
+--
+--    24lc16       size 2kx8
+--                 page size 16 bytes
+--                 adressing 3 bit + 1 byte
+--    
+--    24lc32/64    size 4kx8/8kx8
+--                 page size 32 bytes
+--                 adressing 0 bit + 2 byte
+--    
+--    24lc256      size 32kx8
+--                 page size 64 bytes
+--                 adressing 0 bit + 2 byte
+--    
+--    24lc512      size 64kx8
+--                 page size 128 bytes
+--                 adressing 0 bit + 2 byte
+--    
+--    24lc1025     size 128kx8
+--                 page size 128 bytes
+--                 adressing 1 bit + 2 byte
+--    
+-- Notes: 
+--
+-- -------------------------------------------------------- ----------------------------------------------------------------------------
+include delay
+
+-- default
+if (defined(eeprom_i2c_address) == false) then                
+   const eeprom_i2c_address = 0xC0
+end if
+
+
+var bit _24lc_flush = false  
+var sdword  eeprom_address_pointer = -1
+var byte    eeprom_buffer_index
+
+var byte eeprom_buffer[eeprom_buffer_size]
+
+; compile-time validation of eeprom type
+if (defined(eeprom_no_type_check)==false) then      
+   case (eeprom_24lc_type) of
+      16    : block end block
+      32    : block end block
+      64    : block end block
+      256   : block end block
+      512   : block end block
+      1025  : block end block   
+      otherwise block         
+         _error"unsupported type of i2c eeprom (eeprom_24lc)"
+      end block
+   end case
+end if
+
+-- ----------------------------------------------------------------------------
+-- _ee_24lcxx_chip_address - send chip-address to eeprom
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+function _ee_24lcxx_chip_address(dword in mem_address, bit in read_mode) return bit is
+   var bit ack_ok
+   var byte i2c_addr_byte
+
+   ;------------------------
+   ; device address handling
+   if (read_mode) then
+      i2c_addr_byte = eeprom_i2c_address | 0x01
+   else
+      i2c_addr_byte = eeprom_i2c_address & 0xFE
+   end if
+
+   ; adjust address byte to address appropriate block   
+   case (eeprom_24lc_type) of
+     
+      16 : block     ; 24lc16 addressing
+         ; upper 3 bits of data_address are part of device addressing
+         i2c_addr_byte = (i2c_addr_byte & 0xF0) + byte(0x07 & (mem_address / 256)) 
+      end block
+
+      32 : block end block
+
+      64 : block end block
+
+      256 : block end block
+
+      512 : block end block
+
+      1025 : block   ; 24lc1025 addressing
+         ; one bit of data_address is part of device addressing 
+         i2c_addr_byte = i2c_addr_byte & 0xF6 
+         if (mem_address > 0xFFFF) then
+            i2c_addr_byte = i2c_addr_byte | 0x08
+         end if
+      end block   
+
+      otherwise block 
+      end block
+      
+   end case
+
+   ; retry up to 8 ms to cope with write-time
+   for 80 loop 
+      ack_ok = i2c_transmit_byte(i2c_addr_byte)          -- transmit device/chip address
+      if (ack_ok) then exit loop end if
+      delay_10us(10)
+   end loop
+
+   return ack_ok
+end function
+
+-- ----------------------------------------------------------------------------
+-- _ee_24lcxx_mem_address - send mem-address to eeprom
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+function _ee_24lcxx_mem_address(dword in mem_address) return bit is
+   var bit ack_ok
+
+   ; ----------------------------------------   
+   ; data address handling (one or two bytes)
+   if (eeprom_24lc_type > 16) then
+      ack_ok = ack_ok & i2c_transmit_byte(byte(mem_address / 256))    -- send high address byte if relevant
+   end if
+   
+   ack_ok = ack_ok & i2c_transmit_byte(byte(mem_address))       -- send low address byte
+   
+   return ack_ok
+end function
+
+-- ----------------------------------------------------------------------------
+-- ee_24lcxx_write - write a byte to the eeprom
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+function ee_24lcxx_write(dword in mem_address, byte in data) return bit is
+   var bit data_stored =  false
+   var bit ack_ok = true
+   var byte temp, i
+
+   if (_24lc_flush == false) then
+      ; add data to the buffer
+      if (eeprom_address_pointer == -1) then
+         ; buffer empty, so place in buffer
+         eeprom_address_pointer = sdword(mem_address)
+         eeprom_buffer[0] = data
+         eeprom_buffer_index = 1
+         data_stored = true
+         
+      elsif (mem_address == (eeprom_address_pointer + eeprom_buffer_index)) then
+         ; next byte, so place in buffer
+         eeprom_buffer[eeprom_buffer_index] = data
+         eeprom_buffer_index = eeprom_buffer_index + 1      
+         data_stored = true
+         
+      end if
+   end if
+                                             
+   ; write current buffer to eeprom
+   if ((data_stored == false) |  ; this test implicit includes _24lc_flush=true and _24lc_flush=true implies data is present
+       (eeprom_buffer_index > eeprom_buffer_size) |
+       (((eeprom_address_pointer + eeprom_buffer_index) & eeprom_24lc_page_mask) != (eeprom_address_pointer & eeprom_24lc_page_mask))) then
+         
+      ; write data
+      i2c_start()                              -- send start bit   
+      ack_ok =          _ee_24lcxx_chip_address(word(eeprom_address_pointer), false) ; write mode 
+      ack_ok = ack_ok & _ee_24lcxx_mem_address(word(eeprom_address_pointer))
+      for eeprom_buffer_index using i loop                  
+         ack_ok = ack_ok & i2c_transmit_byte(eeprom_buffer[i])  -- transmit data & wait for ack
+      end loop
+      i2c_stop()                                               -- send stop bit
+             
+      ; write done, update administration                                   
+      eeprom_address_pointer = -1 ; buffer empty
+   end if
+
+   if ((data_stored == false) & (_24lc_flush == false))then
+      ; store databyte if not stored previous and not in flush mode
+      ; here, the buffer is always clear, so it is safe to assume we have to store at beginning
+      eeprom_address_pointer = sdword(mem_address)
+      eeprom_buffer[0] = data
+      eeprom_buffer_index = 1
+   end if
+
+   return ack_ok   
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- ee_24lcxx_flush - flush any data stored in buffer
+-- ----------------------------------------------------------------------------
+-- Data is stored in a buffer to allow more efficient write (page write).
+-- This function forces all buffered data to be written to the target, in 
+-- other words: it executes all delayed writes.
+-- ----------------------------------------------------------------------------
+function ee_24lcxx_flush() return bit is
+   var bit ack_ok;   
+   
+   if(eeprom_address_pointer == -1) then return true end if ; nothing to flush
+   
+   _24lc_flush = true ; flush (do not add dummy byte to buffer)
+
+   ack_ok = ee_24lcxx_write(0, 0)      
+
+   _24lc_flush = false ; disable flush for future calls.
+
+   return ack_ok;   
+end function    
+
+--------------------------------------------------------------------------------
+-- Read data from 24LC256 at input address
+--------------------------------------------------------------------------------
+function ee_24lcxx_read(dword in mem_address, byte out data) return bit is
+   var bit ack_ok
+
+   ; flush buffer to prevent readback of old value
+   ack_ok = ee_24lcxx_flush()
+   
+   i2c_start()                              -- send start bit   
+   ack_ok = ack_ok & _ee_24lcxx_chip_address(word(eeprom_address_pointer), false) ; write mode 
+   ack_ok = ack_ok & _ee_24lcxx_mem_address(word(eeprom_address_pointer))
+   
+   i2c_restart()                                    -- send start bit
+   ack_ok = ack_ok & _ee_24lcxx_chip_address(word(eeprom_address_pointer), true) ; read mode 
+   data = i2c_receive_byte(0)                     -- nack (no ack)
+   i2c_stop()                                     -- send stop bit
+   
+   return ack_ok
+end function
+
