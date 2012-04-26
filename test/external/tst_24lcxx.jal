@@ -1,0 +1,329 @@
+-- ------------------------------------------------------
+-- Title: Test program for 24lcxx libraries
+--
+-- Author: Joep Suijs, Copyright (c) 2008..2012, all rights reserved.
+--
+-- Adapted-by: 
+--
+-- Compiler: >=2.4m
+-- Revision: $Revision: 2902 $
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Level 0 i2c test program
+--    interact with an i2c eeprom using the i2c primitives
+-- --
+-- This file defines a test for JALLIB testing, using a test-board
+--  defined by a BOARD file .
+--
+-- Sources:
+--
+-- Notes: 
+--    setup: 
+--         an i2c eeprom, e.g. 24lc256 or other supported type, connected to the test board i2c pins.
+--         a serial connection to a terminal
+--
+-- ------------------------------------------------------
+
+; define valid test commands:
+const t_end            = 0   ; -,             -,             delay
+const t_write          = 1   ; address,       data,          delay 
+const t_read           = 2   ; address,       data,          delay
+const t_write_pattern  = 3   ; start_address, nr_of_bytes,   pattern
+const t_read_pattern   = 4   ; start_address, nr_of_bytes,   pattern
+const t_flush          = 5   ; 
+const t_set_high_addr  = 6   ; hi_word_address
+
+var word testcases[] = {
+ 
+   t_write_pattern,  0x0000, 0x0200, 1, ; fill two pages met pattern 1
+   t_read_pattern,   0x0000, 0x0200, 1,
+   
+   t_write,          0x0001, 0xAA, 0,  ; test single byte write + read flush
+   t_read,           0x0001, 0xAA, 0,
+     
+   t_write,          0x0002, 0xAB, 0,  ; test single byte write + flush, no read flush
+   t_flush,          0, 0, 0,          ; explicit flush, 1 byte
+   t_read,           0x0002, 0xAB, 0,
+
+   t_write,          0x0004, 0xA1, 0,  ; test multi sequential byte write 
+   t_write,          0x0005, 0xA2, 0,  
+   t_write,          0x0006, 0xA3, 0,  
+   t_read,           0x0004, 0xA1, 0,  ; non-sequential triggered flush, 3 bytes
+   t_read,           0x0005, 0xA2, 0,
+   t_read,           0x0006, 0xA3, 0,
+     
+   t_write,          0x0007, 0x91, 0,  ; test multi non-sequential byte write 
+   t_write,          0x0008, 0x92, 0,  
+   t_write,          0x000A, 0x93, 0,  ; non-sequential triggered flush, 2 bytes
+   t_read,           0x0007, 0x91, 0,  ; non-sequential triggered flush, 1 byte
+   t_read,           0x0008, 0x92, 0,
+   t_read,           0x000A, 0x93, 0,
+
+   t_write,          0x00FE, 0xA1, 0,  ; page boundary check 
+   t_write,          0x00FF, 0xA2, 0,  
+   t_write,          0x0100, 0xA3, 0,  ; page boundary triggered flush, 2 bytes
+   t_read,           0x00FE, 0xA1, 0,  ; non-sequential triggered flush 1 byte
+   t_read,           0x00FF, 0xA2, 0,
+   t_read,           0x0100, 0xA3, 0,
+   
+
+   t_read_pattern,   0x0000, 0x0100, 1, ; this will report all used bytes
+
+
+   t_read_pattern,   0x0000, 0x4000, 1, ; fill 16k met pattern 1
+   t_read_pattern,   0x0000, 0x4000, 1,
+
+   t_write_pattern,  0x0000, 0x4000, 5, ; fill 16k met pattern 5
+   t_read_pattern,   0x0000, 0x4000, 5,
+
+   t_end,            0x0000, 0x00, 2000   ; 2 sec delay before restart
+}
+
+
+-- generic setup (see releated examples for more details)
+
+;@jallib section serial
+
+include serial_hardware
+serial_hw_init()
+include print
+include delay
+
+;@jallib section i2c
+
+-- i2c setup
+const word _i2c_bus_speed = 1 ; * 100kHz
+const bit _i2c_level = true   ; i2c levels (not SMB)
+
+;include i2c_software                
+include i2c_hardware
+
+; 24lc256 setup
+const eeprom_24lc_type = 256
+const eeprom_24lc_page_mask = 0xFFC0   ; 
+                     
+const eeprom_i2c_address = 0xC0
+const eeprom_buffer_size = 20    ; buffer size of 1 is no delayed writes
+
+;const eeprom_no_type_check = 0 ; enable this allows dynamic change of eeprom type 
+include 24lcxx_common              
+
+; function prototypes
+procedure eeprom_write_pattern(dword in address, dword in nr, dword in pattern) 
+procedure eeprom_verify_pattern(dword in address, dword in nr, dword in pattern)
+
+
+
+;ee_24lcxx_write(12, 1)
+
+var word test_index = 0
+var dword hi_address = 0   ; higher 16 bits contain address, lower 16 are zero
+var byte t_cmd, data
+var word t_address, t_data, t_delay   
+var bit ack_ok
+
+forever loop                     
+   
+   if (test_index == 0) then
+      var byte str1[] = "\r\n\r\n-- Start of test sequence ---------------------------------\r\n"
+      print_string(serial_hw_data, str1)
+   end if
+
+   ; get & print testcase data.
+   t_cmd       = byte(testcases[test_index])    test_index = test_index + 1
+   t_address   = testcases[test_index]          test_index = test_index + 1
+   t_data      = testcases[test_index]          test_index = test_index + 1
+   t_delay     = testcases[test_index]          test_index = test_index + 1
+
+   print_word_hex(serial_hw_data, t_cmd)     serial_hw_data = " "
+   print_word_hex(serial_hw_data, t_address) serial_hw_data = " "
+   print_word_hex(serial_hw_data, t_data)    serial_hw_data = " "
+   print_word_hex(serial_hw_data, t_delay)   serial_hw_data = " "
+
+   ack_ok = true  
+   case t_cmd of 
+      t_end            : block 
+         var byte str1[] = "end"
+         print_string(serial_hw_data, str1)
+         delay_1ms(t_delay)            
+
+         test_index = 0 ; restart         
+      end block
+
+      t_write          : block 
+         var byte str1[] = "write"
+         print_string(serial_hw_data, str1)
+         ack_ok = ee_24lcxx_write(hi_address + t_address, byte(t_data))
+
+         delay_1ms(t_delay)            
+      end block
+
+      t_read           : block 
+         var byte str1[] = "read"
+         print_string(serial_hw_data, str1)
+         ack_ok = ee_24lcxx_read(hi_address + t_address, data)
+         if (data != t_data) then
+            var byte str2[] = "diff (actual, expected):"
+            print_string(serial_hw_data, str2)
+            serial_hw_data = " "
+            print_word_hex(serial_hw_data, data)    
+            serial_hw_data = ","
+            serial_hw_data = " "
+            print_word_hex(serial_hw_data, t_data)    
+         end if
+
+         delay_1ms(t_delay)            
+      end block
+
+      t_write_pattern  : block 
+         var byte str1[] = "write_pattern"
+         print_string(serial_hw_data, str1)
+
+         eeprom_write_pattern(hi_address + t_address, t_data, t_delay)
+      end block
+
+      t_read_pattern : block       
+         var byte str1[] = "read_pattern"
+         print_string(serial_hw_data, str1)
+
+         eeprom_verify_pattern(hi_address + t_address, t_data, t_delay)
+      end block
+
+      t_flush          : block 
+         var byte str1[] = "flush"
+         print_string(serial_hw_data, str1)
+
+         ack_ok = ee_24lcxx_flush()
+      end block
+
+      t_set_high_addr  : block 
+         var byte str1[] = "set_address_high_word"
+         print_string(serial_hw_data, str1)
+         
+         hi_address = dword(t_address) * 0x10000
+      end block
+
+      otherwise block
+         var byte str1[] = "ERROR: unknown command nr "
+         print_string(serial_hw_data, str1)
+         print_word_dec(serial_hw_data, t_cmd)
+         var byte str2[] = "at address"
+         print_string(serial_hw_data, str2)
+         print_word_dec(serial_hw_data, test_index - 4) 
+         ack_ok = false ; to test message, remove afterwards!!!!
+      end block
+
+   end case
+
+   if (!ack_ok) then
+      var byte str1[] = "ERROR: ack_ok FAIL"
+         print_string(serial_hw_data, str1)
+   end if
+
+   ; close testcase line
+   print_crlf(serial_hw_data)         
+
+;   ; cmd, (start) addres, data/nr, delay(me)/pattern
+;   ; enum valid commands:
+;const t_end            = 0   ;
+;const t_write          = 1   ; address,       data,          delay 
+;const t_read           = 2   ; address,       data,          delay
+;const t_write_pattern  = 3   ; start_address, nr_of_bytes,   pattern
+;const t_read_pattern = 4   ; start_address, nr_of_bytes,   pattern
+;const t_flush          = 5   ; 
+;const t_set_high_addr  = 5   ; hi_word_address
+;
+;var word testcases[] = {
+;      
+end loop
+
+
+
+
+
+
+
+
+
+
+-- ----------------------------------------------------------------------------
+-- eeprom_write_pattern - fill bytes with right shifted address data 
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure eeprom_write_pattern(dword in address, dword in nr, dword in pattern) is
+   var bit ack_ok
+   
+   for nr loop
+      ack_ok = ee_24lcxx_write(address, byte(address >> pattern))
+      if (ack_ok == false) then
+         const byte str1[] = "pattern write fail at address 0x"
+         print_string(serial_hw_data, str1)       
+         if (address > 0x10000) then
+            print_dword_hex(serial_hw_data, address) 
+         else
+            print_word_hex(serial_hw_data, word(address))
+         end if 
+         print_crlf(serial_hw_data)
+      end if
+      address = address + 1       
+   end loop
+   
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- eeprom_verify_pattern - check bytes for right shifted address data 
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+procedure eeprom_verify_pattern(dword in address, dword in nr, dword in pattern) is
+   var bit ack_ok
+   var byte data
+      
+   for nr loop
+      ack_ok = ee_24lcxx_read(address, data)
+      
+      if (ack_ok == false) then
+         const byte str1[] = "pattern write fail at address 0x"
+         print_string(serial_hw_data, str1)       
+         if (address > 0x10000) then
+            print_dword_hex(serial_hw_data, address) 
+         else
+            print_word_hex(serial_hw_data, word(address))
+         end if 
+         print_crlf(serial_hw_data)
+      else 
+         ; read succesfull, so check data
+         if (data != byte(address >> pattern)) then
+            block
+               const byte str1[] = "pattern deviation address 0x"
+               print_string(serial_hw_data, str1)       
+            end block
+            if (address > 0x10000) then
+               print_dword_hex(serial_hw_data, address) 
+            else
+               print_word_hex(serial_hw_data, word(address))
+            end if                    
+            
+            block
+               const byte str1[] = "expected: 0x"
+               print_string(serial_hw_data, str1)       
+            end block
+            print_byte_hex(serial_hw_data, byte(address >> pattern))
+
+            block
+               const byte str1[] = ", actual: 0x"
+               print_string(serial_hw_data, str1)       
+            end block
+            print_byte_hex(serial_hw_data, data) 
+                        
+            print_crlf(serial_hw_data)
+         end if
+
+      end if
+      address = address + 1       
+   end loop
+   
+end procedure
+
