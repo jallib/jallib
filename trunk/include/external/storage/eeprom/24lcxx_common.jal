@@ -42,7 +42,7 @@ include delay
 
 -- default
 if (defined(eeprom_i2c_address) == false) then                
-   const eeprom_i2c_address = 0xC0
+   const eeprom_i2c_address = 0xA0
 end if
 
 
@@ -71,17 +71,18 @@ end if
 -- _ee_24lcxx_chip_address - send chip-address to eeprom
 -- ----------------------------------------------------------------------------
 -- ----------------------------------------------------------------------------
-function _ee_24lcxx_chip_address(dword in mem_address, bit in read_mode) return bit is
+function _get_24lcxx_chip_address(dword in mem_address) return byte is
    var bit ack_ok
    var byte i2c_addr_byte
 
    ;------------------------
    ; device address handling
-   if (read_mode) then
-      i2c_addr_byte = eeprom_i2c_address | 0x01
-   else
+;   if (read_mode) then
+;      i2c_addr_byte = eeprom_i2c_address | 0x01
+;   else
       i2c_addr_byte = eeprom_i2c_address & 0xFE
-   end if
+;   end if
+;      serial_hw_data = "@"
 
    ; adjust address byte to address appropriate block   
    case (eeprom_24lc_type) of
@@ -111,15 +112,18 @@ function _ee_24lcxx_chip_address(dword in mem_address, bit in read_mode) return 
       end block
       
    end case
+;      serial_hw_data = "!"
 
    ; retry up to 8 ms to cope with write-time
-   for 80 loop 
-      ack_ok = i2c_transmit_byte(i2c_addr_byte)          -- transmit device/chip address
-      if (ack_ok) then exit loop end if
-      delay_10us(10)
-   end loop
+ ;  for 80 loop 
+;      serial_hw_data = "."
+;      ack_ok = i2c_transmit_byte(i2c_addr_byte)          -- transmit device/chip address
 
-   return ack_ok
+;      if (ack_ok) then exit loop end if
+;      delay_10us(10)
+;   end loop
+
+   return i2c_addr_byte
 end function
 
 -- ----------------------------------------------------------------------------
@@ -127,7 +131,7 @@ end function
 -- ----------------------------------------------------------------------------
 -- ----------------------------------------------------------------------------
 function _ee_24lcxx_mem_address(dword in mem_address) return bit is
-   var bit ack_ok
+   var bit ack_ok = true
 
    ; ----------------------------------------   
    ; data address handling (one or two bytes)
@@ -149,40 +153,93 @@ function ee_24lcxx_write(dword in mem_address, byte in data) return bit is
    var bit ack_ok = true
    var byte temp, i
 
+;   serial_hw_data = "w"
+   check(1000)
+
+
    if (_24lc_flush == false) then
       ; add data to the buffer
       if (eeprom_address_pointer == -1) then
+   check(1101)
          ; buffer empty, so place in buffer
          eeprom_address_pointer = sdword(mem_address)
+   check(1102)
          eeprom_buffer[0] = data
+   check(1103)
          eeprom_buffer_index = 1
+   check(1104)
          data_stored = true
+   check(1105)
          
       elsif (mem_address == (eeprom_address_pointer + eeprom_buffer_index)) then
+   check(1106)
+         
          ; next byte, so place in buffer
-         eeprom_buffer[eeprom_buffer_index] = data
+         eeprom_buffer[eeprom_buffer_index] = data        
+         
+         
+   check(1107)
+   print_byte_dec(serial_hw_data, eeprom_buffer_index)
+   serial_hw_data = "_"
          eeprom_buffer_index = eeprom_buffer_index + 1      
+   check(1108)
          data_stored = true
+   check(1109)
          
       end if
    end if
+   check(1001)
                                              
    ; write current buffer to eeprom
    if ((data_stored == false) |  ; this test implicit includes _24lc_flush=true and _24lc_flush=true implies data is present
-       (eeprom_buffer_index > eeprom_buffer_size) |
+       (eeprom_buffer_index >= eeprom_buffer_size) |      ; bug?!? if this check is '>' instead of '>=', index at line 178
+                                                          ; gets out of range and overwrites next byte in memory (test_index)
+                                                          ; thought the compiler would prevent this...
        (((eeprom_address_pointer + eeprom_buffer_index) & eeprom_24lc_page_mask) != (eeprom_address_pointer & eeprom_24lc_page_mask))) then
          
-      ; write data
-      i2c_start()                              -- send start bit   
-      ack_ok =          _ee_24lcxx_chip_address(word(eeprom_address_pointer), false) ; write mode 
+      ; write data    
+;      serial_hw_data = "W"
+
+      var byte chip_addr = _get_24lcxx_chip_address(word(eeprom_address_pointer))
+   check(1002)
+      
+      for 80 loop
+         i2c_start()                              -- send start bit       
+         ack_ok = i2c_transmit_byte(chip_addr)
+         if (ack_ok) then exit loop end if
+            
+         i2c_stop
+         delay_10us(10)
+         serial_hw_data = "."
+      end loop   
+   check(1003)
+
+
+;      ack_ok =          _ee_24lcxx_chip_address(word(eeprom_address_pointer), false) ; write mode       
+      if (ack_ok == false) then serial_hw_data = "^" return false end if
+;      serial_hw_data = "w"
+   check(1004)
+
       ack_ok = ack_ok & _ee_24lcxx_mem_address(word(eeprom_address_pointer))
+      if (ack_ok == false) then serial_hw_data = "$" return false end if
+;      serial_hw_data = "x"
+   check(1005)
+      
       for eeprom_buffer_index using i loop                  
          ack_ok = ack_ok & i2c_transmit_byte(eeprom_buffer[i])  -- transmit data & wait for ack
+            if (ack_ok == false) then serial_hw_data = "^" return false end if
+;               serial_hw_data = "y"
+   check(1006)
+
       end loop
       i2c_stop()                                               -- send stop bit
-             
+;      delay_1ms(10); tijdelijk
+   check(1007)
+                   
       ; write done, update administration                                   
       eeprom_address_pointer = -1 ; buffer empty
+   check(1008)
+      
    end if
 
    if ((data_stored == false) & (_24lc_flush == false))then
@@ -192,6 +249,8 @@ function ee_24lcxx_write(dword in mem_address, byte in data) return bit is
       eeprom_buffer[0] = data
       eeprom_buffer_index = 1
    end if
+
+;               serial_hw_data = "z"
 
    return ack_ok   
 end function
@@ -224,15 +283,30 @@ end function
 function ee_24lcxx_read(dword in mem_address, byte out data) return bit is
    var bit ack_ok
 
-   ; flush buffer to prevent readback of old value
+;   serial_hw_data = "r"
+
+   ; flush buffer to prevent readback of old data
    ack_ok = ee_24lcxx_flush()
-   
-   i2c_start()                              -- send start bit   
-   ack_ok = ack_ok & _ee_24lcxx_chip_address(word(eeprom_address_pointer), false) ; write mode 
-   ack_ok = ack_ok & _ee_24lcxx_mem_address(word(eeprom_address_pointer))
+
+   var byte chip_addr = _get_24lcxx_chip_address(word(mem_address))
+
+   if (ack_ok) then
+      
+      for 80 loop
+         i2c_start()                              -- send start bit       
+         ack_ok = i2c_transmit_byte(chip_addr)
+         if (ack_ok) then exit loop end if
+            
+         i2c_stop
+         delay_10us(10)  
+         serial_hw_data = "."
+      end loop   
+   end if
+      
+   ack_ok = ack_ok & _ee_24lcxx_mem_address(mem_address)
    
    i2c_restart()                                    -- send start bit
-   ack_ok = ack_ok & _ee_24lcxx_chip_address(word(eeprom_address_pointer), true) ; read mode 
+   ack_ok = ack_ok & i2c_transmit_byte(chip_addr | 1) -- read mode 
    data = i2c_receive_byte(0)                     -- nack (no ack)
    i2c_stop()                                     -- send stop bit
    
