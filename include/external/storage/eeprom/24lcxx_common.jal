@@ -12,6 +12,19 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: 24lc* enhanced library common code
+--     
+-- Features:
+-- * read & write of multiple i2c eeprom types
+-- * functions report succes/fail back to user
+-- * writes are cached when possible to enhance performance.
+-- * cache is flushed when required:
+--   - write at non-sequential address 
+--   - buffer is full 
+--   - page boundery is passed
+-- * manual cache-flush funtion ee_24lcxx_flush()
+-- * write cycle of eeprom is handled automaticly without unnecessary delay
+-- * ee_24lcxx_read_next funtion for efficient sequential dataread.
+--   note: limited to current datablock (relevant for 24lc16 & 24lc1025 only)
 --
 -- Sources: Microchip datasheet for supported devices:
 --
@@ -39,6 +52,7 @@
 --
 -- -------------------------------------------------------- ----------------------------------------------------------------------------
 include delay
+var byte _last_chip_address -- cache address for read_next
 
 -- default
 if (defined(eeprom_i2c_address) == false) then                
@@ -68,8 +82,9 @@ if (defined(eeprom_no_type_check)==false) then
 end if
 
 -- ----------------------------------------------------------------------------
--- _ee_24lcxx_chip_address - send chip-address to eeprom
+-- _ee_24lcxx_chip_address - calculate chip-address of eeprom
 -- ----------------------------------------------------------------------------
+-- return: calculated address
 -- ----------------------------------------------------------------------------
 function _get_24lcxx_chip_address(dword in mem_address) return byte is
    var bit ack_ok
@@ -123,12 +138,14 @@ function _get_24lcxx_chip_address(dword in mem_address) return byte is
 ;      delay_10us(10)
 ;   end loop
 
+   _last_chip_address = i2c_addr_byte
    return i2c_addr_byte
 end function
 
 -- ----------------------------------------------------------------------------
 -- _ee_24lcxx_mem_address - send mem-address to eeprom
--- ----------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------- 
+-- -- return: true if succes.
 -- ----------------------------------------------------------------------------
 function _ee_24lcxx_mem_address(dword in mem_address) return bit is
    var bit ack_ok = true
@@ -146,49 +163,36 @@ end function
 
 -- ----------------------------------------------------------------------------
 -- ee_24lcxx_write - write a byte to the eeprom
--- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------    
+-- return: true if succes.                                                       
 -- ----------------------------------------------------------------------------
 function ee_24lcxx_write(dword in mem_address, byte in data) return bit is
    var bit data_stored =  false
    var bit ack_ok = true
    var byte temp, i
 
-;   serial_hw_data = "w"
-   check(1000)
-
-
    if (_24lc_flush == false) then
       ; add data to the buffer
       if (eeprom_address_pointer == -1) then
-   check(1101)
          ; buffer empty, so place in buffer
          eeprom_address_pointer = sdword(mem_address)
-   check(1102)
          eeprom_buffer[0] = data
-   check(1103)
          eeprom_buffer_index = 1
-   check(1104)
          data_stored = true
-   check(1105)
          
       elsif (mem_address == (eeprom_address_pointer + eeprom_buffer_index)) then
-   check(1106)
          
          ; next byte, so place in buffer
          eeprom_buffer[eeprom_buffer_index] = data        
          
          
-   check(1107)
    print_byte_dec(serial_hw_data, eeprom_buffer_index)
    serial_hw_data = "_"
          eeprom_buffer_index = eeprom_buffer_index + 1      
-   check(1108)
          data_stored = true
-   check(1109)
          
       end if
    end if
-   check(1001)
                                              
    ; write current buffer to eeprom
    if ((data_stored == false) |  ; this test implicit includes _24lc_flush=true and _24lc_flush=true implies data is present
@@ -201,8 +205,6 @@ function ee_24lcxx_write(dword in mem_address, byte in data) return bit is
 ;      serial_hw_data = "W"
 
       var byte chip_addr = _get_24lcxx_chip_address(word(eeprom_address_pointer))
-   check(1002)
-      
       for 80 loop
          i2c_start()                              -- send start bit       
          ack_ok = i2c_transmit_byte(chip_addr)
@@ -212,33 +214,26 @@ function ee_24lcxx_write(dword in mem_address, byte in data) return bit is
          delay_10us(10)
          serial_hw_data = "."
       end loop   
-   check(1003)
-
 
 ;      ack_ok =          _ee_24lcxx_chip_address(word(eeprom_address_pointer), false) ; write mode       
       if (ack_ok == false) then serial_hw_data = "^" return false end if
 ;      serial_hw_data = "w"
-   check(1004)
 
       ack_ok = ack_ok & _ee_24lcxx_mem_address(word(eeprom_address_pointer))
       if (ack_ok == false) then serial_hw_data = "$" return false end if
 ;      serial_hw_data = "x"
-   check(1005)
       
       for eeprom_buffer_index using i loop                  
          ack_ok = ack_ok & i2c_transmit_byte(eeprom_buffer[i])  -- transmit data & wait for ack
             if (ack_ok == false) then serial_hw_data = "^" return false end if
 ;               serial_hw_data = "y"
-   check(1006)
 
       end loop
       i2c_stop()                                               -- send stop bit
 ;      delay_1ms(10); tijdelijk
-   check(1007)
                    
       ; write done, update administration                                   
       eeprom_address_pointer = -1 ; buffer empty
-   check(1008)
       
    end if
 
@@ -277,9 +272,11 @@ function ee_24lcxx_flush() return bit is
    return ack_ok;   
 end function    
 
---------------------------------------------------------------------------------
--- Read data from 24LC256 at input address
---------------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- ee_24lcxx_read - Read data from eeprom at input address
+-- ---------------------------------------------------------------------------- 
+-- return: true if succes.
+-- ----------------------------------------------------------------------------
 function ee_24lcxx_read(dword in mem_address, byte out data) return bit is
    var bit ack_ok
 
@@ -307,6 +304,43 @@ function ee_24lcxx_read(dword in mem_address, byte out data) return bit is
    
    i2c_restart()                                    -- send start bit
    ack_ok = ack_ok & i2c_transmit_byte(chip_addr | 1) -- read mode 
+   data = i2c_receive_byte(0)                     -- nack (no ack)
+   i2c_stop()                                     -- send stop bit
+   
+   return ack_ok
+end function
+
+-- ----------------------------------------------------------------------------
+-- ee_24lcxx_read_next- Read data from eeprom at next address
+-- ----------------------------------------------------------------------------
+-- return: true if succes.
+--
+-- Note: this read is limited to a 'block'     
+-- - address wrap at 64k for 24lc1025            
+-- - address wrap at 256bytes for 24lc15
+-- - no limitation for 24lc32, 64, 256, 512.
+-- See Microchip datasheet for details.
+-- 
+-- ----------------------------------------------------------------------------
+function ee_24lcxx_read_next(byte out data) return bit is
+   var bit ack_ok
+
+   ; flush buffer to set address as expected
+   ack_ok = ee_24lcxx_flush()
+
+   if (ack_ok) then
+      
+      for 80 loop
+         i2c_start()                               -- send start bit       
+         ack_ok = i2c_transmit_byte(_last_chip_address | 1) -- read mode
+         if (ack_ok) then exit loop end if
+            
+         i2c_stop
+         delay_10us(10)  
+         serial_hw_data = "."
+      end loop   
+   end if
+      
    data = i2c_receive_byte(0)                     -- nack (no ack)
    i2c_stop()                                     -- send stop bit
    
