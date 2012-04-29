@@ -25,7 +25,34 @@
 --         a serial connection to a terminal
 --
 -- ------------------------------------------------------
-procedure check(word in ref); prototype
+
+include serial_hardware
+serial_hw_init()
+include print
+include delay
+
+; function prototypes
+procedure eeprom_write_pattern(dword in address, dword in nr, dword in pattern) 
+procedure eeprom_verify_pattern(dword in address, dword in nr, dword in pattern)
+
+-- i2c setup
+const word _i2c_bus_speed = 4 ; * 100kHz
+const bit _i2c_level = true   ; i2c levels (not SMB)
+
+;const i2c_debug = 1
+;include i2c_software                
+include i2c_hardware
+i2c_initialize()
+
+; chip setup
+include 24lc256
+const eeprom_size = 256 * (1024/8)
+
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- test definitions
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 
 ; define valid test commands:
 const t_end            = 0   ; -,             -,             delay
@@ -37,16 +64,15 @@ const t_flush          = 5   ;
 const t_set_high_addr  = 6   ; hi_word_address
 
 const word testcases[] = {
+                                            
+   ; ---------------------------------------                                             
+   ; fill generic pattern on first two pages
+   t_write_pattern,  0x0000, 0x0200, 1, ; fill two pages met pattern 1
+   t_read_pattern,   0x0000, 0x0200, 1,
+                   
+   ; ---------------------------------------                
+   ; specific tests, same for all chips
 
-   t_write,          0x0001, 0xAA, 0,  ; test single byte write + read flush
-   t_flush,          0, 0, 0,          ; explicit flush, 1 byte
-   t_read,           0x0001, 0xAA, 0,
- 
-   t_write_pattern,  0x0000, 0x0200, 2, ; fill two pages met pattern 1
-   t_read_pattern,   0x0000, 0x0200, 2,
-
-;t_end,            0x0000, 0x00, 2000,   ; 2 sec delay before restart
-   
    t_write,          0x0001, 0xAA, 0,  ; test single byte write + read flush
    t_read,           0x0001, 0xAA, 0,
      
@@ -74,75 +100,31 @@ const word testcases[] = {
    t_read,           0x00FE, 0xA1, 0,  ; non-sequential triggered flush 1 byte
    t_read,           0x00FF, 0xA2, 0,
    t_read,           0x0100, 0xA3, 0,
+                                                       
+   ; -----------------------------------------------                                                      
+   ; re-check pattern - only used bytes are reported
+   t_read_pattern,   0x0000, 0x0200, 1, ; this will report all used bytes
    
-
-   t_read_pattern,   0x0000, 0x0100, 1, ; this will report all used bytes
-
-
-   t_write_pattern,   0x0000, 0x4000, 1, ; fill 16k met pattern 1
-   t_read_pattern,   0x0000, 0x4000, 1,
+   ; -------------------------------------------
+   ; check full addressing range, chip-dependant
+   t_write_pattern,  0x0000, eeprom_size, 1, ; fill 16k met pattern 1
+   t_read_pattern,   0x0000, eeprom_size, 1,
  
-   t_write_pattern,  0x0000, 0x4000, 5, ; fill 16k met pattern 5
-   t_read_pattern,   0x0000, 0x4000, 5,
+   t_write_pattern,  0x0000, eeprom_size, 5, ; fill 16k met pattern 5
+   t_read_pattern,   0x0000, eeprom_size, 5,
 
    t_end,            0x0000, 0x00, 2000   ; 2 sec delay before restart
 }
 
-
--- generic setup (see releated examples for more details)
-
-;@jallib section serial
-
-include serial_hardware
-serial_hw_init()
-include print
-include delay
-
-;@jallib section i2c
-
--- i2c setup
-const word _i2c_bus_speed = 1 ; * 100kHz
-const bit _i2c_level = true   ; i2c levels (not SMB)
-
-;const i2c_debug = 1
-include i2c_software                
-;include i2c_hardware
-i2c_initialize()
-
-; 24lc256 setup
-const eeprom_24lc_type = 256
-const eeprom_24lc_page_mask = 0xFFC0   ; 
-                     
-const eeprom_i2c_address = 0xA0
-const eeprom_buffer_size = 20    ; buffer size of 1 is no delayed writes
-
-;const eeprom_no_type_check = 0 ; enable this allows dynamic change of eeprom type 
-include 24lcxx_common              
-
-; function prototypes
-procedure eeprom_write_pattern(dword in address, dword in nr, dword in pattern) 
-procedure eeprom_verify_pattern(dword in address, dword in nr, dword in pattern)
-
-
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------------
 
 var word test_index = 0
 var dword hi_address = 0   ; higher 16 bits contain address, lower 16 are zero
 var byte t_cmd, data
 var word t_address, t_data, t_delay   
 var bit ack_ok
-
-procedure check(word in ref) is
-   
-   if (test_index > 999) then
-      var byte str1[] = "\r\n\r\n-- test index value "
-      print_string(serial_hw_data, str1)      
-      print_word_dec(serial_hw_data, test_index)
-      var byte str2[] = " at ref "
-      print_string(serial_hw_data, str2)      
-      print_word_dec(serial_hw_data, ref)
-      print_crlf(serial_hw_data)      
-   end if 
-end procedure
 
 forever loop                     
    
@@ -246,28 +228,8 @@ forever loop
 
    ; close testcase line
    print_crlf(serial_hw_data)         
-
-;   ; cmd, (start) addres, data/nr, delay(me)/pattern
-;   ; enum valid commands:
-;const t_end            = 0   ;
-;const t_write          = 1   ; address,       data,          delay 
-;const t_read           = 2   ; address,       data,          delay
-;const t_write_pattern  = 3   ; start_address, nr_of_bytes,   pattern
-;const t_read_pattern = 4   ; start_address, nr_of_bytes,   pattern
-;const t_flush          = 5   ; 
-;const t_set_high_addr  = 5   ; hi_word_address
-;
-;var word testcases[] = {
-;      
+ 
 end loop
-
-
-
-
-
-
-
-
 
 
 -- ----------------------------------------------------------------------------
@@ -278,8 +240,7 @@ procedure eeprom_write_pattern(dword in address, dword in nr, dword in pattern) 
    var bit ack_ok
    var dword t
    for nr using t loop            
-      serial_hw_data = "+"    
-      check(t)
+;      serial_hw_data = "+"    
       ack_ok = ee_24lcxx_write(address, byte(address >> pattern))
       if (ack_ok == false) then
          const byte str1[] = "pattern write fail at address 0x"
@@ -309,7 +270,7 @@ procedure eeprom_verify_pattern(dword in address, dword in nr, dword in pattern)
       ack_ok = ee_24lcxx_read(address, data)
       
       if (ack_ok == false) then
-         const byte str1[] = "read fail at address 0x"
+         const byte str1[] = "\r\nread fail at address 0x"
          print_string(serial_hw_data, str1)       
          if (address > 0x10000) then
             print_dword_hex(serial_hw_data, address) 
@@ -321,7 +282,7 @@ procedure eeprom_verify_pattern(dword in address, dword in nr, dword in pattern)
          ; read succesfull, so check data
          if (data != byte(address >> pattern)) then
             block
-               const byte str1[] = "pattern deviation address 0x"
+               const byte str1[] = "\r\npattern deviation address 0x"
                print_string(serial_hw_data, str1)       
             end block
             if (address > 0x10000) then
@@ -340,9 +301,7 @@ procedure eeprom_verify_pattern(dword in address, dword in nr, dword in pattern)
                const byte str1[] = ", actual: 0x"
                print_string(serial_hw_data, str1)       
             end block
-            print_byte_hex(serial_hw_data, data) 
-                        
-            print_crlf(serial_hw_data)
+            print_byte_hex(serial_hw_data, data)                         
          end if
 
       end if
