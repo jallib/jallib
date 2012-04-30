@@ -1,0 +1,91 @@
+--------------------------------------------------------------------------------
+-- Title: MCP4922_example.jal
+-- Author: Peter Lankreijer
+-- Adapted-by: Sebastien Lelong
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This program is to show the usage of the MCP4922 library.
+--
+
+
+include 18f27j53
+
+pragma target clock 48_000_000   -- oscillator frequency
+-- magical statements
+pragma target PLLDIV	   P4
+pragma target CPUDIV	   P1
+pragma target PLLEN  P1          -- PLL via fuse turned off
+pragma target OSC	   HS_PLL
+pragma target WDT  disabled      -- no watchdog
+pragma target IOL1WAY disabled   -- Mapping allowed multiple time at runtime
+OSCTUNE_PLLEN = on               -- PLL via OSCTUNE enabled
+-- declare secondary oscillator on T1OSI/T1OSO pins
+pragma target RTCOSC T1OSC
+pragma target SOSCSEL HS_CP
+_usec_delay(2000) -- PLL needs 2ms before stable
+
+enable_digital_io()
+
+include delay
+
+-- setup SPI
+alias spi_master_sw_sdi                  is pin_B2
+alias spi_master_sw_sdi_direction        is pin_B2_direction
+alias spi_master_sw_sdo                  is pin_A2
+alias spi_master_sw_sdo_direction        is pin_A2_direction
+alias spi_master_sw_sck                  is pin_A3
+alias spi_master_sw_sck_direction        is pin_A3_direction
+
+include spi_master_sw
+
+spi_master_sw_sdi_direction = input      -- spi input
+spi_master_sw_sdo_direction = output     -- spi output
+spi_master_sw_sck_direction = output     -- spi clock
+
+spi_master_sw_init(SPI_MODE_11)
+alias spi_master is spi_master_sw
+alias spi_master_exchange is spi_master_sw_exchange
+
+-- setup of the DAC
+alias mcp4922_cs                         is pin_A1
+alias mcp4922_cs_direction               is pin_A1_direction
+alias mcp4922_ldac                       is pin_A7
+alias mcp4922_ldac_direction             is pin_A7_direction
+
+var bit buffer = 1                       -- buffered
+var bit gain = 0                         -- 2 * Vref * D/4096
+
+include mcp4922
+
+mcp4922_init(buffer, gain)
+
+-- main program
+
+var word dac_value_a = 0              -- value between 0 and 4096
+var word dac_value_b = 4000
+
+
+forever loop
+   for 20 loop
+       dac_value_a = dac_value_a + 200
+       dac_value_b = dac_value_b - 200
+       
+       mcp4922_dac_ab(dac_value_a, dac_value_b)
+       
+       delay_100ms(5)
+   end loop
+  
+   for 20 loop
+       dac_value_a = dac_value_a - 200
+       dac_value_b = dac_value_b + 200
+
+       mcp4922_dac_a(dac_value_a)
+       mcp4922_dac_a(dac_value_b)
+
+       delay_100ms(5)
+   end loop
+
+end loop
