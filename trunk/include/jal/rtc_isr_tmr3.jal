@@ -1,6 +1,7 @@
 -- Title: Real Time Clock running from ISR on TMR3
 -- Author: Eur van Andel, Copyright (c) 2010, all rights reserved.
--- Compiler: 2.4m
+--         corrected V.Surducan 14.05.2012
+-- Compiler: 2.4o
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -27,39 +28,45 @@
 -- so the jitter is 2^15/5e6 = 0.6%
 -- Total second count is accurate, since the lower 15 bits stay intact and add up
 -- .
--- This RTC runs on TMR3. You must setup TMR3 yourself in the main program.
--- prescaler = 1, internal clock, TMR3 = on
--- TMR3IE = on, INTCON_GIE = on
--- A typical setup looks for a PIC18F look like this:
--- .
--- T3CON_T3CKPS   = 0b00      -- 1:1 prescaler
--- T3CON_TMR3_ON  = on        -- TMR3 on
--- .
--- PIE2_TMR3IE    = on        -- TMR3 interrupt enabled
--- IPR_TMR3IP     = on        -- high priority interrupt for TMR3 (default on)
--- RCON_IPEN      = off       -- no interrupt priorities (default off)
--- INTCON_PEIE    = on        -- peripheral interrupt enabled
--- INTCON_GIE     = on        -- global interrupt enabled
+-- Example of use:
+-- init_timer3 ()               ;initialize TMR3
+-- intcon_GIE = on             ;enable interrupts
+-- PIE2_TMR3IE = on            ;enable TMR3 interrupts
+-- forever loop
+--                             ; use seconds for whatever you need
+-- end loop
 --
 
 var volatile byte seconds               -- global variable updated by ISR
 const  _rtc_cycles_per_second = (target_clock / 4)
 var volatile dword _rtc_bresenham = _rtc_cycles_per_second
 
+procedure init_timer3() is
+   T3CON_TMR3ON  = 0         ; TMR3 off
+   T3CON_T3CKPS   = 0b00     ; 1:1 prescaler
+   T3CON_TMR3CS = 0          ; internal clock (Fosc/4)
+   T3CON_RD16 = 0            ; two 8 bit operation
+   TMR3L = 0
+   TMR3H = 0
+   RCON_IPEN = low           ; set low priority interrupts
+   PIR2_TMR3IF = low         ; clear interrupt flag
+   PIE2_TMR3IE    = on       ; TMR3 interrupt enabled
+   T3CON_TMR3ON  = 1         ; enable TMR3
+end procedure
+
+
 procedure RTC() is
    pragma interrupt
-
-   if PIR2_TMR3IF == true then
-
-      PIR2_TMR3IF = false              -- clear interrupt flag
+   
+   if PIR2_TMR3IF == on then   ; check the interrupt flag
       _rtc_bresenham = _rtc_bresenham - 0x1_00_00
-      if _rtc_bresenham < 0x1_00_00 then
-         seconds = seconds + 1
-         _rtc_bresenham = _rtc_bresenham + _rtc_cycles_per_second
-      end if
-
+      PIR2_TMR3IF = low        ; clear the interrupt flag
    end if
-
+   if _rtc_bresenham < 0x1_00_00 then
+      seconds = seconds + 1
+      -- put here your other code which increments or decrements other variables every second
+      _rtc_bresenham = _rtc_bresenham + _rtc_cycles_per_second
+   end if
 end procedure
 
 
