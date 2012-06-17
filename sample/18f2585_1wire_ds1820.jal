@@ -7,26 +7,24 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 
--- 
--- Description: 
--- This code measures temperature with single DS1820 sensor
--- daughterboard on port_b:
--- Sterm LCD + keyboard on pin_b0
--- red and green LEDs on pin_b1
--- DS1820 on pin_b3
+ 
+-- Description: this code measures temperature with single DS1820 sensor
 --
--- Sources: 
+-- Sources:
 -- Adapted from 18f4550_ds18b20_single.jal by Vasile Guta Ciucur and Joep Suijs.
 --
 -- Notes:
 -- This code was tested with a DS1820, which is not recommended for new developments. 
 -- Use the DS18B20: http://www.maxim-ic.com/datasheet/index.mvp/id/2812
--- or the DS18S20: http://www.maxim-ic.com/datasheet/index.mvp/id/2815
+--  or the DS18S20: http://www.maxim-ic.com/datasheet/index.mvp/id/2815
 -- instead.
--- 
--- Bugs:
--- The reported temperature seems 10C too high.
 --
+-- Hardware: 
+-- Sterm LCD + keyboard on pin_b0
+-- red and green LEDs on pin_b2
+-- DS1820 on pin_b4
+
+-- 
 
 
 include 18f2585
@@ -83,8 +81,8 @@ include one_wire           -- include one-wire library
 d1w_init()                 -- init one-wire bus
 
 -- select one of the output formats below
-const ds18b20_value_raw          = 0
-const ds18b20_value_celcius      = 1
+const ds18b20_value_raw          = 1
+const ds18b20_value_celcius      = 0
 const ds18b20_value_farenheit    = 0   -- not yet supported
 
 const ds18b20_ignore_crc         = 0 -- 1 tell lib to ignore crc (code becomes smaller and faster, but reliability of data is less)
@@ -116,11 +114,13 @@ delay_100ms(3)
 --                 12345678901234567890                  
 const byte str0[]="Test DS1820 "	-- print banner
 const byte str1[]="Temp="
+const byte str2[]="Device ID: "
 const byte str3[]="C"
 const byte err1[]="  read DS1820 "
 lcd_cursor_position(0,0)
 print_string(lcd, str0)
 lcd_cursor_position(2,0)
+print_string(lcd, str2)
 
 r = ds18b20_s_read_rom()
 if r then
@@ -162,12 +162,13 @@ forever loop -- ---------------------------  M A I N  L O O P  -----------------
     -- bus idle and could read the sensor before conversion is complete.
     -- The sensor will return the previous value.
 
-    r = ds18b20_s_temp(temperature)                 -- read conversion result   
-    lcd_cursor_position(0,0)                        -- first line
+    r = ds18b20_s_temp(temperature)                 -- temperature read as Celsius * 2
+    lcd_cursor_position(0,0)                        
     if (r) then
-       -- success, so print temperature
+       temperature = (temperature * 10) >> 1        -- temperatue now in decicelsius
+                                                    -- This is only valid for 9 bits!
        print_string(lcd, str1)                  
-       print_sword_dec(lcd, temperature)
+       format_sword_dec(lcd, temperature, 5, 1)
        lcd = "C"
        lcd = " "
     else
