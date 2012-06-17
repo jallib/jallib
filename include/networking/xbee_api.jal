@@ -1,0 +1,410 @@
+-- Title: Xbee API operaiton library
+-- Author: Sebastien Lelong, Copyright (c) 2012, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: access Xbee in API mode
+--
+-- Sources: mainly inspired by http://code.google.com/p/xbee-arduino/
+--
+-- Notes: Xbee series 2 only
+--
+
+-- Must-Be-Predefined
+if !defined(xbee_carrier) then
+   _error "xbee_carrier must be defined (alias to a serial pseudo-variable, eg. serial_hw_data)"
+end if
+
+-- Defaults
+if !defined(XBEE_PAYLOAD_SIZE) then
+   const byte XBEE_PAYLOAD_SIZE = 32 -- message will be 32 chars length
+end if
+
+if XBEE_PAYLOAD_SIZE > 100 then
+   _error "Payload size can't be more than 100, sorry..."
+end if
+
+-- ------------
+-- CONSTANTS --
+-- ------------
+
+-- set to ATAP value of XBee. AP=2 is recommended
+const byte XBEE_ATAP = 2
+
+const byte XBEE_START_BYTE = 0x7e
+const byte XBEE_ESCAPE = 0x7d
+const byte XBEE_XON = 0x11
+const byte XBEE_XOFF = 0x13
+
+-- This value determines the size of the byte array for receiving RX packets
+-- Most users won't be dealing with packets this large so you can adjust this
+-- value to reduce memory consumption. But, remember that
+-- if a RX packet exceeds this size, it cannot be parsed!
+
+-- This value is determined by the largest packet size
+-- (100 byte payload + 64-bit address + option byte and rssi byte)
+-- of a series 1 radio
+const byte XBEE_MAX_FRAME_DATA_SIZE = 110
+
+const word XBEE_BROADCAST_ADDRESS = 0xffff
+const word XBEE_ZB_BROADCAST_ADDRESS = 0xfffe
+
+-- the non-variable length of the frame data (not including frame id or api id
+-- or variable data size (e.g. payload, at command set value)
+const byte XBEE_ZB_TX_API_LENGTH = 12
+const byte XBEE_TX_16_API_LENGTH = 3
+const byte XBEE_TX_64_API_LENGTH = 9
+const byte XBEE_AT_COMMAND_API_LENGTH = 2
+const byte XBEE_REMOTE_AT_COMMAND_API_LENGTH = 13
+-- start/length(2)/api/frameid/checksum bytes
+const byte XBEE_PACKET_OVERHEAD_LENGTH = 6
+-- api is always the third byte in packet
+const byte XBEE_API_ID_INDEX = 3
+
+-- frame position of rssi byte
+const byte XBEE_RX_16_RSSI_OFFSET = 2
+const byte XBEE_RX_64_RSSI_OFFSET = 8
+
+const byte XBEE_DEFAULT_FRAME_ID = 1
+const byte XBEE_NO_RESPONSE_FRAME_ID = 0
+
+-- TODO put in tx16 class
+const byte XBEE_ACK_OPTION = 0
+const byte XBEE_DISABLE_ACK_OPTION = 1
+const byte XBEE_BROADCAST_OPTION = 4
+
+-- RX options
+const byte XBEE_ZB_PACKET_ACKNOWLEDGED = 0x01
+const byte XBEE_ZB_BROADCAST_PACKET = 0x02
+
+-- not everything is implemented!
+
+-- Api Id constants
+const byte XBEE_TX_64_REQUEST = 0x0
+const byte XBEE_TX_16_REQUEST= 0x1
+const byte XBEE_AT_COMMAND_REQUEST = 0x08
+const byte XBEE_AT_COMMAND_QUEUE_REQUEST = 0x09
+const byte XBEE_REMOTE_AT_REQUEST = 0x17
+const byte XBEE_ZB_TX_REQUEST = 0x10
+const byte XBEE_ZB_EXPLICIT_TX_REQUEST = 0x11
+const byte XBEE_RX_64_RESPONSE = 0x80
+const byte XBEE_RX_16_RESPONSE = 0x81
+const byte XBEE_RX_64_IO_RESPONSE = 0x82
+const byte XBEE_RX_16_IO_RESPONSE = 0x83
+const byte XBEE_AT_RESPONSE =0x88
+const byte XBEE_TX_STATUS_RESPONSE = 0x89
+const byte XBEE_MODEM_STATUS_RESPONSE = 0x8a
+const byte XBEE_ZB_RX_RESPONSE = 0x90
+const byte XBEE_ZB_EXPLICIT_RX_RESPONSE = 0x91
+const byte XBEE_ZB_TX_STATUS_RESPONSE = 0x8b
+const byte XBEE_ZB_IO_SAMPLE_RESPONSE = 0x92
+const byte XBEE_ZB_IO_NODE_IDENTIFIER_RESPONSE = 0x95
+const byte XBEE_AT_COMMAND_RESPONSE = 0x88
+const byte XBEE_REMOTE_AT_COMMAND_RESPONSE = 0x97
+
+-- TX STATUS constants
+const byte XBEE_SUCCESS = 0x0
+const byte XBEE_CCA_FAILURE = 0x2
+const byte XBEE_INVALID_DESTINATION_ENDPOINT_SUCCESS = 0x15
+const byte XBEE_NETWORK_ACK_FAILURE = 0x21
+const byte XBEE_NOT_JOINED_TO_NETWORK = 0x22
+const byte XBEE_SELF_ADDRESSED = 0x23
+const byte XBEE_ADDRESS_NOT_FOUND = 0x24
+const byte XBEE_ROUTE_NOT_FOUND = 0x25
+const byte XBEE_PAYLOAD_TOO_LARGE = 0x74
+
+-- modem status
+const byte XBEE_HARDWARE_RESET = 0
+const byte XBEE_WATCHDOG_TIMER_RESET = 1
+const byte XBEE_ASSOCIATED = 2
+const byte XBEE_DISASSOCIATED = 3
+const byte XBEE_SYNCHRONIZATION_LOST = 4
+const byte XBEE_COORDINATOR_REALIGNMENT = 5
+const byte XBEE_COORDINATOR_STARTED = 6
+
+const byte XBEE_ZB_BROADCAST_RADIUS_MAX_HOPS = 0
+
+const byte XBEE_ZB_TX_UNICAST = 0
+const byte XBEE_ZB_TX_BROADCAST = 8
+
+const byte XBEE_AT_OK = 0
+const byte XBEE_AT_ERROR = 1
+const byte XBEE_AT_INVALID_COMMAND = 2
+const byte XBEE_AT_INVALID_PARAMETER = 3
+const byte XBEE_AT_NO_RESPONSE = 4
+
+const byte XBEE_NO_ERROR = 0
+const byte XBEE_CHECKSUM_FAILURE = 1
+const byte XBEE_PACKET_EXCEEDS_BYTE_ARRAY_LENGTH = 2
+const byte XBEE_UNEXPECTED_START_BYTE = 3
+
+-- Related to XBee
+-- ***************
+record xbee_main is
+   byte pos
+   bit  escape
+   byte checksum_total
+   byte next_frame_id
+end record
+var xbee_main xbee
+
+-- Related to Xbee address
+record xbee_address64 is
+   dword msb
+   dword lsb
+end record
+
+-- Related to: XBee response
+record xbee_response is
+   byte api_id
+   byte frame_id
+   byte frame_data[XBEE_MAX_FRAME_DATA_SIZE]
+   byte msb_length
+   byte lsb_length
+   byte checksum
+   byte frame_length
+   bit  complete
+   byte error_code
+   --
+   byte payload_idx
+end record
+-- global var to store one request (save memory, don't pass
+-- record to proc/func, use global var)
+var xbee_response xbee_res
+
+-- Related to: Xbee request
+-- File descriptor
+record xbee_request is
+   xbee_address64 addr64
+   word network
+   byte broadcast_radius
+   byte option
+   byte api_id
+   byte frame_id
+   byte payload[XBEE_PAYLOAD_SIZE]
+end record
+-- global var to store one request (save memory, don't pass
+-- record to proc/func, use global var)
+var xbee_request xbee_req
+
+
+-- **************
+-- Implementation
+-- **************
+
+function xbee_req_get_frame_data_length() return byte is
+   return byte(XBEE_ZB_TX_API_LENGTH + XBEE_PAYLOAD_SIZE)
+end function
+
+function xbee_req_get_frame_data(byte in pos) return byte is
+   var byte data = 0
+   case pos of
+      0:	 block data = byte((xbee_req.addr64.msb >> 24) & 0xff) end block
+      1:  block data = byte((xbee_req.addr64.msb >> 16) & 0xff) end block
+		  2:  block data = byte((xbee_req.addr64.msb >> 8) & 0xff) end block
+		  3:  block data = byte(xbee_req.addr64.msb & 0xff) end block
+		  4:  block data = byte((xbee_req.addr64.lsb >> 24) & 0xff) end block
+		  5:  block data = byte((xbee_req.addr64.lsb >> 16) & 0xff) end block
+		  6:  block data = byte((xbee_req.addr64.lsb >> 8) & 0xff) end block
+		  7:  block data = byte(xbee_req.addr64.lsb & 0xff) end block
+		  8:  block data = byte((xbee_req.network >> 8) & 0xff) end block
+		  9:  block data = byte(xbee_req.network & 0xff) end block
+		  10: block data = byte(xbee_req.broadcast_radius) end block
+		  11: block data = byte(xbee_req.option) end block
+		  otherwise
+          block data = xbee_req.payload[pos - XBEE_ZB_TX_API_LENGTH] end block
+	end case
+	return data
+end function
+
+procedure xbee_send_byte(byte in b, bit in escape) is
+   if (escape & (b == XBEE_START_BYTE | b == XBEE_ESCAPE | b == XBEE_XON | b == XBEE_XOFF))
+	 then
+      xbee_carrier = XBEE_ESCAPE
+		  xbee_carrier = b ^ 0x20
+   else
+      xbee_carrier = b
+	end if
+end procedure
+
+procedure xbee_send() is
+   xbee_send_byte(XBEE_START_BYTE, false)
+   var byte len = xbee_req_get_frame_data_length()
+
+	 -- send length
+	 var byte msb_len = ((len + 2) >> 8) & 0xFF
+	 var byte lsb_len = (len + 2) & 0xFF
+
+	 xbee_send_byte(msb_len, true)
+	 xbee_send_byte(lsb_len, true)
+
+	 -- api id
+	 xbee_send_byte(xbee_req.api_id, true)
+	 xbee_send_byte(xbee_req.frame_id, true)
+
+	 var byte checksum = 0
+
+	 -- compute checksum, start at api id
+	 checksum = checksum + xbee_req.api_id
+	 checksum = checksum + xbee_req.frame_id
+
+   var byte i
+   for len using i loop
+      xbee_send_byte(xbee_req_get_frame_data(i), true)
+      checksum = checksum + xbee_req_get_frame_data(i)
+   end loop
+
+	 -- perform 2s complement
+	 checksum = 0xff - checksum
+
+	 -- send checksum
+	 xbee_send_byte(checksum, true)
+
+end procedure
+
+procedure _xbee_res_init() is
+   xbee_res.complete = false
+	 xbee_res.error_code = XBEE_NO_ERROR
+	 xbee_res.checksum = 0
+	 xbee_res.payload_idx = 0
+end procedure
+
+procedure _xbee_res_reset() is
+   _xbee_res_init()
+	 xbee_res.api_id = 0
+	 xbee_res.msb_length = 0
+	 xbee_res.lsb_length = 0
+	 xbee_res.frame_length = 0
+
+   var byte i
+   for XBEE_MAX_FRAME_DATA_SIZE using i loop
+      xbee_res.frame_data[i] = 0
+	 end loop
+end procedure
+
+procedure _xbee_reset_response() is
+   xbee.pos = 0
+   xbee.escape = false
+   _xbee_res_reset()
+end procedure
+
+function _xbee_res_get_packet_length() return byte is
+   return ((xbee_res.msb_length << 8) & 0xff) + (xbee_res.lsb_length & 0xff)
+end function
+
+function xbee_res_payload'get() return byte is
+   -- first 11 bytes are address(8), network(2) and options(1)
+   var byte x = xbee_res.frame_data[11 + xbee_res.payload_idx]
+   xbee_res.payload_idx = xbee_res.payload_idx + 1
+   return x
+end function
+
+procedure xbee_read_packet() is
+	 -- reset previous response
+	 if xbee_res.complete | xbee_res.error_code > 0 then
+      -- discard previous packet and start over
+		  _xbee_reset_response()
+	 end if
+   var byte data
+   var bit continue_parse -- implement a "continue" or "next" within loop
+   -- read and parse frame (this is a state machine)
+   forever loop
+      continue_parse = true
+      data = xbee_carrier
+
+      if xbee.pos > 0 & data == XBEE_START_BYTE then
+         xbee_res.error_code = XBEE_UNEXPECTED_START_BYTE
+         exit loop
+      end if
+
+      if xbee.pos > 0 & data == XBEE_ESCAPE then
+         xbee.escape = true
+         -- flag, need to read next byte, so shortcut loop
+         continue_parse = false
+      end if
+
+      if continue_parse then
+         if xbee.escape == true then
+            xbee.escape = false
+            data = 0x20 ^ data
+         end if
+
+         if xbee.pos >= XBEE_API_ID_INDEX then
+            xbee.checksum_total = xbee.checksum_total + data
+         end if
+
+         case xbee.pos of
+            0: block
+                  if data == XBEE_START_BYTE then
+                     xbee.pos = xbee.pos + 1
+                  end if
+               end block
+            1: block
+                  xbee_res.msb_length = data
+                  xbee.pos = xbee.pos + 1
+               end block
+            2: block
+                  xbee_res.lsb_length = data
+                  xbee.pos = xbee.pos + 1
+               end block
+            3: block
+                  xbee_res.api_id = data
+                  xbee.pos = xbee.pos + 1
+               end block
+            otherwise
+               block
+                  if xbee.pos > XBEE_MAX_FRAME_DATA_SIZE then
+                     xbee_res.error_code = XBEE_PACKET_EXCEEDS_BYTE_ARRAY_LENGTH
+                     exit loop
+                  end if
+
+                  -- check if we're at the end of the packet
+				          -- packet length does not include start, length, or checksum bytes, so add 3
+				          if xbee.pos == (_xbee_res_get_packet_length() + 3) then
+				          -- verify checksum
+				          if (xbee.checksum_total & 0xff) == 0xff then
+                     xbee_res.checksum = data
+                     xbee_res.complete = true
+                     xbee_res.error_code = XBEE_NO_ERROR
+						      else
+						         -- checksum failed
+						         xbee_res.error_code = XBEE_CHECKSUM_FAILURE
+						      end if
+						
+      					  -- minus 4 because we start after start,msb,lsb,api and up
+                  -- to but not including checksum
+      					  -- e.g. if frame was one byte, _pos=4 would be the byte,
+                  -- pos=5 is the checksum, where end stop reading
+      					  xbee_res.frame_length = xbee.pos - 4
+
+      					  -- reset state vars
+      					  xbee.pos = 0;
+      					  xbee.checksum_total = 0;
+		
+                  exit loop
+
+               else
+                  -- add to packet array, starting with the fourth byte of the apiFrame
+					        xbee_res.frame_data[xbee.pos - 4] = data
+					        xbee.pos = xbee.pos + 1
+					
+               end if
+            end block
+
+         end case
+
+      end if
+   end loop
+
+end procedure
+
+procedure xbee_init() is
+   xbee.pos = 0
+   xbee.escape = false
+   xbee.checksum_total = 0
+   xbee.next_frame_id = 0
+end procedure
+
