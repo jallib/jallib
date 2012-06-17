@@ -1,0 +1,178 @@
+-- Title: reading DS1820 temperature sensor
+--        output via Sterm LCD
+-- Author: Eur van Andel Copyright (c) 2012
+-- Compiler: 2.4o
+-- 
+-- Description: measures temperature with single DS1820 sensor
+-- daughterboard on port_b:
+-- Sterm LCD + keyboard on pin_b0
+-- red and green LEDs on pin_b1
+-- DS1820 on pin_b3
+--
+-- Sources: 18f4550_ds18b20_single.jal by Vasile Guta Ciucur and Joep Suijs
+--
+-- Notes: this code was tested with a DS1820, which is not recommended for new developments. 
+-- Use the DS18B20: http://www.maxim-ic.com/datasheet/index.mvp/id/2812
+-- or DS18S20: http://www.maxim-ic.com/datasheet/index.mvp/id/2815
+-- instead.
+--
+
+
+include 18f2585
+pragma target clock 20_000_000
+-- pragma target OSC  HS_PLL
+pragma target OSC  HS
+pragma target XINST disabled
+pragma target WDT  disabled
+pragma target LVP  disabled
+pragma target MCLR external
+
+enable_digital_io()
+
+const down  = 0
+const green = 1
+const red   = 2
+
+var bit led      is pin_b2		     -- two red and two green LEDs in series between Vdd and Vss
+var bit led_dir  is pin_b2_direction -- 150 Ohm resistor in the middle to PIC pin
+led_dir = output                     -- pin = high --> green, pin = low --> red
+led = high                           -- pin = input --> off
+
+procedure LEDs(byte in x) is  -- four leds, all connected in series between +5V and GND
+if x == down then             -- at 1.7V Vf, they will not light up
+   led_dir  = input           -- PIC pin is tied to the middle, via 150 Ohm resistor
+elsif x == red then           -- so HIGH will light both lower green LEDs
+   led_dir  = output          -- LOW will light both higher RED leds
+   led      = low             -- pin_direction = input will light no LEDs. 
+elsif x == green then
+   led_dir  = output
+    led     = high
+end if
+end procedure
+
+
+
+include delay
+include format
+const print_string_terminator = 255     -- fixes bug in print_string()?
+include print
+
+const byte LCD_ROWS = 4          -- Sterm LCD + keyboard on single pin_b0
+const byte LCD_CHARS = 20
+
+var bit lcd_sterm_pin is pin_b0
+var bit lcd_sterm_pin_dir is pin_b0_direction
+include lcd_sterm_master         -- Sterm LCD + keyboard contains a PIC too
+
+              
+-- setup pin definitions for dallas one-wire bus
+alias d1w_bus            is pin_b4
+alias d1w_bus_direction  is pin_b4_direction     
+include one_wire           -- include one-wire library
+d1w_init()                 -- init one-wire bus
+
+-- select one of the output formats below
+const ds18b20_value_raw          = 0
+const ds18b20_value_celcius      = 1
+const ds18b20_value_farenheit    = 0   -- not yet supported
+
+const ds18b20_ignore_crc         = 0 -- 1 tell lib to ignore crc (code becomes smaller and faster, but reliability of data is less)
+const ds18b20_max_retries        = 2 -- 1 means the library re-reads once when crc fails, 4 means up to 4 retries (so max 5 reads)
+
+include ds18b20                 -- include library for ds18b20 temperature sensor with one-wire interface
+
+
+var sword temperature   -- degrees Celsius
+
+var bit toggle
+var bit r
+var byte i
+
+
+-- --------------------------------------  S T A R T  M A I N  --------------------
+
+
+for 4 loop              -- red/green sequence means boot
+   LEDs(red)
+   delay_100ms(2)
+   lcd_clear_screen()		-- Sterm needs some time after power-up
+   LEDs(green)
+   delay_100ms(2)
+end loop
+
+delay_100ms(3)
+
+--                 12345678901234567890                  
+const byte str0[]="Test DS1820 "	-- print banner
+const byte str1[]="Temp="
+const byte str3[]="C"
+const byte err1[]="  read DS1820 "
+lcd_cursor_position(0,0)
+print_string(lcd, str0)
+lcd_cursor_position(2,0)
+
+r = ds18b20_s_read_rom()
+if r then
+   -- read_rom successful, so print ID which is now stored in scratchpad 
+   lcd_cursor_position(3,0)
+   for 8 using i loop
+      print_byte_hex(lcd, scratchpad[i])
+   end loop                
+else                      
+   -- print fail message
+   print_string(lcd, err1)
+end if
+
+
+for 4 loop					-- leave banner on for a while
+   LEDs(green)
+   delay_100ms(5)
+end loop
+
+
+
+lcd_clear_screen()
+
+forever loop -- ---------------------------  M A I N  L O O P  ----------------------------
+
+
+
+    ds18b20_convert()  -- tell ds18b20 device
+
+    -- note: the statement above starts the conversion and it can take
+    -- up to 750ms to complete. 
+    -- If the sensor is in parasite mode, it is mandatory to leave the bus high
+    -- during conversion. You could include a delay like:
+    delay_1ms(750)
+    -- If you have other stuff to do, feel free to do so and create proper
+    -- timing in an other way. 
+    --
+    -- If the sensor is conventional powered, you don't have to keep the
+    -- bus idle and could read the sensor before conversion is complete.
+    -- The sensor will return the previous value.
+
+    r = ds18b20_s_temp(temperature)                 -- read conversion result   
+    lcd_cursor_position(0,0)                        -- first line
+    if (r) then
+       -- success, so print temperature
+       print_string(lcd, str1)                  
+       print_sword_dec(lcd, temperature)
+       lcd = "C"
+       lcd = " "
+    else
+       -- print fail message
+       print_string(lcd, err1)    
+    end if
+
+    toggle = ! toggle
+
+    if toggle then      -- to see if main loop is running
+        LEDs(green)
+    else
+        LEDs(down)
+    end if
+
+end loop
+
+
+
