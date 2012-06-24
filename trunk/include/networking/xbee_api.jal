@@ -185,10 +185,14 @@ record xbee_request is
    byte api_id
    byte frame_id
    byte payload[XBEE_PAYLOAD_SIZE]
+   --
+   byte payload_idx
 end record
 -- global var to store one request (save memory, don't pass
 -- record to proc/func, use global var)
 var xbee_request xbee_req
+-- init payload idx
+xbee_req.payload_idx = 0
 
 
 -- **************
@@ -199,6 +203,7 @@ function xbee_req_get_frame_data_length() return byte is
    return byte(XBEE_ZB_TX_API_LENGTH + XBEE_PAYLOAD_SIZE)
 end function
 
+-- return data byte contained in request according to a give index position
 function xbee_req_get_frame_data(byte in pos) return byte is
    var byte data = 0
    case pos of
@@ -220,6 +225,7 @@ function xbee_req_get_frame_data(byte in pos) return byte is
 	return data
 end function
 
+-- internally used, send a byte through Xbee carrier, honoring escape setting
 procedure xbee_send_byte(byte in b, bit in escape) is
    if (escape & (b == XBEE_START_BYTE | b == XBEE_ESCAPE | b == XBEE_XON | b == XBEE_XOFF))
 	 then
@@ -230,7 +236,9 @@ procedure xbee_send_byte(byte in b, bit in escape) is
 	end if
 end procedure
 
-procedure xbee_send() is
+-- send xbee_req request. xbee_req must be fill in first before
+-- calling this procedure. See xbee_req record definition.
+procedure xbee_write_packet() is
    xbee_send_byte(XBEE_START_BYTE, false)
    var byte len = xbee_req_get_frame_data_length()
 
@@ -262,9 +270,13 @@ procedure xbee_send() is
 
 	 -- send checksum
 	 xbee_send_byte(checksum, true)
+	 
+	 -- reinit payload index for pseudo put proc
+	 xbee_req.payload_idx = 0
 
 end procedure
 
+-- init xbee_res response record.
 procedure _xbee_res_init() is
    xbee_res.complete = false
 	 xbee_res.error_code = XBEE_NO_ERROR
@@ -272,6 +284,7 @@ procedure _xbee_res_init() is
 	 xbee_res.payload_idx = 0
 end procedure
 
+-- init/reset xbee_res response.
 procedure _xbee_res_reset() is
    _xbee_res_init()
 	 xbee_res.api_id = 0
@@ -295,6 +308,13 @@ function _xbee_res_get_packet_length() return byte is
    return ((xbee_res.msb_length << 8) & 0xff) + (xbee_res.lsb_length & 0xff)
 end function
 
+-- read one byte from response's payload. Each time it's called, position in
+-- payload is increased ready to get next byte. There's no check whether
+-- position is within payload, so be carefull and check how many time you call
+-- it according to XBEE_PAYLOAD_SIZE.
+-- (this is somewhat by design, because payload is a buffer, reserved space and
+-- the actual data of interest, contained in this buffer, may vary so only the
+-- caller knows how many bytes she wants to get from it).
 function xbee_res_payload'get() return byte is
    -- first 11 bytes are address(8), network(2) and options(1)
    var byte x = xbee_res.frame_data[11 + xbee_res.payload_idx]
@@ -302,6 +322,95 @@ function xbee_res_payload'get() return byte is
    return x
 end function
 
+-- Write a byte in request payload, increasing position for next call. There's
+-- no check whether position remains in payload. See xbee_res_payload'get for
+-- more.
+procedure xbee_req_payload'put(byte in data) is
+   -- first 11 bytes are address(8), network(2) and options(1)
+   xbee_req.payload[xbee_req.payload_idx] = data
+   xbee_req.payload_idx = xbee_req.payload_idx + 1
+end procedure
+
+-- Print Xbee response details. Careful: once called, xbee response's payload
+-- can't be accessed anymore as before, because payload has been read entirely.
+-- (see xbee_res_payload'get, it returns data, bytes by bytes, moving forward
+-- into payload). Once called, if you want to access payload again, you need
+-- to reset internal payload index:
+--   xbee_res.payload_idx = 0
+-- In order to call this, you need to define an alias named xbee_debug_data
+-- to a pseudo-var, like serial_hw_data (if not already used as xbee_carrier) or
+-- serial_hw2_data.
+if defined(xbee_debug_data) then
+procedure print_xbee_response() is
+
+   const byte msg[] = "--Response--"
+   const byte api_id[] = "api_id: "
+   const byte frame_id[] = "frame_id: "
+   const byte frame_data[] = "frame_data: "
+   const byte msb_length[] = "msb_length: "
+   const byte lsb_length[] = "lsb_length: "
+   const byte checksum[] = "checksum: "
+   const byte frame_length[] = "frame_length: "
+   const byte complete[] = "complete: "
+   const byte error_code[] = "error_code: "
+   const byte payload[] = "payload: "
+
+   print_string(xbee_debug_data,msg)
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,api_id)
+   print_byte_hex(xbee_debug_data,xbee_res.api_id)
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,frame_id)
+   print_byte_hex(xbee_debug_data,xbee_res.frame_id)
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,msb_length)
+   print_byte_hex(xbee_debug_data,xbee_res.msb_length)
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,lsb_length)
+   print_byte_hex(xbee_debug_data,xbee_res.lsb_length)
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,frame_length)
+   print_byte_hex(xbee_debug_data,xbee_res.frame_length)
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,checksum)
+   print_byte_hex(xbee_debug_data,xbee_res.checksum)
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,complete)
+   print_bit_logic(xbee_debug_data,xbee_res.complete)
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,error_code)
+   print_byte_hex(xbee_debug_data,xbee_res.error_code)
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,frame_data)
+   var byte i
+   for xbee_res.frame_length using i loop
+       print_byte_hex(xbee_debug_data,xbee_res.frame_data[i])
+   end loop
+   print_crlf(xbee_debug_data)
+   --
+   print_string(xbee_debug_data,payload)
+   for XBEE_PAYLOAD_SIZE loop
+       xbee_debug_data = xbee_res_payload
+   end loop
+   print_crlf(xbee_debug_data)
+end procedure
+end if
+
+-- Read a full packet, fill in xbee_res response. This may be a blocking call
+-- as underlying data carrier may block until data is read (typically when
+-- serial_hw_data is involved here).
+-- Once called, you may check xbee_res.error_code = 0 to make sure everything
+-- if fine. You may also check xbee_res.api_id value (see constants at the
+-- beginning) to know what lind of response it is (rx, tx_status, etc...)
 procedure xbee_read_packet() is
 	 -- reset previous response
 	 if xbee_res.complete | xbee_res.error_code > 0 then
@@ -401,6 +510,34 @@ procedure xbee_read_packet() is
 
 end procedure
 
+-- Wrapper around xbee_read_packet. It actually calls it several time until
+-- it actually receives a XBEE_ZB_RX_RESPONSE (api_id). This is useful when
+-- several messages are exchanged between coordinator or router, as, for
+-- instance, coordinator may reply with a tx_status, then a rx response during
+-- communication. tx_status are kind of administrative message, while "rx"
+-- response are the one you may only interested in. If so, use this procedure,
+-- once called you'll a xbee_res "rx" response containing expecting data
+-- (hopefully)...
+procedure xbee_receive() is
+   while xbee_res.api_id != XBEE_ZB_RX_RESPONSE loop
+      xbee_read_packet()
+   end loop
+end procedure
+
+-- Send a request and read tx_status response. If delivery failed, try again
+-- (until if works...)
+procedure xbee_send() is
+   forever loop
+      xbee_write_packet()
+      xbee_read_packet()
+      -- TODO: I think I should investigate payload, not error_code...
+      if xbee_res.error_code == XBEE_SUCCESS then
+         exit loop
+      end if
+   end loop
+end procedure
+
+-- must be called once lib is included
 procedure xbee_init() is
    xbee.pos = 0
    xbee.escape = false
