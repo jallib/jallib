@@ -29,23 +29,22 @@
  * Sources:  MPLAB .dev                                                     *
  *                                                                          *
  * Notes:                                                                   *
- *   - This script is developed with 'classic' Rexx as delivered with       *
+ *   - This script is written in 'classic' Rexx as delivered with           *
  *     eComStation (OS/2) and is executed on a system with eCS 2.1.         *
- *     With only a few changes it can be executed on a different system,    *
+ *     With only minor changes it can be executed on a different system,    *
  *     or even a different platform (Linux, Windows) with "Regina Rexx"     *
  *     Ref:  http://regina-rexx.sourceforge.net/                            *
  *     See the embedded comments below for instructions for possibly        *
  *     required changes. You don't have to look further than the line which *
  *     says "Here the device file generation actually starts" (approx 125). *
- *     Note with Linux some system commands must be changed (erase -> rm).  *
  *   - A summary of changes of this script is maintained in 'changes.txt'   *
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.35'
+   ScriptVersion   = '0.1.36'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4o'
-   MPlabVersion    = '884'
+   MPlabVersion    = '885'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated */
@@ -90,8 +89,8 @@ if msglevel > 2 then
 /* mandatory commandline argument, which must be 'PROD' or 'TEST'        */
 /*  - with 'PROD' the files go to directory "<JALLIBbase>include/device" */
 /*  - with 'TEST' the files go to directory "./test>"                    */
-/* Note: The destination directory is completely erased before creating  */
-/*       new device files.                                               */
+/* Note: Before creating new device files all .jal files are             */
+/*       removed from the desitation directory.                          */
 
 parse upper arg destination selection .                     /* commandline arguments */
 
@@ -135,7 +134,7 @@ if dir.0 = 0 then do
    call msg 3, 'No .dev files found matching <'wildcard'> in' devdir
    return 0                                                 /* nothing to do */
 end
-call SysStemSort 'dir.', 'A', 'I'                           /* sort alpha incremental */
+call SysStemSort 'dir.', 'A', 'I'                           /* sort on name (alpha, incremental) */
 
 signal on syntax name catch_syntax                          /* catch syntax errors */
 signal on error  name catch_error                           /* catch execution errors */
@@ -153,12 +152,12 @@ Fuse_Def. = '?'                                             /* Fuse_Def name map
 if file_read_fusedef() \= 0 then                            /* read fuse_def table */
    return 1                                                 /* terminate with error */
 
-if stream(dstdir'/chipdef_jallib.jal','c','query exists') \= '' then
-  '@erase' translate(dstdir'/*.jal','\','/') '1>nul 2>nul'   /* remove all jal files */
+call SysFileTree dstdir'/*.jal', 'jal.', 'FO'               /* .jal files in destination */
+do i = 1 to jal.0                                           /* all */
+   call SysFileDelete jal.i                                 /* remove! */
+end
 
-chipdef = dstdir'/chipdef_jallib.jal'                        /* common include for device files */
-if stream(chipdef, 'c', 'query exists') \= '' then          /* old chipdef file present */
-   call SysFileDelete chipdef                               /* delete it */
+chipdef = dstdir'/chipdef_jallib.jal'                       /* common include for device files */
 if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* new chipdef file */
    call msg 3, 'Could not create common include file' chipdef
    return 1                                                 /* unrecoverable: terminate */
@@ -168,8 +167,9 @@ call list_chipdef_header                                    /* header of chipdef
 xChipDef. = '?'                                             /* collection of dev IDs in chipdef */
 
 ListCount = 0                                               /* # created device files */
-SpecMissCount = 0                                           /* # missing in devicespecific */
+SpecMissCount = 0                                           /* # missing in devicespecific.json */
 DSMissCount = 0                                             /* # missing datasheet */
+PinmapMissCount = 0                                         /* # missing in pinmap */
 
 do i=1 to dir.0                                             /* all relevant .dev files */
                                                             /* init for each new PIC */
@@ -192,7 +192,7 @@ do i=1 to dir.0                                             /* all relevant .dev
 
    call msg 0, PicName                                      /* progress signal */
 
-   PicNameCaps = toupper(PicName)
+   PicNameCaps = SysMapCase(PicName)
    if DevSpec.PicNameCaps.DataSheet = '?' then do
       call msg 2, 'Not listed in' DevSpecFile', no device file generated'
       SpecMissCount = SpecMissCount + 1
@@ -201,6 +201,11 @@ do i=1 to dir.0                                             /* all relevant .dev
    else if DevSpec.PicNameCaps.DataSheet = '-' then do
       call msg 2, 'No datasheet found in' DevSpecFile', no device file generated'
       DSMissCount = DSMissCount + 1
+      iterate                                               /* skip */
+   end
+   if PinMap.PicNameCaps \= PicNameCaps then do             /* Name mismatch */
+      call msg 2, 'No Pinmapping found in' PinMapFile
+      PinmapMissCount = PinmapMissCount + 1                 /* count misses */
       iterate                                               /* skip */
    end
 
@@ -217,7 +222,7 @@ do i=1 to dir.0                                             /* all relevant .dev
    StackDepth            = 0                                /* hardware stack depth */
    AccessBankSplitOffset = 128                              /* 0x80 (18Fs) */
    CodeSize              = 0                                /* amount of program memory */
-   DataSize              = 0                                /* amount of data memroy (RAM) */
+   DataSize              = 0                                /* amount of data memory (RAM) */
    IDSpec                = ''                               /* ID bytes: hexaddr,size (dec) */
    VddRange              = 0                                /* working voltage range */
    VddNominal            = 0                                /* nominal working voltage */
@@ -225,41 +230,45 @@ do i=1 to dir.0                                             /* all relevant .dev
    VppDefault            = 0                                /* default programming voltage */
 
    adcs_bitcount         = 0                                /* # ADCONx_ADCS bits */
-   HasLATReg             = 0                                /* no LAT registers found yet */
+   HasLATReg             = 0                                /* zero LAT registers found (yet) */
+                                                            /* used for extended midrange only */
 
 
-   /* collect information about this PIC */
+   /* -------- collect some basic information ------------ */
 
    core = load_config_info()                                /* core + various cfg info */
 
-   if core = '12' then do                                   /* baseline */
-      MaxRam       = 128                                    /* range 0..0x7F */
-      BankSize     = 32                                     /* 0x0020 */
-      PageSize     = 512                                    /* 0x0200 */
-      DataStart    = '0x400'
-      call load_sfr1x                                       /* SFR info */
-   end
-   else if core = '14' then do                              /* classic midrange */
-      MaxRam       = 512                                    /* range 0..0x1FF */
-      BankSize     = 128                                    /* 0x0080 */
-      PageSize     = 2048                                   /* 0x0800 */
-      DataStart    = '0x2100'
-      call load_sfr1x
-   end
-   else if core = '14H' then do                             /* enhance midrange (Hybrid) */
-      MaxRam       = 4096                                   /* range 0..0xFFF */
-      BankSize     = 128                                    /* 0x0080 */
-      PageSize     = 2048                                   /* 0x0800 */
-      DataStart    = '0xF000'
-      call load_sfr1x
-   end
-   else if core = '16' then do                              /* 18Fs */
-      MaxRam       = 4096                                   /* range 0..0xFFF */
-      BankSize     = 256                                    /* 0x0100 */
-      DataStart    = '0xF00000'                             /* default */
-      rx = load_sfr16
-   end
-   else do                                                  /* other or undetermined core */
+   /* -------- set core-dependent properties ------------ */
+
+   select
+      when core = '12' then do                              /* baseline */
+         MaxRam       = 128                                 /* range 0..0x7F */
+         BankSize     = 32                                  /* 0x0020 */
+         PageSize     = 512                                 /* 0x0200 */
+         DataStart    = '0x400'
+         call load_sfr1x                                    /* SFR info */
+      end
+      when core = '14' then do                              /* classic midrange */
+         MaxRam       = 512                                 /* range 0..0x1FF */
+         BankSize     = 128                                 /* 0x0080 */
+         PageSize     = 2048                                /* 0x0800 */
+         DataStart    = '0x2100'
+         call load_sfr1x
+      end
+      when core = '14H' then do                             /* enhance midrange (Hybrid) */
+         MaxRam       = 4096                                /* range 0..0xFFF */
+         BankSize     = 128                                 /* 0x0080 */
+         PageSize     = 2048                                /* 0x0800 */
+         DataStart    = '0xF000'
+         call load_sfr1x
+      end
+      when core = '16' then do                              /* 18Fs */
+         MaxRam       = 4096                                /* range 0..0xFFF */
+         BankSize     = 256                                 /* 0x0100 */
+         DataStart    = '0xF00000'
+         rx = load_sfr16
+      end
+   otherwise                                                /* other or undetermined core */
       call msg 3, 'Unsupported core:' Core,                 /* report detected Core */
                   'Internal script error, terminating ....'
       leave                                                 /* script error: terminate */
@@ -267,38 +276,37 @@ do i=1 to dir.0                                             /* all relevant .dev
 
    /* ------------ produce device file ------------------------ */
 
-   jalfile = dstdir'/'PicName'.jal'                         /* device file */
-   if stream(jalfile, 'c', 'query exists') \= '' then       /* previous */
-      call SysFileDelete jalfile                            /* delete */
+   jalfile = dstdir'/'PicName'.jal'                         /* device filespec */
    if stream(jalfile, 'c', 'open write') \= 'READY:' then do
       call msg 3, 'Could not create device file' jalfile
       leave                                                 /* unrecoverable error */
    end
 
    call list_head                                           /* common header */
+   call list_cfgmem                                          /* cfg mem addr + defaults */
 
-   if core = '12' then do                                   /* baseline */
-      call list_fuses
-      call list_sfr1x
-      call list_nmmr12
-   end
-   else if core = '14' then do                              /* midrange */
-      call list_fuses
-      call list_sfr1x
-   end
-   else if core = '14H' then do                             /* extended midrange (Hybrids) */
-      call list_fuses
-      call list_sfr14h
-   end
-   else do                                                  /* 18Fs */
-      call list_fuses
-      call list_sfr16
-      call list_nmmr16
+   select
+      when core = '12' then do                              /* baseline */
+         call list_sfr1x
+         call list_nmmr12
+      end
+      when core = '14' then do                              /* midrange */
+         call list_sfr1x
+      end
+      when core = '14H' then do                             /* extended midrange (Hybrids) */
+         call list_sfr14h
+      end
+      when core = '16' then do                              /* 18Fs */
+         call list_sfr16
+         call list_nmmr16
+      end
+   otherwise                                                /* other core  caught above */
+      nop
    end
 
    call list_analog_functions                               /* common enable_digital_io() */
 
-   call list_fuses_bits                                     /* common fuses specs */
+   call list_fusedefs                                       /* fusedefs */
 
    call stream jalfile, 'c', 'close'                        /* done with this PIC */
 
@@ -312,11 +320,16 @@ call stream  chipdef, 'c', 'close'                          /* done */
 call stream DataSheetFile, 'c', 'close'                     /* done */
 
 call msg 0, ''
-call msg 1, 'Generated' listcount 'device files in' format(time('E'),,2) 'seconds'
+ElapsedTime = time('E')
+if ElapsedTime > 0 then
+   call msg 1, 'Generated' listcount 'device files in' format(ElapsedTime,,2) 'seconds',
+               ' ('format(listcount/ElapsedTime,,1) 'per second)'
 if SpecMissCount > 0 then
-   call msg 1, SpecMissCount 'devices not specified in' DevSpecFile
+   call msg 3, SpecMissCount 'device files not created because PIC not in' DevSpecFile
 if DSMissCount > 0 then
-   call msg 1, DSMissCount 'device files could not be created because of missing datasheet'
+   call msg 3, DSMissCount 'device files not created because no datasheet in' DevSpecFile
+if PinmapMissCount > 0 then
+   call msg 3, PinmapMissCount 'device files not created because PIC not in' PinmapFile
 
 signal off error
 signal off syntax                                           /* restore to default */
@@ -512,7 +525,7 @@ do i = 1 to Dev.0
    end
    parse var Dev.i  val0 '(' 'KEY' '=' reg .
    if left(reg,3) = 'LAT' then
-      HasLATReg = HasLATReg + 1
+      HasLATReg = HasLATReg + 1                             /* count LATx registers */
 end
 return 0
 
@@ -545,7 +558,7 @@ return 0
 /* remarks: some corrections of errors in MPLAB             */
 /* -------------------------------------------------------- */
 list_devid_chipdef: procedure expose Dev. jalfile chipdef Core PicName msglevel DevID xChipDef.
-parse upper var PicName PicNameCaps
+PicNameCaps = SysMapCase(PicName)                           /* name in upper case */
 if DevId \== '0000' then                                    /* DevID not missing */
    xDevId = left(Core,2)'_'DevID
 else do                                                     /* DevID unknown */
@@ -560,30 +573,34 @@ if xChipDef.xDevId = '?' then do                            /* if not yet assign
    call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'xDevId
 end
 else do
-   call msg 2, 'DevID of' PicName 'in use by' xChipDef.xDevid
-   if right(PicName,2) \= '39' then                         /* PicName not ending with '39' */
-      Call msg 2, 'PicName <'PicName'> does not end with 39!'
-   xDevId = xDevId'a'                                       /* try with suffix 'a' */
-   if xChipDef.xDevId = '?' then do                         /* if not yet assigned */
-      xChipDef.xDevId = PicName                             /* remember alternate */
-      call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'xDevId
-      call msg 1, 'Alternate devid (0x'xDevid') assigned'
+   call msg 2, 'DevID ('xDevId') in use by' xChipDef.xDevid
+   do i = 1                                                 /* index in array */
+      tDevId = xDevId||substr('abcdef0123456789',i,1)       /* temp value */
+      if xChipDef.tDevId = '?' then do                      /* if not yet assigned */
+         xDevId = tDevId                                    /* definitve value */
+         xChipDef.xDevId = PicName                          /* remember alternate */
+         call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'xDevId
+         call msg 1, 'Alternate devid (0x'xDevid') assigned'
+         leave                                              /* suffix assigned */
+      end
+      else
+         call msg 2, 'DevID ('tDevId') in use by' xChipDef.tDevid
    end
-   else do
-      call msg 3, 'Even alternate devid (0x'xDevId') in use (by 'xChipDef.xDevId')'
-      exit 1
+   if i > 16 then do
+      call msg 3, 'Not enough suffixes for identical devid, terminated!'
+      exit 3
    end
 end
 return
 
 
-/* ---------------------------------------------- */
-/* procedure to list Config (fuses) settings      */
-/* input:  - nothing                              */
-/* All cores                                      */
-/* ---------------------------------------------- */
-list_fuses: procedure expose jalfile Dev. CfgAddr. DevSpec. PicName Core msglevel
-PicNameCaps = toupper(PicName)
+/* ----------------------------------------------------------- */
+/* procedure to list Config memory layout and default settings */
+/* input:  - nothing                                           */
+/* All cores                                                   */
+/* ----------------------------------------------------------- */
+list_cfgmem: procedure expose jalfile Dev. CfgAddr. DevSpec. PicName Core msglevel
+PicNameCaps = SysMapCase(PicName)
 FusesDerived = cfgmem_mask()                                /* derive from .dev file */
 if DevSpec.PicNameCaps.FUSESDEFAULT \= '?' then do          /* specified in devicespecific.json */
    if length(DevSpec.PicNameCaps.FUSESDEFAULT) \= length(FusesDerived) then do
@@ -591,11 +608,11 @@ if DevSpec.PicNameCaps.FUSESDEFAULT \= '?' then do          /* specified in devi
       call msg 0, '   <'DevSpec.PicNameCaps.FUSESDEFAULT'>  <-->  <'FusesDerived'>'
       FusesDefault = FusesDerived                           /* take derived value */
    end
-   else do
+   else do                                                  /* same length */
       if DevSpec.PicNameCaps.FUSESDEFAULT = FusesDerived then
-         call msg 2, 'Superfuous fuses specification in devicespecific.json: Specified = Derived!'
-      FusesDefault = DevSpec.PicNameCaps.FUSESDEFAULT       /* take specified value */
-      call msg 1, 'Using fuses defaults from devicespecific.json:' FusesDefault
+         call msg 2, 'FusesDefault in devicespecific.json same as derived:' FusesDerived
+      FusesDefault = devSpec.PicNameCaps.FUSESDEFAULT      /* take devicespecific value */
+      call msg 1, 'Using fuses from devicespecific.json:' FusesDefault
    end
 end
 else do                                                     /* not in devicespecific.json */
@@ -711,7 +728,7 @@ do i = 1 to Dev.0                                  /* whole .dev contents */
       Unused  = right(Unused,4,'0')                      /* 4 hex digits */
       Unused  = C2X(BITXOR(X2C(Unused),X2C('FFFF')))     /* invert mask: 0->1 , 1->0 */
       Unused  = C2X(BITAND(X2C(Unused),X2C(mask)))       /* unused bits default to 0 */
-      CfgZero = overlay(Unused, CfgZero, 4 * Offset + 1) /* replace ' in fixed-zero array */
+      CfgZero = overlay(Unused, CfgZero, 4 * Offset + 1) /* replace 'm in fixed-zero array */
     end
     else do                                              /* 18F */
       Offset = cfgmem_offset(Addr)                       /* byte offset in cfg array */
@@ -724,7 +741,7 @@ do i = 1 to Dev.0                                  /* whole .dev contents */
   /* build array of fixed zero and fixed 1 bits        */
   /* both the CfgZero and CfgOne arrays are modified   */
   parse var ln 'FIELD' '(' 'KEY=' x1 'MASK=0X' mask 'DESC="' x3 '"' 'INIT=0X' init ')'
-  if init \= '' then do
+  if init \= '' then do                                  /* init mask found */
     init = word(init,1)                                  /* first item */
     mask = strip(mask)                                   /* strip blanks */
     if Core \= '16' then do                              /* baseline, (extended) midrange */
@@ -761,7 +778,7 @@ do i = 1 to Dev.0                                  /* whole .dev contents */
   end
 
   /* Build array of implemented config bits                    */
-  /* Active bits will be represented as 1 in this mask         */
+  /* Active bits will be represented by 1 in this mask         */
   /* Note: Array will be modified for fixed-zero and fixed-one */
   /*       bits before returning to caller                     */
   parse var ln 'SETTING (REQ=0X'BitMask 'VALUE' x2 .
@@ -875,8 +892,8 @@ do i = 1 to Dev.0
             call list_alias 'PORT'substr(reg,5)'_direction', reg
             call list_tris_nibbles reg                      /* nibble direction */
          end
-         otherwise
-            nop                                             /* others can be ignored */
+      otherwise
+         nop                                                /* others can be ignored */
       end
 
       call list_sfr_subfields1x i, reg                      /* bit fields */
@@ -915,8 +932,8 @@ return 0
 list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
                                 adcs_bitcount Core PicName jalfile HasLATReg msglevel
 parse arg i, reg .
-PicUpper = toupper(PicName)                                 /* for alias handling */
-do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until next register */
+PicNameCaps = SysMapCase(PicName)                           /* for alias handling */
+do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8 until next register */
    parse var Dev.i 'BIT' val0 'NAMES' '=' val1 'WIDTH' '=' val2 ')' .
    if val1 \= ''   &,                                       /* found */
       pos('SCL', val0) = 0  then do                         /* not 'scl' */
@@ -992,8 +1009,8 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                      field = reg'_N'n.j                     /* insert 'not' prefix */
                      call list_bitfield 1, field, reg, offset
                   end
-                  otherwise
-                     call list_bitfield 1, field, reg, offset
+               otherwise
+                  call list_bitfield 1, field, reg, offset
                end
 
                                                             /* additional declarations */
@@ -1134,8 +1151,8 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                      end
                      call lineout jalfile, '--'
                   end
-                  otherwise                                 /* other regs */
-                     nop                                    /* can be ignored */
+               otherwise                                    /* other regs */
+                  nop                                       /* can be ignored */
                end
             end
          end
@@ -1199,12 +1216,12 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')   /* max 8 until nex
                   call list_bitfield s.j, field, reg, (offset - s.j + 1)
                   call list_alias  'T0CON_T0'n.j, field
                end
-               otherwise                                    /* other */
-                  call list_bitfield s.j, field, reg, (offset - s.j + 1)
-                  if  left(n.j,4) = ADCS  &,
-                     (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
-                     adcs_bitcount = s.j                 /* variable # ADCS bits */
-                  end
+            otherwise                                       /* other */
+               call list_bitfield s.j, field, reg, (offset - s.j + 1)
+               if  left(n.j,4) = ADCS  &,
+                  (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
+                  adcs_bitcount = s.j                       /* variable # ADCS bits */
+               end
             end
          end
 
@@ -1273,8 +1290,8 @@ do i = 1 to Dev.0
             if Name.SPBRGL = '-' then                       /* SPBRGL not defined yet */
                call list_alias 'SPBRGL', reg                /* add alias */
          end
-         otherwise                                          /* others */
-            nop                                             /* can be ignored */
+      otherwise                                             /* others */
+         nop                                                /* can be ignored */
       end
 
       call list_sfr_subfields14h i, reg, addr               /* bit fields */
@@ -1327,7 +1344,7 @@ return 0
 list_sfr_subfields14h: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
                        adcs_bitcount Core PicName jalfile msglevel
 parse arg i, reg, addr .
-PicUpper = toupper(PicName)                                 /* for alias handling */
+PicNameCaps = SysMapCase(PicName)                           /* for alias handling */
 do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until next register */
    parse var Dev.i 'BIT' val0 'NAMES' '=' val1 'WIDTH' '=' val2 ')' .
    if val1 \= ''  &  pos('SCL', val0) = 0  then do          /* found, not 'scl' */
@@ -1409,8 +1426,8 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                            PortLat.PortLetter.offset = Portletter||offset
                      end
                   end
-                  otherwise
-                     nop                                    /* can be ignored */
+               otherwise
+                  nop                                       /* can be ignored */
                end
                                                             /* additional declarations */
                select
@@ -1439,7 +1456,6 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
                      if PortLat.PortLetter.offset \= 0 then do  /* pin present in PORTx */
- /* bug 2012/02/08      call list_alias pin, reg'_'n.j   */
                         call list_bitfield 1, pin, 'PORT'PortLetter, offset, addr
                         call list_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                         call lineout jalfile, '--'
@@ -1500,8 +1516,8 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                   when reg = 'WDTCON' &  n.j = 'WDTPS0' then do
                      call list_bitfield 5, reg'_WDTPS', reg, offset, addr
                   end
-                  otherwise                                 /* other regs */
-                     nop                                    /* can be ignored */
+               otherwise                                    /* other regs */
+                  nop                                       /* can be ignored */
                end
             end
          end
@@ -1617,8 +1633,8 @@ do i = 1 to Dev.0
                alias = substr(reg,2)                        /* simply strip 'E' prefix */
             call list_alias alias, reg
          end
-         otherwise                                          /* others */
-            nop                                             /* can be ignored */
+      otherwise                                             /* others */
+         nop                                                /* can be ignored */
       end
 
       call list_sfr_subfields16 i, reg, addr                /* expand bit fields */
@@ -1755,8 +1771,8 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                            PortLat.PortLetter.offset = Portletter||offset
                      end
                   end
-                  otherwise
-                     nop                                    /* others can be ignored */
+               otherwise
+                  nop                                       /* others can be ignored */
                end
 
                if field = 'WDTCON_ADSHR' then               /* NMMR mapping bit */
@@ -1774,7 +1790,6 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                      PinNumber  = right(n.j,1)
                      pin = 'pin_'PortLat.PortLetter.offset
                      if PortLat.PortLetter.offset \= 0 then do   /* pin present in PORTx */
- /* bug 2012/02/08      call list_alias pin, reg'_'n.j   */
                         call list_bitfield 1, pin, 'PORT'PortLetter, offset, addr
                         call list_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                         call lineout jalfile, '--'
@@ -1810,8 +1825,8 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                         end
                      end
                   end
-                  otherwise                                 /* others */
-                     nop                                    /* no extras */
+               otherwise                                    /* others */
+                  nop                                       /* no extras */
                end
             end
          end
@@ -1884,11 +1899,11 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                   field = reg'_T'tmrno'OUTPS'
                   call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
                end
-               otherwise                                    /* others */
-                  call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
-                  if  left(n.j,4) = ADCS  &,
-                     (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then
-                     adcs_bitcount = s.j                 /* variable (2 or 3) */
+            otherwise                                       /* others */
+               call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
+               if  left(n.j,4) = ADCS  &,
+                  (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then
+                  adcs_bitcount = s.j                       /* variable (2 or 3) */
             end
          end
                                                             /* additional declarations */
@@ -1955,23 +1970,24 @@ return 0
 /* ------------------------------------------------------------- */
 list_pin_alias: procedure expose  PinMap. Name. PicName Core jalfile msglevel
 parse arg reg, PinName, Pin .
-PicUpper = toupper(PicName)
-if PinMap.PicUpper.PinName.0 = '?' then do
-   call msg 2, 'list_pin_alias() PinMap.'PicUpper'.'PinName 'is undefined'
+PicNameCaps = SysMapCase(PicName)
+if PinMap.PicNameCaps.PinName.0 = '?' then do
+   call msg 2, 'list_pin_alias() PinMap.'PicNameCaps'.'PinName 'is undefined'
+   PinmapMissCount = PinmapMissCount + 1                    /* count misses */
    return 0                                                 /* no alias */
 end
-if PinMap.PicUpper.PinName.0 > 0 then do
-   do k = 1 to PinMap.PicUpper.PinName.0                    /* all aliases */
-      pinalias = 'pin_'PinMap.PicUpper.PinName.k
+if PinMap.PicNameCaps.PinName.0 > 0 then do
+   do k = 1 to PinMap.PicNameCaps.PinName.0                    /* all aliases */
+      pinalias = 'pin_'PinMap.PicNameCaps.PinName.k
       call list_alias pinalias, Pin
-      if pinalias = 'pin_SDA1' |,                        /* 1st I2C module */
-         pinalias = 'pin_SDI1' |,                        /* 1st SPI module */
+      if pinalias = 'pin_SDA1' |,                           /* 1st I2C module */
+         pinalias = 'pin_SDI1' |,                           /* 1st SPI module */
          pinalias = 'pin_SDO1' |,
          pinalias = 'pin_SCK1' |,
          pinalias = 'pin_SCL1' |,
-         pinalias = 'pin_SS1'  |,                        /* 1st SPI module */
-         pinalias = 'pin_TX1'  |,                        /* TX pin first USART */
-         pinalias = 'pin_RX1' then                       /* RX                 */
+         pinalias = 'pin_SS1'  |,                           /* 1st SPI module */
+         pinalias = 'pin_TX1'  |,                           /* TX pin first USART */
+         pinalias = 'pin_RX1' then                          /* RX                 */
          call list_alias strip(pinalias,'T',1), Pin
    end
 end
@@ -1991,14 +2007,14 @@ return k                                                    /* k-th alias */
 list_pin_direction_alias: procedure expose  PinMap. Name. PicName,
                             Core jalfile msglevel
 parse arg reg, PinName, Pin .
-PicUpper = toupper(PicName)
-if PinMap.PicUpper.PinName.0 = '?' then do
-   call msg 2, 'list_pin_direction_alias() PinMap.'PicUpper'.'PinName 'is undefined'
+PicNameCaps = SysMapCase(PicName)
+if PinMap.PicNameCaps.PinName.0 = '?' then do
+   call msg 2, 'list_pin_direction_alias() PinMap.'PicNameCaps'.'PinName 'is undefined'
    return 0                                                 /* ignore no alias */
 end
-if PinMap.PicUpper.PinName.0 > 0 then do
-   do k = 1 to PinMap.PicUpper.PinName.0                    /* all aliases */
-      pinalias = 'pin_'PinMap.PicUpper.PinName.k'_direction'
+if PinMap.PicNameCaps.PinName.0 > 0 then do
+   do k = 1 to PinMap.PicNameCaps.PinName.0                    /* all aliases */
+      pinalias = 'pin_'PinMap.PicNameCaps.PinName.k'_direction'
       call list_alias  pinalias, Pin
       if pinalias = 'pin_SDA1_direction' |,              /* 1st I2C module */
          pinalias = 'pin_SDI1_direction' |,              /* 1st SPI module */
@@ -2053,7 +2069,6 @@ select
         reg = 'BAUDCTL1' |,
         reg = 'RCREG1'   |,                                 /* 1st USART: reg with index */
         reg = 'RCSTA1'   |,
-        reg = 'SPBRG1'   |,
         reg = 'SPBRGH1'  |,
         reg = 'SPBRGL1'  |,
         reg = 'TXREG1'   |,
@@ -2093,8 +2108,8 @@ select
          alias = alias'1'                                   /* add '1' suffix */
    end
 
-   otherwise
-      nop                                                   /* ignore other registers */
+otherwise
+   nop                                                      /* ignore other registers */
 
 end
 
@@ -2743,9 +2758,9 @@ if core = '12' | core = '14' then do                        /* baseline, classic
          else
             ansx = ansx + 0                                 /* no change of ansx */
       end
-      otherwise
-         call msg 3, 'Unsupported ADC register for' PicName ':' reg
-         ansx = 99
+   otherwise
+      call msg 3, 'Unsupported ADC register for' PicName ':' reg
+      ansx = 99
    end
 end
 
@@ -2819,9 +2834,9 @@ else if core = '14H' then do                                /* enhanced midrange
                  left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
             ansx = word('0 1 2 3 99 4 99 99', ansx + 1)
       end
-      otherwise
-         call msg 3, 'Unsupported ADC register for' PicName ':' reg
-         ansx = 99
+   otherwise
+      call msg 3, 'Unsupported ADC register for' PicName ':' reg
+      ansx = 99
    end
 end
 
@@ -2862,13 +2877,13 @@ else if core = '16' then do                                 /* 18F series */
          else if right(PicName,3) = 'k22' & ansx = 5 then
             ansx = 4                                        /* jump */
       end
-      otherwise
-         call msg 3, 'Unsupported ADC register for' PicName ':' reg
-         ansx = 99
+   otherwise
+      call msg 3, 'Unsupported ADC register for' PicName ':' reg
+      ansx = 99
     end
 end
 
-PicNameCaps = toupper(PicName)
+PicNameCaps = SysMapCase(PicName)
 aliasname    = 'AN'ansx
 if ansx < 99 & PinANMap.PicNameCaps.aliasname = '-' then do  /* no match */
    call msg 2, 'No "pin_AN'ansx'" alias in pinmap'
@@ -3056,13 +3071,13 @@ return addr_list' }'                                        /* complete string *
 
 
 /* ---------------------------------------------------------------------- */
-/* Formatting of configuration bits                                       */
+/* Formatting of 'pragma fusedef' lines                                   */
 /* input:  - nothing                                                      */
 /* Note:  some fuse_defs are omitted because the bit is not supported(!), */
 /*        even if it is (partly) specified in the .dev file.              */
 /*        See at the bottom of devicefiles.html for details.              */
 /* ---------------------------------------------------------------------- */
-list_fuses_bits:   procedure expose Dev. jalfile CfgAddr. Fuse_Def. Core PicName msglevel
+list_fusedefs:   procedure expose Dev. jalfile CfgAddr. Fuse_Def. Core PicName msglevel
 call lineout jalfile, '--'
 call lineout jalfile, '-- =================================================='
 call lineout jalfile, '--'
@@ -3071,7 +3086,7 @@ call lineout jalfile, '-- -------------------------'
 k = 0                                                       /* config word count */
 do i = 1 to dev.0                                           /* scan .dev file */
    if word(Dev.i,1) \= 'CFGBITS' then                       /* appropriate record */
-     iterate
+      iterate
    ln = Dev.i
    parse var ln 'CFGBITS' '(' 'KEY' '=' val0 ' ADDR' '=' '0X' val1 'UNUSED' '=' '0X' val2 ')' .
    if val1 \= '' then do                                    /* address found */
@@ -3191,8 +3206,8 @@ do i = 1 to dev.0                                           /* scan .dev file */
                   key = 'WRT'
                when left(key,4) = 'WRT_' & datatype(substr(key,5),'W') = 1 then
                   key = delstr(key,4,1)                     /* remove underscore from 'WRT_x' */
-               otherwise
-                  nop                                       /* accept any other key asis */
+            otherwise
+               nop                                          /* accept any other key asis */
             end
 
             if CfgAddr.0 > 1 then                           /* multi fuse bytes/words */
@@ -3201,7 +3216,7 @@ do i = 1 to dev.0                                           /* scan .dev file */
                str = 'pragma fuse_def' key '0x'strip(val2) '{'
             call lineout jalfile, left(str,40)'   --' tolower(strip(val3))
 
-            call list_fuses_bits_details i, key, strip(val2) /* expand bit declations */
+            call list_fusedef_details i, key, strip(val2) /* expand bit declations */
 
             call lineout jalfile, '       }'                /* done with this key */
 
@@ -3217,16 +3232,16 @@ return
 
 
 /* ------------------------------------------------------------------------ */
-/* Detailed formatting of configuration bits settings                       */
+/* Detailed formatting of fusedef lines                                     */
 /* input:  - index of line in compound variable dev.                        */
 /*         - keyword                                                        */
 /*         - keyword mask (hex)                                             */
 /* output: lines in jalfile                                                 */
 /*                                                                          */
 /* notes: val2 contains keyword description with undesired chars and blanks */
-/*        val2u is val2 with these replaced by 1 underscore                 */
+/*        val2u is val2 with all these replaced by a single underscore      */
 /* ------------------------------------------------------------------------ */
-list_fuses_bits_details: procedure expose Dev. Fuse_Def. jalfile Fuse_Def.,
+list_fusedef_details: procedure expose Dev. Fuse_Def. jalfile Fuse_Def.,
                                           Core PicName msglevel
 parse upper arg i, key, keymask .
 kwd.     = '-'                                              /* empty kwd compound */
@@ -3827,52 +3842,52 @@ do i = i + 1  while i <= dev.0  &,
          end
       end
 
-      otherwise                                             /* generic formatting */
-         if pos('ACTIVE',val2) > 0 then do
-            if pos('HIGH',val2) > pos('ACTIVE',val2) then
-               kwd = 'ACTIVE_HIGH'
-            else if pos('LOW',val2) > pos('ACTIVE',val2) then
-               kwd = 'ACTIVE_LOW'
-            else do
-               kwd = 'ENABLED'
-               flag_enabled = 1
-            end
-         end
-         else if pos('ENABLE',val2) > 0 | val2 = 'ON' | val2 = 'ALL' then do
+   otherwise                                                /* generic formatting */
+      if pos('ACTIVE',val2) > 0 then do
+         if pos('HIGH',val2) > pos('ACTIVE',val2) then
+            kwd = 'ACTIVE_HIGH'
+         else if pos('LOW',val2) > pos('ACTIVE',val2) then
+            kwd = 'ACTIVE_LOW'
+         else do
             kwd = 'ENABLED'
             flag_enabled = 1
          end
-         else if pos('DISABLE',val2) > 0 | val2 = 'OFF' then do
-            kwd = 'DISABLED'
-            flag_disabled = 1
-         end
-         else if pos('ANALOG',val2) > 0 then
-            kwd = 'ANALOG'
-         else if pos('DIGITAL',val2) > 0 then
-            kwd = 'DIGITAL'
-         else do
-            if left(val2u,1) >= '0' & left(val2u,1) <= '9' then do /* starts with digit */
-               if pos('HZ',val2u) > 0  then                 /* probably frequency (range) */
-                  kwd = 'F'val2u                            /* 'F' prefix */
-               else if pos('_TO_',val2u) > 0  |,            /* probably a range */
-                       pos('0_',val2u) > 0    |,
-                       pos('_0',val2u) > 0  then do
-                  if pos('_TO_',val2u) > 0 then do
-                     kwd = delword(val2,4)                  /* keep 1st three words */
-                     kwd = delword(kwd,2,1)                 /* keep only 'from' and 'to' */
-                     kwd = translate(kwd, '  ','Hh')        /* replace 'H' and 'h' by space */
-                     kwd = space(kwd,1,'_')                 /* single undescore */
-                  end
-                  else
-                     kwd = word(val2,1)                     /* keep 1st word */
-                  kwd = 'R'translate(kwd,'_','-')           /* 'R' prefix, hyphen->undesrcore */
+      end
+      else if pos('ENABLE',val2) > 0 | val2 = 'ON' | val2 = 'ALL' then do
+         kwd = 'ENABLED'
+         flag_enabled = 1
+      end
+      else if pos('DISABLE',val2) > 0 | val2 = 'OFF' then do
+         kwd = 'DISABLED'
+         flag_disabled = 1
+      end
+      else if pos('ANALOG',val2) > 0 then
+         kwd = 'ANALOG'
+      else if pos('DIGITAL',val2) > 0 then
+         kwd = 'DIGITAL'
+      else do
+         if left(val2u,1) >= '0' & left(val2u,1) <= '9' then do /* starts with digit */
+            if pos('HZ',val2u) > 0  then                    /* probably frequency (range) */
+               kwd = 'F'val2u                               /* 'F' prefix */
+            else if pos('_TO_',val2u) > 0  |,               /* probably a range */
+                    pos('0_',val2u) > 0    |,
+                    pos('_0',val2u) > 0  then do
+               if pos('_TO_',val2u) > 0 then do
+                  kwd = delword(val2,4)                     /* keep 1st three words */
+                  kwd = delword(kwd,2,1)                    /* keep only 'from' and 'to' */
+                  kwd = translate(kwd, '  ','Hh')           /* replace 'H' and 'h' by space */
+                  kwd = space(kwd,1,'_')                    /* single undescore */
                end
-               else                                         /* probably a range */
-                  kwd = 'N'toupper(word(val2,1))            /* 1st word, 'N' prefix */
+               else
+                  kwd = word(val2,1)                        /* keep 1st word */
+               kwd = 'R'translate(kwd,'_','-')              /* 'R' prefix, hyphen->undesrcore */
             end
-            else
-               kwd = val2u                                  /* if no alternative! */
+            else                                            /* probably a range */
+               kwd = 'N'SysMapCase(word(val2,1))            /* 1st word, 'N' prefix */
          end
+         else
+            kwd = val2u                                     /* if no alternative! */
+      end
    end
 
    if kwd = '   ' then                                      /* special ('...') */
@@ -3956,10 +3971,12 @@ call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
 call lineout jalfile, '-- Special (device specific) constants and procedures'
 call lineout jalfile, '--'
-PicNameCaps = toupper(PicName)
-if DevSpec.PicNameCaps.ADCgroup = '?' then do
-   call msg 2, 'No ADCgroup in devicespecific.cmd, assuming no ADC module present!'
-   ADCgroup = '0'
+PicNameCaps = SysMapCase(PicName)
+if DevSpec.PicNameCaps.ADCgroup = '?' then do               /* no ADC group specified */
+   if (Name.ADCON \= '-' | Name.ADCON0 \= '-' | Name.ADCON1 \= '-') then do
+      call msg 3, 'PIC has ADCONx register, but no ADCgroup found in devicespecific.json!'
+   end
+   ADCgroup = '0'                                           /* no ADC group */
 end
 else
    ADCgroup = DevSpec.PicNameCaps.ADCgroup
@@ -4062,7 +4079,7 @@ if Name.ADCON0 \= '-' |,                                    /* check on presence
       else do                                               /* all other ADC groups */
          call lineout jalfile, '   ADCON1 = 0b0000_0000'
          if Name.ADCON1_PCFG \= '-' then
-            msg 2, 'ADCON1_PCFG field present: PIC maybe in wrong ADC_GROUP'
+            call msg 2, 'ADCON1_PCFG field present: PIC maybe in wrong ADC_GROUP'
       end
       if Name.ADCON2 \= '-' then                            /* ADCON2 declared */
          call lineout jalfile, '   ADCON2 = 0b0000_0000'    /* all groups */
@@ -4125,8 +4142,8 @@ if Name.CMCON   \= '-' |,
          if Name.CM2CON1 \= '-' then
             call lineout jalfile, '   CM2CON1 = 0b0000_0000       -- disable 2nd comparator'
       end
-      otherwise                                             /* not possible with 'if' at top */
-         nop
+   otherwise                                                /* not possible with 'if' at top */
+      nop
    end
    call lineout jalfile, 'end procedure'
    call lineout jalfile, '--'
@@ -4156,7 +4173,7 @@ return
 /* --------------------------------------- */
 list_head:
 call lineout jalfile, '-- ==================================================='
-call lineout jalfile, '-- Title: JalV2 device include file for PIC' toupper(PicName)
+call lineout jalfile, '-- Title: JalV2 device include file for PIC'SysMapCase(PicName)
 call list_copyright_etc jalfile
 call lineout jalfile, '-- Description:'
 call lineout Jalfile, '--    Device include file for pic'PicName', containing:'
@@ -4480,7 +4497,7 @@ if stream(FuseDefFile, 'c', 'open read') \= 'READY:' then do
    return 1                                                 /* zero records */
 end
 call msg 1, 'Reading Fusedef Names from' FuseDefFile '... '
-do while lines(FuseDefFile) > 0                             /* read whole file */
+do while lines(FuseDefFile) > 0                             /* whole file */
    interpret linein(FuseDefFile)                            /* read and interpret line */
 end
 call stream FuseDefFile, 'c', 'close'                       /* done */
@@ -4511,14 +4528,11 @@ return 0
 
 
 /* ---------------------------------------------- */
-/* translate string to lower/upper case           */
+/* translate string to lower case                 */
 /* ---------------------------------------------- */
 
 tolower:
 return translate(arg(1), xrange('a','z'), xrange('A','Z'))
-
-toupper:
-return translate(arg(1), xrange('A','Z'), xrange('a','z'))
 
 
 /* ---------------------------------------------- */
