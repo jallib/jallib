@@ -1,0 +1,280 @@
+-- --------------------------------------------------------------------
+-- Title: How to use flash memory of an 18f26j11 for variable data
+--
+-- Author: Rob Hamerling, Copyright (c) 2012..2012, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision: $
+--
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Example of how to use flash (code) memory to save variable data over
+-- reset/power-off cycles of PICs without EEPROM.
+-- In this sample a counter is incremented at every start of the program
+-- and the new value is saved in flash memory.
+-- The current value of the counter is shown by the number of blinks of a led.
+-- This shows the number of resets since the time the program was loaded.
+-- .
+-- Since erase of flash memory is required before writes and 1024 bytes are
+-- erased at a time with this PIC, a 1 KB block of flash is reserved in high memory.
+-- Because the configuration bits of this PIC are located in the highest 1KB block
+-- of code memory the reserved block will be the one but last 1KB block.
+-- Furthermore since this PIC writes 64 bytes at a time an array of 64 bytes
+-- is declared to save in flash memory and 64 bytes are restored at a time as well.
+-- The variables to be saved are declared within this 64 bytes block as an overlay.
+-- A 'signature' is the first part of the overlay. This shows to the program
+-- that flash memory was ever written (first time issue). Only when this
+-- signature is found in the first few bytes of the reserved block of flash memory
+-- the data block may be restored. In this sample the signature is "RobH".
+-- .
+--
+-- Sources:
+--
+-- Notes:
+-- - This sample is not meant to show the use of any Jallib library!
+--
+-- =====================================================================
+
+include  18f26j11                                  -- target chip
+
+-- Internal oscillator is configured for 8 MHz
+
+pragma target clock         8_000_000              -- intosc 8 MHz
+
+-- ---------- configuratio99bits settings -------------------------
+pragma target WDT           DISABLED               -- watchdog software controlled!
+pragma target STVR          DISABLED               -- reset on stack over/under flow
+pragma target XINST         DISABLED               -- extended instruction set
+pragma target DEBUG         DISABLED               -- background debugging
+pragma target CP0           DISABLED               -- code block 0 not protected
+pragma target SIGN          AREA_COMPLETE          -- bulk erase
+pragma target OSC           INTOSC_NOCLKOUT        -- oscillator type
+pragma target T1DIG         DISABLED               -- no timer1 oscillator
+pragma target LPT1OSC       HIGH_POWER             -- high power timer 1
+pragma target FCMEN         DISABLED               -- fail safe clock monitor
+pragma target IESO          DISABLED               -- no osc switch over
+pragma target WDTPS         P64                    -- watchdog timeout about 1/4 sec
+pragma target DSWDTOSC      INTOSC                 -- for deep sleep WDT
+pragma target RTCOSC        INTRC                  -- RTCC uses INT Osc
+pragma target BROWNOUT      DISABLED               -- no brownout detection
+pragma target DSWDTEN       DISABLED               -- no deep sleep WDT
+pragma target DSWDTPS       P2                     -- (no deep sleep WDT)
+pragma target IOL1WAY       DISABLED               -- no I/O lock
+pragma target MSSPMASK      B5                     -- (no ext ram)
+pragma target WPFP          P0                     -- start of code protection
+pragma target WPEND         PWPFP_END              -- code protection from ... to end
+pragma target WPCFG         DISABLED               -- no code protection!
+pragma target WPDIS         DISABLED               -- no write protection
+
+-- --------- JAL extensions --------------------
+
+include  delay                                     -- delay support library
+
+-- ------- local function prototypes -------------------------------------
+
+procedure  flash_erase_row()
+function   flash_read_word(word in offset) return word
+procedure  flash_restore_block()
+procedure  flash_save_block()
+procedure  setup_PIC()
+
+-- --------- block of data (64 bytes) to be saved in flash (code) memory----------
+
+const  byte*3  FLASH_RESERVED = 0x00F800           -- address of 1KB flash memory
+                                                   -- to save the block
+
+var  byte      data_block[64]                      -- block of data to be saved in and
+                                                   -- restored from flash memory
+
+var  byte      signature[4]    at data_block[0]  = "RobH"     -- flash block identification
+var  word      reset_counter   at data_block[4]  = 0          -- initial 'reset' value
+
+-- rest of block only filled to show successful write of 64 bytes block
+-- e.g. after reading back memory with a PIC programmer.
+
+var  byte      parameter_3[26] at data_block[6]  =  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+var  byte      parameter_4[26] at data_block[32] =  "abcdefghijklmnopqrstuvwxyz"
+var  byte      parameter_5[6]  at data_block[58] =  "123456"
+
+alias  LED is pin_B1                               -- used as visual indication:
+                                                   -- blinks the number of resets
+pin_B1_direction = OUTPUT                          -- LED is output
+
+-- ===============================================================
+--
+--   M A I N L I N E
+--
+-- ===============================================================
+
+Setup_PIC()                                        -- init PIC
+
+LED = OFF                                          -- initial status of LED
+
+-- check if signature is present in flash memory
+-- if yes replace the contents of the data block by the contents of the flash block
+if ( (flash_read_word(0) == 0x6F52)  &             -- "Ro" 1st part of flash-ID found
+     (flash_read_word(2) == 0x4862) ) then         -- "bH" 2nd part of flash-ID found
+   flash_restore_block()                           -- flash-ID found: restore block
+end if
+
+reset_counter = reset_counter + 1                  -- increment counter
+for reset_counter loop                             -- show value of counter
+   LED = ON
+   delay_100ms(2)
+   LED = OFF
+   delay_100ms(2)
+end loop
+
+flash_save_block()                                 -- save updated block to flash memory
+
+forever loop
+   LED = OFF
+end loop
+
+
+-- -----------------------------------------------------------------
+-- Read word of 'reserved' flash memory
+-- Arguments: - offset (in bytes) of word in reserved block of flash memory
+-- Returns:   - contents of flash memory word
+-- Notes:     -
+-- -----------------------------------------------------------------
+function  flash_read_word(word in offset) return word is
+
+   var  word  wvalue                               -- word to be returned
+   var  byte  bvalue[2] at wvalue                  -- overlay
+
+   TBLPTR = FLASH_RESERVED + offset                -- set address of word to be read
+   asm  TBLRD*+
+   bvalue[0] = TABLAT                              -- LSByte
+   asm  TBLRD*+
+   bvalue[1] = TABLAT                              -- MSByte
+   return  wvalue
+
+end function
+
+
+-- -------------------------------------------------------
+-- Copy block of 'reserved' flash memory to block of data memory
+-- Arguments: none
+-- Returns:   nothing
+-- Notes:     Copies the first 64 bytes of the reserved flash
+--            memory block to the predefined block in data memory.
+-- -------------------------------------------------------
+procedure flash_restore_block() is
+
+   var byte i
+
+   TBLPTR = FLASH_RESERVED                         -- set address of block
+   for 64 using i loop                             -- # of bytes to read
+      asm  TBLRD*+                                 -- read and auto increment
+      data_block[i] = TABLAT                       -- next to restore
+   end loop
+
+end procedure
+
+
+-- -------------------------------------------------------
+-- Copy block with user parameters to flash memory
+-- Arguments: - none
+-- Returns:   - nothing
+-- Notes:     Copies the predefined block of 64 bytes in data memory
+--            to the first 64 bytes of the reserved block of
+--            flash (code) memory.
+--            The whole block (1KB) of flash memory is erased
+--            before the write.
+--            See datasheet for details!
+-- -------------------------------------------------------
+procedure  flash_save_block() is
+
+   var bit old_GIE
+   var byte i
+
+   flash_erase_row()                               -- erase 1KB block of flash memory
+
+   EECON1_WREN = TRUE                              -- enable flash writes
+   EECON1_WPROG = FALSE                            -- enable 64-bytes writes
+   TBLPTRL = 0                                     -- offset in 64 bytes block
+   for 64 using i loop                             -- 64 bytes to copy
+      TABLAT = data_block[i]                       -- data to intermediate block
+      asm TBLWT*+                                  -- store and auto increment offset
+   end loop
+   TBLPTR = FLASH_RESERVED                         -- address of flash block
+   INTCON_GIE = FALSE                              -- disable interrupts
+   EECON2 = 0x55
+   EECON2 = 0xAA
+   EECON1_WR = TRUE                                -- write flash memory
+   INTCON_GIE = old_gie                            -- restore interrupt state
+   EECON1_WREN = FALSE                             -- disable flash writes
+
+end procedure
+
+
+-- -------------------------------------------------------
+-- Erase row (1KB) of flash memory
+-- Arguments: - none
+-- Returns:   - nothing
+-- Notes:     Copies the predefined block of 64 bytes in data memory
+--            to the first 64 bytes of the reserved block of
+--            flash (code) memory.
+--            The whole block (1KB) of flash memory is erased
+--            before the write.
+--            See datasheet for details!
+-- -------------------------------------------------------
+procedure  flash_erase_row() is
+
+   var bit old_GIE
+
+   TBLPTR = FLASH_RESERVED                         -- set address of 1KB flash block
+   EECON1_WREN = TRUE                              -- enable flash writes
+   EECON1_FREE = TRUE                              -- enable memory erase
+   old_GIE = INTCON_GIE                            -- save interrupt state
+   INTCON_GIE = FALSE                              -- disable interrupts
+   EECON2 = 0x55
+   EECON2 = 0xAA
+   EECON1_WR = TRUE                                -- erase the whole 1KB block
+   INTCON_GIE = old_gie                            -- restore interrupt state
+   EECON1_WREN = FALSE                             -- disable flash writes
+
+end procedure
+
+
+-- -------------------------------------------------------
+--  Perform basic PIC Setup
+-- -------------------------------------------------------
+procedure  setup_PIC() is
+
+   enable_digital_io()                             -- disable all analog I/O
+
+   INTCON         = 0b0000_0000                    -- no interrupts
+
+   OSCCON_IRCF    = 0b111                          -- INTOSC at 8 MHz
+   OSCCON_SCS     = 0b00                           -- primary clock source INTOSC
+   OSCCON_IDLEN   = 0                              -- for sleep (not idle) mode
+
+   REFOCON_ROON   = FALSE                          -- no oscillator output
+
+   WDTCON         = 0b0000_0000                    -- disable watchdog
+   DSCONH_DSEN    = FALSE                          -- no deep sleep mode
+
+   T1CON          = 0b0000_0000                    -- Tmr1 off
+   T2CON          = 0b0000_0000                    -- Tmr2 off
+
+   portA          = 0b0000_0000                    -- )
+   portB          = 0b0000_0000                    -- ) init ports
+   portC          = 0b0000_0000                    -- )
+
+   portA_direction = ALL_OUTPUT                    -- )
+   portB_direction = ALL_OUTPUT                    -- ) pin directions
+   portC_direction = ALL_OUTPUT                    -- )
+
+   CCP1CON        = 0b0000_0000                    -- Capture Compare PWM off
+   CM1CON         = 0b0000_0010                    -- AN0..3, Vref internal
+   CM2CON         = 0b0000_0000                    -- not used
+
+end procedure
+
