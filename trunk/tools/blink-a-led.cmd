@@ -5,6 +5,8 @@
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
+ * Revision: $Revision$                                                     *
+ *                                                                          *
  * Compiler: N/A                                                            *
  *                                                                          *
  * This file is part of jallib  http://jallib.googlecode.com                *
@@ -32,7 +34,7 @@
  * ------------------------------------------------------------------------ */
 
    ScriptAuthor    = 'Rob Hamerling'
-   CompilerVersion = '2.4n'
+   CompilerVersion = '2.4o'
 
 parse upper arg runtype selection .             /* where to store jal files */
 
@@ -51,15 +53,17 @@ if runtype = 'PROD' then do                     /* test mode */
   compiler = 'k:\jallib\compiler\JalV2ecs.exe'  /* prod compiler */
   include = 'k:/jallib/include/device;/jallib/include/jal'   /* JalV2 include specification */
   dst = 'k:/jallib/sample'                      /* blink-samples destination */
-  src = 'l:/jallib/include/device'              /* source for samples */
+  src = 'k:/jallib/include/device'              /* source for samples */
+  Options = '-no-codfile -no-asm -s' Include    /* compiler options */
 end
 else do                                         /* test mode */
   compiler = 'k:\c\jalv2\bin\JalV2ecs.exe'      /* latest compiler */
   Include = 'k:/jal/dev2jal/test;/jallib/include/device;/jallib/include/jal'   /* test + prod device files */
-  dst = 'test'                                  /* to test subdirectory */
+  dst = './test'                                /* to test subdirectory */
   src = 'k:/jal/dev2jal/test'                   /* test device files */
   if stream(src'/chipdef_jallib.jal', 'c', 'query exists') = '' then   /* no test device files */
     src = 'k:/jallib/include/device'            /* production device files */
+  Options = '-no-codfile -s' Include            /* compiler options */
 end
 
 if selection = '' then
@@ -72,7 +76,6 @@ if pic.0 < 1 then do
 end
 
 call envir 'python'                             /* set Python environment */
-Options = '-no-codfile -no-asm -s' Include      /* compiler options */
 
 k = 0
 
@@ -84,6 +87,7 @@ do i=1 to pic.0
   '@python' validator src'/'PicName'.jal' '1>'PicName'.pyout' '2>'PicName'.pyerr'
   if rc \= 0 then do
     say 'Validation of device file for' PicName 'failed, rc' rc
+    '@type' PicName'.pyerr'
     leave                                       /* terminate! */
   end
   '@erase' PicName'.py*'                        /* when OK, discard logs */
@@ -100,6 +104,8 @@ do i=1 to pic.0
   call lineout PgmFile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2011, all rights reserved.'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Adapted-by:'
+  call lineout PgmFile, '--'
+  call lineout PgmFile, '-- Revision: $Revision$'
   call lineout PgmFile, '--'
   call lineout PgmFile, '-- Compiler:' CompilerVersion
   call lineout PgmFile, '--'
@@ -197,6 +203,9 @@ do i=1 to pic.0
   call SysFileSearch 'fuse_def DEBUG', pic.i, debug.
   if debug.0 > 0 then
     call lineout PgmFile, 'pragma target DEBUG    disabled     -- no debugging'
+  call SysFileSearch 'fuse_def IESO', pic.i, ieso.
+  if ieso.0 > 0 then
+    call lineout PgmFile, 'pragma target IESO     disabled     -- no in/ext oscillator switchover'
   call SysFileSearch 'fuse_def LVP', pic.i, lvp.
   if lvp.0 > 0 then
     call lineout PgmFile, 'pragma target LVP      disabled     -- no Low Voltage Programming'
@@ -223,14 +232,24 @@ do i=1 to pic.0
   if osc_type = 'INTOSC' then do                        /* internal oscillator selected */
     call SysFileSearch 'OSCCON_IRCF', pic.i, 'ircf.', 'N'
     if ircf.0 > 0 then do
-      say 'IRCF found: ['ircf.0']' ircf.1
-      call lineout PgmFile, 'OSCCON_IRCF = 0x1                  -- 4 MHz'
+      if pos('bit*2', ircf.1) > 0 then
+        if PicName = '12f752' | PicName = '12hv752' then
+          call lineout PgmFile, 'OSCCON_IRCF = 0b10                -- 4 MHz'
+        else
+          call lineout PgmFile, 'OSCCON_IRCF = 0b01                -- 4 MHz'
+      else if pos('bit*3', ircf.1) > 0 then
+        call lineout PgmFile, 'OSCCON_IRCF = 0b101               -- 4 MHz'
+      else if pos('bit*4', ircf.1) > 0 then
+        call lineout PgmFile, 'OSCCON_IRCF = 0b1101              -- 4 MHz'
       call lineout PgmFile, '--'
     end
   end
   call lineout PgmFile, 'enable_digital_io()                -- make all pins digital I/O'
   call lineout PgmFile, '--'
-  call lineout PgmFile, '-- Specify the pin to which the LED (with serial resistor!) is connected:'
+  call lineout PgmFile, '-- Specify the pin to which the LED is connected.'
+  call lineout PgmFile, '-- A low current (2 mA) led with 2.2K series resistor is recommended'
+  call lineout PgmFile, '-- since the chosen pin may not be able to drive an ordinary 20mA led.'
+  call lineout PgmFile, '--'
   port.0 = 3                                            /* ports to scan */
   port.1 = 'A'
   port.2 = 'B'
@@ -271,6 +290,7 @@ do i=1 to pic.0
   '@python' validator PgmFile '1>'PgmName'.pyout' '2>'PgmName'.pyerr'
   if rc \= 0 then do
     say 'Validation of blink sample program' PgmFile 'failed, rc' rc
+    '@type' PgmName'.pyerr'
     leave                                       /* terminate! */
   end
   '@erase' PgmName'.py*'                        /* when OK, discard log */
@@ -304,10 +324,12 @@ do i=1 to pic.0
         if runtype = 'TEST' then do
           '@xcopy' PgmName'.hex' translate(dst,'\','/') '1>nul'
           '@xcopy' PgmName'.log' translate(dst,'\','/') '1>nul'
+          '@xcopy' PgmName'.asm' translate(dst,'\','/') '1>nul'
         end
         call SysFileDelete PgmName'.jal'
         call SysFileDelete PgmName'.log'
         call SysFileDelete PgmName'.hex'
+        call SysFileDelete PgmName'.asm'
       end
     end
     else do
