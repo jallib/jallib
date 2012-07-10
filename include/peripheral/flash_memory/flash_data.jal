@@ -1,0 +1,190 @@
+-- --------------------------------------------------------------------
+-- Title: Flash memory library for 18FxxJyy series
+--
+-- Author: Rob Hamerling, Copyright (c) 2012..2012, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Procedures and fuctions read/erase/write flash (code) memory of 18FxxJxx.
+-- .
+-- Since erase of flash memory is required before writes and 1024 bytes are
+-- erased at a time with these PICs, a 1 KB block of flash must be reserved,
+-- and it must be on a 1KB boundary (10 LSbits of address must be zero).
+-- Restrictions:
+--   - The program is located in low memory
+--   - The highest bytes of flash memory contain the configuration bits
+--     of many 18F PICs, including the J-series
+-- So both the lowest and the highest 1KB of code memory are not usable for
+-- the purpose of storing data.
+-- The one but highest 1K block of code memory seems the only choice!
+-- Beware that the program is not so big that it occupies this address.
+-- The location is also PIC dependent, so when changing PIC change the address!
+-- .
+-- Since flash memory is written 64 bytes at a time the block of data memory to
+-- be saved in flash memory must be a multiple of 64 bytes. The way to do this
+-- is by declaring an array of bytes (a multiple of 64) and declare the variables
+-- as overlay of this array.
+-- .
+-- Before including this library you have to specify:
+-- .
+-- - The address of the block of flash memory where to save your data, e.g.:
+-- .
+--   const  byte*3  FLASH_RESERVED = 0x00F800      -- one but highest 1KB block
+--                                                 -- for a PIC with 64KB flash
+-- .
+-- - An array named 'flash_data' containing the data
+--   you want to save to and restore from flash memory, e.g.:
+-- .
+--   var  byte      flash_data[128]                -- block to save in flash memory
+-- .
+-- Available procedures/functions:
+-- flash_erase_block()    - erase the 1KB block of flash memory
+-- flash_read_word()      - read a word (2 bytes) of flash memory
+-- flash_restore_block()  - restore the block of memory from flash memory
+-- flash_save_block()     - save the block of data memory to flash memory
+--
+-- Sources:
+--
+-- Notes:
+-- Limitations of this library:
+--   - Only PICs of type 18FxxJyy are supported (and only some are tested).
+--   - Maximum size of data block to be saved is 1024 bytes.
+--
+-- =====================================================================
+
+
+-- ---------- Some sanity checks ----------------
+
+if PICTYPE[5] != "J" then
+   _error "Only PICs of type 18FxxJyy are supported by this library"
+end if
+
+if !defined(FLASH_RESERVED) then
+   _error "Address of reserved block of flash memory not defined"
+end if
+
+if ( (FLASH_RESERVED & 0b11_1111_1111) != 0 ) then
+   _error "Reserved block of flash memory must be at 1KB boundary"
+end if
+
+if ( ((count(flash_data) & 0b111111) != 0)   |     -- multiple of 64
+     (count(flash_data) > 1024)            ) then  -- maximum size
+   _error "Variable 'flash_data' must be a multiple of 64 bytes and not more than 1024"
+end if
+
+
+-- -------------------------------------------------------
+-- Erase row (1KB) of flash memory
+-- Arguments: - none
+-- Returns:   - nothing
+-- Notes:     Copies the predefined block of 64 bytes in data memory
+--            to the first 64 bytes of the reserved block of
+--            flash (code) memory.
+--            The whole block (1KB) of flash memory is erased
+--            before the write.
+--            See datasheet for details!
+-- -------------------------------------------------------
+procedure  flash_erase_block() is
+
+   var bit old_gie
+
+   TBLPTR = FLASH_RESERVED                         -- set address of 1KB flash block
+   EECON1_WREN = TRUE                              -- enable flash writes
+   EECON1_FREE = TRUE                              -- enable memory erase
+   old_gie = INTCON_GIE                            -- save interrupt state
+   INTCON_GIE = FALSE                              -- disable interrupts
+   EECON2 = 0x55
+   EECON2 = 0xAA
+   EECON1_WR = TRUE                                -- erase the whole 1KB block
+   INTCON_GIE = old_gie                            -- restore interrupt state
+   EECON1_WREN = FALSE                             -- disable flash writes
+
+end procedure
+
+
+-- -----------------------------------------------------------------
+-- Read word of flash memory
+-- Arguments: - offset (in number of bytes) of word in flash memory
+-- Returns:   - contents of flash memory word
+-- Notes:     - This function is especially useful to check if the
+--              flash memory block was ever written before when
+--              the first word(s) contain some sort of identification.
+-- -----------------------------------------------------------------
+function  flash_read_word(word in offset) return word is
+
+   var  word  wvalue                               -- word to be returned
+   var  byte  bvalue[2] at wvalue                  -- overlay
+
+   TBLPTR = FLASH_RESERVED + offset                -- set address of word to be read
+   asm  TBLRD*+
+   bvalue[0] = TABLAT                              -- LSByte
+   asm  TBLRD*+
+   bvalue[1] = TABLAT                              -- MSByte
+   return  wvalue
+
+end function
+
+
+-- -------------------------------------------------------
+-- Copy block of flash memory to block of data memory
+-- Arguments: none
+-- Returns:   nothing
+-- Notes:     The whole array 'flash_data' is restored
+-- -------------------------------------------------------
+procedure flash_restore_block() is
+
+   var byte i,j                                    -- counters
+
+   TBLPTR = FLASH_RESERVED                         -- set start address
+   for count(flash_data) / 64 using i loop           -- # of 64-bytes chunks to restore
+      for 64 using j loop                          -- # of bytes to read per block
+         asm  TBLRD*+                              -- read and auto increment
+         flash_data[i * 64 + j] = TABLAT           -- next to restore
+      end loop
+   end loop
+
+end procedure
+
+
+-- -------------------------------------------------------
+-- Save block of data memory to flash memory
+-- Arguments: - none
+-- Returns:   - nothing
+-- Notes:     The whole array 'flash_data' is saved
+-- -------------------------------------------------------
+procedure  flash_save_block() is
+
+   var bit old_gie
+   var byte i,j
+
+   flash_erase_block()                             -- erase 1KB block of flash memory
+
+   EECON1_WREN = TRUE                              -- enable flash writes
+   EECON1_WPROG = FALSE                            -- write 64 bytes at a time
+   for count(flash_data) / 64 using i loop         -- # 64 bytes chunks
+      TBLPTRL = 0                                  -- offset in intermediate registers
+      for 64 using j loop                          -- 64 bytes to copy
+         TABLAT = flash_data[64 * i + j]           -- data to intermediate block
+         asm TBLWT*+                               -- store and auto increment offset
+      end loop
+      TBLPTR = FLASH_RESERVED + 64 * i             -- address of flash block
+      old_gie = INTCON_GIE                         -- save interrupt state
+      INTCON_GIE = FALSE                           -- disable interrupts
+      EECON2 = 0x55
+      EECON2 = 0xAA
+      EECON1_WR = TRUE                             -- write flash memory
+      INTCON_GIE = old_gie                         -- restore interrupt state
+   end loop
+   EECON1_WREN = FALSE                             -- disable flash writes
+
+end procedure
+
+

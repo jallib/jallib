@@ -5,7 +5,7 @@
 --
 -- Adapted-by:
 --
--- Revision: $Revision: $
+-- Revision: $Revision$
 --
 -- Compiler: 2.4o
 --
@@ -20,23 +20,16 @@
 -- The current value of the counter is shown by the number of blinks of a led.
 -- This shows the number of resets since the time the program was loaded.
 -- .
--- Since erase of flash memory is required before writes and 1024 bytes are
--- erased at a time with this PIC, a 1 KB block of flash is reserved in high memory.
--- Because the configuration bits of this PIC are located in the highest 1KB block
--- of code memory the reserved block will be the one but last 1KB block.
--- Furthermore since this PIC writes 64 bytes at a time an array of 64 bytes
--- is declared to save in flash memory and 64 bytes are restored at a time as well.
--- The variables to be saved are declared within this 64 bytes block as an overlay.
 -- A 'signature' is the first part of the overlay. This shows to the program
 -- that flash memory was ever written (first time issue). Only when this
--- signature is found in the first few bytes of the reserved block of flash memory
--- the data block may be restored. In this sample the signature is "RobH".
--- .
+-- signature is found in the first few bytes of the reserved block of flash
+-- memory the data block may be restored.
+-- In this sample the signature is "RobH".
 --
 -- Sources:
 --
 -- Notes:
--- - This sample is not meant to show the use of any Jallib library!
+-- - This sample shows the use of flash_data_18fxxjyy library.
 --
 -- =====================================================================
 
@@ -46,7 +39,7 @@ include  18f26j11                                  -- target chip
 
 pragma target clock         8_000_000              -- intosc 8 MHz
 
--- ---------- configuratio99bits settings -------------------------
+-- ---------- configuration bits settings -------------------------
 pragma target WDT           DISABLED               -- watchdog software controlled!
 pragma target STVR          DISABLED               -- reset on stack over/under flow
 pragma target XINST         DISABLED               -- extended instruction set
@@ -75,35 +68,35 @@ pragma target WPDIS         DISABLED               -- no write protection
 
 include  delay                                     -- delay support library
 
--- ------- local function prototypes -------------------------------------
-
-procedure  flash_erase_row()
-function   flash_read_word(word in offset) return word
-procedure  flash_restore_block()
-procedure  flash_save_block()
-procedure  setup_pic()
-
 -- --------- block of data (64 bytes) to be saved in flash (code) memory----------
 
-const  byte*3  FLASH_RESERVED = 0x00F800           -- address of 1KB flash memory
-                                                   -- to save the block
+-- pragma bootloader loader18                         -- reserve 2K at start of code memory
 
-var  byte      data_block[64]                      -- block of data to be saved in and
+const  byte*3  FLASH_RESERVED = 0x00F800           -- address of 1KB flash memory
+                                                   -- to save data
+
+
+var  byte      flash_data[128]                     -- block of data to be saved in and
                                                    -- restored from flash memory
 
-var  byte      signature[4]    at data_block[0]  = "RobH"     -- flash block identification
-var  word      reset_counter   at data_block[4]  = 0          -- initial 'reset' value
+include flash_data                                 -- the library
 
--- rest of block only filled to show successful write of 64 bytes block
--- e.g. after reading back memory with a PIC programmer.
+-- --- local function prototypes ----------------------------------------------
 
-var  byte      parameter_3[26] at data_block[6]  =  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-var  byte      parameter_4[26] at data_block[32] =  "abcdefghijklmnopqrstuvwxyz"
-var  byte      parameter_5[6]  at data_block[58] =  "123456"
+procedure  setup_pic()
+
+-- ----------------------------------------------------------------------------
+
+var  byte      signature[4]    at flash_data[0]  = "RobH"     -- flash block identification
+var  word      reset_counter   at flash_data[4]  = 0          -- initial 'reset' value
+var  byte      filler[8]       at flash_data[6]  = "ABCDEFGH" -- dummy
 
 alias  LED is pin_B1                               -- used as visual indication:
                                                    -- blinks the number of resets
 pin_B1_direction = OUTPUT                          -- LED is output
+
+
+
 
 -- ===============================================================
 --
@@ -135,113 +128,6 @@ flash_save_block()                                 -- save updated block to flas
 forever loop
    LED = OFF
 end loop
-
-
--- -----------------------------------------------------------------
--- Read word of 'reserved' flash memory
--- Arguments: - offset (in bytes) of word in reserved block of flash memory
--- Returns:   - contents of flash memory word
--- Notes:     -
--- -----------------------------------------------------------------
-function  flash_read_word(word in offset) return word is
-
-   var  word  wvalue                               -- word to be returned
-   var  byte  bvalue[2] at wvalue                  -- overlay
-
-   TBLPTR = FLASH_RESERVED + offset                -- set address of word to be read
-   asm  TBLRD*+
-   bvalue[0] = TABLAT                              -- LSByte
-   asm  TBLRD*+
-   bvalue[1] = TABLAT                              -- MSByte
-   return  wvalue
-
-end function
-
-
--- -------------------------------------------------------
--- Copy block of 'reserved' flash memory to block of data memory
--- Arguments: none
--- Returns:   nothing
--- Notes:     Copies the first 64 bytes of the reserved flash
---            memory block to the predefined block in data memory.
--- -------------------------------------------------------
-procedure flash_restore_block() is
-
-   var byte i
-
-   TBLPTR = FLASH_RESERVED                         -- set address of block
-   for 64 using i loop                             -- # of bytes to read
-      asm  TBLRD*+                                 -- read and auto increment
-      data_block[i] = TABLAT                       -- next to restore
-   end loop
-
-end procedure
-
-
--- -------------------------------------------------------
--- Copy block with user parameters to flash memory
--- Arguments: - none
--- Returns:   - nothing
--- Notes:     Copies the predefined block of 64 bytes in data memory
---            to the first 64 bytes of the reserved block of
---            flash (code) memory.
---            The whole block (1KB) of flash memory is erased
---            before the write.
---            See datasheet for details!
--- -------------------------------------------------------
-procedure  flash_save_block() is
-
-   var bit old_gie
-   var byte i
-
-   flash_erase_row()                               -- erase 1KB block of flash memory
-
-   EECON1_WREN = TRUE                              -- enable flash writes
-   EECON1_WPROG = FALSE                            -- enable 64-bytes writes
-   TBLPTRL = 0                                     -- offset in 64 bytes block
-   for 64 using i loop                             -- 64 bytes to copy
-      TABLAT = data_block[i]                       -- data to intermediate block
-      asm TBLWT*+                                  -- store and auto increment offset
-   end loop
-   TBLPTR = FLASH_RESERVED                         -- address of flash block
-   old_gie = INTCON_GIE                            -- save interrupt state
-   INTCON_GIE = FALSE                              -- disable interrupts
-   EECON2 = 0x55
-   EECON2 = 0xAA
-   EECON1_WR = TRUE                                -- write flash memory
-   INTCON_GIE = old_gie                            -- restore interrupt state
-   EECON1_WREN = FALSE                             -- disable flash writes
-
-end procedure
-
-
--- -------------------------------------------------------
--- Erase row (1KB) of flash memory
--- Arguments: - none
--- Returns:   - nothing
--- Notes:     Copies the predefined block of 64 bytes in data memory
---            to the first 64 bytes of the reserved block of
---            flash (code) memory.
---            The whole block (1KB) of flash memory is erased
---            before the write.
---            See datasheet for details!
--- -------------------------------------------------------
-procedure  flash_erase_row() is
-
-   var bit old_gie
-
-   TBLPTR = FLASH_RESERVED                         -- set address of 1KB flash block
-   EECON1_WREN = TRUE                              -- enable flash writes
-   EECON1_FREE = TRUE                              -- enable memory erase
-   old_gie = INTCON_GIE                            -- save interrupt state
-   INTCON_GIE = FALSE                              -- disable interrupts
-   EECON2 = 0x55
-   EECON2 = 0xAA
-   EECON1_WR = TRUE                                -- erase the whole 1KB block
-   INTCON_GIE = old_gie                            -- restore interrupt state
-   EECON1_WREN = FALSE                             -- disable flash writes
-
-end procedure
 
 
 -- -------------------------------------------------------
