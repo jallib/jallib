@@ -15,7 +15,6 @@
  *                                                                          *
  * Description:                                                             *
  * - read TORELEASE and                                                     *
- *   check if file exists and is also in SVN tree                           *
  *   collect Picnames used in names of samples                              *
  * - collect entries into compound variable f.                              *
  *   on a per-directory basis (1st level subdirectory)                      *
@@ -50,7 +49,6 @@ projdir    = base'/project'                                 /* project files */
 torelease  = base'/TORELEASE'                               /* TORELEASE file */
 newrelease = 'TORELEASE.NEW'                                /* release list */
 list       = 'torelease.lst'                                /* script output */
-svnpath    = '.svn/text-base/'                              /* svn path insert */
 
 count.     = 0                                              /* zero all file counts */
 dev.       = '-'                                            /* PIC names in device files */
@@ -91,11 +89,6 @@ do linenumber = 1  while lines(torelease)                   /* collect files */
   ln = translate(ln, xrange('a','z'), xrange('A','Z'))      /* ensure lower case */
   if stream(base'/'ln, 'c', 'query exists') = '' then       /* file not found */
     call lineout list, format(linenumber,4)'. File <'ln'> missing in' base
-  else do                                                   /* file found */
-    svnspec = base'/'filespec('P',ln)||svnpath||filespec('N',ln)'.svn-base'
-    if stream(svnspec, 'c', 'query exists') = '' then
-      call lineout list, format(linenumber,4)'. File <'ln'> not in SVN'
-  end
   select
     when left(ln,15) = 'include/device/' then
       part = 'device'
