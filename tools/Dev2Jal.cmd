@@ -41,10 +41,10 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.37'
+   ScriptVersion   = '0.1.38'
    ScriptAuthor    = 'Rob Hamerling'
-   CompilerVersion = '2.4o'
-   MPlabVersion    = '886'
+   CompilerVersion = '2.4p'
+   MPlabVersion    = '887'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated */
@@ -75,7 +75,7 @@ devdir = MPLABbase'mplab ide/device/'              /* dir with MPLAB .dev files 
 
 DevSpecFile   = JALLIBbase'tools/devicespecific.json'       /* device specific data */
 PinMapFile    = JALLIBbase'tools/pinmap_pinsuffix.json'     /* pin aliases */
-FuseDefFile   = JALLIBbase'tools/fusedefmap.cmd'            /* fuse_def mapping */
+FuseDefFile   = JALLIBbase'tools/fusedefmap.cmd'            /* fuse_def mapping (Fosc) */
 DataSheetFile = JALLIBbase'tools/datasheet.list'            /* actual datasheets */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
@@ -1313,13 +1313,13 @@ do i = 1 to Dev.0
             call list_status i                              /* extra for compiler */
       end
 
-      else if reg = 'PORTE' then do                            /* esp. for  pin_E3 */
+      else if reg = 'PORTE' then do                         /* esp. for  pin_E3 */
          parse var access 'ACCESS' '=' "'" a7 a6 a5 a4 a3 a2 a1 a0 "'" ')' .
          if a7='U' & a6='U' & a5='U' & a4='U' & a3\='U' & a2='U' & a1='U' & a0='U' then do
             pin = 'pin_E3'
+  /*        call msg 1, pin 'is declared under' reg     */
             call list_bitfield 1, pin, reg, 3, addr
             call list_pin_alias reg, 'RE3', pin
-            call msg 1, pin 'is declared under' reg
          end
       end
 
@@ -1663,9 +1663,9 @@ do i = 1 to Dev.0
          parse var access 'ACCESS' '=' "'" a7 a6 a5 a4 a3 a2 a1 a0 "'" ')' .
          if a7='U' & a6='U' & a5='U' & a4='U' & a3\='U' & a2='U' & a1='U' & a0='U' then do
             pin = 'pin_E3'
+  /*        call msg 1, pin 'is declared under' reg   */
             call list_bitfield 1, pin, reg, 3, addr
             call list_pin_alias reg, 'RE3', pin
-            call msg 1, pin 'is declared under' reg
          end
       end
 
@@ -1968,7 +1968,7 @@ return 0
 /* create extra aliases for TX and RX pins of only USART module  */
 /* returns index of alias (0 if none)                            */
 /* ------------------------------------------------------------- */
-list_pin_alias: procedure expose  PinMap. Name. PicName Core jalfile msglevel
+list_pin_alias: procedure expose  PinMap. Name. PicName Core PinMapMissCount jalfile msglevel
 parse arg reg, PinName, Pin .
 PicNameCaps = SysMapCase(PicName)
 if PinMap.PicNameCaps.PinName.0 = '?' then do
@@ -2879,6 +2879,10 @@ else if core = '16' then do                                 /* 18F series */
          if PicName = '18f13k22' | PicName = '18lf13k22' |,
             PicName = '18f14k22' | PicName = '18lf14k22' then
             nop                                             /* consecutive */
+         else if PicName = '18f24k50' | PicName = '18lf24k50' |,
+                 PicName = '18f25k50' | PicName = '18lf25k50' |,
+                 PicName = '18f45k50' | PicName = '18lf45k50' then
+            ansx = word('0 1 2 3 99 4 99 99', ansx + 1)
          else if right(PicName,3) = 'k22' & ansx = 5 then
             ansx = 4                                        /* jump */
       end
@@ -3383,7 +3387,9 @@ do i = i + 1  while i <= dev.0  &,
          if word(val2,1) = 'NO' then
             kwd = 'P1'                                      /* no division */
          else if pos('DIVIDE',val2) > 0 & wordpos('BY',val2) > 0 then
-            kwd = P||word(val2,words(val2))                 /* last word */
+            kwd = 'P'word(val2,words(val2))                 /* last word */
+         else if pos('DIVIDE',val2) > 0 & wordpos('(NO',val2) > 0 then
+            kwd = 'P'1                                      /* no divide */
          else if pos('/',val2) > 0 then
             kwd = 'P'substr(val2,pos('/',val2)+1,1)         /* digit after '/' */
          else
@@ -4029,6 +4035,7 @@ analog. = '-'                                               /* no analog modules
 if Name.ANSEL  \= '-' |,                                    /*                       */
    Name.ANSEL1 \= '-' |,                                    /*                       */
    Name.ANSELA \= '-' |,                                    /* any of these declared */
+   Name.ANSELC \= '-' |,                                    /* any of these declared */
    Name.ANCON0 \= '-' then do                               /*                       */
    analog.ANSEL = 'analog'                                  /* analog functions present */
    call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
@@ -4382,6 +4389,7 @@ return Dev.0
 /* --------------------------------------------------- */
 /* Read file with Device Specific data                 */
 /* Interpret contents: fill compound variable DevSpec. */
+/* (simplyfied implementation of reading a JSON file)  */
 /* --------------------------------------------------- */
 file_read_devspec: procedure expose DevSpecFile DevSpec. msglevel
 if stream(DevSpecFile, 'c', 'open read') \= 'READY:' then do
@@ -4415,6 +4423,7 @@ return 0
 /* --------------------------------------------------- */
 /* Read file with pin alias information (JSON format)  */
 /* Fill compound variable PinMap. and PinANMap.        */
+/* (simplyfied implementation of reading a JSON file)  */
 /* --------------------------------------------------- */
 file_read_pinmap: procedure expose PinMapFile PinMap. PinANMap. msglevel
 if stream(PinMapFile, 'c', 'open read') \= 'READY:' then do
