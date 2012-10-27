@@ -1,91 +1,115 @@
 -- -------------------------------------------------------------------------------------
--- Title: hardware PWM control, dedicated to module CCP2
+-- Title: hardware PWM control, dedicated to module PWM2
 -- Author: Stef Mientki, Copyright (C) 2002-2006, all rights reserved.
 -- Adapted-by: Sebastien Lelong, Rob Hamerling.
--- Compiler: 2.4l
+-- Compiler: 2.4p
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description:
--- Performs PWM operations on the CCP2 module.
+-- Performs PWM operations on the PWM2 module (of enhanced midrange)
 -- This file is automatically included by pwm_hardware.jal
--- when the target PIC has a CCP2 module.
+-- when the target PIC has a PWM2 module.
 --
 -- Notes: 1. This is a heavy refactoring of the original pwm_hardware.jal
 --           (Stef's lib)
 --        2. Partly rewritten for JalV2 version 2.4l and Jallib revision 1171.
 --           Reduced memory occupation. Added procedure for lowres PWM.
+--        3. Changes dd October 2012 by Rob Hamerling
+--           - added public procedure to set dutycycle with highest resolution (1023 steps).
+--           - Make the pwm_set_dutycycle (highres, lowres and unqualified) private
+--             (preceeded with an underscore). These procedures will be kept. but
+--             with a 'deprecated' warning recommending to use the procedures for
+--             relative settings.
 --
 -- -------------------------------------------------------------------------------------
 
-var byte  _ccpr2l_shadow  = 0                            -- 8 MSbits of duty cycle
-var byte  _ccp2con_shadow = 0b0000_0000                  -- shadow
-var bit*2 _ccp2con_shadow_dc2b  at _ccp2con_shadow : 4    -- 2 LSbits of duty cycle
-var bit*4 _ccp2con_shadow_ccp2m at _ccp2con_shadow : 0    -- mode pattern
+var byte   _ccpr2l_shadow  = 0                           -- 8 MSbits of duty cycle
+var byte   _ccp2con_shadow = 0b0000_0000                 -- shadow
+var bit*2  _ccp2con_shadow_dc2b  at _ccp2con_shadow : 4  -- 2 LSbits of duty cycle
+var bit*4  _ccp2con_shadow_ccp2m at _ccp2con_shadow : 0  -- 2 LSbits of duty cycle
 
 
--- PWM mode on
--- Restore duty cycle from shadow registers
--- Note: pin_CCP2_direction should be set to output!
+-- -------------------------------------------------------------------------------------
+-- Purpose:   Set PWM on
+-- Arguments: none
+-- Notes:     - duty cycle is restored from shadow registers
+--            - pin_PWM2_direction should be set to output
+-- -------------------------------------------------------------------------------------
 procedure pwm2_on() is
 
-   _ccp2con_shadow_ccp2m = 0b1100                    -- set PWM mode
-   CCPR2L                = _ccpr2l_shadow            -- restore duty cycle
-   CCP2CON               = _ccp2con_shadow           -- activate CCP module
+   _ccp2con_shadow_ccp2m = 0b1100                  -- set CCP module in PWM mode
+   CCPR2L                = _ccpr2l_shadow          -- restore duty cycle
+   CCP2CON               = _ccp2con_shadow         -- activate CCP module
 
 end procedure
 
 
--- PWM mode off
--- retain duty cycle setting in shadow registers
+-- -------------------------------------------------------------------------------------
+-- Purpose:   PWM mode off
+-- Arguments: none
+-- -------------------------------------------------------------------------------------
 procedure pwm2_off() is
 
-   _ccp2con_shadow_ccp2m = 0b0000                    -- set CCP/PWM off
-   CCP2CON               = _ccp2con_shadow
+   _ccp2con_shadow_ccp2m = 0b0000                  -- CCP/PWM off
+   CCP2CON               = _ccp2con_shadow         -- disable CCP module
 
 end procedure
 
 
--- Set dutycycle with 10-bits resolution, allowing 1024 PWM steps.
--- The 'duty' argument is a (max) 10-bits absolute value for the duty cycle:
---  * duty<1:0> are the 2 LSbits
---  * duty<9:2> are the 8 MSbits
--- Allowed range: 0..1023
--- Note: pin_CCP2_direction should be set to output!
-procedure pwm2_set_dutycycle_highres(word in duty) is
+-- -------------------------------------------------------------------------------------
+-- Purpose:   Specify the duty cycle by number of PWM steps.
+--            The duty cycle is setting is determined by a 10-bits parameter,
+--            allowing a resolution of 1023 steps.
+--            The 'steps' argument is a (max) 10-bits absolute value for the duty cycle:
+--            * steps<1:0> are the 2 LSbits
+--            * steps<9:2> are the 8 MSbits
+-- Arguments: word - steps cycle (allowed range 0..1023)
+-- Notes:     - This is a private procedure, not intended for general use.
+--              The caller is responsible to specify an acceptable value
+--              w.r.t. to the chosen PWM frequency.
+-- -------------------------------------------------------------------------------------
+procedure _pwm2_set_dutycycle_highres(word in steps) is
 
-   if (duty > 1023) then                            -- upper limit
-      duty = 1023
+   if (steps > 1023) then                           -- exceeding upper limit
+      steps = 1023                                  -- set to maximum
    end if
-   _ccpr2l_shadow = byte(duty >> 2)
-   _ccp2con_shadow_dc2b = byte(duty) & 0b11
+   _ccpr2l_shadow = byte(steps >> 2)
+   _ccp2con_shadow_dc2b = byte(steps) & 0b11
 
    pwm2_on()                                        -- activate PWM
 
 end procedure
 
+-- deprecated procedure
+procedure pwm2_set_dutycycle_highres(word in steps) is
+   _warn "pwm2_set_dutycycle_highres() is deprecated,\n.. use pwm2_set_dutycycle_percent() or pwm2_set_dutycycle_ratio()"
+   _pwm2_set_dutycycle_highres(steps)
+end procedure
 
--- Set dutycycle with 8-bits resolution allowing 255 PWM steps.
--- The 'duty' argument is the 8-bits absolute value for the duty cycle:
+
+-- -------------------------------------------------------------------------------------
+-- Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
+-- The 'steps' argument is the 8-bits absolute value for the duty cycle:
 --  * duty<1:0> are the 2 LSbits
 --  * duty<7:2> are the 6 MSbits
--- Allowed range: 0..255
--- Beware that steps 256..1023 are not available. In other words
--- the available PWM range is 25% of the highres procedure.
--- This procedure is particularly suitable with higher frequencies
--- whereby the PWM resolution is limited to 256 steps or less!
-procedure pwm2_set_dutycycle_lowres(byte in duty) is
+-- Arguments: byte - duty cycle (allowed range 0..255)
+-- Notes:     This procedure is particularly suitable with higher frequencies
+--            whereby the PWM resolution is limited to 256 steps or less!
+-- -------------------------------------------------------------------------------------
+procedure pwm2_set_dutycycle_lowres(byte in steps) is
 
-   _ccpr2l_shadow = duty >> 2
-   _ccp2con_shadow_dc2b = duty & 0b11
-
+   _warn "pwm2_set_dutycycle_lowres() is deprecated,\n.. use pwm2_set_dutycycle_percent() or pwm2_set_dutycycle_ratio()"
+   _ccpr2l_shadow = steps >> 2                       -- 8 high order bits
+   _ccp2con_shadow_dc2b = steps & 0b11               -- 2 low order bits
    pwm2_on()                                        -- activate PWM
 
 end procedure
 
 
+-- -------------------------------------------------------------------------------------
 -- Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
 -- This procedure is equivalent to pwm2_set_dutycycle_highres(), but
 -- the low order 2 bits of the 10-bits duty cycle are set to 0.
@@ -95,30 +119,68 @@ end procedure
 -- value for the duty cycle is for many applications satisfactory.
 -- Calling this procedure will also activate PWM.
 -- Note: pin_CCP2_direction should be set to output!
-procedure pwm2_set_dutycycle(byte in duty) is
+-- -------------------------------------------------------------------------------------
+procedure pwm2_set_dutycycle(byte in steps) is
 
-   pwm2_set_dutycycle_highres(word(duty) << 2)
+   _warn "pwm2_set_dutycycle() is deprecated,\n.. use pwm2_set_dutycycle_percent() or pwm2_set_dutycycle_ratio()"
+   _pwm2_set_dutycycle_highres(word(steps) << 2)
 
 end procedure
 
 
--- Set a percentage duty cycle, allowing max 100 PWM steps.
--- Allowed range: 0..100
--- The duty cycle will be set to the specified percentage of the maximum
--- for the current PWM frequency.
--- Note: The number of available PWM steps can be lower than 100 with
--- (very) high PWM frequencies.
--- Note: pin_CCP2_direction should be set to output!
-procedure pwm2_set_percent_dutycycle(byte in percent) is
+-- -------------------------------------------------------------------------------------
+-- Purpose:   Set duty cycle as a percentage, allowing max 100 PWM steps.
+--            The duty cycle will be set to the specified percentage of the maximum
+--            for the current PWM frequency and Fosc.
+-- Arguments: byte - dutycycle as a percentage (allowed range: 0..100)
+-- Notes:     - The number of available PWM steps can be lower than 100 with
+--              (very) high PWM frequencies and low Fosc.
+--            - The steps may not all be equal. The lower the actual resolution
+--              the bigger the differences between steps may be.
+--            - pin_CCP2_direction should be set to output!
+-- -------------------------------------------------------------------------------------
+procedure pwm2_set_dutycycle_percent(byte in percent) is
 
-   var word duty
-   if (percent == 0) then
-     duty = 0
-   elsif (percent >= 100) then
-     duty = _pr2_shadow_plus1 - 1
-   else
-     duty = word(percent) * (_pr2_shadow_plus1 / 4) / 25      -- (factor PR2/100)
+   var word steps                                   --
+   if (percent == 0) then                          -- effectively PWM off (output low)
+     steps = 0
+   elsif (percent >= 100) then                     -- effectively PWM off (output high)
+     steps = _pr2_shadow_plus1 - 1
+   else                                            --
+     steps = word(percent) * (_pr2_shadow_plus1 / 4) / 25      -- (factor PR2/100)
    end if
-   pwm2_set_dutycycle_highres(duty << 2)
+   _pwm2_set_dutycycle_highres(steps << 2)
 
 end procedure
+
+-- deprecated procedure
+procedure pwm2_set_percent_dutycycle(byte in percent) is
+   _warn "pwm2_set_percent_dutycycle() is deprecated, use pwm_set_dutycycle_percent()"
+   pwm2_set_dutycycle_percent(percent)
+end procedure
+
+
+-- -------------------------------------------------------------------------------------
+-- Purpose:   Set duty cycle in the range 0..1023 PWM steps.
+-- Arguments: word - dutycycle ration in range 0..1023
+-- Notes:     - The duty cycle will be set to the specified ration of the maximum
+--              value for the current PWM frequency and Fosc.
+-- Notes:     - The resolution is about 1 pro mille
+--            - The number of available PWM steps can be lower than 1023 with
+--              high PWM frequencies or low Fosc values.
+--            - pin_CCP2_direction should be set to output!
+-- -------------------------------------------------------------------------------------
+procedure pwm2_set_dutycycle_ratio(word in ratio) is
+
+   var  word  steps                                  -- intermediate value of PR2+1
+   if (ratio == 0) then                            -- effectively PWM off (output low)
+     steps = 0
+   elsif (ratio > 1023) then                       -- effectively PWM off (output high)
+     steps = _pr2_shadow_plus1 - 1
+   else                                            -- between min and max
+     steps = word(dword(ratio) * _pr2_shadow_plus1 / 256)    -- (factor PR2/1024)
+   end if
+   _pwm2_set_dutycycle_highres(steps)
+
+end procedure
+

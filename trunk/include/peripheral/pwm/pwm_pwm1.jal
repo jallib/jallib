@@ -13,23 +13,12 @@
 -- This file is automatically included by pwm_hardware.jal
 -- when the target PIC has a PWM1 module.
 --
--- Notes: 1. This is a heavy refactoring of the original pwm_hardware.jal
---           (Stef's lib)
---        2. Partly rewritten for JalV2 version 2.4l and Jallib revision 1171.
---           Reduced memory occupation. Added procedure for lowres PWM.
---        3. Changes dd October 2012 by Rob Hamerling
---           - added public procedure to set dutycycle with highest resolution (1023 steps).
---           - Make the pwm_set_dutycycle (highres, lowres and unqualified) private
---             (preceeded with an underscore). These procedures will be kept. but
---             with a 'deprecated' warning recommending to use the procedures for
---             relative settings.
+-- Notes:  - Modelled after the libraries for CCP modules
 --
 -- -------------------------------------------------------------------------------------
 
-var byte   _ccpr1l_shadow  = 0                           -- 8 MSbits of duty cycle
-var byte   _ccp1con_shadow = 0b0000_0000                 -- shadow
-var bit*2  _ccp1con_shadow_dc1b  at _ccp1con_shadow : 4  -- 2 LSbits of duty cycle
-var bit*4  _ccp1con_shadow_ccp1m at _ccp1con_shadow : 0  -- 2 LSbits of duty cycle
+var byte  _pwm1dch_shadow = 0                      -- 8 MSbits of duty cycle
+var byte  _pwm1dcl_shadow = 0                      -- 2 LSbits (left aligned)
 
 
 -- -------------------------------------------------------------------------------------
@@ -40,9 +29,10 @@ var bit*4  _ccp1con_shadow_ccp1m at _ccp1con_shadow : 0  -- 2 LSbits of duty cyc
 -- -------------------------------------------------------------------------------------
 procedure pwm1_on() is
 
-   _ccp1con_shadow_ccp1m = 0b1100                  -- set CCP module in PWM mode
-   CCPR1L                = _ccpr1l_shadow          -- restore duty cycle
-   CCP1CON               = _ccp1con_shadow         -- activate CCP module
+   PWM1DCH         = _pwm1dch_shadow               -- restore duty cycle
+   PWM1DCL         = _pwm1dcl_shadow               -- restore duty cycle
+   PWM1CON_PWM1OE  = TRUE                          -- activate PWM1 pin
+   PWM1CON_PWM1EN  = TRUE                          -- activate PWM module
 
 end procedure
 
@@ -53,8 +43,7 @@ end procedure
 -- -------------------------------------------------------------------------------------
 procedure pwm1_off() is
 
-   _ccp1con_shadow_ccp1m = 0b0000                  -- CCP/PWM off
-   CCP1CON               = _ccp1con_shadow         -- disable CCP module
+   PWM1CON_PWM1EN = FALSE                          -- disable PWM module
 
 end procedure
 
@@ -73,13 +62,12 @@ end procedure
 -- -------------------------------------------------------------------------------------
 procedure _pwm1_set_dutycycle_highres(word in steps) is
 
-   if (steps > 1023) then                           -- exceeding upper limit
-      steps = 1023                                  -- set to maximum
+   if (steps > 1023) then                          -- exceeding upper limit
+      steps = 1023                                 -- set to maximum
    end if
-   _ccpr1l_shadow = byte(steps >> 2)
-   _ccp1con_shadow_dc1b = byte(steps) & 0b11
-
-   pwm1_on()                                        -- activate PWM
+   _pwm1dch_shadow = byte(steps >> 2)              -- 8 MSbits
+   _pwm1dcl_shadow = byte(steps) << 6              -- 2 LSbits left aligned
+   pwm1_on()                                       -- activate PWM
 
 end procedure
 
@@ -102,9 +90,9 @@ end procedure
 procedure pwm1_set_dutycycle_lowres(byte in steps) is
 
    _warn "pwm1_set_dutycycle_lowres() is deprecated,\n.. use pwm1_set_dutycycle_percent() or pwm1_set_dutycycle_ratio()"
-   _ccpr1l_shadow = steps >> 2                       -- 8 high order bits
-   _ccp1con_shadow_dc1b = steps & 0b11               -- 2 low order bits
-   pwm1_on()                                        -- activate PWM
+   _pwm1dch_shadow = byte(steps >> 2)              -- 8 MSbits
+   _pwm1dcl_shadow = byte(steps) << 6              -- 2 LSbits
+   pwm1_on()                                       -- activate PWM
 
 end procedure
 
@@ -118,7 +106,7 @@ end procedure
 -- This procedure is for user convenience, allowing to specify an 8 bits
 -- value for the duty cycle is for many applications satisfactory.
 -- Calling this procedure will also activate PWM.
--- Note: pin_CCP1_direction should be set to output!
+-- Note: pin_PWM1_direction should be set to output!
 -- -------------------------------------------------------------------------------------
 procedure pwm1_set_dutycycle(byte in steps) is
 
@@ -137,7 +125,7 @@ end procedure
 --              (very) high PWM frequencies and low Fosc.
 --            - The steps may not all be equal. The lower the actual resolution
 --              the bigger the differences between steps may be.
---            - pin_CCP1_direction should be set to output!
+--            - pin_PWM1_direction should be set to output!
 -- -------------------------------------------------------------------------------------
 procedure pwm1_set_dutycycle_percent(byte in percent) is
 
@@ -163,12 +151,12 @@ end procedure
 -- -------------------------------------------------------------------------------------
 -- Purpose:   Set duty cycle in the range 0..1023 PWM steps.
 -- Arguments: word - dutycycle ration in range 0..1023
--- Notes:     - The duty cycle will be set to the specified ration of the maximum
+-- Notes:     - The duty cycle will be set to the specified ratio of the maximum
 --              value for the current PWM frequency and Fosc.
--- Notes:     - The resolution is about 1 pro mille
+--            - The resolution is about 1 pro mille
 --            - The number of available PWM steps can be lower than 1023 with
 --              high PWM frequencies or low Fosc values.
---            - pin_CCP1_direction should be set to output!
+--            - pin_PWM1_direction should be set to output!
 -- -------------------------------------------------------------------------------------
 procedure pwm1_set_dutycycle_ratio(word in ratio) is
 
@@ -183,4 +171,5 @@ procedure pwm1_set_dutycycle_ratio(word in ratio) is
    _pwm1_set_dutycycle_highres(steps)
 
 end procedure
+
 
