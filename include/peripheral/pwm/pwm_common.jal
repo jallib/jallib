@@ -1,7 +1,8 @@
+-- ----------------------------------------------------------------------------
 -- Title: Hardware PWM control, common procedures
 -- Author: Stef Mientki, Copyright (C) 2002-2006, all rights reserved.
--- Adapted-by: Sebastien Lelong
--- Compiler: 2.4l
+-- Adapted-by: Sebastien Lelong, Rob Hamerling
+-- Compiler: 2.4p
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -12,24 +13,52 @@
 -- It is used in combination with one or more pwm_ccp<number> libraries
 -- (eg. pwm_ccp1.jal, pwm_ccp2.jal, etc.). These libraries are included
 -- automatically dependent of the configuration of the target PIC.
+-- .
+-- Oscillator refequency, PWM frequency and PWM resolution are a tighly coupled
+-- set of parameters. Refer to the PWM section in the datasheets how these are related.
 --
 -- Notes:
 -- This is a heavy refactoring of the original pwm_hardware.jal (Stef's lib).
---
--- ---------------------------------------------------------------------------
+-- .
+-- Changes dd October 2012:
+-- - Added function pwm_get_resolution() returning the actual resolution in PWM steps.
+-- ----------------------------------------------------------------------------
 
 
 -- Shadow of PR2 (value incremented by 1, i.e. value in range 1..256)
-var volatile word _pr2_shadow_plus1 = 256           -- value(PR2) + 1
-                                                    -- set to max by default
+-- Set to maximum value by default for maximum resolution.
+var volatile word _pr2_shadow_plus1 = 256          -- value(PR2) + 1
 
--- Sets all(!) CCP modules for max (10-bits) PWM resolution.
+
+-- ----------------------------------------------------------------------------
+-- Purpose:   Obtain actuial number of PWM steps
+-- Arguments: (none)
+-- Returns:   word = actual number of PWM steps
+-- ---------------------------------------------------------------------------
+function pwm_get_resolution() return word  is
+
+   return (_pr2_shadow_plus1 << 2) + 3             -- PWM steps
+
+end function
+
+
+
+-- ----------------------------------------------------------------------------
+-- Purpose:   Set all(!) CCP modules for max (10-bits) PWM resolution.
+-- Arguments: byte - prescaler value for Timer2 (allowed value 1, 4 or 16)
+--                   (other values will result in disabled PWM)
+-- Notes:     - Allowed values of input parameter: 1, 4 and 16
+--            - User may check bit TIMER2_TMR2ON to see if call was successful
+--              TRUE:  Timer2 ON, PWM resolution set
+--              FALSE: Timer2 OFF, no PWM signal
+-- .
 -- While setting maximum resolution, the Timer2 prescaler can be used to adjust
--- frequency to a some extent with the Timer2 parameter value which can be either:
---   * 1 : high frequency
+-- frequency to some extent with the Timer2 parameter value which can be either:
+--   * 1 : highest frequency
 --   * 4 : medium frequency
---   * 16: low frequency
--- --
+--   * 16: lowest frequency
+--   Other values result in PWM being disabled.
+-- .
 -- Below a table showing the PWM frequencies for common clock speeds and
 -- different Timer2 prescaler values.
 -- ------------------------------------------------------------------------
@@ -42,64 +71,71 @@ var volatile word _pr2_shadow_plus1 = 256           -- value(PR2) + 1
 -- modules use Timer2 and PR2 for PWM operations. This means that the PWM
 -- period (frequency) of all PWM output pins is the same. Only the duty
 -- cycle can vary between one and another PWM pin.
--- --
--- Set PWM to maximum resolution (for all PWM pins!).
+-- .
 -- This implies 1 out of 3 specific PWM frequencies, depending on the Timer2
 -- prescaler value passed with the call. See examples in the table above,
 -- or use the formula in the datasheet to calculate the resulting frequency.
+-- ---------------------------------------------------------------------------
 procedure pwm_max_resolution(byte in prescaler) is
 
-   _pr2_shadow_plus1 = 256                      -- for maximum resolution
-   PR2 = byte(_pr2_shadow_plus1 - 1)            -- set PR2
+   _pr2_shadow_plus1 = 256                         -- select lowest frequency
+   PR2 = byte(_pr2_shadow_plus1 - 1)               -- set PR2
 
-   -- set Timer2 prescaler and turn Timer2 on
-   if prescaler == 1 then
-      T2CON_T2CKPS = 0b00                       -- prescaler 1:1
+   -- set Timer2 prescaler and enable Timer2 (when prescaler value accepted)
+   if    (prescaler == 1)  then                    -- highest frequency
+      T2CON_T2CKPS = 0b00                          -- 1:1
       T2CON_TMR2ON = TRUE
-   elsif prescaler == 4  then
-      T2CON_T2CKPS = 0b01                       -- prescaler 1:4
+   elsif (prescaler == 4)  then                    -- medium frequency
+      T2CON_T2CKPS = 0b01                          -- 1:4
       T2CON_TMR2ON = TRUE
-   elsif prescaler == 16 then
-      T2CON_T2CKPS = 0b10                       -- prescaler 1:16
+   elsif (prescaler == 16) then                    -- lowest frequency
+      T2CON_T2CKPS = 0b10                          -- 1:16
       T2CON_TMR2ON = TRUE
    else
-      T2CON_TMR2ON = FALSE                      -- disable Timer2 (= PWM off!)
+      T2CON_TMR2ON = FALSE                         -- disable Timer2 (= PWM off!)
    end if
 
 end procedure
 
 
--- Sets all(!) CCP modules for a specific PWM frequency.
--- --
+-- ---------------------------------------------------------------------------
+-- Purpose:   Set all(!) CCP modules for a specific PWM frequency.
+-- Arguments: Input:  dword - PWM frequency
+--            Output: none
+-- Notes:     - User may check bit TIMER2_TMR2ON to see if call successful
+--              TRUE:  Timer2 ON, PWM frequency set
+--              FALSE: Timer2 OFF, no PWM signal (frequency too high or too low
+--                                                with current Fosc)
 -- The minimum and maximum allowed PWM frequencies depend on the clock speed.
--- When specifying a value beyond the limits PWM will not be started.
--- --
+-- When specifying a value beyond the limits PWM will not be enabled.
+-- .
 -- The chosen frequency may enforce a limit on the PWM resolution (number of steps).
 -- The application program should not specify a higher value for the duty cycle
 -- than this limit. When exceeding this limit the dutycycle will probably result
 -- in a 'weird' value.
--- Only the procedure set_dutycycle_percent() is safe in this case, the other
--- set_dutycycle procedures use absolute values and are not safe!
+-- Use the procedures pwm?_set_dutycycle_percent() and pwm?_set_dutycycle_ratio()
+-- to set the desired duty cycle.
+-- ---------------------------------------------------------------------------
 procedure pwm_set_frequency(dword in freq) is
 
-   _pr2_shadow_plus1 = word(target_clock / freq) / 4
+   var word pr2_provisional = word(target_clock / freq) / 4   -- derived value for PR2 + 1
 
-   T2CON = 0b0000_0000                          -- zero pre/postscaler, disable Timer2
-   if ((_pr2_shadow_plus1 > 0)  &               -- freq not too high and
-       (_pr2_shadow_plus1 <= 4096)) then        -- freq not too low
+   T2CON = 0b0000_0000                             -- zero pre/postscaler, disable Timer2
 
-      if (_pr2_shadow_plus1 <= 256) then
-         T2CON_T2CKPS = 0b00                    -- set Timer2 prescaler 1:1
-      elsif (_pr2_shadow_plus1 <= 1024) then
-         _pr2_shadow_plus1 = _pr2_shadow_plus1 / 4
-         T2CON_T2CKPS = 0b01                    -- 1:4
+   if ( (pr2_provisional > 0)  &                   -- requested PWM freq not too high and
+        (pr2_provisional <= 4096) ) then           -- not too low for current clock speed
+      if (pr2_provisional <= 256) then
+         _pr2_shadow_plus1 = pr2_provisional
+         T2CON_T2CKPS = 0b00                       -- set Timer2 prescaler 1:1
+      elsif (pr2_provisional <= 1024) then
+         _pr2_shadow_plus1 = pr2_provisional / 4
+         T2CON_T2CKPS = 0b01                       -- 1:4
       else
-         _pr2_shadow_plus1 = _pr2_shadow_plus1 / 16
-         T2CON_T2CKPS = 0b10                    -- 1:16
+         _pr2_shadow_plus1 = pr2_provisional / 16
+         T2CON_T2CKPS = 0b10                       -- 1:16
       end if
-      PR2 = byte(_pr2_shadow_plus1 - 1)         -- set PR2
-      T2CON_TMR2ON = TRUE                       -- enable Timer2
-
+      PR2 = byte(_pr2_shadow_plus1 - 1)            -- set PR2
+      T2CON_TMR2ON = TRUE                          -- enable Timer2
    end if
 
 end procedure
