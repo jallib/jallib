@@ -1,0 +1,94 @@
+-- Title: Generic debouncer.
+-- Author: Alun Jones, Copyright (c) 2012, all rights reserved.
+-- Compiler: >=2.4o
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library provides a simple switch debounce function.
+--
+-- This library uses a word to store the debounce state and configuration
+-- and allows threshold counts between 3 and 255 samples in steps of 4.
+--
+-- You need to allocate a word for use by the debouncer to maintain
+-- state and initialise it to your preferred bounce count, using
+-- state_variable = debounce_init(bounce_count).
+--
+-- The "debounced" function takes a bit and the state variable. It returns
+-- a byte in which the bottom two bits will be set as follows:
+--   byte & 1 (bit 0) = Current stable state.
+--   byte & 2 (bit 1) = 1 if the stable state has just changed.
+
+-- A bunch of simple inline functions to return things from
+-- the state variable.
+
+-- Return the same as debounce() returns.
+function debounce_state(word in state) return byte is
+   pragma inline
+   return byte(state) & 3
+end function
+
+-- Return the "just changed" flag.
+function debounce_just_changed(word in state) return bit is
+   pragma inline
+   var bit just_changed at state:1
+   return just_changed
+end function
+
+-- Return the current stable state.
+function debounce_stable_state(word in state) return bit is
+   pragma inline
+   var bit stable at state:0
+   return stable
+end function
+
+-- Return the threshold for the state variable.
+function debounce_threshold(word in state) return byte is
+   pragma inline
+   return byte(state) | 3
+end function
+
+-- Initialise. Set the threshold and the counter.
+function debounce_init(byte in threshold) return word is
+   pragma inline
+   var word state
+   var byte s[2] at state
+   s[0] = threshold & 0xFC
+   s[1] = s[0] | 3
+   return state
+end function
+
+-- The real meat of the system...
+function debounce(bit in polled, word in out state) return byte is
+   -- So we can get to bits and words of the state individually.
+   -- Serious code size savings by doing this.
+   var byte s[2] at state
+   var byte counter at s[1]
+   var bit just_changed at state:1
+   var bit stable at state:0
+   
+   -- Reset the just changed flag.
+   just_changed = 0
+   
+   -- Is the current bit equal to the stable state?
+   if (polled == stable) then
+      -- Yes - reset the counter.
+      counter = s[0] | 3
+   else
+      -- No - decrement the counter.
+      counter = counter - 1
+      
+      -- Have we counted down to zero? 
+      if (counter == 0) then
+         -- Put the new stable value, reset the counter
+         -- and flag the change.
+         stable = polled
+         counter = s[0] | 3
+         just_changed = 1
+      end if
+   end if
+   
+   -- Return the current stable state and the "just changed" flag.
+   return s[0] & 3
+end function
