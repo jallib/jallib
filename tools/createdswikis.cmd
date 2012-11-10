@@ -17,7 +17,7 @@ if runtype  = 'TEST' then
    jaldir   = 'k:/jal/dev2jal/test/'                /* dir with test device files */
 else
    jaldir   = 'k:/jallib/include/device/'           /* dir with production device files */
-pdfdir      = 'n:/picdatasheets/'                   /* dir with datasheets (local)  */
+pdfdir      = 'k:/picdatasheets/'                   /* dir with datasheets (local)  */
 PicSpecFile = 'k:/jallib/tools/devicespecific.json' /* PIC specific properties      */
 titles      = 'k:/jallib/tools/datasheet.list'      /* datasheet number/title file  */
 
@@ -190,12 +190,13 @@ end
 
 call charout wiki, '= PICs sharing the same '
 if type = 'ds' then
-  call charout wiki, 'datasheet'
+  call lineout wiki, 'datasheet ='
 else
-  call charout wiki, 'programming specifications'
-call lineout wiki, ', sorted on datasheet number ='
+  call lineout wiki, 'programming specifications ='
+call lineout wiki, '== sorted on datasheet number =='
+call lineout wiki, '=== (see below for a list sorted on PIC type) ==='
 call lineout wiki, ''
-call lineout wiki, '|| *datasheet* || *PIC* ||'
+call lineout wiki, '|| *Datasheet* || *PICtype* ||'
 
 PicCount = 0
 call sortGroup 'D'
@@ -216,12 +217,12 @@ call lineout wiki, '----'
 call lineout wiki, ''
 call charout wiki, '= PICs sharing the same '
 if type = 'ds' then
-  call charout wiki, 'datasheet'
+  call lineout wiki, 'datasheet ='
 else
-  call charout wiki, 'programming specifications'
-call lineout wiki, ', sorted on PIC type (lowest in the group) ='
+  call lineout wiki, 'programming specifications ='
+call lineout wiki, '== sorted on PIC type (lowest in the group) =='
 call lineout wiki, ''
-call lineout wiki, '|| *datasheet* || *PIC* ||'
+call lineout wiki, '|| *Datasheet* || *PICtype* ||'
 
 call sortGroup 'P'
 do j = 1 to ds.0
