@@ -41,7 +41,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.38'
+   ScriptVersion   = '0.1.39'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4p'
    MPlabVersion    = '887'
@@ -79,7 +79,7 @@ FuseDefFile   = JALLIBbase'tools/fusedefmap.cmd'            /* fuse_def mapping 
 DataSheetFile = JALLIBbase'tools/datasheet.list'            /* actual datasheets */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
-call SysLoadFuncs                                  /* load Rexx system functions */
+call SysLoadFuncs                                           /* load Rexx system functions */
 
 call msg 0, 'Dev2Jal version' ScriptVersion '  -  ' ScriptAuthor
 if msglevel > 2 then
@@ -329,7 +329,7 @@ if SpecMissCount > 0 then
 if DSMissCount > 0 then
    call msg 3, DSMissCount 'device files not created because no datasheet in' DevSpecFile
 if PinmapMissCount > 0 then
-   call msg 3, PinmapMissCount 'device files not created because PIC not in' PinmapFile
+   call msg 3, PinmapMissCount 'occurences of missing pin mapping in' PinmapFile
 
 signal off error
 signal off syntax                                           /* restore to default */
@@ -829,7 +829,8 @@ return 0
 /* 12-bit and 14-bit core                               */
 /* ---------------------------------------------------- */
 list_sfr1x: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
-                             adcs_bitcount jalfile BankSize HasLATReg NumBanks msglevel
+                             adcs_bitcount jalfile BankSize HasLATReg NumBanks,
+                             PinmapMissCount msglevel
 PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then                           /* skip non SFRs */
@@ -930,7 +931,8 @@ return 0
 /*       - ADCON0 comes before ADCON1 (in .dev file) */
 /* ------------------------------------------------- */
 list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
-                                adcs_bitcount Core PicName jalfile HasLATReg msglevel
+                                adcs_bitcount Core PicName jalfile,
+                                HasLATReg PinmapMissCount msglevel
 parse arg i, reg .
 PicNameCaps = SysMapCase(PicName)                           /* for alias handling */
 do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8 until next register */
@@ -1248,7 +1250,8 @@ return 0
 /* Extended 14-bit core                                 */
 /* ---------------------------------------------------- */
 list_sfr14h: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
-                              adcs_bitcount jalfile BankSize NumBanks msglevel
+                              adcs_bitcount jalfile BankSize NumBanks,
+                              PinmapMissCount msglevel
 PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then                           /* skip non SFRs */
@@ -1342,7 +1345,7 @@ return 0
 /* Extended 14-bit core                              */
 /* ------------------------------------------------- */
 list_sfr_subfields14h: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
-                       adcs_bitcount Core PicName jalfile msglevel
+                       adcs_bitcount Core PicName jalfile PinmapMissCount msglevel
 parse arg i, reg, addr .
 PicNameCaps = SysMapCase(PicName)                           /* for alias handling */
 do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until next register */
@@ -1459,15 +1462,16 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                         call list_bitfield 1, pin, 'PORT'PortLetter, offset, addr
                         call list_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                         call lineout jalfile, '--'
-                     end
-                     if left(right(n.j,2),1) = PortLetter  &,      /* port letter */
-                        datatype(PinNumber) = 'NUM' then do   /* pin number */
-                        call lineout jalfile, 'procedure' pin"'put"'(bit in x',
-                                                   'at' reg ':' offset') is'
-                        call lineout jalfile, '   pragma inline'
-                        call lineout jalfile, 'end procedure'
-                        call lineout jalfile, '--'
-                     end
+               /*    end   0.1.39  */
+                        if left(right(n.j,2),1) = PortLetter  &,      /* port letter */
+                           datatype(PinNumber) = 'NUM' then do   /* pin number */
+                           call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                      'at' reg ':' offset') is'
+                           call lineout jalfile, '   pragma inline'
+                           call lineout jalfile, 'end procedure'
+                           call lineout jalfile, '--'
+                        end
+                     end      /* 0.1.39 */
                   end
                   when reg = 'OPTION_REG' then do
                      if n.j = 'PS0' then do
@@ -1568,7 +1572,7 @@ return 0
 /* -----------------------------------------------------*/
 list_sfr16: procedure expose Dev. Ram. Name. PinMap. PinANMap. jalfile,
                              adcs_bitcount BankSize NumBanks,
-                             Core PicName AccessBankSplitOffset msglevel
+                             Core PicName AccessBankSplitOffset PinmapMissCount msglevel
 PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'SFR' then
@@ -1691,7 +1695,8 @@ return 0
 /*       ADCON0 comes after ADCON1 (in .dev file)  */
 /* ----------------------------------------------- */
 list_sfr_subfields16: procedure expose Dev. Name. PinMap. PinANMap. PortLat. Core PicName,
-                                       AccessBankSplitOffset adcs_bitcount jalfile msglevel
+                                       AccessBankSplitOffset adcs_bitcount ,
+                                       jalfile PinmapMissCount msglevel
 parse arg i, reg, addr .
 do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until next register */
    parse var Dev.i 'BIT' val0 'NAMES=' val1 'WIDTH=' val2 ')' .
@@ -1753,6 +1758,18 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                      if ansx < 99 then
                         call list_alias 'JANSEL_ANS'ansx, field
                   end
+                  when left(reg,3) = 'LAT'  &,
+                       n.j \= '-' then do                   /* bit active */
+                     PortLetter = right(reg,1)
+                     if left(n.j,3) = 'LAT'  then do        /* bit represents a pin */
+                        if PortLat.PortLetter.offset \= 0 then    /* pin present in PORTx */
+                          call list_bitfield 1, field, reg, offset, addr
+                     end
+                     else do                                /* not a pin */
+                       call list_bitfield 1, field, reg, offset, addr
+                       call lineout jalfile, '--'
+                     end
+                  end
                   when (left(reg,6) = 'SSPCON'  & left(n.j,4) = 'SSPM')   |,
                        (left(reg,7) = 'SSP1CON' & left(n.j,4) = 'SSPM')   |,
                        (left(reg,7) = 'SSP2CON' & left(n.j,4) = 'SSPM')   then do
@@ -1793,15 +1810,16 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                         call list_bitfield 1, pin, 'PORT'PortLetter, offset, addr
                         call list_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                         call lineout jalfile, '--'
-                     end
-                     if substr(n.j,4,1) = portletter  &,    /* port letter */
-                        datatype(pinnumber) = 'NUM' then do /* pin number */
-                        call lineout jalfile, 'procedure' pin"'put"'(bit in x',
-                                                   'at' reg ':' offset') is'
-                        call lineout jalfile, '   pragma inline'
-                        call lineout jalfile, 'end procedure'
-                        call lineout jalfile, '--'
-                     end
+                /*   end    0.1.39   */
+                        if substr(n.j,4,1) = portletter  &,    /* port letter */
+                           datatype(pinnumber) = 'NUM' then do /* pin number */
+                           call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                      'at' reg ':' offset') is'
+                           call lineout jalfile, '   pragma inline'
+                           call lineout jalfile, 'end procedure'
+                           call lineout jalfile, '--'
+                        end
+                     end           /* 0.1.39 */
                   end
                   when reg = 'OSCCON'  &  n.j = 'SCS0' then do
                      field = reg'_SCS'
@@ -1968,7 +1986,7 @@ return 0
 /* create extra aliases for TX and RX pins of only USART module  */
 /* returns index of alias (0 if none)                            */
 /* ------------------------------------------------------------- */
-list_pin_alias: procedure expose  PinMap. Name. PicName Core PinMapMissCount jalfile msglevel
+list_pin_alias: procedure expose  PinMap. Name. PicName Core PinmapMissCount jalfile msglevel
 parse arg reg, PinName, Pin .
 PicNameCaps = SysMapCase(PicName)
 if PinMap.PicNameCaps.PinName.0 = '?' then do
@@ -2847,13 +2865,29 @@ end
 
 else if core = '16' then do                                 /* 18F series */
    select
+      when reg = 'ANCON3' then do
+         if ansx < 8 then do
+            if right(PicName, 3) = 'j94' | right(PicName, 3) = 'j99' then
+               ansx = ansx + 16
+            else
+               ansx = ansx + 24
+         end
+      end
       when reg = 'ANCON2' then do
-         if ansx < 8 then
-            ansx = ansx + 16
+         if ansx < 8 then do
+            if right(PicName, 3) = 'j94' | right(PicName, 3) = 'j99' then
+               ansx = ansx + 8
+            else
+               ansx = ansx + 16
+         end
       end
       when reg = 'ANCON1' then do
-         if ansx < 8 then
-            ansx = ansx + 8
+         if ansx < 8 then do
+            if right(PicName, 3) = 'j94' | right(PicName, 3) = 'j99' then
+               ansx = ansx + 0
+            else
+               ansx = ansx + 8
+         end
       end
       when reg = 'ANCON0' then do
          if ansx < 8 then
@@ -3326,7 +3360,7 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'BORPWR' then do                           /* BOR power mode */
-         if pos('ZPBORMV',val2) > 0 then
+         if pos('ZPBORMV',val2u) > 0 then
             kwd = 'ZPBORMV'
          else if pos('HIGH_POWER',val2u) > 0 then
             kwd = 'HP_BORMV'
@@ -3339,15 +3373,15 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'BROWNOUT' then do
-         if  pos('SLEEP',val2) > 0 & pos('DEEP SLEEP',val2) = 0 then
+         if  pos('SLEEP',val2u) > 0 & pos('DEEP_SLEEP',val2u) = 0 then
             kwd = 'RUNONLY'
          else if pos('HARDWARE_ONLY',val2u) > 0 then do
             kwd = 'ENABLED'
             flag_enabled = 1
          end
-         else if pos('CONTROL',val2) > 0 then
+         else if pos('CONTROL',val2u) > 0 then
             kwd = 'CONTROL'
-         else if pos('ENABLED',val2) > 0 | val2 = 'ON' then do
+         else if pos('ENABLED',val2u) > 0 | val2u = 'ON' then do
             kwd = 'ENABLED'
             flag_enabled = 1
          end
@@ -3369,7 +3403,7 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when left(key,3) = 'CCP' & right(key,3) = 'MUX' then do /* CCPxMUX */
-         if pos('MICRO',val2) > 0 then                      /* Microcontroller mode */
+         if pos('MICRO',val2u) > 0 then                     /* Microcontroller mode */
             kwd = 'pin_E7'                                  /* valid for all current PICs */
          else if val2u = 'ENABLED' then do
             kwd = val2u
@@ -3381,6 +3415,13 @@ do i = i + 1  while i <= dev.0  &,
          end
          else
             kwd = 'pin_'right(val2u,2)                      /* last 2 chars */
+      end
+
+      when key = 'CINASEL' then do
+         if pos('DEFAULT',val2u) > 0 then                   /* Microcontroller mode */
+            kwd = 'DEFAULT'
+         else
+            kwd = 'MAPPED'
       end
 
       when key = 'CPUDIV' then do
@@ -3397,8 +3438,12 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'DSWDTOSC' then do
-         if pos('INT',val2) > 0 then
+         if pos('INT',val2u) > 0 then
             kwd = 'INTOSC'
+         else if pos('LPRC',val2u) > 0 then
+            kwd = 'LPRC'
+         else if pos('SOSC',val2u) > 0 then
+            kwd = 'SOSC'
          else
             kwd = 'T1'
       end
@@ -3411,11 +3456,11 @@ do i = i + 1  while i <= dev.0  &,
          do j=1 while kwd >= 1024
             kwd = kwd / 1024                                /* reduce to K, M, G, T */
          end
-         kwd = 'P'kwd||substr(' KMGT',j,1)
+         kwd = 'P'format(kwd,,0)||substr(' KMGT',j,1)
       end
 
       when key = 'EBTRB' then do
-         if pos('UNPROT',val2) > 0 | pos('DISABLE',val2) > 0 then do /* unprotected */
+         if pos('UNPROT',val2u) > 0 | pos('DISABLE',val2u) > 0 then do /* unprotected */
             kwd = 'DISABLED'
             flag_disabled = 1
          end
@@ -3433,18 +3478,18 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'EMB' then do
-         if pos('12',val2) > 0 then                         /* 12-bit mode */
+         if pos('12',val2u) > 0 then                        /* 12-bit mode */
             kwd = 'B12'
-         else if pos('16',val2) > 0 then                    /* 16-bit mode */
+         else if pos('16',val2u) > 0 then                   /* 16-bit mode */
             kwd = 'B16'
-         else if pos('20',val2) > 0 then                    /* 20-bit mode */
+         else if pos('20',val2u) > 0 then                   /* 20-bit mode */
             kwd = 'B20'
          else
             kwd = 'DISABLED'                                /* no en/disable balancing */
       end
 
       when key = 'ETHLED' then do
-         if pos('ETHERNET',val2) > 0 | val2 = 'ENABLED' then do     /* LED enabled */
+         if pos('ETHERNET',val2u) > 0 | val2u = 'ENABLED' then do     /* LED enabled */
             kwd = 'ENABLED'
             flag_enabled = 1
          end
@@ -3469,15 +3514,28 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'FOSC2' then do
-         if pos('INTRC', val2) > 0  |,
+         if pos('INTRC', val2u) > 0  |,
             val2 = 'ENABLED' then
             kwd = 'INTOSC'
          else
             kwd = 'OSC'
       end
 
+      when key = 'FSCKM' then do                            /* Fail safe clock monitor */
+         x1 = pos('ENABLED', val2u)
+         x2 = pos('DISABLED', val2u)
+         if x1 > 0 & x2 > 0 & x2 > x1 then
+            kwd  = 'SWITCHING'
+         else if x1 > 0 & x2 = 0 then
+            kwd  = 'ENABLED'
+         else if x1 = 0 & x2 > 0 then
+            kwd  = 'DISABLED'
+         else
+            kwd = val2u
+      end
+
       when key = 'HFOFST' then do
-         if pos('STABLE',val2) > 0 | pos('ENABLE',val2) > 0 then do
+         if pos('STABLE',val2u) > 0 | pos('ENABLE',val2u) > 0 then do
             kwd = 'ENABLED'
             flag_enabled = 1
          end
@@ -3497,15 +3555,15 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'IOSCFS' then do
-         if pos('MHZ',val2) > 0 then do
-            if pos('8',val2) > 0 then                       /* 8 MHz */
+         if pos('MHZ',val2u) > 0 then do
+            if pos('8',val2u) > 0 then                       /* 8 MHz */
                kwd = 'F8MHZ'
             else
                kwd = 'F4MHZ'                                /* otherwise */
          end
-         else if val2 = 'ENABLED' then
+         else if val2u = 'ENABLED' then
             kwd = 'F8MHZ'
-         else if val2 = 'DISABLED' then
+         else if val2u = 'DISABLED' then
             kwd = 'F4MHZ'                                   /* otherwise */
          else do
             kwd = val2u
@@ -3515,23 +3573,27 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'LPT1OSC' then do
-         if pos('LOW',val2) > 0 | pos('ENABLE',val2) > 0 then
+         if pos('LOW',val2u) > 0 | pos('ENABLE',val2u) > 0 then
             kwd = 'LOW_POWER'
          else
             kwd = 'HIGH_POWER'
-      end
+         end
 
       when key = 'LS48MHZ' then do
          if pos('TO_4',val2u) > 0 then
             kwd = 'P4'
          else if pos('TO_8',val2u) > 0 then
             kwd = 'P8'
+         else if pos('BY_2',val2u) > 0 then
+            kwd = 'P2'
+         else if pos('BY_1',val2u) > 0 then
+            kwd = 'P1'
          else
             kwd = val2u
       end
 
       when key = 'LVP' then do
-         if pos('ENABLE',val2) > 0 then do
+         if pos('ENABLE',val2u) > 0 then do
             kwd = 'ENABLED'
             flag_enabled = 1
          end
@@ -3555,8 +3617,13 @@ do i = i + 1  while i <= dev.0  &,
             kwd = 'INTERNAL'
       end
 
-      when key = 'MSSPMASK' then do
-         kwd = 'B'word(translate(val2u,' ','_'),1)          /* 5 or 7 expected */
+      when key = 'MSSPMASK'  |,
+           key = 'MSSPMSK1'  |,
+           key = 'MSSPMSK2' then do
+         if left(val2,1) >= 0  &  left(val2,1) <= '9' then
+            kwd = 'B'left(val2, 1)                          /* digit 5 or 7 expected */
+         else
+            kwd = val2u
       end
 
       when key = 'OSC' then do
@@ -3580,16 +3647,25 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'PBADEN' then do
-         if pos('ANALOG',val2) > 0  |  val2 = 'ENABLED' then
+         if pos('ANALOG',val2u) > 0  |  val2 = 'ENABLED' then
             kwd = 'ANALOG'
          else
             kwd = 'DIGITAL'
       end
 
       when key = 'PLLDIV' then do
-         if left(val2,9) = 'DIVIDE BY' then
-            kwd = P||word(val2,3)                           /* 3rd word */
-         else if word(val2,1) = 'NO' then
+         if val2u = 'RESERVED' then
+            kwd = '   '                                     /* to be ignored */
+         else if left(val2u,6) = 'NO_PLL' then
+            kwd = 'P0'                                      /* No PLL */
+         else if right(word(val2,1),1) = 'X' then
+            kwd = 'X'||strip(word(val2,1),'T','X')          /* multiplier */
+         else if left(val2u,9) = 'DIVIDE_BY' then
+            kwd = 'P'||word(val2,3)                         /* 3rd word */
+         else if wordpos('DIVIDED BY', val2) > 0 then
+            kwd = 'P'||word(val2, wordpos('DIVIDED BY', val2) + 2)    /* word after 'devided by' */
+         else if word(val2,1) = 'NO' |,
+                 pos('NO_DIVIDE', val2u) > 0 then
             kwd = 'P1'
          else
             kwd = val2u
@@ -3597,7 +3673,7 @@ do i = i + 1  while i <= dev.0  &,
 
       when key = 'PLLEN' then do
          if pos('MULTIPL',val2) > 0 then
-            kwd = 'P'word(val2,words(val2))                 /* last word */
+            kwd = 'P'word(val2, words(val2))                /* last word */
          else if pos('DIRECT',val2) > 0 | pos('DISABLED',val2) > 0 then do
             kwd = 'P1'
             if left(PicName,4) = '16f7'                     /* compatibility */
@@ -3623,7 +3699,7 @@ do i = i + 1  while i <= dev.0  &,
          end
          else if pos('PROCESSOR',val2) > 0 then do
             kwd = 'MICROPROCESSOR'
-            if pos('BOOT',val2) > 0 then
+            if pos('BOOT',val2u) > 0 then
                kwd = kwd'_BOOT'
          end
          else
@@ -3642,6 +3718,19 @@ do i = i + 1  while i <= dev.0  &,
             kwd = val2u
       end
 
+      when key = 'POSCMD' then do                           /* primary osc */
+         if pos('DISABLED',val2u) > 0 then                  /* check for _R<pin> */
+            kwd = 'DISABLED'
+         else if pos('HS', val2u) > 0 then
+            kwd = 'HS'
+         else if pos('MS', val2u) > 0 then
+            kwd = 'MS'
+         else if pos('EXTERNAL', val2u) > 0 then
+            kwd = 'EC'
+         else
+            kwd = val2u
+      end
+
       when key = 'PWM4MUX' then do
          if pos('_R',val2u) > 0 then                       /* check for _R<pin> */
             kwd = 'pin_'substr(val2u,pos('_R',val2u)+2,2)  /* 2 chars after '_R' */
@@ -3650,14 +3739,14 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'RTCOSC' then do
-         if pos('INTRC',val2) > 0 then
+         if pos('INTRC',val2u) > 0 then
             kwd = 'INTRC'
          else
             kwd = 'T1OSC'
       end
 
       when key = 'SIGN' then do
-         if pos('CONDUCATED',val2) > 0 then
+         if pos('CONDUC',val2u) > 0 then
             kwd = 'NOT_CONDUCATED'
          else
             kwd = 'AREA_COMPLETE'
@@ -3717,10 +3806,17 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'T3CMUX' then do
-         if pos('_R',val2u) > 0 then                       /* check for _R<pin> */
-            kwd = 'pin_'substr(val2u,pos('_R',val2u)+2,2)  /* 2 chars after '_R' */
+         if pos('_R',val2u) > 0 then                        /* check for _R<pin> */
+            kwd = 'pin_'substr(val2u,pos('_R',val2u)+2,2)   /* 2 chars after '_R' */
          else
             kwd = val2u
+      end
+
+      when key = 'T5GSEL' then do
+         if pos('T3G',val2u) > 0 then
+            kwd = 'T3G'
+         else
+            kwd = 'T5G'
       end
 
       when key = 'USBDIV' then do                           /* mplab >= 8.60 (was USBPLL) */
@@ -3731,14 +3827,14 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'USBLSCLK' then do
-         if pos('48',val2) > 0 then
+         if pos('48',val2u) > 0 then
             kwd = 'F48MHZ'
          else
             kwd = 'F24MHZ'
       end
 
       when key = 'USBPLL' then do
-         if pos('PLL',val2) > 0 then
+         if pos('PLL',val2u) > 0 then
             kwd = 'F48MHZ'
          else
             kwd = 'OSC'
@@ -3748,7 +3844,7 @@ do i = i + 1  while i <= dev.0  &,
          if pos('DISABLED',val2) > 0 then
             kwd = 'DISABLED'
          else if pos('ENABLED',val2) > 0 then do
-            kwd = word(val2, words(val2))                   /* last word */
+            kwd = word(val2, words(val2))                 /* last word */
             if left(kwd,1) = 'R' then                       /* pinname Rxy */
                kwd = 'pin_'substr(kwd,2)                    /* make it pin_xy */
          end
@@ -3767,7 +3863,7 @@ do i = i + 1  while i <= dev.0  &,
                end
             end
          end
-         if j > words(val2) then do                         /* no voltage value found */
+         if j > words(val2) then do                        /* no voltage value found */
             if pos('MINIMUM',val2) > 0  |,
                pos(' LOW ',val2) > 0 then
                kwd = 'MINIMUM'
@@ -3780,7 +3876,7 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'WAIT' then do
-         if pos('NOT',val2) > 0 | pos('DISABLE',val2) > 0 then do
+         if pos('NOT',val2u) > 0 | pos('DISABLE',val2u) > 0 then do
             kwd = 'DISABLED'
             flag_disabled = 1
          end
@@ -3791,22 +3887,25 @@ do i = i + 1  while i <= dev.0  &,
       end
 
       when key = 'WDT' then do                              /* Watchdog */
-         pos_en = pos('ENABLE', val2)
-         pos_dis = pos('DISABLE', val2)
-         if pos('RUNNING', val2) > 0 |,
-            pos('DISABLED IN SLEEP', val2) > 0 then
+         pos_en = pos('ENABLE', val2u)
+         pos_dis = pos('DISABLE', val2u)
+         if pos('RUNNING', val2u) > 0 |,
+            pos('DISABLED_IN_SLEEP', val2u) > 0 then
             kwd = 'RUNONLY'
-         else if val2 = 'OFF' | (pos_dis > 0 & (pos_en = 0 | pos_en > pos_dis)) then do
+         else if val2u = 'OFF' | (pos_dis > 0 & (pos_en = 0 | pos_en > pos_dis)) then do
             kwd = 'DISABLED'
             flag_disabled = 1
          end
-         else if pos('CONTROL', val2) > 0 then do
+         else if pos('HARDWARE', val2u) > 0 then do
+            kwd = 'HARDWARE'
+         end
+         else if pos('CONTROL', val2u) > 0  then do
             if core = 16  &  keybitcount = 1  then          /* can only be en- or dis-abled */
                kwd = 'DISABLED'                             /* all 18Fs */
             else
                kwd = 'CONTROL'
          end
-         else if val2 = 'ON' | (pos_en > 0 & (pos_dis = 0 | pos_dis > pos_en)) then do
+         else if val2u = 'ON' | (pos_en > 0 & (pos_dis = 0 | pos_dis > pos_en)) then do
             kwd = 'ENABLED'
             flag_enabled = 1
          end
@@ -3814,15 +3913,38 @@ do i = i + 1  while i <= dev.0  &,
             kwd = val2u                                     /* normalized description */
       end
 
+      when key = 'WDTCLK' then do
+         if pos('ALWAYS',val2u) > 0 then do
+            if pos('INTOSC', val2u) > 0 then
+                kwd = 'INTOSC'
+            else
+                kwd = 'SOCS'
+         end
+         else if pos('FRC',val2u) > 0 then
+            kwd = 'FRC'
+         else if pos('FOSC_4',val2u) > 0 then
+            kwd = 'FOSC'
+         else
+            kwd = val2u
+      end
+
       when key = 'WDTCS' then do
-         if pos('LOW',val2) > 0 then
+         if pos('LOW',val2u) > 0 then
             kwd = 'LOW_POWER'
          else
             kwd = 'STANDARD'
       end
 
+      when key = 'WDTWIN' then do
+         x = pos('WIDTH_IS', val2u)
+         if x > 0 then
+            kwd = 'P'substr(val2u, x + 9, 2)                 /* percentage */
+         else
+            kwd = val2u
+      end
+
       when key = 'WPEND' then do
-         if left(val2u,7) = 'PAGES_0' | left(val2u,6) = 'PAGE_0' then
+         if pos('PAGES_0', val2u) > 0  | pos('PAGE_0', val2u) > 0  then
             kwd = 'P0_WPFP'
          else
             kwd = 'PWPFP_END'
@@ -3832,6 +3954,14 @@ do i = i + 1  while i <= dev.0  &,
          kwd = 'P'word(val2, words(val2))                   /* last word */
       end
 
+      when key = 'WPSA' then do
+         x = pos(':', val2)                                 /* fraction */
+         if x > 0 then
+            kwd = 'P'substr(val2, x + 1)                    /* divisor */
+         else
+            kwd = val2u
+      end
+
       when key = 'WRT' then do
          if val2u = 'ENABLED' | val2u = 'DISABLED' then do
             if val1 > 0 then                                /* (any) bit(s) on */
@@ -3839,8 +3969,10 @@ do i = i + 1  while i <= dev.0  &,
             else
                kwd = 'ALL_PROTECTED'
          end
-         else if pos('OFF',val2) > 0    |,
-                 pos('UNPROT',val2) > 0 then
+         else if pos('NO ADDRESSES', val2) > 0  then
+            kwd = 'ALL_PROTECTED'
+         else if pos('OFF',val2u) > 0    |,
+                 pos('UNPROT',val2u) > 0 then
             kwd = 'NO_PROTECTION'
          else if left(Val2,1) = '0' then do                 /* memory range */
             parse var Val2 '0X'aa '-' '0X'zz .
@@ -3884,24 +4016,26 @@ do i = i + 1  while i <= dev.0  &,
       else if pos('DIGITAL',val2) > 0 then
          kwd = 'DIGITAL'
       else do
-         if left(val2u,1) >= '0' & left(val2u,1) <= '9' then do /* starts with digit */
-            if pos('HZ',val2u) > 0  then                    /* probably frequency (range) */
+         if left(val2,1) >= '0' & left(val2,1) <= '9' then do /* starts with digit */
+            if pos('HZ',val2) > 0  then                     /* probably frequency (range) */
                kwd = 'F'val2u                               /* 'F' prefix */
-            else if pos('_TO_',val2u) > 0  |,               /* probably a range */
-                    pos('0_',val2u) > 0    |,
-                    pos('_0',val2u) > 0  then do
-               if pos('_TO_',val2u) > 0 then do
+            else if pos(' TO ',val2) > 0  |,                /* probably a range */
+                    pos('0 ',  val2) > 0  |,
+                    pos(' 0',  val2) > 0  |,
+                    pos('H-',  val2) > 0  then do
+               if pos(' TO ',val2) > 0  then do
                   kwd = delword(val2,4)                     /* keep 1st three words */
                   kwd = delword(kwd,2,1)                    /* keep only 'from' and 'to' */
-                  kwd = translate(kwd, '  ','Hh')           /* replace 'H' and 'h' by space */
-                  kwd = space(kwd,1,'_')                    /* single undescore */
+                  kwd = translate(kwd, ' ','H')             /* replace 'H' by space */
+                  kwd = space(kwd,1,'_')                    /* single underscore */
                end
                else
                   kwd = word(val2,1)                        /* keep 1st word */
-               kwd = 'R'translate(kwd,'_','-')              /* 'R' prefix, hyphen->undesrcore */
+               kwd = 'R'translate(kwd,'_','-')              /* 'R' prefix, hyphen->underscore */
             end
-            else                                            /* probably a range */
+            else do                                         /* probably a number */
                kwd = 'N'SysMapCase(word(val2,1))            /* 1st word, 'N' prefix */
+            end
          end
          else
             kwd = val2u                                     /* if no alternative! */
@@ -3943,7 +4077,7 @@ return
  * ANSEL0  [ANSEL1]                                                              *
  * ANSELA  [ANSELB  ANSELC  ANSELD  ANSELE  ANSELF  ANSELG]                      *
  * ANCON0  [ANCON1  ANCON2  ANCON3]                                              *
- * ADCON0  [ADCON1  ADCON2  ADCON3]  (more with 18fxxj94 !)                      *
+ * ADCON0  [ADCON1  ADCON2  ADCON3]                                              *
  * CMCON                                                                         *
  * CMCON0  [CMCON1]                                                              *
  * CM1CON  [CM2CON]                                                              *
