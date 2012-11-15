@@ -1,7 +1,7 @@
 -- ---------------------------------------------------------------------
 -- Title: Temperature controlled PC case-fan with 12V brushless DC motor
 --
--- Author: Rob Hamerling, Copyright (c) 2008..2010, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.
 --
 -- Adapted-by:
 --
@@ -22,16 +22,16 @@
 -- should run faster within certain limits:
 -- Temperature boundaries (values in degrees Centigrade):
 --        t <= 25  - stop
---   25 < t <= 30  - hysteresis space: keep previous speed
+--   25 < t <= 30  - hysteresis region: keep previous speed
 --                   (when running: keep minimum speed,
 --                    when stopped: remain stopped)
---   30 < t <= 55  - lineairly interpolated speed between
---                   minimum and maximum
---        t >  55  - max speed
+--   30 < t <= 55  - lineairly interpolated between
+--                   minimum and maximum dutycycle
+--        t >  55  - max dutycycle
 --
 -- Sources:
 --
--- Notes:
+-- Notes: - change dd nov 2012: adapted to changed PWM libraries
 --
 -- ---------------------------------------------------------------------
 --
@@ -125,7 +125,7 @@ include temperature_tc77                        -- TC77 support library
 include pwm_hardware                            -- PWM library
 
 pwm_set_frequency(31000)                        -- high freq. for 8 MHz osc!!
-                                                -- (PWM limited to 0..255)
+
 
 pin_CCP1_direction = output                     -- PWM output pin
 
@@ -133,12 +133,12 @@ pin_CCP1_direction = output                     -- PWM output pin
 
 const  sbyte     TEMPZEROSPEED  = 25            -- stop below this temp
 const  sbyte     TEMPMINSPEED   = 30            -- start above this temp
-const  sbyte     TEMPMAXSPEED   = 55            -- temp for max speed
-                                                -- (MAX-MIN must be 25)
+const  sbyte     TEMPMAXSPEED   = 50            -- temp for max speed
+                                                -- Note: (MAX - MIN) must be 20
 
-const   byte     PWMMAX         = 250           -- PWM for full speed
-const   byte     PWMMIN         = 50            -- PWM for min speed
-const   byte     PWMZERO        = 0             -- PWM for zero speed
+const   byte     PWMMAX         = 100           -- dutycycle (%) for full speed
+const   byte     PWMMIN         = 20            --                   min speed
+const   byte     PWMZERO        = 0             --                   zero speed
 
 var    sbyte     temperature                    -- measured temperature
 var     byte     pwmspeed       = PWMMAX        -- PWM duty cycle (default)
@@ -156,18 +156,18 @@ forever loop                                    -- main loop
     pwmspeed = PWMMAX                           -- set fan to full speed
 
   elsif (temperature <= TEMPZEROSPEED) then     -- below stop temperature
-    pwmspeed = 0                                -- stop the fan
+    pwmspeed = PWMZERO                          -- stop the fan
 
-  elsif (temperature <= TEMPMINSPEED) then      -- between stop and min speed
+  elsif (temperature < TEMPMINSPEED) then       -- between stop and min speed
     -- (nothing)                                -- keep speed (hysteresis!)
 
   else                                          -- interpolate betw. min and max
-    pwmspeed = PWMMIN + ((temperature - TEMPMINSPEED) << 3)
-                                                -- (scale to range 50..250)
+    pwmspeed = PWMMIN + ((temperature - TEMPMINSPEED) * 4)
+                                                -- (scale to range 20..100)
 
   end if
 
-  pwm1_set_dutycycle_lowres(pwmspeed)           -- set duty cycle (48..248)
+  pwm1_set_dutycycle_percent(pwmspeed)          -- set duty cycle (20..100%)
 
   delay_100ms(5)                                -- pause between cycles
 
