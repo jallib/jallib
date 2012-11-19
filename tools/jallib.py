@@ -36,6 +36,12 @@ import datetime, time
 import types as pytypes
 
 try:
+    import glob
+    has_glob = True
+except ImportError:
+    has_glob = False
+
+try:
     import Cheetah.Template
     has_cheetah = True
 except ImportError:
@@ -485,8 +491,6 @@ def do_validate(args):
 
     if at_least_one_failed:
         sys.exit(1)
-    else:
-        sys.exit(0)
 
 
 #--------#
@@ -1852,7 +1856,13 @@ if __name__ == "__main__":
             else:
                 print >> sys.stderr, "Unknown action %s" % e
                 sys.exit(255)
-        callme(action_args)
+        if has_glob and action == 'validate':
+            for fname in glob.glob(sys.argv[2]):
+                callme([fname,])
+            sys.exit(0)
+        else:
+            callme(action_args)
+            sys.exit(0)
     except IndexError,e:
         print >> sys.stderr, "Please provide an action: %s" % repr(ACTIONS.keys())
         sys.exit(255)
