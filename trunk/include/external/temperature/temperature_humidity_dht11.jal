@@ -14,7 +14,13 @@
 -- library itself, and is used to activate the sensor, then actually getting
 -- values. Temp & humidity values comes in one frame from the sensor. Library
 -- split both value type and set global variables. This means these global
--- variables store the last accessed value.
+-- variables store the last accessed value. Variables are word storing floating
+-- point value. Eg: when humidity is 652, then it means its 65.2
+-- .
+-- This library will also work with the more accurate DHT22 version, just declare
+-- a "USE_DHT22" const set to true. DHT22 is also known as RHT03. Careful though,
+-- most people report RHT03 needs 5V to properly work, and DHT22 at least 3V3. If 
+-- you receive timeouts with these when powered with 3V3, give a try with 5V.
 --
 -- Sources:
 --   - datasheet: http://www.robotshop.com/PDF/dht11.pdf
@@ -29,8 +35,8 @@ const byte DHT11_ERR = 1
 const byte DHT11_TIMEOUT = 2
 
 -- global variables to store temperature and humidity values
-var byte dht11_temperature = 0
-var byte dht11_humidity = 0
+var word dht11_temperature = 0
+var word dht11_humidity = 0
 var byte _dht11_buffer[5] = {0,0,0,0,0}
 
 if !defined(DHT11_TIMEOUT_TRY) then
@@ -51,7 +57,7 @@ end if
 -- Calling code must check these returned value in order to know if
 -- global variables are actually storing updated values
 function dht11_read() return byte is
-
+   
    var word counter = 0
    var byte buf_idx = 0
    var byte bit_idx = 7 -- MSb first
@@ -61,7 +67,7 @@ function dht11_read() return byte is
       _dht11_buffer[buf_idx] = 0
    end loop
    buf_idx = 0
-
+   
    -- activate sensor
    pin_dht11_direction = output
    pin_dht11 = low
@@ -73,19 +79,19 @@ function dht11_read() return byte is
    pin_dht11_direction = input
    -- wait for sensor: pin must go high, then low
    while pin_dht11 == low loop
-         counter = counter + 1
-         if counter == DHT11_TIMEOUT_TRY then
-            return DHT11_TIMEOUT
-         end if
+      counter = counter + 1
+      if counter == DHT11_TIMEOUT_TRY then
+         return DHT11_TIMEOUT
+      end if
    end loop
    counter = 0
    while pin_dht11 == high loop
-         counter = counter + 1
-         if counter == DHT11_TIMEOUT_TRY then
-            return DHT11_TIMEOUT
-         end if
+      counter = counter + 1
+      if counter == DHT11_TIMEOUT_TRY then
+         return DHT11_TIMEOUT
+      end if
    end loop
-
+   
    -- ok, sensor is happy to share results whith us, let's read
    for 40 loop
       
@@ -97,7 +103,7 @@ function dht11_read() return byte is
             return DHT11_TIMEOUT
          end if
       end loop
-
+      
       -- as soon as we detect it's going high, we need to measure duration:
       --   * 26-28us means 0
       --   * 70us means 1
@@ -128,19 +134,26 @@ function dht11_read() return byte is
             return DHT11_TIMEOUT
          end if
       end loop
-
+      
    end loop
    
    -- ok, reading is done, store values
    
    -- checksum
-   var byte sum = byte(_dht11_buffer[0] + _dht11_buffer[2])
+   var byte sum = byte(_dht11_buffer[0] + _dht11_buffer[1] + _dht11_buffer[2] + _dht11_buffer[3])
    if _dht11_buffer[4] != sum then
       return DHT11_ERR
    else
-		dht11_humidity    = _dht11_buffer[0];
-	   dht11_temperature = _dht11_buffer[2];
-	   return DHT11_OK
+      if defined(USE_DHT22) then
+         -- DHT22: MSb + LSb gives values * 10. Eg: 00000010_10001100 -> 652 -> 65.2
+         dht11_humidity    = (word(_dht11_buffer[0]) << 8) + word(_dht11_buffer[1])
+         dht11_temperature = (word(_dht11_buffer[2]) << 8) + word(_dht11_buffer[3])
+      else
+         -- DHT11: MSb is integer part, LSb is decimal part, which is always 0 due to bad accuracy of this sensor
+         dht11_humidity    = word(_dht11_buffer[0]) * 10
+         dht11_temperature = word(_dht11_buffer[2]) * 10
+      end if
+      return DHT11_OK
    end if
    
    -- can't get there...
