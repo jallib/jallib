@@ -484,6 +484,8 @@ def do_validate(args):
     # args contain jal file to validate
 
     at_least_one_failed = False
+    if has_glob and len(args) == 1:
+        args = glob.glob(args[0])
     for filename in args:
         errs,warns = validate(filename)
         if report(filename,errs,warns):
@@ -491,6 +493,8 @@ def do_validate(args):
 
     if at_least_one_failed:
         sys.exit(1)
+    else:
+        sys.exit(0)
 
 
 #--------#
@@ -793,7 +797,7 @@ def reindent_file(filename,withchar,howmany):
         if level < 0:
             raise Exception("Adjusting indent level gives negative one. Please report bug !")
 
-    assert level == 0, "Reached the end of file, but indent level is not null (it should)"
+    assert level == 0, "Reached the end of file, but indent level is not null (it should be): %s" % filename
     # ok, now we can save the content back to the file
     fout = file(filename,"wb")
     fout.write(os.linesep.join(content) + os.linesep)   # linefeed on last line
@@ -823,6 +827,8 @@ def do_reindent(args):
     except Exception,e:
         print >> sys.stderr, "Can't understand %s (error: %s)" % (repr(v),e)
 
+    if has_glob and len(args) == 1:
+        args = glob.glob(args[0])
     for filename in args:
         reindent_file(filename,withchar,howmany)
 
@@ -1856,13 +1862,7 @@ if __name__ == "__main__":
             else:
                 print >> sys.stderr, "Unknown action %s" % e
                 sys.exit(255)
-        if has_glob and action == 'validate':
-            for fname in glob.glob(sys.argv[2]):
-                callme([fname,])
-            sys.exit(0)
-        else:
-            callme(action_args)
-            sys.exit(0)
+        callme(action_args)
     except IndexError,e:
         print >> sys.stderr, "Please provide an action: %s" % repr(ACTIONS.keys())
         sys.exit(255)
