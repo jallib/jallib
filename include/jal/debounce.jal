@@ -8,20 +8,113 @@
 --
 -- Description: This library provides a simple switch debounce function.
 --
--- This library uses a word to store the debounce state and configuration
--- and allows threshold counts between 3 and 255 samples in steps of 4.
+-- Quite often, when monitoring the state of a mechanical switch, it is 
+-- necessary to take switch bounce into consideration. Rather than going
+-- straight from one stable state to another, it can take a significant
+-- period during which the contacts of the switch bounce together. If
+-- you don't take this into consideration then, rather than receiving
+-- a single pulse, your sofware can end up seeing a sequence of many
+-- pulses.
 --
--- You need to allocate a word for use by the debouncer to maintain
--- state and initialise it to your preferred bounce count, using
--- state_variable = debounce_init(bounce_count).
+-- In an ideal world without switch bounce, perhaps you'd like to have the
+-- following:
 --
--- The "debounced" function takes a bit and the state variable. It returns
--- a byte in which the bottom two bits will be set as follows:
---   byte & 1 (bit 0) = Current stable state.
---   byte & 2 (bit 1) = 1 if the stable state has just changed.
-
--- A bunch of simple inline functions to return things from
--- the state variable.
+-- forever loop
+--   if (pin_a0 == true) then
+--      -- do some stuff
+--   end if
+--   -- do some other stuff
+-- end loop
+--
+-- This library tries to make it possible to do this while handling 
+-- switch bounce for you. At its simplest, you could do the following:
+--
+-- var word state = debounce_init(200)
+-- forever loop
+--   if (debounce(pin_a0, state) == 1) then
+--      -- do some stuff
+--   end if
+--   -- do some other stuff
+-- end loop
+--
+-- In the example above, the lowest bit returned by the debounce function
+-- will only flip after pin_a0's state has been polled in a stable state 
+-- 200 times in a row. Choosing the threshold (200 in this case) is probably
+-- matter of trial and error - it'll depend on the characteristics of the 
+-- switch you're using and how quickly your polling loop runs.
+--
+-- You must allocate a word to hold the bounce state, threshold and counter, and
+-- initialise it using debounce_init (as above). The maximum threshold value 
+-- you can specify is 255, and the value is only stored with a resolution of 
+-- 6 bits. All threshold values are ORed with 0b11, so specifying a threshold 
+-- value of 9, for example, will give an actual threshold value of 11. This 
+-- may sound a bit odd, but it's so the bottom 2 bits of the status word can 
+-- be stolen and used for storing internal state. The actual counter uses
+-- the full 8 bits.
+--
+-- The debounce function also returns a second bit, which is set only when
+-- the returned state has just changed. This is useful if you want something
+-- to happen just once when a button is pressed, for example.
+--
+--   if (debounce(pin_a0, state) == 3) then
+--       -- do some stuff
+--   end if
+--
+--  The returned values are as follows then:
+--
+--     0b00 =  0   - Input is stable at 0 and has not just changed
+--     0b01 =  1   - Input is stable at 1 and has not just changed
+--     0b10 =  2   - Input is stable at 0 and has just changed from 1
+--     0b11 =  3   - Input it stable at 1 and has just changed from 0
+--
+-- Here is a full list of all functions:
+--
+-- function debounce_init(byte in threshold) return word
+--
+--    This is used to initialise a state variable ready for use.
+--    threshold is the number of calls after which the debounce 
+--    function should consider a new state stable.
+--
+-- function debounce(bit in polled, word in out state) return byte
+--
+--    This is the main function - I'm not going to go into detail here as
+--    it's describe above.
+--
+-- function debounce_fast(bit in polled, word in out state) return byte
+--    
+--    You may have noticed that debounce() imposes a lag while it decides
+--    whether the new state is stable. If it's critical that you respond
+--    immediately to a state change, you can use debounce_fast instead. This
+--    one is used in exactly the same way as debounce(), but rather than
+--    waiting for a stable state, it assumes that a changed state is going
+--    to stabilise to that changed state. So it flips its return value
+--    immediately on detecting a state change. Then, it embargoes further
+--    state changes until the threshold period has passed. 
+--
+--    The downside of this is that if your input data sometimes receives
+--    spurious short pulses that you'd like to ignore, debounce_fast will
+--    act on them, turning them into longer pulses.
+--
+-- function debounce_state(word in state) return byte
+--
+--    This returns the last value that was returned by debounce for this
+--    state variable.
+-- 
+-- function debounce_just_changed(word in state) return bit
+--
+--    This returns the last "just changed" flag that was returned by
+--    debounce for this state variable.
+--
+-- function debounce_stable_state(word in state) return bit 
+--
+--    This returns the last stable state that was returned by
+--    debounce for this state variable.
+--
+-- function debounce_threshold(word in state) return byte is
+--
+--    This returns the threshold value that's in use in this
+--    state variable.
+--
 
 -- Return the same as debounce() returns.
 function debounce_state(word in state) return byte is
@@ -87,6 +180,38 @@ function debounce(bit in polled, word in out state) return byte is
          counter = s[0] | 3
          just_changed = 1
       end if
+   end if
+   
+   -- Return the current stable state and the "just changed" flag.
+   return s[0] & 3
+end function
+
+-- This one flips immediately on a state change, but ignores
+-- subsequent state changes for the counter period. Useful
+-- if you have to respond quickly and you know that an initial
+-- state change will always stabilise eventually.
+
+function debounce_fast(bit in polled, word in out state) return byte is
+   -- So we can get to bits and words of the state individually.
+   -- Serious code size savings by doing this.
+   var byte s[2] at state
+   var byte counter at s[1]
+   var bit just_changed at state:1
+   var bit stable at state:0
+   
+   -- Reset the just changed flag.
+   just_changed = 0
+   
+   if (counter > 0) then
+      -- We're in the counter period, so changes
+      -- to the input state have no effect at all.
+      counter = counter - 1
+   elsif (polled != stable) then
+      -- The state has changed.
+      -- Record it and start the counter.
+      stable = polled
+      just_changed = 1
+      counter = s[0] | 3
    end if
    
    -- Return the current stable state and the "just changed" flag.
