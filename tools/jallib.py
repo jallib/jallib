@@ -726,11 +726,11 @@ def reindent_file(filename,withchar,howmany):
     '''
     indentchars = howmany * withchar
     data = file(filename).read()
-    # dont keep last one, because since it's ended with a \n,
-    # it will appear as an element in lines, resulting in a
-    # new line at the end of file. Is this true ?...
-    lines = re.split("\n|\r\n",data)[:-1]
-
+    lines = re.split("\n|\r\n",data)
+    # End the file with a linefeed
+    if re.match("[\S]+", lines[-1]):
+        lines.append(os.linesep)
+    
     level = 0
     content = []
     for l in lines:
@@ -800,7 +800,7 @@ def reindent_file(filename,withchar,howmany):
     assert level == 0, "Reached the end of file, but indent level is not null (it should be): %s" % filename
     # ok, now we can save the content back to the file
     fout = file(filename,"wb")
-    fout.write(os.linesep.join(content) + os.linesep)   # linefeed on last line
+    fout.write(os.linesep.join(content))
     fout.close()
 
 def do_reindent(args):
