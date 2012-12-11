@@ -41,10 +41,10 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.39'
+   ScriptVersion   = '0.1.40'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4p'
-   MPlabVersion    = '887'
+   MPlabVersion    = '888'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated */
@@ -365,7 +365,8 @@ do i = 1 to Dev.0 until word(Dev.i,1) = 'SFR'               /* process only the 
          if Val1 \= '' then do
             Val1 = X2D(Val1)                                /* take decimal value */
             Val2 = X2D(Val2)
-            if Val1 = X2D('FFF') then
+            if Val1 = X2D('FFF')  |,
+               Val1 = X2D('7FF') then                       /* a.o. 16f527 */
                Core = '12'
             else if Val1 = X2D('2007') then
                Core = '14'
@@ -4169,8 +4170,9 @@ analog. = '-'                                               /* no analog modules
 if Name.ANSEL  \= '-' |,                                    /*                       */
    Name.ANSEL1 \= '-' |,                                    /*                       */
    Name.ANSELA \= '-' |,                                    /* any of these declared */
-   Name.ANSELC \= '-' |,                                    /* any of these declared */
-   Name.ANCON0 \= '-' then do                               /*                       */
+   Name.ANSELC \= '-' |,                                    /*                       */
+   Name.ANCON0 \= '-' |,                                    /*                       */
+   Name.ANCON1 \= '-' then do                               /*                       */
    analog.ANSEL = 'analog'                                  /* analog functions present */
    call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
    call lineout jalfile, '-- Change analog I/O pins into digital I/O pins.'
@@ -4197,6 +4199,8 @@ if Name.ANSEL  \= '-' |,                                    /*                  
          if Name.bitname \= '-' then                        /* ANCON has PCFG bits */
             call lineout jalfile, '   'qname '= 0b1111_1111        -- digital I/O'
          else do
+            if i > 0 & Name.ANCON0 = '-' then               /* PIC has no ANCON0 */
+               j = 8 * (i - 1)                              /* alternative counting */
             bitname = 'JANSEL_ANS'j                         /* JANSEL bit */
             if Name.bitname \= '-' then                     /* ANCON has ANS(EL) bit(s) */
                call lineout jalfile, '   'qname '= 0b0000_0000        -- digital I/O'
