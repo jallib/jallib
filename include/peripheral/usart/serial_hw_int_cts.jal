@@ -1,7 +1,7 @@
 -- ----------------------------------------------------------------------
 -- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
 -- Author: Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.
--- Adapted-by: Joep Suijs
+-- Adapted-by: Joep Suijs, Oliver "Kiste" Seitz
 -- Compiler: 2.4o
 -- Revision: $Revision$
 --
@@ -44,6 +44,10 @@
 --    and variables:
 -- .
 --      alias serial_ctsinv  is  pin_B4         -- incoming data flow control
+--                                              -- Optional, if it is not needed,
+--                                              -- no dummy needs to be assigned.
+--                                              -- Saves a few bytes of code space
+--                                              -- if not defined.
 --      var  bit serial_overflow_discard        -- With transmit buffer overflow:
 --                                              --   TRUE: discard data (non-blocking)
 --                                              --   FALSE: wait for free space (blocking)
@@ -113,10 +117,6 @@
 -- Additional remarks:
 --  - The selection of the CTS pin above is an example, any other pin
 --    which is configurable for output can be used.
---  - When CTS flow control is not desired then assign serial_ctsinv
---    to a dummy bit, for example:
---        var    bit                dummy_cts_bit
---        alias  serial_ctsinv  is  dummy_cts_bit
 --  - The serial_overflow_discard flag may be dynamically changed
 --    (depending on how important the data is for the receiving party).
 --  - Do not touch the following interrupt bits: TXIE, RCIE, PEIE and GIE
@@ -223,7 +223,9 @@ procedure  _serial_receive_interrupt_handler() is
          end loop                               -- until no more overrun
          _serial_offsetrcvtail = 0              -- \  flush circular buffer
          _serial_offsetrcvhead = 0              -- /
-         serial_ctsinv = FALSE                  -- ensure CTS true
+         if defined(serial_ctsinv) then
+           serial_ctsinv = FALSE                -- ensure CTS true
+         end if
 
       else                                      -- data without errors
          _serial_rcvbuf[_serial_offsetrcvhead] = RCREG      -- move byte to rcv buffer
@@ -254,17 +256,24 @@ procedure  _serial_receive_interrupt_handler() is
             _serial_offsetrcvhead = x           -- update offset
          end if                                 -- (else discard byte,
                                                 --  CTS flow control has failed)
-         if (serial_ctsinv == FALSE) then       -- CTS is TRUE
+         if defined(serial_ctsinv) then
+            if (serial_ctsinv == FALSE) then       -- CTS is TRUE
+               if _serial_offsetrcvhead > _serial_offsetrcvtail then  -- offset difference
+                  x = SERIAL_RCVBUFSIZE - _serial_offsetrcvhead + _serial_offsetrcvtail
+               else
+                  x = _serial_offsetrcvtail - _serial_offsetrcvhead
+               end if
+               if (x < SERIAL_DELTA) then          -- circular buffer almost full
+                  serial_ctsinv = TRUE             -- set CTS FALSE
+               end if
+            end if
+         else
             if _serial_offsetrcvhead > _serial_offsetrcvtail then  -- offset difference
                x = SERIAL_RCVBUFSIZE - _serial_offsetrcvhead + _serial_offsetrcvtail
             else
                x = _serial_offsetrcvtail - _serial_offsetrcvhead
             end if
-            if (x < SERIAL_DELTA) then          -- circular buffer almost full
-               serial_ctsinv = TRUE             -- set CTS FALSE
-            end if
          end if
-
       end if
 
    end if
@@ -293,17 +302,18 @@ function serial_hw_read(byte out data) return bit is
    if (_serial_offsetrcvtail >= SERIAL_RCVBUFSIZE) then  -- end of buffer reached
       _serial_offsetrcvtail = 0                 -- wrap
    end if
-   if (serial_ctsinv == TRUE) then              -- CTS is FALSE
-      if (_serial_offsetrcvhead > _serial_offsetrcvtail) then
-         x = SERIAL_RCVBUFSIZE - _serial_offsetrcvhead + _serial_offsetrcvtail
-      else
-         x = _serial_offsetrcvtail - _serial_offsetrcvhead  -- offset difference
-      end if
-      if (x >= SERIAL_DELTA) then               -- enough free space now
-         serial_ctsinv = FALSE                  -- make CTS TRUE
+   if defined(serial_ctsinv) then
+      if (serial_ctsinv == TRUE) then              -- CTS is FALSE
+         if (_serial_offsetrcvhead > _serial_offsetrcvtail) then
+            x = SERIAL_RCVBUFSIZE - _serial_offsetrcvhead + _serial_offsetrcvtail
+         else
+            x = _serial_offsetrcvtail - _serial_offsetrcvhead  -- offset difference
+         end if
+         if (x >= SERIAL_DELTA) then               -- enough free space now
+            serial_ctsinv = FALSE                  -- make CTS TRUE
+         end if
       end if
    end if
-
    return TRUE                                  -- byte available
 
 end function
@@ -407,7 +417,9 @@ procedure serial_hw_init() is
    INTCON_PEIE            = ENABLED             -- peripheral interrupts
    INTCON_GIE             = ENABLED             -- general interrupts
 
-   serial_ctsinv          = FALSE               -- CTS true: accept PC data
+   if defined(serial_ctsinv) then
+      serial_ctsinv          = FALSE               -- CTS true: accept PC data
+   end if
 
 end procedure
 
