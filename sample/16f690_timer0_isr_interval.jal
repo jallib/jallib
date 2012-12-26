@@ -1,0 +1,131 @@
+-- ------------------------------------------------------
+-- Title: Button pushing and debouncing with variable blinking walking leds
+--
+-- Author: Rob Hamerling, Copyright (c) 2012..2012, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4p
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- This sample shows one possibility to handle parallel activities.
+-- In this case 4 walking leds ('knight rider') with varying speed,
+-- controlled by a push button.
+-- The timer0_isr_interval library is used to obtain non blocking delays.
+-- The 'Pickit2 Low Pin Count Board' is used to test the program.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+
+include 16f690                            -- target
+
+pragma target clock 4_000_000             -- oscillator frequency
+
+pragma target OSC   INTOSC_NOCLKOUT       -- internal oscillator
+pragma target WDT   disabled              -- no watchdog
+pragma target MCLR  internal              -- reset internally
+pragma target IESO  disabled              -- single clock source
+pragma target FCMEN disabled              -- no fail safe clock
+--
+OSCCON_IRCF = 0b110                       -- set internal oscillator at 4 MHz
+OSCCON_SCS  = 1                           -- clock source internal
+--
+enable_digital_io()                       -- make all pins digital I/O
+--
+-- Using Pickit2 low pin count demo board.
+-- Note: Backward movement is achieved by giving the middle two of
+--       the four leds an extra alias (led5 = led3, led6 = led2).
+--       So in the program we only have a forward movement,
+--       while the visual effect is a forward and backward movement!
+alias   led1     is pin_C0                -- led
+alias   led2     is pin_C1                -- led
+alias   led3     is pin_C2                -- led
+alias   led4     is pin_C3                -- led
+alias   led5     is pin_C2                -- led
+alias   led6     is pin_C1                -- led
+
+portC_low_direction = output              -- all 4 leds are in the same nibble
+
+alias   button   is pin_A3                -- button (SW1, normally pulled up)!
+pin_A3_direction =  input
+
+-- setup delay library
+const word timer0_isr_rate = 1024         -- ISR rate: 1024 interrupts per second.
+const DELAY_SLOTS = 2                     -- slot 0 controls LED blink frequency
+                                          -- slot 1 button control (debouncing)
+include timer0_isr_interval               -- non blocking delay library
+timer0_isr_init()                         -- initialize timer0 interrupt service
+
+var byte step_delay                       -- stepping speed (delay)
+
+-- control step speed (delay)
+procedure waiting is
+   case step_delay of
+      0: set_delay(0, 999)
+      1: set_delay(0, 512)
+      2: set_delay(0, 256)
+      3: set_delay(0, 128)
+      4: set_delay(0,  64)
+      5: set_delay(0,  32)
+      6: set_delay(0,  16)
+      7: set_delay(0,   8)
+      8: set_delay(0,   4)
+      9: set_delay(0,   2)
+   otherwise set_delay(0, 1)
+   end case
+end procedure
+
+step_delay = 9                            -- initial step delay
+waiting()                                 -- select initial step delay
+
+var bit button_down = FALSE               -- state of push button (debounced)
+set_delay(1,50)                           -- set button check delay
+                                          -- (check 20 times/second)
+
+var byte k = 1                            -- step number
+
+forever loop
+
+   if (check_delay(0)) then               -- led handling
+      portC_low = 0b0000                  -- all 4 leds OFF
+      case k of                           -- select which led ON
+        1 : led1 = ON
+        2 : led2 = ON
+        3 : led3 = ON
+        4 : led4 = ON
+        5 : led5 = ON
+        6 : led6 = ON
+      end case
+      k = k + 1                           -- next led
+      if k > 6 then                       -- last step reached
+        k = 1                             -- restart cycle
+      end if
+      waiting()                           -- re-init blink delay
+   end if
+
+   if (check_delay(1)) then               -- button check required
+      if (button == FALSE) then           -- button pushed (pin pulled down)
+         if (button_down == FALSE) then   -- was up when last time checked
+            button_down = TRUE            -- state change
+            step_delay = step_delay + 1   -- next blink frequency step
+            if (step_delay > 9) then      -- end of cycle
+               step_delay = 0             -- restart cycle
+            end if
+         end if
+      else                                -- button not down anymore
+         button_down = FALSE              -- state change
+      end if
+      set_delay(1, 50)                    -- re-init button check delay
+   end if
+
+end loop
+
+
