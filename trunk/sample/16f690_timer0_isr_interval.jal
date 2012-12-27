@@ -14,26 +14,33 @@
 --
 -- Description:
 -- This sample shows one possibility to handle parallel activities.
--- In this case 4 walking leds ('knight rider') with varying speed,
--- controlled by a push button.
+-- In this case we let 4 leds blink one after another cyclic,
+-- forward and backward ('knight rider' pattern) with varying speed.
+-- There are 10 pre-programmed stepping speeds (step-durations) which
+-- are cycled through one-by-one each time the button is pushed.
+-- The stepping speed will change when the next led is selected
+-- (thus at end of the ON period of the current led).
+-- A debouncing effect is obtained by checking the state at intervals.
 -- The timer0_isr_interval library is used to obtain non blocking delays.
 -- The 'Pickit2 Low Pin Count Board' is used to test the program.
 --
 -- Sources:
 --
 -- Notes:
+-- Other patterns may be obtained by changing led aliases or stepping delays.
 --
 -- ------------------------------------------------------
 
-include 16f690                            -- target
+include 16f690                            -- target PICmicro
 
 pragma target clock 4_000_000             -- oscillator frequency
 
 pragma target OSC   INTOSC_NOCLKOUT       -- internal oscillator
 pragma target WDT   disabled              -- no watchdog
-pragma target MCLR  internal              -- reset internally
+pragma target MCLR  internal              -- MCLR reset internally
 pragma target IESO  disabled              -- single clock source
 pragma target FCMEN disabled              -- no fail safe clock
+pragma target PWRTE enabled               -- power-up delay
 --
 OSCCON_IRCF = 0b110                       -- set internal oscillator at 4 MHz
 OSCCON_SCS  = 1                           -- clock source internal
@@ -41,87 +48,72 @@ OSCCON_SCS  = 1                           -- clock source internal
 enable_digital_io()                       -- make all pins digital I/O
 --
 -- Using Pickit2 low pin count demo board.
--- Note: Backward movement is achieved by giving the middle two of
---       the four leds an extra alias (led5 = led3, led6 = led2).
---       So in the program we only have a forward movement,
---       while the visual effect is a forward and backward movement!
-alias   led1     is pin_C0                -- led
-alias   led2     is pin_C1                -- led
-alias   led3     is pin_C2                -- led
-alias   led4     is pin_C3                -- led
-alias   led5     is pin_C2                -- led
-alias   led6     is pin_C1                -- led
+-- Backward movement is achieved by giving the middle two of
+-- the four leds an extra alias (led4 = led2, led5 = led1).
+-- So in the program we only have a forward movement,
+-- while the visual effect is a forward and backward movement!
+alias   led0     is pin_C0
+alias   led1     is pin_C1
+alias   led2     is pin_C2
+alias   led3     is pin_C3
+alias   led4     is pin_C2
+alias   led5     is pin_C1
 
-portC_low_direction = output              -- all 4 leds are in the same nibble
+portC_low = 0b0000                        -- initially all leds off
+portC_low_direction = ALL_OUTPUT          -- all leds are in the same nibble!
 
-alias   button   is pin_A3                -- button (SW1, normally pulled up)!
+alias  button is pin_A3                   -- button
+                                          -- pin pulled up when button released,
+                                          -- pulled down when button pushed
 pin_A3_direction =  input
 
 -- setup delay library
-const word timer0_isr_rate = 1024         -- ISR rate: 1024 interrupts per second.
-const DELAY_SLOTS = 2                     -- slot 0 controls LED blink frequency
-                                          -- slot 1 button control (debouncing)
+const word timer0_isr_rate = 1024         -- desired # of interrupts per second
+const DELAY_SLOTS = 2                     -- slot 0: stepping speed
+                                          -- slot 1: button check / debouncing
 include timer0_isr_interval               -- non blocking delay library
 timer0_isr_init()                         -- initialize timer0 interrupt service
 
-var byte step_delay                       -- stepping speed (delay)
+-- pre-programmed stepping speeds (step durations, in number of timer0 interrupts)
+var word step_delay[] = { 999, 512, 256, 128, 64, 32, 16, 8, 4, 2 }
 
--- control step speed (delay)
-procedure waiting() is
-   case step_delay of
-      0: set_delay(0, 999)
-      1: set_delay(0, 512)
-      2: set_delay(0, 256)
-      3: set_delay(0, 128)
-      4: set_delay(0,  64)
-      5: set_delay(0,  32)
-      6: set_delay(0,  16)
-      7: set_delay(0,   8)
-      8: set_delay(0,   4)
-      9: set_delay(0,   2)
-      otherwise set_delay(0, 1)
-   end case
-end procedure
+var byte led_select = 5                   -- select led (init: last led)
+var byte speed_index = 0                  -- select stepping speed (init)
+set_delay(0, 0)                           -- set very first LED-ON delay
 
-step_delay = 9                            -- initial step delay
-waiting()                                 -- select initial step delay
-
-var bit button_down = FALSE               -- state of push button (debounced)
-set_delay(1,50)                           -- set button check delay
-                                          -- (check 20 times/second)
-
-var byte k = 1                            -- step number
+var bit button_down_state = FALSE         -- button intially up (assumed)
+set_delay(1, 50)                          -- set very first button check delay
 
 forever loop
 
-   if (check_delay(0)) then               -- led handling
-      portC_low = 0b0000                  -- all 4 leds OFF
-      case k of                           -- select which led ON
+   if (check_delay(0)) then               -- end of delay 0: led handling
+      led_select = led_select + 1         -- next step of cycle
+      if led_select > 5 then              -- beyond last step of cycle
+         led_select = 0                   -- restart stepping cycle
+      end if
+      portC_low = 0b0000                  -- all 4 physical leds OFF
+      case led_select of                  -- set selected led ON
+         0 : led0 = ON
          1 : led1 = ON
          2 : led2 = ON
          3 : led3 = ON
          4 : led4 = ON
          5 : led5 = ON
-         6 : led6 = ON
       end case
-      k = k + 1                           -- next led
-      if k > 6 then                       -- last step reached
-         k = 1                            -- restart cycle
-      end if
-      waiting()                           -- re-init step delay
+      set_delay(0, step_delay[speed_index])   -- re-init stepping delay
    end if
 
-   if (check_delay(1)) then               -- button check required
+   if (check_delay(1)) then               -- end of delay 1: check for button change
       if (button == FALSE) then           -- button pushed (pin pulled down)
-         if (button_down == FALSE) then   -- was up when last time checked
-            button_down = TRUE            -- state change
-            step_delay = step_delay + 1   -- next blink frequency step
-            if (step_delay > 9) then      -- end of cycle
-               step_delay = 0             -- restart cycle
+         if (button_down_state == FALSE) then   -- was up when last time checked
+            button_down_state = TRUE            -- button is pushed
+            speed_index = speed_index + 1       -- select next stepping speed
+            if (speed_index > 9) then           -- beyond last stepping speed number
+               speed_index = 0                  -- restart stepping speed cycle
             end if
          end if
-      else                                -- button not down anymore
-         button_down = FALSE              -- state change
+      else                                -- button not down (anymore)
+         button_down_state = FALSE        -- button is released
       end if
       set_delay(1, 50)                    -- re-init button check delay
    end if
