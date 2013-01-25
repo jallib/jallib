@@ -203,6 +203,13 @@ pinmap = {
               'RA4': ['RA4', 'AN3', 'C1IN1-', 'T1G', 'CWG1B', 'CLC1', 'PWM3', 'CLKOUT'],
               'RA5': ['RA5', 'T1CKI', 'CWG1A', 'NCO1', 'NCO1CLK', 'CLC1IN1', 'CLC2', 'PWM4', 'CLKIN']
               },
+ '12LF1552': {'RA0': ['RA0', 'AN0', 'SDO', 'SS', 'ICSPDAT'],
+              'RA1': ['RA1', 'AN1', 'VREF+', 'SCK', 'SCL', 'ICSPCLK'],
+              'RA2': ['RA2', 'AN2', 'ADOUT', 'T0CKI', 'SDI', 'SDA', 'INT'],
+              'RA3': ['RA3', 'SS', 'SDA', 'SDI', 'MCLR', 'VPP'],
+              'RA4': ['RA4', 'AN3', 'ADGRDA', 'SDO', 'CLKOUT'],
+              'RA5': ['RA5', 'AN4', 'ADGRDB', 'CLKIN']
+              },
  '12LF1822': {'RA0': ['RA0', 'AN0', 'DACOUT', 'CPS0', 'C1IN+', 'P1B', 'TX', 'CK', 'SDO', 'SS', 'MDOUT', 'ICSPDAT', 'ICDDAT'],
               'RA1': ['RA1', 'AN1', 'VREF', 'CPS1', 'C1IN0-', 'SRI', 'RX', 'DT', 'SCL', 'SCK', 'MDMIN', 'ICSPCLK', 'ICDCLK'],
               'RA2': ['RA2', 'AN2', 'CPS2', 'C1OUT', 'SRQ', 'T0CKI', 'CCP1', 'P1A', 'FLT0', 'SDA', 'SDI', 'MDCIN1'],

@@ -17,7 +17,7 @@ if runtype  = 'TEST' then
    jaldir   = 'k:/jal/dev2jal/test/'                /* dir with test device files */
 else
    jaldir   = 'k:/jallib/include/device/'           /* dir with production device files */
-pdfdir      = 'k:/picdatasheets/'                   /* dir with datasheets (local)  */
+pdfdir      = 'n:/picdatasheets/'                   /* dir with datasheets (local)  */
 PicSpecFile = 'k:/jallib/tools/devicespecific.json' /* PIC specific properties      */
 titles      = 'k:/jallib/tools/datasheet.list'      /* datasheet number/title file  */
 
