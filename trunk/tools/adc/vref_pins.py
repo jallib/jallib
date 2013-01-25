@@ -10,6 +10,7 @@ vref_pins = \
  '12HV615': {'RA1': 'VREF'},
  '12HV752': {'RA1': 'VREF+'},
  '12LF1501': {'RA1': 'VREF+'},
+ '12LF1552': {'RA1': 'VREF+'},
  '12LF1822': {'RA1': 'VREF'},
  '12LF1840': {'RA1': 'VREF'},
  '12LF1840T39A': {'RA1': 'VREF'},
