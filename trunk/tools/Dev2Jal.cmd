@@ -41,10 +41,10 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.40'
+   ScriptVersion   = '0.1.41'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4p'
-   MPlabVersion    = '888'
+   MPlabVersion    = '889'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated */
@@ -292,6 +292,7 @@ do i=1 to dir.0                                             /* all relevant .dev
       end
       when core = '14' then do                              /* midrange */
          call list_sfr1x
+         call list_nmmr14
       end
       when core = '14H' then do                             /* extended midrange (Hybrids) */
          call list_sfr14h
@@ -2559,6 +2560,53 @@ end
 return 0
 
 
+/* ---------------------------------------------------------------- */
+/* procedure to list 'shared memory' SFRs of the midrange (NMMRs)   */
+/* (in this case 'shared' means using the same memory address!)     */
+/* input:  - nothing                                                */
+/* output: - pseudo variables are declared                          */
+/*         - subfields are expanded (separate procedure)            */
+/* 14-bit core                                                      */
+/* ---------------------------------------------------------------- */
+list_nmmr14: procedure expose Dev. Ram. Name. jalfile BankSize NumBanks msglevel
+do i = 1 to Dev.0
+   if word(Dev.i,1) \= 'NMMR' then
+      iterate
+   parse var Dev.i 'NMMR' '(KEY=' val1 'MAPADDR=0X' val2 ' ADDR=0X' val0 'SIZE=' val3 .
+   if val1 \= '' then do
+      reg = strip(val1)                                     /* register name */
+      Name.reg = reg                                        /* remember */
+      subst  = '_'reg                                       /* substitute name */
+      addr = strip(val2)                                    /* (mapped) address */
+      size = strip(val3)                                    /* # bytes */
+      if reg = 'SSPMSK' then do
+         call lineout jalfile, '-- ------------------------------------------------'
+         call lineout jalfile, 'var volatile byte  ' left(subst,25) 'at 0x'addr
+         call lineout jalfile, '--'
+         call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
+         call lineout jalfile, '   var byte _SSPCON_saved = SSPCON'
+         call lineout jalfile, '   SSPCON_SSPM = 0b1001'
+         call lineout jalfile, '   'subst '= x'
+         call lineout jalfile, '   SSPCON = _SSPCON_saved'
+         call lineout jalfile, 'end procedure'
+         call lineout jalfile, 'function' reg"'get"'() return byte is'
+         call lineout jalfile, '   var  byte  x'
+         call lineout jalfile, '   var byte _SSPCON_saved = SSPCON'
+         call lineout jalfile, '   SSPCON_SSPM = 0b1001'
+         call lineout jalfile, '   x =' subst
+         call lineout jalfile, '   SSPCON = _SSPCON_saved'
+         call lineout jalfile, '   return  x'
+         call lineout jalfile, 'end function'
+         call lineout jalfile, '--'
+      end
+
+/*    call list_nmmr_sub14 i, reg     */                    /* declare subfields */
+
+   end
+end
+return 0
+
+
 /* ------------------------------------------------------------ */
 /* procedure to list 'shared memory' SFRs of the 18Fs (NMMRs)   */
 /* (in this case 'shared' means using the same memory address!) */
@@ -2567,7 +2615,8 @@ return 0
 /*         - subfields are expanded (separate procedure)        */
 /* 16-bit core                                                  */
 /* ------------------------------------------------------------ */
-list_nmmr16: procedure expose Dev. Ram. Name. jalfile BankSize NumBanks msglevel
+list_nmmr16: procedure expose Dev. Ram. Name. jalfile BankSize NumBanks msglevel,
+                              Core AccessBankSplitOffset
 do i = 1 to Dev.0
    if word(Dev.i,1) \= 'NMMR' then
       iterate
@@ -2581,26 +2630,52 @@ do i = 1 to Dev.0
       subst  = '_'reg                                       /* substitute name */
       addr = strip(val2)                                    /* (mapped) address */
       size = strip(val3)                                    /* # bytes */
-      call lineout jalfile, '-- ------------------------------------------------'
-      call lineout jalfile, 'var volatile byte  ' left(subst,25) 'shared at 0x'addr
-      call lineout jalfile, '--'
-      call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
-      call lineout jalfile, '   pragma inline'
-      call lineout jalfile, '   WDTCON_ADSHR = TRUE'
-      call lineout jalfile, '   'subst '= x'
-      call lineout jalfile, '   WDTCON_ADSHR = FALSE'
-      call lineout jalfile, 'end procedure'
-      call lineout jalfile, 'function' reg"'get"'() return byte is'
-      call lineout jalfile, '   pragma inline'
-      call lineout jalfile, '   var  byte  x'
-      call lineout jalfile, '   WDTCON_ADSHR = TRUE'
-      call lineout jalfile, '   x =' subst
-      call lineout jalfile, '   WDTCON_ADSHR = FALSE'
-      call lineout jalfile, '   return  x'
-      call lineout jalfile, 'end function'
-      call lineout jalfile, '--'
-
-      call list_nmmr_sub16 i, reg                           /* declare subfields */
+      if reg = 'SSP1MSK' | reg = 'SSP2MSK' then do
+         index = substr(reg,4,1)                            /* SSP module number */
+         call lineout jalfile, '-- ------------------------------------------------'
+         call lineout jalfile, 'var volatile byte  ' left(subst,25) 'at 0x'addr
+         call lineout jalfile, '--'
+         call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
+         call lineout jalfile, '   var byte _SSP'index'CON1_saved = SSP'index'CON1'
+         call lineout jalfile, '   SSP'index'CON1_SSPM = 0b1001'
+         call lineout jalfile, '   'subst '= x'
+         call lineout jalfile, '   SSP'index'CON1 = _SSP'index'CON1_saved'
+         call lineout jalfile, 'end procedure'
+         call lineout jalfile, 'function' reg"'get"'() return byte is'
+         call lineout jalfile, '   var  byte  x'
+         call lineout jalfile, '   var byte _SSP'index'CON1_saved = SSP'index'CON1'
+         call lineout jalfile, '   SSP'index'CON1_SSPM = 0b1001'
+         call lineout jalfile, '   x =' subst
+         call lineout jalfile, '   SSP'index'CON1 = _SSP'index'CON1_saved'
+         call lineout jalfile, '   return  x'
+         call lineout jalfile, 'end function'
+         call lineout jalfile, '--'
+         if reg = SSP1MSK then
+            call list_alias  'SSPMSK', reg
+      end
+      else if left(reg,6) = 'PMDOUT' then do
+         call lineout jalfile, '-- ------------------------------------------------'
+         call list_variable 'byte', reg, X2D(addr)               /* normal SFR! */
+      end
+      else do
+         call lineout jalfile, '-- ------------------------------------------------'
+         call lineout jalfile, 'var volatile byte  ' left(subst,25) 'shared at 0x'addr
+         call lineout jalfile, '--'
+         call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
+         call lineout jalfile, '   WDTCON_ADSHR = TRUE'
+         call lineout jalfile, '   'subst '= x'
+         call lineout jalfile, '   WDTCON_ADSHR = FALSE'
+         call lineout jalfile, 'end procedure'
+         call lineout jalfile, 'function' reg"'get"'() return byte is'
+         call lineout jalfile, '   var  byte  x'
+         call lineout jalfile, '   WDTCON_ADSHR = TRUE'
+         call lineout jalfile, '   x =' subst
+         call lineout jalfile, '   WDTCON_ADSHR = FALSE'
+         call lineout jalfile, '   return  x'
+         call lineout jalfile, 'end function'
+         call lineout jalfile, '--'
+         call list_nmmr_sub16 i, reg                        /* declare subfields */
+      end
 
    end
 end
@@ -2844,6 +2919,8 @@ else if core = '14H' then do                                /* enhanced midrange
             ansx = ansx + 0
          else if left(PicName,6) = '16f145' | left(PicName,7) = '16lf145' then
             ansx = word('99 99 99 99 3 99 99 99', ansx + 1)
+         else if left(PicName,6) = '12lf15' then
+            ansx = word('0 1 2 99 3 4 99 99', ansx + 1)
          else if left(PicName,6) = '12f150' | left(PicName,7) = '12lf150' |,
                  left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
                  left(PicName,6) = '12f184' | left(PicName,7) = '12lf184' |,
