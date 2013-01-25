@@ -15,8 +15,10 @@
 </head>
 <body lang="en-US" dir="LTR">
 
+
 <h1>Jallib Device Files Users Guide</h1>
 <p><center>by Rob Hamerling</center>
+
 
 <h2>Table of contents</h2>
 <ol>
@@ -36,7 +38,7 @@
       <li><a href="#gpioregs">GPIO and TRISIO</a>
       <li><a href="#nibbles">Nibbles</a>
       <li><a href="#aliases">Alias names</a>
-      <li><a href="#nmmregs">Non-memory-mapped registers</a>
+      <li><a href="#nmmregs">Non memory mapped registers (NMMR)</a>
       <li><a href="#input_only_pins">Input-only pins</a>
       </ul>
    <li><a href="#peripherals">Names for function modules and peripherals</a>
@@ -75,6 +77,8 @@
 </ol>
 
 <hr>
+
+
 <h1><a name="intro">1. Introduction</a></h1>
 
 <p>This document serves two purposes:
@@ -111,8 +115,9 @@ obvious, such as:
 </ul>
 
 
-
 <hr>
+
+
 <h1><a name="overall">2. The Overall Picture</a></h1>
 
 <p>With the design of the device files I had in mind a structure as shown
@@ -242,6 +247,7 @@ how device files make programming in JAL a piece of cake,
 followed by a description of other features of the device files which are
 aimed at writing device independent libraries.
 
+
 <h2><a name="sample_program">Sample program</a></h2>
 
 <p>The device files define static device (PICmicro) specific matter.
@@ -293,6 +299,7 @@ No extra function libraries are required.
 When loaded in a 16F886 with 20 MHz resonator or crystal a led connected
 (with series resistor!) to pin 3 (RA1) should blink twice a second.
 
+
 <h2><a name="ports_and_pins">Naming conventions for Ports and Pins</a></h2>
 
 <p>Unfortunately MPLAB of Microchip is not particularly consistent in
@@ -323,15 +330,16 @@ existing JalV2 libraries and programs to the Jallib environment.
 <li>to ease the migration of programs to other types of PICs.
 </ol>
 
+
 <h3><a name="portregs">PORTx and pins, TRISx and pin directions</a></h3>
 <p>For all ports and port pins a device independent alias is declared and a
 similar direction declaration, as the following examples show:
 <pre>
-   var  volatile  byte  PORTA  at  &lt;addr&gt;
-   var  volatile  byte  TRISA  at  &lt;addr&gt;
-   var  volatile  byte  PORTA_direction at TRISA
-   var  volatile  bit   pin_A0  at  PORTA : 0
-   var  volatile  bit   pin_A0_direction at TRISA : 0
+   var  volatile  byte  PORTA            at  &lt;addr&gt;
+   var  volatile  byte  TRISA            at  &lt;addr&gt;
+   alias                PORTA_direction  is TRISA
+   var  volatile  bit   pin_A0           at  PORTA : 0
+   alias                pin_A0_direction at TRISA : 0
 </pre>
 etc. (for all other existing pins and ports).
 
@@ -358,13 +366,13 @@ pin_A0_direction, etc.
 etc. (for all other existing pins)
 
 <p>Pins which can be input-only may have no corresponding _direction
-variable, for example pin_E3 of the 18F4550.
+variable, for example pin_E3_direcxtion of the 18F4550 is not declared.
 
 
 <h3><a name="nibbles">Nibbles</a></h3>
 <p>Because the upper and lower 4 bits ('nibble') of a port are
 frequently used as a unit - for example as data lines for LCDs -
-these are declared as pseudo variables.
+these are declared as (pseudo) variables.
 <pre>
    PORTx_low               - bits 0..3    (low order bits)
    PORTx_high              - bits 4..7    (high order bits)
@@ -405,7 +413,7 @@ you can also specify an alias in your program.
 For example when you have a red led connected to pin 0 of PortA, you could
 specify:
 <pre>
-   alias led_red  is  pin_A0
+   alias  led_red  is  pin_A0
 </pre>
 and use 'led_red = ON' or 'led_red = OFF' assignments in your program.
 <p>Pin aliases in the device files are declared in this
@@ -452,38 +460,54 @@ processor mode.
 One position of CCP2 is pin_C1, the alternate pin is pin_E7
 (in Microcontroller mode) or pin_B3 (in Microprocessor,
 Extended Microcontroller and Microcontroller with Boot Block modes).
-This variant is not always available in the current device files!
+This variant is not always available in the device files!
 
 
 <h3><a name="nmmregs">Non-memory-mapped registers</a></h3>
-<p>Some PICs, mainly in the baseline series are missing some addressable
-('memory mapped') Special Function Registers (SFRs).
-For example the 12-bit core PICs (10Fs, 12F5x, etc) have no memory
-mapped TRISx registers, in stead these PICs have a TRISx instruction to
-set the direction of ports or pins.
-This would make it impossible for function libraries and application
-programs to use statements like:
-<pre>
-   PORTA_direction = all_output
-</pre>
-To make this possible the device files contain pseudo variables which mimic
-the existence of memory mapped registers.
-<p>For example even though a 16F509 has no addressable TRISA register,
+<p>In addition to or in stead of normal (memory mapped) Special Function
+Registers (SFRs) some PICs have Non Memory Mapped Registers (NMMRs).
+It requires a special action or the setting of a flag or a bit pattern
+in another register to read or write these registers.
+For example:
+<ul>
+<li>The 12-bit core PICs like 10Fs, 12F5x have no memory mapped TRISx
+registers.
+In stead these PICs have a TRIS instruction to set the direction of ports
+or pins.
+This would make it impossible to use statements like:
+  <b>'PORTA_direction = all_output'</b>
+<li>Some midrange PICs like 16f690, 16f887 have a register SSPMSK
+which has the same memory address as the SSPADD register.
+Which of both is accessed depends on the bit pattern in SSPCON_SSPM.
+<li>Some PICs of the 18F series have several SFR pairs of which both
+registers have the same address.
+For example of the 18F65J50 ADCON0 and ANCON1 have both address FC2h.
+The WDTCON_ADSHR bit determines which of a pair is accessed.
+<li>Some 18Fs like the 18f44j11 have registers PMADDL/H with the same
+address as PMOUTL/H.
+Which of both is accessed depende on the mode of operation.
+</ul>
+For all these situation the device files contain pseudo variables to make it
+possible to use the 'Non Memory Mapped Registers'
+as if these were normal 'Special Function Registers',
+for both read and write.
+For example:
+<ul>
+<li>Even though a 16F509 has no addressable TRISA register,
 you can still specify:
-<pre>
-   pin_A5_direction = output
-</pre>
+  <b>'pin_A5_direction = output'</b>
 to make pin_A5 (alias of pin_GP5) an output pin.
+<li>For PICs of which SSPMSK has the same address as SSPADD:
+when accessing register SSPMSK the bits of SSPCON_SSPM will be temporary set
+automatically to 0b1001 and restored afterwards.
+<li>For PICs of which ANCON1 has the same address as ADCON0:
+when register ANCON1 is accessed the WDTCON_ADSHR bit will be temporary set
+automatically and reset afterwards.
+<li>In case of PICs like the 18f44j11 the PMOUTL/H registers are declared as
+normal SFRs, because either PMADDL/H or PMOUTL/H are used exclusively in
+different modes of operation.
+</ul>
 
-<p>Some PICs of the 18F series have SFRs which are only accessible when
-the ADSHR bit in WDTCON is set (when not set a different SFR is accessed).
-For example with the 18F65J50 ADCON0 and ANCON1 share address FC2h.
-When the ADSHR bit of WDTCON is reset (0) ADCON0 is accessed,
-when the ADSHR bit is set (1) ANCON1 is accessed.
-<br>The device files will do this automatically with the help of pseudo
-variables.
-For example when ANCON1 is used in a JALV2 statement the ADSHR bit is set
-automatically (and reset afterwards).
 
 
 <h3><a name="input_only_pins">Input-only pins</a></h3>
@@ -515,6 +539,7 @@ the corresponding pin_direction.
 
 
 <h2><a name="peripherals">Names of functions modules</a></h2>
+
 
 <h3><a name="CCPregs">Names for registers and subfields of CCP modules</a></h3>
 <p>There are CCP modules and Enhanced CCP modules.
@@ -687,6 +712,7 @@ With higher resolutions 2 bytes are used: the high order bits are always
 in ADRESH, the low order bits can be in ADRESL.
 <br>Note: when both ADRESL and ADRES are present ADRES is a 16 bits variable.
 
+
 <h3><a name="EEPROM">Names of EEPROM control registers</a></h3>
 <p>Some elementary differences have to be taken into acount with respect to
 reading and writing memory:
@@ -799,6 +825,7 @@ first or only module and a '2' suffix for the second module.
 <tr><td>pin_SCK_direction </td> <td>pin_SCK2_direction </td> </tr>
 <tr><td>pin_SCL_direction </td> <td>pin_SCL2_direction </td> </tr>
 </table>
+
 
 <h3><a name="TIMERregs">Names of Timer fields</a></h3>
 <p>Some register subfields of timer control registers have inconsistent
@@ -929,6 +956,7 @@ To store it in OSCCON a MOVWF OSCCAL is required at address 0x0000 of the
 user program.
 <p>This is not supported by compiler or device file!
 
+
 <h3>Midrange PICs</h3>
 <p>The midrange PICs with this feature (12F629/675, 16F630/676)
 have in the high memory word a RETLW instruction.
@@ -955,11 +983,13 @@ you should <b>not</b> use this technique!
 When the high memory does not contain a return instruction the PIC will
 most likely enter an endless reset loop.
 
+
 <h3>Baseline PICs</h3>
 <p>The baseline PICs with this feature (10Fs, some 12Fs) have in high memory
 a MOVLW instruction.
 Therefore the technique of 'calling' the high memory address as described
 above for the midrange cannot be used for the baseline!
+
 
 <h3>Generic</h3>
 <p>When your program is for a baseline PIC, or when it is for a midrange PIC
@@ -995,6 +1025,7 @@ For the input and/or output of some modules a pin can be selected.
 There are limitations in the choice of pins, but more importantly there a
 many similarities and some differences between PICs.
 
+
 <h3>Input Mapping</h3>
 <p>Pin selection for an input function is controlled by assigning a
 <b>pin number</b> to a specific register.
@@ -1002,6 +1033,7 @@ For example the Receive pin of ESUART2 is assigned to a specific pin
 by putiing the pin number in RPINR16_RX2DT2 (x of pin_RPx).
 The control registers for the all function are the same for all PICs.
 Differences between PICs are only in the number of remappable pins.
+
 
 <h3>Output Mapping</h3>
 <p>Pin selection for an output function is controlled by assigning a
@@ -1064,6 +1096,7 @@ The symbolic numbers are defined in constants_jallib.jal.
 
 <h2><a name="fuses">Naming convention for configuration bit fields (fuses)</a></h2>
 
+
 <h3>Pragma fuse_def</h3>
 <p>The MPLAB .dev files contain a <b>keyword</b> for every configuration
 bit or group of bits,
@@ -1076,6 +1109,7 @@ The descriptions have an even larger variation and are sometimes very long.
 a consistent keyword (in JalV2 called 'opt') and single-word symbolic values
 (in JalV2 called 'tag') are desired.
 The Jallib 'standard' is described below.
+
 
 <h3>Fuse_def keywords, synonyms and replaced words</h3>
 <p>For all pragma fuse_defs a keyword and
@@ -1151,6 +1185,7 @@ applied.
 If you encounter such an occasion please report it in the Jallib
 discussion group at Google Groups.
 </ol>
+
 
 <h3>Fuse_def symbolic values</h3>
 <p>As mentioned above the MPLAB .dev files contain frequently long and
@@ -1547,6 +1582,7 @@ suitable for your application!
 <b>Never trust defaults!</b>
 </ol>
 
+
 <h2>Alternate ways to specify configuration bits</h2>
 <p>When you find the specification of fuse_def inconvenient or
 you want to specify the bits one-by-one by yourself, the compiler
@@ -1623,11 +1659,13 @@ The rules for unused configuration bits are:
 
 <hr>
 
+
 <h2><a name="compiler">Data Memory and Compiler requirements</a></h2>
 
 <p>The compiler - at the moment of this writing version 2.4p - has a
 number of requirements for device specifications.
 The most important from a user perspective are the following:
+
 
 <h3><a name="memdata">Data memory</a></h3>
 <p>The device files specify the amount of available data memory (RAM)
@@ -1644,6 +1682,7 @@ The last number will mostly be somewhat smaller than what you
 might expect by reading the data memory section of the datasheet!
 If you are interested in the reasons, please read the following sections.
 
+
 <h3><a name="memusb">Data memory for PICs with USB module</a></h3>
 This is data memory sometimes dedicated to the USB module.
 But sometimes it can be used as regular data memory by the user program,
@@ -1652,6 +1691,7 @@ and sometimes it can be shared between USB module and user program.
 So the amount of available data memory as specified in the device file
 can be smaller than the total amount of memory specified in the
 datasheet due to reservation by the USB module.
+
 
 <h3><a name="memshare">Shared Memory</a></h3>
 <p>The compiler recognises also another pragma for data memory:
@@ -1723,11 +1763,11 @@ described above for the midrange PICs.
 compiler variables _pic_accum and _pic_isr_w.
 
 
-
 <h3><a name="analog">Analog modules</a></h3>
 <p>(to be done)
 
 <hr>
+
 
 <h2><a name="compat">Compatibility and Miscellaneous Remarks</a></h2>
 
@@ -1779,7 +1819,9 @@ compiler automatically and don't occupy memory!
 <!- ---------------------------------------------------------------------- -->
 <hr>
 
+
 <h1><a name="gen">4. Generating device files</a></h1>
+
 
 <h2><a name="genproc">The process</a></h2>
 <p>The device files are generated by transforming MPLAB files with a script
@@ -1823,6 +1865,7 @@ Regina Rexx.
 <li>Enter the command: regina dev2jal.cmd test
 </ul>
 The generated device files will be in subdirectory 'test' (./test).
+
 
 <h2><a name="gennewds">To do when new datasheets become available</a></h2>
 <p>Generally MPLAB contains .dev files of PICs of which the datasheet is not
