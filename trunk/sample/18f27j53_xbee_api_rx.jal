@@ -1,0 +1,127 @@
+-- Title: XBee API receiving sample
+-- Author: Sebastien Lelong, Copyright (c) 2012, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4n
+--
+-- This file is part of jaluino  (http://jaluino.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this sample show how to use xbee_api library to receive
+-- data through XBee in API mode.
+-- See tutorial here:
+--  - http://jaluino.org/building-xbee-network-part-1
+--  - http://jaluino.org/building-xbee-network-part-2
+-- Derived from a Jaluino sample
+
+-- we'll output received data through the other serial module
+const ENABLE_PPS_RX2TX2_B7B6 = 1
+const USE_SERIAL_HW2 = 115_200
+
+-- Xtal 16MHz w/ PLL, system clock 48MHz
+include 18f27j53
+pragma target clock 48_000_000   -- oscillator frequency
+-- magical statements
+pragma target PLLDIV	   P4
+pragma target CPUDIV	   P1
+pragma target PLLEN  P1          -- PLL via fuse turned off
+pragma target OSC	   HS_PLL
+pragma target WDT  disabled      -- no watchdog
+OSCTUNE_PLLEN = on               -- PLL via OSCTUNE enabled
+-- declare secondary oscillator on T1OSI/T1OSO pins
+pragma target RTCOSC T1OSC
+pragma target SOSCSEL HS_CP
+_usec_delay(2000) -- PLL needs 2ms before stable
+
+enable_digital_io()
+
+alias onboard_led is pin_C2
+alias onboard_led_direction is pin_C2_direction
+
+include delay
+include print
+
+const serial_hw_baudrate = 9_600
+include serial_hardware
+serial_hw_init()
+alias xbee_carrier is serial_hw_data
+
+const byte XBEE_PAYLOAD_SIZE = 2
+include xbee_api
+xbee_init()
+
+-- (for the record)
+-- Me, the source Xbee has the following addresses
+-- SH: 13A200
+-- SL: 4054F82F
+
+-- Assuming LED is enable on hajumper)
+onboard_led_direction =  output
+-- receving loop
+forever loop
+
+   var byte i
+
+   xbee_read_packet()
+   const byte msg[] = "--Response--"
+   const byte api_id[] = "api_id: "
+   const byte frame_id[] = "frame_id: "
+   const byte frame_data[] = "frame_data: "
+   const byte msb_length[] = "msb_length: "
+   const byte lsb_length[] = "lsb_length: "
+   const byte checksum[] = "checksum: "
+   const byte frame_length[] = "frame_length: "
+   const byte complete[] = "complete: "
+   const byte error_code[] = "error_code: "
+   const byte payload[] = "payload: "
+
+   print_string(serial_hw2_data,msg)
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,api_id)
+   print_byte_hex(serial_hw2_data,xbee_res.api_id)
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,frame_id)
+   print_byte_hex(serial_hw2_data,xbee_res.frame_id)
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,msb_length)
+   print_byte_hex(serial_hw2_data,xbee_res.msb_length)
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,lsb_length)
+   print_byte_hex(serial_hw2_data,xbee_res.lsb_length)
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,frame_length)
+   print_byte_hex(serial_hw2_data,xbee_res.frame_length)
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,checksum)
+   print_byte_hex(serial_hw2_data,xbee_res.checksum)
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,complete)
+   print_bit_logic(serial_hw2_data,xbee_res.complete)
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,error_code)
+   print_byte_hex(serial_hw2_data,xbee_res.error_code)
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,frame_data)
+   for xbee_res.frame_length using i loop
+       print_byte_hex(serial_hw2_data,xbee_res.frame_data[i])
+   end loop
+   print_crlf(serial_hw2_data)
+   --
+   print_string(serial_hw2_data,payload)
+   for XBEE_PAYLOAD_SIZE loop
+       serial_hw2_data = xbee_res_payload
+   end loop
+   print_crlf(serial_hw2_data)
+
+end loop
+
+
+

@@ -1,0 +1,95 @@
+-- Title: Sending data using Xbee API mode
+-- Author: Sebastien Lelong, Copyright (c) 2012, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+--
+-- This file is part of jaluino  (http://jaluino.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: show how to send data through Xbee in API operation.
+-- See tutorial here:
+--  - http://jaluino.org/building-xbee-network-part-1
+--  - http://jaluino.org/building-xbee-network-part-2
+-- Derived from a Jaluino sample
+--
+
+-- Xtal 16MHz w/ PLL, system clock 48MHz
+include 18f27j53
+pragma target clock 48_000_000   -- oscillator frequency
+-- magical statements
+pragma target PLLDIV	   P4
+pragma target CPUDIV	   P1
+pragma target PLLEN  P1          -- PLL via fuse turned off
+pragma target OSC	   HS_PLL
+pragma target WDT  disabled      -- no watchdog
+OSCTUNE_PLLEN = on               -- PLL via OSCTUNE enabled
+-- declare secondary oscillator on T1OSI/T1OSO pins
+pragma target RTCOSC T1OSC
+pragma target SOSCSEL HS_CP
+_usec_delay(2000) -- PLL needs 2ms before stable
+
+enable_digital_io()
+
+alias onboard_led is pin_C2
+alias onboard_led_direction is pin_C2_direction
+
+include delay
+include print
+
+const serial_hw_baudrate = 9_600
+include serial_hardware
+serial_hw_init()
+
+alias xbee_carrier is serial_hw_data
+--alias xbee_carrier_data_available is serial_hw_data_available
+const byte XBEE_PAYLOAD_SIZE = 2
+include xbee_api
+xbee_init()
+
+-- define which XBee will receive the message
+-- Dest. Xbee is connected to my PC, it's a coordinator
+-- with firmware API AP=2. According to X-CTU tool:
+-- SH: 13A200
+-- SL: 40301109
+-- 16bits address: 0
+var xbee_address64 xbee_dest
+xbee_dest.msb = 0x0013a200
+xbee_dest.lsb = 0x40301109
+var word xbee_net = 0xfffe -- I think it's a broadcast network address
+
+-- (for the record)
+-- Me, the source Xbee has the following addresses
+-- SH: 13A200
+-- SL: 4054F82F
+
+xbee_req.addr64 = xbee_dest
+xbee_req.network = xbee_net
+xbee_req.api_id = XBEE_ZB_TX_REQUEST
+xbee_req.frame_id = 1
+-- also set the following, else it's working
+-- when PIC gets prog'd, not after a power down/up
+xbee_req.broadcast_radius = 0
+xbee_req.option = 0
+
+
+-- Assuming LED is enable on hajumper)
+onboard_led_direction =  output
+
+forever loop
+   var byte i
+   -- send 0:0,1:2,2:4,3:6, ...
+   for 120 using i loop
+      onboard_led = high
+      
+      -- prepare payload
+      xbee_req.payload[0] = i
+      xbee_req.payload[1] = i + 1
+      xbee_send()
+
+      delay_1s(1)
+      onboard_led = low
+      delay_1s(1)
+
+   end loop
+end loop
+
