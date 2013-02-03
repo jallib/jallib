@@ -14,10 +14,6 @@
 -- Derived from a Jaluino sample
 --
 
--- we'll output received data through the other serial module
-const ENABLE_PPS_RX2TX2_B7B6 = 1
-const USE_SERIAL_HW2 = 115_200
-
 -- Xtal 16MHz w/ PLL, system clock 48MHz
 include 18f27j53
 pragma target clock 48_000_000   -- oscillator frequency
@@ -45,6 +41,29 @@ const serial_hw_baudrate = 9_600
 include serial_hardware
 serial_hw_init()
 alias xbee_carrier is serial_hw_data
+
+-- we'll output received data through the other serial module
+-- configure pins through PPS as:
+--  * B7 <= RX2
+--  * B6 => TX2
+include pps
+-- PPS module writes are protected, we need to first unlock it
+pps_control_lock(false)
+-- TX2 is an output function: we assign a function to a RP pin (here RP9)
+PPS_MAP_RP9 = PPS_TX2CK2
+-- RX2 is an input function: we assign a RP pin the a function register
+PPS_MAP_RX2DT2 = RP10
+-- PPS configuration is done, we can lock again to apply changes
+pps_control_lock(true)
+-- declare aliases for the remapped RX2 and TX2 pins
+alias pin_RX2            is  pin_RP10
+alias pin_RX2_direction  is  pin_RP10_direction
+alias pin_TX2            is  pin_RP9
+alias pin_TX2_direction  is  pin_RP9_direction
+const SERIAL_HW2_BAUDRATE = 115_200
+include serial_hardware2
+serial_hw2_init()
+
 
 const byte XBEE_PAYLOAD_SIZE = 2
 include xbee_api
