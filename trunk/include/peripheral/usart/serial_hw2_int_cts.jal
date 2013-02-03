@@ -1,14 +1,14 @@
--- ----------------------------------------------------------------------
--- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
+-- --------------------------------------------------------------------------
+-- Title: serial_hw2_int_cts.jal. Interrupt driven buffered serial interface with flow control.
 -- Author: Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.
--- Adapted-by: Joep Suijs, Oliver "Kiste" Seitz
--- Compiler: 2.4o
+-- Adapted-by: Karl "Kiste" Seitz
+-- Compiler: 2.4p
 -- Revision: $Revision$
 --
 -- This file is part of jallib  (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Serial communications:
+-- Description: Serial communications for the second USART:
 --   - receive and transmit data transfer is interrupt driven
 --   - receive and transmit data transfer is buffered (circular buffers)
 --   - provides automatic CTS flow control with spare free space for FiFo buffer
@@ -22,20 +22,20 @@
 -- Available procedures/functions for application programs:
 -- .
 --   - serial_hw2_init()                         -- initialise communications
--- .                                             -- (called automatically)
+-- .
 --   - serial_send2_byte(byte out <byte>)        -- send byte
--- .                                             -- returns the transmitted byte
+--                                               -- returns the transmitted byte
 --   - serial_hw2_read(byte out <byte>) return bit  -- receive byte
--- .                                             -- returns TRUE with data,
--- .                                             -- FALSE when no data available
+--                                               -- returns TRUE with data,
+--                                               -- FALSE when no data available
 --   - serial_hw2_write(byte in <byte>)          -- send byte (wait if queue full)
 -- .
 --   - serial_hw2_data = <byte>                  -- send byte, wait if queue full
 -- .
---   - <byte> = serial_hw2_data                  -- receive byte, wait if queue empty
--- .
 --   - serial_hw2_tx_buffer_free()               -- get free bytes in transmit buffer
--- .                                             -- returns number of free bytes
+--                                               -- returns number of free bytes
+-- .
+--   - <byte> = serial_hw2_data                  -- receive byte, wait if queue empty
 -- .
 -- Directions for use of this library in application programs
 -- (in this sequence):
@@ -47,10 +47,9 @@
 --    and variables:
 -- .
 --      alias serial2_ctsinv  is  pin_B4        -- incoming data flow control
---                                              -- Optional, if it is not needed,
+--                                              -- Optional, if no CTS flow control needed
 --                                              -- no dummy needs to be assigned.
---                                              -- Saves a few bytes of code space
---                                              -- if not defined.
+-- .
 --      var  bit serial2_overflow_discard       -- With transmit buffer overflow:
 --                                              --   TRUE: discard data (non-blocking)
 --                                              --   FALSE: wait for free space (blocking)
@@ -59,24 +58,24 @@
 --                                              -- but prevented with CTS flow control,
 --                                              -- provided the sender has flow control enabled
 -- .
---    and optional, you could define one or more of the constants below.
---    You should do so if you want different values than the ones shown.
+--    And optionally you could define one or more of the constants below.
+--    You should do so if you want different values than shown (= defaults).
 --    If not defined, the following values are used:
 -- .
 --      const   SERIAL2_XMTBUFSIZE  = 32        -- size of transmit buffer
 --      const   SERIAL2_RCVBUFSIZE  = 64        -- size of receive buffer
 --      const   SERIAL2_DELTA       = 17        -- spare space receive buffer
---                                              -- if possible keep SERIAL_DELTA = 17!
+--                                              -- if possible keep SERIAL2_DELTA = 17!
 -- .
---    When the physical locations of pin_TX and pin_RX are configurable for a specific
---    PIC, the device file will probably contain names like pin_TX_RB2 and pin_RX_RB1
+--    When the physical locations of pin_TX2 and pin_RX2 are configurable for a specific
+--    PIC, the device file will probably contain names like pin_TX2_RC2 and pin_RX2_RC1
 --    and another pair with other pin suffixes.
 --    Depending for which pair of pins the USART is configured aliases
 --    without suffixes have to be specified, like:
---         alias  pin_TX2            is  pin_TX2_RB2
---         alias  pin_RX2            is  pin_RX2_RB1
---         alias  pin_TX2_direction  is  pin_TX2_RB2_direction
---         alias  pin_RX2_direction  is  pin_RX2_RB1_direction
+--         alias  pin_TX2            is  pin_TX2_RC2
+--         alias  pin_RX2            is  pin_RX2_RC1
+--         alias  pin_TX2_direction  is  pin_TX2_RC2_direction
+--         alias  pin_RX2_direction  is  pin_RX2_RC1_direction
 -- .
 -- 2. Include this library.
 -- .
@@ -84,8 +83,8 @@
 -- .
 -- 3. Prepare pins:
 --       pin_B4_direction = OUTPUT              -- incoming data flow control
---       serial2_overflow_discard = FALSE        -- do not discard output
---    Notes: - pin_TX and pin_RX are selected automatically
+--       serial2_overflow_discard = FALSE       -- do not discard output
+--    Notes: - pin_TX2 and pin_RX2 are selected automatically
 --           - direction settings of these pins are taken care of by the library
 -- .
 -- 4. Call serial_hw2_init() to initialize serial communications.
@@ -168,16 +167,16 @@ procedure  _serial2_transmit_interrupt_handler() is
 
    var  byte  x
 
-   if ((SERIAL2_TXIF2 == TRUE) & (SERIAL2_TXIE2 == TRUE)) then    -- UART xmit interrupt
-      if (_serial2_offsetxmttail != _serial2_offsetxmthead) then -- data in xmit buffer
-         x = _serial2_xmtbuf[_serial2_offsetxmttail]            -- next byte to xmit
-         _serial2_offsetxmttail = _serial2_offsetxmttail + 1    -- next position
-         if (_serial2_offsetxmttail >= SERIAL2_XMTBUFSIZE) then -- end of buffer reached
-            _serial2_offsetxmttail = 0                          -- wrap
+   if ((SERIAL2_TXIF2 == TRUE) & (SERIAL2_TXIE2 == TRUE)) then    -- UART2 xmit interrupt
+      if (_serial2_offsetxmttail != _serial2_offsetxmthead) then  -- data in xmit buffer
+         x = _serial2_xmtbuf[_serial2_offsetxmttail]              -- next byte to xmit
+         _serial2_offsetxmttail = _serial2_offsetxmttail + 1      -- next position
+         if (_serial2_offsetxmttail >= SERIAL2_XMTBUFSIZE) then   -- end of buffer reached
+            _serial2_offsetxmttail = 0                            -- wrap
          end if
-         TXREG = x                                              -- actually xmit byte
-      else                                                      -- xmit buffer empty
-         SERIAL2_TXIE2 = DISABLED                                -- disable xmit interrupts
+         TXREG2 = x                                               -- actually xmit byte
+      else                                                        -- xmit buffer empty
+         SERIAL2_TXIE2 = DISABLED                                 -- disable xmit interrupts
       end if
    end if
 
@@ -189,7 +188,7 @@ end procedure
 -- Arguments: (none)
 -- Returns:   (nothing)
 -- Notes:     Sets CTS low when receive buffer has less than
---            <SERIAL_DELTA> bytes free space.
+--            <SERIAL2_DELTA> bytes free space.
 -- ----------------------------------------------------------------------
 procedure  _serial2_receive_interrupt_handler() is
 
@@ -197,24 +196,24 @@ procedure  _serial2_receive_interrupt_handler() is
 
    var  byte  x
 
-   if  (SERIAL2_RCIF2 == TRUE)  then             -- UART receive interrupt
+   if  (SERIAL2_RCIF2 == TRUE)  then            -- UART2 receive interrupt
 
       if ((RCSTA2_OERR == TRUE) | (RCSTA2_FERR == TRUE)) then  -- frame/overr error
-         x = RCREG2                              -- flush hardware buffer
-         while RCSTA2_OERR == TRUE loop          -- overrun state
-            RCSTA2_CREN = DISABLED               -- disable UART
-            RCSTA2_CREN = ENABLED                -- re-enable UART
-            x = RCREG2                           -- \  flush hardware buffers
-            x = RCREG2                           -- /
+         x = RCREG2                             -- flush hardware buffer
+         while RCSTA2_OERR == TRUE loop         -- overrun state
+            RCSTA2_CREN = FALSE                 -- disable UART
+            RCSTA2_CREN = TRUE                  -- re-enable UART
+            x = RCREG2                          -- \  flush hardware buffers
+            x = RCREG2                          -- /
          end loop                               -- until no more overrun
-         _serial2_offsetrcvtail = 0              -- \  flush circular buffer
-         _serial2_offsetrcvhead = 0              -- /
+         _serial2_offsetrcvtail = 0             -- \  flush circular buffer
+         _serial2_offsetrcvhead = 0             -- /
          if defined(serial2_ctsinv) then
-           serial2_ctsinv = FALSE                -- ensure CTS true
+            serial2_ctsinv = FALSE              -- set CTS true
          end if
 
       else                                      -- data without errors
-         _serial2_rcvbuf[_serial2_offsetrcvhead] = RCREG      -- move byte to rcv buffer
+         _serial2_rcvbuf[_serial2_offsetrcvhead] = RCREG2      -- move byte to rcv buffer
 
          if (defined(serial2_receive_wedge) == TRUE) then
             -- receive wedge - a user program can define this procedure.
@@ -231,7 +230,7 @@ procedure  _serial2_receive_interrupt_handler() is
             -- CAUTION: the wedge is part of the ISR and should be designed
             -- to behave accordingly (fast, minimal stack use and nonblocking).
             -- If you are not sure you need this, you probably don't!
-            serial_receive_wedge(_serial_rcvbuf[_serial_offsetrcvhead])
+            serial2_receive_wedge(_serial2_rcvbuf[_serial2_offsetrcvhead])
          end if
 
          x = _serial2_offsetrcvhead + 1         -- update offset
@@ -242,15 +241,16 @@ procedure  _serial2_receive_interrupt_handler() is
             _serial2_offsetrcvhead = x          -- update offset
          end if                                 -- (else discard byte,
                                                 --  CTS flow control has failed)
+
          if defined(serial2_ctsinv) then
-            if (serial2_ctsinv == FALSE) then       -- CTS is TRUE
+            if (serial2_ctsinv == FALSE) then   -- CTS is TRUE
                if _serial2_offsetrcvhead > _serial2_offsetrcvtail then  -- offset difference
                   x = SERIAL2_RCVBUFSIZE - _serial2_offsetrcvhead + _serial2_offsetrcvtail
                else
                   x = _serial2_offsetrcvtail - _serial2_offsetrcvhead
                end if
-               if (x < SERIAL2_DELTA) then          -- circular buffer almost full
-                  serial2_ctsinv = TRUE             -- set CTS FALSE
+               if (x < SERIAL2_DELTA) then      -- circular buffer almost full
+                  serial2_ctsinv = TRUE         -- set CTS FALSE
                end if
             end if
          end if
@@ -266,7 +266,7 @@ end procedure
 -- Arguments: received byte (if any)
 -- Returns:   - TRUE  when byte returned
 --            - FALSE if no byte available
--- Notes:     Sets CTS high when receive buffer has more than <SERIAL_DELTA>
+-- Notes:     Sets CTS high when receive buffer has more than <SERIAL2_DELTA>
 --            bytes free space after delivering byte to caller.
 -- ----------------------------------------------------------------------
 function serial_hw2_read(byte out data) return bit is
@@ -283,26 +283,20 @@ function serial_hw2_read(byte out data) return bit is
       _serial2_offsetrcvtail = 0                 -- wrap
    end if
    if defined(serial2_ctsinv) then
-      if (serial2_ctsinv == TRUE) then              -- CTS is FALSE
+      if (serial2_ctsinv == TRUE) then           -- CTS is FALSE
          if (_serial2_offsetrcvhead > _serial2_offsetrcvtail) then
             x = SERIAL2_RCVBUFSIZE - _serial2_offsetrcvhead + _serial2_offsetrcvtail
          else
             x = _serial2_offsetrcvtail - _serial2_offsetrcvhead  -- offset difference
          end if
-         if (x >= SERIAL2_DELTA) then               -- enough free space now
-            serial2_ctsinv = FALSE                  -- make CTS TRUE
+         if (x >= SERIAL2_DELTA) then            -- enough free space now
+            serial2_ctsinv = FALSE               -- make CTS TRUE
          end if
       end if
    end if
+
    return TRUE                                  -- byte available
 
-end function
-
--- Deprecated
-function  serial2_receive_byte(byte out data) return bit is
-   pragma inline
-  _warn "serial2_receive_byte() is deprecated - please use  serial_hw2_read()"
-   return serial_hw2_read(data)
 end function
 
 
@@ -311,7 +305,7 @@ end function
 -- Arguments: Data (byte) to transmit
 -- Returns:   transmitted byte (or 0x00 when data discarded)
 -- Notes:     - Activates transmit interrupt handler when data buffered
---            - When buffer full act as indicated in 'serial_overflow_discard'
+--            - When buffer full act as indicated in 'serial2_overflow_discard'
 --              * TRUE:  discard data (and return 0x00 as data byte)
 --              * FALSE: wait for free buffer space
 --                       (returns only after data has been stored in buffer)
@@ -321,33 +315,34 @@ function  serial2_send_byte(byte in data) return byte is
    var  byte  newxmthead                        -- offset in circular buffer
 
    if (_serial2_offsetxmthead == _serial2_offsetxmttail  &  -- nothing buffered
-       SERIAL2_TXIF2 == TRUE) then                  -- and UART not busy
-      SERIAL2_TXIE2 = DISABLED                      -- disable xmt interrupt
-      TXREG2 = data                              -- transmit byte immediately
+        SERIAL2_TXIF2 == TRUE) then             -- and UART not busy
+      SERIAL2_TXIE2 = DISABLED                  -- disable xmt interrupt
+      TXREG2 = data                             -- transmit byte immediately
    else                                         -- use circular buffer
       _serial2_xmtbuf[_serial2_offsetxmthead] = data  -- put byte in buffer
-      newxmthead = _serial2_offsetxmthead + 1    -- offset next char
+      newxmthead = _serial2_offsetxmthead + 1   -- offset next char
       if (newxmthead >= SERIAL2_XMTBUFSIZE) then  -- end of buffer reached
          newxmthead = 0                         -- wrap
       end if
       if (newxmthead != _serial2_offsetxmttail) then  -- buffer not full
-         _serial2_offsetxmthead = newxmthead     -- update offset
+         _serial2_offsetxmthead = newxmthead    -- update offset
       else                                      -- buffer full!
          if (serial2_overflow_discard == FALSE) then  -- do not discard data!
             while (newxmthead == _serial2_offsetxmttail) loop   -- buffer full
                -- nothing                       -- spin until something xmit'd
             end loop
-            _serial2_offsetxmthead = newxmthead  -- update offset
+            _serial2_offsetxmthead = newxmthead -- update offset
          else
             data = 0x00                         -- indicate byte discarded
          end if
       end if
-      SERIAL2_TXIE2 = ENABLED                       -- (re-)enable xmit interrupts
+      SERIAL2_TXIE2 = ENABLED                   -- (re-)enable xmit interrupts
    end if
 
    return data                                  -- transmitted byte!
 
 end function
+
 
 -- ----------------------------------------------------------------------
 -- Title:     Get free space in transmit buffer
@@ -359,25 +354,26 @@ end function
 -- ----------------------------------------------------------------------
 function  serial_hw2_tx_buffer_free() return byte is
 
-   var  byte  buffer_free 
+   var  byte  buffer_free
 
-   buffer_free=_serial2_offsetxmttail - _serial2_offsetxmthead    -- difference between head and tail pointers
-   if (_serial2_offsetxmttail <= _serial2_offsetxmthead) then     -- adjust when free space crosses end-of-buffer boundary
-     buffer_free=buffer_free+SERIAL2_XMTBUFSIZE                  -- or buffer is empty
-   end if
+   buffer_free = _serial2_offsetxmttail - _serial2_offsetxmthead    -- difference
+                                                -- between head and tail pointers
+      if (_serial2_offsetxmttail <= _serial2_offsetxmthead) then  -- adjust when free
+                                                -- space crosses end-of-buffer boundary
+         buffer_free = buffer_free + SERIAL2_XMTBUFSIZE           -- or buffer is empty
+      end if
 
-   return buffer_free                                  
+   return buffer_free
 
 end function
-
 
 
 -- ----------------------------------------------------------------------
 -- Title:     Put a single byte in transmit buffer
 -- Arguments: Data (byte) to transmit
 -- Returns    (nothing)
--- Notes:     - This is a variant of serial_send_byte() compatible with
---              the procedure in the serial_hardware library.
+-- Notes:     - This is a variant of serial2_send_byte() compatible with
+--              the procedure in the serial_hardware2 library.
 --            - Spins when byte cannot be put in transmit buffer
 --              (buffer full condition).
 -- ----------------------------------------------------------------------
@@ -394,53 +390,44 @@ end procedure
 -- ----------------------------------------------------------------------
 procedure serial_hw2_init() is
 
-   _serial2_offsetxmthead  = 0                   -- offset next byte from appl
-   _serial2_offsetxmttail  = 0                   -- offset next byte to port
-   _serial2_offsetrcvhead  = 0                   -- offset next byte from port
-   _serial2_offsetrcvtail  = 0                   -- offset next byte to appl
+   _serial2_offsetxmthead  = 0                  -- offset next byte from appl
+   _serial2_offsetxmttail  = 0                  -- offset next byte to port
+   _serial2_offsetrcvhead  = 0                  -- offset next byte from port
+   _serial2_offsetrcvtail  = 0                  -- offset next byte to appl
 
-   TXSTA2                  = 0b0000_0000         -- reset (8 databits, asyn)
-   RCSTA2                  = 0b0000_0000         -- reset (8 databits, asyn)
+   TXSTA2                  = 0b0000_0000        -- reset (8 databits, asyn)
+   RCSTA2                  = 0b0000_0000        -- reset (8 databits, asyn)
 
-   _calculate_and_set_baudrate2()                -- set baudrate and control bits
+   _calculate_and_set_baudrate2()               -- set baudrate and control bits
 
-   pin_RX2_direction       = INPUT               -- make receive pin input
-   pin_TX2_direction       = INPUT               -- make transmit pin input!
-                                                -- (required by some older
-                                                --  PICs like 16f628)
+   pin_RX2_direction       = INPUT              -- make receive pin input
+   pin_TX2_direction       = INPUT              -- make transmit pin input!
 
-   TXSTA2_TXEN             = ENABLED             -- enable transmit (makes TX pin output)
+   TXSTA2_TXEN             = ENABLED            -- enable transmit (makes TX2 pin output)
 
-   RCSTA2_SPEN             = ENABLED             -- activate serial port
-   RCSTA2_CREN             = ENABLED             -- continuous receive enable
+   RCSTA2_SPEN             = ENABLED            -- activate serial port
+   RCSTA2_CREN             = ENABLED            -- continuous receive enable
 
-   SERIAL2_RCIE2           = ENABLED             -- USART receive int. enable
-                                                -- (PIE1_TXIE handled dynamically)
-   INTCON_PEIE            = ENABLED             -- peripheral interrupts
-   INTCON_GIE             = ENABLED             -- general interrupts
+   SERIAL2_RCIE2           = ENABLED            -- USART receive int. enable
+                                                -- (TXIE2 handled dynamically)
+   INTCON_PEIE             = ENABLED            -- peripheral interrupts
+   INTCON_GIE              = ENABLED            -- general interrupts
 
    if defined(serial2_ctsinv) then
-      serial2_ctsinv          = FALSE               -- CTS true: accept PC data
+      serial2_ctsinv       = FALSE              -- CTS true: accept PC data
    end if
 
 end procedure
 
 
--- Deprecated
-procedure serial2_init() is
-   _warn "serial2_init() is deprecated - please use  serial_hw2_init()"
-   serial_hw2_init()
-end procedure
-
-
 -- ----------------------------------------------------------------------
--- serial_hardware compatible interface
+-- serial2_hardware compatible interface
 -- ----------------------------------------------------------------------
 
 -- Put byte in transmit buffer as pseudo variable
 procedure serial_hw2_data'put(byte in data) is
    var byte dummy
-   dummy = serial2_send_byte(data)               -- send data
+   dummy = serial2_send_byte(data)              -- send data
 end procedure
 
 
