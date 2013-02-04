@@ -15,7 +15,7 @@
 	</a>
 
     <div>
-		<font size="+1"><i>hardware PWM control, dedicated to module CCP8</i></font>
+		<font size="+1"><i>hardware PWM control, dedicated to module PWM8</i></font>
 	</div>
 
 	<br/>
@@ -44,7 +44,7 @@
 			<b>Compiler</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			2.4l
+			2.4p
 		</td>
 	</tr>
 	</table>
@@ -53,9 +53,9 @@
 	
 	<b>Description</b>
 	<p>
-		<pre>Performs PWM operations on the CCP8 module.
+		<pre>Performs PWM operations on the PWM8 module (of enhanced midrange)
 This file is automatically included by pwm_hardware.jal
-when the target PIC has a CCP8 module.
+when the target PIC has a PWM8 module.
 </pre>
 
 	</p>
@@ -68,6 +68,12 @@ when the target PIC has a CCP8 module.
           (Stef's lib)
        2. Partly rewritten for JalV2 version 2.4l and Jallib revision 1171.
           Reduced memory occupation. Added procedure for lowres PWM.
+       3. Changes dd October 2012 by Rob Hamerling
+          - added public procedure to set dutycycle with highest resolution (1023 steps).
+          - Make the pwm_set_dutycycle (highres, lowres and unqualified) private
+            (preceeded with an underscore). These procedures will be kept. but
+            with a 'deprecated' warning recommending to use the procedures for
+            relative settings.
 </pre>
 
 	</p>
@@ -86,16 +92,16 @@ when the target PIC has a CCP8 module.
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#d84bb5ad5beee38288634e0c1ab238ab">var byte  _ccp8con_shadow = 0b0000_0000                  </a></code></b>
+				<b><code name="code" class="python"><a href="#9bb4354d787814e363b05dcb26f054d7">var bit*2  _ccp8con_shadow_dc8b  at _ccp8con_shadow : 4  </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#cf738669cac335d1aa5a5d79c83866ab">var byte  _ccpr8l_shadow  = 0                            </a></code></b>
+				<b><code name="code" class="python"><a href="#6a354ce31b968c54aa3f503a5ce93fe5">var byte   _ccp8con_shadow = 0b0000_0000                 </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#9bfe18a4816fa2e3c7ecfb46e57273bf">var bit*4 _ccp8con_shadow_ccp8m at _ccp8con_shadow : 0    </a></code></b>
+				<b><code name="code" class="python"><a href="#73edeb2c859867157b8782b178e1e941">var bit*4  _ccp8con_shadow_ccp8m at _ccp8con_shadow : 0  </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#e250ce57757c06725e0af95bc93a6f7b">var bit*2 _ccp8con_shadow_dc8b  at _ccp8con_shadow : 4    </a></code></b>
+				<b><code name="code" class="python"><a href="#df7f67c509719949aa1eb5fb1a177543">var byte   _ccpr8l_shadow  = 0                           </a></code></b>
 		</li>
 	</ul>
 
@@ -103,7 +109,10 @@ when the target PIC has a CCP8 module.
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#0b045a9a7bba7ab05fb029b43f592f77">pwm8_set_dutycycle(byte in duty)</a></code></b>
+				<b><code name="code" class="python"><a href="#6fa5ae7ee48c842e59f1d5317fef32f4">pwm8_set_dutycycle_percent(byte in percent)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#ce25a0a041a271e2f056df48bd8f979b">pwm8_set_dutycycle(byte in steps)</a></code></b>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a href="#16446753c93e28a9ba5bd8157be77370">pwm8_off()</a></code></b>
@@ -112,16 +121,27 @@ when the target PIC has a CCP8 module.
 				<b><code name="code" class="python"><a href="#ac14290937108d6c01365577d944bff5">pwm8_on()</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#0d06f12e08554845352c4cff7be71b40">pwm8_set_dutycycle_lowres(byte in duty)</a></code></b>
+				<b><code name="code" class="python"><a href="#2ca75de2405f7cf4230e9ec46758cefa">pwm8_set_dutycycle_ratio(word in ratio)</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#ae29ea238a6c9436da476db4c4a427d5">pwm8_set_dutycycle_highres(word in duty)</a></code></b>
+				<b><code name="code" class="python"><a href="#8e84114b3e299d73a30476e6c60e7e52">pwm8_set_dutycycle_lowres(byte in steps)</a></code></b>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a href="#b7774f6894605ca7ca961092dbeb0dec">pwm8_set_percent_dutycycle(byte in percent)</a></code></b>
 		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#df0cbffb356479ca974d0a7b98538804">pwm8_set_dutycycle_highres(word in steps)</a></code></b>
+		</li>
 	</ul>
 
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#e5465267b099488425a85acf3ed0beca">_pwm8_set_dutycycle_highres(word in steps)</a></code></b>
+		</li>
+	</ul>
+
+	<br/>
 
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>
@@ -135,23 +155,23 @@ when the target PIC has a CCP8 module.
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="d84bb5ad5beee38288634e0c1ab238ab" href="#summary">var byte  _ccp8con_shadow = 0b0000_0000                  </a></code></b>
+				<b><code name="code" class="python"><a name="9bb4354d787814e363b05dcb26f054d7" href="#summary">var bit*2  _ccp8con_shadow_dc8b  at _ccp8con_shadow : 4  </a></code></b>
+				<p>	<pre>2 LSbits of duty cycle</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="6a354ce31b968c54aa3f503a5ce93fe5" href="#summary">var byte   _ccp8con_shadow = 0b0000_0000                 </a></code></b>
 				<p>	<pre>shadow</pre>
 </p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="cf738669cac335d1aa5a5d79c83866ab" href="#summary">var byte  _ccpr8l_shadow  = 0                            </a></code></b>
-				<p>	<pre>8 MSbits of duty cycle</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="9bfe18a4816fa2e3c7ecfb46e57273bf" href="#summary">var bit*4 _ccp8con_shadow_ccp8m at _ccp8con_shadow : 0    </a></code></b>
-				<p>	<pre>mode pattern</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="e250ce57757c06725e0af95bc93a6f7b" href="#summary">var bit*2 _ccp8con_shadow_dc8b  at _ccp8con_shadow : 4    </a></code></b>
+				<b><code name="code" class="python"><a name="73edeb2c859867157b8782b178e1e941" href="#summary">var bit*4  _ccp8con_shadow_ccp8m at _ccp8con_shadow : 0  </a></code></b>
 				<p>	<pre>2 LSbits of duty cycle</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="df7f67c509719949aa1eb5fb1a177543" href="#summary">var byte   _ccpr8l_shadow  = 0                           </a></code></b>
+				<p>	<pre>8 MSbits of duty cycle</pre>
 </p>
 		</li>
 	</ul>
@@ -160,8 +180,25 @@ when the target PIC has a CCP8 module.
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="0b045a9a7bba7ab05fb029b43f592f77" href="#summary">pwm8_set_dutycycle(byte in duty)</a></code></b>
-				<p>	<pre>Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
+				<b><code name="code" class="python"><a name="6fa5ae7ee48c842e59f1d5317fef32f4" href="#summary">pwm8_set_dutycycle_percent(byte in percent)</a></code></b>
+				<p>	<pre>
+Purpose:   Set duty cycle as a percentage, allowing max 100 PWM steps.
+The duty cycle will be set to the specified percentage of the maximum
+for the current PWM frequency and Fosc.
+Arguments: byte - dutycycle as a percentage (allowed range: 0..100)
+Notes:     - The number of available PWM steps can be lower than 100 with
+(very) high PWM frequencies and low Fosc.
+ The steps may not all be equal. The lower the actual resolution
+the bigger the differences between steps may be.
+ pin_CCP8_direction should be set to output!
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="ce25a0a041a271e2f056df48bd8f979b" href="#summary">pwm8_set_dutycycle(byte in steps)</a></code></b>
+				<p>	<pre>
+Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
 This procedure is equivalent to pwm8_set_dutycycle_highres(), but
 the low order 2 bits of the 10-bits duty cycle are set to 0.
 This means that only every 4th of the available 1023 steps can be selected
@@ -170,63 +207,95 @@ This procedure is for user convenience, allowing to specify an 8 bits
 value for the duty cycle is for many applications satisfactory.
 Calling this procedure will also activate PWM.
 Note: pin_CCP8_direction should be set to output!
+
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="16446753c93e28a9ba5bd8157be77370" href="#summary">pwm8_off()</a></code></b>
-				<p>	<pre>PWM mode off
-retain duty cycle setting in shadow registers
+				<p>	<pre>
+Purpose:   PWM mode off
+Arguments: none
+
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="ac14290937108d6c01365577d944bff5" href="#summary">pwm8_on()</a></code></b>
-				<p>	<pre>PWM mode on
-Restore duty cycle from shadow registers
-Note: pin_CCP8_direction should be set to output!
+				<p>	<pre>
+Purpose:   Set PWM on
+Arguments: none
+Notes:     - duty cycle is restored from shadow registers
+ pin_PWM8_direction should be set to output
+
 </pre>
 </p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="0d06f12e08554845352c4cff7be71b40" href="#summary">pwm8_set_dutycycle_lowres(byte in duty)</a></code></b>
-				<p>	<pre>Set dutycycle with 8-bits resolution allowing 255 PWM steps.
-The 'duty' argument is the 8-bits absolute value for the duty cycle:
+				<b><code name="code" class="python"><a name="2ca75de2405f7cf4230e9ec46758cefa" href="#summary">pwm8_set_dutycycle_ratio(word in ratio)</a></code></b>
+				<p>	<pre>
+Purpose:   Set duty cycle in the range 0..1023 PWM steps.
+Arguments: word - dutycycle ration in range 0..1023
+Notes:     - The duty cycle will be set to the specified ration of the maximum
+value for the current PWM frequency and Fosc.
+Notes:     - The resolution is about 1 pro mille
+ The number of available PWM steps can be lower than 1023 with
+high PWM frequencies or low Fosc values.
+ pin_CCP8_direction should be set to output!
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="8e84114b3e299d73a30476e6c60e7e52" href="#summary">pwm8_set_dutycycle_lowres(byte in steps)</a></code></b>
+				<p>	<pre>
+Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
+The 'steps' argument is the 8-bits absolute value for the duty cycle:
 * duty<1:0> are the 2 LSbits
 * duty<7:2> are the 6 MSbits
-Allowed range: 0..255
-Beware that steps 256..1023 are not available. In other words
-the available PWM range is 25% of the highres procedure.
-This procedure is particularly suitable with higher frequencies
+Arguments: byte - duty cycle (allowed range 0..255)
+Notes:     This procedure is particularly suitable with higher frequencies
 whereby the PWM resolution is limited to 256 steps or less!
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="ae29ea238a6c9436da476db4c4a427d5" href="#summary">pwm8_set_dutycycle_highres(word in duty)</a></code></b>
-				<p>	<pre>Set dutycycle with 10-bits resolution, allowing 1024 PWM steps.
-The 'duty' argument is a (max) 10-bits absolute value for the duty cycle:
-* duty<1:0> are the 2 LSbits
-* duty<9:2> are the 8 MSbits
-Allowed range: 0..1023
-Note: pin_CCP8_direction should be set to output!
+
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="b7774f6894605ca7ca961092dbeb0dec" href="#summary">pwm8_set_percent_dutycycle(byte in percent)</a></code></b>
-				<p>	<pre>Set a percentage duty cycle, allowing max 100 PWM steps.
-Allowed range: 0..100
-The duty cycle will be set to the specified percentage of the maximum
-for the current PWM frequency.
-Note: The number of available PWM steps can be lower than 100 with
-(very) high PWM frequencies.
-Note: pin_CCP8_direction should be set to output!
+				<p>	<pre>deprecated procedure
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="df0cbffb356479ca974d0a7b98538804" href="#summary">pwm8_set_dutycycle_highres(word in steps)</a></code></b>
+				<p>	<pre>deprecated procedure
 </pre>
 </p>
 		</li>
 	</ul>
 
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="e5465267b099488425a85acf3ed0beca" href="#summary">_pwm8_set_dutycycle_highres(word in steps)</a></code></b>
+				<p>	<pre>
+Purpose:   Specify the duty cycle by number of PWM steps.
+The duty cycle is setting is determined by a 10-bits parameter,
+allowing a resolution of 1023 steps.
+The 'steps' argument is a (max) 10-bits absolute value for the duty cycle:
+* steps<1:0> are the 2 LSbits
+* steps<9:2> are the 8 MSbits
+Arguments: word - steps cycle (allowed range 0..1023)
+Notes:     - This is a private procedure, not intended for general use.
+The caller is responsible to specify an acceptable value
+w.r.t. to the chosen PWM frequency.
+
+</pre>
+</p>
+		</li>
+	</ul>
+
+	<br/>
 
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>

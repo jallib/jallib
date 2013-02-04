@@ -28,7 +28,7 @@
 			<b>Author</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.
+			Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.
 		</td>
 	</tr>
 	<tr>
@@ -36,7 +36,7 @@
 			<b>Adapted-by</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			Joep Suijs
+			Joep Suijs, Oliver "Kiste" Seitz
 		</td>
 	</tr>
 	<tr>
@@ -44,7 +44,7 @@
 			<b>Compiler</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			=2.4h
+			2.4o
 		</td>
 	</tr>
 	</table>
@@ -55,8 +55,85 @@
 	<p>
 		<pre>Serial communications:
   - receive and transmit data transfer is interrupt driven
-  - receive and transmit data transfer uses circular buffers
-  - automatic CTS flow control with spare free space for FiFo buffer
+  - receive and transmit data transfer is buffered (circular buffers)
+  - provides automatic CTS flow control with spare free space for FiFo buffer
+.
+This library supports:
+  - Data format: 8 bits data, 1 start-bit, 1 stop bit
+  - Acceptable baud rate depends on the oscillator frequency
+    (see BAUD RATES tables in the datasheet).
+  - Interrupt bits used: TXIE, RCIE, PEIE and GIE.
+.
+Available procedures/functions for application programs:
+.
+  - serial_setup()                            -- initialise communications
+.                                             -- (called automatically)
+  - serial_send_byte(byte out <byte>)         -- send byte
+.                                             -- returns the transmitted byte
+  - serial_hw_read(byte out <byte>) return bit  -- receive byte
+.                                             -- returns TRUE with data,
+.                                             -- FALSE when no data available
+  - serial_hw_write(byte in <byte>)           -- send byte (wait if queue full)
+.
+  - serial_hw_data = <byte>                   -- send byte, wait if queue full
+.
+  - <byte> = serial_hw_data                   -- receive byte, wait if queue empty
+.
+  - serial_hw_tx_buffer_free()                -- get free bytes in transmit buffer
+.                                             -- returns number of free bytes
+.
+Directions for use of this library in application programs
+(in this sequence):
+.
+1. Declare the following constant:
+.
+     const   serial_hw_baudrate = 115200     -- line speed
+.
+   and variables:
+.
+     alias serial_ctsinv  is  pin_B4         -- incoming data flow control
+                                             -- Optional, if it is not needed,
+                                             -- no dummy needs to be assigned.
+                                             -- Saves a few bytes of code space
+                                             -- if not defined.
+     var  bit serial_overflow_discard        -- With transmit buffer overflow:
+                                             --   TRUE: discard data (non-blocking)
+                                             --   FALSE: wait for free space (blocking)
+                                             -- With receive buffer overflow data is
+                                             -- discarded without notification,
+                                             -- but prevented with CTS flow control,
+                                             -- provided the sender has flow control enabled
+.
+   and optional, you could define one or more of the constants below.
+   You should do so if you want different values than the ones shown.
+   If not defined, the following values are used:
+.
+     const   SERIAL_XMTBUFSIZE  = 32         -- size of transmit buffer
+     const   SERIAL_RCVBUFSIZE  = 64         -- size of receive buffer
+     const   SERIAL_DELTA       = 17         -- spare space receive buffer
+                                             -- if possible keep SERIAL_DELTA = 17!
+.
+   When the physical locations of pin_TX and pin_RX are configurable for a specific
+   PIC, the device file will probably contain names like pin_TX_RB2 and pin_RX_RB1
+   and another pair with other pin suffixes.
+   Depending for which pair of pins the USART is configured aliases
+   without suffixes have to be specified, like:
+        alias  pin_TX            is  pin_TX_RB2
+        alias  pin_RX            is  pin_RX_RB1
+        alias  pin_TX_direction  is  pin_TX_RB2_direction
+        alias  pin_RX_direction  is  pin_RX_RB1_direction
+.
+2. Include this library.
+.
+and somewhere before actually using serial communications:
+.
+3. Prepare pins:
+      pin_B4_direction = OUTPUT              -- incoming data flow control
+      serial_overflow_discard = FALSE        -- do not discard output
+   Notes: - pin_TX and pin_RX are selected automatically
+          - direction settings of these pins are taken care of by the library
+.
+4. Call serial_hw_init() to initialize serial communications.
 </pre>
 
 	</p>
@@ -65,14 +142,36 @@
 
 	<b>Notes</b>
 	<p>
-		<pre> - For data transmit and receive the pins TX and RX are used
-   automatically, these have not to be assigned by the application.
+		<pre>Background information:
+.
+The PIC ports use positive logic: '1' is positive voltage, '0' is ground.
+.
+In the RS232 standard:
+- Negative voltage ('mark') means OFF for control signals, and
+  indicates 1 (one) for data signals (start-, data-, stop-bits).
+- Positive voltage ('space') means ON for control signals and
+  0 (zero) for start-, data- and stop-bits.
+- Signal levels: 'mark' = -3V to -15V,  'space' = +3V to +15V
+.
+Between PIC and RS232 normally an interface chip is used, such as a
+Maxim/Dallas MAX232 or MAX202. These are not only voltage level CONverters
+but also signal INverters. You should be aware of the following:
+- The inversion of PIC data-in and data-out by the MAX2x2 is required
+  to convert data-, start- and stop-bits to/from the corresponding
+  RS232 polarity. So nothing special has to be done in the program
+  because the USART of the PIC uses 'inverted' signal levels!
+- For CTS the inversion by the MAX2x2 is NOT desired.
+  Therefore the program has to use inverted signalling for CTS:
+  'FALSE' is used for CTS ON and 'TRUE' for CTS OFF!
+  As a reminder for this 'inverted' logic the signal is called
+  serial_ctsinv (serial_ctsinv = TRUE means CTS is FALSE!).
+.
+Remember also: RxD of RS232-plug connects to TX of PIC via MAX2x2
+               TxD of RS232-plug connects to RX of PIC via MAX2x2
+.
+Additional remarks:
  - The selection of the CTS pin above is an example, any other pin
    which is configurable for output can be used.
- - When CTS flow control is not desired then assign serial_ctsinv
-   to a dummy bit, for example:
-       var  bit  dummy_cts_bit
-       alias serial_ctsinv  is  dummy_cts_bit
  - The serial_overflow_discard flag may be dynamically changed
    (depending on how important the data is for the receiving party).
  - Do not touch the following interrupt bits: TXIE, RCIE, PEIE and GIE
@@ -94,25 +193,22 @@
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#6771c571bf4b477212a841505098ce12">var  byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]    </a></code></b>
+				<b><code name="code" class="python"><a href="#58ff5ff00b0f6c6dacf682b3fbbe0c8c">var byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]        </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#0940b2b14f46cf7111d0f6f4cf25eb11">var  byte  _serial_offsetrcvtail                </a></code></b>
+				<b><code name="code" class="python"><a href="#ed94af4935d100c22e685f465cfa856c">var volatile byte  _serial_offsetxmttail           </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#b7a918b580cf4c00cef4887b287e4b20">var  byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]    </a></code></b>
+				<b><code name="code" class="python"><a href="#a55b106e88e3d7c47298f2efa4409292">var volatile byte  _serial_offsetrcvhead           </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#5ad62da2f921ef88b8decbd7eaea1f2a">var bit serial_send_success   </a></code></b>
+				<b><code name="code" class="python"><a href="#1117a94150756671861a5c5e36306198">var volatile byte  _serial_offsetrcvtail           </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#2cd8826129ee09248dcf4db68b42e9ce">var  byte  _serial_offsetrcvhead                </a></code></b>
+				<b><code name="code" class="python"><a href="#d80d8594c4f3799c4215d35c81c13fae">var byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]        </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#808e69edc4a51ac445271d3c53de9275">var  byte  _serial_offsetxmttail                </a></code></b>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#704163e8354195eb2a45dd9dccf4841a">var  byte  _serial_offsetxmthead                </a></code></b>
+				<b><code name="code" class="python"><a href="#ff50f81350105cc5e469e60ea38836dc">var volatile byte  _serial_offsetxmthead           </a></code></b>
 		</li>
 	</ul>
 
@@ -159,6 +255,9 @@
 		<li>
 				<b><code name="code" class="python"><a href="#683333bec13a6604a8224dff857cc10b">serial_send_byte(byte in data) return byte</a></code></b>
 		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#bfa414ce6f05b27200b497476efe793b">serial_hw_tx_buffer_free() return byte</a></code></b>
+		</li>
 	</ul>
 
 
@@ -169,43 +268,37 @@
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="6771c571bf4b477212a841505098ce12" href="#summary">var  byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]    </a></code></b>
+				<b><code name="code" class="python"><a name="58ff5ff00b0f6c6dacf682b3fbbe0c8c" href="#summary">var byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]        </a></code></b>
 				<p>	<pre>Local circular transmit buffer
 </pre>
 </p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="0940b2b14f46cf7111d0f6f4cf25eb11" href="#summary">var  byte  _serial_offsetrcvtail                </a></code></b>
-				<p>	<pre>variable keeping track of next byte available to application program
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="b7a918b580cf4c00cef4887b287e4b20" href="#summary">var  byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]    </a></code></b>
-				<p>	<pre>Local circular receive buffer
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="5ad62da2f921ef88b8decbd7eaea1f2a" href="#summary">var bit serial_send_success   </a></code></b>
-				<p>	<pre>Flag indicating if transmission was successful
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="2cd8826129ee09248dcf4db68b42e9ce" href="#summary">var  byte  _serial_offsetrcvhead                </a></code></b>
-				<p>	<pre>variable keeping track of next free byte in receive buffer
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="808e69edc4a51ac445271d3c53de9275" href="#summary">var  byte  _serial_offsetxmttail                </a></code></b>
+				<b><code name="code" class="python"><a name="ed94af4935d100c22e685f465cfa856c" href="#summary">var volatile byte  _serial_offsetxmttail           </a></code></b>
 				<p>	<pre>variable keeping track of next byte to be transmitted by interrupt handler
 </pre>
 </p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="704163e8354195eb2a45dd9dccf4841a" href="#summary">var  byte  _serial_offsetxmthead                </a></code></b>
+				<b><code name="code" class="python"><a name="a55b106e88e3d7c47298f2efa4409292" href="#summary">var volatile byte  _serial_offsetrcvhead           </a></code></b>
+				<p>	<pre>variable keeping track of next free byte in receive buffer
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="1117a94150756671861a5c5e36306198" href="#summary">var volatile byte  _serial_offsetrcvtail           </a></code></b>
+				<p>	<pre>variable keeping track of next byte available to application program
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="d80d8594c4f3799c4215d35c81c13fae" href="#summary">var byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]        </a></code></b>
+				<p>	<pre>Local circular receive buffer
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="ff50f81350105cc5e469e60ea38836dc" href="#summary">var volatile byte  _serial_offsetxmthead           </a></code></b>
 				<p>	<pre>variable keeping track of next free position in transmit buffer
 </pre>
 </p>
@@ -223,21 +316,31 @@
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="9c4436d14f56c4adcbe5c8ed9df54543" href="#summary">serial_hw_data'put(byte in data)</a></code></b>
-				<p>	<pre>Transmit byte
+				<p>	<pre>Put byte in transmit buffer as pseudo variable
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="c226cf7c88d829d242f6fa20db05aaa1" href="#summary">serial_hw_init()</a></code></b>
 				<p>	<pre>
-serial_init - procedure to initialize library functionality
+Title:     Initialize first or only serial port
+Arguments: (none)
+Returns:   (nothing)
 
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="8bd2c619e16d85ae1bee277645842959" href="#summary">serial_hw_write(byte in data)</a></code></b>
-				<p>	<pre>Transmit byte
+				<p>	<pre>
+Title:     Put a single byte in transmit buffer
+Arguments: Data (byte) to transmit
+Returns    (nothing)
+Notes:     - This is a variant of serial_send_byte() compatible with
+the procedure in the serial_hardware library.
+ Spins when byte cannot be put in transmit buffer
+(buffer full condition).
+
 </pre>
 </p>
 		</li>
@@ -248,7 +351,9 @@ serial_init - procedure to initialize library functionality
 		<li>
 				<b><code name="code" class="python"><a name="85b19760d0805fc1744964273e1c734b" href="#summary">_serial_transmit_interrupt_handler()</a></code></b>
 				<p>	<pre>
-USART serial transmit interrupt handler
+Title:     USART serial transmit interrupt handler
+Arguments: (none)
+Returns:   (nothing)
 
 </pre>
 </p>
@@ -256,9 +361,11 @@ USART serial transmit interrupt handler
 		<li>
 				<b><code name="code" class="python"><a name="1919352ad15a35407f8ae9d0a91590f9" href="#summary">_serial_receive_interrupt_handler()</a></code></b>
 				<p>	<pre>
-USART serial receive interrupt handler
-notes: - Sets CTS low when receive buffer has less than <SERIAL_DELTA>
-bytes free space.
+Title:     USART serial receive interrupt handler
+Arguments: (none)
+Returns:   (nothing)
+Notes:     Sets CTS low when receive buffer has less than
+<SERIAL_DELTA> bytes free space.
 
 </pre>
 </p>
@@ -272,12 +379,11 @@ bytes free space.
 		<li>
 				<b><code name="code" class="python"><a name="d634974eb95dab7b188c1f605747583a" href="#summary">serial_hw_read(byte out data) return bit</a></code></b>
 				<p>	<pre>
-Return byte (if any) from circular receive buffer for UART
-input:   nothing
-output:  received byte (if any)
-returns: TRUE  when byte returned
-FALSE if no byte available
-notes: - Sets CTS high when receive buffer has more than <SERIAL_DELTA>
+Title:     Return byte (if any) from circular receive buffer of USART
+Arguments: received byte (if any)
+Returns:   - TRUE  when byte returned
+ FALSE if no byte available
+Notes:     Sets CTS high when receive buffer has more than <SERIAL_DELTA>
 bytes free space after delivering byte to caller.
 
 </pre>
@@ -285,7 +391,8 @@ bytes free space after delivering byte to caller.
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="53a6c21cd59de67adb0fb30ceed24834" href="#summary">serial_hw_data'get() return byte</a></code></b>
-				<p>	<pre>Return next received byte
+				<p>	<pre>Return next byte from receive buffer as pseudo variable
+Spin as long as no data available (buffer empty)
 </pre>
 </p>
 		</li>
@@ -298,15 +405,27 @@ bytes free space after delivering byte to caller.
 		<li>
 				<b><code name="code" class="python"><a name="683333bec13a6604a8224dff857cc10b" href="#summary">serial_send_byte(byte in data) return byte</a></code></b>
 				<p>	<pre>
-Put a single byte in circular transmit buffer for UART
-input:   byte to transmit
-returns: transmitted byte (or 0x00 when data discarded)
-notes: - Activates transmit interrupt handler when data buffered
+Title:     Put a single byte in transmit buffer
+Arguments: Data (byte) to transmit
+Returns:   transmitted byte (or 0x00 when data discarded)
+Notes:     - Activates transmit interrupt handler when data buffered
  When buffer full act as indicated in 'serial_overflow_discard'
-* TRUE:  discard data
-(and return 0x00 as data byte)
+* TRUE:  discard data (and return 0x00 as data byte)
 * FALSE: wait for free buffer space
 (returns only after data has been stored in buffer)
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="bfa414ce6f05b27200b497476efe793b" href="#summary">serial_hw_tx_buffer_free() return byte</a></code></b>
+				<p>	<pre>
+Title:     Get free space in transmit buffer
+Arguments: (none)
+Returns:   Number of free bytes in transmit buffer
+Notes:     - Useful to check in advance if a string will fit in the buffer
+or if transmitting the string will block.
+ Never returns zero. If "1" is returned, regard buffer as full.
 
 </pre>
 </p>
@@ -320,10 +439,13 @@ notes: - Activates transmit interrupt handler when data buffered
 	Here are the list of samples which use this library:<br/><br/>
 	<table border=1>
 			<tr>
+			<td><b>16f1937</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f1937_serial_hw_int_cts.jal" target="_blank">16f1937_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>16f1937</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f1937_serial_hardware.jal" target="_blank">16f1937_serial_hardware.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>16f1937</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f1937_serial_hw_int_cts.jal" target="_blank">16f1937_serial_hw_int_cts.jal</a></td>
+			<td><b>16f1947</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f1947_serial_hw_int_cts.jal" target="_blank">16f1947_serial_hw_int_cts.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>16f648a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f648a_serial_hw_int_cts.jal" target="_blank">16f648a_serial_hw_int_cts.jal</a></td>
@@ -362,7 +484,7 @@ notes: - Activates transmit interrupt handler when data buffered
 			<td><b>18f2620</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f2620_serial_hw_int_cts.jal" target="_blank">18f2620_serial_hw_int_cts.jal</a></td>
 			</tr>
 			<tr>
-			<td><b>18f26k22</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f26k22_print_scalable.jal" target="_blank">18f26k22_print_scalable.jal</a></td>
+			<td><b>18f26k22</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f26k22_print.jal" target="_blank">18f26k22_print.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>18f4550</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4550_serial_hw_int_cts.jal" target="_blank">18f4550_serial_hw_int_cts.jal</a></td>
@@ -372,6 +494,9 @@ notes: - Activates transmit interrupt handler when data buffered
 			</tr>
 			<tr>
 			<td><b>18f6520</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f6520_serial_hw_int_cts.jal" target="_blank">18f6520_serial_hw_int_cts.jal</a></td>
+			</tr>
+			<tr>
+			<td><b>18f6722</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f6722_serial_hw_int_cts.jal" target="_blank">18f6722_serial_hw_int_cts.jal</a></td>
 			</tr>
 	</table>
 
