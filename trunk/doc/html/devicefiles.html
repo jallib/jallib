@@ -55,13 +55,14 @@
       <li><a href="#miscregs">Miscellaneous</a>
       </ul>
    <li><a href="#shadowing">About Port Shadowing</a>
-   <li><a href="#osccal">About OSCCAL</a>
+   <li><a href="#osccal">Calibation of Internal Oscillator</a>
    <li><a href="#usbprov">Provisions for USB</a>
    <li><a href="#ppsgroup">Peripheral Pin Selection</a>
    <li><a href="#fuses">Naming convention for configuration bit fields (fuses)</a>
    <li><a href="#compiler">Data Memory and Compiler Requirements</a>
       <ul>
       <li><a href="#memdata">Data memory</a>
+      <li><a href="#membanks">Memory banks</a>
       <li><a href="#memusb">Data memory for PICs with USB module</a>
       <li><a href="#memshare">Shared memory</a>
       <li><a href="#analog">Analog modules</a>
@@ -327,7 +328,7 @@ existing JalV2 libraries and programs to the Jallib environment.
 <br>The aim of 'normalization' (using a consistent naming) is:
 <ol>
 <li>to be able to use all libraries for all types of PICmicros
-<li>to ease the migration of programs to other types of PICs.
+<li>to ease the migration of programs amd libraries to other types of PICs.
 </ol>
 
 
@@ -383,10 +384,10 @@ This allows nibbles to be used as a regular variables,
 and can also be used to set pin directions by 4 at a time:
 <pre>
    PORTA_high = "7"                  -- low nibble remains unchanged
-   PORTA_low_direction = all_output  -- direction upper nibble unchanged
+   PORTA_low_direction = ALL_OUTPUT  -- direction upper nibble unchanged
 </pre>
 Several function libraries in the Jallib collection use this facility.
-<P>Note: Nibbles are always declared even if the register doesn't have the
+<p>Note: Nibbles are always declared even when the register doesn't have the
 nibble fully populated, or even not populated at all!
 
 
@@ -475,7 +476,7 @@ registers.
 In stead these PICs have a TRIS instruction to set the direction of ports
 or pins.
 This would make it impossible to use statements like:
-  <b>'PORTA_direction = all_output'</b>
+  <b>'PORTA_direction = ALL_OUTPUT'</b>
 <li>Some midrange PICs like 16f690, 16f887 have a register SSPMSK
 which has the same memory address as the SSPADD register.
 Which of both is accessed depends on the bit pattern in SSPCON_SSPM.
@@ -485,7 +486,7 @@ For example of the 18F65J50 ADCON0 and ANCON1 have both address FC2h.
 The WDTCON_ADSHR bit determines which of a pair is accessed.
 <li>Some 18Fs like the 18f44j11 have registers PMADDL/H with the same
 address as PMOUTL/H.
-Which of both is accessed depende on the mode of operation.
+Which of both is accessed depends on the mode of operation.
 </ul>
 For all these situation the device files contain pseudo variables to make it
 possible to use the 'Non Memory Mapped Registers'
@@ -944,65 +945,85 @@ It is recommended to always initialise ports or individual pins
 before switching 'm from input to output mode.
 
 
-<h2><a name="osccal">About OSCCAL</a></h2>
+<h2><a name="osccal">Calibration of Internal Oscillator</a></h2>
 
-<p>A number of low end PICS have a reserved word in high memory, provided by
-the manufacturer, which contains information for calibration of the internal
-oscillator.
-When your PIC application needs the frequency of the internal oscillator to
-be accurate the OSCCAL register should be loaded with the provided value.
-This value is loaded automatically in register 'W' after a reset of the PIC.
-To store it in OSCCON a MOVWF OSCCAL is required at address 0x0000 of the
-user program.
-<p>This is not supported by compiler or device file!
+<p>Some low end PICs have an uncalibrated internal oscillator,
+but have been factory calibrated and contain the proper value for
+OSCCAL in the highest word of code memory.
+User programs can use it to calibrate the internal oscillator.
+<p>PIC programmers are supposed to preserve this high memory word.
+When it has (accidentally) been erased or overwritten the factory provided
+calibration value for OSCCAL is lost.
+Not only that, due to the way this value is supposed to be loaded this
+may lead to unpredictable behaviour of the PIC.
 
 
-<h3>Midrange PICs</h3>
-<p>The midrange PICs with this feature (12F629/675, 16F630/676)
-have in the high memory word a RETLW instruction.
-This allows the following technique to be used:
-Insert the following statements somewhere in the beginning of your program
-(the exact place is not critical):
+<h3>Baseline</h3>
+<p>A number of baseline PICs
+(10F2xx, several 12F5xx and 16F5xx)
+have in their highest word of code memory a MOVLW instruction.
+This instruction is executed automatically after a reset of the PIC and thus
+the W register is loaded with the desired contents of OSCCAL
+at power-on or after MCLR reset.
+This may be ignored, but when your PIC application needs the frequency of
+the internal oscillator to be accurate the OSCCAL register should be loaded
+with the provided value.
+For this a MOVWF OSCCAL instruction is required as first instruction
+of the program, for example with:
 <pre>
-  assembler
-    page call &lt;end-of-memory&gt;
-    bank movwf OSCCAL
-  end assembler
+   asm  bank  movwf  0x5            -- store contents of W in OSCCAL
 </pre>
-in which you have to specify for &lt;end-of-memory&gt; the offset of the highest
-program memory word.
+Strictly speaking this needs not be the first instruction.
+It may be preceded by other instructions as long as these do not modify the
+W register!
+<p>The compiler does not have an option to insert this instruction,
+but the device files of these PICs do have the required instruction.
+This has been introduced with revision 3185.
+<p>The instructions (possibly including bank selection instructions)
+are in the beginning of the device file to ensure that
+no other instructions destroy the contents of the W register,
+for example for the initialization of shadow registers.
+Of course the user program should not have any instructions before the
+include of the device files!
+
+
+<h3>Midrange</h3>
+<p>Some midrange PICs
+(12F629/675, 16F630/676)
+have in their highest word of code memory a RETLW instruction.
+This allows the following method to be used to load OSCCAL with the proper
+value.
+<pre>
+   asm  page  call   &lt;last-word-of-memory&gt;
+   asm  bank  movwf  0x90     -- store contents of W in OSCCAL
+</pre>
+in which you have to specify for &lt;last-word-of-memory&gt; the address
+of the highest program memory word.
 For example when your PIC has 1K words of program memory you should specify:
 <pre>
-  page call 0x3FF
+   asm  page  call   0x3FF
 </pre>
-<p><b>This technique is not without danger.</b>
-When the high memory word is accidentally destroyed
-- for example by an erase operation of a PIC programmer whereby the
-contents of the high memory word is not preserved -
-you should <b>not</b> use this technique!
-When the high memory does not contain a return instruction the PIC will
-most likely enter an endless reset loop.
-
-
-<h3>Baseline PICs</h3>
-<p>The baseline PICs with this feature (10Fs, some 12Fs) have in high memory
-a MOVLW instruction.
-Therefore the technique of 'calling' the high memory address as described
-above for the midrange cannot be used for the baseline!
-
-
-<h3>Generic</h3>
-<p>When your program is for a baseline PIC, or when it is for a midrange PIC
-and you are not sure what is in the high memory word or you want to play
-it safe, you better move a 'medium' value directly into OSCCAL, for example
-with:
+<p>These instructions may be inserted anywhere in your program.
+It is not required to have these as very first instructions like with the
+baseline PICs.
+<p><b>This method is not without danger!</b>
+When the high memory word is (accidentally) erased or overwritten
+most likely it will not contain a RETLW instruction.
+In that case the next instruction will be fetched, which is at address
+0x0000 because of program counter wrap around.
+Thus the PIC will probably enter an endless reset loop.
+For this reason the device files do not calibrate the internal oscillator.
+You could insert the asm instructions above in your program at your own risc!
+<p>When you are not sure what is in the high word of code memory or you want
+to play it safe, you can move a 'medium' value directly into OSCCAL, for
+example with:
 <pre>
    OSCCAL = 0x80
 </pre>
 See the datasheet for acceptable values: frequently the low order bits
-should be zero.
-<p>By varying the value in OSCCAL and measuring the result you may fine
-tune the oscillator frequency.
+must be zero.
+<p>By varying the value in OSCCAL and measuring the effect you can
+fine tune the oscillator frequency.
 
 
 <h2><a name="usbprov">Provisions for USB</a></h2>
@@ -1683,6 +1704,13 @@ might expect by reading the data memory section of the datasheet!
 If you are interested in the reasons, please read the following sections.
 
 
+<h3><a name="membanks">Memory banks</a></h3>
+<p>The compiler supports for the baseline and classic midrange PICs a
+maximum of 4 memory banks.
+There are only very few PICs in these groups with more than 4 banks.
+These PICs are supported, but only for the first 4 banks of data memory.
+
+
 <h3><a name="memusb">Data memory for PICs with USB module</a></h3>
 This is data memory sometimes dedicated to the USB module.
 But sometimes it can be used as regular data memory by the user program,
@@ -1819,7 +1847,6 @@ compiler automatically and don't occupy memory!
 <!- ---------------------------------------------------------------------- -->
 <hr>
 
-
 <h1><a name="gen">4. Generating device files</a></h1>
 
 
@@ -1890,7 +1917,7 @@ An entry may contain the following elements:
 <tr><td>DATASHEET</td>
     <td>Datasheet number</td>
     <td>5 digits</td>
-    <td>Mandatory</td>
+    <td>Mandatory (otherwise not device files will be produced)</td>
 </tr>
 <tr><td>PGMSPEC</td>
     <td>Programming Specifications number</td>
@@ -1899,8 +1926,8 @@ An entry may contain the following elements:
 </tr>
 <tr><td>NONSHAREDDATA</td>
     <td>Range of unshared data memory (RAM)</td>
-    <td>0x...-0x...</td>
-    <td>Mandatory</td>
+    <td>0x...-0x...[,0x...-0x...,etc]</td>
+    <td>Mandatory, may be multiple ranges</td>
 </tr>
 <tr><td>SHAREDDATA</td>
     <td>Range of shared data memory (RAM)</td>
