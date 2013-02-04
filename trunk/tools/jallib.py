@@ -35,6 +35,9 @@ import re
 import datetime, time
 import types as pytypes
 
+reload(sys)
+sys.setdefaultencoding("UTF-8")
+
 try:
     import glob
     has_glob = True
