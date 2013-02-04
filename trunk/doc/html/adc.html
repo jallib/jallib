@@ -36,7 +36,7 @@
 			<b>Adapted-by</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			Sebastien Lelong.
+			Sebastien Lelong, Rob Hamerling.
 		</td>
 	</tr>
 	<tr>
@@ -44,7 +44,7 @@
 			<b>Compiler</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			>=2.4k
+			2.4o
 		</td>
 	</tr>
 	</table>
@@ -53,17 +53,38 @@
 	
 	<b>Description</b>
 	<p>
-		<pre>library to handle ADC peripheral.
-  - support both low and high resolution mode
-  - support a large number of PICs, with
-      - ADC pin configuration
-      - channel selection
-      - clock selection
-  - support Vref
+		<pre>Library to handle ADC peripheral, supporting:
+- low (8-bits) and high (16-bits) resolution (whatever the PIC supports)
+- ADC pin configuration
+- channel selection
+- clock selection
+- reference voltage selection
 
 
 
-How to use it ? See http://justanotherlanguage.org/content/jallib/tutorials/tutorial_adc_intro
+Q: How to use it?
+A: See http://justanotherlanguage.org/content/jallib/tutorials/tutorial_adc_intro
+
+
+
+About Vref setup:
+  - when ADC_NVREF = ADC_NO_VREF : there's no Vref pin used, vref is done
+                     internally, using power supply (Vdd <-> Vss)
+  - when ADC_NVREF = ADC_VREF_POS: there's only one Vref pin, this is Vref+
+  - when ADC_NVREF = ADC_VREF_POS_NEG: two Vref pins are used, Vref+ and Vref-
+  - when ADC_NVREF = ADC_VREF_NEG: there's only one Vref pin, this is Vref-
+  - when ADC_NVREF = ADC_VREF_FVR: Vref pin internally connected to FVR module if present
+                                   (user should setup FVRCON as desired).
+
+
+
+A major trigger is when using ADC libs is ADC_DYNAMIC.
+When declared, several parameters become dynamic and can be changed
+at runtime. This includes:
+   - ADC_NCHANNEL: the number of used ADC channels (dependent channels only,
+      independent channels are always selected at runtime with set_analog_pin() ).
+   - ADC_TEMP  Careful, computation related to temperature very approximative
+   - ADC_RSOURCE
 </pre>
 
 	</p>
@@ -72,37 +93,13 @@ How to use it ? See http://justanotherlanguage.org/content/jallib/tutorials/tuto
 
 	<b>Notes</b>
 	<p>
-		<pre>this is a heavy refactoring/rewriting of original library from Stef Mientki.
-The main changes are about ADC configuration, which are essentially handled in
+		<pre>This is a heavy refactoring/rewriting of original library of Stef Mientki.
 adc_channels.jal and adc_clock.jal.
-
-
-
-About Vref setup:
-  - when ADC_NVREF = ADC_NO_VREF : there's no Vref pin used, vref is done
-                     internally, using power supply (Vdd, Vss)
-  - when ADC_NVREF = ADC_VREF_POS ): there's only one Vref pin, this is Vref+
-  - when ADC_NVREF = ADC_VREF_POS_NEG : two Vref pins are used, Vref+ and Vref-
-  - when ADC_NVREF = ADC_VREF_NEG : there's only one Vref pin, this is Vref-
-
-
-
-
-
-
-A major trigger is when using ADC libs is ADC_DYNAMIC. When declared, several parameters
-become dynamic and can be changed at runtime. This includes:
-   - ADC_NCHANNEL, the number of ADC channels (when they are dependent channels,
-     as independent channels are always selected at runtime with set_analog_pin()
-   - ADC_TEMP (careful, computation related to temperature very approximative
-   - ADC_RESOLUTION (8-bits or 10-bits)
-   - ADC_RSOURCE
-
-
-
 The original library can be found:
    - Stef's: http://mientki.ruhosting.nl/pic-tools/jal/libs2/adc_hardware.jal
-   - jallib issue tracker: http://code.google.com/p/jallib/issues/detail?id=7
+   - Jallib issue tracker: http://code.google.com/p/jallib/issues/detail?id=7
+The main changes are about ADC configuration, which are essentially handled in
+adc_channels.jal and adc_clock.jal.
 </pre>
 
 	</p>
@@ -123,10 +120,16 @@ The original library can be found:
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#c749e8d4bd17e52a6a9877b9dfba87e6">var byte adc_conversion_delay</a></code></b>
+				<b><code name="code" class="python"><a href="#b4589c016576c88db03d457ef3121cbe">const bit _ADC_JUSTIFY_RIGHT = 1                   </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#8c0690df7f8960d5338e9f9a123f8c00">var volatile byte _adcon0_shadow = 0</a></code></b>
+				<b><code name="code" class="python"><a href="#4025888643847884296af5a855149855">var byte  adc_conversion_delay                     </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#01cd59630f32b039a1e631bb43b68d04">const byte ADC_TEMP = 25</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#fc062b68d98d89b438d78d50eae76cbe">const bit _ADC_JUSTIFY_LEFT  = 0                   </a></code></b>
 		</li>
 	</ul>
 
@@ -134,10 +137,10 @@ The original library can be found:
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#9475f4bfef220ebfebb8c05619acba5b">adc_read_bytes(byte in adc_chan, byte out adc_hbyte, byte out adc_lbyte)</a></code></b>
+				<b><code name="code" class="python"><a href="#0b09781b4d3f1ac44713b4a061baef58">adc_init()</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#0b09781b4d3f1ac44713b4a061baef58">adc_init()</a></code></b>
+				<b><code name="code" class="python"><a href="#9475f4bfef220ebfebb8c05619acba5b">adc_read_bytes(byte in adc_chan, byte out adc_hbyte, byte out adc_lbyte)</a></code></b>
 		</li>
 	</ul>
 
@@ -146,21 +149,15 @@ The original library can be found:
 		<li>
 				<b><code name="code" class="python"><a href="#8665daf52633f63179dc6db8304d7910">_adc_init_acquisition_delay()</a></code></b>
 		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#9b95a35096a8c812bee3e93c55ae2118">_adc_setup()</a></code></b>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#9322204bd37c733cbdb2164ac5abad17">_adc_read_low_res(byte in adc_chan, byte out adc_byte)</a></code></b>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a href="#638cdcff510e4e963ad3f0914bf36e7c">_adc_init_justify()</a></code></b>
-		</li>
 	</ul>
 
 	<br/>
 
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#aded29df795e5fbdad8e2662eb587bf3">adc_read_high_res(byte in adc_chan) return word</a></code></b>
+		</li>
 		<li>
 				<b><code name="code" class="python"><a href="#b2324a64a5f46b6a72d10ac7cc0cefc6">adc_read(byte in adc_chan) return word</a></code></b>
 		</li>
@@ -169,6 +166,14 @@ The original library can be found:
 		</li>
 	</ul>
 
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#166ba47e0f8a975c9ef494158c12bc6e">_adc_read(byte in adc_chan, bit in justify) return word</a></code></b>
+		</li>
+	</ul>
+
+	<br/>
 
 
 			<br/>
@@ -177,12 +182,29 @@ The original library can be found:
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="c749e8d4bd17e52a6a9877b9dfba87e6" href="#summary">var byte adc_conversion_delay</a></code></b>
-				<p><i>No documentation found</i></p>
+				<b><code name="code" class="python"><a name="b4589c016576c88db03d457ef3121cbe" href="#summary">const bit _ADC_JUSTIFY_RIGHT = 1                   </a></code></b>
+				<p>	<pre>constants</pre>
+</p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="8c0690df7f8960d5338e9f9a123f8c00" href="#summary">var volatile byte _adcon0_shadow = 0</a></code></b>
-				<p><i>No documentation found</i></p>
+				<b><code name="code" class="python"><a name="4025888643847884296af5a855149855" href="#summary">var byte  adc_conversion_delay                     </a></code></b>
+				<p>	<pre>Time to have the analog signal converted to a digital value.
+Value is calculated in _adc_init_acquisition_delay() and
+used in _adc_read().
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="01cd59630f32b039a1e631bb43b68d04" href="#summary">const byte ADC_TEMP = 25</a></code></b>
+				<p>	<pre>standard value: 25 degrees C
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="fc062b68d98d89b438d78d50eae76cbe" href="#summary">const bit _ADC_JUSTIFY_LEFT  = 0                   </a></code></b>
+				<p>	<pre>constants for justification selection
+</pre>
+</p>
 		</li>
 	</ul>
 
@@ -190,21 +212,25 @@ The original library can be found:
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="9475f4bfef220ebfebb8c05619acba5b" href="#summary">adc_read_bytes(byte in adc_chan, byte out adc_hbyte, byte out adc_lbyte)</a></code></b>
-				<p>	<pre>Does an AD conversion on the selected channel
-returns the 10-bit result as 2 byte parameters
-It doesn't matter if ADC is set to low or high resolution
+				<b><code name="code" class="python"><a name="0b09781b4d3f1ac44713b4a061baef58" href="#summary">adc_init()</a></code></b>
+				<p>	<pre>
+Tilte:     Initialise ADC module and default parameters
+Arguments: (none)
+Returns:   nothing
+
+Initializes the PIC AD-converter,
+by calling the correct routine according to the number of external references
+Settings are done according to the special ADC constants
+Sets analog pins to input
+Calculate aquisition time
 </pre>
 </p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="0b09781b4d3f1ac44713b4a061baef58" href="#summary">adc_init()</a></code></b>
-				<p>	<pre>Initializes the PIC AD-converter,
-by calling the correct routine according to the number of external references
-Settings are done according to the special ADC constants
-Sets all the analog pins to input
-Calculates aquisition time and determines if right or
-left justification is optimal
+				<b><code name="code" class="python"><a name="9475f4bfef220ebfebb8c05619acba5b" href="#summary">adc_read_bytes(byte in adc_chan, byte out adc_hbyte, byte out adc_lbyte)</a></code></b>
+				<p>	<pre>
+Title: Deprecated procedure, replaced by function adc_read_high_res()
+
 </pre>
 </p>
 		</li>
@@ -214,23 +240,14 @@ left justification is optimal
 		<ul>
 		<li>
 				<b><code name="code" class="python"><a name="8665daf52633f63179dc6db8304d7910" href="#summary">_adc_init_acquisition_delay()</a></code></b>
-				<p><i>No documentation found</i></p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="9b95a35096a8c812bee3e93c55ae2118" href="#summary">_adc_setup()</a></code></b>
-				<p>	<pre>Pin setup: analog as input, configure Vref, ...
+				<p>	<pre>
+Title:     Calculation of acquisition delay
+Arguments: (none)
+Returns:   nothing
+Notes:     result is stored in global variable _adc_conversion_delay
+
 </pre>
 </p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="9322204bd37c733cbdb2164ac5abad17" href="#summary">_adc_read_low_res(byte in adc_chan, byte out adc_byte)</a></code></b>
-				<p>	<pre>Does an AD conversion with low resolution (8 bit) on the selected channel
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="638cdcff510e4e963ad3f0914bf36e7c" href="#summary">_adc_init_justify()</a></code></b>
-				<p><i>No documentation found</i></p>
 		</li>
 	</ul>
 
@@ -239,22 +256,68 @@ left justification is optimal
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>
 		<li>
+				<b><code name="code" class="python"><a name="aded29df795e5fbdad8e2662eb587bf3" href="#summary">adc_read_high_res(byte in adc_chan) return word</a></code></b>
+				<p>	<pre>
+Title:     Analog to digital conversion returning a 16-bits value
+Arguments: channel number
+Returns:   16-bits ADC value
+Notes:     - Uses right justification
+ Returns a 16-bits value of the result of ADC, of which the
+range is dependent of the supported ADC resolution of the PIC
+(can be a 8-, 10-, 12-bits value).
+ When the PIC supports only 8-bits ADC resolution the
+result is the same as of adc_read_low_res().
+
+</pre>
+</p>
+		</li>
+		<li>
 				<b><code name="code" class="python"><a name="b2324a64a5f46b6a72d10ac7cc0cefc6" href="#summary">adc_read(byte in adc_chan) return word</a></code></b>
-				<p>	<pre>Does an AD conversion on the selected channel
-returns the result as a 10-bits word
-It doesn't matter if ADC is set to low or high resolution
+				<p>	<pre>
+Title: Deprecated function, replaced by adc_read_high_res()
+
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="c48a88ac13036042f04eb5da0ae3a0a1" href="#summary">adc_read_low_res(byte in adc_chan) return byte</a></code></b>
-				<p>	<pre>Returns Low Resolution ADC-value as the RESULT
-It doesn't matter if ADC is set to low or high resolution
+				<p>	<pre>
+Title:     Analog to digital conversion returning an 8-bits value
+Arguments: Channel number
+Returns:   8-bits ADC value
+Notes:     - Uses left justification.
+ Returns the 8 most significant bits of the result of ADC
+
 </pre>
 </p>
 		</li>
 	</ul>
 
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="166ba47e0f8a975c9ef494158c12bc6e" href="#summary">_adc_read(byte in adc_chan, bit in justify) return word</a></code></b>
+				<p>	<pre>
+Title:     Analog to Digital conversion of the selected channel.
+Arguments: - channel number (byte)
+ justification (bit 0=left, 1=right)
+Returns:   word with ADC value
+Notes:     - When PIC supports high resolution (more than 8 bits)
+all bits of the ADC conversion are stored straight over
+from ADRESH and ADRESL.  When PIC supports only 8-bits
+resolution only the contents of ADRES are stored.
+ With right justification the result is immediately
+usable as binary value.
+ Left justification allows easy selection of the 8 most
+significant bits of the result, regardless which
+resolution the PIC supports (can be 8-,10 or 12-bits).
+
+</pre>
+</p>
+		</li>
+	</ul>
+
+	<br/>
 
 
 			<br/>
@@ -302,9 +365,6 @@ It doesn't matter if ADC is set to low or high resolution
 			</tr>
 			<tr>
 			<td><b>16f886</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f886_pwm_adc_freq.jal" target="_blank">16f886_pwm_adc_freq.jal</a></td>
-			</tr>
-			<tr>
-			<td><b>16f887</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f887_adc.jal" target="_blank">16f887_adc.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>18f14k50</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f14k50_adc_independent.jal" target="_blank">18f14k50_adc_independent.jal</a></td>

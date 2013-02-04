@@ -15,7 +15,7 @@
 	</a>
 
     <div>
-		<font size="+1"><i>hardware PWM control, dedicated to module CCP5</i></font>
+		<font size="+1"><i>hardware PWM control, dedicated to module PWM5</i></font>
 	</div>
 
 	<br/>
@@ -44,7 +44,7 @@
 			<b>Compiler</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			2.4l
+			2.4p
 		</td>
 	</tr>
 	</table>
@@ -53,9 +53,9 @@
 	
 	<b>Description</b>
 	<p>
-		<pre>Performs PWM operations on the CCP5 module.
+		<pre>Performs PWM operations on the PWM5 module (of enhanced midrange)
 This file is automatically included by pwm_hardware.jal
-when the target PIC has a CCP5 module.
+when the target PIC has a PWM5 module.
 </pre>
 
 	</p>
@@ -68,6 +68,12 @@ when the target PIC has a CCP5 module.
           (Stef's lib)
        2. Partly rewritten for JalV2 version 2.4l and Jallib revision 1171.
           Reduced memory occupation. Added procedure for lowres PWM.
+       3. Changes dd October 2012 by Rob Hamerling
+          - added public procedure to set dutycycle with highest resolution (1023 steps).
+          - Make the pwm_set_dutycycle (highres, lowres and unqualified) private
+            (preceeded with an underscore). These procedures will be kept. but
+            with a 'deprecated' warning recommending to use the procedures for
+            relative settings.
 </pre>
 
 	</p>
@@ -86,16 +92,16 @@ when the target PIC has a CCP5 module.
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#64d79f330b3838e9e95df6ba6b8c076c">var byte  _ccpr5l_shadow  = 0                            </a></code></b>
+				<b><code name="code" class="python"><a href="#0d240a362c6367a553c5207e8764a2c8">var byte   _ccp5con_shadow = 0b0000_0000                 </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#db7b115e7c448b3d4152bbab837af998">var bit*2 _ccp5con_shadow_dc5b  at _ccp5con_shadow : 4    </a></code></b>
+				<b><code name="code" class="python"><a href="#3e2e2ee6b239d781962c44fb978bc672">var byte   _ccpr5l_shadow  = 0                           </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#f422b0f9e643a49f6464a78b3f7a2145">var byte  _ccp5con_shadow = 0b0000_0000                  </a></code></b>
+				<b><code name="code" class="python"><a href="#f2d07080936a6b360e2b4ce039b75782">var bit*4  _ccp5con_shadow_ccp5m at _ccp5con_shadow : 0  </a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#1c29103181da2d3838a480522f9d569b">var bit*4 _ccp5con_shadow_ccp5m at _ccp5con_shadow : 0    </a></code></b>
+				<b><code name="code" class="python"><a href="#eb19379d6b054f0f94d65de52945ff1a">var bit*2  _ccp5con_shadow_dc5b  at _ccp5con_shadow : 4  </a></code></b>
 		</li>
 	</ul>
 
@@ -103,16 +109,22 @@ when the target PIC has a CCP5 module.
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#566e4be7d9d300cafff0b18afc367559">pwm5_set_dutycycle_highres(word in duty)</a></code></b>
+				<b><code name="code" class="python"><a href="#d6b5e266aa2a15611f2f03d978da816e">pwm5_set_dutycycle_lowres(byte in steps)</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#908589292d2f950d9c26fd1dfe8983ce">pwm5_set_dutycycle(byte in duty)</a></code></b>
+				<b><code name="code" class="python"><a href="#6a003da95c07684ee2f54ed5a7331b1a">pwm5_set_dutycycle_highres(word in steps)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#b6328add83fe764407d216c01c50eeb0">pwm5_set_dutycycle_percent(byte in percent)</a></code></b>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a href="#2c5fbba5a12b5f7a807aa876dfe8462b">pwm5_off()</a></code></b>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a href="#b4a0a344a130331afbb0eefcb51a6458">pwm5_set_dutycycle_lowres(byte in duty)</a></code></b>
+				<b><code name="code" class="python"><a href="#13bcbd555778b327c65bd07e890fbe65">pwm5_set_dutycycle(byte in steps)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#4a93cdccd1709687e464fcd7b376b814">pwm5_set_dutycycle_ratio(word in ratio)</a></code></b>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a href="#9da8c618b475f44bde96eaf366f6e57a">pwm5_set_percent_dutycycle(byte in percent)</a></code></b>
@@ -122,6 +134,14 @@ when the target PIC has a CCP5 module.
 		</li>
 	</ul>
 
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#e0d8f8cf80cc52cbb6bd1ab40b36e967">_pwm5_set_dutycycle_highres(word in steps)</a></code></b>
+		</li>
+	</ul>
+
+	<br/>
 
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>
@@ -135,23 +155,23 @@ when the target PIC has a CCP5 module.
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="64d79f330b3838e9e95df6ba6b8c076c" href="#summary">var byte  _ccpr5l_shadow  = 0                            </a></code></b>
-				<p>	<pre>8 MSbits of duty cycle</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="db7b115e7c448b3d4152bbab837af998" href="#summary">var bit*2 _ccp5con_shadow_dc5b  at _ccp5con_shadow : 4    </a></code></b>
-				<p>	<pre>2 LSbits of duty cycle</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="f422b0f9e643a49f6464a78b3f7a2145" href="#summary">var byte  _ccp5con_shadow = 0b0000_0000                  </a></code></b>
+				<b><code name="code" class="python"><a name="0d240a362c6367a553c5207e8764a2c8" href="#summary">var byte   _ccp5con_shadow = 0b0000_0000                 </a></code></b>
 				<p>	<pre>shadow</pre>
 </p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="1c29103181da2d3838a480522f9d569b" href="#summary">var bit*4 _ccp5con_shadow_ccp5m at _ccp5con_shadow : 0    </a></code></b>
-				<p>	<pre>mode pattern</pre>
+				<b><code name="code" class="python"><a name="3e2e2ee6b239d781962c44fb978bc672" href="#summary">var byte   _ccpr5l_shadow  = 0                           </a></code></b>
+				<p>	<pre>8 MSbits of duty cycle</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="f2d07080936a6b360e2b4ce039b75782" href="#summary">var bit*4  _ccp5con_shadow_ccp5m at _ccp5con_shadow : 0  </a></code></b>
+				<p>	<pre>2 LSbits of duty cycle</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="eb19379d6b054f0f94d65de52945ff1a" href="#summary">var bit*2  _ccp5con_shadow_dc5b  at _ccp5con_shadow : 4  </a></code></b>
+				<p>	<pre>2 LSbits of duty cycle</pre>
 </p>
 		</li>
 	</ul>
@@ -160,19 +180,54 @@ when the target PIC has a CCP5 module.
 		<h3><a name="Procedures">Procedures</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="566e4be7d9d300cafff0b18afc367559" href="#summary">pwm5_set_dutycycle_highres(word in duty)</a></code></b>
-				<p>	<pre>Set dutycycle with 10-bits resolution, allowing 1024 PWM steps.
-The 'duty' argument is a (max) 10-bits absolute value for the duty cycle:
+				<b><code name="code" class="python"><a name="d6b5e266aa2a15611f2f03d978da816e" href="#summary">pwm5_set_dutycycle_lowres(byte in steps)</a></code></b>
+				<p>	<pre>
+Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
+The 'steps' argument is the 8-bits absolute value for the duty cycle:
 * duty<1:0> are the 2 LSbits
-* duty<9:2> are the 8 MSbits
-Allowed range: 0..1023
-Note: pin_CCP5_direction should be set to output!
+* duty<7:2> are the 6 MSbits
+Arguments: byte - duty cycle (allowed range 0..255)
+Notes:     This procedure is particularly suitable with higher frequencies
+whereby the PWM resolution is limited to 256 steps or less!
+
 </pre>
 </p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="908589292d2f950d9c26fd1dfe8983ce" href="#summary">pwm5_set_dutycycle(byte in duty)</a></code></b>
-				<p>	<pre>Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
+				<b><code name="code" class="python"><a name="6a003da95c07684ee2f54ed5a7331b1a" href="#summary">pwm5_set_dutycycle_highres(word in steps)</a></code></b>
+				<p>	<pre>deprecated procedure
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="b6328add83fe764407d216c01c50eeb0" href="#summary">pwm5_set_dutycycle_percent(byte in percent)</a></code></b>
+				<p>	<pre>
+Purpose:   Set duty cycle as a percentage, allowing max 100 PWM steps.
+The duty cycle will be set to the specified percentage of the maximum
+for the current PWM frequency and Fosc.
+Arguments: byte - dutycycle as a percentage (allowed range: 0..100)
+Notes:     - The number of available PWM steps can be lower than 100 with
+(very) high PWM frequencies and low Fosc.
+ The steps may not all be equal. The lower the actual resolution
+the bigger the differences between steps may be.
+ pin_CCP5_direction should be set to output!
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="2c5fbba5a12b5f7a807aa876dfe8462b" href="#summary">pwm5_off()</a></code></b>
+				<p>	<pre>
+Purpose:   PWM mode off
+Arguments: none
+
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="13bcbd555778b327c65bd07e890fbe65" href="#summary">pwm5_set_dutycycle(byte in steps)</a></code></b>
+				<p>	<pre>
+Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
 This procedure is equivalent to pwm5_set_dutycycle_highres(), but
 the low order 2 bits of the 10-bits duty cycle are set to 0.
 This means that only every 4th of the available 1023 steps can be selected
@@ -181,52 +236,66 @@ This procedure is for user convenience, allowing to specify an 8 bits
 value for the duty cycle is for many applications satisfactory.
 Calling this procedure will also activate PWM.
 Note: pin_CCP5_direction should be set to output!
+
 </pre>
 </p>
 		</li>
 		<li>
-				<b><code name="code" class="python"><a name="2c5fbba5a12b5f7a807aa876dfe8462b" href="#summary">pwm5_off()</a></code></b>
-				<p>	<pre>PWM mode off
-retain duty cycle setting in shadow registers
-</pre>
-</p>
-		</li>
-		<li>
-				<b><code name="code" class="python"><a name="b4a0a344a130331afbb0eefcb51a6458" href="#summary">pwm5_set_dutycycle_lowres(byte in duty)</a></code></b>
-				<p>	<pre>Set dutycycle with 8-bits resolution allowing 255 PWM steps.
-The 'duty' argument is the 8-bits absolute value for the duty cycle:
-* duty<1:0> are the 2 LSbits
-* duty<7:2> are the 6 MSbits
-Allowed range: 0..255
-Beware that steps 256..1023 are not available. In other words
-the available PWM range is 25% of the highres procedure.
-This procedure is particularly suitable with higher frequencies
-whereby the PWM resolution is limited to 256 steps or less!
+				<b><code name="code" class="python"><a name="4a93cdccd1709687e464fcd7b376b814" href="#summary">pwm5_set_dutycycle_ratio(word in ratio)</a></code></b>
+				<p>	<pre>
+Purpose:   Set duty cycle in the range 0..1023 PWM steps.
+Arguments: word - dutycycle ration in range 0..1023
+Notes:     - The duty cycle will be set to the specified ration of the maximum
+value for the current PWM frequency and Fosc.
+Notes:     - The resolution is about 1 pro mille
+ The number of available PWM steps can be lower than 1023 with
+high PWM frequencies or low Fosc values.
+ pin_CCP5_direction should be set to output!
+
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="9da8c618b475f44bde96eaf366f6e57a" href="#summary">pwm5_set_percent_dutycycle(byte in percent)</a></code></b>
-				<p>	<pre>Set a percentage duty cycle, allowing max 100 PWM steps.
-Allowed range: 0..100
-The duty cycle will be set to the specified percentage of the maximum
-for the current PWM frequency.
-Note: The number of available PWM steps can be lower than 100 with
-(very) high PWM frequencies.
-Note: pin_CCP5_direction should be set to output!
+				<p>	<pre>deprecated procedure
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="17fc9052c5a9f25e0e5f64f3a4d51144" href="#summary">pwm5_on()</a></code></b>
-				<p>	<pre>PWM mode on
-Restore duty cycle from shadow registers
-Note: pin_CCP5_direction should be set to output!
+				<p>	<pre>
+Purpose:   Set PWM on
+Arguments: none
+Notes:     - duty cycle is restored from shadow registers
+ pin_PWM5_direction should be set to output
+
 </pre>
 </p>
 		</li>
 	</ul>
 
+	<i><small>Private</small></i>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="e0d8f8cf80cc52cbb6bd1ab40b36e967" href="#summary">_pwm5_set_dutycycle_highres(word in steps)</a></code></b>
+				<p>	<pre>
+Purpose:   Specify the duty cycle by number of PWM steps.
+The duty cycle is setting is determined by a 10-bits parameter,
+allowing a resolution of 1023 steps.
+The 'steps' argument is a (max) 10-bits absolute value for the duty cycle:
+* steps<1:0> are the 2 LSbits
+* steps<9:2> are the 8 MSbits
+Arguments: word - steps cycle (allowed range 0..1023)
+Notes:     - This is a private procedure, not intended for general use.
+The caller is responsible to specify an acceptable value
+w.r.t. to the chosen PWM frequency.
+
+</pre>
+</p>
+		</li>
+	</ul>
+
+	<br/>
 
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>

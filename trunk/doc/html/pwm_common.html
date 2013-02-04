@@ -36,7 +36,7 @@
 			<b>Adapted-by</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			Sebastien Lelong
+			Sebastien Lelong, Rob Hamerling
 		</td>
 	</tr>
 	<tr>
@@ -44,7 +44,7 @@
 			<b>Compiler</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			2.4l
+			2.4p
 		</td>
 	</tr>
 	</table>
@@ -57,6 +57,9 @@
 It is used in combination with one or more pwm_ccp<number> libraries
 (eg. pwm_ccp1.jal, pwm_ccp2.jal, etc.). These libraries are included
 automatically dependent of the configuration of the target PIC.
+.
+Oscillator refequency, PWM frequency and PWM resolution are a tighly coupled
+set of parameters. Refer to the PWM section in the datasheets how these are related.
 </pre>
 
 	</p>
@@ -66,6 +69,12 @@ automatically dependent of the configuration of the target PIC.
 	<b>Notes</b>
 	<p>
 		<pre>This is a heavy refactoring of the original pwm_hardware.jal (Stef's lib).
+.
+Changes dd October 2012:
+- Added function pwm_get_resolution() returning the actual resolution in PWM steps.
+
+
+--------------------------------------------------------------------------
 </pre>
 
 	</p>
@@ -84,7 +93,7 @@ automatically dependent of the configuration of the target PIC.
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a href="#c571fa9889b4c2b8a38db89ab8090f55">var volatile word _pr2_shadow_plus1 = 256           </a></code></b>
+				<b><code name="code" class="python"><a href="#fd6a770d816e4cf57eaa8f6aeb18c48f">var volatile word _pr2_shadow_plus1 = 256          </a></code></b>
 		</li>
 	</ul>
 
@@ -102,6 +111,9 @@ automatically dependent of the configuration of the target PIC.
 
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#08ac2ef806230dc7c747ee776add4af5">pwm_get_resolution() return word </a></code></b>
+		</li>
 	</ul>
 
 
@@ -112,8 +124,9 @@ automatically dependent of the configuration of the target PIC.
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
-				<b><code name="code" class="python"><a name="c571fa9889b4c2b8a38db89ab8090f55" href="#summary">var volatile word _pr2_shadow_plus1 = 256           </a></code></b>
+				<b><code name="code" class="python"><a name="fd6a770d816e4cf57eaa8f6aeb18c48f" href="#summary">var volatile word _pr2_shadow_plus1 = 256          </a></code></b>
 				<p>	<pre>Shadow of PR2 (value incremented by 1, i.e. value in range 1..256)
+Set to maximum value by default for maximum resolution.
 </pre>
 </p>
 		</li>
@@ -124,13 +137,22 @@ automatically dependent of the configuration of the target PIC.
 		<ul>
 		<li>
 				<b><code name="code" class="python"><a name="ad12f8ac1fd66c9e37addba207148017" href="#summary">pwm_max_resolution(byte in prescaler)</a></code></b>
-				<p>	<pre>Sets all(!) CCP modules for max (10-bits) PWM resolution.
+				<p>	<pre>
+Purpose:   Set all(!) CCP modules for max (10-bits) PWM resolution.
+Arguments: byte - prescaler value for Timer2 (allowed value 1, 4 or 16)
+(other values will result in disabled PWM)
+Notes:     - Allowed values of input parameter: 1, 4 and 16
+ User may check bit TIMER2_TMR2ON to see if call was successful
+TRUE:  Timer2 ON, PWM resolution set
+FALSE: Timer2 OFF, no PWM signal
+.
 While setting maximum resolution, the Timer2 prescaler can be used to adjust
-frequency to a some extent with the Timer2 parameter value which can be either:
-* 1 : high frequency
+frequency to some extent with the Timer2 parameter value which can be either:
+* 1 : highest frequency
 * 4 : medium frequency
-* 16: low frequency
-
+* 16: lowest frequency
+Other values result in PWM being disabled.
+.
 Below a table showing the PWM frequencies for common clock speeds and
 different Timer2 prescaler values.
 
@@ -143,27 +165,34 @@ For PICs with more than one CCP module you should realize that all CCP
 modules use Timer2 and PR2 for PWM operations. This means that the PWM
 period (frequency) of all PWM output pins is the same. Only the duty
 cycle can vary between one and another PWM pin.
-
-Set PWM to maximum resolution (for all PWM pins!).
+.
 This implies 1 out of 3 specific PWM frequencies, depending on the Timer2
 prescaler value passed with the call. See examples in the table above,
 or use the formula in the datasheet to calculate the resulting frequency.
+
 </pre>
 </p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="1bfa6dbb409649ba09112553d5bd003f" href="#summary">pwm_set_frequency(dword in freq)</a></code></b>
-				<p>	<pre>Sets all(!) CCP modules for a specific PWM frequency.
-
+				<p>	<pre>
+Purpose:   Set all(!) CCP modules for a specific PWM frequency.
+Arguments: Input:  dword - PWM frequency
+Output: none
+Notes:     - User may check bit TIMER2_TMR2ON to see if call successful
+TRUE:  Timer2 ON, PWM frequency set
+FALSE: Timer2 OFF, no PWM signal (frequency too high or too low
+with current Fosc)
 The minimum and maximum allowed PWM frequencies depend on the clock speed.
-When specifying a value beyond the limits PWM will not be started.
-
+When specifying a value beyond the limits PWM will not be enabled.
+.
 The chosen frequency may enforce a limit on the PWM resolution (number of steps).
 The application program should not specify a higher value for the duty cycle
 than this limit. When exceeding this limit the dutycycle will probably result
 in a 'weird' value.
-Only the procedure set_dutycycle_percent() is safe in this case, the other
-set_dutycycle procedures use absolute values and are not safe!
+Use the procedures pwm?_set_dutycycle_percent() and pwm?_set_dutycycle_ratio()
+to set the desired duty cycle.
+
 </pre>
 </p>
 		</li>
@@ -172,6 +201,16 @@ set_dutycycle procedures use absolute values and are not safe!
 
 		<h3><a name="Functions">Functions</a></h3>
 		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="08ac2ef806230dc7c747ee776add4af5" href="#summary">pwm_get_resolution() return word </a></code></b>
+				<p>	<pre>
+Purpose:   Obtain actuial number of PWM steps
+Arguments: (none)
+Returns:   word = actual number of PWM steps
+
+</pre>
+</p>
+		</li>
 	</ul>
 
 

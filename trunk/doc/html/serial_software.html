@@ -36,7 +36,7 @@
 			<b>Adapted-by</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			Sebastien Lelong, Albert Faber, Joep Suijs (on behalf of Tijs van Roon)
+			Sebastien Lelong, Albert Faber, Joep Suijs (on behalf of Tijs van Roon),
 		</td>
 	</tr>
 	<tr>
@@ -44,7 +44,7 @@
 			<b>Compiler</b>
 		</td>
 		<td style="border: 1px solid #aaa; padding: 5px;">
-			>=2.4l
+			2.4o
 		</td>
 	</tr>
 	</table>
@@ -53,17 +53,37 @@
 	
 	<b>Description</b>
 	<p>
-		<pre>software RS232 library
+		<pre>Software RS232 library
 Library supports software RS232 send and receive procedure on any IO-pin.
-Both the inverted and non-inverted routines are available, 
+Both the inverted and non-inverted routines are available,
 so it should fit any hardware.
 Baudrate can be set between 110 and 230_400 (for 20 Mhz Xtal),
 for lower Xtal frequencies the maximum baudrate will be equally lower.
 Baudrates are optimized, so even the high baudrates shouldn't be a problem
 (my [Stef] standard = 115_200 Baud, which has never given me any problems).
 Interrupts are disabled during transmissions.
-Transmission parameters are 8 databits, 2 stopbits, no parity, no handshake.
-const serial_sw_stopbits = 1 ; setup for one stopbit.                                                
+Default parameters are 8 databits, 2 stopbits, no parity, no handshake.
+.
+To use this serial_software library in a user program:
+.
+1. The following aliases must be defined:
+     serial_sw_tx_pin     is  pin_xy    (any output pin)
+     serial_sw_rx_pin     is  pin_xy    (any input pin)
+.
+2. the following constants must be defined by the user program:
+     serial_sw_baudrate   = 110 .. 240_000
+.
+3. The following constants may [optionally] be defined by the user program:
+     serial_sw_invert     = FALSE | TRUE    (default: TRUE)
+     serial_sw_databits   = 5 .. 8          (default: 8)
+     serial_sw_stopbits   = 1 | 2           (default: 2)
+.
+4. Include serial_software
+.
+5. Set the selected serial_sw_tx_pin for output and
+   set the serial_sw_rx_pin for input.
+.
+6. serial_sw_init()
 </pre>
 
 	</p>
@@ -84,7 +104,16 @@ const serial_sw_stopbits = 1 ; setup for one stopbit.
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
+				<b><code name="code" class="python"><a href="#a03ed5eb4d9b3ba07730e7bb4fe3ab2f">const serial_sw_databits = 8</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#dab34b638903918abf7673e0c24f86ef">const serial_sw_stopbits = 2</a></code></b>
+		</li>
+		<li>
 				<b><code name="code" class="python"><a href="#1ad4cc0bc64ab178c37437ae1a33c2cd">const serial_sw_bit_time = (1_000_000/serial_sw_baudrate) - ((13 * serial_sw_instruction_time) / 100)</a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#8c4be64a7226ea82e1c820d0d9b55a98">const bit serial_sw_invert = true</a></code></b>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a href="#13d447b55e5a033e77486e65ae67b8b5">const serial_sw_instruction_time = 400_000_000 / target_clock</a></code></b>
@@ -127,8 +156,29 @@ const serial_sw_stopbits = 1 ; setup for one stopbit.
 		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
 		<ul>
 		<li>
+				<b><code name="code" class="python"><a name="a03ed5eb4d9b3ba07730e7bb4fe3ab2f" href="#summary">const serial_sw_databits = 8</a></code></b>
+				<p>	<pre>Define number of databits
+default is 8 databits
+</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="dab34b638903918abf7673e0c24f86ef" href="#summary">const serial_sw_stopbits = 2</a></code></b>
+				<p>	<pre>Define number of stopbits
+default is 2 stopbits
+</pre>
+</p>
+		</li>
+		<li>
 				<b><code name="code" class="python"><a name="1ad4cc0bc64ab178c37437ae1a33c2cd" href="#summary">const serial_sw_bit_time = (1_000_000/serial_sw_baudrate) - ((13 * serial_sw_instruction_time) / 100)</a></code></b>
 				<p><i>No documentation found</i></p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="8c4be64a7226ea82e1c820d0d9b55a98" href="#summary">const bit serial_sw_invert = true</a></code></b>
+				<p>	<pre>Define if signal has to be inverted or not.
+default is low active-serial (like serial_hw)
+</pre>
+</p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="13d447b55e5a033e77486e65ae67b8b5" href="#summary">const serial_sw_instruction_time = 400_000_000 / target_clock</a></code></b>
@@ -154,7 +204,8 @@ serial_sw_write = 0x33
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="f7d02c6bb41724416beb3db6b0f7a70c" href="#summary">serial_sw_write(byte in data)</a></code></b>
-				<p>	<pre>Waits untill a character is received.
+				<p>	<pre>
+Transmit a character.
 Interrupts will be disabled during this routine, but restored afterwards.
 Also here the code is doubled (inverting and non-inverting)
 and selection is done by a compiler-directive.
@@ -163,11 +214,17 @@ and selection is done by a compiler-directive.
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="ee6af3bc909e15a958267109c308ad7b" href="#summary">serial_sw_init()</a></code></b>
-				<p><i>No documentation found</i></p>
+				<p>	<pre>
+Initialize the library
+The only action needed is to set the transmit pin high or low,
+(depending on serial_sw_invert definition).
+</pre>
+</p>
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="341d6f59cd6dab9a01c05a3506aaf5bb" href="#summary">serial_sw_read_wait(byte out data)</a></code></b>
-				<p>	<pre>Waits untill a character is received.
+				<p>	<pre>
+Wait until a character is received.
 Interrupts will be disabled during this routine, but restored afterwards.
 Also here the code is doubled (inverting and non-inverting)
 and selection is done by a compiler-directive.
@@ -181,7 +238,8 @@ and selection is done by a compiler-directive.
 		<ul>
 		<li>
 				<b><code name="code" class="python"><a name="1119eca945bd088d4fce785e5458112c" href="#summary">serial_sw_data'get() return byte</a></code></b>
-				<p>	<pre>Here the serial_sw_read_wait procedure is declared as a pseudo variable
+				<p>	<pre>
+Here the serial_sw_read_wait procedure is declared as a pseudo variable
 so you can use it in the following way
 {{{
 Data = serial_sw_write
@@ -191,7 +249,8 @@ Data = serial_sw_write
 		</li>
 		<li>
 				<b><code name="code" class="python"><a name="cebe105b7fc7e55b34fc70343c0d9858" href="#summary">serial_sw_read(byte out data) return bit</a></code></b>
-				<p>	<pre>Waits untill a character is received or time out is reached.
+				<p>	<pre>
+Wait until a character is received or time out is reached.
 Interrupts will be disabled during this routine, but restored afterwards.
 Also here the code is doubled (inverting and non-inverting)
 and selection is done by a compiler-directive.
@@ -206,6 +265,9 @@ and selection is done by a compiler-directive.
 				<h2><a name="related_samples">Related samples</a></h2>
 	Here are the list of samples which use this library:<br/><br/>
 	<table border=1>
+			<tr>
+			<td><b>12f615</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/12f615_print.jal" target="_blank">12f615_print.jal</a></td>
+			</tr>
 			<tr>
 			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_serial_software.jal" target="_blank">16f877a_serial_software.jal</a></td>
 			</tr>
@@ -231,6 +293,9 @@ and selection is done by a compiler-directive.
 			<td><b>18f4620</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4620_network_udp_server.jal" target="_blank">18f4620_network_udp_server.jal</a></td>
 			</tr>
 			<tr>
+			<td><b>18f4620</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4620_network_slip_isr_ping_udp.jal" target="_blank">18f4620_network_slip_isr_ping_udp.jal</a></td>
+			</tr>
+			<tr>
 			<td><b>18f4620</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4620_network_all_in_one.jal" target="_blank">18f4620_network_all_in_one.jal</a></td>
 			</tr>
 			<tr>
@@ -238,9 +303,6 @@ and selection is done by a compiler-directive.
 			</tr>
 			<tr>
 			<td><b>18f4620</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4620_network_udp_client.jal" target="_blank">18f4620_network_udp_client.jal</a></td>
-			</tr>
-			<tr>
-			<td><b>18f4620</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4620_network_slip_isr_ping_udp.jal" target="_blank">18f4620_network_slip_isr_ping_udp.jal</a></td>
 			</tr>
 			<tr>
 			<td><b>18f4620</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/18f4620_network_tcp_client.jal" target="_blank">18f4620_network_tcp_client.jal</a></td>
