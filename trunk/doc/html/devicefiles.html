@@ -5,7 +5,7 @@
    <meta http-equiv="content-type" content="text/html; charset=US-ASCII">
    <meta name="author" content="Rob Hamerling">
    <meta name="description" content="Jallib Device File Users Guide">
-   <meta name="copyright" content="Copyright (c) Rob Hamerling 2008..2012, All rights reserved">
+   <meta name="copyright" content="Copyright (&copy;) Rob Hamerling 2008..2013, all rights reserved">
    <meta name="project" content="This file is part of jallib  http://jallib.googlecode.com">
    <meta name="license" content="Released under the BSD license"
                               "http://www.opensource.org/licenses/bsd-license.php">
@@ -17,7 +17,9 @@
 
 
 <h1>Jallib Device Files Users Guide</h1>
-<p><center>by Rob Hamerling</center>
+<p><center>
+   Copyright (&copy;) Rob Hamerling 2008..2013, all rights reserved.
+</center>
 
 
 <h2>Table of contents</h2>
@@ -63,6 +65,7 @@
       <ul>
       <li><a href="#memdata">Data memory</a>
       <li><a href="#membanks">Memory banks</a>
+      <li><a href="#highmem">INTOSC calibration</a>
       <li><a href="#memusb">Data memory for PICs with USB module</a>
       <li><a href="#memshare">Shared memory</a>
       <li><a href="#analog">Analog modules</a>
@@ -725,10 +728,6 @@ bits, depending on the PIC type.
 The baseline and midrange have byte level access for data memory
 access, but program memory is on word level.
 </ul>
-<p>This has the following consequences:
-<ul>
-<li>
-</ul>
 
 
 <h3><a name="EUSARTregs">Names of registers and subfields of [E]USART modules</a></h3>
@@ -951,6 +950,7 @@ before switching 'm from input to output mode.
 but have been factory calibrated and contain the proper value for
 OSCCAL in the highest word of code memory.
 User programs can use it to calibrate the internal oscillator.
+See also <a href="#highmem">INTOSC calibration</a>
 <p>PIC programmers are supposed to preserve this high memory word.
 When it has (accidentally) been erased or overwritten the factory provided
 calibration value for OSCCAL is lost.
@@ -998,7 +998,7 @@ value.
    asm  bank  movwf  0x90     -- store contents of W in OSCCAL
 </pre>
 in which you have to specify for &lt;last-word-of-memory&gt; the address
-of the highest program memory word.
+of the highest word in program memory.
 For example when your PIC has 1K words of program memory you should specify:
 <pre>
    asm  page  call   0x3FF
@@ -1012,18 +1012,19 @@ most likely it will not contain a RETLW instruction.
 In that case the next instruction will be fetched, which is at address
 0x0000 because of program counter wrap around.
 Thus the PIC will probably enter an endless reset loop.
-For this reason the device files do not calibrate the internal oscillator.
+For this reason the device files of these PICs do not calibrate the internal
+oscillator.
 You could insert the asm instructions above in your program at your own risc!
-<p>When you are not sure what is in the high word of code memory or you want
-to play it safe, you can move a 'medium' value directly into OSCCAL, for
-example with:
+<p>When you are not sure about the contents of the high word of code memory
+or you want to play it safe, you can move a 'medium' value directly into
+OSCCAL, for example with:
 <pre>
    OSCCAL = 0x80
 </pre>
 See the datasheet for acceptable values: frequently the low order bits
 must be zero.
 <p>By varying the value in OSCCAL and measuring the effect you can
-fine tune the oscillator frequency.
+also fine tune the oscillator frequency to your needs.
 
 
 <h2><a name="usbprov">Provisions for USB</a></h2>
@@ -1711,6 +1712,14 @@ There are only very few PICs in these groups with more than 4 banks.
 These PICs are supported, but only for the first 4 banks of data memory.
 
 
+<h3><a name="highmem">INTOSC calibration</a></h3>
+<p>Baseline and some midrange PICs have in the last word of code memory
+an instruction for calibration of the internal oscillator.
+This is a reserved word and not counted in the amount of available
+code memory.
+See also <a href="#osccal">Calibation of Internal Oscillator</a>.
+
+
 <h3><a name="memusb">Data memory for PICs with USB module</a></h3>
 This is data memory sometimes dedicated to the USB module.
 But sometimes it can be used as regular data memory by the user program,
@@ -1742,7 +1751,8 @@ and for sign extensions of signed variables (adding sbyte to sword, etc.).
 <p>For the compiler 'shared' means:
 <ul compact>
 <li>For baseline and midrange PICs: memory which is accessible in all banks
-regardless the settings of the bank selection bits (STATUS_RPx).
+regardless the settings of the bank selection bits
+(STATUS_RPx, or similar bits in FSR).
 Memory which is mirrored in other bank(s), but not in all banks,
 is in this context not shared memory!
 <li>For the extended midrange and 18F PICs: (GPR) memory in the access bank.
@@ -1917,7 +1927,7 @@ An entry may contain the following elements:
 <tr><td>DATASHEET</td>
     <td>Datasheet number</td>
     <td>5 digits</td>
-    <td>Mandatory (otherwise not device files will be produced)</td>
+    <td>Mandatory (otherwise no device files will be produced)</td>
 </tr>
 <tr><td>PGMSPEC</td>
     <td>Programming Specifications number</td>
