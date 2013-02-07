@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
  * Title: Process TORELEASE file to check consistency with Jallib           *
  *                                                                          *
- * Author: Rob Hamerling, Copyright (c) 2008..2010, all rights reserved.    *
+ * Author: Rob Hamerling, Copyright (c) 2008..2013, all rights reserved.    *
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
