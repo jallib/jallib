@@ -22,10 +22,11 @@ PicSpecFile = 'k:/jallib/tools/devicespecific.json' /* PIC specific properties  
 titles      = 'k:/jallib/tools/datasheet.list'      /* datasheet number/title file  */
 
 /* -- output -- */
-dswiki      = 'k:/jallib/wiki/DataSheets.wiki'      /* out: DS wiki */
-pswiki      = 'k:/jallib/wiki/ProgrammingSpecifications.wiki'    /* out: PS wiki */
-dsgroupwiki = 'k:/jallib/wiki/PicGroups.wiki'
-psgroupwiki = 'k:/jallib/wiki/PicPgmGroups.wiki'
+dst         = 'k:/jallib/wiki/'                     /* output path */
+dswiki      = dst'DataSheets.wiki'                  /* out: DS wiki */
+pswiki      = dst'ProgrammingSpecifications.wiki'   /* out: PS wiki */
+dsgroupwiki = dst'PicGroups.wiki'
+psgroupwiki = dst'PicPgmGroups.wiki'
 
 url         = 'http://ww1.microchip.com/downloads/en/DeviceDoc/' /* Microchip site  */
 
@@ -86,7 +87,7 @@ if type = 'ps' then
 else
   call lineout wiki, '= PICname - Datasheet cross reference ='
 call lineout wiki, ''
-call lineout wiki, '||  *PIC*       || *Number* || *datasheet title* ||'
+call lineout wiki, '||  *PIC*       || *Number* || *Date* || *Datasheet title* ||'
 
 do i=1 to dir.0                                /* a line for every Jallib PIC device file */
 
@@ -104,8 +105,14 @@ do i=1 to dir.0                                /* a line for every Jallib PIC de
   if DS \= '-'  &  DS \= '?' then do
     call SysFileSearch DS, titles, dsnum.               /* lookup ds# & title */
     if dsnum.0 > 0 then do
+      call SysFileTree 'N:\PicDatasheets\'word(dsnum.1,1)'.pdf', pdf., 'FT'
+      if pdf.0 > 0 then
+        filedate = '20'left(pdf.1,5)
+      else
+        say 'Datasheet' word(dsnum.1,1) 'not found'
       call lineout wiki, '||' left(PicName,12),
                          '|| <a href="'url||left(word(dsnum.1,1)'.pdf">',12)left(word(dsnum.1,1),6)'</a>',
+                         '||' left(filedate, 7),
                          '||'delword(dsnum.1,1,1) '||'
       call SysFileTree pdfdir||word(dsnum.1,1).pdf, 'dsfile', 'FO'
       if dsfile.0 = 0 then                              /* check on presence */
@@ -114,15 +121,15 @@ do i=1 to dir.0                                /* a line for every Jallib PIC de
     else do
       call lineout wiki, '||' left(PicName,12),
                          '||' left(DS,6),
+                         '||' left('-',7),
                          '|| - ||'
     end
   end
   else                                      /* no datasheet number found */
     call lineout wiki, '||' left(PicName,12),
                        '||' left('-',6),
+                       '||' left('-',7),
                        '|| - ||'
-
-  call stream dir.i, 'c', 'close'
 
 end
 
@@ -196,18 +203,25 @@ else
 call lineout wiki, '== sorted on datasheet number =='
 call lineout wiki, '=== (see below for a list sorted on PIC type) ==='
 call lineout wiki, ''
-call lineout wiki, '|| *Datasheet* || *PICtype* ||'
+call lineout wiki, '|| *Datasheet* || *Date* || *PICtype* ||'
 
 PicCount = 0
 call sortGroup 'D'
 do j = 1 to ds.0
   call SysFileSearch ds.j, titles, dsnum.
-  if dsnum.0 > 0 then
+  if dsnum.0 > 0 then do
+    call SysFileTree 'N:\PicDatasheets\'word(dsnum.1,1)'.pdf', pdf., 'FT'
+    if pdf.0 > 0 then
+      filedate = '20'left(pdf.1,5)
+    else
+      say 'Datasheet' word(dsnum.1,1) 'not found'
     call lineout wiki,,
                 '|| <a href="'url||word(dsnum.1,1)'.pdf">'word(dsnum.1,1)'</a>',
+                '||' filedate,
                 '||' group.j '||'
+  end
   else
-    call lineout wiki, '||' left(ds.j,11) '||' group.j '||'
+    call lineout wiki, '||' left(ds.j,11) '|| - ||' group.j '||'
   PicCount = PicCount + words(group.j)
 end
 
@@ -228,12 +242,18 @@ call sortGroup 'P'
 do j = 1 to ds.0
   call SysFileSearch ds.j, titles, dsnum.
   if dsnum.0 > 0 then do
+    call SysFileTree 'N:\PicDatasheets\'word(dsnum.1,1)'.pdf', pdf., 'FT'
+    if pdf.0 > 0 then
+      filedate = '20'left(pdf.1,5)
+    else
+      say 'Datasheet' word(dsnum.1,1) 'not found'
     call lineout wiki,,
                 '|| <a href="'url||word(dsnum.1,1)'.pdf">'word(dsnum.1,1)'</a>',
+                '||' filedate,
                 '||' group.j '||'
   end
   else do
-    call lineout wiki, '||' left(ds.j,11) '||' group.j '||'
+    call lineout wiki, '||' left(ds.j,11) '|| - ||' group.j '||'
   end
 end
 call lineout wiki, ''
