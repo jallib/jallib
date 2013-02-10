@@ -71,7 +71,7 @@ vimdoc:
 	do \
 		libfile=`basename $$f`; \
 		vimfile=`echo $$libfile | sed "s#\.jal#.txt#"`; \
-		python jallib.py jalapi -l -d ../sample -t jalapi_vim.tmpl -o ../doc/vim/$$vimfile $$f ;\
+		python2.5 jallib.py jalapi -l -d ../sample -t jalapi_vim.tmpl -o ../doc/vim/$$vimfile $$f ;\
 	done
 
 matrix:
@@ -140,10 +140,10 @@ prepare:
 	do \
 		libfile=`basename $$f`; \
 		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
-		python jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
+		python2.5 jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
 	done
 	# one-page doc
-	python jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
+	python2.5 jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
 	# doc menu...
 	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
 	# manually include device files doc, as it's not generated from a lib
@@ -226,7 +226,7 @@ bee-archive:
 
 bee-upload:
 	##python ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib, version `cat distrib/jallib-pack-${VERSION}/VERSION`" -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.tar.gz
-	python ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib, version `cat distrib/jallib-pack-${VERSION}/VERSION`" -p jallib -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.zip
+	python2.5 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib, version `cat distrib/jallib-pack-${VERSION}/VERSION`" -p jallib -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.zip
 
 bee-check:
 	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2
