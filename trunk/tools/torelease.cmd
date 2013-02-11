@@ -75,7 +75,7 @@ do linenumber = 1  while lines(torelease)                   /* collect files */
   ln = linein(torelease)
   if length(ln) < 2  |  left(word(ln,1),1) = '#' then
     iterate                                                 /* irrelevant line */
-  ln = translate(ln, xrange('a','z'), xrange('A','Z'))      /* ensure lower case */
+  ln = tolower(ln)                                          /* ensure lower case */
   if stream(base'/'ln, 'c', 'query exists') = '' then       /* file not found */
     call lineout list, format(linenumber,4)'. File <'ln'> missing in' base
   select
@@ -101,7 +101,7 @@ do linenumber = 1  while lines(torelease)                   /* collect files */
       part = 'sample'
       parse var ln 'sample/' PicName '_' .                  /* isolate name of PIC */
       if PicName \= '' then do                              /* picname derived */
-        PicNameUpper = translate(PicName,xrange('A','Z'),xrange('a','z'))
+        PicNameUpper = toupper(PicName)
         smppic.PicNameUpper = PicName                       /* PIC with at least 1 sample */
         if ln = 'sample/'PicName'_blink.jal' then do                 /* basic blink sample */
           blink_sample_count = blink_sample_count + 1       /* count 'm */
@@ -113,18 +113,18 @@ do linenumber = 1  while lines(torelease)                   /* collect files */
       say 'Unrecognised entry:' ln
       iterate
   end
-  part = translate(part,xrange('A','Z'),xrange('a','z'))    /* upper case required */
+  part = toupper(part)                                      /* upper case required */
   k = f.part.0 + 1                                          /* counts per part */
   f.part.k = ln
   f.part.0 = k
 end
-call stream torelease, 'c', 'close'
+call stream torelease, 'c', 'close'                         /* done */
 
 do i = 1 to f.device.0                                      /* all device files */
   if f.device.i = 'include/device/chipdef_jallib.jal' then
     iterate                                                 /* skip */
   parse value filespec('n',f.device.i) with PicName '.jal' .   /* PIC name */
-  PicNameUpper = translate(PicName,xrange('A','Z'),xrange('a','z'))
+  PicNameUpper = toupper(PicName)
   if blinkpic.PicNameUpper \= PicName then
     call lineout list, 'No basic blink sample for' PicName
   dev.PicNameUpper = PicName                                /* remember device file */
@@ -133,7 +133,7 @@ end
 do i = 1 to f.sample.0                                      /* all samples */
   parse var f.sample.i 'sample/' PicSamp '.jal' .           /* sample filename */
   parse var PicSamp PicName '_' .                           /* name of PIC */
-  PicNameUpper = translate(PicName,xrange('A','Z'),xrange('a','z'))
+  PicNameUpper = toupper(PicName)
   if PicName \= dev.PicNameUpper then                       /* not released device file */
      call lineout list, 'Device file' PicName'.jal',
                         'for sample' PicSamp'.jal not released'
@@ -224,6 +224,7 @@ do i=1 to fls.0
       call lineout list, filespec                           /* not released lib */
   end
 end
+call stream torelease, 'c', 'close'                         /* done */
 call lineout list, ''
 if runtype \= '' then
   call lineout list, unlisted 'unreleased include files'
@@ -242,7 +243,7 @@ else
 call lineout list, ''
 call lineout list, '-------------------------------------------------------'
 
-call SysFileTree smpdir'/*.jal', 'fls', 'FSO'        /* samples */
+call SysFileTree smpdir'/*.jal', 'fls', 'FSO'      /* all samples */
 if fls.0 = 0 then do
    call lineout list, 'Found no samples in <'smpdir'>'
   return 1
@@ -250,7 +251,7 @@ end
 unlisted = 0
 unlistedblink = 0
 do i=1 to fls.0
-  fls.i = translate(fls.i, '/', '\')               /* forware slashes */
+  fls.i = tolower(translate(fls.i, '/', '\'))      /* forward slashes, lower case */
   filespec = substr(fls.i, length(base) + 2)       /* remove base prefix */
   call SysFileSearch filespec, torelease, x.
   if x.0 = 0 then do                               /* not found in torelease  */
@@ -264,28 +265,30 @@ do i=1 to fls.0
       call lineout list, filespec                  /* list not released sample */
   end
   else do                                          /* found sample in torelease */
-    parse upper var fls.i PicName '_'
+    parse var fls.i PicName '_'
     PicName = tolower(filespec('N', PicName))
     call SysFileSearch 'include', fls.i, 'inc.'    /* search included libraries */
+    call stream fls.i, 'c', 'close'                /* done */
     do j=1 to inc.0                                /* all lines with 'include' */
-      if toupper(word(inc.j,1)) = 'INCLUDE' then do   /* 1st word is 'include' */
-        libx = tolower(word(inc.j,2))                 /* 2nd word is library or device file */
-        if left(libx,2) = '10' |,                  /* check if device file */
+      inc.j = tolower(inc.j)                       /* all lower case */
+      if word(inc.j,1) = 'include' &,              /* 1st word is 'include' and .. */
+         words(inc.j) > 1  then do                 /* .. at least 2 words */
+        libx = word(inc.j,2)                       /* 2nd word is library or device file */
+        if left(libx,2) = '10' |,                  /* when device file */
            left(libx,2) = '12' |,
            left(libx,2) = '16' |,
            left(libx,2) = '18' then do
            if libx \= PicName then                 /* not matching! */
-             say 'sample' fls.i 'includes wrong device file:' libx
+             say 'sample' filespec('n',fls.i) 'includes wrong device file:' libx
         end
-        else do
-          if stream(fls.i, 'c', 'query exists') = '' then       /* file not found */
-            say 'sample' fls.i 'includes non existing library:' libx
-        end
+        call SysFileSearch libx'.jal', torelease, 'liby.'
+        if liby.0 = 0 then
+          say 'sample' filespec('N',fls.i) 'includes a non released library:' libx
       end
     end
   end
 end
-call stream torelease, 'c', 'close'
+call stream torelease, 'c', 'close'                /* done */
 call lineout list, ''
 if runtype \= '' then
   call lineout list, unlisted 'unreleased sample files'
@@ -310,6 +313,7 @@ do i=1 to fls.0
     call lineout list, filespec                    /* list not released lib */
   end
 end
+call stream torelease, 'c', 'close'
 call lineout list, ''
 call lineout list, unlisted 'unreleased project files'
 call lineout list, ''
@@ -342,13 +346,21 @@ Say 'For a sorted TORELEASE file see' newrelease
 return 0     /* all done */
 
 
+
+/* --------------------------------------------- */
+/* translate shortcuts: toupper / tolower        */
+/* --------------------------------------------- */
+toupper: return translate(arg(1),xrange('A','Z'),xrange('a','z'))
+tolower: return translate(arg(1),xrange('a','z'),xrange('A','Z'))
+
+
 /* ----------------------------------------------- */
 /* Write members of subdirectory to new torelease  */
 /* after being sorted on name                      */
 /* ----------------------------------------------- */
 listpart: procedure expose f. newrelease
 parse arg part, title
-part = translate(part, xrange('A','Z'), xrange('a','z'))    /* make upper case */
+part = toupper(part)
 parse upper var part part
 call sortpart part                                          /* sort this part of collection */
 call lineout newrelease, '#' title
@@ -387,8 +399,3 @@ end
 return
 
 
-/* --------------------------------------------- */
-/* toupper / tolower                             */
-/* --------------------------------------------- */
-toupper: return translate(arg(1),xrange('A','Z'),xrange('a','z'))
-tolower: return translate(arg(1),xrange('a','z'),xrange('A','Z'))
