@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
  * Title: Dev2Jal.cmd - Create JalV2 device include files for flash PICs    *
  *                                                                          *
- * Author: Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.    *
+ * Author: Rob Hamerling, Copyright (c) 2008..2013, all rights reserved.    *
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
@@ -41,7 +41,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.41'
+   ScriptVersion   = '0.1.42'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4p'
    MPlabVersion    = '889'
@@ -63,7 +63,7 @@ MPLABbase  = 'k:/mplab'MPlabVersion'/'             /* MPLABxxx */
 JALLIBbase = 'k:/jallib/'                          /* base dir. JALLIB (local) */
 
 /* When using 'standard' installations no other changes are needed,        */
-/* but you may check below which specific sources of information are used, */
+/* but you may check below which specific sources of information are used  */
 /* and adapt this script for any deviations in your system setup.          */
 
 /* The following libraries are used to collect information from   */
@@ -162,7 +162,7 @@ if stream(chipdef, 'c', 'open write') \= 'READY:' then do   /* new chipdef file 
    call msg 3, 'Could not create common include file' chipdef
    return 1                                                 /* unrecoverable: terminate */
 end
-call list_chipdef_header                                    /* header of chipdef file */
+call list_chipdef_header                                    /* create header of chipdef file */
 
 xChipDef. = '?'                                             /* collection of dev IDs in chipdef */
 
@@ -182,11 +182,8 @@ do i=1 to dir.0                                             /* all relevant .dev
 
    if \(substr(PicName,3,1) = 'f'    |,                     /* not flash PIC or */
         substr(PicName,3,2) = 'lf'   |,                     /*     low power flash PIC or */
-        substr(PicName,3,2) = 'hv')  |,                     /*     high voltage flash PIC */
-      PicName = '16f54'              |,                     /* )                 */
-      PicName = '16f57'              |,                     /* ) specific not    */
-      PicName = '16f59'              |,                     /* ) supported PICs  */
-      PicName = '16hv540' then do                           /* )                 */
+        substr(PicName,3,2) = 'hv')    |,                   /*     high voltage flash PIC */
+      PicName = '16hv540' then do                           /* OTP */
       iterate
    end
 
@@ -230,8 +227,10 @@ do i=1 to dir.0                                             /* all relevant .dev
    VppDefault            = 0                                /* default programming voltage */
 
    adcs_bitcount         = 0                                /* # ADCONx_ADCS bits */
-   HasLATReg             = 0                                /* zero LAT registers found (yet) */
+   HasLATreg             = 0                                /* zero LAT registers found (yet) */
                                                             /* used for extended midrange only */
+   OSCCALaddr            = 0                                /* address of OSCCAL (>0 if present!)  */
+   FSRaddr               = 0                                /* address of FSR (>0 if present!)  */
 
 
    /* -------- collect some basic information ------------ */
@@ -283,14 +282,18 @@ do i=1 to dir.0                                             /* all relevant .dev
    end
 
    call list_head                                           /* common header */
-   call list_cfgmem                                          /* cfg mem addr + defaults */
+   call list_cfgmem                                         /* cfg mem addr + defaults */
 
    select
       when core = '12' then do                              /* baseline */
+         if OSCCALaddr > 0 then                             /* OSCCAL present */
+            call list_osccal                                /* INTRC calibration */
          call list_sfr1x
          call list_nmmr12
       end
       when core = '14' then do                              /* midrange */
+/*       if OSCCALaddr > 0 then      */                     /* OSCCAL present */
+/*          call list_osccal         */                     /* TOO DANGEROUS (INTRC calibration) */
          call list_sfr1x
          call list_nmmr14
       end
@@ -464,7 +467,8 @@ return core
 /* input:  - nothing                                          */
 /* 12-bit and 14-bit core                                     */
 /* ---------------------------------------------------------- */
-load_sfr1x: procedure expose Dev. Name. Ram. core MaxRam HasLATReg msglevel
+load_sfr1x: procedure expose Dev. Name. Ram. core,
+                                  BankSize MaxRam HasLATReg OSCCALaddr FSRaddr msglevel
 do i = 0 to MaxRam - 1                                      /* whole range */
    Ram.i = 0                                                /* mark whole RAM as unused */
 end
@@ -507,6 +511,10 @@ do i = 1 to Dev.0
       do j = 2 to 32                                        /* all possible banks */
          if lo.j \= '' & hi.j \= '' then do                 /* specified bank */
             p = X2D(strip(lo.j))                            /* mirror low bound */
+            if core = '12'  &  p >= 4 * Banksize then       /* max 4 banks supported by JalV2 */
+               leave
+            if core = '14'  &  p >= 4 * BankSize then       /* max 4 banks supported by JalV2 */
+               leave
             do k = a to b                                   /* whole range */
                Ram.k = k                                    /* mark 'used' */
                Ram.p = k                                    /* mark as mirror */
@@ -525,9 +533,13 @@ do i = 1 to Dev.0
       end
       iterate
    end
-   parse var Dev.i  val0 '(' 'KEY' '=' reg .
+   parse var Dev.i  val0 '(' 'KEY' '=' reg 'ADDR' '=' '0X' addr .
    if left(reg,3) = 'LAT' then
       HasLATReg = HasLATReg + 1                             /* count LATx registers */
+   else if reg = 'OSCCAL' then
+      OSCCALaddr = X2D(addr)                                /* store decimal value */
+   else if reg = 'FSR' then
+      FSRaddr = X2D(addr)                                   /* store decimal value */
 end
 return 0
 
@@ -683,6 +695,36 @@ call lineout jalfile, '--'
 return
 
 
+/* ----------------------------------------------------------- */
+/* procedure to generate OSCCAL calibration instructions       */
+/* input:  - nothing                                           */
+/* cores 12 and 14                                             */
+/* notes: Only safe for 12 bits core!                          */
+/* ----------------------------------------------------------- */
+list_osccal: procedure expose jalfile Dev. CfgAddr. DevSpec. PicName,
+                              Core NumBanks CodeSize OSCCALaddr FSRaddr msglevel
+if OSCCALaddr > 0 then do                          /* PIC has OSCCAL register */
+   if Core = 12 then do                            /* 10F2xx, some 12F5xx, 16f5xx */
+      call lineout jalfile, '   var  volatile  byte  __osccal  at  0x'D2X(OSCCALaddr)
+      if NumBanks > 1 then do
+         call lineout jalfile, '   var  volatile  byte  __fsr     at  0x'D2X(FSRaddr)
+         call lineout jalfile, '   asm            bcf   __fsr,5                  -- select bank 0'
+         if NumBanks > 2 then
+            call lineout jalfile, '   asm            bcf   __fsr,6                  --   "     "'
+      end
+      call lineout jalfile, '   asm            movwf __osccal                 -- calibrate oscillator'
+      call lineout jalfile, '--'
+   end
+   else if Core = 14 then do                       /* 12F629/675, 16F630/676 */
+      call lineout jalfile, '   var  volatile byte   __osccal  at  0x'D2X(OSCCALaddr)
+      call lineout jalfile, '   asm  page   call   0x'D2X(CodeSize-1)'              -- fetch calibration value'
+      call lineout jalfile, '   asm  bank   movwf  __osccal                   -- calibrate oscillator'
+      call lineout jalfile, '--'
+   end
+end
+return
+
+
 /* ----------------------------------------------------------------- */
 /* procedure to extract default config bits setting from .dev file   */
 /* returns   power-on pattern                                        */
@@ -691,128 +733,128 @@ return
 cfgmem_mask: procedure expose  Dev. CfgAddr. Core msglevel
 
 do i = 1 to Dev.0                                  /* whole .dev contents */
-  ln = Dev.i                                       /* next line */
+   ln = Dev.i                                      /* next line */
 
-  /* create arrays of cfg words (baseline,midrange) or bytes (18F) */
-  parse var ln 'CFGMEM' '(' 'REGION' '=' '0X' addr1 '-' '0X' addr2 ')' .
-  if addr1 \= '' then do
-    cfglen = 1 + X2D(addr2) - X2D(addr1)
-    if Core \= '16' then do                        /* baseline, (extended) midrange */
-      CfgAct  = copies('0000', cfglen)             /* active bits */
-      CfgZero = copies('3FFF', cfglen)             /* 'and' pattern of fixed zero bits */
-      CfgOne  = copies('3FFF', cfglen)             /* 'or'  pattern of fixed one bits */
-    end
-    else do                                        /* 18Fs */
-      CfgAct  = copies('00', cfglen)               /* active bits */
-      CfgZero = copies('FF', cfglen)               /* 'and' pattern of fixed zero bits */
-      CfgOne  = copies('00', cfglen)               /* 'or' pattern of fixed one bits */
-    end
-    iterate
-  end
+   /* create arrays of cfg words (baseline,midrange) or bytes (18F) */
+   parse var ln 'CFGMEM' '(' 'REGION' '=' '0X' addr1 '-' '0X' addr2 ')' .
+   if addr1 \= '' then do
+      cfglen = 1 + X2D(addr2) - X2D(addr1)
+      if Core \= '16' then do                      /* baseline, (extended) midrange */
+         CfgAct  = copies('0000', cfglen)          /* active bits */
+         CfgZero = copies('3FFF', cfglen)          /* 'and' pattern of fixed zero bits */
+         CfgOne  = copies('3FFF', cfglen)          /* 'or'  pattern of fixed one bits */
+      end
+      else do                                      /* 18Fs */
+         CfgAct  = copies('00', cfglen)            /* active bits */
+         CfgZero = copies('FF', cfglen)            /* 'and' pattern of fixed zero bits */
+         CfgOne  = copies('00', cfglen)            /* 'or' pattern of fixed one bits */
+      end
+      iterate
+   end
 
-  /* initialise CfgOne or CfgZero array, with the following rules: */
-  /* - unused bits read as '0' with baseline,midrange              */
-  /* - unused bits read as '1' with 18f                            */
-  /* Unfortunately this is not always true,                        */
-  /* and MPLAB .dev files contain errors!                          */
-  parse var ln 'CFGBITS' x1 'ADDR=0X' Addr 'UNUSED=0X' Unused ')' .
-  if Addr \= '' then do
-    Addr = strip(Addr)                                   /* address of cfg byte/word */
-    Unused = strip(Unused)                               /* strip blanks */
-    if Core \= '16' then do                              /* baseline, (extended) midrange */
-      if X2D(Addr) <= X2D('FFF') then
-        mask = '0FFF'                                    /* 12 bits core */
-      else if X2D(Addr) <= X2D('200F') then
-        mask = '3FFF'                                    /* 14 bits core */
-      else if X2D(Addr) <= X2D('800F') then
-        mask = '3FFF'                                    /* extended 14 bits core */
-      Offset  = cfgmem_offset(Addr)                      /* word offset in cfg array */
-      Unused  = right(Unused,4,'0')                      /* 4 hex digits */
-      Unused  = C2X(BITXOR(X2C(Unused),X2C('FFFF')))     /* invert mask: 0->1 , 1->0 */
-      Unused  = C2X(BITAND(X2C(Unused),X2C(mask)))       /* unused bits default to 0 */
-      CfgZero = overlay(Unused, CfgZero, 4 * Offset + 1) /* replace 'm in fixed-zero array */
-    end
-    else do                                              /* 18F */
-      Offset = cfgmem_offset(Addr)                       /* byte offset in cfg array */
-      Unused = right(Unused,2,'0')                       /* unused bits default to 1 */
-      CfgOne = overlay(Unused, CfgOne, 2 * Offset + 1)   /* replace 'm in fixed-one array */
-    end
-    iterate
-  end
+   /* initialise CfgOne or CfgZero array, with the following rules: */
+   /* - unused bits read as '0' with baseline,midrange              */
+   /* - unused bits read as '1' with 18f                            */
+   /* Unfortunately this is not always true,                        */
+   /* and MPLAB .dev files contain errors!                          */
+   parse var ln 'CFGBITS' x1 'ADDR=0X' Addr 'UNUSED=0X' Unused ')' .
+   if Addr \= '' then do
+      Addr = strip(Addr)                           /* address of cfg byte/word */
+      Unused = strip(Unused)                       /* strip blanks */
+      if Core \= '16' then do                      /* baseline, (extended) midrange */
+         if X2D(Addr) <= X2D('FFF') then
+            mask = '0FFF'                          /* 12 bits core */
+         else if X2D(Addr) <= X2D('200F') then
+            mask = '3FFF'                          /* 14 bits core */
+         else if X2D(Addr) <= X2D('800F') then
+            mask = '3FFF'                          /* extended 14 bits core */
+         Offset  = cfgmem_offset(Addr)             /* word offset in cfg array */
+         Unused  = right(Unused,4,'0')                       /* 4 hex digits */
+         Unused  = C2X(BITXOR(X2C(Unused),X2C('FFFF')))      /* invert mask: 0->1 , 1->0 */
+         Unused  = C2X(BITAND(X2C(Unused),X2C(mask)))        /* unused bits default to 0 */
+         CfgZero = overlay(Unused, CfgZero, 4 * Offset + 1)  /* replace 'm in fixed-zero array */
+      end
+      else do                                      /* 18F */
+         Offset = cfgmem_offset(Addr)                        /* byte offset in cfg array */
+         Unused = right(Unused,2,'0')                        /* unused bits default to 1 */
+         CfgOne = overlay(Unused, CfgOne, 2 * Offset + 1)    /* replace 'm in fixed-one array */
+      end
+      iterate
+   end
 
-  /* build array of fixed zero and fixed 1 bits        */
-  /* both the CfgZero and CfgOne arrays are modified   */
-  parse var ln 'FIELD' '(' 'KEY=' x1 'MASK=0X' mask 'DESC="' x3 '"' 'INIT=0X' init ')'
-  if init \= '' then do                                  /* init mask found */
-    init = word(init,1)                                  /* first item */
-    mask = strip(mask)                                   /* strip blanks */
-    if Core \= '16' then do                              /* baseline, (extended) midrange */
-      mask = right(mask,4,'0')                           /* 4 hex digits */
-      maskinv = C2X(BITXOR(X2C(mask),X2C('FFFF')))       /* inverted mask */
-      init = right(init,4,'0')                           /* 4 hex digits */
-                                                         /* handle 0 bits: */
-      CfgMod  = substr(CfgZero, 4 * Offset + 1, 4)       /* 4 hex digits to modify (partly) */
-      CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero out mask bits */
-      CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
-      CfgZero = overlay(CfgMod, CfgZero, 4 * Offset + 1) /* replace word in string */
-                                                         /* handle 1 bits: */
-      CfgMod  = substr(CfgOne, 4 * Offset + 1, 4)        /* 4 hex digits to modify */
-      CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero init bits */
-      CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
-      CfgOne  = overlay(CfgMod, CfgOne, 4 * Offset + 1)  /* replace word in string */
-    end
-    else do                                              /* 18F series */
-      mask = right(mask,2,'0')                           /* 2 hex digits */
-      maskinv = C2X(BITXOR(X2C(mask),X2C('FF')))         /* inverted mask */
-      init = right(init,2,'0')                           /* 2 hex digits */
-                                                         /* handle 0 bits: */
-      CfgMod  = substr(CfgZero, 2 * Offset + 1, 2)       /* 2 hex digits to modify (partly) */
-      CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero out mask bits */
-      CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
-      CfgZero = overlay(CfgMod, CfgZero, 2 * Offset + 1) /* replace word in string */
-                                                         /* handle 1 bits: */
-      CfgMod  = substr(CfgOne, 2 * Offset + 1, 2)        /* 2 hex digits to modify */
-      CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero init bits */
-      CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
-      CfgOne  = overlay(CfgMod, CfgOne, 2 * Offset + 1)  /* replace word in string */
-    end
-    iterate
-  end
+   /* build array of fixed zero and fixed 1 bits        */
+   /* both the CfgZero and CfgOne arrays are modified   */
+   parse var ln 'FIELD' '(' 'KEY=' x1 'MASK=0X' mask 'DESC="' x3 '"' 'INIT=0X' init ')'
+   if init \= '' then do                           /* init mask found */
+      init = word(init,1)                          /* first item */
+      mask = strip(mask)                           /* strip blanks */
+      if Core \= '16' then do                      /* baseline, (extended) midrange */
+         mask = right(mask,4,'0')                           /* 4 hex digits */
+         maskinv = C2X(BITXOR(X2C(mask),X2C('FFFF')))       /* inverted mask */
+         init = right(init,4,'0')                           /* 4 hex digits */
+                                                            /* handle 0 bits: */
+         CfgMod  = substr(CfgZero, 4 * Offset + 1, 4)       /* 4 hex digits to modify (partly) */
+         CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero out mask bits */
+         CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
+         CfgZero = overlay(CfgMod, CfgZero, 4 * Offset + 1) /* replace word in string */
+                                                            /* handle 1 bits: */
+         CfgMod  = substr(CfgOne, 4 * Offset + 1, 4)        /* 4 hex digits to modify */
+         CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero init bits */
+         CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
+         CfgOne  = overlay(CfgMod, CfgOne, 4 * Offset + 1)  /* replace word in string */
+      end
+      else do                                      /* 18F series */
+         mask = right(mask,2,'0')                           /* 2 hex digits */
+         maskinv = C2X(BITXOR(X2C(mask),X2C('FF')))         /* inverted mask */
+         init = right(init,2,'0')                           /* 2 hex digits */
+                                                            /* handle 0 bits: */
+         CfgMod  = substr(CfgZero, 2 * Offset + 1, 2)       /* 2 hex digits to modify (partly) */
+         CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero out mask bits */
+         CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
+         CfgZero = overlay(CfgMod, CfgZero, 2 * Offset + 1) /* replace word in string */
+                                                            /* handle 1 bits: */
+         CfgMod  = substr(CfgOne, 2 * Offset + 1, 2)        /* 2 hex digits to modify */
+         CfgMod  = C2X(bitand(X2C(CfgMod),X2C(maskinv)))    /* zero init bits */
+         CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
+         CfgOne  = overlay(CfgMod, CfgOne, 2 * Offset + 1)  /* replace word in string */
+      end
+      iterate
+   end
 
-  /* Build array of implemented config bits                    */
-  /* Active bits will be represented by 1 in this mask         */
-  /* Note: Array will be modified for fixed-zero and fixed-one */
-  /*       bits before returning to caller                     */
-  parse var ln 'SETTING (REQ=0X'BitMask 'VALUE' x2 .
-  if BitMask \= '' then do
-    BitMask = strip(BitMask)
-    if Core \= '16' then do                              /* baseline, (extended) midrange */
-      BitMask = right(BitMask,4,'0')                     /* 4 hex digits */
-      CfgMod = substr(CfgAct, 4 * Offset + 1, 4)         /* word to modify */
-      CfgMod = C2X(bitor(X2C(CfgMod), X2C(BitMask)))     /* or the bit(s) */
-      CfgAct = overlay(CfgMod, CfgAct, 4 * Offset + 1)   /* replace word */
-    end
-    else do                                              /* 18F */
-      BitMask = right(BitMask,2,'0')                     /* 2 hex digits */
-      CfgMod = substr(CfgAct, 2 * Offset + 1, 2)         /* byte to modify */
-      CfgMod = C2X(bitor(X2C(CfgMod),X2C(BitMask)))      /* or the bits */
-      CfgAct = overlay(CfgMod, CfgAct, 2 * Offset + 1)   /* replace byte */
-    end
-  end
+   /* Build array of implemented config bits                    */
+   /* Active bits will be represented by 1 in this mask         */
+   /* Note: Array will be modified for fixed-zero and fixed-one */
+   /*       bits before returning to caller                     */
+   parse var ln 'SETTING (REQ=0X'BitMask 'VALUE' x2 .
+   if BitMask \= '' then do
+      BitMask = strip(BitMask)
+      if Core \= '16' then do                              /* baseline, (extended) midrange */
+         BitMask = right(BitMask,4,'0')                    /* 4 hex digits */
+         CfgMod = substr(CfgAct, 4 * Offset + 1, 4)        /* word to modify */
+         CfgMod = C2X(bitor(X2C(CfgMod), X2C(BitMask)))    /* or the bit(s) */
+         CfgAct = overlay(CfgMod, CfgAct, 4 * Offset + 1)  /* replace word */
+      end
+      else do                                              /* 18F */
+         BitMask = right(BitMask,2,'0')                    /* 2 hex digits */
+         CfgMod = substr(CfgAct, 2 * Offset + 1, 2)        /* byte to modify */
+         CfgMod = C2X(bitor(X2C(CfgMod),X2C(BitMask)))     /* or the bits */
+         CfgAct = overlay(CfgMod, CfgAct, 2 * Offset + 1)  /* replace byte */
+      end
+   end
 
 end
 
-CfgAct = C2X(BITOR(X2C(CfgAct),X2C(CfgOne)))             /* set fixed one bits */
-CfgAct = C2X(BITAND(X2C(CfgAct),X2C(CfgZero)))           /* reset fixed zero bits */
+CfgAct = C2X(bitor(X2C(CfgAct), X2C(CfgOne)))            /* set fixed one bits */
+CfgAct = C2X(bitand(X2C(CfgAct),X2C(CfgZero)))           /* reset fixed zero bits */
 
 return CfgAct                                            /* array with default settings */
 
 
-/* ---------------------------------------------------------------------------- */
-/* Procedure to calculate offset in array of cfg words of baseline and midrange */
-/* Returns (decimal) offset of config memory of the specific PIC (type).        */
-/* Note: will be word-offset for baseline/midrange, byte-offset for 18F         */
-/* ---------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------- */
+/* Procedure to calculate offset in array of cfg words                    */
+/* Returns (decimal) offset of config memory of the specific PIC (type).  */
+/* Note: will be word-offset for baseline/midrange, byte-offset for 18F   */
+/* ---------------------------------------------------------------------- */
 cfgmem_offset: procedure expose CfgAddr. msglevel
 parse arg Addr .
 AddrDec = X2D(Addr)                                /* decimal value */
@@ -2584,17 +2626,17 @@ do i = 1 to Dev.0
          call lineout jalfile, 'var volatile byte  ' left(subst,25) 'at 0x'addr
          call lineout jalfile, '--'
          call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
-         call lineout jalfile, '   var byte _SSPCON_saved = SSPCON'
+         call lineout jalfile, '   var byte _sspcon_saved = SSPCON'
          call lineout jalfile, '   SSPCON_SSPM = 0b1001'
          call lineout jalfile, '   'subst '= x'
-         call lineout jalfile, '   SSPCON = _SSPCON_saved'
+         call lineout jalfile, '   SSPCON = _sspcon_saved'
          call lineout jalfile, 'end procedure'
          call lineout jalfile, 'function' reg"'get"'() return byte is'
          call lineout jalfile, '   var  byte  x'
-         call lineout jalfile, '   var byte _SSPCON_saved = SSPCON'
+         call lineout jalfile, '   var byte _sspcon_saved = SSPCON'
          call lineout jalfile, '   SSPCON_SSPM = 0b1001'
          call lineout jalfile, '   x =' subst
-         call lineout jalfile, '   SSPCON = _SSPCON_saved'
+         call lineout jalfile, '   SSPCON = _sspcon_saved'
          call lineout jalfile, '   return  x'
          call lineout jalfile, 'end function'
          call lineout jalfile, '--'
@@ -2630,23 +2672,27 @@ do i = 1 to Dev.0
       subst  = '_'reg                                       /* substitute name */
       addr = strip(val2)                                    /* (mapped) address */
       size = strip(val3)                                    /* # bytes */
+      if addr >= AccessBankSplitOffset + X2D('F00') then
+         sharing = 'shared'                                 /* var in access bank */
+      else
+         sharing = '      '
       if reg = 'SSP1MSK' | reg = 'SSP2MSK' then do
          index = substr(reg,4,1)                            /* SSP module number */
          call lineout jalfile, '-- ------------------------------------------------'
-         call lineout jalfile, 'var volatile byte  ' left(subst,25) 'at 0x'addr
+         call lineout jalfile, 'var volatile byte  ' left(subst,25) sharing 'at 0x'addr
          call lineout jalfile, '--'
          call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
-         call lineout jalfile, '   var byte _SSP'index'CON1_saved = SSP'index'CON1'
+         call lineout jalfile, '   var byte _ssp'index'con1_saved = SSP'index'CON1'
          call lineout jalfile, '   SSP'index'CON1_SSPM = 0b1001'
          call lineout jalfile, '   'subst '= x'
-         call lineout jalfile, '   SSP'index'CON1 = _SSP'index'CON1_saved'
+         call lineout jalfile, '   SSP'index'CON1 = _ssp'index'con1_saved'
          call lineout jalfile, 'end procedure'
          call lineout jalfile, 'function' reg"'get"'() return byte is'
          call lineout jalfile, '   var  byte  x'
-         call lineout jalfile, '   var byte _SSP'index'CON1_saved = SSP'index'CON1'
+         call lineout jalfile, '   var  byte  _ssp'index'con1_saved = SSP'index'CON1'
          call lineout jalfile, '   SSP'index'CON1_SSPM = 0b1001'
          call lineout jalfile, '   x =' subst
-         call lineout jalfile, '   SSP'index'CON1 = _SSP'index'CON1_saved'
+         call lineout jalfile, '   SSP'index'CON1 = _ssp'index'con1_saved'
          call lineout jalfile, '   return  x'
          call lineout jalfile, 'end function'
          call lineout jalfile, '--'
@@ -2659,7 +2705,7 @@ do i = 1 to Dev.0
       end
       else do
          call lineout jalfile, '-- ------------------------------------------------'
-         call lineout jalfile, 'var volatile byte  ' left(subst,25) 'shared at 0x'addr
+         call lineout jalfile, 'var volatile byte  ' left(subst,25) sharing 'at 0x'addr
          call lineout jalfile, '--'
          call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
          call lineout jalfile, '   WDTCON_ADSHR = TRUE'
@@ -2868,13 +2914,14 @@ else if core = '14H' then do                                /* enhanced midrange
       end
       when reg = 'ANSELE' then do
          if left(PicName,6) = '16f151'  | left(PicName,7) = '16lf151' |,
-            left(PicName,7) = '16lf190' |,
+            left(PicName,6) = '16f178'  | left(PicName,7) = '16lf178' |,
+                                          left(PicName,7) = '16lf190' |,
             left(PicName,6) = '16f193'  | left(PicName,7) = '16lf193' then
             ansx = ansx + 5
          else if left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' then
             ansx = word('27 28 29 99 99 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
-            ansx = 99
+            ansx = 99                              /* none */
          else
             ansx = ansx + 20
       end
@@ -2884,7 +2931,7 @@ else if core = '14H' then do                                /* enhanced midrange
          else if left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' then
             ansx = word('23 24 25 26 99 99 99 99', ansx + 1)
          else
-            ansx = 99
+            ansx = 99                              /* none */
       end
       when reg = 'ANSELC' then do
          if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' then
@@ -2893,6 +2940,8 @@ else if core = '14H' then do                                /* enhanced midrange
                  left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
                  left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('4 5 6 7 99 99 8 9', ansx + 1)
+         else
+            ansx = 99                              /* none */
       end
       when reg = 'ANSELB' then do
          if PicName = '16f1826' | PicName = '16lf1826' |,
@@ -4460,7 +4509,10 @@ call lineout jalfile, 'pragma  target  bank  0x'D2X(BankSize,4)
 if core = '12' | core = '14' | core = '14H' then
   call lineout jalfile, 'pragma  target  page  0x'D2X(PageSize,4)
 call lineout jalfile, 'pragma  stack   'StackDepth
-call lineout jalfile, 'pragma  code    'CodeSize
+if OSCCALaddr > 0 then                                      /* has OSCCAL word in high mem */
+   call lineout jalfile, 'pragma  code    'CodeSize-1'                     -- (excl high mem word)'
+else
+   call lineout jalfile, 'pragma  code    'CodeSize
 if DataSize > 0 then                                        /* any EEPROM present */
    call lineout jalfile, 'pragma  eeprom  'DataStart','DataSize
 if IDSpec \= '' then                                        /* PIC has ID memory */
@@ -4558,7 +4610,7 @@ return
 list_copyright_etc:
 parse arg listfile .
 call lineout listfile, '--'
-call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2012,',
+call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2013,',
                        'all rights reserved.'
 call lineout listfile, '--'
 call lineout listfile, '-- Adapted-by:'
@@ -4621,7 +4673,7 @@ do until x = '}' | x = 0                                    /* end of pinmap */
       do until x = '{' | x = 0                              /* search begin PIC specs */
          x = json_newchar(DevSpecFile)
       end
-      do until x = '}' | x = 0                              /* this PICs specs */
+      do until x = '}' | x = 0                              /* this PIC's specs */
          ItemName = json_newstring(DevSpecFile)
          value = json_newstring(DevSpecFile)
          DevSpec.PicName.ItemName = value
