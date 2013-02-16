@@ -1,0 +1,89 @@
+-- Title: Sample showing how to use adc_hardware library
+-- Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
+-- Adapted-by: Rob Hamerling
+-- Compiler: 2.4p
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this program shows how to use adc_hardware library. It regurlarly performs an
+-- Analog-to-Digital Conversion, on channel AN0 (for 16f690, it's pin A0), and shows
+-- a rough result by lighting 0 to 4 LEDs (like a bar graph).
+-- Tested with a Pickit2 low pincount demo board (20-pins).
+--
+
+-- select chip
+include 16f690
+
+-- We'll use internal oscillator at 8MHz
+pragma target CLOCK     4_000_000
+pragma target OSC       INTOSC_NOCLKOUT
+-- Specify no postscaler, ie. really runs @8MHz
+OSCCON_IRCF = 0b_111
+-- no watchdog, please
+pragma target WDT       disabled
+
+OSCCON_IRCF = 0b110                          -- set internal oscillator to 4 MHz
+
+include delay
+
+-- set all IO as digital, will turn ADC on later (by adc lib)
+enable_digital_io()
+
+
+var bit LED0 is pin_C0                       -- leds to show potmeter position
+var bit LED1 is pin_C1
+var bit LED2 is pin_C2
+var bit LED3 is pin_C3
+pin_C0_direction = output
+pin_C1_direction = output
+pin_C2_direction = output
+pin_C3_direction = output
+
+pin_A0_direction = input                     -- potmeter
+
+-- Configure ADC
+-- We just need only one ADC channel
+const adc_nchan = 1
+-- We won't use any external VRef, so measures are done
+-- according to PIC powering voltage
+const adc_nvref = 0
+-- The maximum resistance while measuring ADC is... (unit: ohms)
+-- Being accurate helps speeding up ADC acquisition
+const adc_rsource = 10_000
+-- In this example, we'll perform low resolution ADC: results are
+-- coded on 8bits
+const adc_high_resolution = false
+-- Now include the ADC library
+include adc
+-- And initialize the whole with our parameters
+adc_init()
+
+var byte resist                              -- ADC measurement result
+forever loop
+
+    -- get ADC result (on channel 0)
+    resist = adc_read_low_res(0)
+
+    LED0 = off                               -- all leds off
+    LED1 = off
+    LED2 = off
+    LED3 = off
+
+    if resist > 50 then
+       led0 = on
+    end if
+    if resist > 100 then
+       led1 = on
+    end if
+    if resist > 150 then
+       led2 = on
+    end if
+    if resist > 200 then
+       led3 = on
+    end if
+
+    delay_1ms(100)                           -- .1 sec pause between measurements
+
+end loop
+
