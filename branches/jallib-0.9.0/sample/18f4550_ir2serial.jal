@@ -1,0 +1,248 @@
+-- Title: IR capture from TSOP receiver, with conversion to USB serial
+-- Author: Alexey Studenikin stalex@gmail.com , Copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4o
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: demo showing how to analyze of IR-remote timing between interrupts from
+-- TSOP IR receiver connected to INT0 input. Footprint of signals of different keys from
+-- IR-remote are displayed though serial over USB
+--
+
+-- chip setup
+include 18f4550
+-- even though the external crystal is 20 MHz, the configuration is such that
+-- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
+-- target frequency to 48 MHz
+pragma target clock       48_000_000
+
+include delay
+include usb_serial
+include print
+
+alias   led      is pin_b6
+pin_b6_direction =  output
+led =  off
+alias   led2      is pin_b7
+pin_b7_direction =  output
+led2 = off
+alias   led3      is pin_b5
+pin_b5_direction =  output
+led3 = off
+var bit IR_pin is pin_B0
+pin_b0_direction = input
+
+-- set up interrupts
+INTCON_INT0IE = on -- allow interrupt from changing state on INT0
+INTCON_INT0IF = off -- flush flag of interrupt from INT0
+INTCON2_INTEDG0 = 1 -- setting up interrupt INT0 from changing state 0->1
+INTCON_GIE = on -- allow interrupts
+
+-- setting up timer
+T1CON_T1CKPS = 0b_11 -- prescale to 8
+T1CON_TMR1CS = 0 -- clock source from internal clock
+PIE1_TMR1IE = on -- allow interrup from  TMR1
+PIR1_TMR1IF = off -- flush flag of interrupt TMR1
+INTCON_PEIE = on -- allow interrupt
+T1CON_TMR1ON = off -- stopping timer
+
+const byte str_welcome[] = "IR capture demo\n"
+const byte len = 50 -- length of array of intervals between interrupts from int0
+var byte buttonnumber = 0 -- if first press of button
+var byte trainh[len] --  array of Hight byte of TMR1
+var byte trainl[len]
+
+var byte trainnum=0 -- current position in array
+var byte realtrainlen=0 -- real length of train
+
+procedure int_isr() is
+   pragma interrupt
+
+   if INTCON_INT0IF then -- if interrupt from INT0
+      INTCON_INT0IF = off -- flushing flag
+
+      if (buttonnumber == 0) then -- if first packet in train - initialize timer and variables
+         buttonnumber = buttonnumber+1
+         trainnum = 0
+         TMR1H = 0
+         TMR1L = 0
+         T1CON_TMR1ON = on
+      end if
+
+      if  (buttonnumber>0) then
+         T1CON_TMR1ON = off   -- stopping timer while writing
+         trainh[trainnum] = TMR1H
+         trainl[trainnum] = TMR1L
+         trainnum = trainnum+1
+
+         TMR1H = 0  --  zeroing timer
+         TMR1L = 0
+         T1CON_TMR1ON = on -- starting timer again
+      end if
+   end if
+
+   if PIR1_TMR1IF then -- if we have interrupt from timer that means that train of packets have finished
+      PIR1_TMR1IF = off -- flushing flag
+      T1CON_TMR1ON = off --  stopping timers
+      PIE1_TMR1IE = off  --  disabling interrupt from timer
+
+      realtrainlen = trainnum
+      trainnum = len --  making 'flag' to start procedure of analyzing whole train
+   end if
+end procedure
+
+
+-- setup the USB serial library
+usb_serial_init()
+
+var bit has_shown_welcome_msg = true
+var byte ch
+
+var byte i = 0
+var byte i1 = 0
+var dword keynum = 0
+
+-- main loop
+forever loop
+
+   -- poll the usb ISR function on a regular base, in order to
+   -- serve the USB requests
+   usb_serial_flush()
+
+   -- check if USB device has been configured by the HOST
+   if (usb_cdc_line_status() !=  0x00)  then
+      if !has_shown_welcome_msg then
+         has_shown_welcome_msg = true
+         print_string(usb_serial_data, str_welcome)
+      end if
+   else
+      has_shown_welcome_msg = false
+   end if
+
+   -- if we already have len(full) 'bits' and 'ticks'
+   var word t = 0
+   if (trainnum >= len) then
+      -- while thinking of data we dont need interrupts
+      INTCON_INT0IE = off
+      T1CON_TMR1ON = off
+      PIE1_TMR1IE = off
+      keynum = 0
+
+      -- clearing double press
+      -- comment this if you need to works with long press of button, such as Volume up|down
+      if (realtrainlen > 30) then
+         if (realtrainlen < 50) then
+
+            print_crlf(usb_serial_data)
+            -- in my IR-remote the meaningful information is between 17 and 17+17 "bits" , change it for your case
+            -- so lets convert from high byte of timer ticks between int0 to binary dword 'keynumber' of button of IR-transmitter
+            for 17 using i loop
+               i1 = i+17
+               -- convert intervals between changes of input from IR receiver from hight timer ticks to 'bits'
+               -- in your case there may be another values, you can see 'raw' intervals in code below
+               if (trainh[i1] > 0) then
+                  if (trainh[i1] <= 7) then
+                     t = 0
+                  end if
+               end if
+               if (trainh[i1] > 7) then
+                  if (trainh[i1] <= 14) then
+                     t = 1
+                  end if
+               end if
+               if (trainh[i1] > 14) then
+                  if (trainh[i1] < 255) then
+                     t = 2
+                  end if
+               end if
+
+
+               -- convert from binary array to one  dword
+               if (t == 1) then
+                  keynum = keynum + 1
+               end if
+               keynum = keynum << 1
+
+               -- let's see binary 'keynumber'
+               print_word_dec(usb_serial_data,t)
+
+               -- if needed we can print whole array of numbers of
+               -- timer ticks between interrupts from int0
+               print_byte_dec(usb_serial_data,trainh[i1])
+               usb_serial_data = "_"
+               print_byte_dec(usb_serial_data,trainl[i1])
+
+               usb_serial_data = "["
+               print_byte_dec(usb_serial_data,i1)
+               usb_serial_data = "]"
+               usb_serial_data = " "
+
+            end loop
+
+            -- print resulting 'keynber' and real length of train
+            usb_serial_data = "_"
+            print_dword_bin(usb_serial_data,keynum)
+            usb_serial_data = "_"
+            print_dword_dec(usb_serial_data,keynum)
+            usb_serial_data = "_"
+            print_byte_dec(usb_serial_data, realtrainlen )
+
+            -- do something on different keynumber - optional,
+            -- change keynumber to what are you receive from your IR-remote
+            case keynum of
+               249902 :
+               block
+                  led = on
+                  delay_1ms(5)
+                  led = off
+               end block
+               168302 :
+               block
+                  led2 = on
+                  delay_1ms(5)
+                  led2 = off
+               end block
+               184622 :
+               block
+                  led3 = on
+                  delay_1ms(5)
+                  led3 = off
+               end block
+               205022 :  -- button up
+               block
+                  led3 = on
+                  delay_1ms(5)
+                  led3 = off
+               end block
+               225422:  -- button down
+               block
+                  led3 = on
+                  delay_1ms(5)
+                  led3 = off
+               end block
+
+
+            end case
+            delay_1ms(300)
+
+            -- getting ready to receive another button
+
+            -- end of clearing double press
+
+         end if
+      end if
+
+      trainnum = 0
+      i = 0
+      buttonnumber = 0
+      keynum = 0
+      INTCON_INT0IE = on
+      PIE1_TMR1IE = on
+
+   end if
+
+end loop
+

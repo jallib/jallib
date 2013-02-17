@@ -1,0 +1,109 @@
+-- Title: Sample program to show usage of rtc_isr_tmr3
+-- Author: Eur van Andel, Copyright (c) 2010, all rights reserved.
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Sources:  http://www.romanblack.com/one_sec.htm, http://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+--
+-- Description: This program shows how to get Real Time in a PIC
+--
+-- Notes: there is no way to set the time in this program, other than before compiling
+-- for more options, including automatic initialisation and timesetting, see sample_rtc_timeset.jal
+--
+-- ------------------- SELECT PIC ----------------------------
+include 18F2620
+pragma target clock 20_000_000     -- oscillator frequency
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target WDT  disabled        -- no watchdog
+pragma target XINST disabled       -- not supported by JalV2
+pragma target LVP  disabled        -- no Low Voltage Programming
+pragma target MCLR external        -- reset externally
+
+enable_digital_io()                          -- no analog pins used in this sample
+
+T3CON_T3CKPS   = 0b00      -- 1:1 prescaler
+T3CON_TMR3ON  = on         -- TMR3 on
+
+PIE2_TMR3IE    = on        -- TMR3 interrupt enabled
+IPR2_TMR3IP    = on        -- high priority interrupt for TMR3 (default on)
+RCON_IPEN      = off       -- no interrupt priorities (default off)
+
+
+-- ------------------------ LIBRARIES ------------------------
+
+include rtc_isr_tmr3
+
+var byte minutes  = 30              -- seconds defined in rtc library
+var byte hours    = 12              -- arbitrary time
+
+var byte date     = 12
+var byte month    = 10
+var word year     = 1492         -- date Columbus landed in the Carribean
+
+include calendar                 -- 60/24/27..31/12 range limits
+include delay                    -- used by LCD lib
+
+const byte  LCD_ROWS = 4
+const byte  LCD_CHARS = 20
+
+-- pick one of the following LCD connections:
+
+var bit lcd_sterm_pin is pin_c5		-- Sterm LCD & keyboard    \
+var bit lcd_sterm_pin_dir is pin_c5_direction   --               >  single pin LCD & keyboard connection
+include lcd_sterm_master      -- library for LCD and keyboard  /   this has PIC inside as well
+
+
+-- alias LCD_RS           is pin_b5       -- LCD command/data select       \
+-- alias LCD_EN           is pin_b4       -- LCD data trigger               \
+-- alias LCD_dataport     is portb_low    -- LCD data nibble                 > traditional 6 pin LCD connection
+-- portb_direction        = all_output    -- LCD data is portb_low          /
+-- include lcd_hd44780_4                  -- LCD library with 4 data lines /
+-- lcd_init()
+
+include print                                -- nice formatted output
+include format                               -- more nice formatting
+
+-- -------------------------- START PROGRAM -----------------
+
+INTCON_PEIE    = on        -- peripheral interrupt enabled
+INTCON_GIE     = on        -- global interrupt enabled
+
+
+lcd_clear_screen()
+forever loop
+   lcd_cursor_position(0,0)
+   const byte str1[] = "Timer3 RTC sample"
+   print_string(lcd, str1)
+
+   lcd_cursor_position(1,0)
+   print_byte_dec(lcd, date)
+   lcd = "-"
+   print_byte_dec(lcd, month)
+   lcd = "-"
+   print_word_dec(lcd, year)
+   lcd = " "
+   if seconds > 59 then
+      calendar()
+   end if
+   format_time_hms(lcd, hours, minutes, seconds)
+
+   lcd_cursor_position(2,0)                        -- line 3
+   for (seconds/3) loop
+      lcd = " "
+   end loop
+   lcd = "*"                                 -- moving *
+
+   if seconds < 3 then
+      lcd_cursor_position(2,19)              -- wipe old "*"
+      lcd = " "
+   end if
+
+   delay_100ms(2)                              -- for proper LCD viewing
+end loop
+
+
+
+

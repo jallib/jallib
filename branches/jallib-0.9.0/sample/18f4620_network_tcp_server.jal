@@ -1,0 +1,321 @@
+-- Title: Sample TCP server via ENC28j60 BETA
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This sample is for ethernet network communication using
+--              ENC28j60. Receives TCP data packets from a remote client.
+--
+-- Sources:
+--
+-- Notes:
+-- This is being released as BETA.
+--
+
+-- include chip
+include 18F4620                   -- target picmicro
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
+;pragma target osc hs              -- hs crystal or resonator
+;pragma target clock 20_000_000    -- oscillator frequency
+pragma target clock 32_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
+pragma target MCLR external        -- reset externally
+--;
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+;--
+_usec_delay(500_000)
+
+include print
+
+-- setup serial software
+const serial_sw_baudrate = 115200
+alias serial_sw_tx_pin is pin_B4
+alias serial_sw_rx_pin is pin_B5
+pin_B4_direction = output
+pin_B5_direction = input
+include serial_software
+serial_sw_init()
+alias serial_data is serial_sw_data
+
+-- setup a button
+alias button2 is pin_d0
+alias button2_direction is pin_d0_direction
+button2_direction = INPUT
+
+-- setup a button
+alias button is pin_d1
+alias button_direction is pin_d1_direction
+button_direction = INPUT
+
+-- setup a button
+alias button3 is pin_d3
+alias button3_direction is pin_d3_direction
+button3_direction = INPUT
+
+-- setup a led
+alias led is pin_d2
+alias led_direction is pin_d2_direction
+--
+led_direction = OUTPUT
+led = high
+
+-- setup a led
+alias led2 is pin_d4
+alias led2_direction is pin_d4_direction
+--
+led2_direction = OUTPUT
+led2 = high
+
+-- setup a led
+alias led3 is pin_b3
+alias led3_direction is pin_b3_direction
+--
+led3_direction = OUTPUT
+led3 = high
+
+include spi_master_hw        -- includes the spi library
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+--
+spi_init(SPI_MODE_00,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+
+-- setup debug lib
+alias debug_data is serial_data
+const bit DEBUG_MASTER_ENABLE = TRUE    -- enables debugging
+include debug
+--
+-- turn on and off debug levels.
+;debug_lvl_0 = ON
+debug_lvl_1 = ON   -- network error messages
+debug_lvl_2 = ON   -- network general text
+debug_lvl_3 = ON   -- network packet data type text
+debug_lvl_4 = OFF  -- network raw data
+;debug_lvl_5 = ON
+;debug_lvl_6 = ON
+--
+var byte debug_text1[] = "DEBUG STARTED"
+debug_string(DEBUG_2,debug_text1)
+debug_crlf(DEBUG_2)
+
+-- setup ENC28j60
+-- pin def
+alias enc_reset is pin_a2
+alias enc_reset_direction is pin_a2_direction
+enc_reset_direction = output
+enc_reset = 1
+--
+-- interrupt output pin
+alias enc_int is pin_a4
+alias enc_int_direction is pin_a4_direction
+enc_int_direction = input
+--
+-- wake up on lan signal (some datasheets say this pin is not connected?)
+;alias enc_wol is pin_ax
+;alias enc_wol_direction is pin_ax_direction
+;enc_wol_direction = input
+--
+-- chip select pin
+alias enc_cs is pin_e0
+alias enc_cs_direction is pin_e0_direction
+enc_cs_direction = output
+enc_cs = 1
+--
+-- set constants for enc28j60
+const byte ENC_LOCAL_MAC[6] = {0x00,0x13,0xD4,0xC6,0x53,0x16} -- MAC address of PIC
+const ENC_USE_INTERRUPT_PIN = FALSE -- TRUE -> not tested yet
+const ENC_ARRAY_SIZE = 150 -- max 1500. Please adjust this, I was able to use 600
+const ENC_ALWAYS_SET_SPI_MODE = TRUE
+--
+-- if you wish to store the array on an external memory device, create a
+-- pseudo array here and name it enc_array[]
+--
+include enc28j60
+enc_init()
+--
+-- change clockout pin freq. good communication test if you have a scope
+enc_set_clkout_freq(ENC_8_333)
+enc_set_clkout_freq(ENC_3_125)
+--
+-- print chip revision. another communcation test for those who don't
+-- have a scope. My chip prints: 6
+;for 10 loop
+;   print_byte_dec(serial_data, enc_read_revision() )
+;   serial_data = " "
+;end loop
+
+-- Setup Networking
+-- choose network protocols to use
+--
+-- choose network protocols to use. You must put TRUE
+-- for each protocol you use.
+-- If you set FALSE or don't a define constant, don't include the file.
+const NETWORK_USE_IP = TRUE
+--
+const NETWORK_USE_ARP = TRUE -- suggested for ethernet, not slip
+const NETWORK_USE_ARP_CALLBACKS = TRUE
+--
+const NETWORK_USE_ICMP = FALSE -- required for ping only
+const NETWORK_USE_ICMP_CALLBACKS = FALSE
+--
+const NETWORK_USE_UDP = FALSE -- udp can transfer data
+const NETWORK_USE_UDP_CALLBACKS = FALSE
+--
+const NETWORK_USE_TCP = TRUE -- under development. requires ARP
+const NETWORK_USE_TCP_CALLBACKS = TRUE
+--
+const byte network_local_ip[4] = {192,168,0,60}  -- IP address of PIC
+const byte network_gateway_ip[4] = {192,168,0,1} -- IP address of gateway/router
+--
+-- set network layer
+const NETWORK_LINK_LAYER = NETWORK_ETHERNET
+const NETWORK_LINK_DEVICE = NETWORK_ENC28J60
+--
+const NETWORK_USE_TIMER = 1 -- timer not implemented yet, but will be needed.
+--
+-- include networking main files
+include networking
+include ethernet_mac
+include ip_header
+include arp
+
+-- setup TCP
+const TCP_MAX_SOCKETS = 10 -- max number of TCP connections (9 bytes ram per connection)
+const TCP_CHECKSUM_IN = FALSE -- TRUE not supported yet on incomming packets
+const TCP_CHECKSUM_OUT = TRUE -- FALSE not supported yet. TCP MUST do checksum out??
+--
+include TCP
+tcp_init()
+--
+-- LOCAL TCP SERVER SETTINGS
+const byte TCP_LOCAL_SERVER_PORT = 222 -- port of local TCP server
+
+--MAIN PROGRAM-----------------------------------------------------------------------------------------------------
+
+-- CALLBACK PROCEDURES --
+
+--------------------------------------------------------------------------------
+-- called when we get a arp reply from an external source
+--------------------------------------------------------------------------------
+procedure arp_reply_callback() is
+    -- print a message
+    var byte get_arp[] = "ARP Reply Recieved!"
+    print_string(serial_data,get_arp)
+    print_crlf(serial_data)
+end procedure
+
+--------------------------------------------------------------------------------
+-- called when we get a arp request
+--------------------------------------------------------------------------------
+procedure arp_request_callback() is
+    -- print a message
+    var byte get_ping[] = "arp request recieved, sending reply"
+    print_string(serial_data,get_ping)
+    print_crlf(serial_data)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Receive TCP data.
+--------------------------------------------------------------------------------
+procedure tcp_receive_callback(byte in socket,word in tcp_data_size) is
+
+   -- if it is our server connection
+   -- if a client is sending information to our TCP server on PIC.
+   if tcp_socket_local_port[socket] == TCP_LOCAL_SERVER_PORT then
+      -- send data to serial port
+      var word step
+      for tcp_data_size using step loop -- for each byte in packet
+         ;print_byte_hex(serial_data,tcp_data[step])
+         serial_data = tcp_data[step]
+      end loop
+      
+      -- you must send an ack. Set the size of data you wish to send.
+      tcp_send_ack(socket,0)
+   end if
+
+   print_crlf(serial_data)
+end procedure
+
+-- MAIN PROGRAM LOOP --
+
+-- print some start characters
+for 10 loop
+   serial_data = "!"
+end loop
+print_crlf(serial_data)
+
+-- get the MAC of the gateway we will be talking to
+network_set_remote_ip(192,168,0,1) -- ip address of your PC or router
+;network_set_remote_ip(192,168,2,2)
+-- print message
+var byte sending_arp[] = "sending arp request, waiting for reply..."
+print_string(serial_data,sending_arp)
+print_crlf(serial_data)
+--
+if NETWORK_LINK_LAYER == NETWORK_ETHERNET then
+   arp_get_mac(5,1_000)
+
+   -- Get all the packets before we continue
+   -- This is extra, it will just allow the next message to be
+   -- printed last -> "You are connected! Your Router or PC mac address is:"
+   for 1000 loop
+      -- poll to see if there are network packets available
+      network_poll()
+   end loop
+
+end if
+--
+if arp_reply_received == TRUE then
+   print_crlf(serial_data)
+   var byte get_arp[] = "You are connected! Your Router or PC mac address is:"
+   print_string(serial_data,get_arp)
+   print_crlf(serial_data)
+   --
+   print_byte_hex(serial_data,network_remote_mac[0])
+   serial_data = "-"
+   print_byte_hex(serial_data,network_remote_mac[1])
+   serial_data = "-"
+   print_byte_hex(serial_data,network_remote_mac[2])
+   serial_data = "-"
+   print_byte_hex(serial_data,network_remote_mac[3])
+   serial_data = "-"
+   print_byte_hex(serial_data,network_remote_mac[4])
+   serial_data = "-"
+   print_byte_hex(serial_data,network_remote_mac[5])
+   print_crlf(serial_data)
+   print_crlf(serial_data)
+else
+   print_crlf(serial_data)
+   var byte arp_error[] = "ERROR: ARP did not get a reply. Is your network connected correctly?"
+   print_string(serial_data,arp_error)
+   print_crlf(serial_data)
+end if
+
+;-- uncomment if you are using WIN XP slip connection
+;if NETWORK_LINK_LAYER == NETWORK_SLIP Then
+;   -- wait for "CLIENT" from windows slip connection (yes, i got lazy)
+;   while !serial_hw_data_available loop
+;   end loop
+;
+;   -- reply with "CLIENTSERVER" to initiate connection
+;   const byte str1[] = "CLIENTSERVER"   -- define a string
+;   print_string(serial_hw_data, str1)   -- send via serial port
+;end if
+
+-- main loop
+var word packet_size
+forever loop
+   -- poll to see if there are network packets available
+   network_poll()
+end loop
+

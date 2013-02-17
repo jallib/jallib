@@ -1,0 +1,103 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- This document was created with Syntext Serna Free. --><!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd" []>
+<topic id="template_id">
+  <title>JAPP: Jallib Automated Publishing Process</title>
+  <abstract>This document describes the main processing steps that brings DITA based content to <xref href="http://www.justanotherlanguage.org" format="html">justanotherlanguage.org</xref> website.</abstract>
+  <prolog>
+    <author>Sébastien Lelong</author>
+    <publisher>Jallib Group</publisher>
+  </prolog>
+  <body>
+    <section>
+      <title>What is JAPP, and why using it ?</title>
+      <p><b>JAPP</b>, <b>J</b>allib <b>A</b>utomated <b>P</b>ublishing <b>P</b>rocess, is the name given to the process used to publish DITA based content to justanotherlanguage.org website. The idea is automatically monitor DITA files, and publish contents. Because this an nice acronym, JAPP is powerful and sounds like a nice tool...</p>
+      <p><xref href="http://dita.xml.org/" format="html">DITA</xref> files are XML files. This documents doesn&apos;t explain why DITA is used, but basically, one nice DITA&apos;s feature is to be able to assemble documents, and even small portion of documents, into a new one. This target document can then be compiled into several outputs, like HTML and PDF (any many more).</p>
+      <p>Our website is based on Drupal. <xref href="http://drupal.org" format="html">Drupal</xref> is CMS (Content Management System), widely used, and quite fun to use and develop into. In order to ease and speed up document publication,  and any content in general, JAPP is used to automate the process of monitoring DITA files, compile them into HTML, preprocess HTML to suit Drupal&apos;s way to store content, and publish content to Drupal.</p>
+    </section>
+    <section>
+      <title>Overview</title>
+      <fig>
+        <title>JAPP Overview</title>
+        <image href="images/japp_overview.jpg" width="500" placement="break" otherprops="clickable"/>
+      </fig>
+      <p>JAPP works like the following:<ol>
+          <li>JAPP monitors DITA files. This is actually done by a buildbot<fn>buildbot is python application which can monitor many source of information, like a SVN (Subversion) repository, and reacts according to given rules.</fn>, which listens to SVN changes</li>
+          <li>If something has changes, JAPP tells DITA compiler to produce an HTML file, from each DITA modified files (it iterates over changes)</li>
+          <li>Produced HTML files are then preprocessed. For URL links and images are changed to suit Drupal&apos;s.</li>
+          <li>Preprocessed HTML is then used to generate a kind of special mail, with specific instructions in it. This mail is sent to <i>justanotherlanguage __at__ gmail dot com</i>.</li>
+          <li>This email address is monitored on Drupal&apos;s side. When a new email is here, it retrieves, and process it by creating a node<fn>a node is the name given to a page in Drupal. There can be many node type, like Page, Story, Book, Blog, etc...</fn>from email content and instructions.</li>
+          <li>Eventually, website reviewer may publish content.</li>
+        </ol></p>
+    </section>
+    <section>
+      <title>Monitoring DITA files</title>
+      <p>This section is empty, mainly because it&apos;s not done yet :)</p>
+    </section>
+    <section>
+      <title>Compiling DITA files to produce HTML</title>
+      <p>Compiling DITA files is done using <xref href="http://dita-ot.sourceforge.net/" format="html">DITA Open Toolkit</xref>. This is probably to easiest part, provided your DITA environment is well configured. DITA configuration is not explained here though. A shell script is dedicated to this task: <xref href="http://code.google.com/p/jallib/source/browse/trunk/tools/japp/dita2html.sh" format="html">dita2html.sh</xref>. It takes a DITA file and an output directory as arguments. It basically produces the appropriate command line to run the compiler.</p>
+      <p>When compiled, HTML files are produced in this output directory. Images are also copied, following path in the original DITA files. Ex: if DITA image specified a path like <filepath>images/mypix.jpg</filepath>, then DITA compiler will create a <filepath>images</filepath> directory into the output directory, and copy <filepath>mypix.jpg</filepath>.</p>
+      <p>This important because this output directory contains everything related, needed to render original DITA file. Everything. And this is a problem... If the DITA file contains references to other DITA files, those other DITA files will get compiled too !<fn>I, Seb, still did not found the magical compiler option, after trying a lot...</fn></p>
+    </section>
+    <section>
+      <title>Preprocessing HTML files</title>
+      <p>Preprocessing HTML is a major step in JAPP. This is a tricky part, luckily automated... So, when DITA produces HTML, there are few things to adjust:<ul>
+          <li>DITA produdes a full HTML page, we just want to get the content. So, we need to extract inner &quot;<codeph>body</codeph>&quot; content.</li>
+          <li>When creating a node in Drupal, you need to specify a title. This title, in HTML, is in a &quot;<codeph>h1</codeph>&quot; element. This element also has also to be removed, else we&apos;ll get title twice (see later while publishing by email).</li>
+          <li>Image URLs have to be adjusted too, to match Drupal&apos;s. So <codeph>&lt;img href=&quot;images/mypix.jpg&quot;/&gt;</codeph> should be converted to <codeph>&lt;img href=&quot;/sites/default/files/mypix.jpg&quot;/&gt;</codeph> or something like that</li>
+          <li>Links to other HTML pages should be adjusted too. Very tricky here, as Drupal does not have the same links as DITA&apos;s. By default, Drupal&apos;s URL looks like <filepath>node/20</filepath>, while you specified a DITA file named <filepath>amazing-page</filepath> for instance. Luckily, we got a change to make it work anyway. Using <codeph>path</codeph> module, pages can be accessed via another URL, more human friendly: http://...../content/amazing-page.</li>
+        </ul></p>
+      <p>Preprocessing HTML does all of this, using <xref href="http://code.google.com/p/jallib/source/browse/trunk/tools/japp/htmlizer.py" format="html">htmlize.py</xref> script. It takes a HTML file  as input. It  generates a subdirectory, usually named <filepath>topublish</filepath>, and put several things  into it:<ul>
+          <li>content : contains inner body, URL and images adjusted. Title is removed</li>
+          <li>title : contains the title found in the original HTML file</li>
+          <li>path : this is the path that will be used on Drupal side. It corresponds to the DITA filename without extension.</li>
+          <li>attachments: this is a directory containing all images extracted by DITA compiler. It can also contain any other file: what&apos;s in this directory will be put as attachements in emails. Attachments are showned on Drupal&apos;s page, at the end. So this is a good place to put a PDF version of this DITA file, for instance.</li>
+        </ul></p>
+      <p>Once all of these stuffs are created, the whole content is ready to be published.</p>
+    </section>
+    <section>
+      <title>Sending content via email</title>
+      <p>Python script <xref href="http://code.google.com/p/jallib/source/browse/trunk/tools/japp/publish.py" format="html">publish.py</xref> handles emails sending. From previous step, several files have been create: content, path, title,  and all attached images. This script just glues the whole to build an email:<ul>
+          <li>it build a multipart email, to put content and attachments</li>
+          <li>concatenate mailhandler commands with content (more on this later)</li>
+          <li>email&apos;s subject is what stored in title file, as subject will be used to set node&apos;s title.</li>
+        </ul></p>
+    </section>
+    <section>
+      <title> Setting up Drupal, with MailHandler and MailSave</title>
+      <p>Now let&apos;s have a look on what&apos;s happening on Drupal&apos;s side. Drupal needs to monitor an email address, and produce content from submitted emails. This can be done using <xref href="http://drupal.org/project/mailhandler" format="html">mailhandler</xref> and <xref href="http://drupal.org/project/mailsave" format="html">mailsave</xref> modules.</p>
+      <p><b>mailhander</b> module takes care of monitoring an email address, retrieve emails and process them. The From address in email identify a Drupal user, allowed to have access to all mailhandler machinery, create nodes, upload files, etc... This special user is named <b>japp</b>.</p>
+      <p>Processing emails means it&apos;s able to extract some special commands. These commands must appears at the very beginning of email, and tell mailhandler what to do. There can be default commands (configured in mailhandler)  and email commands. The current configuration is the following:</p>
+      <p><i>Default commands</i></p>
+      <p><codeblock>type: page
+status: 0
+promote: 0
+pathauto_perform_alias: 0</codeblock></p>
+      <p>Here we tell mailhandler to create <b>Page </b>node type by default. Page, compared to Story type for instance, doesn&apos;t display author information. This is what we want because authorship is done in original HTML, not by Drupal (else all nodes would be owned by user <b>japp</b>).</p>
+      <p>We then tell mailhandler that created node won&apos;t be published (only special users can see it, like reviewers). It won&apos;t be promoted to front-page too, and no autoaliasing will be performed (we&apos;ll set our own path).</p>
+      <p>This is default commands, valid for all submitted emails.</p>
+      <p><i>Email specific commands</i></p>
+      <p><codeblock>pass: mysecret
+path: content/tutorial_pwm1</codeblock></p>
+      <p>This is an example. Password is here identified <b>user</b> japp, to avoid spamming issues. We also tell Drupal which path to use for this content.</p>
+      <p>Remaining content is what will be used to produce node&apos;s content. Title is taken from email&apos;s subject. Note we submit HTML, but as raw text, we don&apos;t submit a real HTML MIME part. So, an example of content could be:</p>
+      <p><codeblock>This is my &lt;b&gt;content&lt;/b&gt;</codeblock></p>
+      <p>and not:</p>
+      <p><codeblock>This is my <b>content</b></codeblock></p>
+      <p><b>mailsave</b> is used later, to extract attachments, just like if they were uploaded via the website.</p>
+    </section>
+    <section>
+      <title>JAPP module: playing with Drupal</title>
+      <p>Currently, JAPP publishes content on the website, but manual operations are still needed: you need to tell Drupal where to attach your page, that is, in which menu or book it should appear.</p>
+      <p>Automation of this part may be for another JAPP version. For now, manual operations, in Drupal, may be required to assemble pages together. Luckily, this has to be done at first, then very rarely, as content will be updated more than created (I guess).</p>
+      <p>Now, imagine the following scenario. You create a DITA document named &quot;my tutorial&quot;. It gets published to the website. Now you update your tutorial. Should this triggers another page creation ? Is so, this means each updates needs manual operations. And URL for this updated page can&apos;t be the same as the first one, so all referring pages would need to be updated ! Instead, node&apos;s content must be updated, and attachments renewed. For this, we need to know, when sending the email, if a previous page exists, and what is its node ID. This typically can&apos;t be done that way, because when sending emails, we can&apos;t know if a node exists for this page, and if so, what is its ID...</p>
+      <p>So, a solution is to write a Drupal module, and implement a <codeph>hook_mailhandler</codeph>. A hook is a special PHP function (it has a special name, here it finished with <i>_mailhandler</i>) in Drupal. This hook will be called before node&apos;s creation. From given path command, it&apos;ll lookup in Drupal database to find corresponding node.  Does it exist ? If not, it triggers a page creation (it just lets mailhandler processes the email as usual). If it exists, then it fetches its node ID and revision ID (version), and put &quot;<cmdname>nid: XX</cmdname>&quot; command and &quot;<cmdname>vid: YY</cmdname>&quot; command. mailhandler then continues its processing and now knows this is for an existing node.</p>
+      <p><xref href="http://code.google.com/p/jallib/source/browse/#svn/trunk/tools/japp/japp" format="html">japp</xref> module is under jallib SVN repository.</p>
+      <p/>
+    </section>
+    <section>
+      <title>Reviewing content</title>
+      <p>A final step would consist into checking for unpublished content on website, reviewing it and publish it. This is also during this final step that content is being attached to a menu, books... This step isn&apos;t necessary during content updates: nodes are updated in this case, this means menu or book configuration is kept.</p>
+    </section>
+  </body>
+</topic>

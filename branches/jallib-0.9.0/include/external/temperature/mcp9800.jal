@@ -1,0 +1,100 @@
+-- Title: mcp9800
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2010
+-- Adapted-by: William Welch
+-- Compiler: =2.4n
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library works with the MCP9800 temperature sensor from microchip
+-- The MCP9800 can do 9 to 12 bit temperature measurement resolution
+-- in the 12bit mode, the LSb represents 1/16ºC
+-- only 12 bit routines are given here
+--
+-- Uses: i2c_hardware or i2c_software I2C library
+
+-- Datasheet: DS21909B
+
+-- MCP9800 I2C sensor
+-- part used is MCP9800/02A0 with internal adress set to 0b1001_0000, last bit is read /write
+-- register pointer map:
+-- 0b0000_0000    temperature   register (16 bits)
+-- 0b0000_0001    configuration register ( 8 bits)
+-- 0b0000_0010    temperature Hysteresis register (8 bits)
+-- 0b0000_0011    temperature Limit-set  register (8 bits)
+
+const byte mcp9800_addr    = 0b1001_0000  -- read/write is done by i2c library
+
+-- initialize the mcp9800 for 12-bit samples
+function mcp9800_set_12_bits_temperature() return bit is       
+   var bit tx_ok 
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(mcp9800_addr)
+   tx_ok = tx_ok & i2c_transmit_byte(0b0000_0001)     -- config register address
+   tx_ok = tx_ok & i2c_transmit_byte(0b0_11_00_000)   -- config register value
+   i2c_stop()
+   
+   -- leave pointer register set to temperature register
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(mcp9800_addr)
+   tx_ok = tx_ok & i2c_transmit_byte(0b0000_0000)     -- temperature register address
+   i2c_stop()
+   return tx_ok
+end function
+
+-- return Celsius temperature in this format: Smmmmmmmmmmm.ffff
+function mcp9800_12bit() return sword is
+   var word a, b -- NB: unsigned 16-bit
+   var sword c   -- NB: signed 16-bit
+   var bit tx_ok
+   
+   -- NB: pointer-register is already pointing to the temperature register.
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(mcp9800_addr | 1)
+   a = i2c_receive_byte(true)
+   b = i2c_receive_byte(false)
+   i2c_stop()
+   
+   -- for debug of negative numbers only. see table 4-1 in datasheet
+   -- a = 0x00E6
+   -- b = 0x0090
+   
+   -- raw format is A: 0b00000000Smmmmmmm, B: 0b00000000ffffuuuu
+   -- we shift this up to align the sign bit with JAL's
+   -- 16-bit 'sword'
+   a = a << 8
+   a = a | b
+   
+   -- now we have: A: Smmmmmmmffffuuuu
+   
+   -- discard the 'uuuu' bits, but preserve sign-bit
+   c = sword(a)
+   c = c / 16
+   return c      -- C: Smmmmmmmmmmm.ffff
+end function
+
+-- temperature, in degrees Celsius as a signed-byte
+function mcp9800_celsius() return sbyte is
+   var sword x
+   var sdword temp
+   
+   x = mcp9800_12bit()
+   temp = sdword(x)
+   temp = temp * 625
+   temp = temp / 10_000 -- 625/0.0625 = 10.000, works below zero too
+   return sbyte(temp)
+end function
+
+-- temperature, in degrees Celsius X 100, as a signed-word
+function mcp9800_centicelsius() return sword is
+   var sword x
+   var sdword temp
+   
+   x = mcp9800_12bit()
+   temp = sdword(x)
+   temp = temp * 625
+   temp = temp / 100
+   return sword(temp)
+end function
+

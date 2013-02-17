@@ -1,0 +1,266 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+
+<!--Converted with LaTeX2HTML 2002-2-1 (1.71)
+original version by:  Nikos Drakos, CBLU, University of Leeds
+* revised and updated by:  Marcus Hennecke, Ross Moore, Herb Swan
+* with significant contributions from:
+  Jens Lippmann, Marek Rouchal, Martin Wilck and others -->
+<HTML>
+<HEAD>
+<TITLE>3 Behaviour</TITLE>
+<META NAME="description" CONTENT="3 Behaviour">
+<META NAME="keywords" CONTENT="pjal_doc_a4">
+<META NAME="resource-type" CONTENT="document">
+<META NAME="distribution" CONTENT="global">
+
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+<META NAME="Generator" CONTENT="LaTeX2HTML v2002-2-1">
+<META HTTP-EQUIV="Content-Style-Type" CONTENT="text/css">
+
+<LINK REL="STYLESHEET" HREF="pjal_doc_a4.css">
+
+<LINK REL="previous" HREF="pjal_doc_a4_node19.html">
+<LINK REL="up" HREF="pjal_doc_a4_node17.html">
+<LINK REL="next" HREF="pjal_doc_a4_node21.html">
+</HEAD>
+
+<BODY >
+<!--Navigation Panel-->
+<A NAME="tex2html528"
+  HREF="pjal_doc_a4_node21.html">
+<IMG WIDTH="37" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="next" SRC="next.png"></A> 
+<A NAME="tex2html524"
+  HREF="pjal_doc_a4_node17.html">
+<IMG WIDTH="26" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="up" SRC="up.png"></A> 
+<A NAME="tex2html520"
+  HREF="pjal_doc_a4_node19.html">
+<IMG WIDTH="63" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="previous" SRC="prev.png"></A> 
+<A NAME="tex2html526"
+  HREF="pjal_doc_a4_node2.html">
+<IMG WIDTH="65" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="contents" SRC="contents.png"></A>  
+<BR>
+<B> Next:</B> <A NAME="tex2html529"
+  HREF="pjal_doc_a4_node21.html">3 Libraries</A>
+<B> Up:</B> <A NAME="tex2html525"
+  HREF="pjal_doc_a4_node17.html">2 Compiler</A>
+<B> Previous:</B> <A NAME="tex2html521"
+  HREF="pjal_doc_a4_node19.html">2 Command line compiler</A>
+ &nbsp; <B>  <A NAME="tex2html527"
+  HREF="pjal_doc_a4_node2.html">Contents</A></B> 
+<BR>
+<BR>
+<!--End of Navigation Panel-->
+<!--Table of Child-Links-->
+<A NAME="CHILD_LINKS"><STRONG>Subsections</STRONG></A>
+
+<UL>
+<LI><A NAME="tex2html530"
+  HREF="pjal_doc_a4_node20.html#SECTION00531000000000000000">1 End of program.</A>
+<LI><A NAME="tex2html531"
+  HREF="pjal_doc_a4_node20.html#SECTION00532000000000000000">2 FOR without USING</A>
+<LI><A NAME="tex2html532"
+  HREF="pjal_doc_a4_node20.html#SECTION00533000000000000000">3 Optimization</A>
+<LI><A NAME="tex2html533"
+  HREF="pjal_doc_a4_node20.html#SECTION00534000000000000000">4 Debug output</A>
+</UL>
+<!--End of Table of Child-Links-->
+<HR>
+
+<H1><A NAME="SECTION00530000000000000000">
+3 Behaviour</A>
+</H1>
+
+<P>
+<A NAME="sub:behaviour"></A>
+<P>
+
+<H2><A NAME="SECTION00531000000000000000">
+1 End of program.</A>
+</H2>
+
+<P>
+In <I>JAL 2.0</I>, if the execution runs out of statements, the following
+lines are automatically included:
+
+<P>
+<PRE>   ASSEMBLER
+    LOCAL label
+    label:
+      sleep
+      goto label
+   END ASSEMBLER
+</PRE>
+
+<P>
+... so one is guaranteed to never fall of the end off a program.
+
+<P>
+<BR CLEAR="ALL">
+<HR>
+<P>
+
+<H2><A NAME="SECTION00532000000000000000">
+2 FOR without USING</A>
+</H2>
+
+<P>
+If the token <I>USING variable</I> does not exist:
+
+<P>
+<PRE>   FOR expr LOOP 
+      block 
+   END LOOP
+</PRE>
+
+<P>
+... becomes:
+
+<P>
+<PRE>   _temp = 0 
+   WHILE (_temp &lt; expr) LOOP
+      block
+      _temp = _temp + 1
+   END LOOP
+</PRE>
+
+<P>
+If the <I>USING variable</I> clause does exist, the <I>variable</I>
+is used instead of <I>_temp</I>. If <I>_temp</I> is needed, its
+type will be the same type as <I>expr</I>.
+
+<P>
+<BR CLEAR="ALL">
+<HR>
+<P>
+
+<H2><A NAME="SECTION00533000000000000000">
+3 Optimization</A>
+</H2>
+
+<P>
+In <I>JAL 2.0</I>, two internal counters are kept for each variable:
+
+<P>
+
+<UL>
+<LI>assign_ct: the number of times a variable has been assigned a value
+</LI>
+<LI>use_ct: the number of times a variable's value appears in an expression
+</LI>
+</UL>
+so, given the assignment: x = y
+
+<P>
+<I>x</I>'s assign_ct is incremented, and <I>y</I>'s use_ct is incremented.
+
+<P>
+During the optimizer phase, if a variable's use_ct is zero (the variable
+never occurs on the right-hand side of an assignment, and is never
+passed to a procedure), any assignment to that variable is removed.
+
+<P>
+Also, if a variable's assign_ct is zero (the variable never occurs
+on the left-hand side of an assignment, and is not an IN parameter
+to a procedure), that variable is changed to type CONST and is assigned
+a value of 0. 
+
+<P>
+If a variable is marked VOLATILE, this optimization doesn't occur
+because by definition a VOLATILE variable is both assigned and used
+(for example, a PIC register).
+
+<P>
+<BR CLEAR="ALL">
+<HR>
+<P>
+
+<H2><A NAME="SECTION00534000000000000000">
+4 Debug output</A>
+</H2>
+
+<P>
+<PRE>   cmd=0x004C79D8 op=18
+   ...4c7988[B---1]:{4c78d8:_btemp0[B---:1]}
+   cmds removed: 11
+</PRE>
+
+<P>
+These are debugging messages only. If you don't compile with <code>"-pcode"</code>
+and <code>"-debug"</code> you won't see them<A NAME="tex2html36"
+  HREF="#foot1629"><SUP><IMG  ALIGN="BOTTOM" BORDER="1" ALT="[*]" SRC="footnote.png"></SUP></A>.
+
+<P>
+<DL>
+<DT><STRONG>cmd=xxxx</STRONG></DT>
+<DD>is the pcode cmd identifier
+</DD>
+<DT><STRONG>op=xx</STRONG></DT>
+<DD>means this is an operator pcode (as opposed to a branching
+one) 
+</DD>
+<DT><STRONG>nnnnn:'B--x'</STRONG></DT>
+<DD>translates to: 
+
+<P>
+<DL>
+<DT><STRONG>nnnnn</STRONG></DT>
+<DD>: value identifier
+</DD>
+<DT><STRONG>B</STRONG></DT>
+<DD>boolean
+</DD>
+<DT><STRONG>C</STRONG></DT>
+<DD>constant
+</DD>
+<DT><STRONG>V</STRONG></DT>
+<DD>volatile
+</DD>
+<DT><STRONG>S</STRONG></DT>
+<DD>signed
+</DD>
+<DT><STRONG>x</STRONG></DT>
+<DD>width (a number)
+</DD>
+</DL>
+</DD>
+</DL>
+The variable is also dumped. This information is useless unless you've
+the source code and a debugger available.
+
+<P>
+<BR><HR><H4>Footnotes</H4>
+<DL>
+<DT><A NAME="foot1629">... them</A><A
+ HREF="pjal_doc_a4_node20.html#tex2html36"><SUP><IMG  ALIGN="BOTTOM" BORDER="1" ALT="[*]" SRC="footnote.png"></SUP></A></DT>
+<DD>See section <A HREF="pjal_doc_a4_node19.html#sub:command-line-compiler">2.2</A>&nbsp;sub:command-line-compiler. 
+
+</DD>
+</DL><HR>
+<!--Navigation Panel-->
+<A NAME="tex2html528"
+  HREF="pjal_doc_a4_node21.html">
+<IMG WIDTH="37" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="next" SRC="next.png"></A> 
+<A NAME="tex2html524"
+  HREF="pjal_doc_a4_node17.html">
+<IMG WIDTH="26" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="up" SRC="up.png"></A> 
+<A NAME="tex2html520"
+  HREF="pjal_doc_a4_node19.html">
+<IMG WIDTH="63" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="previous" SRC="prev.png"></A> 
+<A NAME="tex2html526"
+  HREF="pjal_doc_a4_node2.html">
+<IMG WIDTH="65" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="contents" SRC="contents.png"></A>  
+<BR>
+<B> Next:</B> <A NAME="tex2html529"
+  HREF="pjal_doc_a4_node21.html">3 Libraries</A>
+<B> Up:</B> <A NAME="tex2html525"
+  HREF="pjal_doc_a4_node17.html">2 Compiler</A>
+<B> Previous:</B> <A NAME="tex2html521"
+  HREF="pjal_doc_a4_node19.html">2 Command line compiler</A>
+ &nbsp; <B>  <A NAME="tex2html527"
+  HREF="pjal_doc_a4_node2.html">Contents</A></B> 
+<!--End of Navigation Panel-->
+<ADDRESS>
+<HR>pJAL Manual.<BR>(c) 2006 Javier Martinez, Vasile Surducan and Dave Lagzdin.
+</ADDRESS>
+</BODY>
+</HTML>

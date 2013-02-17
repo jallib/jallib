@@ -1,0 +1,105 @@
+-- Title: sdp600, Sensirion differential pressure sensor with I2C output
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2012
+-- Adapted-by: 
+-- Compiler: =2.40
+-- Revision: $Revision: 2760 $
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library works with the Sensirion SDP600 series pressure sensors
+-- Output is value, pressure in Pascal is value/scale, where scale is typically 60. 
+-- Range is -500 to 500 Pa.
+-- Nota Bene: these sensors have 3V3 supply and data!
+--
+
+-- Declare this in main program:
+
+-- i2c setup
+-- const word _i2c_bus_speed = 1 ; * 100kHz
+-- const bit _i2c_level = true   ; i2c levels (not SMB)
+-- include i2c_hardware
+-- i2c_initialize()
+-- include sdp600
+
+-- Sources: http://www.sensirion.com/en/pdf/product_information/Datasheet_SDP600series_differential_pressure_sensor.pdf
+--
+
+const byte sdp600_addr  = 0b1000_0000   -- add 1 when reading, add zero when writing
+var bit tx_ok                           -- for I2C debugging
+
+
+-- initiate pressure measurement and read data
+-- returns raw data as sword 
+-- raw data is pressure * scale
+-- does not check CRC 
+function sdp600_read_press_raw() return sword is 
+    var byte MSB, LSB, CRC
+    var word word_temp
+    var bit sign at word_temp : 15
+    var sword result
+    i2c_start()
+    tx_ok = i2c_transmit_byte(sdp600_addr)
+    tx_ok = i2c_transmit_byte(0b1111_0001)
+    i2c_start()
+    tx_ok = i2c_transmit_byte(sdp600_addr+1)
+    MSB = i2c_receive_byte(1)
+    LSB = i2c_receive_byte(1)
+    CRC = i2c_receive_byte(1)
+    i2c_stop()
+    
+    word_temp = (word(MSB) << 8) + word(LSB)
+    
+    if sign then
+      sign = 0
+      result = -32768 + sword(word_temp)
+      sign = 1
+    else
+      result = sword(word_temp)
+    end if
+
+    return result
+end function
+
+-- initiate pressure measurement and read data
+-- returns pressure in pascal as sword 
+-- does not check CRC 
+function sdp600_read_press_pa() return sword is 
+    var byte MSB, LSB, CRC
+    var word word_temp
+    var bit sign at word_temp: 15
+    var sword result
+    i2c_start()
+    tx_ok = i2c_transmit_byte(sdp600_addr)
+    tx_ok = i2c_transmit_byte(0b1111_0001)
+    i2c_start()
+    tx_ok = i2c_transmit_byte(sdp600_addr+1)
+    MSB = i2c_receive_byte(1)
+    LSB = i2c_receive_byte(1)
+    CRC = i2c_receive_byte(1)
+    i2c_stop()
+    
+    word_temp = (word(MSB) << 8) + word(LSB)
+    
+    if sign then
+      sign = 0
+      result = -32768 + sword(word_temp)
+      sign = 1
+    else
+      result = sword(word_temp)
+    end if
+
+    return (result/60)
+end function
+
+
+-- force soft reset of pressure sensor
+procedure sdp600_soft_reset() is 
+    var byte MSB, LSB, CRC
+    var sword result
+    i2c_start()
+    tx_ok = i2c_transmit_byte(sdp600_addr)
+    tx_ok = i2c_transmit_byte(0b1111_1110)
+    i2c_stop()
+end procedure
+

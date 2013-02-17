@@ -1,0 +1,261 @@
+-- Title: queue05 - fifo queue (number 01 is the template)
+-- Author: Joep Suijs, Copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4i
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides a (one) byte fifo queue. 
+-- This queue is interrupt-safe in the sense that you can write to the queue from the interrupt and
+-- read from the main program or vice versa without special precautions.
+-- Reading (or writing) from both interrupt and main program might not work properly.
+-- --
+-- The basic interface is pseudo var:
+-- queue05 = x -- put x into queue; block if queue is full
+-- x = queue05 -- read x from queue; block if queue is empty
+-- --
+-- non-blocking access to the same queue is provided by
+-- queue05_nb_put()
+-- and
+-- queue05_nb_get()
+-- --
+-- other methods:
+-- queue05_clear()    -- clear queue (makes queue empty)
+-- queue05_empty()    -- returns true if queue is emtpy (depricated, use queue1_is_empty())
+-- queue05_is_empty() -- returns true if queue is emtpy 
+-- queue05_is_full()  -- returns true if queue is full
+-- queue05_nr_free()  -- returns nr of free places in queue
+-- queue05_nr_used()  -- returns nr of used places in queue
+--
+-- Sources:
+-- 
+
+if (defined(queue05_size) == false) then
+   -- queue size default
+   const byte  queue05_size = 10
+end if
+
+-- queue vars
+var volatile byte queue05_data[queue05_size + 1]
+var volatile byte queue05_in_pointer  = 0 ; wijst naar vrije locatie
+var volatile byte queue05_out_pointer = 0 ; wijst naar databyte
+
+-- deprecated
+procedure queue05_clear() is
+
+   queue05_in_pointer  = 0
+   queue05_out_pointer = 0
+
+end procedure
+
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+function queue05_empty() return bit is
+
+   _warn "queue05_empty() is deprecated - please use queue05_is_empty()"
+   return (queue05_in_pointer == queue05_out_pointer) 
+
+end function
+
+-- -----------------------------------------------------------------------
+-- queue05_nr_used - returns nr of used places in queue
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+function queue05_nr_used() return byte is
+
+   if (queue05_in_pointer <  queue05_out_pointer) then 
+      return queue05_in_pointer - queue05_out_pointer + queue05_size
+   end if      
+
+   return queue05_in_pointer - queue05_out_pointer
+
+end function
+
+-- ----------------------------------------------------------------------- 
+--  queue05_nr_free - returns nr of free places in queue
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+function queue05_nr_free() return byte is
+
+
+   if (queue05_in_pointer <  queue05_out_pointer) then 
+      return  queue05_out_pointer - 1 - queue05_in_pointer
+   end if      
+
+   return queue05_size - 1 - queue05_in_pointer + queue05_out_pointer
+
+end function
+
+-- ----------------------------------------------------------------------- 
+-- queue05_is_empty() -- returns true if queue is emtpy 
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+function queue05_is_empty() return bit is
+
+    return (queue05_in_pointer == queue05_out_pointer) 
+
+end function
+
+-- ----------------------------------------------------------------------- 
+-- queue05_is_full()  -- returns true if queue is full
+-- ----------------------------------------------------------------------- 
+-- ----------------------------------------------------------------------- 
+function queue05_is_full() return bit is
+
+   var byte pntr = queue05_in_pointer + 1
+   if (pntr > queue05_size) then
+      pntr = 0
+   end if
+
+   return (pntr == queue05_out_pointer)
+   
+end function
+
+-- -----------------------------------------------------------------------
+-- queue05_nb_get - get one byte from queue (non-blocking)
+-- -----------------------------------------------------------------------
+-- The byte read is put into v (calling param)
+--
+-- returns: true  when we read a byte from the queue              
+--          false when the queue is empty (byte is not read from queue)
+-- -----------------------------------------------------------------------
+function queue05_nb_get(byte out v) return bit is
+   var byte pntr
+   
+   if (queue05_in_pointer == queue05_out_pointer) then
+      -- queue is empty
+      return false;
+   end if
+
+   ; data in queue
+   v = queue05_data[queue05_out_pointer]
+   pntr = queue05_out_pointer + 1
+   if (pntr > queue05_size) then
+      pntr = 0
+   end if  
+
+   queue05_out_pointer = pntr
+   
+   return true;
+   
+end function
+
+-- -----------------------------------------------------------------------
+-- queue05_nb_put - put one byte into queue (non-blocking)
+-- -----------------------------------------------------------------------
+-- return:  true  when the byte is put into the queue
+--          false when the queue is full (byte is not put in queue)
+-- -----------------------------------------------------------------------
+function queue05_nb_put(byte in v) return bit is
+
+   var byte pntr = queue05_in_pointer + 1
+   if (pntr > queue05_size) then
+      pntr = 0
+   end if
+
+   if (pntr == queue05_out_pointer) then
+      -- queue full
+      return false;
+   end if
+
+   queue05_data[queue05_in_pointer] = v
+   queue05_in_pointer = pntr
+      
+   return true;
+   
+end function
+
+-- -----------------------------------------------------------------------
+-- queue05_nb'get - get one byte from queue (non-blocking)
+-- -----------------------------------------------------------------------
+-- returns byte from queue, 0 if queue empty
+-- -----------------------------------------------------------------------
+function queue05_nb'get() return byte is
+   var byte v
+   var byte pntr
+   
+   if (queue05_in_pointer == queue05_out_pointer) then
+      -- queue is empty
+      return 0;
+   end if
+
+   ; data in queue
+   v = queue05_data[queue05_out_pointer]
+   pntr = queue05_out_pointer + 1
+   if (pntr > queue05_size) then
+      pntr = 0
+   end if  
+
+   queue05_out_pointer = pntr
+   return v
+   
+end function
+
+-- -----------------------------------------------------------------------
+-- queue05_nb'put - put one byte into queue (non-blocking)
+-- -----------------------------------------------------------------------
+-- -----------------------------------------------------------------------
+procedure queue05_nb'put(byte in v) is
+
+   var byte pntr = queue05_in_pointer + 1
+   if (pntr > queue05_size) then
+      pntr = 0
+   end if
+
+   if (pntr == queue05_out_pointer) then
+      -- queue full
+      return;
+   end if
+
+   queue05_data[queue05_in_pointer] = v
+   queue05_in_pointer = pntr
+      
+end procedure
+
+-- -----------------------------------------------------------------------
+-- queue05'put - put one byte into queue
+-- -----------------------------------------------------------------------
+-- When the queue is full, it waits until a byte is removed from the queue.
+-- -----------------------------------------------------------------------
+procedure queue05'put(byte in v) is
+   
+   var byte pntr = queue05_in_pointer + 1
+   if (pntr > queue05_size) then
+      pntr = 0
+   end if
+
+   -- wait until there is a free space in the queue
+   while (pntr == queue05_out_pointer) loop end loop
+
+   queue05_data[queue05_in_pointer] = v
+   queue05_in_pointer = pntr
+
+end procedure
+
+-- -----------------------------------------------------------------------
+-- queue05'get - get one byte from queue
+-- -----------------------------------------------------------------------
+-- returns byte from queue.
+-- When the queue is empty, it waits until a byte is put into the queue.
+-- -----------------------------------------------------------------------
+function queue05'get() return byte is
+   var byte v
+   var byte pntr
+   
+   -- wait if there are no bytes in the queue
+   while (queue05_in_pointer == queue05_out_pointer) loop end loop
+   
+   ; data in queue05_
+   v = queue05_data[queue05_out_pointer]
+   pntr = queue05_out_pointer + 1
+   if (pntr > queue05_size) then
+      pntr = 0
+   end if  
+
+   queue05_out_pointer = pntr
+
+   return v
+end function

@@ -1,0 +1,492 @@
+-- Title: Sample PING/UDP/ARP via SLIP BETA
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This sample is for SLIP network communication using
+--              a serial port. Sends/receives PING, UDP data packets.
+--
+-- Sources:
+-- http://tools.ietf.org/html/rfc1055
+--
+-- Notes:
+--
+-- Notes:
+-- This is being released as BETA.
+--
+-- Circuit MUST have all of the following:
+-- Switches + pull up resistor connected to pin_d0, pin_d1.
+-- led + resistor on pin_d2
+-- serial sw: tx_pin is pin_B4, rx_pin is pin_B5
+-- serial hw to slip connection
+--
+-- change "const WIN_XP_CONNECTION = TRUE" to false if you are not using
+-- win XP "direct connect"
+--
+
+-- include chip
+include 18F4620                   -- target picmicro
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+pragma target osc INTOSC_NOCLKOUT              -- hs crystal or resonator
+;pragma target osc hs              -- hs crystal or resonator
+;pragma target clock 20_000_000    -- oscillator frequency
+pragma target clock 32_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
+pragma target MCLR external        -- reset externally
+--;
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+;--
+_usec_delay(500_000)
+
+-- setup serial software
+const serial_sw_baudrate = 115200
+alias serial_sw_tx_pin is pin_B4
+alias serial_sw_rx_pin is pin_B5
+pin_B4_direction = output
+pin_B5_direction = input
+include serial_software
+serial_sw_init()
+alias serial_data is serial_sw_data
+
+-- setup uart for communication
+const serial_hw_baudrate  = 9600   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+
+alias debug_data is serial_sw_data
+const bit DEBUG_MASTER_ENABLE = TRUE    -- enables debugging
+include debug
+--
+-- turn on and off debug levels.
+;debug_lvl_0 = ON
+debug_lvl_1 = ON   -- network error messages
+debug_lvl_2 = ON   -- network general text
+debug_lvl_3 = ON   -- network packet data type text
+debug_lvl_4 = OFF   -- network debug data
+;debug_lvl_5 = ON
+;debug_lvl_6 = ON
+
+var byte debug_text1[] = "DEBUG STARTED"
+debug_string(DEBUG_2,debug_text1)
+debug_crlf(DEBUG_2)
+
+-- setup a button
+alias button is pin_d1
+alias button_direction is pin_d1_direction
+--
+button_direction = INPUT
+
+-- setup a button
+alias button2 is pin_d0
+alias button2_direction is pin_d0_direction
+--
+button2_direction = INPUT
+
+-- setup a led
+alias led is pin_d2
+alias led_direction is pin_d2_direction
+--
+led_direction = OUTPUT
+led = high
+
+-- setup SLIP
+const SLIP_MTU = 100                 -- Max bytes per packet (Max Transfer Unit)
+const SLIP_USE_FOR_NETWORKING = TRUE -- use slip for networking
+--
+-- choose your interrupt routine. you may ignore this and create your own
+-- isr or use polling method slip_poll()
+const bit SLIP_USE_SERIAL_HW_ISR = TRUE -- TRUE = recieve data via serial hw interrupt
+const SLIP_DO_CALLBACK_IN_ISR = FALSE   -- the callback will get run within the ISR
+--
+-- choose your data carrier
+alias slip_serial_data is serial_hw_data
+alias slip_data_available is serial_hw_data_available
+--
+-- Choose the size of your recieve buffer.
+-- Should be the same as SLIP MTU if slip interrupts are not enabled
+const byte QUEUE01_SIZE = 254
+include queue01 -- include the queue/buffer library
+alias slip_rx_buffer is queue01_nb  -- alias buffer for recieved data
+--
+-- Choose buffer to hold packet sizes (for interrupts only)
+const byte QUEUE02_SIZE = 10
+include queue02 -- include the queue/buffer library
+alias slip_packet_size_buffer is queue02_nb     -- alias buffer for packet sizes
+alias slip_packets_available is queue02_nr_used -- alias for number of packets avail
+--
+-- prototype for procedure defined in network.jal
+procedure network_received_packet()
+-- allias callback for when a full slip packet is recieved
+alias slip_received_packet_callback is network_received_packet
+--
+include slip -- include the library
+--
+slip_init() -- init the slip library
+
+-- Setup Networking
+-- choose network protocols to use
+--
+-- choose network protocols to use. You must put TRUE
+-- for each protocol you use.
+-- If you set FALSE or don't a define constant, don't include the file.
+const NETWORK_USE_IP = TRUE
+--
+;const NETWORK_USE_ARP = TRUE -- suggested for ethernet, not slip
+;const NETWORK_USE_ARP_CALLBACKS = TRUE
+--
+const NETWORK_USE_ICMP = TRUE -- required for ping only
+const NETWORK_USE_ICMP_CALLBACKS = TRUE
+--
+const NETWORK_USE_UDP = TRUE -- udp can transfer data
+const NETWORK_USE_UDP_CALLBACKS = TRUE
+--
+;const NETWORK_USE_TCP = FALSE -- under development (not working)
+;const NETWORK_USE_TCP_CALLBACKS = FALSE
+--
+var byte network_local_ip[4] = {192,168,2,1}                  -- IP address of PIC
+;var byte network_local_ip[4] = {192,168,2,1}
+--
+-- set network layer
+const NETWORK_LINK_LAYER = NETWORK_SLIP
+;const NETWORK_LINK_DEVICE = NETWORK_ENC28J60
+--
+const NETWORK_USE_TIMER = 1 -- timer not implemented yet, but will be needed.
+--
+-- include networking main files
+include networking
+;include ethernet_mac
+include ip_header
+;include arp
+
+const ICMP_ECHO_DATA_LENGTH = 32 -- size of data to send with PING
+include icmp
+--
+const UDP_MAX_SOCKETS = 3 -- max number of udp connections (9 bytes ram per connection)
+--
+include udp
+udp_init()
+--
+-- LOCAL UDP SERVER SETTINGS
+const byte UDP_LOCAL_SERVER_PORT = 111 -- port of local UDP server
+--
+-- LOCAL UDP CLIENT SETTINGS
+var byte udp_conn_1                       -- create a variable to be used as a udp client.
+const UDP_LOCAL_CLIENT_PORT = 1234   -- port of local UDP client
+const UDP_REMOTE_SERVER_PORT = 251   -- port of remote UDP server
+network_set_remote_ip(192,168,2,2)      -- set IP of server to connect to.
+udp_conn_1 = udp_socket_create(UDP_LOCAL_CLIENT_PORT,UDP_REMOTE_SERVER_PORT)  -- open a socket
+;udp_socket_remove(udp_conn_1) -- I guess we'll never remove this socket
+
+;   -- setup TCP
+;   const TCP_MAX_SOCKETS = 2
+;   ;const TCP_MAX_CONNECTIONS  = 1
+;   const TCP_SERVER = TRUE        -- server mode
+;   const TCP_SERVER_PORT = 33891  -- server port
+;   include tcp
+
+--MAIN PROGRAM-----------------------------------------------------------------------------------------------------
+
+-- CALLBACK PROCEDURES --
+
+--------------------------------------------------------------------------------
+-- called when we get a arp reply from an external source
+--------------------------------------------------------------------------------
+procedure arp_reply_callback() is
+    -- print a message
+    var byte get_arp[] = "ARP Reply Recieved!"
+    print_string(serial_data,get_arp)
+    print_crlf(serial_data)
+end procedure
+--------------------------------------------------------------------------------
+-- called when we get a arp request
+--------------------------------------------------------------------------------
+procedure arp_request_callback() is
+    -- print a message
+    var byte get_ping[] = "arp request recieved, sending reply"
+    print_string(serial_data,get_ping)
+    print_crlf(serial_data)
+end procedure
+
+--------------------------------------------------------------------------------
+-- called when we get a ping reply (after we sent a ping out somewhere)
+--------------------------------------------------------------------------------
+procedure icmp_echo_reply_callback() is
+    -- print a message
+    var byte get_ping[] = "ping reply recieved!"
+    print_string(serial_data,get_ping)
+    print_crlf(serial_data)
+end procedure
+--------------------------------------------------------------------------------
+-- called when we get a ping from an external source
+--------------------------------------------------------------------------------
+procedure icmp_echo_callback() is
+      led = !led -- toggle led
+end procedure
+
+--------------------------------------------------------------------------------
+-- Called when UDP packet is received. Minumum data size is 18 bytes.
+--------------------------------------------------------------------------------
+procedure udp_receive_callback(byte in socket,word in udp_data_size) is
+   -- print info about the socket received
+   print_udp_socket_info(0,socket)
+
+   -- if there was an error
+   if udp_error != 0 then
+   end if
+
+;   -- If it is our client connection
+;   -- you can use this method if the server reply's using
+;   -- the same source port as the server.
+;   -- This is untested since my PC programming software does not
+;   -- do this (yet).
+;   if socket == udp_conn_1 then
+;       print_crlf(serial_data)
+;       var byte sending_udp[] = "Welcome client!" -- print a message
+;       print_string(serial_data,sending_udp)
+;       print_crlf(serial_data)
+;
+;      -- do something with the data, we'll print it to serial port
+;      var word step
+;      for udp_data_size using step loop               -- for each byte in packet
+;         serial_data = udp_data[step]
+;      end loop
+;   end if
+
+   -- if it is our client connection
+   -- if we had sent information to a server, and the server replyed on same port.
+   if udp_socket_local_port[socket] == UDP_LOCAL_CLIENT_PORT &
+      udp_socket_ip[socket] == udp_socket_ip[udp_conn_1] then
+      -- do something with the data, we'll print it to serial port
+      var word step
+      for udp_data_size using step loop               -- for each byte in packet
+         serial_data = udp_data[step]
+      end loop
+   end if
+
+   -- if it is our server connection
+   -- if a client is sending information to our UDP server on PIC.
+   if udp_socket_local_port[socket] == UDP_LOCAL_SERVER_PORT then
+      -- do something with the data, we'll print it to serial port
+      var word step
+      for udp_data_size using step loop               -- for each byte in packet
+         serial_data = udp_data[step]
+      end loop
+
+       -- maybe you want to talk back to the client?
+       -- send a reply message
+       udp_data[0] = "T"
+       udp_data[1] = "H"
+       udp_data[2] = "A"
+       udp_data[3] = "N"
+       udp_data[4] = "K"
+       udp_data[5] = "S"
+       udp_data[6] = "!"
+
+       print_crlf(serial_data)
+       var byte sending_udp[] = "Sending reply UDP data" -- print a message
+       print_string(serial_data,sending_udp)
+       print_crlf(serial_data)
+       udp_send(socket,7)        -- send 7 bytes data to socket
+   end if
+
+
+   ;if it is anything else
+
+
+   udp_socket_remove(socket) -- remove the socket
+
+   print_crlf(serial_data)
+end procedure
+
+
+;   --------------------------------------------------------------------------------
+;   -- Receive UDP data. Minumum data size is 18 bytes. UDP_LOCAL_CLIENT_PORT is
+;   -- the PIC's port.
+;   --------------------------------------------------------------------------------
+;   procedure tcp_receive_callback(byte in connection_number, word in tcp_client_port,word in tcp_server_port, word in tcp_data_size) is
+;      -- send some info via serial port about our packet
+;      print_crlf(serial_data)
+;      print_crlf(serial_data)
+;      const byte str2[] = "TCP data received. port: "
+;      print_string(serial_data,str2)
+;      print_word_dec(serial_data, tcp_client_port)
+;      const byte str_size[] = ", bytes: "
+;      print_string(serial_data,str_size)
+;      print_word_dec(serial_data, tcp_data_size)
+;      print_crlf(serial_data)
+;
+;
+;      -- check the TCP port number
+;      if tcp_client_port == 33891 then
+;
+;         -- do something with the data, we'll print it to serial port
+;         var word step = ETHERNET_HEADER_SIZE + ip_header_size
+;         for (NETWORK_DATA_SIZE - (ETHERNET_HEADER_SIZE + ip_header_size)) loop -- for each byte in packet
+;            print_byte_hex(serial_data,network_data[step])
+;            serial_data = " "
+;            step = step + 1
+;         end loop
+;
+;      end if
+;
+;   end procedure
+
+
+-- MAIN PROGRAM LOOP --
+
+-- print some start characters
+for 10 loop
+   serial_data = "!"
+end loop
+print_crlf(serial_data)
+
+if defined(arp_get_gateway_mac) then
+   -- get the MAC of the gateway we will be talking to
+   network_set_remote_ip(192,168,1,1) -- ip address of your PC or router
+   ;network_set_remote_ip(192,168,2,2)
+   -- print message
+   var byte sending_arp[] = "sending arp request, waiting for reply..."
+   print_string(serial_data,sending_arp)
+   print_crlf(serial_data)
+   --
+   if NETWORK_LINK_LAYER == NETWORK_ETHERNET then
+      arp_get_gateway_mac(1_000)
+   end if
+   --
+   if arp_packet_recieved == TRUE then
+      print_crlf(serial_data)
+      var byte get_arp[] = "You are connected! Your Router or PC mac address is:"
+      print_string(serial_data,get_arp)
+      print_crlf(serial_data)
+      --
+      print_byte_hex(serial_data,network_remote_mac[0])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[1])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[2])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[3])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[4])
+      serial_data = "-"
+      print_byte_hex(serial_data,network_remote_mac[5])
+      print_crlf(serial_data)
+      print_crlf(serial_data)
+   else
+      print_crlf(serial_data)
+      var byte arp_error[] = "ERROR: ARP did not get a reply. Is your network connected correctly?"
+      print_string(serial_data,arp_error)
+      print_crlf(serial_data)
+   end if
+end if
+
+-- uncomment if you are using WIN XP slip connection
+if NETWORK_LINK_LAYER == NETWORK_SLIP then
+   -- wait for "CLIENT" from windows slip connection (yes, i got lazy)
+   while !serial_hw_data_available loop
+   end loop
+
+   -- reply with "CLIENTSERVER" to initiate connection
+   const byte str1[] = "CLIENTSERVER"   -- define a string
+   print_string(serial_hw_data, str1)   -- send via serial port
+end if
+
+-- main loop
+var word packet_size
+forever loop
+   -- send ping when button is pressed
+   if button == LOW then
+       -- print a message
+       print_crlf(serial_data)
+       var byte sending_ping[] = "sending ping"
+       print_string(serial_data,sending_ping)
+       print_crlf(serial_data)
+
+      ;network_set_remote_ip(74,125,226,18) -- ping google's ip address
+      network_set_remote_ip(192,168,2,2)   -- ping a computer
+      ;network_set_remote_ip(192,168,2,2) -- ping a computer
+      ;network_set_remote_ip(192,168,2,25) -- ping a computer
+      ;network_set_remote_ip(192,168,1,1)   -- ping router
+      icmp_send_echo()
+
+      while button == LOW loop
+         _usec_delay(100_000)
+      end loop
+
+   end if
+
+   -- send arp when button is pressed
+   if button2 == LOW then
+
+       -- crlf
+       print_crlf(serial_data)
+
+       -- set remote ip
+;       network_set_remote_ip(192,168,2,255)
+;      network_set_remote_ip(192,168,2,2)
+       ;network_set_remote_ip(192,168,2,25)
+
+       -- EXAMPLE 1: Send data from udp_data[] internal array
+       -- less ram usage and more cpu cycles then udp_send_array()
+       -- send UDP data "HELLO"
+       udp_data[0] = "H"                                 -- set data
+       udp_data[1] = "E"
+       udp_data[2] = "L"
+       udp_data[3] = "L"
+       udp_data[4] = "O"
+       --
+       ;udp_conn_1 = udp_socket_create(1234,UDP_LOCAL_CLIENT_PORT) -- connect
+       --
+       print_udp_socket_info(1,udp_conn_1) -- print socket info
+       --
+       if udp_error == 0 then                     -- if there are no errors
+          var byte sending_udp[] = "Sending UDP data" -- print a message
+          print_string(serial_data,sending_udp)
+          print_crlf(serial_data)
+          udp_send(udp_conn_1,5)         -- send 5 bytes data to udp_conn_1
+       end if
+
+       --
+       ;udp_socket_remove(udp_conn_1) -- remove the socket
+
+;      -- EXAMPLE 2: Send an array
+;      -- more ram usage and less cpu cycles then udp_send()
+;      -- send the data (source port, destination port, data)
+;      --
+;      ;udp_conn_1 = udp_socket_create(1234,UDP_LOCAL_CLIENT_PORT) -- connect
+;      --
+;      print_udp_socket_info(1,udp_conn_1) -- print socket info
+;      --
+;      var byte test[] = "HELLO WORLD"                   -- set data
+;      if udp_error == 0 then                            -- if there are no errors
+;         var byte sending_udp[] = "Sending UDP data"    -- print a message
+;         print_string(serial_data,sending_udp)
+;         print_crlf(serial_data)
+;         udp_send_array(udp_conn_1,test)                -- send udp data
+;      else
+;         var byte sending_udp[] = "UDP error occurred"  -- print a message
+;         print_string(serial_data,sending_udp)
+;         print_crlf(serial_data)
+;      end if
+;      ;udp_socket_remove(udp_conn_1)                 -- remove
+
+
+     while button2 == LOW loop
+        _usec_delay(100_000)
+     end loop
+
+   end if
+
+   -- poll to see if there are network packets available
+   network_poll()
+
+end loop
+

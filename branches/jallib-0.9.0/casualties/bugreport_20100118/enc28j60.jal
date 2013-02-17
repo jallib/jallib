@@ -1,0 +1,681 @@
+-- Title: Ethernet Device ENC28j60
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: controls the ehernet device ENC28j60 for networking.
+--
+-- Sources:
+-- http://www.microchip.com/wwwproducts/Devices.aspx?dDocName=en022889
+-- enc28j60 C library by Pascal Stang
+-- enc28j60 C library by Guido Socher
+--
+-- Notes:
+--
+
+include delay
+
+
+--
+-- Setup the network array. use large array lib
+const LARGE_ARRAY_1_SIZE = ENC_ARRAY_SIZE      -- choose number of array variables
+const LARGE_ARRAY_1_VARIABLE_SIZE = 1          -- choose size of variables (byte*1)
+include large_array_1                          -- include the array library
+alias enc_tx_array is large_array_1            -- rename/alias the array to test
+
+var byte enc_current_bank
+var word enc_packet_pointer = 0
+var byte _enc_packet_pointer[2] at enc_packet_pointer
+
+-- receive buffer end
+const word RXSTOP_INIT   = (0x1FFF-0x0600-1) -- =0x19FE
+const byte RXSTOP_INIT_H = 0x19
+const byte RXSTOP_INIT_L = 0xFE
+
+-- start TX buffer at 0x1FFF-0x0600, place for one full ethernet frame (~1500 bytes)
+const word TXSTART_INIT   = (0x1FFF-0x0600) -- =0x19FF
+const byte TXSTART_INIT_H = 0x19
+const byte TXSTART_INIT_L = 0xFF
+
+-- stp TX buffer at end of mem
+const word TXSTOP_INIT    = 0x1FFF
+const byte TXSTOP_INIT_H  = 0x1F
+const byte TXSTOP_INIT_L  = 0xFF
+
+-- max frame length which the conroller will accept:
+-- maximum ethernet frame length would be 1518??
+const word ENC_MAX_FRAMELEN   = 1500 -- =0x05DC
+const byte ENC_MAX_FRAMELEN_H = 0x05
+const byte ENC_MAX_FRAMELEN_L = 0xDC
+
+-- banks
+const ENC_BANK_0 = 0x00
+const ENC_BANK_1 = 0x20
+const ENC_BANK_2 = 0x40
+const ENC_BANK_3 = 0x60
+const ENC_MAC = 0x80
+const ENC_MIL = 0x80
+
+-- Registers for spi interface control
+const ENC28J60_READ_CTRL_REG      = 0x00
+const ENC28J60_READ_BUF_MEM       = 0x3A
+const ENC28J60_WRITE_CTRL_REG     = 0x40
+const ENC28J60_WRITE_BUF_MEM      = 0x7A
+const ENC28J60_BIT_FIELD_SET      = 0x80
+const ENC28J60_BIT_FIELD_CLR      = 0xA0
+const ENC28J60_SOFT_RESET         = 0xFF
+
+-- ENC28J60 Control Registers
+-- Control register definitions are a combination of address,
+-- bank number, and Ethernet/MAC/PHY indicator bits.
+-- Register address  (bits 0-4)
+-- Bank number       (bits 5-6)
+-- MAC/PHY indicator (bit 7)
+--
+-- Bit masks
+const ADDR_MASK       = 0x1F
+const BANK_MASK       = 0x60
+const SPRD_MASK       = 0x80
+-- Registers located in all banks
+const EIE             = 0x1B
+const EIR             = 0x1C
+const ESTAT           = 0x1D
+const ECON2           = 0x1E
+const ECON1           = 0x1F
+-- Bank 0 registers
+const ERDPTL          = (0x00|ENC_BANK_0)
+const ERDPTH          = (0x01|ENC_BANK_0)
+const EWRPTL          = (0x02|ENC_BANK_0)
+const EWRPTH          = (0x03|ENC_BANK_0)
+const ETXSTL          = (0x04|ENC_BANK_0)
+const ETXSTH          = (0x05|ENC_BANK_0)
+const ETXNDL          = (0x06|ENC_BANK_0)
+const ETXNDH          = (0x07|ENC_BANK_0)
+const ERXSTL          = (0x08|ENC_BANK_0)
+const ERXSTH          = (0x09|ENC_BANK_0)
+const ERXNDL          = (0x0A|ENC_BANK_0)
+const ERXNDH          = (0x0B|ENC_BANK_0)
+const ERXRDPTL        = (0x0C|ENC_BANK_0)
+const ERXRDPTH        = (0x0D|ENC_BANK_0)
+const ERXWRPTL        = (0x0E|ENC_BANK_0)
+const ERXWRPTH        = (0x0F|ENC_BANK_0)
+const EDMASTL         = (0x10|ENC_BANK_0)
+const EDMASTH         = (0x11|ENC_BANK_0)
+const EDMANDL         = (0x12|ENC_BANK_0)
+const EDMANDH         = (0x13|ENC_BANK_0)
+const EDMADSTL        = (0x14|ENC_BANK_0)
+const EDMADSTH        = (0x15|ENC_BANK_0)
+const EDMACSL         = (0x16|ENC_BANK_0)
+const EDMACSH         = (0x17|ENC_BANK_0 )
+-- Bank 1 registers
+const EHT0            = (0x00|ENC_BANK_1)
+const EHT1            = (0x01|ENC_BANK_1)
+const EHT2            = (0x02|ENC_BANK_1)
+const EHT3            = (0x03|ENC_BANK_1)
+const EHT4            = (0x04|ENC_BANK_1)
+const EHT5            = (0x05|ENC_BANK_1)
+const EHT6            = (0x06|ENC_BANK_1)
+const EHT7            = (0x07|ENC_BANK_1)
+const EPMM0           = (0x08|ENC_BANK_1)
+const EPMM1           = (0x09|ENC_BANK_1)
+const EPMM2           = (0x0A|ENC_BANK_1)
+const EPMM3           = (0x0B|ENC_BANK_1)
+const EPMM4           = (0x0C|ENC_BANK_1)
+const EPMM5           = (0x0D|ENC_BANK_1)
+const EPMM6           = (0x0E|ENC_BANK_1)
+const EPMM7           = (0x0F|ENC_BANK_1)
+const EPMCSL          = (0x10|ENC_BANK_1)
+const EPMCSH          = (0x11|ENC_BANK_1)
+const EPMOL           = (0x14|ENC_BANK_1)
+const EPMOH           = (0x15|ENC_BANK_1)
+const EWOLIE          = (0x16|ENC_BANK_1)
+const EWOLIR          = (0x17|ENC_BANK_1)
+const ERXFCON         = (0x18|ENC_BANK_1)
+const EPKTCNT         = (0x19|ENC_BANK_1)
+-- Bank 2 registers
+const MACON1          = (0x00|ENC_BANK_2|ENC_MAC)
+const MACON2          = (0x01|ENC_BANK_2|ENC_MAC)
+const MACON3          = (0x02|ENC_BANK_2|ENC_MAC)
+const MACON4          = (0x03|ENC_BANK_2|ENC_MAC)
+const MABBIPG         = (0x04|ENC_BANK_2|ENC_MAC)
+const MAIPGL          = (0x06|ENC_BANK_2|ENC_MAC)
+const MAIPGH          = (0x07|ENC_BANK_2|ENC_MAC)
+const MACLCON1        = (0x08|ENC_BANK_2|ENC_MAC)
+const MACLCON2        = (0x09|ENC_BANK_2|ENC_MAC)
+const MAMXFLL         = (0x0A|ENC_BANK_2|ENC_MAC)
+const MAMXFLH         = (0x0B|ENC_BANK_2|ENC_MAC)
+const MAPHSUP         = (0x0D|ENC_BANK_2|ENC_MAC)
+const MICON           = (0x11|ENC_BANK_2|ENC_MIL)
+const MICMD           = (0x12|ENC_BANK_2|ENC_MIL)
+const MIREGADR        = (0x14|ENC_BANK_2|ENC_MIL)
+const MIWRL           = (0x16|ENC_BANK_2|ENC_MIL)
+const MIWRH           = (0x17|ENC_BANK_2|ENC_MIL)
+const MIRDL           = (0x18|ENC_BANK_2|ENC_MIL)
+const MIRDH           = (0x19|ENC_BANK_2|ENC_MIL)
+-- Bank 3 registers
+const MAADR1          = (0x00|ENC_BANK_3|ENC_MAC)
+const MAADR0          = (0x01|ENC_BANK_3|ENC_MAC)
+const MAADR3          = (0x02|ENC_BANK_3|ENC_MAC)
+const MAADR2          = (0x03|ENC_BANK_3|ENC_MAC)
+const MAADR5          = (0x04|ENC_BANK_3|ENC_MAC)
+const MAADR4          = (0x05|ENC_BANK_3|ENC_MAC)
+const EBSTSD          = (0x06|ENC_BANK_3)
+const EBSTCON         = (0x07|ENC_BANK_3)
+const EBSTCSL         = (0x08|ENC_BANK_3)
+const EBSTCSH         = (0x09|ENC_BANK_3)
+const MISTAT          = (0x0A|ENC_BANK_3|ENC_MIL)
+const EREVID          = (0x12|ENC_BANK_3)
+const ECOCON          = (0x15|ENC_BANK_3)
+const EFLOCON         = (0x17|ENC_BANK_3)
+const EPAUSL          = (0x18|ENC_BANK_3)
+const EPAUSH          = (0x19|ENC_BANK_3)
+-- PHY registers
+const PHCON1          = 0x00
+const PHSTAT1         = 0x01
+const PHHID1          = 0x02
+const PHHID2          = 0x03
+const PHCON2          = 0x10
+const PHSTAT2         = 0x11
+const PHIE            = 0x12
+const PHIR            = 0x13
+const PHLCON          = 0x14
+
+-- ENC28J60 ERXFCON Register Bit Definitions
+const ERXFCON_UCEN    = 0x80
+const ERXFCON_ANDOR   = 0x40
+const ERXFCON_CRCEN   = 0x20
+const ERXFCON_PMEN    = 0x10
+const ERXFCON_MPEN    = 0x08
+const ERXFCON_HTEN    = 0x04
+const ERXFCON_MCEN    = 0x02
+const ERXFCON_BCEN    = 0x01
+-- ENC28J60 EIE Register Bit Definitions
+const EIE_INTIE       = 0x80
+const EIE_PKTIE       = 0x40
+const EIE_DMAIE       = 0x20
+const EIE_LINKIE      = 0x10
+const EIE_TXIE        = 0x08
+const EIE_WOLIE       = 0x04
+const EIE_TXERIE      = 0x02
+const EIE_RXERIE      = 0x01
+-- ENC28J60 EIR Register Bit Definitions
+const EIR_PKTIF       = 0x40
+const EIR_DMAIF       = 0x20
+const EIR_LINKIF      = 0x10
+const EIR_TXIF        = 0x08
+const EIR_WOLIF       = 0x04
+const EIR_TXERIF      = 0x02
+const EIR_RXERIF      = 0x01
+-- ENC28J60 ESTAT Register Bit Definitions
+const ESTAT_INT       = 0x80
+const ESTAT_LATECOL   = 0x10
+const ESTAT_RXBUSY    = 0x04
+const ESTAT_TXABRT    = 0x02
+const ESTAT_CLKRDY    = 0x01
+-- ENC28J60 ECON2 Register Bit Definitions
+const ECON2_AUTOINC   = 0x80
+const ECON2_PKTDEC    = 0x40
+const ECON2_PWRSV     = 0x20
+const ECON2_VRPS      = 0x08
+-- ENC28J60 ECON1 Register Bit Definitions
+const ECON1_TXRST     = 0x80
+const ECON1_RXRST     = 0x40
+const ECON1_DMAST     = 0x20
+const ECON1_CSUMEN    = 0x10
+const ECON1_TXRTS     = 0x08
+const ECON1_RXEN      = 0x04
+const ECON1_BSEL1     = 0x02
+const ECON1_BSEL0     = 0x01
+-- ENC28J60 MACON1 Reg=ister Bit Definitions
+const MACON1_LOOPBK   = 0x10
+const MACON1_TXPAUS   = 0x08
+const MACON1_RXPAUS   = 0x04
+const MACON1_PASSALL  = 0x02
+const MACON1_MARXEN   = 0x01
+-- ENC28J60 MACON2 Register Bit Definitions
+const MACON2_MARST    = 0x80
+const MACON2_RNDRST   = 0x40
+const MACON2_MARXRST  = 0x08
+const MACON2_RFUNRST  = 0x04
+const MACON2_MATXRST  = 0x02
+const MACON2_TFUNRST  = 0x01
+-- ENC28J60 MACON3 Register Bit Definitions
+const MACON3_PADCFG2  = 0x80
+const MACON3_PADCFG1  = 0x40
+const MACON3_PADCFG0  = 0x20
+const MACON3_TXCRCEN  = 0x10
+const MACON3_PHDRLEN  = 0x08
+const MACON3_HFRMLEN  = 0x04
+const MACON3_FRMLNEN  = 0x02
+const MACON3_FULDPX   = 0x01
+-- ENC28J60 MICMD Register Bit Definitions
+const MICMD_MIISCAN   = 0x02
+const MICMD_MIIRD     = 0x01
+-- ENC28J60 MISTAT Register Bit Definitions
+const MISTAT_NVALID   = 0x04
+const MISTAT_SCAN     = 0x02
+const MISTAT_BUSY     = 0x01
+-- ENC28J60 PHY PHCON1 Register Bit Definitions
+const PHCON1_PRST     = 0x8000
+const PHCON1_PLOOPBK  = 0x4000
+const PHCON1_PPWRSV   = 0x0800
+const PHCON1_PDPXMD   = 0x0100
+-- ENC28J60 PHY PHSTAT1 Register Bit Definitions
+const PHSTAT1_PFDPX   = 0x1000
+const PHSTAT1_PHDPX   = 0x0800
+const PHSTAT1_LLSTAT  = 0x0004
+const PHSTAT1_JBSTAT  = 0x0002
+-- ENC28J60 PHY PHCON2 Register Bit Definitions
+const PHCON2_FRCLINK  = 0x4000
+const PHCON2_TXDIS    = 0x2000
+const PHCON2_JABBER   = 0x0400
+const PHCON2_HDLDIS   = 0x0100
+-- ENC28J60 Packet Control Byte Bit Definitions
+const PKTCTRL_PHUGEEN = 0x08
+const PKTCTRL_PPADEN  = 0x04
+const PKTCTRL_PCRCEN  = 0x02
+const PKTCTRL_POVERRIDE = 0x01
+
+--------------------------------------------------------------------------------
+-- Send read command to enc SPI interface
+--------------------------------------------------------------------------------
+function enc_spi_read_command(byte in operation, byte in address) return byte is
+   var byte data
+
+   -- put spi into mode 00
+   if ENC_ALWAYS_SET_SPI_MODE == TRUE then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   end if
+   
+   -- enable the device
+   enc_cs = 0 -- enable chip
+
+   -- send the read command
+   spi_master_hw = operation | (address & ADDR_MASK)
+
+   -- read data
+   data = spi_master_hw
+   
+   -- previous read was a dummy read for mac and mii registers (see datasheet page 27)
+   if (address & 0x80) != 0 then
+      data = spi_master_hw
+   end if
+   
+   -- disable the device
+   enc_cs = 1 -- disable chip
+   
+   return data
+end function
+
+
+--------------------------------------------------------------------------------
+-- Send write command to enc SPI interface
+--------------------------------------------------------------------------------
+procedure enc_spi_write_command(byte in operation, byte in address, byte in data) is
+
+   -- put spi into mode 00
+   if ENC_ALWAYS_SET_SPI_MODE == TRUE then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   end if
+   
+   enc_cs = 0 -- enable chip
+   
+   -- choose register to write
+   spi_master_hw = operation | (address & ADDR_MASK)
+   
+   -- write data
+   spi_master_hw = data
+   
+   enc_cs = 1 -- disable chip
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Set bank number
+--------------------------------------------------------------------------------
+procedure enc_set_bank(byte in address) is
+   -- set bank (if needed)
+   if((address & BANK_MASK) != enc_current_bank) then
+      -- clear bank number bits
+      enc_spi_write_command(ENC28J60_BIT_FIELD_CLR, ECON1, (ECON1_BSEL1|ECON1_BSEL0))
+      -- set new bank number bits
+      enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON1, (BANK_MASK & address)>>5)
+      -- save the new bank number
+      enc_current_bank = (address & BANK_MASK)
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Read from a register
+--------------------------------------------------------------------------------
+function enc_read_register(byte in address) return byte is
+   -- set the bank number
+   enc_set_bank(address)
+   -- read the register
+   return enc_spi_read_command(ENC28J60_READ_CTRL_REG, address)
+end function
+
+--------------------------------------------------------------------------------
+-- Write to a register
+--------------------------------------------------------------------------------
+procedure enc_write_register(byte in address, byte in data) is
+   -- set the bank
+   enc_set_bank(address)
+   -- do the write
+   enc_spi_write_command(ENC28J60_WRITE_CTRL_REG, address, data)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Write to a PHY register
+--------------------------------------------------------------------------------
+procedure enc_write_phy_register(byte in address, word in data) is
+   var byte _data[2] at data
+
+   -- set the PHY reg address
+   enc_write_register(MIREGADR, address)
+   -- write the data
+   enc_write_register(MIWRL, _data[0])
+   enc_write_register(MIWRH, _data[1])
+   -- wait until the PHY write is completed
+   while (enc_read_register(MISTAT) & MISTAT_BUSY) != 0 loop
+   end loop
+end procedure
+
+--------------------------------------------------------------------------------
+-- complete packet read
+--------------------------------------------------------------------------------
+procedure enc_complete_packet_read() is
+	-- move the receive read pointer to the start of the next packet
+	enc_write_register(ERXRDPTL, _enc_packet_pointer[0])
+	enc_write_register(ERXRDPTH, _enc_packet_pointer[1])
+	-- decrement the count of number of packets
+	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON2, ECON2_PKTDEC) -- decrement EPKTCNT by 1
+end procedure
+
+--------------------------------------------------------------------------------
+-- read from the network buffer into enc_tx_array[]
+--------------------------------------------------------------------------------
+procedure enc_read_buffer(word in len) is
+
+   -- put spi into mode 00
+   if ENC_ALWAYS_SET_SPI_MODE == TRUE then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   end if
+
+   enc_cs = 0 -- enable chip
+
+   -- send read command
+   spi_master_hw = ENC28J60_READ_BUF_MEM
+
+   -- get the packet data
+   var word step = len
+   for len using step loop
+       enc_tx_array[step] = spi_master_hw
+   end loop
+
+   enc_cs = 1 -- disable chip
+
+   -- stop reading
+   enc_complete_packet_read()
+end procedure
+
+--------------------------------------------------------------------------------
+-- clears one packet from the rx buffer
+--------------------------------------------------------------------------------
+alias enc_clear_rx_buffer is enc_complete_packet_read
+
+--------------------------------------------------------------------------------
+-- write enc_tx_array[] into the network buffer
+--------------------------------------------------------------------------------
+procedure enc_write_buffer(word in len) is
+
+   -- put spi into mode 00
+   if ENC_ALWAYS_SET_SPI_MODE == TRUE then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   end if
+
+   enc_cs = 0 -- enable chip
+
+   -- send write command
+   spi_master_hw = ENC28J60_WRITE_BUF_MEM
+   var word step = len
+
+   -- write the packet data
+   for len using step loop
+      spi_master_hw = enc_tx_array[step]
+   end loop
+
+   enc_cs = 1 -- disable chip
+end procedure
+
+;   --------------------------------------------------------------------------------
+;   -- write one byte into the network buffer
+;   --------------------------------------------------------------------------------
+;   procedure enc_tx_buffer'put(byte in data) is
+;
+;      -- put spi into mode 00
+;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
+;         SSPCON_CKP = 0
+;         SSPSTAT_CKE = 1
+;      end if
+;
+;      enc_cs = 0 -- enable chip
+;      spi_master_hw = ENC28J60_WRITE_BUF_MEM -- send write command
+;      spi_master_hw = data                   -- write data
+;      enc_cs = 1 -- disable chip
+;   end procedure
+;
+;   --------------------------------------------------------------------------------
+;   -- read one byte from the network buffer
+;   --------------------------------------------------------------------------------
+;   function enc_rx_buffer'get() return byte is
+;
+;      -- put spi into mode 00
+;      if ENC_ALWAYS_SET_SPI_MODE == TRUE then
+;         SSPCON_CKP = 0
+;         SSPSTAT_CKE = 1
+;      end if
+;
+;      var byte data
+;      enc_cs = 0 -- enable chip
+;      spi_master_hw = ENC28J60_READ_BUF_MEM -- send read command
+;      data = spi_master_hw                  -- read data
+;      enc_cs = 1 -- disable chip
+;      return data
+;   end function
+
+
+--------------------------------------------------------------------------------
+-- set clkout pin frequency
+-- 0b11x = Reserved for factory test. Do not use. Glitch prevention not assured.
+-- 5 = CLKOUT outputs main clock divided by 8 (3.125 MHz)
+-- 4 = CLKOUT outputs main clock divided by 4 (6.25 MHz)
+-- 3 = CLKOUT outputs main clock divided by 3 (8.333333 MHz)
+-- 2 = CLKOUT outputs main clock divided by 2 (12.5 MHz)
+-- 1 = CLKOUT outputs main clock divided by 1 (25 MHz)
+-- 0 = CLKOUT is disabled. The pin is driven low.
+--------------------------------------------------------------------------------
+const ENC_3_125   = 5
+const ENC_6_25    = 4
+const ENC_8_333   = 3
+const ENC_12_5    = 2
+const ENC_25      = 1
+const ENC_DISABLE = 0
+procedure enc_set_clkout_freq(byte in clk) is
+   enc_write_register(ECOCON, clk) -- set ECOCON register
+end procedure
+
+procedure enc_init() is
+   -- put spi into mode 00
+   SSPCON_CKP = 0
+   SSPSTAT_CKE = 1
+
+   enc_cs = 0 -- enable chip
+
+	-- soft reset
+ 	enc_spi_write_command(ENC28J60_SOFT_RESET, 0, ENC28J60_SOFT_RESET)
+ 	delay_1ms(50) 	
+ 	
+	-- setup receive buffer
+   -- set receive buffer start address to 0
+	enc_write_register(ERXSTL, 0)
+	enc_write_register(ERXSTH, 0)
+	-- set receive pointer address
+	enc_write_register(ERXRDPTL, 0)
+	enc_write_register(ERXRDPTH, 0)
+	-- set rx buffer end address
+	enc_write_register(ERXNDL, RXSTOP_INIT_L)
+	enc_write_register(ERXNDH, RXSTOP_INIT_H)
+	
+	-- setup transmit buffer
+   -- set transmit buffer start address
+	enc_write_register(ETXSTL, TXSTART_INIT_L)
+	enc_write_register(ETXSTH, TXSTART_INIT_H)
+   -- set transmit buffer end address
+	enc_write_register(ETXNDL, TXSTOP_INIT_L)
+	enc_write_register(ETXNDH, TXSTOP_INIT_H)
+	
+   -- packet match filter
+   -- only allow packets for our mac address
+   -- also allow broadcasted ARP packets
+	enc_write_register(ERXFCON, ERXFCON_UCEN|ERXFCON_CRCEN|ERXFCON_PMEN)
+	enc_write_register(EPMM0, 0x3f)
+	enc_write_register(EPMM1, 0x30)
+	enc_write_register(EPMCSL, 0xf9)
+	enc_write_register(EPMCSH, 0xf7)
+
+
+	-- enable MAC receive
+	enc_write_register(MACON1, MACON1_MARXEN|MACON1_TXPAUS|MACON1_RXPAUS)
+	-- bring MAC out of reset
+	enc_write_register(MACON2, 0x00)
+	-- enable automatic padding to 60bytes and CRC operations
+	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, MACON3, MACON3_PADCFG0|MACON3_TXCRCEN|MACON3_FRMLNEN)
+	-- set inter-frame gap (non-back-to-back)
+	enc_write_register(MAIPGL, 0x12)
+	enc_write_register(MAIPGH, 0x0C)
+	-- set inter-frame gap (back-to-back)
+	enc_write_register(MABBIPG, 0x12)
+	-- Set the maximum packet size the controller will accept
+   -- Do not send packets longer than ENC_MAX_FRAMELEN
+	enc_write_register(MAMXFLL, ENC_MAX_FRAMELEN_L)	
+	enc_write_register(MAMXFLH, ENC_MAX_FRAMELEN_H)
+
+
+   -- write MAC address
+   enc_write_register(MAADR5, enc_local_mac[0])
+   enc_write_register(MAADR4, enc_local_mac[1])
+   enc_write_register(MAADR3, enc_local_mac[2])
+   enc_write_register(MAADR2, enc_local_mac[3])
+   enc_write_register(MAADR1, enc_local_mac[4])
+   enc_write_register(MAADR0, enc_local_mac[5])
+        
+   -- don't write our output into the input buffer, only onto the twisted pair.
+	enc_write_phy_register(PHCON2, PHCON2_HDLDIS)
+		
+	enc_set_bank(ECON1)
+	-- enable interrut output pin
+	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, EIE, EIE_INTIE|EIE_PKTIE)
+	-- allow us to receive packets
+	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_RXEN)
+end procedure
+
+--------------------------------------------------------------------------------
+-- read the revision of the device
+--------------------------------------------------------------------------------
+function enc_read_revision() return byte is
+	return(enc_read_register(EREVID))
+end function
+
+--------------------------------------------------------------------------------
+-- returns the number of packets currently available in the receive buffer
+--------------------------------------------------------------------------------
+function enc_packets_available() return byte is
+   pragma inline
+   return enc_read_register(EPKTCNT)
+end function
+
+--------------------------------------------------------------------------------
+-- check if there are any packets available
+-- should only be read once before actually reading a packet
+--------------------------------------------------------------------------------
+function enc_packet_available'get() return bit is
+   if enc_packets_available() > 0 then
+   
+   -- Set the read pointer to the start of the received packet
+	enc_write_register(ERDPTL, _enc_packet_pointer[0])
+	enc_write_register(ERDPTH, _enc_packet_pointer[1])
+	-- read the next packet pointer
+	enc_packet_pointer  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
+	enc_packet_pointer  = enc_packet_pointer | (word( enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0) )<<8)
+   
+      return 1
+   else
+      return 0
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- End/Send packet from transmit buffer onto twisted pair
+--------------------------------------------------------------------------------
+procedure enc_end_packet(word in network_current_packet_size) is
+	-- move the write pointer to start of transmit buffer area
+	enc_write_register(EWRPTL, TXSTART_INIT_L)
+	enc_write_register(EWRPTH, TXSTART_INIT_H)
+	-- Set the TXND to last bye in data payload
+	enc_write_register(ETXNDL, byte((TXSTART_INIT+network_current_packet_size)&0xFF))
+	enc_write_register(ETXNDH, byte((TXSTART_INIT+network_current_packet_size)>>8))
+	-- write per-packet control byte (0x00 means use macon3 settings)
+	enc_spi_write_command(ENC28J60_WRITE_BUF_MEM, 0, 0x00)
+	-- copy the packet into the transmit buffer
+	enc_write_buffer(network_current_packet_size)
+	-- send the contents of the transmit buffer onto the network
+	enc_spi_write_command(ENC28J60_BIT_FIELD_SET, ECON1, ECON1_TXRTS)
+   -- when done, reset the transmission process bit
+	if ((enc_read_register(EIR) & EIR_TXERIF)) != 0 then
+      enc_spi_write_command(ENC28J60_BIT_FIELD_CLR, ECON1, ECON1_TXRTS)
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- get the size of a packet (should only be read once at the
+-- beginning of a packet)
+--------------------------------------------------------------------------------
+function enc_packet_size'get() return word is
+   var word packet_size
+   var word receive_status
+   
+	-- read the packet length
+	packet_size = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
+	packet_size = packet_size | word(enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0))<<8
+	-- subtract 4 (size of crc) from packet length
+   packet_size = packet_size - 4
+
+   -- read the receive status
+	receive_status  = enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0)
+	receive_status = receive_status | word(enc_spi_read_command(ENC28J60_READ_BUF_MEM, 0))<<8
+	
+	-- limit packet length
+   ;if !(packet_size > enc_tx_array_SIZE-1) then
+   ;   packet_size = enc_tx_array_SIZE - 1
+   ;end if
+
+   -- check that there where no CRC/symbol errors
+   -- return packet size of 0 if there where errors
+   if (receive_status & 0x80) == 0 then
+       packet_size = 0
+   end if
+   
+   return packet_size
+end function
+
+
+

@@ -1,0 +1,316 @@
+-- Title: Networking main procedures
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2011, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: recieves packets and forwards them to the next next protocol
+--
+-- Sources:
+-- http://www.comptechdoc.org/independent/networking/protocol/protnet.html
+--
+-- notes:
+--
+-- Wireshark is awsome! http://www.wireshark.org/
+--
+-- Requirements for network adapter (ethernet device, wifi device, SLIP, etc.)
+-- 1. Add aliases to network_globals.jal
+-- 2. Modify procedure network_send_packet() in this file
+-- 3. Modify procedure network_get_packet() in this file
+--
+-- RECEIVING PACKETS:
+-- 1. User polls network_poll() procedure
+-- 2. If a packet is recieved, it is passed to network_received_packet,
+--    the packet size is checked, then sent to the next level/protocol.
+-- 3. If it is Ethernet, it goes to ethernet_read_packet(), then
+--    ip_header_read_packet(). If it is SLIP, it goes directly
+--    to ip_header_read_packet()
+-- 4. The packet is then sent to the next protocol's read_packet procedure.
+-- 5. A callback procedure is run in the user program.
+--
+-- TRANSMITTING PACKETS:
+-- 1. User calls a procedure from a protocol
+-- 2. That protocol will call other protocols to create an Ethernet
+--    header (if Ethernet), ip_header, and whatever is needed by the
+--    top level protocol.
+-- 3. The packet is sent onto the network.
+--
+-- TODO:
+-- rethink step 4 of first note? maybe make a procedure for that.
+-- variable network_data_in_use needs to be fixed?
+-- allow enable/disable of UDP, ICMP and other protocols
+--
+
+--------------------------------------------------------------------------------
+-- include required debug library
+--------------------------------------------------------------------------------
+if !defined(debug_data) then
+   const bit DEBUG_MASTER_ENABLE = FALSE    -- enables debugging
+   include debug
+   -- IP_HEADER DEBUG LEVELS:
+   -- lvl 2 - show text
+   -- lvl 4 - show data
+end if
+
+----------------------------------------------------------------
+-- set destination ip address
+----------------------------------------------------------------
+procedure network_set_remote_ip(byte in ip_0,byte in ip_1,byte in ip_2,byte in ip_3) is
+   network_remote_ip[0] = ip_0
+   network_remote_ip[1] = ip_1
+   network_remote_ip[2] = ip_2
+   network_remote_ip[3] = ip_3
+end procedure
+
+----------------------------------------------------------------
+-- put the network array into the output buffer
+----------------------------------------------------------------
+procedure network_send_packet(word in size) is
+   if NETWORK_LINK_LAYER_ETHERNET == FALSE then
+      var byte count1 = 0
+      for size using count1 loop
+         network_send_data(network_data[count1])
+         debug_byte_hex(DEBUG_4,network_data[count1])
+         debug_char(DEBUG_4," ")
+      end loop
+      network_end_packet()
+   elsif NETWORK_LINK_LAYER_ETHERNET == TRUE then
+      network_write_buffer(size)  -- write all data to tx buffer
+      network_end_packet(size)    -- send the packet
+   else
+      pragma error -- Layer Not Supported
+   end if
+   
+   network_data_in_use = FALSE
+end procedure
+
+----------------------------------------------------------------
+-- get the network array from the input buffer
+----------------------------------------------------------------
+procedure network_get_packet(word in size) is
+   if NETWORK_LINK_LAYER_ETHERNET == FALSE then
+      var byte count1 = 0
+      for size using count1 loop
+         network_data[count1] = network_rx_buffer
+         ;debug_byte_hex(DEBUG_4,network_data[count1])
+         ;debug_char(DEBUG_4," ")
+      end loop
+   elsif NETWORK_LINK_LAYER_ETHERNET == TRUE then
+      enc_read_buffer(size)
+   else
+      pragma error -- Layer Not Supported
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Reads a recieve packet. Verifies IP Header data such as IP
+-- address and checksum (with ip_header.jal), then sends the
+-- rest of the data to the correct procedure depending on packet type.
+--------------------------------------------------------------------------------
+procedure network_received_packet() is
+
+   -- get the size of the current packet
+   network_packet_size = network_get_packet_size
+   
+   network_data_in_use = TRUE
+   network_var_offset = 0
+
+   -- print "-- PACKET RECEIVED: x bytes --"
+   debug_crlf(DEBUG_2)
+   const byte str1[] = "---------- PACKET RECEIVED: "
+   debug_string(DEBUG_3, str1)
+   debug_word_dec(DEBUG_3,network_packet_size)
+   const byte str_size[] = " bytes ----------"
+   debug_string(DEBUG_3, str_size)
+   debug_crlf(DEBUG_2)
+
+   if network_packet_size > network_max_packet_size then
+      -- your packet may have a problem, it is too large
+      const byte str[] = "---------- ERROR: packet too large for buffer ----------"
+      debug_string(debug_lvl_1, str)
+      debug_crlf(debug_lvl_1)
+      
+      if defined(network_clear_rx_queue) then
+         network_clear_rx_queue() -- clear bad data in the queues
+      end if
+      
+      return -- ignore the packet
+   end if
+   
+   network_get_packet(network_packet_size)
+
+   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
+      ethernet_read_packet()
+   elsif NETWORK_LINK_LAYER_ETHERNET == FALSE then
+      ip_header_read_packet()
+   end if
+   
+   --
+   debug_crlf(DEBUG_3)
+   
+   network_data_in_use = FALSE
+end procedure
+
+;----------------------------------------------------------------
+;-- switch byte order in a word
+;----------------------------------------------------------------
+;procedure network_switch_word_bytes(word in out data) is
+;   var byte _data[2] at data
+;   var byte temp
+;   temp = _data[0]
+;   _data[0] = _data[1]
+;   _data[1] = temp
+;end procedure
+;
+----------------------------------------------------------------
+-- switch byte order in a dword
+----------------------------------------------------------------
+procedure network_switch_dword_bytes(dword in out data) is
+   var byte _data[4] at data
+   var byte temp
+   temp = _data[0]
+   _data[0] = _data[3]
+   _data[3] = temp
+
+   temp = _data[1]
+   _data[1] = _data[2]
+   _data[2] = temp
+end procedure
+
+
+----------------------------------------------------------------
+-- functions to get/put variables into the network array
+----------------------------------------------------------------
+function network_byte'get(word in variable) return byte is
+   pragma inline
+   return network_data[network_var_offset + variable]
+end function
+procedure network_byte'put(word in variable, byte in value) is
+   pragma inline
+   network_data[network_var_offset + variable] = value
+end procedure
+
+procedure network_word'put(word in variable, word in value) is
+   pragma inline
+   var byte _value[2] at value
+   network_data[network_var_offset + variable] = _value[1]
+   network_data[network_var_offset + variable + 1] = _value[0]
+end procedure
+function network_word'get(word in variable) return word is
+   pragma inline
+   var word value
+   var byte _value[2] at value
+   _value[1] = network_data[network_var_offset + variable]
+   _value[0] = network_data[network_var_offset + variable + 1]
+   return value
+end function
+
+procedure network_dword'put(word in variable, dword in value) is
+   var byte _value[4] at value
+   network_data[network_var_offset + variable] = _value[3]
+   network_data[network_var_offset + variable + 1] = _value[2]
+   network_data[network_var_offset + variable + 2] = _value[1]
+   network_data[network_var_offset + variable + 3] = _value[0]
+end procedure
+function network_dword'get(word in variable) return dword is
+   var dword value
+   var byte _value[4] at value
+   _value[3] = network_data[network_var_offset + variable]
+   _value[2] = network_data[network_var_offset + variable + 1]
+   _value[1] = network_data[network_var_offset + variable + 2]
+   _value[0] = network_data[network_var_offset + variable + 3]
+   return value
+end function
+
+;   procedure network_byte_x_6'put(byte*6 in variable, dword in value) is
+;      var byte _value[4] at value
+;      network_data[network_var_offset + variable] = _value[5]
+;      network_data[network_var_offset + variable + 1] = _value[4]
+;      network_data[network_var_offset + variable + 2] = _value[3]
+;      network_data[network_var_offset + variable + 3] = _value[2]
+;      network_data[network_var_offset + variable + 4] = _value[1]
+;      network_data[network_var_offset + variable + 5] = _value[0]
+;   end procedure
+;   function network_byte_x_6'get(byte*6 in variable) return dword is
+;      var dword value
+;      var byte _value[4] at value
+;      _value[5] = network_data[network_var_offset + variable]
+;      _value[4] = network_data[network_var_offset + variable + 1]
+;      _value[3] = network_data[network_var_offset + variable + 2]
+;      _value[2] = network_data[network_var_offset + variable + 3]
+;      _value[1] = network_data[network_var_offset + variable + 4]
+;      _value[0] = network_data[network_var_offset + variable + 5]
+;      return value
+;   end function
+
+--------------------------------------------------------------------------------
+-- Computes a 16bit checksum from a byte array using every 2 bytes in the array.
+-- Mostly used for IP header checksums.
+--------------------------------------------------------------------------------
+function network_checksum_16_byte_calc(word in start, word in size) return word is
+   var word checksum
+   alias count1 is size
+   ;var word i = 0
+   alias i is start
+   var word word16
+   var dword sum = 0
+   var byte _sum[2] at sum
+
+   -- make 16 bit words out of every two adjacent 8 bit words in the packet
+   -- and add them up
+   while (count1 > 1) loop
+      sum = sum + word((word(network_data[i + 0]) << 8) + network_data[i + 1])
+      i = i + 2
+      count1 = count1 - 2
+
+      if sum > 0xFFFF then
+         sum = word(sum) + 1
+      end if
+   end loop
+
+   -- also check odd numbered buffer
+   if count1 == 1 then
+      sum = sum + (word(network_data[i + 0]) << 8)
+      if sum > 0xFFFF then
+         sum = word(sum) + 1
+      end if
+   end if
+
+   -- ones complement the result
+   sum = word(!sum)
+
+   -- set the out bytes
+   checksum = word(sum)
+
+   return checksum
+end function
+
+--------------------------------------------------------------------------------
+-- Verify 16bit checksum from a byte array using every 2 bytes in the array.
+-- Mostly used for IP header checksums.
+--------------------------------------------------------------------------------
+function network_checksum_16_byte_verify(word in start, word in size) return bit is
+   var word data
+   data = network_checksum_16_byte_calc(start,size)
+
+   if (data == 0) | data == 0xFFFF then
+      return 1
+   else
+      return 0
+   end if
+end function
+
+
+----------------------------------------------------------------
+-- poll to see if there are any packets waiting for us
+----------------------------------------------------------------
+procedure network_poll() is
+   pragma inline
+;   if network_rx_packet_available & !network_data_in_use then
+   if network_rx_packet_available then
+      network_received_packet() -- get the packet
+   end if
+end procedure

@@ -1,0 +1,264 @@
+-- Title: Universal gregorian calendar routines
+-- Author: Oliver "Kiste" Seitz
+-- Based on the original calendar.jal library by Eur van Andel.
+-- Adapted-by: 
+-- Compiler: >=2.4o
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: The hardware RTCC present in some PIC devices is limited to years 2000...2099. 
+-- If you want to build e.g. a time-travelling vehicle, such a clock is of little use.
+-- This software library implements a RTCC which is valid from friday, October 15, 1582
+-- to presumably at least the year 7000. Earlier, the julian calendar was valid. Later, the 
+-- inaccuracy of the gregorian leap year rules may have accumulated to a whole day. 
+-- 
+
+if defined(bigcal_datetype) == false then
+  record bigcal_datetype is
+     word	year
+     byte	month
+     byte	day
+  end record
+end if
+
+if defined(bigcal_timetype) == false then
+  record bigcal_timetype is
+    byte	hour
+    byte	minute
+    byte	second
+  end record
+end if
+
+
+
+if defined(bigcal_current_time) == false then    -- define necessary global variables, if this was not done yet
+  var volatile bigcal_timetype bigcal_current_time 
+  bigcal_current_time.second = 0
+  bigcal_current_time.minute = 0
+  bigcal_current_time.hour   = 8
+end if
+
+
+if defined(bigcal_current_date) == false then
+  var bigcal_datetype bigcal_current_date
+  bigcal_current_date.day    = 1 
+  bigcal_current_date.month  = 1 
+  bigcal_current_date.year   = 2012 
+end if
+
+
+
+
+-- --------------------------------------------------------------
+-- Title:     Number of days per month
+-- Arguments: - Year (from 1582 up)
+--            - Month (1 to 12)
+-- Returns:   Number of days in the specified month (28,29,30 or 31)
+-- Notes:     Respects leap years as defined by the gregorian calendar.
+-- --------------------------------------------------------------
+function bigcal_days_per_month(word in year, byte in month) return byte is
+
+  var bit month_8 at month:3
+
+  if month_8 == 1 then --(aug,sep,oct,nov,dec)
+
+    if bit(month) == 1 then --(sep,nov)
+      return 30
+    else --(aug,oct,dec)
+      return 31
+    end if
+
+  else --(jan,feb,mar,apr,may,jun,jul)
+
+    if month == 2 then --(feb)
+      if ( year & 3 )  == 0 then -- calculate month % 4 without division
+        if ( year % 100 ) == 0 then
+          if ( year % 400 ) == 0 then 
+            return 29
+          else -- (four is a divisor of month, and so is 100, but 400 is not)
+            return 28
+          end if
+        else -- (four is a divisor of month, and 100 is not)
+          return 29
+        end if
+      else -- (four is no divisor of month)
+        return 28
+      end if
+    else --(jan,mar,apr,may,jun,jul)
+      if bit(month) == 1 then --(jan,mar,may,jul)
+        return 31
+      else --(apr,jun)
+        return 30
+      end if
+    end if 
+
+  end if
+
+
+end function
+
+-- --------------------------------------------------------------
+-- Title:     Weekday
+-- Arguments: - Year (from 1582 up)
+--            - Month (1 to 12)
+--            - Day (1 to 31)
+-- Returns:   Weekday of the given date (0=sunday, 1=monday...)
+-- Notes:     Based on "Zeller's congruence"
+-- --------------------------------------------------------------
+function bigcal_weekday(bigcal_datetype in ddate) return byte is
+
+   if ddate.month<3 then
+       ddate.year  = ddate.year  - 1
+       ddate.month = ddate.month + 12
+   end if
+
+   ddate.day   = ddate.day   + 6
+   ddate.month = ddate.month + 1
+
+
+
+   return byte((ddate.day+(word(ddate.month)*26) / 10+((ddate.year % 100)*5) / 4+((ddate.year / 100)*21) / 4) % 7 )
+
+end function
+
+
+-- --------------------------------------------------------------
+-- Title:     Alter a given date by a number of days
+-- Arguments: - Year 
+--            - Month 
+--            - Day 
+--            - distance
+-- Returns:   A modified date (year,month,day)
+-- Notes:     distance can be positive, moves date to the future
+--            distance can be negative, moves date to the past
+--            +/-32768 days is a bit more than 89 years
+-- --------------------------------------------------------------
+procedure bigcal_add_days(bigcal_datetype in out ddate, sword in distance) is
+
+  var byte this_month
+
+  while distance > 0 loop
+
+    this_month=bigcal_days_per_month(ddate.year,ddate.month) -- might be needed twice
+
+    if (distance+ddate.day) <= this_month then
+      ddate.day=byte(ddate.day+distance)
+      distance=0
+    else
+      distance=distance-this_month
+      if ddate.day != 1 then
+        distance=distance+ddate.day
+        distance=distance-1
+        ddate.day=1
+      end if
+      ddate.month=ddate.month+1
+      if ddate.month == 13 then
+        ddate.month=1
+        ddate.year=ddate.year+1
+      end if
+    end if
+  end loop
+
+  while distance < 0 loop
+    if (ddate.day+distance) >= 1 then
+      ddate.day=byte(ddate.day+distance)
+      distance=0
+    else
+      ddate.month=ddate.month-1
+      if ddate.month == 0 then
+         ddate.month=12
+         ddate.year=ddate.year-1
+      end if
+      distance=distance+ddate.day
+      ddate.day=bigcal_days_per_month(ddate.year,ddate.month)
+    end if 
+  end loop
+
+end procedure
+
+-- --------------------------------------------------------------
+-- Title:     Find date of easter sunday
+-- Arguments: year in datetype record
+-- Returns:   complete datetype record with date of easter sunday
+-- Notes:     Calculates the date of easter sunday using formulae
+--            created by C.F. Gauss, modified by Dr. H. Lichtenberg
+--            as published by the german date and time authority
+--            "Physikalisch-Technische Bundesanstalt".
+-- --------------------------------------------------------------
+procedure bigcal_find_easter(bigcal_datetype in out edate) is
+
+  var word k,m,a,d,r
+  var sword s
+  var byte og,sz,oe
+
+  k = edate.year/100 
+
+  m = 15 + ((3*K+3)/4) - ((8*K+13)/25) 
+
+  S = 2 - sword((3*K+3)/4) 
+
+  A = edate.year % 19 
+
+  D = (19*A+M) % 30 
+
+  R = (D/29) + ((D/28) - (D/ 29)) * (A/11)
+
+  OG = byte(21 + D - R)
+
+  SZ = byte(7 - (edate.year+(edate.year/4)+S) % 7);
+
+  OE = 7 - (OG-SZ) % 7 
+
+  edate.month=3
+  edate.day=OG+OE
+
+  if edate.day>31 then
+    edate.day=edate.day-31
+    edate.month=edate.month+1
+  end if
+
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Title:     Update current time and date
+-- Arguments: none
+-- Returns:   none
+-- Notes:     works on global variables current_date and current_time.
+--            "current_time.seconds" is to be updated somehow, e.g. a timer or the like.
+--            This procedure updates all the other variables, depending on the
+--            rising value of "current_time.seconds".
+--            It should be called regularly. Once a second is ok, but not stricktly
+--            necessary. "seconds" should not overflow, so this procedure must
+--            be called at least once every four minutes.
+-- --------------------------------------------------------------
+procedure bigcal_update_current() is       
+   while bigcal_current_time.second > 59 loop    
+      bigcal_current_time.second = bigcal_current_time.second - 60  
+      bigcal_current_time.minute = bigcal_current_time.minute + 1
+   end loop
+
+   while bigcal_current_time.minute > 59 loop
+      bigcal_current_time.minute = bigcal_current_time.minute - 60  
+      bigcal_current_time.hour   = bigcal_current_time.hour + 1 
+   end loop
+
+   if bigcal_current_time.hour > 23 then 
+      bigcal_current_time.hour = bigcal_current_time.hour - 24
+      bigcal_current_date.day  = bigcal_current_date.day + 1
+
+      if bigcal_current_date.day > bigcal_days_per_month(bigcal_current_date.year,bigcal_current_date.month) then
+         bigcal_current_date.day = 1
+         bigcal_current_date.month = bigcal_current_date.month + 1
+      end if
+
+      if bigcal_current_date.month >= 13 then
+         bigcal_current_date.month = 1
+         bigcal_current_date.year = bigcal_current_date.year + 1 
+      end if
+
+   end if
+   
+end procedure       
+

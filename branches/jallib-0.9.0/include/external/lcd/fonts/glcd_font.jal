@@ -1,0 +1,170 @@
+-- Title: FONT library for use with GLCD's
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Main font library.
+-- API: include as many font library as you want, then include this one.
+-- Define which font you want to use during programm execution, calling
+-- glcd_font_use(font_id). Font lookup (retrieving a char) is done using
+-- glcd_font_lookup(idx)
+-- 
+-- Notes: Fonts have an ID, unique amongst all font libraries. ID goes from
+-- 0x01 to 0xFE (0x00 and 0xFF are reserved for internal usage). Fonts which
+-- are part of jallib distribution have their ID starting from 0x01, 
+-- increasing. There are also "slots" for user-defined libraries, starting from
+-- 0xFE, decreasing. This way all jallib IDs are consecutive, so are user-defined.
+-- This leaves room for 253 fonts. Each font library addition involves updating
+-- procedures glcd_font_use() and glcd_font_lookup().
+-- --
+-- Font name usually includes information about its Width x Height (eg. FONT_5X7).
+-- A font library often declares characters, but can also declares other kind of
+-- stuff (like sprites). 
+-- --
+-- Example: FONT_9X12_TOP_RIGHT_HORIZONTAL_MY_FONT_NAME
+-- --
+-- Your lcd will most likely only support one font bit order.
+-- --
+-- This example is 9x12 (font_top_right_horizontal)
+-- const byte FONT_9x12_0_NONAME[] = {0x00,0x00,0x20,0x20,0x20,0x20,0x20,0x20,0x00,0x20,0x00,0x00} -- "!"
+-- ---horizontal--->
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- --
+-- This example is FONT_9x12_7_NONAME (FONT_BOTTOM_LEFT_VERTICAL)
+-- const byte font_table[] = {0x0000 0x0000 0x0000 0x0000 0x0000 0x0000 0x2F0C 0x0000 0x0000} -- "!"
+-- --
+-- 0      0      0      0      0      0      0      0      0        ^
+-- 0      0      0      0      0      0      0      0      0        |
+-- 0      0      1      0      0      0      0      0      0        L
+-- 0      0      1      0      0      0      0      0      0        A
+-- 0      0      1      0      0      0      0      0      0        C
+-- 0      0      1      0      0      0      0      0      0        I
+-- 0      0      1      0      0      0      0      0      0        T
+-- 0      0      1      0      0      0      0      0      0        R
+-- 0      0      0      0      0      0      0      0      0        E
+-- 0      0      1      0      0      0      0      0      0        V
+-- 0      0      0      0      0      0      0      0      0        |
+-- 0      0      0      0      0      0      0      0      0        |
+-- 0x0000 0x0000 0x2F0C 0x0000 0x0000 0x0000 0x0000 0x0000 0x0000
+-- 
+-- Sources:
+-- http://www.divshare.com/download/11463401-4a9
+--
+
+-- flag: do we use font & chars related features ?
+const bit GLCD_FONT_USAGE = true
+
+var byte _glcd_font_current_id
+var byte _glcd_font_current_byte_per_char
+var byte _glcd_font_current_width
+var byte _glcd_font_current_height
+var byte _glcd_font_current_bit_direction
+
+procedure glcd_font_use(byte in font_id) is
+   if defined(FONT_5X7) then
+      if font_id == FONT_5X7 then
+         _glcd_font_current_id = FONT_5X7
+         _glcd_font_current_byte_per_char = FONT_5X7_BYTE_PER_CHAR
+         _glcd_font_current_width = FONT_5X7_WIDTH
+         _glcd_font_current_height = FONT_5X7_HEIGHT
+         _glcd_font_current_bit_direction = FONT_5X7_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_6X8) then
+      if font_id == FONT_6X8 then
+         _glcd_font_current_id = FONT_6X8
+         _glcd_font_current_byte_per_char = FONT_6X8_BYTE_PER_CHAR
+         _glcd_font_current_width = FONT_6X8_WIDTH
+         _glcd_font_current_height = FONT_6X8_HEIGHT
+         _glcd_font_current_bit_direction = FONT_6X8_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_8X12) then
+      if font_id == FONT_8X12 then
+         _glcd_font_current_id = FONT_8X12
+         _glcd_font_current_byte_per_char = FONT_8X12_BYTE_PER_CHAR
+         _glcd_font_current_width = FONT_8X12_WIDTH
+         _glcd_font_current_height = FONT_8X12_HEIGHT
+         _glcd_font_current_bit_direction = FONT_8X12_BIT_DIRECTION
+      end if
+   end if
+   -- User-defined font.
+   if defined(FONT_UDF_0XFE) then
+      if font_id == FONT_UDF_0XFE then
+         _glcd_font_current_id = FONT_UDF_0XFE
+         _glcd_font_current_byte_per_char = FONT_UDF_0XFE_BYTE_PER_CHAR
+         _glcd_font_current_width = FONT_UDF_0XFE_WIDTH
+         _glcd_font_current_height = FONT_UDF_0XFE_HEIGHT
+         _glcd_font_current_bit_direction = FONT_UDF_0XFE_BIT_DIRECTION
+      end if
+   end if
+   -- User-defined font.
+   if defined(FONT_UDF_0XFD) then
+      if font_id == FONT_UDF_0XFD then
+         _glcd_font_current_id = FONT_UDF_0XFD
+         _glcd_font_current_byte_per_char = FONT_UDF_0XFD_BYTE_PER_CHAR
+         _glcd_font_current_width = FONT_UDF_0XFD_WIDTH
+         _glcd_font_current_height = FONT_UDF_0XFD_HEIGHT
+         _glcd_font_current_bit_direction = FONT_UDF_0XFD_BIT_DIRECTION
+      end if
+   end if
+   -- Internal usage (from reserved ID)
+   if font_id == 0x00 then
+      -- special case
+   end if
+   if font_id == 0xFF then
+      -- special case
+   end if
+end procedure
+
+function glcd_font_lookup(word in idx) return byte is
+   if defined(FONT_5X7) then
+      if _glcd_font_current_id == FONT_5X7 then
+         return FONT_5X7_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_6X8) then
+      if _glcd_font_current_id == FONT_6X8 then
+         return FONT_6X8_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_8X12) then
+      if _glcd_font_current_id == FONT_8X12 then
+         return FONT_8X12_CHARS[idx]
+      end if
+   end if
+   -- user-defined
+   if defined(FONT_UDF_0XFE) then
+      if _glcd_font_current_id == FONT_UDF_0XFE then
+         return FONT_UDF_0XFE_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_UDF_0XFD) then
+      if _glcd_font_current_id == FONT_UDF_0XFD then
+         return FONT_UDD_0XFD_CHARS[idx]
+      end if
+   end if
+   -- if we get there, can't lookup onto existing char tables
+   return 0
+end function
+
+
+if !defined (FONT_BIT_DIRECTION) then
+   const byte FONT_BIT_DIRECTION = FONT_TOP_RIGHT_VERTICAL
+end if
+

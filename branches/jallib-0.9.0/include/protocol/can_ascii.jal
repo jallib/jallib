@@ -1,0 +1,171 @@
+-- Title: ASCII encapsulation of CAN messages
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4m
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: ASCII-to-CAN and CAN-to-ASCII routines. The intent is to be compatible with
+--    the SLCAN API. These routines may be used, for example, to implement a RS232 to CAN adapter
+--
+-- Sources: Socket-CAN, in particular the SLCAN API. http://developer.berlios.de/projects/socketcan/ 
+--          also, the LAWICEL CAN-USB adapter.
+--
+-- Excerpt cut/pasted from SLCAN.C:
+--
+--    A CAN frame has a can_id (11 bit standard frame format OR 29 bit extended
+--    frame format) a data length code (can_dlc) which can be from 0 to 8
+--    and up to <can_dlc> data bytes as payload.
+--    Additionally a CAN frame may become a remote transmission frame if the
+--    RTR-bit is set. This causes another ECU to send a CAN frame with the
+--    given can_id.
+--
+--    The SLCAN ASCII representation of these different frame types is:
+--    <type> <id> <dlc> <data>*
+--
+--    Extended frames (29 bit) are defined by capital characters in the type.
+--    RTR frames are defined as 'r' types - normal frames have 't' type:
+--    t => 11 bit data frame
+--    r => 11 bit RTR frame
+--    T => 29 bit data frame
+--    R => 29 bit RTR frame
+--
+--    The <id> is 3 (standard) or 8 (extended) bytes in ASCII Hex (base64).
+--    The <dlc> is a one byte ASCII number ('0' - '8')
+--    The <data> section has at much ASCII Hex bytes as defined by the <dlc>
+--
+--    Examples:
+--
+--    t1230 : can_id 0x123, can_dlc 0, no data
+--    t4563112233 : can_id 0x456, can_dlc 3, data 0x11 0x22 0x33
+--    T12ABCDEF2AA55 : extended can_id 0x12ABCDEF, can_dlc 2, data 0xAA 0x55
+--    r1230 : can_id 0x123, can_dlc 0, no data, remote transmission request
+--
+
+function _ascii2bin(byte in c) return byte is
+   pragma inline
+   
+   if c >= "a" then
+      return ( c - "a" + 10 )
+   end if
+   
+   if (c >= "A") then
+      return ( c - "A" + 10 )
+   end if
+   
+   return ( c - "0" )
+end function
+
+-- convert ASCII message to CAN message, as per socket-CAN SLCAN API
+-- FIXME: poor method.
+function ascii_to_can(byte in ascii_buf[32], dword out can_id, byte out can_data[8], byte out data_len) return bit is
+   var bit ext, rtr
+   var byte i, j
+   
+   if ascii_buf[0] == "t" then
+      rtr = 0
+      ext = 0
+   elsif ascii_buf[0] == "T" then
+      rtr = 0
+      ext = 1
+   elsif ascii_buf[0] == "r" then
+      rtr = 1
+      ext = 0
+   elsif ascii_buf[0] == "R" then
+      rtr = 1
+      ext = 1
+   else
+      return 0
+   end if
+   
+   if ext then
+      i = 8
+   else
+      i = 3
+   end if
+   
+   can_id = 0
+   for i using j loop
+      can_id = can_id << 4
+      can_id = can_id | dword( _ascii2bin( ascii_buf[j+1] ) )
+   end loop
+   i = i + 1
+   
+   if ext then
+      can_encode_ext_id(can_id)
+   end if
+   
+   if rtr then
+      can_encode_rtr_id(can_id)
+   end if
+   
+   data_len = _ascii2bin( ascii_buf[i] )
+   if data_len > 8 then
+      data_len = 8
+   end if
+   i = i + 1
+   
+   for 8 using j loop
+      if j < data_len then
+         var byte v
+         v = _ascii2bin( ascii_buf[i] ) << 4
+         v = v | _ascii2bin( ascii_buf[i+1] )
+         can_data[j] = v
+         i = i + 2
+      else
+         can_data[j] = 0
+      end if
+   end loop
+   
+   return 1
+end function
+
+-- convert CAN message to socket-CAN SLCAN API
+-- FIXME: poor method.
+function can_to_ascii(dword in can_id, byte in can_data[8], byte in data_len, byte out ascii_buf[32]) return byte is
+   var byte i, j
+   
+   if can_is_rtr_id(can_id) then
+      ascii_buf[0] = "R"
+   else
+      ascii_buf[0] = "T"
+   end if
+   if can_is_std_id(can_id) then
+      ascii_buf[0] = ascii_buf[0] | 0x20 -- make lower-case
+      ascii_buf[1] = nibble2hex( byte(can_id >> 8) & 7   )
+      ascii_buf[2] = nibble2hex( byte(can_id >> 4) & 0xF )
+      ascii_buf[3] = nibble2hex( byte(can_id) & 0xF      )
+      i = 4
+   else
+      ascii_buf[1] = nibble2hex( byte(can_id >> 28) & 1   )
+      ascii_buf[2] = nibble2hex( byte(can_id >> 24) & 0xF )
+      ascii_buf[3] = nibble2hex( byte(can_id >> 20) & 0xF )
+      ascii_buf[4] = nibble2hex( byte(can_id >> 16) & 0xF )
+      ascii_buf[5] = nibble2hex( byte(can_id >> 12) & 0xF )
+      ascii_buf[6] = nibble2hex( byte(can_id >>  8) & 0xF )
+      ascii_buf[7] = nibble2hex( byte(can_id >>  4) & 0xF )
+      ascii_buf[8] = nibble2hex( byte(can_id ) & 0xF      )
+      i = 9
+   end if
+   
+   -- bulletproofing
+   if data_len > 8 then
+      data_len = 8
+   end if
+   
+   ascii_buf[i] = nibble2hex( data_len & 0xF )
+   i = i + 1
+   
+   for data_len using j loop
+      ascii_buf[i] = nibble2hex( can_data[j] >> 4 )
+      ascii_buf[i+1] = nibble2hex( can_data[j] & 0XF )
+      i = i + 2
+   end loop
+   
+   ascii_buf[i] = 13
+   i = i + 1
+   return i
+end function
+

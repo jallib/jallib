@@ -1,0 +1,60 @@
+-- ------------------------------------------------------
+-- Title: Sample echo program with serial_hardware2.jal and the 16F1947
+--
+-- Author: Rob Hamerling, Copyright (c) 2012..2012, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Sample use of serial_hardware2 library for second USART of 16F1947
+-- Echoes all data received from the serial interface.
+--
+-- Sources:
+--
+-- Notes: Uses internal oscillator at 8 MHz with PLL enabled (32 MHz)
+--
+-- ------------------------------------------------------
+
+include 16f1947
+
+pragma target   clock  32_000_000            -- osc frequency
+pragma target   OSC    INTOSC_NOCLKOUT       -- internal oscillator
+pragma target   WDT    disabled              -- no watchdog
+pragma target   PWRTE  enabled               -- powerup delay
+pragma target   LVP    disabled              -- no low voltage programming
+pragma target   DEBUG  disabled              -- no debug
+pragma target   PLLEN  P4                    -- enable PLL
+
+OSCCON_IRCF = 0b1110                         -- set 8 MHz (with PLL -> 32 MHz)
+
+enable_digital_io()
+
+-- setup the serial interface
+const serial_hw2_baudrate = 115200           -- speed
+include serial_hardware2                     -- the library
+serial_hw2_init()                            -- init the serial interface
+
+include delay
+include print                                -- formatting routines
+
+delay_1ms(2)                                 -- PLL settling
+
+var   byte str1[] = " PIC"
+print_string(serial_hw2_data, str1)          -- sent 'PIC'
+print_string(serial_hw2_data, PICTYPE)       -- sent PIC type
+serial_hw2_data = " "                        -- space
+
+var byte char
+forever loop
+   if (serial_hw2_read(char) == true) then   -- char received
+      serial_hw2_write(char)                 -- echo received char
+   end if
+end loop
+

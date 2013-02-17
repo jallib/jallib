@@ -1,0 +1,132 @@
+-- Title: PS2 Keyboard Sample
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This sample allows a user to send characters to the serial port
+--              via a PS2 Keyboard. This sample only implements most used
+--              buttons, but more can be added.
+--
+-- Sources:
+-- http://www.computer-engineering.org/ps2protocol/
+-- http://www.computer-engineering.org/ps2keyboard/
+-- http://www.computer-engineering.org/ps2keyboard/scancodes2.html
+--
+-- Note: 10k pull-up resistor on clock line.
+--
+
+-- include chip
+include 18f4620                   -- target picmicro
+-- this program assumes a 20 mhz resonator or crystal
+-- is connected to pins osc1 and osc2.
+pragma target osc INTOSC_NOCLKOUT  -- hs crystal or resonator
+;pragma target osc hs              -- hs crystal or resonator
+;pragma target clock 20_000_000    -- oscillator frequency
+pragma target clock 32_000_000    -- oscillator frequency
+--
+pragma target wdt  disabled
+pragma target lvp  disabled
+pragma target MCLR external        -- reset externally
+--
+;OSCCON_IRCF = 0b110   -- set int osc to 4mhz
+OSCCON_IRCF = 0b111   -- set internal osc to 8mhz
+OSCTUNE_PLLEN = true  -- multiply internal osc by 4
+--
+enable_digital_io()                -- make all pins digital I/O
+--
+_usec_delay(100_000) -- wait for power to settle
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+include print
+
+-- PS2
+alias pin_clock is pin_sck
+alias pin_clock_direction is pin_sck_direction
+pin_clock_direction = input
+
+alias pin_data is pin_sdi
+alias pin_data_direction is pin_sdi_direction
+pin_data_direction = input
+--
+include ps2
+
+-- main program
+
+-- setup vars
+var byte button_used[4] = {0,0,1,0}
+const byte IS_SPECIAL  = 3
+const byte IS_CAPITAL  = 2
+const byte PRESSED  = 1
+const byte CHAR = 0
+var bit shift_down = FALSE
+
+-- Gets code corresponding to button pressed.
+procedure ps2_read_button() is
+   var byte data = ps2_read_byte()
+
+   if data == 0xF0 then -- button up
+      button_used[PRESSED] = FALSE
+      ps2_read_button() -- read next char
+   elsif button_used[PRESSED] == FALSE then
+      if data == ps2_lookup_table[data] then
+         button_used[IS_SPECIAL] = TRUE
+      end if
+      button_used[CHAR] = ps2_lookup_table[data]
+   elsif data != ps2_lookup_table[data] then   -- if
+      button_used[IS_SPECIAL] = FALSE
+      button_used[CHAR] = ps2_lookup_table[data]
+   else
+      -- special character
+      button_used[IS_SPECIAL] = TRUE
+      button_used[CHAR] = data
+   end if
+end procedure
+
+-- main loop
+forever loop
+   -- read a button
+   ps2_read_button()
+   
+   -- if button pressed
+   if button_used[PRESSED] == TRUE then
+      if button_used[IS_SPECIAL] == TRUE then
+         if button_used[CHAR] == PS2_ENTER then
+            print_crlf(serial_data)
+         elsif (button_used[CHAR] == PS2_R_SHIFT) | (button_used[CHAR] == PS2_L_SHIFT) then
+            shift_down = TRUE
+         end if
+      else
+         if shift_down == FALSE then
+            serial_data = button_used[CHAR]
+         else
+             serial_data = button_used[CHAR] - 32
+         end if
+      end if
+
+   else -- if button un-pressed
+   
+      -- check if it is a special character
+      if button_used[IS_SPECIAL] == TRUE then
+         if (button_used[CHAR] == PS2_R_SHIFT) | (button_used[CHAR] == PS2_L_SHIFT) then
+            shift_down = FALSE
+         end if
+      end if
+      
+      button_used[PRESSED] = TRUE
+   end if
+
+end loop
+
+

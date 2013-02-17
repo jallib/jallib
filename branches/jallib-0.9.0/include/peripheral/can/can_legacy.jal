@@ -1,0 +1,354 @@
+-- Title: Legacy internal CAN controller
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- The early 18C/F family had an internal CAN controller that was
+-- very similar to the MCP2515.  More recent devices have an ECAN controller which 
+-- has many enhanced features, but defaults on power-up to a 'legacy' mode.
+--
+-- N.B. This library has only been tested so far with the 18F2585 device.
+--
+
+
+-- the CAN ID uses the same 32-bit unsigned int format as the socket-CAN C library
+-- bit 0-28 : CAN identifier (11/29 bit)
+-- bit 29   : error frame flag (0 = data frame, 1 = error frame)
+-- bit 30   : remote transmission request flag (1 = rtr frame)
+-- bit 31   : frame format flag (0 = standard 11 bit, 1 = extended 29 bit)
+--
+
+procedure can_encode_rtr_id(dword in out can_id) is
+   pragma inline
+   var bit rtr at can_id:30
+   rtr = 1
+end procedure
+
+procedure can_encode_ext_id(dword in out can_id) is
+   pragma inline
+   var bit ext at can_id:31
+   ext = 1
+end procedure
+
+procedure can_encode_std_id(dword in out can_id) is
+   pragma inline
+   var bit ext at can_id:31
+   ext = 0
+end procedure
+
+-- FIXME: will we ever need this?
+function can_is_error_id(dword in can_id) return bit is
+   pragma inline
+   var bit error at can_id:29
+   return error
+end function
+
+function can_is_rtr_id(dword in can_id) return bit is
+   pragma inline
+   var bit rtr at can_id:30
+   return rtr
+end function
+
+function can_is_ext_id(dword in can_id) return bit is
+   pragma inline
+   var bit ext at can_id:31
+   return ext
+end function
+
+function can_is_std_id(dword in can_id) return bit is
+   pragma inline
+   var bit ext at can_id:31
+   return ext == 0
+end function
+
+procedure can_reset() is
+   pragma inline
+   ECANCON = 0 -- ECAN will operate in legacy CAN mode
+   CANCON = 0x80 -- config mode
+end procedure
+
+-- set bit-rate and related can bus configuration.
+-- see datasheet for details.
+-- N.B. The chip must already be in 'configuration mode'.
+procedure can_set_config(byte in p1, byte in p2, byte in p3) is
+   pragma inline
+   BRGCON1 = p1
+   BRGCON2 = p2
+   BRGCON3 = p3
+end procedure
+
+-- set RX acceptance mask for buffer RXB0
+-- N.B. calling with 0,0,0,0 will pass all messages
+procedure can_set_rxb0_mask(byte in sidh, byte in sidl, byte in eidh, byte in eidl) is
+   pragma inline
+   RXM0SIDH = sidh
+   RXM0SIDL = sidl
+   RXM0EIDH = eidh
+   RXM0EIDL = eidl
+end procedure
+
+-- set RXB0 acceptance filter #0
+procedure can_set_rxb0_filter0(byte in sidh, byte in sidl, byte in eidh, byte in eidl) is
+   pragma inline
+   RXF0SIDH = sidh
+   RXF0SIDL = sidl
+   RXF0EIDH = eidh
+   RXF0EIDL = eidl
+end procedure
+
+-- set RXB0 acceptance filter #1
+procedure can_set_rxb0_filter1(byte in sidh, byte in sidl, byte in eidh, byte in eidl) is
+   pragma inline
+   RXF1SIDH = sidh
+   RXF1SIDL = sidl
+   RXF1EIDH = eidh
+   RXF1EIDL = eidl
+end procedure
+
+-- set RX acceptance mask for buffer RXB1
+-- N.B. calling with 0,0,0,0 will pass all messages
+procedure can_set_rxb1_mask(byte in sidh, byte in sidl, byte in eidh, byte in eidl) is
+   pragma inline
+   RXM1SIDH = sidh
+   RXM1SIDL = sidl
+   RXM1EIDH = eidh
+   RXM1EIDL = eidl
+end procedure
+
+-- set RXB1 acceptance filter #2
+procedure can_set_rxb1_filter2(byte in sidh, byte in sidl, byte in eidh, byte in eidl) is
+   pragma inline
+   RXF2SIDH = sidh
+   RXF2SIDL = sidl
+   RXF2EIDH = eidh
+   RXF2EIDL = eidl
+end procedure
+
+-- set RXB1 acceptance filter #3
+procedure can_set_rxb1_filter3(byte in sidh, byte in sidl, byte in eidh, byte in eidl) is
+   pragma inline
+   RXF3SIDH = sidh
+   RXF3SIDL = sidl
+   RXF3EIDH = eidh
+   RXF3EIDL = eidl
+end procedure
+
+-- set RXB1 acceptance filter #4
+procedure can_set_rxb1_filter4(byte in sidh, byte in sidl, byte in eidh, byte in eidl) is
+   pragma inline
+   RXF4SIDH = sidh
+   RXF4SIDL = sidl
+   RXF4EIDH = eidh
+   RXF4EIDL = eidl
+end procedure
+
+-- set RXB1 acceptance filter #5
+procedure can_set_rxb1_filter5(byte in sidh, byte in sidl, byte in eidh, byte in eidl) is
+   pragma inline
+   RXF5SIDH = sidh
+   RXF5SIDL = sidl
+   RXF5EIDH = eidh
+   RXF5EIDL = eidl
+end procedure
+
+-- send CAN frame
+-- Non-blocking -- function returns immediately if buffer is busy (in-use)
+-- FIXME. this is ugly code
+function can_send(byte in buf_no, dword in can_id, byte in buf[8], byte in len) return bit is
+   var bit can_id_rtr at can_id:30
+   var bit can_id_ext at can_id:31
+   var bit stat, rtr, exid
+   var byte r_base, i, v
+   var dword sidh, sidl, eidh, eidl, dtmp
+   
+   exid = can_id_ext
+   rtr = can_id_rtr
+   
+   -- bullet-proofing
+   if exid then
+      can_id = can_id & 0x1FFFFFFF
+   else
+      can_id = can_id & 0x7FF
+   end if
+   
+   -- bullet-proofing
+   if len > 8 then
+      len = 8
+   end if
+   
+   -- Remote Request frame? set RTR bit
+   if rtr then
+      len = len | 0x40
+   end if
+   
+   if buf_no == 0 then
+      r_base = 0x40
+   elsif buf_no == 1 then
+      r_base = 0x30
+   elsif buf_no == 2 then
+      r_base = 0x20
+   else
+      return 0
+   end if
+   
+   FSR1L = r_base
+   FSR1H = 0x0F
+   
+   -- buffer already in-use / busy?
+   v = INDF1
+   stat = v & 8
+   if stat == 1 then
+      return 0
+   end if
+   
+   -- FIXME this sets priority and other side-effects
+   POSTINC1 = 0
+   
+   -- N.B. SIDH and SIDL bit-layout are weird (see datasheet)
+   -- tip: to allow both 11-bit and 29-bit on same bus and same controller,
+   -- the 29-bit is broken into an 11-bit section and an 18-bit section.
+   
+   -- we'll do the 18-bit section first
+   
+   if exid then
+      eidl = can_id & 0xff
+      can_id = can_id >> 8
+      
+      eidh = can_id & 0xff
+      can_id = can_id >> 8
+      
+      sidl = can_id & 3
+      can_id = can_id >> 2
+      
+      -- set the EXIDEN bit
+      sidl = sidl | 8
+   else
+      eidl = 0
+      eidh = 0
+      sidl = 0
+   end if
+   
+   -- now the 11-bit section.
+   dtmp = can_id & 7
+   can_id = can_id >> 3
+   dtmp = dtmp << 5
+   sidl = sidl | dtmp
+   
+   -- the final 8 bits.
+   sidh = can_id
+   
+   POSTINC1 = byte(sidh)
+   POSTINC1 = byte(sidl)
+   POSTINC1 = byte(eidh)
+   POSTINC1 = byte(eidl)
+   POSTINC1 = len
+   for 8 using i loop
+      POSTINC1 = buf[i]
+   end loop
+   
+   FSR1L = r_base
+   INDF1 = 8  -- request TX now/soonest
+   
+   return 1
+end function
+
+-- receive CAN frame, sets can_id flag bits as to standard/extended, error, and remote.
+-- Non-blocking -- function returns immediately if no message is available.
+-- FIXME. this is ugly code
+function can_receive(byte in buf_no, dword out can_id, byte out buf[8], byte out len) return bit is
+   var bit can_id_error at can_id:29
+   var bit can_id_rtr at can_id:30
+   var bit can_id_ext at can_id:31
+   var bit rtr, exid, stat
+   var byte r_base, i, v
+   var byte sidh, sidl, eidh, eidl
+   var dword dtmp
+   
+   if buf_no == 0 then
+      r_base = 0x60
+   elsif buf_no == 1 then
+      r_base = 0x50
+   else
+      return 0 -- illegal value for buf_no
+   end if
+   
+   FSR1L = r_base
+   FSR1H = 0x0F
+   
+   -- message waiting?
+   v = POSTINC1
+   stat = v & 0x80
+   if stat == 0 then
+      return 0
+   end if
+   
+   -- N.B. At this point we have a message.
+   
+   sidh = POSTINC1
+   sidl = POSTINC1
+   eidh = POSTINC1
+   eidl = POSTINC1
+   len = POSTINC1
+   
+   for 8 using i loop
+      buf[i] = POSTINC1
+   end loop
+   
+   -- clear the RXFUL bit
+   FSR1L = r_base
+   v = INDF1 & 0x7F
+   INDF1 = v
+   
+   rtr = len & 0x40
+   len = len & 0x0F
+   
+   -- bullet-proofing
+   if len > 8 then
+      len = 8
+   end if
+   
+   -- is this an extended frame? save this info for later.
+   exid = sidl & 8
+   
+   -- form the CAN ID, watch out for weird hardware bits. See datasheet.
+   -- tip: to allow both 11-bit and 29-bit on same bus and same controller,
+   -- the 29-bit is broken into an 11-bit section and an 18-bit section.
+   
+   -- start of 11-bit section.
+   -- 8 highest bits
+   can_id = dword(sidh)
+   
+   -- next 3 bits. OK that's 11 bits so far.
+   -- SIDL has a weird layout. see datasheet.
+   can_id = can_id << 3
+   dtmp = dword(sidl) >> 5
+   can_id = can_id | dtmp
+   
+   if exid then
+      
+      -- start of 18-bit section.
+      -- 2 bits.
+      can_id = can_id << 2
+      dtmp = dword(sidl) & 3
+      can_id = can_id | dtmp
+      
+      -- next 8 bits
+      can_id = can_id << 8
+      can_id = can_id | dword(eidh)
+      
+      -- final 8 bits. 11+18=29 bits.
+      can_id = can_id << 8
+      can_id = can_id | dword(eidl)
+      
+   end if
+   
+   can_id_ext = exid
+   can_id_rtr = rtr
+   can_id_error = 0
+   return 1
+end function
+

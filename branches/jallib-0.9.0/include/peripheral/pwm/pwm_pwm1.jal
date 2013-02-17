@@ -1,0 +1,175 @@
+-- -------------------------------------------------------------------------------------
+-- Title: hardware PWM control, dedicated to module PWM1
+-- Author: Stef Mientki, Copyright (C) 2002-2006, all rights reserved.
+-- Adapted-by: Sebastien Lelong, Rob Hamerling.
+-- Compiler: 2.4p
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+-- Performs PWM operations on the PWM1 module (of enhanced midrange)
+-- This file is automatically included by pwm_hardware.jal
+-- when the target PIC has a PWM1 module.
+--
+-- Notes:  - Modelled after the libraries for CCP modules
+--
+-- -------------------------------------------------------------------------------------
+
+var byte  _pwm1dch_shadow = 0                      -- 8 MSbits of duty cycle
+var byte  _pwm1dcl_shadow = 0                      -- 2 LSbits (left aligned)
+
+
+-- -------------------------------------------------------------------------------------
+-- Purpose:   Set PWM on
+-- Arguments: none
+-- Notes:     - duty cycle is restored from shadow registers
+--            - pin_PWM1_direction should be set to output
+-- -------------------------------------------------------------------------------------
+procedure pwm1_on() is
+
+   PWM1DCH         = _pwm1dch_shadow               -- restore duty cycle
+   PWM1DCL         = _pwm1dcl_shadow               -- restore duty cycle
+   PWM1CON_PWM1OE  = TRUE                          -- activate PWM1 pin
+   PWM1CON_PWM1EN  = TRUE                          -- activate PWM module
+
+end procedure
+
+
+-- -------------------------------------------------------------------------------------
+-- Purpose:   PWM mode off
+-- Arguments: none
+-- -------------------------------------------------------------------------------------
+procedure pwm1_off() is
+
+   PWM1CON_PWM1EN = FALSE                          -- disable PWM module
+
+end procedure
+
+
+-- -------------------------------------------------------------------------------------
+-- Purpose:   Specify the duty cycle by number of PWM steps.
+--            The duty cycle is setting is determined by a 10-bits parameter,
+--            allowing a resolution of 1023 steps.
+--            The 'steps' argument is a (max) 10-bits absolute value for the duty cycle:
+--            * steps<1:0> are the 2 LSbits
+--            * steps<9:2> are the 8 MSbits
+-- Arguments: word - steps cycle (allowed range 0..1023)
+-- Notes:     - This is a private procedure, not intended for general use.
+--              The caller is responsible to specify an acceptable value
+--              w.r.t. to the chosen PWM frequency.
+-- -------------------------------------------------------------------------------------
+procedure _pwm1_set_dutycycle_highres(word in steps) is
+
+   if (steps > 1023) then                          -- exceeding upper limit
+      steps = 1023                                 -- set to maximum
+   end if
+   _pwm1dch_shadow = byte(steps >> 2)              -- 8 MSbits
+   _pwm1dcl_shadow = byte(steps) << 6              -- 2 LSbits left aligned
+   pwm1_on()                                       -- activate PWM
+
+end procedure
+
+-- deprecated procedure
+procedure pwm1_set_dutycycle_highres(word in steps) is
+   _warn "pwm1_set_dutycycle_highres() is deprecated,\n.. use pwm1_set_dutycycle_percent() or pwm1_set_dutycycle_ratio()"
+   _pwm1_set_dutycycle_highres(steps)
+end procedure
+
+
+-- -------------------------------------------------------------------------------------
+-- Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
+-- The 'steps' argument is the 8-bits absolute value for the duty cycle:
+--  * duty<1:0> are the 2 LSbits
+--  * duty<7:2> are the 6 MSbits
+-- Arguments: byte - duty cycle (allowed range 0..255)
+-- Notes:     This procedure is particularly suitable with higher frequencies
+--            whereby the PWM resolution is limited to 256 steps or less!
+-- -------------------------------------------------------------------------------------
+procedure pwm1_set_dutycycle_lowres(byte in steps) is
+
+   _warn "pwm1_set_dutycycle_lowres() is deprecated,\n.. use pwm1_set_dutycycle_percent() or pwm1_set_dutycycle_ratio()"
+   _pwm1dch_shadow = byte(steps >> 2)              -- 8 MSbits
+   _pwm1dcl_shadow = byte(steps) << 6              -- 2 LSbits
+   pwm1_on()                                       -- activate PWM
+
+end procedure
+
+
+-- -------------------------------------------------------------------------------------
+-- Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
+-- This procedure is equivalent to pwm1_set_dutycycle_highres(), but
+-- the low order 2 bits of the 10-bits duty cycle are set to 0.
+-- This means that only every 4th of the available 1023 steps can be selected
+-- and consequently max 255 PWM steps are available.
+-- This procedure is for user convenience, allowing to specify an 8 bits
+-- value for the duty cycle is for many applications satisfactory.
+-- Calling this procedure will also activate PWM.
+-- Note: pin_PWM1_direction should be set to output!
+-- -------------------------------------------------------------------------------------
+procedure pwm1_set_dutycycle(byte in steps) is
+
+   _warn "pwm1_set_dutycycle() is deprecated,\n.. use pwm1_set_dutycycle_percent() or pwm1_set_dutycycle_ratio()"
+   _pwm1_set_dutycycle_highres(word(steps) << 2)
+
+end procedure
+
+
+-- -------------------------------------------------------------------------------------
+-- Purpose:   Set duty cycle as a percentage, allowing max 100 PWM steps.
+--            The duty cycle will be set to the specified percentage of the maximum
+--            for the current PWM frequency and Fosc.
+-- Arguments: byte - dutycycle as a percentage (allowed range: 0..100)
+-- Notes:     - The number of available PWM steps can be lower than 100 with
+--              (very) high PWM frequencies and low Fosc.
+--            - The steps may not all be equal. The lower the actual resolution
+--              the bigger the differences between steps may be.
+--            - pin_PWM1_direction should be set to output!
+-- -------------------------------------------------------------------------------------
+procedure pwm1_set_dutycycle_percent(byte in percent) is
+
+   var word steps                                   --
+   if (percent == 0) then                          -- effectively PWM off (output low)
+     steps = 0
+   elsif (percent >= 100) then                     -- effectively PWM off (output high)
+     steps = _pr2_shadow_plus1 - 1
+   else                                            --
+     steps = word(percent) * (_pr2_shadow_plus1 / 4) / 25      -- (factor PR2/100)
+   end if
+   _pwm1_set_dutycycle_highres(steps << 2)
+
+end procedure
+
+-- deprecated procedure
+procedure pwm1_set_percent_dutycycle(byte in percent) is
+   _warn "pwm1_set_percent_dutycycle() is deprecated, use pwm_set_dutycycle_percent()"
+   pwm1_set_dutycycle_percent(percent)
+end procedure
+
+
+-- -------------------------------------------------------------------------------------
+-- Purpose:   Set duty cycle in the range 0..1023 PWM steps.
+-- Arguments: word - dutycycle ration in range 0..1023
+-- Notes:     - The duty cycle will be set to the specified ratio of the maximum
+--              value for the current PWM frequency and Fosc.
+--            - The resolution is about 1 pro mille
+--            - The number of available PWM steps can be lower than 1023 with
+--              high PWM frequencies or low Fosc values.
+--            - pin_PWM1_direction should be set to output!
+-- -------------------------------------------------------------------------------------
+procedure pwm1_set_dutycycle_ratio(word in ratio) is
+
+   var  word  steps                                  -- intermediate value of PR2+1
+   if (ratio == 0) then                            -- effectively PWM off (output low)
+     steps = 0
+   elsif (ratio > 1023) then                       -- effectively PWM off (output high)
+     steps = _pr2_shadow_plus1 - 1
+   else                                            -- between min and max
+     steps = word(dword(ratio) * _pr2_shadow_plus1 / 256)    -- (factor PR2/1024)
+   end if
+   _pwm1_set_dutycycle_highres(steps)
+
+end procedure
+
+
