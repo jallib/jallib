@@ -103,27 +103,27 @@ export:
 prepare:
 	# flatten library files
 	cd  distrib/jallib-${VERSION} && \
-	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/ | sed 's#\r##g'`; \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/ | tr -d '\r'`; \
 	do \
 		cp ../jallib-export/$$f lib || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
 	# same but no device
 	cd  distrib/jallib-libnodevice && \
-	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep -v ^include\/device | grep ^include\/ | sed 's#\r##g'`; \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep -v ^include\/device | grep ^include\/ | tr -d '\r'`; \
 	do \
 		cp ../jallib-export/$$f . || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
 	# keep sample structure, but only for those in TORELEASE
 	-cd  distrib/jallib-${VERSION} && mkdir sample
 	cd  distrib/jallib-${VERSION} && \
-	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | sed 's#\r##g'`; \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | tr -d '\r'`; \
 	do \
 		cp ../jallib-export/$$f sample/ || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
 	# same for "project"
 	-cd  distrib/jallib-${VERSION} && mkdir project
 	cd  distrib/jallib-${VERSION} && \
-	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^project\/ | sed 's#\r##g'`; \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^project\/ | tr -d '\r'`; \
 	do \
 		mkdir -p `dirname $$f`; cp ../jallib-export/$$f `dirname $$f`/ || (echo problem with $$f ) \
 	done
@@ -136,7 +136,7 @@ prepare:
 	# also add dependencies
 	cp distrib/jallib-export/include/jal/constants_jallib.jal distrib/jallib-all_devices-${VERSION}/lib
 	# doc
-	for f in `cat distrib/jallib-export/TORELEASE | grep ^include | grep -v include.device | sed 's#\r##g'` ; \
+	for f in `cat distrib/jallib-export/TORELEASE | grep ^include | grep -v include.device | tr -d '\r'` ; \
 	do \
 		libfile=`basename $$f`; \
 		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
@@ -195,7 +195,7 @@ jallib-pack: pdfbooks
 	cp $$HOME/tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
 	#   static
 	cd  distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && \
-	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^doc\/ | sed 's#\r##g'`; \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^doc\/ | tr -d '\r'`; \
 	do \
 		cp ../jallib-export/$$f doc/ || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
