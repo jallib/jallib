@@ -41,7 +41,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.42'
+   ScriptVersion   = '0.1.43'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4p'
    MPlabVersion    = '889'
@@ -226,7 +226,8 @@ do i=1 to dir.0                                             /* all relevant .dev
    VppRange              = 0                                /* programming voltage range */
    VppDefault            = 0                                /* default programming voltage */
 
-   adcs_bitcount         = 0                                /* # ADCONx_ADCS bits */
+   ADCS_bits             = 0                                /* # ADCONx_ADCS bits */
+   ADC_highres           = 0                                /* 0 = has no ADRESH register */
    HasLATreg             = 0                                /* zero LAT registers found (yet) */
                                                             /* used for extended midrange only */
    OSCCALaddr            = 0                                /* address of OSCCAL (>0 if present!)  */
@@ -468,11 +469,14 @@ return core
 /* 12-bit and 14-bit core                                     */
 /* ---------------------------------------------------------- */
 load_sfr1x: procedure expose Dev. Name. Ram. core,
-                                  BankSize MaxRam HasLATReg OSCCALaddr FSRaddr msglevel
+                                  BankSize MaxRam msglevel,
+                                  HasLATReg OSCCALaddr FSRaddr ADC_highres
 do i = 0 to MaxRam - 1                                      /* whole range */
    Ram.i = 0                                                /* mark whole RAM as unused */
 end
+
 do i = 1 to Dev.0
+
    parse var Dev.i 'MIRRORREGS' '(' '0X' lo.1  '-' '0X' hi.1,
                                     '0X' lo.2  '-' '0X' hi.2,
                                     '0X' lo.3  '-' '0X' hi.3,
@@ -511,9 +515,9 @@ do i = 1 to Dev.0
       do j = 2 to 32                                        /* all possible banks */
          if lo.j \= '' & hi.j \= '' then do                 /* specified bank */
             p = X2D(strip(lo.j))                            /* mirror low bound */
-            if core = '12'  &  p >= 4 * Banksize then       /* max 4 banks supported by JalV2 */
+            if core = '12'  &  p >= (4 * Banksize) then     /* max 4 banks supported by JalV2 */
                leave
-            if core = '14'  &  p >= 4 * BankSize then       /* max 4 banks supported by JalV2 */
+            if core = '14'  &  p >= (4 * BankSize) then     /* max 4 banks supported by JalV2 */
                leave
             do k = a to b                                   /* whole range */
                Ram.k = k                                    /* mark 'used' */
@@ -522,8 +526,9 @@ do i = 1 to Dev.0
             end
          end
       end
-      iterate
+      iterate                                               /* skip rest of procedure */
    end
+
    parse var Dev.i 'UNUSEDREGS' '(' '0X' lo '-' '0X' hi ')' .
    if lo \= '' & hi \= '' then do
       a = X2D(strip(lo))
@@ -531,8 +536,9 @@ do i = 1 to Dev.0
       do k = a to b                                         /* whole range */
          Ram.k = -1                                         /* mark 'unused' */
       end
-      iterate
+      iterate                                               /* skip rest of procedure */
    end
+
    parse var Dev.i  val0 '(' 'KEY' '=' reg 'ADDR' '=' '0X' addr .
    if left(reg,3) = 'LAT' then
       HasLATReg = HasLATReg + 1                             /* count LATx registers */
@@ -540,6 +546,9 @@ do i = 1 to Dev.0
       OSCCALaddr = X2D(addr)                                /* store decimal value */
    else if reg = 'FSR' then
       FSRaddr = X2D(addr)                                   /* store decimal value */
+   else if reg = 'ADRESH' | reg = 'ADRES0H' then
+      ADC_highres = 1                                       /* has high res ADC */
+
 end
 return 0
 
@@ -873,7 +882,7 @@ return 0
 /* 12-bit and 14-bit core                               */
 /* ---------------------------------------------------- */
 list_sfr1x: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
-                             adcs_bitcount jalfile BankSize HasLATReg NumBanks,
+                             ADCS_bits jalfile BankSize HasLATReg NumBanks,
                              PinmapMissCount msglevel
 PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
@@ -975,7 +984,7 @@ return 0
 /*       - ADCON0 comes before ADCON1 (in .dev file) */
 /* ------------------------------------------------- */
 list_sfr_subfields1x: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
-                                adcs_bitcount Core PicName jalfile,
+                                ADCS_bits Core PicName jalfile,
                                 HasLATReg PinmapMissCount msglevel
 parse arg i, reg .
 PicNameCaps = SysMapCase(PicName)                           /* for alias handling */
@@ -1069,13 +1078,13 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8 until next
                      call lineout jalfile, '   ADCON0_ADCS10 = (x & 0x03)      -- low order bits'
                      call lineout jalfile, '   ADCON1_ADCS2  = (x & 0x04)      -- high order bit'
                      call lineout jalfile, 'end procedure'
-                     adcs_bitcount = 3                      /* ADCS is 3 bits wide */
+                     ADCS_bits = 3                      /* ADCS is 3 bits wide */
                   end
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        n.j = 'ADCS0'  then do               /* enumerated ADCS */
                      field = reg'_ADCS'
                      call list_bitfield 3, field, reg, offset
-                     adcs_bitcount = 3                      /* ADCS is 3 bits wide */
+                     ADCS_bits = 3                      /* ADCS is 3 bits wide */
                   end
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        n.j = 'CHS3'  then do                /* 'loose' 4th bit */
@@ -1266,7 +1275,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8 until next
                call list_bitfield s.j, field, reg, (offset - s.j + 1)
                if  left(n.j,4) = ADCS  &,
                   (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
-                  adcs_bitcount = s.j                       /* variable # ADCS bits */
+                  ADCS_bits = s.j                       /* variable # ADCS bits */
                end
             end
          end
@@ -1294,7 +1303,7 @@ return 0
 /* Extended 14-bit core                                 */
 /* ---------------------------------------------------- */
 list_sfr14h: procedure expose Dev. Ram. Name. PinMap. PinANMap. Core PicName,
-                              adcs_bitcount jalfile BankSize NumBanks,
+                              ADCS_bits jalfile BankSize NumBanks,
                               PinmapMissCount msglevel
 PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
@@ -1320,6 +1329,9 @@ do i = 1 to Dev.0
       call list_variable field, reg, addr
 
       select
+         when left(reg,6) = 'ADRES0' then do                /* ADRES0{H/L} register */
+            call list_alias delstr(reg,6,1), reg            /* add ADRES{H/L} alias */
+         end
          when left(reg,4) = 'PORT' then do                  /* port */
             PortLetter = right(reg,1)
             PortLat.PortLetter. = 0                         /* init: zero pins in PORTx */
@@ -1389,7 +1401,7 @@ return 0
 /* Extended 14-bit core                              */
 /* ------------------------------------------------- */
 list_sfr_subfields14h: procedure expose Dev. Name. PinMap. PinANMap. PortLat. ,
-                       adcs_bitcount Core PicName jalfile PinmapMissCount msglevel
+                       ADCS_bits Core PicName jalfile PinmapMissCount msglevel
 parse arg i, reg, addr .
 PicNameCaps = SysMapCase(PicName)                           /* for alias handling */
 do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until next register */
@@ -1483,7 +1495,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                   end
                   when left(reg,5) = 'ADCON' &  n.j = 'ADCS0' then do
                      call list_bitfield 3, reg'_ADCS', reg, offset, addr
-                     adcs_bitcount = 3                      /* always 3 */
+                     ADCS_bits = 3                      /* always 3 */
                   end
                   when pos('CCP',reg) > 0  &  right(reg,3) = 'CON' &, /* CCPxCON */
                        datatype(substr(reg,4,1)) = 'NUM'        then do
@@ -1580,7 +1592,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
             else if  left(n.j,4) = ADCS  &,
                (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then do
                call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
-               adcs_bitcount = s.j                          /* variable # ADCS bits */
+               ADCS_bits = s.j                          /* variable # ADCS bits */
             end
             else if reg = 'OPTION_REG' &  n.j = 'PS' then do
                call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
@@ -1615,7 +1627,7 @@ return 0
 /* 16-bit core                                          */
 /* -----------------------------------------------------*/
 list_sfr16: procedure expose Dev. Ram. Name. PinMap. PinANMap. jalfile,
-                             adcs_bitcount BankSize NumBanks,
+                             ADCS_bits BankSize NumBanks,
                              Core PicName AccessBankSplitOffset PinmapMissCount msglevel
 PortLat. = 0                                                /* no pins at all */
 do i = 1 to Dev.0
@@ -1739,7 +1751,7 @@ return 0
 /*       ADCON0 comes after ADCON1 (in .dev file)  */
 /* ----------------------------------------------- */
 list_sfr_subfields16: procedure expose Dev. Name. PinMap. PinANMap. PortLat. Core PicName,
-                                       AccessBankSplitOffset adcs_bitcount ,
+                                       AccessBankSplitOffset ADCS_bits ,
                                        jalfile PinmapMissCount msglevel
 parse arg i, reg, addr .
 do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until next register */
@@ -1936,7 +1948,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                   call lineout jalfile, '   ADCON0_ADCS10 = x       -- low order bits'
                   call lineout jalfile, '   ADCON1_ADCS2 = (x & 0x04)'
                   call lineout jalfile, 'end procedure'
-                  adcs_bitcount = 3                         /* can only be 3 */
+                  ADCS_bits = 3                         /* can only be 3 */
                end
                when (left(n.j,3) = 'ANS')   &,              /* ANS subfield */
                     (left(reg,5) = 'ADCON'  |,              /* ADCON* reg */
@@ -1965,7 +1977,7 @@ do 8 until (word(Dev.i,1) = 'SFR' | word(Dev.i,1) = 'NMMR')  /* max 8, until nex
                call list_bitfield s.j, field, reg, (offset - s.j + 1), addr
                if  left(n.j,4) = ADCS  &,
                   (left(reg,5) = 'ADCON' | left(reg,5) = 'ANSEL') then
-                  adcs_bitcount = s.j                       /* variable (2 or 3) */
+                  ADCS_bits = s.j                       /* variable (2 or 3) */
             end
          end
                                                             /* additional declarations */
@@ -4244,7 +4256,7 @@ return
  * ADC_V14_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
  * ----------------------------------------------------------------------------- */
 list_analog_functions: procedure expose jalfile Name. Core DevSpec. PinMap. ,
-                                        adcs_bitcount PicName msglevel
+                                        ADCS_bits ADC_highres PicName msglevel
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
@@ -4255,20 +4267,31 @@ if DevSpec.PicNameCaps.ADCgroup = '?' then do               /* no ADC group spec
    if (Name.ADCON \= '-' | Name.ADCON0 \= '-' | Name.ADCON1 \= '-') then do
       call msg 3, 'PIC has ADCONx register, but no ADCgroup found in devicespecific.json!'
    end
-   ADCgroup = '0'                                           /* no ADC group */
+   ADC_group = '0'                                          /* no ADC module */
+   ADC_res = '0'                                            /* # bits */
 end
-else
-   ADCgroup = DevSpec.PicNameCaps.ADCgroup
+else do                                                     /* ADC group specified */
+   ADC_group = DevSpec.PicNameCaps.ADCgroup
+   if DevSpec.PicNameCaps.ADCMAXRESOLUTION = '?' then do    /* # bits not specified */
+      if ADC_highres = 0  &  Core < 16  then                /* base/mid range without ADRESH */
+         ADC_res = '8'
+      else
+         ADC_res = '10'                                     /* default max res */
+   end
+   else
+      ADC_res = DevSpec.PicNameCaps.ADCMAXRESOLUTION        /* specified ADC bits */
+end
 
 if  PinMap.PicNameCaps.ANCOUNT = '?' |,                     /* PIC not in pinmap.cmd? */
-    ADCGroup = '0'  then                                    /* PIC has no ADC module */
+    ADC_group = '0'  then                                   /* PIC has no ADC module */
    PinMap.PicNameCaps.ANCOUNT = 0
-call charout jalfile, 'const ADC_GROUP = 'ADCgroup
-if ADCgroup = '0' then
-   call charout jalfile, '             -- no ADC module present'
+call charout jalfile, 'const      ADC_GROUP          =' ADC_group
+if ADC_group = '0' then
+   call charout jalfile, '        -- no ADC module present'
 call lineout jalfile, ''
 call lineout jalfile, 'const byte ADC_NTOTAL_CHANNEL =' PinMap.PicNameCaps.ANCOUNT
-call lineout jalfile, 'const byte ADC_ADCS_BITCOUNT  =' adcs_bitcount
+call lineout jalfile, 'const byte ADC_ADCS_BITCOUNT  =' ADCS_bits
+call lineout jalfile, 'const byte ADC_MAX_RESOLUTION =' ADC_res
 call lineout jalfile, '--'
 
 if DevSpec.PicNameCaps.PPSgroup = '?' then
@@ -4286,9 +4309,9 @@ if Name.UCON \= '-' then do                                 /* USB module presen
    call lineout jalfile, '--'
 end
 
-if (ADCgroup = '0'  & PinMap.PicNameCaps.ANCOUNT > 0) |,
-   (ADCgroup \= '0' & PinMap.PicNameCaps.ANCOUNT = 0) then do
-   call msg 2, 'Possible conflict between ADC-group ('ADCgroup')',
+if (ADC_group = '0'  & PinMap.PicNameCaps.ANCOUNT > 0) |,
+   (ADC_group \= '0' & PinMap.PicNameCaps.ANCOUNT = 0) then do
+   call msg 2, 'Possible conflict between ADC-group ('ADC_group')',
           'and number of ADC channels ('PinMap.PicNameCaps.ANCOUNT')'
 end
 analog. = '-'                                               /* no analog modules */
@@ -4349,15 +4372,15 @@ if Name.ADCON0 \= '-' |,                                    /* check on presence
    else
       call lineout jalfile, '   ADCON  = 0b0000_0000         -- disable ADC'
    if Name.ADCON1 \= '-' then do                            /* ADCON1 declared */
-      if ADCgroup = 'ADC_V1' then
+      if ADC_group = 'ADC_V1' then
          call lineout jalfile, '   ADCON1 = 0b0000_0111         -- digital I/O'
-      else if ADCgroup = 'ADC_V2'     |,
-              ADCgroup = 'ADC_V4'     |,
-              ADCgroup = 'ADC_V5'     |,
-              ADCgroup = 'ADC_V6'     |,
-              ADCgroup = 'ADC_V12'    then
+      else if ADC_group = 'ADC_V2'     |,
+              ADC_group = 'ADC_V4'     |,
+              ADC_group = 'ADC_V5'     |,
+              ADC_group = 'ADC_V6'     |,
+              ADC_group = 'ADC_V12'    then
          call lineout jalfile, '   ADCON1 = 0b0000_1111'
-      else if ADCgroup = 'ADC_V3' then
+      else if ADC_group = 'ADC_V3' then
          call lineout jalfile, '   ADCON1 = 0b0111_1111'
       else do                                               /* all other ADC groups */
          call lineout jalfile, '   ADCON1 = 0b0000_0000'
