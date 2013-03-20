@@ -946,7 +946,7 @@ pinmap = {
              'RC4': ['RC4', 'C2OUT', 'SRNQ', 'P1B', 'TX', 'CK', 'MDMOUT'],
              'RC5': ['RC5', 'CCP1', 'P1A', 'RX', 'DT', 'MDCIN2'],
              'RC6': ['RC6', 'AN8', 'CPS8', 'CCP4', 'SS'],
-             'RC7': ['RC6', 'AN9', 'CPS9', 'SDO']
+             'RC7': ['RC7', 'AN9', 'CPS9', 'SDO']
              },
  '16F1829': {'RA0': ['RA0', 'AN0', 'VREF-', 'DACOUT', 'CPS0', 'C1IN+', 'ICSPDAT', 'ICDDAT'],
              'RA1': ['RA1', 'AN1', 'VREF+', 'CPS1', 'C12IN0-', 'ICSPCLK', 'ICDCLK'],
@@ -965,8 +965,27 @@ pinmap = {
              'RC4': ['RC4', 'C2OUT', 'SRNQ', 'P1B', 'TX', 'CK', 'MDMOUT'],
              'RC5': ['RC5', 'CCP1', 'P1A', 'RX', 'DT', 'MDCIN2'],
              'RC6': ['RC6', 'AN8', 'CPS8', 'CCP4', 'SS'],
-             'RC7': ['RC6', 'AN9', 'CPS9', 'SDO']
+             'RC7': ['RC7', 'AN9', 'CPS9', 'SDO']
              },
+ '16F1829LIN': {'RA0': ['RA0', 'AN0', 'VREF-', 'DACOUT', 'CPS0', 'C1IN+', 'ICSPDAT', 'ICDDAT'],
+                'RA1': ['RA1', 'AN1', 'VREF+', 'CPS1', 'C12IN0-', 'SRI', 'ICSPCLK', 'ICDCLK'],
+                'RA2': ['RA2', 'AN2', 'CPS2', 'C1OUT', 'SRQ', 'T0CKI', 'CCP3', 'FLT0'],
+                'RA3': ['RA3', 'T1G', 'MCLR', 'VPP'],
+                'RA4': ['RA4', 'AN3', 'CPS3', 'T1G', 'T1OSO', 'P2B', 'OSC2', 'CLKOUT', 'CLKR'],
+                'RA5': ['RA5', 'T1CKI', 'T1OSI', 'CCP2', 'P2A', 'OSC1', 'CLKIN'],
+                'RB4': ['RB4', 'AN10', 'CPS10'],
+                'RB5': ['RB5', 'RX'],
+                'RB6': ['RB6', 'CS', 'LWAKE'],
+                'RB7': ['RB7', 'TX'],
+                'RC0': ['RC0', 'AN4', 'CPS4', 'C2IN', 'P1D', 'SS2'],
+                'RC1': ['RC1', 'AN5', 'CPS5', 'C12IN1-', 'P1C'],
+                'RC2': ['RC2', 'AN6', 'CPS6', 'C12IN2-', 'P1D', 'P2B', 'MDCIN1'],
+                'RC3': ['RC3', 'AN7', 'CPS7', 'C12IN3-', 'P1C', 'CCP2', 'P2A', 'MDMIN'],
+                'RC4': ['RC4', 'C2OUT', 'SRNQ', 'P1B', 'MDMOUT'],
+                'RC5': ['RC5', 'CCP1', 'P1A', 'MDCIN2'],
+                'RC6': ['RC6'],
+                'RC7': ['RC7', 'AN9', 'CPS9', 'SDO']
+                },
  '16F1847': {'RA0': ['RA0', 'AN0', 'CPS0', 'C12IN0-', 'SDO2'],
              'RA1': ['RA1', 'AN1', 'CPS1', 'C12IN1-', 'SS2'],
              'RA2': ['RA2', 'AN2', 'VREF-', 'DACOUT', 'CPS2', 'C12IN2-', 'C12IN+'],
@@ -3841,7 +3860,7 @@ pinmap = {
               'RC4': ['RC4', 'C2OUT', 'SRNQ', 'P1B', 'TX', 'CK', 'MDMOUT'],
               'RC5': ['RC5', 'CCP1', 'P1A', 'RX', 'DT', 'MDCIN2'],
               'RC6': ['RC6', 'AN8', 'CPS8', 'CCP4', 'SS'],
-              'RC7': ['RC6', 'AN9', 'CPS9', 'SDO']
+              'RC7': ['RC7', 'AN9', 'CPS9', 'SDO']
               },
  '16LF1829': {'RA0': ['RA0', 'AN0', 'VREF-', 'DACOUT', 'CPS0', 'C1IN+', 'ICSPDAT', 'ICDDAT'],
               'RA1': ['RA1', 'AN1', 'VREF+', 'CPS1', 'C12IN0-', 'ICSPCLK', 'ICDCLK'],
@@ -3860,7 +3879,7 @@ pinmap = {
               'RC4': ['RC4', 'C2OUT', 'SRNQ', 'P1B', 'TX', 'CK', 'MDMOUT'],
               'RC5': ['RC5', 'CCP1', 'P1A', 'RX', 'DT', 'MDCIN2'],
               'RC6': ['RC6', 'AN8', 'CPS8', 'CCP4', 'SS'],
-              'RC7': ['RC6', 'AN9', 'CPS9', 'SDO']
+              'RC7': ['RC7', 'AN9', 'CPS9', 'SDO']
               },
  '16LF1847': {'RA0': ['RA0', 'AN0', 'CPS0', 'C12IN0-', 'SDO2'],
               'RA1': ['RA1', 'AN1', 'CPS1', 'C12IN1-', 'SS2'],

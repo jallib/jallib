@@ -41,7 +41,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.1.43'
+   ScriptVersion   = '0.1.44'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4p'
    MPlabVersion    = '889'
@@ -637,6 +637,8 @@ if DevSpec.PicNameCaps.FUSESDEFAULT \= '?' then do          /* specified in devi
       FusesDefault = devSpec.PicNameCaps.FUSESDEFAULT      /* take devicespecific value */
       call msg 1, 'Using fuses from devicespecific.json:' FusesDefault
    end
+   say 'FusesDerived =' FusesDerived
+   say 'FusesDefault =' FusesDefault
 end
 else do                                                     /* not in devicespecific.json */
    FusesDefault = FusesDerived                              /* take derived value */
@@ -744,11 +746,23 @@ cfgmem_mask: procedure expose  Dev. CfgAddr. Core msglevel
 do i = 1 to Dev.0                                  /* whole .dev contents */
    ln = Dev.i                                      /* next line */
 
-   /* create arrays of cfg words (baseline,midrange) or bytes (18F) */
    parse var ln 'CFGMEM' '(' 'REGION' '=' '0X' addr1 '-' '0X' addr2 ')' .
    if addr1 \= '' then do
-      cfglen = 1 + X2D(addr2) - X2D(addr1)
-      if Core \= '16' then do                      /* baseline, (extended) midrange */
+      /* Create arrays of cfg words (baseline,midrange) or bytes (18F) */
+      /* Initialise CfgOne or CfgZero array, with the following rules:   */
+      /* - unused bits read as '0' with baseline                         */
+      /* - unused bits read as '1' with (extended ) midrange and 18F     */
+      /* Unfortunately there are exceptions and                          */
+      /* and MPLAB .dev files contain errors!                            */
+      /* When known a replacement string will be in devicespecific.json. */
+      cfglen = 1 + X2D(addr2) - X2D(addr1)         /* # words or bytes (18F) */
+      if Core  = '12' then do                      /* baseline */
+         CfgAct  = copies('0000', cfglen)          /* active bits */
+         CfgZero = copies('0FFF', cfglen)          /* 'and' pattern of fixed zero bits */
+         CfgOne  = copies('0000', cfglen)          /* 'or'  pattern of fixed one bits */
+      end
+      else if Core = '14'  |,                      /* midrange */
+              Core = '14H' then do                 /* extended midrange */
          CfgAct  = copies('0000', cfglen)          /* active bits */
          CfgZero = copies('3FFF', cfglen)          /* 'and' pattern of fixed zero bits */
          CfgOne  = copies('3FFF', cfglen)          /* 'or'  pattern of fixed one bits */
@@ -758,46 +772,23 @@ do i = 1 to Dev.0                                  /* whole .dev contents */
          CfgZero = copies('FF', cfglen)            /* 'and' pattern of fixed zero bits */
          CfgOne  = copies('00', cfglen)            /* 'or' pattern of fixed one bits */
       end
-      iterate
+      iterate                                      /* done with CFGMEM line */
    end
 
-   /* initialise CfgOne or CfgZero array, with the following rules: */
-   /* - unused bits read as '0' with baseline,midrange              */
-   /* - unused bits read as '1' with 18f                            */
-   /* Unfortunately this is not always true,                        */
-   /* and MPLAB .dev files contain errors!                          */
    parse var ln 'CFGBITS' x1 'ADDR=0X' Addr 'UNUSED=0X' Unused ')' .
    if Addr \= '' then do
       Addr = strip(Addr)                           /* address of cfg byte/word */
-      Unused = strip(Unused)                       /* strip blanks */
-      if Core \= '16' then do                      /* baseline, (extended) midrange */
-         if X2D(Addr) <= X2D('FFF') then
-            mask = '0FFF'                          /* 12 bits core */
-         else if X2D(Addr) <= X2D('200F') then
-            mask = '3FFF'                          /* 14 bits core */
-         else if X2D(Addr) <= X2D('800F') then
-            mask = '3FFF'                          /* extended 14 bits core */
-         Offset  = cfgmem_offset(Addr)             /* word offset in cfg array */
-         Unused  = right(Unused,4,'0')                       /* 4 hex digits */
-         Unused  = C2X(BITXOR(X2C(Unused),X2C('FFFF')))      /* invert mask: 0->1 , 1->0 */
-         Unused  = C2X(BITAND(X2C(Unused),X2C(mask)))        /* unused bits default to 0 */
-         CfgZero = overlay(Unused, CfgZero, 4 * Offset + 1)  /* replace 'm in fixed-zero array */
-      end
-      else do                                      /* 18F */
-         Offset = cfgmem_offset(Addr)                        /* byte offset in cfg array */
-         Unused = right(Unused,2,'0')                        /* unused bits default to 1 */
-         CfgOne = overlay(Unused, CfgOne, 2 * Offset + 1)    /* replace 'm in fixed-one array */
-      end
-      iterate
+      Offset  = cfgmem_offset(Addr)                /* offset in cfg array */
+      iterate                                      /* done with CFGBITS line */
    end
 
-   /* build array of fixed zero and fixed 1 bits        */
-   /* both the CfgZero and CfgOne arrays are modified   */
    parse var ln 'FIELD' '(' 'KEY=' x1 'MASK=0X' mask 'DESC="' x3 '"' 'INIT=0X' init ')'
-   if init \= '' then do                           /* init mask found */
-      init = word(init,1)                          /* first item */
-      mask = strip(mask)                           /* strip blanks */
-      if Core \= '16' then do                      /* baseline, (extended) midrange */
+   if init \= '' then do                                    /* init mask found */
+      /* build word or byte of fixed zero and fixed one bits  */
+      /* both the CfgZero and CfgOne arrays will be modified  */
+      init = word(init,1)                                   /* first item */
+      mask = strip(mask)                                    /* strip blanks */
+      if Core \= '16' then do                               /* baseline, (extended) midrange */
          mask = right(mask,4,'0')                           /* 4 hex digits */
          maskinv = C2X(BITXOR(X2C(mask),X2C('FFFF')))       /* inverted mask */
          init = right(init,4,'0')                           /* 4 hex digits */
@@ -812,7 +803,7 @@ do i = 1 to Dev.0                                  /* whole .dev contents */
          CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
          CfgOne  = overlay(CfgMod, CfgOne, 4 * Offset + 1)  /* replace word in string */
       end
-      else do                                      /* 18F series */
+      else do                                               /* 18F series */
          mask = right(mask,2,'0')                           /* 2 hex digits */
          maskinv = C2X(BITXOR(X2C(mask),X2C('FF')))         /* inverted mask */
          init = right(init,2,'0')                           /* 2 hex digits */
@@ -827,15 +818,15 @@ do i = 1 to Dev.0                                  /* whole .dev contents */
          CfgMod  = C2X(bitor(X2C(CfgMod),X2C(init)))        /* change word */
          CfgOne  = overlay(CfgMod, CfgOne, 2 * Offset + 1)  /* replace word in string */
       end
-      iterate
+      iterate                                               /* done with FIELD line */
    end
 
-   /* Build array of implemented config bits                    */
-   /* Active bits will be represented by 1 in this mask         */
-   /* Note: Array will be modified for fixed-zero and fixed-one */
-   /*       bits before returning to caller                     */
    parse var ln 'SETTING (REQ=0X'BitMask 'VALUE' x2 .
    if BitMask \= '' then do
+      /* Build array of implemented config bits                    */
+      /* Active bits will be represented by 1 in this mask         */
+      /* Note: Array will be modified for fixed-zero and fixed-one */
+      /*       bits before returning to caller                     */
       BitMask = strip(BitMask)
       if Core \= '16' then do                              /* baseline, (extended) midrange */
          BitMask = right(BitMask,4,'0')                    /* 4 hex digits */
@@ -849,6 +840,7 @@ do i = 1 to Dev.0                                  /* whole .dev contents */
          CfgMod = C2X(bitor(X2C(CfgMod),X2C(BitMask)))     /* or the bits */
          CfgAct = overlay(CfgMod, CfgAct, 2 * Offset + 1)  /* replace byte */
       end
+      iterate                                              /* done with SETTING line */
    end
 
 end
