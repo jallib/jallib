@@ -1,0 +1,89 @@
+-- -----------------------------------------------------------------------------
+-- Title: sample file for the dds9850.jal
+-- Author: Pavel Milanes Costa, Copyright (c) 2013, all rights reserved.
+--         Email: co7wt@frcuba.co.cu
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler:  >=2.4l
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+--    A sample file for the dds9850 library, it's prupose is to sweep the RF
+--    spectrum for the AM band (550Khz to 1.7Mhz) in increments of 10Khz, and
+--    1Khz in an alternating loop
+-- .
+--    First sweep from 550Khz to 1.7 Mhz in 10 Khz steps
+--    Second sweep from  550Khz to 1.7 Mhz in 1 Khz steps
+--    repeat Frist.. Second.. etc...
+-- .
+--    In every step remains 500ms on freq
+-- .
+--    You can set your own sweep interval, steps and timings, see code
+--
+-- -----------------------------------------------------------------------------
+
+-- including the pic 16f877a
+include 16f877a                       -- target PICmicro
+-- XTAL at 20 MHz in pins OSC1 y OSC2, etc...
+pragma target OSC HS                  -- XTAL
+pragma target clock 20_000_000        -- 20 Mhz
+pragma target WDT  disabled           -- WDT off
+pragma target LVP  disabled           -- no low voltage programming
+-- ALL DIGITAL
+enable_digital_io()                   -- disable analog I/O (if any)
+
+-- The dds lib use a kind of SPI, but we generate all the comm code to
+-- make it smaller
+-- We assume that the DDS is connected as this
+alias dds_sfqud_pin     is pin_B7       -- FREQ UPDATE PIN
+alias dds_sclk_pin      is pin_B6       -- CLOCK PIN
+alias dds_sdata_pin     is pin_B5       -- DATA PIN
+-- No reset pin is used, but you can implement it, it's easy..
+
+-- dds pind direccion
+pin_B7_direction = output
+pin_B6_direction = output
+pin_B5_direction = output
+-- include and init the dds
+include dds_ad9850                      -- load the dds lib
+dds_init()                       -- this puts the dds to sleep
+
+-- include delay for timing
+include delay
+
+-- VARS et all
+-- freq limits
+const dword FRQMIN      = 550000       -- 550Khz in hertz
+const dword FRQMAX      = 1700000         -- 1.7Mhz in hertz
+-- array steps
+var      word  steps[2] = {10000, 1000}      -- 100Khz & 1Khz
+-- var for actual frequency
+var      dword VFO
+-- for alternate the step
+var      bit      alt         = 0
+
+-- set VFO at min freq
+VFO = FRQMIN
+
+-- lets do some noise...
+forever loop
+   -- send freq to the DDS
+   dds_frequency(VFO)
+   -- wait for 500ms
+   delay_100ms(5)
+   -- increment the freq by step
+   VFO = VFO + steps[byte(alt)]
+   -- check boundary
+   if (VFO == FRQMAX) then
+      -- I'm at freq max
+      -- reset to FRQMIN
+      VFO = FRQMIN
+      -- change step
+      alt = !alt
+   end if
+end loop
