@@ -57,7 +57,7 @@
       <li><a href="#miscregs">Miscellaneous</a>
       </ul>
    <li><a href="#shadowing">About Port Shadowing</a>
-   <li><a href="#osccal">Calibation of Internal Oscillator</a>
+   <li><a href="#osccal">Calibration of Internal Oscillator</a>
    <li><a href="#usbprov">Provisions for USB</a>
    <li><a href="#ppsgroup">Peripheral Pin Selection</a>
    <li><a href="#fuses">Naming convention for configuration bit fields (fuses)</a>
@@ -383,13 +383,24 @@ these are declared as (pseudo) variables.
    PORTx_low_direction
    PORTx_high_direction
 </pre>
-This allows nibbles to be used as a regular variables,
-and can also be used to set pin directions by 4 at a time:
+This allows nibbles to be used as a regular variables.
+
+<br>The value for both PORTx_low and PORTx_high is passed
+in the lower nibble (bits 3..0) of a constant or variable,
+both with reading from and writing to the nibble.
+For example:
 <pre>
-   PORTA_high = "7"                  -- low nibble remains unchanged
-   PORTA_low_direction = ALL_OUTPUT  -- direction upper nibble unchanged
+    PORTA_high   = 0b0000_0101       -- lower nibble remains unchanged
+    var byte nib = PORTA_high        --
+</pre>
+
+<p>Nibbles can also be used to set pin directions by 4 at a time:
+<pre>
+   PORTA_low_direction = ALL_OUTPUT  -- direction of upper nibble
+                                     -- remains unchanged
 </pre>
 Several function libraries in the Jallib collection use this facility.
+
 <p>Note: Nibbles are always declared even when the register doesn't have the
 nibble fully populated, or even not populated at all!
 
@@ -433,7 +444,7 @@ For example do <b>not</b> specify:
 <pre>
    var bit led_red at portA : 0
 </pre>
-With this specification a 'led-red = on' will have the desired result, but
+With this specification a 'led_red = on' will have the desired result, but
 it will not update the shadow register.
 Any next operation which uses the shadowing mechanism will override the
 previous direct control operation.
@@ -905,7 +916,7 @@ of the registers and their subfields.
 
 <p>Port shadowing is a technique to prevent the Read-Modify-Write
 ('RMW') problem with I/O ports of PICmicro's.
-This is a problem related to its hardware design.
+This is a problem related to the hardware design.
 Search the Internet for "PIC" and "read-modify-read" and you'll get many
 hits to more or less interesting articles!
 None of the explanations are repeated here.
@@ -914,14 +925,24 @@ the Jallib device files you won't face the problem when you follow some
 simple rules and avoid a few pitfalls.
 
 <p>With port shadowing for the baseline and midrange PICs
-(10F, 12F, 16F) a RAM location is used as replacement for the port for
-output.
+(10F, 12F, 16F) a byte variable is used as representative of the port
+register, <b>for output</b> only.
+This byte is frequently called 'shadow-register'.
+When writing to a port or individual pin first the shadow register is
+updated and then the whole byte is written to the port.
+
+<p>The shadow registers are not declared as 'volatile', because the
+shadowing procedures would occupy significantly more program memory.
+The disadvantage of not declaring these as volatile is that the procedures
+for shadowing are not re-entrant (not interrupt-proof).
+This means that you should refrain from updating pins from both the mainline
+and an interrupt routine.
+
 <p>The 18F series and the newer extended midrange (XLP) PICs
-have a special register for this purpose (LATx).
-Although the techniques are slightly different, the general rules are:
-reading is done from the port directly while writing is done to the
-shadow register of which the contents is subsequently passed to the
-real port.
+have a special register for this purpose (LATx), and the device files use
+these registers for output.
+
+<p>In all cases reading is done from the port register itself!
 
 <p>With the Jallib device files shadowing is automatic, as long
 as you use the following names:
@@ -935,13 +956,10 @@ as you use the following names:
 (in which 'x' is a port-letter and 'y' a bit number).
 <p>PORTx_low is read from or written to bits 3..0 of Portx,
 PORTx_high is read from or written to bits 7..4 of Portx.
-<br>Note: The value for both PORTx_low and PORTx_high is passed with
-reading from (and must be passed with writing to) in the lower nibble
-(bits 3..0) of a constant or variable.
 
 <p>At power on and reset all ports are in input mode.
-It is recommended to always initialise ports or individual pins
-before switching 'm from input to output mode.
+It is recommended to initialise ports or individual pins
+before switching these from input to output mode.
 
 
 <h2><a name="osccal">Calibration of Internal Oscillator</a></h2>
@@ -1708,8 +1726,9 @@ If you are interested in the reasons, please read the following sections.
 <h3><a name="membanks">Memory banks</a></h3>
 <p>The compiler supports for the baseline and classic midrange PICs a
 maximum of 4 memory banks.
-There are only very few PICs in these groups with more than 4 banks.
-These PICs are supported, but only for the first 4 banks of data memory.
+PICs with more than 4 memory banks are supported, but only for the first 4
+banks of data memory,
+but only few PICs have more than 4 banks (example: 16f59).
 
 
 <h3><a name="highmem">INTOSC calibration</a></h3>
@@ -1717,7 +1736,7 @@ These PICs are supported, but only for the first 4 banks of data memory.
 an instruction for calibration of the internal oscillator.
 This is a reserved word and not counted in the amount of available
 code memory.
-See also <a href="#osccal">Calibation of Internal Oscillator</a>.
+See also <a href="#osccal">Calibration of Internal Oscillator</a>.
 
 
 <h3><a name="memusb">Data memory for PICs with USB module</a></h3>
@@ -1937,12 +1956,14 @@ An entry may contain the following elements:
 <tr><td>NONSHAREDDATA</td>
     <td>Range of unshared data memory (RAM)</td>
     <td>0x...-0x...[,0x...-0x...,etc]</td>
-    <td>Mandatory, may be multiple ranges</td>
+    <td>Mandatory, may be multiple ranges.
+        Info to be obtained from datasheet or .lkr file</td>
 </tr>
 <tr><td>SHAREDDATA</td>
     <td>Range of shared data memory (RAM)</td>
     <td>0x...-0x...</td>
-    <td>Mandatory</td>
+    <td>Mandatory.
+        Info to be obtained from datasheet or .lkr file</td>
 </tr>
 <tr><td>ADCGROUP</td>
     <td>Analog-to-Digital group number</td>
@@ -2068,15 +2089,37 @@ above in the section 'To do when new datasheets become available'.
 
 <p>Now run the dev2jal script with the 'TEST' option, redirect the output to
 a file and check this file for errors and warnings which need attention.
-This output will normally contain of 1100 to 1200 lines.
-The following corrective actions may be required:
+This output will normally contain of 1100 to 1200 lines,
+which may sound a lot, but about 500 lines are for progress indication and
+contain only the name of the PIC!
+Of the remaining lines most warnings can be ignored, like:
+<ul>
+<li>'No "pin_ANx" alias in pinmap'
+    <br>PICs with analog input modules may have 'active' bits
+    in control registers like ANSEL, but no corresponding pin.
+<li>'Duplicate keyword for fuse_def xxxxx (.....)'
+    <br>Frequently there is more than one bit combination to disable
+    or enable a configurable function.
+    The device files decalre just one of these and reports other
+    combinations as duplicate.
+<li>'Possibly unbalanced enabled/disabled keywords for fuse_def xxx'
+    <br>Frequently there are more bit combinations to enable than to
+    disable (or vice versa) a configurable function.
+</ul>
+But of sourse warnings are not for nothing: check before release!
+
+<p>The following corrective actions may be required:
 <ul>
 <li>Add an entry for each new PIC in the file devicespecific.json with the
     appropriate parameter values.
     Check for shared and unshared memory conventions of JalV2!
+    Use the Memory organisation of the datasheet or the .lkr file
+    of the MPASM SUITE to obtain the available memory.
 <li>Add support for unrecognised Fuse_Def keywords to the dev2jal script.
 <li>Probably the script file 'fusedefmap.cmd' needs to be updated
     because of new or changed descriptions of oscillator settings.
+    And after an update the 'extract_pininfo.py' must be run to
+    generate an up to date pinmap_pinsuffix.json.
 <li>Maybe some corrections have to be applied to the dev2jal script
     when new PICs have exceptions not covered yet,
     for example JANSEL numbering (in procedure ansel2j)
