@@ -65,10 +65,10 @@ end procedure
 -- rtc initialisation -----------------------------------------------
 procedure ds1307_init() is
 
-   var  byte  value
-   var  bit   clkhlt  at  value : 7
-   var  bit   mode12  at  value : 6
-   var  bit   modepm  at  value : 5
+   var  byte  value                       -- intermediate hour value
+   var  bit   clkhlt  at  value : 7       -- CH flag of seconds byte
+   var  bit   mode12  at  value : 6       -- 12/24-hour mode flag in hours byte
+   var  bit   modepm  at  value : 5       -- AM/PM flag in hours byte
 
    ds1307_read( 0x00 , value )            -- contents of seconds byte
    clkhlt = 0                             -- clear Clk Halt bit
@@ -76,12 +76,10 @@ procedure ds1307_init() is
 
    ds1307_read( 0x02 , value )            -- contents of hours byte
    if (mode12 == 1) then                  -- currently in 12-hour mode
-      mode12 = 0                          -- switch to 24-hour mode
-      if (modepm == 1) then               -- post meridiem
-         modepm = 0                       -- clear PM flag
-         value = value + 12               -- correct for pm
+      value = value & 0b0001_1111         -- clear 12-hour and PM flags
+      if (value == 0x12)                  -- just past midnight or midday
+         value = 0x00                     -- 12 -> 0
       end if
-      value = value - 1                   -- 1..12  ->  0..23
    end if
    ds1307_write( 0x02 , value )           -- rewrite hours byte
 
