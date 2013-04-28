@@ -1718,17 +1718,14 @@ for a specific PIC and program.
 The first number is the amount of bytes actually used,
 the last number is the total amount of data memory
 available to a user program and libraries.
-The last number will mostly be somewhat smaller than what you
-might expect by reading the data memory section of the datasheet!
-If you are interested in the reasons, please read the following sections.
 
 
 <h3><a name="membanks">Memory banks</a></h3>
 <p>The compiler supports for the baseline and classic midrange PICs a
 maximum of 4 memory banks.
 PICs with more than 4 memory banks are supported, but only for the first 4
-banks of data memory,
-but only few PICs have more than 4 banks (example: 16f59).
+banks of data memory.
+Only few PICs have more than 4 banks (example: 16f59)!
 
 
 <h3><a name="highmem">INTOSC calibration</a></h3>
@@ -1741,7 +1738,7 @@ See also <a href="#osccal">Calibration of Internal Oscillator</a>.
 
 <h3><a name="memusb">Data memory for PICs with USB module</a></h3>
 This is data memory sometimes dedicated to the USB module.
-But sometimes it can be used as regular data memory by the user program,
+Sometimes it can be used as regular data memory by the user program,
 but only when the USB module is inactive,
 and sometimes it can be shared between USB module and user program.
 So the amount of available data memory as specified in the device file
@@ -1750,74 +1747,60 @@ datasheet due to reservation by the USB module.
 
 
 <h3><a name="memshare">Shared Memory</a></h3>
-<p>The compiler recognises also another pragma for data memory:
+<p>The compiler recognises another pragma for data memory:
 <b>pragma shared</b>.
-This pragma is currently (up to compiler version 2.4p) only used for
-allocation of memory <b>for specific variables used by the compiler</b>.
-These variables are:
+
+<p>For the compiler 'shared' means:
+<ul compact>
+<li>For baseline and midrange PICs: the part of data memory which is
+accessible in all banks regardless the settings of the bank selection bits
+(STATUS_RPx, or similar bits in FSR).
+Note: Memory which is mirrored in other bank(s), but not in all banks,
+is in this context not shared memory!
+<li>For the extended midrange and 18F PICs: GPR-memory in the access bank.
+</ul>
+
+<p>Shared memory is used <b>for specific variables used by the compiler</b>:
 <dl>
 <dt><b>_pic_isr_w</b>
 <dd>A byte variable used for saving the W register with interrupts.
 <br>This variable is only needed for baseline and midrange PICs
 (core 12 and 14).
 <br><i>It is not required for PICs without interrupt support (like 10f20x),
-but the current device files still declare it for these PICs.</i>
+but the current device files still declare it for these PICs.
+However unused variables are removed by the compiler!</i>
 <dt><b>_pic_accum</b>
 <dd>A byte variable used for saving the W register with multi-byte additions
 and subtractions when the two involved variables are in different memory banks,
 and for sign extensions of signed variables (adding sbyte to sword, etc.).
+<dt><b>Shadowing bytes</b>
+<dd>Bytes for port and other register shadowing
+(baseline and midrange PICs only, and when enough shared memory available!).
 </dl>
-<p>For the compiler 'shared' means:
-<ul compact>
-<li>For baseline and midrange PICs: memory which is accessible in all banks
-regardless the settings of the bank selection bits
-(STATUS_RPx, or similar bits in FSR).
-Memory which is mirrored in other bank(s), but not in all banks,
-is in this context not shared memory!
-<li>For the extended midrange and 18F PICs: (GPR) memory in the access bank.
-</ul>
-<p>Most PICs have both unshared and shared RAM,
-but some midrange PICs have only shared memory while some other
-midrange PICs have no shared memory at all.
-And most PICs have more shared RAM than the two bytes required
-for _pic_isr_w and _pic_accum.
-These situations are handled by the device files as follows:
-<ul>
-<li>For baseline and midrange PICs:
-<ul>
-<li>For PICs with both <b>shared and unshared</b> memory the otherwise
-unusable part of shared memory is specified as unshared memory
-- the mirrored addresses are thereby excluded -
-and added to the (last) bank with the biggest block of unshared memory.
-The choice for the last bank guarantees that the biggest block remains
-available even when smaller variables are allocated first by the compiler.
-<li>For PICs with <b>only shared</b> memory all memory is declared as
-unshared, except for the compiler-required variables.
-<br>Examples: 12F675, 16F676.
-<li>For PICs with <b>only unshared</b> memory the memory for the compiler
-required variables is specified as 'shared' even though it is in fact
-unshared memory!
-The locations with the same (7-bits) offset in other banks
-are reserved (excluded from the available data memory for user variables).
-<br>This is only partly a solution.
-It avoids problems with interrupt handlers (which use _pic_isr_w), but it
-does not completely avoid problems with calculations with multi-byte
+
+<p>Shared memory can be used for other variables as well
+by explicitly assigning it an address with 'at &lt;address&gt;',
+whereby &lt;address&gt; must be in the shared memory region.
+Remember that device files allocate shared memory!
+Do not allocate the same addresses as already assigned by te device file.
+<br>By using this feature you take over part of memory management of the
+compiler at your own risk!
+
+<p>With most PICs only part of data memory shared.
+Some midrange PICs have all data memory memory shared,
+some others have no shared memory.
+There is no problem with 'all shared memory', but with 'no shared memory'
+the memory for the compiler required variables is declared as 'shared' even
+though it is in fact unshared memory!
+In this case the locations with the same (7-bits) offset in other banks are
+reserved (excluded from the available data memory for user variables).
+However this is only partly a solution.
+It avoids problems with interrupt handlers (which use _pic_isr_w),
+but it does not completely avoid problems with calculations with multi-byte
 variables (word, dword, etc., which use _pic_accum) when the variables
 are in different banks.
-<br>Examples: 16F73 and 16F74.
-<b>With these PICs it is not safe for programs to perform calculations with
-multi-byte variables!</b>.
-</ul>
-<li>For the extended midrange and 18F PICs:
-<br>'Shared' memory is defined as the data memory in the access bank.
-Also for these PICs the 'unused' part of shared memory is specified as
-unshared data memory,
-but because of the architecture of the 18Fs there are no complications like
-described above for the midrange PICs.
-</ul>
-
-<p>Summary: All memory is declared as unshared except for the
-compiler variables _pic_accum and _pic_isr_w.
+<br>Examples: <b>16F73 and 16F74. With these PICs it is not safe for
+programs to perform calculations with multi-byte variables!</b>.
 
 
 <h3><a name="analog">Analog modules</a></h3>
