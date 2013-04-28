@@ -23,11 +23,11 @@
 --      . enable_digital_io()
 --
 -- Sources:
---  - x:/mplab889/mplab ide/device/pic16f527.dev
+--  - x:/mplab890/mplab ide/device/pic16f527.dev
 --
 -- Notes:
---  - Created with Dev2Jal Rexx script version 0.1.44
---  - File creation date/time: 20 Mar 2013 14:28
+--  - Created with Dev2Jal Rexx script version 0.1.46
+--  - File creation date/time: 28 Apr 2013 20:55
 --
 -- ===================================================
 --
@@ -51,11 +51,11 @@ pragma  stack   4
 pragma  code    1023                     -- (excl high mem word)
 pragma  eeprom  0x400,64
 pragma  ID      0x440,4
-pragma  data    0xE-0x1F,0x30-0x3F,0x50-0x5F,0x70-0x7F
-pragma  shared  0xC-0xD
+pragma  data    0xC-0x1F,0x30-0x3F,0x50-0x5F,0x70-0x7F
+pragma  shared  0xC-0xF
 --
-var volatile byte _pic_accum shared at 0xC      -- (compiler)
-var volatile byte _pic_isr_w shared at 0xD      -- (compiler)
+var volatile byte _pic_accum shared at 0xF      -- (compiler)
+var volatile byte _pic_isr_w shared at 0xE      -- (compiler)
 --
 const word  _FUSES_CT             = 1
 const word  _FUSE_BASE            = 0x7FF
@@ -103,7 +103,7 @@ var volatile bit*7  OSCCAL_CAL                at OSCCAL : 1
 var volatile byte   _PORTA                    at { 0x6,0x46 }
 --
 var          byte   PORTA                     at _PORTA
-var          byte   _PORTA_shadow            
+var volatile byte   _PORTA_shadow shared      at 0xD
 --
 procedure PORTA'put(byte in x at _PORTA_shadow) is
    pragma inline
@@ -111,22 +111,18 @@ procedure PORTA'put(byte in x at _PORTA_shadow) is
 end procedure
 --
 procedure PORTA_low'put(byte in x) is
-   pragma inline
    _PORTA_shadow = (_PORTA_shadow & 0xF0) | (x & 0x0F)
    _PORTA = _PORTA_shadow
 end procedure
 function PORTA_low'get() return byte is
-   pragma inline
    return (PORTA & 0x0F)
 end function
 --
 procedure PORTA_high'put(byte in x) is
-   pragma inline
    _PORTA_shadow = (_PORTA_shadow & 0x0F) | (x << 4)
    _PORTA = _PORTA_shadow
 end procedure
 function PORTA_high'get() return byte is
-   pragma inline
    return (PORTA >> 4)
 end function
 --
@@ -198,7 +194,7 @@ end procedure
 var volatile byte   _PORTB                    at { 0x7,0x47 }
 --
 var          byte   PORTB                     at _PORTB
-var          byte   _PORTB_shadow            
+var volatile byte   _PORTB_shadow shared      at 0xC
 --
 procedure PORTB'put(byte in x at _PORTB_shadow) is
    pragma inline
@@ -206,22 +202,18 @@ procedure PORTB'put(byte in x at _PORTB_shadow) is
 end procedure
 --
 procedure PORTB_low'put(byte in x) is
-   pragma inline
    _PORTB_shadow = (_PORTB_shadow & 0xF0) | (x & 0x0F)
    _PORTB = _PORTB_shadow
 end procedure
 function PORTB_low'get() return byte is
-   pragma inline
    return (PORTB & 0x0F)
 end function
 --
 procedure PORTB_high'put(byte in x) is
-   pragma inline
    _PORTB_shadow = (_PORTB_shadow & 0x0F) | (x << 4)
    _PORTB = _PORTB_shadow
 end procedure
 function PORTB_high'get() return byte is
-   pragma inline
    return (PORTB >> 4)
 end function
 --
@@ -263,7 +255,7 @@ end procedure
 var volatile byte   _PORTC                    at { 0x8,0x48 }
 --
 var          byte   PORTC                     at _PORTC
-var          byte   _PORTC_shadow            
+var volatile byte   _PORTC_shadow            
 --
 procedure PORTC'put(byte in x at _PORTC_shadow) is
    pragma inline
@@ -271,22 +263,18 @@ procedure PORTC'put(byte in x at _PORTC_shadow) is
 end procedure
 --
 procedure PORTC_low'put(byte in x) is
-   pragma inline
    _PORTC_shadow = (_PORTC_shadow & 0xF0) | (x & 0x0F)
    _PORTC = _PORTC_shadow
 end procedure
 function PORTC_low'get() return byte is
-   pragma inline
    return (PORTC & 0x0F)
 end function
 --
 procedure PORTC_high'put(byte in x) is
-   pragma inline
    _PORTC_shadow = (_PORTC_shadow & 0x0F) | (x << 4)
    _PORTC = _PORTC_shadow
 end procedure
 function PORTC_high'get() return byte is
-   pragma inline
    return (PORTC >> 4)
 end function
 --
@@ -466,7 +454,7 @@ var volatile byte   OPACON                    at { 0x69 }
 var volatile bit    OPACON_OPA2ON             at OPACON : 1
 var volatile bit    OPACON_OPA1ON             at OPACON : 0
 -- ------------------------------------------------
-var  byte _TRISA_shadow = 0b1111_1111         -- default all input
+var volatile byte   _TRISA_shadow             = 0b1111_1111    -- all input
 --
 procedure PORTA_direction'put(byte in x at _TRISA_shadow) is
    pragma inline
@@ -475,14 +463,12 @@ procedure PORTA_direction'put(byte in x at _TRISA_shadow) is
 end procedure
 --
 procedure PORTA_low_direction'put(byte in x) is
-   pragma inline
    _TRISA_shadow = (_TRISA_shadow & 0xF0) | (x & 0x0F)
    asm movf _TRISA_shadow,W
    asm tris 5
 end procedure
 --
 procedure PORTA_high_direction'put(byte in x) is
-   pragma inline
    _TRISA_shadow = (_TRISA_shadow & 0x0F) | (x << 4)
    asm movf _TRISA_shadow,W
    asm tris 5
@@ -533,7 +519,7 @@ alias               pin_C1IN_POS_direction    is pin_A0_direction
 alias               pin_ICSPDAT_direction     is pin_A0_direction
 --
 -- ------------------------------------------------
-var  byte _TRISB_shadow = 0b1111_1111         -- default all input
+var volatile byte   _TRISB_shadow             = 0b1111_1111    -- all input
 --
 procedure PORTB_direction'put(byte in x at _TRISB_shadow) is
    pragma inline
@@ -542,14 +528,12 @@ procedure PORTB_direction'put(byte in x at _TRISB_shadow) is
 end procedure
 --
 procedure PORTB_low_direction'put(byte in x) is
-   pragma inline
    _TRISB_shadow = (_TRISB_shadow & 0xF0) | (x & 0x0F)
    asm movf _TRISB_shadow,W
    asm tris 6
 end procedure
 --
 procedure PORTB_high_direction'put(byte in x) is
-   pragma inline
    _TRISB_shadow = (_TRISB_shadow & 0x0F) | (x << 4)
    asm movf _TRISB_shadow,W
    asm tris 6
@@ -582,7 +566,7 @@ end procedure
 alias               pin_OP2_RB4_direction     is pin_B4_direction
 --
 -- ------------------------------------------------
-var  byte _TRISC_shadow = 0b1111_1111         -- default all input
+var volatile byte   _TRISC_shadow             = 0b1111_1111    -- all input
 --
 procedure PORTC_direction'put(byte in x at _TRISC_shadow) is
    pragma inline
@@ -591,14 +575,12 @@ procedure PORTC_direction'put(byte in x at _TRISC_shadow) is
 end procedure
 --
 procedure PORTC_low_direction'put(byte in x) is
-   pragma inline
    _TRISC_shadow = (_TRISC_shadow & 0xF0) | (x & 0x0F)
    asm movf _TRISC_shadow,W
    asm tris 7
 end procedure
 --
 procedure PORTC_high_direction'put(byte in x) is
-   pragma inline
    _TRISC_shadow = (_TRISC_shadow & 0x0F) | (x << 4)
    asm movf _TRISC_shadow,W
    asm tris 7
@@ -664,7 +646,7 @@ alias               pin_AN4_direction         is pin_C0_direction
 alias               pin_C2IN_POS_direction    is pin_C0_direction
 --
 -- ------------------------------------------------
-var  byte _OPTION_REG_shadow = 0b1111_1111         -- default all set
+var volatile byte   _OPTION_REG_shadow        = 0b1111_1111    -- at reset
 --
 procedure OPTION_REG'put(byte in x at _OPTION_REG_shadow) is
    pragma inline
