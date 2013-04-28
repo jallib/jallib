@@ -23,11 +23,11 @@
 --      . enable_digital_io()
 --
 -- Sources:
---  - x:/mplab889/mplab ide/device/pic10f200.dev
+--  - x:/mplab890/mplab ide/device/pic10f200.dev
 --
 -- Notes:
---  - Created with Dev2Jal Rexx script version 0.1.44
---  - File creation date/time: 20 Mar 2013 14:28
+--  - Created with Dev2Jal Rexx script version 0.1.46
+--  - File creation date/time: 28 Apr 2013 20:55
 --
 -- ===================================================
 --
@@ -50,11 +50,11 @@ pragma  target  page  0x0200
 pragma  stack   2
 pragma  code    255                     -- (excl high mem word)
 pragma  ID      0x100,4
-pragma  data    0x12-0x1F
-pragma  shared  0x10-0x11
+pragma  data    0x10-0x1F
+pragma  shared  0x10-0x1F
 --
-var volatile byte _pic_accum shared at 0x10      -- (compiler)
-var volatile byte _pic_isr_w shared at 0x11      -- (compiler)
+var volatile byte _pic_accum shared at 0x1F      -- (compiler)
+var volatile byte _pic_isr_w shared at 0x1E      -- (compiler)
 --
 const word  _FUSES_CT             = 1
 const word  _FUSE_BASE            = 0xFFF
@@ -98,7 +98,7 @@ var volatile byte   _GPIO                     at { 0x6 }
 alias               _PORTA                    is _GPIO
 --
 var          byte   PORTA                     at _PORTA
-var          byte   _PORTA_shadow            
+var volatile byte   _PORTA_shadow shared      at 0x1D
 --
 procedure PORTA'put(byte in x at _PORTA_shadow) is
    pragma inline
@@ -106,22 +106,18 @@ procedure PORTA'put(byte in x at _PORTA_shadow) is
 end procedure
 --
 procedure PORTA_low'put(byte in x) is
-   pragma inline
    _PORTA_shadow = (_PORTA_shadow & 0xF0) | (x & 0x0F)
    _PORTA = _PORTA_shadow
 end procedure
 function PORTA_low'get() return byte is
-   pragma inline
    return (PORTA & 0x0F)
 end function
 --
 procedure PORTA_high'put(byte in x) is
-   pragma inline
    _PORTA_shadow = (_PORTA_shadow & 0x0F) | (x << 4)
    _PORTA = _PORTA_shadow
 end procedure
 function PORTA_high'get() return byte is
-   pragma inline
    return (PORTA >> 4)
 end function
 --
@@ -168,7 +164,7 @@ procedure pin_A0'put(bit in x at _PORTA_shadow : 0) is
 end procedure
 --
 -- ------------------------------------------------
-var  byte _TRISA_shadow = 0b1111_1111         -- default all input
+var volatile byte   _TRISA_shadow shared      at 0x1C = 0b1111_1111    -- all input
 --
 procedure PORTA_direction'put(byte in x at _TRISA_shadow) is
    pragma inline
@@ -177,14 +173,12 @@ procedure PORTA_direction'put(byte in x at _TRISA_shadow) is
 end procedure
 --
 procedure PORTA_low_direction'put(byte in x) is
-   pragma inline
    _TRISA_shadow = (_TRISA_shadow & 0xF0) | (x & 0x0F)
    asm movf _TRISA_shadow,W
    asm tris 6
 end procedure
 --
 procedure PORTA_high_direction'put(byte in x) is
-   pragma inline
    _TRISA_shadow = (_TRISA_shadow & 0x0F) | (x << 4)
    asm movf _TRISA_shadow,W
    asm tris 6
@@ -225,7 +219,7 @@ alias               pin_GP0_direction         is pin_A0_direction
 alias               pin_ICSPDAT_direction     is pin_A0_direction
 --
 -- ------------------------------------------------
-var  byte _OPTION_REG_shadow = 0b1111_1111         -- default all set
+var volatile byte   _OPTION_REG_shadow shared at 0x1B = 0b1111_1111    -- at reset
 --
 procedure OPTION_REG'put(byte in x at _OPTION_REG_shadow) is
    pragma inline
