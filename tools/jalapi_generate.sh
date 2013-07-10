@@ -16,7 +16,7 @@ do
 	htmlfile="`echo $basefile | sed 's#\.jal$#.html#'`"
 	libname=`echo $basefile | sed 's#\.jal$##'`
 	echo -n "Generating doc for $basefile... "
-	python2.5 jallib.py jalapi -t jalapi_html.tmpl -d $JALLIB_SAMPLEDIR -o $HTMLDOCDIR/$htmlfile $jalfile
+	python2.6 jallib.py jalapi -t jalapi_html.tmpl -d $JALLIB_SAMPLEDIR -o $HTMLDOCDIR/$htmlfile $jalfile
 	status=$?
 	if [ "X$status" = "X0" ]
 	then

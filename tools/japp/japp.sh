@@ -72,7 +72,7 @@ do
 		 continue
 	  fi
 	  echo "    Preparing HTML for Drupal publishing..."
-	  python2.5 $JAPP_ROOT/htmlizer.py $CONFFILE $JAPP_TMP/$noext.html
+	  python2.6 $JAPP_ROOT/htmlizer.py $CONFFILE $JAPP_TMP/$noext.html
 	  if [ "$?" != "0" ]
 	  then
 		 echo
@@ -83,7 +83,7 @@ do
 	  fi
 	  echo "    Sending content..."
 	  pushd $JAPP_ROOT
-	  python2.5 publish.py $CONFFILE $JAPP_TMP/topublish
+	  python2.6 publish.py $CONFFILE $JAPP_TMP/topublish
 	  if [ "$?" != "0" ]
 	  then
 		 echo
