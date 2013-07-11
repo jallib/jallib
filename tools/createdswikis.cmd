@@ -14,7 +14,7 @@ parse upper arg runtype .
 
 /* -- input files (change for other systems or platforms) -- */
 if runtype  = 'TEST' then
-   jaldir   = 'k:/jal/dev2jal/test/'                /* dir with test device files */
+   jaldir   = 'k:/jal/pic2jal/test/'                /* dir with test device files */
 else
    jaldir   = 'k:/jallib/include/device/'           /* dir with production device files */
 pdfdir      = 'n:/picdatasheets/'                   /* dir with datasheets (local)  */
@@ -111,7 +111,7 @@ do i=1 to dir.0                                /* a line for every Jallib PIC de
       else
         say 'Datasheet' word(dsnum.1,1) 'not found'
       call lineout wiki, '||' left(PicName,12),
-                         '|| <a href="'url||left(word(dsnum.1,1)'.pdf">',12)left(word(dsnum.1,1),6)'</a>',
+                         '|| <a href="'url||left(word(dsnum.1,1)'.pdf">',15)right(word(dsnum.1,1),9)'</a>',
                          '||' left(filedate, 7),
                          '||'delword(dsnum.1,1,1) '||'
       call SysFileTree pdfdir||word(dsnum.1,1).pdf, 'dsfile', 'FO'
@@ -120,14 +120,14 @@ do i=1 to dir.0                                /* a line for every Jallib PIC de
     end
     else do
       call lineout wiki, '||' left(PicName,12),
-                         '||' left(DS,6),
+                         '||' right(DS,9),
                          '||' left('-',7),
                          '|| - ||'
     end
   end
   else                                      /* no datasheet number found */
     call lineout wiki, '||' left(PicName,12),
-                       '||' left('-',6),
+                       '||' right('-',9),
                        '||' left('-',7),
                        '|| - ||'
 
