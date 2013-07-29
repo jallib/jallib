@@ -32,7 +32,7 @@
  *     See Notes with Edc2jal script for running it on other platforms      *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.09'
+   ScriptVersion   = '0.0.11'
    ScriptAuthor    = 'Rob Hamerling'
    MPlabXVersion   = '185'
 /* ------------------------------------------------------------------------ */
