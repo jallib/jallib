@@ -43,7 +43,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.09'
+   ScriptVersion   = '0.0.11'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
 /* MPlabXVersion obtained from file VERSION.xxx created by Pic2edc script.  */
@@ -257,7 +257,7 @@ do i = 1 to dir.0                                           /* all relevant .edc
 
    core = load_config_info()                                /* core + various cfg info */
 
-   /* -------- set core-dependent properties ------------ */
+   /* -------- set core-dependent default properties ----- */
 
    select
       when core = '12' then do                              /* baseline */
@@ -286,7 +286,7 @@ do i = 1 to dir.0                                           /* all relevant .edc
       leave                                                 /* script error: terminate */
    end
 
-   call load_sfr                                            /* SFR addressing */
+   call load_sfr_info                                       /* SFR address map */
 
    /* ------------ produce device file ------------------------ */
 
@@ -301,37 +301,41 @@ do i = 1 to dir.0                                           /* all relevant .edc
    SharedMem.1 = x2d(addr1)                                 /* lowest address (decimal) */
    SharedMem.2 = x2d(addr2)                                 /* highest */
 
-   call list_head                                           /* common header */
+   call list_header                                         /* common devicefile header */
+
    call list_cfgmem                                         /* cfg mem addr + defaults */
 
    select
+
       when core = '12' then do                              /* baseline */
          if OSCCALaddr > 0 then                             /* OSCCAL present */
             call list_osccal                                /* INTRC calibration */
          call list_sfr
          if HasMuxedSFR > 0 then
             call list_muxed_sfr
-         call list_nmmr12
+         call list_nmmr12                                   /* TRIS, OPTION, etc. */
       end
+
       when core = '14' then do                              /* midrange */
 /*       if OSCCALaddr > 0 then      */                     /* OSCCAL present */
 /*          call list_osccal         */                     /* TOO DANGEROUS (INTRC calibration) */
          call list_sfr
          if HasMuxedSFR > 0 then
             call list_muxed_sfr
-         call list_nmmr14
       end
+
       when core = '14H' then do                             /* extended midrange (Hybrids) */
          call list_sfr
          if HasMuxedSFR > 0 then
             call list_muxed_sfr
       end
+
       when core = '16' then do                              /* 18Fs */
          call list_sfr
          if HasMuxedSFR > 0 then
             call list_muxed_sfr
-/*       call list_nmmr   */
       end
+
    end
 
    call list_analog_functions                               /* common enable_digital_io() */
@@ -377,17 +381,20 @@ return 0
 /* input:   - nothing                           */
 /* output:  - nothing                           */
 /* returns: core (0, '12', '14', '14H', '16')   */
+/* notes: searches address of OSCCAL and FSR    */
 /* -------------------------------------------- */
-load_config_info: procedure expose Pic. PicName,
-                                   StackDepth NumBanks AccessBankSplitOffset,
-                                   CodeSize EESpec IDSpec DevID CfgAddr. Cfgmem,
+load_config_info: procedure expose Pic. PicName Name. CfgAddr. ,
+                                   StackDepth NumBanks Banksize AccessBankSplitOffset,
+                                   CodeSize EESpec IDSpec DevID Cfgmem,
                                    VddRange VddNominal VppRange VppDefault,
                                    HasLATreg HasMuxedSFR OSCCALaddr FSRaddr,
                                    ADC_highres ADCS_bits IRCF_bits
+
 CfgAddr.0 = 0                                               /* empty */
 Core = 0                                                    /* undetermined */
 CodeSize = 0                                                /* no code memory */
 NumBanks = 0                                                /* no databanks */
+
 SFRaddr = 0                                                 /* start of SFRs */
 
 do i = 1 to Pic.0
@@ -520,6 +527,14 @@ do i = 1 to Pic.0
             RevMask = right(strip(Val1),4,'0')                    /* 4 hex chars */
             DevID = right(strip(Val2),4,'0')                      /* 4 hex chars */
             DevID = C2X(bitand(X2C(DevID),X2C(RevMask)))          /* reset revision bits */
+            if PicName = '16lf1902' then do
+               call msg 2, 'Device ID' DevID 'replaced by 1C00'
+               DevId = '1C00'
+            end
+            if PicName = '16lf1903' then do
+               call msg 2, 'Device ID' DevID 'replaced by 1C20'
+               DevId = '1C20'
+            end
          end
          else do                                                  /* no revision mask */
             parse var Pic.i '<EDC:DEVICEIDSECTOR' . 'EDC:VALUE="0X' Val1 '"' .
@@ -537,6 +552,13 @@ do i = 1 to Pic.0
 
       when kwd = '<EDC:EEDATASECTOR' then do
          parse var Pic.i '<EDC:EEDATASECTOR' ,
+                          'EDC:BEGINADDR="0X' Val1 '"' 'EDC:ENDADDR="0X' Val2 '"' .
+         if Val1 \= '' then
+            EESpec = '0x'Val1','X2D(Val2) - X2D(Val1)
+      end
+
+      when kwd = '<EDC:FLASHDATASECTOR' then do
+         parse var Pic.i '<EDC:FLASHDATASECTOR' ,
                           'EDC:BEGINADDR="0X' Val1 '"' 'EDC:ENDADDR="0X' Val2 '"' .
          if Val1 \= '' then
             EESpec = '0x'Val1','X2D(Val2) - X2D(Val1)
@@ -690,12 +712,12 @@ do i = 1 to Pic.0
       end
 
       when kwd = '<EDC:MIRROR' then do
-         parse var Pic.i '<EDC:MIRROR' 'EDC:NZSIZE="' Val1 '"' .
+         parse var Pic.i '<EDC:MIRROR' 'EDC:NZSIZE="' val1 '"' .
          if Val1 \= '' then do
-            Val1 = strip(Val1)                           /* hex or dec */
-            if left(Val1,2) = '0X' then
+            val1 = strip(Val1)                           /* hex or dec */
+            if left(val1,2) = '0X' then
                Val1 = X2D(substr(Val1,3))
-            SFRaddr = SFRaddr + Val1
+            SFRaddr = SFRaddr + 1
          end
       end
 
@@ -722,8 +744,10 @@ return core
 /* with mirror info and unused registers                      */
 /* input:  - nothing                                          */
 /* output: nothing                                            */
+/* notes: cannot be done in load_config_info:                 */
+/*        banksize and number of banks must be known ahead    */
 /* ---------------------------------------------------------- */
-load_sfr: procedure expose Pic. Name. Ram. core,
+load_sfr_info: procedure expose Pic. Name. Ram. core,
                            NumBanks BankSize MaxRam msglevel
 do i = 0 to NumBanks*Banksize                            /* whole range */
    Ram.i = -1                                            /* mark address as unused */
@@ -750,7 +774,7 @@ do i = i while word(Pic.i,1) \= '</EDC:DATASPACE>'       /* to end of data */
 
       when kwd = '<EDC:MUXEDSFRDEF' then do
          Ram.SFRaddr = SFRaddr
-         do while word(Pic.i,1) \= '</EDC:MUXEDSFRDEF>'
+         do while word(Pic.i,1) \= '</EDC:MUXEDSFRDEF>'  /* skip all inner statements */
             i = i + 1
          end
          SFRaddr = SFRaddr + 1                           /* muxed SFRs count for 1 */
@@ -759,7 +783,7 @@ do i = i while word(Pic.i,1) \= '</EDC:DATASPACE>'       /* to end of data */
       when kwd = '<EDC:SFRDEF' then do
          Ram.SFRaddr = SFRaddr
          do while word(pic.i,1) \= '</EDC:SFRDEF>'
-            i = i + 1                                 /* skip subfields */
+            i = i + 1                                    /* skip subfields */
          end
          SFRaddr = SFRaddr + 1
       end
@@ -767,7 +791,7 @@ do i = i while word(Pic.i,1) \= '</EDC:DATASPACE>'       /* to end of data */
       when kwd = '<EDC:MIRROR' then do
          parse var Pic.i '<EDC:MIRROR' 'EDC:NZSIZE="' val1 '"' . 'EDC:REGIONIDREF="' Val2 '"' .
          if Val1 \= '' then do
-            val1 = strip(Val1)                           /* hex or dec */
+            val1 = strip(Val1)
             if left(val1,2) = '0X' then
                Val1 = X2D(substr(Val1,3))
             do j = 0 to val1 - 1
@@ -811,162 +835,6 @@ end
 --- */
 
 return 0
-
-
-/* -------------------------------------------------------- */
-/* procedure to assign a JalV2 unique ID in chipdef_jallib  */
-/* input:  - nothing                                        */
-/* -------------------------------------------------------- */
-list_devid_chipdef: procedure expose Pic. jalfile chipdef Core PicName msglevel DevID xChipDef.
-PicNameCaps = toupper(PicName)                           /* name in upper case */
-if DevId \== '0000' then                                    /* DevID not missing */
-   xDevId = left(Core,2)'_'DevID
-else do                                                     /* DevID unknown */
-   DevID = right(PicNameCaps,3)                             /* rightmost 3 chars of name */
-   if datatype(Devid,'X') = 0 then do                       /* not all hex digits */
-      DevID = right(right(PicNameCaps,2),3,'F')             /* 'F' + rightmost 2 chars */
-   end
-   xDevId = Core'_F'DevID
-end
-if xChipDef.xDevId = '?' then do                            /* if not yet assigned */
-   xChipDef.xDevId = PicName                                /* remember */
-   call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'xDevId
-end
-else do
-   call msg 1, 'DevID ('xDevId') in use by' xChipDef.xDevid
-   do i = 1                                                 /* index in array */
-      tDevId = xDevId||substr('abcdef0123456789',i,1)       /* temp value */
-      if xChipDef.tDevId = '?' then do                      /* if not yet assigned */
-         xDevId = tDevId                                    /* definitve value */
-         xChipDef.xDevId = PicName                          /* remember alternate */
-         call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'xDevId
-         call msg 1, 'Alternate devid (0x'xDevid') assigned'
-         leave                                              /* suffix assigned */
-      end
-      else
-         call msg 2, 'DevID ('tDevId') in use by' xChipDef.tDevid
-   end
-   if i > 16 then do
-      call msg 3, 'Not enough suffixes for identical devid, terminated!'
-      exit 3
-   end
-end
-return
-
-
-/* ----------------------------------------------------------- */
-/* procedure to list Config memory layout and default settings */
-/* input:  - nothing                                           */
-/* All cores                                                   */
-/* ----------------------------------------------------------- */
-list_cfgmem: procedure expose jalfile Pic. CfgAddr. cfgmem DevSpec. PicName Core msglevel
-PicNameCaps = toupper(PicName)
-if DevSpec.PicNameCaps.FUSESDEFAULT \= '?' then do          /* specified in devicespecific.json */
-   if length(DevSpec.PicNameCaps.FUSESDEFAULT) \= length(cfgmem) then do
-      call msg 3, 'Fuses in devicespecific.json do not match size of configuration memory'
-      call msg 0, '   <'DevSpec.PicNameCaps.FUSESDEFAULT'>  <-->  <'cfgmem'>'
-      FusesDefault = DevSpec.PicNameCaps.FUSESDEFAULT       /* take derived value */
-   end
-   else do                                                  /* same length */
-      if DevSpec.PicNameCaps.FUSESDEFAULT = cfgmem then
-         call msg 2, 'FusesDefault in devicespecific.json same as derived:' cfgmem
-      FusesDefault = devSpec.PicNameCaps.FUSESDEFAULT      /* take devicespecific value */
-      call msg 1, 'Using default fuse settings from devicespecific.json:' FusesDefault
-   end
-end
-else do                                                     /* not in devicespecific.json */
-   FusesDefault = cfgmem                                    /* take derived value */
-end
-call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
-if CfgAddr.0 = 1 then do                    /* single word/byte only with baseline/midrange ! */
-   call lineout jalfile, 'const word  _FUSE_BASE            = 0x'D2X(CfgAddr.1)
-   call charout jalfile, 'const word  _FUSES                = 0b'
-   do i = 1 to 4
-      call charout jalfile, '_'X2B(substr(FusesDefault,i,1))
-   end
-   call lineout jalfile, ''
-end
-else do                                                     /* multiple fuse words/bytes */
-   if core \= '16' then                                     /* baseline,midrange */
-      call charout jalfile, 'const word  _FUSE_BASE[_FUSES_CT] = { '
-   else                                                     /* 18F */
-      call charout jalfile, 'const dword _FUSE_BASE[_FUSES_CT] = { '
-   do  j = 1 to CfgAddr.0
-      call charout jalfile, '0x'D2X(CfgAddr.j)
-      if j < CfgAddr.0 then do
-         call lineout jalfile, ','
-         call charout jalfile, left('',38)
-      end
-   end
-   call lineout jalfile, ' }'
-
-   if core \= '16' then do                                     /* baseline,midrange */
-      call charout jalfile, 'const word  _FUSES[_FUSES_CT]     = { '
-      do  j = 1 to CfgAddr.0
-         call charout jalfile, '0b'
-         do i = 1 to 4
-            call charout jalfile, '_'X2B(substr(FusesDefault,i+4*(j-1),1,'0'))
-         end
-         if j < CfgAddr.0 then                                 /* not last word */
-            call charout jalfile, ', '
-         else
-            call charout jalfile, ' }'
-         call lineout jalfile, '        -- CONFIG'||j
-         if j < CfgAddr.0 then
-            call charout jalfile, left('',38,' ')
-      end
-   end
-
-   else do                                                     /* 18F */
-      call charout jalfile, 'const byte  _FUSES[_FUSES_CT]     = { '
-      do j = 1 to CfgAddr.0
-         call charout jalfile, '0b'
-         do i = 1 to 2
-            call charout jalfile, '_'X2B(substr(FusesDefault,i+2*(j-1),1,'0'))
-         end
-         if j < CfgAddr.0 then
-            call charout jalfile, ', '
-         else
-            call charout jalfile, ' }'
-         call lineout jalfile, '        -- CONFIG'||(j+1)%2||substr('HL',1+(j//2),1)
-         if j < CfgAddr.0 then
-            call charout jalfile, left('',38,' ')
-      end
-   end
-
-end
-call lineout jalfile, '--'
-return
-
-
-/* ----------------------------------------------------------- */
-/* procedure to generate OSCCAL calibration instructions       */
-/* input:  - nothing                                           */
-/* cores 12 and 14                                             */
-/* notes: Only safe for 12 bits core!                          */
-/* ----------------------------------------------------------- */
-list_osccal: procedure expose jalfile Pic. CfgAddr. DevSpec. PicName,
-                              Core NumBanks CodeSize OSCCALaddr FSRaddr msglevel
-if OSCCALaddr > 0 then do                          /* PIC has OSCCAL register */
-   if Core = 12 then do                            /* 10F2xx, some 12F5xx, 16f5xx */
-      call lineout jalfile, 'var volatile byte  __osccal  at  0x'D2X(OSCCALaddr)
-      if NumBanks > 1 then do
-         call lineout jalfile, 'var volatile byte  __fsr     at  0x'D2X(FSRaddr)
-         call lineout jalfile, 'asm          bcf   __fsr,5                  -- select bank 0'
-         if NumBanks > 2 then
-            call lineout jalfile, 'asm          bcf   __fsr,6                  --   "     "'
-      end
-      call lineout jalfile, 'asm          movwf __osccal                 -- calibrate oscillator'
-      call lineout jalfile, '--'
-   end
-   else if Core = 14 then do                       /* 12F629/675, 16F630/676 */
-      call lineout jalfile, 'var  volatile byte   __osccal  at  0x'D2X(OSCCALaddr)
-      call lineout jalfile, 'asm  page    call   0x'D2X(CodeSize-1)'              -- fetch calibration value'
-      call lineout jalfile, 'asm  bank    movwf  __osccal                   -- calibrate oscillator'
-      call lineout jalfile, '--'
-   end
-end
-return
 
 
 /* ---------------------------------------------------- */
@@ -1175,7 +1043,18 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:DATASPACE>'  /* end of SFRs */
                   call list_status i                              /* compiler privately */
             end
 
-            call multi_module_register_alias i, reg               /* even when there are no  */
+            else if reg = 'TRISE'  &,
+               (PicName = '16lf1904' | PicName = '16lf1906' | PicName = '16lf1907' ) then do
+               /* --- extra --- (for missing TRISE3) */
+               call msg 2, 'Adding TRISE3'
+               call list_bitfield 1, 'TRISE_TRISE3', reg, 3
+               pin = 'pin_E3_direction'
+               call list_alias pin, 'TRISE_TRISE3'
+               call list_pin_direction_alias reg, 'RE3', pin
+               call lineout jalfile, '--'
+            end
+
+            call list_multi_module_register_alias i, reg          /* even when there are no  */
                                                                   /* multiple modules, register */
                                                                   /* aliases may have to be added */
 
@@ -1198,8 +1077,8 @@ return 0
 
 /* ---------------------------------------------------- */
 /* procedure to list SFR subfields                      */
-/* input:  - nothing                                    */
-/* Note: - name is stored but not checked on duplicates */
+/* input:  - index in pic. stem                         */
+/*         - SFR name                                   */
 /* ---------------------------------------------------- */
 list_sfr_subfields: procedure expose Pic. Ram. Name. PinMap. PinANMap. SharedMem.,
                                      PortLat.,
@@ -1218,8 +1097,9 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
       when kwd = '<EDC:SFRMODE' then do                     /* new set of subfields */
          offset = 0                                         /* reset bitfield offset */
          parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' Val1 '"' .
-         if ( PicName = '12f609' | PicName = '12f615' | PicName = '12f617' |,
-              PicName = '12f629' | PicName = '12f635' | PicName = '12f675' |,
+         SFRmode_id = strip(Val1)                           /* remember */
+         if ( PicName = '12f609'  | PicName = '12f615' | PicName = '12f617' |,
+              PicName = '12f629'  | PicName = '12f635' | PicName = '12f675' |,
               PicName = '12hv609' | PicName = '12hv615' ) then do
             if Val1 \= 'DS.0'  then do                      /* only SFRmode 'DS.0' */
                do until word(pic.i,1) = '</EDC:SFRMODE>'
@@ -1239,6 +1119,38 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
       when kwd = '<EDC:ADJUSTPOINT' then do
          parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
          if Val1 \= '' then do
+            if offset = 0           &,
+               SFRmode_id = 'DS.0'  &,
+               (PicName = '18f13k50' | PicName = '18lf13k50' |,        /* *** SPECIAL *** */
+                PicName = '18f14k50' | PicName = '18lf14k50')  then do
+               if reg = 'LATA' then do
+                  call msg 2, 'Adding pin_A0, A1 and A3'
+                  do p = 0 to 3                                /* add pin_A0,A1, A3 */
+                     if p = 2 then                             /* NOT A2! */
+                        iterate
+                     call list_bitfield 1, 'LATA_LATA'p, 'LATA', p
+                     call list_bitfield 1, 'pin_A'p, 'PORTA', p
+                     call list_pin_alias 'PORTA', 'RA'p, 'pin_A'p
+                     call lineout jalfile, '--'
+                     call lineout jalfile, 'procedure' 'pin_A'p"'put"'(bit in x',
+                                                'at LATA :' offset') is'
+                     call lineout jalfile, '   pragma inline'
+                     call lineout jalfile, 'end procedure'
+                     call lineout jalfile, '--'
+                  end
+               end
+               else if reg = 'TRISA' then do
+                  call msg 2, 'Adding pin_A0/A1/A3_direction'
+                  do p = 0 to 3                                /* add pin_A0/A1/A3_direction */
+                     if p = 2 then                             /* NOT A2! */
+                        iterate
+                     call list_bitfield 1, 'TRISA_TRISA'p, 'TRISA', p
+                     call list_alias 'pin_A'p'_direction', 'TRISA_TRISA'p
+                     call list_pin_direction_alias 'TRISA', 'RA'p, 'pin_A'p'_direction'
+                     call lineout jalfile, '--'
+                  end
+               end
+            end
             offset = offset + Val1
          end
       end
@@ -1247,22 +1159,25 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
          parse var Pic.i '<EDC:SFRFIELDDEF' 'EDC:CNAME="' val1 '"' . ,
                           'EDC:MASK="' val3 '"' . 'EDC:NZWIDTH="' val4 '"' .
          if Val1 \= '' then do
+            val1 = strip(val1)
             field = reg'_'val1
+            if right(reg,5) = '_SHAD' & right(val1,5) = '_SHAD' then
+               field = left(field, length(field) - 5)        /* remove trailing '_SHAD' */
             width = strip(val4)
             if left(width,2) = '0X' then
                width = X2D(substr(width,3))
             if width \= 8 then do                            /* skip 8-bit width subfields */
 
-                                                             /* *** interceptions *** */
+                                                             /* *** INTERCEPTIONS *** */
                select
-                  when reg = 'ADCON0' & val1 = 'ADCS' & width = 2  &, /* possibly splitted ADCS bits */
+                  when reg = 'ADCON0' & val1 = 'ADCS' & width = 2  &,
                       (PicName = '16f737'  | PicName = '16f747'  |,
                        PicName = '16f767'  | PicName = '16f777'  |,
                        PicName = '16f818'  | PicName = '16f819'  |,
                        PicName = '16f873a' | PicName = '16f874a' |,
                        PicName = '16f876a' | PicName = '16f877a' |,
                        PicName = '16f88'                         |,
-                       PicName = '18f242'  | PicName = '18f2439' |,
+                       PicName = '18f242'  | PicName = '18f2439' |,   /* splitted ADCS bits */
                        PicName = '18f248'                        |,
                        PicName = '18f252'  | PicName = '18f2539' |,
                        PicName = '18f258'                        |,
@@ -1271,7 +1186,7 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                        PicName = '18f452'  | PicName = '18f4539' |,
                        PicName = '18f458'                        ) then do
                      call list_bitfield width, reg'_ADCS10', reg, offset
-                     if core = '16' then do
+                     if core = '16' then do                 /* ADCON1 comes before ADCON0 */
                         call lineout jalfile, '--'
                         call lineout jalfile, 'var volatile byte   ADCON0_ADCS    -- shadow'
                         call lineout jalfile, 'procedure  ADCON0_ADCS'"'put"'(byte in x) is'
@@ -1281,14 +1196,14 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                         call lineout jalfile, '--'
                      end
                   end
-                  when reg = 'ADCON1'  &  val1 = 'ADCS2'  &,    /* possibly splitted ADCS bits */
+                  when reg = 'ADCON1'  &  val1 = 'ADCS2'  &,
                       (PicName = '16f737'  | PicName = '16f747'  |,
                        PicName = '16f767'  | PicName = '16f777'  |,
                        PicName = '16f818'  | PicName = '16f819'  |,
                        PicName = '16f873a' | PicName = '16f874a' |,
                        PicName = '16f876a' | PicName = '16f877a' |,
                        PicName = '16f88'                         |,
-                       PicName = '18f242'  | PicName = '18f2439' |,
+                       PicName = '18f242'  | PicName = '18f2439' |,   /* splitted ADCS bits */
                        PicName = '18f248'                        |,
                        PicName = '18f252'  | PicName = '18f2539' |,
                        PicName = '18f258'                        |,
@@ -1297,7 +1212,7 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                        PicName = '18f452'  | PicName = '18f4539' |,
                        PicName = '18f458'                        ) then do
                      call list_bitfield width, field, reg, offset
-                     if core = '14' then do
+                     if core = '14' then do                 /* ADCON0 comes before ADCON1 */
                         call lineout jalfile, '--'
                         call lineout jalfile, 'var volatile byte   ADCON0_ADCS    -- shadow'
                         call lineout jalfile, 'procedure  ADCON0_ADCS'"'put"'(byte in x) is'
@@ -1349,18 +1264,28 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                   when reg = 'OPTION_REG' & val1 = 'PS2' then do
                      call list_bitfield 1, reg'_PS', reg, offset
                   end
+                  when width > 1  &,                        /* no multi-bit fields for pins */
+                       (left(reg,4) = 'PORT' | left(reg,4) = 'GPIO'   |,
+                        left(reg,3) = 'LAT'  | left(reg,4) = 'TRIS')  then do
+                     nop
+                  end
+                  when left(reg,3) = 'SSP' &,               /* any SSP  register */
+                       (right(reg,3) = 'ADD' | right(reg,3) = 'BUF' | right(reg,3) = 'MSK') then do
+                     nop                                    /* no subfields wanted */
+                  end
 
                otherwise
 
-                  call list_bitfield width, field, reg, offset
+                  if subfields_wanted(reg) > 0 then         /* subfield wanted */
+                     call list_bitfield width, field, reg, offset
 
                end
 
-                                                            /* *** additions *** */
+                                                            /* *** ADDITIONS *** */
                select
                   when left(reg,5) = 'ADCON'  &,            /* ADCON0/1 */
                        right(field,5) = 'VCFG0' then do     /* enumerated VCFG field */
-                     field = reg'_VFCG'
+                     field = reg'_VCFG'
                      if Name.field = '-' then               /* multi-bit field not declared */
                         call list_bitfield 2, field, reg, offset
                   end
@@ -1404,17 +1329,14 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                      if left(val1,2) = 'T0' then
                         call list_bitfield 1, reg'_TMR0'substr(val1,3), reg, offset
                   end
-                  when left(reg,3) = 'LAT' then do                /* LATx (10F3xx, 12f752) */
-                     PortLetter = substr(reg,4)
+                  when left(reg,3) = 'LAT' & width = 1 then do    /* single pin */
+                     PortLetter = right(reg,1)
                      PinNumber  = right(val1,1)
                      pin = 'pin_'PortLat.PortLetter.offset
                      if PortLat.PortLetter.offset \= 0 then do    /* pin present in PORTx */
                         call list_bitfield 1, pin, 'PORT'PortLetter, offset
                         call list_pin_alias 'PORT'portletter, 'R'PortLat.PortLetter.offset, pin
                         call lineout jalfile, '--'
-                     end
-                     if substr(val1,2,length(val1)-2) = PortLetter  &,        /* port letter */
-                        datatype(PinNumber) = 'NUM'        then do   /* pin number */
                         call lineout jalfile, 'procedure' pin"'put"'(bit in x',
                                                    'at' reg ':' offset') is'
                         call lineout jalfile, '   pragma inline'
@@ -1436,7 +1358,7 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                   when reg = 'PADCFG1'  &  val1 = 'RTSECSEL0' then do
                      call list_bitfield 2, reg'_RTSECSEL', reg, offset
                   end
-                  when left(reg,4) = 'PORT' then do
+                  when left(reg,4) = 'PORT' & width = 1 then do
                      if left(val1,1) = 'R'  &,
                         substr(val1,2,length(val1)-2) = right(reg,1) then do  /* prob. I/O pin */
                         if HasLATReg = 0 then do                     /* PIC without LAT registers */
@@ -1464,13 +1386,12 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                      call list_pin_direction_alias 'TRISA', 'RA'right(val1,1), pin
                      call lineout jalfile, '--'
                   end
-                  when left(reg,4) = 'TRIS'  &,
-                       left(val1,4) = 'TRIS'  then do
+                  when left(reg,4) = 'TRIS' & left(val1,4) = 'TRIS' & width = 1 then do
+                                                                   /* single tris bit */
                      pin = 'pin_'substr(val1,5)'_direction'
                      call list_alias pin, reg'_'val1
-                     if substr(val1,5,1) = right(reg,1) then do
+                     if substr(val1,5,1) = right(reg,1) then
                         call list_pin_direction_alias reg, 'R'substr(val1,5), pin
-                     end
                      call lineout jalfile, '--'
                   end
                otherwise
@@ -1479,7 +1400,8 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
 
             end
 
-            call multi_module_bitfield_alias reg, val1
+            if subfields_wanted(reg) > 0 then
+               call list_multi_module_bitfield_alias reg, val1
 
             Offset = Offset + width
 
@@ -1793,51 +1715,6 @@ end
 return 0
 
 
-/* ---------------------------------------------------- */
-/* procedure to list NMMMRs                             */
-/* input:  - nothing                                    */
-/* Note: - name is stored but not checked on duplicates */
-/* ---------------------------------------------------- */
-list_nmmr: procedure expose Pic. Ram. Name. PinMap. PinANMap. SharedMem.,
-                            Core PicName ADCS_bits jalfile BankSize,
-                            HasLATReg NumBanks PinmapMissCount msglevel
-
-do i = 1 to Pic.0  while word(Pic.i,1) \= '<EDC:NMMRPLACE'  /* start ofNMMR specs */
-   nop
-end
-
-do i = i to Pic.0 while word(pic.i,1) \= '</EDC:NMMRPLACE>'   /* end of NMMRs */
-
-   kwd = word(Pic.i,1)
-
-   select
-
-      when kwd = '<EDC:SFRDEF' then do
-         parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' Val1 '"' .
-         if Val1 \= '' then do
-            reg = strip(Val1)
-            Name.reg = reg                                        /* add to collection of names */
-            field = 'byte  '
-            addr = 0
-            call lineout jalfile, '-- ------------------------------------------------'
-
-            call list_variable field, reg, addr
-
-            call list_sfr_subfields i, reg                        /* SFR bit fields */
-
-         end
-      end
-
-   otherwise
-      nop
-
-   end
-
-end
-return 0
-
-
-
 /* ------------------------------------------------------------- */
 /* procedure to add pin alias declarations                       */
 /* input:  - register name                                       */
@@ -1857,7 +1734,7 @@ if PinMap.PicNameCaps.PinName.0 = '?' then do
    return 0                                                 /* no alias */
 end
 if PinMap.PicNameCaps.PinName.0 > 0 then do
-   do k = 1 to PinMap.PicNameCaps.PinName.0                    /* all aliases */
+   do k = 1 to PinMap.PicNameCaps.PinName.0                 /* all aliases */
       pinalias = 'pin_'PinMap.PicNameCaps.PinName.k
       call list_alias pinalias, Pin
       if pinalias = 'pin_SDA1' |,                           /* 1st I2C module */
@@ -1867,7 +1744,7 @@ if PinMap.PicNameCaps.PinName.0 > 0 then do
          pinalias = 'pin_SCL1' |,
          pinalias = 'pin_SS1'  |,                           /* 1st SPI module */
          pinalias = 'pin_TX1'  |,                           /* TX pin first USART */
-         pinalias = 'pin_RX1' then                          /* RX                 */
+         pinalias = 'pin_RX1' then                          /* RX  "    "     "   */
          call list_alias strip(pinalias,'T',1), Pin
    end
 end
@@ -1926,7 +1803,7 @@ return k
 /*         - bitfields are expanded as for 'real' registers           */
 /* All cores                                                          */
 /* ------------------------------------------------------------------ */
-multi_module_register_alias: procedure expose Pic. Name. Core PicName jalfile msglevel
+list_multi_module_register_alias: procedure expose Pic. Name. Core PicName jalfile msglevel
 
 parse upper arg i, reg
 
@@ -1997,10 +1874,83 @@ end
 if alias \= '' then do                                      /* alias to be declared */
    call lineout jalfile, '--'                               /* separator line */
    call list_alias alias, reg
-   call list_sfr_subfield_alias i, alias, reg               /* declare subfield aliases */
+   if subfields_wanted(reg) > 0 then                        /* subfields desired */
+      call list_sfr_subfield_alias i, alias, reg            /* declare subfield aliases */
 end
 
 return
+
+
+/* ----------------------------------------------------- */
+/* Adding aliases of register bitfields related to       */
+/* multiple similar modules.                             */
+/* Used for registers which happen to contain bitfields  */
+/* for multiple similar modules.                         */
+/* For - PIE, PIR and IPR registers                      */
+/*       USART and SSP interrupt bits                    */
+/* input:  - register                                    */
+/*         - bitfield                                    */
+/* returns: nothing                                      */
+/* notes:  - add unqualified alias for module 1          */
+/*         - add (modified) alias for modules 2..9       */
+/* All cores                                             */
+/* ----------------------------------------------------- */
+list_multi_module_bitfield_alias: procedure expose Name. Core jalfile msglevel
+
+parse upper arg reg, bitfield
+
+j = 0                                                    /* default: no multi-module */
+
+if left(reg,3) = 'PIE'  |,                               /* Interrupt register */
+   left(reg,3) = 'PIR'  |,
+   left(reg,3) = 'IPR'  then do
+   if left(bitfield,2) = 'TX'  |,                        /* USART related bitfields */
+      left(bitfield,2) = 'RC'  then do
+      j = substr(bitfield,3,1)                           /* possibly module number */
+      if datatype(j) = 'NUM' then                        /* embedded number */
+         strippedfield = delstr(bitfield,3,1)
+      else do
+         j = right(bitfield,1)                           /* possibly module number */
+         if datatype(j) = 'NUM' then                     /* numeric suffix */
+            strippedfield = left(bitfield,length(bitfield)-1)
+         else                                            /* no module number found */
+            j = 0                                        /* no alias required */
+      end
+   end
+   else if left(bitfield,3) = 'SSP' then do              /* SSP related bitfields */
+      j = substr(bitfield,4,1)                           /* extract module number */
+      if datatype(j) = 'NUM' & j = 1 then                /* first module */
+         strippedfield = delstr(bitfield,4,1)            /* remove the number */
+      else                                               /* no module number found */
+         j = 0                                           /* no alias required */
+   end
+end
+
+if j = 0 then                                            /* no module number found */
+   return                                                /* no alias required */
+if j = 1 then                                            /* first module */
+   j = ''                                                /* no suffix */
+alias = reg'_'strippedfield||j                           /* alias name (with suffix) */
+call list_alias alias, reg'_'bitfield                    /* declare alias subfields */
+return
+
+
+/* --------------------------------------------------------------------- */
+/* Procedure to determine if subfields of a specific register are wanted */
+/* input:  - register name                                               */
+/* returns: 0 - no expansion                                             */
+/*          1 - expansion desired                                        */
+/* --------------------------------------------------------------------- */
+subfields_wanted: procedure expose PicName
+parse upper arg reg .
+
+if  left(reg,3) = 'SSP' &,                                  /* SSPx  register */
+     (right(reg,3) = 'ADD' | right(reg,3) = 'BUF' | right(reg,3) = 'MSK') then do
+   return 0                                                 /* subfields not wanted */
+end
+
+return 1                                                    /* subfields wanted */
+end
 
 
 /* ------------------------------------------------------- */
@@ -2073,60 +2023,6 @@ end
 if duplicate_name(alias,reg) = 0 then do
    call lineout jalfile, left('alias',19) left(alias,max(25,length(alias))) 'is' original
 end
-return
-
-
-/* ----------------------------------------------------- */
-/* Adding aliases of register bitfields related to       */
-/* multiple similar modules.                             */
-/* Used for registers which happen to contain bitfields  */
-/* for multiple similar modules.                         */
-/* For - PIE, PIR and IPR registers                      */
-/*       USART and SSP interrupt bits                    */
-/* input:  - register                                    */
-/*         - bitfield                                    */
-/* returns: nothing                                      */
-/* notes:  - add unqualified alias for module 1          */
-/*         - add (modified) alias for modules 2..9       */
-/* All cores                                             */
-/* ----------------------------------------------------- */
-multi_module_bitfield_alias: procedure expose Name. Core jalfile msglevel
-
-parse upper arg reg, bitfield
-
-j = 0                                                    /* default: no multi-module */
-
-if left(reg,3) = 'PIE'  |,                               /* Interrupt register */
-   left(reg,3) = 'PIR'  |,
-   left(reg,3) = 'IPR'  then do
-   if left(bitfield,2) = 'TX'  |,                        /* USART related bitfields */
-      left(bitfield,2) = 'RC'  then do
-      j = substr(bitfield,3,1)                           /* possibly module number */
-      if datatype(j) = 'NUM' then                        /* embedded number */
-         strippedfield = delstr(bitfield,3,1)
-      else do
-         j = right(bitfield,1)                           /* possibly module number */
-         if datatype(j) = 'NUM' then                     /* numeric suffix */
-            strippedfield = left(bitfield,length(bitfield)-1)
-         else                                            /* no module number found */
-            j = 0                                        /* no alias required */
-      end
-   end
-   else if left(bitfield,3) = 'SSP' then do              /* SSP related bitfields */
-      j = substr(bitfield,4,1)                           /* extract module number */
-      if datatype(j) = 'NUM' & j = 1 then                /* first module */
-         strippedfield = delstr(bitfield,4,1)            /* remove the number */
-      else                                               /* no module number found */
-         j = 0                                           /* no alias required */
-   end
-end
-
-if j = 0 then                                            /* no module number found */
-   return                                                /* no alias required */
-if j = 1 then                                            /* first module */
-   j = ''                                                /* no suffix */
-alias = reg'_'strippedfield||j                           /* alias name (with suffix) */
-call list_alias alias, reg'_'bitfield                    /* declare alias subfields */
 return
 
 
@@ -2211,12 +2107,11 @@ return 0
 
 
 /* -------------------------------------------------- */
-/* procedure to list non memory mapped registers      */
+/* Procedure to list non memory mapped registers      */
 /* of 12-bit core as pseudo variables.                */
 /* Only some selected registers are handled:          */
-/* TRISxx and OPTIONxx                                */
+/* TRISxx and OPTIONxx (and GPIO as TRISIO)           */
 /* input:  - nothing                                  */
-/* Note: name is stored but not checked on duplicates */
 /* 12-bit core                                        */
 /* -------------------------------------------------- */
 list_nmmr12: procedure expose Pic. Ram. Name. PinMap.  SharedMem. PicName,
@@ -2287,8 +2182,49 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:NMMRPLACE>'   /* end of NMMRs */
             call list_nmmr_sub12_tris i, reg                   /* individual TRIS bits */
          end
 
-         else if reg = 'OPTION_REG' | reg = OPTION2 then do    /* option */
-            Name.reg = reg                                      /* add to collection of names */
+         if left(reg,4) = 'GPIO' then do                       /* *** SPECIAL for 12F529Txxx */
+            reg = 'TRISIO'                                     /* replace by TRISIO */
+            Name.reg = reg                                     /* add to collection of names */
+            call msg 2, 'NMMR GPIO handled as TRISIO (TRISA)'
+            call lineout jalfile, '-- ------------------------------------------------'
+            shadow = '_TRISA_shadow'
+            if sharedmem.0 < 1 then do
+               call msg 1, 'No (more) shared memory for' shadow
+               call lineout jalfile, 'var volatile byte  ' left(shadow,25) '= 0b1111_1111    -- all input'
+            end
+            else do
+               shared_addr = sharedmem.2
+               call lineout jalfile, 'var volatile byte  ' left(shadow,25) 'at 0x'D2X(shared_addr),
+                                      '= 0b1111_1111    -- all input'
+               sharedmem.2 = sharedmem.2 - 1
+               sharedmem.0 = sharedmem.0 - 1
+            end
+            call lineout jalfile, '--'
+            call lineout jalfile, "procedure PORTA_direction'put(byte in x" 'at' shadow') is'
+            call lineout jalfile, '   pragma inline'
+            call lineout jalfile, '   asm movf _TRISA_shadow,W'
+            call lineout jalfile, '   asm tris 6'
+            call lineout jalfile, 'end procedure'
+            call lineout jalfile, '--'
+            half = 'PORTA_low_direction'
+            call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+            call lineout jalfile, '   'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
+            call lineout jalfile, '   asm movf _TRISA_shadow,W'
+            call lineout jalfile, '   asm tris 6'
+            call lineout jalfile, 'end procedure'
+            call lineout jalfile, '--'
+            half = 'PORTA_high_direction'
+            call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+            call lineout jalfile, '   'shadow '= ('shadow '& 0x0F) | (x << 4)'
+            call lineout jalfile, '   asm movf _TRISA_shadow,W'
+            call lineout jalfile, '   asm tris 6'
+            call lineout jalfile, 'end procedure'
+            call lineout jalfile, '--'
+            call list_nmmr_sub12_tris i, reg                /* individual TRIS bits */
+         end
+
+         else if reg = 'OPTION_REG' | reg = OPTION2 then do  /* option */
+            Name.reg = reg                                  /* add to collection of names */
             call lineout jalfile, '-- ------------------------------------------------'
             shadow = '_'reg'_shadow'
             if sharedmem.0 < 1 then do
@@ -2468,128 +2404,330 @@ end
 return 0
 
 
-/* ---------------------------------------------------------------- */
-/* procedure to list 'shared memory' SFRs of the midrange (NMMRs)   */
-/* (in this case 'shared' is in the datasheet meaning:              */
-/*  using the same memory address!)                                 */
-/* input:  - nothing                                                */
-/* output: - pseudo variables are declared                          */
-/*         - subfields are expanded (separate procedure)            */
-/* 14-bit core                                                      */
-/* ---------------------------------------------------------------- */
-list_nmmr14: procedure expose Pic. Ram. Name. jalfile BankSize NumBanks msglevel
-do i = 1 to Pic.0
-   if word(Pic.i,1) \= 'NMMR' then
-      iterate
-   parse var Pic.i 'NMMR' '(KEY=' val1 'MAPADDR=0X' val2 ' ADDR=0X' val0 'SIZE=' val3 .
-   if val1 \= '' then do
-      reg = strip(val1)                                     /* register name */
-      Name.reg = reg                                        /* remember */
-      subst  = '_'reg                                       /* substitute name */
-      addr = strip(val2)                                    /* (mapped) address */
-      size = strip(val3)                                    /* # bytes */
-      if reg = 'SSPMSK' then do
-         call lineout jalfile, '-- ------------------------------------------------'
-         call lineout jalfile, 'var volatile byte  ' left(subst,25) 'at 0x'addr
-         call lineout jalfile, '--'
-         call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
-         call lineout jalfile, '   var byte _sspcon_saved = SSPCON'
-         call lineout jalfile, '   SSPCON_SSPM = 0b1001'
-         call lineout jalfile, '   'subst '= x'
-         call lineout jalfile, '   SSPCON = _sspcon_saved'
-         call lineout jalfile, 'end procedure'
-         call lineout jalfile, 'function' reg"'get"'() return byte is'
-         call lineout jalfile, '   var  byte  x'
-         call lineout jalfile, '   var byte _sspcon_saved = SSPCON'
-         call lineout jalfile, '   SSPCON_SSPM = 0b1001'
-         call lineout jalfile, '   x =' subst
-         call lineout jalfile, '   SSPCON = _sspcon_saved'
-         call lineout jalfile, '   return  x'
-         call lineout jalfile, 'end function'
-         call lineout jalfile, '--'
+/* --------------------------------------------------- */
+/* procedure to create port shadowing functions        */
+/* for full byte, lower- and upper-nibbles             */
+/* For 12- and 14-bit core                             */
+/* input:  - Port register                             */
+/* shared memory is allocated from high to low address */
+/* --------------------------------------------------- */
+list_port1x_shadow: procedure expose jalfile sharedmem. msglevel
+parse upper arg reg .
+shadow = '_PORT'substr(reg,5)'_shadow'
+call lineout jalfile, '--'
+call lineout jalfile, 'var          byte  ' left('PORT'substr(reg,5),25) 'at _PORT'substr(reg,5)
+if sharedmem.0 < 1 then do
+   call msg 1, 'No (more) shared memory for' shadow
+   call lineout jalfile, 'var volatile byte  ' left(shadow,25)
+end
+else do
+   shared_addr = sharedmem.2
+   call lineout jalfile, 'var volatile byte  ' left(shadow,25) 'at 0x'D2X(shared_addr)
+   sharedmem.2 = sharedmem.2 - 1
+   sharedmem.0 = sharedmem.0 - 1
+end
+call lineout jalfile, '--'
+call lineout jalfile, 'procedure' reg"'put"'(byte in x at' shadow') is'
+call lineout jalfile, '   pragma inline'
+call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
+call lineout jalfile, 'end procedure'
+call lineout jalfile, '--'
+half = 'PORT'substr(reg,5)'_low'
+call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
+call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
+call lineout jalfile, 'end procedure'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   return ('reg '& 0x0F)'
+call lineout jalfile, 'end function'
+call lineout jalfile, '--'
+half = 'PORT'substr(reg,5)'_high'
+call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   'shadow '= ('shadow '& 0x0F) | (x << 4)'
+call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
+call lineout jalfile, 'end procedure'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   return ('reg '>> 4)'
+call lineout jalfile, 'end function'
+call lineout jalfile, '--'
+return
+
+
+/* ------------------------------------------------ */
+/* procedure to force use of LATx with 16-bits core */
+/* for full byte, lower- and upper-nibbles          */
+/* input:  - LATx register                          */
+/* ------------------------------------------------ */
+list_port16_shadow: procedure expose jalfile
+parse upper arg lat .
+port = 'PORT'substr(lat,4)                                  /* corresponding port */
+call lineout jalfile, '--'
+call lineout jalfile, 'procedure' port"'put"'(byte in x at' lat') is'
+call lineout jalfile, '   pragma inline'
+call lineout jalfile, 'end procedure'
+call lineout jalfile, '--'
+half = 'PORT'substr(lat,4)'_low'
+call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   'lat '= ('lat '& 0xF0) | (x & 0x0F)'
+call lineout jalfile, 'end procedure'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   return ('port '& 0x0F)'
+call lineout jalfile, 'end function'
+call lineout jalfile, '--'
+half = 'PORT'substr(lat,4)'_high'
+call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   'lat '= ('lat '& 0x0F) | (x << 4)'
+call lineout jalfile, 'end procedure'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   return ('port '>> 4)'
+call lineout jalfile, 'end function'
+call lineout jalfile, '--'
+return
+
+
+/* ---------------------------------------------- */
+/* procedure to create TRIS functions             */
+/* for lower- and upper-nibbles only              */
+/* input:  - TRIS register                        */
+/* ---------------------------------------------- */
+list_tris_nibbles: procedure expose jalfile
+parse upper arg reg .
+call lineout jalfile, '--'
+half = 'PORT'substr(reg,5)'_low_direction'
+call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   'reg '= ('reg '& 0xF0) | (x & 0x0F)'
+call lineout jalfile, 'end procedure'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   return ('reg '& 0x0F)'
+call lineout jalfile, 'end function'
+call lineout jalfile, '--'
+half = 'PORT'substr(reg,5)'_high_direction'
+call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
+call lineout jalfile, '   'reg '= ('reg '& 0x0F) | (x << 4)'
+call lineout jalfile, 'end procedure'
+call lineout jalfile, 'function' half"'get()" 'return byte is'
+call lineout jalfile, '   return ('reg '>> 4)'
+call lineout jalfile, 'end function'
+call lineout jalfile, '--'
+return
+
+
+/* ----------------------------------------------------- */
+/* procedure to list SFR subfields                       */
+/* input: - start index in pic.                          */
+/* Note:  - name is stored but not checked on duplicates */
+/* ----------------------------------------------------- */
+list_status: procedure expose Pic. Name. Core PicName jalfile msglevel
+parse arg i .
+
+offset = 0
+
+do i = i while word(pic.i,1) \= '</EDC:SFRDEF>'
+
+   kwd = word(Pic.i,1)
+
+   select
+
+      when kwd = '<EDC:SFRMODE' then do
+         offset = 0                                         /* bitfield offset */
       end
 
-/*    call list_nmmr_sub14 i, reg     */                    /* declare subfields */
+      when kwd = '<EDC:ADJUSTPOINT' then do
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
+         if Val1 \= '' then
+            offset = offset + Val1
+      end
 
+      when kwd = '<EDC:SFRFIELDDEF' then do
+         parse var Pic.i '<EDC:SFRFIELDDEF' 'EDC:CNAME="' val1 '"' . ,
+                          'EDC:MASK="' val3 '"' . 'EDC:NZWIDTH="' val4 '"' .
+         if val1 \= '' then do
+            val1 = tolower(strip(val1))
+            val4 = strip(val4)
+            if left(val4,2) = '0X' then
+               val4 = X2D(substr(val4,3))
+            if val4 = 1 then do
+               if val1 = 'nto' then
+                  call lineout jalfile, 'const        byte  ' left('_not_to',25) '= ' offset
+               else if val1 = 'npd' then
+                  call lineout jalfile, 'const        byte  ' left('_not_pd',25) '= ' offset
+               else
+                  call lineout jalfile, 'const        byte  ' left('_'val1,25) '= ' offset
+               offset = offset + 1
+            end
+            else
+               offset = offset + val4                       /* skip multibit fields */
+         end
+      end
+
+   otherwise
+      nop
    end
+
 end
+
+if Core = '16' then do
+   call lineout jalfile, 'const        byte  ' left('_banked',25) '=  1'
+   call lineout jalfile, 'const        byte  ' left('_access',25) '=  0'
+end
+
 return 0
 
 
-/* ------------------------------------------------------------ */
-/* procedure to list 'shared memory' SFRs of the 18Fs (NMMRs)   */
-/* (in this case 'shared' is in the datasheet meaning:          */
-/*  using the same memory address!)                             */
-/* input:  - nothing                                            */
-/* output: - pseudo variables are declared                      */
-/*         - subfields are expanded (separate procedure)        */
-/* 16-bit core                                                  */
-/* ------------------------------------------------------------ */
-list_nmmr16: procedure expose Pic. Ram. Name. jalfile BankSize NumBanks msglevel,
-                              Core
-do i = 1 to Pic.0
-   if word(Pic.i,1) \= 'NMMR' then
-      iterate
-   if pos('_INTERNAL',Pic.i) > 0  |,                        /* skip TMRx_internal */
-      pos('_PRESCALE',Pic.i) > 0 then                       /* TMRx_prescale */
-      iterate
-   parse var Pic.i 'NMMR' '(KEY=' val1 'MAPADDR=0X' val2 ' ADDR=0X' val0 'SIZE=' val3 .
-   if val1 \= '' then do
-      reg = strip(val1)                                     /* register name */
-      Name.reg = reg                                        /* remember */
-      subst  = '_'reg                                       /* substitute name */
-      addr = strip(val2)                                    /* (mapped) address */
-      size = strip(val3)                                    /* # bytes */
-      if reg = 'SSP1MSK' | reg = 'SSP2MSK' then do
-         index = substr(reg,4,1)                            /* SSP module number */
-         call lineout jalfile, '-- ------------------------------------------------'
-         call lineout jalfile, 'var volatile byte  ' left(subst,25) 'at 0x'addr
-         call lineout jalfile, '--'
-         call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
-         call lineout jalfile, '   var byte _ssp'index'con1_saved = SSP'index'CON1'
-         call lineout jalfile, '   SSP'index'CON1_SSPM = 0b1001'
-         call lineout jalfile, '   'subst '= x'
-         call lineout jalfile, '   SSP'index'CON1 = _ssp'index'con1_saved'
-         call lineout jalfile, 'end procedure'
-         call lineout jalfile, 'function' reg"'get"'() return byte is'
-         call lineout jalfile, '   var  byte  x'
-         call lineout jalfile, '   var  byte  _ssp'index'con1_saved = SSP'index'CON1'
-         call lineout jalfile, '   SSP'index'CON1_SSPM = 0b1001'
-         call lineout jalfile, '   x =' subst
-         call lineout jalfile, '   SSP'index'CON1 = _ssp'index'con1_saved'
-         call lineout jalfile, '   return  x'
-         call lineout jalfile, 'end function'
-         call lineout jalfile, '--'
-         if reg = SSP1MSK then
-            call list_alias  'SSPMSK', reg
+/* -------------------------------------------------------- */
+/* procedure to assign a JalV2 unique ID in chipdef_jallib  */
+/* input:  - nothing                                        */
+/* -------------------------------------------------------- */
+list_devid_chipdef: procedure expose Pic. jalfile chipdef Core PicName msglevel DevID xChipDef.
+PicNameCaps = toupper(PicName)                           /* name in upper case */
+if DevId \== '0000' then                                    /* DevID not missing */
+   xDevId = left(Core,2)'_'DevID
+else do                                                     /* DevID unknown */
+   DevID = right(PicNameCaps,3)                             /* rightmost 3 chars of name */
+   if datatype(Devid,'X') = 0 then do                       /* not all hex digits */
+      DevID = right(right(PicNameCaps,2),3,'F')             /* 'F' + rightmost 2 chars */
+   end
+   xDevId = Core'_F'DevID
+end
+if xChipDef.xDevId = '?' then do                            /* if not yet assigned */
+   xChipDef.xDevId = PicName                                /* remember */
+   call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'xDevId
+end
+else do
+   call msg 1, 'DevID ('xDevId') in use by' xChipDef.xDevid
+   do i = 1                                                 /* index in array */
+      tDevId = xDevId||substr('abcdef0123456789',i,1)       /* temp value */
+      if xChipDef.tDevId = '?' then do                      /* if not yet assigned */
+         xDevId = tDevId                                    /* definitve value */
+         xChipDef.xDevId = PicName                          /* remember alternate */
+         call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'xDevId
+         call msg 1, 'Alternate devid (0x'xDevid') assigned'
+         leave                                              /* suffix assigned */
       end
-      else if left(reg,6) = 'PMDOUT' then do
-         call lineout jalfile, '-- ------------------------------------------------'
-         call list_variable 'byte', reg, X2D(addr)               /* normal SFR! */
-      end
-      else do
-         call lineout jalfile, '-- ------------------------------------------------'
-         call lineout jalfile, 'var volatile byte  ' left(subst,25) 'at 0x'addr
-         call lineout jalfile, '--'
-         call lineout jalfile, 'procedure' reg"'put"'(byte in x) is'
-         call lineout jalfile, '   WDTCON_ADSHR = TRUE'
-         call lineout jalfile, '   'subst '= x'
-         call lineout jalfile, '   WDTCON_ADSHR = FALSE'
-         call lineout jalfile, 'end procedure'
-         call lineout jalfile, 'function' reg"'get"'() return byte is'
-         call lineout jalfile, '   var  byte  x'
-         call lineout jalfile, '   WDTCON_ADSHR = TRUE'
-         call lineout jalfile, '   x =' subst
-         call lineout jalfile, '   WDTCON_ADSHR = FALSE'
-         call lineout jalfile, '   return  x'
-         call lineout jalfile, 'end function'
-         call lineout jalfile, '--'
-         call list_nmmr_sub16 i, reg                        /* declare subfields */
-      end
-
+      else
+         call msg 2, 'DevID ('tDevId') in use by' xChipDef.tDevid
+   end
+   if i > 16 then do
+      call msg 3, 'Not enough suffixes for identical devid, terminated!'
+      exit 3
    end
 end
-return 0
+return
+
+
+/* ----------------------------------------------------------- */
+/* procedure to list Config memory layout and default settings */
+/* input:  - nothing                                           */
+/* All cores                                                   */
+/* ----------------------------------------------------------- */
+list_cfgmem: procedure expose jalfile Pic. CfgAddr. cfgmem DevSpec. PicName Core msglevel
+PicNameCaps = toupper(PicName)
+if DevSpec.PicNameCaps.FUSESDEFAULT \= '?' then do          /* specified in devicespecific.json */
+   if length(DevSpec.PicNameCaps.FUSESDEFAULT) \= length(cfgmem) then do
+      call msg 3, 'Fuses in devicespecific.json do not match size of configuration memory'
+      call msg 0, '   <'DevSpec.PicNameCaps.FUSESDEFAULT'>  <-->  <'cfgmem'>'
+      FusesDefault = DevSpec.PicNameCaps.FUSESDEFAULT       /* take derived value */
+   end
+   else do                                                  /* same length */
+      if DevSpec.PicNameCaps.FUSESDEFAULT = cfgmem then
+         call msg 2, 'FusesDefault in devicespecific.json same as derived:' cfgmem
+      FusesDefault = devSpec.PicNameCaps.FUSESDEFAULT      /* take devicespecific value */
+      call msg 1, 'Using default fuse settings from devicespecific.json:' FusesDefault
+   end
+end
+else do                                                     /* not in devicespecific.json */
+   FusesDefault = cfgmem                                    /* take derived value */
+end
+call lineout jalfile, 'const word  _FUSES_CT             =' CfgAddr.0
+if CfgAddr.0 = 1 then do                    /* single word/byte only with baseline/midrange ! */
+   call lineout jalfile, 'const word  _FUSE_BASE            = 0x'D2X(CfgAddr.1)
+   call charout jalfile, 'const word  _FUSES                = 0b'
+   do i = 1 to 4
+      call charout jalfile, '_'X2B(substr(FusesDefault,i,1))
+   end
+   call lineout jalfile, ''
+end
+else do                                                     /* multiple fuse words/bytes */
+   if core \= '16' then                                     /* baseline,midrange */
+      call charout jalfile, 'const word  _FUSE_BASE[_FUSES_CT] = { '
+   else                                                     /* 18F */
+      call charout jalfile, 'const dword _FUSE_BASE[_FUSES_CT] = { '
+   do  j = 1 to CfgAddr.0
+      call charout jalfile, '0x'D2X(CfgAddr.j)
+      if j < CfgAddr.0 then do
+         call lineout jalfile, ','
+         call charout jalfile, left('',38)
+      end
+   end
+   call lineout jalfile, ' }'
+
+   if core \= '16' then do                                     /* baseline,midrange */
+      call charout jalfile, 'const word  _FUSES[_FUSES_CT]     = { '
+      do  j = 1 to CfgAddr.0
+         call charout jalfile, '0b'
+         do i = 1 to 4
+            call charout jalfile, '_'X2B(substr(FusesDefault,i+4*(j-1),1,'0'))
+         end
+         if j < CfgAddr.0 then                                 /* not last word */
+            call charout jalfile, ', '
+         else
+            call charout jalfile, ' }'
+         call lineout jalfile, '        -- CONFIG'||j
+         if j < CfgAddr.0 then
+            call charout jalfile, left('',38,' ')
+      end
+   end
+
+   else do                                                     /* 18F */
+      call charout jalfile, 'const byte  _FUSES[_FUSES_CT]     = { '
+      do j = 1 to CfgAddr.0
+         call charout jalfile, '0b'
+         do i = 1 to 2
+            call charout jalfile, '_'X2B(substr(FusesDefault,i+2*(j-1),1,'0'))
+         end
+         if j < CfgAddr.0 then
+            call charout jalfile, ', '
+         else
+            call charout jalfile, ' }'
+         call lineout jalfile, '        -- CONFIG'||(j+1)%2||substr('HL',1+(j//2),1)
+         if j < CfgAddr.0 then
+            call charout jalfile, left('',38,' ')
+      end
+   end
+
+end
+call lineout jalfile, '--'
+return
+
+
+/* ----------------------------------------------------------- */
+/* procedure to generate OSCCAL calibration instructions       */
+/* input:  - nothing                                           */
+/* cores 12 and 14                                             */
+/* notes: Only safe for 12 bits core!                          */
+/* ----------------------------------------------------------- */
+list_osccal: procedure expose jalfile Pic. CfgAddr. DevSpec. PicName,
+                              Core NumBanks CodeSize OSCCALaddr FSRaddr msglevel
+if OSCCALaddr > 0 then do                          /* PIC has OSCCAL register */
+   if Core = 12 then do                            /* 10F2xx, some 12F5xx, 16f5xx */
+      call lineout jalfile, 'var volatile byte  __osccal  at  0x'D2X(OSCCALaddr)
+      if NumBanks > 1 then do
+         call lineout jalfile, 'var volatile byte  __fsr     at  0x'D2X(FSRaddr)
+         call lineout jalfile, 'asm          bcf   __fsr,5                  -- select bank 0'
+         if NumBanks > 2 then
+            call lineout jalfile, 'asm          bcf   __fsr,6                  --   "     "'
+      end
+      call lineout jalfile, 'asm          movwf __osccal                 -- calibrate oscillator'
+      call lineout jalfile, '--'
+   end
+   else if Core = 14 then do                       /* 12F629/675, 16F630/676 */
+      call lineout jalfile, 'var  volatile byte   __osccal  at  0x'D2X(OSCCALaddr)
+      call lineout jalfile, 'asm  page    call   0x'D2X(CodeSize-1)'              -- fetch calibration value'
+      call lineout jalfile, 'asm  bank    movwf  __osccal                   -- calibrate oscillator'
+      call lineout jalfile, '--'
+   end
+end
+return
 
 
 /* ----------------------------------------------- */
@@ -2825,176 +2963,6 @@ end
 return ansx
 
 
-/* --------------------------------------------------- */
-/* procedure to create port shadowing functions        */
-/* for full byte, lower- and upper-nibbles             */
-/* For 12- and 14-bit core                             */
-/* input:  - Port register                             */
-/* shared memory is allocated from high to low address */
-/* --------------------------------------------------- */
-list_port1x_shadow: procedure expose jalfile sharedmem. msglevel
-parse upper arg reg .
-shadow = '_PORT'substr(reg,5)'_shadow'
-call lineout jalfile, '--'
-call lineout jalfile, 'var          byte  ' left('PORT'substr(reg,5),25) 'at _PORT'substr(reg,5)
-if sharedmem.0 < 1 then do
-   call msg 1, 'No (more) shared memory for' shadow
-   call lineout jalfile, 'var volatile byte  ' left(shadow,25)
-end
-else do
-   shared_addr = sharedmem.2
-   call lineout jalfile, 'var volatile byte  ' left(shadow,25) 'at 0x'D2X(shared_addr)
-   sharedmem.2 = sharedmem.2 - 1
-   sharedmem.0 = sharedmem.0 - 1
-end
-call lineout jalfile, '--'
-call lineout jalfile, 'procedure' reg"'put"'(byte in x at' shadow') is'
-call lineout jalfile, '   pragma inline'
-call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
-call lineout jalfile, 'end procedure'
-call lineout jalfile, '--'
-half = 'PORT'substr(reg,5)'_low'
-call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '   'shadow '= ('shadow '& 0xF0) | (x & 0x0F)'
-call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
-call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '   return ('reg '& 0x0F)'
-call lineout jalfile, 'end function'
-call lineout jalfile, '--'
-half = 'PORT'substr(reg,5)'_high'
-call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '   'shadow '= ('shadow '& 0x0F) | (x << 4)'
-call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
-call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '   return ('reg '>> 4)'
-call lineout jalfile, 'end function'
-call lineout jalfile, '--'
-return
-
-
-/* ------------------------------------------------ */
-/* procedure to force use of LATx with 16-bits core */
-/* for full byte, lower- and upper-nibbles          */
-/* input:  - LATx register                          */
-/* ------------------------------------------------ */
-list_port16_shadow: procedure expose jalfile
-parse upper arg lat .
-port = 'PORT'substr(lat,4)                                  /* corresponding port */
-call lineout jalfile, '--'
-call lineout jalfile, 'procedure' port"'put"'(byte in x at' lat') is'
-call lineout jalfile, '   pragma inline'
-call lineout jalfile, 'end procedure'
-call lineout jalfile, '--'
-half = 'PORT'substr(lat,4)'_low'
-call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '   'lat '= ('lat '& 0xF0) | (x & 0x0F)'
-call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '   return ('port '& 0x0F)'
-call lineout jalfile, 'end function'
-call lineout jalfile, '--'
-half = 'PORT'substr(lat,4)'_high'
-call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '   'lat '= ('lat '& 0x0F) | (x << 4)'
-call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '   return ('port '>> 4)'
-call lineout jalfile, 'end function'
-call lineout jalfile, '--'
-return
-
-
-/* ---------------------------------------------- */
-/* procedure to create TRIS functions             */
-/* for lower- and upper-nibbles only              */
-/* input:  - TRIS register                        */
-/* ---------------------------------------------- */
-list_tris_nibbles: procedure expose jalfile
-parse upper arg reg .
-call lineout jalfile, '--'
-half = 'PORT'substr(reg,5)'_low_direction'
-call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '   'reg '= ('reg '& 0xF0) | (x & 0x0F)'
-call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '   return ('reg '& 0x0F)'
-call lineout jalfile, 'end function'
-call lineout jalfile, '--'
-half = 'PORT'substr(reg,5)'_high_direction'
-call lineout jalfile, 'procedure' half"'put"'(byte in x) is'
-call lineout jalfile, '   'reg '= ('reg '& 0x0F) | (x << 4)'
-call lineout jalfile, 'end procedure'
-call lineout jalfile, 'function' half"'get()" 'return byte is'
-call lineout jalfile, '   return ('reg '>> 4)'
-call lineout jalfile, 'end function'
-call lineout jalfile, '--'
-return
-
-
-/* ----------------------------------------------------- */
-/* procedure to list SFR subfields                       */
-/* input: - start index in pic.                          */
-/* Note:  - name is stored but not checked on duplicates */
-/* ----------------------------------------------------- */
-list_status: procedure expose Pic. Name. Core PicName jalfile msglevel
-parse arg i .
-
-offset = 0
-
-do i = i while word(pic.i,1) \= '</EDC:SFRDEF>'
-
-   kwd = word(Pic.i,1)
-
-   select
-
-      when kwd = '<EDC:SFRMODE' then do
-         offset = 0                                         /* bitfield offset */
-      end
-
-      when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then
-            offset = offset + Val1
-      end
-
-      when kwd = '<EDC:SFRFIELDDEF' then do
-         parse var Pic.i '<EDC:SFRFIELDDEF' 'EDC:CNAME="' val1 '"' . ,
-                          'EDC:MASK="' val3 '"' . 'EDC:NZWIDTH="' val4 '"' .
-         if val1 \= '' then do
-            val1 = tolower(strip(val1))
-            val4 = strip(val4)
-            if left(val4,2) = '0X' then
-               val4 = X2D(substr(val4,3))
-            if val4 = 1 then do
-               if val1 = 'nto' then
-                  call lineout jalfile, 'const        byte  ' left('_not_to',25) '= ' offset
-               else if val1 = 'npd' then
-                  call lineout jalfile, 'const        byte  ' left('_not_pd',25) '= ' offset
-               else
-                  call lineout jalfile, 'const        byte  ' left('_'val1,25) '= ' offset
-               offset = offset + 1
-            end
-            else
-               offset = offset + val4                       /* skip multibit fields */
-         end
-      end
-
-   otherwise
-      nop
-   end
-
-end
-
-if Core = '16' then do
-   call lineout jalfile, 'const        byte  ' left('_banked',25) '=  1'
-   call lineout jalfile, 'const        byte  ' left('_access',25) '=  0'
-end
-
-return 0
-
-
 /* ---------------------------------------------------- */
 /* procedure to list fusedef specifications             */
 /* input:  - nothing                                   */
@@ -3098,8 +3066,8 @@ do i = i while word(pic.i,1) \= '</EDC:DCRMODE>'
          parse var Pic.i '<EDC:DCRFIELDDEF' 'EDC:CNAME="' val1 '"' 'EDC:DESC="' val2 '"',
                           'EDC:MASK="0X' val3 '"' . 'EDC:NZWIDTH="' val4 '"' .
          if Val1 \= ''  &  Val1 \= 'RESERVED'  &  val2 \= 'RESERVED' then do
-            key = normalize_fusedef_key(Val1)               /* uniform key */
-            if \(key = 'OSC' & left(PicName,5) = '10f20') then do   /* no an exception */
+            key = normalize_fusedef_keyword(Val1)           /* uniform keyword */
+            if \(key = 'OSC' & left(PicName,5) = '10f20') then do   /* not an exception */
                mask = strip(B2X(X2B(val3)||copies('0',offset)),'L','0')    /* bit alignment */
                if CfgAddr.0 = 1 then                        /* single byte/word */
                   str = 'pragma fuse_def' key '0x'mask '{'
@@ -3107,6 +3075,13 @@ do i = i while word(pic.i,1) \= '</EDC:DCRMODE>'
                   str = 'pragma fuse_def' key':'index '0x'mask '{'
                call lineout jalfile, left(str, 42) '--' tolower(val2)
                call list_fusedef_fieldsemantics i, offset, key
+               if val1 = 'ICPRT'  &,
+                  (PicName = '18f1230'   | PicName = '18f1330'  |,
+                   PicName = '18f24k50'  | PicName = '18f25k50' |,
+                   PicName = '18lf24k50' | PicName = '18lf25k50') then do
+                  call msg 2, 'Adding "ENABLED = 0x'mask'"  for fuse_def' val1
+                  call lineout jalfile, left('       ENABLED = 0x'mask, 42) '-- icport enabled'
+               end
                call lineout jalfile, '       }'
             end
             if left(val4,2) = '0X' then
@@ -3147,14 +3122,14 @@ do i = i while word(pic.i,1) \= '</EDC:DCRFIELDDEF>'
       end
       if val2 \= '' then do
          val2 = toascii(val2)                            /* replace xml meta */
-         kwd = normalize_fusedef_keyword(key, val1, '"'val2'"')      /* normalize keyword */
+         kwd = normalize_fusedef_keywordvalue(key, val1, '"'val2'"')      /* normalize keyword */
          if kwd = '' then                                /* probably reserved */
             iterate
          mask = strip(B2X(X2B(val3)||copies('0',offset)),'L','0')    /* bit alignment */
          if mask = '' then
             mask = '0'
          if kwdname.kwd \= '-' then do                   /* duplicate */
-            call msg 2, 'Duplicate fuse_def' key '{'kwd '= 0x'mask'}, skipped!'
+            call msg 2, 'Duplicate fuse_def' key '{'kwd '= 0x'mask'} skipped'
          end
          else do
             kwdname.kwd = kwd                            /* remember name */
@@ -3171,7 +3146,7 @@ return
 /* input:  - keyword                                    */
 /* returns - normalized keyword                         */
 /* ---------------------------------------------------- */
-normalize_fusedef_key: procedure expose PicName
+normalize_fusedef_keyword: procedure expose PicName
 parse arg key .
 
 if key \= '' then do                               /* key value found */
@@ -3291,190 +3266,190 @@ end
 /* ------------------------------------------------------------------------ */
 /* Detailed formatting of fusedef keywords                                  */
 /* input:  - fuse_def keyword                                               */
-/*         - value                                                          */
-/*         - value description                                              */
+/*         - keyword value                                                  */
+/*         - keyword value description string                               */
 /* returns normalized keyword                                               */
 /*                                                                          */
 /* notes: val2 contains keyword description with undesired chars and blanks */
 /*        val2u is val2 with all these replaced by a single underscore      */
 /* ------------------------------------------------------------------------ */
-normalize_fusedef_keyword: procedure expose Pic. Fuse_Def. jalfile Fuse_Def.,
-                                          Core PicName msglevel
+normalize_fusedef_keywordvalue: procedure expose Pic. Fuse_Def. jalfile Fuse_Def.,
+                                                 Core PicName msglevel
 parse upper arg key, val, desc
 
-desc = strip(desc, 'B', '"')                             /* strip double quoted */
-desc = toascii(desc)                                     /* replace xml meta by ASCII char */
-descu = translate(desc, '                 ',,            /* to blank */
-                        '+-:;.,<>{}[]()=/?')             /* from special char */
-descu = space(descu,,'_')                                /* blanks -> single underscore */
+desc = strip(desc, 'B', '"')                                /* strip double quoted */
+desc = toascii(desc)                                        /* replace xml meta by ASCII char */
+descu = translate(desc, '                 ',,               /* to blank */
+                        '+-:;.,<>{}[]()=/?')                /* from special char */
+descu = space(descu,,'_')                                   /* blanks -> single underscore */
 
-kwd = ''                                                 /* null keyword */
+kwdvalue = ''                                               /* null value */
 
-select                                                   /* key specific formatting */
+select                                                      /* key specific formatting */
 
-   when val = 'RESERVED' then do                         /* reserved values to be skipped */
+   when val = 'RESERVED' then do                            /* reserved values to be skipped */
       return ''
    end
 
-   when key = 'ADCSEL'  |,                               /* ADC resolution */
-        key = 'ABW'     |,                               /* address bus width */
-        key = 'BW'    then do                            /* external memory bus width */
-      parse value word(desc,1) with kwd '-' .            /* assign number */
-      kwd = 'B'kwd                                       /* add prefix */
+   when key = 'ADCSEL'  |,                                  /* ADC resolution */
+        key = 'ABW'     |,                                  /* address bus width */
+        key = 'BW'    then do                               /* external memory bus width */
+      parse value word(desc,1) with kwdvalue '-' .          /* assign number */
+      kwdvalue = 'B'kwdvalue                                /* add prefix */
    end
 
    when key = 'BBSIZ' then do
       if desc = 'ENABLED' then do
-         kwd = desc
+         kwdvalue = desc
       end
       else if desc = 'DISABLED' then do
-         kwd = desc
+         kwdvalue = desc
       end
       else do j=1 to words(desc)
          if left(word(desc,j),1) >= '0' & left(word(desc,j),1) <= '9' then do
-            kwd = 'W'word(desc,j)                          /* found leading digit */
+            kwdvalue = 'W'word(desc,j)                      /* found leading digit */
             leave
          end
       end
-      if datatype(substr(kwd,2),'W') = 1  &,             /* second char numeric */
-          pos('KW',descu) > 0 then do                    /* contains KW */
-         kwd = kwd'K'                                    /* append 'K' */
+      if datatype(substr(kwdvalue,2),'W') = 1  &,           /* second char numeric */
+          pos('KW',descu) > 0 then do                       /* contains KW */
+         kwdvalue = kwdvalue'K'                             /* append 'K' */
       end
    end
 
-   when key = 'BG' then do                               /* band gap */
+   when key = 'BG' then do                                  /* band gap */
       if word(desc,1) = 'HIGHEST' | word(desc,1) = 'LOWEST' then
-         kwd = word(desc,1)
+         kwdvalue = word(desc,1)
       else if word(desc,1) = 'ADJUST' then do
-         if pos('-',desc) > 0 then                       /* negative voltage */
-            kwd = word(desc,1)'_NEG'
+         if pos('-',desc) > 0 then                          /* negative voltage */
+            kwdvalue = word(desc,1)'_NEG'
          else
-            kwd = word(desc,1)'_POS'
+            kwdvalue = word(desc,1)'_POS'
       end
       else if descu = '' then
-         kwd = 'MEDIUM'val
+         kwdvalue = 'MEDIUM'val
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
-   when key = 'BORPWR' then do                           /* BOR power mode */
+   when key = 'BORPWR' then do                              /* BOR power mode */
       if pos('ZPBORMV',descu) > 0 then
-         kwd = 'ZERO'
+         kwdvalue = 'ZERO'
       else if pos('HIGH_POWER',descu) > 0 then
-         kwd = 'HP'
+         kwdvalue = 'HP'
       else if pos('MEDIUM_POWER',descu) > 0 then
-         kwd = 'MP'
+         kwdvalue = 'MP'
       else if pos('LOW_POWER',descu) > 0 then
-         kwd = 'LP'
+         kwdvalue = 'LP'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'BROWNOUT' then do
       if  pos('SLEEP',descu) > 0 & pos('DEEP_SLEEP',descu) = 0 then
-         kwd = 'RUNONLY'
+         kwdvalue = 'RUNONLY'
       else if pos('HARDWARE_ONLY',descu) > 0 then do
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       end
       else if pos('CONTROL',descu) > 0 then
-         kwd = 'CONTROL'
+         kwdvalue = 'CONTROL'
       else if pos('ENABLED',descu) > 0 | descu = 'ON' then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else do
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
       end
    end
 
    when key = 'CANMUX' then do
       if pos('_RB', descu) > 0 then
-         kwd = 'pin_'substr(descu, pos('_RB', descu) + 2, 2)
+         kwdvalue = 'pin_'substr(descu, pos('_RB', descu) + 2, 2)
       else if pos('_RC', descu) > 0 then
-         kwd = 'pin_'substr(descu, pos('_RC', descu) + 2, 2)
+         kwdvalue = 'pin_'substr(descu, pos('_RC', descu) + 2, 2)
       else if pos('_RE', descu) > 0 then
-         kwd = 'pin_'substr(descu, pos('_RE', descu) + 2, 2)
+         kwdvalue = 'pin_'substr(descu, pos('_RE', descu) + 2, 2)
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
-   when left(key,3) = 'CCP' & right(key,3) = 'MUX' then do /* CCPxMUX */
-      if pos('MICRO',descu) > 0 then                     /* Microcontroller mode */
-         kwd = 'pin_E7'                                  /* valid for all current PICs */
+   when left(key,3) = 'CCP' & right(key,3) = 'MUX' then do    /* CCPxMUX */
+      if pos('MICRO',descu) > 0 then                        /* Microcontroller mode */
+         kwdvalue = 'pin_E7'                                /* valid for all current PICs */
       else if val = 'ON'  | descu = 'ENABLED'  then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else if val = 'OFF' | descu = 'DISABLED' then
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
       else
-         kwd = 'pin_'right(descu,2)                      /* last 2 chars */
+         kwdvalue = 'pin_'right(descu,2)                    /* last 2 chars */
    end
 
    when key = 'CINASEL' then do
-      if pos('DEFAULT',descu) > 0 then                   /* Microcontroller mode */
-         kwd = 'DEFAULT'
+      if pos('DEFAULT',descu) > 0 then                      /* Microcontroller mode */
+         kwdvalue = 'DEFAULT'
       else
-         kwd = 'MAPPED'
+         kwdvalue = 'MAPPED'
    end
 
-   when key = 'CP' |,                                    /* code protection */
+   when key = 'CP' |,                                       /* code protection */
        ( left(key,2) = 'CP' &,
            (datatype(substr(key,3),'W') = 1 |,
             substr(key,3,1) = 'D'           |,
             substr(key,3,1) = 'B') )       then do
       if val = 'OFF' | pos('NOT',desc) > 0 | pos('DISABLED',desc) > 0  |  pos('OFF',desc) > 0 then
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
       else if left(val,5) = 'UPPER' | left(val,5) = 'LOWER'  | val = 'HALF' then
-         kwd = val
-      else if pos('ALL_PROT', descu) > 0 then            /* all protected */
-         kwd = 'ENABLED'
-      else if left(desc,1) = '0' then do                 /* probably a range */
-         kwd = word(desc,1)                              /* begin(-end) of range */
-         if word(desc,2) = 'TO' then                     /* splitted words */
-            kwd = kwd'-'word(desc,3)                     /* add end of range */
-         kwd = 'R'translate(kwd,'_','-')                 /* format */
+         kwdvalue = val
+      else if pos('ALL_PROT', descu) > 0 then               /* all protected */
+         kwdvalue = 'ENABLED'
+      else if left(desc,1) = '0' then do                    /* probably a range */
+         kwdvalue = word(desc,1)                            /* begin(-end) of range */
+         if word(desc,2) = 'TO' then                        /* splitted words */
+            kwdvalue = kwdvalue'-'word(desc,3)              /* add end of range */
+         kwdvalue = 'R'translate(kwdvalue,'_','-')          /* format */
       end
       else
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
    end
 
    when key = 'CPUDIV' then do
       if word(desc,1) = 'NO' then
-         kwd = 'P1'                                      /* no division */
+         kwdvalue = 'P1'                                    /* no division */
       else if pos('DIVIDE',desc) > 0 & wordpos('BY',desc) > 0 then
-         kwd = 'P'word(desc,words(desc))                 /* last word */
+         kwdvalue = 'P'word(desc,words(desc))               /* last word */
       else if pos('DIVIDE',desc) > 0 & wordpos('(NO',desc) > 0 then
-         kwd = 'P'1                                      /* no divide */
+         kwdvalue = 'P'1                                    /* no divide */
       else if pos('/',desc) > 0 then
-         kwd = 'P'substr(desc,pos('/',desc)+1,1)         /* digit after '/' */
+         kwdvalue = 'P'substr(desc,pos('/',desc)+1,1)       /* digit after '/' */
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'DSBITEN' then do
       if val = 'ON' then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
    end
 
    when key = 'DSWDTOSC' then do
       if pos('INT',descu) > 0 then
-         kwd = 'INTOSC'
+         kwdvalue = 'INTOSC'
       else if pos('LPRC',descu) > 0 then
-         kwd = 'LPRC'
+         kwdvalue = 'LPRC'
       else if pos('SOSC',descu) > 0 then
-         kwd = 'SOSC'
+         kwdvalue = 'SOSC'
       else
-         kwd = 'T1'
+         kwdvalue = 'T1'
    end
 
    when key = 'DSWDTPS'   |,
         key = 'WDTPS' then do
-      parse var desc p0 ':' p1                           /* split */
-      kwd = translate(word(p1,1),'      ','.,()=/')      /* 1st word, cleaned */
-      kwd = space(kwd,0)                                 /* remove all spaces */
-      do j=1 while kwd >= 1024
-         kwd = kwd / 1024                                /* reduce to K, M, G, T */
+      parse var desc p0 ':' p1                              /* split */
+      kwdvalue = translate(word(p1,1),'      ','.,()=/')    /* 1st word, cleaned */
+      kwdvalue = space(kwdvalue,0)                          /* remove all spaces */
+      do j=1 while kwdvalue >= 1024
+         kwdvalue = kwdvalue / 1024                         /* reduce to K, M, G, T */
       end
-      kwd = 'P'format(kwd,,0)||substr(' KMGT',j,1)
+      kwdvalue = 'P'format(kwdvalue,,0)||substr(' KMGT',j,1)
    end
 
    when key = 'EBTR' |,
@@ -3482,143 +3457,143 @@ select                                                   /* key specific formatt
            (datatype(substr(key,5),'W') = 1 |,
             substr(key,5,1) = 'B')       then do
       if val = 'OFF' then
-         kwd = 'DISABLED'                                /* not protected */
+         kwdvalue = 'DISABLED'                              /* not protected */
       else
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
    end
 
    when key = 'ECCPMUX' then do
-      if pos('_R',descu) > 0 then                       /* check for _R<pin> */
-         kwd = 'pin_'substr(descu,pos('_R',descu)+2,2)  /* 2 chars after '_R' */
+      if pos('_R',descu) > 0 then                           /* check for _R<pin> */
+         kwdvalue = 'pin_'substr(descu,pos('_R',descu)+2,2)  /* 2 chars after '_R' */
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'EMB' then do
-      if pos('12',desc) > 0 then                        /* 12-bit mode */
-         kwd = 'B12'
-      else if pos('16',desc) > 0 then                   /* 16-bit mode */
-         kwd = 'B16'
-      else if pos('20',desc) > 0 then                   /* 20-bit mode */
-         kwd = 'B20'
+      if pos('12',desc) > 0 then                            /* 12-bit mode */
+         kwdvalue = 'B12'
+      else if pos('16',desc) > 0 then                       /* 16-bit mode */
+         kwdvalue = 'B16'
+      else if pos('20',desc) > 0 then                       /* 20-bit mode */
+         kwdvalue = 'B20'
       else
-         kwd = 'DISABLED'                               /* no en/disable balancing */
+         kwdvalue = 'DISABLED'                              /* no en/disable balancing */
    end
 
    when key = 'ETHLED' then do
-      if val = 'ON' | pos('ENABLED',desc) > 0  then     /* LED enabled */
-         kwd = 'ENABLED'
+      if val = 'ON' | pos('ENABLED',desc) > 0  then         /* LED enabled */
+         kwdvalue = 'ENABLED'
       else
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
    end
 
-   when key = 'EXCLKMUX' then do                         /* Timer0/5 clock pin */
-      if pos('_R',descu) > 0 then                       /* check for _R<pin> */
-         kwd = 'pin_'substr(descu,pos('_R',descu)+2,2)  /* 2 chars after '_R' */
+   when key = 'EXCLKMUX' then do                            /* Timer0/5 clock pin */
+      if pos('_R',descu) > 0 then                          /* check for _R<pin> */
+         kwdvalue = 'pin_'substr(descu,pos('_R',descu)+2,2)  /* 2 chars after '_R' */
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'FLTAMUX' then do
-      if pos('_R',descu) > 0 then                       /* check for _R<pin> */
-         kwd = 'pin_'substr(descu,pos('_R',descu)+2,2)  /* 2 chars after '_R' */
+      if pos('_R',descu) > 0 then                          /* check for _R<pin> */
+         kwdvalue = 'pin_'substr(descu,pos('_R',descu)+2,2)  /* 2 chars after '_R' */
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'FOSC2' then do
       if pos('INTRC', descu) > 0  |,
          desc = 'ENABLED' then
-         kwd = 'INTOSC'
+         kwdvalue = 'INTOSC'
       else
-         kwd = 'OSC'
+         kwdvalue = 'OSC'
    end
 
-   when key = 'FCMEN'  |,                                /* Fail safe clock monitor */
+   when key = 'FCMEN'  |,                                   /* Fail safe clock monitor */
         key = 'FSCKM' then do
       x1 = pos('ENABLED', descu)
       x2 = pos('DISABLED', descu)
       if x1 > 0 & x2 > 0 & x2 > x1 then
-         kwd  = 'SWITCHING'
+         kwdvalue  = 'SWITCHING'
       else if x1 > 0 & x2 = 0 then
-         kwd  = 'ENABLED'
+         kwdvalue  = 'ENABLED'
       else if x1 = 0 & x2 > 0 then
-         kwd  = 'DISABLED'
+         kwdvalue  = 'DISABLED'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'HFOFST' then do
       if val = 'ON' | pos('NOT_DELAYED',descu) > 0 then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
    end
 
    when key = 'INTOSCSEL' then do
       if pos('HIGH_POWER',descu) > 0 then
-         kwd = 'HP'
+         kwdvalue = 'HP'
       else if pos('LOW_POWER',descu) > 0 then
-         kwd = 'LP'
+         kwdvalue = 'LP'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'IOL1WAY' then do
       if val = 'ON' then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
    end
 
    when key = 'IOSCFS' then do
       if pos('MHZ',descu) > 0 then do
-         if pos('8',descu) > 0 then                       /* 8 MHz */
-            kwd = 'F8MHZ'
+         if pos('8',descu) > 0 then                         /* 8 MHz */
+            kwdvalue = 'F8MHZ'
          else
-            kwd = 'F4MHZ'                                /* otherwise */
+            kwdvalue = 'F4MHZ'                              /* otherwise */
       end
       else if descu = 'ENABLED' then
-         kwd = 'F8MHZ'
+         kwdvalue = 'F8MHZ'
       else if descu = 'DISABLED' then
-         kwd = 'F4MHZ'                                   /* otherwise */
+         kwdvalue = 'F4MHZ'                                 /* otherwise */
       else do
-         kwd = descu
-         if left(kwd,1) >= '0' & left(kwd,1) <= '9' then
-            kwd = 'F'kwd                                 /* prefix when numeric */
+         kwdvalue = descu
+         if left(kwdvalue,1) >= '0' & left(kwdvalue,1) <= '9' then
+            kwdvalue = 'F'kwdvalue                          /* prefix when numeric */
       end
    end
 
    when key = 'LPT1OSC' then do
       if pos('LOW',descu) > 0 | pos('ENABLE',descu) > 0 then
-         kwd = 'LOW_POWER'
+         kwdvalue = 'LOW_POWER'
       else
-         kwd = 'HIGH_POWER'
+         kwdvalue = 'HIGH_POWER'
    end
 
    when key = 'LS48MHZ' then do
       if pos('TO_4',descu) > 0 then
-         kwd = 'P4'
+         kwdvalue = 'P4'
       else if pos('TO_8',descu) > 0 then
-         kwd = 'P8'
+         kwdvalue = 'P8'
       else if pos('BY_2',descu) > 0 then
-         kwd = 'P2'
+         kwdvalue = 'P2'
       else if pos('BY_1',descu) > 0 then
-         kwd = 'P1'
+         kwdvalue = 'P1'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'LVP' then do
       if pos('ENABLE',desc) > 0 then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
    end
 
    when key = 'MCLR' then do
       if val = 'OFF' then
-         kwd = 'INTERNAL'
+         kwdvalue = 'INTERNAL'
       else if val = 'ON'                  |,
          pos('EXTERN',desc) > 0           |,
          pos('MCLR ENABLED',desc) > 0     |,
@@ -3628,396 +3603,396 @@ select                                                   /* key specific formatt
          pos('IS MCLR',desc) > 0          |,
          desc = 'MCLR'                    |,
          desc = 'ENABLED'   then
-         kwd = 'EXTERNAL'
+         kwdvalue = 'EXTERNAL'
       else
-         kwd = 'INTERNAL'
+         kwdvalue = 'INTERNAL'
    end
 
    when key = 'MSSPMASK'  |,
         key = 'MSSPMSK1'  |,
         key = 'MSSPMSK2' then do
       if left(desc,1) >= 0  &  left(desc,1) <= '9' then
-         kwd = 'B'left(desc, 1)                          /* digit 5 or 7 expected */
+         kwdvalue = 'B'left(desc, 1)                        /* digit 5 or 7 expected */
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'OSC' then do
-      kwd = Fuse_Def.Osc.descu
-      if kwd = '?' then do
+      kwdvalue = Fuse_Def.Osc.descu
+      if kwdvalue = '?' then do
          call msg 2, 'No mapping for fuse_def' key':' descu
       end
       else if descu = 'INTOSC'  & ,
              (PicName = '16f913' | PicName = '16f914'|,
               PicName = '16f916' | PicName = '16f917') then do /* exception */
-         kwd = 'INTOSC_CLKOUT'                           /* correction of map: NOCLKOUT */
+         kwdvalue = 'INTOSC_CLKOUT'                         /* correction of map: NOCLKOUT */
       end
    end
 
    when key = 'P2BMUX' then do
-      if substr(descu,length(descu)-3,2) = '_R' then     /* check for _R<pin> */
-         kwd = 'pin_'right(descu,2)
+      if substr(descu,length(descu)-3,2) = '_R' then        /* check for _R<pin> */
+         kwdvalue = 'pin_'right(descu,2)
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'PBADEN' then do
       if pos('ANALOG',descu) > 0  |  desc = 'ENABLED' then
-         kwd = 'ANALOG'
+         kwdvalue = 'ANALOG'
       else
-         kwd = 'DIGITAL'
+         kwdvalue = 'DIGITAL'
    end
 
    when key = 'PCLKEN' then do
       if val = 'ON' then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
    end
 
    when key = 'PLLDIV' then do
       if descu = 'RESERVED' then
-         kwd = '   '                                     /* to be ignored */
+         kwdvalue = '   '                                   /* to be ignored */
       else if left(descu,6) = 'NO_PLL' then
-         kwd = 'P0'                                      /* no PLL */
+         kwdvalue = 'P0'                                    /* no PLL */
       else if right(word(desc,1),1) = 'X' then
-         kwd = 'X'||strip(word(desc,1),'T','X')          /* multiplier */
+         kwdvalue = 'X'||strip(word(desc,1),'T','X')        /* multiplier */
       else if left(descu,9) = 'DIVIDE_BY' then
-         kwd = 'P'||word(desc,3)                         /* 3rd word */
+         kwdvalue = 'P'||word(desc,3)                       /* 3rd word */
       else if wordpos('DIVIDED BY', desc) > 0 then
-         kwd = 'P'||word(desc, wordpos('DIVIDED BY', desc) + 2)    /* word after 'devided by' */
+         kwdvalue = 'P'||word(desc, wordpos('DIVIDED BY', desc) + 2)    /* word after 'devided by' */
       else if word(desc,1) = 'NO' |,
               pos('NO_DIVIDE', descu) > 0 then
-         kwd = 'P1'
+         kwdvalue = 'P1'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'PLLEN' then do
       if pos('MULTIPL',desc) > 0 then
-         kwd = 'P'word(desc, words(desc))                /* last word */
+         kwdvalue = 'P'word(desc, words(desc))              /* last word */
       else if pos('500 KHZ',desc) > 0  |  pos('500KHZ',desc) > 0 then
-         kwd = 'F500KHZ'
+         kwdvalue = 'F500KHZ'
       else if pos('16 MHZ',desc) > 0  |  pos('16MHZ',desc) > 0 then
-         kwd = 'F16MHZ'
+         kwdvalue = 'F16MHZ'
       else if pos('DIRECT',desc) > 0 | pos('DISABLED',desc) > 0 | pos('SOFTWARE',desc) > 0 then
-         kwd = 'P1'
+         kwdvalue = 'P1'
       else if pos('ENABLED',desc) > 0 then
-         kwd = 'P4'
+         kwdvalue = 'P4'
       else if datatype(left(desc,1),'W') = 1 then
-         kwd = 'F'descu
+         kwdvalue = 'F'descu
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'PMODE' then do
       if pos('EXT',desc) > 0 then do
          if pos('-BIT', desc) > 0 then
-            kwd = 'B'substr(desc, pos('-BIT',desc)-2, 2) /* # bits */
+            kwdvalue = 'B'substr(desc, pos('-BIT',desc)-2, 2) /* # bits */
          else
-            kwd = 'EXT'
+            kwdvalue = 'EXT'
       end
       else if pos('PROCESSOR',desc) > 0 then do
-         kwd = 'MICROPROCESSOR'
+         kwdvalue = 'MICROPROCESSOR'
          if pos('BOOT',descu) > 0 then
-            kwd = kwd'_BOOT'
+            kwdvalue = kwdvalue'_BOOT'
       end
       else
-         kwd = 'MICROCONTROLLER'
+         kwdvalue = 'MICROCONTROLLER'
    end
 
    when key = 'PMPMUX' then do
-      if wordpos('ON',desc) > 0 then                     /* contains ' ON ' */
-         kwd = left(word(desc, wordpos('ON',desc) + 1),5)
-      else if wordpos('ELSEWHERE',desc) > 0  |,          /* contains ' ELSEWHERE ' */
-              wordpos(' NOT ',desc) > 0 then             /* contains ' NOT ' */
-         kwd = 'ELSEWHERE'
-      else if wordpos('NOT',desc) = 0 then               /* does not contain ' NOT ' */
-         kwd = left(word(desc, wordpos('TO',desc) + 1),5)
+      if wordpos('ON',desc) > 0 then                        /* contains ' ON ' */
+         kwdvalue = left(word(desc, wordpos('ON',desc) + 1),5)
+      else if wordpos('ELSEWHERE',desc) > 0  |,             /* contains ' ELSEWHERE ' */
+              wordpos(' NOT ',desc) > 0 then                /* contains ' NOT ' */
+         kwdvalue = 'ELSEWHERE'
+      else if wordpos('NOT',desc) = 0 then                  /* does not contain ' NOT ' */
+         kwdvalue = left(word(desc, wordpos('TO',desc) + 1),5)
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
-   when key = 'POSCMD' then do                           /* primary osc */
-      if pos('DISABLED',descu) > 0 then                  /* check for _R<pin> */
-         kwd = 'DISABLED'
+   when key = 'POSCMD' then do                              /* primary osc */
+      if pos('DISABLED',descu) > 0 then                     /* check for _R<pin> */
+         kwdvalue = 'DISABLED'
       else if pos('HS', descu) > 0 then
-         kwd = 'HS'
+         kwdvalue = 'HS'
       else if pos('MS', descu) > 0 then
-         kwd = 'MS'
+         kwdvalue = 'MS'
       else if pos('EXTERNAL', descu) > 0 then
-         kwd = 'EC'
+         kwdvalue = 'EC'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'PWM4MUX' then do
-      if pos('_R',descu) > 0 then                       /* check for _R<pin> */
-         kwd = 'pin_'substr(descu,pos('_R',descu)+2,2)  /* 2 chars after '_R' */
+      if pos('_R',descu) > 0 then                          /* check for _R<pin> */
+         kwdvalue = 'pin_'substr(descu,pos('_R',descu)+2,2)  /* 2 chars after '_R' */
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'RETEN' then do
       if val = 'OFF' then
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
       else
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
    end
 
    when key = 'RTCOSC' then do
       if pos('INTRC',descu) > 0 then
-         kwd = 'INTRC'
+         kwdvalue = 'INTRC'
       else
-         kwd = 'T1OSC'
+         kwdvalue = 'T1OSC'
    end
 
    when key = 'SIGN' then do
       if pos('CONDUC',descu) > 0 then
-         kwd = 'NOT_CONDUCATED'
+         kwdvalue = 'NOT_CONDUCATED'
       else
-         kwd = 'AREA_COMPLETE'
+         kwdvalue = 'AREA_COMPLETE'
    end
 
    when key = 'SOSCSEL' then do
       if val = 'HIGH' | pos('HIGH_POWER',descu) > 0 then
-         kwd = 'HP'
+         kwdvalue = 'HP'
       else if val = 'DIG' | pos('DIGITAL',descu) then
-         kwd = 'DIG'
+         kwdvalue = 'DIG'
       else if val = 'LOW' | pos('LOW_POWER',descu) > 0 then
-         kwd = 'LP'
+         kwdvalue = 'LP'
       else if pos('SECURITY',descu) > 0 then
-         kwd = 'HS_CP'
+         kwdvalue = 'HS_CP'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'SSPMUX' then do
       offset1 = pos('_MULTIPLEX',descu)
-      if offset1 > 0 then do                             /* 'multiplexed' found */
-         offset2 = pos('_R',substr(descu,offset1))       /* first pin */
+      if offset1 > 0 then do                                /* 'multiplexed' found */
+         offset2 = pos('_R',substr(descu,offset1))          /* first pin */
          if offset2 > 0 then
-            kwd = 'pin_'substr(descu,offset1+offset2+1,2)
+            kwdvalue = 'pin_'substr(descu,offset1+offset2+1,2)
          else
-            kwd = 'ENABLED'
+            kwdvalue = 'ENABLED'
       end
       else
-         kwd = 'DISABLED'                                /* no en/disable balancing */
+         kwdvalue = 'DISABLED'                              /* no en/disable balancing */
    end
 
    when key = 'STVR' then do
       if pos('NOT', desc) > 0 | pos('DISABLED',desc) > 0 then   /* no stack overflow */
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
       else
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
    end
 
    when key = 'T0CKMUX' then do
       if pos('_RB', descu) > 0 then
-         kwd = 'pin_'substr(descu, pos('_RB', descu) + 2, 2)
+         kwdvalue = 'pin_'substr(descu, pos('_RB', descu) + 2, 2)
       else if pos('_RG', descu) > 0 then
-         kwd = 'pin_'substr(descu, pos('_RG', descu) + 2, 2)
+         kwdvalue = 'pin_'substr(descu, pos('_RG', descu) + 2, 2)
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'T1OSCMUX' then do
       if left(right(descu,4),2) = '_R' then
-         kwd = 'pin_'right(descu,2)                      /* last 2 chars */
+         kwdvalue = 'pin_'right(descu,2)                    /* last 2 chars */
       else if val = 'ON' then
-         kwd = 'LP'
+         kwdvalue = 'LP'
       else if val = 'OFF' then
-         kwd = 'STANDARD'
+         kwdvalue = 'STANDARD'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'T1DIG' then do
       if val = 'ON' then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else if val = 'OFF' then
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'T3CKMUX' then do
       if pos('_RB', descu) > 0 then
-         kwd = 'pin_'substr(descu, pos('_RB', descu) + 2, 2)
+         kwdvalue = 'pin_'substr(descu, pos('_RB', descu) + 2, 2)
       else if pos('_RG', descu) > 0 then
-         kwd = 'pin_'substr(descu, pos('_RG', descu) + 2, 2)
+         kwdvalue = 'pin_'substr(descu, pos('_RG', descu) + 2, 2)
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'T3CMUX' then do
-      if pos('_R',descu) > 0 then                        /* check for _R<pin> */
-         kwd = 'pin_'substr(descu,pos('_R',descu)+2,2)   /* 2 chars after '_R' */
+      if pos('_R',descu) > 0 then                           /* check for _R<pin> */
+         kwdvalue = 'pin_'substr(descu,pos('_R',descu)+2,2)   /* 2 chars after '_R' */
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'T5GSEL' then do
       if pos('T3G',descu) > 0 then
-         kwd = 'T3G'
+         kwdvalue = 'T3G'
       else
-         kwd = 'T5G'
+         kwdvalue = 'T5G'
    end
 
-   when key = 'USBDIV' then do                           /* mplab >= 8.60 (was USBPLL) */
+   when key = 'USBDIV' then do                              /* mplab >= 8.60 (was USBPLL) */
       if descu = 'ENABLED' | pos('96_MH',descu) > 0 | pos('DIVIDED_BY',descu) > 0 then
-         kwd = 'P4'                                  /* compatibility */
+         kwdvalue = 'P4'                                    /* compatibility */
       else
-         kwd = 'P1'                                      /* compatibility */
+         kwdvalue = 'P1'                                    /* compatibility */
    end
 
    when key = 'USBLSCLK' then do
       if pos('48',descu) > 0 then
-         kwd = 'F48MHZ'
+         kwdvalue = 'F48MHZ'
       else
-         kwd = 'F24MHZ'
+         kwdvalue = 'F24MHZ'
    end
 
    when key = 'USBPLL' then do
       if pos('PLL',descu) > 0 then
-         kwd = 'F48MHZ'
+         kwdvalue = 'F48MHZ'
       else
-         kwd = 'OSC'
+         kwdvalue = 'OSC'
    end
 
    when key = 'VCAPEN' then do
       if pos('DISABLED',desc) > 0 then
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
       else if pos('ENABLED_ON',descu) > 0 then do
          x = wordpos('ON',desc)
-         kwd = word(desc, x + 1)                         /* last word */
-         if left(kwd,1) = 'R' then                       /* pinname Rxy */
-            kwd = 'pin_'substr(kwd,2)                    /* make it pin_xy */
+         kwdvalue = word(desc, x + 1)                       /* last word */
+         if left(kwdvalue,1) = 'R' then                     /* pinname Rxy */
+            kwdvalue = 'pin_'substr(kwdvalue,2)             /* make it pin_xy */
          else
-            kwd = 'ENABLED'
+            kwdvalue = 'ENABLED'
       end
       else
-         kwd = 'ENABLED'                                 /* probably never reached */
+         kwdvalue = 'ENABLED'                               /* probably never reached */
    end
 
    when key = 'VOLTAGE' then do
-      do j=1 to words(desc)                              /* scan word by word */
+      do j=1 to words(desc)                                 /* scan word by word */
          if left(word(desc,j),1) >= '0' & left(word(desc,j),1) <= '9' then do
-            if pos('.',word(desc,j)) > 0 then do         /* select digits */
-               kwd = 'V'left(word(desc,j),1,1)||substr(word(desc,j),3,1)
-               if kwd = 'V21' then
-                  kwd = 'V20'                            /* compatibility */
-               leave                                     /* done */
+            if pos('.',word(desc,j)) > 0 then do            /* select digits */
+               kwdvalue = 'V'left(word(desc,j),1,1)||substr(word(desc,j),3,1)
+               if kwdvalue = 'V21' then
+                  kwdvalue = 'V20'                          /* compatibility */
+               leave                                        /* done */
             end
          end
       end
-      if j > words(desc) then do                        /* no voltage value found */
+      if j > words(desc) then do                            /* no voltage value found */
          if pos('MINIMUM',desc) > 0  |,
             pos(' LOW ',desc) > 0 then
-            kwd = 'MINIMUM'
+            kwdvalue = 'MINIMUM'
          else if pos('MAXIMUM',desc) > 0 |,
             pos(' HIGH ',desc) > 0 then
-            kwd = 'MAXIMUM'
+            kwdvalue = 'MAXIMUM'
          else if descu = '' then
-            kwd = 'MEDIUM'val
+            kwdvalue = 'MEDIUM'val
          else
-            kwd = descu
+            kwdvalue = descu
       end
    end
 
    when key = 'WAIT' then do
       if val = 'OFF' | pos('NOT',desc) > 0 | pos('DISABLE',desc) > 0 then
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
       else
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
    end
 
-   when key = 'WDT' then do                              /* Watchdog */
+   when key = 'WDT' then do                                 /* Watchdog */
       pos_en = pos('ENABLE', desc)
       pos_dis = pos('DISABLE', desc)
       if pos('RUNNING', desc) > 0 |,
          pos('DISABLED_IN_SLEEP', descu) > 0 then
-         kwd = 'RUNONLY'
+         kwdvalue = 'RUNONLY'
       else if descu = 'OFF' | (pos_dis > 0 & (pos_en = 0 | pos_en > pos_dis)) then do
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
       end
       else if pos('HARDWARE', desc) > 0 then do
-         kwd = 'HARDWARE'
+         kwdvalue = 'HARDWARE'
       end
       else if pos('CONTROL', desc) > 0  then do
-         if core = '16' then                             /* can only be en- or dis-abled */
-            kwd = 'DISABLED'                             /* all 18Fs */
+         if core = '16' then                                /* can only be en- or dis-abled */
+            kwdvalue = 'DISABLED'                           /* all 18Fs */
          else
-            kwd = 'CONTROL'
+            kwdvalue = 'CONTROL'
       end
       else if descu = 'ON' | (pos_en > 0 & (pos_dis = 0 | pos_dis > pos_en)) then do
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       end
       else
-         kwd = descu                                     /* normalized description */
+         kwdvalue = descu                                   /* normalized description */
    end
 
    when key = 'WDTCLK' then do
       if pos('ALWAYS',descu) > 0 then do
          if pos('INTOSC', descu) > 0 then
-             kwd = 'INTOSC'
+             kwdvalue = 'INTOSC'
          else
-             kwd = 'SOCS'
+             kwdvalue = 'SOCS'
       end
       else if pos('FRC',descu) > 0 then
-         kwd = 'FRC'
+         kwdvalue = 'FRC'
       else if pos('FOSC_4',descu) > 0 then
-         kwd = 'FOSC'
+         kwdvalue = 'FOSC'
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'WDTCS' then do
       if pos('LOW',descu) > 0 then
-         kwd = 'LOW_POWER'
+         kwdvalue = 'LOW_POWER'
       else
-         kwd = 'STANDARD'
+         kwdvalue = 'STANDARD'
    end
 
    when key = 'WDTWIN' then do
       x = pos('WIDTH_IS', descu)
       if x > 0 then
-         kwd = 'P'substr(descu, x + 9, 2)                 /* percentage */
+         kwdvalue = 'P'substr(descu, x + 9, 2)              /* percentage */
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'WPCFG' then do
       if val = 'ON' | val = 'WPCFGEN' then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
    end
 
    when key = 'WPDIS' then do
       if val = 'ON' | val = 'WPEN' then
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       else
-         kwd = 'DISABLED'
+         kwdvalue = 'DISABLED'
    end
 
    when key = 'WPEND' then do
       if pos('PAGES_0', descu) > 0  | pos('PAGE_0', descu) > 0  then
-         kwd = 'P0_WPFP'
+         kwdvalue = 'P0_WPFP'
       else
-         kwd = 'PWPFP_END'
+         kwdvalue = 'PWPFP_END'
    end
 
    when key = 'WPFP' then do
-      kwd = 'P'word(desc, words(desc))                   /* last word */
+      kwdvalue = 'P'word(desc, words(desc))                 /* last word */
    end
 
    when key = 'WPSA' then do
-      x = pos(':', desc)                                 /* fraction */
+      x = pos(':', desc)                                    /* fraction */
       if x > 0 then
-         kwd = 'P'substr(desc, x + 1)                    /* divisor */
+         kwdvalue = 'P'substr(desc, x + 1)                  /* divisor */
       else
-         kwd = descu
+         kwdvalue = descu
    end
 
    when key = 'WRT'  |,
@@ -4027,85 +4002,85 @@ select                                                   /* key specific formatt
             substr(key,4,1) = 'C'           |,
             substr(key,4,1) = 'D') )     then do
       if pos('NOT',desc) > 0  |  val = 'OFF' then
-         kwd = 'DISABLED'                                /* not protected */
+         kwdvalue = 'DISABLED'                              /* not protected */
       else if val = 'BOOT' then
-         kwd = 'BOOT_BLOCK'                              /* boot block protected */
+         kwdvalue = 'BOOT_BLOCK'                            /* boot block protected */
       else if val = 'HALF' then
-         kwd = 'HALF'                                    /* 1/2 of memory protected */
+         kwdvalue = 'HALF'                                  /* 1/2 of memory protected */
       else if val = 'FOURTH' | val = '1FOURTH' then
-         kwd = 'FOURTH'                                  /* 1/4 of memory protected */
+         kwdvalue = 'FOURTH'                                /* 1/4 of memory protected */
       else if datatype(val) = 'NUM' then
-         kwd = 'W'val                                    /* number of words */
+         kwdvalue = 'W'val                                  /* number of words */
       else
-         kwd = 'ENABLED'                                 /* whole memory protected */
+         kwdvalue = 'ENABLED'                               /* whole memory protected */
    end
 
    when key = 'WURE' then do
       if val = 'ON' then
-         kwd = 'CONTINUE'
+         kwdvalue = 'CONTINUE'
       else
-         kwd = 'RESET'
+         kwdvalue = 'RESET'
    end
 
-otherwise                                                /* generic formatting */
+otherwise                                                   /* generic formatting */
    if val = 'OFF' | val = 'DISABLED' then
-      kwd = 'DISABLED'
+      kwdvalue = 'DISABLED'
    else if val = 'ON' | val = 'DISABLED' then
-      kwd = 'ENABLED'
+      kwdvalue = 'ENABLED'
    else if pos('ACTIVE',desc) > 0 then do
       if pos('HIGH',desc) > pos('ACTIVE',desc) then
-         kwd = 'ACTIVE_HIGH'
+         kwdvalue = 'ACTIVE_HIGH'
       else if pos('LOW',desc) > pos('ACTIVE',desc) then
-         kwd = 'ACTIVE_LOW'
+         kwdvalue = 'ACTIVE_LOW'
       else do
-         kwd = 'ENABLED'
+         kwdvalue = 'ENABLED'
       end
    end
    else if pos('ENABLE',desc) > 0 | desc = 'ON' | desc = 'ALL' then do
-      kwd = 'ENABLED'
+      kwdvalue = 'ENABLED'
    end
    else if pos('DISABLE',desc) > 0 | desc = 'OFF' | pos('SOFTWARE',desc) > 0 then do
-      kwd = 'DISABLED'
+      kwdvalue = 'DISABLED'
    end
    else if pos('ANALOG',desc) > 0 then
-      kwd = 'ANALOG'
+      kwdvalue = 'ANALOG'
    else if pos('DIGITAL',desc) > 0 then
-      kwd = 'DIGITAL'
+      kwdvalue = 'DIGITAL'
    else do
-      if left(desc,1) >= '0' & left(desc,1) <= '9' then do /* starts with digit */
-         if pos('HZ',desc) > 0  then                     /* probably frequency (range) */
-            kwd = 'F'word(desc,1)                        /* 'F' prefix */
-         else if pos(' TO ',desc) > 0  |,                /* probably a range */
+      if left(desc,1) >= '0' & left(desc,1) <= '9' then do  /* starts with digit */
+         if pos('HZ',desc) > 0  then                        /* probably frequency (range) */
+            kwdvalue = 'F'word(desc,1)                      /* 'F' prefix */
+         else if pos(' TO ',desc) > 0  |,                   /* probably a range */
                  pos('0 ',  desc) > 0  |,
                  pos(' 0',  desc) > 0  |,
                  pos('H-',  desc) > 0  then do
             if pos(' TO ',desc) > 0  then do
-               kwd = delword(desc,4)                     /* keep 1st three words */
-               kwd = delword(kwd,2,1)                    /* keep only 'from' and 'to' */
-               kwd = translate(kwd, ' ','H')             /* replace 'H' by space */
-               kwd = space(kwd,1,'_')                    /* single underscore */
+               kwdvalue = delword(desc,4)                   /* keep 1st three words */
+               kwdvalue = delword(kwdvalue,2,1)             /* keep only 'from' and 'to' */
+               kwdvalue = translate(kwdvalue, ' ','H')      /* replace 'H' by space */
+               kwdvalue = space(kwdvalue,1,'_')             /* single underscore */
             end
             else
-               kwd = word(desc,1)                        /* keep 1st word */
-            kwd = 'R'translate(kwd,'_','-')              /* 'R' prefix, hyphen->underscore */
+               kwdvalue = word(desc,1)                      /* keep 1st word */
+            kwdvalue = 'R'translate(kwdvalue,'_','-')       /* 'R' prefix, hyphen->underscore */
          end
-         else do                                         /* probably a number */
-            kwd = 'N'word(desc,1)                        /* 1st word, 'N' prefix */
+         else do                                            /* probably a number */
+            kwdvalue = 'N'word(desc,1)                      /* 1st word, 'N' prefix */
          end
       end
       else
-         kwd = descu                                     /* if no alternative! */
+         kwdvalue = descu                                   /* if no alternative! */
    end
 end
 
-if kwd = '   ' then                                      /* special ('...') */
-   nop                                                   /* ignore */
-else if kwd = '' then                                    /* empty keyword */
+if kwdvalue = '   ' then                                    /* special ('...') */
+   nop                                                      /* ignore */
+else if kwdvalue = '' then                                  /* empty keyword */
    call msg 3, 'No keyword found for fuse_def' key '('desc')'
-else if length(kwd) > 22  then
-   call msg 2, 'fuse_def' key 'keyword excessively long: "'kwd'"'
+else if length(kwdvalue) > 22  then
+   call msg 2, 'fuse_def' key 'keyword excessively long: "'kwdvalue'"'
 
-return kwd
+return kwdvalue
 
 
 /* ----------------------------------------------------------------------------- *
@@ -4365,7 +4340,7 @@ if Name.CMCON   \= '-' |,
 end
 
 call lineout jalfile, '-- - - - - - - - - - - - - - - - - - - - - - - - - - -'
-call lineout jalfile, '-- Switch analog ports to digital mode (if analog module present).'
+call lineout jalfile, '-- Switch analog ports to digital mode when analog module(s) present.'
 call lineout jalfile, 'procedure enable_digital_io() is'
 call lineout jalfile, '   pragma inline'
 
@@ -4385,11 +4360,11 @@ return
 
 /* --------------------------------------------------------- */
 /* Generate common header                                    */
-/* shared memory for _pic_accum and _pic_isr_w is allocated  */
+/* Shared memory for _pic_accum and _pic_isr_w is allocated: */
 /* - for core 12, 14 and 14H from high to low address        */
 /* - for core 16 from low to high address                    */
 /* --------------------------------------------------------- */
-list_head:
+list_header:
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '-- Title: JalV2 device include file for PIC'toupper(PicName)
 call list_copyright_etc jalfile
@@ -4411,7 +4386,7 @@ call lineout jalfile, '--      . enable_digital_io()'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Sources:'
 call lineout jalfile, '--  - {MPLAB-X' MPlabxVersion%100'.'MPLabxVersion//100'}',
-                             'crownking.edc.jar/content/edc/PIC'PicName'.PIC'
+                             'crownking.edc.jar/content/edc/../PIC'toupper(PicName)'.PIC'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
 call lineout jalfile, '--  - Created with Pic2Jal Rexx script version' ScriptVersion
@@ -4754,12 +4729,14 @@ return addr_list' }'                                        /* complete string *
 /*            - register                         */
 /* Return - 0 when name is unique                */
 /*        - 1 when name is duplicate             */
-/* Collect all names in Name. compound variable  */
+/* Collect all names in Name. stem               */
 /* --------------------------------------------- */
 duplicate_name: procedure expose Name. PicName msglevel
 parse arg newname, reg .
-if newname = '' then                                        /* no name specified */
+if newname = '' then do                                     /* no name specified */
+   call msg 3, 'Attempt to check an empty name for duplicates'
    return 1                                                 /* not acceptable */
+end
 if Name.newname = '-' then do                               /* name not in use yet */
    Name.newname = reg                                       /* mark in use by which reg */
    return 0                                                 /* unique */
@@ -4790,17 +4767,17 @@ xml.2.2 = '>'
 xml.3.1 = '&AMP;'
 xml.3.2 = '&'
 xml.0 = 3
-parse arg ln
-do i = 1 to xml.0
-   lx = ln
-   ln = ''
+parse arg ln                                                /* line to be converted */
+do i = 1 to xml.0                                           /* all meta strings */
+   lx = ln                                                  /* copy line */
+   ln = ''                                                  /* start with empty lines */
    x = pos(xml.i.1, lx)
    do while x > 0
-      ln = ln||left(lx,x-1)||xml.i.2                        /* meta -> ASCII-char */
-      lx = substr(lx, x + length(xml.i.1))                  /* remainder of line */
-      x = pos(xml.i.1, lx)
+      ln = ln||left(lx,x-1)||xml.i.2                        /* concat old with new part + ASCII-char */
+      lx = substr(lx, x + length(xml.i.1))                  /* remainder of line after meta string */
+      x = pos(xml.i.1, lx)                                  /* search next instance of meta string */
    end
-   ln = ln||lx                                              /* last part */
+   ln = ln||lx                                              /* concat last part */
 end
 return ln
 
