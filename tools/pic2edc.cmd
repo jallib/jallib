@@ -32,7 +32,7 @@
  *     See Notes with Edc2jal script for running it on other platforms      *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.11'
+   ScriptVersion   = '0.0.12'
    ScriptAuthor    = 'Rob Hamerling'
    MPlabXVersion   = '185'
 /* ------------------------------------------------------------------------ */
@@ -138,9 +138,6 @@ do i = 1 to dir.0                                           /* all relevant .pic
 
 end
 
-say 'Manually make the following changes to the generated .edc files:'
-say '- (to be done)'
-
 signal off error
 signal off syntax                                           /* restore to default */
 
@@ -153,34 +150,11 @@ return 0
 /* cleanup output line:                        */
 /* - all upper case                            */
 /* - replace tab-chars by spaces               */
-/* - repair some MPLAB-X idiosyncracies        */
 /* ------------------------------------------- */
 line_cleanup: procedure expose PicName
 parse arg ln
 ln = translate(ln)                                          /* whole line uppercase */
 ln = translate(ln, ' ', '09'x)                              /* tabs -> space */
-if PicName = '12f520'     |,                                /* special cases */
-   PicName = '12f529t39a' |,
-   PicName = '12f529t48a' then do
-   sx.1 = 'RB0'
-   sy.1 = 'GP0'
-   sx.2 = 'RB1'
-   sy.2 = 'GP1'
-   sx.3 = 'RB2'
-   sy.3 = 'GP2'
-   sx.4 = 'RB3'
-   sy.4 = 'GP3'
-   sx.5 = 'RB4'
-   sy.5 = 'GP4'
-   sx.6 = 'RB5'
-   sy.6 = 'GP5'
-   sx.7 = 'PORTB'
-   sy.7 = 'GPIO'
-   sx.0 = 7
-   do i = 1 to sx.0
-      ln = replace_string('$'sx.i'$', '$'sy.i'$', ln)       /* replace string in line */
-   end
-end
 return ln
 
 
