@@ -43,7 +43,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.11'
+   ScriptVersion   = '0.0.12'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
 /* MPlabXVersion obtained from file VERSION.xxx created by Pic2edc script.  */
@@ -207,7 +207,7 @@ do i = 1 to dir.0                                           /* all relevant .edc
       iterate                                               /* skip */
    end
    else if DevSpec.PicNameCaps.DataSheet = '-' then do
-      call msg 1, 'No datasheet found in' DevSpecFile', no device file generated'
+      call msg 2, 'No datasheet found in' DevSpecFile', no device file generated'
       DSMissCount = DSMissCount + 1
       iterate                                               /* skip */
    end
@@ -979,7 +979,13 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:DATASPACE>'  /* end of SFRs */
                                                                   /* for output to PORTx */
                end
                when left(reg,4) = 'PORT' then do                  /* port */
-                  if HasLATReg = 0 then do                        /* PIC without LAT registers */
+                  if reg = 'PORTB'  &  left(PicName,2) = '12' then do
+                     call msg 2, 'PORTB register interpreted as GPIO / PORTA'
+                     call list_variable field, '_GPIO',  addr     /* GPIO */
+                     call list_alias '_'PORTA, '_'GPIO            /* PORTA alias of GPIO */
+                     call list_port1x_shadow 'PORTA'
+                  end
+                  else if HasLATReg = 0 then do                   /* PIC without LAT registers */
                      call list_variable field, '_'reg,  addr
                      call list_port1x_shadow reg
                   end
@@ -1264,6 +1270,14 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                   when reg = 'OPTION_REG' & val1 = 'PS2' then do
                      call list_bitfield 1, reg'_PS', reg, offset
                   end
+                  when reg = 'PORTB' & left(val1,2) = 'RB' & left(PicName,2) = '12' then do
+                     field = 'GPIO_GP'right(val1,1)          /* pin GPIO_GPx */
+                     call list_bitfield width, field, '_GPIO', offset
+                  end
+                  when (left(reg,4) = 'PORT' | reg = 'GPIO') &,    /* exceptions for PORTx or GPIO */
+                        HasLATReg = 0 then do                      /* PIC without LAT registers */
+                     call list_bitfield 1, field, '_'reg, offset
+                  end
                   when width > 1  &,                        /* no multi-bit fields for pins */
                        (left(reg,4) = 'PORT' | left(reg,4) = 'GPIO'   |,
                         left(reg,3) = 'LAT'  | left(reg,4) = 'TRIS')  then do
@@ -1276,7 +1290,7 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
 
                otherwise
 
-                  if subfields_wanted(reg) > 0 then         /* subfield wanted */
+                  if subfields_wanted(reg) > 0 then         /* sometimes subfields are not wanted */
                      call list_bitfield width, field, reg, offset
 
                end
@@ -1361,7 +1375,20 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                   when left(reg,4) = 'PORT' & width = 1 then do
                      if left(val1,1) = 'R'  &,
                         substr(val1,2,length(val1)-2) = right(reg,1) then do  /* prob. I/O pin */
-                        if HasLATReg = 0 then do                     /* PIC without LAT registers */
+                        if reg = 'PORTB' & left(val1,2) = 'RB' & left(PicName,2) = '12' then do
+                           shadow = '_PORTA_shadow'
+                           pin = 'pin_A'right(val1,1)
+                           call list_bitfield 1, pin, '_GPIO', offset
+                           call list_pin_alias reg, 'RA'right(val1,1), pin
+                           call lineout jalfile, '--'
+                           call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                          'at' shadow ':' offset') is'
+                           call lineout jalfile, '   pragma inline'
+                           call lineout jalfile, '   _PORTA =' shadow
+                           call lineout jalfile, 'end procedure'
+                           call lineout jalfile, '--'
+                        end
+                        else if HasLATReg = 0 then do       /* PIC without LAT registers */
                            shadow = '_PORT'right(reg,1)'_shadow'
                            pin = 'pin_'right(val1,2)
                            call list_bitfield 1, pin, '_'reg, offset
@@ -1374,7 +1401,7 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                            call lineout jalfile, 'end procedure'
                            call lineout jalfile, '--'
                         end
-                        else do                                /* PIC with LAT registers */
+                        else do                             /* PIC with LAT registers */
                            PortLetter = substr(reg,5)
                            PortLat.PortLetter.offset = PortLetter||offset
                         end
@@ -2185,7 +2212,7 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:NMMRPLACE>'   /* end of NMMRs */
          if left(reg,4) = 'GPIO' then do                       /* *** SPECIAL for 12F529Txxx */
             reg = 'TRISIO'                                     /* replace by TRISIO */
             Name.reg = reg                                     /* add to collection of names */
-            call msg 2, 'NMMR GPIO handled as TRISIO (TRISA)'
+            call msg 2, 'NMMR GPIO handled as TRISIO / TRISA'
             call lineout jalfile, '-- ------------------------------------------------'
             shadow = '_TRISA_shadow'
             if sharedmem.0 < 1 then do

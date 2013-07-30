@@ -1,0 +1,416 @@
+-- ===================================================
+-- Title: JalV2 device include file for PIC12F629
+--
+-- Author: Rob Hamerling, Copyright (c) 2008..2013, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4q
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license  (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+--    Device include file for pic12f629, containing:
+--    - Declaration of ports and pins of the chip.
+--    - Procedures for shadowing of ports and pins
+--      to circumvent the read-modify-write problem.
+--    - Symbolic definitions for configuration bits (fuses)
+--    - Some device dependent procedures for common
+--      operations, like:
+--      . enable_digital_io()
+--
+-- Sources:
+--  - {MPLAB-X 1.85} crownking.edc.jar/content/edc/../PIC12F629.PIC
+--
+-- Notes:
+--  - Created with Pic2Jal Rexx script version 0.0.12
+--  - File creation date/time: 30 Jul 2013 14:32
+--
+-- ===================================================
+--
+const word DEVICE_ID   = 0x0F80
+const byte PICTYPE[]   = "12F629"
+const byte DATASHEET[] = "41190G"
+const byte PGMSPEC[]   = "41191D"
+--
+-- Vdd Range: 2.500-5.500 Nominal: 5.000
+-- Vpp Range: 12.750-13.250 Default: 13.000
+--
+-- ---------------------------------------------------
+--
+include chipdef_jallib                  -- common constants
+--
+pragma  target  cpu   PIC_14            -- (banks=2)
+pragma  target  chip  12f629
+pragma  target  bank  0x0080
+pragma  target  page  0x0800
+pragma  stack   8
+pragma  code    1023                     -- (excl high mem word)
+pragma  eeprom  0x2100,128
+pragma  ID      0x2000,4
+pragma  data    0x20-0x5F
+pragma  shared  0x20-0x5F
+--
+var volatile byte _pic_accum at 0x5F      -- (compiler)
+var volatile byte _pic_isr_w at 0x5E      -- (compiler)
+--
+const word  _FUSES_CT             = 1
+const word  _FUSE_BASE            = 0x2007
+const word  _FUSES                = 0b_0011_1111_1111_1111
+--
+-- ------------------------------------------------
+var volatile byte   INDF                      at { 0x0,0x80 }
+var volatile byte   _ind                      at { 0x0,0x80 }
+-- ------------------------------------------------
+var volatile byte   TMR0                      at { 0x1 }
+-- ------------------------------------------------
+var volatile byte   PCL                       at { 0x2,0x82 }
+var volatile byte   _pcl                      at { 0x2,0x82 }
+-- ------------------------------------------------
+var volatile byte   STATUS                    at { 0x3,0x83 }
+var volatile bit    STATUS_C                  at STATUS : 0
+var volatile bit    STATUS_DC                 at STATUS : 1
+var volatile bit    STATUS_Z                  at STATUS : 2
+var volatile bit    STATUS_NPD                at STATUS : 3
+var volatile bit    STATUS_NTO                at STATUS : 4
+var volatile bit*2  STATUS_RP                 at STATUS : 5
+var volatile bit    STATUS_IRP                at STATUS : 7
+var volatile byte   _status                   at { 0x3,0x83 }
+const        byte   _c                        =  0
+const        byte   _dc                       =  1
+const        byte   _z                        =  2
+const        byte   _not_pd                   =  3
+const        byte   _not_to                   =  4
+const        byte   _irp                      =  7
+const        byte   _rp0                      =  5
+const        byte   _rp1                      =  6
+-- ------------------------------------------------
+var volatile byte   FSR                       at { 0x4,0x84 }
+var volatile byte   _fsr                      at { 0x4,0x84 }
+-- ------------------------------------------------
+var volatile byte   _GPIO                     at { 0x5 }
+alias               _PORTA                    is _GPIO
+--
+var          byte   PORTA                     at _PORTA
+var volatile byte   _PORTA_shadow             at 0x5D
+--
+procedure PORTA'put(byte in x at _PORTA_shadow) is
+   pragma inline
+   _PORTA = _PORTA_shadow
+end procedure
+--
+procedure PORTA_low'put(byte in x) is
+   _PORTA_shadow = (_PORTA_shadow & 0xF0) | (x & 0x0F)
+   _PORTA = _PORTA_shadow
+end procedure
+function PORTA_low'get() return byte is
+   return (PORTA & 0x0F)
+end function
+--
+procedure PORTA_high'put(byte in x) is
+   _PORTA_shadow = (_PORTA_shadow & 0x0F) | (x << 4)
+   _PORTA = _PORTA_shadow
+end procedure
+function PORTA_high'get() return byte is
+   return (PORTA >> 4)
+end function
+--
+var volatile bit    GPIO_GP0                  at _GPIO : 0
+var volatile bit    pin_A0                    at _GPIO : 0
+alias               pin_GP0                   is pin_A0
+alias               pin_CIN_POS               is pin_A0
+alias               pin_ICSPDAT               is pin_A0
+--
+procedure pin_A0'put(bit in x at _PORTA_shadow : 0) is
+   pragma inline
+   _PORTA = _PORTA_shadow
+end procedure
+--
+var volatile bit    GPIO_GP1                  at _GPIO : 1
+var volatile bit    pin_A1                    at _GPIO : 1
+alias               pin_GP1                   is pin_A1
+alias               pin_CIN_NEG               is pin_A1
+alias               pin_ICSPCLK               is pin_A1
+--
+procedure pin_A1'put(bit in x at _PORTA_shadow : 1) is
+   pragma inline
+   _PORTA = _PORTA_shadow
+end procedure
+--
+var volatile bit    GPIO_GP2                  at _GPIO : 2
+var volatile bit    pin_A2                    at _GPIO : 2
+alias               pin_GP2                   is pin_A2
+alias               pin_T0CKI                 is pin_A2
+alias               pin_COUT                  is pin_A2
+--
+procedure pin_A2'put(bit in x at _PORTA_shadow : 2) is
+   pragma inline
+   _PORTA = _PORTA_shadow
+end procedure
+--
+var volatile bit    GPIO_GP3                  at _GPIO : 3
+var volatile bit    pin_A3                    at _GPIO : 3
+alias               pin_GP3                   is pin_A3
+alias               pin_MCLR                  is pin_A3
+alias               pin_VPP                   is pin_A3
+--
+procedure pin_A3'put(bit in x at _PORTA_shadow : 3) is
+   pragma inline
+   _PORTA = _PORTA_shadow
+end procedure
+--
+var volatile bit    GPIO_GP4                  at _GPIO : 4
+var volatile bit    pin_A4                    at _GPIO : 4
+alias               pin_GP4                   is pin_A4
+alias               pin_T1G                   is pin_A4
+alias               pin_OSC2                  is pin_A4
+alias               pin_CLKOUT                is pin_A4
+--
+procedure pin_A4'put(bit in x at _PORTA_shadow : 4) is
+   pragma inline
+   _PORTA = _PORTA_shadow
+end procedure
+--
+var volatile bit    GPIO_GP5                  at _GPIO : 5
+var volatile bit    pin_A5                    at _GPIO : 5
+alias               pin_GP5                   is pin_A5
+alias               pin_T1CKI                 is pin_A5
+alias               pin_OSC1                  is pin_A5
+alias               pin_CLKIN                 is pin_A5
+--
+procedure pin_A5'put(bit in x at _PORTA_shadow : 5) is
+   pragma inline
+   _PORTA = _PORTA_shadow
+end procedure
+--
+-- ------------------------------------------------
+var volatile byte   PCLATH                    at { 0xA,0x8A }
+var volatile bit*5  PCLATH_PCLATH             at PCLATH : 0
+var volatile byte   _pclath                   at { 0xA,0x8A }
+-- ------------------------------------------------
+var volatile byte   INTCON                    at { 0xB,0x8B }
+var volatile bit    INTCON_GPIF               at INTCON : 0
+var volatile bit    INTCON_INTF               at INTCON : 1
+var volatile bit    INTCON_T0IF               at INTCON : 2
+var volatile bit    INTCON_TMR0IF             at INTCON : 2
+var volatile bit    INTCON_GPIE               at INTCON : 3
+var volatile bit    INTCON_INTE               at INTCON : 4
+var volatile bit    INTCON_T0IE               at INTCON : 5
+var volatile bit    INTCON_TMR0IE             at INTCON : 5
+var volatile bit    INTCON_PEIE               at INTCON : 6
+var volatile bit    INTCON_GIE                at INTCON : 7
+-- ------------------------------------------------
+var volatile byte   PIR1                      at { 0xC }
+var volatile bit    PIR1_TMR1IF               at PIR1 : 0
+var volatile bit    PIR1_CMIF                 at PIR1 : 3
+var volatile bit    PIR1_ADIF                 at PIR1 : 6
+var volatile bit    PIR1_EEIF                 at PIR1 : 7
+-- ------------------------------------------------
+var volatile word   TMR1                      at { 0xE }
+-- ------------------------------------------------
+var volatile byte   TMR1L                     at { 0xE }
+-- ------------------------------------------------
+var volatile byte   TMR1H                     at { 0xF }
+-- ------------------------------------------------
+var volatile byte   T1CON                     at { 0x10 }
+var volatile bit    T1CON_TMR1ON              at T1CON : 0
+var volatile bit    T1CON_TMR1CS              at T1CON : 1
+var volatile bit    T1CON_NT1SYNC             at T1CON : 2
+var volatile bit    T1CON_T1OSCEN             at T1CON : 3
+var volatile bit*2  T1CON_T1CKPS              at T1CON : 4
+var volatile bit    T1CON_TMR1GE              at T1CON : 6
+-- ------------------------------------------------
+var volatile byte   CMCON                     at { 0x19 }
+var volatile bit*3  CMCON_CM                  at CMCON : 0
+var volatile bit    CMCON_CIS                 at CMCON : 3
+var volatile bit    CMCON_CINV                at CMCON : 4
+var volatile bit    CMCON_COUT                at CMCON : 6
+-- ------------------------------------------------
+var volatile byte   OPTION_REG                at { 0x81 }
+var volatile bit*3  OPTION_REG_PS             at OPTION_REG : 0
+var volatile bit    OPTION_REG_PSA            at OPTION_REG : 3
+alias               T0CON_PSA                 is OPTION_REG_PSA
+var volatile bit    OPTION_REG_T0SE           at OPTION_REG : 4
+alias               T0CON_T0SE                is OPTION_REG_T0SE
+var volatile bit    OPTION_REG_T0CS           at OPTION_REG : 5
+alias               T0CON_T0CS                is OPTION_REG_T0CS
+var volatile bit    OPTION_REG_INTEDG         at OPTION_REG : 6
+var volatile bit    OPTION_REG_NGPPU          at OPTION_REG : 7
+-- ------------------------------------------------
+var volatile byte   TRISIO                    at { 0x85 }
+alias               TRISA                     is TRISIO
+alias               PORTA_direction           is TRISIO
+--
+procedure PORTA_low_direction'put(byte in x) is
+   TRISA = (TRISA & 0xF0) | (x & 0x0F)
+end procedure
+function PORTA_low_direction'get() return byte is
+   return (TRISA & 0x0F)
+end function
+--
+procedure PORTA_high_direction'put(byte in x) is
+   TRISA = (TRISA & 0x0F) | (x << 4)
+end procedure
+function PORTA_high_direction'get() return byte is
+   return (TRISA >> 4)
+end function
+--
+var volatile bit    TRISIO_TRISIO0            at TRISIO : 0
+alias               pin_A0_direction          is TRISIO_TRISIO0
+alias               pin_GP0_direction         is pin_A0_direction
+alias               pin_CIN_POS_direction     is pin_A0_direction
+alias               pin_ICSPDAT_direction     is pin_A0_direction
+--
+var volatile bit    TRISIO_TRISIO1            at TRISIO : 1
+alias               pin_A1_direction          is TRISIO_TRISIO1
+alias               pin_GP1_direction         is pin_A1_direction
+alias               pin_CIN_NEG_direction     is pin_A1_direction
+alias               pin_ICSPCLK_direction     is pin_A1_direction
+--
+var volatile bit    TRISIO_TRISIO2            at TRISIO : 2
+alias               pin_A2_direction          is TRISIO_TRISIO2
+alias               pin_GP2_direction         is pin_A2_direction
+alias               pin_T0CKI_direction       is pin_A2_direction
+alias               pin_COUT_direction        is pin_A2_direction
+--
+var volatile bit    TRISIO_TRISIO3            at TRISIO : 3
+alias               pin_A3_direction          is TRISIO_TRISIO3
+alias               pin_GP3_direction         is pin_A3_direction
+alias               pin_MCLR_direction        is pin_A3_direction
+alias               pin_VPP_direction         is pin_A3_direction
+--
+var volatile bit    TRISIO_TRISIO4            at TRISIO : 4
+alias               pin_A4_direction          is TRISIO_TRISIO4
+alias               pin_GP4_direction         is pin_A4_direction
+alias               pin_T1G_direction         is pin_A4_direction
+alias               pin_OSC2_direction        is pin_A4_direction
+alias               pin_CLKOUT_direction      is pin_A4_direction
+--
+var volatile bit    TRISIO_TRISIO5            at TRISIO : 5
+alias               pin_A5_direction          is TRISIO_TRISIO5
+alias               pin_GP5_direction         is pin_A5_direction
+alias               pin_T1CKI_direction       is pin_A5_direction
+alias               pin_OSC1_direction        is pin_A5_direction
+alias               pin_CLKIN_direction       is pin_A5_direction
+--
+-- ------------------------------------------------
+var volatile byte   PIE1                      at { 0x8C }
+var volatile bit    PIE1_TMR1IE               at PIE1 : 0
+var volatile bit    PIE1_CMIE                 at PIE1 : 3
+var volatile bit    PIE1_ADIE                 at PIE1 : 6
+var volatile bit    PIE1_EEIE                 at PIE1 : 7
+-- ------------------------------------------------
+var volatile byte   PCON                      at { 0x8E }
+var volatile bit    PCON_NBOR                 at PCON : 0
+var volatile bit    PCON_NPOR                 at PCON : 1
+-- ------------------------------------------------
+var volatile byte   OSCCAL                    at { 0x90 }
+var volatile bit*6  OSCCAL_CAL                at OSCCAL : 2
+-- ------------------------------------------------
+var volatile byte   WPU                       at { 0x95 }
+var volatile bit    WPU_WPU0                  at WPU : 0
+var volatile bit    WPU_WPU1                  at WPU : 1
+var volatile bit    WPU_WPU2                  at WPU : 2
+var volatile bit    WPU_WPU4                  at WPU : 4
+var volatile bit    WPU_WPU5                  at WPU : 5
+-- ------------------------------------------------
+var volatile byte   IOC                       at { 0x96 }
+var volatile bit    IOC_IOC0                  at IOC : 0
+var volatile bit    IOC_IOC1                  at IOC : 1
+var volatile bit    IOC_IOC2                  at IOC : 2
+var volatile bit    IOC_IOC3                  at IOC : 3
+var volatile bit    IOC_IOC4                  at IOC : 4
+var volatile bit    IOC_IOC5                  at IOC : 5
+-- ------------------------------------------------
+var volatile byte   VRCON                     at { 0x99 }
+var volatile bit*4  VRCON_VR                  at VRCON : 0
+var volatile bit    VRCON_VRR                 at VRCON : 5
+var volatile bit    VRCON_VREN                at VRCON : 7
+-- ------------------------------------------------
+var volatile byte   EEDATA                    at { 0x9A }
+-- ------------------------------------------------
+var volatile byte   EEADR                     at { 0x9B }
+var volatile bit*7  EEADR_EEADR               at EEADR : 0
+-- ------------------------------------------------
+var volatile byte   EECON1                    at { 0x9C }
+var volatile bit    EECON1_RD                 at EECON1 : 0
+var volatile bit    EECON1_WR                 at EECON1 : 1
+var volatile bit    EECON1_WREN               at EECON1 : 2
+var volatile bit    EECON1_WRERR              at EECON1 : 3
+-- ------------------------------------------------
+var volatile byte   EECON2                    at { 0x9D }
+--
+-- ===================================================
+--
+-- Special (device specific) constants and procedures
+--
+const      ADC_GROUP          = 0        -- no ADC module present
+const byte ADC_NTOTAL_CHANNEL = 0
+const byte ADC_ADCS_BITCOUNT  = 0
+const byte ADC_MAX_RESOLUTION = 0
+--
+const PPS_GROUP  = PPS_0        -- no Peripheral Pin Selection
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - -
+-- Disable comparator module
+procedure comparator_off() is
+   pragma inline
+   CMCON  = 0b0000_0111        -- disable comparator
+end procedure
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - -
+-- Switch analog ports to digital mode when analog module(s) present.
+procedure enable_digital_io() is
+   pragma inline
+   comparator_off()
+end procedure
+--
+-- =============================================
+--
+-- Symbolic Fuse Definitions
+-- -------------------------
+--
+-- CONFIG (0x2007)
+--
+pragma fuse_def OSC 0x7 {                  -- oscillator selection bits
+       RC_CLKOUT = 0x7                     -- rc oscillator: clkout function on gp4/osc2/clkout pin, rc on gp5/osc1/clkin
+       RC_NOCLKOUT = 0x6                   -- rc oscillator: i/o function on gp4/osc2/clkout pin, rc on gp5/osc1/clkin
+       INTOSC_CLKOUT = 0x5                 -- intosc oscillator: clkout function on gp4/osc2/clkout pin, i/o function on gp5/osc1/clkin
+       INTOSC_NOCLKOUT = 0x4               -- intosc oscillator: i/o function on gp4/osc2/clkout pin, i/o function on gp5/osc1/clkin
+       EC_NOCLKOUT = 0x3                   -- ec: i/o function on gp4/osc2/clkout pin, clkin on gp5/osc1/clkin
+       HS = 0x2                            -- hs oscillator: high speed crystal/resonator on gp4/osc2/clkout and gp5/osc1/clkin
+       XT = 0x1                            -- xt oscillator: crystal/resonator on gp4/osc2/clkout and gp5/osc1/clkin
+       LP = 0x0                            -- lp oscillator: low power crystal on gp4/osc2/clkout and gp5/osc1/clkin
+       }
+pragma fuse_def WDT 0x8 {                  -- watchdog timer enable bit
+       ENABLED = 0x8                       -- wdt enabled
+       DISABLED = 0x0                      -- wdt disabled
+       }
+pragma fuse_def PWRTE 0x10 {               -- power-up timer enable bit
+       DISABLED = 0x10                     -- pwrt disabled
+       ENABLED = 0x0                       -- pwrt enabled
+       }
+pragma fuse_def MCLR 0x20 {                -- gp3/mclr pin function select
+       EXTERNAL = 0x20                     -- gp3/mclr pin function is mclr
+       INTERNAL = 0x0                      -- gp3/mclr pin function is digital i/o, mclr internally tied to vdd
+       }
+pragma fuse_def BROWNOUT 0x40 {            -- brown-out detect enable bit
+       ENABLED = 0x40                      -- bod enabled
+       DISABLED = 0x0                      -- bod disabled
+       }
+pragma fuse_def CP 0x80 {                  -- code protection bit
+       DISABLED = 0x80                     -- program memory code protection is disabled
+       ENABLED = 0x0                       -- program memory code protection is enabled
+       }
+pragma fuse_def CPD 0x100 {                -- data code protection bit
+       DISABLED = 0x100                    -- data memory code protection is disabled
+       ENABLED = 0x0                       -- data memory code protection is enabled
+       }
+pragma fuse_def BG 0x600 {                 -- bandgap calibration bits for bod and por voltage
+       HIGHEST = 0x600                     -- highest bandgap voltage
+       LOWEST = 0x0                        -- lowest bandgap voltage
+       }
+--
