@@ -26,8 +26,8 @@
 --  - {MPLAB-X 1.85} crownking.edc.jar/content/edc/../PIC12F629.PIC
 --
 -- Notes:
---  - Created with Pic2Jal Rexx script version 0.0.12
---  - File creation date/time: 30 Jul 2013 14:32
+--  - Created with Edc2Jal Rexx script version 0.0.13
+--  - File creation date/time: 5 Aug 2013 12:05
 --
 -- ===================================================
 --
@@ -78,6 +78,8 @@ var volatile bit    STATUS_NPD                at STATUS : 3
 var volatile bit    STATUS_NTO                at STATUS : 4
 var volatile bit*2  STATUS_RP                 at STATUS : 5
 var volatile bit    STATUS_IRP                at STATUS : 7
+var volatile bit    STATUS_RP0                at STATUS : 5
+var volatile bit    STATUS_RP1                at STATUS : 6
 var volatile byte   _status                   at { 0x3,0x83 }
 const        byte   _c                        =  0
 const        byte   _dc                       =  1
@@ -208,6 +210,7 @@ var volatile bit    PIR1_TMR1IF               at PIR1 : 0
 var volatile bit    PIR1_CMIF                 at PIR1 : 3
 var volatile bit    PIR1_ADIF                 at PIR1 : 6
 var volatile bit    PIR1_EEIF                 at PIR1 : 7
+var volatile bit    PIR1_T1IF                 at PIR1 : 0
 -- ------------------------------------------------
 var volatile word   TMR1                      at { 0xE }
 -- ------------------------------------------------
@@ -222,12 +225,17 @@ var volatile bit    T1CON_NT1SYNC             at T1CON : 2
 var volatile bit    T1CON_T1OSCEN             at T1CON : 3
 var volatile bit*2  T1CON_T1CKPS              at T1CON : 4
 var volatile bit    T1CON_TMR1GE              at T1CON : 6
+var volatile bit    T1CON_T1CKPS0             at T1CON : 4
+var volatile bit    T1CON_T1CKPS1             at T1CON : 5
 -- ------------------------------------------------
 var volatile byte   CMCON                     at { 0x19 }
 var volatile bit*3  CMCON_CM                  at CMCON : 0
 var volatile bit    CMCON_CIS                 at CMCON : 3
 var volatile bit    CMCON_CINV                at CMCON : 4
 var volatile bit    CMCON_COUT                at CMCON : 6
+var volatile bit    CMCON_CM0                 at CMCON : 0
+var volatile bit    CMCON_CM1                 at CMCON : 1
+var volatile bit    CMCON_CM2                 at CMCON : 2
 -- ------------------------------------------------
 var volatile byte   OPTION_REG                at { 0x81 }
 var volatile bit*3  OPTION_REG_PS             at OPTION_REG : 0
@@ -239,6 +247,10 @@ var volatile bit    OPTION_REG_T0CS           at OPTION_REG : 5
 alias               T0CON_T0CS                is OPTION_REG_T0CS
 var volatile bit    OPTION_REG_INTEDG         at OPTION_REG : 6
 var volatile bit    OPTION_REG_NGPPU          at OPTION_REG : 7
+var volatile bit    OPTION_REG_PS0            at OPTION_REG : 0
+var volatile bit    OPTION_REG_PS1            at OPTION_REG : 1
+var volatile bit    OPTION_REG_PS2            at OPTION_REG : 2
+alias               T0CON_T0PS                is OPTION_REG_PS
 -- ------------------------------------------------
 var volatile byte   TRISIO                    at { 0x85 }
 alias               TRISA                     is TRISIO
@@ -302,13 +314,21 @@ var volatile bit    PIE1_TMR1IE               at PIE1 : 0
 var volatile bit    PIE1_CMIE                 at PIE1 : 3
 var volatile bit    PIE1_ADIE                 at PIE1 : 6
 var volatile bit    PIE1_EEIE                 at PIE1 : 7
+var volatile bit    PIE1_T1IE                 at PIE1 : 0
 -- ------------------------------------------------
 var volatile byte   PCON                      at { 0x8E }
 var volatile bit    PCON_NBOR                 at PCON : 0
 var volatile bit    PCON_NPOR                 at PCON : 1
+var volatile bit    PCON_NBOD                 at PCON : 0
 -- ------------------------------------------------
 var volatile byte   OSCCAL                    at { 0x90 }
 var volatile bit*6  OSCCAL_CAL                at OSCCAL : 2
+var volatile bit    OSCCAL_CAL0               at OSCCAL : 2
+var volatile bit    OSCCAL_CAL1               at OSCCAL : 3
+var volatile bit    OSCCAL_CAL2               at OSCCAL : 4
+var volatile bit    OSCCAL_CAL3               at OSCCAL : 5
+var volatile bit    OSCCAL_CAL4               at OSCCAL : 6
+var volatile bit    OSCCAL_CAL5               at OSCCAL : 7
 -- ------------------------------------------------
 var volatile byte   WPU                       at { 0x95 }
 var volatile bit    WPU_WPU0                  at WPU : 0
@@ -324,11 +344,21 @@ var volatile bit    IOC_IOC2                  at IOC : 2
 var volatile bit    IOC_IOC3                  at IOC : 3
 var volatile bit    IOC_IOC4                  at IOC : 4
 var volatile bit    IOC_IOC5                  at IOC : 5
+var volatile bit    IOC_IOCB0                 at IOC : 0
+var volatile bit    IOC_IOCB1                 at IOC : 1
+var volatile bit    IOC_IOCB2                 at IOC : 2
+var volatile bit    IOC_IOCB3                 at IOC : 3
+var volatile bit    IOC_IOCB4                 at IOC : 4
+var volatile bit    IOC_IOCB5                 at IOC : 5
 -- ------------------------------------------------
 var volatile byte   VRCON                     at { 0x99 }
 var volatile bit*4  VRCON_VR                  at VRCON : 0
 var volatile bit    VRCON_VRR                 at VRCON : 5
 var volatile bit    VRCON_VREN                at VRCON : 7
+var volatile bit    VRCON_VR0                 at VRCON : 0
+var volatile bit    VRCON_VR1                 at VRCON : 1
+var volatile bit    VRCON_VR2                 at VRCON : 2
+var volatile bit    VRCON_VR3                 at VRCON : 3
 -- ------------------------------------------------
 var volatile byte   EEDATA                    at { 0x9A }
 -- ------------------------------------------------
@@ -345,14 +375,13 @@ var volatile byte   EECON2                    at { 0x9D }
 --
 -- ===================================================
 --
--- Special (device specific) constants and procedures
+--    Constants and procedures for analog features
+--    --------------------------------------------
 --
 const      ADC_GROUP          = 0        -- no ADC module present
 const byte ADC_NTOTAL_CHANNEL = 0
 const byte ADC_ADCS_BITCOUNT  = 0
 const byte ADC_MAX_RESOLUTION = 0
---
-const PPS_GROUP  = PPS_0        -- no Peripheral Pin Selection
 --
 -- - - - - - - - - - - - - - - - - - - - - - - - - - -
 -- Disable comparator module
@@ -368,10 +397,19 @@ procedure enable_digital_io() is
    comparator_off()
 end procedure
 --
--- =============================================
+-- ===================================================
 --
--- Symbolic Fuse Definitions
--- -------------------------
+--    Miscellaneous
+--    -------------
+--
+const PPS_GROUP        = PPS_0        -- no Peripheral Pin Selection
+--
+-- Free shared memory: 0x20-0x5C
+--
+-- ===================================================
+--
+--    Symbolic Fuse Definitions
+-- ------------------------------
 --
 -- CONFIG (0x2007)
 --
