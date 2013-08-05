@@ -38,12 +38,12 @@
  *     Ref:  http://regina-rexx.sourceforge.net/                            *
  *     See the embedded comments below for instructions for possibly        *
  *     required changes. You don't have to look further than the line which *
- *     says "Here the device file generation actually starts" (approx 125). *
+ *     says "Here the device file generation actually starts" (approx 135). *
  *   - A summary of changes of this script is maintained in 'changes.txt'   *
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.12'
+   ScriptVersion   = '0.0.13'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
 /* MPlabXVersion obtained from file VERSION.xxx created by Pic2edc script.  */
@@ -62,7 +62,7 @@ msglevel = 2
 /*   1 - debugging output of ...                              */
 /*   2 - debugging output of ...                              */
 
-debuglevel = 1
+debuglevel = 0
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx utilities */
@@ -75,41 +75,41 @@ end
 MPlabXVersion = right(dir.1,3)
 
 /* MPLAB-X and a local copy of the Jallib SVN tree should be installed.        */
-/* The .PIC files used are in [basedir]/MPLAB_IDE/BIN/LIB/CROWNKING.EDC.JAR.   */
+/* The .pic files used are in [basedir]/MPLAB_IDE/BIN/LIB/CROWNKING.EDC.JAR.   */
 /* This file must be expanded (unZIPped) to obtain the individual .pic files,  */
-/* and be processed by the Pic2edc files.                                      */
-/* Directory of expanded MPLAB-X .pic files:  */
+/* and be expanded by the Pic2edc script to obtain the necessary .edc files.   */
+/* Directory of expanded MPLAB-X .pic files:                                   */
 
 edcdir        = './edc.'MPlabXVersion                       /* source of expanded .pic files */
 
 /* Some information is collected from files in JALLIB tools directory */
 
-JALLIBbase    = 'k:/jallib/'                       /* JALLIB base directory (local) */
-DevSpecFile   = JALLIBbase'tools/devicespecific.json'       /* device specific data */
-PinMapFile    = JALLIBbase'tools/pinmap_pinsuffix.json'     /* pin aliases */
-FuseDefFile   = JALLIBbase'tools/fusedefmap.cmd'            /* fuse_def mapping (Fosc) */
-DataSheetFile = JALLIBbase'tools/datasheet.list'            /* actual datasheets */
+JALLIBbase    = 'k:/jallib'                                  /* local JALLIB base directory */
+DevSpecFile   = JALLIBbase'/tools/devicespecific.json'       /* device specific data */
+PinMapFile    = JALLIBbase'/tools/pinmap_pinsuffix.json'     /* pin aliases */
+FuseDefFile   = JALLIBbase'/tools/fusedefmap.cmd'            /* OSC fuse_def mappings */
+DataSheetFile = JALLIBbase'/tools/datasheet.list'            /* actual datasheets */
 
-call msg 0, 'Pic2Jal version' ScriptVersion '  -  ' ScriptAuthor '  -  ' date('N')';' time('N')
+call msg 0, 'Edc2Jal version' ScriptVersion '  -  ' ScriptAuthor '  -  ' date('N')';' time('N')
 if msglevel > 2 then
    call msg 0, 'Only reporting errors!'
 
-/* The destination of the generated device files depends on the first    */
-/* mandatory commandline argument, which must be 'PROD' or 'TEST'        */
-/*  - with 'PROD' the files go to directory "<JALLIBbase>include/device" */
-/*  - with 'TEST' the files go to directory "./test>"                    */
-/* Note: Before creating new device files all .jal files are             */
-/*       removed from the destination directory.                         */
+/* The destination of the generated device files depends on the first     */
+/* mandatory commandline argument, which must be 'PROD' or 'TEST'         */
+/*  - with 'PROD' the files go to directory "<JALLIBbase>/include/device" */
+/*  - with 'TEST' the files go to directory "./test>"                     */
+/* Note: Before creating new device files all .jal files are              */
+/*       removed from the destination directory.                          */
 
 parse upper arg destination selection .                     /* commandline arguments */
 
 if destination = 'PROD' then                                /* production run */
-   dstdir = JALLIBbase'include/device'                      /* local Jallib */
+   dstdir = JALLIBbase'/include/device'                     /* local Jallib */
 else if destination = 'TEST' then do                        /* test run */
    dstdir = './test'                                        /* subdir for testing */
    rx = SysMkDir(dstdir)                                    /* create destination dir */
    if rx \= 0 & rx \= 5 then do                             /* not created, not existing */
-      call msg 3, rx 'while creating destination directory' dstdir
+      call msg 3, 'Error' rx 'while creating destination directory' dstdir
       return rx                                             /* unrecoverable: terminate */
    end
 end
@@ -191,6 +191,7 @@ do i = 1 to dir.0                                           /* all relevant .edc
       leave                                                 /* setup error: terminate */
    end
 
+   PicName = tolower(PicName)                               /* ensure name is in lower case */
    if \(substr(PicName,3,1) = 'f'    |,                     /* not flash PIC or */
         substr(PicName,3,2) = 'lf'   |,                     /*     low power flash PIC or */
         substr(PicName,3,2) = 'hv')  |,                     /*     high voltage flash PIC */
@@ -242,6 +243,8 @@ do i = 1 to dir.0                                           /* all relevant .edc
    VddNominal            = 0                                /* nominal working voltage */
    VppRange              = 0                                /* programming voltage range */
    VppDefault            = 0                                /* default programming voltage */
+   dsnumber              = ''                               /* datasheet number in .edc file */
+   psnumber              = ''                               /* pgm spec number in .edc file */
 
    ADCS_bits             = 0                                /* # ADCONx_ADCS bits */
    ADC_highres           = 0                                /* 0 = has no ADRESH register */
@@ -284,6 +287,19 @@ do i = 1 to dir.0                                           /* all relevant .edc
                   'Internal script error, terminating ....'
       call msg 0, Pic.0 ':' Pic.1
       leave                                                 /* script error: terminate */
+   end
+
+   if dsnumber \= ''  then do
+      if length(DevSpec.PicNameCaps.DataSheet) > 5  & length(dsnumber) = 5 then
+         dsnumber = insert('000', dsnumber, 1)
+      if DevSpec.PicNameCaps.DataSheet \= dsnumber then
+         call msg 2, 'Non matching DataSheet numbers:' DevSpec.PicNameCaps.DataSheet '<->' dsnumber
+   end
+   if psnumber \= '' then do
+      if length(DevSpec.PicNameCaps.PgmSpec) > 5 & length(psnumber) = 5 then
+         psnumber = insert('000', psnumber, 1)
+      if psnumber \= '' & DevSpec.PicNameCaps.PgmSpec \= psnumber then
+         call msg 2, 'Non matching PgmSpec numbers:' DevSpec.PicNameCaps.PgmSpec '<->' psnumber
    end
 
    call load_sfr_info                                       /* SFR address map */
@@ -340,6 +356,8 @@ do i = 1 to dir.0                                           /* all relevant .edc
 
    call list_analog_functions                               /* common enable_digital_io() */
 
+   call list_miscellaneous                                  /* other info */
+
    call list_fusedef                                        /* pragma fusedef */
 
    call stream jalfile, 'c', 'close'                        /* done with this PIC */
@@ -381,14 +399,14 @@ return 0
 /* input:   - nothing                           */
 /* output:  - nothing                           */
 /* returns: core (0, '12', '14', '14H', '16')   */
-/* notes: searches address of OSCCAL and FSR    */
 /* -------------------------------------------- */
 load_config_info: procedure expose Pic. PicName Name. CfgAddr. ,
                                    StackDepth NumBanks Banksize AccessBankSplitOffset,
                                    CodeSize EESpec IDSpec DevID Cfgmem,
                                    VddRange VddNominal VppRange VppDefault,
                                    HasLATreg HasMuxedSFR OSCCALaddr FSRaddr,
-                                   ADC_highres ADCS_bits IRCF_bits
+                                   ADC_highres ADCS_bits IRCF_bits,
+                                   dsnumber psnumber
 
 CfgAddr.0 = 0                                               /* empty */
 Core = 0                                                    /* undetermined */
@@ -404,71 +422,80 @@ do i = 1 to Pic.0
    select
 
       when pos('<EDC:PIC', Pic.i) > 0 then do
-         parse var Pic.i . 'EDC:ARCH="' Val1 '"' .
-         if Val1 \= '' then do
-            if      Val1 = '16C5X' then
+         parse var Pic.i . 'EDC:ARCH="' val1 '"' .
+         if val1 \= '' then do
+            if      val1 = '16C5X' then
                Core = '12'
-            else if Val1 = '16XXXX' then
+            else if val1 = '16XXXX' then
                Core = '14'
-            else if Val1 = '16EXXX' then
+            else if val1 = '16EXXX' then
                Core = '14H'
-            else if Val1 = '18XXXX' then
+            else if val1 = '18XXXX' then
                Core = '16'
             else do                                         /* otherwise */
-               msg 3, 'Unrecognized core type:' Val1', terminated!'
+               msg 3, 'Unrecognized core type:' val1', terminated!'
                exit 3
             end
          end
+         parse var Pic.i . 'EDC:DSID="' val1 '"' .
+         if val1 \= '' then
+            dsnumber = strip(val1)                          /* DataSheet number */
+         parse var Pic.i . 'EDC:PSID="' val1 '"' .
+         if val1 \= '' then
+            psnumber = strip(val1)                          /* PgmSpec number */
       end
 
       when kwd = '<EDC:VPP' then do
-         parse var Pic.i '<EDC:VPP' 'EDC:DEFAULTVOLTAGE="' Val1 '"',
-                          'EDC:MAXVOLTAGE="' Val2 '"' 'EDC:MINVOLTAGE="' Val3 '"' .
-         if Val1 \= '' then do
-            VppDefault = strip(Val1)
-            VppRange = strip(Val3)'-'strip(Val2)
+         parse var Pic.i '<EDC:VPP' 'EDC:DEFAULTVOLTAGE="' val1 '"',
+                          'EDC:MAXVOLTAGE="' val2 '"' 'EDC:MINVOLTAGE="' val3 '"' .
+         if val1 \= '' then do
+            VppDefault = strip(val1)
+            VppRange = strip(val3)'-'strip(val2)
          end
       end
 
       when kwd = '<EDC:VDD' then do
-         parse var Pic.i '<EDC:VDD' 'EDC:MAXDEFAULTVOLTAGE="' Val1 'EDC:MAXVOLTAGE="' Val2 '"',
-                          'EDC:MINDEFAULTVOLTAGE="' Val3 'EDC:MINVOLTAGE="' Val4 '"',
-                          'EDC:NOMINALVOLTAGE="' Val5 '"' .
-         if Val1 \= '' then do
-            VddRange = strip(Val4)'-'strip(Val2)
-            VddNominal = strip(Val5)
+         parse var Pic.i '<EDC:VDD' 'EDC:MAXDEFAULTVOLTAGE="' val1 'EDC:MAXVOLTAGE="' val2 '"',
+                          'EDC:MINDEFAULTVOLTAGE="' val3 'EDC:MINVOLTAGE="' val4 '"',
+                          'EDC:NOMINALVOLTAGE="' val5 '"' .
+         if val1 \= '' then do
+            VddRange = strip(val4)'-'strip(val2)
+            VddNominal = strip(val5)
          end
       end
 
       when kwd = '<EDC:MEMTRAITS' then do
          parse var Pic.i '<EDC:MEMTRAITS',
-                          'EDC:BANKCOUNT="' Val1 '"' 'EDC:HWSTACKDEPTH="' Val2 '"' .
-         if Val1 \= '' then do
-            Val1 = strip(Val1)                              /* hex or dec */
-            if left(Val1,2) = '0X' then
-               Val1 = X2D(substr(Val1,3))
-            NumBanks = Val1
+                          'EDC:BANKCOUNT="' val1 '"' 'EDC:HWSTACKDEPTH="' val2 '"' .
+         if val1 \= '' then do
+            val1 = strip(val1)                              /* hex or dec */
+            if left(val1,2) = '0X' then
+               val1 = X2D(substr(val1,3))
+            NumBanks = val1                                 /* decimal */
          end
          else
-            parse var Pic.i '<EDC:MEMTRAITS' 'EDC:HWSTACKDEPTH="' Val2 '"' .
-         if Val2 \= '' then
-            StackDepth = val2                               /* dec only */
+            parse var Pic.i '<EDC:MEMTRAITS' 'EDC:HWSTACKDEPTH="' val2 '"' .
+         if val2 \= '' then
+            val2 = strip(val2)                              /* hex or dec */
+            if left(val2,2) = '0X' then
+               val2 = X2D(substr(val2,3))
+            StackDepth = val2                               /* decimal */
       end
 
       when kwd = '<EDC:CONFIGFUSESECTOR' |,
            kwd = '<EDC:WORMHOLESECTOR' then do
          if kwd = '<EDC:CONFIGFUSESECTOR' then
             parse var Pic.i '<EDC:CONFIGFUSESECTOR',
-                          'EDC:BEGINADDR="0X' Val1 '"' 'EDC:ENDADDR="0X' Val2 '"' .
+                          'EDC:BEGINADDR="0X' val1 '"' 'EDC:ENDADDR="0X' val2 '"' .
          else
             parse var Pic.i '<EDC:WORMHOLESECTOR',
-                             'EDC:BEGINADDR="0X' Val1 '"' 'EDC:ENDADDR="0X' Val2 '"' .
-         if Val1 \= '' then do
-            Val1 = X2D(Val1)                                /* take decimal values */
-            Val2 = X2D(Val2)
-            CfgAddr.0 = Val2 - Val1                         /* number of config words/bytes */
+                             'EDC:BEGINADDR="0X' val1 '"' 'EDC:ENDADDR="0X' val2 '"' .
+         if val1 \= '' then do
+            val1 = X2D(val1)                                /* take decimal values */
+            val2 = X2D(val2)
+            CfgAddr.0 = val2 - val1                         /* number of config words/bytes */
             do j = 1 to CfgAddr.0                           /* all of 'm */
-               CfgAddr.j = Val1 + j - 1                     /* address (decimal) */
+               CfgAddr.j = val1 + j - 1                     /* address (decimal) */
             end
          end
          FuseOffset = 0
@@ -479,9 +506,9 @@ do i = 1 to Pic.0
                   parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
                   if val1 \= '' then do
                      val1 = strip(val1)                     /* hex or dec */
-                     if left(Val1,2) = '0X' then
-                        Val1 = X2D(substr(Val1,3))
-                     FuseOffset = FuseOffset + Val1         /* adjust */
+                     if left(val1,2) = '0X' then
+                        val1 = X2D(substr(val1,3))
+                     FuseOffset = FuseOffset + val1         /* adjust */
                      Cfgmem = Cfgmem'00'                    /* concat unimplemented byte */
                   end
                end
@@ -516,16 +543,16 @@ do i = 1 to Pic.0
 
       when kwd = '<EDC:CODESECTOR' then do
          parse var Pic.i '<EDC:CODESECTOR',
-                          'EDC:BEGINADDR="0X' Val1 '"' 'EDC:ENDADDR="0X' Val2 '"' .
-         if Val1 \= '' then
-            CodeSize = CodeSize + X2D(Val2) - X2D(Val1)
+                          'EDC:BEGINADDR="0X' val1 '"' 'EDC:ENDADDR="0X' val2 '"' .
+         if val1 \= '' then
+            CodeSize = CodeSize + X2D(val2) - X2D(val1)
       end
 
       when kwd = '<EDC:DEVICEIDSECTOR' then do
-         parse var Pic.i '<EDC:DEVICEIDSECTOR' . 'EDC:MASK="0X' Val1 '"' . 'EDC:VALUE="0X' Val2 '"' .
-         if Val1 \= '' then do
-            RevMask = right(strip(Val1),4,'0')                    /* 4 hex chars */
-            DevID = right(strip(Val2),4,'0')                      /* 4 hex chars */
+         parse var Pic.i '<EDC:DEVICEIDSECTOR' . 'EDC:MASK="0X' val1 '"' . 'EDC:VALUE="0X' val2 '"' .
+         if val1 \= '' then do
+            RevMask = right(strip(val1),4,'0')                    /* 4 hex chars */
+            DevID = right(strip(val2),4,'0')                      /* 4 hex chars */
             DevID = C2X(bitand(X2C(DevID),X2C(RevMask)))          /* reset revision bits */
             if PicName = '16lf1902' then do
                call msg 2, 'Device ID' DevID 'replaced by 1C00'
@@ -537,45 +564,45 @@ do i = 1 to Pic.0
             end
          end
          else do                                                  /* no revision mask */
-            parse var Pic.i '<EDC:DEVICEIDSECTOR' . 'EDC:VALUE="0X' Val1 '"' .
-            if Val1 \= '' then
-               DevID = right(strip(Val1),4,'0')                   /* 4 hex chars */
+            parse var Pic.i '<EDC:DEVICEIDSECTOR' . 'EDC:VALUE="0X' val1 '"' .
+            if val1 \= '' then
+               DevID = right(strip(val1),4,'0')                   /* 4 hex chars */
          end
       end
 
       when kwd = '<EDC:USERIDSECTOR' then do
          parse var Pic.i '<EDC:USERIDSECTOR',
-                          'EDC:BEGINADDR="0X' Val1 '"' 'EDC:ENDADDR="0X' Val2 '"' .
-         if Val1 \= '' then
+                          'EDC:BEGINADDR="0X' val1 '"' 'EDC:ENDADDR="0X' val2 '"' .
+         if val1 \= '' then
             IDSpec = '0x'strip(val1)','X2D(val2) - X2D(val1)
       end
 
       when kwd = '<EDC:EEDATASECTOR' then do
          parse var Pic.i '<EDC:EEDATASECTOR' ,
-                          'EDC:BEGINADDR="0X' Val1 '"' 'EDC:ENDADDR="0X' Val2 '"' .
-         if Val1 \= '' then
-            EESpec = '0x'Val1','X2D(Val2) - X2D(Val1)
+                          'EDC:BEGINADDR="0X' val1 '"' 'EDC:ENDADDR="0X' val2 '"' .
+         if val1 \= '' then
+            EESpec = '0x'val1','X2D(val2) - X2D(val1)
       end
 
       when kwd = '<EDC:FLASHDATASECTOR' then do
          parse var Pic.i '<EDC:FLASHDATASECTOR' ,
-                          'EDC:BEGINADDR="0X' Val1 '"' 'EDC:ENDADDR="0X' Val2 '"' .
-         if Val1 \= '' then
-            EESpec = '0x'Val1','X2D(Val2) - X2D(Val1)
+                          'EDC:BEGINADDR="0X' val1 '"' 'EDC:ENDADDR="0X' val2 '"' .
+         if val1 \= '' then
+            EESpec = '0x'val1','X2D(val2) - X2D(val1)
       end
 
       when kwd = '<EDC:SFRDATASECTOR' then do
          parse var Pic.i '<EDC:SFRDATASECTOR' 'EDC:BANK="' val1 '"',
-                          'EDC:BEGINADDR="0X' Val2 '"' .
-         if Val1 \= '' then do
-            Val1 = strip(Val1)
-            if left(Val1,2) = '0X' then
-               Val1 = X2D(substr(Val1,3))
-            if NumBanks < Val1 + 1 then                  /* new larger than previous */
-               Numbanks = Val1 + 1
+                          'EDC:BEGINADDR="0X' val2 '"' .
+         if val1 \= '' then do
+            val1 = strip(val1)
+            if left(val1,2) = '0X' then
+               val1 = X2D(substr(val1,3))
+            if NumBanks < val1 + 1 then                  /* new larger than previous */
+               Numbanks = val1 + 1
          end
-         if Val2 \= '' then
-            SFRaddr = X2D(Val2)
+         if val2 \= '' then
+            SFRaddr = X2D(val2)
       end
 
       when kwd = '<EDC:EXTENDEDMODEONLY>' then do        /* skip extended mode features */
@@ -592,25 +619,25 @@ do i = 1 to Pic.0
 
       when kwd = '<EDC:GPRDATASECTOR' then do
          parse var Pic.i '<EDC:GPRDATASECTOR' 'EDC:BANK="' val1 '"' ,
-                          'EDC:BEGINADDR="0X' Val2 '"' 'EDC:ENDADDR="0X' Val3 '"' .
-         if Val1 \= '' then do
-            Val1 = strip(Val1)                           /* hex or dec */
-            if left(Val1,2) = '0X' then
-               Val1 = X2D(substr(Val1,3))
-            if NumBanks < Val1 + 1 then                  /* new larger than previous */
-               Numbanks = Val1 + 1
-            if Val1 = 0  &  X2D(Val2) = 0 then           /* first part of access bank */
-               AccessBankSplitOffset = X2D(Val3)
+                          'EDC:BEGINADDR="0X' val2 '"' 'EDC:ENDADDR="0X' val3 '"' .
+         if val1 \= '' then do
+            val1 = strip(val1)                           /* hex or dec */
+            if left(val1,2) = '0X' then
+               val1 = X2D(substr(val1,3))
+            if NumBanks < val1 + 1 then                  /* new larger than previous */
+               Numbanks = val1 + 1
+            if val1 = 0  &  X2D(val2) = 0 then           /* first part of access bank */
+               AccessBankSplitOffset = X2D(val3)
          end
          else do                                         /* no bank specification */
             parse var Pic.i '<EDC:GPRDATASECTOR' ,
-                             'EDC:BEGINADDR="0X' Val1 '"' 'EDC:ENDADDR="0X' Val2 '"' .
-            if Val1 \= '' then do
-               Val1 = strip(Val1)                        /* hex or dec */
-               if left(Val1,2) = '0X' then
-                  Val1 = X2D(substr(Val1,3))
-               if Val1 = 0 then                          /* first part of access bank */
-                  AccessBankSplitOffset = X2D(Val2)
+                             'EDC:BEGINADDR="0X' val1 '"' 'EDC:ENDADDR="0X' val2 '"' .
+            if val1 \= '' then do
+               val1 = strip(val1)                        /* hex or dec */
+               if left(val1,2) = '0X' then
+                  val1 = X2D(substr(val1,3))
+               if val1 = 0 then                          /* first part of access bank */
+                  AccessBankSplitOffset = X2D(val2)
             end
          end
       end
@@ -620,22 +647,26 @@ do i = 1 to Pic.0
             if word(Pic.i,1) = '<EDC:SFRDEF' then do
                parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' val1 '"' .
                reg = strip(val1)
-               if left(reg,5) = 'ADCON' then do          /* ADCONx register */
+               if left(reg,5) = 'ADCON'  |,              /* ADCONx register */
+                  left(reg,5) = 'ANSEL' then do          /* ANSELx register */
                   do while word(pic.i,1) \= '</EDC:SFRMODELIST>'  /* till end subfields */
                      if word(Pic.i,1) = '<EDC:SFRMODE' then do    /* new set of subfields */
-                        parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' Val1 '"' .
-                        if Val1 = 'DS.0' then do               /* check only one SFRmode */
+                        parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' val1 '"' .
+                        if val1 = 'DS.0' then do               /* check only one SFRmode */
                            do while word(pic.i,1) \= '</EDC:SFRMODE>'
                               if word(pic.i,1) = '<EDC:SFRFIELDDEF' then do
-                                 parse var Pic.i '<EDC:SFRFIELDDEF' . 'EDC:CNAME="' Val1 '"' . ,
-                                                  'EDC:NZWIDTH="' Val2 '"' .
-                                 Val1 = strip(Val1)
-                                 if left(Val1,4) = 'ADCS' then do          /* ADCS field */
-                                    Val2 = strip(Val2)
-                                    if left(Val2,2) = '0X' then
-                                       Val2 = X2D(substr(Val2,3))
-                                    ADCS_bits = ADCS_bits + Val2           /* count ADCS bits */
+                                 parse var Pic.i '<EDC:SFRFIELDDEF' . 'EDC:CNAME="' val1 '"' . ,
+                                                  'EDC:NZWIDTH="' val2 '"' .
+                                 val1 = strip(val1)
+                                 if val1 = 'ADCS' then do                  /* multi-bit ADCS field */
+                                    val2 = strip(val2)
+                                    if left(val2,2) = '0X' then
+                                       val2 = X2D(substr(val2,3))
+                                    ADCS_bits = ADCS_bits + val2           /* count ADCS bits */
                                  end
+                                 else if left(val1,4) = 'ADCS'  &,         /* enumerated */
+                                         datatype(substr(val1,5)) = 'NUM' then
+                                    ADCS_bits = ADCS_bits + 1              /* count ADCS bits */
                               end
                               i = i + 1
                            end
@@ -652,8 +683,8 @@ do i = 1 to Pic.0
       end
 
       when kwd = '<EDC:SFRDEF' then do
-         parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' Val1 '"' .
-         reg = strip(Val1)
+         parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' val1 '"' .
+         reg = strip(val1)
          if reg = 'OSCCAL' then
             OSCCALaddr = SFRaddr                         /* store addr (dec) */
          else if left(reg,3) = 'LAT' then
@@ -662,22 +693,26 @@ do i = 1 to Pic.0
             FSRaddr = SFRaddr                            /* store addr (dec) */
          else if reg = 'ADRESH' | reg = 'ADRES0H' then
             ADC_highres = 1                              /* has high res ADC */
-         else if left(reg,5) = 'ADCON' then do          /* ADCONx register */
+         else if left(reg,5) = 'ADCON'  |,               /* ADCONx register */
+                 left(reg,5) = 'ANSEL' then do           /* ANSELx register */
             do while word(pic.i,1) \= '</EDC:SFRMODELIST>'  /* till end subfields */
                if word(Pic.i,1) = '<EDC:SFRMODE' then do    /* new set of subfields */
-                  parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' Val1 '"' .
-                  if Val1 = 'DS.0' then do               /* check only one SFRmode */
+                  parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' val1 '"' .
+                  if val1 = 'DS.0' then do               /* check only one SFRmode */
                      do while word(pic.i,1) \= '</EDC:SFRMODE>'
                         if word(pic.i,1) = '<EDC:SFRFIELDDEF' then do
-                           parse var Pic.i '<EDC:SFRFIELDDEF' . 'EDC:CNAME="' Val1 '"' . ,
-                                            'EDC:NZWIDTH="' Val2 '"' .
-                           Val1 = strip(Val1)
-                           if left(Val1,4) = 'ADCS' then do          /* ADCS field */
-                              Val2 = strip(Val2)
-                              if left(Val2,2) = '0X' then
-                                 Val2 = X2D(substr(Val2,3))
-                              ADCS_bits = ADCS_bits + Val2           /* count ADCS bits */
+                           parse var Pic.i '<EDC:SFRFIELDDEF' . 'EDC:CNAME="' val1 '"' . ,
+                                            'EDC:NZWIDTH="' val2 '"' .
+                           val1 = strip(val1)
+                           if val1 = 'ADCS' then do                  /* multibit(?) ADCS field */
+                              val2 = strip(val2)
+                              if left(val2,2) = '0X' then
+                                 val2 = X2D(substr(val2,3))
+                              ADCS_bits = ADCS_bits + val2           /* count ADCS bits */
                            end
+                           else if left(val1,4) = 'ADCS'   &,        /* enumerated */
+                                   datatype(substr(val1,5)) = 'NUM' then
+                              ADCS_bits = ADCS_bits + 1              /* count ADCS bits */
                         end
                         i = i + 1
                      end
@@ -689,17 +724,17 @@ do i = 1 to Pic.0
          else if reg = 'OSCCON' then do                    /* OSCCON register */
             do while word(pic.i,1) \= '</EDC:SFRMODELIST>'  /* till end subfields */
                if word(pic.i,1) = '<EDC:SFRFIELDDEF' then do
-                  parse var Pic.i '<EDC:SFRFIELDDEF' . 'EDC:CNAME="' Val1 '"' .,
-                                            'EDC:NZWIDTH="' Val2 '"' .
-                  Val1 = strip(Val1)
-                  if left(Val1,4) = 'IRCF' then do             /* IRCF field */
-                     Val2 = strip(Val2)
-                     if left(Val2,2) = '0X' then
-                        Val2 = X2D(substr(Val2,3))
+                  parse var Pic.i '<EDC:SFRFIELDDEF' . 'EDC:CNAME="' val1 '"' .,
+                                            'EDC:NZWIDTH="' val2 '"' .
+                  val1 = strip(val1)
+                  if left(val1,4) = 'IRCF' then do             /* IRCF field */
+                     val2 = strip(val2)
+                     if left(val2,2) = '0X' then
+                        val2 = X2D(substr(val2,3))
                      if val2 = 1 then                          /* single bit */
-                        IRCF_bits = IRCF_bits + Val2           /* count enumerated IRCF bits */
+                        IRCF_bits = IRCF_bits + val2           /* count enumerated IRCF bits */
                      else                                      /* mult-bit field */
-                        IRCF_bits = Val2                       /* # IRCF bits */
+                        IRCF_bits = val2                       /* # IRCF bits */
                   end
                end
                i = i + 1
@@ -713,21 +748,21 @@ do i = 1 to Pic.0
 
       when kwd = '<EDC:MIRROR' then do
          parse var Pic.i '<EDC:MIRROR' 'EDC:NZSIZE="' val1 '"' .
-         if Val1 \= '' then do
-            val1 = strip(Val1)                           /* hex or dec */
+         if val1 \= '' then do
+            val1 = strip(val1)                           /* hex or dec */
             if left(val1,2) = '0X' then
-               Val1 = X2D(substr(Val1,3))
+               val1 = X2D(substr(val1,3))
             SFRaddr = SFRaddr + 1
          end
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then do
-            Val1 = strip(Val1)                           /* hex or dec */
-            if left(Val1,2) = '0X' then
-               Val1 = X2D(substr(Val1,3))
-            SFRaddr = SFRaddr + Val1
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
+         if val1 \= '' then do
+            val1 = strip(val1)                           /* hex or dec */
+            if left(val1,2) = '0X' then
+               val1 = X2D(substr(val1,3))
+            SFRaddr = SFRaddr + val1
          end
       end
 
@@ -742,7 +777,7 @@ return core
 /* ---------------------------------------------------------- */
 /* procedure to build special function register array         */
 /* with mirror info and unused registers                      */
-/* input:  - nothing                                          */
+/* input:  nothing                                            */
 /* output: nothing                                            */
 /* notes: cannot be done in load_config_info:                 */
 /*        banksize and number of banks must be known ahead    */
@@ -767,9 +802,9 @@ do i = i while word(Pic.i,1) \= '</EDC:DATASPACE>'       /* to end of data */
    select
 
       when kwd = '<EDC:SFRDATASECTOR' then do
-         parse var Pic.i '<EDC:SFRDATASECTOR' 'EDC:BEGINADDR="0X' Val1 '"' .
-         if Val1 \= '' then
-            SFRaddr = X2D(Val1)
+         parse var Pic.i '<EDC:SFRDATASECTOR' 'EDC:BEGINADDR="0X' val1 '"' .
+         if val1 \= '' then
+            SFRaddr = X2D(val1)
       end
 
       when kwd = '<EDC:MUXEDSFRDEF' then do
@@ -789,11 +824,11 @@ do i = i while word(Pic.i,1) \= '</EDC:DATASPACE>'       /* to end of data */
       end
 
       when kwd = '<EDC:MIRROR' then do
-         parse var Pic.i '<EDC:MIRROR' 'EDC:NZSIZE="' val1 '"' . 'EDC:REGIONIDREF="' Val2 '"' .
-         if Val1 \= '' then do
-            val1 = strip(Val1)
+         parse var Pic.i '<EDC:MIRROR' 'EDC:NZSIZE="' val1 '"' . 'EDC:REGIONIDREF="' val2 '"' .
+         if val1 \= '' then do
+            val1 = strip(val1)
             if left(val1,2) = '0X' then
-               Val1 = X2D(substr(Val1,3))
+               val1 = X2D(substr(val1,3))
             do j = 0 to val1 - 1
                BaseBank = right(val2,1)                  /* base bank of SFR */
                baseaddr = BaseBank * BankSize + (SFRaddr // Banksize)   /* base addr */
@@ -804,12 +839,12 @@ do i = i while word(Pic.i,1) \= '</EDC:DATASPACE>'       /* to end of data */
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then
-            val1 = strip(Val1)                           /* hex or dec */
-            if left(Val1,2) = '0X' then
-               Val1 = X2D(substr(Val1,3))
-            SFRaddr = SFRaddr + Val1
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
+         if val1 \= '' then
+            val1 = strip(val1)                           /* hex or dec */
+         if left(val1,2) = '0X' then
+            val1 = X2D(substr(val1,3))
+         SFRaddr = SFRaddr + val1
       end
 
    otherwise
@@ -865,35 +900,35 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:DATASPACE>'  /* end of SFRs */
       end
 
       when kwd = '<EDC:SFRDATASECTOR' then do               /* start of SFRs */
-         parse var Pic.i '<EDC:SFRDATASECTOR' . 'EDC:BEGINADDR="0X' Val1 '"' .
-         if Val1 \= '' then
-            SFRaddr = X2D(Val1)
+         parse var Pic.i '<EDC:SFRDATASECTOR' . 'EDC:BEGINADDR="0X' val1 '"' .
+         if val1 \= '' then
+            SFRaddr = X2D(val1)
       end
 
       when kwd = '<EDC:MIRROR' then do
          parse var Pic.i '<EDC:MIRROR' 'EDC:NZSIZE="' val1 '"' .
-         if Val1 \= '' then do
+         if val1 \= '' then do
             val1 = strip(val1)
             if left(val1,2) = '0X' then
                val1 = X2D(substr(val1,3))
-            SFRaddr = SFRaddr + Val1
+            SFRaddr = SFRaddr + val1
          end
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
          parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
-         if Val1 \= '' then do
+         if val1 \= '' then do
             val1 = strip(val1)
             if left(val1,2) = '0X' then
                val1 = X2D(val1)
-            SFRaddr = SFRaddr + Val1
+            SFRaddr = SFRaddr + val1
          end
       end
 
       when kwd = '<EDC:JOINEDSFRDEF' then do
-         parse var Pic.i '<EDC:JOINEDSFRDEF' . 'EDC:CNAME="' Val1 '"' . 'EDC:NZWIDTH="' Val2 '"' .
-         if Val1 \= '' then do
-            reg = strip(Val1)
+         parse var Pic.i '<EDC:JOINEDSFRDEF' . 'EDC:CNAME="' val1 '"' . 'EDC:NZWIDTH="' val2 '"' .
+         if val1 \= '' then do
+            reg = strip(val1)
             Name.reg = reg                                        /* add to collection of names */
             addr = SFRaddr                                        /* decimal */
             Ram.addr = addr                                       /* mark address in use */
@@ -901,7 +936,7 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:DATASPACE>'  /* end of SFRs */
             val2 = strip(val2)                                    /* hex or dec */
             if left(val2,2) = '0X' then
                val2 = X2D(substr(val2,3))
-            width = Val2                                          /* field size (bits) */
+            width = val2                                          /* field size (bits) */
             if width <= 8 then                                    /* one byte */
                field = 'byte  '
             else if width <= 16  then                             /* two bytes */
@@ -927,7 +962,7 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:DATASPACE>'  /* end of SFRs */
                cond = ''
             else if word(Pic.i,1) = '<EDC:SELECTSFR' then do
                parse var Pic.i '<EDC:SELECTSFR' 'EDC:WHEN="' val1 '"' .
-               cond = Val1                                        /* conditional */
+               cond = val1                                        /* conditional */
             end
             else if word(Pic.i,1) = '<EDC:SFRDEF' then do
                parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' val1 '"' .
@@ -957,9 +992,9 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:DATASPACE>'  /* end of SFRs */
 
       when kwd = '<EDC:SFRDEF' then do
          i_save = i                                               /* remember start SFR */
-         parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' Val1 '"' . 'EDC:NZWIDTH="' val2 '"' .
-         if Val1 \= '' then do
-            reg = strip(Val1)
+         parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' val1 '"' . 'EDC:NZWIDTH="' val2 '"' .
+         if val1 \= '' then do
+            reg = strip(val1)
             Name.reg = reg                                        /* add to collection of names */
             if left(val2,2) = '0X' then
                val2 = X2D(substr(val2,3))
@@ -1102,29 +1137,29 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
 
       when kwd = '<EDC:SFRMODE' then do                     /* new set of subfields */
          offset = 0                                         /* reset bitfield offset */
-         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' Val1 '"' .
-         SFRmode_id = strip(Val1)                           /* remember */
-         if ( PicName = '12f609'  | PicName = '12f615' | PicName = '12f617' |,
-              PicName = '12f629'  | PicName = '12f635' | PicName = '12f675' |,
-              PicName = '12hv609' | PicName = '12hv615' ) then do
-            if Val1 \= 'DS.0'  then do                      /* only SFRmode 'DS.0' */
+         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' val1 '"' .
+         SFRmode_id = strip(val1)                           /* remember */
+ /*      if ( PicName = '12f609'  | PicName = '12f615' | PicName = '12f617' |,      */
+ /*           PicName = '12f629'  | PicName = '12f635' | PicName = '12f675' |,      */
+ /*           PicName = '12hv609' | PicName = '12hv615' ) then do                   */
+ /*         if val1 \= 'DS.0'  then do                                              */
+ /*            do until word(pic.i,1) = '</EDC:SFRMODE>'                            */
+ /*               i = i + 1                                                         */
+ /*            end                                                                  */
+ /*         end                                                                     */
+ /*      end                                                                        */
+ /*      else do                                                                    */
+            if \(left(val1,3) = 'DS.' | left(val1,3) = 'LT.') then do
                do until word(pic.i,1) = '</EDC:SFRMODE>'
                   i = i + 1
                end
             end
-         end
-         else do                                            /* all SFRmodes DS. and LT. */
-            if \(left(Val1,3) = 'DS.' | left(Val1,3) = 'LT.') then do
-               do until word(pic.i,1) = '</EDC:SFRMODE>'
-                  i = i + 1
-               end
-            end
-         end
+ /*      end                                                                        */
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then do
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
+         if val1 \= '' then do
             if offset = 0           &,
                SFRmode_id = 'DS.0'  &,
                (PicName = '18f13k50' | PicName = '18lf13k50' |,        /* *** SPECIAL *** */
@@ -1157,14 +1192,14 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                   end
                end
             end
-            offset = offset + Val1
+            offset = offset + val1
          end
       end
 
       when kwd = '<EDC:SFRFIELDDEF' then do
          parse var Pic.i '<EDC:SFRFIELDDEF' 'EDC:CNAME="' val1 '"' . ,
                           'EDC:MASK="' val3 '"' . 'EDC:NZWIDTH="' val4 '"' .
-         if Val1 \= '' then do
+         if val1 \= '' then do
             val1 = strip(val1)
             field = reg'_'val1
             if right(reg,5) = '_SHAD' & right(val1,5) = '_SHAD' then
@@ -1323,15 +1358,16 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                         if HasLATReg = 0 then do                  /* PIC without LAT registers */
                            shadow = '_PORTA_shadow'
                            pin = 'pin_A'right(val1,1)
-                           call list_bitfield 1, pin, '_'reg, offset
-                           call list_pin_alias 'PORTA', 'RA'right(val1,1), pin
-                           call lineout jalfile, '--'
-                           call lineout jalfile, 'procedure' pin"'put"'(bit in x',
-                                                            'at' shadow ':' offset') is'
-                           call lineout jalfile, '   pragma inline'
-                           call lineout jalfile, '   _PORTA =' shadow
-                           call lineout jalfile, 'end procedure'
-                           call lineout jalfile, '--'
+                           if list_bitfield(1, pin, '_'reg, offset) = 0 then do
+                              call list_pin_alias 'PORTA', 'RA'right(val1,1), pin
+                              call lineout jalfile, '--'
+                              call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                               'at' shadow ':' offset') is'
+                              call lineout jalfile, '   pragma inline'
+                              call lineout jalfile, '   _PORTA =' shadow
+                              call lineout jalfile, 'end procedure'
+                              call lineout jalfile, '--'
+                           end
                         end
                         else do                                   /* PIC with LAT registers */
                            PortLetter = right(reg,1)
@@ -1391,15 +1427,16 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                         else if HasLATReg = 0 then do       /* PIC without LAT registers */
                            shadow = '_PORT'right(reg,1)'_shadow'
                            pin = 'pin_'right(val1,2)
-                           call list_bitfield 1, pin, '_'reg, offset
-                           call list_pin_alias reg, 'R'right(val1,2), pin
-                           call lineout jalfile, '--'
-                           call lineout jalfile, 'procedure' pin"'put"'(bit in x',
-                                                          'at' shadow ':' offset') is'
-                           call lineout jalfile, '   pragma inline'
-                           call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
-                           call lineout jalfile, 'end procedure'
-                           call lineout jalfile, '--'
+                           if list_bitfield(1, pin, '_'reg, offset) = 0 then do
+                              call list_pin_alias reg, 'R'right(val1,2), pin
+                              call lineout jalfile, '--'
+                              call lineout jalfile, 'procedure' pin"'put"'(bit in x',
+                                                             'at' shadow ':' offset') is'
+                              call lineout jalfile, '   pragma inline'
+                              call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
+                              call lineout jalfile, 'end procedure'
+                              call lineout jalfile, '--'
+                           end
                         end
                         else do                             /* PIC with LAT registers */
                            PortLetter = substr(reg,5)
@@ -1409,8 +1446,8 @@ do i = i while word(pic.i,1) \= '</EDC:SFRMODELIST>'
                   end
                   when reg = 'TRISIO' | reg = 'TRISGPIO' then do
                      pin = 'pin_A'right(val1,1)'_direction'
-                     call list_alias pin, reg'_'val1
-                     call list_pin_direction_alias 'TRISA', 'RA'right(val1,1), pin
+                     if list_alias(pin, reg'_'val1) = 0 then
+                        call list_pin_direction_alias 'TRISA', 'RA'right(val1,1), pin
                      call lineout jalfile, '--'
                   end
                   when left(reg,4) = 'TRIS' & left(val1,4) = 'TRIS' & width = 1 then do
@@ -1479,28 +1516,28 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:DATASPACE>'  /* end of SFRs */
       end
 
       when kwd = '<EDC:SFRDATASECTOR' then do               /* start of SFRs */
-         parse var Pic.i '<EDC:SFRDATASECTOR' . 'EDC:BEGINADDR="0X' Val1 '"' .
-         if Val1 \= '' then
-            SFRaddr = X2D(Val1)
+         parse var Pic.i '<EDC:SFRDATASECTOR' . 'EDC:BEGINADDR="0X' val1 '"' .
+         if val1 \= '' then
+            SFRaddr = X2D(val1)
       end
 
       when kwd = '<EDC:MIRROR' then do
          parse var Pic.i '<EDC:MIRROR' 'EDC:NZSIZE="' val1 '"' .
-         if Val1 \= '' then do
+         if val1 \= '' then do
             val1 = strip(val1)
             if left(val1,2) = '0X' then
                val1 = X2D(substr(val1,3))
-            SFRaddr = SFRaddr + Val1
+            SFRaddr = SFRaddr + val1
          end
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
          parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
-         if Val1 \= '' then do
+         if val1 \= '' then do
             val1 = strip(val1)
             if left(val1,2) = '0X' then
                val1 = X2D(val1)
-            SFRaddr = SFRaddr + Val1
+            SFRaddr = SFRaddr + val1
          end
       end
 
@@ -1510,7 +1547,7 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:DATASPACE>'  /* end of SFRs */
                cond = ''
             else if word(Pic.i,1) = '<EDC:SELECTSFR' then do
                parse var Pic.i '<EDC:SELECTSFR' 'EDC:WHEN="' val1 '"' .
-               cond = Val1                                        /* condition expression */
+               cond = val1                                        /* condition expression */
             end
             else if word(Pic.i,1) = '<EDC:SFRDEF' then do
                parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' val1 '"' .
@@ -1523,8 +1560,10 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:DATASPACE>'  /* end of SFRs */
                      addr = sfr_mirror_address(addr)              /* add mirror addresses */
                      call lineout jalfile, '-- ------------------------------------------------'
                      parse var cond '($0X'val1 val2 '0X'val3')' . '0X' val4 .
-                     if debuglevel = 2 then
-                        call msg 0, reg 'multiplexed condition:' toascii(cond)
+                     if debuglevel = 2 then do
+                        call msg 0, reg 'multiplexed condition:' cond
+                        call msg 0, '    ('toascii(cond)')'
+                     end
 
                      if core = '14' then do
                         if reg = 'SSPMSK' then do
@@ -1665,8 +1704,8 @@ do while word(pic.i,1) \= '</EDC:SFRMODELIST>'
 
       when kwd = '<EDC:SFRMODE' then do                     /* new set of subfields */
          offset = 0                                         /* reset bitfield offset */
-         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' Val1 '"' .
-         if \(left(Val1,3) = 'DS.' | left(Val1,3) = 'LT.') then do
+         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' val1 '"' .
+         if \(left(val1,3) = 'DS.' | left(val1,3) = 'LT.') then do
             do until word(pic.i,1) = '</EDC:SFRMODE>'
                i = i + 1
             end
@@ -1674,16 +1713,16 @@ do while word(pic.i,1) \= '</EDC:SFRMODELIST>'
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then do
-            offset = offset + Val1
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
+         if val1 \= '' then do
+            offset = offset + val1
          end
       end
 
       when kwd = '<EDC:SFRFIELDDEF' then do
          parse var Pic.i '<EDC:SFRFIELDDEF' 'EDC:CNAME="' val1 '"' . ,
                           'EDC:MASK="' val3 '"' . 'EDC:NZWIDTH="' val4 '"' .
-         if Val1 \= '' then do
+         if val1 \= '' then do
             field = reg'_'val1
             width = strip(val4)
             if left(width,2) = '0X' then
@@ -1986,7 +2025,6 @@ end
 /*            - name                                       */
 /*            - address (decimal or string)                */
 /* returns:   nothing                                      */
-/* Notes:     all cores                                    */
 /* ------------------------------------------------------- */
 list_variable: procedure expose Core JalFile Name.
 parse arg type, var, addr                                   /* addr can be string with spaces */
@@ -2009,8 +2047,9 @@ return
 /*            - register                                     */
 /*            - offset within the register                   */
 /*            - address (decimal, only for core 14H and 16)  */
-/* returns:   nothing                                        */
-/* Notes:     all cores                                      */
+/* returns:   - 0 all OK                                     */
+/*            - 1 specification error                        */
+/*            - returncode of duplicate_name()               */
 /* --------------------------------------------------------- */
 list_bitfield: procedure expose Core JalFile Name.
 parse arg width, bitfield, reg, offset, addr .
@@ -2020,10 +2059,12 @@ if offset = '' then do
 end
 if datatype(width) \= 'NUM'  |  width < 1  |  width > 8 then do
    call msg 3, 'list_bitfield(): bitfield width' width 'not supported, no output generated!'
-   return
+   return 1
 end
-if duplicate_name(bitfield, reg) \= 0 then                  /* name already declared */
-   return
+
+rx = duplicate_name(bitfield, reg)                          /* check for duplicate */
+if rx \= 0 then                                             /* name already declared */
+   return rx
 call charout jalfile, 'var volatile '
 if width = 1 then
    call charout jalfile, left('bit',7)
@@ -2031,15 +2072,14 @@ else
    call charout jalfile, left('bit*'width,7)
 call lineout jalfile, left(bitfield,max(25,length(bitfield))),
                       'at' reg ':' offset
-return
+return 0
 
 
 /* ------------------------------------------------------- */
 /* List a line with an alias declaration                   */
 /* arguments: - name of alias                              */
 /*            - name of original variable (or other alias) */
-/* returns:   nothing                                      */
-/* Notes:     all cores                                    */
+/* returns:   - returncode of duplicate_name()             */
 /* ------------------------------------------------------- */
 list_alias: procedure expose Core JalFile Name. reg msglevel
 parse arg alias, original .
@@ -2047,10 +2087,11 @@ if orininal = '' then do
    call msg 3, 'list_alias(): 2 arguments expected, no output generated!'
    return
 end
-if duplicate_name(alias,reg) = 0 then do
+rx = duplicate_name(alias,reg)
+if rx = 0 then do
    call lineout jalfile, left('alias',19) left(alias,max(25,length(alias))) 'is' original
 end
-return
+return rx
 
 
 /* --------------------------------------------- */
@@ -2072,18 +2113,18 @@ do while word(pic.i,1) \= '</EDC:SFRMODELIST>'
 
       when kwd = '<EDC:SFRMODE' then do                     /* new set of subfields */
          offset = 0                                         /* reset bitfield offset */
-         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' Val1 '"' .
+         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' val1 '"' .
          if ( PicName = '12f609' | PicName = '12f615' | PicName = '12f617' |,
               PicName = '12f629' | PicName = '12f635' | PicName = '12f675' |,
               PicName = '12hv609' | PicName = '12hv615' ) then do
-            if Val1 \= 'DS.0'  then do                      /* only SFRmode 'DS.0' */
+            if val1 \= 'DS.0'  then do                      /* only SFRmode 'DS.0' */
                do until word(pic.i,1) = '</EDC:SFRMODE>'
                   i = i + 1
                end
             end
          end
          else do                                            /* all SFRmodes DS. and LT. */
-            if \(left(Val1,3) = 'DS.' | left(Val1,3) = 'LT.') then do
+            if \(left(val1,3) = 'DS.' | left(val1,3) = 'LT.') then do
                do until word(pic.i,1) = '</EDC:SFRMODE>'
                   i = i + 1
                end
@@ -2092,9 +2133,9 @@ do while word(pic.i,1) \= '</EDC:SFRMODELIST>'
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then do
-            offset = offset + Val1
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
+         if val1 \= '' then do
+            offset = offset + val1
          end
       end
 
@@ -2151,9 +2192,9 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:NMMRPLACE>'   /* end of NMMRs */
 
    kwd = word(Pic.i,1)
    if kwd = '<EDC:SFRDEF' then do
-      parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' Val1 '"' .
-      if Val1 \= '' then do
-         reg = strip(Val1)
+      parse var Pic.i '<EDC:SFRDEF' . 'EDC:CNAME="' val1 '"' .
+      if val1 \= '' then do
+         reg = strip(val1)
          Name.reg = reg                                        /* add to collection of names */
          field = 'byte  '
 
@@ -2212,7 +2253,7 @@ do i = i to Pic.0 while word(pic.i,1) \= '</EDC:NMMRPLACE>'   /* end of NMMRs */
          if left(reg,4) = 'GPIO' then do                       /* *** SPECIAL for 12F529Txxx */
             reg = 'TRISIO'                                     /* replace by TRISIO */
             Name.reg = reg                                     /* add to collection of names */
-            call msg 2, 'NMMR GPIO handled as TRISIO / TRISA'
+            call msg 2, 'NMMR GPIO interpreted as TRISIO / TRISA'
             call lineout jalfile, '-- ------------------------------------------------'
             shadow = '_TRISA_shadow'
             if sharedmem.0 < 1 then do
@@ -2304,8 +2345,8 @@ do while word(pic.i,1) \= '</EDC:SFRMODELIST>'
 
       when kwd = '<EDC:SFRMODE' then do                     /* new set of subfields */
          offset = 0                                         /* bitfield offset */
-         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' Val1 '"' .
-         if left(Val1,3) \= 'DS.' then do
+         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' val1 '"' .
+         if left(val1,3) \= 'DS.' then do
             do until word(pic.i,1) = '</EDC:SFRMODE>'
                i = i + 1
             end
@@ -2313,9 +2354,9 @@ do while word(pic.i,1) \= '</EDC:SFRMODELIST>'
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then
-            offset = offset + Val1
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
+         if val1 \= '' then
+            offset = offset + val1
       end
 
       when kwd = '<EDC:SFRFIELDDEF' then do
@@ -2375,8 +2416,8 @@ do while word(pic.i,1) \= '</EDC:SFRMODELIST>'
 
       when kwd = '<EDC:SFRMODE' then do                     /* new set of subfields */
          offset = 0                                         /* bitfield offset */
-         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' Val1 '"' .
-         if left(Val1,3) \= 'DS.' then do
+         parse var Pic.i '<EDC:SFRMODE' 'EDC:ID="' val1 '"' .
+         if left(val1,3) \= 'DS.' then do
             do until word(pic.i,1) = '</EDC:SFRMODE>'
                i = i + 1
             end
@@ -2384,9 +2425,9 @@ do while word(pic.i,1) \= '</EDC:SFRMODELIST>'
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then
-            offset = offset + Val1
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
+         if val1 \= '' then
+            offset = offset + val1
       end
 
       when kwd = '<EDC:SFRFIELDDEF' then do
@@ -2560,9 +2601,9 @@ do i = i while word(pic.i,1) \= '</EDC:SFRDEF>'
       end
 
       when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then
-            offset = offset + Val1
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
+         if val1 \= '' then
+            offset = offset + val1
       end
 
       when kwd = '<EDC:SFRFIELDDEF' then do
@@ -2997,11 +3038,10 @@ return ansx
 list_fusedef: procedure expose Pic. Ram. Name. Fuse_def. Core PicName jalfile,
                              msglevel CfgAddr.
 
+call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
-call lineout jalfile, '-- ============================================='
-call lineout jalfile, '--'
-call lineout jalfile, '-- Symbolic Fuse Definitions'
-call lineout jalfile, '-- -------------------------'
+call lineout jalfile, '--    Symbolic Fuse Definitions'
+call lineout jalfile, '-- ------------------------------'
 
 
 FuseAddr = 0                                                /* start value */
@@ -3012,12 +3052,12 @@ do i = 1 to Pic.0  until (word(Pic.i,1) = '<EDC:CONFIGFUSESECTOR' |,
 end
 
 if word(Pic.i,1) = '<EDC:CONFIGFUSESECTOR' then
-   parse var Pic.i '<EDC:CONFIGFUSESECTOR' 'EDC:BEGINADDR="0X' Val1 '"' .
+   parse var Pic.i '<EDC:CONFIGFUSESECTOR' 'EDC:BEGINADDR="0X' val1 '"' .
 else
-   parse var Pic.i '<EDC:WORMHOLESECTOR' 'EDC:BEGINADDR="0X' Val1 '"' .
+   parse var Pic.i '<EDC:WORMHOLESECTOR' 'EDC:BEGINADDR="0X' val1 '"' .
 
-if Val1 \= '' then
-   FuseAddr = X2D(Val1)                                     /* start address */
+if val1 \= '' then
+   FuseAddr = X2D(val1)                                     /* start address */
 
 FuseStart = FuseAddr
 
@@ -3030,18 +3070,18 @@ do i = i to Pic.0 until (word(pic.i,1) = '</EDC:CONFIGFUSESECTOR>' |,
 
       when kwd = '<EDC:ADJUSTPOINT' then do
          parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
-         if Val1 \= '' then do
+         if val1 \= '' then do
             val1 = strip(val1)
             if left(val1,2) = '0X' then
                val1 = X2D(val1)
-            FuseAddr = FuseAddr + Val1
+            FuseAddr = FuseAddr + val1
          end
       end
 
       when kwd = '<EDC:DCRDEF' then do
-         parse var Pic.i '<EDC:DCRDEF' . 'EDC:CNAME="' Val1 '"' ,
+         parse var Pic.i '<EDC:DCRDEF' . 'EDC:CNAME="' val1 '"' ,
                           'EDC:DEFAULT="0X' val2 '"' . 'EDC:NZWIDTH=' val3 '"' .
-         if Val1 \= '' then do
+         if val1 \= '' then do
             call lineout jalfile, '--'
             call lineout jalfile, '--' strip(val1) '(0x'D2X(FuseAddr)')'
             call lineout jalfile, '--'
@@ -3083,17 +3123,17 @@ do i = i while word(pic.i,1) \= '</EDC:DCRMODE>'
    select
 
       when kwd = '<EDC:ADJUSTPOINT' then do
-         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' Val1 '"' .
-         if Val1 \= '' then do
-            offset = offset + Val1                          /* bit offset */
+         parse var Pic.i '<EDC:ADJUSTPOINT' 'EDC:OFFSET="' val1 '"' .
+         if val1 \= '' then do
+            offset = offset + val1                          /* bit offset */
          end
       end
 
       when kwd = '<EDC:DCRFIELDDEF' then do
          parse var Pic.i '<EDC:DCRFIELDDEF' 'EDC:CNAME="' val1 '"' 'EDC:DESC="' val2 '"',
                           'EDC:MASK="0X' val3 '"' . 'EDC:NZWIDTH="' val4 '"' .
-         if Val1 \= ''  &  Val1 \= 'RESERVED'  &  val2 \= 'RESERVED' then do
-            key = normalize_fusedef_keyword(Val1)           /* uniform keyword */
+         if val1 \= ''  &  val1 \= 'RESERVED'  &  val2 \= 'RESERVED' then do
+            key = normalize_fusedef_keyword(val1)           /* uniform keyword */
             if \(key = 'OSC' & left(PicName,5) = '10f20') then do   /* not an exception */
                mask = strip(B2X(X2B(val3)||copies('0',offset)),'L','0')    /* bit alignment */
                if CfgAddr.0 = 1 then                        /* single byte/word */
@@ -3947,8 +3987,8 @@ select                                                      /* key specific form
          kwdvalue = 'HARDWARE'
       end
       else if pos('CONTROL', desc) > 0  then do
-         if core = '16' then                                /* can only be en- or dis-abled */
-            kwdvalue = 'DISABLED'                           /* all 18Fs */
+         if core = '16' then                                /* *** backward compatibility *** */
+            kwdvalue = 'DISABLED'
          else
             kwdvalue = 'CONTROL'
       end
@@ -4161,13 +4201,15 @@ return kwdvalue
  * ADC_V14   ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
  * ADC_V14_1 ADCON0 = 0b0000_0000  ADCON1 = 0b0000_1111  ADCON2 = 0b0000_0000    *
  * ----------------------------------------------------------------------------- */
-list_analog_functions: procedure expose jalfile Name. Core DevSpec. PinMap. ,
+list_analog_functions: procedure expose jalfile Name. Core DevSpec. PinMap. Sharedmem.,
                                         ADCS_bits ADC_highres PicName msglevel
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
-call lineout jalfile, '-- Special (device specific) constants and procedures'
+call lineout jalfile, '--    Constants and procedures for analog features'
+call lineout jalfile, '--    --------------------------------------------'
 call lineout jalfile, '--'
+
 PicNameCaps = toupper(PicName)
 if DevSpec.PicNameCaps.ADCgroup = '?' then do               /* no ADC group specified */
    if (Name.ADCON \= '-' | Name.ADCON0 \= '-' | Name.ADCON1 \= '-') then do
@@ -4199,21 +4241,6 @@ call lineout jalfile, 'const byte ADC_NTOTAL_CHANNEL =' PinMap.PicNameCaps.ANCOU
 call lineout jalfile, 'const byte ADC_ADCS_BITCOUNT  =' ADCS_bits
 call lineout jalfile, 'const byte ADC_MAX_RESOLUTION =' ADC_res
 call lineout jalfile, '--'
-
-if DevSpec.PicNameCaps.PPSgroup = '?' then
-   call lineout jalfile, 'const PPS_GROUP  = PPS_0        -- no Peripheral Pin Selection'
-else
-   call lineout jalfile, 'const PPS_GROUP  = 'DevSpec.PicNameCaps.PPSgroup,
-                         '       -- PPS group' right(DevSpec.PicNameCaps.PPSgroup,1)
-call lineout jalfile, '--'
-
-if Name.UCON \= '-' then do                                 /* USB module present */
-   if DevSpec.PicNameCaps.USBBDT \= '?' then
-      call lineout jalfile, 'const word USB_BDT_ADDRESS    = 0x'DevSpec.PicNameCaps.USBBDT
-   else
-      call msg 2, PicName 'has USB module but USB_BDT_ADDRESS not specified'
-   call lineout jalfile, '--'
-end
 
 if (ADC_group = '0'  & PinMap.PicNameCaps.ANCOUNT > 0) |,
    (ADC_group \= '0' & PinMap.PicNameCaps.ANCOUNT = 0) then do
@@ -4386,6 +4413,46 @@ return
 
 
 /* --------------------------------------------------------- */
+/* Miscellaneous information                                 */
+/* --------------------------------------------------------- */
+list_miscellaneous:
+call lineout jalfile, '--'
+call lineout jalfile, '-- ==================================================='
+call lineout jalfile, '--'
+call lineout jalfile, '--    Miscellaneous'
+call lineout jalfile, '--    -------------'
+
+call lineout jalfile, '--'
+if DevSpec.PicNameCaps.PPSgroup = '?' then
+   call lineout jalfile, 'const PPS_GROUP        = PPS_0',
+                         '       -- no Peripheral Pin Selection'
+else
+   call lineout jalfile, 'const PPS_GROUP        = 'DevSpec.PicNameCaps.PPSgroup,
+                         '       -- PPS group' right(DevSpec.PicNameCaps.PPSgroup,1)
+
+if Name.UCON \= '-' then do                                 /* USB module present */
+   call lineout jalfile, '--'
+   if DevSpec.PicNameCaps.USBBDT \= '?' then
+      call lineout jalfile, 'const word USB_BDT_ADDRESS    = 0x'DevSpec.PicNameCaps.USBBDT
+   else
+      call msg 2, PicName 'has USB module but USB_BDT_ADDRESS not specified'
+end
+
+call lineout jalfile, '--'
+if sharedmem.0 > 0 then do                                  /* any shared memory left */
+   call charout jalfile, '-- Free shared memory: 0x'D2X(sharedmem.1)
+   if sharedmem.1 < sharedmem.2 then                        /* more than 1 byte */
+      call lineout jalfile, '-0x'D2X(sharedmem.2)
+   else
+      call lineout jalfile, ''
+end
+else
+   call lineout jalfile, '-- No free shared memory!'
+call lineout jalfile, '--'
+return
+
+
+/* --------------------------------------------------------- */
 /* Generate common header                                    */
 /* Shared memory for _pic_accum and _pic_isr_w is allocated: */
 /* - for core 12, 14 and 14H from high to low address        */
@@ -4416,7 +4483,7 @@ call lineout jalfile, '--  - {MPLAB-X' MPlabxVersion%100'.'MPLabxVersion//100'}'
                              'crownking.edc.jar/content/edc/../PIC'toupper(PicName)'.PIC'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
-call lineout jalfile, '--  - Created with Pic2Jal Rexx script version' ScriptVersion
+call lineout jalfile, '--  - Created with Edc2Jal Rexx script version' ScriptVersion
 call lineout jalfile, '--  - File creation date/time:' date('N') left(time('N'),5)
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
@@ -4522,7 +4589,7 @@ call lineout chipdef, '-- Description:'
 call lineout chipdef, '--    Common Jallib include files for device files'
 call lineout chipdef, '--'
 call lineout chipdef, '-- Notes:'
-call lineout chipdef, '--    - Created with Pic2Jal Rexx script version' ScriptVersion
+call lineout chipdef, '--    - Created with Edc2Jal Rexx script version' ScriptVersion
 call lineout chipdef, '--    - File creation date/time:' date('N') left(time('N'),5)
 call lineout chipdef, '--'
 call lineout chipdef, '-- ---------------------------------------------------'
@@ -4769,7 +4836,7 @@ if Name.newname = '-' then do                               /* name not in use y
    return 0                                                 /* unique */
 end
 if reg \= newname then do                                   /* not alias of register */
-   call msg 2, 'Duplicate name:' newname 'in' reg'. First occurence:' Name.newname
+   call msg 2, 'Duplicate name:' newname 'in' reg
    return 1                                                 /* duplicate */
 end
 return 0
@@ -4796,15 +4863,12 @@ xml.3.2 = '&'
 xml.0 = 3
 parse arg ln                                                /* line to be converted */
 do i = 1 to xml.0                                           /* all meta strings */
-   lx = ln                                                  /* copy line */
-   ln = ''                                                  /* start with empty lines */
-   x = pos(xml.i.1, lx)
+   x = pos(xml.i.1, ln)                                     /* search this xml meta string */
    do while x > 0
-      ln = ln||left(lx,x-1)||xml.i.2                        /* concat old with new part + ASCII-char */
-      lx = substr(lx, x + length(xml.i.1))                  /* remainder of line after meta string */
-      x = pos(xml.i.1, lx)                                  /* search next instance of meta string */
+      ln = delstr(ln, x, length(xml.i.1))                   /* remove meta string and .. */
+      ln = insert(xml.i.2, ln, x - 1)                       /* .. replace it by ASCII char */
+      x = pos(xml.i.1, ln)                                  /* search next instance of meta string */
    end
-   ln = ln||lx                                              /* concat last part */
 end
 return ln
 

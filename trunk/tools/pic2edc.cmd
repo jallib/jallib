@@ -32,7 +32,7 @@
  *     See Notes with Edc2jal script for running it on other platforms      *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.12'
+   ScriptVersion   = '0.0.13'
    ScriptAuthor    = 'Rob Hamerling'
    MPlabXVersion   = '185'
 /* ------------------------------------------------------------------------ */
@@ -159,24 +159,6 @@ return ln
 
 
 /* ------------------------------------------- */
-/* replace string in line                      */
-/* ------------------------------------------- */
-replace_string: procedure
-parse arg '$'sold'$', '$'snew'$', ln
-lx = ln                                               /* copy line */
-ln = ''                                               /* start with empty new line */
-k = pos(sold, lx)
-do while k > 0
-   ln = ln||left(lx,k-1)||snew                        /* old -> new */
-   lx = substr(lx, k + length(sold))                  /* remainder of line */
-   k = pos(sold, lx)
-end
-ln = ln||lx                                           /* last part */
-return ln
-
-
-
-/* ------------------------------------------- */
 /* Read .pic file contents into stem variable  */
 /* input: MPLAB-X .pic file                    */
 /* ------------------------------------------- */
@@ -264,7 +246,7 @@ return Pic.0
 /* -------------------------------------------------- */
 module_copy_selection: procedure expose Pic. Mod. msglevel debuglevel
 parse arg first last .
-if debuglevel = 2 then
+if debuglevel = 1 then
    call msg 0, 'module_copy_selection <'first'>..<'last'>'
 
 SFRcount = -1                                               /* start value */
@@ -347,7 +329,7 @@ do while lines(ModFile) > 0                              /* whole module */
 end
 call stream ModFile, 'c', 'close'                        /* done */
 
-if debuglevel = 2 then do
+if debuglevel = 1 then do
    do i = 1 to Mod.0
       call msg 0, 'r' i'.' Mod.i
    end
@@ -362,28 +344,21 @@ return
 /*        - string to replaced the old string     */
 /* ---------------------------------------------- */
 file_macro_module: procedure expose Mod. msglevel debuglevel
-parse arg replace with .
-if debuglevel = 2 then
-   call msg 0, 'file_macro_module' replace '-->' with
+parse arg sold snew .
+if debuglevel = 1 then
+   call msg 0, 'file_macro_module' sold '-->' snew
 do i = 1 to Mod.0                                           /* all lines */
-   ln = Mod.i                                               /* current line */
-   Mod.i = ''                                               /* replace with empty line */
-   do while ln \= ''
-      y = pos(replace, ln)                                  /* each string to be replaced */
-      if y > 0 then do
-         Mod.i = Mod.i||left(ln, y - 1)||with               /* replace string */
-         ln = substr(ln, y + length(replace))               /* remainder */
-      end
-      else do
-         Mod.i = Mod.i||ln                                  /* last part */
-         ln = ''                                            /* forced end */
-      end
+   k = pos(sold, Mod.i)                                     /* first occurence */
+   do while k > 0
+      Mod.i = delstr(Mod.i, k, length(sold))                /* remove old string and .. */
+      Mod.i = insert(snew, Mod.i, k - 1)                    /* .. replace it by new string */
+      k = pos(sold, Mod.i)                                  /* next occurence */
    end
 end
 
 if debuglevel = 1 then do
    do i = 1 to Mod.0
-      call msg 0, 'm ' Mod.i
+      call msg 0, 'm' i'.' Mod.i
    end
 end
 
