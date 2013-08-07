@@ -43,10 +43,10 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.13'
+   ScriptVersion   = '0.0.14'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
-/* MPlabXVersion obtained from file VERSION.xxx created by Pic2edc script.  */
+/* mplabxversion obtained from file MPLAB-X-VERSION.xxx created by Pic2edc script.  */
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated */
@@ -67,12 +67,12 @@ debuglevel = 0
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx utilities */
 
-Call SysFileTree 'VERSION.*', 'dir.', 'FO'           /* search mplab-x version */
+Call SysFileTree 'MPLAB-X-VERSION.*', 'dir.', 'FO'          /* search mplab-x version */
 if dir.0 = 0 then do
    call msg 3, 'Could not find the VERSION.* file'
    return 2
 end
-MPlabXVersion = right(dir.1,3)
+mplabxversion = right(dir.1,3)
 
 /* MPLAB-X and a local copy of the Jallib SVN tree should be installed.        */
 /* The .pic files used are in [basedir]/MPLAB_IDE/BIN/LIB/CROWNKING.EDC.JAR.   */
@@ -80,7 +80,7 @@ MPlabXVersion = right(dir.1,3)
 /* and be expanded by the Pic2edc script to obtain the necessary .edc files.   */
 /* Directory of expanded MPLAB-X .pic files:                                   */
 
-edcdir        = './edc.'MPlabXVersion                       /* source of expanded .pic files */
+edcdir        = './edc.'mplabxversion                       /* source of expanded .pic files */
 
 /* Some information is collected from files in JALLIB tools directory */
 
@@ -137,8 +137,7 @@ end
 
 call time 'R'                                               /* reset 'elapsed' timer */
 
-call msg 0, 'Creating Jallib device files with MPLAB-X version',
-             MPlabXVersion%100'.'MPlabXVersion//100
+call msg 0, 'Creating Jallib device files with MPLAB-X version' mplabxversion/100
 
 call SysFileTree edcdir'/'wildcard, 'dir.', 'FOS'           /* search all .edc files */
 if dir.0 = 0 then do
@@ -4479,7 +4478,7 @@ call lineout jalfile, '--      operations, like:'
 call lineout jalfile, '--      . enable_digital_io()'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Sources:'
-call lineout jalfile, '--  - {MPLAB-X' MPlabxVersion%100'.'MPLabxVersion//100'}',
+call lineout jalfile, '--  - {MPLAB-X' mplabxVersion/100'}',
                              'crownking.edc.jar/content/edc/../PIC'toupper(PicName)'.PIC'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
@@ -4729,6 +4728,16 @@ do until x = '}' | x = 0                                    /* end of pinmap */
                aliasname = strip(aliasname,'T','-')'_NEG'
             else if right(aliasname,1) = '+' then           /* handle trailing '+' character */
                aliasname = strip(aliasname,'T','+')'_POS'
+            else if pos('+', aliasname) > 0 then do         /* handle middle '+' character */
+               x = pos('+', aliasname)
+               aliasname = delstr(aliasname, x, 1)
+               aliasname = insert('_POS_', aliasname, x - 1)
+            end
+            else if pos('-', aliasname) > 0 then do         /* handle middle '-' character */
+               x = pos('-', aliasname)
+               aliasname = delstr(aliasname, x, 1)
+               aliasname = insert('_NEG_', aliasname, x - 1)
+            end
             i = i + 1
             PinMap.PicName.pinname.i = aliasname
             if left(aliasname,2) = 'AN' & datatype(substr(aliasname,3)) = 'NUM' then do

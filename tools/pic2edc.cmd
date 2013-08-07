@@ -32,9 +32,9 @@
  *     See Notes with Edc2jal script for running it on other platforms      *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.13'
+   ScriptVersion   = '0.0.14'
    ScriptAuthor    = 'Rob Hamerling'
-   MPlabXVersion   = '185'
+   mplabxversion   = '185'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated */
@@ -57,7 +57,7 @@ debuglevel = 0
 /* For any system or platform the following base information must be           */
 /* specified as a minimum.                                                     */
 
-MplabXbase = 'k:/MPlab-X_'MPLabXVersion'/'         /* directory of the */
+MplabXbase = 'k:/MPlab-X_'mplabxversion'/'         /* directory of the */
                                                    /* unzipped crownking.jar file */
 
 /* The following directories are used to collect information */
@@ -82,8 +82,7 @@ if selection = '' then                                      /* no selection spec
 else                                                        /* selection */
    wildcard = 'PIC'selection'.pic'                          /* accept user selection */
 
-call msg 0, 'Expanding .pic files of  MPLAB-X version',
-             MPlabxVersion%100'.'MPlabxVersion//100
+call msg 0, 'Expanding .pic files of  MPLAB-X version' mplabxversion/100
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx utilities */
@@ -97,9 +96,9 @@ end
 signal on syntax name catch_syntax                          /* catch syntax errors */
 signal on error  name catch_error                           /* catch execution errors */
 
-versionfile = 'VERSION.'MPlabXVersion                       /* this version of .edc files */
+versionfile = 'MPLAB-X-VERSION.'mplabxversion               /* this version of .edc files */
 call SysFileDelete versionfile                              /* delete existing file */
-call lineout versionfile, 'MPlab-X version' MPlabxVersion%100'.'MPlabxVersion//100
+call lineout versionfile, 'MPlab-X version' mplabxversion/100
 call stream versionfile, 'c', 'close'
 
 call SysStemSort 'dir.', 'A', 'I'                           /* sort on name */
@@ -129,7 +128,7 @@ do i = 1 to dir.0                                           /* all relevant .pic
    if file_read_pic(PicFile) = 0 then                       /* expand MPLAB-X .pic file */
       iterate                                               /* error with read */
 
-   edcfile = 'edc.'MPlabXVersion'\'Picname'.edc'            /* expanded .pic file */
+   edcfile = 'edc.'mplabxversion'\'Picname'.edc'            /* expanded .pic file */
    call SysFileDelete edcfile                               /* delete existing file */
    do j = 1 to Pic.0
       call lineout edcfile, line_cleanup(Pic.j)             /* output clean line */
