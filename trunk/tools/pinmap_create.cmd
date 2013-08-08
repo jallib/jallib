@@ -1,25 +1,27 @@
 /* ----------------------------------------------------------------------- */
-/* Create_PinMap.cmd - create 'pinmap.py' from MPLAB-X                     */
+/* pinmap_create.cmd - create 'pinmap.py' from MPLAB-X                     */
 /* This script is part of a sub-project using MPLAB-X info for Jallib,     */
 /* in particular the device files.                                         */
 /* This script uses the .edc files created by the pic2edc script.          */
 /* The PinList section of these files contains the pin aliases.            */
 /* Some manipulations are needed, for example skip pins which are not      */
 /* accessible from the program (like Vpp, Vdd, etc), finding the           */
-/* the base name of a pin and correctiong some errors in MPLAB-X.          */
+/* the base name of a pin and correcting some errors in MPLAB-X.           */
 /* The hard coded corrections are valid for a specific version of MPLAB-X, */
-/* for other versions it may need be modified.                             */
+/* for other versions it may need modification. The script checks this     */
+/* with the file MPLAB-X-VERSION.xxx.                                      */
+/* When no Pinlist found, pinmap.py will not contain an entry for this PIC */
 /* See for more info the comments in the scripts pic2edc and edc2jal.      */
 /* ----------------------------------------------------------------------- */
 
-mplabxversion = 185                          /* will be checked! */
+mplabxversion = 185                                         /* must match! */
 
 say 'Generating file pinmap.py'
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
-call SysLoadFuncs                       /* load REXX functions */
+call SysLoadFuncs                                           /* load REXX utilities */
 
-Call SysFileTree 'MPLAB-X-VERSION.*', 'dir.', 'FO'           /* search mplab-x version */
+Call SysFileTree 'MPLAB-X-VERSION.*', 'dir.', 'FO'          /* search mplab-x version */
 if dir.0 = 0 then do
    say 'Could not find the MPLAB-X-VERSION file'
    return 2
@@ -32,9 +34,9 @@ edcdir  = 'k:\jal\pic2jal\edc.'mplabxversion
 
 parse arg selection .
 if selection \= '' then
-  wildcard = selection'.edc'                 /* selection */
+  wildcard = selection'.edc'                                /* selection */
 else
-  wildcard = '*.edc'                         /* all */
+  wildcard = '*.edc'                                        /* all */
 
 if SysFileTree(edcdir'\'wildcard, dir, 'FOS') != 0 then do
   say 'Problem collecting file list of directory' edcdir
@@ -47,7 +49,7 @@ end
 
 say 'Scanning .edc files in' edcdir 'for (max)' dir.0 'PICs'
 
-Listing  = 'pinmap.py'                      /* output */
+Listing  = 'pinmap.py'                                      /* output */
 
 call SysFileDelete Listing
 call stream Listing, 'c', 'open write'
@@ -55,7 +57,7 @@ call lineout Listing, 'pinmap = {'
 
 PicCount = 0
 
-do i=1 to dir.0                                 /* all files */
+do i=1 to dir.0                                             /* all files */
     parse upper value filespec('N', dir.i) with PicName '.EDC'
    if PicName = '' then do
       Say 'Error: Could not derive PIC name from filespec: "'dir.i'"'
@@ -66,7 +68,7 @@ do i=1 to dir.0                                 /* all files */
       iterate
    end
 
-   do while lines(dir.i) & word(ln,1) \= '<EDC:PINLIST>'     /* search start */
+   do while lines(dir.i) & word(ln,1) \= '<EDC:PINLIST>'    /* search start */
       ln = linein(dir.i)
    end
 
@@ -75,10 +77,40 @@ do i=1 to dir.0                                 /* all files */
       iterate
    end
 
-   PicHeader = " '"PicName"': {"                     /* Pic header */
+   PicHeader = " '"PicName"': {"                            /* Pic header */
    call charout Listing, PicHeader
 
    PicCount = PicCount + 1
+
+   if (PicName = '16F753' | PicName = '16HV753') then do      /* all pins at once! */
+      call lineout Listing, "'RA0': ['RA0', 'AN0', 'FVROUT', 'DACOUT', 'C1IN0+', 'ICSPDAT'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RA1': ['RA1', 'AN1', 'VREF', 'FVRIN', 'C1IN0-', 'C2IN0-', 'ICSPCLK'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RA2': ['RA2', 'AN2', 'COG1FLT', 'C1OUT', 'T0CKI'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RA3': ['RA3', 'T1G', 'MCLR', 'VPP'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RA4': ['RA4', 'AN3', 'T1G', 'CLKOUT'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RA5': ['RA5', 'T1CKI', 'CLKIN'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RC0': ['RC0', 'AN4', 'OPA1IN+', 'C2IN0+'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RC1': ['RC1', 'AN5', 'OPA1IN-', 'C1IN1-', 'C2IN1-'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RC2': ['RC2', 'AN6', 'OPA1OUT', 'C1IN2-', 'C2IN2-', 'SLPCIN'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RC3': ['RC3', 'AN7', 'C1IN3-', 'C2IN3-'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RC4': ['RC4', 'COG1OUT1', 'C2OUT'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      call lineout Listing, "'RC5': ['RC5', 'COG1OUT0', 'CCP1'],"
+      call charout Listing, copies(' ', length(PicHeader))
+      do while word(ln,1) \= '</EDC:PINLIST>'   /* skip rest of pinlist */
+         ln = linein(dir.i)
+      end
+   end
 
    do while lines(dir.i) & word(ln,1) \= '</EDC:PINLIST>'
       ln = linein(dir.i)
@@ -96,7 +128,7 @@ do i=1 to dir.0                                 /* all files */
 
             parse var ln . '<EDC:VIRTUALPIN' 'EDC:NAME="' val1 '"' .
             if val1 \= '' then do
-               val1 = strip(val1, 'B', '_')           /* remove underscore(s)  Microchip quirck! */
+               val1 = strip(val1, 'B', '_')                 /* remove underscore(s)  Microchip quirck! */
                if (val1         = 'AVDD'     |,
                    val1         = 'AVSS'     |,
                    val1         = 'VBAT'     |,
@@ -106,11 +138,13 @@ do i=1 to dir.0                                 /* all files */
                    val1         = 'VSS'      |,
                    val1         = 'VUSB'     |,
                    val1         = 'NC')    then do
-                  pinalias.0 = 0                   /* empty: irrelevant pin */
-                  leave                            /* skip rest, process next pin */
+                  pinalias.0 = 0                            /* empty: irrelevant pin */
+                  leave                                     /* skip rest, process next pin */
                end
-               else if left(val1,2) = 'GP' then do      /* modify GP -> RA */
-                  val1 = 'RA'right(val1,1)
+               else if left(val1,2) = 'GP' then do          /* GPIO ports -> RA */
+                  k = pinalias.0 + 1
+                  pinalias.k = 'RA'right(val1,1)            /* add 'RA'x */
+                  pinalias.0 = k
                end
                else if left(val1,2) = 'RB'  &  left(PicName,2) = '12' then do
                   k = pinalias.0 + 1
@@ -128,7 +162,6 @@ do i=1 to dir.0                                 /* all files */
                   k = pinalias.0 + 1
                   pinalias.k = 'RA3'                        /* add 'RA3' */
                   pinalias.0 = k
-                  val1 = val1
                end
                else if (PicName = '18F2439' | PicName = '18F2539' |,
                         PicName = '18F4439' | PicName = '18F4539')  &,
@@ -168,14 +201,14 @@ do i=1 to dir.0                                 /* all files */
          end
 
          if pinalias.0 > 0 then do
-            do k = 1 to pinalias.0                 /* search base name ('Rxy') */
+            do k = 1 to pinalias.0                          /* search base name ('Rxy') */
                if length(pinalias.k) = 3    &,
                   left(pinalias.k,1) = 'R'  &,
                   datatype(right(pinalias.k,1)) = 'NUM' then do
-                  leave                            /* found! */
+                  leave                                     /* found! */
                end
             end
-            if k <= pinalias.0 then do             /* base name found */
+            if k <= pinalias.0 then do                      /* base name found */
                call charout Listing, "'"pinalias.k"': ["    /* base name */
                call charout Listing, "'"pinalias.1"'"       /* first alias */
                do k = 2 to pinalias.0                       /* other aliases */
@@ -188,35 +221,20 @@ do i=1 to dir.0                                 /* all files */
       end
    end
 
-   if PicName = '16F753' | PicName = '16HV753' then do        /* missing pins */
-      call lineout Listing, "'RC0': ['RC0', 'AN4', 'OPA1IN+', 'C2IN0+'],"
-      call charout Listing, copies(' ', length(PicHeader))
-      call lineout Listing, "'RC1': ['RC1', 'AN5', 'OPA1IN-', 'C1IN1-', 'C2IN1-'],"
-      call charout Listing, copies(' ', length(PicHeader))
-      call lineout Listing, "'RC2': ['RC2', 'AN6', 'OPA1OUT', 'C1IN2-', 'C2IN2-', 'SLPCIN'],"
-      call charout Listing, copies(' ', length(PicHeader))
-      call lineout Listing, "'RC3': ['RC3', 'AN7', 'C1IN3-', 'C2IN3-'],"
-      call charout Listing, copies(' ', length(PicHeader))
-      call lineout Listing, "'RC4': ['RC4', 'COG1OUT1', 'C2OUT'],"
-      call charout Listing, copies(' ', length(PicHeader))
-      call lineout Listing, "'RC5': ['RC5', 'COG1OUT0', 'CCP1'],"
-      call charout Listing, copies(' ', length(PicHeader))
-   end
-
    if i < dir.0 then
-      call lineout Listing, "},"                   /* not the last PIC */
+      call lineout Listing, "},"                            /* not the last PIC */
    else
       call lineout Listing, "}"
 
-   call stream dir.i, 'c', 'close'                 /* done with this PIC */
+   call stream dir.i, 'c', 'close'                          /* done with this PIC */
 
 end
 
 call lineout Listing, '  }'
 call lineout Listing, ''
-call stream listing, 'c', 'close'
+call stream listing, 'c', 'close'                           /* pinmap ready */
 
-say 'Generated PinMap file for' PicCount 'Pics'
+say 'Generated PinMap file for' PicCount 'PICs'
 
 return 0
 

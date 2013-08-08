@@ -29,7 +29,8 @@
  *                                                                          *
  * Notes:                                                                   *
  *   - This script is written in 'classic' Rexx executed on eComStation     *
- *     See Notes with Edc2jal script for running it on other platforms      *
+ *     See Notes with Edc2jal script for running it on other platforms.     *
+ *   - Old .edc files are not deleted (new files will overwrite old ones).  *
  *                                                                          *
  * ------------------------------------------------------------------------ */
    ScriptVersion   = '0.0.14'
@@ -58,7 +59,6 @@ debuglevel = 0
 /* specified as a minimum.                                                     */
 
 MplabXbase = 'k:/MPlab-X_'mplabxversion'/'         /* directory of the */
-                                                   /* unzipped crownking.jar file */
 
 /* The following directories are used to collect information */
 /* from MPLAB-X .pic files:                                  */
@@ -82,26 +82,28 @@ if selection = '' then                                      /* no selection spec
 else                                                        /* selection */
    wildcard = 'PIC'selection'.pic'                          /* accept user selection */
 
-call msg 0, 'Expanding .pic files of  MPLAB-X version' mplabxversion/100
-
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx utilities */
+
+call msg 0, 'Expanding .pic files of  MPLAB-X version' mplabxversion/100
 
 call SysFileTree picdir'/'wildcard, dir, 'FOS'              /* get list of matching files */
 if dir.0 = 0 then do
    call msg 3, 'No .pic files found matching <'wildcard'> in' picdir
    return 0                                                 /* nothing to do */
 end
+call SysStemSort 'dir.', 'A', 'I'                           /* sort on name */
+
+call SysFileTree 'MPLAB-X-VERSION.*', 'vsn.', 'FO'
+do i = 1 to vsn.0                                           /* all matching files */
+   call SysFileDelete vsn.i                                 /* delete existing file */
+end
+versionfile = 'MPLAB-X-VERSION.'mplabxversion               /* this version of .edc files */
+call lineout versionfile, 'MPLAB-X version' mplabxversion/100
+call stream versionfile, 'c', 'close'
 
 signal on syntax name catch_syntax                          /* catch syntax errors */
 signal on error  name catch_error                           /* catch execution errors */
-
-versionfile = 'MPLAB-X-VERSION.'mplabxversion               /* this version of .edc files */
-call SysFileDelete versionfile                              /* delete existing file */
-call lineout versionfile, 'MPlab-X version' mplabxversion/100
-call stream versionfile, 'c', 'close'
-
-call SysStemSort 'dir.', 'A', 'I'                           /* sort on name */
 
 do i = 1 to dir.0                                           /* all relevant .pic files */
                                                             /* init for each new PIC */
