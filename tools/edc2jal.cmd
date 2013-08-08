@@ -46,7 +46,7 @@
    ScriptVersion   = '0.0.14'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
-/* mplabxversion obtained from file MPLAB-X-VERSION.xxx created by Pic2edc script.  */
+/* mplabxversion obtained from file MPLAB-X-VERSION.xxx created by pic2edc script. */
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated */
@@ -67,17 +67,17 @@ debuglevel = 0
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx utilities */
 
-Call SysFileTree 'MPLAB-X-VERSION.*', 'dir.', 'FO'          /* search mplab-x version */
-if dir.0 = 0 then do
-   call msg 3, 'Could not find the VERSION.* file'
+Call SysFileTree 'MPLAB-X-VERSION.*', 'vsn.', 'FO'          /* search mplab-x version */
+if vsn.0 = 0 then do
+   call msg 3, 'Could not find any MPLAB-X-VERSION file'
    return 2
 end
-mplabxversion = right(dir.1,3)
+mplabxversion = right(vsn.1,3)                              /* 1st, probably only! */
 
 /* MPLAB-X and a local copy of the Jallib SVN tree should be installed.        */
 /* The .pic files used are in [basedir]/MPLAB_IDE/BIN/LIB/CROWNKING.EDC.JAR.   */
 /* This file must be expanded (unZIPped) to obtain the individual .pic files,  */
-/* and be expanded by the Pic2edc script to obtain the necessary .edc files.   */
+/* and be expanded by the pic2edc script to obtain the necessary .edc files.   */
 /* Directory of expanded MPLAB-X .pic files:                                   */
 
 edcdir        = './edc.'mplabxversion                       /* source of expanded .pic files */
@@ -2844,6 +2844,8 @@ if core = '12' | core = '14' then do                        /* baseline, classic
             ansx = 99
          else if right(PicName,4) = 'f720' | right(PicName,4) = 'f721' then
             ansx = word('4 5 6 7 99 99 8 9', ansx + 1)
+         else if right(PicName,4) = 'f753' | right(PicName,5) = 'hv721' then
+            ansx = word('4 5 6 7 99 99 99 99', ansx + 1)
          else
             ansx = ansx + 12
       end
@@ -2857,8 +2859,9 @@ if core = '12' | core = '14' then do                        /* baseline, classic
             ansx = ansx + 6
       end
       when reg = 'ANSELA' | reg = 'ANSEL' | reg = 'ANSEL0' | reg = 'ADCON0' then do
-         if right(PicName,4) = 'f752' | right(PicName,5) = 'hv752' |,
-            right(PicName,4) = 'f720' | right(PicName,4) = 'f721' then
+         if right(PicName,4) = 'f720' | right(PicName,4) = 'f721'  |,
+            right(PicName,4) = 'f752' | right(PicName,5) = 'hv752' |,
+            right(PicName,4) = 'f753' | right(PicName,5) = 'hv753' then
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,5) = '16f70' | left(PicName,6) = '16lf70' |,
                  left(PicName,5) = '16f72' | left(PicName,6) = '16lf72' then
