@@ -99,9 +99,6 @@ for filename in dir:
 
       for ln in fe:
          wlist = ln.strip().split()
-         if "<EDC:VIRTUALPIN" in wlist:
-            if picname == "18F14K50":
-               print "pin", pinnumber, "index:", wlist.index("<EDC:VIRTUALPIN")
          if wlist[0] == "<EDC:VIRTUALPIN":
             pinlist = wlist[1].split('"', 3)                # isolate pin name
             lpin = pinlist[1].strip('_')                    # remove underscores (error MPLAB-X)

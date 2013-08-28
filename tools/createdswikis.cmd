@@ -14,7 +14,7 @@ parse upper arg runtype .
 
 /* -- input files (change for other systems or platforms) -- */
 if runtype  = 'TEST' then
-   jaldir   = 'k:/jal/pic2jal/test/'                /* dir with test device files */
+   jaldir   = 'k:/jal/pic2jal/test/'                /* dir with MPLAB-X test device files */
 else
    jaldir   = 'k:/jallib/include/device/'           /* dir with production device files */
 pdfdir      = 'n:/picdatasheets/'                   /* dir with datasheets (local)  */
