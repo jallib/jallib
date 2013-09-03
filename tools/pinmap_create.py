@@ -92,29 +92,30 @@ for filename in dir:
          aliaslist = []
          for vpin in pin.getElementsByTagName("edc:VirtualPin"):
             alias = vpin.getAttribute("edc:name").upper().strip("_")
-            if alias.startswith("RB")  & picname.startswith("12"):
-               aliaslist.append("RA" + alias[-1])         # RBx -> RAx
-               aliaslist.append("GP" + alias[-1])         # add GPx
-            elif alias == "RC7AN9":                       # MPLAB-X error with 16f1828/9
-               aliaslist.append("RC7")
-               aliaslist.append("AN9")
-               print "Splitted RC7AN9 for", picname, "pin", pinnumber
-            elif (picname == "16F722") & (alias == "VREF"):   # error with 16f722
-               aliaslist.append(alias)
-               aliaslist.append("RA3")
-               print "Added RA3 for", picname, "pin", pinnumber
-            elif ( (picname in ("18F2439", "18F2539", "18F4439", "18F4539")) &
-                   (alias.startswith("PWM")) ):
-               aliaslist.append(alias)
-               aliaslist.append("RC" + alias[-1])
-               print "Added RC" + alias[-1], "for", picname, "pin", pinnumber
-            elif ( (picname in ("18F86J11", "18F86J16", "18F87J11"))  &
-                 (pinnumber == "55") & (alias == "ECCP2") ):
-               aliaslist.append(alias)
-               aliaslist.append("RB3")
-               print "Added RB3 for", picname, "pin", pinnumber
-            else:
-               aliaslist.append(alias)
+            if alias not in ("INT", "IOC"):               # not a real alias
+               if alias.startswith("RB")  & picname.startswith("12"):
+                  aliaslist.append("RA" + alias[-1])         # RBx -> RAx
+                  aliaslist.append("GP" + alias[-1])         # add GPx
+               elif alias == "RC7AN9":                       # MPLAB-X error with 16f1828/9
+                  aliaslist.append("RC7")
+                  aliaslist.append("AN9")
+                  print "Splitted RC7AN9 for", picname, "pin", pinnumber
+               elif (picname == "16F722") & (alias == "VREF"):   # error with 16f722
+                  aliaslist.append(alias)
+                  aliaslist.append("RA3")
+                  print "Added RA3 for", picname, "pin", pinnumber
+               elif ( (picname in ("18F2439", "18F2539", "18F4439", "18F4539")) &
+                      (alias.startswith("PWM")) ):
+                  aliaslist.append(alias)
+                  aliaslist.append("RC" + alias[-1])
+                  print "Added RC" + alias[-1], "for", picname, "pin", pinnumber
+               elif ( (picname in ("18F86J11", "18F86J16", "18F87J11"))  &
+                    (pinnumber == "55") & (alias == "ECCP2") ):
+                  aliaslist.append(alias)
+                  aliaslist.append("RB3")
+                  print "Added RB3 for", picname, "pin", pinnumber
+               else:
+                  aliaslist.append(alias)
 
          if (picname in ("18F4220", "18F4320")) & (pinnumber == "36"):
             pinlist["RB3"] = ["RB3", "AN9", "CCP2"]
