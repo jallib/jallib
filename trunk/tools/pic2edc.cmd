@@ -20,7 +20,6 @@
  *   - remove module import section(s)                                      *
  *   - handle Module_Ref statements and                                     *
  *     process ModuleMacro and ModuleExclude statements                     *
- *   - translate everything to uppercase                                    *
  *   The resulting files are targets for the Edc2jal script.                *
  *                                                                          *
  * Sources:  MPLAB-X .pic files, which can be found in:                     *
@@ -33,7 +32,7 @@
  *   - Old .edc files are not deleted (new files will overwrite old ones).  *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.14'
+   ScriptVersion   = '0.0.15'
    ScriptAuthor    = 'Rob Hamerling'
    mplabxversion   = '185'
 /* ------------------------------------------------------------------------ */
@@ -123,14 +122,14 @@ do i = 1 to dir.0                                           /* all relevant .pic
 
    call msg 0, PicName                                      /* progress signal */
 
-   PicNameCaps = toupper(PicName)                           /* name of PPIC in upper case */
+   PicNameCaps = toupper(PicName)                           /* name of PIC in upper case */
 
    Pic. = ''                                                /* reset .pic file contents */
    Mod. = ''                                                /* reset .module file contents */
    if file_read_pic(PicFile) = 0 then                       /* expand MPLAB-X .pic file */
       iterate                                               /* error with read */
 
-   edcfile = 'edc.'mplabxversion'\'Picname'.edc'            /* expanded .pic file */
+   edcfile = 'edc_'mplabxversion'\'Picname'.edc'            /* expanded .pic file */
    call SysFileDelete edcfile                               /* delete existing file */
    do j = 1 to Pic.0
       call lineout edcfile, line_cleanup(Pic.j)             /* output clean line */
@@ -154,8 +153,7 @@ return 0
 /* ------------------------------------------- */
 line_cleanup: procedure expose PicName
 parse arg ln
-ln = translate(ln)                                          /* whole line uppercase */
-ln = translate(ln, ' ', '09'x)                              /* tabs -> space */
+ln = translate(ln, ' ', '09'x)                              /* tabs -> single space */
 return ln
 
 
@@ -247,15 +245,44 @@ return Pic.0
 /* -------------------------------------------------- */
 module_copy_selection: procedure expose Pic. Mod. msglevel debuglevel
 parse arg first last .
-if debuglevel = 1 then
+if debuglevel = 2 then
    call msg 0, 'module_copy_selection <'first'>..<'last'>'
 
-SFRcount = -1                                               /* start value */
-do j = 1 until SFRcount >= first
-   if word(Mod.j,1) = '<edc:SFRDef' then
-      SFRcount = SFRCount + 1
+if first = '' then do                                       /* no selection */
+   do j = 1 to Mod.0
+      i = Pic.0 + 1
+      Pic.i = Mod.j
+      Pic.0 = i
+   end
+   return
 end
-j = j - 1
+
+SFRcount = -1                                               /* start value */
+do j = 1 while SFRcount < first  &  j <= Mod.0
+   if word(Mod.j,1) = '<edc:JoinedSFRDef' then do
+      SFRcount = SFRCount + 1                               /* joined SFRs count for 1 */
+      if debuglevel = 2 then
+         call msg 0, 'j = 'j 'SFRcount =' SFRcount
+      if SFRcount >= first then
+         leave
+      SFRcount = SFRcount - 1                               /* count only joined SFRs */
+      do while word(Mod.j,1) \= '</edc:JoinedSFRDef>'       /* skip rest of joined SFR */
+         if word(Mod.j,1) = '<edc:SFRDef' then
+            SFRcount = SFRCount + 1
+         j = j + 1
+      end
+   end
+   else if word(Mod.j,1) = '<edc:SFRDef' then do
+      SFRcount = SFRCount + 1
+      if debuglevel = 2 then
+         call msg 0, 'j = 'j 'SFRcount =' SFRcount
+      if SFRcount >= first then
+         leave
+      do while word(Mod.j,1) \= '</edc:SFRDef>'             /* skip rest of SFR */
+         j = j + 1
+      end
+   end
+end
 
 do until SFRcount >= last  |  j > Mod.0
    if word(Mod.j,1) = '<edc:JoinedSFRDef' then do
@@ -317,8 +344,13 @@ do while lines(ModFile) > 0                              /* whole module */
    ln = translate(linein(ModFile), ' ', '09'x)
    if left(word(ln,1),2) = '<?' then                     /* skip xml */
       nop
-   else if word(ln,1) = '<edc:ArchDef>' then do        /* skip archdef */
-      do until word(ln,1) = '</edc:ArchDef>'
+   else if word(ln,1) = '<edc:Module' then
+      nop
+   else if word(ln,1) = '</edc:Module>' then
+      nop
+   else if word(ln,1) = '<edc:ArchDef>'  |,
+           word(ln,1) = '<edc:ArchDef'  then do          /* skip archdef */
+      do while word(ln,1) \= '</edc:ArchDef>'
          ln = translate(linein(ModFile), ' ', '09'x)
       end
    end
@@ -330,7 +362,7 @@ do while lines(ModFile) > 0                              /* whole module */
 end
 call stream ModFile, 'c', 'close'                        /* done */
 
-if debuglevel = 1 then do
+if debuglevel = 2 then do
    do i = 1 to Mod.0
       call msg 0, 'r' i'.' Mod.i
    end
