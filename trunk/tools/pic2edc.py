@@ -26,8 +26,7 @@ mplabxversion = wlist[1]
 scriptversion = wlist[3]
 
 mplabx = "k:/mplab-x_185/crownking.edc.jar/content/edc"    # MPLAB-X PIC files
-# edcdir = "k:/jal/pic2jal/edc_" + mplabxversion             # dir with .edc files
-edcdir = "k:/py/dom/edc_" + mplabxversion             # dir with .edc files
+edcdir = "k:/jal/pic2jal/edc_" + mplabxversion             # dir with .edc files
 
 picjal3 = ["10f", "12f", "16f", "18f"]
 picjal4 = ["10lf", "12lf", "12hv", "16lf", "16hv", "18lf"]
