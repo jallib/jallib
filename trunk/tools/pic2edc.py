@@ -1,5 +1,5 @@
 
-# pic2edc script
+# pic2edc - expand MPLAB-X .pic files
 
 import os
 import sys
@@ -17,49 +17,46 @@ from xml.dom.minidom import parse
   -----------------------------------------------------------------------
 """
 
-wlist = open("MPLAB-X_VERSION", "r").read().split(' ')
-if not ((wlist[0].upper() == "MPLAB-X_VERSION") & (wlist[2].upper() == "SCRIPTVERSION")):
-   print "Could not obtain version of MPLAB-X or script from file MPLAB-X_VERSION"
-   exit(0)
+scriptversion = "0.0.16"
+mplabxversion = "185"
 
-mplabxversion = wlist[1]
-scriptversion = wlist[3]
+mplabx = "k:/mplab-x_" + mplabxversion + "/crownking.edc.jar/content/edc"    # MPLAB-X .pic files
+edcdir = "k:/jal/pic2jal/edc_" + mplabxversion             # output: dir with .edc files
 
-mplabx = "k:/mplab-x_185/crownking.edc.jar/content/edc"    # MPLAB-X PIC files
-edcdir = "k:/jal/pic2jal/edc_" + mplabxversion             # dir with .edc files
-
-picjal3 = ["10f", "12f", "16f", "18f"]
-picjal4 = ["10lf", "12lf", "12hv", "16lf", "16hv", "18lf"]
-
+pictypes = ( "10f", "10l", "12f", "12h", "12l", "16f", "16h", "16l", "18f", "18l" )
 
 def make_edc(picname, pathname):
    """ create .edc file for picname, using pathname as input """
    print picname
-   root = parse(pathname)                             # will perform the xml expansion
-   if not os.path.exists(edcdir):
-      os.mkdir(edcdir)
+   root = parse(pathname)                             # performs the expansion
    fp = open(edcdir + '/' + picname + ".edc", "w")
-   root.writexml(fp, indent="  ")
+   root.writexml(fp)
    fp.close()
 
 
 def walktree(top):
    """ search .pic files of PICs supported by JalV2
        and deliver these to make_edc()               """
-   for f in os.listdir(top):
+   flist = os.listdir(top)
+   for f in flist:
      pathname = os.path.join(top, f)
      mode = os.stat(pathname).st_mode
      if S_ISDIR(mode):
         walktree(pathname)
      elif S_ISREG(mode):
         fn = os.path.splitext(f)[0][0:].lower()
-        if ( fn.startswith("pic") & (fn != "pic16hv540") &
-           ((fn[3:6] in picjal3) | (fn[3:7] in picjal4)) ):
+        if (fn.startswith("pic") & (fn[3:6] in pictypes)):   # only JalV2 supported PICs
            make_edc(fn[3:], pathname)
-     else:
-        print pathname, "skipped"
 
 
 if __name__ == "__main__":
-   walktree(mplabx)
+
+   wlist = open("MPLAB-X_VERSION", "w")               # info for edc2jal script
+   wlist.write("MPLAB-X_VERSION " + mplabxversion + " ScriptVersion " + scriptversion)
+   wlist.close()
+
+   if not os.path.exists(edcdir):                     # make sure output directory exists
+      os.mkdir(edcdir)
+
+   walktree(mplabx)                                   # create .edc files
 
