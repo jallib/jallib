@@ -43,7 +43,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.15'
+   ScriptVersion   = '0.0.17'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
 /* mplabxversion obtained from file MPLAB-X-VERSION.xxx created by pic2edc script. */
@@ -60,12 +60,17 @@ msglevel = 2
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx utilities */
 
-Call SysFileTree 'MPLAB-X-VERSION.*', 'vsn.', 'FO'          /* search mplab-x version */
-if vsn.0 = 0 then do
-   call msg 3, 'Could not find any MPLAB-X-VERSION file'
-   return 2
+parse upper value linein('MPLAB-X_VERSION') with 'MPLAB-X_VERSION' val1 'SCRIPTVERSION' val2
+call stream 'MPLAB-X_VERSION', 'c', 'close'
+mplabxversion = strip(val1)
+if val1 = '' then do
+   say 'Could not determine MPLAB-X version from MPLAB-X_VERSION file'
+   return 0
 end
-mplabxversion = right(vsn.1,3)                              /* 1st, probably only! */
+if ScriptVersion \= strip(val2)  then do
+   say 'Conflicting script versions, found' val2', expecting' ScriptVersion
+   return 0
+end
 
 /* MPLAB-X and a local copy of the Jallib SVN tree should be installed.        */
 /* The .pic files used are in [basedir]/MPLAB_IDE/BIN/LIB/CROWNKING.EDC.JAR.   */
@@ -213,7 +218,7 @@ do i = 1 to dir.0                                           /* all relevant .edc
    Pic. = ''                                                /* reset .pic file contents */
    edcfile = edcdir'/'PicName'.edc'
    do j = 1 while lines(edcfile)                            /* read edc file */
-      Pic.j = linein(edcfile)
+      Pic.j = translate(linein(edcfile), ' ', '09'x)        /* tab -> blank */
    end                                                      /* error with read */
    Pic.0 = j - 1
    call stream edcfile, 'c', close
@@ -3177,7 +3182,7 @@ do i = i while word(pic.i,1) \= '</edc:DCRFieldDef>'
          end
          else do
             kwdname.kwd = kwd                            /* remember name */
-            call lineout jalfile, left('       'kwd '= 0x'mask, 42) '--' tolower(val2)
+            call lineout jalfile, left('       'kwd '= 0x'mask, 42) '--' val2
          end
       end
    end
