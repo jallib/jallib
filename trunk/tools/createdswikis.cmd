@@ -83,7 +83,7 @@ do i=1 to PicSpec.0                                      /* every Jallib PIC dev
     dsnum = dsinfo.dskey.DSNBR                           /* number with suffix */
     if dsinfo.dskey.FDATE \= '' then
       call lineout wiki, '||' left(PicName,12),
-                         '|| <a' left('href="'url||dsnum'.pdf">',length(url)+20) right(dsnum,9)'</a>',
+                         '|| <a' left('href="'url||dsnum'.pdf">',length(url)+21) right(dsnum,9)'</a>',
                          '||' left(dsinfo.dskey.FDATE, 7),
                          '||' dsinfo.dskey.TITLE '||'
   end
@@ -158,7 +158,7 @@ do j = 1 to ds.0                                /* skip group without datasheet 
    dsnum = dsinfo.dskey.DSNBR
    if dsnum \= '' then
       call lineout wiki,,
-             '|| <a' left('href="'url||dsnum'.pdf">', length(url)+20) right(dsnum,9)'</a>',
+             '|| <a' left('href="'url||dsnum'.pdf">', length(url)+21) right(dsnum,9)'</a>',
              '||' left(dsinfo.dskey.FDATE, 7),
              '||' group.j '||'
 end
@@ -181,7 +181,7 @@ do j = 1 to ds.0
    dsnum = dsinfo.dskey.DSNBR
    if dsnum \= '' then
       call lineout wiki,,
-             '|| <a' left('href="'url||dsnum'.pdf">', length(url)+20) right(dsnum,9)'</a>',
+             '|| <a' left('href="'url||dsnum'.pdf">', length(url)+21) right(dsnum,9)'</a>',
              '||' left(dsinfo.dskey.FDATE, 7),
              '||' group.j '||'
 end
