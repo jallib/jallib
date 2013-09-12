@@ -1,25 +1,20 @@
 /* ---------------------------------------------------------------------------- */
-/* CreateDSwikis.cmd - create wiki tables:                                      */
+/* CreateDSwikis.cmd - create wiki files:                                       */
 /*                     * Datasheet                                              */
 /*                     * Programming Specifications                             */
 /*                     * PICs with the same Datasheet                           */
 /*                     * PICs with the same Programming Specifications          */
 /*                                                                              */
-/* Notes: - Only PICs for which a Jallib device file is available.              */
-/*        - Script can be run on any platform which supports Rexx.              */
+/* Notes: - Script can be run on any platform which supports Rexx.              */
 /*          See for a 'howto' devicefiles.html and the comments in dev2jal.cmd  */
 /* ---------------------------------------------------------------------------- */
 
 parse upper arg runtype .
 
-/* -- input files (change for other systems or platforms) -- */
-if runtype  = 'TEST' then
-   jaldir   = 'k:/jal/pic2jal/test/'                /* dir with MPLAB-X test device files */
-else
-   jaldir   = 'k:/jallib/include/device/'           /* dir with production device files */
+/* -- input files (may require changes for other systems or platforms) -- */
 pdfdir      = 'n:/picdatasheets/'                   /* dir with datasheets (local)  */
 PicSpecFile = 'k:/jallib/tools/devicespecific.json' /* PIC specific properties      */
-titles      = 'k:/jallib/tools/datasheet.list'      /* datasheet number/title file  */
+dslist      = 'k:/jallib/tools/datasheet.list'      /* datasheet number/title file  */
 
 /* -- output -- */
 dst         = 'k:/jallib/wiki/'                     /* output path */
@@ -27,25 +22,16 @@ dswiki      = dst'DataSheets.wiki'                  /* out: DS wiki */
 pswiki      = dst'ProgrammingSpecifications.wiki'   /* out: PS wiki */
 dsgroupwiki = dst'PicGroups.wiki'
 psgroupwiki = dst'PicPgmGroups.wiki'
-
 url         = 'http://ww1.microchip.com/downloads/en/DeviceDoc/' /* Microchip site  */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                               /* load REXX functions */
 
-if SysFileTree(jaldir'1*.jal', dir, 'FO') != 0 then do
-  say 'Problem collecting file list of directory' jaldir
-  return 1
-end
-if dir.0 < 1 then do
-  say 'No appropriate PIC .dev files found in directory' jaldir
-  return 1
-end
+PicSpec. = ''
+call  read_devspec                              /* obtain device specific info */
 
-call SysStemSort 'dir.', 'A', 'I'               /* sort ascending, case independent */
-
-PicSpec. = '?'
-call read_picspec                               /* obtain device specific info */
+dsinfo. = ''                                    /* compound var: ds number and title */
+call  read_dsinfo                               /* load datasheet info */
 
 call  pic_wiki    dswiki                        /* PIC -> datasheet wiki */
 call  pic_wiki    pswiki                        /* PIC -> Programming Specifications wiki */
@@ -58,89 +44,58 @@ return 0
 /* -------------------------------------------------- */
 /*  create a PIC - dataset or programmming specs wiki */
 /* -------------------------------------------------- */
-pic_wiki: procedure expose dir. PicSpec. titles pdfdir url
+pic_wiki: procedure expose PicSpec. pdfdir url dsinfo.
 
 parse arg wiki .
-
-if pos('ProgrammingSpecifications',wiki) > 0 then    /* select wiki type */
-  type = 'ps'
-else
+if pos('Data',wiki) > 0 then                             /* wiki type */
   type = 'ds'
+else
+  type = 'ps'
 
 if stream(wiki, 'c', 'query exists') \= '' then
   call SysFileDelete wiki
-call stream wiki, 'c', 'open write'                 /* create new */
+call stream wiki, 'c', 'open write'                      /* create new */
 
-if type = 'ps' then do
-  say 'Building PICname - Programming Specifications cross reference'
-  call lineout wiki, '#summary PICname - Programming Specifications cross reference'
-end
-else do
+if type = 'ds' then do
   call lineout wiki, '#summary PICname - Datasheet cross reference'
   say 'Building PICname - DataSheet cross reference'
+end
+else do
+  call lineout wiki, '#summary PICname - Programming Specifications cross reference'
+  say 'Building PICname - Programming Specifications cross reference'
 end
 call lineout wiki, ''
 call lineout wiki, '----'
 call lineout wiki, ''
-if type = 'ps' then
-  call lineout wiki, '= PICname - Programming Specifications cross reference ='
-else
+if type = 'ds' then
   call lineout wiki, '= PICname - Datasheet cross reference ='
+else
+  call lineout wiki, '= PICname - Programming Specifications cross reference ='
 call lineout wiki, ''
 call lineout wiki, '||  *PIC*       || *Number* || *Date* || *Datasheet title* ||'
-
-do i=1 to dir.0                                /* a line for every Jallib PIC device file */
-
-  parse upper value filespec('Name', dir.i) with  PicName '.JAL'
-  if PicName = '' then do
-    Say 'Error: Could not derive PIC name from filespec: "'dir.i'"'
-    leave                                       /* terminate */
-  end
-
+do i=1 to PicSpec.0                                      /* every Jallib PIC device file */
+  PicName = PicSpec.i
   if type = 'ds' then
-    DS = PicSpec.PicName.DataSheet
+    dskey = PicSpec.PicName.DATASHEET
   else
-    DS = PicSpec.PicName.PgmSpec
-
-  if DS \= '-'  &  DS \= '?' then do
-    call SysFileSearch DS, titles, dsnum.               /* lookup ds# & title */
-    if dsnum.0 > 0 then do
-      call SysFileTree 'N:\PicDatasheets\'word(dsnum.1,1)'.pdf', pdf., 'FT'
-      if pdf.0 > 0 then
-        filedate = '20'left(pdf.1,5)
-      else
-        say 'Datasheet' word(dsnum.1,1) 'not found'
+    dskey = PicSpec.PicName.PGMSPEC
+  if dskey \= '-' then do
+    dsnum = dsinfo.dskey.DSNBR                           /* number with suffix */
+    if dsinfo.dskey.FDATE \= '' then
       call lineout wiki, '||' left(PicName,12),
-                         '|| <a href="'url||left(word(dsnum.1,1)'.pdf">',15)right(word(dsnum.1,1),9)'</a>',
-                         '||' left(filedate, 7),
-                         '||'delword(dsnum.1,1,1) '||'
-      call SysFileTree pdfdir||word(dsnum.1,1).pdf, 'dsfile', 'FO'
-      if dsfile.0 = 0 then                              /* check on presence */
-        say 'Datasheet' dsnum.1 'not found in' pdfdir
-    end
-    else do
-      call lineout wiki, '||' left(PicName,12),
-                         '||' right(DS,9),
-                         '||' left('-',7),
-                         '|| - ||'
-    end
+                         '|| <a' left('href="'url||dsnum'.pdf">',length(url)+20) right(dsnum,9)'</a>',
+                         '||' left(dsinfo.dskey.FDATE, 7),
+                         '||' dsinfo.dskey.TITLE '||'
   end
-  else                                      /* no datasheet number found */
-    call lineout wiki, '||' left(PicName,12),
-                       '||' right('-',9),
-                       '||' left('-',7),
-                       '|| - ||'
-
 end
-
 call stream wiki, 'c', 'close'
-
 return
+
 
 /* -------------------------------------------------------- */
 /*  create dataset groups or programmming specs groups wiki */
 /* -------------------------------------------------------- */
-group_wiki: procedure expose dir. PicSpec. titles url
+group_wiki: procedure expose PicSpec. pdfdir url dsinfo.
 
 parse arg wiki .
 
@@ -154,45 +109,37 @@ if stream(wiki, 'c', 'query exists') \= '' then
 call stream  wiki, 'c', 'open write'
 
 call charout wiki, '#summary PICs sharing the same '
-if type = 'ds' then
+if type = 'ds' then do
   call lineout wiki, 'datasheet'
-else
+  say 'Building PIC datasheet group cross reference'
+end
+else do
   call lineout wiki, 'programming specifications'
+  say 'Building PIC programming specifications group cross reference'
+end
 call lineout wiki, ''
 call lineout wiki, '----'
 call lineout wiki, ''
 
 group.0 = 0
 ds.0    = 0
-
-do i=1 to dir.0                                /* all entries */
-  parse upper value filespec('Name', dir.i) with  PicName '.JAL'
-  if PicName = '' then do
-    Say 'Error: Could not derive PIC name from filespec: "'dir.i'"'
-    iterate                                     /* next entry */
-  end
-
+do i=1 to PicSpec.0                            /* all entries */
+  PicName = PicSpec.i
   if type = 'ds' then
-    Sheet = PicSpec.PicName.DataSheet
+    dskey = PicSpec.PicName.DATASHEET
   else
-    Sheet = PicSpec.PicName.PgmSpec
-  if Sheet = '-' then
-    Sheet = '_missing_'                         /* no datasheet */
-
+    dskey = PicSpec.PicName.PGMSPEC
   do j = 1 to ds.0                              /* search in ds array */
-    if ds.j = Sheet then                        /* found */
+    if ds.j = dskey then                        /* found */
       leave
   end
-
   if j > ds.0 then do                           /* not found */
-    ds.j = Sheet                                /* add to array */
+    ds.j = dskey                                /* add to array */
     ds.0 = j                                    /* count */
     group.j = ''                                /* new group */
     group.0 = j                                 /* count */
   end
-
   group.j = group.j||PicName' '                 /* append PicName */
-
 end
 
 call charout wiki, '= PICs sharing the same '
@@ -205,29 +152,19 @@ call lineout wiki, '=== (see below for a list sorted on PIC type) ==='
 call lineout wiki, ''
 call lineout wiki, '|| *Datasheet* || *Date* || *PICtype* ||'
 
-PicCount = 0
 call sortGroup 'D'
-do j = 1 to ds.0
-  call SysFileSearch ds.j, titles, dsnum.
-  if dsnum.0 > 0 then do
-    call SysFileTree 'N:\PicDatasheets\'word(dsnum.1,1)'.pdf', pdf., 'FT'
-    if pdf.0 > 0 then
-      filedate = '20'left(pdf.1,5)
-    else
-      say 'Datasheet' word(dsnum.1,1) 'not found'
-    call lineout wiki,,
-                '|| <a href="'url||word(dsnum.1,1)'.pdf">'word(dsnum.1,1)'</a>',
-                '||' filedate,
-                '||' group.j '||'
-  end
-  else
-    call lineout wiki, '||' left(ds.j,11) '|| - ||' group.j '||'
-  PicCount = PicCount + words(group.j)
+do j = 1 to ds.0                                /* skip group without datasheet */
+   dskey = ds.j
+   dsnum = dsinfo.dskey.DSNBR
+   if dsnum \= '' then
+      call lineout wiki,,
+             '|| <a' left('href="'url||dsnum'.pdf">', length(url)+20) right(dsnum,9)'</a>',
+             '||' left(dsinfo.dskey.FDATE, 7),
+             '||' group.j '||'
 end
 
 call lineout wiki, ''
 call lineout wiki, '----'
-
 call lineout wiki, ''
 call charout wiki, '= PICs sharing the same '
 if type = 'ds' then
@@ -240,31 +177,17 @@ call lineout wiki, '|| *Datasheet* || *PICtype* ||'
 
 call sortGroup 'P'
 do j = 1 to ds.0
-  call SysFileSearch ds.j, titles, dsnum.
-  if dsnum.0 > 0 then do
-    call SysFileTree 'N:\PicDatasheets\'word(dsnum.1,1)'.pdf', pdf., 'FT'
-    if pdf.0 > 0 then
-      filedate = '20'left(pdf.1,5)
-    else
-      say 'Datasheet' word(dsnum.1,1) 'not found'
-    call lineout wiki,,
-                '|| <a href="'url||word(dsnum.1,1)'.pdf">'word(dsnum.1,1)'</a>',
-                '||' filedate,
-                '||' group.j '||'
-  end
-  else do
-    call lineout wiki, '||' left(ds.j,11) '|| - ||' group.j '||'
-  end
+   dskey = ds.j
+   dsnum = dsinfo.dskey.DSNBR
+   if dsnum \= '' then
+      call lineout wiki,,
+             '|| <a' left('href="'url||dsnum'.pdf">', length(url)+20) right(dsnum,9)'</a>',
+             '||' left(dsinfo.dskey.FDATE, 7),
+             '||' group.j '||'
 end
 call lineout wiki, ''
 call lineout wiki, '----'
-
-call lineout wiki, ''
-call lineout wiki, PicCount 'PICs in' group.0 'groups.'
 call stream  wiki, 'c', 'close'
-
-say type 'group wiki created.'
-
 return 0
 
 
@@ -296,7 +219,34 @@ return
 /* Read file with Device Specific data                 */
 /* Interpret contents: fill compound variable PicSpec. */
 /* --------------------------------------------------- */
-read_picspec: procedure expose PicSpecFile PicSpec.
+read_dsinfo: procedure expose dslist dsinfo. pdfdir
+if stream(dslist, 'c', 'open read') \= 'READY:' then do
+  say 'Could not open' dslist
+  return
+end
+dsinfo. = ''
+do while lines(dslist)
+  parse value linein(dslist) with dsnum dstitle
+  dskey = left(dsnum,length(dsnum)-1)                    /* strip suffix */
+  dsinfo.dskey.DSNBR = strip(dsnum)
+  dsinfo.dskey.TITLE = strip(dstitle)
+  dspath = pdfdir||dsnum'.pdf'
+  filedate = word(stream(dspath, 'c', 'query datetime'), 1)
+  if filedate = '' then
+    say 'Datasheet' dsnum 'listed in' dslist 'not found'
+  else
+    dsinfo.dskey.FDATE = '20'right(filedate,2)'/'left(filedate,2)
+end
+call stream dslist, 'c', 'close'
+return
+
+
+
+/* --------------------------------------------------- */
+/* Read file with Device Specific data                 */
+/* Interpret contents: fill compound variable PicSpec. */
+/* --------------------------------------------------- */
+read_devspec: procedure expose PicSpecFile PicSpec.
 if stream(PicSpecFile, 'c', 'open read') \= 'READY:' then do
   Say '  Error: could not open file with device specific data' PicSpecFile
   exit 1                                        /* zero records */
@@ -305,9 +255,13 @@ call charout , 'Reading device specific data items from' PicSpecFile '... '
 do until x = '{' | x = 0                /* search begin of pinmap */
   x = json_newchar(PicSpecFile)
 end
+PicSpec.0 = 0
 do until x = '}' | x = 0                /* end of pinmap */
   do until x = '}' | x = 0              /* end of pic */
     PicName = json_newstring(PicSpecFile)  /* new PIC */
+    i = PicSpec.0 + 1
+    PicSpec.i = PicName
+    PicSpec.0 = i
     do until x = '{' | x = 0            /* search begin PIC specs */
       x = json_newchar(PicSpecFile)
     end
