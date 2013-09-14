@@ -67,7 +67,7 @@ def pic_wiki(outfile):
       if ds != "-":
          dsnum = int(ds)                                    # numeric index!
          fp.write("|| " + pic + " || "
-                  + "<a " + url + datasheet[dsnum].get("NUMBER") + ">"
+                  + '<a href="' + url + datasheet[dsnum].get("NUMBER") + '.pdf">'
                   + datasheet[dsnum].get("NUMBER") + "</a> || "
                   + datasheet[dsnum].get("DATE")   + " || "
                   + datasheet[dsnum].get("TITLE")  + " ||\n")
@@ -114,7 +114,7 @@ def group_wiki(outfile):
    grouplist = groups.keys()
    grouplist.sort()
    for group in grouplist:
-      fp.write("|| " + "<a " + url + datasheet[group].get("NUMBER") + ">"
+      fp.write("|| " + '<a href="' + url + datasheet[group].get("NUMBER") + '.pdf">'
                 + datasheet[group].get("NUMBER") + " || "
                 + datasheet[group].get("DATE")   + " || "
                 + " ".join(groups[group]) + "||\n")
@@ -125,7 +125,7 @@ def group_wiki(outfile):
    grouplist = groups.keys()
    grouplist.sort(key = sort_group_on_pic)
    for group in grouplist:
-      fp.write("|| " + "<a " + url + datasheet[group].get("NUMBER") + ">"
+      fp.write("|| " + '<a href="' + url + datasheet[group].get("NUMBER") + '.pdf">'
                 + datasheet[group].get("NUMBER") + " || "
                 + datasheet[group].get("DATE")   + " || "
                 + " ".join(groups[group]) + "||\n")
