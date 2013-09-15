@@ -4,7 +4,6 @@
 import os
 import sys
 import re
-import json
 from xml.dom.minidom import parse, Node
 
 """
@@ -22,13 +21,7 @@ from xml.dom.minidom import parse, Node
   -----------------------------------------------------------------------
 """
 
-wlist = open("MPLAB-X_VERSION", "r").read().split(' ')
-if not ((wlist[0].upper() == "MPLAB-X_VERSION") & (wlist[2].upper() == "SCRIPTVERSION")):
-   print "Could not obtain version of MPLAB-X or script from file MPLAB-X_VERSION"
-   exit(0)
-
-mplabxversion = wlist[1]
-scriptversion = wlist[3]
+mplabxversion = "190"
 
 edcdir  = "k:/jal/pic2jal/edc_" + mplabxversion             # dir with .edc files
 pinmap  = "pinmap.py"                                       # output
@@ -58,12 +51,12 @@ for filename in dir:
    if not os.path.isfile(filepath) & filename.endswith(".edc"):    # only .edc files apply
       continue
 
-   picname = os.path.splitext(filename)[0][0:].upper()   # in uppercase
+   picname = os.path.splitext(filename)[0][0:].upper()      # in uppercase
    print picname
 
    if picname == "16F722":
       filepath = edcdir + "/16lf722.edc"
-      print "Pinmap of", picname, "derived from 16lf722"
+      print "  Pinmap derived from 16lf722"
 
    dom = parse(filepath)
    pinnumber = "0"
@@ -87,23 +80,23 @@ for filename in dir:
             elif alias == "RC7AN9":                         # MPLAB-X error with 16f1828/9
                aliaslist.append("RC7")
                aliaslist.append("AN9")
-               print "Splitted RC7AN9 for", picname, "pin", pinnumber
+               print "  Splitted RC7AN9 for pin", pinnumber
             elif ( (picname in ("18F2439", "18F2539", "18F4439", "18F4539")) &
                    (alias.startswith("PWM")) ):
                aliaslist.append(alias)
                aliaslist.append("RC" + alias[-1])
-               print "Added RC" + alias[-1], "for", picname, "pin", pinnumber
+               print "  Added RC" + alias[-1], "for pin", pinnumber
             elif ( (picname in ("18F86J11", "18F86J16", "18F87J11"))  &
                  (pinnumber == "55") & (alias == "ECCP2") ):
                aliaslist.append(alias)
                aliaslist.append("RB3")
-               print "Added RB3 for", picname, "pin", pinnumber
+               print "  Added RB3 for pin", pinnumber
             else:
                aliaslist.append(alias)
 
       if (picname in ("18F4220", "18F4320")) & (pinnumber == "36"):
-         pinlist["RB3"] = ["RB3", "AN9", "CCP2"]
-         print "Replaced", picname, "whole pin", pinnumber
+         aliaslist = ["RB3", "AN9", "CCP2"]
+         print "  Replaced whole pin", pinnumber
 
       portbit = "?"
       for alias in aliaslist:
@@ -115,10 +108,9 @@ for filename in dir:
             break
       if portbit != "?":
          if portbit in pinlist:                 # duplicate
-            print "Duplicate pin specification:", portbit, "pin", pinnumber, "skipped"
+            print "  Duplicate pin specification:", portbit, "pin", pinnumber, "skipped"
          else:
             pinlist[portbit] = aliaslist
-
 
    if len(pinlist) > 0:
       header = '   "' + picname + '": {'                    # start of pinmapping this PIC
@@ -127,13 +119,12 @@ for filename in dir:
       pinlist_keysort.sort()
       for key in pinlist_keysort:
          fp.write('"' + key + '" : ')
-         fp.write(json.dumps(pinlist[key]))
-         fp.write(",\n")
+         fp.write('["' + '", "'.join(pinlist[key]) + '"],\n')
          fp.write(" "*len(header))
       fp.write("},\n")
       piccount += 1
    else:
-      print "No pinlist found for", picname
+      print "  No pinlist found"
 
 fp.write("  }\n")
 fp.close()
