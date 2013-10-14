@@ -1,46 +1,41 @@
 
-import os, sys, stat
+# CreateDSwiki.py
+
+import os, sys
 import time
-import datetime
-from datetime import date
 import json
 
-
 """
- CreateDSwikis.cmd - create wiki files:
-                     * Datasheet
-                     * Programming Specifications
-                     * PICs with the same Datasheet
-                     * PICs with the same Programming Specifications
- Uses: devicespecific,json to obtain datasheet numbers of a PIC
-       datasheet.list to obtain the latest suffix and title of the datasheets
+ CreateDSwikis.py - create wiki files:
+                    * DataSheet
+                    * Programming Specifications
+                    * PICs with the same DataSheet
+                    * PICs with the same Programming Specifications
+ Uses: devicespecific,json to obtain DataSheet numbers of the PICs
+       datasheet.list to obtain the latest suffixes and titles of the datasheets
        directory with PIC datasheets (pf files) to obtain dates of the datasheets
 """
 
-#  input files (may require changes for other systems or platforms)
+#  input (may require changes for other systems or platforms)
 pdfdir      = "n:/picdatasheets"                            # dir with datasheets (local)
 picspecfile = "k:/jallib/tools/devicespecific.json"         # PIC specific properties
 dslist      = "k:/jallib/tools/datasheet.list"              # datasheet number/title file
 
-#  output files
+#  output
 dst         = "k:/jallib/wiki"                              # output path
-dswiki      = "DataSheets.wiki"                             # out: DS wiki
-pswiki      = "ProgrammingSpecifications.wiki"              # out: PS wiki
-dsgroupwiki = "PicGroups.wiki"
-psgroupwiki = "PicPgmGroups.wiki"
-url         = 'http://ww1.microchip.com/downloads/en/DeviceDoc/' # Microchip site
+url         = "http://ww1.microchip.com/downloads/en/DeviceDoc/"  # Microchip site
 
 
 def read_datasheet(infile):
-   """ fill dictionary 'datasheet' with number, title and date """
+   """ fill dictionary 'datasheet' with number, date and title """
    fp = open(infile, "r")                             # datasheet list
    for ln in fp:
-      w = ln.split(" ", 1)                            # number / title
-      dd = w[0]
-      key = int(dd[0:len(dd)-1])                      # strip letter, numeric index
-      fd = os.path.getmtime(os.path.join(pdfdir,dd.lower()+".pdf"))
-      fd = time.strftime("%Y/%m", time.gmtime(fd))    # only year/month
-      ds = w[1].strip()                               # title
+      w = ln.split(" ", 1)                            # separate number from title
+      dd = w[0].lower()
+      ds = w[1].strip()
+      key = int(dd[0:len(dd)-1])                      # strip letter; get numeric key
+      fd = os.path.getmtime(os.path.join(pdfdir, dd + ".pdf"))
+      fd = time.strftime("%Y/%m", time.gmtime(fd))    # year/month
       datasheet[key] = {"NUMBER" : dd, "TITLE" : ds, "DATE" : fd}
 
 
@@ -55,7 +50,7 @@ def pic_wiki(outfile):
    print "Building", title
    fp = open(os.path.join(dst,outfile), "w")
    fp.write("#summary " + title + "\n\n----\n\n= " + title + " =\n\n")
-   fp.write("|| *PIC* || *Number* || *Date* || *Datasheet Title* ||\n")
+   fp.write("|| *PIC type* || *Number* || *Date* || *Datasheet Title* ||\n")
    piclist = picspec.keys()
    piclist.sort()
    for pic in piclist:
@@ -65,12 +60,12 @@ def pic_wiki(outfile):
       else:
          ds = picd.get("PGMSPEC", "-")
       if ds != "-":
-         dsnum = int(ds)                                    # numeric index!
+         key = int(ds)                                    # numeric index!
          fp.write("|| " + pic + " || "
-                  + '<a href="' + url + datasheet[dsnum].get("NUMBER") + '.pdf">'
-                  + datasheet[dsnum].get("NUMBER") + "</a> || "
-                  + datasheet[dsnum].get("DATE")   + " || "
-                  + datasheet[dsnum].get("TITLE")  + " ||\n")
+                  + '<a href="' + url + datasheet[key].get("NUMBER") + '.pdf">'
+                  + datasheet[key].get("NUMBER") + "</a> || "
+                  + datasheet[key].get("DATE")   + " || "
+                  + datasheet[key].get("TITLE")  + " ||\n")
    fp.write("\n")
    fp.close()
 
@@ -79,7 +74,7 @@ def group_wiki(outfile):
    """ create wiki of groups of PICs with the same datasheet or programming specifications """
 
    def sort_group_on_pic(group):
-      """ custom sort on first PIC of the group """
+      """ custom sort on first PIC of group in groups """
       return groups[group][0]
 
    if outfile.find("Pgm") >= 0:
@@ -98,19 +93,18 @@ def group_wiki(outfile):
       else:
          ds = picd.get("PGMSPEC", "-")
       if ds != "-":
-         dsnum = int(ds)                        # for numeric sorting
-         if dsnum not in groups:
-            groups[dsnum] = [pic]
+         key = int(ds)                                      # for numeric sorting!
+         if key not in groups:
+            groups[key] = [pic]
          else:
-            groups[dsnum].append(pic)
-            groups[dsnum].sort()
+            groups[key].append(pic)
+            groups[key].sort()                              # keep list in sequence
 
    fp = open(os.path.join(dst,outfile), "w")
    fp.write("#summary " + title + "\n\n----\n\n= " + title + " =\n\n")
-   fp.write("== sorted on datasheet number ==\n")
-   fp.write("=== see below for a list sorted on PIC type) ===\n\n")
+   fp.write("== Sorted on DataSheet number ==\n")
+   fp.write("=== (see below for a list sorted on PIC type) ===\n\n")
    fp.write("|| *DataSheet* || *Date* || *PIC type* ||\n")
-
    grouplist = groups.keys()
    grouplist.sort()
    for group in grouplist:
@@ -120,7 +114,7 @@ def group_wiki(outfile):
                 + " ".join(groups[group]) + "||\n")
 
    fp.write("\n\n----\n\n= " + title + " =\n\n")
-   fp.write("== sorted on PIC type (lowest in the group) ==\n\n")
+   fp.write("== Sorted on PIC type (lowest in the group) ==\n\n")
    fp.write("|| *DataSheet* || *Date* || *PIC type* ||\n")
    grouplist = groups.keys()
    grouplist.sort(key = sort_group_on_pic)
@@ -137,11 +131,10 @@ def group_wiki(outfile):
 if __name__ == "__main__":
 
    datasheet = {}
-   read_datasheet(dslist)
-   picspec = json.load(file(picspecfile))
-   pic_wiki(dswiki)
-   pic_wiki(pswiki)
-   group_wiki(dsgroupwiki)
-   group_wiki(psgroupwiki)
-
+   read_datasheet(dslist)                                   # load datasheet info
+   picspec = json.load(file(picspecfile))                   # load PIC specific info
+   pic_wiki("DataSheets.wiki")
+   pic_wiki("ProgrammingSpecifications.wiki")
+   group_wiki("PicGroups.wiki")
+   group_wiki("PicPgmGroups.wiki")
 
