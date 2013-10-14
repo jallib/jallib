@@ -26,8 +26,8 @@ mplabxversion = "190"
 edcdir  = "k:/jal/pic2jal/edc_" + mplabxversion             # dir with .edc files
 pinmap  = "pinmap.py"                                       # output
 
-portpin = re.compile(r"R[A-L]{1}[0-7]{1}\Z")                # Rx0..7 (x in range A..L)
-gpiopin = re.compile(r"GP[0-5]{1}\Z")                       # GP0..5
+portpin = re.compile(r"^R[A-L]{1}[0-7]{1}\Z")               # Rx0..7 (x in range A..L)
+gpiopin = re.compile(r"^GP[0-5]{1}\Z")                      # GP0..5
 
 dir = os.listdir(edcdir)
 if len(dir) == 0:
