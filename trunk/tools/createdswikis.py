@@ -31,7 +31,7 @@ def read_datasheet(infile):
    fp = open(infile, "r")                             # datasheet list
    for ln in fp:
       w = ln.split(" ", 1)                            # separate number from title
-      dd = w[0].lower()
+      dd = w[0].upper()
       ds = w[1].strip()
       key = int(dd[0:len(dd)-1])                      # strip letter; get numeric key
       fd = os.path.getmtime(os.path.join(pdfdir, dd + ".pdf"))
@@ -109,7 +109,7 @@ def group_wiki(outfile):
    grouplist.sort()
    for group in grouplist:
       fp.write("|| " + '<a href="' + url + datasheet[group].get("NUMBER") + '.pdf">'
-                + datasheet[group].get("NUMBER") + " || "
+                + datasheet[group].get("NUMBER") + "</a> || "
                 + datasheet[group].get("DATE")   + " || "
                 + " ".join(groups[group]) + "||\n")
 
@@ -120,7 +120,7 @@ def group_wiki(outfile):
    grouplist.sort(key = sort_group_on_pic)
    for group in grouplist:
       fp.write("|| " + '<a href="' + url + datasheet[group].get("NUMBER") + '.pdf">'
-                + datasheet[group].get("NUMBER") + " || "
+                + datasheet[group].get("NUMBER") + "</a> || "
                 + datasheet[group].get("DATE")   + " || "
                 + " ".join(groups[group]) + "||\n")
    fp.write("\n")
