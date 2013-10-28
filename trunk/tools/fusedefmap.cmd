@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------ */
 /* Fuse_Def Translate Table                                     */
 /* Contents to be read and to be INTERPRETed by Dev2jal.cmd     */
-/* Based on MPLAB version 8.89                                  */
+/* Based on MPLAB version 8.92 (and older versions).            */
 /*                                                              */
 /* Scripts using this file should contain a routine             */
 /* as below to obtain Fuse_Def mapping                          */
