@@ -32,9 +32,9 @@
  *   - Old .edc files are not deleted (new files will overwrite old ones).  *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.17'
+   ScriptVersion   = '0.0.20'
    ScriptAuthor    = 'Rob Hamerling'
-   mplabxversion   = '190'
+   mplabxversion   = '195'
 /* ------------------------------------------------------------------------ */
 
 /* 'msglevel' controls the amount of messages being generated */
@@ -95,7 +95,7 @@ call SysStemSort 'dir.', 'A', 'I'                           /* sort on name */
 
 versionfile = 'MPLAB-X_VERSION'                             /* with MPLAB-X and script versions */
 call SysFileDelete versionfile
-call lineout versionfile, 'MPLAB-X_Version' mplabxversion 'ScriptVersion' ScriptVersion
+call lineout versionfile, 'MPLAB-X_VERSION' mplabxversion 'SCRIPTVERSION' ScriptVersion
 call stream versionfile, 'c', 'close'
 
 signal on syntax name catch_syntax                          /* catch syntax errors */
