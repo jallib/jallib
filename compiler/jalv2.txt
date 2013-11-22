@@ -69,7 +69,8 @@ An Introduction & Guide to JALV2
    11. Built-in Functions
 
         11.1. Multiplication, Division, Modulus Division
-        11.2. _usec_delay(cexpr);
+        11.2. Floating Point Operations
+        11.3. _usec_delay(cexpr);
 
    List of Tables
    2-1. JALv2 Built-in Types
@@ -194,6 +195,7 @@ Chapter 2. Variables, Constants, Aliases
    SWORD   16 bit signed value   -32,768..32,767
    DWORD   32 bit unsigned value 0..4,294,967,296
    SDWORD  32 bit signed value   -2,147,483,648..2,147,483,647
+   FLOAT^1 floating point value  +/-10^-44..10^38
 
    ^1base types
 
@@ -201,6 +203,12 @@ Chapter 2. Variables, Constants, Aliases
    base types using the width specifier. For example, WORD is
    equivalent to BYTE*2, the later can be used interchangably with
    the former.
+
+   Floating point arithmetic is *very* expensive in terms of both
+   code and data and should best be avoided. It is nominally based
+   upon IEEE 754, though does not raise exceptions nor handle
+   overflow or special numbers (+/-Infinity, +/-NaN, -0, etc). A
+   floating point value is represented in 4 BYTEs.
 
    A note needs to be made concerning the BIT type. In the
    original JAL language, the BIT type acted more like a boolean
@@ -266,10 +274,33 @@ Chapter 2. Variables, Constants, Aliases
           BYTE right
         END RECORD
 
-        VAR eyeinfo eye
-
+        ;
+        ; a record can be initialized on definition as follows:
+        ;
+        VAR eyeinfo eye = { 3, 4 }
+        ;
+        ; alternately, each field is accessed with the '.' operator:
+        ;
         eye.left = 1
         eye.right = 2
+        ;
+        ; A more complex example. This sets eyes[0] to {1,2},
+        ; eyes[1] to {3,4} and eyes[2] to {5,6}:
+        ;
+        VAR eyeinfo eyes[5] = { { 1, 2 }, { 3, 4 }, { 5, 6 } }
+        ;
+        ; Finally, nested records and arrays are supported
+        ;
+        RECORD face_r IS
+          eyeinfo eyes
+          BYTE    nose
+          BYTE    freckels[5]
+        END RECORD
+
+        VAR face_r[5] = {
+          { { 1,2 }, 3, {4, 5, 6, 7, 8} },
+          { { 2,1 }, 3, {8, 7, 6, 5, 4} }
+        }
      __________________________________________________________
 
 2.4. Variables
@@ -298,8 +329,8 @@ r2...] '}'
    VOLATILE
           The VOLATILE keyword guarantees that a variable that is
           either used or assigned will not be optimized away, and
-          the variable will be only read once when evaluating an
-          expression.
+          the variable will be only read (or written) once when
+          evaluating an expression.
 
           Normally, if a variable is assigned a value that is
           never used, the assignment is removed and the variable
@@ -406,6 +437,9 @@ r2...] '}'
    32-bit signed value. When a value of type UNIVERSAL is used in
    an operation, it is converted to the type of the other operand.
 
+   An exception to above is floating point constants have type
+   FLOAT.
+
    Numeric constants have the following formats:
 
    12 -- decimal
@@ -413,10 +447,14 @@ r2...] '}'
    0b01 -- binary
    0q01 -- octal
    "a" -- ASCII
+   "1.23" -- FLOAT
 
    An ASCII constant evaluates to the first character except when
    used to initialize a constant or variable array in which case
    each character is used as one entry.
+
+   The full format of a floating point constant is:
+        [+|-]###.[###[e[+|-]###]
 
    For example:
             VAR BYTE ch = "123"    ' ch is set to '1'
@@ -524,24 +562,24 @@ Chapter 3. Operators, Casting, Expressions, Casting
    WHEREIS return the location of an identifier UNIVERSAL
    DEFINED determines if an identifier exists BIT
    '(' expr ')' Grouping Result of evaluating expr
-   '-' Unary - (negation) Same as operand
-   '+' Unary + (no-op) Same as operand
+   '-'^3 Unary - (negation) Same as operand
+   '+'^3 Unary + (no-op) Same as operand
    '!' 1's complement Same as operand
-   '!!' Logical. If the following value is 0, the result is 0,
+   '!!'^3 Logical. If the following value is 0, the result is 0,
    otherwise the result is 1. BIT
-   '*' Multiplication Promotion^2
-   '/' Division Promotion^2
-   '%' Modulus division (remainder) Promotion^2
-   '+' Addition Promotion^2
-   '-' Subtraction Promotion^2
+   '*'^3^5 Multiplication Promotion^2
+   '/'^3^5 Division Promotion^2
+   '%'^5 Modulus division (remainder) Promotion^2
+   '+'^3 Addition Promotion^2
+   '-'^3 Subtraction Promotion^2
    '<<' Shift left Promotion^2
    '>>'^1 Shift right Promotion^2
-   '<' Strictly less than BIT
-   '<=' Less or equal BIT
-   '==' Equality BIT
-   '!=' Unequal BIT
-   '>=' Greater or equal BIT
-   '>' Strictly greater than BIT
+   '<'^3 Strictly less than BIT
+   '<='^3 Less or equal BIT
+   '=='^4 Equality BIT
+   '!='^4 Unequal BIT
+   '>='^3 Greater or equal BIT
+   '>'^3 Strictly greater than BIT
    '&' Binary AND Promotion^2
    '|' Binary OR Promotion^2
    '^' Binary exclusive OR Promotion^2
@@ -553,6 +591,7 @@ Chapter 3. Operators, Casting, Expressions, Casting
    ^2promotion: The promotion rules are tricky, here are the
    cases:
 
+   If either operand is FLOAT, the result is FLOAT.
    If one of the operands is UNIVERSAL and the other is not, the
    result is the same as the non-UNIVERSAL operand.
    If both operands have the same signedness and width, the result
@@ -561,6 +600,21 @@ Chapter 3. Operators, Casting, Expressions, Casting
    result is unsigned.
    If one operand is wider than the other, the other operand will
    be promoted to the wider type.
+
+   ^3These operators allow FLOAT types.
+
+   ^4Floating point numbers should never be compared for equality
+   due to the imprecise way in which they are stored. Attempting
+   to do so will result in a warning from the compiler. Two
+   different operations which should yield an identical
+   mathmatical result may compare unequal. The correct way to
+   compare two floating point numbers, say A and B, is `abs((A -
+   B)/B) < 1e-6' (floating point values have a nominal precision
+   of 6 - 9 digits).
+
+   ^5Keep in mind that multiplication and division, even between
+   integer types are very expensive operations in both code size
+   and data size (see Chapter 11: Build-in Function).
      __________________________________________________________
 
 3.2. Casting
@@ -978,14 +1032,8 @@ entifier2 [',' ...] ')' RETURN type IS
 
       xx = square_root(xx)
 
-   A sub-program is re-entrant if it can be executed multiple
-   times simultaneously. The two times this will happens is when
-   one is using recursion, or when the same sub-program is called
-   in both USER context and INTERRUPT context.
-
-   Due to the nature of the PIC microcontrollers, re-entrancy
-   incurs substantial overhead and is discouraged, but is fully
-   supported.
+   Recursion is fully supported but due to the overhead it is
+   discouraged.
      __________________________________________________________
 
 Chapter 7. Pseudo-variables
@@ -1300,15 +1348,14 @@ Chapter 11. Built-in Functions
    is done, the resulting code is performed using shifts instead.
 
    For both of these operations, the code generated will be that
-   required for the largest operands. For example, if the
-   operation occurs only between two BYTEs, the 8-bit routine will
-   be generated. If it occurs between BYTEs and WORDs, the 16-bit
-   routine will be generated.
+   required for the largest operands unless -fastmath is passed to
+   the compiler.. For example, if the operation occurs only
+   between two BYTEs, the 8-bit routine will be generated. If it
+   occurs between BYTEs and WORDs, the 16-bit routine will be
+   generated.
 
-   There have been a few comments that only generating the largest
-   routine can be wasteful. This is true, but I decided long ago
-   to minimize the code size. If you're doing multiplication or
-   division, it's going to be slow.
+   If -fastmath is used, a different function will be generated
+   for each argument type.
 
    The compiler keeps track of the last operation, so if you find
    yourself needing both the division result and the remainder of,
@@ -1321,7 +1368,20 @@ Chapter 11. Built-in Functions
    to r will be a simple assignment.
      __________________________________________________________
 
-11.2. _usec_delay(cexpr);
+11.2. Floating Point Operations
+
+   Most floating point operations are done via function calls
+   because of the size of the code generated, so at least one
+   stack entry will be used per operation. For multipllcation and
+   division, two stack entries are required because these rely on
+   the integer routines.
+
+   Operations that do not require a function call include:
+   multiplication or division by a power of 2, assignment from a
+   constant.
+     __________________________________________________________
+
+11.3. _usec_delay(cexpr);
 
    _usec_delay(cexpr) is useful when an exact delay is required.
    It generates code that is guaranteed to delay a given number of
