@@ -27,7 +27,7 @@ http://jallib.google.code
 
 or Bert van Dam's JAL Startpack:
 
-http://home.hetnet.nl/~annie86/bvd/lonelynights/index.html
+http://www.vandam.tk
 
 nb: I try to support most of the microcontrollers produced by MicroChip,
     but there are far too many for me to claim complete support. If you
@@ -38,7 +38,63 @@ nb: I try to support most of the microcontrollers produced by MicroChip,
 
 History
 =======
-2.4p  -- 3 Sept 2012
+2.4q  -- ? ??? ????
+         * don't allow bit offset placement to non-bit variables
+           (var BYTE x at y:2)
+         * allow `VAR xx AT rec['.'member]['['subscript']']...'  
+         * allow non-bit variables to declare byte offets
+           (VAR BYTE x AT y + 2)
+         * fixed and returned an optimization that reduces code size
+           when an empty if block is found:
+             IF cond THEN
+             END IF
+           (thanks Albert!)
+         * minor optimization. In this sequence: `movwf val; movf val,w'
+           remove the second as redundant. This happens with the `pass
+           result in w' and `return result in w' code.
+         * an inline assembly move to a constant location did not set
+           the data bits correctly (movwf 0x90).
+         * assign from constant was completely munged in most cases
+         * fixed documentation errors (thanks Rob!)
+         * expanded documentation for records
+         * minor code generation optimization in equality operators
+         * beginning of floating point support
+         * fixed an error that caused false positives with branch errors
+         * clear out last multiply/divide values when branching
+         * always inline some multiplies on the 16 bit cores
+         * fixed a problem in binary AND and binary OR when val1 is shared
+           and val2 is not *or* dst is in a different bank than val2
+         * parsed assignment within a procedure definition (default parameter)
+           but default parameters are not allowed. (Rob)
+         * re-ordered some optimizations for tigher code (Michael)  
+         * detect if a function is declared but not defined
+         * when assigning from a pointer of smaller type, the calle to
+           extend the sign was missing (Michael)
+         * variables manually placed in shared regions must have the SHARED
+           flag set (this is internal to the compiler. A variable allocated
+           in a shared region will now act correctly. Formerly, the shared
+           attribute was missing in this case.)
+         * fixed variable allocator  
+         * fixed SHARED testing in the event that part, but not all of a
+           variable is shared
+         * cleaned up new warning from gcc 4.7.2
+         * fixed string constant initialization when the string contains an
+           embedded '\0'
+         * 16 bit inline multiply did not setup indirection correctly  
+         * added `asm reset'
+         * for _usec_delay, if the PIC temporary varaiable is in shared
+           space, emit NOP instead of the datahi/datalo instructions.
+         * fixed data skip errors.
+         * upcasting a constant value causes incorrect code to be generated
+         * fixed MULF (thanks again Michael).
+         * fixed a bug in the skip conditional optimizer (thanks again Michael)
+         * cmd_analyze() didn't handle assembly properly
+         * inline assembly, using the `bank' prefix doesn't work correctly
+           on the 14 bit hybrids
+         * fixed stack depth reporting  
+         * fixed w optimization removals
+
+2.4p  -- 3 Sep 2012
          * added -fastmath which does:
            + create different multiply functions for different sizes. Normally
              one multiply function is created representing the largest
