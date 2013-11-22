@@ -43,7 +43,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.20'
+   ScriptVersion   = '0.0.21'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
 /* mplabxversion obtained from file MPLAB-X_VERSION created by pic2edc script. */
@@ -55,12 +55,12 @@
 /*   2 - warnings and errors                                  */
 /*   3 - errors (always reported!)                            */
 
-msglevel = 2
+msglevel = 1
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx utilities */
 
-parse value linein('MPLAB-X_VERSION') with 'MPLAB-X_VERSION' val1 'SCRIPTVERSION' val2
+parse value linein('MPLAB-X_VERSION') with 'MPLAB-X_VERSION' val1 'SCRIPT_VERSION' val2
 call stream 'MPLAB-X_VERSION', 'c', 'close'
 if val1 = '' then do
    say 'Could not determine MPLAB-X version from file MPLAB-X_VERSION'
@@ -192,9 +192,9 @@ do i = 1 to dir.0                                           /* all relevant .edc
    if \(substr(PicName,3,1) = 'f'    |,                     /* not flash PIC or */
         substr(PicName,3,2) = 'lf'   |,                     /*     low power flash PIC or */
         substr(PicName,3,2) = 'hv')  |,                     /*     high voltage flash PIC */
-      PicName = '16hv540' |,                                /* OTP */
+      PicName = '16hv540' |,                                /* not a flash PIC */
       PicName = '16f527'  |,                                /* bank selection via BSR */
-      PicName = '16f570' then do                            /* bank selection via BSR */
+      PicName = '16f570' then do                            /*   "      "      "   "  */
       iterate                                               /* skip */
    end
 
@@ -249,7 +249,7 @@ do i = 1 to dir.0                                           /* all relevant .edc
    ADC_highres           = 0                                /* 0 = has no ADRESH register */
    IRCF_bits             = 0                                /* # OSCCON_IRCF bits */
    HasLATreg             = 0                                /* zero LAT registers found (yet) */
-                                                            /* used for extended midrange only */
+                                                            /* used for enhanced midrange only */
    HasMuxedSFR           = 0                                /* zero multiplexed SFRs found(yet) */
    OSCCALaddr            = 0                                /* address of OSCCAL (>0 if present!)  */
    FSRaddr               = 0                                /* address of FSR (>0 if present!)  */
@@ -272,7 +272,7 @@ do i = 1 to dir.0                                           /* all relevant .edc
          BankSize     = 128                                 /* 0x0080 */
          PageSize     = 2048                                /* 0x0800 */
       end
-      when core = '14H' then do                             /* enhance midrange (Hybrid) */
+      when core = '14H' then do                             /* enhanced midrange (Hybrid) */
          MaxRam       = 4096                                /* range 0..0xFFF */
          BankSize     = 128                                 /* 0x0080 */
          PageSize     = 2048                                /* 0x0800 */
@@ -339,7 +339,7 @@ do i = 1 to dir.0                                           /* all relevant .edc
             call list_muxed_sfr
       end
 
-      when core = '14H' then do                             /* extended midrange (Hybrids) */
+      when core = '14H' then do                             /* enhanced midrange (Hybrids) */
          call list_sfr
          if HasMuxedSFR > 0 then
             call list_muxed_sfr
@@ -2109,12 +2109,14 @@ do i = i to Pic.0 while word(pic.i,1) \= '</edc:NMMRPlace>'   /* end of NMMRs */
             Name.reg = reg                                     /* add to collection of names */
             call lineout jalfile, '-- ------------------------------------------------'
             portletter = substr(reg,5)
-            if portletter = 'IO' |  portletter = 'GPIO' |  portletter = '' then    /* TRIS[GP][IO] */
+            if portletter = 'IO' |  portletter = 'GPIO' |  portletter = '' then do   /* TRIS[GP][IO] */
                portletter = 'A'                                /* handle as TRISA */
+               call msg 1, reg 'register interpreted as PORTA'
+            end
             else if portletter = 'B' & left(picname,2) = '12' then do   /* TRISB for 12Fxxx */
-               call msg 2, 'TRISB register interpreted as TRISIO'
                reg = 'TRISIO'
                portletter = 'A'
+               call msg 1, reg 'register interpreted as TRISIO'
             end
             shadow = '_TRIS'portletter'_shadow'
             if sharedmem.0 < 1 then do
@@ -2617,8 +2619,8 @@ else do                                                     /* not in devicespec
 end
 call lineout jalfile, 'const word   _FUSES_CT             =' CfgAddr.0
 if CfgAddr.0 = 1 then do                    /* single word/byte only with baseline/midrange ! */
-   call lineout jalfile, 'const word  _FUSE_BASE            = 0x'D2X(CfgAddr.1)
-   call charout jalfile, 'const word  _FUSES                = 0b'
+   call lineout jalfile, 'const word   _FUSE_BASE            = 0x'D2X(CfgAddr.1)
+   call charout jalfile, 'const word   _FUSES                = 0b'
    do i = 1 to 4
       call charout jalfile, '_'X2B(substr(FusesDefault,i,1))
    end
@@ -3061,7 +3063,7 @@ do i = i while word(pic.i,1) \= '</edc:DCRMode>'
          val1u = toupper(val1)
          val2u = toupper(val2)
          if val1 \= ''  &  left(val1u,3) \= 'RES'  &  val2u \= 'RESERVED' then do
-            key = normalize_fusedef_keyword(val1)           /* uniform keyword */
+            key = normalize_fusedef_keyword(val1u)          /* uniform keyword */
             if \(key = 'OSC' & left(PicName,5) = '10f20') then do   /* OSC, but not a 10F */
                mask = strip(B2X(X2B(val3)||copies('0',offset)),'L','0')    /* bit alignment */
                if CfgAddr.0 = 1 then                        /* single byte/word */
@@ -3075,7 +3077,7 @@ do i = i while word(pic.i,1) \= '</edc:DCRMode>'
                    PicName = '18f24k50'  | PicName = '18f25k50' |,
                    PicName = '18lf24k50' | PicName = '18lf25k50') then do
                   call msg 1, 'Adding "ENABLED = 0x'mask'"  for fuse_def' val1
-                  call lineout jalfile, left('       ENABLED = 0x'mask, 42) '-- icport enabled'
+                  call lineout jalfile, left('       ENABLED = 0x'mask, 42) '-- ICPORT enabled'
                end
                call lineout jalfile, '       }'
             end
@@ -3118,8 +3120,7 @@ do i = i while word(pic.i,1) \= '</edc:DCRFieldDef>'
       if val1u = 'RESERVED' then                         /* skip reserved patterns */
          iterate
       if val2 \= '' then do
-         val2 = toascii(val2)                            /* replace xml meta */
-         kwd = normalize_fusedef_keywordvalue(key, val1, '"'val2'"')      /* normalize keyword */
+         kwd = normalize_fusedef_keywordvalue(key, val1u, '"'val2'"')      /* normalize keyword */
          if kwd = '' then                                /* probably reserved */
             iterate
          mask = strip(B2X(X2B(val3)||copies('0',offset)),'L','0')    /* bit alignment */
@@ -3130,7 +3131,7 @@ do i = i while word(pic.i,1) \= '</edc:DCRFieldDef>'
          end
          else do
             kwdname.kwd = kwd                            /* remember name */
-            call lineout jalfile, left('       'kwd '= 0x'mask, 42) '--' val2
+            call lineout jalfile, left('       'kwd '= 0x'mask, 42) '--' toascii(val2)
          end
       end
    end
@@ -3223,6 +3224,8 @@ if key \= '' then do                               /* key value found */
          key = 'PWRTE'
       when key = 'RTCSOSC' then
          key = 'RTCOSC'
+      when key = 'SDOMX' then
+         key = 'SDOMUX'
       when key = 'SOSCEL' then
          key = 'SOSCSEL'
       when key = 'SSPMX' then
@@ -3233,9 +3236,7 @@ if key \= '' then do                               /* key value found */
          key = 'T0CKMUX'
       when key = 'T1OSCMX' then
          key = 'T1OSCMUX'
-      when key = 'T3CMX' then
-         key = 'T3CMUX'
-      when key = 'T3CKMX' then
+      when key = 'T3CKMX' | key = 'T3CMX' then
          key = 'T3CKMUX'
       when key = 'USBDIV'  &,                      /* compatibility */
            (left(PicName,6) = '18f245' | left(PicName,6) = '18f255' |,
@@ -3277,15 +3278,15 @@ parse upper arg key, val, desc
 desc = strip(desc, 'B', '"')                                /* strip double quoted */
 desc = toascii(desc)                                        /* replace xml meta by ASCII char */
 descu = toupper(desc)                                       /* to uppercase */
-descu = translate(desc, '                 ',,               /* replace special chars by space */
+descu = translate(descu, '                ',,               /* replace special chars by blanks */
                         '+-:;.,<>{}[]()=/?')
-descu = space(descu,,'_')                                   /* blanks -> single underscore */
+descu = space(descu,,'_')                                   /* replace blanks by single underscore */
 
 kwdvalue = ''                                               /* null value */
 
-select                                                      /* key specific formatting */
+select                                                      /* specific formatting */
 
-   when val = 'RESERVED' then do                            /* reserved values to be skipped */
+   when val = 'RESERVED' then do                            /* reserved values skipped */
       return ''
    end
 
@@ -3618,7 +3619,7 @@ select                                                      /* key specific form
    when key = 'OSC' then do
       kwdvalue = Fuse_Def.Osc.descu
       if left(descu,1) = '1' | left(descu,1) = '0' then do   /* desc starts with '1' or '0' */
-         call msg 2, 'Skipping probably duplicate' key':' desc
+         call msg 2, 'Skipping probably duplicate fuse_def' key':' desc
          kwdvalue = ''
       end
       else if kwdvalue = '?' then do
@@ -3632,6 +3633,13 @@ select                                                      /* key specific form
          kwdvalue = 'pin_'right(descu,2)
       else
          kwdvalue = descu
+   end
+
+   when key = 'PARITY' then do
+      if pos('CLEAR',descu) > 0 then                        /* check for _R<pin> */
+         kwdvalue = 'CLEAR'
+      else
+         kwdvalue = 'SET'
    end
 
    when key = 'PBADEN' then do
@@ -3679,6 +3687,17 @@ select                                                      /* key specific form
          kwdvalue = 'P4'
       else if datatype(left(desc,1),'W') = 1 then
          kwdvalue = 'F'descu
+      else
+         kwdvalue = descu
+   end
+
+   when key = 'PLLSEL' then do
+      if pos('96M',descu) > 0 then
+         kwdvalue = 'PLL96'
+      else if pos('3X',desc) > 0 then
+         kwdvalue = 'PLL3X'
+      else if pos('4X',desc) > 0 then
+         kwdvalue = 'PLL4X'
       else
          kwdvalue = descu
    end
@@ -3743,6 +3762,13 @@ select                                                      /* key specific form
          kwdvalue = 'INTRC'
       else
          kwdvalue = 'T1OSC'
+   end
+
+   when key = 'SDOMUX' then do
+      if pos('ON_R', descu) > 0 then
+         kwdvalue = 'pin_'substr(descu, pos('ON_R', descu) + 4, 2)
+      else
+         kwdvalue = word(desc,words(desc))                  /* last word */
    end
 
    when key = 'SIGN' then do
@@ -3815,17 +3841,8 @@ select                                                      /* key specific form
    end
 
    when key = 'T3CKMUX' then do
-      if pos('_RB', descu) > 0 then
-         kwdvalue = 'pin_'substr(descu, pos('_RB', descu) + 2, 2)
-      else if pos('_RG', descu) > 0 then
-         kwdvalue = 'pin_'substr(descu, pos('_RG', descu) + 2, 2)
-      else
-         kwdvalue = descu
-   end
-
-   when key = 'T3CMUX' then do
-      if pos('_R',descu) > 0 then                           /* check for _R<pin> */
-         kwdvalue = 'pin_'substr(descu,pos('_R',descu)+2,2)   /* 2 chars after '_R' */
+      if pos('_R', descu) > 0 then
+         kwdvalue = 'pin_'substr(descu, pos('_R', descu) + 2, 2)
       else
          kwdvalue = descu
    end
@@ -4020,7 +4037,7 @@ select                                                      /* key specific form
          kwdvalue = 'RESET'
    end
 
-otherwise                                                   /* generic formatting */
+otherwise                                                   /* everything else */
    if val = 'OFF' | val = 'DISABLED' then
       kwdvalue = 'DISABLED'
    else if val = 'ON' | val = 'DISABLED' then
@@ -4341,6 +4358,28 @@ if core = 12 then do                                        /* baseline PIC */
 end
 call lineout jalfile, 'end procedure'
 return
+
+
+/* --------------------------------------------------------- */
+/* procedure to extend address with mirrored addresses       */
+/* input:  - register number (decimal)                       */
+/*         - address  (decimal)                              */
+/* returns string of addresses between {}                    */
+/* (only for Core 12 and 14)                                 */
+/* --------------------------------------------------------- */
+sfr_mirror_address: procedure expose Ram. BankSize NumBanks Core
+parse upper arg addr .
+addr_list = '{ 0x'D2X(addr)                                 /* open bracket, orig. addr */
+if Core = '12' | Core = '14' then do
+   MaxBanks = NumBanks
+   if NumBanks > 4 then
+      MaxBanks = 4
+   do i = (addr + BankSize) to (MaxBanks * BankSize - 1) by BankSize  /* avail ram */
+      if addr = Ram.i then                                  /* matching reg number */
+         addr_list = addr_list',0x'D2X(i)                   /* concatenate to string */
+   end
+end
+return addr_list' }'                                        /* complete string */
 
 
 /* --------------------------------------------------------- */
@@ -4753,27 +4792,6 @@ call stream FuseDefFile, 'c', 'close'                       /* done */
 return 0
 
 
-/* --------------------------------------------------------- */
-/* procedure to extend address with mirrored addresses       */
-/* input:  - register number (decimal)                       */
-/*         - address  (decimal)                              */
-/* returns string of addresses between {}                    */
-/* (only for Core 12 and 14)                                 */
-/* --------------------------------------------------------- */
-sfr_mirror_address: procedure expose Ram. BankSize NumBanks Core
-parse upper arg addr .
-addr_list = '{ 0x'D2X(addr)                                 /* open bracket, orig. addr */
-if Core = '12' | Core = '14' then do
-   MaxBanks = NumBanks
-   if NumBanks > 4 then
-      MaxBanks = 4
-   do i = (addr + BankSize) to (MaxBanks * BankSize - 1) by BankSize  /* avail ram */
-      if addr = Ram.i then                                  /* matching reg number */
-         addr_list = addr_list',0x'D2X(i)                   /* concatenate to string */
-   end
-end
-return addr_list' }'                                        /* complete string */
-
 
 /* --------------------------------------------- */
 /* Signal duplicates names                       */
@@ -4815,11 +4833,17 @@ return translate(arg(1), xrange('A','Z'), xrange('a','z'))
 toascii: procedure
 xml.1.1 = '&lt;'
 xml.1.2 = '<'
-xml.2.1 = '&gt;'
-xml.2.2 = '>'
-xml.3.1 = '&amp;'
-xml.3.2 = '&'
-xml.0 = 3
+xml.2.1 = '&LT;'
+xml.2.2 = '<'
+xml.3.1 = '&gt;'
+xml.3.2 = '>'
+xml.4.1 = '&GT;'
+xml.4.2 = '>'
+xml.5.1 = '&amp;'
+xml.5.2 = '&'
+xml.6.1 = '&AMP;'
+xml.6.2 = '&'
+xml.0 = 6
 parse arg ln                                                /* line to be converted */
 do i = 1 to xml.0                                           /* all meta strings */
    x = pos(xml.i.1, ln)                                     /* search this xml meta string */
@@ -4835,10 +4859,10 @@ return ln
 /* (convert hexadecimal to decimal when prefixed with 0x) */
 todecimal: procedure
 parse upper arg z .                                         /* argument uppercase */
-z = strip(z)                                                /* remove blanks */
-if left(z,2) = '0X' then                                    /* prefixed with '0x' */
+z = strip(z)                                                /* remove surrounding blanks */
+if left(z,2) = '0X' then                                    /* when prefixed with '0x' */
    z = X2D(substr(z,3))                                     /* convert to decimal */
-return z + 0                                                /* make sure decimal value! */
+return z + 0                                                /* return numeric value */
 
 
 /* ---------------------------------------------- */
