@@ -60,12 +60,18 @@ def pic_wiki(outfile):
       else:
          ds = picd.get("PGMSPEC", "-")
       if ds != "-":
-         key = int(ds)                                    # numeric index!
-         fp.write("|| " + pic + " || "
-                  + '<a href="' + url + datasheet[key].get("NUMBER") + '.pdf">'
-                  + datasheet[key].get("NUMBER") + "</a> || "
-                  + datasheet[key].get("DATE")   + " || "
-                  + datasheet[key].get("TITLE")  + " ||\n")
+         key = int(ds)                                   # numeric index!
+         if key in datasheet:                            # DS present
+            if datasheet[key].get("TITLE") != None:      # title present
+               fp.write("|| " + pic + " || "
+                        + '<a href="' + url + datasheet[key].get("NUMBER") + '.pdf">'
+                        + datasheet[key].get("NUMBER") + "</a> || "
+                        + datasheet[key].get("DATE")   + " || "
+                        + datasheet[key].get("TITLE")  + " ||\n")
+            else:
+               print "No title found of datasheet", key
+         else:
+            print "Datasheet number", key, "of", pic, "in", picspecfile, "not found"
    fp.write("\n")
    fp.close()
 
@@ -108,21 +114,24 @@ def group_wiki(outfile):
    grouplist = groups.keys()
    grouplist.sort()
    for group in grouplist:
-      fp.write("|| " + '<a href="' + url + datasheet[group].get("NUMBER") + '.pdf">'
-                + datasheet[group].get("NUMBER") + "</a> || "
-                + datasheet[group].get("DATE")   + " || "
-                + " ".join(groups[group]) + "||\n")
-
+      if group in datasheet:
+         fp.write("|| " + '<a href="' + url + datasheet[group].get("NUMBER") + '.pdf">'
+                   + datasheet[group].get("NUMBER") + "</a> || "
+                   + datasheet[group].get("DATE")   + " || "
+                   + " ".join(groups[group]) + "||\n")
+      else:
+         print "Datasheet", group, "not found"
    fp.write("\n\n----\n\n= " + title + " =\n\n")
    fp.write("== Sorted on PIC type (lowest in the group) ==\n\n")
    fp.write("|| *DataSheet* || *Date* || *PIC type* ||\n")
    grouplist = groups.keys()
    grouplist.sort(key = sort_group_on_pic)
    for group in grouplist:
-      fp.write("|| " + '<a href="' + url + datasheet[group].get("NUMBER") + '.pdf">'
-                + datasheet[group].get("NUMBER") + "</a> || "
-                + datasheet[group].get("DATE")   + " || "
-                + " ".join(groups[group]) + "||\n")
+      if group in datasheet:
+         fp.write("|| " + '<a href="' + url + datasheet[group].get("NUMBER") + '.pdf">'
+                   + datasheet[group].get("NUMBER") + "</a> || "
+                   + datasheet[group].get("DATE")   + " || "
+                   + " ".join(groups[group]) + "||\n")
    fp.write("\n")
 
    fp.close()
