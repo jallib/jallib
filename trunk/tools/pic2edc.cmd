@@ -32,7 +32,7 @@
  *   - Old .edc files are not deleted (new files will overwrite old ones).  *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.21'
+   ScriptVersion   = '0.0.22'
    ScriptAuthor    = 'Rob Hamerling'
    mplabxversion   = '195'
 /* ------------------------------------------------------------------------ */
