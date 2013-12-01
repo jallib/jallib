@@ -313,17 +313,16 @@ When loaded in a 16F886 with 20 MHz resonator or crystal a led connected
 
 <h2><a name="ports_and_pins">Naming conventions for Ports and Pins</a></h2>
 
-<p>Unfortunately MPLAB-X of Microchip is not particularly consistent in
+<p>Unfortunately Microchip is not particularly consistent in
 its choice of names!
-The datasheets and the various informational files in MPLAB-X do not
+The datasheets and the various informational files of MPLAB-X do not
 infrequently use different names for the same entity!
-As a rule the device files use the names as used by the datasheets.
-However the device files have been generated from the MPLAB-X information
-files, not from the datasheets!
-So it is possible that some names may not be conform to the datasheet.
-When you find such a deviation not mentioned in this document, please
-report to the Jallib team.
-Most likely the next release will contain the corrected name.
+Since the device files have been generated from the MPLAB-X information
+files, it is possible that some names may not be the same as in the
+datasheet.
+As a rule the device files use the names as used by the datasheets
+(but no rule is without exception!).
+
 
 <p>For all registers of the PIC a name is declared and where appropriate
 also the individual bits or groups of bits are declared.
@@ -331,15 +330,13 @@ also the individual bits or groups of bits are declared.
 <pre>
    var volatile bit  INTCON_GIE  at INTCON : 7
 </pre>
-Some aliases are declared for easy migration or conversion of
+Sometimes aliases are declared for easy migration or conversion of
 existing JalV2 libraries and programs to the Jallib environment.
 
-<p>There are exceptions to the rules above.
-<br>The aim of 'normalization' (using a consistent naming) is:
-<ol>
-<li>to be able to use all libraries for all types of PICmicros
-<li>to ease the migration of programs amd libraries to other types of PICs.
-</ol>
+
+<p>To be able to develop libraries which can be used for different PICs,
+a consistent naming is required: <b>normalization</b>.
+The following sections describe the details.
 
 
 <h3><a name="portregs">PORTx and pins, TRISx and pin directions</a></h3>
@@ -357,7 +354,7 @@ etc. (for all other existing pins and ports).
 
 <h3><a name="gpioregs">GPIO and TRISIO (with the smaller chips)</a></h3>
 <p>Although the smaller PICs have no 'official' PORTA and TRISA registers,
-the device files contain aliases for these.
+the device files contain the necessary aliases.
 So even with the smaller PICs you can use the names PORTA, pin_A0,
 pin_A0_direction, etc.
 <pre>
@@ -417,6 +414,8 @@ Several function libraries in the Jallib collection use this facility.
 
 <p>Note: Nibbles are always declared even when the register doesn't have the
 nibble fully populated, or even not populated at all!
+For example: several PICs have only the upper 4 bits of PORTB,
+nevertheless the device files may declare PORTB_low.
 
 
 <h3><a name="aliases">Alias names</a></h3>
@@ -430,9 +429,10 @@ You can find the 'AN5' name with the pin layout pictures and tables in the
 datasheet.
 <br>Of course also for the pin_B6_direction an alias is declared and
 similarly called pin_AN5_direction!
-<br>Libraries (for this example the ADC library) will use the alias
+<br>Libraries - in this case the ADC libraries - should use the alias
 names in stead of the physical pin names.
-Another PIC may have pin_AN5 associated with a different physical pin,
+Reason for this is that another PIC may have pin_AN5 associated with a
+different physical pin,
 but by using the alias name the ADC library becomes independent of the
 physical pin configuration
 which makes the library to a large extent device independent.
@@ -1733,9 +1733,10 @@ for variables in bytes with <b>pragma data</b>.
  Data area: 250 of 368 used
 </pre>
 for a specific PIC and program.
-The first number is the amount of bytes actually used,
-the last number is the total amount of data memory
-available to a user program and libraries.
+The last number is the total amount of data memory
+available to a user program and libraries
+(and also the device files may require some data memory),
+the first number is the amount of bytes actually used.
 
 
 <h3><a name="membanks">Data memory banks</a></h3>
@@ -1743,7 +1744,8 @@ available to a user program and libraries.
 maximum of 4 data memory banks.
 PICs with more than 4 memory banks are supported,
 but with data memory limited to banks 0..3.
-Only few PICs have more than 4 banks (example: 16f59)!
+Only few baseline or classic midrange PICs have more than 4 banks
+(example: 16f59)!
 
 
 <h3><a name="memshare">Shared Memory</a></h3>
@@ -1753,7 +1755,7 @@ Only few PICs have more than 4 banks (example: 16f59)!
 <p>For the compiler 'shared' means:
 <ul compact>
 <li>For baseline and midrange PICs: the part of data memory which is
-accessible in <b>all</b> banks regardless the settings of the bank selection
+accessible <b>in all banks</b> regardless the settings of the bank selection
 bits (STATUS_RPx, or similar bits in FSR).
 Note: Memory which is accessible in other bank(s) but not in all banks,
 is in this context not shared memory!
@@ -1762,7 +1764,7 @@ and in most cases data memory in the range 0x70-0x7F.
 <li>For the 18F PICs: memory in the access bank.
 </ul>
 
-<p>With midrange PICs with multiple memory banks frequenly SFRs
+<p>With the midrange PICs with multiple memory banks frequenly SFRs
 are accessible in all banks, which means: are in shared memory!
 However the device files do not specify these addresses as shared.
 In stead multiple addresses are specified with the declaration
@@ -1771,7 +1773,8 @@ This is equivalent to declaring the (base-)address shared.
 
 
 <p><b>Specific variables used by the compiler</b> must be allocated in
-shared memory:
+shared memory.
+This is done by the device files:
 <dl>
 <dt><b>_pic_isr_w</b>
 <dd>A byte variable used for saving the W register with interrupts.
@@ -1785,43 +1788,55 @@ However unused variables are removed by the compiler!</i>
 and subtractions when the two involved variables are in different memory banks,
 and for sign extensions of signed variables (adding sbyte to sword, etc.).
 </dl>
+
 <p>For performance reasons some other variables are preferrably allocated in
 shared memory.
 The device files attempt to allocate the following variables in shared memory:
 <dl>
 <dt><b>Shadowing bytes</b>
 <dd>Bytes for port and other register shadowing
-(baseline and midrange PICs only).
+(for PICs without LAT registers: baseline and classic midrange PICs).
 </dl>
-When no (more) shared memory is available these variables are located
-in unshared memory.
+When no (more) shared memory is available these variables are
+(not surprisingly!) allocated in unshared memory.
+
+<p><b>Note:</b> When a port is not used the memory reserved for its shadow
+byte is not returned to the memory pool (is 'lost') with the current
+compiler (2.4q).
+This is considered a minor disadvantage compared to the performance
+advantage and reduction of code memory usage.
 
 <p>With most PICs only part of data memory shared.
-Some midrange PICs have all data memory shared,
+Some baseline and midrange PICs have all data memory shared,
 some others have no shared memory at all.
 There is no problem with 'all shared memory', but with 'no shared memory'
 the memory for the compiler required variables is declared as 'shared' even
 though it is in fact unshared memory!
-In this case the locations with the same (7-bits) offset in other banks are
-reserved (excluded from 'pragma data').
-However this is only partly a solution.
-It avoids problems with interrupt handlers (which use _pic_isr_w),
+In the latter case the locations with the same (7-bits) offset in other
+banks are reserved (excluded from 'pragma data').
+However this is only partly a solution:
+it avoids problems with interrupt handlers (which use _pic_isr_w),
 but it does not completely avoid problems with calculations with multi-byte
 variables (word, dword, etc., which use _pic_accum) when the variables
 are in different banks.
-<br>Examples: <b>16F73 and 16F74. With these PICs it is not safe for
-programs to perform calculations with multi-byte variables!</b>.
+<br>Examples: <b>16F73 and 16F74.
+With these PICs it is not safe for programs to perform calculations with
+multi-byte variables!</b>.
 
-<p>Although you can declare a variable with 'shared',
-the compiler won't allocate the variable automatically in shared memory!
+<p>Although you can declare a variable with the 'shared' keyword,
+the compiler won't allocate the variable in shared memory!
+The only effect of shared is that no bank setting is done by the compiler,
+regardless whether the variable is really in shared memory or not!
 You need to explicitly assign it an address with 'at &lt;address&gt;',
 whereby &lt;address&gt; must be in the shared memory range.
 Remember that device files allocate some variables in shared memory!
-Do not specify an addresses which is already reserved by another variable!
-To help you with this the device files contain a comment with the
-range of <b>Free shared memory</b> after include of the device file!
-<br>By using this feature you take over part of memory management of the
-compiler, which is of course at your own responsibility!
+Do not specify an address which is already assigned to another variable.
+This may result in very difficult to debug behaviour!
+To help you with this every device file contains a comment with the
+range of <b>free shared memory</b> after include of the device file!
+<br>By declaring a variable with an absolute address you take over part of
+memory management by the compiler, which is of course at your own
+responsibility!
 
 
 <h3><a name="highmem">INTOSC calibration</a></h3>
@@ -1833,8 +1848,8 @@ See also <a href="#osccal">Calibration of Internal Oscillator</a>.
 
 
 <h3><a name="memusb">Data memory for PICs with USB module</a></h3>
-This is data memory sometimes dedicated to the USB module.
-Sometimes it can be used as regular data memory by the user program,
+PICs with USB module will have data memory reserved for the USB module.
+Sometimes this memory can be used as regular data memory by a user program,
 but only when the USB module is inactive,
 and sometimes it can be shared between USB module and user program.
 So the amount of available data memory as specified in the device file
@@ -1860,8 +1875,8 @@ problems, especially with libraries for the old (pre JalV2) compiler.
 
 <ul>
 
-<li>The naming convention of ports and subfields maybe different, you may
-have to convert the other libraries.
+<li>The naming convention of ports and subfields maybe different,
+you may have to convert the other libraries.
 
 <li>Bank switching functions are not needed with JalV2 and do not appear in
 the device files.
@@ -1870,8 +1885,7 @@ still use these procedures.
 You must remove these bank switching functions from your programs and
 libraries!
 
-<li>The device specific include files are generated from the MPLAB-X .pic
-files.
+<li>The device files are generated from the MPLAB-X .pic files.
 This may cause confusion or even conflicts because the register and bit
 names are not always identical to those in the datasheets!
 Apart from that, MPLAB-X is not errorfree, consequently include files generated
@@ -1887,9 +1901,9 @@ This grouping is inspired by the Microchip MCC18 compiler.
 </ul>
 
 <p>Note: With Jallib version 0.7 a number of constants, formerly
-declared in each device file is moved to a file 'constants_jallib.jal'.
-This file is included by chipdef_jallib.jal (which is on its turn
-included by every device file).
+declared in each device file are moved to a file 'constants_jallib.jal'.
+This file is included by chipdef_jallib.jal
+(which is on its turn included by every device file).
 Don't worry about memory occupation: unused constants are removed by the
 compiler automatically and don't occupy memory!
 
@@ -1914,8 +1928,8 @@ scripts in the /Jallib/tools directory.
 After unZIPping this file the .pic files are in directory <b>./content/edc</b>,
 spread over 3 subdirectories, resp. for the 12-, 14, 16-bits cores.
 There is a .pic file for every PIC,
-but many of these .pic files include parts of (or whole) 'module' files in
-the 4th subdirectory by means of a sort of macro mechanism.
+but many of these .pic files include 'module' files or parts of these in
+the 4th subdirectory (modules), by means of a sort of macro mechanism.
 The device files are generated from these files with the following scripts:
 <dl>
 <dt><b>pic2edc.cmd</b>
@@ -2034,28 +2048,32 @@ An entry must contain the following elements:
 <tr><td>DATA</td>
     <td>Range(s) of data memory (RAM)</td>
     <td>0x...-0x...[,0x...-0x...,etc]</td>
-    <td>Mandatory, may be multiple ranges.
-        Info can be obtained from datasheet or .lkr file **)</td>
+    <td>Optional, may be multiple ranges.
+        Only required in special cases. **)</td>
 </tr>
 <tr><td>SHARED</td>
     <td>Range(s) of shared data memory (RAM)</td>
     <td>0x...-0x...[,0x...-0x...,etc]</td>
-    <td>Mandatory.
-        Can be multiple ranges, e.g. including core-SFRs of extended midrange.
-        Info can be obtained from datasheet or .lkr file **)</td>
+    <td>Optional, single range.
+        Does not include SFR and core register areas.
+        Only required in special cases **)</td>
 </tr>
 </table>
 <p>*) With most midrange PICs unimplemented fuse bits read as '1'.
 but there are exceptions like with 12F629, 12F675, 16F630, 16F676.
 This may not be specified correctly in .pic files of MPLAB-X.
 Exceptions are covered by the file devicespecific.json.
-<br>**) DATA and SHARED are 'special' for some PICs,
-not straight forwardly derived from their datasheet or .lkr file.
-For these PICs the given specifications must be preserved,
-unless compiler requirements change.
-This applies to 16F72, 16F73, 16F74,
-16F870, 16F871, 16F872 16F873, 16F873A, 16F874, 16F874A,
-16F818, 16F819.
+<br>**) DATA and SHARED are 'special' for some PICs.
+This is because the values in the .edc file do not translate straight
+forwardly to the requirements of the JalV2 compiler.
+This applies to
+12F629, 12F675,
+16F526, 16F630, 16F636,
+16F72, 16F73, 16F74,
+16F83, 16F84, 16F84A,
+16F818, 16F819,
+16F870, 16F871, 16F872 16F873, 16F873A, 16F874, 16F874A
+and maybe for some other PICs.
 <br>See for more details of the specifications the related sections in this
 document and the comments in the edc2jal script.
 The usual way to make new entries: copy an existing entry of a similar PIC
@@ -2152,12 +2170,13 @@ On the other hand MPLAB-X may contain more duplicates.
 <ul>
 <li>Add an entry for each new PIC in the file devicespecific.json with the
     appropriate parameter values.
-    Check for shared and unshared memory conventions of JalV2!
-    Use the Memory organisation of the datasheet or the .lkr file
-    of the MPASM SUITE to derive the memory specification.
+    Normally the edc2jal script will correctly insert the pragma data and
+    pragma shared in the device files,
+    but check if these match with memory conventions of JalV2!
 <li>The script file 'fusedefmap.cmd' may need to be updated
     because of new or changed descriptions of oscillator settings.
-<li>Support for unrecognised Fuse_Def keywords to the edc2jal script.
+<li>Support for unrecognised fuse_Def keywords to the edc2jal script
+    (other than those for OSC).
 <li>With new entries or changes of pinmap.py the 'extract_pininfo.py' must
     be run to generate an up-to-date pinmap_pinsuffix.json.
 <li>Maybe some corrections have to be applied to the edc2jal script
