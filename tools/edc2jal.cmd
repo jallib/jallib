@@ -28,7 +28,6 @@
  *   independent libraries.                                                 *
  *                                                                          *
  * Sources:  MPLAB-X .pic files  (preprocessed by pic2edc script).          *
- *           MPLAB-X .lkr files  (via devicespecific.json)                  *
  *                                                                          *
  * Notes:                                                                   *
  *   - This script is written in 'classic' Rexx as delivered with           *
@@ -43,7 +42,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.21'
+   ScriptVersion   = '0.0.22'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
 /* mplabxversion obtained from file MPLAB-X_VERSION created by pic2edc script. */
@@ -74,11 +73,11 @@ end
 
 /* MPLAB-X and a local copy of the Jallib SVN tree should be installed.        */
 /* The .pic files used are in <basedir>/MPLAB_IDE/BIN/LIB/CROWNKING.EDC.JAR.   */
-/* This file must be expanded (unZIPped) to obtain the individual .pic files,  */
-/* and be expanded by the pic2edc script to obtain the necessary .edc files.   */
+/* This file must be expanded (unZIPped) to obtain the individual .pic files   */
+/* and be processed by the pic2edc script to obtain the necessary .edc files.  */
 /* Directory of expanded MPLAB-X .pic files:                                   */
 
-edcdir        = './edc_'mplabxversion                       /* source of expanded .pic files */
+edcdir        = './edc_'mplabxversion                       /* source of .edc files */
 
 /* Some information is collected from files in JALLIB tools directory */
 
@@ -245,6 +244,9 @@ do i = 1 to dir.0                                           /* all relevant .edc
    dsnumber              = ''                               /* datasheet number in .edc file */
    psnumber              = ''                               /* pgm spec number in .edc file */
 
+   DataRange             = ''                               /* RAM range(s) */
+   SharedRange           = ''                               /* Shared RAM range */
+
    ADCS_bits             = 0                                /* # ADCONx_ADCS bits */
    ADC_highres           = 0                                /* 0 = has no ADRESH register */
    IRCF_bits             = 0                                /* # OSCCON_IRCF bits */
@@ -311,10 +313,8 @@ do i = 1 to dir.0                                           /* all relevant .edc
       leave                                                 /* unrecoverable error */
    end
 
-   parse var DevSpec.PicNameCaps.SHARED '0x' addr1 '-' '0x' addr2
-   SharedMem.0 = x2d(addr2) - x2d(addr1) + 1                /* # bytes of shared memory */
-   SharedMem.1 = x2d(addr1)                                 /* lowest address (decimal) */
-   SharedMem.2 = x2d(addr2)                                 /* highest */
+   SharedMem.  = 0                                          /* # bytes of shared memory */
+                                                            /* modified in list_header */
 
    call list_header                                         /* common devicefile header */
 
@@ -405,7 +405,7 @@ load_config_info: procedure expose Pic. PicName Name. CfgAddr. ,
                                    VddRange VddNominal VppRange VppDefault,
                                    HasLATreg HasMuxedSFR OSCCALaddr FSRaddr,
                                    ADC_highres ADCS_bits IRCF_bits,
-                                   dsnumber psnumber
+                                   DataRange SharedRange dsnumber psnumber
 
 CfgAddr.0 = 0                                               /* empty */
 Core = 0                                                    /* undetermined */
@@ -413,6 +413,8 @@ CodeSize = 0                                                /* no code memory */
 NumBanks = 0                                                /* no databanks */
 
 SFRaddr = 0                                                 /* start of SFRs */
+DataRange = ''
+SharedRange = ''
 
 do i = 1 to Pic.0
 
@@ -600,23 +602,34 @@ do i = 1 to Pic.0
          end
       end
 
-      when kwd = '<edc:GPRDataSector' then do
-         parse var Pic.i '<edc:GPRDataSector' 'edc:bank="' val1 '"' ,
-                          'edc:beginaddr="0x' val2 '"' 'edc:endaddr="0x' val3 '"' .
-         if val1 \= '' then do
-            val1 = todecimal(val1)                       /* want decimal value */
-            if NumBanks < val1 + 1 then                  /* new larger than previous */
-               Numbanks = val1 + 1
-            if val1 = 0  &  X2D(val2) = 0 then           /* first part of access bank */
-               AccessBankSplitOffset = X2D(val3)
+      when kwd = '<edc:GPRDataSector' |,
+           kwd = '<edc:DPRDataSector' then do
+         parse var Pic.i . '<edc:GPRDataSector' 'edc:bank="' val0 '"' .,
+                        'edc:beginaddr="' val1 '"' . 'edc:endaddr="' val2 '"' .
+         if val1 = '' then
+            parse var Pic.i . '<edc:DPRDataSector' 'edc:bank="' val0 '"' .,
+                            'edc:beginaddr="' val1 '"' . 'edc:endaddr="' val2 '"' .
+         if val1 = '' then do
+            val0 = "0"                                    /* no bank? set default */
+            parse var Pic.i . '<edc:GPRDataSector' .,
+                            'edc:beginaddr="' val1 '"' . 'edc:endaddr="' val2 '"' .
          end
-         else do                                         /* no bank specification */
-            parse var Pic.i '<edc:GPRDataSector' ,
-                             'edc:beginaddr="' val1 '"' 'edc:endaddr="' val2 '"' .
-            if val1 \= '' then do
-               val1 = todecimal(val1)                    /* want decimal value */
-               if val1 = 0 then                          /* first part of access bank */
-                  AccessBankSplitOffset = todecimal(val2)
+         if val1 \= '' then do
+            bank = todecimal(val0)
+            if NumBanks < bank + 1 then                  /* new larger than previous */
+               Numbanks = bank + 1
+            if bank = 0  &  todecimal(val1) = 0 then           /* first part of access bank */
+               AccessBankSplitOffset = todecimal(val2)
+            if bank > 0  &  (pos('gprnob',Pic.i) > 0 | pos('dprnob',Pic.i) > 0) then
+               nop
+            else do
+               val1 = todecimal(val1)
+               val2 = todecimal(val2) - 1
+               DataRange = DataRange'0x'D2X(val1)'-0x'D2X(val2)','
+               if bank = 0 & (pos('gprnob',Pic.i) > 0  |,
+                              pos('dprnob',Pic.i) > 0  |,
+                              pos('accessr',Pic.i) > 0) then
+                  SharedRange = '0x'D2X(val1)'-0x'D2X(val2)
             end
          end
       end
@@ -732,6 +745,11 @@ do i = 1 to Pic.0
    end
 
 end
+
+DataRange = compact_addr_range(strip(DataRange, 'T', ','))
+if SharedRange = '' & pos(',', DataRange) = 0 then      /* no srange with single bank */
+   SharedRange = DataRange                              /* complete overlap */
+
 return core
 
 
@@ -2111,12 +2129,12 @@ do i = i to Pic.0 while word(pic.i,1) \= '</edc:NMMRPlace>'   /* end of NMMRs */
             portletter = substr(reg,5)
             if portletter = 'IO' |  portletter = 'GPIO' |  portletter = '' then do   /* TRIS[GP][IO] */
                portletter = 'A'                                /* handle as TRISA */
-               call msg 1, reg 'register interpreted as PORTA'
+               call msg 1, reg 'register interpreted as TRISA'
             end
             else if portletter = 'B' & left(picname,2) = '12' then do   /* TRISB for 12Fxxx */
                reg = 'TRISIO'
                portletter = 'A'
-               call msg 1, reg 'register interpreted as TRISIO'
+               call msg 1, reg 'register interpreted as TRISA'
             end
             shadow = '_TRIS'portletter'_shadow'
             if sharedmem.0 < 1 then do
@@ -4510,7 +4528,11 @@ if EEspec \= '' then                                        /* any EEPROM presen
 if IDSpec \= '' then                                        /* PIC has ID memory */
    call lineout jalfile, 'pragma  ID      'IDSpec
 
-drange = DevSpec.PicNameCaps.DATA
+if DevSpec.PicNameCaps.DATA \= '?' then do                  /* overriding data range */
+   DataRange = DevSpec.PicNameCaps.DATA
+   call msg 2, 'pragma data overruled by devicespecific'
+end
+drange = DataRange
 do while length(drange) > 50                                /* split large string */
    splitpoint = pos(',', drange, 49)                        /* first comma beyond 50 */
    if splitpoint = 0 then                                   /* no more commas */
@@ -4520,13 +4542,22 @@ do while length(drange) > 50                                /* split large strin
 end
 call lineout jalfile, 'pragma  data    'drange              /* last or only line */
 
-srange = DevSpec.PicNameCaps.SHARED                         /* shared GPR range */
+if DevSpec.PicNameCaps.SHARED \= '?' then do                /* overriding shared range */
+   SharedRange = DevSpec.PicNameCaps.SHARED
+   call msg 2, 'pragma shared overruled by devicespecific'
+end
+srange = SharedRange
 if core = '16' then
    call lineout jalfile, 'pragma  shared  'srange',0xF'D2X(AccessBankSplitOffset)'-0xFFF'
 else if core = '14H' then
    call lineout jalfile, 'pragma  shared  0x00-0x0B,'srange
 else
    call lineout jalfile, 'pragma  shared  'srange
+
+parse var SharedRange '0x' addr1 '-' '0x' addr2
+SharedMem.0 = x2d(addr2) - x2d(addr1) + 1                   /* # bytes of shared memory */
+SharedMem.1 = x2d(addr1)                                    /* lowest address (decimal) */
+SharedMem.2 = x2d(addr2)                                    /* highest */
 
 call lineout jalfile, '--'
 if Core = '12'  |  Core = '14' then do
@@ -4816,6 +4847,49 @@ if reg \= newname then do                                   /* not alias of regi
    return 1                                                 /* duplicate */
 end
 return 0
+
+
+/* ------------------------------------------------------------- */
+/* procedure to compact dataranges                               */
+/* ------------------------------------------------------------- */
+compact_addr_range: procedure expose Core
+parse arg DataRange .
+DataRange = strip(DataRange, 'T', ',')             /* remove any trailing comma */
+if pos(',', DataRange) = 0 then                    /* single range */
+   return DataRange
+
+d.0 = ''
+do i = 1 while DataRange \= ''                     /* whole string */
+   parse var DataRange  x  ','  DataRange          /* split off first range */
+   parse upper var x '0X' val1 '-' '0X' val2
+   d.i = '0x'right(val1,3,'0')'-0x'right(val2,3,'0')   /* 3 hex digits */
+   d.0 = i
+end
+
+call SysStemSort d., 'A', 'I'                      /* ranges in ascending order */
+
+LastByte = 0                                       /* decimal value! */
+DataRange = ''
+do i = 1 to d.0
+   parse upper var d.i '0X' val1 '-' '0X' val2 .
+   if Core = '12' & X2D(val1) > 127 then do        /* max 4 banks */
+      leave
+   end
+   else if Core = '14' & X2D(val1) > 511 then do   /* max 4 banks */
+      leave
+   end
+   if X2D(val1) = LastByte + 1  then do            /* adjacent block */
+      x = lastpos('0x', DataRange)
+      if x > 0 then
+         DataRange = left(DataRange,x+1)||D2X(X2D(val2))','  /* replace last value */
+      else
+         DataRange = DataRange'0x'D2X(X2D(val1))'-0x'D2X(X2D(val2))',' /* add range */
+   end
+   else
+      DataRange = DataRange'0x'D2X(X2D(val1))'-0x'D2X(X2D(val2))','    /* concatenate range */
+   LastByte = X2D(val2)
+end
+return strip(DataRange,'T',',')                    /* remove training comma */
 
 
 /* -------------------------------------------------- */

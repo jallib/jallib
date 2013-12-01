@@ -13,16 +13,17 @@ import json
                     * PICs with the same Programming Specifications
  Uses: devicespecific,json to obtain DataSheet numbers of the PICs
        datasheet.list to obtain the latest suffixes and titles of the datasheets
-       directory with PIC datasheets (pf files) to obtain dates of the datasheets
+       directory with PIC datasheets (pdf files) to obtain dates of the datasheets
 """
 
 #  input (may require changes for other systems or platforms)
-pdfdir      = "n:/picdatasheets"                            # dir with datasheets (local)
 picspecfile = "k:/jallib/tools/devicespecific.json"         # PIC specific properties
 dslist      = "k:/jallib/tools/datasheet.list"              # datasheet number/title file
+pdfdir      = "n:/picdatasheets"                            # dir with datasheets (local)
 
 #  output
 dst         = "k:/jallib/wiki"                              # output path
+
 url         = "http://ww1.microchip.com/downloads/en/DeviceDoc/"  # Microchip site
 
 
@@ -139,7 +140,7 @@ def group_wiki(outfile):
 
 if __name__ == "__main__":
 
-   datasheet = {}
+   datasheet = {}                                           # new dictionary
    read_datasheet(dslist)                                   # load datasheet info
    picspec = json.load(file(picspecfile))                   # load PIC specific info
    pic_wiki("DataSheets.wiki")
