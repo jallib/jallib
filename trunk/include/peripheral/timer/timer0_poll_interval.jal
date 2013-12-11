@@ -9,45 +9,45 @@
 --
 -- Description: Fixed interval support for non-blocking delays, but without using
 --              an interrupt.
--- 
+-- .
 -- Note: In many (possibly most) cases, you would be wise to choose the ISR
 --       version of this library-- it will be much more accurate.
---
+-- .
 -- The setup of this library is straight-forward. First you define the overflow
 -- rate for the timer. You'll have to make some trade-offs as to accuracy, frequency
 -- of polling, etc.
---
--- >>> const timer0_overflow_rate = 1000 -- 1 kHz overflow rate 
--- 
+-- .
+-- >>> const timer0_overflow_rate = 1000 -- 1 kHz overflow rate
+-- .
 -- Optional usage, for finer control, you may specify:
---
+-- .
 --         >>> const timer0_preload_value = nnn ( 0-0xff (8-bit), or 0-0xffff (16-bit) )
 --         >>> const timer0_prescale_value = nnn (0-7)
---
--- Next, you need to specify the number of slots. A slot is used to store the 
+-- .
+-- Next, you need to specify the number of slots. A slot is used to store the
 -- end-time of a delay-period so you need one slot for each concurrent delay.
--- 
+-- .
 -- >>> const DELAY_SLOTS = 2 -- support 2 delays at the same time
--- 
+-- .
 -- Now, include the library and call it's init function:
--- 
+-- .
 -- >>> include timer0_poll_interval
 -- >>> timer0_poll_init() -- init timer0
--- 
--- Now we are ready to use the delay functions. To demonstrate it's use, we take 
+-- .
+-- Now we are ready to use the delay functions. To demonstrate it's use, we take
 -- two LEDs and let them blink at their own interval:
--- 
--- >> forever loop 
--- >> if (check_delay(0)) then 
+-- .
+-- >> forever loop
+-- >> if (check_delay(0)) then
 -- >> set_delay(0, 409) -- 409 ticks on delay-slot 0
--- >> led = !led 
--- >> end if 
--- >> if (check_delay(1)) then 
+-- >> led = !led
+-- >> end if
+-- >> if (check_delay(1)) then
 -- >> set_delay(1, 619) -- 619 ticks on delay-slot 1
 -- >> led2 = !led2
 -- >> end if
 -- >> end loop
--- 
+--
 
 var word timer0_interval_counter
 var word timer0_countdown[DELAY_SLOTS]
@@ -63,9 +63,9 @@ end function
 -- for internal use only. roughly equivalent to timer0 ISR
 procedure _timer0_poll() is
    pragma inline
-   
+
    if INTCON_TMR0IF == true then
-      
+
       if target_cpu == PIC_16 then
          -- N.B. the device requires loading in this
          -- order, see datasheet for details.
@@ -74,58 +74,58 @@ procedure _timer0_poll() is
       else
          tmr0 = byte(timer0_load)
       end if
-      
+
       -- counters
       timer0_interval_counter = timer0_interval_counter + 1
-      
+
       var byte index
       for DELAY_SLOTS using index loop
          if (timer0_countdown[index] != 0) then
             timer0_countdown[index] = timer0_countdown[index] - 1
          end if
       end loop
-      
+
       -- if user defined wedge procedure, call it.
       if (defined(timer0_poll_wedge) == true) then
          timer0_poll_wedge()
       end if
-      
+
       INTCON_TMR0IF = off
    end if
 end procedure
 
 -- setup the delay for the specified slot.
 procedure set_delay(byte in slot, word in ticks) is
-   
+
    if (slot >= DELAY_SLOTS) then return end if
-   
+
    timer0_countdown[slot] = ticks
-   
+
 end procedure
 
 -- returns "true" when the delay has been achieved.
 -- be sure to call this routine fairly often if you
 -- care about fairly accurate delays.
 function check_delay(byte in slot) return bit is
-   
+
    if (slot >= DELAY_SLOTS) then return true end if
-   
+
    _timer0_poll()
-   
+
    if (timer0_countdown[slot] == 0) then
       return true    -- delay passed
    end if
-   
+
    return false -- still waiting
-   
+
 end function
 
 -- for internal use only
 procedure _timer0_poll_init_rate(dword in overflow_rate) is
    pragma inline
-   
+
    var dword timer0_div = (target_clock / 4 / overflow_rate) - 1
-   
+
    if (timer0_div > ((256 * 256) - 1)) then
       if target_cpu == PIC_16 then
          T0CON_T0PS = 7 ; prescaler 256
@@ -133,70 +133,70 @@ procedure _timer0_poll_init_rate(dword in overflow_rate) is
       else
          _error "requested overflow rate is too low"
       end if
-      
+
    elsif (timer0_div > ((128 * 256) - 1)) then
       T0CON_T0PS = 7 ; prescaler 256
       timer0_div = timer0_div / 256
-      
+
    elsif (timer0_div > ((64 * 256) - 1)) then
       T0CON_T0PS = 6 ; prescaler 128
       timer0_div = timer0_div / 128
-      
+
    elsif (timer0_div > ((32 * 256) - 1)) then
       T0CON_T0PS = 5 ; prescaler 64
       timer0_div = timer0_div / 64
-      
+
    elsif (timer0_div > ((16 * 256) - 1)) then
       T0CON_T0PS = 4 ; prescaler 32
       timer0_div = timer0_div / 32
-      
+
    elsif (timer0_div > ((8 * 256) - 1)) then
       T0CON_T0PS = 3 ; prescaler 16
       timer0_div = timer0_div / 16
-      
+
    elsif (timer0_div > ((4 * 256) - 1)) then
       T0CON_T0PS = 2 ; prescaler 8
       timer0_div = timer0_div / 8
-      
+
    elsif (timer0_div > ((2 * 256) - 1)) then
       T0CON_T0PS = 1 ; prescaler 4
       timer0_div = timer0_div / 4
-      
+
    else
       T0CON_T0PS = 0 ; prescaler 2
       timer0_div = timer0_div / 2
    end if
-   
+
    if target_cpu == PIC_16 then
       timer0_load = word(0xFFFF - timer0_div)
    else
       timer0_load = byte(0xFF - timer0_div)
-   end if 
-   
+   end if
+
 end procedure
 
 -- initialize the timer and related variables.
 -- automatically detects and makes use of 16-bit
 -- timer0 if present.
 procedure timer0_poll_init() is
-   
+
    if defined(timer0_preload_value) == true then
       timer0_load = timer0_preload_value
       T0CON_T0PS = timer0_prescale_value
    else
       _timer0_poll_init_rate(timer0_overflow_rate)
    end if
-   
+
    if target_cpu == PIC_16 then
       T0CON_T08BIT = 0
    end if
-   
+
    T0CON_T0CS = 0  ; internal clock
    T0CON_PSA  = 0  ; assign prescaler to timer0
-   
+
    var byte i
    for DELAY_SLOTS using i loop
       timer0_countdown[i] = 0
    end loop
-   
+
 end procedure
