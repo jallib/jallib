@@ -10,20 +10,20 @@ from xml.dom.minidom import parse, Node
 """
   -----------------------------------------------------------------------
   This script is part of a sub-project using MPLAB-X info for Jallib,
-  in particular the device files.
+  in particular the device files, but also for some other libraries.
   This script uses the .edc files created by the pic2edc script.
   The Pin section of these files contains the pin aliases.
   Some manipulations are performed, for example:
-   - skip pins which are not accessible from the program like Vpp, Vdd, etc
+   - skip pins which are not accessible from the program like Vpp, Vdd
    - skip non-aliases of a pin like IOC, INT
    - correct apparent errors or omissions of MPLAB-X
-   - select the the base name of a pin and specify it as first alias
-  When parts of a Pin are not in .edc file or known to be incorrect,
+   - determine the base name of pins and specify 'm as first alias
+  When pins are not in .edc file or known to be incorrect
   the entry in the old pinmap file will be copied (when present).
   Same when the .edc file does not contain a Pin section at all,
   otherwise the pinmap will not contain an entry for this PIC.
-  This script handles issues for a MPLAB-X version 1.95, for other
-  MPLAB-X versions it may need to be adapted.
+  This script handles issues for a MPLAB-X version 1.95,
+  for other MPLAB-X versions it may need to be adapted.
   -----------------------------------------------------------------------
 """
 
@@ -126,7 +126,7 @@ for filename in dir:
          elif re.match(gpiopin,alias):                      # check gor GPx
             portbit = "RA" + alias[-1]                      # note: RAx not in aliaslist!
             break
-      if portbit != None:                                   # found Rxy or GPx previously
+      if portbit != None:                                   # found Rxy or GPx
          if portbit in pinlist:
             print "  Duplicate pin specification:", portbit, "pin", pinnumber, "skipped"
          else:
@@ -142,7 +142,7 @@ for filename in dir:
                pinlist[pin] = [pin]                         # insert dummy
                print "  Inserted dummy alias list for pin", pin
    elif picname in ("16LF1833",):
-      for pin in ("RC4",):                                  # MPALB-X error
+      for pin in ("RC4",):                                  # MPLAB-X error
          print "  Replacing alias list for pin", pin
          if pinmap[picname].get(pin) != None:               # present in old pinmap
             pinlist[pin] = pinmap[picname].get(pin, [pin])  # replace unconditionally
