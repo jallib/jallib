@@ -11,7 +11,7 @@ import json
                     * Programming Specifications
                     * PICs with the same DataSheet
                     * PICs with the same Programming Specifications
- Uses: devicespecific,json to obtain DataSheet numbers of the PICs
+ Uses: devicespecific,json to obtain DataSheet numbers of PICs
        datasheet.list to obtain the latest suffixes and titles of the datasheets
        directory with PIC datasheets (pdf files) to obtain dates of the datasheets
 """
