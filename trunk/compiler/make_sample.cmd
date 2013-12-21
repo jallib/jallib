@@ -1,16 +1,20 @@
 /* Rexx script to compile a sample under eComStation (OS/2) */
+/* Execute this Rexx script to compile one of the Jallib    */
+/* 'blink-a-led' samples or any other sample program.       */
+/* Assumes directory structure as of JalPack.               */
 
-/* Execute this Rexx procedure to compile one of the Jallib
-   'blink-an-LED' sample programs. You may need to change
-   the base directory of the Jallib Pack and the target PICmicro */
+parse arg pic smp .
+if smp = '' then
+  smp = 'blink'                                 /* default pgm */
+if pic = '' then
+  pic = '16f877a'                               /* default PIC */
+say 'Compiling Jallib sample:' pic'_'smp
 
-base   = '\jalpack\'                            /* Jallib pack base directory */
-pic    = '16f877a'                              /* target device */
-
+base   = directory()
+base   = filespec('d',base)||filespec('p',base)
 jj     = base'compiler\jalv2ecs'                /* compiler executable */
-lib    = base'lib'                              /* include library */
-smp    = base'sample\'                          /* directory with samples */
-pgm    = smp||pic'_blink'                       /* sample program */
+lib    = base'lib'                              /* ibrary */
+pgm    = base'sample\'||pic'_'smp               /* sample file */
 
 '@'jj '-no-codfile -no-asm -s' lib  pgm'.jal'   /* compile */
 
