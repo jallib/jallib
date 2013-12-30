@@ -1,0 +1,93 @@
+-- --------------------------------------------------------------------
+-- Title: Forward and backward running light (Knight Rider style)
+--
+-- Author: Rob Hamerling, Copyright (c) 2008..2013, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4q
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license  (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+--    Running light in 'Knight Rider' style.
+--    Hardware: a row of 9 LEDs, each connected to an output pin of an 18f242.
+--    1 LED is on for some time and then another LED takes over.
+--    The sequence is forward (left-to-right) and backward (right-to-left).
+--    There is no need for separate pieces of code for the forward and backward,
+--    movements, there are only 'forward' steps of which the second half behaves
+--    like backward because of a reverse sequence specification in the 'case' block.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- --------------------------------------------------------------------
+
+include 18f242                            -- target PIC
+
+pragma  target CLOCK    20_000_000
+
+pragma  target OSC      HS
+pragma  target OSCS     DISABLED
+pragma  target BROWNOUT DISABLED
+pragma  target WDT      DISABLED
+pragma  target STVR     ENABLED
+pragma  target LVP      DISABLED
+pragma  target CCP2MUX  ENABLED           -- CCP2 on RC1
+pragma  target DEBUG    DISABLED
+
+-- --------------------------------------------------------------------
+
+enable_digital_io()                       -- disable analog modules
+
+include delay                             -- delay library
+
+PORTA           = 0
+portA_direction = all_output
+PORTB           = 0
+portB_direction = all_output
+
+-- logical names for the LEDs
+
+alias  led0  is  pin_A0
+alias  led1  is  pin_A1
+alias  led2  is  pin_A2
+alias  led3  is  pin_A3
+alias  led4  is  pin_A5
+alias  led5  is  pin_B1
+alias  led6  is  pin_B2
+alias  led7  is  pin_B3
+alias  led8  is  pin_B4
+
+forever loop
+
+  var byte i;                             -- step counter
+
+  for 16 using i loop                     -- forward + backward: 16 states (0..15)
+
+     case i of                            -- select the active LED
+        0     : led0 = on
+        1, 15 : led1 = on
+        2, 14 : led2 = on
+        3, 13 : led3 = on
+        4, 12 : led4 = on
+        5, 11 : led5 = on
+        6, 10 : led6 = on
+        7, 9  : led7 = on
+        8     : led8 = on
+     end case
+
+     delay_100ms(1)                       -- ON period of each LED
+
+     portA = 0                            -- all LEDs off
+     portB = 0                            --
+
+   end loop
+
+end loop
+
+
