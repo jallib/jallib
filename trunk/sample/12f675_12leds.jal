@@ -1,0 +1,105 @@
+-- ------------------------------------------------------
+-- Title: Control 12 LEDs with only 4 I/O pins
+--
+-- Author: Rob Hamerling, Copyright (c) 2013..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Control 12 LEDs (one-by-one) with only 4 I/O pins.
+-- The 12 leds could be nicely placed in a circle (as a rudimentary clock).
+-- The speed of rotational of the light can be controlled by a potmeter
+-- connected to a pin with ADC support.
+--
+-- Sources:
+-- - Microchip Application note TB029.
+--
+-- Notes: - The technique is commonly called Charleyplexing.
+--        - A 12F675 has been chosen here, but almost any 8-pins PIC
+--          can be used.
+--        - When the chosen PIC has a pin_AN2 the program assumes
+--          that a potmeter is connected to pin_A2 for a variable
+--          speed, otherwise the switching speed is fixed.
+--
+-- ------------------------------------------------------
+--
+include 12f675                                  -- target PICmicro
+--
+pragma target clock  4_000_000                  -- oscillator frequency
+
+-- configuration memory settings (fuses)
+pragma target OSC      INTOSC_NOCLKOUT          -- Internal oscillator
+pragma target WDT      disabled                 -- no watchdog
+pragma target MCLR     external                 -- make MCLR pin available I/O
+pragma target BROWNOUT disabled                 -- no brownout
+--
+enable_digital_io()                             -- disable analog I/O (if any)
+--
+-- Note: PICs with a different default internal oscillator speed
+--       than 4 MHz will require additional clock settings!
+--
+include delay
+--
+-- ------- arrays with settings for PortA and PortA_direction ------
+-- The bit patterns of these arrays depend totally on the wiring!
+-- In this example pins A0, 1, 4 and 5 are used to control the leds
+-- and pin_A2 for the slider of the potmeter (when pin_AN2 present).
+--
+var byte led[12] = {0b0000_0010,                -- Port_A settings
+                    0b0000_0001,
+                    0b0010_0000,
+                    0b0000_0001,
+                    0b0001_0000,
+                    0b0000_0001,
+                    0b0010_0000,
+                    0b0000_0010,
+                    0b0000_0010,
+                    0b0001_0000,
+                    0b0010_0000,
+                    0b0001_0000}
+var byte dir[12] = {0b0011_1100,                -- Port_A_direction settings
+                    0b0011_1100,
+                    0b0001_1110,
+                    0b0001_1110,
+                    0b0010_1110,
+                    0b0010_1110,
+                    0b0001_1101,
+                    0b0001_1101,
+                    0b0010_1101,
+                    0b0010_1101,
+                    0b0000_1111,
+                    0b0000_1111}
+
+-- ------ ADC setup for PICs with a pin_AN2 ------------
+if defined(pin_AN2) then
+   const byte ADC_NVREF = ADC_NO_EXT_VREF
+   const word ADC_RSOURCE = 5_000
+   include adc
+   adc_init()
+   const byte  ADC_CHANNEL = 2                  -- pin_AN2
+end if
+-- -----------------------------------------------------
+
+forever loop
+   var byte i
+   var word potm = 256                          -- fixed value when no ADC
+   if defined(pin_AN2) then                     -- ADC pin
+      potm = adc_read_high_res(ADC_CHANNEL)     -- measure once per rotation
+      if potm > 512 then                        -- limit slowest speed
+         potm = 512
+      end if
+   end if
+   for 12 using i loop                          -- full cycle
+      PortA           = led[i]                  -- set pins
+      PortA_direction = dir[i]                  -- set pin directions
+      delay_1ms(potm)                           -- wait a little
+   end loop
+end loop
+--
+
