@@ -17,17 +17,17 @@ from xml.dom.minidom import parse, Node
    - skip pins which are not accessible from the program like Vpp, Vdd
    - skip non-aliases of a pin like IOC, INT
    - correct apparent errors or omissions of MPLAB-X
-   - determine the base name of pins and specify 'm as first alias
+   - determine the base name of a pin and specify it as first in list
   When pins are not in .edc file or known to be incorrect
   the entry in the old pinmap file will be copied (when present).
   Same when the .edc file does not contain a Pin section at all,
   otherwise the pinmap will not contain an entry for this PIC.
-  This script handles issues for a MPLAB-X version 1.95,
-  for other MPLAB-X versions it may need to be adapted.
+  This script handles issues for a MPLAB-X version 2.00,
+  for other MPLAB-X versions it will probably have to be adapted!
   -----------------------------------------------------------------------
 """
 
-mplabxversion = "195"
+mplabxversion = "200"                                       # current version of MPLAB-X
 
 edcdir    = "k:/jal/pic2jal/edc_" + mplabxversion           # dir with .edc files
 pinmapnew = "pinmapnew.py"                                  # output
@@ -73,6 +73,9 @@ for filename in dir:
    if picname == "16F722":
       filename = "16lf722.edc"                              # replace by alternative input
       print "  Pinmap derived from 16lf722"
+   elif (picname in ("16LF1713", "16F1716", "16LF1716")):
+      filename = "16f1713.edc"
+      print "  Pinmap derived from 16f1713"
 
    filepath = os.path.join(edcdir,filename)                 # pathspec
    dom = parse(filepath)                                    # load .edc file
@@ -96,10 +99,21 @@ for filename in dir:
                aliaslist.append("RA" + alias[-1])           # RBx -> RAx
                aliaslist.append("GP" + alias[-1])           # add GPx
                print "  Renamed pin", alias, "to RA" + alias[-1]
+            elif alias == "RB1AN10":                        # MPLAB-X error
+               aliaslist.append("RB1")
+               aliaslist.append("AN10")
+               print "  Splitted", alias, "into RB1 and AN10 for pin", pinnumber
             elif alias == "RC7AN9":                         # MPLAB-X error
                aliaslist.append("RC7")
                aliaslist.append("AN9")
-               print "  Splitted RC7AN9 into RC7 and AN9 for pin", pinnumber
+               print "  Splitted", alias, "into RC7 and AN9 for pin", pinnumber
+            elif alias == "DAC1VREF+n":                     # MPLAB-X error
+               aliaslist.append("DAC1VREF+")
+               print "  Replaced", alias, "by DAC1VREF+ for pin", pinnumber
+            elif ( (picname in ("16F1707", "16LF1707")) &
+                   (alias == "AN9") & (pinnumber == 8) ):
+               aliaslist.append("AN8")
+               print "  Replaced alias", alias, "by AN8 for pin", pinnumber
             elif ( (picname in ("18F2439", "18F2539", "18F4439", "18F4539")) &
                    (alias.startswith("PWM")) ):
                aliaslist.append(alias)
@@ -141,15 +155,6 @@ for filename in dir:
             else:
                pinlist[pin] = [pin]                         # insert dummy
                print "  Inserted dummy alias list for pin", pin
-   elif picname in ("16LF1833",):
-      for pin in ("RC4",):                                  # MPLAB-X error
-         print "  Replacing alias list for pin", pin
-         if pinmap[picname].get(pin) != None:               # present in old pinmap
-            pinlist[pin] = pinmap[picname].get(pin, [pin])  # replace unconditionally
-            print "  Copied alias list of pin", pin, "from old pinmap"
-         else:
-            pinlist[pin] = [pin]                            # insert dummy
-            print "  Inserted dummy alias list for pin", pin
 
    if len(pinlist) > 0:
       list_pic(picname, pinlist)                            # list pinmap this pic
@@ -165,6 +170,6 @@ fp.write("  }\n")                                           # end of pinmap
 fp.close()
 
 print "Generated pinmap", pinmapnew, "for", piccount, "PICs"
-print "Compare new with current, when OK replace pinmap.py by", pinmapnew
+print "Compare new with current, when OK copy", pinmapnew, "to pinmap.py"
 
 
