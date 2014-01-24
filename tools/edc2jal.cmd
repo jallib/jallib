@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
  * Title: Edc2Jal.cmd - Create JalV2 device specifications for flash PICs   *
  *                                                                          *
- * Author: Rob Hamerling, Copyright (c) 2013..2013, all rights reserved.    *
+ * Author: Rob Hamerling, Copyright (c) 2013..2014, all rights reserved.    *
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
@@ -42,7 +42,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.22'
+   ScriptVersion   = '0.0.23'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
 /* mplabxversion obtained from file MPLAB-X_VERSION created by pic2edc script. */
@@ -67,7 +67,7 @@ if val1 = '' then do
 end
 mplabxversion = strip(val1)
 if ScriptVersion \= strip(val2)  then do
-   say 'Conflicting script versions, found' val2', expecting' ScriptVersion
+   say 'Conflicting script versions, found <'val2'>, expected <'ScriptVersion'>'
    return 0
 end
 
@@ -134,7 +134,7 @@ end
 
 call time 'R'                                               /* reset 'elapsed' timer */
 
-call msg 0, 'Creating Jallib device files with MPLAB-X version' mplabxversion/100
+call msg 0, 'Creating Jallib device files with MPLAB-X version' format(mplabxversion/100,,2)
 
 call SysFileTree edcdir'/'wildcard, 'dir.', 'FOS'           /* search all .edc files */
 if dir.0 = 0 then do
@@ -294,13 +294,13 @@ do i = 1 to dir.0                                           /* all relevant .edc
       if length(DevSpec.PicNameCaps.DataSheet) > 5  & length(dsnumber) = 5 then
          dsnumber = insert('000', dsnumber, 1)              /* make 8-digits variant */
       if DevSpec.PicNameCaps.DataSheet \= dsnumber then
-         call msg 1, 'Non matching DataSheet numbers:' DevSpec.PicNameCaps.DataSheet '<->' dsnumber
+         call msg 1, 'Non matching DataSheet numbers, expected:' DevSpec.PicNameCaps.DataSheet', found' dsnumber
    end
    if psnumber \= '' then do
       if length(DevSpec.PicNameCaps.PgmSpec) > 5 & length(psnumber) = 5 then
          psnumber = insert('000', psnumber, 1)
       if psnumber \= '' & DevSpec.PicNameCaps.PgmSpec \= psnumber then
-         call msg 1, 'Non matching PgmSpec numbers:' DevSpec.PicNameCaps.PgmSpec '<->' psnumber
+         call msg 1, 'Non matching PgmSpec numbers, expected:' DevSpec.PicNameCaps.PgmSpec', found' psnumber
    end
 
    call load_sfr_info                                       /* SFR address map */
@@ -2840,7 +2840,8 @@ else if core = '14H' then do                                /* enhanced midrange
             ansx = 99                              /* none */
       end
       when reg = 'ANSELC' then do
-         if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' then
+         if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
+            left(PicName,6) = '16f171' | left(PicName,7) = '16lf171' then
             ansx = word('99 99 14 15 16 17 18 19', ansx + 1)
          else if left(PicName,6) = '16f145' | left(PicName,7) = '16lf145' |,
                  left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
@@ -2862,6 +2863,7 @@ else if core = '14H' then do                                /* enhanced midrange
                  left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
             ansx = word('99 99 99 99 10 11 99 99', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
+                 left(PicName,6) = '16f171' | left(PicName,7) = '16lf171' |,
                  left(PicName,6) = '16f178' | left(PicName,7) = '16lf178' |,
                  left(PicName,7) = '16lf190'                              |,
                  left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' then
@@ -2887,6 +2889,7 @@ else if core = '14H' then do                                /* enhanced midrange
             ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
                  left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' |,
+                 left(PicName,6) = '16f171' | left(PicName,7) = '16lf171' |,
                  left(PicName,6) = '16f178' | left(PicName,7) = '16lf178' |,
                  left(PicName,7) = '16lf190'                              |,
                  left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' |,
@@ -2955,7 +2958,7 @@ else if core = '16' then do                                 /* 18F series */
          if (PicName = '18f13k22' | PicName = '18lf13k22' |,
              PicName = '18f14k22' | PicName = '18lf14k22') then do
             if left(ans,5) = 'ANSEL' then do
-               call msg 1, 'Suppressing probably duplicate JANSEL_ANSx declarations'
+               call msg 1, 'Suppressing probably duplicate JANSEL_ANSx declarations ('ans')'
                ansx = 99
             end
          end
@@ -2975,7 +2978,7 @@ end
 PicNameCaps = toupper(PicName)
 aliasname    = 'AN'ansx
 if ansx < 99 & PinANMap.PicNameCaps.aliasname = '-' then do  /* no match */
-   call msg 2, 'No "pin_AN'ansx'" alias in pinmap for' reg'_'ans
+   call msg 2, 'No "pin_AN'ansx'" in pinmap corresonding to' reg'_'ans
    ansx = 99                                                /* error indication */
 end
 return ansx
@@ -4467,7 +4470,7 @@ call lineout jalfile, '--      operations, like:'
 call lineout jalfile, '--      . enable_digital_io()'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Sources:'
-call lineout jalfile, '--  - {MPLAB-X' mplabxVersion/100'}',
+call lineout jalfile, '--  - {MPLAB-X' format(mplabxVersion/100,,2)'}',
                              'crownking.edc.jar/content/edc/../PIC'toupper(PicName)'.PIC'
 call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
@@ -4647,7 +4650,7 @@ return
 list_copyright_etc:
 parse arg listfile .
 call lineout listfile, '--'
-call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2013,',
+call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2014,',
                        'all rights reserved.'
 call lineout listfile, '--'
 call lineout listfile, '-- Adapted-by:'
@@ -4750,12 +4753,12 @@ do until x = '}' | x = 0                                    /* end of pinmap */
             else if pos('+', aliasname) > 0 then do         /* handle middle '+' character */
                x = pos('+', aliasname)
                aliasname = delstr(aliasname, x, 1)
-               aliasname = insert('_POS_', aliasname, x - 1)
+               aliasname = insert('_POS', aliasname, x - 1)
             end
             else if pos('-', aliasname) > 0 then do         /* handle middle '-' character */
                x = pos('-', aliasname)
                aliasname = delstr(aliasname, x, 1)
-               aliasname = insert('_NEG_', aliasname, x - 1)
+               aliasname = insert('_NEG', aliasname, x - 1)
             end
             i = i + 1
             PinMap.PicName.pinname.i = aliasname
@@ -4892,11 +4895,11 @@ end
 return strip(DataRange,'T',',')                    /* remove training comma */
 
 
-/* -------------------------------------------------- */
-/* translate string to lower or upper case            */
-/* translate (capital) meta-characters to ASCII chars */
-/* convert (hexa)numeric string to decimal value      */
-/* -------------------------------------------------- */
+/* ------------------------------------------------ */
+/* translate string to lower or upper case          */
+/* translate some meta-characters to ASCII chars    */
+/* convert (hexa)numeric string to decimal value    */
+/* ------------------------------------------------ */
 
 tolower: procedure
 return translate(arg(1), xrange('a','z'), xrange('A','Z'))
