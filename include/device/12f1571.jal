@@ -1,0 +1,1663 @@
+-- ===================================================
+-- Title: JalV2 device include file for PIC12F1571
+--
+-- Author: Rob Hamerling, Copyright (c) 2008..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4q
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the ZLIB license  (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+--    Device include file for pic12f1571, containing:
+--    - Declaration of ports and pins of the chip.
+--    - Procedures to force the use of the LATx register
+--      for output when PORTx or pin_xy is addressed.
+--    - Symbolic definitions for configuration bits (fuses)
+--    - Some device dependent procedures for common
+--      operations, like:
+--      . enable_digital_io()
+--
+-- Sources:
+--  - {MPLAB-X 2.00} crownking.edc.jar/content/edc/../PIC12F1571.PIC
+--
+-- Notes:
+--  - Created with Edc2Jal Rexx script version 0.0.23
+--  - File creation date/time: 24 Jan 2014 14:52
+--
+-- ===================================================
+--
+const word DEVICE_ID   = 0x3051
+const byte PICTYPE[]   = "12F1571"
+const byte DATASHEET[] = "40001723A"
+const byte PGMSPEC[]   = "40001713A"
+--
+-- Vdd Range: 2.300-5.500 Nominal: 5.000
+-- Vpp Range: 8.000-9.000 Default: 9.000
+--
+-- ---------------------------------------------------
+--
+include chipdef_jallib                  -- common constants
+--
+pragma  target  cpu   PIC_14H            -- (banks=32)
+pragma  target  chip  12f1571
+pragma  target  bank  0x0080
+pragma  target  page  0x0800
+pragma  stack   16
+pragma  code    1024
+pragma  ID      0x8000,4
+pragma  data    0x20-0x7F,0xA0-0xBF
+pragma  shared  0x00-0x0B,0x70-0x7F
+--
+var volatile byte _pic_accum at 0x7F      -- (compiler)
+--
+const word   _FUSES_CT             = 2
+const word   _FUSE_BASE[_FUSES_CT] = { 0x8007,
+                                       0x8008 }
+const word   _FUSES[_FUSES_CT]     = { 0b_0011_1111_1111_1111,         -- CONFIG1
+                                       0b_0011_1111_1111_1111 }        -- CONFIG2
+--
+-- ------------------------------------------------
+var volatile byte   INDF0                     at { 0x0 }
+var volatile byte   _ind                      at { 0x0 }
+-- ------------------------------------------------
+var volatile byte   INDF1                     at { 0x1 }
+-- ------------------------------------------------
+var volatile byte   PCL                       at { 0x2 }
+var volatile byte   _pcl                      at { 0x2 }
+-- ------------------------------------------------
+var volatile byte   STATUS                    at { 0x3 }
+var volatile bit    STATUS_C                  at STATUS : 0
+var volatile bit    STATUS_DC                 at STATUS : 1
+var volatile bit    STATUS_Z                  at STATUS : 2
+var volatile bit    STATUS_NPD                at STATUS : 3
+var volatile bit    STATUS_NTO                at STATUS : 4
+var volatile byte   _status                   at { 0x3 }
+const        byte   _c                        =  0
+const        byte   _dc                       =  1
+const        byte   _z                        =  2
+const        byte   _not_pd                   =  3
+const        byte   _not_to                   =  4
+-- ------------------------------------------------
+var volatile word   FSR0                      at { 0x4 }
+-- ------------------------------------------------
+var volatile byte   FSR0L                     at { 0x4 }
+var volatile byte   _fsr0l                    at { 0x4 }
+-- ------------------------------------------------
+var volatile byte   FSR0H                     at { 0x5 }
+var volatile byte   _fsr0h                    at { 0x5 }
+-- ------------------------------------------------
+var volatile word   FSR1                      at { 0x6 }
+-- ------------------------------------------------
+var volatile byte   FSR1L                     at { 0x6 }
+var volatile byte   _fsr1l                    at { 0x6 }
+-- ------------------------------------------------
+var volatile byte   FSR1H                     at { 0x7 }
+var volatile byte   _fsr1h                    at { 0x7 }
+-- ------------------------------------------------
+var volatile byte   BSR                       at { 0x8 }
+var volatile bit    BSR_BSR0                  at BSR : 0
+var volatile bit    BSR_BSR1                  at BSR : 1
+var volatile bit    BSR_BSR2                  at BSR : 2
+var volatile bit    BSR_BSR3                  at BSR : 3
+var volatile bit    BSR_BSR4                  at BSR : 4
+var volatile bit*5  BSR_BSR                   at BSR : 0
+var volatile byte   _bsr                      at { 0x8 }
+-- ------------------------------------------------
+var volatile byte   WREG                      at { 0x9 }
+-- ------------------------------------------------
+var volatile byte   PCLATH                    at { 0xA }
+var volatile bit*7  PCLATH_PCLATH             at PCLATH : 0
+var volatile byte   _pclath                   at { 0xA }
+-- ------------------------------------------------
+var volatile byte   INTCON                    at { 0xB }
+var volatile bit    INTCON_IOCIF              at INTCON : 0
+var volatile bit    INTCON_INTF               at INTCON : 1
+var volatile bit    INTCON_TMR0IF             at INTCON : 2
+var volatile bit    INTCON_IOCIE              at INTCON : 3
+var volatile bit    INTCON_INTE               at INTCON : 4
+var volatile bit    INTCON_TMR0IE             at INTCON : 5
+var volatile bit    INTCON_PEIE               at INTCON : 6
+var volatile bit    INTCON_GIE                at INTCON : 7
+var volatile bit    INTCON_T0IF               at INTCON : 2
+var volatile bit    INTCON_T0IE               at INTCON : 5
+-- ------------------------------------------------
+var volatile byte   PORTA                     at { 0xC }
+var volatile bit    PORTA_RA0                 at PORTA : 0
+var volatile bit    PORTA_RA1                 at PORTA : 1
+var volatile bit    PORTA_RA2                 at PORTA : 2
+var volatile bit    PORTA_RA3                 at PORTA : 3
+var volatile bit    PORTA_RA4                 at PORTA : 4
+var volatile bit    PORTA_RA5                 at PORTA : 5
+-- ------------------------------------------------
+var volatile byte   PIR1                      at { 0x11 }
+var volatile bit    PIR1_TMR1IF               at PIR1 : 0
+var volatile bit    PIR1_TMR2IF               at PIR1 : 1
+var volatile bit    PIR1_ADIF                 at PIR1 : 6
+var volatile bit    PIR1_TMR1GIF              at PIR1 : 7
+-- ------------------------------------------------
+var volatile byte   PIR2                      at { 0x12 }
+var volatile bit    PIR2_C1IF                 at PIR2 : 5
+-- ------------------------------------------------
+var volatile byte   PIR3                      at { 0x13 }
+var volatile bit    PIR3_PWM1IF               at PIR3 : 4
+var volatile bit    PIR3_PWM2IF               at PIR3 : 5
+var volatile bit    PIR3_PWM3IF               at PIR3 : 6
+-- ------------------------------------------------
+var volatile byte   TMR0                      at { 0x15 }
+-- ------------------------------------------------
+var volatile word   TMR1                      at { 0x16 }
+-- ------------------------------------------------
+var volatile byte   TMR1L                     at { 0x16 }
+-- ------------------------------------------------
+var volatile byte   TMR1H                     at { 0x17 }
+-- ------------------------------------------------
+var volatile byte   T1CON                     at { 0x18 }
+var volatile bit    T1CON_TMR1ON              at T1CON : 0
+var volatile bit    T1CON_NT1SYNC             at T1CON : 2
+var volatile bit    T1CON_T1CKPS0             at T1CON : 4
+var volatile bit    T1CON_T1CKPS1             at T1CON : 5
+var volatile bit    T1CON_TMR1CS0             at T1CON : 6
+var volatile bit    T1CON_TMR1CS1             at T1CON : 7
+var volatile bit*2  T1CON_T1CKPS              at T1CON : 4
+var volatile bit*2  T1CON_TMR1CS              at T1CON : 6
+-- ------------------------------------------------
+var volatile byte   T1GCON                    at { 0x19 }
+var volatile bit    T1GCON_T1GSS0             at T1GCON : 0
+var volatile bit    T1GCON_T1GSS1             at T1GCON : 1
+var volatile bit    T1GCON_T1GVAL             at T1GCON : 2
+var volatile bit    T1GCON_T1GGO_NDONE        at T1GCON : 3
+var volatile bit    T1GCON_T1GSPM             at T1GCON : 4
+var volatile bit    T1GCON_T1GTM              at T1GCON : 5
+var volatile bit    T1GCON_T1GPOL             at T1GCON : 6
+var volatile bit    T1GCON_TMR1GE             at T1GCON : 7
+var volatile bit*2  T1GCON_T1GSS              at T1GCON : 0
+var volatile bit    T1GCON_T1GGO              at T1GCON : 3
+-- ------------------------------------------------
+var volatile byte   TMR2                      at { 0x1A }
+-- ------------------------------------------------
+var volatile byte   PR2                       at { 0x1B }
+-- ------------------------------------------------
+var volatile byte   T2CON                     at { 0x1C }
+var volatile bit    T2CON_T2CKPS0             at T2CON : 0
+var volatile bit    T2CON_T2CKPS1             at T2CON : 1
+var volatile bit    T2CON_T2OUTPS0            at T2CON : 3
+var volatile bit    T2CON_T2OUTPS1            at T2CON : 4
+var volatile bit    T2CON_T2OUTPS2            at T2CON : 5
+var volatile bit    T2CON_T2OUTPS3            at T2CON : 6
+var volatile bit*2  T2CON_T2CKPS              at T2CON : 0
+var volatile bit    T2CON_TMR2ON              at T2CON : 2
+var volatile bit*4  T2CON_T2OUTPS             at T2CON : 3
+-- ------------------------------------------------
+var volatile byte   TRISA                     at { 0x8C }
+alias               PORTA_direction           is TRISA
+--
+procedure PORTA_low_direction'put(byte in x) is
+   TRISA = (TRISA & 0xF0) | (x & 0x0F)
+end procedure
+function PORTA_low_direction'get() return byte is
+   return (TRISA & 0x0F)
+end function
+--
+procedure PORTA_high_direction'put(byte in x) is
+   TRISA = (TRISA & 0x0F) | (x << 4)
+end procedure
+function PORTA_high_direction'get() return byte is
+   return (TRISA >> 4)
+end function
+--
+var volatile bit    TRISA_TRISA0              at TRISA : 0
+alias               pin_A0_direction          is TRISA_TRISA0
+alias               pin_AN0_direction         is pin_A0_direction
+alias               pin_C1IN_POS_direction    is pin_A0_direction
+alias               pin_PWM2_RA0_direction    is pin_A0_direction
+alias               pin_DAC1OUT_direction     is pin_A0_direction
+alias               pin_CWG1B_RA0_direction   is pin_A0_direction
+alias               pin_ICSPDAT_direction     is pin_A0_direction
+alias               pin_ICDDAT_direction      is pin_A0_direction
+--
+var volatile bit    TRISA_TRISA1              at TRISA : 1
+alias               pin_A1_direction          is TRISA_TRISA1
+alias               pin_AN1_direction         is pin_A1_direction
+alias               pin_VREF_POS_direction    is pin_A1_direction
+alias               pin_C1IN0_NEG_direction   is pin_A1_direction
+alias               pin_PWM1_RA1_direction    is pin_A1_direction
+alias               pin_ICSPCLK_direction     is pin_A1_direction
+alias               pin_ICDCLK_direction      is pin_A1_direction
+--
+var volatile bit    TRISA_TRISA2              at TRISA : 2
+alias               pin_A2_direction          is TRISA_TRISA2
+alias               pin_AN2_direction         is pin_A2_direction
+alias               pin_T0CKI_direction       is pin_A2_direction
+alias               pin_PWM3_direction        is pin_A2_direction
+alias               pin_C1OUT_direction       is pin_A2_direction
+alias               pin_CWG1FLT_direction     is pin_A2_direction
+alias               pin_CWG1A_RA2_direction   is pin_A2_direction
+--
+var volatile bit    TRISA_TRISA3              at TRISA : 3
+alias               pin_A3_direction          is TRISA_TRISA3
+alias               pin_T1G_RA3_direction     is pin_A3_direction
+alias               pin_MCLR_direction        is pin_A3_direction
+alias               pin_VPP_direction         is pin_A3_direction
+--
+var volatile bit    TRISA_TRISA4              at TRISA : 4
+alias               pin_A4_direction          is TRISA_TRISA4
+alias               pin_AN3_direction         is pin_A4_direction
+alias               pin_C1IN1_NEG_direction   is pin_A4_direction
+alias               pin_T1G_RA4_direction     is pin_A4_direction
+alias               pin_PWM2_RA4_direction    is pin_A4_direction
+alias               pin_CWG1B_RA4_direction   is pin_A4_direction
+alias               pin_CLKOUT_direction      is pin_A4_direction
+--
+var volatile bit    TRISA_TRISA5              at TRISA : 5
+alias               pin_A5_direction          is TRISA_TRISA5
+alias               pin_T1CKI_direction       is pin_A5_direction
+alias               pin_PWM1_RA5_direction    is pin_A5_direction
+alias               pin_CWG1A_RA5_direction   is pin_A5_direction
+alias               pin_CLKIN_direction       is pin_A5_direction
+--
+-- ------------------------------------------------
+var volatile byte   PIE1                      at { 0x91 }
+var volatile bit    PIE1_TMR1IE               at PIE1 : 0
+var volatile bit    PIE1_TMR2IE               at PIE1 : 1
+var volatile bit    PIE1_ADIE                 at PIE1 : 6
+var volatile bit    PIE1_TMR1GIE              at PIE1 : 7
+-- ------------------------------------------------
+var volatile byte   PIE2                      at { 0x92 }
+var volatile bit    PIE2_C1IE                 at PIE2 : 5
+-- ------------------------------------------------
+var volatile byte   PIE3                      at { 0x93 }
+var volatile bit    PIE3_PWM1IE               at PIE3 : 4
+var volatile bit    PIE3_PWM2IE               at PIE3 : 5
+var volatile bit    PIE3_PWM3IE               at PIE3 : 6
+-- ------------------------------------------------
+var volatile byte   OPTION_REG                at { 0x95 }
+var volatile bit    OPTION_REG_PS0            at OPTION_REG : 0
+var volatile bit    OPTION_REG_PS1            at OPTION_REG : 1
+var volatile bit    OPTION_REG_PS             at OPTION_REG : 2
+var volatile bit    OPTION_REG_PS2            at OPTION_REG : 2
+alias               T0CON_T0PS                is OPTION_REG_PS
+var volatile bit    OPTION_REG_PSA            at OPTION_REG : 3
+alias               T0CON_PSA                 is OPTION_REG_PSA
+var volatile bit    OPTION_REG_TMR0SE         at OPTION_REG : 4
+var volatile bit    OPTION_REG_TMR0CS         at OPTION_REG : 5
+var volatile bit    OPTION_REG_INTEDG         at OPTION_REG : 6
+var volatile bit    OPTION_REG_NWPUEN         at OPTION_REG : 7
+var volatile bit    OPTION_REG_T0SE           at OPTION_REG : 4
+alias               T0CON_T0SE                is OPTION_REG_T0SE
+var volatile bit    OPTION_REG_T0CS           at OPTION_REG : 5
+alias               T0CON_T0CS                is OPTION_REG_T0CS
+-- ------------------------------------------------
+var volatile byte   PCON                      at { 0x96 }
+var volatile bit    PCON_NBOR                 at PCON : 0
+var volatile bit    PCON_NPOR                 at PCON : 1
+var volatile bit    PCON_NRI                  at PCON : 2
+var volatile bit    PCON_NRMCLR               at PCON : 3
+var volatile bit    PCON_NRWDT                at PCON : 4
+var volatile bit    PCON_STKUNF               at PCON : 6
+var volatile bit    PCON_STKOVF               at PCON : 7
+-- ------------------------------------------------
+var volatile byte   WDTCON                    at { 0x97 }
+var volatile bit    WDTCON_SWDTEN             at WDTCON : 0
+var volatile bit    WDTCON_WDTPS0             at WDTCON : 1
+var volatile bit    WDTCON_WDTPS1             at WDTCON : 2
+var volatile bit    WDTCON_WDTPS2             at WDTCON : 3
+var volatile bit    WDTCON_WDTPS3             at WDTCON : 4
+var volatile bit    WDTCON_WDTPS4             at WDTCON : 5
+var volatile bit*5  WDTCON_WDTPS              at WDTCON : 1
+-- ------------------------------------------------
+var volatile byte   OSCTUNE                   at { 0x98 }
+var volatile bit    OSCTUNE_TUN0              at OSCTUNE : 0
+var volatile bit    OSCTUNE_TUN1              at OSCTUNE : 1
+var volatile bit    OSCTUNE_TUN2              at OSCTUNE : 2
+var volatile bit    OSCTUNE_TUN3              at OSCTUNE : 3
+var volatile bit    OSCTUNE_TUN4              at OSCTUNE : 4
+var volatile bit    OSCTUNE_TUN5              at OSCTUNE : 5
+var volatile bit*6  OSCTUNE_TUN               at OSCTUNE : 0
+-- ------------------------------------------------
+var volatile byte   OSCCON                    at { 0x99 }
+var volatile bit    OSCCON_SCS0               at OSCCON : 0
+var volatile bit    OSCCON_SCS1               at OSCCON : 1
+var volatile bit*4  OSCCON_IRCF               at OSCCON : 3
+var volatile bit    OSCCON_SPLLEN             at OSCCON : 7
+var volatile bit*2  OSCCON_SCS                at OSCCON : 0
+-- ------------------------------------------------
+var volatile byte   OSCSTAT                   at { 0x9A }
+var volatile bit    OSCSTAT_HFIOFS            at OSCSTAT : 0
+var volatile bit    OSCSTAT_LFIOFR            at OSCSTAT : 1
+var volatile bit    OSCSTAT_MFIOFR            at OSCSTAT : 2
+var volatile bit    OSCSTAT_HFIOFL            at OSCSTAT : 3
+var volatile bit    OSCSTAT_HFIOFR            at OSCSTAT : 4
+var volatile bit    OSCSTAT_OSTS              at OSCSTAT : 5
+var volatile bit    OSCSTAT_PLLR              at OSCSTAT : 6
+-- ------------------------------------------------
+var volatile word   ADRES                     at { 0x9B }
+-- ------------------------------------------------
+var volatile byte   ADRESL                    at { 0x9B }
+-- ------------------------------------------------
+var volatile byte   ADRESH                    at { 0x9C }
+-- ------------------------------------------------
+var volatile byte   ADCON0                    at { 0x9D }
+var volatile bit    ADCON0_ADON               at ADCON0 : 0
+var volatile bit    ADCON0_GO_NDONE           at ADCON0 : 1
+var volatile bit    ADCON0_CHS0               at ADCON0 : 2
+var volatile bit    ADCON0_CHS1               at ADCON0 : 3
+var volatile bit    ADCON0_CHS2               at ADCON0 : 4
+var volatile bit    ADCON0_CHS3               at ADCON0 : 5
+var volatile bit    ADCON0_CHS4               at ADCON0 : 6
+var volatile bit    ADCON0_ADGO               at ADCON0 : 1
+var volatile bit*5  ADCON0_CHS                at ADCON0 : 2
+var volatile bit    ADCON0_GO                 at ADCON0 : 1
+var volatile bit    ADCON0_NDONE              at ADCON0 : 1
+-- ------------------------------------------------
+var volatile byte   ADCON1                    at { 0x9E }
+var volatile bit    ADCON1_ADPREF0            at ADCON1 : 0
+var volatile bit    ADCON1_ADPREF1            at ADCON1 : 1
+var volatile bit    ADCON1_ADCS0              at ADCON1 : 4
+var volatile bit    ADCON1_ADCS1              at ADCON1 : 5
+var volatile bit    ADCON1_ADCS2              at ADCON1 : 6
+var volatile bit    ADCON1_ADFM               at ADCON1 : 7
+var volatile bit*2  ADCON1_ADPREF             at ADCON1 : 0
+var volatile bit*3  ADCON1_ADCS               at ADCON1 : 4
+-- ------------------------------------------------
+var volatile byte   ADCON2                    at { 0x9F }
+var volatile bit    ADCON2_TRIGSEL0           at ADCON2 : 4
+var volatile bit    ADCON2_TRIGSEL1           at ADCON2 : 5
+var volatile bit    ADCON2_TRIGSEL2           at ADCON2 : 6
+var volatile bit    ADCON2_TRIGSEL3           at ADCON2 : 7
+var volatile bit*4  ADCON2_TRIGSEL            at ADCON2 : 4
+-- ------------------------------------------------
+var volatile byte   LATA                      at { 0x10C }
+--
+procedure PORTA'put(byte in x at LATA) is
+   pragma inline
+end procedure
+--
+procedure PORTA_low'put(byte in x) is
+   LATA = (LATA & 0xF0) | (x & 0x0F)
+end procedure
+function PORTA_low'get() return byte is
+   return (PORTA & 0x0F)
+end function
+--
+procedure PORTA_high'put(byte in x) is
+   LATA = (LATA & 0x0F) | (x << 4)
+end procedure
+function PORTA_high'get() return byte is
+   return (PORTA >> 4)
+end function
+--
+var volatile bit    LATA_LATA0                at LATA : 0
+var volatile bit    pin_A0                    at PORTA : 0
+alias               pin_AN0                   is pin_A0
+alias               pin_C1IN_POS              is pin_A0
+alias               pin_PWM2_RA0              is pin_A0
+alias               pin_DAC1OUT               is pin_A0
+alias               pin_CWG1B_RA0             is pin_A0
+alias               pin_ICSPDAT               is pin_A0
+alias               pin_ICDDAT                is pin_A0
+--
+procedure pin_A0'put(bit in x at LATA : 0) is
+   pragma inline
+end procedure
+--
+var volatile bit    LATA_LATA1                at LATA : 1
+var volatile bit    pin_A1                    at PORTA : 1
+alias               pin_AN1                   is pin_A1
+alias               pin_VREF_POS              is pin_A1
+alias               pin_C1IN0_NEG             is pin_A1
+alias               pin_PWM1_RA1              is pin_A1
+alias               pin_ICSPCLK               is pin_A1
+alias               pin_ICDCLK                is pin_A1
+--
+procedure pin_A1'put(bit in x at LATA : 1) is
+   pragma inline
+end procedure
+--
+var volatile bit    LATA_LATA2                at LATA : 2
+var volatile bit    pin_A2                    at PORTA : 2
+alias               pin_AN2                   is pin_A2
+alias               pin_T0CKI                 is pin_A2
+alias               pin_PWM3                  is pin_A2
+alias               pin_C1OUT                 is pin_A2
+alias               pin_CWG1FLT               is pin_A2
+alias               pin_CWG1A_RA2             is pin_A2
+--
+procedure pin_A2'put(bit in x at LATA : 2) is
+   pragma inline
+end procedure
+--
+var volatile bit    LATA_LATA4                at LATA : 4
+var volatile bit    pin_A4                    at PORTA : 4
+alias               pin_AN3                   is pin_A4
+alias               pin_C1IN1_NEG             is pin_A4
+alias               pin_T1G_RA4               is pin_A4
+alias               pin_PWM2_RA4              is pin_A4
+alias               pin_CWG1B_RA4             is pin_A4
+alias               pin_CLKOUT                is pin_A4
+--
+procedure pin_A4'put(bit in x at LATA : 4) is
+   pragma inline
+end procedure
+--
+var volatile bit    LATA_LATA5                at LATA : 5
+var volatile bit    pin_A5                    at PORTA : 5
+alias               pin_T1CKI                 is pin_A5
+alias               pin_PWM1_RA5              is pin_A5
+alias               pin_CWG1A_RA5             is pin_A5
+alias               pin_CLKIN                 is pin_A5
+--
+procedure pin_A5'put(bit in x at LATA : 5) is
+   pragma inline
+end procedure
+--
+-- ------------------------------------------------
+var volatile byte   CM1CON0                   at { 0x111 }
+var volatile bit    CM1CON0_C1SYNC            at CM1CON0 : 0
+var volatile bit    CM1CON0_C1HYS             at CM1CON0 : 1
+var volatile bit    CM1CON0_C1SP              at CM1CON0 : 2
+var volatile bit    CM1CON0_C1POL             at CM1CON0 : 4
+var volatile bit    CM1CON0_C1OE              at CM1CON0 : 5
+var volatile bit    CM1CON0_C1OUT             at CM1CON0 : 6
+var volatile bit    CM1CON0_C1ON              at CM1CON0 : 7
+-- ------------------------------------------------
+var volatile byte   CM1CON1                   at { 0x112 }
+var volatile bit    CM1CON1_C1NCH0            at CM1CON1 : 0
+var volatile bit    CM1CON1_C1NCH1            at CM1CON1 : 1
+var volatile bit    CM1CON1_C1NCH2            at CM1CON1 : 2
+var volatile bit    CM1CON1_C1PCH0            at CM1CON1 : 4
+var volatile bit    CM1CON1_C1PCH1            at CM1CON1 : 5
+var volatile bit    CM1CON1_C1INTN            at CM1CON1 : 6
+var volatile bit    CM1CON1_C1INTP            at CM1CON1 : 7
+var volatile bit*3  CM1CON1_C1NCH             at CM1CON1 : 0
+var volatile bit*2  CM1CON1_C1PCH             at CM1CON1 : 4
+-- ------------------------------------------------
+var volatile byte   CMOUT                     at { 0x115 }
+var volatile bit    CMOUT_MC1OUT              at CMOUT : 0
+-- ------------------------------------------------
+var volatile byte   BORCON                    at { 0x116 }
+var volatile bit    BORCON_BORRDY             at BORCON : 0
+var volatile bit    BORCON_BORFS              at BORCON : 6
+var volatile bit    BORCON_SBOREN             at BORCON : 7
+-- ------------------------------------------------
+var volatile byte   FVRCON                    at { 0x117 }
+var volatile bit    FVRCON_ADFVR0             at FVRCON : 0
+var volatile bit*2  FVRCON_ADFVR              at FVRCON : 0
+var volatile bit    FVRCON_ADFVR1             at FVRCON : 1
+var volatile bit    FVRCON_CDAFVR0            at FVRCON : 2
+var volatile bit*2  FVRCON_CDAFVR             at FVRCON : 2
+var volatile bit    FVRCON_CDAFVR1            at FVRCON : 3
+var volatile bit    FVRCON_TSRNG              at FVRCON : 4
+var volatile bit    FVRCON_TSEN               at FVRCON : 5
+var volatile bit    FVRCON_FVRRDY             at FVRCON : 6
+var volatile bit    FVRCON_FVREN              at FVRCON : 7
+-- ------------------------------------------------
+var volatile byte   DACCON0                   at { 0x118 }
+var volatile bit    DACCON0_DACPSS0           at DACCON0 : 2
+var volatile bit    DACCON0_DACPSS1           at DACCON0 : 3
+var volatile bit    DACCON0_DACOE             at DACCON0 : 5
+var volatile bit    DACCON0_DACLPS            at DACCON0 : 6
+var volatile bit    DACCON0_DACEN             at DACCON0 : 7
+var volatile bit*2  DACCON0_DACPSS            at DACCON0 : 2
+-- ------------------------------------------------
+var volatile byte   DACCON1                   at { 0x119 }
+var volatile bit    DACCON1_DACR0             at DACCON1 : 0
+var volatile bit    DACCON1_DACR1             at DACCON1 : 1
+var volatile bit    DACCON1_DACR2             at DACCON1 : 2
+var volatile bit    DACCON1_DACR3             at DACCON1 : 3
+var volatile bit    DACCON1_DACR4             at DACCON1 : 4
+var volatile bit*5  DACCON1_DACR              at DACCON1 : 0
+-- ------------------------------------------------
+var volatile byte   APFCON                    at { 0x11D }
+var volatile bit    APFCON_P1SEL              at APFCON : 0
+var volatile bit    APFCON_P2SEL              at APFCON : 1
+var volatile bit    APFCON_T1GSEL             at APFCON : 3
+var volatile bit    APFCON_CWGBSEL            at APFCON : 5
+var volatile bit    APFCON_CWGASEL            at APFCON : 6
+-- ------------------------------------------------
+var volatile byte   ANSELA                    at { 0x18C }
+var volatile bit    ANSELA_ANSA0              at ANSELA : 0
+alias               JANSEL_ANS0               is ANSELA_ANSA0
+var volatile bit    ANSELA_ANSA1              at ANSELA : 1
+alias               JANSEL_ANS1               is ANSELA_ANSA1
+var volatile bit    ANSELA_ANSA2              at ANSELA : 2
+alias               JANSEL_ANS2               is ANSELA_ANSA2
+var volatile bit    ANSELA_ANSA4              at ANSELA : 4
+var volatile bit*5  ANSELA_ANSELA             at ANSELA : 0
+-- ------------------------------------------------
+var volatile word   PMADR                     at { 0x191 }
+-- ------------------------------------------------
+var volatile byte   PMADRL                    at { 0x191 }
+-- ------------------------------------------------
+var volatile byte   PMADRH                    at { 0x192 }
+var volatile bit*7  PMADRH_PMADRH             at PMADRH : 0
+-- ------------------------------------------------
+var volatile word   PMDAT                     at { 0x193 }
+-- ------------------------------------------------
+var volatile byte   PMDATL                    at { 0x193 }
+-- ------------------------------------------------
+var volatile byte   PMDATH                    at { 0x194 }
+var volatile bit*6  PMDATH_PMDATH             at PMDATH : 0
+-- ------------------------------------------------
+var volatile byte   PMCON1                    at { 0x195 }
+var volatile bit    PMCON1_RD                 at PMCON1 : 0
+var volatile bit    PMCON1_WR                 at PMCON1 : 1
+var volatile bit    PMCON1_WREN               at PMCON1 : 2
+var volatile bit    PMCON1_WRERR              at PMCON1 : 3
+var volatile bit    PMCON1_FREE               at PMCON1 : 4
+var volatile bit    PMCON1_LWLO               at PMCON1 : 5
+var volatile bit    PMCON1_CFGS               at PMCON1 : 6
+-- ------------------------------------------------
+var volatile byte   PMCON2                    at { 0x196 }
+-- ------------------------------------------------
+var volatile byte   VREGCON                   at { 0x197 }
+var volatile bit    VREGCON_VREGPM0           at VREGCON : 0
+var volatile bit    VREGCON_VREGPM1           at VREGCON : 1
+var volatile bit*2  VREGCON_VREGPM            at VREGCON : 0
+-- ------------------------------------------------
+var volatile byte   WPUA                      at { 0x20C }
+var volatile bit    WPUA_WPUA0                at WPUA : 0
+var volatile bit    WPUA_WPUA1                at WPUA : 1
+var volatile bit    WPUA_WPUA2                at WPUA : 2
+var volatile bit    WPUA_WPUA3                at WPUA : 3
+var volatile bit    WPUA_WPUA4                at WPUA : 4
+var volatile bit    WPUA_WPUA5                at WPUA : 5
+var volatile bit*6  WPUA_WPUA                 at WPUA : 0
+-- ------------------------------------------------
+var volatile byte   ODCONA                    at { 0x28C }
+var volatile bit    ODCONA_ODA0               at ODCONA : 0
+var volatile bit    ODCONA_ODA1               at ODCONA : 1
+var volatile bit    ODCONA_ODA2               at ODCONA : 2
+var volatile bit    ODCONA_ODA4               at ODCONA : 4
+var volatile bit    ODCONA_ODA5               at ODCONA : 5
+var volatile bit*6  ODCONA_ODA                at ODCONA : 0
+-- ------------------------------------------------
+var volatile byte   SLRCONA                   at { 0x30C }
+var volatile bit    SLRCONA_SLRA0             at SLRCONA : 0
+var volatile bit    SLRCONA_SLRA1             at SLRCONA : 1
+var volatile bit    SLRCONA_SLRA2             at SLRCONA : 2
+var volatile bit    SLRCONA_SLRA4             at SLRCONA : 4
+var volatile bit    SLRCONA_SLRA5             at SLRCONA : 5
+var volatile bit*6  SLRCONA_SLRA              at SLRCONA : 0
+-- ------------------------------------------------
+var volatile byte   INLVLA                    at { 0x38C }
+var volatile bit    INLVLA_INLVLA0            at INLVLA : 0
+var volatile bit    INLVLA_INLVLA1            at INLVLA : 1
+var volatile bit    INLVLA_INLVLA2            at INLVLA : 2
+var volatile bit    INLVLA_INLVLA3            at INLVLA : 3
+var volatile bit    INLVLA_INLVLA4            at INLVLA : 4
+var volatile bit    INLVLA_INLVLA5            at INLVLA : 5
+var volatile bit*6  INLVLA_INLVLA             at INLVLA : 0
+-- ------------------------------------------------
+var volatile byte   IOCAP                     at { 0x391 }
+var volatile bit    IOCAP_IOCAP0              at IOCAP : 0
+var volatile bit    IOCAP_IOCAP1              at IOCAP : 1
+var volatile bit    IOCAP_IOCAP2              at IOCAP : 2
+var volatile bit    IOCAP_IOCAP3              at IOCAP : 3
+var volatile bit    IOCAP_IOCAP4              at IOCAP : 4
+var volatile bit    IOCAP_IOCAP5              at IOCAP : 5
+var volatile bit*6  IOCAP_IOCAP               at IOCAP : 0
+-- ------------------------------------------------
+var volatile byte   IOCAN                     at { 0x392 }
+var volatile bit    IOCAN_IOCAN0              at IOCAN : 0
+var volatile bit    IOCAN_IOCAN1              at IOCAN : 1
+var volatile bit    IOCAN_IOCAN2              at IOCAN : 2
+var volatile bit    IOCAN_IOCAN3              at IOCAN : 3
+var volatile bit    IOCAN_IOCAN4              at IOCAN : 4
+var volatile bit    IOCAN_IOCAN5              at IOCAN : 5
+var volatile bit*6  IOCAN_IOCAN               at IOCAN : 0
+-- ------------------------------------------------
+var volatile byte   IOCAF                     at { 0x393 }
+var volatile bit    IOCAF_IOCAF0              at IOCAF : 0
+var volatile bit    IOCAF_IOCAF1              at IOCAF : 1
+var volatile bit    IOCAF_IOCAF2              at IOCAF : 2
+var volatile bit    IOCAF_IOCAF3              at IOCAF : 3
+var volatile bit    IOCAF_IOCAF4              at IOCAF : 4
+var volatile bit    IOCAF_IOCAF5              at IOCAF : 5
+var volatile bit*6  IOCAF_IOCAF               at IOCAF : 0
+-- ------------------------------------------------
+var volatile byte   CWG1DBR                   at { 0x691 }
+var volatile bit*6  CWG1DBR_CWG1DBR           at CWG1DBR : 0
+var volatile bit    CWG1DBR_CWG1DBR0          at CWG1DBR : 0
+var volatile bit    CWG1DBR_CWG1DBR1          at CWG1DBR : 1
+var volatile bit    CWG1DBR_CWG1DBR2          at CWG1DBR : 2
+var volatile bit    CWG1DBR_CWG1DBR3          at CWG1DBR : 3
+var volatile bit    CWG1DBR_CWG1DBR4          at CWG1DBR : 4
+var volatile bit    CWG1DBR_CWG1DBR5          at CWG1DBR : 5
+-- ------------------------------------------------
+var volatile byte   CWG1DBF                   at { 0x692 }
+var volatile bit*6  CWG1DBF_CWG1DBF           at CWG1DBF : 0
+var volatile bit    CWG1DBF_CWG1DBF0          at CWG1DBF : 0
+var volatile bit    CWG1DBF_CWG1DBF1          at CWG1DBF : 1
+var volatile bit    CWG1DBF_CWG1DBF2          at CWG1DBF : 2
+var volatile bit    CWG1DBF_CWG1DBF3          at CWG1DBF : 3
+var volatile bit    CWG1DBF_CWG1DBF4          at CWG1DBF : 4
+var volatile bit    CWG1DBF_CWG1DBF5          at CWG1DBF : 5
+-- ------------------------------------------------
+var volatile byte   CWG1CON0                  at { 0x693 }
+var volatile bit    CWG1CON0_G1CS0            at CWG1CON0 : 0
+var volatile bit    CWG1CON0_G1POLA           at CWG1CON0 : 3
+var volatile bit    CWG1CON0_G1POLB           at CWG1CON0 : 4
+var volatile bit    CWG1CON0_G1OEA            at CWG1CON0 : 5
+var volatile bit    CWG1CON0_G1OEB            at CWG1CON0 : 6
+var volatile bit    CWG1CON0_G1EN             at CWG1CON0 : 7
+var volatile bit*2  CWG1CON0_G1CS             at CWG1CON0 : 0
+-- ------------------------------------------------
+var volatile byte   CWG1CON1                  at { 0x694 }
+var volatile bit    CWG1CON1_G1IS0            at CWG1CON1 : 0
+var volatile bit    CWG1CON1_G1IS1            at CWG1CON1 : 1
+var volatile bit    CWG1CON1_G1IS2            at CWG1CON1 : 2
+var volatile bit*2  CWG1CON1_G1ASDLA          at CWG1CON1 : 4
+var volatile bit*2  CWG1CON1_G1ASDLB          at CWG1CON1 : 6
+var volatile bit*4  CWG1CON1_G1IS             at CWG1CON1 : 0
+var volatile bit    CWG1CON1_G1ASDLA0         at CWG1CON1 : 4
+var volatile bit    CWG1CON1_G1ASDLA1         at CWG1CON1 : 5
+var volatile bit    CWG1CON1_G1ASDLB0         at CWG1CON1 : 6
+var volatile bit    CWG1CON1_G1ASDLB1         at CWG1CON1 : 7
+-- ------------------------------------------------
+var volatile byte   CWG1CON2                  at { 0x695 }
+var volatile bit    CWG1CON2_G1ASDSFLT        at CWG1CON2 : 1
+var volatile bit    CWG1CON2_G1ASDSC1         at CWG1CON2 : 2
+var volatile bit    CWG1CON2_G1ARSEN          at CWG1CON2 : 6
+var volatile bit    CWG1CON2_G1ASE            at CWG1CON2 : 7
+-- ------------------------------------------------
+var volatile byte   PWMEN                     at { 0xD8E }
+var volatile bit    PWMEN_PWM1EN_A            at PWMEN : 0
+var volatile bit    PWMEN_PWM2EN_A            at PWMEN : 1
+var volatile bit    PWMEN_PWM3EN_A            at PWMEN : 2
+var volatile bit    PWMEN_MPWM1EN             at PWMEN : 0
+var volatile bit    PWMEN_MPWM2EN             at PWMEN : 1
+var volatile bit    PWMEN_MPWM3EN             at PWMEN : 2
+-- ------------------------------------------------
+var volatile byte   PWMLD                     at { 0xD8F }
+var volatile bit    PWMLD_PWM1LDA_A           at PWMLD : 0
+var volatile bit    PWMLD_PWM2LDA_A           at PWMLD : 1
+var volatile bit    PWMLD_PWM3LDA_A           at PWMLD : 2
+var volatile bit    PWMLD_MPWM1LD             at PWMLD : 0
+var volatile bit    PWMLD_MPWM2LD             at PWMLD : 1
+var volatile bit    PWMLD_MPWM3LD             at PWMLD : 2
+-- ------------------------------------------------
+var volatile byte   PWMOUT                    at { 0xD90 }
+var volatile bit    PWMOUT_PWM1OUT_A          at PWMOUT : 0
+var volatile bit    PWMOUT_PWM2OUT_A          at PWMOUT : 1
+var volatile bit    PWMOUT_PWM3OUT_A          at PWMOUT : 2
+var volatile bit    PWMOUT_MPWM1OUT           at PWMOUT : 0
+var volatile bit    PWMOUT_MPWM2OUT           at PWMOUT : 1
+var volatile bit    PWMOUT_MPWM3OUT           at PWMOUT : 2
+-- ------------------------------------------------
+var volatile word   PWM1PH                    at { 0xD91 }
+-- ------------------------------------------------
+var volatile byte   PWM1PHL                   at { 0xD91 }
+var volatile bit    PWM1PHL_PWM1PHL0          at PWM1PHL : 0
+var volatile bit    PWM1PHL_PWM1PHL1          at PWM1PHL : 1
+var volatile bit    PWM1PHL_PWM1PHL2          at PWM1PHL : 2
+var volatile bit    PWM1PHL_PWM1PHL3          at PWM1PHL : 3
+var volatile bit    PWM1PHL_PWM1PHL4          at PWM1PHL : 4
+var volatile bit    PWM1PHL_PWM1PHL5          at PWM1PHL : 5
+var volatile bit    PWM1PHL_PWM1PHL6          at PWM1PHL : 6
+var volatile bit    PWM1PHL_PWM1PHL7          at PWM1PHL : 7
+var volatile bit    PWM1PHL_PH0               at PWM1PHL : 0
+var volatile bit    PWM1PHL_PH1               at PWM1PHL : 1
+var volatile bit    PWM1PHL_PH2               at PWM1PHL : 2
+var volatile bit    PWM1PHL_PH3               at PWM1PHL : 3
+var volatile bit    PWM1PHL_PH4               at PWM1PHL : 4
+var volatile bit    PWM1PHL_PH5               at PWM1PHL : 5
+var volatile bit    PWM1PHL_PH6               at PWM1PHL : 6
+var volatile bit    PWM1PHL_PH7               at PWM1PHL : 7
+-- ------------------------------------------------
+var volatile byte   PWM1PHH                   at { 0xD92 }
+var volatile bit    PWM1PHH_PWM1PHH0          at PWM1PHH : 0
+var volatile bit    PWM1PHH_PWM1PHH1          at PWM1PHH : 1
+var volatile bit    PWM1PHH_PWM1PHH2          at PWM1PHH : 2
+var volatile bit    PWM1PHH_PWM1PHH3          at PWM1PHH : 3
+var volatile bit    PWM1PHH_PWM1PHH4          at PWM1PHH : 4
+var volatile bit    PWM1PHH_PWM1PHH5          at PWM1PHH : 5
+var volatile bit    PWM1PHH_PWM1PHH6          at PWM1PHH : 6
+var volatile bit    PWM1PHH_PWM1PHH7          at PWM1PHH : 7
+var volatile bit    PWM1PHH_PH8               at PWM1PHH : 0
+var volatile bit    PWM1PHH_PH9               at PWM1PHH : 1
+var volatile bit    PWM1PHH_PH10              at PWM1PHH : 2
+var volatile bit    PWM1PHH_PH11              at PWM1PHH : 3
+var volatile bit    PWM1PHH_PH12              at PWM1PHH : 4
+var volatile bit    PWM1PHH_PH13              at PWM1PHH : 5
+var volatile bit    PWM1PHH_PH14              at PWM1PHH : 6
+var volatile bit    PWM1PHH_PH15              at PWM1PHH : 7
+-- ------------------------------------------------
+var volatile word   PWM1DC                    at { 0xD93 }
+-- ------------------------------------------------
+var volatile byte   PWM1DCL                   at { 0xD93 }
+var volatile bit    PWM1DCL_PWM1DCL0          at PWM1DCL : 0
+var volatile bit    PWM1DCL_PWM1DCL1          at PWM1DCL : 1
+var volatile bit    PWM1DCL_PWM1DCL2          at PWM1DCL : 2
+var volatile bit    PWM1DCL_PWM1DCL3          at PWM1DCL : 3
+var volatile bit    PWM1DCL_PWM1DCL4          at PWM1DCL : 4
+var volatile bit    PWM1DCL_PWM1DCL5          at PWM1DCL : 5
+var volatile bit    PWM1DCL_PWM1DCL6          at PWM1DCL : 6
+var volatile bit    PWM1DCL_PWM1DCL7          at PWM1DCL : 7
+var volatile bit    PWM1DCL_DC0               at PWM1DCL : 0
+var volatile bit    PWM1DCL_DC1               at PWM1DCL : 1
+var volatile bit    PWM1DCL_DC2               at PWM1DCL : 2
+var volatile bit    PWM1DCL_DC3               at PWM1DCL : 3
+var volatile bit    PWM1DCL_DC4               at PWM1DCL : 4
+var volatile bit    PWM1DCL_DC5               at PWM1DCL : 5
+var volatile bit    PWM1DCL_DC6               at PWM1DCL : 6
+var volatile bit    PWM1DCL_DC7               at PWM1DCL : 7
+-- ------------------------------------------------
+var volatile byte   PWM1DCH                   at { 0xD94 }
+var volatile bit    PWM1DCH_PWM1DCH0          at PWM1DCH : 0
+var volatile bit    PWM1DCH_PWM1DCH1          at PWM1DCH : 1
+var volatile bit    PWM1DCH_PWM1DCH2          at PWM1DCH : 2
+var volatile bit    PWM1DCH_PWM1DCH3          at PWM1DCH : 3
+var volatile bit    PWM1DCH_PWM1DCH4          at PWM1DCH : 4
+var volatile bit    PWM1DCH_PWM1DCH5          at PWM1DCH : 5
+var volatile bit    PWM1DCH_PWM1DCH6          at PWM1DCH : 6
+var volatile bit    PWM1DCH_PWM1DCH7          at PWM1DCH : 7
+var volatile bit    PWM1DCH_DC8               at PWM1DCH : 0
+var volatile bit    PWM1DCH_DC9               at PWM1DCH : 1
+var volatile bit    PWM1DCH_DC10              at PWM1DCH : 2
+var volatile bit    PWM1DCH_DC11              at PWM1DCH : 3
+var volatile bit    PWM1DCH_DC12              at PWM1DCH : 4
+var volatile bit    PWM1DCH_DC13              at PWM1DCH : 5
+var volatile bit    PWM1DCH_DC14              at PWM1DCH : 6
+var volatile bit    PWM1DCH_DC15              at PWM1DCH : 7
+-- ------------------------------------------------
+var volatile word   PWM1PR                    at { 0xD95 }
+-- ------------------------------------------------
+var volatile byte   PWM1PRL                   at { 0xD95 }
+var volatile bit    PWM1PRL_PWM1PRL0          at PWM1PRL : 0
+var volatile bit    PWM1PRL_PWM1PRL1          at PWM1PRL : 1
+var volatile bit    PWM1PRL_PWM1PRL2          at PWM1PRL : 2
+var volatile bit    PWM1PRL_PWM1PRL3          at PWM1PRL : 3
+var volatile bit    PWM1PRL_PWM1PRL4          at PWM1PRL : 4
+var volatile bit    PWM1PRL_PWM1PRL5          at PWM1PRL : 5
+var volatile bit    PWM1PRL_PWM1PRL6          at PWM1PRL : 6
+var volatile bit    PWM1PRL_PWM1PRL7          at PWM1PRL : 7
+var volatile bit    PWM1PRL_PR0               at PWM1PRL : 0
+var volatile bit    PWM1PRL_PR1               at PWM1PRL : 1
+var volatile bit    PWM1PRL_PR2               at PWM1PRL : 2
+var volatile bit    PWM1PRL_PR3               at PWM1PRL : 3
+var volatile bit    PWM1PRL_PR4               at PWM1PRL : 4
+var volatile bit    PWM1PRL_PR5               at PWM1PRL : 5
+var volatile bit    PWM1PRL_PR6               at PWM1PRL : 6
+var volatile bit    PWM1PRL_PR7               at PWM1PRL : 7
+-- ------------------------------------------------
+var volatile byte   PWM1PRH                   at { 0xD96 }
+var volatile bit    PWM1PRH_PWM1PRH0          at PWM1PRH : 0
+var volatile bit    PWM1PRH_PWM1PRH1          at PWM1PRH : 1
+var volatile bit    PWM1PRH_PWM1PRH2          at PWM1PRH : 2
+var volatile bit    PWM1PRH_PWM1PRH3          at PWM1PRH : 3
+var volatile bit    PWM1PRH_PWM1PRH4          at PWM1PRH : 4
+var volatile bit    PWM1PRH_PWM1PRH5          at PWM1PRH : 5
+var volatile bit    PWM1PRH_PWM1PRH6          at PWM1PRH : 6
+var volatile bit    PWM1PRH_PWM1PRH7          at PWM1PRH : 7
+var volatile bit    PWM1PRH_PR8               at PWM1PRH : 0
+var volatile bit    PWM1PRH_PR9               at PWM1PRH : 1
+var volatile bit    PWM1PRH_PR10              at PWM1PRH : 2
+var volatile bit    PWM1PRH_PR11              at PWM1PRH : 3
+var volatile bit    PWM1PRH_PR12              at PWM1PRH : 4
+var volatile bit    PWM1PRH_PR13              at PWM1PRH : 5
+var volatile bit    PWM1PRH_PR14              at PWM1PRH : 6
+var volatile bit    PWM1PRH_PR15              at PWM1PRH : 7
+-- ------------------------------------------------
+var volatile word   PWM1OF                    at { 0xD97 }
+-- ------------------------------------------------
+var volatile byte   PWM1OFL                   at { 0xD97 }
+var volatile bit    PWM1OFL_PWM1OFL0          at PWM1OFL : 0
+var volatile bit    PWM1OFL_PWM1OFL1          at PWM1OFL : 1
+var volatile bit    PWM1OFL_PWM1OFL2          at PWM1OFL : 2
+var volatile bit    PWM1OFL_PWM1OFL3          at PWM1OFL : 3
+var volatile bit    PWM1OFL_PWM1OFL4          at PWM1OFL : 4
+var volatile bit    PWM1OFL_PWM1OFL5          at PWM1OFL : 5
+var volatile bit    PWM1OFL_PWM1OFL6          at PWM1OFL : 6
+var volatile bit    PWM1OFL_PWM1OFL7          at PWM1OFL : 7
+var volatile bit    PWM1OFL_OF0               at PWM1OFL : 0
+var volatile bit    PWM1OFL_OF1               at PWM1OFL : 1
+var volatile bit    PWM1OFL_OF2               at PWM1OFL : 2
+var volatile bit    PWM1OFL_OF3               at PWM1OFL : 3
+var volatile bit    PWM1OFL_OF4               at PWM1OFL : 4
+var volatile bit    PWM1OFL_OF5               at PWM1OFL : 5
+var volatile bit    PWM1OFL_OF6               at PWM1OFL : 6
+var volatile bit    PWM1OFL_OF7               at PWM1OFL : 7
+-- ------------------------------------------------
+var volatile byte   PWM1OFH                   at { 0xD98 }
+var volatile bit    PWM1OFH_PWM1OFH0          at PWM1OFH : 0
+var volatile bit    PWM1OFH_PWM1OFH1          at PWM1OFH : 1
+var volatile bit    PWM1OFH_PWM1OFH2          at PWM1OFH : 2
+var volatile bit    PWM1OFH_PWM1OFH3          at PWM1OFH : 3
+var volatile bit    PWM1OFH_PWM1OFH4          at PWM1OFH : 4
+var volatile bit    PWM1OFH_PWM1OFH5          at PWM1OFH : 5
+var volatile bit    PWM1OFH_PWM1OFH6          at PWM1OFH : 6
+var volatile bit    PWM1OFH_PWM1OFH7          at PWM1OFH : 7
+var volatile bit    PWM1OFH_OF8               at PWM1OFH : 0
+var volatile bit    PWM1OFH_OF9               at PWM1OFH : 1
+var volatile bit    PWM1OFH_OF10              at PWM1OFH : 2
+var volatile bit    PWM1OFH_OF11              at PWM1OFH : 3
+var volatile bit    PWM1OFH_OF12              at PWM1OFH : 4
+var volatile bit    PWM1OFH_OF13              at PWM1OFH : 5
+var volatile bit    PWM1OFH_OF14              at PWM1OFH : 6
+var volatile bit    PWM1OFH_OF15              at PWM1OFH : 7
+-- ------------------------------------------------
+var volatile word   PWM1TMR                   at { 0xD99 }
+-- ------------------------------------------------
+var volatile byte   PWM1TMRL                  at { 0xD99 }
+var volatile bit    PWM1TMRL_PWM1TMRL0        at PWM1TMRL : 0
+var volatile bit    PWM1TMRL_PWM1TMRL1        at PWM1TMRL : 1
+var volatile bit    PWM1TMRL_PWM1TMRL2        at PWM1TMRL : 2
+var volatile bit    PWM1TMRL_PWM1TMRL3        at PWM1TMRL : 3
+var volatile bit    PWM1TMRL_PWM1TMRL4        at PWM1TMRL : 4
+var volatile bit    PWM1TMRL_PWM1TMRL5        at PWM1TMRL : 5
+var volatile bit    PWM1TMRL_PWM1TMRL6        at PWM1TMRL : 6
+var volatile bit    PWM1TMRL_PWM1TMRL7        at PWM1TMRL : 7
+var volatile bit    PWM1TMRL_TMR0             at PWM1TMRL : 0
+var volatile bit    PWM1TMRL_TMR1             at PWM1TMRL : 1
+var volatile bit    PWM1TMRL_TMR2             at PWM1TMRL : 2
+var volatile bit    PWM1TMRL_TMR3             at PWM1TMRL : 3
+var volatile bit    PWM1TMRL_TMR4             at PWM1TMRL : 4
+var volatile bit    PWM1TMRL_TMR5             at PWM1TMRL : 5
+var volatile bit    PWM1TMRL_TMR6             at PWM1TMRL : 6
+var volatile bit    PWM1TMRL_TMR7             at PWM1TMRL : 7
+-- ------------------------------------------------
+var volatile byte   PWM1TMRH                  at { 0xD9A }
+var volatile bit    PWM1TMRH_PWM1TMRH0        at PWM1TMRH : 0
+var volatile bit    PWM1TMRH_PWM1TMRH1        at PWM1TMRH : 1
+var volatile bit    PWM1TMRH_PWM1TMRH2        at PWM1TMRH : 2
+var volatile bit    PWM1TMRH_PWM1TMRH3        at PWM1TMRH : 3
+var volatile bit    PWM1TMRH_PWM1TMRH4        at PWM1TMRH : 4
+var volatile bit    PWM1TMRH_PWM1TMRH5        at PWM1TMRH : 5
+var volatile bit    PWM1TMRH_PWM1TMRH6        at PWM1TMRH : 6
+var volatile bit    PWM1TMRH_PWM1TMRH7        at PWM1TMRH : 7
+var volatile bit    PWM1TMRH_TMR8             at PWM1TMRH : 0
+var volatile bit    PWM1TMRH_TMR9             at PWM1TMRH : 1
+var volatile bit    PWM1TMRH_TMR10            at PWM1TMRH : 2
+var volatile bit    PWM1TMRH_TMR11            at PWM1TMRH : 3
+var volatile bit    PWM1TMRH_TMR12            at PWM1TMRH : 4
+var volatile bit    PWM1TMRH_TMR13            at PWM1TMRH : 5
+var volatile bit    PWM1TMRH_TMR14            at PWM1TMRH : 6
+var volatile bit    PWM1TMRH_TMR15            at PWM1TMRH : 7
+-- ------------------------------------------------
+var volatile byte   PWM1CON                   at { 0xD9B }
+var volatile bit*2  PWM1CON_MODE              at PWM1CON : 2
+var volatile bit    PWM1CON_POL               at PWM1CON : 4
+var volatile bit    PWM1CON_OUT               at PWM1CON : 5
+var volatile bit    PWM1CON_OE                at PWM1CON : 6
+var volatile bit    PWM1CON_EN                at PWM1CON : 7
+var volatile bit    PWM1CON_PWM1MOD0          at PWM1CON : 2
+var volatile bit    PWM1CON_PWM1MOD1          at PWM1CON : 3
+var volatile bit*2  PWM1CON_PWM1MOD           at PWM1CON : 2
+var volatile bit    PWM1CON_PWM1POL           at PWM1CON : 4
+var volatile bit    PWM1CON_PWM1OUT           at PWM1CON : 5
+var volatile bit    PWM1CON_PWM1OE            at PWM1CON : 6
+var volatile bit    PWM1CON_PWM1EN            at PWM1CON : 7
+var volatile bit    PWM1CON_MODE0             at PWM1CON : 2
+var volatile bit    PWM1CON_MODE1             at PWM1CON : 3
+-- ------------------------------------------------
+var volatile byte   PWM1IE                    at { 0xD9C }
+var volatile bit    PWM1IE_PRIE               at PWM1IE : 0
+var volatile bit    PWM1IE_DCIE               at PWM1IE : 1
+var volatile bit    PWM1IE_PHIE               at PWM1IE : 2
+var volatile bit    PWM1IE_OFIE               at PWM1IE : 3
+var volatile bit    PWM1IE_PWM1PRIE           at PWM1IE : 0
+var volatile bit    PWM1IE_PWM1DCIE           at PWM1IE : 1
+var volatile bit    PWM1IE_PWM1PHIE           at PWM1IE : 2
+var volatile bit    PWM1IE_PWM1OFIE           at PWM1IE : 3
+-- ------------------------------------------------
+var volatile byte   PWM1IR                    at { 0xD9D }
+var volatile bit    PWM1IR_PRIF               at PWM1IR : 0
+var volatile bit    PWM1IR_DCIF               at PWM1IR : 1
+var volatile bit    PWM1IR_PHIF               at PWM1IR : 2
+var volatile bit    PWM1IR_OFIF               at PWM1IR : 3
+var volatile bit    PWM1IR_PWM1PRIF           at PWM1IR : 0
+var volatile bit    PWM1IR_PWM1DCIF           at PWM1IR : 1
+var volatile bit    PWM1IR_PWM1PHIF           at PWM1IR : 2
+var volatile bit    PWM1IR_PWM1OFIF           at PWM1IR : 3
+-- ------------------------------------------------
+var volatile byte   PWM1CLKCON                at { 0xD9E }
+var volatile bit*2  PWM1CLKCON_CS             at PWM1CLKCON : 0
+var volatile bit*3  PWM1CLKCON_PS             at PWM1CLKCON : 4
+var volatile bit    PWM1CLKCON_PWM1CS0        at PWM1CLKCON : 0
+var volatile bit    PWM1CLKCON_PWM1CS1        at PWM1CLKCON : 1
+var volatile bit    PWM1CLKCON_PWM1PS0        at PWM1CLKCON : 4
+var volatile bit    PWM1CLKCON_PWM1PS1        at PWM1CLKCON : 5
+var volatile bit    PWM1CLKCON_PWM1PS2        at PWM1CLKCON : 6
+var volatile bit*3  PWM1CLKCON_PWM1CS         at PWM1CLKCON : 0
+var volatile bit*3  PWM1CLKCON_PWM1PS         at PWM1CLKCON : 4
+var volatile bit    PWM1CLKCON_CS0            at PWM1CLKCON : 0
+var volatile bit    PWM1CLKCON_CS1            at PWM1CLKCON : 1
+var volatile bit    PWM1CLKCON_PS0            at PWM1CLKCON : 4
+var volatile bit    PWM1CLKCON_PS1            at PWM1CLKCON : 5
+var volatile bit    PWM1CLKCON_PS2            at PWM1CLKCON : 6
+-- ------------------------------------------------
+var volatile byte   PWM1LDCON                 at { 0xD9F }
+var volatile bit*2  PWM1LDCON_LDS             at PWM1LDCON : 0
+var volatile bit    PWM1LDCON_LDT             at PWM1LDCON : 6
+var volatile bit    PWM1LDCON_LDA             at PWM1LDCON : 7
+var volatile bit    PWM1LDCON_PWM1LDS0        at PWM1LDCON : 0
+var volatile bit    PWM1LDCON_PWM1LDS1        at PWM1LDCON : 1
+var volatile bit*2  PWM1LDCON_PWM1LDS         at PWM1LDCON : 0
+var volatile bit    PWM1LDCON_PWM1LDM         at PWM1LDCON : 6
+var volatile bit    PWM1LDCON_PWM1LD          at PWM1LDCON : 7
+var volatile bit    PWM1LDCON_LDS0            at PWM1LDCON : 0
+var volatile bit    PWM1LDCON_LDS1            at PWM1LDCON : 1
+-- ------------------------------------------------
+var volatile byte   PWM1OFCON                 at { 0xDA0 }
+var volatile bit*2  PWM1OFCON_OFS             at PWM1OFCON : 0
+var volatile bit    PWM1OFCON_OFO             at PWM1OFCON : 4
+var volatile bit*2  PWM1OFCON_OFM             at PWM1OFCON : 5
+var volatile bit    PWM1OFCON_PWM1OFS0        at PWM1OFCON : 0
+var volatile bit    PWM1OFCON_PWM1OFS1        at PWM1OFCON : 1
+var volatile bit    PWM1OFCON_PWM1OFM0        at PWM1OFCON : 5
+var volatile bit    PWM1OFCON_PWM1OFM1        at PWM1OFCON : 6
+var volatile bit*2  PWM1OFCON_PWM1OFS         at PWM1OFCON : 0
+var volatile bit    PWM1OFCON_PWM1OFMC        at PWM1OFCON : 4
+var volatile bit*2  PWM1OFCON_PWM1OFM         at PWM1OFCON : 5
+var volatile bit    PWM1OFCON_OFS0            at PWM1OFCON : 0
+var volatile bit    PWM1OFCON_OFS1            at PWM1OFCON : 1
+var volatile bit    PWM1OFCON_OFM0            at PWM1OFCON : 5
+var volatile bit    PWM1OFCON_OFM1            at PWM1OFCON : 6
+-- ------------------------------------------------
+var volatile word   PWM2PH                    at { 0xDA1 }
+-- ------------------------------------------------
+var volatile byte   PWM2PHL                   at { 0xDA1 }
+var volatile bit    PWM2PHL_PWM2PHL0          at PWM2PHL : 0
+var volatile bit    PWM2PHL_PWM2PHL1          at PWM2PHL : 1
+var volatile bit    PWM2PHL_PWM2PHL2          at PWM2PHL : 2
+var volatile bit    PWM2PHL_PWM2PHL3          at PWM2PHL : 3
+var volatile bit    PWM2PHL_PWM2PHL4          at PWM2PHL : 4
+var volatile bit    PWM2PHL_PWM2PHL5          at PWM2PHL : 5
+var volatile bit    PWM2PHL_PWM2PHL6          at PWM2PHL : 6
+var volatile bit    PWM2PHL_PWM2PHL7          at PWM2PHL : 7
+var volatile bit    PWM2PHL_PH0               at PWM2PHL : 0
+var volatile bit    PWM2PHL_PH1               at PWM2PHL : 1
+var volatile bit    PWM2PHL_PH2               at PWM2PHL : 2
+var volatile bit    PWM2PHL_PH3               at PWM2PHL : 3
+var volatile bit    PWM2PHL_PH4               at PWM2PHL : 4
+var volatile bit    PWM2PHL_PH5               at PWM2PHL : 5
+var volatile bit    PWM2PHL_PH6               at PWM2PHL : 6
+var volatile bit    PWM2PHL_PH7               at PWM2PHL : 7
+-- ------------------------------------------------
+var volatile byte   PWM2PHH                   at { 0xDA2 }
+var volatile bit    PWM2PHH_PWM2PHH0          at PWM2PHH : 0
+var volatile bit    PWM2PHH_PWM2PHH1          at PWM2PHH : 1
+var volatile bit    PWM2PHH_PWM2PHH2          at PWM2PHH : 2
+var volatile bit    PWM2PHH_PWM2PHH3          at PWM2PHH : 3
+var volatile bit    PWM2PHH_PWM2PHH4          at PWM2PHH : 4
+var volatile bit    PWM2PHH_PWM2PHH5          at PWM2PHH : 5
+var volatile bit    PWM2PHH_PWM2PHH6          at PWM2PHH : 6
+var volatile bit    PWM2PHH_PWM2PHH7          at PWM2PHH : 7
+var volatile bit    PWM2PHH_PH8               at PWM2PHH : 0
+var volatile bit    PWM2PHH_PH9               at PWM2PHH : 1
+var volatile bit    PWM2PHH_PH10              at PWM2PHH : 2
+var volatile bit    PWM2PHH_PH11              at PWM2PHH : 3
+var volatile bit    PWM2PHH_PH12              at PWM2PHH : 4
+var volatile bit    PWM2PHH_PH13              at PWM2PHH : 5
+var volatile bit    PWM2PHH_PH14              at PWM2PHH : 6
+var volatile bit    PWM2PHH_PH15              at PWM2PHH : 7
+-- ------------------------------------------------
+var volatile word   PWM2DC                    at { 0xDA3 }
+-- ------------------------------------------------
+var volatile byte   PWM2DCL                   at { 0xDA3 }
+var volatile bit    PWM2DCL_PWM2DCL0          at PWM2DCL : 0
+var volatile bit    PWM2DCL_PWM2DCL1          at PWM2DCL : 1
+var volatile bit    PWM2DCL_PWM2DCL2          at PWM2DCL : 2
+var volatile bit    PWM2DCL_PWM2DCL3          at PWM2DCL : 3
+var volatile bit    PWM2DCL_PWM2DCL4          at PWM2DCL : 4
+var volatile bit    PWM2DCL_PWM2DCL5          at PWM2DCL : 5
+var volatile bit    PWM2DCL_PWM2DCL6          at PWM2DCL : 6
+var volatile bit    PWM2DCL_PWM2DCL7          at PWM2DCL : 7
+var volatile bit    PWM2DCL_DC0               at PWM2DCL : 0
+var volatile bit    PWM2DCL_DC1               at PWM2DCL : 1
+var volatile bit    PWM2DCL_DC2               at PWM2DCL : 2
+var volatile bit    PWM2DCL_DC3               at PWM2DCL : 3
+var volatile bit    PWM2DCL_DC4               at PWM2DCL : 4
+var volatile bit    PWM2DCL_DC5               at PWM2DCL : 5
+var volatile bit    PWM2DCL_DC6               at PWM2DCL : 6
+var volatile bit    PWM2DCL_DC7               at PWM2DCL : 7
+-- ------------------------------------------------
+var volatile byte   PWM2DCH                   at { 0xDA4 }
+var volatile bit    PWM2DCH_PWM2DCH0          at PWM2DCH : 0
+var volatile bit    PWM2DCH_PWM2DCH1          at PWM2DCH : 1
+var volatile bit    PWM2DCH_PWM2DCH2          at PWM2DCH : 2
+var volatile bit    PWM2DCH_PWM2DCH3          at PWM2DCH : 3
+var volatile bit    PWM2DCH_PWM2DCH4          at PWM2DCH : 4
+var volatile bit    PWM2DCH_PWM2DCH5          at PWM2DCH : 5
+var volatile bit    PWM2DCH_PWM2DCH6          at PWM2DCH : 6
+var volatile bit    PWM2DCH_PWM2DCH7          at PWM2DCH : 7
+var volatile bit    PWM2DCH_DC8               at PWM2DCH : 0
+var volatile bit    PWM2DCH_DC9               at PWM2DCH : 1
+var volatile bit    PWM2DCH_DC10              at PWM2DCH : 2
+var volatile bit    PWM2DCH_DC11              at PWM2DCH : 3
+var volatile bit    PWM2DCH_DC12              at PWM2DCH : 4
+var volatile bit    PWM2DCH_DC13              at PWM2DCH : 5
+var volatile bit    PWM2DCH_DC14              at PWM2DCH : 6
+var volatile bit    PWM2DCH_DC15              at PWM2DCH : 7
+-- ------------------------------------------------
+var volatile word   PWM2PR                    at { 0xDA5 }
+-- ------------------------------------------------
+var volatile byte   PWM2PRL                   at { 0xDA5 }
+var volatile bit    PWM2PRL_PWM2PRL0          at PWM2PRL : 0
+var volatile bit    PWM2PRL_PWM2PRL1          at PWM2PRL : 1
+var volatile bit    PWM2PRL_PWM2PRL2          at PWM2PRL : 2
+var volatile bit    PWM2PRL_PWM2PRL3          at PWM2PRL : 3
+var volatile bit    PWM2PRL_PWM2PRL4          at PWM2PRL : 4
+var volatile bit    PWM2PRL_PWM2PRL5          at PWM2PRL : 5
+var volatile bit    PWM2PRL_PWM2PRL6          at PWM2PRL : 6
+var volatile bit    PWM2PRL_PWM2PRL7          at PWM2PRL : 7
+var volatile bit    PWM2PRL_PR0               at PWM2PRL : 0
+var volatile bit    PWM2PRL_PR1               at PWM2PRL : 1
+var volatile bit    PWM2PRL_PR2               at PWM2PRL : 2
+var volatile bit    PWM2PRL_PR3               at PWM2PRL : 3
+var volatile bit    PWM2PRL_PR4               at PWM2PRL : 4
+var volatile bit    PWM2PRL_PR5               at PWM2PRL : 5
+var volatile bit    PWM2PRL_PR6               at PWM2PRL : 6
+var volatile bit    PWM2PRL_PR7               at PWM2PRL : 7
+-- ------------------------------------------------
+var volatile byte   PWM2PRH                   at { 0xDA6 }
+var volatile bit    PWM2PRH_PWM2PRH0          at PWM2PRH : 0
+var volatile bit    PWM2PRH_PWM2PRH1          at PWM2PRH : 1
+var volatile bit    PWM2PRH_PWM2PRH2          at PWM2PRH : 2
+var volatile bit    PWM2PRH_PWM2PRH3          at PWM2PRH : 3
+var volatile bit    PWM2PRH_PWM2PRH4          at PWM2PRH : 4
+var volatile bit    PWM2PRH_PWM2PRH5          at PWM2PRH : 5
+var volatile bit    PWM2PRH_PWM2PRH6          at PWM2PRH : 6
+var volatile bit    PWM2PRH_PWM2PRH7          at PWM2PRH : 7
+var volatile bit    PWM2PRH_PR8               at PWM2PRH : 0
+var volatile bit    PWM2PRH_PR9               at PWM2PRH : 1
+var volatile bit    PWM2PRH_PR10              at PWM2PRH : 2
+var volatile bit    PWM2PRH_PR11              at PWM2PRH : 3
+var volatile bit    PWM2PRH_PR12              at PWM2PRH : 4
+var volatile bit    PWM2PRH_PR13              at PWM2PRH : 5
+var volatile bit    PWM2PRH_PR14              at PWM2PRH : 6
+var volatile bit    PWM2PRH_PR15              at PWM2PRH : 7
+-- ------------------------------------------------
+var volatile word   PWM2OF                    at { 0xDA7 }
+-- ------------------------------------------------
+var volatile byte   PWM2OFL                   at { 0xDA7 }
+var volatile bit    PWM2OFL_PWM2OFL0          at PWM2OFL : 0
+var volatile bit    PWM2OFL_PWM2OFL1          at PWM2OFL : 1
+var volatile bit    PWM2OFL_PWM2OFL2          at PWM2OFL : 2
+var volatile bit    PWM2OFL_PWM2OFL3          at PWM2OFL : 3
+var volatile bit    PWM2OFL_PWM2OFL4          at PWM2OFL : 4
+var volatile bit    PWM2OFL_PWM2OFL5          at PWM2OFL : 5
+var volatile bit    PWM2OFL_PWM2OFL6          at PWM2OFL : 6
+var volatile bit    PWM2OFL_PWM2OFL7          at PWM2OFL : 7
+var volatile bit    PWM2OFL_OF0               at PWM2OFL : 0
+var volatile bit    PWM2OFL_OF1               at PWM2OFL : 1
+var volatile bit    PWM2OFL_OF2               at PWM2OFL : 2
+var volatile bit    PWM2OFL_OF3               at PWM2OFL : 3
+var volatile bit    PWM2OFL_OF4               at PWM2OFL : 4
+var volatile bit    PWM2OFL_OF5               at PWM2OFL : 5
+var volatile bit    PWM2OFL_OF6               at PWM2OFL : 6
+var volatile bit    PWM2OFL_OF7               at PWM2OFL : 7
+-- ------------------------------------------------
+var volatile byte   PWM2OFH                   at { 0xDA8 }
+var volatile bit    PWM2OFH_PWM2OFH0          at PWM2OFH : 0
+var volatile bit    PWM2OFH_PWM2OFH1          at PWM2OFH : 1
+var volatile bit    PWM2OFH_PWM2OFH2          at PWM2OFH : 2
+var volatile bit    PWM2OFH_PWM2OFH3          at PWM2OFH : 3
+var volatile bit    PWM2OFH_PWM2OFH4          at PWM2OFH : 4
+var volatile bit    PWM2OFH_PWM2OFH5          at PWM2OFH : 5
+var volatile bit    PWM2OFH_PWM2OFH6          at PWM2OFH : 6
+var volatile bit    PWM2OFH_PWM2OFH7          at PWM2OFH : 7
+var volatile bit    PWM2OFH_OF8               at PWM2OFH : 0
+var volatile bit    PWM2OFH_OF9               at PWM2OFH : 1
+var volatile bit    PWM2OFH_OF10              at PWM2OFH : 2
+var volatile bit    PWM2OFH_OF11              at PWM2OFH : 3
+var volatile bit    PWM2OFH_OF12              at PWM2OFH : 4
+var volatile bit    PWM2OFH_OF13              at PWM2OFH : 5
+var volatile bit    PWM2OFH_OF14              at PWM2OFH : 6
+var volatile bit    PWM2OFH_OF15              at PWM2OFH : 7
+-- ------------------------------------------------
+var volatile word   PWM2TMR                   at { 0xDA9 }
+-- ------------------------------------------------
+var volatile byte   PWM2TMRL                  at { 0xDA9 }
+var volatile bit    PWM2TMRL_PWM2TMRL0        at PWM2TMRL : 0
+var volatile bit    PWM2TMRL_PWM2TMRL1        at PWM2TMRL : 1
+var volatile bit    PWM2TMRL_PWM2TMRL2        at PWM2TMRL : 2
+var volatile bit    PWM2TMRL_PWM2TMRL3        at PWM2TMRL : 3
+var volatile bit    PWM2TMRL_PWM2TMRL4        at PWM2TMRL : 4
+var volatile bit    PWM2TMRL_PWM2TMRL5        at PWM2TMRL : 5
+var volatile bit    PWM2TMRL_PWM2TMRL6        at PWM2TMRL : 6
+var volatile bit    PWM2TMRL_PWM2TMRL7        at PWM2TMRL : 7
+var volatile bit    PWM2TMRL_TMR0             at PWM2TMRL : 0
+var volatile bit    PWM2TMRL_TMR1             at PWM2TMRL : 1
+var volatile bit    PWM2TMRL_TMR2             at PWM2TMRL : 2
+var volatile bit    PWM2TMRL_TMR3             at PWM2TMRL : 3
+var volatile bit    PWM2TMRL_TMR4             at PWM2TMRL : 4
+var volatile bit    PWM2TMRL_TMR5             at PWM2TMRL : 5
+var volatile bit    PWM2TMRL_TMR6             at PWM2TMRL : 6
+var volatile bit    PWM2TMRL_TMR7             at PWM2TMRL : 7
+-- ------------------------------------------------
+var volatile byte   PWM2TMRH                  at { 0xDAA }
+var volatile bit    PWM2TMRH_PWM2TMRH0        at PWM2TMRH : 0
+var volatile bit    PWM2TMRH_PWM2TMRH1        at PWM2TMRH : 1
+var volatile bit    PWM2TMRH_PWM2TMRH2        at PWM2TMRH : 2
+var volatile bit    PWM2TMRH_PWM2TMRH3        at PWM2TMRH : 3
+var volatile bit    PWM2TMRH_PWM2TMRH4        at PWM2TMRH : 4
+var volatile bit    PWM2TMRH_PWM2TMRH5        at PWM2TMRH : 5
+var volatile bit    PWM2TMRH_PWM2TMRH6        at PWM2TMRH : 6
+var volatile bit    PWM2TMRH_PWM2TMRH7        at PWM2TMRH : 7
+var volatile bit    PWM2TMRH_TMR8             at PWM2TMRH : 0
+var volatile bit    PWM2TMRH_TMR9             at PWM2TMRH : 1
+var volatile bit    PWM2TMRH_TMR10            at PWM2TMRH : 2
+var volatile bit    PWM2TMRH_TMR11            at PWM2TMRH : 3
+var volatile bit    PWM2TMRH_TMR12            at PWM2TMRH : 4
+var volatile bit    PWM2TMRH_TMR13            at PWM2TMRH : 5
+var volatile bit    PWM2TMRH_TMR14            at PWM2TMRH : 6
+var volatile bit    PWM2TMRH_TMR15            at PWM2TMRH : 7
+-- ------------------------------------------------
+var volatile byte   PWM2CON                   at { 0xDAB }
+var volatile bit*2  PWM2CON_MODE              at PWM2CON : 2
+var volatile bit    PWM2CON_POL               at PWM2CON : 4
+var volatile bit    PWM2CON_OUT               at PWM2CON : 5
+var volatile bit    PWM2CON_OE                at PWM2CON : 6
+var volatile bit    PWM2CON_EN                at PWM2CON : 7
+var volatile bit    PWM2CON_PWM2MOD0          at PWM2CON : 2
+var volatile bit    PWM2CON_PWM2MOD1          at PWM2CON : 3
+var volatile bit*2  PWM2CON_PWM2MOD           at PWM2CON : 2
+var volatile bit    PWM2CON_PWM2POL           at PWM2CON : 4
+var volatile bit    PWM2CON_PWM2OUT           at PWM2CON : 5
+var volatile bit    PWM2CON_PWM2OE            at PWM2CON : 6
+var volatile bit    PWM2CON_PWM2EN            at PWM2CON : 7
+var volatile bit    PWM2CON_MODE0             at PWM2CON : 2
+var volatile bit    PWM2CON_MODE1             at PWM2CON : 3
+-- ------------------------------------------------
+var volatile byte   PWM2IE                    at { 0xDAC }
+var volatile bit    PWM2IE_PRIE               at PWM2IE : 0
+var volatile bit    PWM2IE_DCIE               at PWM2IE : 1
+var volatile bit    PWM2IE_PHIE               at PWM2IE : 2
+var volatile bit    PWM2IE_OFIE               at PWM2IE : 3
+var volatile bit    PWM2IE_PWM2PRIE           at PWM2IE : 0
+var volatile bit    PWM2IE_PWM2DCIE           at PWM2IE : 1
+var volatile bit    PWM2IE_PWM2PHIE           at PWM2IE : 2
+var volatile bit    PWM2IE_PWM2OFIE           at PWM2IE : 3
+-- ------------------------------------------------
+var volatile byte   PWM2IR                    at { 0xDAD }
+var volatile bit    PWM2IR_PRIF               at PWM2IR : 0
+var volatile bit    PWM2IR_DCIF               at PWM2IR : 1
+var volatile bit    PWM2IR_PHIF               at PWM2IR : 2
+var volatile bit    PWM2IR_OFIF               at PWM2IR : 3
+var volatile bit    PWM2IR_PWM2PRIF           at PWM2IR : 0
+var volatile bit    PWM2IR_PWM2DCIF           at PWM2IR : 1
+var volatile bit    PWM2IR_PWM2PHIF           at PWM2IR : 2
+var volatile bit    PWM2IR_PWM2OFIF           at PWM2IR : 3
+-- ------------------------------------------------
+var volatile byte   PWM2CLKCON                at { 0xDAE }
+var volatile bit*2  PWM2CLKCON_CS             at PWM2CLKCON : 0
+var volatile bit*3  PWM2CLKCON_PS             at PWM2CLKCON : 4
+var volatile bit    PWM2CLKCON_PWM2CS0        at PWM2CLKCON : 0
+var volatile bit    PWM2CLKCON_PWM2CS1        at PWM2CLKCON : 1
+var volatile bit    PWM2CLKCON_PWM2PS0        at PWM2CLKCON : 4
+var volatile bit    PWM2CLKCON_PWM2PS1        at PWM2CLKCON : 5
+var volatile bit    PWM2CLKCON_PWM2PS2        at PWM2CLKCON : 6
+var volatile bit*3  PWM2CLKCON_PWM2CS         at PWM2CLKCON : 0
+var volatile bit*3  PWM2CLKCON_PWM2PS         at PWM2CLKCON : 4
+var volatile bit    PWM2CLKCON_CS0            at PWM2CLKCON : 0
+var volatile bit    PWM2CLKCON_CS1            at PWM2CLKCON : 1
+var volatile bit    PWM2CLKCON_PS0            at PWM2CLKCON : 4
+var volatile bit    PWM2CLKCON_PS1            at PWM2CLKCON : 5
+var volatile bit    PWM2CLKCON_PS2            at PWM2CLKCON : 6
+-- ------------------------------------------------
+var volatile byte   PWM2LDCON                 at { 0xDAF }
+var volatile bit*2  PWM2LDCON_LDS             at PWM2LDCON : 0
+var volatile bit    PWM2LDCON_LDT             at PWM2LDCON : 6
+var volatile bit    PWM2LDCON_LDA             at PWM2LDCON : 7
+var volatile bit    PWM2LDCON_PWM2LDS0        at PWM2LDCON : 0
+var volatile bit    PWM2LDCON_PWM2LDS1        at PWM2LDCON : 1
+var volatile bit*2  PWM2LDCON_PWM2LDS         at PWM2LDCON : 0
+var volatile bit    PWM2LDCON_PWM2LDM         at PWM2LDCON : 6
+var volatile bit    PWM2LDCON_PWM2LD          at PWM2LDCON : 7
+var volatile bit    PWM2LDCON_LDS0            at PWM2LDCON : 0
+var volatile bit    PWM2LDCON_LDS1            at PWM2LDCON : 1
+-- ------------------------------------------------
+var volatile byte   PWM2OFCON                 at { 0xDB0 }
+var volatile bit*2  PWM2OFCON_OFS             at PWM2OFCON : 0
+var volatile bit    PWM2OFCON_OFO             at PWM2OFCON : 4
+var volatile bit*2  PWM2OFCON_OFM             at PWM2OFCON : 5
+var volatile bit    PWM2OFCON_PWM2OFS0        at PWM2OFCON : 0
+var volatile bit    PWM2OFCON_PWM2OFS1        at PWM2OFCON : 1
+var volatile bit    PWM2OFCON_PWM2OFM0        at PWM2OFCON : 5
+var volatile bit    PWM2OFCON_PWM2OFM1        at PWM2OFCON : 6
+var volatile bit*2  PWM2OFCON_PWM2OFS         at PWM2OFCON : 0
+var volatile bit    PWM2OFCON_PWM2OFMC        at PWM2OFCON : 4
+var volatile bit*2  PWM2OFCON_PWM2OFM         at PWM2OFCON : 5
+var volatile bit    PWM2OFCON_OFS0            at PWM2OFCON : 0
+var volatile bit    PWM2OFCON_OFS1            at PWM2OFCON : 1
+var volatile bit    PWM2OFCON_OFM0            at PWM2OFCON : 5
+var volatile bit    PWM2OFCON_OFM1            at PWM2OFCON : 6
+-- ------------------------------------------------
+var volatile word   PWM3PH                    at { 0xDB1 }
+-- ------------------------------------------------
+var volatile byte   PWM3PHL                   at { 0xDB1 }
+var volatile bit    PWM3PHL_PWM3PHL0          at PWM3PHL : 0
+var volatile bit    PWM3PHL_PWM3PHL1          at PWM3PHL : 1
+var volatile bit    PWM3PHL_PWM3PHL2          at PWM3PHL : 2
+var volatile bit    PWM3PHL_PWM3PHL3          at PWM3PHL : 3
+var volatile bit    PWM3PHL_PWM3PHL4          at PWM3PHL : 4
+var volatile bit    PWM3PHL_PWM3PHL5          at PWM3PHL : 5
+var volatile bit    PWM3PHL_PWM3PHL6          at PWM3PHL : 6
+var volatile bit    PWM3PHL_PWM3PHL7          at PWM3PHL : 7
+var volatile bit    PWM3PHL_PH0               at PWM3PHL : 0
+var volatile bit    PWM3PHL_PH1               at PWM3PHL : 1
+var volatile bit    PWM3PHL_PH2               at PWM3PHL : 2
+var volatile bit    PWM3PHL_PH3               at PWM3PHL : 3
+var volatile bit    PWM3PHL_PH4               at PWM3PHL : 4
+var volatile bit    PWM3PHL_PH5               at PWM3PHL : 5
+var volatile bit    PWM3PHL_PH6               at PWM3PHL : 6
+var volatile bit    PWM3PHL_PH7               at PWM3PHL : 7
+-- ------------------------------------------------
+var volatile byte   PWM3PHH                   at { 0xDB2 }
+var volatile bit    PWM3PHH_PWM3PHH0          at PWM3PHH : 0
+var volatile bit    PWM3PHH_PWM3PHH1          at PWM3PHH : 1
+var volatile bit    PWM3PHH_PWM3PHH2          at PWM3PHH : 2
+var volatile bit    PWM3PHH_PWM3PHH3          at PWM3PHH : 3
+var volatile bit    PWM3PHH_PWM3PHH4          at PWM3PHH : 4
+var volatile bit    PWM3PHH_PWM3PHH5          at PWM3PHH : 5
+var volatile bit    PWM3PHH_PWM3PHH6          at PWM3PHH : 6
+var volatile bit    PWM3PHH_PWM3PHH7          at PWM3PHH : 7
+var volatile bit    PWM3PHH_PH8               at PWM3PHH : 0
+var volatile bit    PWM3PHH_PH9               at PWM3PHH : 1
+var volatile bit    PWM3PHH_PH10              at PWM3PHH : 2
+var volatile bit    PWM3PHH_PH11              at PWM3PHH : 3
+var volatile bit    PWM3PHH_PH12              at PWM3PHH : 4
+var volatile bit    PWM3PHH_PH13              at PWM3PHH : 5
+var volatile bit    PWM3PHH_PH14              at PWM3PHH : 6
+var volatile bit    PWM3PHH_PH15              at PWM3PHH : 7
+-- ------------------------------------------------
+var volatile word   PWM3DC                    at { 0xDB3 }
+-- ------------------------------------------------
+var volatile byte   PWM3DCL                   at { 0xDB3 }
+var volatile bit    PWM3DCL_PWM3DCL0          at PWM3DCL : 0
+var volatile bit    PWM3DCL_PWM3DCL1          at PWM3DCL : 1
+var volatile bit    PWM3DCL_PWM3DCL2          at PWM3DCL : 2
+var volatile bit    PWM3DCL_PWM3DCL3          at PWM3DCL : 3
+var volatile bit    PWM3DCL_PWM3DCL4          at PWM3DCL : 4
+var volatile bit    PWM3DCL_PWM3DCL5          at PWM3DCL : 5
+var volatile bit    PWM3DCL_PWM3DCL6          at PWM3DCL : 6
+var volatile bit    PWM3DCL_PWM3DCL7          at PWM3DCL : 7
+var volatile bit    PWM3DCL_DC0               at PWM3DCL : 0
+var volatile bit    PWM3DCL_DC1               at PWM3DCL : 1
+var volatile bit    PWM3DCL_DC2               at PWM3DCL : 2
+var volatile bit    PWM3DCL_DC3               at PWM3DCL : 3
+var volatile bit    PWM3DCL_DC4               at PWM3DCL : 4
+var volatile bit    PWM3DCL_DC5               at PWM3DCL : 5
+var volatile bit    PWM3DCL_DC6               at PWM3DCL : 6
+var volatile bit    PWM3DCL_DC7               at PWM3DCL : 7
+-- ------------------------------------------------
+var volatile byte   PWM3DCH                   at { 0xDB4 }
+var volatile bit    PWM3DCH_PWM3DCH0          at PWM3DCH : 0
+var volatile bit    PWM3DCH_PWM3DCH1          at PWM3DCH : 1
+var volatile bit    PWM3DCH_PWM3DCH2          at PWM3DCH : 2
+var volatile bit    PWM3DCH_PWM3DCH3          at PWM3DCH : 3
+var volatile bit    PWM3DCH_PWM3DCH4          at PWM3DCH : 4
+var volatile bit    PWM3DCH_PWM3DCH5          at PWM3DCH : 5
+var volatile bit    PWM3DCH_PWM3DCH6          at PWM3DCH : 6
+var volatile bit    PWM3DCH_PWM3DCH7          at PWM3DCH : 7
+var volatile bit    PWM3DCH_DC8               at PWM3DCH : 0
+var volatile bit    PWM3DCH_DC9               at PWM3DCH : 1
+var volatile bit    PWM3DCH_DC10              at PWM3DCH : 2
+var volatile bit    PWM3DCH_DC11              at PWM3DCH : 3
+var volatile bit    PWM3DCH_DC12              at PWM3DCH : 4
+var volatile bit    PWM3DCH_DC13              at PWM3DCH : 5
+var volatile bit    PWM3DCH_DC14              at PWM3DCH : 6
+var volatile bit    PWM3DCH_DC15              at PWM3DCH : 7
+-- ------------------------------------------------
+var volatile word   PWM3PR                    at { 0xDB5 }
+-- ------------------------------------------------
+var volatile byte   PWM3PRL                   at { 0xDB5 }
+var volatile bit    PWM3PRL_PWM3PRL0          at PWM3PRL : 0
+var volatile bit    PWM3PRL_PWM3PRL1          at PWM3PRL : 1
+var volatile bit    PWM3PRL_PWM3PRL2          at PWM3PRL : 2
+var volatile bit    PWM3PRL_PWM3PRL3          at PWM3PRL : 3
+var volatile bit    PWM3PRL_PWM3PRL4          at PWM3PRL : 4
+var volatile bit    PWM3PRL_PWM3PRL5          at PWM3PRL : 5
+var volatile bit    PWM3PRL_PWM3PRL6          at PWM3PRL : 6
+var volatile bit    PWM3PRL_PWM3PRL7          at PWM3PRL : 7
+var volatile bit    PWM3PRL_PR0               at PWM3PRL : 0
+var volatile bit    PWM3PRL_PR1               at PWM3PRL : 1
+var volatile bit    PWM3PRL_PR2               at PWM3PRL : 2
+var volatile bit    PWM3PRL_PR3               at PWM3PRL : 3
+var volatile bit    PWM3PRL_PR4               at PWM3PRL : 4
+var volatile bit    PWM3PRL_PR5               at PWM3PRL : 5
+var volatile bit    PWM3PRL_PR6               at PWM3PRL : 6
+var volatile bit    PWM3PRL_PR7               at PWM3PRL : 7
+-- ------------------------------------------------
+var volatile byte   PWM3PRH                   at { 0xDB6 }
+var volatile bit    PWM3PRH_PWM3PRH0          at PWM3PRH : 0
+var volatile bit    PWM3PRH_PWM3PRH1          at PWM3PRH : 1
+var volatile bit    PWM3PRH_PWM3PRH2          at PWM3PRH : 2
+var volatile bit    PWM3PRH_PWM3PRH3          at PWM3PRH : 3
+var volatile bit    PWM3PRH_PWM3PRH4          at PWM3PRH : 4
+var volatile bit    PWM3PRH_PWM3PRH5          at PWM3PRH : 5
+var volatile bit    PWM3PRH_PWM3PRH6          at PWM3PRH : 6
+var volatile bit    PWM3PRH_PWM3PRH7          at PWM3PRH : 7
+var volatile bit    PWM3PRH_PR8               at PWM3PRH : 0
+var volatile bit    PWM3PRH_PR9               at PWM3PRH : 1
+var volatile bit    PWM3PRH_PR10              at PWM3PRH : 2
+var volatile bit    PWM3PRH_PR11              at PWM3PRH : 3
+var volatile bit    PWM3PRH_PR12              at PWM3PRH : 4
+var volatile bit    PWM3PRH_PR13              at PWM3PRH : 5
+var volatile bit    PWM3PRH_PR14              at PWM3PRH : 6
+var volatile bit    PWM3PRH_PR15              at PWM3PRH : 7
+-- ------------------------------------------------
+var volatile word   PWM3OF                    at { 0xDB7 }
+-- ------------------------------------------------
+var volatile byte   PWM3OFL                   at { 0xDB7 }
+var volatile bit    PWM3OFL_PWM3OFL0          at PWM3OFL : 0
+var volatile bit    PWM3OFL_PWM3OFL1          at PWM3OFL : 1
+var volatile bit    PWM3OFL_PWM3OFL2          at PWM3OFL : 2
+var volatile bit    PWM3OFL_PWM3OFL3          at PWM3OFL : 3
+var volatile bit    PWM3OFL_PWM3OFL4          at PWM3OFL : 4
+var volatile bit    PWM3OFL_PWM3OFL5          at PWM3OFL : 5
+var volatile bit    PWM3OFL_PWM3OFL6          at PWM3OFL : 6
+var volatile bit    PWM3OFL_PWM3OFL7          at PWM3OFL : 7
+var volatile bit    PWM3OFL_OF0               at PWM3OFL : 0
+var volatile bit    PWM3OFL_OF1               at PWM3OFL : 1
+var volatile bit    PWM3OFL_OF2               at PWM3OFL : 2
+var volatile bit    PWM3OFL_OF3               at PWM3OFL : 3
+var volatile bit    PWM3OFL_OF4               at PWM3OFL : 4
+var volatile bit    PWM3OFL_OF5               at PWM3OFL : 5
+var volatile bit    PWM3OFL_OF6               at PWM3OFL : 6
+var volatile bit    PWM3OFL_OF7               at PWM3OFL : 7
+-- ------------------------------------------------
+var volatile byte   PWM3OFH                   at { 0xDB8 }
+var volatile bit    PWM3OFH_PWM3OFH0          at PWM3OFH : 0
+var volatile bit    PWM3OFH_PWM3OFH1          at PWM3OFH : 1
+var volatile bit    PWM3OFH_PWM3OFH2          at PWM3OFH : 2
+var volatile bit    PWM3OFH_PWM3OFH3          at PWM3OFH : 3
+var volatile bit    PWM3OFH_PWM3OFH4          at PWM3OFH : 4
+var volatile bit    PWM3OFH_PWM3OFH5          at PWM3OFH : 5
+var volatile bit    PWM3OFH_PWM3OFH6          at PWM3OFH : 6
+var volatile bit    PWM3OFH_PWM3OFH7          at PWM3OFH : 7
+var volatile bit    PWM3OFH_OF8               at PWM3OFH : 0
+var volatile bit    PWM3OFH_OF9               at PWM3OFH : 1
+var volatile bit    PWM3OFH_OF10              at PWM3OFH : 2
+var volatile bit    PWM3OFH_OF11              at PWM3OFH : 3
+var volatile bit    PWM3OFH_OF12              at PWM3OFH : 4
+var volatile bit    PWM3OFH_OF13              at PWM3OFH : 5
+var volatile bit    PWM3OFH_OF14              at PWM3OFH : 6
+var volatile bit    PWM3OFH_OF15              at PWM3OFH : 7
+-- ------------------------------------------------
+var volatile word   PWM3TMR                   at { 0xDB9 }
+-- ------------------------------------------------
+var volatile byte   PWM3TMRL                  at { 0xDB9 }
+var volatile bit    PWM3TMRL_PWM3TMRL0        at PWM3TMRL : 0
+var volatile bit    PWM3TMRL_PWM3TMRL1        at PWM3TMRL : 1
+var volatile bit    PWM3TMRL_PWM3TMRL2        at PWM3TMRL : 2
+var volatile bit    PWM3TMRL_PWM3TMRL3        at PWM3TMRL : 3
+var volatile bit    PWM3TMRL_PWM3TMRL4        at PWM3TMRL : 4
+var volatile bit    PWM3TMRL_PWM3TMRL5        at PWM3TMRL : 5
+var volatile bit    PWM3TMRL_PWM3TMRL6        at PWM3TMRL : 6
+var volatile bit    PWM3TMRL_PWM3TMRL7        at PWM3TMRL : 7
+var volatile bit    PWM3TMRL_TMR0             at PWM3TMRL : 0
+var volatile bit    PWM3TMRL_TMR1             at PWM3TMRL : 1
+var volatile bit    PWM3TMRL_TMR2             at PWM3TMRL : 2
+var volatile bit    PWM3TMRL_TMR3             at PWM3TMRL : 3
+var volatile bit    PWM3TMRL_TMR4             at PWM3TMRL : 4
+var volatile bit    PWM3TMRL_TMR5             at PWM3TMRL : 5
+var volatile bit    PWM3TMRL_TMR6             at PWM3TMRL : 6
+var volatile bit    PWM3TMRL_TMR7             at PWM3TMRL : 7
+-- ------------------------------------------------
+var volatile byte   PWM3TMRH                  at { 0xDBA }
+var volatile bit    PWM3TMRH_PWM3TMRH0        at PWM3TMRH : 0
+var volatile bit    PWM3TMRH_PWM3TMRH1        at PWM3TMRH : 1
+var volatile bit    PWM3TMRH_PWM3TMRH2        at PWM3TMRH : 2
+var volatile bit    PWM3TMRH_PWM3TMRH3        at PWM3TMRH : 3
+var volatile bit    PWM3TMRH_PWM3TMRH4        at PWM3TMRH : 4
+var volatile bit    PWM3TMRH_PWM3TMRH5        at PWM3TMRH : 5
+var volatile bit    PWM3TMRH_PWM3TMRH6        at PWM3TMRH : 6
+var volatile bit    PWM3TMRH_PWM3TMRH7        at PWM3TMRH : 7
+var volatile bit    PWM3TMRH_TMR8             at PWM3TMRH : 0
+var volatile bit    PWM3TMRH_TMR9             at PWM3TMRH : 1
+var volatile bit    PWM3TMRH_TMR10            at PWM3TMRH : 2
+var volatile bit    PWM3TMRH_TMR11            at PWM3TMRH : 3
+var volatile bit    PWM3TMRH_TMR12            at PWM3TMRH : 4
+var volatile bit    PWM3TMRH_TMR13            at PWM3TMRH : 5
+var volatile bit    PWM3TMRH_TMR14            at PWM3TMRH : 6
+var volatile bit    PWM3TMRH_TMR15            at PWM3TMRH : 7
+-- ------------------------------------------------
+var volatile byte   PWM3CON                   at { 0xDBB }
+var volatile bit*2  PWM3CON_MODE              at PWM3CON : 2
+var volatile bit    PWM3CON_POL               at PWM3CON : 4
+var volatile bit    PWM3CON_OUT               at PWM3CON : 5
+var volatile bit    PWM3CON_OE                at PWM3CON : 6
+var volatile bit    PWM3CON_EN                at PWM3CON : 7
+var volatile bit    PWM3CON_PWM3MOD0          at PWM3CON : 2
+var volatile bit    PWM3CON_PWM3MOD1          at PWM3CON : 3
+var volatile bit*2  PWM3CON_PWM3MOD           at PWM3CON : 2
+var volatile bit    PWM3CON_PWM3POL           at PWM3CON : 4
+var volatile bit    PWM3CON_PWM3OUT           at PWM3CON : 5
+var volatile bit    PWM3CON_PWM3OE            at PWM3CON : 6
+var volatile bit    PWM3CON_PWM3EN            at PWM3CON : 7
+var volatile bit    PWM3CON_MODE0             at PWM3CON : 2
+var volatile bit    PWM3CON_MODE1             at PWM3CON : 3
+-- ------------------------------------------------
+var volatile byte   PWM3IE                    at { 0xDBC }
+var volatile bit    PWM3IE_PRIE               at PWM3IE : 0
+var volatile bit    PWM3IE_DCIE               at PWM3IE : 1
+var volatile bit    PWM3IE_PHIE               at PWM3IE : 2
+var volatile bit    PWM3IE_OFIE               at PWM3IE : 3
+var volatile bit    PWM3IE_PWM3PRIE           at PWM3IE : 0
+var volatile bit    PWM3IE_PWM3DCIE           at PWM3IE : 1
+var volatile bit    PWM3IE_PWM3PHIE           at PWM3IE : 2
+var volatile bit    PWM3IE_PWM3OFIE           at PWM3IE : 3
+-- ------------------------------------------------
+var volatile byte   PWM3IR                    at { 0xDBD }
+var volatile bit    PWM3IR_PRIF               at PWM3IR : 0
+var volatile bit    PWM3IR_DCIF               at PWM3IR : 1
+var volatile bit    PWM3IR_PHIF               at PWM3IR : 2
+var volatile bit    PWM3IR_OFIF               at PWM3IR : 3
+var volatile bit    PWM3IR_PWM3PRIF           at PWM3IR : 0
+var volatile bit    PWM3IR_PWM3DCIF           at PWM3IR : 1
+var volatile bit    PWM3IR_PWM3PHIF           at PWM3IR : 2
+var volatile bit    PWM3IR_PWM3OFIF           at PWM3IR : 3
+-- ------------------------------------------------
+var volatile byte   PWM3CLKCON                at { 0xDBE }
+var volatile bit*2  PWM3CLKCON_CS             at PWM3CLKCON : 0
+var volatile bit*3  PWM3CLKCON_PS             at PWM3CLKCON : 4
+var volatile bit    PWM3CLKCON_PWM3CS0        at PWM3CLKCON : 0
+var volatile bit    PWM3CLKCON_PWM3CS1        at PWM3CLKCON : 1
+var volatile bit    PWM3CLKCON_PWM3PS0        at PWM3CLKCON : 4
+var volatile bit    PWM3CLKCON_PWM3PS1        at PWM3CLKCON : 5
+var volatile bit    PWM3CLKCON_PWM3PS2        at PWM3CLKCON : 6
+var volatile bit*3  PWM3CLKCON_PWM3CS         at PWM3CLKCON : 0
+var volatile bit*3  PWM3CLKCON_PWM3PS         at PWM3CLKCON : 4
+var volatile bit    PWM3CLKCON_CS0            at PWM3CLKCON : 0
+var volatile bit    PWM3CLKCON_CS1            at PWM3CLKCON : 1
+var volatile bit    PWM3CLKCON_PS0            at PWM3CLKCON : 4
+var volatile bit    PWM3CLKCON_PS1            at PWM3CLKCON : 5
+var volatile bit    PWM3CLKCON_PS2            at PWM3CLKCON : 6
+-- ------------------------------------------------
+var volatile byte   PWM3LDCON                 at { 0xDBF }
+var volatile bit*2  PWM3LDCON_LDS             at PWM3LDCON : 0
+var volatile bit    PWM3LDCON_LDT             at PWM3LDCON : 6
+var volatile bit    PWM3LDCON_LDA             at PWM3LDCON : 7
+var volatile bit    PWM3LDCON_PWM3LDS0        at PWM3LDCON : 0
+var volatile bit    PWM3LDCON_PWM3LDS1        at PWM3LDCON : 1
+var volatile bit*2  PWM3LDCON_PWM3LDS         at PWM3LDCON : 0
+var volatile bit    PWM3LDCON_PWM3LDM         at PWM3LDCON : 6
+var volatile bit    PWM3LDCON_PWM3LD          at PWM3LDCON : 7
+var volatile bit    PWM3LDCON_LDS0            at PWM3LDCON : 0
+var volatile bit    PWM3LDCON_LDS1            at PWM3LDCON : 1
+-- ------------------------------------------------
+var volatile byte   PWM3OFCON                 at { 0xDC0 }
+var volatile bit*2  PWM3OFCON_OFS             at PWM3OFCON : 0
+var volatile bit    PWM3OFCON_OFO             at PWM3OFCON : 4
+var volatile bit*2  PWM3OFCON_OFM             at PWM3OFCON : 5
+var volatile bit    PWM3OFCON_PWM3OFS0        at PWM3OFCON : 0
+var volatile bit    PWM3OFCON_PWM3OFS1        at PWM3OFCON : 1
+var volatile bit    PWM3OFCON_PWM3OFM0        at PWM3OFCON : 5
+var volatile bit    PWM3OFCON_PWM3OFM1        at PWM3OFCON : 6
+var volatile bit*2  PWM3OFCON_PWM3OFS         at PWM3OFCON : 0
+var volatile bit    PWM3OFCON_PWM3OFMC        at PWM3OFCON : 4
+var volatile bit*2  PWM3OFCON_PWM3OFM         at PWM3OFCON : 5
+var volatile bit    PWM3OFCON_OFS0            at PWM3OFCON : 0
+var volatile bit    PWM3OFCON_OFS1            at PWM3OFCON : 1
+var volatile bit    PWM3OFCON_OFM0            at PWM3OFCON : 5
+var volatile bit    PWM3OFCON_OFM1            at PWM3OFCON : 6
+-- ------------------------------------------------
+var volatile byte   STATUS_SHAD               at { 0xFE4 }
+var volatile bit    STATUS_SHAD_C             at STATUS_SHAD : 0
+var volatile bit    STATUS_SHAD_DC            at STATUS_SHAD : 1
+var volatile bit    STATUS_SHAD_Z             at STATUS_SHAD : 2
+-- ------------------------------------------------
+var volatile byte   WREG_SHAD                 at { 0xFE5 }
+-- ------------------------------------------------
+var volatile byte   BSR_SHAD                  at { 0xFE6 }
+var volatile bit*5  BSR_SHAD_BSR              at BSR_SHAD : 0
+-- ------------------------------------------------
+var volatile byte   PCLATH_SHAD               at { 0xFE7 }
+var volatile bit*7  PCLATH_SHAD_PCLATH        at PCLATH_SHAD : 0
+-- ------------------------------------------------
+var volatile word   FSR0_SHAD                 at { 0xFE8 }
+-- ------------------------------------------------
+var volatile byte   FSR0L_SHAD                at { 0xFE8 }
+-- ------------------------------------------------
+var volatile byte   FSR0H_SHAD                at { 0xFE9 }
+-- ------------------------------------------------
+var volatile word   FSR1_SHAD                 at { 0xFEA }
+-- ------------------------------------------------
+var volatile byte   FSR1L_SHAD                at { 0xFEA }
+-- ------------------------------------------------
+var volatile byte   FSR1H_SHAD                at { 0xFEB }
+-- ------------------------------------------------
+var volatile byte   STKPTR                    at { 0xFED }
+var volatile bit*5  STKPTR_STKPTR             at STKPTR : 0
+-- ------------------------------------------------
+var volatile word   TOS                       at { 0xFEE }
+-- ------------------------------------------------
+var volatile byte   TOSL                      at { 0xFEE }
+-- ------------------------------------------------
+var volatile byte   TOSH                      at { 0xFEF }
+var volatile bit*7  TOSH_TOSH                 at TOSH : 0
+--
+-- ===================================================
+--
+--    Constants and procedures for analog features
+--    --------------------------------------------
+--
+const      ADC_GROUP          = ADC_V0
+const byte ADC_NTOTAL_CHANNEL = 4
+const byte ADC_ADCS_BITCOUNT  = 3
+const byte ADC_MAX_RESOLUTION = 10
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - -
+-- Change analog I/O pins into digital I/O pins.
+procedure analog_off() is
+   pragma inline
+   ANSELA = 0b0000_0000        -- digital I/O
+end procedure
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - -
+-- Disable ADC module
+procedure adc_off() is
+   pragma inline
+   ADCON0 = 0b0000_0000         -- disable ADC
+   ADCON1 = 0b0000_0000
+   ADCON2 = 0b0000_0000
+end procedure
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - -
+-- Disable comparator module
+procedure comparator_off() is
+   pragma inline
+   CM1CON0 = 0b0000_0000       -- disable comparator
+   CM1CON1 = 0b0000_0000
+end procedure
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - -
+-- Switch analog ports to digital mode when analog module(s) present.
+procedure enable_digital_io() is
+   pragma inline
+   analog_off()
+   adc_off()
+   comparator_off()
+end procedure
+--
+-- ===================================================
+--
+--    Miscellaneous
+--    -------------
+--
+const PPS_GROUP        = PPS_0        -- no Peripheral Pin Selection
+--
+-- Free shared memory: 0x70-0x7E
+--
+-- ===================================================
+--
+--    Symbolic Fuse Definitions
+-- ------------------------------
+--
+-- CONFIG1 (0x8007)
+--
+pragma fuse_def OSC:0 0x3 {                -- 
+       ECH_NOCLKOUT = 0x3                  -- ECH, External Clock, High Power Mode (4-32 MHz); device clock supplied to CLKIN pin
+       ECM_NOCLKOUT = 0x2                  -- ECM, External Clock, Medium Power Mode (0.5-4 MHz); device clock supplied to CLKIN pin
+       ECL_NOCLKOUT = 0x1                  -- ECL, External Clock, Low Power Mode (0-0.5 MHz); device clock supplied to CLKIN pin
+       INTOSC_NOCLKOUT = 0x0               -- INTOSC oscillator; I/O function on CLKIN pin
+       }
+pragma fuse_def WDT:0 0x18 {               -- Watchdog Timer Enable
+       ENABLED = 0x18                      -- WDT enabled
+       RUNONLY = 0x10                      -- WDT enabled while running and disabled in Sleep
+       CONTROL = 0x8                       -- WDT controlled by the SWDTEN bit in the WDTCON register
+       DISABLED = 0x0                      -- WDT disabled
+       }
+pragma fuse_def PWRTE:0 0x20 {             -- Power-up Timer Enable
+       DISABLED = 0x20                     -- PWRT disabled
+       ENABLED = 0x0                       -- PWRT enabled
+       }
+pragma fuse_def MCLR:0 0x40 {              -- MCLR Pin Function Select
+       EXTERNAL = 0x40                     -- MCLR/VPP pin function is MCLR
+       INTERNAL = 0x0                      -- MCLR/VPP pin function is digital input
+       }
+pragma fuse_def CP:0 0x80 {                -- Flash Program Memory Code Protection
+       DISABLED = 0x80                     -- Program memory code protection is disabled
+       ENABLED = 0x0                       -- Program memory code protection is enabled
+       }
+pragma fuse_def BROWNOUT:0 0x600 {         -- Brown-out Reset Enable
+       ENABLED = 0x600                     -- Brown-out Reset enabled
+       RUNONLY = 0x400                     -- Brown-out Reset enabled while running and disabled in Sleep
+       CONTROL = 0x200                     -- Brown-out Reset controlled by the SBOREN bit in the BORCON register
+       DISABLED = 0x0                      -- Brown-out Reset disabled
+       }
+pragma fuse_def CLKOUTEN:0 0x800 {         -- Clock Out Enable
+       DISABLED = 0x800                    -- CLKOUT function is disabled. I/O or oscillator function on the CLKOUT pin
+       ENABLED = 0x0                       -- CLKOUT function is enabled on the CLKOUT pin
+       }
+--
+-- CONFIG2 (0x8008)
+--
+pragma fuse_def WRT:1 0x3 {                -- Flash Memory Self-Write Protection
+       DISABLED = 0x3                      -- Write protection off
+       BOOT_BLOCK = 0x2                    -- 000h to 0FFh write protected, 100h to 3FFh may be modified by EECON control
+       HALF = 0x1                          -- 000h to 1FFh write protected, 200h to 3FFh may be modified by EECON control
+       ENABLED = 0x0                       -- 000h to 7FFh write protected, no addresses may be modified by EECON control
+       }
+pragma fuse_def PLLEN:1 0x100 {            -- PLL Enable
+       P4 = 0x100                          -- 4x PLL enabled
+       P1 = 0x0                            -- 4x PLL disabled
+       }
+pragma fuse_def STVR:1 0x200 {             -- Stack Overflow/Underflow Reset Enable
+       ENABLED = 0x200                     -- Stack Overflow or Underflow will cause a Reset
+       DISABLED = 0x0                      -- Stack Overflow or Underflow will not cause a Reset
+       }
+pragma fuse_def VOLTAGE:1 0x400 {          -- Brown-out Reset Voltage Selection
+       MINIMUM = 0x400                     -- Brown-out Reset Voltage (Vbor), low trip point selected.
+       MAXIMUM = 0x0                       -- Brown-out Reset Voltage (Vbor), high trip point selected.
+       }
+pragma fuse_def LPBOREN:1 0x800 {          -- Low Power Brown-out Reset enable bit
+       DISABLED = 0x800                    -- LPBOR is disabled
+       ENABLED = 0x0                       -- LPBOR is enabled
+       }
+pragma fuse_def DEBUG:1 0x1000 {           -- In-Circuit Debugger Mode
+       DISABLED = 0x1000                   -- In-Circuit Debugger disabled, ICSPCLK and ICSPDAT are general purpose I/O pins
+       ENABLED = 0x0                       -- In-Circuit Debugger enabled, ICSPCLK and ICSPDAT are dedicated to the debugger
+       }
+pragma fuse_def LVP:1 0x2000 {             -- Low-Voltage Programming Enable
+       ENABLED = 0x2000                    -- Low-voltage programming enabled
+       DISABLED = 0x0                      -- High-voltage on MCLR/VPP must be used for programming
+       }
+--
