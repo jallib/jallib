@@ -70,10 +70,7 @@ for filename in dir:
    picname = os.path.splitext(filename)[0][0:].upper()      # determine PIC from filename
    print picname
 
-   if picname == "16F722":
-      filename = "16lf722.edc"                              # replace by alternative input
-      print "  Pinmap derived from 16lf722"
-   elif (picname in ("16LF1713", "16F1716", "16LF1716")):
+   if (picname in ("16LF1713", "16F1716", "16LF1716")):
       filename = "16f1713.edc"
       print "  Pinmap derived from 16f1713"
 
@@ -99,14 +96,10 @@ for filename in dir:
                aliaslist.append("RA" + alias[-1])           # RBx -> RAx
                aliaslist.append("GP" + alias[-1])           # add GPx
                print "  Renamed pin", alias, "to RA" + alias[-1]
-            elif alias == "RB1AN10":                        # MPLAB-X error
-               aliaslist.append("RB1")
-               aliaslist.append("AN10")
-               print "  Splitted", alias, "into RB1 and AN10 for pin", pinnumber
-            elif alias == "RC7AN9":                         # MPLAB-X error
-               aliaslist.append("RC7")
-               aliaslist.append("AN9")
-               print "  Splitted", alias, "into RC7 and AN9 for pin", pinnumber
+            elif alias in("RB1AN10", "RC7AN9"):             # MPLAB-X errors
+               aliaslist.append(alias[0:3])
+               aliaslist.append(alias[3:])
+               print "  Splitted alias", alias, "into", alias[0:3], "and", alias[3:], "for pin", pinnumber
             elif alias == "DAC1VREF+n":                     # MPLAB-X error
                aliaslist.append("DAC1VREF+")
                print "  Replaced", alias, "by DAC1VREF+ for pin", pinnumber
@@ -117,8 +110,12 @@ for filename in dir:
             elif ( (picname in ("18F2439", "18F2539", "18F4439", "18F4539")) &
                    (alias.startswith("PWM")) ):
                aliaslist.append(alias)
-               aliaslist.append("RC" + alias[-1])           # MPLAB-X omission
-               print "  Added RC" + alias[-1], "( pin", pinnumber, ")"
+               if alias[-1] == "1":
+                  aliaslist.append("RC2")                   # MPLAB-X omission
+                  print "  Added RC2 to pin", pinnumber
+               else:
+                  aliaslist.append("RC1")
+                  print "  Added RC1 to pin", pinnumber
             else:
                aliaslist.append(alias)                      # normal alias!
 
@@ -151,10 +148,10 @@ for filename in dir:
          if pinlist.get(pin) == None:                       # MPLAB-X omission
             if pinmap[picname].get(pin) != None:            # pin present in old pinmap
                pinlist[pin] = pinmap[picname].get(pin)      # take it from old pinmap
-               print "  Copied alias list of pin", pin, "from old pinmap"
+               print "  Copied missing alias list of pin", pin, "from old pinmap"
             else:
                pinlist[pin] = [pin]                         # insert dummy
-               print "  Inserted dummy alias list for pin", pin
+               print "  Inserted dummy alias list for missing pin", pin
 
    if len(pinlist) > 0:
       list_pic(picname, pinlist)                            # list pinmap this pic
@@ -162,9 +159,9 @@ for filename in dir:
    elif pinmap.get(picname) != None:                        # present in old list
       list_pic(picname, pinmap[picname])                    # copy old mapping
       piccount += 1
-      print "  No pinlist in .edc file, entry copied from current pinmap"
+      print "  Pinlist missing in .edc file, entry copied from current pinmap"
    else:
-      print "  No pinlist, add it manually!"
+      print "  Pinlist missing, add it manually!"
 
 fp.write("  }\n")                                           # end of pinmap
 fp.close()
