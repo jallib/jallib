@@ -42,7 +42,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.23'
+   ScriptVersion   = '0.0.24'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q'
 /* mplabxversion obtained from file MPLAB-X_VERSION created by pic2edc script. */
@@ -67,7 +67,7 @@ if val1 = '' then do
 end
 mplabxversion = strip(val1)
 if ScriptVersion \= strip(val2)  then do
-   say 'Conflicting script versions, found <'val2'>, expected <'ScriptVersion'>'
+   say 'Conflicting script versions, found <'strip(val2)'>, expected <'ScriptVersion'>'
    return 0
 end
 
@@ -229,7 +229,8 @@ do i = 1 to dir.0                                           /* all relevant .edc
    CfgAddr.              = ''                               /* config memory addresses (decimal) */
    Cfgmem                = ''                               /* config string */
 
-   DevID                 = '0000'                           /* no device ID */
+   DevID                 = '0000'                           /* device ID */
+   ChipID                = 0                                /* ID for Jallib_Chipdef */
    NumBanks              = 0                                /* # memory banks */
    StackDepth            = 0                                /* hardware stack depth */
    AccessBankSplitOffset = 128                              /* 0x80 (18Fs) */
@@ -294,13 +295,13 @@ do i = 1 to dir.0                                           /* all relevant .edc
       if length(DevSpec.PicNameCaps.DataSheet) > 5  & length(dsnumber) = 5 then
          dsnumber = insert('000', dsnumber, 1)              /* make 8-digits variant */
       if DevSpec.PicNameCaps.DataSheet \= dsnumber then
-         call msg 1, 'Non matching DataSheet numbers, expected:' DevSpec.PicNameCaps.DataSheet', found' dsnumber
+         call msg 1, 'Non matching DataSheet numbers, expected' DevSpec.PicNameCaps.DataSheet', found' dsnumber
    end
    if psnumber \= '' then do
       if length(DevSpec.PicNameCaps.PgmSpec) > 5 & length(psnumber) = 5 then
          psnumber = insert('000', psnumber, 1)
       if psnumber \= '' & DevSpec.PicNameCaps.PgmSpec \= psnumber then
-         call msg 1, 'Non matching PgmSpec numbers, expected:' DevSpec.PicNameCaps.PgmSpec', found' psnumber
+         call msg 1, 'Non matching PgmSpec numbers, expected' DevSpec.PicNameCaps.PgmSpec', found' psnumber
    end
 
    call load_sfr_info                                       /* SFR address map */
@@ -401,7 +402,7 @@ return 0
 /* -------------------------------------------- */
 load_config_info: procedure expose Pic. PicName Name. CfgAddr. ,
                                    StackDepth NumBanks Banksize AccessBankSplitOffset,
-                                   CodeSize EESpec IDSpec DevID Cfgmem,
+                                   CodeSize EESpec IDSpec DevID ChipID Cfgmem,
                                    VddRange VddNominal VppRange VppDefault,
                                    HasLATreg HasMuxedSFR OSCCALaddr FSRaddr,
                                    ADC_highres ADCS_bits IRCF_bits,
@@ -450,6 +451,9 @@ do i = 1 to Pic.0
             if psnumber = '0' then
                psnumber = ''                                /* unknown */
          end
+         parse var Pic.i . 'edc:procid="' val1 '"' .
+         if val1 \= '' then
+            ChipID = todecimal(val1)                        /* Chip identifier */
       end
 
       when kwd = '<edc:VPP' then do
@@ -1203,7 +1207,7 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                         call lineout jalfile, '--'
                      end
                   end
-                  when reg = 'ADCON0'  &,                   /* ADCON0 */
+                  when reg = 'ADCON0'  &,
                        (PicName = '16f737'  | PicName = '16f747'  |,
                         PicName = '16f767'  | PicName = '16f777')   &,
                         val1 = 'CHS' then do
@@ -1259,6 +1263,12 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                         HasLATReg = 0 then do                      /* PIC without LAT registers */
                      call list_bitfield 1, field, '_'reg, offset
                   end
+                  when left(reg,5) = 'ODCON'  &  left(val1,5) = 'ODCON' then do
+                     call list_bitfield 1, reg'_'delstr(val1,3,3), reg, offset, addr  /* no 'CON' */
+                  end
+                  when left(reg,6) = 'SLRCON'  &  left(val1,6) = 'SLRCON' then do
+                     call list_bitfield 1, reg'_'delstr(val1,4,3), reg, offset, addr  /* no 'CON' */
+                  end
                   when width > 1  &,                        /* no multi-bit fields for pins */
                        (left(reg,4) = 'PORT' | left(reg,4) = 'GPIO'   |,
                         left(reg,3) = 'LAT'  | left(reg,4) = 'TRIS')  then do
@@ -1267,7 +1277,7 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
 
                otherwise
 
-                  if subfields_wanted(reg) > 0 then         /* subfields of some SFRs unwanted */
+                  if subfields_wanted(reg) > 0 then         /* subfields of some SFRs unwanted! */
                      call list_bitfield width, field, reg, offset
 
                end
@@ -2573,40 +2583,15 @@ return 0
 /* procedure to assign a JalV2 unique ID in chipdef_jallib  */
 /* input:  - nothing                                        */
 /* -------------------------------------------------------- */
-list_devid_chipdef: procedure expose Pic. jalfile chipdef Core PicName msglevel DevID xChipDef.
-PicNameCaps = toupper(PicName)                           /* name in upper case */
-if DevId \== '0000' then                                    /* DevID not missing */
-   xDevId = left(Core,2)'_'DevID
-else do                                                     /* DevID unknown */
-   DevID = right(PicNameCaps,3)                             /* rightmost 3 chars of name */
-   if datatype(Devid,'X') = 0 then do                       /* not all hex digits */
-      DevID = right(right(PicNameCaps,2),3,'F')             /* 'F' + rightmost 2 chars */
-   end
-   xDevId = Core'_F'DevID
-end
-if xChipDef.xDevId = '?' then do                            /* if not yet assigned */
-   xChipDef.xDevId = PicName                                /* remember */
-   call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'xDevId
-end
-else do
-   call msg 1, 'DevID ('xDevId') in use by' xChipDef.xDevid
-   do i = 1                                                 /* index in array */
-      tDevId = xDevId||substr('abcdef0123456789',i,1)       /* temp value */
-      if xChipDef.tDevId = '?' then do                      /* if not yet assigned */
-         xDevId = tDevId                                    /* definitve value */
-         xChipDef.xDevId = PicName                          /* remember alternate */
-         call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'xDevId
-         call msg 1, 'Alternate devid (0x'xDevid') assigned'
-         leave                                              /* suffix assigned */
-      end
-      else
-         call msg 1, 'DevID ('tDevId') in use by' xChipDef.tDevid
-   end
-   if i > 16 then do
-      call msg 3, 'Not enough suffixes for identical devid, terminated!'
-      exit 3
-   end
-end
+list_chipid_chipdef: procedure expose Pic. jalfile chipdef PicName msglevel ChipID xChipDef.
+PicNameCaps = toupper(PicName)                              /* name in upper case */
+if ChipId = 0 then                                          /* no ChipID in MPLAB-X */
+   call msg 3, 'No ChipID found'
+if xChipDef.ChipID = '?' then                               /* if not yet assigned */
+   xChipDef.ChipID = PicName                                /* remember */
+else
+   call msg 3, 'ChipID: 0x'D2X(ChipId) 'duplicate of' xChipDef.ChipID
+call lineout chipdef, left('const       PIC_'PicNameCaps,29) '= 0x_'D2X(ChipID,4)
 return
 
 
@@ -2730,16 +2715,17 @@ end
 return
 
 
-/* ----------------------------------------------- */
-/* convert ANSEL-bit to JANSEL_number              */
-/* input: - register  (ANSELx,ADCONx,ANCONx, etc.) */
-/*        - Name of bit (ANSy)                     */
-/* returns channel number                          */
-/* All cores                                       */
-/* This procedure has to be evaluated              */
-/* with every additional PIC(-group)               */
-/* Return value 99 indicates 'no JANSEL number'    */
-/* ----------------------------------------------- */
+/* ------------------------------------------------- */
+/* convert ANSEL-bit to JANSEL_number                */
+/* input: - register  (ANSELx,ADCONx,ANCONx, etc.)   */
+/*        - Name of bit (ANSy)                       */
+/* returns: - channel number                         */
+/*          - 99 indicates 'no JANSEL number'        */
+/* Notes: - This procedure has 3 'core' groups,      */
+/*          and a subgroup for each ANSELx register. */
+/*        - This procedure has to be adapted to      */
+/*          accomodate every new PIC(-group).        */
+/* ------------------------------------------------- */
 ansel2j: procedure expose Core PicName PinMap. PinANMap. msglevel
 parse upper arg reg, ans .                                  /* ans is name of bitfield! */
 
@@ -2748,7 +2734,7 @@ if datatype(right(ans,2),'W') = 1 then                      /* name ends with 2 
 else                                                        /* 1 digit assumed */
    ansx = right(ans,1)                                      /* single digit seq. nbr. */
 
-if core = '12' | core = '14' then do                        /* baseline, classic midrange */
+if core = '12' | core = '14' then do                        /* baseline or classic midrange */
    select
       when reg = 'ANSELH' | reg = 'ANSEL1' then do
          if ansx < 8 then                                   /* continuation of ANSEL[0|A] */
@@ -2843,6 +2829,8 @@ else if core = '14H' then do                                /* enhanced midrange
          if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
             left(PicName,6) = '16f171' | left(PicName,7) = '16lf171' then
             ansx = word('99 99 14 15 16 17 18 19', ansx + 1)
+         else if left(PicName,6) = '16f161' | left(PicName,7) = '16lf161' then
+            ansx = word('4 5 6 7 99 99 99 99', ansx + 1)
          else if left(PicName,6) = '16f145' | left(PicName,7) = '16lf145' |,
                  left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
                  left(PicName,6) = '16f170' | left(PicName,7) = '16lf170' |,
@@ -2878,20 +2866,22 @@ else if core = '14H' then do                                /* enhanced midrange
             ansx = ansx + 0
          else if left(PicName,6) = '16f145' | left(PicName,7) = '16lf145' then
             ansx = word('99 99 99 99 3 99 99 99', ansx + 1)
-         else if left(PicName,6) = '12lf15' then
-            ansx = word('0 1 2 99 3 4 99 99', ansx + 1)
-         else if left(PicName,6) = '12f150' | left(PicName,7) = '12lf150' |,
+         else if left(PicName,6) = '16f170' | left(PicName,7) = '16lf170' then
+            ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
+         else if left(PicName,5) = '12f15'  | left(PicName,6) = '12lf15' |,
+                 left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
+                 left(PicName,6) = '12f161' | left(PicName,7) = '12lf161' |,
+                 left(PicName,6) = '16f161' | left(PicName,7) = '16lf161' |,
                  left(PicName,6) = '16f170' | left(PicName,7) = '16lf170' |,
                  left(PicName,6) = '12f182' | left(PicName,7) = '12lf182' |,
-                 left(PicName,6) = '12f184' | left(PicName,7) = '12lf184' |,
-                 left(PicName,6) = '16f150' | left(PicName,7) = '16lf150' |,
-                 left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' then
-            ansx = word('0 1 2 99 3 99 99 99', ansx + 1)
+                 left(PicName,6) = '16f182' | left(PicName,7) = '16lf182' |,
+                 left(PicName,6) = '12f184' | left(PicName,7) = '12lf184' then
+            ansx = word('0 1 2 99 3 4 99 99', ansx + 1)
          else if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
                  left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' |,
                  left(PicName,6) = '16f171' | left(PicName,7) = '16lf171' |,
                  left(PicName,6) = '16f178' | left(PicName,7) = '16lf178' |,
-                 left(PicName,7) = '16lf190'                              |,
+                                              left(PicName,7) = '16lf190' |,
                  left(PicName,6) = '16f193' | left(PicName,7) = '16lf193' |,
                  left(PicName,6) = '16f194' | left(PicName,7) = '16lf194' then
             ansx = word('0 1 2 3 99 4 99 99', ansx + 1)
@@ -3968,6 +3958,17 @@ select                                                      /* specific formatti
          kwdvalue = descu                                   /* normalized description */
    end
 
+   when key = 'WDTCCS' then do
+      if pos('LF',descu) > 0 then
+         kwdvalue = 'LFINTOSC'
+      else if pos('MF',descu) > 0 then
+         kwdvalue = 'MFINTOSC'
+      else if pos('SOFTWARE',descu) > 0 then
+         kwdvalue = 'SOFTWARE'
+      else
+         kwdvalue = descu
+   end
+
    when key = 'WDTCLK' then do
       if pos('ALWAYS',descu) > 0 then do
          if pos('INTOSC', descu) > 0 then
@@ -3981,6 +3982,25 @@ select                                                      /* specific formatti
          kwdvalue = 'FOSC'
       else
          kwdvalue = descu
+   end
+
+   when key = 'WDTCPS' then do
+      if left(desc,2) = '1:' then do
+         kwdvalue = substr(word(desc,1),3)
+         do j=1 while kwdvalue >= 1024
+            kwdvalue = kwdvalue / 1024                       /* reduce to K, M, G, T */
+         end
+         kwdvalue = 'F'format(kwdvalue,,0)||substr(' KMGT',j,1)
+      end
+      else
+         kwdvalue = 'SOFTWARE'
+   end
+
+   when key = 'WDTCWS' then do
+      if datatype(word(desc,1)) = 'NUM' then
+         kwdvalue = 'P'trunc(word(desc,1))
+      else
+         kwdvalue = 'SOFTWARE'
    end
 
    when key = 'WDTCS' then do
@@ -4479,8 +4499,9 @@ call lineout jalfile, '--  - File creation date/time:' date('N') left(time('N'),
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
-call lineout jalfile, 'const word DEVICE_ID   = 0x'DevID
-call list_devID_chipdef                                     /* special for Chipdef_jallib */
+call lineout jalfile, 'const word DEVICE_ID   = 0x'DevID'            -- ID for PIC programmer'
+call lineout jalfile, 'const word CHIP_ID     = 0x'D2X(ChipID,4)'            -- ID in chipdef_jallib'
+call list_chipID_chipdef                                 /* special for Chipdef_jallib */
 call lineout jalfile, 'const byte PICTYPE[]   = "'PicNameCaps'"'
 call SysFileSearch DevSpec.PicNameCaps.DataSheet, DataSheetFile, 'sheet.'    /* search actual DS */
 if sheet.0 > 0 then
