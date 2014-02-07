@@ -103,6 +103,9 @@ for filename in dir:
             elif alias == "DAC1VREF+n":                     # MPLAB-X error
                aliaslist.append("DAC1VREF+")
                print "  Replaced", alias, "by DAC1VREF+ for pin", pinnumber
+            elif alias == "NMCLR":
+               aliaslist.append("MCLR")
+               print "  Replaced", alias, "by MCLR for pin", pinnumber
             elif ( (picname in ("16F1707", "16LF1707")) &
                    (alias == "AN9") & (pinnumber == 8) ):
                aliaslist.append("AN8")

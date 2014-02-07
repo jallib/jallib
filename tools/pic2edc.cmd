@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------------ *
- * Title: Pic2edc.cmd - expand .pic files to '.edc' files                   *
+ * Title: Pic2edc.cmd - preprocessing .pic files, convert to '.edc' files   *
  *                                                                          *
  * Author: Rob Hamerling, Copyright (c) 2013..2014, all rights reserved.    *
  *                                                                          *
@@ -19,7 +19,7 @@
  *   - translate tab chars to blanks                                        *
  *   - remove module import section(s)                                      *
  *   - handle multiple xml nodes on one line                                *
- *   The resulting files are targets for the edc2jal script.                *
+ *   The resulting .edc files are targets for the edc2jal script.           *
  *                                                                          *
  * Sources:  MPLAB-X .pic files, which can be found in:                     *
  * Program Files (x86)\Microchip\mplabx\mplab_ide\bin\lib\crownking.edc.jar *
@@ -27,7 +27,7 @@
  *                                                                          *
  * Notes:                                                                   *
  *   - This script is written in 'classic' Rexx executed on eComStation     *
- *     See Notes with Edc2jal script for running it on other platforms.     *
+ *     See Notes in Edc2jal script for running it on other platforms.       *
  *   - Old .edc files are not deleted (new files will overwrite old ones).  *
  *                                                                          *
  * ------------------------------------------------------------------------ */
@@ -38,13 +38,13 @@
 MPLABXbase = 'k:/MPLAB-X_'mplabxversion'/'         /* base directory of MPLAB-X */
 picdir     = MPLABXbase'crownking.edc.jar/content/edc'          /* dir with MPLAB .pic  */
 
-/* wildcard = 'PIC1*.pic' */
-wildcard = 'PIC16*f1788.pic'
+wildcard = 'PIC1*.pic'
+wildcard = 'PIC12*f1612.pic'
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx utilities */
 
-say 'Expanding .pic files of  MPLAB-X version' mplabxversion/100
+say 'Preprocessing .pic files of  MPLAB-X version' mplabxversion/100
 
 call SysFileTree picdir'/'wildcard, dir, 'FOS'              /* get list of matching files */
 if dir.0 = 0 then do
@@ -52,14 +52,14 @@ if dir.0 = 0 then do
    return 0                                                 /* nothing to do */
 end
 
-call SysStemSort 'dir.', 'A', 'I'                           /* sort on name */
+call SysStemSort 'dir.', 'A', 'I'                           /* sort .pic files on name */
 
 do i = 1 to dir.0                                           /* all relevant .pic files */
                                                             /* init for each new PIC */
    PicFile = tolower(translate(dir.i,'/','\'))              /* lower case + forward slashes */
    parse value filespec('Name', PicFile) with 'pic' PicName '.pic'
    if PicName = '' then do
-      say 'Could not derive PIC name from filespec: "'PicFile'"'
+      say 'Error: Could not derive PIC name from filespec: "'PicFile'"'
       leave                                                 /* setup error: terminate */
    end
 
@@ -72,12 +72,10 @@ do i = 1 to dir.0                                           /* all relevant .pic
 
    say PicName                                              /* progress signal */
 
-   PicNameCaps = toupper(PicName)                           /* name of PIC in upper case */
-
    Pic. = ''                                                /* reset .pic file contents */
    Pic.0 = 0
    do while lines(PicFile)
-      ln = translate(linein(PicFile), ' ', '09'x)
+      ln = translate(linein(PicFile), ' ', '09'x)           /* tabs -> blanks */
       j = Pic.0 + 1
       k = j
       indent = pos('<', ln) - 1
@@ -94,9 +92,9 @@ do i = 1 to dir.0                                           /* all relevant .pic
    call stream PicFile, 'c', 'close'
 
    do j = 0 to Pic.0
-      if word(pic.j,1) = '<edc:Import>' then do
+      if word(pic.j,1) = '<edc:Import>' then do             /* importsection to be removed */
          do while word(pic.j, 1) \= '</edc:Import>'
-            pic.j = ''
+            pic.j = ''                                      /* erase line */
             j = j + 1
          end
          pic.j = ''
@@ -113,9 +111,6 @@ do i = 1 to dir.0                                           /* all relevant .pic
    call stream edcfile, 'c', close                          /* done with .edc file */
 
 end
-
-signal off error
-signal off syntax                                           /* restore to default */
 
 call SysDropFuncs                                           /* release Rexxutil */
 
