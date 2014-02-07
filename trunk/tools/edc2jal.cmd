@@ -1034,8 +1034,18 @@ do i = i to Pic.0 while word(pic.i,1) \= '</edc:DataSpace>'  /* end of SFRs */
                   call list_status i                              /* compiler privately */
             end
 
+            else if reg = 'PORTE' then do
+               parse var Pic.i . 'edc:access="' val3 '"' .
+               if val3 = '----r---' then do                       /* seems MCLR pin */
+                  pin = 'pin_E3'
+        /*          call msg 1, pin 'is declared under' reg    */
+                  call list_bitfield 1, pin, reg, 3
+                  call list_pin_alias reg, 'RE3', pin
+               end
+            end
+
             else if reg = 'TRISE'  &,
-               (PicName = '16lf1904' | PicName = '16lf1906' | PicName = '16lf1907' ) then do
+               (PicName = '16lf1904' | PicName = '16lf1906' | PicName = '16lf1907') then do
                /* --- extra --- (for missing TRISE3) */
                call msg 1, 'Adding TRISE3'
                call list_bitfield 1, 'TRISE_TRISE3', reg, 3
@@ -1258,6 +1268,11 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                        (offset > 2) then do
                      call msg 1, 'suppressing pin' offset 'of' reg
                      nop                                    /* suppress non existing pins */
+                  end
+                  when (left(reg,4) = 'PORT' | reg = 'GPIO') &,    /* exceptions for PORTx or GPIO */
+                        val1 = 'NMCLR' then do                     /* nMCLR bitname */
+                     call msg 1, 'Renamed' val1 'of' reg 'to MCLR'
+                     call list_bitfield 1, reg'_MCLR', reg, offset
                   end
                   when (left(reg,4) = 'PORT' | reg = 'GPIO') &,    /* exceptions for PORTx or GPIO */
                         HasLATReg = 0 then do                      /* PIC without LAT registers */

@@ -122,7 +122,10 @@ for filename in dir:
             else:
                aliaslist.append(alias)                      # normal alias!
 
-      if (picname in ("18F4220", "18F4320")) & (pinnumber == 36):  # MPLAB-X omission
+      if (picname in ("18F2331", "18F2431")) & (pinnumber == 26):
+         aliaslist = ["RE3"] + aliaslist                    # prepend missing pin name
+         print "  Added RE3 to pin", pinnumber
+      elif (picname in ("18F4220", "18F4320")) & (pinnumber == 36):  # MPLAB-X omission
          aliaslist = pinmap[picname].get("RB3", ["RB3"])    # copy from old pinmap if present
          print "  Aliaslist of pin", pinnumber, "copied from old pinmap"
       elif (picname in ("18F86J11", "18F86J16", "18F87J11"))  & (pinnumber == 55):
@@ -145,6 +148,7 @@ for filename in dir:
             print "  Duplicate pin specification:", portbit, "pin", pinnumber, "skipped"
          else:
             pinlist[portbit] = aliaslist                    # add aliaslist this pin
+
 
    if picname in ("16F1704", "16LF1704"):
       for pin in ("RB4", "RB5", "RB6", "RB7", "RC6", "RC7"):
