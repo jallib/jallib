@@ -399,6 +399,9 @@ return 0
 /* input:   - nothing                           */
 /* output:  - nothing                           */
 /* returns: core (0, '12', '14', '14H', '16')   */
+/* notes: collect all kinds of info about       */
+/*        current PIC, needed before            */
+/*        device file is actually generated     */
 /* -------------------------------------------- */
 load_config_info: procedure expose Pic. PicName Name. CfgAddr. ,
                                    StackDepth NumBanks Banksize AccessBankSplitOffset,
@@ -1036,9 +1039,10 @@ do i = i to Pic.0 while word(pic.i,1) \= '</edc:DataSpace>'  /* end of SFRs */
 
             else if reg = 'PORTE' then do
                parse var Pic.i . 'edc:access="' val3 '"' .
-               if val3 = '----r---' then do                       /* seems MCLR pin */
+        /*     if val3 = '----r---' then do      */
+               if substr(val3,5,1) = 'r' then do
                   pin = 'pin_E3'
-        /*          call msg 1, pin 'is declared under' reg    */
+        /*        call msg 1, pin 'is declared under' reg    */
                   call list_bitfield 1, pin, reg, 3
                   call list_pin_alias reg, 'RE3', pin
                end
@@ -1219,7 +1223,7 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                   end
                   when reg = 'ADCON0'  &,
                        (PicName = '16f737'  | PicName = '16f747'  |,
-                        PicName = '16f767'  | PicName = '16f777')   &,
+                        PicName = '16f767'  | PicName = '16f777')   &,     /* isolated CHS3 bit */
                         val1 = 'CHS' then do
                      call list_bitfield width, field'210', reg, offset
                      call lineout jalfile, '--'
@@ -1460,6 +1464,9 @@ return 0
 /* ---------------------------------------------------- */
 /* procedure to list (only) multiplexed registers       */
 /* input:  - nothing                                    */
+/* notes: 'multiplexed' means here that two SFRs use    */
+/*        the same address. Which SFR is 'active' is    */
+/*        determined by a bit setting in another SFR.   */
 /* ---------------------------------------------------- */
 list_muxed_sfr: procedure expose Pic. Ram. Name. PinMap. PinANMap. ,
                                  Core PicName jalfile BankSize HasMuxedSFR msglevel
@@ -1652,7 +1659,6 @@ return 0
 /* of the 18F series                                          */
 /* input:  - index in .pic                                    */
 /*         - register name                                    */
-/* 16-bit core                                                */
 /* ---------------------------------------------------------- */
 list_muxed_sfr_subfields: procedure expose Pic. Name. PinMap. PicName jalfile msglevel
 
@@ -1743,16 +1749,17 @@ end
 return 0
 
 
-/* ------------------------------------------------------------- */
-/* procedure to add pin alias declarations                       */
-/* input:  - register name                                       */
-/*         - original pin name (Rx)                              */
-/*         - pinname for aliases (pin_Xy)                        */
-/* create alias definitions for all synonyms in pinmap.          */
-/* create extra aliases for first of multiple I2C or SPI modules */
-/* create extra aliases for TX and RX pins of only USART module  */
-/* returns index of alias (0 if none)                            */
-/* ------------------------------------------------------------- */
+/* ---------------------------------------------------------------- */
+/* procedure to add pin alias declarations                          */
+/* input:  - register name                                          */
+/*         - original pin name (Rx)                                 */
+/*         - pinname for aliases (pin_Xy)                           */
+/* returns index of alias (0 if none)                               */
+/* notes:                                                           */
+/* - declare alias definitions for all synonyms in pinmap.          */
+/* - declare extra aliases for first of multiple I2C or SPI modules */
+/* - delaree extra aliases for TX and RX pins of only USART module  */
+/* ---------------------------------------------------------------- */
 list_pin_alias: procedure expose  PinMap. Name. PicName Core PinmapMissCount jalfile msglevel
 parse arg reg, PinName, Pin .
 PicNameCaps = toupper(PicName)
@@ -1779,16 +1786,17 @@ end
 return k                                                    /* k-th alias */
 
 
-/* ------------------------------------------------------------- */
-/* procedure to add pin_direction alias declarations             */
-/* input:  - register name                                       */
-/*         - original pin name (Rx)                              */
-/*         - pinname for aliases (pin_Xy)                        */
-/* create alias definitions for all synonyms in pinmap           */
-/* with '_direction' added!                                      */
-/* create extra aliases for first of multiple I2C or SPI modules */
-/* returns index of alias (0 if none)                            */
-/* ------------------------------------------------------------- */
+/* ----------------------------------------------------------------- */
+/* procedure to add pin_direction alias declarations                 */
+/* input:  - register name                                           */
+/*         - original pin name (Rx)                                  */
+/*         - pinname for aliases (pin_Xy)                            */
+/* returns index of alias (0 if none)                                */
+/* notes:                                                            */
+/* - generate alias definitions for all synonyms in pinmap           */
+/*   with '_direction' added!                                        */
+/* - generate extra aliases for first of multiple I2C or SPI modules */
+/* ----------------------------------------------------------------- */
 list_pin_direction_alias: procedure expose  PinMap. Name. PicName,
                             Core jalfile msglevel
 parse arg reg, PinName, Pin .
@@ -1829,7 +1837,6 @@ return k
 /* notes:  - add unqualified alias for module 1                       */
 /*         - add (modified) alias for modules 2..9                    */
 /*         - bitfields are expanded as for 'real' registers           */
-/* All cores                                                          */
 /* ------------------------------------------------------------------ */
 list_multi_module_register_alias: procedure expose Pic. Name. Core PicName jalfile msglevel
 
@@ -1921,7 +1928,6 @@ return
 /* returns: nothing                                      */
 /* notes:  - add unqualified alias for module 1          */
 /*         - add (modified) alias for modules 2..9       */
-/* All cores                                             */
 /* ----------------------------------------------------- */
 list_multi_module_bitfield_alias: procedure expose Name. Core jalfile msglevel
 
@@ -2128,10 +2134,10 @@ return 0
 /* -------------------------------------------------- */
 /* Procedure to list non memory mapped registers      */
 /* of 12-bit core as pseudo variables.                */
-/* Only some selected registers are handled:          */
-/* TRISxx and OPTIONxx (and GPIO as TRISIO)           */
 /* input:  - nothing                                  */
-/* 12-bit core                                        */
+/* notes:                                             */
+/* - Only some selected registers are handled:        */
+/*   TRISxx and OPTIONxx (and GPIO as TRISIO)         */
 /* -------------------------------------------------- */
 list_nmmr12: procedure expose Pic. Ram. Name. PinMap.  SharedMem. PicName,
                               jalfile  BankSize  NumBanks  msglevel
@@ -2284,10 +2290,9 @@ return 0
 
 /* ---------------------------------------- */
 /* Formatting of non memory mapped register */
-/* subfields of TRISx                       */
+/* subfields of TRISx of 12-bits core       */
 /* input:  - index in .pic                  */
 /*         - port letter                    */
-/* 12-bit core                              */
 /* ---------------------------------------- */
 list_nmmr_sub12_tris: procedure expose Pic. Name. PinMap. PicName,
                                        jalfile msglevel
@@ -2352,11 +2357,10 @@ return 0
 
 /* ------------------------------------------------- */
 /* Formatting of non memory mapped registers:        */
-/* OPTION_REG and OPTION2                            */
+/* OPTION_REG and OPTION2 of 12-bits core            */
 /* input:  - index in .pic                           */
 /*         - register name                           */
 /* Generates names for pins or bits                  */
-/* 12-bit core                                       */
 /* ------------------------------------------------- */
 list_nmmr_sub12_option: procedure expose Pic. Name. PinMap. PicName,
                                          jalfile msglevel
@@ -2426,13 +2430,13 @@ end
 return 0
 
 
-/* --------------------------------------------------- */
-/* procedure to create port shadowing functions        */
-/* for full byte, lower- and upper-nibbles             */
-/* For 12- and 14-bit core                             */
-/* input:  - Port register                             */
-/* shared memory is allocated from high to low address */
-/* --------------------------------------------------- */
+/* ---------------------------------------------------------- */
+/* procedure to create port shadowing functions for           */
+/* full byte, lower- and upper-nibbles of 12- and 14-bit core */
+/* input:  - Port register                                    */
+/* notes:                                                     */
+/* - shared memory is allocated from high to low address      */
+/* ---------------------------------------------------------- */
 list_port1x_shadow: procedure expose jalfile sharedmem. msglevel
 parse upper arg reg .
 shadow = '_PORT'substr(reg,5)'_shadow'
@@ -2702,8 +2706,8 @@ return
 
 /* ----------------------------------------------------------- */
 /* procedure to generate OSCCAL calibration instructions       */
+/* for 12- and 14-bits core                                    */
 /* input:  - nothing                                           */
-/* cores 12 and 14                                             */
 /* notes: Only safe for 12 bits core!                          */
 /* ----------------------------------------------------------- */
 list_osccal: procedure expose jalfile Pic. CfgAddr. DevSpec. PicName,
@@ -2730,17 +2734,17 @@ end
 return
 
 
-/* ------------------------------------------------- */
-/* convert ANSEL-bit to JANSEL_number                */
-/* input: - register  (ANSELx,ADCONx,ANCONx, etc.)   */
-/*        - Name of bit (ANSy)                       */
-/* returns: - channel number                         */
-/*          - 99 indicates 'no JANSEL number'        */
-/* Notes: - This procedure has 3 'core' groups,      */
-/*          and a subgroup for each ANSELx register. */
-/*        - This procedure has to be adapted to      */
-/*          accomodate every new PIC(-group).        */
-/* ------------------------------------------------- */
+/* --------------------------------------------------- */
+/* convert ANSEL-bit to JANSEL_number                  */
+/* input:   - register  (ANSELx,ADCONx,ANCONx, etc.)   */
+/*          - Name of bit (ANSy)                       */
+/* returns: - channel number (decimal)                 */
+/*          - 99 indicates 'no JANSEL number'          */
+/* Notes:   - This procedure has 3 'core' groups,      */
+/*            and a subgroup for each ANSELx register. */
+/*          - This procedure has to be adapted to      */
+/*            accomodate every new PIC(-group).        */
+/* --------------------------------------------------- */
 ansel2j: procedure expose Core PicName PinMap. PinANMap. msglevel
 parse upper arg reg, ans .                                  /* ans is name of bitfield! */
 
@@ -2821,6 +2825,7 @@ else if core = '14H' then do                                /* enhanced midrange
       end
       when reg = 'ANSELE' then do
          if left(PicName,6) = '16f151'  | left(PicName,7) = '16lf151' |,
+            left(PicName,6) = '16f171'  | left(PicName,7) = '16lf171' |,
             left(PicName,6) = '16f178'  | left(PicName,7) = '16lf178' |,
                                           left(PicName,7) = '16lf190' |,
             left(PicName,6) = '16f193'  | left(PicName,7) = '16lf193' then
@@ -2833,7 +2838,8 @@ else if core = '14H' then do                                /* enhanced midrange
             ansx = ansx + 20
       end
       when reg = 'ANSELD' then do
-         if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' then
+         if left(PicName,6) = '16f151' | left(PicName,7) = '16lf151' |,
+            left(PicName,6) = '16f171' | left(PicName,7) = '16lf171' then
             ansx = ansx + 20
          else if left(PicName,6) = '16f152' | left(PicName,7) = '16lf152' then
             ansx = word('23 24 25 26 99 99 99 99', ansx + 1)
@@ -3019,6 +3025,8 @@ if val1 \= '' then
 
 FuseStart = FuseAddr
 
+HasFuseDefOSC = 0                                           /* no fuse_def OSC (yet) */
+
 do i = i to Pic.0 until (word(pic.i,1) = '</edc:ConfigFuseSector>' |,
                          word(pic.i,1) = '</edc:WORMHoleSector>')   /* end of fusedefs */
 
@@ -3052,7 +3060,13 @@ do i = i to Pic.0 until (word(pic.i,1) = '</edc:ConfigFuseSector>' |,
    end
 
 end
+
 call lineout jalfile, '--'
+
+if HasFuseDefOSC = 0 then do
+   call msg 2, 'No fuse_def OSC present ...' HasFUseDefOSC
+end
+
 return 0
 
 
@@ -3061,7 +3075,8 @@ return 0
 /* input:  - index in Pic.                              */
 /*         - fuse byte/word index                       */
 /* ---------------------------------------------------- */
-list_fusedef_fielddefs: procedure expose Pic. CfgAddr. Fuse_Def. PicName Core jalfile msglevel
+list_fusedef_fielddefs: procedure expose Pic. CfgAddr. Fuse_Def. PicName,
+                        Core jalfile msglevel HasFuseDefOSC
 parse arg i, index .
 
 do i = i to Pic.0  while word(Pic.i,1) \= '<edc:DCRMode'     /* fusedef subfields */
@@ -3091,6 +3106,7 @@ do i = i while word(pic.i,1) \= '</edc:DCRMode>'
          if val1 \= ''  &  left(val1u,3) \= 'RES'  &  val2u \= 'RESERVED' then do
             key = normalize_fusedef_keyword(val1u)          /* uniform keyword */
             if \(key = 'OSC' & left(PicName,5) = '10f20') then do   /* OSC, but not a 10F */
+               HasFuseDefOSC = HasFuseDefOSC + 1            /* fuse_def OSC found! */
                mask = strip(B2X(X2B(val3)||copies('0',offset)),'L','0')    /* bit alignment */
                if CfgAddr.0 = 1 then                        /* single byte/word */
                   str = 'pragma fuse_def' key '0x'mask '{'
@@ -3116,6 +3132,7 @@ do i = i while word(pic.i,1) \= '</edc:DCRMode>'
    end
 
 end
+
 return
 
 
@@ -3227,7 +3244,7 @@ if key \= '' then do                               /* key value found */
          key = 'EXCLKMUX'
       when key = 'FLTAMX' then
          key = 'FLTAMUX'
-      when key = 'FOSC' | key = 'FOSC0' then
+      when key = 'FOSC' | key = 'FOSC0' | key = 'FEXTOSC' then
          key = 'OSC'
       when key = 'FSCKM' | key = 'FSCM' then
          key = 'FCMEN'
@@ -3645,7 +3662,7 @@ select                                                      /* specific formatti
    when key = 'OSC' then do
       kwdvalue = Fuse_Def.Osc.descu
       if left(descu,1) = '1' | left(descu,1) = '0' then do   /* desc starts with '1' or '0' */
-         call msg 2, 'Skipping probably duplicate fuse_def' key':' desc
+         call msg 1, 'Skipping probably duplicate fuse_def' key':' desc
          kwdvalue = ''
       end
       else if kwdvalue = '?' then do
@@ -4569,7 +4586,7 @@ if IDSpec \= '' then                                        /* PIC has ID memory
 
 if DevSpec.PicNameCaps.DATA \= '?' then do                  /* overriding data range */
    DataRange = DevSpec.PicNameCaps.DATA
-   call msg 2, 'pragma data overruled by devicespecific'
+   call msg 1, 'pragma data overruled by devicespecific'
 end
 drange = DataRange
 do while length(drange) > 50                                /* split large string */
@@ -4583,7 +4600,7 @@ call lineout jalfile, 'pragma  data    'drange              /* last or only line
 
 if DevSpec.PicNameCaps.SHARED \= '?' then do                /* overriding shared range */
    SharedRange = DevSpec.PicNameCaps.SHARED
-   call msg 2, 'pragma shared overruled by devicespecific'
+   call msg 1, 'pragma shared overruled by devicespecific'
 end
 srange = SharedRange
 if core = '16' then
