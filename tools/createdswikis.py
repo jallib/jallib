@@ -11,9 +11,12 @@ import json
                     * Programming Specifications
                     * PICs with the same DataSheet
                     * PICs with the same Programming Specifications
- Uses: devicespecific,json to obtain DataSheet numbers of PICs
-       datasheet.list to obtain the latest suffixes and titles of the datasheets
-       directory with PIC datasheets (pdf files) to obtain dates of the datasheets
+ Uses:  devicespecific,json to obtain DataSheet numbers of PICs
+        datasheet.list to obtain the latest suffixes and titles of the datasheets
+        directory with PIC datasheets (pdf files) to obtain dates of the datasheets
+ Notes: Run this script when new datasheets have become available, but after
+        datasheet.list and devicespecific.json have been updated and the datasheets
+        (and programming specifications) have been downloaded.
 """
 
 #  input (may require changes for other systems or platforms)
