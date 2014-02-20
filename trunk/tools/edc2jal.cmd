@@ -42,9 +42,9 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.24'
+   ScriptVersion   = '0.0.25'
    ScriptAuthor    = 'Rob Hamerling'
-   CompilerVersion = '2.4q'
+   CompilerVersion = '2.4q2'
 /* mplabxversion obtained from file MPLAB-X_VERSION created by pic2edc script. */
 /* ------------------------------------------------------------------------ */
 
@@ -84,7 +84,6 @@ edcdir        = './edc_'mplabxversion                       /* source of .edc fi
 JALLIBbase    = 'k:/jallib'                                  /* local JALLIB base directory */
 DevSpecFile   = JALLIBbase'/tools/devicespecific.json'       /* device specific data */
 PinMapFile    = JALLIBbase'/tools/pinmap_pinsuffix.json'     /* pin aliases */
-FuseDefFile   = JALLIBbase'/tools/fusedefmap.cmd'            /* OSC fuse_def mappings */
 DataSheetFile = JALLIBbase'/tools/datasheet.list'            /* actual datasheets */
 
 call msg 0, 'Edc2Jal version' ScriptVersion '  -  ' ScriptAuthor '  -  ' date('N')';' time('N')
@@ -155,9 +154,8 @@ PinANMap. = '-'                                             /* pin_ANx -> RXy ma
 if file_read_pinmap() \= 0 then                             /* read pin alias names */
    return 1                                                 /* terminate with error */
 
-Fuse_Def. = '?'                                             /* Fuse_Def name mapping */
-if file_read_fusedef() \= 0 then                            /* read fuse_def table */
-   return 1                                                 /* terminate with error */
+Fuse_Def_Osc. = '-'                                         /* Fuse_Def OSC cname to keyword mapping */
+call Init_Fuse_Def_Osc                                      /* init OSC cname -> fuse_def mapping */
 
 call SysFileTree dstdir'/*.jal', 'jal.', 'FO'               /* .jal files in destination */
 do i = 1 to jal.0                                           /* all .jal files */
@@ -251,6 +249,7 @@ do i = 1 to dir.0                                           /* all relevant .edc
    ADCS_bits             = 0                                /* # ADCONx_ADCS bits */
    ADC_highres           = 0                                /* 0 = has no ADRESH register */
    IRCF_bits             = 0                                /* # OSCCON_IRCF bits */
+   HasWDTCON             = 0                                /* WDTCON register */
    HasLATreg             = 0                                /* zero LAT registers found (yet) */
                                                             /* used for enhanced midrange only */
    HasMuxedSFR           = 0                                /* zero multiplexed SFRs found(yet) */
@@ -407,7 +406,8 @@ load_config_info: procedure expose Pic. PicName Name. CfgAddr. ,
                                    StackDepth NumBanks Banksize AccessBankSplitOffset,
                                    CodeSize EESpec IDSpec DevID ChipID Cfgmem,
                                    VddRange VddNominal VppRange VppDefault,
-                                   HasLATreg HasMuxedSFR OSCCALaddr FSRaddr,
+                                   HasLATreg HasMuxedSFR,
+                                   OSCCALaddr FSRaddr,
                                    ADC_highres ADCS_bits IRCF_bits,
                                    DataRange SharedRange dsnumber psnumber
 
@@ -438,7 +438,7 @@ do i = 1 to Pic.0
             else if val1 = '18xxxx' then
                Core = '16'
             else do                                         /* otherwise */
-               msg 3, 'Unrecognized core type:' val1', terminated!'
+               call msg 3, 'Unrecognized core type:' val1', terminated!'
                exit 3
             end
          end
@@ -845,7 +845,7 @@ return 0
 /* ---------------------------------------------------- */
 list_sfr: procedure expose Pic. Ram. Name. PinMap. PinANMap. SharedMem.,
                              Core PicName ADCS_bits IRCF_bits jalfile BankSize,
-                             HasLATReg NumBanks PinmapMissCount msglevel
+                             HasLATReg HasWDTCON NumBanks PinmapMissCount msglevel
 PortLat. = 0                                                /* no pins at all */
 SFRaddr = 0                                                 /* start value */
 
@@ -932,6 +932,9 @@ do i = i to Pic.0 while word(pic.i,1) \= '</edc:DataSpace>'  /* end of SFRs */
                      call lineout jalfile, '-- ------------------------------------------------'
                      call list_variable 'byte  ', reg, addr
                      call list_sfr_subfields i, reg               /* SFR bit fields */
+
+                     call list_multi_module_register_alias i, reg     /* see comments below  */
+
                   end
                end
 
@@ -1058,6 +1061,9 @@ do i = i to Pic.0 while word(pic.i,1) \= '</edc:DataSpace>'  /* end of SFRs */
                call list_pin_direction_alias reg, 'RE3', pin
                call lineout jalfile, '--'
             end
+
+            if reg = 'WDTCON' then                                /* WDTCON register present */
+               HasWDTCON = 1
 
             call list_multi_module_register_alias i, reg          /* even when there are no  */
                                                                   /* multiple modules, register */
@@ -1985,7 +1991,6 @@ if  left(reg,3) = 'SSP' &,                                  /* SSPx  register */
 end
 
 return 1                                                    /* subfields wanted */
-end
 
 
 /* ------------------------------------------------------- */
@@ -2999,8 +3004,8 @@ return ansx
 /* procedure to list fusedef specifications             */
 /* input:  - nothing                                   */
 /* ---------------------------------------------------- */
-list_fusedef: procedure expose Pic. Ram. Name. Fuse_def. Core PicName jalfile,
-                             msglevel CfgAddr.
+list_fusedef: procedure expose Pic. Ram. Name. Fuse_Def_Osc. Core PicName jalfile,
+                             HasWDTCON msglevel CfgAddr.
 
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
@@ -3025,7 +3030,8 @@ if val1 \= '' then
 
 FuseStart = FuseAddr
 
-HasFuseDefOSC = 0                                           /* no fuse_def OSC (yet) */
+HasFuseDefOSC = 0                                           /* no fuse_def OSC (yet), modified */
+                                                            /* by list_fusedef_fielddefs */
 
 do i = i to Pic.0 until (word(pic.i,1) = '</edc:ConfigFuseSector>' |,
                          word(pic.i,1) = '</edc:WORMHoleSector>')   /* end of fusedefs */
@@ -3063,9 +3069,8 @@ end
 
 call lineout jalfile, '--'
 
-if HasFuseDefOSC = 0 then do
-   call msg 2, 'No fuse_def OSC present ...' HasFUseDefOSC
-end
+if HasFuseDefOSC = 0  &  left(PicName,4) \= '10f2' then
+   call msg 2, 'No fuse_def OSC present ...' HasFuseDefOSC
 
 return 0
 
@@ -3075,8 +3080,8 @@ return 0
 /* input:  - index in Pic.                              */
 /*         - fuse byte/word index                       */
 /* ---------------------------------------------------- */
-list_fusedef_fielddefs: procedure expose Pic. CfgAddr. Fuse_Def. PicName,
-                        Core jalfile msglevel HasFuseDefOSC
+list_fusedef_fielddefs: procedure expose Pic. CfgAddr. Fuse_Def_Osc. PicName,
+                        Core jalfile msglevel HasFuseDefOSC HasWDTCON
 parse arg i, index .
 
 do i = i to Pic.0  while word(Pic.i,1) \= '<edc:DCRMode'     /* fusedef subfields */
@@ -3101,27 +3106,31 @@ do i = i while word(pic.i,1) \= '</edc:DCRMode>'
       when kwd = '<edc:DCRFieldDef' then do
          parse var Pic.i '<edc:DCRFieldDef' 'edc:cname="' val1 '"' 'edc:desc="' val2 '"',
                           'edc:mask="0x' val3 '"' . 'edc:nzwidth="' val4 '"' .
-         val1u = toupper(val1)
-         val2u = toupper(val2)
-         if val1 \= ''  &  left(val1u,3) \= 'RES'  &  val2u \= 'RESERVED' then do
-            key = normalize_fusedef_keyword(val1u)          /* uniform keyword */
-            if \(key = 'OSC' & left(PicName,5) = '10f20') then do   /* OSC, but not a 10F */
-               HasFuseDefOSC = HasFuseDefOSC + 1            /* fuse_def OSC found! */
-               mask = strip(B2X(X2B(val3)||copies('0',offset)),'L','0')    /* bit alignment */
-               if CfgAddr.0 = 1 then                        /* single byte/word */
-                  str = 'pragma fuse_def' key '0x'mask '{'
-               else                                         /* multi byte/word */
-                  str = 'pragma fuse_def' key':'index '0x'mask '{'
-               call lineout jalfile, left(str, 42) '--' val2
-               call list_fusedef_fieldsemantics i, offset, key
-               if val1 = 'ICPRT'  &,
-                  (PicName = '18f1230'   | PicName = '18f1330'  |,
-                   PicName = '18f24k50'  | PicName = '18f25k50' |,
-                   PicName = '18lf24k50' | PicName = '18lf25k50') then do
-                  call msg 1, 'Adding "ENABLED = 0x'mask'"  for fuse_def' val1
-                  call lineout jalfile, left('       ENABLED = 0x'mask, 42) '-- ICPORT enabled'
+         if pos('edc:ishidden="true"', pic.i) = 0  &,           /* not unimplemented */
+            pos('edc:islanghidden="true"', pic.i) = 0 then do
+            val1u = toupper(val1)
+            val2u = toupper(val2)
+            if val1 \= ''  &  left(val1u,3) \= 'RES'  &  val2u \= 'RESERVED' then do
+               key = normalize_fusedef_keyword(val1u)          /* uniform keyword */
+               if \(key = 'OSC' & left(PicName,4) = '10f2') then do   /* all except OSC for 10F2?? */
+                  if key = 'OSC' then
+                     HasFuseDefOSC = HasFuseDefOSC + 1         /* fuse_def OSC found! */
+                  mask = strip(B2X(X2B(val3)||copies('0',offset)),'L','0')    /* bit alignment */
+                  if CfgAddr.0 = 1 then                        /* single byte/word */
+                     str = 'pragma fuse_def' key '0x'mask '{'
+                  else                                         /* multi byte/word */
+                     str = 'pragma fuse_def' key':'index '0x'mask '{'
+                  call lineout jalfile, left(str, 42) '--' val2
+                  call list_fusedef_fieldsemantics i, offset, key
+                  if val1 = 'ICPRT'  &,
+                     (PicName = '18f1230'   | PicName = '18f1330'  |,
+                      PicName = '18f24k50'  | PicName = '18f25k50' |,
+                      PicName = '18lf24k50' | PicName = '18lf25k50') then do
+                     call msg 1, 'Adding "ENABLED = 0x'mask'"  for fuse_def' val1
+                     call lineout jalfile, left('       ENABLED = 0x'mask, 42) '-- ICPORT enabled'
+                  end
+                  call lineout jalfile, '       }'
                end
-               call lineout jalfile, '       }'
             end
          end
          offset = offset + todecimal(val4)                  /* adjust bit offset */
@@ -3141,7 +3150,8 @@ return
 /* input:  - index in Pic.                              */
 /*         - bitfield offset                            */
 /* ---------------------------------------------------- */
-list_fusedef_fieldsemantics: procedure expose Pic. Fuse_Def. Core PicName jalfile msglevel
+list_fusedef_fieldsemantics: procedure expose Pic. Fuse_Def_Osc. Core,
+                                              hasWDTCON PicName jalfile msglevel
 parse arg i, offset, key .
 
 do i = i to Pic.0  while word(Pic.i,1) \= '<edc:DCRFieldSemantic'     /* fusedef subfields */
@@ -3151,7 +3161,10 @@ end
 kwdname. = '-'                                           /* no key names collected yet */
 
 do i = i while word(pic.i,1) \= '</edc:DCRFieldDef>'
-   if word(Pic.i,1) = '<edc:DCRFieldSemantic' then do
+   if word(Pic.i,1) = '<edc:DCRFieldSemantic'  &,        /* implemented pattern */
+      pos('edc:ishidden="true"', pic.i) = 0    &,
+      pos('edc:islanghidden="true"', pic.i) = 0 then do
+
       parse var Pic.i '<edc:DCRFieldSemantic' 'edc:cname="' val1 '"',
                        'edc:desc="' val2 '"' 'edc:when="' . '==' '0x' val3 '"' .
 
@@ -3301,8 +3314,6 @@ end
 
 return key
 
-end
-
 
 /* ------------------------------------------------------------------------ */
 /* Detailed formatting of fusedef keywords                                  */
@@ -3314,8 +3325,8 @@ end
 /* notes: val2 contains keyword description with undesired chars and blanks */
 /*        val2u is val2 with all these replaced by a single underscore      */
 /* ------------------------------------------------------------------------ */
-normalize_fusedef_keywordvalue: procedure expose Pic. Fuse_Def. jalfile Fuse_Def.,
-                                                 Core PicName msglevel
+normalize_fusedef_keywordvalue: procedure expose Pic. Fuse_Def_Osc. jalfile Fuse_Def.,
+                                                 Core PicName HasWDTCON msglevel
 parse upper arg key, val, desc
 
 desc = strip(desc, 'B', '"')                                /* strip double quoted */
@@ -3388,7 +3399,7 @@ select                                                      /* specific formatti
    end
 
    when key = 'BROWNOUT' then do
-      if  pos('SLEEP',descu) > 0 & pos('DEEP_SLEEP',descu) = 0 then
+      if pos('SLEEP',descu) > 0 & pos('DEEP_SLEEP',descu) = 0 then
          kwdvalue = 'RUNONLY'
       else if pos('HARDWARE_ONLY',descu) > 0 then do
          kwdvalue = 'ENABLED'
@@ -3660,14 +3671,68 @@ select                                                      /* specific formatti
    end
 
    when key = 'OSC' then do
-      kwdvalue = Fuse_Def.Osc.descu
-      if left(descu,1) = '1' | left(descu,1) = '0' then do   /* desc starts with '1' or '0' */
-         call msg 1, 'Skipping probably duplicate fuse_def' key':' desc
+      if left(descu,1) = '1' | left(descu,1) = '0' then do  /* desc starts with '1' or '0' */
+         call msg 1, 'Skipping probably duplicate/unused fuse_def' key':' desc
          kwdvalue = ''
       end
-      else if kwdvalue = '?' then do
-         call msg 2, 'No mapping for fuse_def' key':' descu
-         kwdvalue = descu
+      else do
+         kwdvalue = Fuse_Def_Osc.val
+         if kwdvalue = '-' then do                          /* not listed in init_ */
+            call msg 2, 'No mapping for fuse_def' key':' val
+         end
+         else do
+            tablevalue = kwdvalue                        /* remember original keyword */
+                                        /* exception handling: sequence is important! */
+            if PicName = '16f707' | PicName = '16lf707' |,
+               PicName = '16f720' | PicName = '16lf720' |,
+               PicName = '16f721' | PicName = '16lf721' then do
+               if val = 'EXTRC' then
+                  kwdvalue = 'RC_CLKOUT'
+               else if val = 'INTOSC' then
+                  kwdvalue = 'INTOSC_CLKOUT'
+            end
+            else if PicName = '16f87' then do
+               if val = 'EC' then
+                  kwdvalue = 'EC_NOCLKOUT'
+            end
+            else if PicName = '16f83'         |,
+                    PicName = '16f84'         |,
+                    PicName = '16f84a'        |,
+                    left(PicName,5) = '16f87'  then do
+              if val = 'EXTRC' then
+                 kwdvalue = 'RC_CLKOUT'
+            end
+            else if left(PicName,4) = '10f3'  | left(PicName,5) = '10lf3'  |,
+                    left(PicName,4) = '12f6'  | left(PicName,5) = '12hv6'  |,
+                    left(PicName,4) = '12f7'  | left(PicName,5) = '12hv7'  |,
+                    left(PicName,4) = '16f5'                               |,
+                    left(PicName,5) = '16f61' | left(PicName,6) = '16hv61' |,
+                    left(PicName,5) = '16f63'                              |,
+                    left(PicName,5) = '16f67'                              |,
+                    left(PicName,5) = '16f68'                              |,
+                    left(PicName,5) = '16f69'                              |,
+                    left(PicName,4) = '16f7'  | left(PicName,5) = '16hv7'  | left(PicName,5) = '16lf7' |,
+                    left(PicName,4) = '16f8'                               |,
+                    left(PicName,4) = '16f9'                                then do
+               if kwdvalue = 'EC_NOCLKOUT' then
+                  kwdvalue = 'EC_CLKOUT'
+               else if kwdvalue = 'EC_CLKOUT' then
+                  kwdvalue = 'EC_NOCLKOUT'
+            end
+            else if PicName = '18f13k22' | PicName = '18lf13k22' |,
+                    PicName = '18f13k50' | PicName = '18lf13k50' |,
+                    PicName = '18f14k22' | PicName = '18lf14k22' |,
+                    PicName = '18f14k50' | PicName = '18lf14k50'    then do
+               if val = 'IRC' then
+                  kwdvalue = 'INTOSC_NOCLKOUT'
+            end
+            else if PicName = '18f25k80' | PicName = '18f26k80'  then do
+               if val = 'RC' then
+                  kwdvalue = 'RC_CLKOUT'
+            end
+            if kwdvalue \= tablevalue then
+               call msg 1, 'Modified fuse_def OSC kwdvalue from' tablevalue 'to' kwdvalue
+         end
       end
    end
 
@@ -3966,25 +4031,25 @@ select                                                      /* specific formatti
    end
 
    when key = 'WDT' then do                                 /* Watchdog */
-      pos_en = pos('ENABLE', desc)
-      pos_dis = pos('DISABLE', desc)
-      if pos('RUNNING', desc) > 0 |,
-         pos('DISABLED_IN_SLEEP', descu) > 0 then
+      if val = 'NOSLP' | val = 'NSLEEP' | val = 'SLEEP' then
          kwdvalue = 'RUNONLY'
-      else if descu = 'OFF' | (pos_dis > 0 & (pos_en = 0 | pos_en > pos_dis)) then do
-         kwdvalue = 'DISABLED'
-      end
-      else if pos('HARDWARE', desc) > 0 then do
-         kwdvalue = 'HARDWARE'
-      end
-      else if pos('CONTROL', desc) > 0  then do
-         if core = '16' then                                /* *** backward compatibility *** */
-            kwdvalue = 'DISABLED'
-         else
-            kwdvalue = 'CONTROL'
-      end
-      else if descu = 'ON' | (pos_en > 0 & (pos_dis = 0 | pos_dis > pos_en)) then do
+      else if val = 'SWDTDIS' then
          kwdvalue = 'ENABLED'
+      else if val = 'SWDTEN' | val = 'SWON' then do
+         kwdvalue = 'CONTROL'
+      end
+      else if val = 'OFF' then do
+         kwdvalue = 'DISABLED'
+         if pos('CAN_BE_ENABLED',descu) > 0 | pos('CONTROL',descu) > 0 then do
+            kwdvalue = 'CONTROL'
+            if HasWDTCON = 0 then                           /* no WDTCON register */
+               kwdvalue = 'DISABLED'
+         end
+      end
+      else if val = 'ON' then do
+         kwdvalue = 'ENABLED'
+         if pos('CONTROL',descu) > 0 then
+            kwdvalue = 'CONTROL'
       end
       else
          kwdvalue = descu                                   /* normalized description */
@@ -4528,6 +4593,7 @@ call lineout jalfile, '--'
 call lineout jalfile, '-- Notes:'
 call lineout jalfile, '--  - Created with Edc2Jal Rexx script version' ScriptVersion
 call lineout jalfile, '--  - File creation date/time:' date('N') left(time('N'),5)
+call lineout jalfile, '--  - This file is generated automatically: don't change!
 call lineout jalfile, '--'
 call lineout jalfile, '-- ==================================================='
 call lineout jalfile, '--'
@@ -4833,7 +4899,7 @@ end
 return 0
 
 
-/* -------------------------------- */
+/* ---------------------------------------------------- */
 json_newstring: procedure expose f_input f_index f_size
 
 do until x = '"' | x = ']' | x = '}' | x = 0                /* start new string or end of everything */
@@ -4850,7 +4916,7 @@ end
 return str
 
 
-/* -------------------------------- */
+/* -------------------------------------------------- */
 json_newchar: procedure expose f_input f_index f_size
 do while f_index < f_size
    f_index = f_index + 1
@@ -4862,22 +4928,125 @@ end
 return 0                                                    /* dummy (end of file) */
 
 
-/* ---------------------------------------------------- */
-/* Read file with oscillator name mapping               */
-/* Interpret contents: fill compound variable Fuse_Def. */
-/* ---------------------------------------------------- */
-file_read_fusedef: procedure expose FuseDefFile Fuse_Def. msglevel
-if stream(FuseDefFile, 'c', 'open read') \= 'READY:' then do
-   call msg 3, 'Could not open file with fuse_def mappings' FuseDefFile
-   return 1                                                 /* zero records */
-end
-call msg 1, 'Reading Fusedef Names from' FuseDefFile '... '
-do while lines(FuseDefFile) > 0                             /* whole file */
-   interpret linein(FuseDefFile)                            /* read and interpret line */
-end
-call stream FuseDefFile, 'c', 'close'                       /* done */
-return 0
+/* ----------------------------------------------------- */
+/* Initialize compound variable to map 'cname' attribute */
+/* of fuse_def OSC to a normalized keyword.              */
+/* ----------------------------------------------------- */
+Init_Fuse_Def_Osc: procedure expose Fuse_Def_Osc. msglevel
+Fuse_Def_Osc.               = '-'                           /* default */
+Fuse_Def_Osc.EC             = "EC_CLKOUT"                   /* with NOCLKOUT exceptions! */
+Fuse_Def_Osc.EC1            = "ECL_NOCLKOUT"
+Fuse_Def_Osc.EC1IO          = "ECL_CLKOUT"
+Fuse_Def_Osc.EC2            = "ECM_NOCLKOUT"
+Fuse_Def_Osc.EC2IO          = "ECM_CLKOUT"
+Fuse_Def_Osc.EC3            = "ECH_NOCLKOUT"
+Fuse_Def_Osc.EC3IO          = "ECH_CLKOUT"
+Fuse_Def_Osc.ECCLK          = "EC_CLKOUT"
+Fuse_Def_Osc.ECCLKOUTH      = "ECH_CLKOUT"
+Fuse_Def_Osc.ECCLKOUTL      = "ECL_CLKOUT"
+Fuse_Def_Osc.ECCLKOUTM      = "ECM_CLKOUT"
+Fuse_Def_Osc.ECH            = "ECH_NOCLKOUT"
+Fuse_Def_Osc.ECHCLKO        = "ECH_CLKOUT"
+Fuse_Def_Osc.ECHIO          = "ECH_NOCLKOUT"
+Fuse_Def_Osc.ECHP           = "ECH_CLKOUT"
+Fuse_Def_Osc.ECHPIO6        = "ECH_NOCLKOUT"
+Fuse_Def_Osc.ECIO           = "EC_NOCLKOUT"
+Fuse_Def_Osc.ECIO6          = "EC_NOCLKOUT"
+Fuse_Def_Osc.ECIOPLL        = "EC_NOCLKOUT_PLL_HW"
+Fuse_Def_Osc.ECIOSWPLL      = "EC_NOCLKOUT_PLL_SW"
+Fuse_Def_Osc.ECIO_EC        = "EC_NOCLKOUT"
+Fuse_Def_Osc.ECL            = "ECL_NOCLKOUT"
+Fuse_Def_Osc.ECLCLKO        = "ECL_CLKOUT"
+Fuse_Def_Osc.ECLIO          = "ECL_NOCLKOUT"
+Fuse_Def_Osc.ECLP           = "ECL_CLKOUT"
+Fuse_Def_Osc.ECLPIO6        = "ECL_NOCLKOUT"
+Fuse_Def_Osc.ECM            = "ECM_NOCLKOUT"
+Fuse_Def_Osc.ECMCLKO        = "ECM_CLKOUT"
+Fuse_Def_Osc.ECMIO          = "ECM_NOCLKOUT"
+Fuse_Def_Osc.ECMP           = "ECM_CLKOUT"
+Fuse_Def_Osc.ECMPIO6        = "ECM_NOCLKOUT"
+Fuse_Def_Osc.ECPLL          = "EC_CLKOUT_PLL"
+Fuse_Def_Osc.ECPLLIO_EC     = "EC_NOCLKOUT_PLL"
+Fuse_Def_Osc.ECPLL_EC       = "EC_CLKOUT_PLL"
+Fuse_Def_Osc.EC_EC          = "EC_CLKOUT"
+Fuse_Def_Osc.EC_OSC         = "EC_NOCLKOUT"
+Fuse_Def_Osc.ERC            = "RC_NOCLKOUT"
+Fuse_Def_Osc.ERCCLKOUT      = "RC_CLKOUT"
+Fuse_Def_Osc.ERCLK          = "RC_CLKOUT"
+Fuse_Def_Osc.ERIO           = "RC_NOCLKOUT"
+Fuse_Def_Osc.EXTRC          = "RC_NOCLKOUT"
+Fuse_Def_Osc.EXTRCCLK       = "RC_CLKOUT"
+Fuse_Def_Osc.EXTRCIO        = "RC_NOCLKOUT"
+Fuse_Def_Osc.EXTRC_CLKOUT   = "RC_CLKOUT"
+Fuse_Def_Osc.EXTRC_CLKOUTEN = "RC_CLKOUT"
+Fuse_Def_Osc.EXTRC_IO       = "RC_NOCLKOUT"
+Fuse_Def_Osc.EXTRC_NOCLKOUT = "RC_NOCLKOUT"
+Fuse_Def_Osc.EXTRC_RB4      = "RC_NOCLKOUT"
+Fuse_Def_Osc.EXTRC_RB4EN    = "RC_NOCLKOUT"
+Fuse_Def_Osc.FRC            = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.FRC500KHZ      = "INTOSC_500KHZ"
+Fuse_Def_Osc.FRCDIV         = "INTOSC_DIV"
+Fuse_Def_Osc.FRCPLL         = "INTOSC_NOCLKOUT_PLL"
+Fuse_Def_Osc.HS             = "HS"
+Fuse_Def_Osc.HS1            = "HSM"
+Fuse_Def_Osc.HS2            = "HSH"
+Fuse_Def_Osc.HSH            = "HSH"
+Fuse_Def_Osc.HSHP           = "HSH"
+Fuse_Def_Osc.HSM            = "HSM"
+Fuse_Def_Osc.HSMP           = "HSM"
+Fuse_Def_Osc.HSPLL          = "HS_PLL"
+Fuse_Def_Osc.HSPLL_HS       = "HS_PLL"
+Fuse_Def_Osc.HSSWPLL        = "HS_PLL_SW"
+Fuse_Def_Osc.HS_OSC         = "HS"
+Fuse_Def_Osc.INOSC          = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INT            = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTIO1         = "INTOSC_CLKOUT"
+Fuse_Def_Osc.INTIO2         = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTIO67        = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTIO7         = "INTOSC_CLKOUT"
+Fuse_Def_Osc.INTOSC         = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTOSCCLK      = "INTOSC_CLKOUT"
+Fuse_Def_Osc.INTOSCCLKO     = "INTOSC_CLKOUT"
+Fuse_Def_Osc.INTOSCIO       = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTOSCIO_EC    = "INTOSC_NOCLKOUT_USB_EC"
+Fuse_Def_Osc.INTOSCO        = "INTOSC_CLKOUT"
+Fuse_Def_Osc.INTOSCPLL      = "INTOSC_NOCLKOUT_PLL"
+Fuse_Def_Osc.INTOSCPLLO     = "INTOSC_CLKOUT_PLL"
+Fuse_Def_Osc.INTOSC_EC      = "INTOSC_CLKOUT_USB_EC"
+Fuse_Def_Osc.INTOSC_HS      = "INTOSC_NOCLKOUT_USB_HS"
+Fuse_Def_Osc.INTOSC_XT      = "INTOSC_NOCLKOUT_USB_XT"
+Fuse_Def_Osc.INTRC          = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTRCCLK       = "INTOSC_CLKOUT"
+Fuse_Def_Osc.INTRCIO        = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTRC_CLKOUT   = "INTOSC_CLKOUT"
+Fuse_Def_Osc.INTRC_CLKOUTEN = "INTOSC_CLKOUT"
+Fuse_Def_Osc.INTRC_IO       = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTRC_NOCLKOUT = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTRC_RB4      = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.INTRC_RB4EN    = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.IRC            = "INTOSC_CLKOUT"
+Fuse_Def_Osc.IRCCLKOUT      = "INTOSC_CLKOUT"
+Fuse_Def_Osc.IRCIO          = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.IRCIO67        = "INTOSC_NOCLKOUT"
+Fuse_Def_Osc.IRCIO7         = "INTOSC_CLKOUT"
+Fuse_Def_Osc.LP             = "LP"
+Fuse_Def_Osc.LPRC           = "INTOSC_LP"
+Fuse_Def_Osc.LP_OSC         = "LP"
+Fuse_Def_Osc.PRI            = "PRI"
+Fuse_Def_Osc.PRIPLL         = "PRI_PLL"
+Fuse_Def_Osc.RC             = "RC_CLKOUT"
+Fuse_Def_Osc.RC1            = "RC_CLKOUT"
+Fuse_Def_Osc.RC2            = "RC_CLKOUT"
+Fuse_Def_Osc.RCCLKO         = "RC_CLKOUT"
+Fuse_Def_Osc.RCIO           = "RC_NOCLKOUT"
+Fuse_Def_Osc.RCIO6          = "RC_NOCLKOUT"
+Fuse_Def_Osc.SOSC           = "SEC"
+Fuse_Def_Osc.XT             = "XT"
+Fuse_Def_Osc.XTPLL_XT       = "XT_PLL"
+Fuse_Def_Osc.XT_OSC         = "XT"
+Fuse_Def_Osc.XT_XT          = "XT"
 
+return
 
 
 /* --------------------------------------------- */
