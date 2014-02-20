@@ -15,7 +15,7 @@ from xml.dom.minidom import parse, Node
   The Pin section of these files contains the pin aliases.
   Some manipulations are performed, for example:
    - skip pins which are not accessible from the program like Vpp, Vdd
-   - skip non-aliases of a pin like IOC, INT
+   - skip non-aliases of a pin, like IOC, INT
    - correct apparent errors or omissions of MPLAB-X
    - determine the base name of a pin and specify it as first in list
   When pins are not in .edc file or known to be incorrect
