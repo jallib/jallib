@@ -1,30 +1,31 @@
 -- Title: reading DS1820 temperature sensor
 --        output via Sterm LCD
 -- Author: Eur van Andel Copyright (c) 2012
--- Compiler: 2.4o
+-- Adadpted by: Rob Hamerling
+-- Compiler: 2.4q2
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- 
+--
 -- Description: this code measures temperature with single DS1820 sensor
 --
 -- Sources:
 -- Adapted from 18f4550_ds18b20_single.jal by Vasile Guta Ciucur and Joep Suijs.
 --
 -- Notes:
--- This code was tested with a DS1820, which is not recommended for new developments. 
+-- This code was tested with a DS1820, which is not recommended for new developments.
 -- Use the DS18B20: http://www.maxim-ic.com/datasheet/index.mvp/id/2812
 --  or the DS18S20: http://www.maxim-ic.com/datasheet/index.mvp/id/2815
 -- instead.
 --
--- Hardware: 
+-- Hardware:
 -- Sterm LCD + keyboard on pin_b0
 -- red and green LEDs on pin_b2
 -- DS1820 on pin_b4
 
--- 
+--
 
 
 include 18f2585
@@ -32,9 +33,11 @@ pragma target clock 20_000_000
 -- pragma target OSC  HS_PLL
 pragma target OSC  HS
 pragma target XINST disabled
-pragma target WDT  disabled
+pragma target WDT  control
 pragma target LVP  disabled
 pragma target MCLR external
+
+WDTCON_SWDTEN = off                    -- no watchdog
 
 enable_digital_io()
 
@@ -42,7 +45,7 @@ const down  = 0
 const green = 1
 const red   = 2
 
-var bit led      is pin_b2		     -- two red and two green LEDs in series between Vdd and Vss
+var bit led      is pin_b2         -- two red and two green LEDs in series between Vdd and Vss
 var bit led_dir  is pin_b2_direction -- 150 Ohm resistor in the middle to PIC pin
 led_dir = output                     -- pin = high --> green, pin = low --> red
 led = high                           -- pin = input --> off
@@ -52,7 +55,7 @@ if x == down then             -- at 1.7V Vf, they will not light up
    led_dir  = input           -- PIC pin is tied to the middle, via 150 Ohm resistor
 elsif x == red then           -- so HIGH will light both lower green LEDs
    led_dir  = output          -- LOW will light both higher RED leds
-   led      = low             -- pin_direction = input will light no LEDs. 
+   led      = low             -- pin_direction = input will light no LEDs.
 elsif x == green then
    led_dir  = output
     led     = high
@@ -73,10 +76,10 @@ var bit lcd_sterm_pin is pin_b0
 var bit lcd_sterm_pin_dir is pin_b0_direction
 include lcd_sterm_master         -- Sterm LCD + keyboard contains a PIC too
 
-              
+
 -- setup pin definitions for dallas one-wire bus
 alias d1w_bus            is pin_b4
-alias d1w_bus_direction  is pin_b4_direction     
+alias d1w_bus_direction  is pin_b4_direction
 include one_wire           -- include one-wire library
 d1w_init()                 -- init one-wire bus
 
@@ -104,15 +107,15 @@ var byte i
 for 4 loop              -- red/green sequence means boot
    leds(red)
    delay_100ms(2)
-   lcd_clear_screen()		-- Sterm needs some time after power-up
+   lcd_clear_screen()      -- Sterm needs some time after power-up
    leds(green)
    delay_100ms(2)
 end loop
 
 delay_100ms(3)
 
---                 12345678901234567890                  
-const byte str0[]="Test DS1820 "	-- print banner
+--                 12345678901234567890
+const byte str0[]="Test DS1820 " -- print banner
 const byte str1[]="Temp="
 const byte str2[]="Device ID: "
 const byte str3[]="C"
@@ -124,18 +127,18 @@ print_string(lcd, str2)
 
 r = ds18b20_s_read_rom()
 if r then
-   -- read_rom successful, so print ID which is now stored in scratchpad 
+   -- read_rom successful, so print ID which is now stored in scratchpad
    lcd_cursor_position(3,0)
    for 8 using i loop
       print_byte_hex(lcd, scratchpad[i])
-   end loop                
-else                      
+   end loop
+else
    -- print fail message
    print_string(lcd, err1)
 end if
 
 
-for 4 loop					-- leave banner on for a while
+for 4 loop              -- leave banner on for a while
    leds(green)
    delay_100ms(5)
 end loop
@@ -151,29 +154,29 @@ forever loop -- ---------------------------  M A I N  L O O P  -----------------
     ds18b20_convert()  -- tell ds18b20 device
 
     -- note: the statement above starts the conversion and it can take
-    -- up to 750ms to complete. 
+    -- up to 750ms to complete.
     -- If the sensor is in parasite mode, it is mandatory to leave the bus high
     -- during conversion. You could include a delay like:
     delay_1ms(750)
     -- If you have other stuff to do, feel free to do so and create proper
-    -- timing in an other way. 
+    -- timing in an other way.
     --
     -- If the sensor is conventional powered, you don't have to keep the
     -- bus idle and could read the sensor before conversion is complete.
     -- The sensor will return the previous value.
 
     r = ds18b20_s_temp(temperature)                 -- temperature read as Celsius * 2
-    lcd_cursor_position(0,0)                        
+    lcd_cursor_position(0,0)
     if (r) then
        temperature = (temperature * 10) >> 1        -- temperatue now in decicelsius
                                                     -- This is only valid for 9 bits!
-       print_string(lcd, str1)                  
+       print_string(lcd, str1)
        format_sword_dec(lcd, temperature, 5, 1)
        lcd = "C"
        lcd = " "
     else
        -- print fail message
-       print_string(lcd, err1)    
+       print_string(lcd, err1)
     end if
 
     toggle = ! toggle

@@ -1,14 +1,15 @@
 -- Title: CAN bus monitor for STERM or other LCD display
 -- Author: William Welch Copyright (c) 2009, all rights reserved.
 -- Sponsored by: Fiwihex www.fiwihex.com
--- Compiler: 2.4
+-- Adapted by: Rob Hamerling
+-- Compiler: 2.4q2
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: -- Monitor CAN bus, using can_legacy library.
--- 
+--
 -- Our monitor can be configured to either participate with ACKs
 -- (normal mode), or operate in 'listen-only' mode.
 --
@@ -23,9 +24,12 @@ include 18f2585
 pragma target clock 16_000_000
 pragma target OSC  HS_PLL
 pragma target XINST disabled
-pragma target WDT  disabled
+pragma target WDT  control
 pragma target LVP  disabled
 pragma target MCLR external
+
+WDTCON_SWDTEN = off                 -- no watchdog
+
 include delay
 include format
 include print
@@ -90,12 +94,12 @@ forever loop
    var byte a,b,c,d, i, len
    var byte rxdata[8]
    var dword can_id
-   
+
    a = CANSTAT
    b = COMSTAT
    c = RXB0CON
    d = RXB1CON
-   
+
    -- wiggle the top-left corner
    lcd_home()
    if led != 0 then
@@ -103,7 +107,7 @@ forever loop
    else
       lcd = "-"
    end if
-   
+
    -- now the status line
    lcd_cursor_position(1,0)
    print_byte_hex(lcd, a)
@@ -114,14 +118,14 @@ forever loop
    lcd = " "
    print_byte_hex(lcd, d)
    lcd = " "
-   
+
    -- check for a message
    if led != 0 then
       got_msg = can_receive(0, can_id, rxdata, len)
-   else 
+   else
       got_msg = can_receive(1, can_id, rxdata, len)
    end if
-   
+
    if got_msg then
       if can_is_std_id(can_id) then
          lcd_cursor_position(2,0)
@@ -140,7 +144,7 @@ forever loop
          end if
       end loop
    end if
-   
+
    led = led ^ 1
 end loop
 

@@ -1,15 +1,15 @@
 -- Title: combined CAN bus monitor and CAN-UART adapter
 -- Author: Eur van Andel Copyright (c) 2009, all rights reserved.
--- Adapted-by: William Welch
--- Compiler: 2.4m
+-- Adapted-by: William Welch, Rob Hamerling
+-- Compiler: 2.4q2
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: -- Monitor CAN bus, using can_legacy library. Also implements
 --                 bridge/gateway between RS232 and CAN bus.
--- 
+--
 const byte version_h = 1
 const byte version_l = 05
 
@@ -23,9 +23,12 @@ include 18f2585
 pragma target clock 20_000_000
 pragma target OSC  HS
 pragma target XINST disabled
-pragma target WDT  disabled
+pragma target WDT  control
 pragma target LVP  disabled
 pragma target MCLR external
+
+WDTCON_SWDTEN = off                       -- no watchdog
+
 include delay
 include format
 include print
@@ -46,9 +49,9 @@ led_dir = input
 led = low
 
 procedure leds(byte in x) is
-   if x == down then 
+   if x == down then
       led_dir  = input
-   elsif x == red then 
+   elsif x == red then
       led_dir  = output
       led      = low
    elsif x == green then
@@ -142,10 +145,10 @@ include can_adapter
 procedure pdec8(volatile byte out device, byte in n) is
    device = "0" + n / 100
    n = n % 100
-   
+
    device = "0" + n / 10
    n = n % 10
-   
+
    device = "0" + n
 end procedure
 
@@ -188,20 +191,20 @@ forever loop
    var byte ch,i,len
    var byte rxdata[8]
    var dword can_id
-   
+
    -- check for a msg from PC/UART
    if serial_hw_read(ch) then
       can_check_uart_rx(serial_hw_data, ch)
    end if
-   
+
    -- check for CAN message
    got_msg = can_check_can_rx(serial_hw_data, can_id, rxdata, len)
-   
+
    if got_msg then
       display_can_msg(can_id, rxdata, len)
    end if
-   
-   toggle = ! toggle 
+
+   toggle = ! toggle
    if toggle then
       leds(green)
    else
