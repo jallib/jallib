@@ -1,14 +1,14 @@
 -- Title: CAN bus monitor with Sterm LCD
 -- Author: William Welch Copyright (c) 2009, all rights reserved.
--- adapted by Eur van Andel, eur@fiwihex.nl
--- Compiler: 2.4
+-- adapted by Eur van Andel, eur@fiwihex.nl, Rob Hamerling
+-- Compiler: 2.4q2
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: -- Monitor CAN bus, using can_legacy library.
--- 
+--
 -- Our monitor can be configured to either participate with ACKs
 -- (normal mode), or operate in 'listen-only' mode.
 -- EUR: I think listen-only mode is best here.
@@ -31,9 +31,12 @@ include 18f4585
 pragma target clock 20_000_000
 pragma target OSC  HS
 pragma target XINST disabled
-pragma target WDT  disabled
+pragma target WDT  control
 pragma target LVP  disabled
 pragma target MCLR external
+
+WDTCON_SWDTEN = off                 -- no watchdog
+
 include delay
 include format
 include print
@@ -105,17 +108,17 @@ CANCON = 0x60; -- listen-only mode
 procedure pdec8(volatile byte out device, byte in n) is
    device = "0" + n / 100
    n = n % 100
-   
+
    device = "0" + n / 10
    n = n % 10
-   
+
    device = "0" + n
 end procedure
 
 procedure leds(byte in x) is
-   if x == down then 
+   if x == down then
       led_dir  = input
-   elsif x == red then 
+   elsif x == red then
       led_dir  = output
       led      = low
    elsif x == green then
@@ -162,7 +165,7 @@ forever loop
    var byte rxdata[8]
    var byte hb[4]
    var dword can_id
-   
+
    a = CANSTAT
    b = COMSTAT
    c = RXB0CON
@@ -174,7 +177,7 @@ forever loop
    else
       lcd = "-"
    end if
-   
+
    -- now the status line
    -- lcd_cursor_position(1,0)
    -- print_byte_hex(lcd, a)
@@ -185,14 +188,14 @@ forever loop
    -- lcd = " "
    -- print_byte_hex(lcd, d)
    -- lcd = " "
-   
+
    -- check for a message
    got_msg = can_receive(1, can_id, rxdata, len)
-   
+
    if got_msg then
       var byte row
       row = byte(can_id) & 3
-      
+
       lcd_cursor_position(row,0)
       -- print only the low 8-bits of CAN-ID
       print_byte_hex(lcd, byte(can_id) )
@@ -202,7 +205,7 @@ forever loop
          lcd = "-"
       end if
       hb[row] = hb[row] ^ 1
-      
+
       for 8 using i loop
          var byte v
          if i < len then
@@ -213,8 +216,8 @@ forever loop
          end if
       end loop
    end if
-   
-   toggle = ! toggle 
+
+   toggle = ! toggle
    if toggle then
       leds(green)
    else
