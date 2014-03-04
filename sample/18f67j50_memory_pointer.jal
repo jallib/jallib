@@ -21,24 +21,35 @@
 -- Sources:
 --
 
-include 18f67j50                    -- target PICmicro
--- include chip
-pragma target clock 48_000_000     -- oscillator frequency
--- configuration memory settings (fuses)
-pragma target WDT  CONTROL        -- no watchdog
-pragma target PLLDIV        P2     -- divide by 2
-pragma target CPUDIV        P1     -- no cpu system clock divide
-pragma target OSC  INTOSC_NOCLKOUT_PLL -- internal resonator
-pragma target IESO  DISABLED
-pragma target FCMEN DISABLED
-OSCTUNE_PLLEN = 1                  -- set 96mhz pll
-OSCCON_SCS = 0b00
-_usec_delay(1_000)                 -- wait for OSC PLL to settle
+include 18f67j50                   -- target PICmicro
 --
-enable_digital_io()   -- disable all analog pins if any
-_usec_delay (100_000) -- wait for power to stablilize
+-- Compiler directives
+pragma target CLOCK    48_000_000  -- CPU frequency
+--
+-- Configuration memory settings (fuses)
+pragma target OSC      INTOSC_NOCLKOUT_PLL      -- HS crystal or resonator
+--                                    and using PLL
+pragma target PLLDIV   P2          -- reduce OSC 20->4 MHz for PLL input
+pragma target CPUDIV   P1          -- CPU freq. from PLL(96/2): 48 MHz
+pragma target FCMEN    DISABLED    -- no fail-safe clock monitoring
+pragma target IESO     DISABLED    -- no in/ext oscillator switchover
+pragma target WDT      CONTROL      -- no watchdog
+pragma target XINST    DISABLED    -- not supported by JalV2
+pragma target DEBUG    DISABLED    -- no debugging
+--
+-- Note: Not specified:
+--       Code protection, Boot Block Code protection, Data EEPROM protection,
+--       Write protection, Configuration Memory write protection,
+--       Table Read protection, Boot Block Table Read protection,
+--       and maybe some other configuration bits.
+--
+OSCCON_SCS = 0b00                  -- select primary clock source
+OSCTUNE_PLLEN = enabled            -- activate PLL module
+--
+WDTCON_SWDTEN = OFF                 -- disable WDT
 --
 enable_digital_io()                -- make all pins digital I/O
+_usec_delay (100_000) -- wait for power to stablilize
 
 -- setup uart for communication
 const serial_hw_baudrate  = 115200   -- set the baudrate
@@ -71,7 +82,7 @@ const word ARRAY1_ADDR  = 0x0100
 var byte array1[ARRAY1_SIZE] at ARRAY1_ADDR	
 
 const byte ARRAY2_SIZE  = 64
-const word ARRAY2_ADDR  = 0x0200
+const word ARRAY2_ADDR  = 0x0800
 var byte array2[ARRAY2_SIZE] at ARRAY2_ADDR	
 
 -- sets all data in an array to the data given. this is the data
@@ -190,7 +201,7 @@ print_crlf(serial_data)
 
 -- report data in array 1
 for ARRAY1_SIZE using step loop
-   serial_data = array1[step]
+   serial_data = array2[step]
 end loop
 print_crlf(serial_data)
 
@@ -204,7 +215,7 @@ stopwatch_start()
 -- set memory pointer address
 mem_pointer1_address = ARRAY1_ADDR
 mem_pointer2_address = ARRAY2_ADDR
-for ARRAY1_SIZE loop
+for 64 loop
 	mem_pointer2 = mem_pointer1
 end loop
 -------------------------------
@@ -217,7 +228,7 @@ print_crlf(serial_data)
 
 -- report data in array 1
 for ARRAY1_SIZE using step loop
-   serial_data = array1[step]
+   serial_data = array2[step]
 end loop
 print_crlf(serial_data)
 
@@ -309,3 +320,4 @@ for ARRAY2_SIZE using step loop
 end loop
 print_crlf(serial_data)
 print_string(serial_data, string1)
+
