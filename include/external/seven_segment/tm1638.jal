@@ -1,0 +1,476 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library to support 7-segment display module with TM1638
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description: Library for a module with TM1638 with
+-- - serial interface
+-- - 8  7-segment displays with dp (decimal point)
+-- - 8  LEDs
+-- - 8  push buttons
+-- .
+-- Data may be displayed anywhere in the 7-segment displays.
+-- The position may be specified with an offset (depending on data type)
+-- .
+-- The tm1638 module uses 3 data wires, which have to be specified bij the user.
+-- Before including this library declare the following aliases (mandatory):
+-- .
+-- alias tm1638_dio            is pin_??                    -- pin for data I/O signal
+-- alias tm1638_dio_direction  is pin_??_direction
+-- alias tm1638_clk            is pin_??                    -- pin for clock signal
+-- alias tm1638_clk_direction  is pin_??_direction
+-- alias tm1638_stb            is pin_??                    -- pin for chip select signal
+-- alias tm1638_stb_direction  is pin_??_direction
+-- .
+-- The following constant may be specified as well (optionally):
+-- .
+-- const byte TM1638_WIDTH    =  ?          (number of 7-segment digits, defaults to 8)
+--
+-- Dependencies: tm1638_font.jal
+--
+-- Notes: - Supports (= has been tested) only a module with tm1638 chip and
+--          8 display digits, 8 single color LEDs and 8 buttons.
+--          Support for modules with duo-leds or TM1640 may be added later.
+--
+-- -----------------------------------------------------------------------------
+
+include tm1638_font                         -- 7-segment fonts for tm1638
+
+const  byte  TM1638_LED_OFF          = 0b_0000_0000       --
+const  byte  TM1638_LED_ON           = 0b_0000_0001       --
+
+const  byte  TM1638_WRITE_DATA       = 0b_0100_0000       --
+const  byte  TM1638_READ_KEYS        = 0b_0100_0010       --
+const  byte  TM1638_ADDRESS_AUTO     = 0b_0100_0000       --
+const  byte  TM1638_ADDRESS_FIXED    = 0b_0100_0100       --
+const  byte  TM1638_MODE_NORMAL      = 0b_0100_0000       --
+const  byte  TM1638_MODE_TEST        = 0b_0100_1000       --
+
+const  byte  TM1638_DISPLAY_ON       = 0b_1000_1000
+const  byte  TM1638_DISPLAY_OFF      = 0b_1000_0000
+const  byte  TM1638_DISPLAY_PWM1     = 0b_1000_0000       --
+const  byte  TM1638_DISPLAY_PWM2     = 0b_1000_0001       --
+const  byte  TM1638_DISPLAY_PWM4     = 0b_1000_0010       --
+const  byte  TM1638_DISPLAY_PWM10    = 0b_1000_0011       --
+const  byte  TM1638_DISPLAY_PWM11    = 0b_1000_0100       -- PWM dutycycle for LEDs
+const  byte  TM1638_DISPLAY_PWM12    = 0b_1000_0101       --
+const  byte  TM1638_DISPLAY_PWM13    = 0b_1000_0110       --
+const  byte  TM1638_DISPLAY_PWM14    = 0b_1000_0111       --
+
+const  byte  TM1638_ADDRESS_SELECT   = 0b_1100_0000       -- base of command byte
+
+const  byte  TM1638_DOT              = 0b_1000_0000       -- segment of decimal point
+
+
+-- --- basic sanity check --------------------
+
+if !(defined(tm1638_dio) & defined(tm1638_dio_direction)) then
+   _error "tm1638_dio and tm1638_dio_direction must be defined"
+end if
+if !(defined(tm1638_clk) & defined(tm1638_clk_direction)) then
+   _error "tm1638_clk and tm1638_clk_direction must be defined"
+end if
+if !(defined(tm1638_stb) & defined(tm1638_stb_direction)) then
+   _error "tm1638_stb and tm1638_stb_direction must be defined"
+end if
+if !defined(TM1638_WIDTH) then
+   const byte TM1638_WIDTH = 8                        -- default number of digits in display
+end if                                                -- used also for LEDS and push buttons!
+
+
+
+-- ========= 'private' procedures =====================
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Send byte 'raw' to the TM1638 (8 bits bit-banging)
+-- Notes:  STB should have been (re)set according to requirements of caller
+-- ----------------------------------------------------------------------------
+procedure _tm1638_write_byte(byte in data) is
+
+   var bit lsb at data : 0                   -- least significant bit
+   for 8 loop
+      tm1638_clk = LOW
+      asm nop
+      if (lsb == 1) then
+         tm1638_dio = HIGH
+      else
+         tm1638_dio = LOW
+      end if
+      data = data >> 1
+      tm1638_clk = HIGH
+      asm nop
+   end loop
+   _usec_delay(1)
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:    Receive a byte from TM1638
+-- Returns:  Byte
+-- Notes:    - STB should have been (re)set according to requirements of caller
+--           - DIO should be configured for input (and be pulled up?)
+-- ----------------------------------------------------------------------------
+function _tm1638_read_byte() return byte is
+
+   var byte temp  = 0b_0000_0000
+   var bit  msb  at temp : 7
+
+   for 8 loop
+      temp = temp >> 1
+      tm1638_clk = LOW
+      asm nop
+      msb = tm1638_dio                       -- store dio level
+      asm nop
+      tm1638_clk = HIGH
+   end loop
+   _usec_delay(1)                            -- tWait
+
+   return temp
+
+end function
+
+-- ----------------------------------------------------------------------------
+-- Title:  Send a command to the TM1638
+-- Input:  - Byte with command
+-- ----------------------------------------------------------------------------
+procedure _tm1638_write_command(byte in cmd) is
+
+   tm1638_stb = LOW
+   _tm1638_write_byte(cmd)
+   tm1638_stb = HIGH
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Send a data byte to specified address of TM1638
+-- Input:  - memory address of the TM1638
+--           (even value for 7-segment display, odd value for led)
+--         - byte with contents
+--           (7-segment pattern for display, on/off data for led)
+-- ----------------------------------------------------------------------------
+procedure _tm1638_write_data_at(byte in data,
+                                byte in address) is
+
+   tm1638_stb = LOW
+   _tm1638_write_byte(TM1638_ADDRESS_SELECT | (address & 0x0F))
+   _tm1638_write_byte(data)
+   tm1638_stb = HIGH
+
+end procedure
+
+
+
+
+-- ========== 'public' procedures ==================
+
+-- ----------------------------------------------------------------------------
+-- Title:   Initialize TM1638 module
+-- Notes:   - The TM1638 module will be kept in fixed address mode,
+--            only during init auto-increase mode is used (temporary).
+-- ----------------------------------------------------------------------------
+procedure tm1638_init() is
+
+   tm1638_dio_direction = OUTPUT
+   tm1638_clk_direction = OUTPUT
+   tm1638_stb_direction = OUTPUT
+
+   tm1638_stb = HIGH                                  -- quiesce
+   tm1638_clk = HIGH
+
+   tm1638_stb = LOW
+   _tm1638_write_byte(TM1638_ADDRESS_AUTO);           -- auto increase address mode
+   for 16 loop
+      _tm1638_write_byte(0b_0000_0000)                -- clear all memory
+   end loop
+   tm1638_stb = HIGH
+
+   _tm1638_write_byte(TM1638_ADDRESS_FIXED);          -- fixed address mode
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Control display mode of the TM1638
+-- Input:  - active (1) or inactive (0)
+--         - LED intensity (range 0..7)
+-- Notes: Can be used to change mode during operation
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_mode(bit  in active,
+                              byte in intensity) is
+
+   var byte mode = TM1638_DISPLAY_OFF                 -- default state OFF
+   if (active == TRUE) then
+      mode = TM1638_DISPLAY_ON | (intensity & 0b_0000_0111)
+   end if
+   _tm1638_write_command(mode)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Clear all display digits (inclusive decimal point)
+-- Input:  None
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_clear() is
+
+  var byte i
+  for TM1638_WIDTH using i loop
+     _tm1638_write_data_at(0, i * 2)
+  end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display a character at a specified position
+-- Input:  - Index of the display position (0 = leftmost, 7 = rightmost)
+--         - Byte with character to be displayed (ASCII value, range 32..127)
+-- Notes:  - Decimal point not supported
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_char(byte in data,
+                              byte in pos) is
+
+   if (data < 32) then
+      return  -- invalid ascii value
+   end if
+
+   var bit tbit at data : 7 = 0                         -- strip bit 7
+   _tm1638_write_data_at(_TM1638_ASCII_FONT[data - 32], pos * 2)
+
+end procedure
+
+-- Input:   - position on display of first character of string
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display string (left to right) in 7-segment displays
+-- Input:  - index of first character of string on display (0..7, left to right)
+--         - ASCII character string
+-- Notes:  - When string does not fit the rightmost characters are truncated
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_string(byte in string[],
+                                byte in pos) is
+  var byte i
+
+  for (TM1638_WIDTH - pos) using i loop                  -- available positions
+     tm1638_display_char(string[i], pos + i)
+  end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display a (hexa)decimal digit on a specified position
+-- Input:  - byte with digit (binary value)
+--         - byte with position (index, most left = 0)
+--         - flag for decimal point (FALSE = no, TRUE = yes)
+-- Notes:
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_digit(byte in digit,
+                               byte in pos,
+                               bit  in dot) is
+
+   var byte tbyte = _TM1638_NUMBER_FONT[digit & 0x0f]
+   if (dot) then
+      tbyte = tbyte | TM1638_DOT
+   end if
+   _tm1638_write_data_at(tbyte, pos * 2)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display a hexadecimal number (8 digits, right aligned)
+-- Input:  - doubleword with value to be displayed
+--         - bit flag for leading zeroes (FALSE = no, TRUE = yes)
+-- Notes:  - Uses full display, no decimal points
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_dword_hex(dword in number,
+                                   bit   in leadingzeros) is
+   var byte i
+   for TM1638_WIDTH using i loop
+      if (!leadingzeros  &  (number == 0)) then
+         _tm1638_write_data_at(0, (TM1638_WIDTH - i - 1) * 2)     -- space
+      else
+         tm1638_display_digit(byte(number) & 0x0F, TM1638_WIDTH - i - 1, false)
+         number = number >> 4
+      end if
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display an unsigned decimal number (dword) at a specific position
+-- Input:  - unsigned doubleword with value to be displayed
+--         - byte with pattern of desired decimal points
+--         - byte with offset: offset of least significant digit
+--         - bit flag for leading zeroes (FALSE = no, TRUE = yes)
+-- Notes: - Number is limited to 99999999
+--        - offset is number of display positions from the right
+--        - when number does not fit high order digits will be truncated.
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_dword_dec(dword in number,
+                                   byte  in dots,
+                                   byte  in offset,
+                                   bit   in leadingzeros) is
+
+   var byte i
+   for (TM1638_WIDTH - offset) using i loop
+      var bit tbit at dots : 0
+      if (number > 0) then
+         var dword quot10 = number / 10
+         var byte  rem10  = byte(number % 10)
+         tm1638_display_digit(rem10, TM1638_WIDTH - offset - i - 1, tbit)
+         number = quot10
+      else
+         if (leadingzeros) then
+            tm1638_display_digit(0, TM1638_WIDTH - offset - i - 1, tbit)
+         elsif (tbit) then
+            _tm1638_write_data_at(TM1638_DOT, (TM1638_WIDTH - offset - i - 1) * 2)
+         end if
+      end if
+      dots = dots >> 1
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display signed decimal number at a specific location
+-- Input:  - signed doubleword with value to be displayed
+--         - byte with pattern of desired decimal points
+--         - byte with offset: offset of least significant digit
+--         - bit flag for leading zeroes (FALSE = no, TRUE = yes)
+-- Notes:  - negative numbers are limited to -9999999
+--         - offset is number of display positions from the right!
+--         - when number does not fit the high order digits are truncated.
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_sdword_dec(sdword in number,
+                                    byte   in dots,
+                                    byte   in offset,
+                                    bit    in leadingzeros) is
+
+   if (number >= 0) then
+      tm1638_display_dword_dec(dword(number), dots, offset, leadingzeros)
+   else
+      tm1638_display_dword_dec(dword(-number), dots, offset, leadingzeros)
+      var byte tbyte = _TM1638_MINUS
+      if ((dots & 0b_1000_0000) == 1) then
+         tbyte = tbyte | TM1638_DOT
+      end if
+      _tm1638_write_data_at(tbyte, 0)
+   end if
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display an unsigned decimal number (word)
+-- Input:  - unsigned word with value to be displayed
+--         - byte with pattern of desired decimal points
+--         - byte with offset of least significant digit (right to left)
+--         - bit flag for leading zeroes (FALSE = no, TRUE = yes)
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_word_dec(word in number,
+                                  byte in dots,
+                                  byte in offset,
+                                  bit  in leadingzeros) is
+
+   tm1638_display_dword_dec(dword(number), dots, offset, leadingzeros)
+end procedure
+
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display binary number (byte, 8 bits)
+-- Input:  - byte with value to be displayed
+-- ----------------------------------------------------------------------------
+procedure tm1638_display_byte_bin(byte in number) is
+
+   var byte i
+
+   for TM1638_WIDTH using i loop
+      tm1638_display_digit(number & 0b_0000_0001, TM1638_WIDTH - i - 1, 0)
+      number = number >> 1
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Set a single LED
+-- Input:  - Byte with on/off state (least significant bit: 0 = off, 1 = on)
+--         - index of led in range 0..7 (0 = leftmost LED1, 7 = rightmost LED8)
+-- Notes:
+-- ----------------------------------------------------------------------------
+procedure tm1638_set_led(byte in state,
+                         byte in pos) is
+
+   _tm1638_write_data_at(state, (pos * 2) + 1)           -- odd address!
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:   Set all LEDs
+-- Input:   Byte with bit pattern: 0 = off, 1 = on,
+--          Leftmost led (LED1) is controlled by the least significant bit.
+-- Returns: nothing
+-- ----------------------------------------------------------------------------
+procedure  tm1638_set_leds(byte in leds) is
+
+   var byte i
+   for TM1638_WIDTH using i loop
+      var byte color = TM1638_LED_OFF                    -- off
+      if ((leds & 0b_0000_0001) != 0) then               -- on?
+         color = color | TM1638_LED_ON
+      end if
+      leds = leds >> 1
+      tm1638_set_led(color, i)
+    end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:   Get button positions
+-- Returns: Byte with bit pattern of buttons (0 = off, 1 = on)
+--          Leftmost button (S1) is represented by the least significant bit.
+-- ----------------------------------------------------------------------------
+function tm1638_get_buttons() return byte is
+
+   var byte buttons = 0b_0000_0000
+   var byte i
+
+   tm1638_stb = LOW
+   _tm1638_write_byte(TM1638_READ_KEYS)
+   _usec_delay(1)                                        -- tWait
+   tm1638_dio_direction = INPUT
+   tm1638_dio = HIGH                                     -- pull up
+
+   for 4 using i loop
+      buttons = buttons | (_tm1638_read_byte() << i)     -- collect state of 8 switches
+   end loop
+
+   tm1638_dio_direction = OUTPUT
+   tm1638_dio = LOW
+   tm1638_stb = HIGH
+
+   return  buttons
+
+end function
+
+
