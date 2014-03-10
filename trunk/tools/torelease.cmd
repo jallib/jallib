@@ -81,8 +81,6 @@ do linenumber = 1  while lines(torelease)                   /* collect files */
   select
     when left(ln,15) = 'include/device/' then
       part = 'device'
-    when left(ln,4) = 'doc/' then
-      part = 'doc'
     when left(ln,17) = 'include/external/' then
       part = 'external'
     when left(ln,19) = 'include/filesystem/' then
@@ -95,6 +93,8 @@ do linenumber = 1  while lines(torelease)                   /* collect files */
       part = 'peripheral'
     when left(ln,17) = 'include/protocol/' then
       part = 'protocol'
+    when left(ln,4) = 'doc/' then
+      part = 'doc'
     when left(ln,8) = 'project/' then
       part = 'project'
     when left(ln,7) = 'sample/' then do
@@ -103,7 +103,8 @@ do linenumber = 1  while lines(torelease)                   /* collect files */
       if PicName \= '' then do                              /* picname derived */
         PicNameUpper = toupper(PicName)
         smppic.PicNameUpper = PicName                       /* PIC with at least 1 sample */
-        if ln = 'sample/'PicName'_blink.jal' then do                 /* basic blink sample */
+        if pos('_blink_hs.', ln) > 0     |,
+           pos('_blink_intosc.', ln) > 0 then do            /* blink sample */
           blink_sample_count = blink_sample_count + 1       /* count 'm */
           blinkpic.PicNameUpper = PicName                   /* blink sample found for this PIC */
         end
@@ -138,25 +139,26 @@ do i = 1 to f.sample.0                                      /* all samples */
      call lineout list, 'Device file' PicName'.jal',
                         'for sample' PicSamp'.jal not released'
   select
+    when pos(PicName'_blink_hs',PicSamp) > 0     |,
+         pos(PicName'_blink_intosc',PicSamp) > 0 then      /* basic BLINK sample */
+      count.blink = count.blink + 1
     when pos(PicName'_adc',PicSamp) > 0 then                /* ADC sample */
       count.adc = count.adc + 1
-    when pos(PicName'_blink',PicSamp) > 0 then              /* BLINK sample */
-      count.blink = count.blink + 1
-    when pos(PicName'_i2c',PicSamp) > 0 then               /* I2C sample */
+    when pos(PicName'_i2c',PicSamp) > 0 then                /* I2C sample */
       count.i2c = count.i2c + 1
-    when pos(PicName'_lcd',PicSamp) > 0  |,                /* LCD sample */
-         pos(PicName'_glcd',PicSamp) > 0 then              /* GLCD sample */
+    when pos(PicName'_lcd',PicSamp) > 0  |,                 /* LCD sample */
+         pos(PicName'_glcd',PicSamp) > 0 then               /* GLCD sample */
       count.lcd = count.lcd + 1
-    when pos(PicName'_network',PicSamp) > 0 then           /* networking sample */
+    when pos(PicName'_network',PicSamp) > 0 then            /* networking sample */
       count.networking = count.networking + 1
-    when pos(PicName'_pwm',PicSamp) > 0 then               /* PWM sample */
+    when pos(PicName'_pwm',PicSamp) > 0 then                /* PWM sample */
       count.pwm = count.pwm + 1
-    when pos(PicName'_serial',PicSamp) > 0 then            /* SERIAL sample */
+    when pos(PicName'_serial',PicSamp) > 0 then             /* SERIAL sample */
       count.serial = count.serial + 1
-    when pos(PicName'_usb',PicSamp) > 0 then               /* USB sample */
+    when pos(PicName'_usb',PicSamp) > 0 then                /* USB sample */
       count.usb = count.usb + 1
     otherwise
-      count.othersamples = count.othersamples + 1          /* other sample */
+      count.othersamples = count.othersamples + 1           /* other sample */
       if left(PicSamp,2) \= '10' &,
          left(PicSamp,2) \= '12' &,
          left(PicSamp,2) \= '16' &,
@@ -248,15 +250,20 @@ if fls.0 = 0 then do
    call lineout list, 'Found no samples in <'smpdir'>'
   return 1
 end
+
 unlisted = 0
 unlistedblink = 0
+unreleasedinclude.  = ''
+unreleasedinclude.0 = 0
+
 do i=1 to fls.0
   fls.i = tolower(translate(fls.i, '/', '\'))      /* forward slashes, lower case */
   filespec = substr(fls.i, length(base) + 2)       /* remove base prefix */
   call SysFileSearch filespec, torelease, x.
   if x.0 = 0 then do                               /* not found in torelease  */
     unlisted = unlisted + 1
-    if right(filespec,10) = '_blink.jal' then do   /* original blink sample */
+    if pos('_blink_hs.',    filespec) > 0  |,
+       pos('_blink_intosc.',filespec) > 0  then do
       unlistedblink = unlistedblink + 1
       if runtype \= '' then                        /* to be listed */
         call lineout list, filespec                /* list not released blink sample */
@@ -267,23 +274,34 @@ do i=1 to fls.0
   else do                                          /* found sample in torelease */
     parse var fls.i PicName '_'
     PicName = tolower(filespec('N', PicName))
-    call SysFileSearch 'include', fls.i, 'inc.'    /* search included libraries */
+    call SysFileSearch 'include ', fls.i, 'inc.'    /* search included libraries */
     call stream fls.i, 'c', 'close'                /* done */
     do j=1 to inc.0                                /* all lines with 'include' */
       inc.j = tolower(inc.j)                       /* all lower case */
       if word(inc.j,1) = 'include' &,              /* 1st word is 'include' and .. */
          words(inc.j) > 1  then do                 /* .. at least 2 words */
         libx = word(inc.j,2)                       /* 2nd word is library or device file */
-        if left(libx,2) = '10' |,                  /* when device file */
-           left(libx,2) = '12' |,
-           left(libx,2) = '16' |,
-           left(libx,2) = '18' then do
-           if libx \= PicName then                 /* not matching! */
+        libu = toupper(libx)                       /* uppercase */
+        if left(libu,3) = '10F'  |,                /* when device file */
+           left(libu,4) = '10LF' |,
+           left(libu,3) = '12F'  |,
+           left(libu,4) = '12HV' |,
+           left(libu,4) = '12LF' |,
+           left(libu,3) = '16F'  |,
+           left(libu,4) = '16HV' |,
+           left(libu,4) = '16LF' |,
+           left(libu,3) = '18F'  |,
+           left(libu,4) = '18LF' then do
+           if libu \= toupper(PicName) then       /* not matching! */
              say 'sample' filespec('n',fls.i) 'includes wrong device file:' libx
         end
         call SysFileSearch libx'.jal', torelease, 'liby.'
-        if liby.0 = 0 then
+        if liby.0 = 0 then do
           say 'sample' filespec('N',fls.i) 'includes a non released library:' libx
+          u = unreleasedinclude.0 + 1
+          unreleasedinclude.u = filespec('N',fls.i) 'includes:' libx    /* store for report */
+          unreleasedinclude.0 = u
+        end
       end
     end
   end
@@ -296,8 +314,17 @@ else
   call lineout list, unlisted - unlistedblink 'unreleased sample files',
                      '+' unlistedblink 'unreleased basic blink samples'
 call lineout list, ''
-call lineout list, ''
 
+if unreleasedinclude.0 > 0 then do
+  call lineout list, 'Samples which include unreleased libraries'
+  call lineout list, '------------------------------------------'
+  call lineout list, ''
+  do i = 1 to unreleasedinclude.0
+    call lineout list, unreleasedinclude.i
+  end
+end
+
+call lineout list, ''
 call lineout list, 'Unreleased Project files'
 call lineout list, '------------------------'
 call SysFileTree projdir'/*', 'fls', 'FSO'         /* project files */
@@ -319,7 +346,7 @@ call lineout list, unlisted 'unreleased project files'
 call lineout list, ''
 call stream list, 'c', 'close'
 
-say 'See' list 'for the results'
+say 'See' list 'for the detailed results'
 
 /* write new 'torelease' */
 
