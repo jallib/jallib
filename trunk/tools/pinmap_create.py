@@ -27,7 +27,7 @@ from xml.dom.minidom import parse, Node
   -----------------------------------------------------------------------
 """
 
-mplabxversion = "200"                                       # current version of MPLAB-X
+mplabxversion = "205"                                       # current version of MPLAB-X
 
 edcdir    = "k:/jal/pic2jal/edc_" + mplabxversion           # dir with .edc files
 pinmapnew = "pinmapnew.py"                                  # output
@@ -100,7 +100,7 @@ for filename in dir:
                aliaslist.append(alias[0:3])
                aliaslist.append(alias[3:])
                print "  Splitted alias", alias, "into", alias[0:3], "and", alias[3:], "for pin", pinnumber
-            elif alias == "DAC1VREF+n":                     # MPLAB-X error
+            elif alias == "DAC1VREF+N":                     # MPLAB-X error
                aliaslist.append("DAC1VREF+")
                print "  Replaced", alias, "by DAC1VREF+ for pin", pinnumber
             elif alias == "NMCLR":

@@ -20,7 +20,6 @@
  *   collect PICnames used in filenames of sample programs                  *
  * - check if there is a basic blink-a-led sample for every device file     *
  * - check if there is a device file for every sample                       *
- *   (based on name of PIC in filename)                                     *
  * - collect some statistics for every main library group                   *
  * - list these statistics                                                  *
  * - collect Jallib contents (directory tree) and                           *
@@ -28,6 +27,7 @@
  *    - list if sample released but device file not                         *
  * - sort each of the parts (on first level directory)                      *
  *   and create new TORELEASE                                               *
+ * - report and comment-out duplicate entries                               *
  *                                                                          *
  * Sources: none                                                            *
  *                                                                          *
@@ -299,7 +299,7 @@ do i=1 to fls.0
         if liby.0 = 0 then do
           say 'sample' filespec('N',fls.i) 'includes a non released library:' libx
           u = unreleasedinclude.0 + 1
-          unreleasedinclude.u = filespec('N',fls.i) 'includes:' libx    /* store for report */
+          unreleasedinclude.u = 'sample/'filespec('N', fls.i) 'includes:' libx    /* store for report */
           unreleasedinclude.0 = u
         end
       end
@@ -402,8 +402,30 @@ return
 /* Sorting members of 1st level subdirectory     */
 /* '_' in name for sort changed into '/'         */
 /* such that 16f72_xxx comes before 16f722_xxx   */
+/* Spaces in filenames will become undescores!   */
 /* --------------------------------------------- */
 sortpart: procedure expose f. newrelease
+parse arg part .
+g.0 = f.part.0
+do i = 1 to g.0                                             /* copy to shadow compound var */
+  g.i = translate(f.part.i,' ','_')                         /* underscore -> space */
+end
+call SysStemSort 'g.', 'A', 'I'                             /* sort the group */
+do i = 1 to g.0                                             /* copy back */
+  f.part.i = translate(g.i, '_', ' ')                       /* space -> underscore */
+  p = i - 1
+  if g.p = g.i then
+     call lineout newrelease, '#' f.part.i '     (duplicate)'
+end
+return
+
+
+/* --------------------------------------------- */
+/* Sorting members of 1st level subdirectory     */
+/* '_' in name for sort changed into '/'         */
+/* such that 16f72_xxx comes before 16f722_xxx   */
+/* --------------------------------------------- */
+sortpart_old: procedure expose f. newrelease
 parse arg part .
 do i = f.part.0 - 1 to 1 by -1 until OK                     /* upper bound: one but last */
   OK = 1                                                    /* default: done! */
