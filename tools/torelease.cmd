@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------ *
  * Title: Process TORELEASE file to check consistency with Jallib           *
  *                                                                          *
- * Author: Rob Hamerling, Copyright (c) 2008..2013, all rights reserved.    *
+ * Author: Rob Hamerling, Copyright (c) 2008..2014, all rights reserved.    *
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
@@ -53,6 +53,8 @@ count.     = 0                                              /* zero all file cou
 dev.       = '-'                                            /* PIC names in device files */
 smppic.    = '-'                                            /* PIC names in sample files */
 blinkpic.  = '-'                                            /* PIC names in blink sample files */
+missing.   = ''                                             /* in TORELEASE but not in Jallib */
+missing.0  = 0                                              /* no missing files detected */
 
 f.                 = 0                                      /* jallib parts */
 
@@ -71,56 +73,61 @@ call lineout list, 'Analysis of' filespec('N', torelease),
 call lineout list, ''
 
 call stream torelease, 'c', 'open read'
+say 'Analysing' torelease
 do linenumber = 1  while lines(torelease)                   /* collect files */
-  ln = linein(torelease)
-  if length(ln) < 2  |  left(word(ln,1),1) = '#' then
-    iterate                                                 /* irrelevant line */
-  ln = tolower(ln)                                          /* ensure lower case */
-  if stream(base'/'ln, 'c', 'query exists') = '' then       /* file not found */
-    call lineout list, format(linenumber,4)'. File <'ln'> missing in' base
-  select
-    when left(ln,15) = 'include/device/' then
-      part = 'device'
-    when left(ln,17) = 'include/external/' then
-      part = 'external'
-    when left(ln,19) = 'include/filesystem/' then
-      part = 'filesystem'
-    when left(ln,12) = 'include/jal/' then
-      part = 'jal'
-    when left(ln,19) = 'include/networking/' then
-      part = 'networking'
-    when left(ln,19) = 'include/peripheral/' then
-      part = 'peripheral'
-    when left(ln,17) = 'include/protocol/' then
-      part = 'protocol'
-    when left(ln,4) = 'doc/' then
-      part = 'doc'
-    when left(ln,8) = 'project/' then
-      part = 'project'
-    when left(ln,7) = 'sample/' then do
-      part = 'sample'
-      parse var ln 'sample/' PicName '_' .                  /* isolate name of PIC */
-      if PicName \= '' then do                              /* picname derived */
-        PicNameUpper = toupper(PicName)
-        smppic.PicNameUpper = PicName                       /* PIC with at least 1 sample */
-        if pos('_blink_hs.', ln) > 0     |,
-           pos('_blink_intosc.', ln) > 0 then do            /* blink sample */
-          blink_sample_count = blink_sample_count + 1       /* count 'm */
-          blinkpic.PicNameUpper = PicName                   /* blink sample found for this PIC */
-        end
-      end
-    end
-    otherwise
-      say 'Unrecognised entry:' ln
-      iterate
-  end
-  part = toupper(part)                                      /* upper case required */
-  k = f.part.0 + 1                                          /* counts per part */
-  f.part.k = ln
-  f.part.0 = k
+   ln = linein(torelease)
+   if length(ln) < 2  |  left(word(ln,1),1) = '#' then      /* empty or comment line */
+      iterate                                               /* irrelevant line */
+   ln = tolower(ln)                                         /* ensure lower case */
+   if stream(base'/'ln, 'c', 'query exists') = '' then do   /* file not found */
+      i = missing.0 + 1
+      missing.i = format(linenumber,4)'.  'ln               /* remember */
+      missing.0 = i
+   end
+   select
+     when left(ln,15) = 'include/device/' then
+       part = 'device'
+     when left(ln,17) = 'include/external/' then
+       part = 'external'
+     when left(ln,19) = 'include/filesystem/' then
+       part = 'filesystem'
+     when left(ln,12) = 'include/jal/' then
+       part = 'jal'
+     when left(ln,19) = 'include/networking/' then
+       part = 'networking'
+     when left(ln,19) = 'include/peripheral/' then
+       part = 'peripheral'
+     when left(ln,17) = 'include/protocol/' then
+       part = 'protocol'
+     when left(ln,4) = 'doc/' then
+       part = 'doc'
+     when left(ln,8) = 'project/' then
+       part = 'project'
+     when left(ln,7) = 'sample/' then do
+       part = 'sample'
+       parse var ln 'sample/' PicName '_' .                  /* isolate name of PIC */
+       if PicName \= '' then do                              /* picname derived */
+         PicNameUpper = toupper(PicName)
+         smppic.PicNameUpper = PicName                       /* PIC with at least 1 sample */
+         if pos('_blink_hs.', ln) > 0     |,
+            pos('_blink_intosc.', ln) > 0 then do            /* blink sample */
+           blink_sample_count = blink_sample_count + 1       /* count 'm */
+           blinkpic.PicNameUpper = PicName                   /* blink sample found for this PIC */
+         end
+       end
+     end
+     otherwise
+       say 'Unrecognised entry:' ln
+       iterate
+   end
+   part = toupper(part)                                      /* upper case required */
+   k = f.part.0 + 1                                          /* counts per part */
+   f.part.k = ln
+   f.part.0 = k
 end
 call stream torelease, 'c', 'close'                         /* done */
 
+say 'Checking if there is a blink sample for each device file'
 do i = 1 to f.device.0                                      /* all device files */
   if f.device.i = 'include/device/chipdef_jallib.jal' then
     iterate                                                 /* skip */
@@ -131,41 +138,43 @@ do i = 1 to f.device.0                                      /* all device files 
   dev.PicNameUpper = PicName                                /* remember device file */
 end
 
+say 'Checking if released samples include unreleased libraries'
 do i = 1 to f.sample.0                                      /* all samples */
-  parse var f.sample.i 'sample/' PicSamp '.jal' .           /* sample filename */
-  parse var PicSamp PicName '_' .                           /* name of PIC */
-  PicNameUpper = toupper(PicName)
-  if PicName \= dev.PicNameUpper then                       /* not released device file */
-     call lineout list, 'Device file' PicName'.jal',
-                        'for sample' PicSamp'.jal not released'
-  select
-    when pos(PicName'_blink_hs',PicSamp) > 0     |,
-         pos(PicName'_blink_intosc',PicSamp) > 0 then      /* basic BLINK sample */
-      count.blink = count.blink + 1
-    when pos(PicName'_adc',PicSamp) > 0 then                /* ADC sample */
-      count.adc = count.adc + 1
-    when pos(PicName'_i2c',PicSamp) > 0 then                /* I2C sample */
-      count.i2c = count.i2c + 1
-    when pos(PicName'_lcd',PicSamp) > 0  |,                 /* LCD sample */
-         pos(PicName'_glcd',PicSamp) > 0 then               /* GLCD sample */
-      count.lcd = count.lcd + 1
-    when pos(PicName'_network',PicSamp) > 0 then            /* networking sample */
-      count.networking = count.networking + 1
-    when pos(PicName'_pwm',PicSamp) > 0 then                /* PWM sample */
-      count.pwm = count.pwm + 1
-    when pos(PicName'_serial',PicSamp) > 0 then             /* SERIAL sample */
-      count.serial = count.serial + 1
-    when pos(PicName'_usb',PicSamp) > 0 then                /* USB sample */
-      count.usb = count.usb + 1
-    otherwise
-      count.othersamples = count.othersamples + 1           /* other sample */
-      if left(PicSamp,2) \= '10' &,
-         left(PicSamp,2) \= '12' &,
-         left(PicSamp,2) \= '16' &,
-         left(PicSamp,2) \= '18' then do
-         call lineout list, 'Sample' PicSamp 'may have to be renamed!'
+   parse var f.sample.i 'sample/' PicSamp '.jal' .           /* sample filename */
+   parse var PicSamp PicName '_' .                           /* name of PIC */
+   PicNameUpper = toupper(PicName)
+   if PicName \= dev.PicNameUpper then                       /* not released device file */
+      call lineout list, 'Device file' PicName'.jal',
+                         'for sample' PicSamp'.jal not released'
+   select
+      when pos(PicName'_blink_hs',PicSamp) > 0     |,
+           pos(PicName'_blink_intosc',PicSamp) > 0 then      /* basic BLINK sample */
+         count.blink = count.blink + 1
+      when pos(PicName'_adc',PicSamp) > 0 then                /* ADC sample */
+         count.adc = count.adc + 1
+      when pos(PicName'_i2c',PicSamp) > 0 then                /* I2C sample */
+         count.i2c = count.i2c + 1
+      when pos(PicName'_lcd',PicSamp) > 0  |,                 /* LCD sample */
+           pos(PicName'_glcd',PicSamp) > 0 then               /* GLCD sample */
+         count.lcd = count.lcd + 1
+      when pos(PicName'_network',PicSamp) > 0 then            /* networking sample */
+         count.networking = count.networking + 1
+      when pos(PicName'_pwm',PicSamp) > 0 then                /* PWM sample */
+         count.pwm = count.pwm + 1
+      when pos(PicName'_serial',PicSamp) > 0 then             /* SERIAL sample */
+         count.serial = count.serial + 1
+      when pos(PicName'_usb',PicSamp) > 0 then                /* USB sample */
+         count.usb = count.usb + 1
+      otherwise do
+         count.othersamples = count.othersamples + 1           /* other sample */
+         if \(left(PicSamp,2) = '10'  |,                       /* sample should start */
+              left(PicSamp,2) = '12'  |,                       /* with PICtype */
+              left(PicSamp,2) = '16'  |,
+              left(PicSamp,2) = '18')   then do
+            call lineout list, 'Sample' PicSamp 'may have to be renamed!'
+         end
       end
-  end
+   end
 end
 
 total_libraries = f.external.0 + f.filesystem.0 + f.jal.0 +,
@@ -174,6 +183,7 @@ total_samples   = count.adc + count.blink  + count.i2c + count.lcd +,
                   count.networking + count.pwm + count.serial + count.usb +,
                   count.othersamples
 
+say 'Creating overview of analysis in:' list
 call lineout list, ''
 call lineout list, 'TORELEASE contains' format(f.device.0 - 1,4) 'device files'
 call lineout list, '                  ' format(total_libraries,4) 'function libraries'
@@ -297,7 +307,7 @@ do i=1 to fls.0
         end
         call SysFileSearch libx'.jal', torelease, 'liby.'
         if liby.0 = 0 then do
-          say 'sample' filespec('N',fls.i) 'includes a non released library:' libx
+    /*    say 'sample' filespec('N',fls.i) 'includes a non released library:' libx   */
           u = unreleasedinclude.0 + 1
           unreleasedinclude.u = 'sample/'filespec('N', fls.i) 'includes:' libx    /* store for report */
           unreleasedinclude.0 = u
@@ -314,15 +324,6 @@ else
   call lineout list, unlisted - unlistedblink 'unreleased sample files',
                      '+' unlistedblink 'unreleased basic blink samples'
 call lineout list, ''
-
-if unreleasedinclude.0 > 0 then do
-  call lineout list, 'Samples which include unreleased libraries'
-  call lineout list, '------------------------------------------'
-  call lineout list, ''
-  do i = 1 to unreleasedinclude.0
-    call lineout list, unreleasedinclude.i
-  end
-end
 
 call lineout list, ''
 call lineout list, 'Unreleased Project files'
@@ -344,12 +345,33 @@ call stream torelease, 'c', 'close'
 call lineout list, ''
 call lineout list, unlisted 'unreleased project files'
 call lineout list, ''
+
+if missing.0 > 0 then do
+  call lineout list, ''
+   call lineout list, ''
+   call lineout list, 'Files listed in TORELEASE, but missing in Jallib'
+   call lineout list, '------------------------------------------------'
+   call lineout list, 'Line#  File'
+   do i = 1 to missing.0
+      call lineout list, missing.i
+   end
+   call lineout list, ''
+end
+
+if unreleasedinclude.0 > 0 then do
+  call lineout list, ''
+  call lineout list, 'Samples which include unreleased libraries'
+  call lineout list, '------------------------------------------'
+  call lineout list, ''
+  do i = 1 to unreleasedinclude.0
+    call lineout list, unreleasedinclude.i
+  end
+  call lineout list, ''
+end
+
 call stream list, 'c', 'close'
 
-say 'See' list 'for the detailed results'
-
-/* write new 'torelease' */
-
+Say 'Creating' torelease'.NEW (sorted, duplicates commented out)'
 call SysFileDelete newrelease
 call stream newrelease, 'c', 'open write'
 call lineout newrelease, '# Title: List of files to release'
@@ -368,7 +390,7 @@ call listpart 'sample', 'Samples'
 call listpart 'doc', 'Static documentation (only in jallib-pack)'
 call stream newrelease, 'c', 'close'
 
-Say 'For a sorted TORELEASE file see' newrelease
+say 'See' list 'for the detailed results'
 
 return 0     /* all done */
 
@@ -391,8 +413,12 @@ part = toupper(part)
 parse upper var part part
 call sortpart part                                          /* sort this part of collection */
 call lineout newrelease, '#' title
-do k = 1 to f.part.0                                        /* list this collection */
-  call lineout newrelease, f.part.k
+do i = 1 to f.part.0                                        /* list this collection */
+  p = i - 1
+  if f.part.p = f.part.i then
+     call lineout newrelease, '# 'f.part.i '   duplicate!'
+  else
+     call lineout newrelease, f.part.i
 end
 call lineout newrelease, ''
 return
@@ -402,7 +428,7 @@ return
 /* Sorting members of 1st level subdirectory     */
 /* '_' in name for sort changed into '/'         */
 /* such that 16f72_xxx comes before 16f722_xxx   */
-/* Spaces in filenames will become undescores!   */
+/* Spaces in filenames will become underscores!  */
 /* --------------------------------------------- */
 sortpart: procedure expose f. newrelease
 parse arg part .
@@ -413,37 +439,6 @@ end
 call SysStemSort 'g.', 'A', 'I'                             /* sort the group */
 do i = 1 to g.0                                             /* copy back */
   f.part.i = translate(g.i, '_', ' ')                       /* space -> underscore */
-  p = i - 1
-  if g.p = g.i then
-     call lineout newrelease, '#' f.part.i '     (duplicate)'
-end
-return
-
-
-/* --------------------------------------------- */
-/* Sorting members of 1st level subdirectory     */
-/* '_' in name for sort changed into '/'         */
-/* such that 16f72_xxx comes before 16f722_xxx   */
-/* --------------------------------------------- */
-sortpart_old: procedure expose f. newrelease
-parse arg part .
-do i = f.part.0 - 1 to 1 by -1 until OK                     /* upper bound: one but last */
-  OK = 1                                                    /* default: done! */
-  do j = 1 to i                                             /* begin to upper bound */
-    k = j + 1
-    lo = translate(f.part.j,'/','_')                        /* underscore higher than ASCII digit */
-    hi = translate(f.part.k,'/','_')
-    if lo > hi then do                                      /* desc. sequence */
-      tmp = f.part.k
-      f.part.k = f.part.j
-      f.part.j = tmp
-      OK = 0                                                /* not done yet! */
-    end
-    else if lo = hi then do                                 /* equal */
-      call lineout newrelease, '#' f.part.k '     (duplicate)'
-      leave
-    end
-  end
 end
 return
 
