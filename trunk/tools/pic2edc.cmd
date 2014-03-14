@@ -31,15 +31,16 @@
  *   - Old .edc files are not deleted (new files will overwrite old ones).  *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.25'
+   ScriptVersion   = '0.0.26'
    ScriptAuthor    = 'Rob Hamerling'
-   mplabxversion   = '200'
+   mplabxversion   = '205'
 
-MPLABXbase = 'k:/MPLAB-X_'mplabxversion'/'         /* base directory of MPLAB-X */
-picdir     = MPLABXbase'crownking.edc.jar/content/edc'          /* dir with MPLAB .pic  */
+/* dir with MPLAB-X .pic files */
+picdir     = 'k:/tmp/content/edc'
+/* picdir     = 'k:/mplab-x_'mplabxversion'/crownking.edc.jar/content/edc'  */
 
 wildcard = 'PIC1*.pic'
-wildcard = 'PIC12*f1612.pic'
+/* wildcard = 'PIC12*f1612.pic' */
 
 call RxFuncAdd 'SysLoadFuncs', 'RexxUtil', 'SysLoadFuncs'
 call SysLoadFuncs                                           /* load Rexx utilities */
@@ -52,7 +53,14 @@ if dir.0 = 0 then do
    return 0                                                 /* nothing to do */
 end
 
+versionfile = 'MPLAB-X_VERSION'                             /* with MPLAB-X and script versions */
+call SysFileDelete versionfile
+call lineout versionfile, 'MPLAB-X_VERSION' mplabxversion 'SCRIPT_VERSION' ScriptVersion
+call stream versionfile, 'c', 'close'
+
 call SysStemSort 'dir.', 'A', 'I'                           /* sort .pic files on name */
+
+edccount = 0
 
 do i = 1 to dir.0                                           /* all relevant .pic files */
                                                             /* init for each new PIC */
@@ -108,9 +116,13 @@ do i = 1 to dir.0                                           /* all relevant .pic
       if length(Pic.j) > 0 then                             /* skip empty lines */
          call lineout edcfile, Pic.j
    end
+
    call stream edcfile, 'c', close                          /* done with .edc file */
+   edccount = edccount + 1
 
 end
+
+say 'Created' edccount '.edc files in directory edc_'mplabxversion
 
 call SysDropFuncs                                           /* release Rexxutil */
 
