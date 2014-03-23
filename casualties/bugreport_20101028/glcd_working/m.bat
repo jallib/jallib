@@ -1,1 +1,0 @@
-c:\jallib\compiler\jalv2.exe -debug -Wno-all -long-start main.jal
