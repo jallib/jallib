@@ -237,12 +237,6 @@ do i = 1 to fls.0
          call lineout list, fs                               /* not released lib */
       end
    end
-   if pos('beep', fls.i) > 0 then do
-      say 'fls.i =' fls.i
-      do j = 1 to x.0
-         say x.j
-      end
-   end
 end
 call stream torelease, 'c', 'close'                         /* done */
 call lineout list, ''

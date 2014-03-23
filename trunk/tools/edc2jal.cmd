@@ -42,7 +42,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.26'
+   ScriptVersion   = '0.0.27'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q2'
 /* mplabxversion obtained from file MPLAB-X_VERSION created by pic2edc script. */
@@ -3598,15 +3598,9 @@ select                                                      /* specific formatti
    end
 
    when key = 'IOSCFS' then do
-      if pos('MHZ',descu) > 0 then do
-         if pos('8',descu) > 0 then                         /* 8 MHz */
-            kwdvalue = 'F8MHZ'
-         else
-            kwdvalue = 'F4MHZ'                              /* otherwise */
-      end
-      else if descu = 'ENABLED' then
+      if val = 'ON' | val = '8MHZ' then
          kwdvalue = 'F8MHZ'
-      else if descu = 'DISABLED' then
+      else if val = 'OFF' | val = '4MHZ' then
          kwdvalue = 'F4MHZ'                                 /* otherwise */
       else do
          kwdvalue = descu
@@ -3781,18 +3775,10 @@ select                                                      /* specific formatti
    end
 
    when key = 'PLLEN' then do
-      if pos('MULTIPL',desc) > 0 then
-         kwdvalue = 'P'word(desc, words(desc))              /* last word */
-      else if pos('500 KHZ',desc) > 0  |  pos('500KHZ',desc) > 0 then
-         kwdvalue = 'F500KHZ'
-      else if pos('16 MHZ',desc) > 0  |  pos('16MHZ',desc) > 0 then
-         kwdvalue = 'F16MHZ'
-      else if pos('DIRECT',desc) > 0 | pos('DISABLED',desc) > 0 | pos('SOFTWARE',desc) > 0 then
-         kwdvalue = 'P1'
-      else if pos('ENABLED',desc) > 0 then
-         kwdvalue = 'P4'
-      else if datatype(left(desc,1),'W') = 1 then
-         kwdvalue = 'F'descu
+      if val = 'DISABLED' | val = 'OFF' then
+         kwdvalue = 'DISABLED'
+      else if val = 'ENABLED' | val = 'ON' then
+         kwdvalue = 'ENABLED'
       else
          kwdvalue = descu
    end
