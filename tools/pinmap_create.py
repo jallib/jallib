@@ -22,12 +22,12 @@ from xml.dom.minidom import parse, Node
   the entry in the old pinmap file will be copied (when present).
   Same when the .edc file does not contain a Pin section at all,
   otherwise the pinmap will not contain an entry for this PIC.
-  This script handles issues for a MPLAB-X version 2.00,
+  This script handles issues for a MPLAB-X (version see below).
   for other MPLAB-X versions it will probably have to be adapted!
   -----------------------------------------------------------------------
 """
 
-mplabxversion = "205"                                       # current version of MPLAB-X
+mplabxversion = "205"                                       # latest version of MPLAB-X
 
 edcdir    = "k:/jal/pic2jal/edc_" + mplabxversion           # dir with .edc files
 pinmapnew = "pinmapnew.py"                                  # output
