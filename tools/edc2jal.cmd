@@ -42,7 +42,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.27'
+   ScriptVersion   = '0.0.28'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q2'
 /* mplabxversion obtained from file MPLAB-X_VERSION created by pic2edc script. */
@@ -3292,10 +3292,10 @@ if key \= '' then do                               /* key value found */
          key = 'T1OSCMUX'
       when key = 'T3CKMX' | key = 'T3CMX' then
          key = 'T3CKMUX'
-      when key = 'USBDIV'  &,                      /* compatibility */
-           (left(PicName,6) = '18f245' | left(PicName,6) = '18f255' |,
-            left(PicName,6) = '18f445' | left(PicName,6) = '18f455' ) then
-         key = 'USBPLL'
+/*    when key = 'USBDIV'  &,                         compatibility          */
+/*         (left(PicName,6) = '18f245' | left(PicName,6) = '18f255' |,       */
+/*          left(PicName,6) = '18f445' | left(PicName,6) = '18f455' ) then   */
+/*       key = 'USBPLL'                                                      */
       when key = 'WDTEN' | key = 'WDTE' then
          key = 'WDT'
       when key = 'WDPS' then
@@ -3553,11 +3553,10 @@ select                                                      /* specific formatti
    end
 
    when key = 'FOSC2' then do
-      if pos('INTRC', descu) > 0  |,
-         desc = 'ENABLED' then
-         kwdvalue = 'INTOSC'
+      if val = 'OFF' | val = 'ON' then
+         kwdvalue = val
       else
-         kwdvalue = 'OSC'
+         kwdvalue = descu
    end
 
    when key = 'FCMEN'  |,                                   /* Fail safe clock monitor */
@@ -3784,12 +3783,10 @@ select                                                      /* specific formatti
    end
 
    when key = 'PLLSEL' then do
-      if pos('96M',descu) > 0 then
-         kwdvalue = 'PLL96'
-      else if pos('3X',desc) > 0 then
-         kwdvalue = 'PLL3X'
-      else if pos('4X',desc) > 0 then
-         kwdvalue = 'PLL4X'
+      if val = 'PLL96' |,
+         val = 'PLL3X' |,
+         val = 'PLL4X' then
+         kwdvalue = val
       else
          kwdvalue = descu
    end
@@ -3947,10 +3944,10 @@ select                                                      /* specific formatti
    end
 
    when key = 'USBDIV' then do                              /* mplab >= 8.60 (was USBPLL) */
-      if descu = 'ENABLED' | pos('96_MH',descu) > 0 | pos('DIVIDED_BY',descu) > 0 then
-         kwdvalue = 'P4'                                    /* compatibility */
+      if val = '1' | val = 'OFF' then
+         kwdvalue = 'P1'
       else
-         kwdvalue = 'P1'                                    /* compatibility */
+         kwdvalue = 'P2'
    end
 
    when key = 'USBLSCLK' then do
