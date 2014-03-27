@@ -107,12 +107,13 @@ do linenumber = 1  while lines(torelease)                   /* collect files */
          part = 'sample'
          parse var ln 'sample/' PicName '_' .                  /* isolate name of PIC */
          if PicName \= '' then do                              /* picname derived */
-            PicNameUpper = toupper(PicName)
-            smppic.PicNameUpper = PicName                       /* PIC with at least 1 sample */
-            if pos('_blink_hs.', ln) > 0     |,
-               pos('_blink_intosc.', ln) > 0 then do            /* blink sample */
-               blink_sample_count = blink_sample_count + 1       /* count 'm */
-               blinkpic.PicNameUpper = PicName                   /* blink sample found for this PIC */
+            smppic.PicName = PicName                           /* PIC with at least 1 sample */
+            if pos('_blink_hs.', ln) > 0         |,
+               pos('_blink_intosc.', ln) > 0     |,            /* blink sample */
+               pos('_blink_hs_usb.', ln) > 0     |,            /* blink sample */
+               pos('_blink_intosc_usb.', ln) > 0 then do       /* blink sample */
+               blink_sample_count = blink_sample_count + 1     /* count 'm */
+               blinkpic.PicNameUpper = PicName                 /* blink sample found for this PIC */
             end
          end
       end
@@ -148,8 +149,10 @@ do i = 1 to f.sample.0                                      /* all samples */
                          'for sample' PicSamp'.jal not released'
    end
    select
-      when pos(PicName'_blink_hs',PicSamp) > 0     |,
-           pos(PicName'_blink_intosc',PicSamp) > 0 then      /* basic BLINK sample */
+      when pos(PicName'_blink_hs.',PicSamp) > 0         |,
+           pos(PicName'_blink_intosc.',PicSamp) > 0     |,    /* basic BLINK sample */
+           pos(PicName'_blink_hs_usb.',PicSamp) > 0     |,
+           pos(PicName'_blink_intosc_usb.',PicSamp) > 0 then
          count.blink = count.blink + 1
       when pos(PicName'_adc',PicSamp) > 0 then                /* ADC sample */
          count.adc = count.adc + 1
@@ -274,8 +277,10 @@ do i=1 to fls.0
    call SysFileSearch filespec, torelease, x.
    if x.0 = 0 then do                               /* not found in torelease  */
       unlisted = unlisted + 1
-      if pos('_blink_hs.',    filespec) > 0  |,
-         pos('_blink_intosc.',filespec) > 0  then do
+      if pos('_blink_hs.',    filespec) > 0      |,
+         pos('_blink_intosc.',filespec) > 0      |,
+         pos('_blink_hs_usb.',filespec) > 0      |,
+         pos('_blink_intosc_usb.',filespec) > 0  then do
          unlistedblink = unlistedblink + 1
          if runtype \= '' then                        /* to be listed */
             call lineout list, filespec                /* list not released blink sample */
