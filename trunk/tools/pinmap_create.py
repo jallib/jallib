@@ -21,8 +21,9 @@ from xml.dom.minidom import parse, Node
   When pins are not in .edc file or known to be incorrect
   the entry in the old pinmap file will be copied (when present).
   Same when the .edc file does not contain a Pin section at all,
-  otherwise the pinmap will not contain an entry for this PIC.
-  This script handles issues for a MPLAB-X (version see below).
+  otherwise the pinmap will not contain an entry for this PIC and
+  must be created manually from the datasheet.
+  This script handles issues with MPLAB-X (version see below).
   for other MPLAB-X versions it will probably have to be adapted!
   -----------------------------------------------------------------------
 """
