@@ -1,0 +1,217 @@
+-- Title: i2c_reset_bus
+-- Author: Wouter van Ooijen, Copyright (C) 1998, 1999 Wouter van Ooijen
+-- Adapted-by: Joep Suijs, William Welch
+-- Compiler: >=2.4g
+-- Revision: $Revision: 3047 $
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: reset / clear the i2c bus, bit-bang approach
+-- --
+-- -- Define i2c pins like:
+-- alias i2c_scl            is pin_c3
+-- alias i2c_scl_direction  is pin_c3_direction
+-- alias i2c_sda            is pin_c4
+-- alias i2c_sda_direction  is pin_c4_direction
+-- --
+-- const word _i2c_bus_speed = 1 ; * 100kHz
+--
+-- optional _i2c_scl_timeout to prevent system from hanging in a loop.
+-- const _i2c_scl_timeout = 100  -- units are in bit-times.
+
+-- TODO:
+--
+
+include delay
+
+-- prototypes                   
+procedure  _i2c_wait()
+procedure _i2c_bit_in(bit out x)
+procedure _i2c_bit_out(bit in x)                  
+procedure _i2c_start() 
+procedure _i2c_stop() 
+
+-- ------------------------------------------------------------------------
+-- i2c_reset - initialize the i2c bus
+-- ------------------------------------------------------------------------
+-- The output latch values are always low,
+-- the lines are switched open-collector fashion by 
+-- manipulating the direction registers.
+-- ------------------------------------------------------------------------
+procedure i2c_reset_bus() is
+   i2c_scl              = low
+   i2c_sda              = low
+   i2c_scl_direction    = high
+   i2c_sda_direction    = high
+   
+   -- Clear the bus, regardless the state it is in.
+   --
+   -- This code is based on atmel AT24C32C datasheet, page 6
+   -- http://www.atmel.com/dyn/resources/prod_documents/doc5298.pdf
+   --
+   _i2c_start()
+   for 9 loop
+      _i2c_bit_out(1);
+   end loop
+   _i2c_start()
+   _i2c_stop()
+   
+end procedure
+
+-- ------------------------------------------------------------------------
+-- _i2c_start - output a start condition
+-- ------------------------------------------------------------------------
+-- ------------------------------------------------------------------------
+procedure _i2c_start() is   
+
+   if (defined(i2c_debug)) then serial_hw_data = "S" end if
+   
+   _i2c_wait()
+   i2c_sda_direction = high       -- data high
+   _i2c_wait() 
+   i2c_scl_direction = high       -- clock high
+   _i2c_wait()
+
+   -- wait until clock is high (or optional timeout)
+   if (defined(_i2c_scl_timeout) == true) then
+      for _i2c_scl_timeout loop
+         if i2c_scl == high then
+            exit loop
+         end if
+         _i2c_wait()
+      end loop
+   else
+      while i2c_scl == low loop 
+      end loop                     -- wait for slow slave
+   end if
+
+   i2c_sda_direction = low        -- data low
+   _i2c_wait()
+   i2c_scl_direction = low        -- clock low
+   _i2c_wait()
+end procedure
+
+-- ------------------------------------------------------------------------
+-- _i2c_stop - output a stop condition
+-- ------------------------------------------------------------------------
+-- ------------------------------------------------------------------------
+procedure _i2c_stop() is
+
+   if (defined(i2c_debug)) then serial_hw_data = "P" end if
+
+   _i2c_wait()
+   i2c_sda_direction   = low        -- data low
+   _i2c_wait()
+   i2c_scl_direction   = low        -- clock low
+   _i2c_wait()
+   i2c_scl_direction   = high       -- clock high
+   _i2c_wait()       
+
+   -- wait until clock is high (or optional timeout)   
+   if (defined(_i2c_scl_timeout) == true) then
+      for _i2c_scl_timeout loop
+         if i2c_scl == high then
+            exit loop
+         end if
+         _i2c_wait()
+      end loop
+   else
+      while i2c_scl == low loop 
+      end loop                     -- wait for slow slave
+   end if   
+
+   i2c_sda_direction   = high       -- data high    
+   _i2c_wait()
+end procedure
+
+-- ------------------------------------------------------------------------
+-- ------------------------------------------------------------------------
+-- internal 
+-- ------------------------------------------------------------------------
+-- ------------------------------------------------------------------------
+
+-- ------------------------------------------------------------------------
+-- _i2c_wait - wait for a change to settle (for internal use only)
+-- ------------------------------------------------------------------------
+-- The delay is determined by i2c_bus_speed and is 1/4 of the cycle time.
+-- Given the delay resolution of 1 us and all actions required by 
+-- i2c_software routines, the actual bus speed will be lower then the
+-- configured maximum.
+-- ------------------------------------------------------------------------
+procedure  _i2c_wait() is
+   
+   if _i2c_bus_speed == 10 then 
+      ; i2c_1MHz
+      delay_1us()
+      return
+   elsif _i2c_bus_speed == 4  then 
+      ; i2c_400kHz
+      delay_2us()
+      return
+   else                           
+      ; i2c_100kHz
+      delay_5us()
+      return
+   end if
+   
+end procedure
+
+-- ------------------------------------------------------------------------
+-- _i2c_bit_out- output a single bit (for internal use only)
+-- ------------------------------------------------------------------------
+-- ------------------------------------------------------------------------
+procedure _i2c_bit_out(bit in x) is
+   
+   i2c_sda_direction   = x          -- high data bit
+   _i2c_wait()
+   i2c_scl_direction  = high        -- clock high
+   
+   -- wait until clock is high (or optional timeout)
+   if (defined(_i2c_scl_timeout) == true) then
+      for _i2c_scl_timeout loop
+         if i2c_scl == high then
+            exit loop
+         end if
+         _i2c_wait()
+      end loop
+   else
+      while i2c_scl == low loop 
+      end loop                     -- wait for slow slave
+   end if
+   
+   _i2c_wait()
+   i2c_scl_direction  = low         -- clock low
+   _i2c_wait()
+   
+end procedure
+
+-- ------------------------------------------------------------------------
+-- _i2c_bit_in- input a single bit (for internal use only)
+-- ------------------------------------------------------------------------
+-- ------------------------------------------------------------------------
+procedure _i2c_bit_in(bit out x) is
+;   _i2c_wait()
+   i2c_sda_direction   = high -- data open
+   _i2c_wait()
+   i2c_scl_direction  = high  -- clock high
+
+   -- wait until clock is high (or optional timeout)
+   if (defined(_i2c_scl_timeout) == true) then
+      for _i2c_scl_timeout loop
+         if i2c_scl == high then
+            exit loop
+         end if
+         _i2c_wait()
+      end loop
+   else
+      while i2c_scl == low loop 
+      end loop                     -- wait for slow slave
+   end if
+
+   _i2c_wait()
+   x = i2c_sda                -- sample data
+   _i2c_wait()
+   i2c_scl_direction  = low   -- clock low
+   _i2c_wait()
+end procedure
