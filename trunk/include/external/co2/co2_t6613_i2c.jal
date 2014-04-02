@@ -1,0 +1,180 @@
+-- Title: co2_t6613_i2c, read values from GE/Telaire T6613 CO2 sensor.
+-- Author: Eur van Andel, eur@fiwihex.nl Copyright (c) 2013
+-- Compiler: =2.4o
+-- Revision: $Revision: 3059 $
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: 
+-- This library communicates with the T6613 GE/Telaire CO2 sensor, 
+-- via I2C. The protocol doc isn't on the web: email eur@fiwihex.nl to get it.
+-- available functions are:
+-- get_status() return byte
+-- get_co2_ppm() return word           -- CO2 concentration in ppm 
+-- get_serial_numer() return string[15]
+-- get_elevation_m() return word       -- in meters above sea level
+-- ---------
+-- declare in your main program, before including this library:
+-- const word _i2c_bus_speed = 1 -- * 100kHz
+-- const bit _i2c_level = true   
+-- include i2c_hardware                         -- there is software i2c too
+-- i2c_initialize()
+-- var bit tx_ok                                        -- check if all transmissions went OK
+-- -----------
+--
+-- Notes:
+-- sensor pinout, top view: (gold box visible)
+-- A B C 2 4 6 8 10 12
+--       1 3 5 7  9 11
+-- where:
+-- A    TX (UART)
+-- B    RX (UART)
+-- C    V+ (5V DC)
+-- 1 +5V
+-- 2    GND
+-- 3    GND
+-- 4    AV OUT (0..4V DC)
+-- 5    SCL (I2C)
+-- 6    NC
+-- 7    SDA (I2C)       
+-- 8    NC
+-- 9    NC
+-- 10   TX (UART)
+-- 11   RX (UART)
+-- 12   GND
+-- for this library, you need only connect pins 1, 3, 5 & 7
+-- ----------------
+-- Memory map:
+-- T66xx memory map                                                     
+--      addr    Description     lt      wgt  RW/RO      write            read description        write description
+--      0x00    Elevation       2       msb     RW      W: 0 xx xx                              xx xx elevation in hex
+--      0x01                            lsb                             
+--      0x02    Span PPM        2       msb     RW      W: 2 xx xx                              xx xx span in hex T6615 only
+--      0x03                            lb                             
+--      0x04    sngl p trgt     2       msb     RW      W: 4 xx xx                               xx xx single point in hex
+--      0x05                            lsb                             
+--      0x06    zero cal cmd    1               RW      W: 6 0F         00: flags set   
+--      0x07    span cal cmd    1               RW      W: 7 0F         00: flags set           T6615 only
+--      0x08    sngl pnt cal cmd 1              RW      W: 8 0F         00: flags set   
+--      0x09    ABC logic enable 1              RW      W: 9 0x         01:ABC on, 02:ABC off 01:on, 02:off, 03:reset and on
+--      0x0A    Sensor idle cmd 1               RW      W: A 0x         00 after cmd            01:idle on, 02:idle off
+--      0x0B    Reset cmd       1               RW      W: B 0F         00 after cmd    
+--      0x0C    span2 cal cmd   1               RW      W: C 0F         00: flags set           T6615 only
+--      0x0D    span2 ppm       2               RW      W: D xx xx      
+--   
+--      0x20    CO2 reading     2       msb     RO              
+--      0x21                            lsb                     
+--      0x22    status byte                     RO                       00:normal, 1x: error, 02:warmup, 04:calibration, 08:idle
+--      0x23    reserved                                        
+--      0x24    reserved                                        
+--      0x25    reserved                                        
+--      0x26    reserved                                        
+--      0x27    serial  16      array[0]        RO              
+--      0x28                                    array[1]                        
+-- [..]                                 [..]
+--      0x36                                    array[15]
+-- 
+
+const byte t6613_addr   = 0b0001_0000  -- 0x08 in 7-bit notation 
+
+const CMD_ELEVATION     = 0x00
+const CMD_RESET         = 0x0B
+const CMD_CO2           = 0x20
+const CMD_STATUS        = 0x22
+const CMD_SERIAL        = 0x27
+
+-- returns a word with CO2 concentration in ppm
+function get_co2_ppm() return word is
+   var byte msb, lsb
+   var word co2_ppm           -- for timeout
+   var bit tx_ok                                   -- for comms debugging
+
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(t6613_addr)
+
+   tx_ok = tx_ok & i2c_transmit_byte(CMD_CO2)
+   i2c_start()
+   tx_ok = tx_ok & i2c_transmit_byte(t6613_addr+1)
+   msb = i2c_receive_byte(true)		-- send ack
+   lsb = i2c_receive_byte(false)	-- send nack
+   i2c_stop()
+   co2_ppm = (word(msb) << 8) + word(lsb)
+   return co2_ppm 
+end function
+   
+-- returns status byte. bit_0 = error, bit_1 = warmup, 
+-- bit_2 = calibration, bit_3 = idle
+function get_co2_status() return byte is
+   var byte status
+   var bit tx_ok                                   -- for comms debugging
+
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(t6613_addr)
+
+   tx_ok = tx_ok & i2c_transmit_byte(CMD_SERIAL)
+   i2c_start()
+   tx_ok = tx_ok & i2c_transmit_byte(t6613_addr+1)
+   status = i2c_receive_byte(0)
+   i2c_stop()
+   return status
+end function 
+
+-- returns 16 byte ASCII string, which should be the same
+-- as the number on the sticker
+procedure get_co2_serial_number(byte out str[16]) is
+   var byte i
+   var bit tx_ok                                   -- for comms debugging
+
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(t6613_addr)
+   tx_ok = tx_ok & i2c_transmit_byte(CMD_SERIAL)
+   i2c_start()
+   tx_ok = tx_ok & i2c_transmit_byte(t6613_addr+1)
+
+   i = 0
+   for 15 loop
+      str[i] = i2c_receive_byte(1)
+      i = i + 1
+   end loop
+
+   str[i] = i2c_receive_byte(0)
+end procedure      
+
+-- returns programmed elevation above sea level in meters
+-- this elevation is used to calculate CO2 concentration correctly
+function get_co2_elevation_m() return word is
+   var byte msb, lsb
+   var dword elevation_ft
+   var word elevation_m  
+   var bit tx_ok                                   -- for comms debugging
+
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(t6613_addr)
+   tx_ok = tx_ok & i2c_transmit_byte(CMD_ELEVATION)
+   i2c_start()
+   tx_ok = tx_ok & i2c_transmit_byte(t6613_addr+1)
+   msb = i2c_receive_byte(1)
+   lsb = i2c_receive_byte(0)
+   i2c_stop()
+
+   elevation_ft = dword(msb) << 8 + dword(lsb)
+   elevation_ft = elevation_ft * 3048                     -- meters * 10_000
+   elevation_ft = elevation_ft / 10000                    -- meters above sealevel
+   elevation_m = word(elevation_ft)                       -- generates warning
+   return elevation_m
+end function
+
+procedure reset_t6613() is
+   var bit tx_ok                                   -- for comms debugging
+
+   i2c_start()
+   tx_ok =         i2c_transmit_byte(t6613_addr)
+   tx_ok = tx_ok & i2c_transmit_byte(CMD_RESET)
+   i2c_stop()
+
+end procedure
+
+-- should set elevation in meters above sea level, not implemented yet
+procedure set_co2_elevation_m(word in meters) is
+end procedure
