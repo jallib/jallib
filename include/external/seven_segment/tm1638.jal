@@ -27,11 +27,12 @@
 -- Before including this library declare the following aliases (mandatory):
 -- .
 -- alias tm1638_dio            is pin_??                    -- pin for data I/O signal
--- alias tm1638_dio_direction  is pin_??_direction
 -- alias tm1638_clk            is pin_??                    -- pin for clock signal
--- alias tm1638_clk_direction  is pin_??_direction
 -- alias tm1638_stb            is pin_??                    -- pin for chip select signal
--- alias tm1638_stb_direction  is pin_??_direction
+-- alias tm1638_dio_direction  is pin_??_direction
+-- .
+-- The pins for tm1638_clk and tm1638_stb must be configured
+-- for digital output by the user program
 -- .
 -- The following constant may be specified as well (optionally):
 -- .
@@ -80,11 +81,11 @@ const  byte  TM1638_DOT              = 0b_1000_0000       -- segment of decimal 
 if !(defined(tm1638_dio) & defined(tm1638_dio_direction)) then
    _error "tm1638_dio and tm1638_dio_direction must be defined"
 end if
-if !(defined(tm1638_clk) & defined(tm1638_clk_direction)) then
-   _error "tm1638_clk and tm1638_clk_direction must be defined"
+if !(defined(tm1638_clk)) then
+   _error "tm1638_clk must be defined"
 end if
-if !(defined(tm1638_stb) & defined(tm1638_stb_direction)) then
-   _error "tm1638_stb and tm1638_stb_direction must be defined"
+if !(defined(tm1638_stb)) then
+   _error "tm1638_stb must be defined"
 end if
 if !defined(TM1638_WIDTH) then
    const byte TM1638_WIDTH = 8                        -- default number of digits in display
@@ -182,8 +183,6 @@ end procedure
 procedure tm1638_init() is
 
    tm1638_dio_direction = OUTPUT
-   tm1638_clk_direction = OUTPUT
-   tm1638_stb_direction = OUTPUT
 
    tm1638_stb = HIGH                                  -- quiesce
    tm1638_clk = HIGH
@@ -263,6 +262,9 @@ procedure tm1638_display_string(byte in string[],
   var byte i
 
   for (TM1638_WIDTH - pos) using i loop                  -- available positions
+     if (i >= count(string)) then                        -- beyond end of string
+        exit loop
+     end if
      tm1638_display_char(string[i], pos + i)
   end loop
 
@@ -400,7 +402,7 @@ procedure tm1638_display_byte_bin(byte in number) is
 
    var byte i
 
-   for TM1638_WIDTH using i loop
+   for 8 using i loop
       tm1638_display_digit(number & 0b_0000_0001, TM1638_WIDTH - i - 1, 0)
       number = number >> 1
    end loop
