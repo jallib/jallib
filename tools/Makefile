@@ -167,6 +167,7 @@ prepare:
 	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-${VERSION}/
 	cp distrib/jallib-extra/LICENSE.zlib distrib/jallib-${VERSION}/
 	cp distrib/jallib-extra/README.release distrib/jallib-${VERSION}/README
+	cp distrib/jallib-extra/README.device distrib/jallib-${VERSION}/README.device
 	cp distrib/jallib-extra/README.blink distrib/jallib-${VERSION}/README.blink
 	# 	jallib-all_devices
 	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-all_devices-${VERSION}/
