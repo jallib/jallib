@@ -1,4 +1,4 @@
-#!usr/bin/python
+#!/usr/bin/python
 #
 # Title:  Analysis of selected configuration bits or bitfields
 # Author: Rob Hamerling, Copyright (c) 2013..2014, all rights reserved.
@@ -12,7 +12,7 @@
 #
 # Description: Analyse the configuration information in MPLAB-X .pic files
 #              and produce an overview of the selected bits or bit fields.
-#              The selection is on the cname attribute of the DCRFieldDefs,
+#              The selection is on the cname attribute of the DCRFieldDef nodes,
 #              and of these the cname and desc attributes of DCRFieldSemantic
 #              nodes are analyzed.
 #              The output file is named 'fusedef_analysis_<keyword>.<mplab-version>
@@ -20,12 +20,11 @@
 #              selection keyword(s) specified on the commandline.
 #              Example: fusedef_analysis OSC FOSC
 #              produces a file fusedef_analysis_osc.205
-#              with all oscillator keywords and descriptions, in
-#              several overviews with statistics.
+#              with all oscillator keywords and descriptions,
+#              in several overviews with statistics.
 #
-# Dependencies: The script uses the .pic files of MPLAB-X which should be
-#              extracted from crownking.edc.jar (de devicefiles.html).
-#
+# Dependencies: This script uses the .pic files of MPLAB-X which should be
+#               extracted from crownking.edc.jar (see devicefiles.html).
 #
 # Notes: This script is useful to get insight in the configuration bits
 #        variations. It is particularly helpful to maintain and improve
@@ -38,7 +37,7 @@ import re
 from xml.dom.minidom import parse, Node
 
 
-# hard coded parameters:
+# basic parameters:
 
 mplabxversion = "205"
 picdir        = "K:/mplab-x_" + mplabxversion + "/crownking.edc.jar/content/edc"    # dir with .PIC files
@@ -92,70 +91,68 @@ def add_pic(file, kwdlist):
          if attr in (kwdlist):                                 # selected keywords only
             kwdnamedict[attr] = kwdnamedict.get(attr,0) + 1    # count occurrences
             add_kwd(fielddef, picname)                         #
-            size = fielddef.getAttribute("edc:nzwidth")
 
 
 def list_results(kwdlist, listing):
-  fp = open(listing, "w")
+   fp = open(listing, "w")
+   fp.write("\nSearched for DCRFieldDefs: " + " ".join(kwdlist) + "\n\n")
+   fp.write("Occurrences of DCRFieldDefs (" + str(len(kwdnamedict)) + ")\n\n")
+   kwdlist = sorted(kwdnamedict.keys())
+   for kwd in kwdlist:
+     fp.write("%15s" % kwd + " : " + str(kwdnamedict[kwd]) + "\n")
+   fp.write("\n" + "-" * 60 + "\n\n")
 
-  fp.write("\nSearched for DCRFieldDefs: " + " ".join(kwdlist) + "\n\n")
+   kwdlist = sorted(kwdkwddict.keys())
+   fp.write("Keywords and their occurrences (" + str(len(kwdlist)) + ")\n\n")
+   for kwd in kwdlist:
+      fp.write("%15s" % kwd + " : " + str(kwdkwddict[kwd])+ "\n")
+   fp.write("\n" + "-" * 60 + "\n\n")
 
-  fp.write("Occurrences of DCRFieldDefs (" + str(len(kwdnamedict)) + ")\n\n")
-  kwdlist = sorted(kwdnamedict.keys())
-  for kwd in kwdlist:
-    fp.write("%15s" % kwd + " : " + str(kwdnamedict[kwd]) + "\n")
-  fp.write("\n" + "-" * 60 + "\n\n")
+   kwdlist = sorted(kwddescdict.keys())
+   fp.write("Keywords and their descriptions\n\n")
+   for kwd in kwdlist:
+      fp.write(kwd + "\n")
+      for desc in kwddescdict[kwd]:
+         fp.write(" " * 18 + str(desc) + "\n")
+   fp.write("\n" + "-" * 60 + "\n\n")
 
-  kwdlist = sorted(kwdkwddict.keys())
-  fp.write("Keywords and their occurrences (" + str(len(kwdlist)) + ")\n\n")
-  for kwd in kwdlist:
-    fp.write("%15s" % kwd + " : " + str(kwdkwddict[kwd])+ "\n")
-  fp.write("\n" + "-" * 60 + "\n\n")
+   kwdlist = sorted(kwddescdict.keys())
+   fp.write("Keywords + descriptions, and involved PICs\n\n")
+   for kwd in kwdlist:
+      fp.write(kwd)
+      piccount = 0
+      for desc in kwddescdict[kwd]:
+         fp.write("\n" + " " * 18 + str(desc) + "\n")
+         piccount = piccount + len(kwdpicsdict[(kwd, desc)])
+         fp.write("%15s" % len(kwdpicsdict[(kwd, desc)]) + ' : ')
+         fp.write(" ".join(kwdpicsdict[(kwd,desc)]) + "\n")
+      fp.write(" "*12 + "---" + "\n" + "%15s" % piccount + "\n")
+      if piccount != kwdkwddict[kwd]:
+         fp.write("Error: piccount does not match number of keyword occurrences\n")
+      fp.write("\n")
+   fp.write("\n" + "-" * 60 + "\n\n")
+   fp.close()
 
-  kwdlist = sorted(kwddescdict.keys())
-  fp.write("Keywords and their descriptions\n\n")
-  for kwd in kwdlist:
-    fp.write(kwd + "\n")
-    for desc in kwddescdict[kwd]:
-      fp.write(" " * 18 + str(desc) + "\n")
-  fp.write("\n" + "-" * 60 + "\n\n")
-
-  kwdlist = sorted(kwddescdict.keys())
-  fp.write("Keywords + descriptions, and involved PICs\n\n")
-  for kwd in kwdlist:
-    fp.write(kwd)
-    piccount = 0
-    for desc in kwddescdict[kwd]:
-      fp.write("\n" + " " * 18 + str(desc) + "\n")
-      piccount = piccount + len(kwdpicsdict[(kwd, desc)])
-      fp.write("%15s" % len(kwdpicsdict[(kwd, desc)]) + ' : ')
-      fp.write(" ".join(kwdpicsdict[(kwd,desc)]) + "\n")
-    fp.write(" "*12 + "---" + "\n" + "%15s" % piccount + "\n")
-    if piccount != kwdkwddict[kwd]:
-      fp.write("Error: piccount does not match number of keyword occurrences\n")
-    fp.write("\n")
-  fp.write("\n" + "-" * 60 + "\n\n")
-  fp.close()
 
 def main():
    # process .edc files in picdir
-   kwdlist = []                                              # create list of keywords
-   for kwd in sys.argv[1:]:                                  # all except first
-      kwdlist.append(kwd.upper())                            # force uppercase
+   kwdlist = []                                             # create list of keywords
+   for kwd in sys.argv[1:]:                                 # all except first
+      kwdlist.append(kwd.upper())                           # force uppercase
    print "Scanning", picdir, "for keywords", " ".join(kwdlist)
    listing = "fusedef_analysis_" + sys.argv[1] + '.' + mplabxversion   # output listing
    print "Building", listing, "from .pic files in", picdir
-   for (root, dir, files) in os.walk(picdir):                # whole tree
+   for (root, dir, files) in os.walk(picdir):               # whole tree
       if len(files) > 0:
-         files.sort()                                        # alpha_numeric sequence
+         files.sort()                                       # alpha_numeric sequence
          for file in files:
-            if re.match(pic8flash, file) != None:
-               add_pic(os.path.join(root,file), kwdlist)     # process .pic file
+            if re.match(pic8flash, file) != None:           # select 8-bits flash PICs
+               add_pic(os.path.join(root,file), kwdlist)    # process .pic file
          list_results(kwdlist, listing)
 
 if __name__ == "__main__":
    if len(sys.argv) > 1:
       main()
    else:
-      print 'Please give one or more names of DCRFieldDefs to analyze'
+      print 'Please specify one or more names of DCRFieldDefs to analyse'
 
