@@ -14,14 +14,8 @@ status=0
 mainstatus=0
 for f in `find $SAMPLEDIR -name \*.jal`
 do
-	if grep -i "^include[[:space:]]\+18l\?f" $f > /dev/null 2>&1
-	then
-	    $COMPILERBIN -s $LIBDIR -no-variable-reuse $f > $TMPFILE 2>&1 
-		status=$?
-	else
-	    $COMPILERBIN -s $LIBDIR $f > $TMPFILE 2>&1 
-		status=$?
-	fi
+	$COMPILERBIN -s $LIBDIR $f > $TMPFILE 2>&1 
+	status=$?
 
 
 	if [ "$status" != "0" ]
