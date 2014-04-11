@@ -43,7 +43,7 @@ include max7219                      -- library for the TM1638
 max7219_init()                       -- initalize the TM1638
 --
 
-var byte i
+var byte i,j
 
 max7219_display_intensity(MAX7219_DISPLAY_PWM3)
 
@@ -51,13 +51,13 @@ forever loop
 
    for 8 using i loop
       max7219_display_col(i, TRUE)        -- column
-      delay_100ms(3)
+      delay_100ms(2)
       max7219_display_col(i, FALSE)
    end loop
 
    for 8 using i loop
       max7219_display_row(i, TRUE)        -- row
-      delay_100ms(3)
+      delay_100ms(2)
       max7219_display_row(i, FALSE)
    end loop
 
@@ -74,7 +74,7 @@ forever loop
 
    for 16 using i loop                    -- intensity range
       max7219_display_intensity(i)
-      delay_100ms(1)
+      delay_100ms(2)
    end loop
 
    max7219_display_clear()
@@ -82,9 +82,51 @@ forever loop
 
    for 8 using i loop                     -- triangle
       max7219_display_byte_bin(i, (2 << i) - 1)
-      delay_100ms(3)
+      delay_100ms(2)
    end loop
 
+   for 15 using i loop                    -- walking diagonal
+      for 8 using j loop
+         if ((i < j + 8)  &  (i >= j)) then
+            max7219_display_byte_bin(j, 1 << (i - j))
+         else
+            max7219_display_byte_bin(j, 0)
+         end if
+      end loop
+      delay_100ms(2)
+   end loop
+
+   const byte v[] = {24,60,126,255}
+   const byte h[] = {24,36,66,129}
+   for 4 using i loop                     -- big bang
+      for 4 using j loop
+         if j < i then
+            max7219_display_byte_bin(3 - j, h[i])
+            max7219_display_byte_bin(4 + j, h[i])
+         elsif j == i then
+            max7219_display_byte_bin(3 - j, v[i])
+            max7219_display_byte_bin(4 + j, v[i])
+         else
+            max7219_display_byte_bin(3 - j, 0)
+            max7219_display_byte_bin(4 + j, 0)
+         end if
+      end loop
+      delay_100ms(3)
+   end loop
+   max7219_display_clear()
+   delay_100ms(5)
+
+   const byte s[] = {60,66,165,141,141,165,66,60}
+   for 8 using i loop
+      max7219_display_byte_bin(i, s[i])
+   end loop
+   for 3 using i loop
+      delay_100ms(5)
+      max7219_display_bit(5, 5, FALSE)
+      delay_100ms(2)
+      max7219_display_bit(5, 5, TRUE)
+   end loop
+   delay_100ms(5)
    max7219_display_clear()
 
 end loop
