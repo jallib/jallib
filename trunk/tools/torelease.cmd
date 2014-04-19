@@ -45,11 +45,11 @@ base       = 'k:/jallib'                                    /* base Jallib direc
 libdir     = base'/include'                                 /* libraries */
 smpdir     = base'/sample'                                  /* samples */
 projdir    = base'/project'                                 /* project files */
-torelease  = base'/TORELEASE'                               /* TORELEASE file */
+torelease  = base'/TORELEASE'                                 /* TORELEASE file */
 newrelease = 'TORELEASE.NEW'                                /* release list */
 list       = 'torelease.lst'                                /* script output */
 
-fcount.     = 0                                              /* zero all file counts */
+fcount.    = 0                                              /* zero all file counts */
 dev.       = '-'                                            /* PIC names in device files */
 smppic.    = '-'                                            /* PIC names in sample files */
 blinkpic.  = '-'                                            /* PIC names in blink sample files */
@@ -268,29 +268,30 @@ unreleasedinclude.  = ''
 unreleasedinclude.0 = 0
 
 do i=1 to fls.0
-   fls.i = tolower(translate(fls.i, '/', '\'))      /* forward slashes, lower case */
-   filespec = substr(fls.i, length(base) + 2)       /* remove base prefix */
+   fls.i = tolower(translate(fls.i, '/', '\'))        /* forward slashes, lower case */
+   filespec = substr(fls.i, length(base) + 2)         /* remove base prefix */
    call SysFileSearch filespec, torelease, x.
-   if x.0 = 0 then do                               /* not found in torelease  */
+   if x.0 = 0  |,                                     /* not found in TORELEASE */
+      left(word(x.1,1),1) = '#' then do               /* commented out in TORELEASE */
       unlisted = unlisted + 1
       if pos('_blink_hs.',    filespec) > 0      |,
          pos('_blink_intosc.',filespec) > 0      |,
          pos('_blink_hs_usb.',filespec) > 0      |,
          pos('_blink_intosc_usb.',filespec) > 0  then do
          unlistedblink = unlistedblink + 1
-         if runtype \= '' then                        /* to be listed */
-            call lineout list, filespec                /* list not released blink sample */
+         if runtype \= '' then                        /* blink samples to be listed */
+            call lineout list, filespec               /* list unreleased blink sample */
       end
-      else                                           /* not blink sample */
-         call lineout list, filespec                  /* list not released sample */
+      else                                            /* not a blink sample */
+         call lineout list, filespec                  /* list unreleased sample */
    end
-   else do                                          /* found sample in torelease */
-      parse var fls.i picname '_'
+   else do                                            /* found sample in torelease */
+      parse var filespec picname '_'
       picname = tolower(filespec('N', picname))
       call SysFileSearch 'include ', fls.i, 'inc.'    /* search included libraries */
-      call stream fls.i, 'c', 'close'                /* done */
-      do j=1 to inc.0                                /* all lines with 'include' */
-         inc.j = tolower(inc.j)                       /* all lower case */
+      call stream fls.i, 'c', 'close'                 /* done */
+      do j=1 to inc.0                                 /* all lines with 'include' */
+         inc.j = translate(tolower(inc.j), ' ', '09'x)  /* all lower case, tabs -> blanks */
          if word(inc.j,1) = 'include' &,              /* 1st word is 'include' and .. */
             words(inc.j) > 1  then do                 /* .. at least 2 words */
             libx = tolower(word(inc.j,2))             /* 2nd word is library or device file */
@@ -305,14 +306,14 @@ do i=1 to fls.0
                left(libx,3) = '18f'  |,
                left(libx,4) = '18lf' then do
                if libx \= picname then                /* not matching! */
-                 say 'sample' filespec('n',fls.i) 'includes wrong device file:' libx
+                 say 'sample' left(filespec('n',fls.i),40) 'includes wrong device file:' libx
             end
             else do
                call SysFileSearch '/'libx'.jal', torelease, 'liby.'
                if liby.0 = 0 then do                      /* not found */
-                  say 'sample' filespec('N',fls.i) 'includes a non released library:' libx
+                  say 'sample' left(filespec('N',fls.i),40) 'includes a non released library:' libx
                   u = unreleasedinclude.0 + 1
-                  unreleasedinclude.u = 'sample/'filespec('N', fls.i) 'includes:' libx    /* store for report */
+                  unreleasedinclude.u = left('sample/'filespec('N', fls.i),40) 'includes:' libx    /* store for report */
                   unreleasedinclude.0 = u
                end
             end
@@ -331,8 +332,8 @@ call lineout list, ''
 
 if unreleasedinclude.0 > 0 then do
   call lineout list, ''
-  call lineout list, 'Samples which include unreleased libraries'
-  call lineout list, '------------------------------------------'
+  call lineout list, 'Samples in TORELEASE which include unreleased libraries'
+  call lineout list, '-------------------------------------------------------'
   call lineout list, ''
   do i = 1 to unreleasedinclude.0
     call lineout list, unreleasedinclude.i
