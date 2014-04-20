@@ -137,7 +137,6 @@ def group_wiki(outfile):
                    + datasheet[group].get("DATE")   + " || "
                    + " ".join(groups[group]) + "||\n")
    fp.write("\n")
-
    fp.close()
 
 

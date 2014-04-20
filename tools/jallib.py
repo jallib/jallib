@@ -4,7 +4,7 @@
 # Title: jallib main wrapper script
 # Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
 # Adapted-by:
-# Compiler: 
+# Compiler:
 #
 # This file is part of jallib (http://jallib.googlecode.com)
 # Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
@@ -113,7 +113,8 @@ def split_repos(repos):
     # (using ":") or windows (using ";" like jalv2 compiler)
     if not repos:
         return []
-    if sys.platform.lower().startswith("win"):
+ ## if sys.platform.lower().startswith("win"):
+    if sys.platform.lower().startswith("win") | sys.platform.lower().startswith("os2"):
         gdirs = repos.split(";")
     else:
         gdirs = repos.split(":")
@@ -344,7 +345,7 @@ def validate_field(data,field,predicate,mandatory,multiline=False):
 
 def validate_header(content):
 
-    errors = [] 
+    errors = []
     header = extract_header(content)
 
     # check stuff about jallib and license
@@ -362,20 +363,20 @@ def validate_header(content):
     for field_dict in FIELDS:
         c,errs = validate_field(header,**field_dict)
         errors.extend(errs)
-    
+
     return errors
 
 def validate_filename(filename):
     errors = []
     warnings = []
-    # must be lowercase   
+    # must be lowercase
     filename = os.path.basename(filename)
     if filename.lower() != filename:
         errors.append("Filename is not lowercase: %s" % filename)
     # should have "jal" extention
     if not filename.endswith(".jal"):
         warnings.append("Filename doesn't have '*.jal' extention: %s" % filename)
-    
+
     return errors,warnings
 
 
@@ -429,7 +430,7 @@ def validate_lower_case(content):
     for s,nums in weird.items():
         err = "%s: %s" % (",".join(map(str,nums)),s)
         errors.append(err)
-        
+
     return errors
 
 def validate_procfunc_defs(content):
@@ -443,7 +444,7 @@ def validate_procfunc_defs(content):
             errors.append("%d: %s missing (). Calls must also be explicit" % (i,repr(line)))
         if func_proc.match(line) and no_spaces.match(line):
             errors.append("%d: found a space before parenthesis: %s" % (i,repr(line)))
-    
+
     return errors
 
 def validate_code(content):
@@ -464,7 +465,7 @@ def validate(filename):
     # remaining content has no more header
     errs = validate_code(content)
     errors.extend(errs)
-    
+
     return errors,warnings
 
 
@@ -733,7 +734,7 @@ def reindent_file(filename,withchar,howmany):
     # End the file with a linefeed
     if re.match("[\S]+", lines[-1]):
         lines.append(os.linesep)
-    
+
     level = 0
     content = []
     for l in lines:
