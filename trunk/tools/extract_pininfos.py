@@ -9,6 +9,7 @@ from pinmap import pinmap
 # simplejson.dump(pinmap,file("pinmap.json","w"),indent=3,sort_keys=True)
 json.dump(pinmap,file("pinmap.json","w"),indent=3,sort_keys=True)
 
+
 # AN...
 adc_pins = {}
 for pic,pinfo in pinmap.items():

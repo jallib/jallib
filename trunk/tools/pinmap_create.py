@@ -1,32 +1,30 @@
+#!/usr/bin/python
 
-#  pinmap_create.py - create new pinmap from MPLAB-X
+"""
+   pinmap_create.py - create new pinmap.py from MPLAB-X
+   This script is part of a sub-project using MPLAB-X info for Jallib,
+   in particular the device files, but also for some other libraries.
+   This script uses the .edc files created by the pic2edc script.
+   The Pin section of these files contains the pin aliases.
+   Some manipulations are performed, for example:
+    - skip pins which are not accessible from the program like Vpp, Vdd
+    - skip non-aliases of a pin, like IOC, INT
+    - correct apparent errors or omissions of MPLAB-X
+    - determine the base name of a pin and specify it as first in list
+   When pins are not in .edc file or known to be incorrect
+   the entry in the old pinmap file will be copied (when present).
+   Same when the .edc file does not contain a Pin section at all,
+   otherwise the pinmap will not contain an entry for this PIC and
+   must be created manually from the datasheet.
+   This script handles issues with MPLAB-X (version see below).
+   for other MPLAB-X versions it will probably have to be adapted!
+"""
 
 import os
 import sys
 import fnmatch
 import re
 from xml.dom.minidom import parse, Node
-
-"""
-  -----------------------------------------------------------------------
-  This script is part of a sub-project using MPLAB-X info for Jallib,
-  in particular the device files, but also for some other libraries.
-  This script uses the .edc files created by the pic2edc script.
-  The Pin section of these files contains the pin aliases.
-  Some manipulations are performed, for example:
-   - skip pins which are not accessible from the program like Vpp, Vdd
-   - skip non-aliases of a pin, like IOC, INT
-   - correct apparent errors or omissions of MPLAB-X
-   - determine the base name of a pin and specify it as first in list
-  When pins are not in .edc file or known to be incorrect
-  the entry in the old pinmap file will be copied (when present).
-  Same when the .edc file does not contain a Pin section at all,
-  otherwise the pinmap will not contain an entry for this PIC and
-  must be created manually from the datasheet.
-  This script handles issues with MPLAB-X (version see below).
-  for other MPLAB-X versions it will probably have to be adapted!
-  -----------------------------------------------------------------------
-"""
 
 mplabxversion = "205"                                       # latest version of MPLAB-X
 
@@ -56,8 +54,11 @@ def list_pic(_pic, _alias):
    fp.write(header)
    pinlist_sorted = list(_alias.keys())
    pinlist_sorted.sort()
-   for pin in pinlist_sorted:                               # one line per pin
+   for i in range(len(pinlist_sorted) - 1):                 # all but last
+      pin = pinlist_sorted[i]
       fp.write('"' + pin + '" : ["' + '", "'.join(_alias[pin]) + '"],\n' + " "*len(header))
+   pin = pinlist_sorted[-1]
+   fp.write('"' + pin + '" : ["' + '", "'.join(_alias[pin]) + '"]\n' + " "*len(header))
    fp.write("},\n")                                         # end of pinmap this PIC
 
 
@@ -65,7 +66,8 @@ from pinmap import pinmap                                   # current ('old') pi
 
 dir.sort()                                                  # alphanumeric sequence
 piccount = 0
-fp.write("pinmap = {\n")                                    # pinmap header
+# fp.write("pinmap = {\n")                                  # pinmap header
+fp.write("{\n")                                             # opening line
 
 for filename in dir:
    picname = os.path.splitext(filename)[0][0:].upper()      # determine PIC from filename
