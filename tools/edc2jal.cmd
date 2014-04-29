@@ -42,7 +42,7 @@
  *     (not published, available on request).                               *
  *                                                                          *
  * ------------------------------------------------------------------------ */
-   ScriptVersion   = '0.0.28'
+   ScriptVersion   = '0.0.29'
    ScriptAuthor    = 'Rob Hamerling'
    CompilerVersion = '2.4q2'
 /* mplabxversion obtained from file MPLAB-X_VERSION created by pic2edc script. */
@@ -252,6 +252,8 @@ do i = 1 to dir.0                                           /* all relevant .edc
    HasWDTCON             = 0                                /* WDTCON register */
    HasLATreg             = 0                                /* zero LAT registers found (yet) */
                                                             /* used for enhanced midrange only */
+   HasLATA3              = 0                                /* for 'missing' read-only pin_A3 */
+
    HasMuxedSFR           = 0                                /* zero multiplexed SFRs found(yet) */
    OSCCALaddr            = 0                                /* address of OSCCAL (>0 if present!)  */
    FSRaddr               = 0                                /* address of FSR (>0 if present!)  */
@@ -399,6 +401,7 @@ load_config_info: procedure expose Pic. PicName Name. CfgAddr. ,
                                    CodeSize EESpec IDSpec DevID ChipID Cfgmem,
                                    VddRange VddNominal VppRange VppDefault,
                                    HasLATreg HasMuxedSFR,
+                                   HasLATA3,
                                    OSCCALaddr FSRaddr,
                                    ADC_highres ADCS_bits IRCF_bits,
                                    DataRange SharedRange dsnumber psnumber
@@ -674,8 +677,16 @@ do i = 1 to Pic.0
          reg = strip(val1)
          if reg = 'OSCCAL' then
             OSCCALaddr = SFRaddr                         /* store addr (dec) */
-         else if left(reg,3) = 'LAT' then
+         else if left(reg,3) = 'LAT' then do
             HasLATreg = HasLATReg + 1                    /* count LATx registers */
+            do while word(pic.i,1) \= '</edc:SFRDef>'  /* till end subfields */
+               if word(pic.i,1) = '<edc:SFRFieldDef' then do
+                  if pos('"LATA3"', pic.i) > 0 then
+                     HasLATA3 = 1
+               end
+               i = i + 1
+            end
+         end
          else if reg = 'FSR' then
             FSRaddr = SFRaddr                            /* store addr (dec) */
          else if reg = 'ADRESH' | reg = 'ADRES0H' then
@@ -837,6 +848,7 @@ return 0
 /* ---------------------------------------------------- */
 list_sfr: procedure expose Pic. Ram. Name. PinMap. PinANMap. SharedMem.,
                              Core PicName ADCS_bits IRCF_bits jalfile BankSize,
+                             HasLATA3,
                              HasLATReg HasWDTCON NumBanks PinmapMissCount msglevel
 PortLat. = 0                                                /* no pins at all */
 SFRaddr = 0                                                 /* start value */
@@ -1032,6 +1044,15 @@ do i = i to Pic.0 while word(pic.i,1) \= '</edc:DataSpace>'  /* end of SFRs */
                   call list_status i                              /* compiler privately */
             end
 
+            else if reg = 'PORTA' then do
+               parse var Pic.i . 'edc:access="' val3 '"' .
+               if substr(val3,5,1) = 'r' then do
+                  pin = 'pin_A3'
+                  call list_bitfield 1, pin, reg, 3
+                  call list_pin_alias reg, 'RA3', pin
+               end
+            end
+
             else if reg = 'PORTE' then do
                parse var Pic.i . 'edc:access="' val3 '"' .
         /*     if val3 = '----r---' then do      */
@@ -1090,6 +1111,7 @@ return 0
 list_sfr_subfields: procedure expose Pic. Ram. Name. PinMap. PinANMap. SharedMem.,
                                      PortLat.,
                                      Core PicName ADCS_bits IRCF_bits jalfile BankSize,
+                                     HasLATA3,
                                      HasLATReg NumBanks PinmapMissCount msglevel
 parse arg i, reg .
 
@@ -1123,10 +1145,8 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                (PicName = '18f13k50' | PicName = '18lf13k50' |,        /* *** SPECIAL *** */
                 PicName = '18f14k50' | PicName = '18lf14k50')  then do
                if reg = 'LATA' then do
-                  call msg 1, 'Adding pin_A0, A1 and A3'
-                  do p = 0 to 3                                /* add pin_A0..A3 */
-                     if p = 2 then                             /* but NOT A2! */
-                        iterate
+                  call msg 1, 'Adding pin_A0, A1'
+                  do p = 0 to 1                                /* add pin_A0..A1 */
                      call list_bitfield 1, 'LATA_LATA'p, 'LATA', p
                      call list_bitfield 1, 'pin_A'p, 'PORTA', p
                      call list_pin_alias 'PORTA', 'RA'p, 'pin_A'p
@@ -1139,10 +1159,8 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                   end
                end
                else if reg = 'TRISA' then do
-                  call msg 1, 'Adding pin_A0/A1/A3_direction'
-                  do p = 0 to 3                                /* add pin_A0..A3_direction */
-                     if p = 2 then                             /* but NOT A2! */
-                        iterate
+                  call msg 1, 'Adding pin_A0/A1_direction'
+                  do p = 0 to 1                                /* add pin_A0..A1_direction */
                      call list_bitfield 1, 'TRISA_TRISA'p, 'TRISA', p
                      call list_alias 'pin_A'p'_direction', 'TRISA_TRISA'p
                      call list_pin_direction_alias 'TRISA', 'RA'p, 'pin_A'p'_direction'
@@ -1391,7 +1409,7 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                   end
                   when left(reg,4) = 'PORT' & width = 1 then do
                      if left(val1,1) = 'R'  &,
-                        substr(val1,2,length(val1)-2) = right(reg,1) then do  /* prob. I/O pin */
+                        substr(val1,2,length(val1)-2) = right(reg,1) then do    /* prob. I/O pin */
                         if reg = 'PORTB' & left(val1,2) = 'RB' & left(PicName,2) = '12' then do
                            shadow = '_PORTA_shadow'
                            pin = 'pin_A'right(val1,1)
@@ -1417,6 +1435,12 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                               call lineout jalfile, '   _PORT'substr(reg,5) '=' shadow
                               call lineout jalfile, 'end procedure'
                               call lineout jalfile, '--'
+                           end
+                        end
+                        else if val1 = 'RA3' & HasLATA3 = 0 then do        /* no pin_A3 in LATA */
+                           pin = 'pin_'right(val1,2)
+                           if list_bitfield(1, pin, reg, offset) = 0 then do
+                              call list_pin_alias reg, 'R'right(val1,2), pin
                            end
                         end
                         else do                             /* PIC with LAT registers */
@@ -3239,6 +3263,8 @@ if key \= '' then do                               /* key value found */
          if key = 'CCPMUX' then
             key = 'CCP1MUX'                        /* compatibility */
       end
+      when key = 'CLKOEN' then
+         key = 'CLKOUTEN'
       when key = 'CPDF' | key = 'CPSW' then
          key = 'CPD'
       when left(key,3) = 'CP_' & datatype(substr(key,4),'W') = 1 then
@@ -4156,6 +4182,10 @@ select                                                      /* specific formatti
          kwdvalue = 'RESET'
    end
 
+   when key = 'ZCDDIS' then do
+      kwdvalue = val                                        /* ON means disabled! */
+   end
+
 otherwise                                                   /* everything else */
    if val = 'OFF' | val = 'DISABLED' then
       kwdvalue = 'DISABLED'
@@ -4752,7 +4782,7 @@ call lineout listfile, '--'
 call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2014,',
                        'all rights reserved.'
 call lineout listfile, '--'
-call lineout listfile, '-- Adapted-by:'
+call lineout listfile, '-- Adapted-by: N/A (generated file)'
 call lineout listfile, '--'
 call lineout listfile, '-- Revision: $Revision$'
 call lineout listfile, '--'
@@ -5109,26 +5139,21 @@ toupper: procedure
 return translate(arg(1), xrange('A','Z'), xrange('a','z'))
 
 toascii: procedure
-xml.1.1 = '&lt;'
-xml.1.2 = '<'
-xml.2.1 = '&LT;'
-xml.2.2 = '<'
-xml.3.1 = '&gt;'
-xml.3.2 = '>'
-xml.4.1 = '&GT;'
-xml.4.2 = '>'
-xml.5.1 = '&amp;'
-xml.5.2 = '&'
-xml.6.1 = '&AMP;'
-xml.6.2 = '&'
-xml.0 = 6
+i = 0
+i = i + 1; xml.i = '&lt;  <'                                /* meta-data + ASCII char */
+i = i + 1; xml.i = '&LT;  <'
+i = i + 1; xml.i = '&gt;  >'
+i = i + 1; xml.i = '&GT;  >'
+i = i + 1; xml.i = '&amp; &'
+i = i + 1; xml.i = '&AMP; &'
+xml.0 = i
 parse arg ln                                                /* line to be converted */
 do i = 1 to xml.0                                           /* all meta strings */
-   x = pos(xml.i.1, ln)                                     /* search this xml meta string */
+   x = pos(word(xml.i,1), ln)                               /* search this xml meta string */
    do while x > 0
-      ln = delstr(ln, x, length(xml.i.1))                   /* remove meta string and .. */
-      ln = insert(xml.i.2, ln, x - 1)                       /* .. replace it by ASCII char */
-      x = pos(xml.i.1, ln)                                  /* search next instance of meta string */
+      ln = delstr(ln, x, length(word(xml.i,1)))             /* remove meta string and .. */
+      ln = insert(word(xml.i, 2), ln, x - 1)                /* .. replace it by ASCII char */
+      x = pos(word(xml.i,1), ln)                            /* search next instance of meta string */
    end
 end
 return ln
