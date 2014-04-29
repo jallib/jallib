@@ -1,7 +1,7 @@
 -- Title: USB Mass Storage Device
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4o
+-- Compiler: >=24q2
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -163,7 +163,7 @@ if !defined(debug_data) then
    -- setup debug lib
    ;alias debug_data is serial_data
    var bit debug_data
-   
+
    const bit DEBUG_MASTER_ENABLE = FALSE    -- enables debugging
    include debug
    --
@@ -484,14 +484,14 @@ function msd_cbw_is_valid() return bit is
    var byte step
 
    -- check if we indeed got a CBW from the host
-   _usb_msd_cbw_signature[0] = POSTINC1
-   _usb_msd_cbw_signature[1] = POSTINC1
-   _usb_msd_cbw_signature[2] = POSTINC1
-   _usb_msd_cbw_signature[3] = POSTINC1
+   _usb_msd_cbw_signature[0] = mem_pointer1
+   _usb_msd_cbw_signature[1] = mem_pointer1
+   _usb_msd_cbw_signature[2] = mem_pointer1
+   _usb_msd_cbw_signature[3] = mem_pointer1
 
    if usb_msd_cbw_signature == USB_MSD_CBW then
-;   if (_usb_msd_cbw_signature[0] == POSTINC1) & (_usb_msd_cbw_signature[1] == POSTINC1) &
-;      (_usb_msd_cbw_signature[2] == POSTINC1) & (_usb_msd_cbw_signature[3] == POSTINC1) then
+;   if (_usb_msd_cbw_signature[0] == mem_pointer1) & (_usb_msd_cbw_signature[1] == mem_pointer1) &
+;      (_usb_msd_cbw_signature[2] == mem_pointer1) & (_usb_msd_cbw_signature[3] == mem_pointer1) then
 
       debug_char(0,"B")
 
@@ -505,22 +505,22 @@ function msd_cbw_is_valid() return bit is
       debug_dword_hex(1, usb_msd_cbw_signature)
       debug_crlf(1)
 
-      _usb_msd_cbw_tag[0] = POSTINC1
-      _usb_msd_cbw_tag[1] = POSTINC1
-      _usb_msd_cbw_tag[2] = POSTINC1
-      _usb_msd_cbw_tag[3] = POSTINC1
+      _usb_msd_cbw_tag[0] = mem_pointer1
+      _usb_msd_cbw_tag[1] = mem_pointer1
+      _usb_msd_cbw_tag[2] = mem_pointer1
+      _usb_msd_cbw_tag[3] = mem_pointer1
 
       const byte cbw_str2[] = "usb_msd_cbw_tag: "
       debug_string(1,cbw_str2)
       debug_dword_hex(1, usb_msd_cbw_tag)
       debug_crlf(1)
 
-   	_usb_msd_cbw_data_transfer_length[0] = POSTINC1
-   	_usb_msd_cbw_data_transfer_length[1] = POSTINC1
-   	_usb_msd_cbw_data_transfer_length[2] = POSTINC1
-   	_usb_msd_cbw_data_transfer_length[3] = POSTINC1
+   	_usb_msd_cbw_data_transfer_length[0] = mem_pointer1
+   	_usb_msd_cbw_data_transfer_length[1] = mem_pointer1
+   	_usb_msd_cbw_data_transfer_length[2] = mem_pointer1
+   	_usb_msd_cbw_data_transfer_length[3] = mem_pointer1
 
-      usb_msd_cbw_flags = POSTINC1
+      usb_msd_cbw_flags = mem_pointer1
 
       const byte cbw_str4[] = "usb_msd_cbw_flags: "
       debug_string(1,cbw_str4)
@@ -539,14 +539,14 @@ function msd_cbw_is_valid() return bit is
       debug_string(1,bytes_string)
       debug_crlf(1)
 
-      usb_msd_cbw_cbw_lun = POSTINC1
+      usb_msd_cbw_cbw_lun = mem_pointer1
 
       const byte cbw_str5[] = "usb_msd_cbw_cbw_lun: "
       debug_string(1,cbw_str5)
       debug_dword_dec(1, usb_msd_cbw_cbw_lun)
       debug_crlf(1)
 
-      usb_msd_cbw_length = POSTINC1
+      usb_msd_cbw_length = mem_pointer1
 
       const byte cbw_str6[] = "usb_msd_cbw_length: "
       debug_string(1,cbw_str6)
@@ -558,7 +558,7 @@ function msd_cbw_is_valid() return bit is
       debug_string(1,cbw_str8)
 
       for 16 using step loop
-         _usb_msd_cbw_command[step] = POSTINC1
+         _usb_msd_cbw_command[step] = mem_pointer1
          debug_byte_hex(1, _usb_msd_cbw_command[step])
          debug_char(1," ")
       end loop
@@ -1047,16 +1047,14 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
       end if
 
       -- set buffer pointer to next data address
-      var byte src_ptr[2] AT buffer_addr
-      FSR1L = src_ptr[0]
-      FSR1H = src_ptr[1]
+      mem_pointer1_address = buffer_addr
 
       if (usb_msd_state == USB_MSD_STATE_DATA_OUT) then
          debug_char(0,"O")
 
          -- write data to sector buffer
          for 64 using _usb_msd_step_byte loop
-            storage_sector_buffer[_usb_msd_step64 + word(_usb_msd_step_byte)] = POSTINC1
+            storage_sector_buffer[_usb_msd_step64 + word(_usb_msd_step_byte)] = mem_pointer1
          end loop
 
          _usb_msd_step64 = _usb_msd_step64 + 64
@@ -1130,8 +1128,7 @@ procedure msd_send_data(byte in size, bit in do_copy, bit in wait_own) is
 
    debug_char(0,"*")
 
-	FSR1L = byte(USB_EP1_IN_ADDR)
-	FSR1H = byte(USB_EP1_IN_ADDR >> 8)
+   mem_pointer1_address = USB_EP1_IN_ADDR
 
    -- note: I don't like blocking loops!
    -- does usb_send_data do this?
@@ -1155,7 +1152,8 @@ procedure msd_send_data(byte in size, bit in do_copy, bit in wait_own) is
       -- copy the array to the bulk endpoiint (endpoint 1)
       var byte index
    	for size using index loop
-   		POSTINC1 = msd_tx_buffer[index]
+   	   ;serial_data = msd_tx_buffer[index]
+   		mem_pointer1 = msd_tx_buffer[index]
    	end loop
    end if
 
@@ -1357,5 +1355,6 @@ procedure usb_msd_wait_configured() is
       end if
    end loop
 end procedure
+
 
 

@@ -1,23 +1,23 @@
 -- Title: USB Communication Device Class driver
 -- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
--- Adapted-by: -
--- Compiler: >=2.4j
+-- Adapted-by: - Matthew Schinkel
+-- Compiler: >=24q2
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
--- 
+--
 -- Description: USB Communication Device Class (CDC) code
 -- This USB library files contains the low level implementation to perform serial
 -- communication over a USB interface. The usage of this library requires detailed
 -- knowledge of the USB interface and requires that several configuration parameters
--- are defined correctly. In order to make USB serial communication more accessible 
+-- are defined correctly. In order to make USB serial communication more accessible
 -- for the end user, I would highly recommend to use the usb_serial library
 -- --
--- 
+--
 -- Sources: http://www.usb.org for USB specifications
--- 
--- Notes: 
+--
+-- Notes:
 --
 -- ------------------------------------------------------
 -- ------------------------------------------------------
@@ -87,13 +87,13 @@ alias cdc_in_addrh is usb_bd3in_addrh
 
 procedure usb_handle_class_request_callback() is
     pragma inline
-    
+
     -- compiler issue, do local assignment to resolve
     var byte req01 = usb_sdp_request
     var word len = usb_sdp_length
     var word val = usb_sdp_value
     var byte valbt[2] at usb_sdp_value
-    
+
     case (req01) of
 		USB_REQ_SEND_BREAK:
 		block
@@ -179,12 +179,12 @@ end if
 end procedure
 
 
-procedure usb_handle_class_ctrl_write_callback() is   
+procedure usb_handle_class_ctrl_write_callback() is
     pragma inline
 
     -- compiler issue, do local assignment to resolve
     var byte req01 = usb_sdp_request
-     
+
     case (req01) of
 		USB_REQ_SET_LINE_CODING:
 		block
@@ -267,27 +267,24 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
         print_byte_hex(serial_hw_data,byte_count)
         print_string(serial_hw_data,str1)
     end if
-    
+
     -- We have some data!
     if (end_point == USB_CDC_DATA_ENDPOINT) then
         -- it's the data end point
-		var byte src_ptr[2] AT buffer_addr
-
-		FSR1L = src_ptr[0]
-		FSR1H = src_ptr[1]
+		mem_pointer1_address = buffer_addr
 			
         for byte_count loop
-            
+
             cdc_rx_next = cdc_rx_wr + 1	-- get next buffer position
-            
+
             if (cdc_rx_next == USB_CDC_RX_BUFFER_SIZE) then
                 -- if we're at the end
                 cdc_rx_next = 0	-- then wrap to the beginning
             end if
-            
+
             if (cdc_rx_next != cdc_rx_rd) then
                 -- if space in the fifo
-				var byte ch = POSTINC1
+				var byte ch = mem_pointer1
 
 				if USB_CDC_DEBUG > 0  then
 					serial_hw_write("$")
@@ -297,12 +294,12 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
 					serial_newline()
 				end if
 				
-                cdc_rx_buffer[cdc_rx_wr] = ch 
+                cdc_rx_buffer[cdc_rx_wr] = ch
                 cdc_rx_wr = cdc_rx_next  -- and move pointer along
                 cdc_rx_free = cdc_rx_free - 1
             else
                 -- else... just ignore it, we've lost a byte, no room in the fifo
-            end if 
+            end if
         end loop
     else
         if USB_CDC_DEBUG > 0  then
@@ -315,10 +312,10 @@ end procedure
 
 -- --------------------------------------------------------------------------------------
 -- This function returns the status of the SIE tx buffer. Either the SIE can own the
--- transmit buffer (tranmit is pending) or it can be owned by the CPU. This function 
+-- transmit buffer (tranmit is pending) or it can be owned by the CPU. This function
 -- return true if the SIE owns the buffer, otherwise false is returned
 -- --------------------------------------------------------------------------------------
-function does_sie_owns_tx_buffer() return bit is 
+function does_sie_owns_tx_buffer() return bit is
 	pragma inline
 	var bit uown_bit shared at cdc_in_stat:USB_BDSTATUS_UOWN
 	return uown_bit
@@ -333,7 +330,7 @@ end function
 -- --------------------------------------------------------------------------------------
 procedure usb_cdc_handle_tx() is
 
-	var byte bytes_to_send 
+	var byte bytes_to_send
 
 	-- var word cdc_tx_addr
 	if ( does_sie_owns_tx_buffer() ) then
@@ -366,7 +363,7 @@ procedure usb_cdc_handle_tx() is
 		bytes_to_send  = USB_CDC_BULK_IN_EP_SIZE
 	end if
 
-    
+
 	if USB_CDC_DEBUG > 0  then
 		const byte str[] = "send="
 		serial_hw_write(">")
@@ -440,7 +437,7 @@ procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte i
         print_byte_hex(serial_hw_data,byte_count & 0xFF)
         print_string(serial_hw_data,str1)
     end if
-    
+
     -- data has been sent, so do we need to send more?
     if (end_point == USB_CDC_DATA_ENDPOINT) then
         -- it's the data end point
@@ -451,10 +448,10 @@ end procedure
 -- --------------------------------------------------------------------------------------
 -- This usb_cdc_putc will transmit the specified character. Under normal conditions
 -- the character to be transmitted is placed into the fifo, so the call will be non
--- blocking. This implies that buffer overruns can occur when the transmit FIFO is full. 
+-- blocking. This implies that buffer overruns can occur when the transmit FIFO is full.
 -- Therefore it is adviced to check the transmit FIFO state before calling this procedure
--- to avoid buffer overruns. These buffer overrun issues have been addressed in the 
--- usb_serial library, therefore it is highly recommended to use this library instead 
+-- to avoid buffer overruns. These buffer overrun issues have been addressed in the
+-- usb_serial library, therefore it is highly recommended to use this library instead
 -- of calling this low level procedure
 -- --------------------------------------------------------------------------------------
 procedure usb_cdc_putc(byte in c) is
@@ -462,27 +459,27 @@ procedure usb_cdc_putc(byte in c) is
     var byte cdc_tx_next
 
     cdc_tx_next = cdc_tx_wr + 1	-- get next buffer position
-    
+
     if (cdc_tx_next == USB_CDC_TX_BUFFER_SIZE) then
 		-- if we're at the end
 		cdc_tx_next = 0	-- wrap to the beginning
     end if
-    
+
     -- put it in
-	cdc_tx_buffer[ cdc_tx_wr] = c 
+	cdc_tx_buffer[ cdc_tx_wr] = c
 	
 	-- move pointer along
-    cdc_tx_wr = cdc_tx_next  
+    cdc_tx_wr = cdc_tx_next
 end procedure
-    
+
 -- --------------------------------------------------------------------------------------
 -- This usb_cdc_getc function wait (blocking) until a character has been received.
 -- The byte value of the received character is returned by this function
 -- --------------------------------------------------------------------------------------
 function usb_cdc_getc() return byte is
     var byte cdc_rx_char, cdc_rx_next
-        
-    -- get character from the front of the buffer   
+
+    -- get character from the front of the buffer
     cdc_rx_char = cdc_rx_buffer[ cdc_rx_rd ]	
 
 	-- update fifo free size
@@ -495,28 +492,28 @@ function usb_cdc_getc() return byte is
 		print_byte_hex(serial_hw_data,cdc_rx_char)
 		serial_newline()
 	end if
-    
+
     -- move read pointer to next position in fifo
     var byte cdc_rx_rd_next = cdc_rx_rd + 1
-    
+
     if (cdc_rx_rd_next == USB_CDC_RX_BUFFER_SIZE) then
         -- if we're at the end
         cdc_rx_rd_next = 0	-- then wrap to the beginning
     end if
-    
+
     cdc_rx_rd = cdc_rx_rd_next
-       
-    -- AF TEMP   
+
+    -- AF TEMP
  	if USB_CDC_DEBUG > 0  then
 		serial_hw_write("<")
 	end if
 	
-    -- return the result we first thought of   
+    -- return the result we first thought of
     return cdc_rx_char	
 end function
 
 -- --------------------------------------------------------------------------------------
--- This function returns there has been a character received, function will return true 
+-- This function returns there has been a character received, function will return true
 -- if there is at least one pending receive character, false otherwise
 -- --------------------------------------------------------------------------------------
 function usb_cdc_rx_avail() return bit is
@@ -535,14 +532,14 @@ end function
 procedure usb_sof_callback() is
     -- we don't care about the frame number, we only care if there's something to send...
     usb_cdc_handle_tx()	-- start transmission
-    
+
     if ( cdc_rx_free >= 8 ) then
 		var bit uown_bit shared at cdc_out_stat:USB_BDSTATUS_UOWN
 		if ( uown_bit == false ) then
 			usb_prime_epx_out( 3, USB_EP3_OUT_SIZE )
 		end if
     end if
-    
+
 end procedure
 
 
@@ -560,10 +557,11 @@ end procedure
 -- This function returns the line status. If on the host side the COM port has not been
 -- opened, the return status will be 0x00, otherwise it will be != 0
 -- --------------------------------------------------------------------------------------
-function usb_cdc_line_status() return byte is 
+function usb_cdc_line_status() return byte is
 	pragma inline
 	return cdc_line_status
 end function
+
 
 
 
