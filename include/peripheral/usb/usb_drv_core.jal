@@ -1,40 +1,39 @@
 -- Title: USB driver library
 -- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
--- Adapted-by: -
--- Compiler: >=2.4j
+-- Adapted-by: - Matthew Schinkel
+-- Compiler: >=24q2
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
--- 
+--
 -- Description: Routines for controlling the USB serial interface engine sending
 -- which will ensure the highest possible accuracy.
 -- --
--- 
+--
 -- Sources: http://www.usb.org for USB specifications
--- 
--- Notes: 
+--
+-- Notes:
 --
 -- ------------------------------------------------------
 -- ------------------------------------------------------
 --
 --
+
+include memory_pointer1
 
 -- --------------------------------------------------------------------------------------
 -- Internal memory copy procedure
 -- This function copies the content from a source array towards the specified
--- destination memory location. The function copies num_bytes bytes 
+-- destination memory location. The function copies num_bytes bytes
 -- --------------------------------------------------------------------------------------
-procedure _usb_copy_array_to_ram(word in dst, byte in data[], byte in num_bytes ) is 
+procedure _usb_copy_array_to_ram(word in dst, byte in data[], byte in num_bytes ) is
 	-- pragma inline
 	var byte index
-	var byte dst_ptr[2] AT dst
-
-	FSR1L = dst_ptr[0]
-	FSR1H = dst_ptr[1]
+	mem_pointer1_address = dst
 
 	for num_bytes using index loop
-		POSTINC1 = data[index]
+		mem_pointer1 = data[index]
 	end loop
 end procedure
 
@@ -43,11 +42,11 @@ end procedure
 -- --------------------------------------------------------------------------------------
 procedure usb_send_data_chunk() is
 	
-	var volatile bit own_bit at usb_bd0in_stat : USB_BDSTATUS_UOWN 
+	var volatile bit own_bit at usb_bd0in_stat : USB_BDSTATUS_UOWN
 	
 	if ( own_bit ) then
 		if USB_DEBUG > 0  then
-			const byte str[] = " !don't own it! " 
+			const byte str[] = " !don't own it! "
 			print_string( serial_hw_data,str);
 		end if
 	else
@@ -72,7 +71,7 @@ procedure usb_send_data_chunk() is
 		if USB_DEBUG > 0  then
 			var byte idx
 			
-			serial_newline()
+			print_crlf()
 			--print_byte_hex(serial_hw_data,  usb_delivery_bytes_max_send )
 			--serial_hw_write( "~" )
 			print_byte_hex(serial_hw_data,  byte_cnt )
@@ -139,12 +138,12 @@ end procedure
 -- This procedure sends an USB acknowledge packet, normally not called by the end user
 -- --------------------------------------------------------------------------------------
 procedure usb_send_status_ack() is
-	pragma inline 
+	pragma inline
 	usb_send_empty_data_pkt()
 end procedure
 
 -- --------------------------------------------------------------------------------------
--- This procedure will send one byte, with the contend specified by the data input 
+-- This procedure will send one byte, with the contend specified by the data input
 -- parameter, normally not called by the end user
 -- --------------------------------------------------------------------------------------
 procedure usb_send_one_byte(byte in data) is
@@ -163,10 +162,10 @@ end procedure
 
 
 -- --------------------------------------------------------------------------------------
--- This procedure will send the content of an array to the USB end point. The endpoint 
+-- This procedure will send the content of an array to the USB end point. The endpoint
 -- input parameter contains the the enpoint number, data[] is the content to be send,
 -- byte_cnt the number of bytes to be send, and is_new_sequence determines if the data
--- tranmission is starting with USB packet o (if set to true), otherwise the USB packet 
+-- tranmission is starting with USB packet o (if set to true), otherwise the USB packet
 -- is toggled before transmission.
 -- --------------------------------------------------------------------------------------
 procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit in is_new_sequence ) is
@@ -269,7 +268,7 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 		block		
 			if USB_DEBUG > 0  then
 				serial_newline()
-				const byte str[] = " ENDPOINT NOT SUPPORTED YET! " 
+				const byte str[] = " ENDPOINT NOT SUPPORTED YET! "
 				print_string( serial_hw_data,str);
 			end if	
 		end block
@@ -279,7 +278,7 @@ end procedure
 
 
 -- --------------------------------------------------------------------------------------
--- This procedure will setup and initalize the USB endpoints, 
+-- This procedure will setup and initalize the USB endpoints,
 -- normally not called by the end user
 -- --------------------------------------------------------------------------------------
 procedure usb_configure_endpoints() is
@@ -317,7 +316,7 @@ procedure usb_configure_endpoints() is
 			usb_bd1out_cnt  = USB_EP1_OUT_SIZE;
 			usb_bd1out_addr = USB_EP1_OUT_ADDR;
 			-- set UOWN bit, SIE owns the buffer
-			usb_bd1out_stat = 0b10000000 
+			usb_bd1out_stat = 0b10000000
 		end if
 	end if
 
@@ -349,7 +348,7 @@ procedure usb_configure_endpoints() is
 			usb_bd2out_cnt  = USB_EP2_OUT_SIZE;
 			usb_bd2out_addr = USB_EP2_OUT_ADDR;
 			-- set UOWN bit, SIE owns the buffer
-			usb_bd2out_stat = 0b10000000 
+			usb_bd2out_stat = 0b10000000
 		end if
 	end if
 	if USB_EP3 then
@@ -380,7 +379,7 @@ procedure usb_configure_endpoints() is
 			usb_bd3out_cnt  = USB_EP3_OUT_SIZE;
 			usb_bd3out_addr = USB_EP3_OUT_ADDR;
 			-- set UOWN bit, SIE owns the buffer
-			usb_bd3out_stat = 0b10000000 
+			usb_bd3out_stat = 0b10000000
 		end if
 	end if
 end procedure
@@ -431,7 +430,7 @@ procedure usb_prime_ep0_out() is
 	usb_bd0out_stat = new_value		
 end procedure
 
-procedure usb_prime_epx_out( byte in end_point, byte in size ) is 
+procedure usb_prime_epx_out( byte in end_point, byte in size ) is
 	var byte idx = end_point * 8
 	-- reset size
 	usb_bd_array[ idx + 1 ] = size
@@ -439,3 +438,4 @@ procedure usb_prime_epx_out( byte in end_point, byte in size ) is
 	usb_bd_array[ idx  ] = 0x80 				
 
 end procedure
+
