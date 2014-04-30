@@ -1,7 +1,7 @@
 -- Title: USB Mass Storage Device
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=24q2
+-- Compiler: >=2.4q2
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -180,6 +180,7 @@ end if
 
 -------------------------------------------------------------------------
 -- Setup USB endpoints, endpoint 0 and 1 are required for a MSD class
+-- If possible, don't define accross banks
 -------------------------------------------------------------------------
 const bit USB_EP0 = ENABLED
 const byte USB_EP0_OUT_SIZE = 64
@@ -187,16 +188,22 @@ const word USB_EP0_OUT_ADDR = (USB_BASE_ADDRESS + 0x0010)
 const byte USB_EP0_IN_SIZE  = 64
 const word USB_EP0_IN_ADDR  = (USB_EP0_OUT_ADDR + USB_EP0_OUT_SIZE )
 
+var volatile byte usb_ep0in_buf[USB_EP0_IN_SIZE] at USB_EP0_IN_ADDR
+var volatile byte usb_ep0out_buf[USB_EP0_OUT_SIZE] at USB_EP0_OUT_ADDR
+
 const bit USB_EP1 = ENABLED
 const byte USB_EP1_OUT_SIZE = 64
 const word USB_EP1_OUT_ADDR = (USB_EP0_IN_ADDR + USB_EP0_IN_SIZE)
 const byte USB_EP1_IN_SIZE  = 64
-const word USB_EP1_IN_ADDR  = (0x0500)
+const word USB_EP1_IN_ADDR  =  (USB_EP1_OUT_ADDR + USB_EP1_OUT_SIZE) + 0x30
+; note: I have added + 0x30 to USB_EP1_IN_ADDR since it would cross over a bank
+;       otherwise. The lib may work, but jalv2 does not support arrays
+;       defined over banks which may cause data loss during transfers.
 
 const bit USB_EP2 = DISABLED
 const bit USB_EP3 = DISABLED
 
-var volatile byte msd_tx_test_buffer[USB_EP1_IN_SIZE] at USB_EP1_IN_ADDR	
+;var volatile byte msd_tx_test_buffer[USB_EP1_IN_SIZE] at USB_EP1_IN_ADDR	
 var volatile byte msd_tx_buffer[USB_EP1_IN_SIZE]; at USB_EP1_IN_ADDR
 ;alias msd_tx_buffer is msd_tx_test_buffer
 
