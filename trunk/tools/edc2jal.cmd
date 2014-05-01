@@ -1279,10 +1279,10 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                   when reg = 'OSCCON' & length(val1) > 3 & left(val1,3) = 'SCS' & width = 1 then do
                      nop                                    /* suppress enumerated SCS bits */
                   end
-                  when reg = 'OPTION_REG' & val1 = 'PS2' then do
-                     call list_bitfield 1, reg'_PS', reg, offset
+         /*       when reg = 'OPTION_REG' & val1 = 'PS2' then do
+                     call list_bitfield 3, reg'_PS', reg, offset
                   end
-                  when reg = 'PORTB' & left(val1,2) = 'RB' & left(PicName,2) = '12' then do
+         */       when reg = 'PORTB' & left(val1,2) = 'RB' & left(PicName,2) = '12' then do
                      field = 'GPIO_GP'right(val1,1)         /* pin GPIO_GPx */
                      call list_bitfield width, field, '_GPIO', offset
                   end
@@ -1396,6 +1396,7 @@ do i = i while word(pic.i,1) \= '</edc:SFRModeList>'
                   end
                   when reg = 'OPTION_REG' & val1 = 'PS2' then do
                      call list_bitfield 1, field, reg, offset
+                     call list_bitfield 3, reg'_PS', reg, offset - 2
                      call list_alias 'T0CON_T0PS', reg'_'PS
                   end
                   when reg = 'OSCCON'  &  val1 = 'IRCF0' then do
@@ -4373,7 +4374,7 @@ if Name.ANSEL  \= '-' |,                                    /*                  
    do i = 0 to 9                                            /* ANCON0..ANCON9 */
       qname = 'ANCON'i                                      /* qualified name */
       if Name.qname \= '-' then do                          /* ANCONi declared */
-         do j = (8 * i) to (8 * 1 + 7)                      /* all PCFG bits */
+         do j = (8 * i) to (8 * i + 7)                      /* all PCFG bits */
             bitname = qname'_PCFG'j
             if Name.bitname \= '-' then do                  /* ANCON has a PCFG bit */
                call lineout jalfile, '   'qname '= 0b1111_1111     -- digital I/O'
