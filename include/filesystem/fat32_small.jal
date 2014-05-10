@@ -30,40 +30,7 @@ var dword fat32_small_fat_begin              -- the location of the file alocati
 var byte  fat32_small_sectors_per_cluster    -- the number of sectors per cluster, usually 8
 var dword fat32_small_cluster_begin          -- the location of the beginning of clusters (where files & folders data is)
 
--- data media selection (same as in large fat32)
-if (DATA_MEDIA == PATA_HARD_DISK) then
-   -- hard disk procedures
-   alias fat32_small_start_read is pata_hd_start_read              -- get hard disk ready for reading
-   alias fat32_small_stop_read is pata_hd_stop_read                -- tell hard disk we are done reading
-   alias fat32_small_start_write is pata_hd_start_write            -- tell hard disk we are done reading
-   alias fat32_small_stop_write is pata_hd_stop_write              -- tell hard disk we are done reading
-   alias fat32_small_raw_read_sector is pata_hd_read_sector        -- read one sector to sector buffer array
-   alias fat32_small_raw_read_sector_address is pata_hd_read_sector_address        -- read one sector to sector buffer array
-   alias fat32_small_raw_write_sector is pata_hd_write_sector      -- read one sector to sector buffer array
-   alias fat32_small_raw_write_sector_address is pata_hd_write_sector_address        -- read one sector to sector buffer array
-   alias fat32_small_set_idle is pata_hd_set_idle                  -- sets hard disk to idle state
-   alias fat32_small_raw_data_byte is pata_hd_data_byte            -- read one data byte from storage device
-   alias fat32_small_read_pulse_byte is pata_hd_read_pulse_byte    -- one byte read pulse
-   -- hard disk vars
-   alias fat32_small_word_count is pata_hd_word_count              -- number of words read from current sector (byte var)
-   alias fat32_small_sector_buffer is pata_hd_sector_buffer        -- sector buffer array
-elsif DATA_MEDIA == SD_CARD then
-   -- sd card procedures
-   alias fat32_small_start_read is sd_start_read                   -- get sd card ready for reading
-   alias fat32_small_stop_read  is sd_stop_read                    -- tell sd card we are done reading
-   alias fat32_small_start_write is sd_start_write
-   alias fat32_small_stop_write  is sd_stop_write                  -- tell sd card we are done reading
-   alias fat32_small_raw_read_sector is sd_read_sector             -- read one sector to sector buffer array
-   alias fat32_small_raw_write_sector is sd_write_sector           -- read one sector to sector buffer array
-   alias fat32_small_raw_write_sector_address is sd_write_sector_address        -- read one sector to sector buffer array
-   alias fat32_small_set_idle is sd_set_idle                       -- sets sd card to idle state
-   alias fat32_small_raw_read_sector_address is sd_read_sector_address
-   alias fat32_small_read_pulse_byte is sd_read_pulse_byte         -- one byte read pulse
-   alias fat32_small_raw_data_byte is sd_data_byte                 -- read one data byte from storage device
-   -- sd card vars
-   alias fat32_small_word_count is sd_word_count                   -- number of words read from current sector (byte var)
-   alias fat32_small_sector_buffer is sd_sector_buffer             -- sector buffer array
-end if
+include storage_drivers
 
 -- root dir constant
 const byte FAT32_SMALL_VOL_ID_DATA[32] = {
@@ -100,46 +67,46 @@ procedure fat32_small_read_boot_sector() is
    var byte _reserved_sectors[2] at reserved_sectors
    var dword partition_lba_begin = 0
 
-   fat32_small_start_read(0)
-   fat32_small_read_pulse_byte(47)
-   fat32_small_stop_read()
+   storage_start_read(0)
+   storage_read_pulse_byte(47)
+   storage_stop_read()
 
-   fat32_small_start_read((word(fat32_small_raw_data_byte) << 8) + fat32_small_raw_data_byte)
-   if ((fat32_small_raw_data_byte == 0x52) & (fat32_small_raw_data_byte == 0x52) &
-      (fat32_small_raw_data_byte == 0x61) & (fat32_small_raw_data_byte == 0x41)) then
-      fat32_small_stop_read()
-      fat32_small_start_read(0)
+   storage_start_read((word(storage_raw_data_byte) << 8) + storage_raw_data_byte)
+   if ((storage_raw_data_byte == 0x52) & (storage_raw_data_byte == 0x52) &
+      (storage_raw_data_byte == 0x61) & (storage_raw_data_byte == 0x41)) then
+      storage_stop_read()
+      storage_start_read(0)
    else
-      fat32_small_start_read (0)
-      fat32_small_read_pulse_byte (454)
+      storage_start_read (0)
+      storage_read_pulse_byte (454)
       var byte _partition_lba_begin[4] at partition_lba_begin
-      _partition_lba_begin[0] = fat32_small_raw_data_byte
-      _partition_lba_begin[1] = fat32_small_raw_data_byte
-      _partition_lba_begin[2] = fat32_small_raw_data_byte
-      _partition_lba_begin[3] = fat32_small_raw_data_byte
+      _partition_lba_begin[0] = storage_raw_data_byte
+      _partition_lba_begin[1] = storage_raw_data_byte
+      _partition_lba_begin[2] = storage_raw_data_byte
+      _partition_lba_begin[3] = storage_raw_data_byte
 
-      fat32_small_stop_read() -- finnished reading sector, set media idle
+      storage_stop_read() -- finnished reading sector, set media idle
    end if
 
-   fat32_small_start_read (partition_lba_begin) -- start read at sector at volume id location
+   storage_start_read (partition_lba_begin) -- start read at sector at volume id location
 
    -- If the program gets stuck here, there may be an issue with your partition.
-   fat32_small_read_pulse_byte (13)
-   fat32_small_sectors_per_cluster = fat32_small_raw_data_byte
+   storage_read_pulse_byte (13)
+   fat32_small_sectors_per_cluster = storage_raw_data_byte
 
    -- reserved sectors
-   _reserved_sectors[0] = fat32_small_raw_data_byte
-   _reserved_sectors[1] = fat32_small_raw_data_byte
+   _reserved_sectors[0] = storage_raw_data_byte
+   _reserved_sectors[1] = storage_raw_data_byte
 
-   fat32_small_read_pulse_byte (20)
-   _sec_per_fat[0] = fat32_small_raw_data_byte
-   _sec_per_fat[1] = fat32_small_raw_data_byte
-   _sec_per_fat[2] = fat32_small_raw_data_byte
-   _sec_per_fat[3] = fat32_small_raw_data_byte
+   storage_read_pulse_byte (20)
+   _sec_per_fat[0] = storage_raw_data_byte
+   _sec_per_fat[1] = storage_raw_data_byte
+   _sec_per_fat[2] = storage_raw_data_byte
+   _sec_per_fat[3] = storage_raw_data_byte
 
-   fat32_small_read_pulse_byte (4)
+   storage_read_pulse_byte (4)
 
-   fat32_small_stop_read()  -- finnished reading sector, set media idle
+   storage_stop_read()  -- finnished reading sector, set media idle
 
    -- get fat begin
    fat32_small_fat_begin = partition_lba_begin + reserved_sectors
@@ -158,21 +125,21 @@ procedure fat32_small_set_file_size(dword in file_size) is
    var byte _file_size[4] at file_size
    fat32_small_file_size = file_size
 
-   fat32_small_start_write(fat32_small_root_dir)
+   storage_start_write(fat32_small_root_dir)
 
    for 32 using count1 loop
-      fat32_small_raw_data_byte = FAT32_SMALL_VOL_ID_DATA[count1]
+      storage_raw_data_byte = FAT32_SMALL_VOL_ID_DATA[count1]
    end loop
 
    for 28 using count1 loop
-      fat32_small_raw_data_byte = FAT32_SMALL_FILE_NAME_DATA[count1]
+      storage_raw_data_byte = FAT32_SMALL_FILE_NAME_DATA[count1]
    end loop
 
    for 4 using count1 loop
-      fat32_small_raw_data_byte = _file_size[count1]
+      storage_raw_data_byte = _file_size[count1]
    end loop
 
-   fat32_small_stop_write()
+   storage_stop_write()
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -182,12 +149,12 @@ procedure fat32_small_init() is
    fat32_small_read_boot_sector() -- get the location of first partition ( c:\ )
 
    -- start write the at the FAT location
-   fat32_small_start_write(fat32_small_fat_begin)
+   storage_start_write(fat32_small_fat_begin)
    
    -- write the beginning of the FAT
    var byte count1 = 0
    for 12 using count1 loop
-      fat32_small_raw_data_byte = FAT32_SMALL_FAT_DATA[count1]
+      storage_raw_data_byte = FAT32_SMALL_FAT_DATA[count1]
    end loop
 
    -- write the FAT file cluster locations
@@ -197,28 +164,28 @@ procedure fat32_small_init() is
    while (FAT32_SMALL_MAX_FILE_SIZE >= ((next_fat_cluster - 3)  * (512 * dword(fat32_small_sectors_per_cluster))) ) loop
       var byte count2 = 0
       for 4 using count2 loop
-         fat32_small_raw_data_byte = _next_fat_cluster[count2]
+         storage_raw_data_byte = _next_fat_cluster[count2]
       end loop
       next_fat_cluster = next_fat_cluster + 1
    end loop
 
    -- write the fat end cluster data
-   fat32_small_raw_data_byte = 0xFF
-   fat32_small_raw_data_byte = 0xFF
-   fat32_small_raw_data_byte = 0xFF
-   fat32_small_raw_data_byte = 0x0F
+   storage_raw_data_byte = 0xFF
+   storage_raw_data_byte = 0xFF
+   storage_raw_data_byte = 0xFF
+   storage_raw_data_byte = 0x0F
 
    -- stop writing
-   fat32_small_stop_write()
+   storage_stop_write()
    
    -- get the file size
-   fat32_small_start_read(fat32_small_root_dir)
-   fat32_small_read_pulse_byte (32 + 28)
-   _fat32_small_file_size[0] = fat32_small_raw_data_byte
-   _fat32_small_file_size[1] = fat32_small_raw_data_byte
-   _fat32_small_file_size[2] = fat32_small_raw_data_byte
-   _fat32_small_file_size[3] = fat32_small_raw_data_byte
-   fat32_small_stop_read()
+   storage_start_read(fat32_small_root_dir)
+   storage_read_pulse_byte (32 + 28)
+   _fat32_small_file_size[0] = storage_raw_data_byte
+   _fat32_small_file_size[1] = storage_raw_data_byte
+   _fat32_small_file_size[2] = storage_raw_data_byte
+   _fat32_small_file_size[3] = storage_raw_data_byte
+   storage_stop_read()
    
    -- write the file name & file size
    fat32_small_set_file_size(fat32_small_file_size)
@@ -241,9 +208,9 @@ end procedure
 procedure fat32_small_file_write(byte in data) is
    if fat32_small_open_for_write == FALSE then
       fat32_small_open_for_write = TRUE
-      fat32_small_start_write(_file_sector_number + (fat32_small_cluster_begin + (fat32_small_sectors_per_cluster * FAT32_SMALL_FILE_LOCATION)))
+      storage_start_write(_file_sector_number + (fat32_small_cluster_begin + (fat32_small_sectors_per_cluster * FAT32_SMALL_FILE_LOCATION)))
    end if
-   fat32_small_raw_data_byte = data
+   storage_raw_data_byte = data
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -252,9 +219,9 @@ end procedure
 procedure fat32_small_file_read(byte out data) is
    if fat32_small_open_for_read == FALSE then
       fat32_small_open_for_read = TRUE
-      fat32_small_start_read(_file_sector_number + (fat32_small_cluster_begin + (fat32_small_sectors_per_cluster * FAT32_SMALL_FILE_LOCATION)))
+      storage_start_read(_file_sector_number + (fat32_small_cluster_begin + (fat32_small_sectors_per_cluster * FAT32_SMALL_FILE_LOCATION)))
    end if
-   data = fat32_small_raw_data_byte
+   data = storage_raw_data_byte
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -262,10 +229,10 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure fat32_small_file_close() is
    if fat32_small_open_for_write == TRUE then
-      fat32_small_stop_write()
+      storage_stop_write()
       fat32_small_open_for_write = FALSE
    else
-      fat32_small_stop_read()
+      storage_stop_read()
       fat32_small_open_for_read = FALSE
    end if
 end procedure
