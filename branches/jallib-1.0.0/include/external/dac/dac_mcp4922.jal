@@ -1,0 +1,160 @@
+-- Title:       MCP4922.jal
+--              12-bit dual voltage output digital-to-analoge converter
+--              with SPI interfact
+-- Author:      Peter Lankreijer
+-- Compiler:    2.4o
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library controls a MCP4922 via the SPI protocol.
+--
+-- Sources:     delay.jal
+--              spi_master_sw.jal or spi_master_hw.jal
+--              http://ww1.microchip.com/downloads/en/DeviceDoc/22250A.pdf
+--
+-- Functions:   MCP4922_init(bit in Buffer, bit in Gain, bit in Shutdown)
+--              DAC_A(word in A)
+--              DAC_B(word in B)
+--              DAC_AB(word in A, word in B)
+--
+-- Notes:       The following should be defined in the main program:
+--              setup SPI for software SPI or none for hardware SPI
+--              include spi_master_sw
+--              define directions
+--              spi_master_sw_init(SPI_MODE_11)
+--              alias spi_master is spi_master_sw
+--              alias spi_master_exchange is spi_master_sw_exchange
+--
+--              alias mcp4922_cs                     is pin_??
+--              alias MCP4922_CS_direction is output is pin_??_direction
+--              alias LDAC                           is pin_??
+--              alias LDAC_direction is output       is pin_??_direction
+--
+--              The SHDN pin should be connected to high
+--
+-- Todo:
+--              Shutdown DAC_A, DAC_B or both
+
+-- Define variables
+var byte mcp4922_write[2]
+var bit mcp4922_ab at mcp4922_write[1] : 7              -- select DAC_A OR DAC_B
+                                        -- 0 for DAC_A
+                                        -- 1 for DAC_B
+var bit _mcp4922_buf
+var bit mcp4922_buf at mcp4922_write[1] : 6             --
+                                        -- 0 for unbuffered
+                                        -- 1 for buffered
+var bit _mcp4922_ga
+var bit mcp4922_ga at mcp4922_write[1] : 5              -- Output gain selection bit
+                                        -- 0 for 2xVref * D/4096
+                                        -- 1 for Vref * D/4096
+var bit _mcp4922_shdn
+var bit mcp4922_shdn at mcp4922_write[1] : 4            -- Output shutdown control bit
+                                        -- 0 for shutdown the selected DAC channel
+                                        -- 1 for active mode operation (Vout is available)
+
+-- Include library files
+include delay
+
+--------------------------------------------------------------------------------
+-- Initialise the MCP4922
+--------------------------------------------------------------------------------
+procedure mcp4922_init(bit in buffer, bit in gain) is
+
+   _mcp4922_buf = buffer
+   _mcp4922_ga = gain
+   _mcp4922_shdn = 1
+   
+   mcp4922_cs = high
+   mcp4922_cs_direction = output
+
+   mcp4922_ldac = high
+   mcp4922_ldac_direction = output
+   
+end procedure
+
+--------------------------------------------------------------------------------
+-- Internal used function to split a word into two bytes
+--------------------------------------------------------------------------------
+procedure mcp4922_split_word(word in word_in, byte out high_byte, byte out low_byte) is
+
+   var bit x at word_in : 15
+   var bit y at low_byte : 0
+   var bit z at high_byte : 0
+   var byte i = 0
+
+   while i <= 6 loop
+       z = x
+       word_in = word_in << 1
+       high_byte = high_byte << 1
+       i = i + 1
+   end loop
+   z = x
+   word_in = word_in << 1
+   i = i + 1
+
+   while i <= 14 loop
+       y = x
+       word_in = word_in << 1
+       low_byte = low_byte << 1
+       i = i + 1
+   end loop
+   y = x
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- Internal procedure to wite to the register
+--------------------------------------------------------------------------------
+procedure mcp4922_dac(bit in register, word in X) is
+
+    mcp4922_split_word(X, mcp4922_write[1], mcp4922_write[0])
+    mcp4922_ab = register
+    mcp4922_buf = _mcp4922_buf
+    mcp4922_ga = _mcp4922_ga
+    mcp4922_shdn = _mcp4922_shdn
+    mcp4922_cs = low
+    spi_master = mcp4922_write[1]
+    spi_master = mcp4922_write[0]
+    mcp4922_cs = high
+   
+end procedure
+
+--------------------------------------------------------------------------------
+-- Function to write to the DAC A and latch
+--------------------------------------------------------------------------------
+procedure mcp4922_dac_a(word in A) is
+
+   mcp4922_dac(0,A)                             -- write A to register A
+   mcp4922_ldac = low                   -- latch DAC A
+   delay_1us()                          -- min LDAC pulsewidth is ~100 ns
+   mcp4922_ldac = high                  -- Update the output simultaneously
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- Function to write to the DAC B and latch
+--------------------------------------------------------------------------------
+procedure mcp4922_dac_b(word in B) is
+
+   mcp4922_dac(1,B)                             -- write B to register B
+   mcp4922_ldac = low                   -- latch DAC B
+   delay_1us()                          -- min LDAC pulsewidth is ~100 ns
+   mcp4922_ldac = high                  -- Update the output simultaneously
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- Function to write to the DAC and update both registers at the same time
+--------------------------------------------------------------------------------
+procedure mcp4922_dac_ab(word in A, word in B) is
+
+   mcp4922_dac(0,A)
+   mcp4922_dac(1,B)
+
+   mcp4922_ldac = low                   -- latch both register simultaneous
+   delay_1us()                          -- min LDAC pulsewidth is ~100 ns
+   mcp4922_ldac = high                  -- Update the output simultaneously
+
+end procedure

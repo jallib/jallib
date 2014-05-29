@@ -1,0 +1,395 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library to support 7-segment display module with TM1640
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description: Library for a module with TM1640 with
+-- - serial interface
+-- - 16  7-segment displays with dp (decimal point)
+-- .
+-- Data may be displayed anywhere in the 7-segment displays.
+-- The position may be specified with an offset (depending on data type)
+-- .
+-- The tm1640 module uses 2 data wires, which have to be specified by the user.
+-- Before including this library declare the following aliases (mandatory):
+-- .
+-- alias tm1640_din            is pin_??                    -- pin for data I/O signal
+-- alias tm1640_clk            is pin_??                    -- pin for clock signal
+-- which should be set to OUTPUT by the user program
+-- .
+-- The following constant may be specified as well (optionally):
+-- .
+-- const byte TM1640_WIDTH    =  ?          (number of 7-segment digits, defaults to 16)
+-- .
+-- Initialize the TM1640 with tm1640_init()
+--
+-- Dependencies: tm1638_font.jal
+--
+-- Notes: - Supports (= has been tested) with a module with tm1640 chip
+--          and 16 7-segment display digits
+--
+-- -----------------------------------------------------------------------------
+
+include tm1638_font                         -- 7-segment fonts for tm1640
+
+const  byte  TM1640_WRITE_DATA       = 0b_0100_0000       --
+const  byte  TM1640_ADDRESS_AUTO     = 0b_0100_0000       --
+const  byte  TM1640_ADDRESS_FIXED    = 0b_0100_0100       --
+const  byte  TM1640_MODE_NORMAL      = 0b_0100_0000       --
+const  byte  TM1640_MODE_TEST        = 0b_0100_1000       --
+
+const  byte  TM1640_DISPLAY_ON       = 0b_1000_1000
+const  byte  TM1640_DISPLAY_OFF      = 0b_1000_0000
+const  byte  TM1640_DISPLAY_PWM1     = 0b_1000_0000       --
+const  byte  TM1640_DISPLAY_PWM2     = 0b_1000_0001       --
+const  byte  TM1640_DISPLAY_PWM4     = 0b_1000_0010       --
+const  byte  TM1640_DISPLAY_PWM10    = 0b_1000_0011       --
+const  byte  TM1640_DISPLAY_PWM11    = 0b_1000_0100       -- PWM dutycycle for LEDs
+const  byte  TM1640_DISPLAY_PWM12    = 0b_1000_0101       --
+const  byte  TM1640_DISPLAY_PWM13    = 0b_1000_0110       --
+const  byte  TM1640_DISPLAY_PWM14    = 0b_1000_0111       --
+
+const  byte  TM1640_ADDRESS_SELECT   = 0b_1100_0000       -- base of command byte
+
+const  byte  TM1640_DOT              = 0b_1000_0000       -- segment of decimal point
+
+
+-- --- basic sanity check --------------------
+
+if !(defined(tm1640_din)) then
+   _error "tm1640_din must be defined"
+end if
+if !(defined(tm1640_clk)) then
+   _error "tm1640_clk must be defined"
+end if
+if !(defined(TM1640_WIDTH)) then
+   const byte TM1640_WIDTH = 16                       -- default number of digits in display
+end if
+
+
+
+-- ========= 'private' procedures =====================
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Send byte 'raw' to the TM1640 (8 bits bit-banging)
+-- Input:  byte to be transferred
+-- Notes:  - tm1640_din should have been reset before calling this procedure
+--         - must be followed by 1 clock cycle after last byte of an operation
+--         - data handling and loop logic ensure that timing constraints
+--           are not exceeded (tested with 32 MHz oscillator frequency)
+-- ----------------------------------------------------------------------------
+procedure _tm1640_write_byte_raw(byte in data) is
+
+   var bit lsb at data : 0                   -- least significant bit first
+   for 8 loop
+      tm1640_clk = LOW
+      tm1640_din = lsb
+      tm1640_clk = HIGH
+      data = data >> 1
+   end loop
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Send a command (single byte) to the TM1640
+-- Input:  - Byte with command
+-- ----------------------------------------------------------------------------
+procedure _tm1640_write_command(byte in cmd) is
+
+   tm1640_din = LOW
+   _tm1640_write_byte_raw(cmd)
+   tm1640_din = LOW
+   tm1640_clk = LOW
+   tm1640_clk = HIGH
+   tm1640_din = HIGH
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Send a data byte to specified address of TM1640
+-- Input:  - address of the digit (offset from left to right)
+--         - byte with 7-segment pattern
+-- ----------------------------------------------------------------------------
+procedure _tm1640_write_data_at(byte in data,
+                                byte in address) is
+
+   tm1640_din = LOW
+   _tm1640_write_byte_raw(TM1640_ADDRESS_SELECT | (address & 0x0F))
+   _tm1640_write_byte_raw(data)
+   tm1640_din = LOW
+   tm1640_clk = LOW
+   tm1640_clk = HIGH
+   tm1640_din = HIGH
+
+end procedure
+
+
+
+
+-- ========== 'public' procedures ==================
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Clear all display digits (inclusive decimal point)
+-- Input:  (none)
+-- Notes:  - Set display into normal mode (disable test mode)
+--           and set display into fixed address mode at return.
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_clear() is
+
+   var byte i
+   tm1640_din = LOW
+   _tm1640_write_byte_raw(TM1640_ADDRESS_AUTO);           -- auto increment address mode
+   for TM1640_WIDTH loop
+      _tm1640_write_byte_raw(0b_0000_0000)            -- clear all memory
+   end loop
+   tm1640_din = LOW
+   tm1640_clk = LOW
+   tm1640_clk = HIGH
+   tm1640_din = HIGH
+
+   _tm1640_write_command(TM1640_ADDRESS_FIXED);       -- return to fixed address mode
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Initialize TM1640 module
+-- Notes:
+-- ----------------------------------------------------------------------------
+procedure tm1640_init() is
+
+   tm1640_clk = HIGH                                  -- initial state
+   tm1640_din = HIGH
+   delay_100ms(0)                                     -- short delay
+
+   tm1640_display_clear()                             -- clear display and
+                                                      -- set fixed address mode
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Control display mode of the TM1640
+-- Input:  - active (1) or inactive (0)
+--         - LED intensity (range 0..7)
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_mode(bit  in active,
+                              byte in intensity) is
+
+   var byte mode = TM1640_DISPLAY_OFF                 -- default state OFF
+   if (active == TRUE) then
+      mode = TM1640_DISPLAY_ON | (intensity & 0b_0000_0111)
+   end if
+   _tm1640_write_command(mode)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display a character at a specified position
+-- Input:  - Index of the display position (0 = leftmost)
+--         - Byte with character to be displayed (ASCII value, range 32..127)
+-- Notes:  - Decimal point not supported together with other character
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_char(byte in data,
+                              byte in pos) is
+
+   var bit tbit at data : 7 = 0                       -- strip bit 7
+
+   if (data < 32) then                                -- low ASCII char
+      data = 32                                       -- replace by space
+   end if
+   _tm1640_write_data_at(_TM1638_ASCII_FONT[data - 32], pos)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display string (left to right) in 7-segment displays
+-- Input:  - index of first character of string on display (0 is leftmost)
+--         - ASCII character string
+-- Notes:  - When string does not fit the rightmost characters are truncated
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_string(byte in string[],
+                                byte in pos) is
+  var byte i
+
+  for (TM1640_WIDTH - pos) using i loop                  -- available positions
+     if (i >= count(string)) then                        -- beyond end of string
+        exit loop
+     end if
+     tm1640_display_char(string[i], pos + i)
+  end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display a (hexa)decimal digit on a specified position
+-- Input:  - byte with digit (binary value)
+--         - byte with position (index, most left = 0)
+--         - flag for decimal point (FALSE = no, TRUE = yes)
+-- Notes:
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_digit(byte in digit,
+                               byte in pos,
+                               bit  in dot) is
+
+   var byte tbyte = _TM1638_NUMBER_FONT[digit & 0x0f]
+   if (dot) then
+      tbyte = tbyte | TM1640_DOT
+   end if
+   _tm1640_write_data_at(tbyte, pos)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display a hexadecimal number (8 digits, right aligned)
+-- Input:  - doubleword with value to be displayed
+--         - bit flag for leading zeroes (FALSE = no, TRUE = yes)
+-- Notes:  - No decimal points supported
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_dword_hex(dword in number,
+                                   bit   in leadingzeros) is
+   var byte i
+   for TM1640_WIDTH using i loop
+      if (!leadingzeros  &  (number == 0)) then
+         _tm1640_write_data_at(0, TM1640_WIDTH - i - 1)     -- space
+      else
+         tm1640_display_digit(byte(number) & 0x0F, TM1640_WIDTH - i - 1, false)
+         number = number >> 4
+      end if
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display an unsigned decimal number (dword) at a specific position
+-- Input:  - unsigned doubleword with value to be displayed
+--         - byte with pattern of desired decimal points
+--         - byte with offset: offset of least significant digit
+--         - bit flag for leading zeroes (FALSE = no, TRUE = yes)
+-- Notes:  - offset is number of display positions from the right
+--         - when number does not fit high order digits will be truncated.
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_dword_dec(dword in number,
+                                   word  in dots,
+                                   byte  in offset,
+                                   bit   in leadingzeros) is
+
+   var byte i
+   for (TM1640_WIDTH - offset) using i loop
+      var bit tbit at dots : 0
+      if (number > 0) then
+         var dword quot10 = number / 10
+         var byte  rem10  = byte(number % 10)
+         tm1640_display_digit(rem10, TM1640_WIDTH - offset - i - 1, tbit)
+         number = quot10
+      else
+         if (leadingzeros) then
+            tm1640_display_digit(0, TM1640_WIDTH - offset - i - 1, tbit)
+         elsif (tbit) then
+            tm1640_din = LOW
+            _tm1640_write_data_at(TM1640_DOT, TM1640_WIDTH - offset - i - 1)
+            tm1640_din = HIGH
+         end if
+      end if
+      dots = dots >> 1
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display signed decimal number at a specific location
+-- Input:  - signed doubleword with value to be displayed
+--         - byte with pattern of desired decimal points
+--         - byte with offset: offset of least significant digit
+--         - bit flag for leading zeroes (FALSE = no, TRUE = yes)
+-- Notes:  - negative numbers are limited to -9999999
+--         - offset is number of display positions from the right!
+--         - when number does not fit the high order digits are truncated.
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_sdword_dec(sdword in number,
+                                    byte   in dots,
+                                    byte   in offset,
+                                    bit    in leadingzeros) is
+
+   if (number >= 0) then
+      tm1640_display_dword_dec(dword(number), dots, offset, leadingzeros)
+   else
+      tm1640_display_dword_dec(dword(-number), dots, offset, leadingzeros)
+      var byte tbyte = _TM1638_MINUS
+      if ((dots & 0b_1000_0000) == 1) then
+         tbyte = tbyte | TM1640_DOT
+      end if
+      _tm1640_write_data_at(tbyte, 0)
+   end if
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display an unsigned decimal number (word)
+-- Input:  - unsigned word with value to be displayed
+--         - byte with pattern of desired decimal points
+--         - byte with offset of least significant digit (right to left)
+--         - bit flag for leading zeroes (FALSE = no, TRUE = yes)
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_word_dec(word in number,
+                                  byte in dots,
+                                  byte in offset,
+                                  bit  in leadingzeros) is
+
+   tm1640_display_dword_dec(dword(number), dots, offset, leadingzeros)
+end procedure
+
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display binary number (byte, 8 bits)
+-- Input: - byte with value to be displayed
+--        - byte with offset from the right
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_byte_bin(byte in number,
+                                  byte in offset) is
+
+   var byte i
+
+   for 8 using i loop
+      tm1640_display_digit(number & 1, TM1640_WIDTH - offset - i - 1, 0)
+      number = number >> 1
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display binary number (word, 16 bits)
+-- Input: word with value to be displayed
+-- ----------------------------------------------------------------------------
+procedure tm1640_display_word_bin(word in number) is
+
+   var byte x[2] at number
+
+   tm1640_display_byte_bin(x[0], 0)                -- (right alignment!)
+   tm1640_display_byte_bin(x[1], 8)
+
+end procedure
+
+

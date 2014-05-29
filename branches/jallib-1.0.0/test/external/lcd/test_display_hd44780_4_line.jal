@@ -1,0 +1,211 @@
+-- ------------------------------------------------------
+-- Title: Test program for lcd_hd44780_4 and lcd_hd44780_common (extended test)
+-- 
+-- Author: Richard Zengerink, Copyright (c) 2008..2014, all rights reserved.
+-- 
+-- Adapted-by: Joep Suijs
+-- 
+-- Compiler: >=2.4q2
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- 
+-- Description: Testing lcd_hd44780_4 and lcd_hd44780_common
+-- This is to test all hd44780_common features. See test_lcd_*
+-- for a basic display test.
+-- --
+-- This file defines a test for JALLIB testing, using a test-board
+--  defined by a BOARD file .
+-- 
+-- Sources:
+-- 
+-- Notes: 
+-- setup: an hd44780 compatible display, used in 4-bit mode.
+-- 
+-- ------------------------------------------------------
+
+enable_digital_io() -- disable analog I/O (if any)
+
+;@jallib use chipdef
+;@jallib use lcd_hd44780_4
+;@jallib use led
+
+-- ----------------------------------------------------------------------------
+-- optionally include this file to gain access to the tc_var* variables
+-- ----------------------------------------------------------------------------
+include serial_tc_header
+
+-- setup libs, io etc
+lcd_rs_direction        = output
+lcd_en_direction        = output
+lcd_dataport_direction  = output
+
+include print
+include lcd_hd44780_4
+include delay 
+lcd_init()                              -- initialize LCD
+
+var byte value = 0
+
+lcd_clear_screen()
+lcd_home()
+
+const byte teststring[] = "Serial TC ready."
+print_string(lcd, teststring)
+
+-- -----------------------------------------------------------------------------
+-- Define all unit tests required
+-- (testname string constants are optional)
+-- -----------------------------------------------------------------------------
+
+-- test support function             
+var byte testchar = "a"
+procedure increment_testchar() is
+   testchar = testchar + 1;
+   if (testchar > "z") then 
+      testchar = "a" 
+   end if
+end procedure
+-- test support function end
+
+const byte testname_a[] = "clear screen"
+procedure unit_test_a() is                
+   lcd_clear_screen()   
+end procedure
+
+const byte testname_b[] = "home"
+procedure unit_test_b() is                
+   lcd_home()   
+end procedure
+
+const byte testname_c[] = "print 4 incremening chars to cursor pos with lcd_write_char"
+procedure unit_test_c() is                
+   for 4 loop
+      lcd_write_char(testchar)
+      increment_testchar()
+   end loop
+end procedure
+
+const byte testname_d[] = "print 4 incremening chars to cursor pos with lcd'put"
+procedure unit_test_d() is                
+   for 4 loop
+      lcd = testchar
+      increment_testchar()
+   end loop
+end procedure
+
+const byte testname_e[] = "set cursor position to 0,0 (start line 0)"
+procedure unit_test_e() is                
+   lcd_cursor_position(0,0)   
+end procedure
+
+const byte testname_f[] = "set cursor position to 1,0 (start line 1)"
+procedure unit_test_f() is                
+   lcd_cursor_position(1,0)   
+end procedure
+
+const byte testname_g[] = "set cursor position to 2,0 (start line 2)"
+procedure unit_test_g() is                
+   lcd_cursor_position(2,0)   
+end procedure
+
+const byte testname_h[] = "set cursor position to 3,0 (start line 3)"
+procedure unit_test_h() is                
+   lcd_cursor_position(3,0)   
+end procedure
+
+const byte testname_i[] = "set cursor position to tc_var0, tc_var1"
+procedure unit_test_i() is                
+   lcd_cursor_position(tc_var0, tc_var1)   
+end procedure
+
+const byte testname_j[] = "clear line tc_var0"
+procedure unit_test_j() is                
+   lcd_clear_line(tc_var0)   
+end procedure
+
+const byte testname_k[] = "display off"
+procedure unit_test_k() is                
+   lcd_cursor_blink_display(false, false, false)   
+end procedure
+
+const byte testname_l[] = "display on - no cursor"
+procedure unit_test_l() is                
+   lcd_cursor_blink_display(false, false, on)   
+end procedure
+
+const byte testname_m[] = "display on - blinking block cursor"
+procedure unit_test_m() is                
+   lcd_cursor_blink_display(false, true, on)   
+end procedure
+
+const byte testname_n[] = "display on - fixed underline cursor"
+procedure unit_test_n() is                
+   lcd_cursor_blink_display(true, false, on)   
+end procedure
+
+const byte testname_o[] = "display on - cursor blinks from underline to block"
+procedure unit_test_o() is                
+   lcd_cursor_blink_display(true, true, on)   
+end procedure
+
+const byte testname_p[] = "lcd shift left tc_var2 chars"
+procedure unit_test_p() is                
+   lcd_shift_left(tc_var2)   
+end procedure
+
+const byte testname_q[] = "lcd shift right tc_var2 chars"
+procedure unit_test_q() is                
+   lcd_shift_right(tc_var2)   
+end procedure
+
+const byte testname_r[] = "lcd CURSOR shift left tc_var2 chars"
+procedure unit_test_r() is                
+   lcd_cursor_shift_left(tc_var2)   
+end procedure
+
+const byte testname_s[] = "lcd CURSOR shift right tc_var2 chars"
+procedure unit_test_s() is                
+   lcd_cursor_shift_right(tc_var2)   
+end procedure
+
+   
+-- this test shows a incrementing counter on the first line
+-- and a progress bar on the second line.
+const byte testname_z[] = "progress bar"
+procedure unit_test_z() is           
+   const byte bar_divider = (255 / (LCD_CHARS-1))
+
+   const byte tc_p[] = "progress      "
+   lcd_cursor_position(0,0)  
+   print_string(lcd, tc_p);
+   
+   lcd_cursor_blink_display (off,off,on) -- cursor off (blink off, display on)
+   lcd_clear_line(1)
+   for 256 using value loop
+      -- print var
+      lcd_cursor_position(0,9)  
+      print_byte_dec(lcd, value)
+      
+      -- print coressponding progress bar
+      lcd_progress(1, value / bar_divider +1, 0xFF)
+      
+      -- wait & increment
+      delay_1ms(20)
+   end loop
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+-- include testconsole after definition of unit tests
+-- -----------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
+include serial_testconsole
+testconsole_init()      
+
+tc_var2 = 1 -- default (used for left/right shift)   
+
+testconsole()  -- contains forever loop
+
+

@@ -1,0 +1,132 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- This document was created with Syntext Serna Free. --><!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd" []>
+<topic id="template_id">
+  <title>Print &amp; Format</title>
+  <prolog>
+    <author>Matthew Schinkel</author>
+    <publisher>Jallib Group</publisher>
+    <metadata>
+      <category/>
+      <prodinfo>
+        <prodname>Jallib</prodname>
+        <vrmlist>
+          <vrm version="0.0"/>
+        </vrmlist>
+      </prodinfo>
+    </metadata>
+  </prolog>
+  <body>
+    <p id="firstcontent">Formatting output data with Print &amp; Format</p>
+    <section>
+      <title>Print &amp; Format</title>
+      <p>In a previous tutorial (<xref href="tutorial_serial_communication.xml"/>) You probably noticed it is annoying to have to change RealTerm from ASCII to HEX in order to see output of numbers. It is also not easy to view  raw HEX data. You will probably want to  be able to output decimal numbers to make it easy on us humans. This is where the print and format libraries come in!</p>
+      <p>The print and format libraries are quite easy to use, start off by including them into your main file (after your serial port include block).</p>
+      <codeblock>include print
+include format</codeblock>
+      <p>Of course, now you need to know what procedures are available. This is when it is a good idea to open up a library file.  Scroll through the file and note procedure names as well as their input parameters.</p>
+      <image href="images/print_format.jpg" width="450" otherprops="clickable"/>
+    </section>
+    <section>
+      <title>Print and format numbers</title>
+      <p>In the previous image, you can see 3 procedure names:</p>
+      <ol>
+        <li><b>print_byte_dec()</b> - Prints a byte in decimal format.</li>
+        <li><b>print_word_dec()</b> - Prints a word in decimal format.</li>
+        <li><b>print_dword_dec()</b> - Prints a dword in decimal format.</li>
+      </ol>
+      <p>Each requires the following parameters:</p>
+      <ol>
+        <li><b>device</b> - The device the data will be outputted to. Usually you will put serial_hw_data or serial_sw_data. However, you can put any pseudo variable (fake variable, that is actually a procedure) as an input. This pseudo variable usually allows writing to an output device such as and LCD or protocol SPI, I2C, etc.</li>
+        <li><b>data</b> - The data to be sent to the device.</li>
+      </ol>
+      <p>The following example will set the value of the word x to 543 and send it to the serial serial port in ASCII format:</p>
+      <codeblock>var word x = 543
+print_word_dec(serial_hw_data, x)</codeblock>
+      <p>Now let&apos;s have a look at the format library. you will see 3 alike procedures with names:</p>
+      <ol>
+        <li><b>format_byte_dec</b> - Formats a byte in decimal.</li>
+        <li><b>format_word_dec</b> - Formats a word in decimal.</li>
+        <li><b>format_dword_dec</b> - Formats a dword in decimal.</li>
+      </ol>
+      <p>These format procedures are able to format a byte, word or dword. Here are the input parameters:</p>
+      <ol>
+        <li><b>device</b> - Same as print library.</li>
+        <li><b>data</b> - The data to be sent to the device.</li>
+        <li><b>n_tot</b> - The total length of the outputted number (Including sign&apos; +/-&apos;, and decimal point)</li>
+        <li><b>n2</b> - The number of decimal places.</li>
+      </ol>
+      <p>The following example will write 61.234 to the serial port in ASCII format:</p>
+      <codeblock>var dword_dec x = 61234
+format_dword_dec(serial_hw_data,x,6,3) </codeblock>
+    </section>
+    <section>
+      <title>Printing Strings</title>
+      <p>The print library also has a procedure for printing strings. called print_string. It requires 2 inputs: </p>
+      <ol>
+        <li><b>device</b> - same as above.</li>
+        <li><b>str[]</b> - The string to print to the serial port (an array of characters).</li>
+      </ol>
+      <p>Here&apos;s an example that will output &quot;Hello World&quot; to the serial port in ASCII format:</p>
+      <codeblock>const byte hello_string[] = &quot;Hello World&quot;
+print_string(serial_hw_data, hello_string)</codeblock>
+      <note>the constant array must be a <b>byte</b> array.</note>
+      <p>Last of course, you may need to go to the next line with carriage return + line feed (CRLF).</p>
+      <codeblock>print_crlf(serial_hw_data)</codeblock>
+      <p>CRLF can also be put directly into your string with &quot;\r\n&quot;. This will put Hello and World on 2 separate lines.</p>
+      <codeblock>const byte hello_string[] = &quot;Hello\r\nWorld&quot;
+print_string(serial_hw_data, hello_string)</codeblock>
+    </section>
+    <section>
+      <title>Put it all together</title>
+      <codeblock>include 16f877a                    -- target PICmicro
+--
+-- This program assumes a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target clock 20_000_000     -- oscillator frequency
+-- configure fuses
+pragma target OSC  HS              -- HS crystal or resonator
+pragma target WDT  disabled        -- no watchdog
+pragma target LVP  disabled        -- no Low Voltage Programming
+
+enable_digital_io()                -- disable analog I/O (if any)
+
+-- ok, now setup serial
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+
+include print
+include format
+
+const byte start[] = &quot;Start of main program...\r\n&quot;
+print_string(serial_hw_data,start)
+
+var dword x = 61234
+
+const byte string1[] = &quot;Let&apos;s print a dword: &quot;
+print_string(serial_hw_data,string1)
+print_dword_dec(serial_hw_data,x)
+print_crlf(serial_hw_data)
+
+const byte string2[] = &quot;Let&apos;s print a dword with 3 decimal places: &quot;
+print_string(serial_hw_data,string2)
+format_dword_dec(serial_hw_data,x,6,3)
+print_crlf(serial_hw_data)
+
+const byte string3[] = &quot;Let&apos;s print it in hex: &quot;
+print_string(serial_hw_data,string3)
+print_dword_hex(serial_hw_data,x)
+print_crlf(serial_hw_data)
+
+const byte string4[] = &quot;If we print as a hex byte, it will be truncated: &quot;
+print_string(serial_hw_data,string4)
+print_byte_hex(serial_hw_data, byte(x) )
+
+const byte end[] = &quot;\r\nEnd of main program...&quot;
+print_string(serial_hw_data,end)</codeblock>
+      <p>Here&apos;s the output. Take special note of how and why our number 61234 in hex (0x0000EF32) got reduced into a byte (0x32) in the 5th line shown below.</p>
+      <image href="images/print_format_output.jpg" otherprops="clickable" width="450"/>
+      <p>There you go... that&apos;s print and format! Doesn&apos;t this make life so easy!</p>
+    </section>
+  </body>
+</topic>

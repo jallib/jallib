@@ -1,0 +1,302 @@
+-- Title: CAN to UART adapter library
+-- Author: William Welch Copyright (c) 2010, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4m
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: bridge/gateway between RS232 and CAN bus. Uses ASCII encapsulation, 
+--          compatible with the Socket-CAN SLCAN API, and adapters such as
+--          LAWICEL and VScom USB-CAN.
+-- 
+-- Sources: Socket-CAN, in particular the SLCAN API. http://developer.berlios.de/projects/socketcan/ 
+--          also, the LAWICEL CAN-USB and Easylink adapter manuals.
+--
+-- Compatibility testing has been done using the CANHACKER tool.
+-- See http://www.canhack.de/
+--
+
+var bit can_adapter_is_open = 0
+
+procedure _can_pdec8(volatile byte out device, byte in n) is
+   device = "0" + n / 100
+   n = n % 100
+   
+   device = "0" + n / 10
+   n = n % 10
+   
+   device = "0" + n
+end procedure
+
+-- these commands are always available
+-- this routine is primarily for internal use.
+function can_modeless_cmd(volatile byte out device, byte in ascii_buf[32]) return bit is
+   var byte cmd
+   cmd = ascii_buf[0]
+   
+   -- FIXME version
+   if cmd == "V" then
+      if defined(version_h) == true then
+         device = "V"
+         _can_pdec8(device, version_h)
+         device = "."
+         _can_pdec8(device, version_l)
+         device = 13
+      else
+         device = "V"
+         device = "0"
+         device = "1"
+         device = "0"
+         device = "1"
+         device = 13
+      end if
+      return 1
+      
+      -- FIXME Serial #
+   elsif cmd == "N" then
+      device = "N"
+      for 8 loop
+         device = "9"
+      end loop
+      device = 13
+      return 1
+      
+      -- FIXME 'extra information'. Seems like we can
+      -- return whatever we want here???
+   elsif cmd == "I" then
+      var byte a, b, c, d, e, f
+      a = CANSTAT
+      b = COMSTAT
+      c = RXB0CON
+      d = RXB1CON
+      e = RXERRCNT
+      f = TXERRCNT
+      device = "I"
+      device = 32
+      print_byte_hex(device, a)
+      device = 32
+      print_byte_hex(device, b)
+      device = 32
+      print_byte_hex(device, c)
+      device = 32
+      print_byte_hex(device, d)
+      device = 32
+      print_byte_hex(device, e)
+      device = 32
+      print_byte_hex(device, f)
+      device = 13
+      return 1
+      
+      -- CLOSE
+   elsif cmd == "C" then
+      can_adapter_is_open = 0
+      device = 13
+      return 1
+      
+   end if
+   
+   return 0
+end function
+
+-- these commands are only valid while the bridge is 'closed'
+-- this routine is primarily for internal use.
+function can_closed_cmd(volatile byte out device, byte in ascii_buf[32]) return bit is
+   var byte cmd
+   cmd = ascii_buf[0]
+   
+   -- FIXME speed
+   if cmd == "S" then
+      device = 13
+      return 1
+      
+      -- FIXME advanced speed
+   elsif cmd == "s" then
+      device = 13
+      return 1
+      
+      -- filter/acceptance mask
+      -- m12345678
+   elsif cmd == "m" then
+      var byte sidh, sidl, eidh, eidl
+      sidh = _ascii2bin(ascii_buf[1]) << 4
+      sidh = sidh | _ascii2bin(ascii_buf[2])
+      sidl = _ascii2bin(ascii_buf[3]) << 4
+      sidl = sidl | _ascii2bin(ascii_buf[4])
+      eidh = _ascii2bin(ascii_buf[5]) << 4
+      eidh = eidh | _ascii2bin(ascii_buf[6])
+      eidl = _ascii2bin(ascii_buf[7]) << 4
+      eidl = eidl | _ascii2bin(ascii_buf[8])
+      can_set_rxb0_mask(sidh, sidl, eidh, eidl)
+      device = 13
+      return 1
+      
+      -- filter/acceptance code/value
+      -- M12345678
+   elsif cmd == "M" then
+      var byte sidh, sidl, eidh, eidl
+      sidh = _ascii2bin(ascii_buf[1]) << 4
+      sidh = sidh | _ascii2bin(ascii_buf[2])
+      sidl = _ascii2bin(ascii_buf[3]) << 4
+      sidl = sidl | _ascii2bin(ascii_buf[4])
+      eidh = _ascii2bin(ascii_buf[5]) << 4
+      eidh = eidh | _ascii2bin(ascii_buf[6])
+      eidl = _ascii2bin(ascii_buf[7]) << 4
+      eidl = eidl | _ascii2bin(ascii_buf[8])
+      can_set_rxb0_filter0(sidh, sidl, eidh, eidl)
+      device = 13
+      return 1
+      
+      -- FIXME timestamp
+   elsif cmd == "Z" then
+      device = 13
+      return 1
+      
+      -- OPEN
+   elsif cmd == "O" then
+      can_adapter_is_open = 1
+      device = 13
+      return 1
+      
+      -- FIXME: need to really support this.
+      -- LISTEN
+   elsif cmd == "L" then
+      can_adapter_is_open = 1
+      device = 13
+      return 1
+      
+      -- BOOT (software reset)
+   elsif cmd == "B" then
+      asm reset
+      -- never gets here
+      return 0
+   end if
+   
+   return 0
+end function
+
+-- these commands are only valid while the bridge is 'open'
+-- this routine is primarily for internal use.
+function can_open_cmd(volatile byte out device, byte in ascii_buf[32]) return bit is
+   var byte cmd, data_len
+   var byte can_data[8]
+   var dword can_id
+   
+   cmd = ascii_buf[0]
+   
+   -- STATUS
+   if cmd == "F" then
+      var byte v
+      v = COMSTAT
+      device = "F"
+      print_byte_hex(device, v)
+      device = 13
+      return 1
+      
+      -- bridge CAN message
+   elsif ascii_to_can(ascii_buf, can_id, can_data, data_len) then
+      if defined(display_can_msg) == true then
+         display_can_msg(can_id, can_data, data_len)
+      end if
+      -- FIXME: how to report error if we loop 100 times?
+      for 100 loop
+         if can_send(0, can_id, can_data, data_len) then
+            exit loop
+         end if
+      end loop
+      -- if can_is_ext_id(can_id) then
+      --    device = "Z"
+      -- else
+      --    device = "z"
+      -- end if
+      device = 13
+      return 1
+   end if
+   
+   return 0
+end function
+
+var volatile byte can_ascii_rxbuf[32]
+var volatile byte can_ascii_rxcnt = 0
+
+-- this routine is used to process incoming characters from the UART.
+-- the data stream is line-oriented ASCII, with a CR(13) terminator.
+-- sometimes the data is a command, which may need a reply back out
+-- the UART.  But most of the time, the data is encapsulated CAN messages
+-- which need to be sent out the CANbus.
+-- 
+--  device: uart data device, e.g. serial_hw_data
+--  ch:  received ASCII char from UART
+procedure can_check_uart_rx(volatile byte out device, byte in ch) is
+   var byte i, data_len
+   
+   if can_ascii_rxcnt >= 32 then
+      can_ascii_rxcnt = 0
+      return
+   end if
+   
+   can_ascii_rxbuf[can_ascii_rxcnt] = ch
+   can_ascii_rxcnt = can_ascii_rxcnt + 1
+   
+   if can_ascii_rxcnt >= 32 then
+      can_ascii_rxcnt = 0
+      return
+   end if
+   
+   if ch != 13 then
+      return
+   end if
+   
+   -- at this point we have a complete
+   -- ASCII string in the buffer.
+   
+   if can_modeless_cmd(device, can_ascii_rxbuf) then
+      can_ascii_rxcnt = 0
+      return
+   end if
+   
+   if can_adapter_is_open == 0 then
+      if can_closed_cmd(device, can_ascii_rxbuf) then
+         can_ascii_rxcnt = 0
+         return
+      end if
+   end if
+   
+   if can_adapter_is_open then
+      if can_open_cmd(device, can_ascii_rxbuf) then
+         can_ascii_rxcnt = 0
+         return
+      end if
+   end if
+   
+   -- discard unknown command
+   can_ascii_rxcnt = 0
+end procedure
+
+-- this routine encapsulates incoming CANbus messages, and sends the resulting ASCII out to the UART.
+-- a copy of the CANbus message is also returned to the caller.
+--
+-- device: uart device, e.g. serial_hw_data
+function can_check_can_rx(volatile byte out device, dword in out can_id, byte in out can_data[8], byte in out data_len) return bit is
+   var bit got_msg
+   var byte i, ascii_txcnt, ascii_txbuf[32]
+   
+   -- always read the CAN msg. this will flush old/stale msgs.
+   got_msg = can_receive(1, can_id, can_data, data_len)
+   
+   if (got_msg == 0) then
+      return 0
+   end if
+   
+   if can_adapter_is_open then
+      ascii_txcnt = can_to_ascii(can_id, can_data, data_len, ascii_txbuf)
+      for ascii_txcnt using i loop
+         -- FIXME: we could hang forever here, if UART has a problem...
+         device = ascii_txbuf[i]
+      end loop
+   end if
+   
+   return 1
+end function
+

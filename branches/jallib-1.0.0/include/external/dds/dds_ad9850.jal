@@ -1,0 +1,270 @@
+-- Title: Analog Devices AD9850 DDS Chip library
+-- Author: Pavel Milanes Costa (c) 2013 pavelmc@gmail.com, pavel@conas.cu, co7wt@frcuba.co.cu
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Analog Devices AD9850 Direct-Digital-Synthesis (DDS) chip library.
+--              Based on dds_ad9833.jal of Tijs van Roon@RedSam
+-- .
+--   The library assumes that the AD9850 chip is clocked 125Mhz (CLKIN).
+--   If not, read the below section to know how to change the constants
+--   to your needs.
+-- .
+-- Setup:
+-- Assure that you are using a 125 Mhz oscillator on the dds chip.
+-- Otherwise change the constant. See below on how to do this.
+-- .
+-- Using the library on your code:
+-- .
+-- Make shure you have included delay library:
+--  > include delay
+-- .
+-- First define to which pins the data, clock and fsync pins are connected and
+-- make those pins outputs:
+--  > pin_A4_direction        = output
+--  > pin_B7_direction        = output
+--  > pin_B5_direction        = output
+--  > alias    dds_sfqud_pin  is pin_A4
+--  > alias    dds_sclk_pin   is pin_B7
+--  > alias    dds_sdata_pin  is pin_B5
+-- .
+-- Only if you use other OSCILLATOR than 125.000000 Mhz then you must define this
+-- two vars... se below about how to calculate it. If not I assume 125.000 Mhz.
+--  > dds_const_int = 34
+--  > dds_const_dec = 6_035_408
+-- .
+-- Define the phase shift if it's needed, otherwise I assume 0
+-- if you need it's a byte, from MSB to LSB the upper 5 bits are as follows
+-- b7 (180)
+-- b6 (90)
+-- b5 (45)
+-- b4 (22.5)
+-- b3 (11.25)
+-- the rest of the bits are ignored
+-- .
+-- Example I want to make a 281.25 degrees of phase LAG in this oscillator
+--  281.25 is 180 + 90 + 11.25, then
+--  > dds_phase_shift = 0b1100_1000
+-- .
+-- You can define the phase lag at any moment but it will be effective only up on
+-- the use of dds_frequency()
+-- .
+-- Then, include the dds library and initialize it
+--  > include dds_ad9850
+--  > dds_init()
+-- .
+-- And then output a frequence with:
+--  > dds_frequency(<freq in hz>)
+-- .
+-- Or return to sleep mode:
+--  > dds_sleep();
+-- .
+-- TODO:
+--  * Automatically calculate the constants from a dds_mclk value (NOT LIKELY)
+--  * The frequency register calculation might be done more efficient and maybe
+--    more correct.
+-- .
+-- ===========================================================================
+-- Other MASTERCLOCK, Changing the constants:
+--   The DDS chip has 32-bit frequence word, in the datasheet it's called phase
+--   The final freq is calculated like this:
+-- .
+--          fout = (phase * CLKIN) / 2^32    (fout & CLKIN in hertz)
+-- .
+--   And we can translate that into:
+-- .
+--          phase = (fout * 2^32)/CLKIN
+-- .
+--   We can write it in another way
+-- .
+--          phase = fout * (2^32/CLKIN)
+-- .
+--   As 2^32 and CLKIN are both fixed values we can compute (2^32/CLKIN) as a constant
+--   for "ease" the calculation...
+-- .
+--          const = (2^32/CLKIN) = (2^32 / 125_000_000)
+--          const = 34.359738368
+--          phase = fout * 34.359738368
+-- .
+--   If you use another CLKIN then the phase must be calculated...
+--   Since de floating point operation causes overflow in many ways and consume much of
+--   our preciated ram, we must make a procedure to calculate it, how? se below
+-- .
+--   Splitting the calculation, in simple math and for the above example
+--   This two equations are the same:
+-- .
+--          phase = fout * 34.359738368
+--          phase = (fout * 34) + (fout * 0.359738368)
+-- .
+--   But how about calculating the decimal part in independent bytes of the dword and
+--   shifting it correctly? this is the best method I found and is based on the original
+--   dds_ad9833.jal file from Tijs van Roon@RedSam (Thanks Tijs!!!)
+-- .
+--   the first part is
+-- Example for 125 Mhz:
+-- Intergral part:
+--    const dword dds_const_int = 34
+-- Fractional part:
+--    = 0.359738368 * 2^24 (<< 24) = 6035408
+--    const dword dds_const_dec = 6_035_408
+-- .
+-- Do the maths... the error is less than 0.05 Hz with 125 Mhz clock at 50 Mhz...
+--
+--
+-- CONFIGURE XTAL HERE!! (If needed..)
+--------------------------------------------------------------------------------
+-- default data, if not defined is for a 125 Mhz clock
+-- const CLKIN = 125_000_000
+-- dds_const = 34.359738368
+
+-- testing if this things is defined
+if (!defined(dds_const_int)) then
+   -- int part not defined we assume 125 Mhz as per calculations explained earlier
+   var byte dds_const_int = 34      ; integer part
+end if
+
+if (!defined(dds_const_dec)) then
+   -- dec part not defined we assume 125 Mhz as per calculations explained earlier
+   var dword dds_const_dec = 6_035_408    ; decimal part << 24 (0.359738368 *2^24)
+end if
+
+if (!defined(dds_phase_shift)) then
+   -- is not defined, we assume 0 phase shift
+   var byte dds_phase_shift = 0b0000_0000
+end if
+
+-- STRUCTURE OF THE 40 BIT INFO TO SEND TO THE DDS CHP
+--------------------------------------------------------------------------------
+-- b0  - p0 LSB of the 32 bits phase dword
+-- b1..b30 - p1..p30
+-- b31 - p31 MSB of the 32 bits phase dword
+-- b32 - 0  ALWAYS 0!!!
+-- b33 - 0  ALWAYS 0!!!
+-- b34 - SLEEP (0 = normal; 1 = sleep)
+-- b35 (11,25o) Angular phase LSB
+-- b36 (22,5o)
+-- b37 (45o)
+-- b38 (90o)
+-- b39 (180o) Angular phase MSB
+
+-- CONTROL MASKS FOR SOME FUNCTIONS
+--------------------------------------------------------------------------------
+-- mask are for the upper 8 bits (byte), remember LSBF (b39...b32)
+const _dds_base    = 0b_0000_0000   -- clean byte to begin with
+const _dds_sleep   = 0b_0000_0100   -- Sleep on, DDS off
+
+-- PRIVATE --------------------------------------------------------------------
+PROCEDURE _dds_send_byte(byte in msg) IS
+    -- the clock is low at this point
+    -- first we put data out an then force the clock.
+    -- AD9850 reads on rising clock edge, see datasheet
+
+   var bit mbit at msg:0   -- LSB first
+   -- for each bit
+   for 8 loop
+      -- set bit on sdata
+      dds_sdata_pin = mbit
+
+      -- clock high
+      dds_sclk_pin = high
+
+      -- min duration of the data is 3.5ns
+      -- if any problem with very fast CLOCK (>10 Mhz etc...)
+      -- uncomment the next line
+      -- delay_1us()
+      msg = msg >> 1
+
+      -- clock high
+      dds_sclk_pin = low
+   end loop
+END PROCEDURE
+
+-- PUBLIC ----------------------------------------------------------------------
+-- instructs the dds chip to sleep: the dac will go off and the device freezes.
+-- This reduces power consumption, don't care of angular phase, freq, etc...
+PROCEDURE dds_sleep() IS
+   PRAGMA inline
+   _dds_send_byte(_dds_base)       -- freq first 8 bits LSB
+   _dds_send_byte(_dds_base)       -- freq second 8 bits
+   _dds_send_byte(_dds_base)       -- freq third 8 bits
+   _dds_send_byte(_dds_base)       -- freq 4th 8 bits MSB
+   _dds_send_byte(_dds_sleep)       -- sleep mask
+END PROCEDURE
+
+-- inicializar los pines del DDS y el DDS como tal
+PROCEDURE dds_init() IS
+   PRAGMA inline
+   -- set pic pins for DDS a stable state, and sleep.
+   dds_sdata_pin   = low
+   dds_sclk_pin    = low
+   dds_sfqud_pin   = low
+   -- send sleep to the DDS
+   dds_sleep()
+END PROCEDURE
+
+-- calculates the phase register dword from the input frequency in hz
+-- and sends the two control words containing the FREQ0 register to the device.
+PROCEDURE dds_frequency(dword in hz) IS
+   -- integer part
+   var dword data = hz * dds_const_int
+
+   -- decimal part: data = data + (hz * dds_const_dec) >> 24,
+   -- but direct calculation causes overflow (the >> 24 is too late)
+   -- this procedure gets an max error of 0,041 Hz @ 50 Mhz @ 125 Mhz XTAL
+   -- that is realy a tiny amount of error for my requirements
+   var dword part;
+   var byte n = 0
+   for 4 using n loop
+      part = hz & 0x00_00_00_FF
+      part = part * dds_const_dec
+      if n == 0 then
+         part = byte(part >> 24)
+      end if
+      if n == 1 then
+         part = word(part >> 16)
+      end if
+      if n == 2 then
+         part = dword(part >> 8)
+      end if
+      data = data + part
+      hz = hz >> 8
+   end loop
+
+   -- use this var to send the bytes to the DDS
+   var byte freqmsg -- only a byte at a time
+
+   -- fqud seq for serial update, see datasheet.
+   -- Must sent a bit for get the DDS ready for serial input
+   -- Then the 40 bit freq & options
+   -- And then another bit to finaly update the frequency
+   -- Warning! se notes on pins 3, 4 & 5 of the DDS for serial comms
+   dds_sfqud_pin = high
+   _usec_delay(1)
+   dds_sfqud_pin = low
+
+   -- send the freq
+   for 4 using n loop
+      -- get the last byte
+      freqmsg = byte(data & 0x00_00_00_FF) -- 8th lsb
+      _dds_send_byte(freqmsg)
+      -- shift data for the next iteration
+      data = data >> 8 -- next 8 bits
+   end loop
+
+   -- send the dds_phase_shift and the status
+   -- reseting the last 3 bits (power on + 2 bits to low as per datasheet)
+   freqmsg = dds_phase_shift & 0b1111_1000
+   _dds_send_byte(freqmsg)
+
+   -- send the fqup at the end...
+   dds_sfqud_pin = high
+   _usec_delay(1)
+   dds_sfqud_pin = low
+
+   -- done
+END PROCEDURE
+
+

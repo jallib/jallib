@@ -1,0 +1,343 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+
+<!--Converted with LaTeX2HTML 2002-2-1 (1.71)
+original version by:  Nikos Drakos, CBLU, University of Leeds
+* revised and updated by:  Marcus Hennecke, Ross Moore, Herb Swan
+* with significant contributions from:
+  Jens Lippmann, Marek Rouchal, Martin Wilck and others -->
+<HTML>
+<HEAD>
+<TITLE>5 Example 4: Using hardware interrupts.</TITLE>
+<META NAME="description" CONTENT="5 Example 4: Using hardware interrupts.">
+<META NAME="keywords" CONTENT="pjal_doc_a4">
+<META NAME="resource-type" CONTENT="document">
+<META NAME="distribution" CONTENT="global">
+
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+<META NAME="Generator" CONTENT="LaTeX2HTML v2002-2-1">
+<META HTTP-EQUIV="Content-Style-Type" CONTENT="text/css">
+
+<LINK REL="STYLESHEET" HREF="pjal_doc_a4.css">
+
+<LINK REL="previous" HREF="pjal_doc_a4_node28.html">
+<LINK REL="up" HREF="pjal_doc_a4_node24.html">
+<LINK REL="next" HREF="pjal_doc_a4_node30.html">
+</HEAD>
+
+<BODY >
+<!--Navigation Panel-->
+<A NAME="tex2html670"
+  HREF="pjal_doc_a4_node30.html">
+<IMG WIDTH="37" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="next" SRC="next.png"></A> 
+<A NAME="tex2html666"
+  HREF="pjal_doc_a4_node24.html">
+<IMG WIDTH="26" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="up" SRC="up.png"></A> 
+<A NAME="tex2html662"
+  HREF="pjal_doc_a4_node28.html">
+<IMG WIDTH="63" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="previous" SRC="prev.png"></A> 
+<A NAME="tex2html668"
+  HREF="pjal_doc_a4_node2.html">
+<IMG WIDTH="65" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="contents" SRC="contents.png"></A>  
+<BR>
+<B> Next:</B> <A NAME="tex2html671"
+  HREF="pjal_doc_a4_node30.html">5 Glossary</A>
+<B> Up:</B> <A NAME="tex2html667"
+  HREF="pjal_doc_a4_node24.html">4 Examples</A>
+<B> Previous:</B> <A NAME="tex2html663"
+  HREF="pjal_doc_a4_node28.html">4 Example 3: Adding</A>
+ &nbsp; <B>  <A NAME="tex2html669"
+  HREF="pjal_doc_a4_node2.html">Contents</A></B> 
+<BR>
+<BR>
+<!--End of Navigation Panel-->
+<!--Table of Child-Links-->
+<A NAME="CHILD_LINKS"><STRONG>Subsections</STRONG></A>
+
+<UL>
+<LI><UL>
+<LI><UL>
+<LI><A NAME="tex2html672"
+  HREF="pjal_doc_a4_node29.html#SECTION00750010000000000000">1 Description</A>
+</UL></UL></UL>
+<!--End of Table of Child-Links-->
+<HR>
+
+<H1><A NAME="SECTION00750000000000000000">
+5 Example 4: Using hardware interrupts.</A>
+</H1>
+
+<P>
+<A NAME="sec:Example-4:-Interrupts"></A>
+<P>
+<BLOCKQUOTE>
+<B>Note</B>: Line numbers are not included in program but used just
+for explanations !
+
+</BLOCKQUOTE>
+<PRE>     1  -- This must be in the first line
+     2  include c16f877
+     3  
+     4  
+     5  
+     6  
+     7  -- config fuses
+     8  pragma target protection off
+     9  pragma target debug off
+    10  pragma target cdp off
+    11  pragma target lvp off
+    12  pragma target bor off
+    13  pragma target powerup on
+    14  pragma target watchdog off
+    15  pragma target osc xt
+    16  
+    17  -- Fosc definition
+    18  pragma target clock 4_000_000
+    19  
+    20  -- PORTB and TRISB definitions
+    21  var volatile byte PORTB at {0x06,0x106}
+    22  var volatile byte TRISB at {0x86,0x186}
+    23  
+    24  -- B0 pin definition
+    25  var volatile bit pin_b0 at PORTB : 0
+    26  
+    27  -- B4 pin definition
+    28  var volatile bit pin_b4 at PORTB : 4
+    29  
+    30  
+    31  -- Button at pin_b0
+    32  var volatile bit Button is pin_b0
+    33  
+    34  -- Led at pin_b4
+    35  var volatile bit LED is pin_b4
+    36  
+    37  
+    38  -- 1 millisecond delay
+    39  -- TMR0_delay=(256-InitTMR0)*4*prescaler/Fosc
+    40  -- TMR0_delay=(256-6)*4*4/4_000_000= 1 msec.
+    41  --
+    42  -- InitTMR0 = 6
+    43  -- Prescaler = 1:4
+    44  -- Fosc = 4_000_000
+    45  --
+    46  -- Delay = 0.001 secs
+    47  
+    48  -- RB0INT falling edge, Init TMR0, free run mode,
+    49  -- int osc, prescaler 1:4
+    50  var volatile byte TMR0 at {0x01,0x101}
+    51  var volatile byte OPTION_REG at {0x81,0x181}
+    52  OPTION_REG = 0b_1000_0001
+    53  
+    54  -- Enable TMR0 interrupt, RB0INT interrupt, reset flags
+    55  var volatile byte INTCON at {0x0B,0x8B,0x10B,0x18B}
+    56  var volatile bit T0if at INTCON : 2
+    57  var volatile bit INTf at INTCON : 1
+    58  var volatile bit INTE at INTCON : 4
+    59  var volatile bit T0IE at INTCON : 5
+    60  INTCON = 0B_1011_0000
+    61  const byte InitTMR0 = 6
+    62  var volatile bit Enable_Button is INTE
+    63  var volatile bit Enable_Timmer is T0IE
+    64  
+    65  Enable_Timmer = off
+    66  Enable_Button = on
+    67  
+    68  -- declare vars
+    69  var word milisec_count
+    70  var bit Flag_tmr0 = false, Flag_rb0int = false
+    71  
+    72  -- TMR0 interrupt
+    73  procedure TMR0_ISR is
+    74  pragma interrupt
+    75     if T0if then
+    76        -- Reset TMR0IF
+    77        T0if = low
+    78        -- Reset InitTMR0
+    79        TMR0 = InitTMR0
+    80        -- add one count
+    81        milisec_count = milisec_count + 1
+    82        -- Check count 1_000
+    83        if milisec_count == 1_000 then
+    84           -- if 1000 msecs. =&gt; Activate flag
+    85           Flag_tmr0 = true
+    86           -- reset counter
+    87           milisec_count = 0 
+    88        end if
+    89     end if
+    90  end procedure
+    91  
+    92  -- RB0INT interrupt
+    93  procedure RB0INT_ISR is
+    94  pragma interrupt
+    95     if INTf then
+    96        -- Reset TMR0IF
+    97        INTf = low
+    98        -- Activate flag
+    99        Flag_rb0int = true
+   100        -- reset counter
+   101        milisec_count = 0
+   102        TMR0 = 6
+   103        -- Enable timmer
+   104        Enable_Timmer = on
+   105     end if
+   106  end procedure
+   107  
+   108  
+   109  -- Reset PORTB
+   110  PORTB = 0b_0000_0000
+   111  
+   112  -- PORTB =&gt; B0 input, B1..B7 output
+   113  TRISB = 0b_0000_0001
+   114  PORTB = 0b_0000_0001
+   115  
+   116  
+   117  -- main loop
+   118  forever loop
+   119     if Flag_rb0int then   ; Check if Button pressed
+   120        -- Disable Button interrupt
+   121        Enable_Button = low
+   122        -- Turn on LED
+   123        LED = on
+   124        -- Wait for 1 sec event
+   125        while ( ! Flag_tmr0 ) loop
+   126        end loop
+   127        -- Clear flag
+   128        Flag_tmr0 = low
+   129        -- Turn off LED
+   130        LED = off
+   131        -- Wait for 1 sec event
+   132        while ( ! Flag_tmr0 ) loop
+   133        end loop
+   134        -- Clear flag
+   135        Flag_tmr0 = low
+   136        -- Enable Button interrupt
+   137        Enable_Button = High
+   138        -- Disable timmer interrupt
+   139        Enable_Timmer = low
+   140        -- Clear flags
+   141        Flag_rb0int = low
+   142        Flag_tmr0 = low
+   143     end if
+   144  end loop
+</PRE>
+
+<P>
+
+<H4><A NAME="SECTION00750010000000000000">
+1 Description</A>
+</H4>
+
+<P>
+<DL>
+<DT><STRONG>1-35</STRONG></DT>
+<DD>See <I>Example 1</I> in section <A HREF="pjal_doc_a4_node26.html#sec:Example-1:-Scan">4.2</A>&nbsp;1sec:Example-1:-Scan.
+</DD>
+<DT><STRONG>38-46</STRONG></DT>
+<DD>See <I>Example 3</I> in section <A HREF="pjal_doc_a4_node28.html#sec:Example-3:-TMR0">4.4</A>&nbsp;1sec:Example-3:-TMR0.
+</DD>
+<DT><STRONG>49-52</STRONG></DT>
+<DD>Declare and initialize the SFRs related with TMR0. See your
+PIC chip datasheets, here TMR0 will work in <I>free running mode</I>.
+Set also RB0INT edge detection to <I>falling edge</I>.
+</DD>
+<DT><STRONG>54-60</STRONG></DT>
+<DD>Declare and configure TMR0 and RB0INT interrupts
+</DD>
+<DT><STRONG>62-66</STRONG></DT>
+<DD>Declare some alias, it's easier to remember.
+</DD>
+<DT><STRONG>68-70</STRONG></DT>
+<DD>Declare some variables to be used globally. <code>Flag_tmr0</code>
+and <code>Flag_rb0in</code> will be used by main program to know about
+interrupt events.
+</DD>
+<DT><STRONG>72-90</STRONG></DT>
+<DD>TMR0 interrupt procedure.
+</DD>
+<DT><STRONG>75</STRONG></DT>
+<DD>Check if is exactly TMR0 interrupt.
+</DD>
+<DT><STRONG>76-79</STRONG></DT>
+<DD>Reset flag and init TMR0 again.
+</DD>
+<DT><STRONG>80-81</STRONG></DT>
+<DD>Add one count to our <I>1000 milliseconds</I> count.
+</DD>
+<DT><STRONG>82-88</STRONG></DT>
+<DD>On reaching the 1000 milliseconds count, set <code>Flag_tmr0</code>
+and reset internal count.
+</DD>
+<DT><STRONG>92-106</STRONG></DT>
+<DD>RB0INT interrupt procedure.
+</DD>
+<DT><STRONG>95</STRONG></DT>
+<DD>Check if is exactly RB0INT interrupt.
+</DD>
+<DT><STRONG>96-97</STRONG></DT>
+<DD>Reset flag RB0INT.
+</DD>
+<DT><STRONG>98-105</STRONG></DT>
+<DD>Set <code>Flag_rb0in</code>, enable TMR0 (will be disabled anywhere)
+and reset TMR0 count. In this way TMR0 will start counting only when
+Button is pressed.
+</DD>
+<DT><STRONG>109-114</STRONG></DT>
+<DD>See <I>Example 1</I> in section <A HREF="pjal_doc_a4_node26.html#sec:Example-1:-Scan">4.2</A>&nbsp;sec:Example-1:-Scan.
+</DD>
+<DT><STRONG>117-144</STRONG></DT>
+<DD>Main code. In this example the LED will blink only once
+each time Button is pressed. 
+</DD>
+<DT><STRONG>119</STRONG></DT>
+<DD>Scan Button testing <code>Flag_rb0in</code> bit. The interrupt procedure
+will do all hard job.
+</DD>
+<DT><STRONG>120-123</STRONG></DT>
+<DD>Disable future Button interrupt events.
+</DD>
+<DT><STRONG>122-135</STRONG></DT>
+<DD>The <I>magic sequence</I> to blink a LED.
+</DD>
+<DT><STRONG>124-128</STRONG></DT>
+<DD>Turn on LED and wait for one second by testing <code>Flag_tmr0</code>.
+Clear flag for next use.
+</DD>
+<DT><STRONG>129-135</STRONG></DT>
+<DD>Turn off LED and wait for one second by testing <code>Flag_tmr0</code>.
+Clear flag for next use.
+</DD>
+<DT><STRONG>136-142</STRONG></DT>
+<DD>Enable Button interrupt events again, disable TMR0 interrupt
+events (work already done in this loop) and clear both flags. 
+</DD>
+</DL>
+
+<P>
+<HR>
+<!--Navigation Panel-->
+<A NAME="tex2html670"
+  HREF="pjal_doc_a4_node30.html">
+<IMG WIDTH="37" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="next" SRC="next.png"></A> 
+<A NAME="tex2html666"
+  HREF="pjal_doc_a4_node24.html">
+<IMG WIDTH="26" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="up" SRC="up.png"></A> 
+<A NAME="tex2html662"
+  HREF="pjal_doc_a4_node28.html">
+<IMG WIDTH="63" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="previous" SRC="prev.png"></A> 
+<A NAME="tex2html668"
+  HREF="pjal_doc_a4_node2.html">
+<IMG WIDTH="65" HEIGHT="24" ALIGN="BOTTOM" BORDER="0" ALT="contents" SRC="contents.png"></A>  
+<BR>
+<B> Next:</B> <A NAME="tex2html671"
+  HREF="pjal_doc_a4_node30.html">5 Glossary</A>
+<B> Up:</B> <A NAME="tex2html667"
+  HREF="pjal_doc_a4_node24.html">4 Examples</A>
+<B> Previous:</B> <A NAME="tex2html663"
+  HREF="pjal_doc_a4_node28.html">4 Example 3: Adding</A>
+ &nbsp; <B>  <A NAME="tex2html669"
+  HREF="pjal_doc_a4_node2.html">Contents</A></B> 
+<!--End of Navigation Panel-->
+<ADDRESS>
+<HR>pJAL Manual.<BR>(c) 2006 Javier Martinez, Vasile Surducan and Dave Lagzdin.
+</ADDRESS>
+</BODY>
+</HTML>

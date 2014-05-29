@@ -1,0 +1,155 @@
+;
+; some useful functions for floating point numbers
+; and some notes:
+;   addition/subtraction : 116 instructions
+;   multiplication       : 67 instructions + 42 (for integer multiply)
+;   division             : 62 instructions + 79 (for integer divide)
+;   float --> dword      : 39 instructions
+;   dword --> float      : 33 instructions
+;
+const float M_PI   = 3.1415927
+const float M_PI_2 = M_PI / 2
+
+;
+; a simple float to decimal conversion; assumes the integer
+; part of the float is  < 256
+;
+procedure float_to_ascii(float in n, BYTE in buf[]) is
+  var byte ix
+
+  ix = 0
+  if (n < 0) then
+    buf[0] = "-"
+    ix = ix + 1
+    n = -n
+  end if
+  buf[ix] = BYTE(n)
+  n = n - buf[ix]
+  ix = ix + 1
+  buf[ix] = "."
+  ix = ix + 1
+  while (ix < COUNT(buf)) loop
+    n = n * 10
+    buf[ix] = BYTE(n)
+    n = n - buf[ix]
+    ix = ix + 1
+  end loop
+end procedure
+
+
+;
+; convert degrees (0..360) to radians (0..M_PI)
+;
+function degrees_to_radians(float in a) return float is
+pragma inline
+  return a * M_PI / 360
+end function
+
+;
+; convert radians (0..M_PI) to degrees (0..360)
+;
+function radians_to_degrees(float in a) return float is
+pragma inline
+  return a * 360 / M_PI
+end function
+
+;
+; return the sin of angle a (in radians). I know many eschew the taylor
+; series but it's fine if the angle is normalized.
+;
+function sin(float in a) return float is
+  ;
+  ; first normalize a
+  ;
+  var float f, n, x, ct
+  while (a >= M_PI) loop
+    a = a - M_PI
+  end loop
+  while (a < 0) loop
+    a = a + M_PI
+  end loop
+  ;
+  ; the first six in the taylor series should be sufficient when a 
+  ; is normalized
+  ; taylor series for sign:
+  ;    x = a/1! - a^3/3! + a^5/5! - a^7/7! + a^9/9! - a^11/11!
+  ; below, n tracks a^n, f tracks ct!
+  ;
+  n  = a
+  x  = a
+  f  = 1
+  ct = 1
+  for 6 loop
+    for 2 loop
+      ct = ct + 1
+      f  = f * ct
+      n  = n * a
+    end loop
+    n  = -n
+    x  = x + n / f
+  end loop
+  return x
+end function
+
+;
+; cos(a) = sin(a + M_PI/2)
+;
+function cos(float in a) return float is
+  return sin(a + M_PI_2)
+end function
+
+;
+; tan(a) = sin(a) / cos(a)
+; This might seem expensive, but the Taylor series for tangent
+; converges *very* slowly.
+;
+function tan(float in a) return float is
+  return sin(a) / cos(a)
+end function
+
+;
+; square root -- newton's method. This converges quickly,
+; but the 10 is completely arbitrary. Another way to do
+; this is loop until the last two computer values are 
+; sufficiently close, but that requires quite a bit more
+; space.
+;
+function sqrt(float in n) return float is
+  var float x
+
+  x = n / 2
+  for 10 loop
+    x = (x + n / x) / 2
+  end loop
+  return x
+end function
+
+;
+; e^x: 1 + x + x^2/2! + x^3/3! + x^4/4! ...
+;
+function exp(float in n) return float is
+  ;
+  ; x  accumulates the result
+  ; ct is used for the factorial
+  ; f  is the current factorial
+  ; nn is n^ct
+  ;
+  var float x, ct, f
+
+  x  = 1 + n
+  ct = 1
+  f  = 1
+  nn = n
+  for 10 loop
+    ct = ct + 1
+    nn = nn * n
+    f  = f  * ct
+
+    x = x + nn
+  end loop
+  return x
+end function
+
+; ln(1+x): x - x^2/2 + x^3/3 - x^4/4 ... (-1 < x <= 1)
+; pow(x,y) : 1 + (x ln a) + (x ln a)^2/2! + (x ln a)^3/3! ...
+; 

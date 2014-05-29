@@ -1,0 +1,87 @@
+-- Title: GLCD Touch Controller & A/D Library for ad7843
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library for GLCD touch controller & A/D device ad7843.
+--              used with GLCD's such as stm032qvt-003
+--
+--
+-- Sources:
+-- http://www.divshare.com/download/11463401-4a9
+--
+
+-- command byte
+var byte _touch_settings
+var bit touch_start_bit at _touch_settings : 7  -- register write start bit
+var bit*3 touch_register at _touch_settings : 4 -- register select bits
+var bit touch_mode at _touch_settings : 3       -- resolution mode. 0 = 12bit, 1 = 8bit
+var bit touch_ser_dfr at _touch_settings : 2    -- A/D reference mode
+var bit touch_pd1 at _touch_settings : 1        -- power management bit
+var bit touch_pd0 at _touch_settings : 0        -- interrupt enable bit
+
+-- registers
+const bit*3 TOUCH_REG_X = 0b101   -- read x
+const bit*3 TOUCH_REG_Y = 0b001   -- read y
+const bit*3 TOUCH_REG_IN3 = 0b010 -- read analog input IN3
+const bit*3 TOUCH_REG_IN4 = 0b110 -- read analog input IN4
+
+-- modes
+const TOUCH_12_BIT = 0
+const TOUCH_8_BIT = 1
+
+-- A/D reference modes
+const TOUCH_AD_DIFFERENTIAL = 0
+const TOUCH_AD_SINGLE_ENDED = 1
+
+-- power setting constants
+const TOUCH_LOW_POWER = 0
+const TOUCH_HIGH_POWER = 1
+
+-- interrupt setting constants
+const TOUCH_INTERRUPT_ENABLE = 0
+const TOUCH_INTERRUPT_DISABLED = 1
+
+--------------------------------------------------------------------------------
+-- Initiate touch controller
+--------------------------------------------------------------------------------
+procedure touch_init() is
+   -- set default settings, can be changed later by user.
+   touch_start_bit = 1
+   touch_mode = TOUCH_8_BIT
+   touch_ser_dfr = TOUCH_AD_DIFFERENTIAL
+   touch_pd1 = TOUCH_HIGH_POWER
+   touch_pd0 = TOUCH_INTERRUPT_ENABLE
+   
+   -- send some clock pulses
+   spi_master = 0
+   spi_master = 0
+end procedure
+
+--------------------------------------------------------------------------------
+-- Read x,y coordinates of touch screen with 8 bit resolution. Should be polled.
+-- If x near equal to 0, and y near equal to 127, then there is no activity.
+--------------------------------------------------------------------------------
+procedure touch_read_xy_8_bit(byte in out x, byte in out y) is
+   -- Get X
+   touch_cs = 0 -- enable the touch device
+   touch_register = TOUCH_REG_X     -- select register to read from
+   spi_master = _touch_settings  -- send command/settings
+   x = spi_master                -- get x position
+   spi_master = 0                -- send clock pulses
+   touch_cs = 1                     -- disable the touch device
+
+   asm nop
+   
+   -- Get Y
+   touch_cs = 0 -- enable the touch device
+   touch_register = TOUCH_REG_Y     -- select register to read from
+   spi_master = _touch_settings  -- send command/settings
+   y = spi_master                -- get y position
+   spi_master = 0                -- send clock pulses (required by ADC)
+   touch_cs = 1                     -- disable the touch device
+end procedure

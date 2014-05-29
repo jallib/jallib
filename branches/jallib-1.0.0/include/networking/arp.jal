@@ -1,0 +1,336 @@
+-- Title: ARP - Address Resolution Protocol BETA
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4n
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: sends, receives and replys to ARP network packets
+--
+-- Sources:
+-- http://www.faqs.org/rfcs/rfc826.html
+-- http://www.visualland.net/view.php?cid=857&protocol=ARP&title=1.%20Basic-update
+--
+-- Notes:
+--
+
+include delay
+
+var byte arp_reply_received
+var bit arp_packet_from_destination = FALSE
+
+const byte ARP_HARDWARE_TYPE = 0
+const byte ARP_PROTOCOL_TYPE = 2
+const byte ARP_HARDWARE_LENGTH = 4
+const byte ARP_PROTOCOL_LENGTH = 5
+const byte ARP_OPERATION = 6
+
+const byte ARP_REQUEST = 1
+const byte ARP_REPLY   = 2
+
+if !defined(network_local_mac) then
+   _warn "Does your device have a MAC address?"
+   _error "If no mac, you should not include this file"
+end if
+
+-- sender mac address
+;const byte ARP_SENDER_HARDWARE_ADDRESS = 8
+const byte ARP_SENDER_HARDWARE_ADDRESS_0 = 8
+const byte ARP_SENDER_HARDWARE_ADDRESS_1 = 9
+const byte ARP_SENDER_HARDWARE_ADDRESS_2 = 10
+const byte ARP_SENDER_HARDWARE_ADDRESS_3 = 11
+const byte ARP_SENDER_HARDWARE_ADDRESS_4 = 12
+const byte ARP_SENDER_HARDWARE_ADDRESS_5 = 13
+
+-- sender ip address
+;const byte ARP_SENDER_PROTOCOL_ADDRESS = 14
+const byte ARP_SENDER_PROTOCOL_ADDRESS_0 = 14
+const byte ARP_SENDER_PROTOCOL_ADDRESS_1 = 15
+const byte ARP_SENDER_PROTOCOL_ADDRESS_2 = 16
+const byte ARP_SENDER_PROTOCOL_ADDRESS_3 = 17
+
+
+-- target mac address
+;const byte ARP_TARGET_HARDWARE_ADDRESS = 18
+const byte ARP_TARGET_HARDWARE_ADDRESS_0 = 18
+const byte ARP_TARGET_HARDWARE_ADDRESS_1 = 19
+const byte ARP_TARGET_HARDWARE_ADDRESS_2 = 20
+const byte ARP_TARGET_HARDWARE_ADDRESS_3 = 21
+const byte ARP_TARGET_HARDWARE_ADDRESS_4 = 22
+const byte ARP_TARGET_HARDWARE_ADDRESS_5 = 23
+
+-- target ip address
+;const byte ARP_TARGET_PROTOCOL_ADDRESS = 24
+const byte ARP_TARGET_PROTOCOL_ADDRESS_0 = 24
+const byte ARP_TARGET_PROTOCOL_ADDRESS_1 = 25
+const byte ARP_TARGET_PROTOCOL_ADDRESS_2 = 26
+const byte ARP_TARGET_PROTOCOL_ADDRESS_3 = 27
+
+--------------------------------------------------------------------------------
+-- send arp request
+--------------------------------------------------------------------------------
+procedure arp_send_request() is
+   -- print a debug message
+   var byte sending_ping[] = "---------- sending arp request... ----------"
+   debug_string(DEBUG_2,sending_ping)
+   debug_crlf(DEBUG_2)
+   
+   if NETWORK_USE_MAC == TRUE then
+      ethernet_header_create(MAC_ARP,ETHERNET_BROADCAST_MAC)
+   end if
+   
+   const ARP_DATA_LENGTH = 28
+
+   network_word[ARP_HARDWARE_TYPE] = 1 -- ethernet
+   network_word[ARP_PROTOCOL_TYPE] = 0x0800 -- ARP protocol type is IP
+   network_byte[ARP_HARDWARE_LENGTH] = 6 -- mac address length is 6
+   network_byte[ARP_PROTOCOL_LENGTH] = 4 -- ip address length is 4
+   network_word[ARP_OPERATION] = 1 -- request
+
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_5] = network_local_mac[5]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_4] = network_local_mac[4]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_3] = network_local_mac[3]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_2] = network_local_mac[2]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_1] = network_local_mac[1]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_0] = network_local_mac[0]
+
+   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_3] = network_local_ip[3]
+   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_2] = network_local_ip[2]
+   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_1] = network_local_ip[1]
+   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_0] = network_local_ip[0]
+
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_5] = 0
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_4] = 0
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_3] = 0
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_2] = 0
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_1] = 0
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_0] = 0
+
+   network_byte[ARP_TARGET_PROTOCOL_ADDRESS_3] = network_remote_ip[3]
+   network_byte[ARP_TARGET_PROTOCOL_ADDRESS_2] = network_remote_ip[2]
+   network_byte[ARP_TARGET_PROTOCOL_ADDRESS_1] = network_remote_ip[1]
+   network_byte[ARP_TARGET_PROTOCOL_ADDRESS_0] = network_remote_ip[0]
+
+   network_send_packet(network_var_offset+ARP_DATA_LENGTH)
+end procedure
+
+--------------------------------------------------------------------------------
+-- send arp reply
+--------------------------------------------------------------------------------
+procedure arp_send_reply() is
+
+   -- maybe we should also check that the packet was for our IP?
+
+   debug_crlf(DEBUG_2)
+   const byte icmp_str1[] = "---------- sending arp reply! ----------"
+   debug_string(DEBUG_2, icmp_str1)
+   debug_crlf(DEBUG_2)
+      
+;   if NETWORK_LINK_LAYER_ETHERNET == TRUE then
+;      ethernet_header_create(ARP,
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_0],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_1],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_2],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_3],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_4],
+;      network_byte[ARP_SENDER_HARDWARE_ADDRESS_5]
+;      )
+;   end if
+
+   if NETWORK_USE_MAC == TRUE then
+      ethernet_header_create(MAC_ARP,ETHERNET_BROADCAST_MAC)
+   end if
+
+   const ARP_DATA_LENGTH = 28
+
+   network_word[ARP_HARDWARE_TYPE] = 1 -- ethernet
+   network_word[ARP_PROTOCOL_TYPE] = 0x0800 -- IP protocol type
+   network_byte[ARP_HARDWARE_LENGTH] = 6 -- mac address length is 6
+   network_byte[ARP_PROTOCOL_LENGTH] = 4 -- ip address length is 4
+   network_word[ARP_OPERATION] = 2 -- reply
+
+;   ;switch sender/reciever address
+;   network_byte[ARP_SENDER_HARDWARE_ADDRESS_5] = network_byte[ARP_TARGET_HARDWARE_ADDRESS_5]
+;   network_byte[ARP_SENDER_HARDWARE_ADDRESS_4] = network_byte[ARP_TARGET_HARDWARE_ADDRESS_4]
+;   network_byte[ARP_SENDER_HARDWARE_ADDRESS_3] = network_byte[ARP_TARGET_HARDWARE_ADDRESS_3]
+;   network_byte[ARP_SENDER_HARDWARE_ADDRESS_2] = network_byte[ARP_TARGET_HARDWARE_ADDRESS_2]
+;   network_byte[ARP_SENDER_HARDWARE_ADDRESS_1] = network_byte[ARP_TARGET_HARDWARE_ADDRESS_1]
+;   network_byte[ARP_SENDER_HARDWARE_ADDRESS_0] = network_byte[ARP_TARGET_HARDWARE_ADDRESS_0]
+;
+;   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_3] = network_byte[ARP_TARGET_PROTOCOL_ADDRESS_3]
+;   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_2] = network_byte[ARP_TARGET_PROTOCOL_ADDRESS_2]
+;   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_1] = network_byte[ARP_TARGET_PROTOCOL_ADDRESS_1]
+;   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_0] = network_byte[ARP_TARGET_PROTOCOL_ADDRESS_0]
+
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_5] = network_local_mac[5]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_4] = network_local_mac[4]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_3] = network_local_mac[3]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_2] = network_local_mac[2]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_1] = network_local_mac[1]
+   network_byte[ARP_SENDER_HARDWARE_ADDRESS_0] = network_local_mac[0]
+
+   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_3] = network_local_ip[3]
+   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_2] = network_local_ip[2]
+   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_1] = network_local_ip[1]
+   network_byte[ARP_SENDER_PROTOCOL_ADDRESS_0] = network_local_ip[0]
+
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_5] = network_remote_mac[5]
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_4] = network_remote_mac[4]
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_3] = network_remote_mac[3]
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_2] = network_remote_mac[2]
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_1] = network_remote_mac[1]
+   network_byte[ARP_TARGET_HARDWARE_ADDRESS_0] = network_remote_mac[0]
+
+   network_byte[ARP_TARGET_PROTOCOL_ADDRESS_3] = network_remote_ip[3]
+   network_byte[ARP_TARGET_PROTOCOL_ADDRESS_2] = network_remote_ip[2]
+   network_byte[ARP_TARGET_PROTOCOL_ADDRESS_1] = network_remote_ip[1]
+   network_byte[ARP_TARGET_PROTOCOL_ADDRESS_0] = network_remote_ip[0]
+
+   network_send_packet(network_var_offset+ARP_DATA_LENGTH)
+end procedure
+
+--------------------------------------------------------------------------------
+-- send arp reply
+--------------------------------------------------------------------------------
+procedure arp_read_reply() is
+
+   debug_crlf(DEBUG_2)
+   const byte str1[] = "---------- arp reply was for us ----------"
+   debug_string(DEBUG_3, str1)
+   debug_crlf(DEBUG_3)
+
+   -- set network array offset
+   ;network_var_offset = ETHERNET_HEADER_SIZE
+
+   arp_reply_received = TRUE
+      
+   -- get the mac address
+   network_remote_mac[0] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_0]
+   network_remote_mac[1] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_1]
+   network_remote_mac[2] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_2]
+   network_remote_mac[3] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_3]
+   network_remote_mac[4] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_4]
+   network_remote_mac[5] = network_byte[ARP_SENDER_HARDWARE_ADDRESS_5]
+   
+;   print_crlf(serial_data)
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[0])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[1])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[2])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[3])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[4])
+;   serial_data = "-"
+;   print_byte_hex(serial_data,network_remote_mac[5])
+;   serial_data = "-"
+
+;   -- DO I NEED TO CHECK SENDER IP ADDRESS??
+;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_0])
+;   serial_data = "."
+;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_1])
+;   serial_data = "."
+;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_2])
+;   serial_data = "."
+;   print_byte_dec(serial_data,network_byte[ARP_SENDER_PROTOCOL_ADDRESS_3])
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- read a received arp packet
+--------------------------------------------------------------------------------
+procedure arp_read_packet() is
+   network_packet_size = network_packet_size - network_var_offset
+
+   debug_crlf(DEBUG_2)
+   const byte str1[] = "---------- arp packet received ----------"
+   debug_string(DEBUG_3, str1)
+   debug_crlf(DEBUG_3)
+
+   if network_word[ARP_OPERATION] == ARP_REQUEST then -- if arp request
+      debug_crlf(DEBUG_2)
+      const byte icmp_str1[] = "---------- arp request received! ----------"
+      debug_string(DEBUG_2, icmp_str1)
+      debug_crlf(DEBUG_2)
+
+      arp_send_reply()
+      
+      -- do a callback
+      if defined(arp_request_callback) then
+         arp_request_callback()
+      end if
+   elsif network_word[ARP_OPERATION] == ARP_REPLY then
+      debug_crlf(DEBUG_2)
+      const byte icmp_str1[] = "---------- arp reply received! ----------"
+      debug_string(DEBUG_2, icmp_str1)
+      debug_crlf(DEBUG_2)
+      
+      arp_read_reply()
+
+      -- do a callback
+      if defined(arp_reply_callback) then
+         arp_reply_callback()
+      end if
+      
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Get remote MAC address. Specify approx timeout in ms.
+--------------------------------------------------------------------------------
+procedure arp_get_mac(byte in requests, word in timeout) is
+   var word time = 0
+   var byte temp_ip_0,temp_ip_1,temp_ip_2,temp_ip_3
+   arp_reply_received = FALSE
+
+   -- if internal network ip, we must get PC's mac. If external (internet) ip
+   -- we must get router's mac.
+   if !(network_remote_ip[0] == network_gateway_ip[0] &
+      network_remote_ip[1] == network_gateway_ip[1] &
+      network_remote_ip[2] == network_gateway_ip[2]) then
+      -- if did not match internal network ip's, such as 192.168.0.x
+
+      -- store original ip
+      temp_ip_0 = network_gateway_ip[0]
+      temp_ip_1 = network_gateway_ip[1]
+      temp_ip_2 = network_gateway_ip[2]
+      temp_ip_3 = network_gateway_ip[3]
+      
+      -- set remote ip to the router's ip address
+      network_set_remote_ip(network_gateway_ip[0],network_gateway_ip[1],network_gateway_ip[2],network_gateway_ip[3])
+   end if
+      
+   -- send arp requests
+   for requests loop
+      arp_send_request()
+   end loop
+   
+   -- wait for a reply
+   forever  loop
+      delay_1ms(1)
+      time = time + 1
+
+      -- poll to see if there are network packets available
+      network_poll()
+      
+      -- timeout
+      if (time > timeout) | (arp_reply_received == TRUE) then
+         exit loop
+      end if
+      
+   end loop
+   
+   -- restore original ip, if previously changed.
+   if !(network_remote_ip[0] == network_gateway_ip[0] &
+      network_remote_ip[1] == network_gateway_ip[1] &
+      network_remote_ip[2] == network_gateway_ip[2]) then
+
+      network_set_remote_ip(temp_ip_0,temp_ip_1,temp_ip_2,temp_ip_3)
+   end if
+end procedure
+
+
