@@ -1,0 +1,251 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html>
+    <head>
+    		<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" >
+		<title>dds_ad9850 - jallib API doc</title>
+    </head>
+    <body>
+		
+		        <div id="page">
+        
+            <div id="pagecontent">
+
+			    
+	<a href="#toc" name="dds_ad9850">
+    <h1>dds_ad9850</h1>
+	</a>
+
+    <div>
+		<font size="+1"><i>Analog Devices AD9850 DDS Chip library</i></font>
+	</div>
+
+	<br/>
+
+    <div class="narrow">
+        
+	<table>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Author</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			Pavel Milanes Costa &copy; 2013 pavelmc@gmail.com, pavel@conas.cu, co7wt@frcuba.co.cu
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Adapted-by</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			
+		</td>
+	</tr>
+	<tr>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			<b>Compiler</b>
+		</td>
+		<td style="border: 1px solid #aaa; padding: 5px;">
+			>=2.4m
+		</td>
+	</tr>
+	</table>
+
+	<br/>
+	
+	<b>Description</b>
+	<p>
+		<pre>Analog Devices AD9850 Direct-Digital-Synthesis (DDS) chip library.
+             Based on dds_ad9833.jal of Tijs van Roon@RedSam
+.
+  The library assumes that the AD9850 chip is clocked 125Mhz (CLKIN).
+  If not, read the below section to know how to change the constants
+  to your needs.
+.
+Setup:
+Assure that you are using a 125 Mhz oscillator on the dds chip.
+Otherwise change the constant. See below on how to do this.
+.
+Using the library on your code:
+.
+Make shure you have included delay library:
+ > include delay
+.
+First define to which pins the data, clock and fsync pins are connected and
+make those pins outputs:
+ > pin_A4_direction        = output
+ > pin_B7_direction        = output
+ > pin_B5_direction        = output
+ > alias    dds_sfqud_pin  is pin_A4
+ > alias    dds_sclk_pin   is pin_B7
+ > alias    dds_sdata_pin  is pin_B5
+.
+Only if you use other OSCILLATOR than 125.000000 Mhz then you must define this
+two vars... se below about how to calculate it. If not I assume 125.000 Mhz.
+ > dds_const_int = 34
+ > dds_const_dec = 6_035_408
+.
+Define the phase shift if it's needed, otherwise I assume 0
+if you need it's a byte, from MSB to LSB the upper 5 bits are as follows
+b7 (180)
+b6 (90)
+b5 (45)
+b4 (22.5)
+b3 (11.25)
+the rest of the bits are ignored
+.
+Example I want to make a 281.25 degrees of phase LAG in this oscillator
+ 281.25 is 180 + 90 + 11.25, then
+ > dds_phase_shift = 0b1100_1000
+.
+You can define the phase lag at any moment but it will be effective only up on
+the use of dds_frequency()
+.
+Then, include the dds library and initialize it
+ > include dds_ad9850
+ > dds_init()
+.
+And then output a frequence with:
+ > dds_frequency(<freq in hz>)
+.
+Or return to sleep mode:
+ > dds_sleep();
+.
+TODO:
+ * Automatically calculate the constants from a dds_mclk value (NOT LIKELY)
+ * The frequency register calculation might be done more efficient and maybe
+   more correct.
+.
+===========================================================================
+Other MASTERCLOCK, Changing the constants:
+  The DDS chip has 32-bit frequence word, in the datasheet it's called phase
+  The final freq is calculated like this:
+.
+         fout = (phase * CLKIN) / 2^32    (fout & CLKIN in hertz)
+.
+  And we can translate that into:
+.
+         phase = (fout * 2^32)/CLKIN
+.
+  We can write it in another way
+.
+         phase = fout * (2^32/CLKIN)
+.
+  As 2^32 and CLKIN are both fixed values we can compute (2^32/CLKIN) as a constant
+  for "ease" the calculation...
+.
+         const = (2^32/CLKIN) = (2^32 / 125_000_000)
+         const = 34.359738368
+         phase = fout * 34.359738368
+.
+  If you use another CLKIN then the phase must be calculated...
+  Since de floating point operation causes overflow in many ways and consume much of
+  our preciated ram, we must make a procedure to calculate it, how? se below
+.
+  Splitting the calculation, in simple math and for the above example
+  This two equations are the same:
+.
+         phase = fout * 34.359738368
+         phase = (fout * 34) + (fout * 0.359738368)
+.
+  But how about calculating the decimal part in independent bytes of the dword and
+  shifting it correctly? this is the best method I found and is based on the original
+  dds_ad9833.jal file from Tijs van Roon@RedSam (Thanks Tijs!!!)
+.
+  the first part is
+Example for 125 Mhz:
+Intergral part:
+   const dword dds_const_int = 34
+Fractional part:
+   = 0.359738368 * 2^24 (<< 24) = 6035408
+   const dword dds_const_dec = 6_035_408
+.
+Do the maths... the error is less than 0.05 Hz with 125 Mhz clock at 50 Mhz...
+</pre>
+
+	</p>
+	<br/>
+
+
+	
+	<b>Dependencies</b>
+	<p>
+		<i>No dependency found</i>
+	</p>
+	<br/>
+
+
+			<br/>
+				<h2><a name="summary">Summary</a></h2>
+
+		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a href="#ce5e300e8ffa276decb8979b3524439f">const _dds_sleep   = 0b_0000_0100   </a></code></b>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a href="#f48503da80b6f630d1d06a11bad1d6e1">const _dds_base    = 0b_0000_0000   </a></code></b>
+		</li>
+	</ul>
+
+
+		<h3><a name="Procedures">Procedures</a></h3>
+		<ul>
+	</ul>
+
+
+		<h3><a name="Functions">Functions</a></h3>
+		<ul>
+	</ul>
+
+
+
+			<br/>
+				<h2><a name="api">API details</a></h2>
+
+		<h3><a name="Global variables/contants">Global variables/contants</a></h3>
+		<ul>
+		<li>
+				<b><code name="code" class="python"><a name="ce5e300e8ffa276decb8979b3524439f" href="#summary">const _dds_sleep   = 0b_0000_0100   </a></code></b>
+				<p>	<pre>Sleep on, DDS off</pre>
+</p>
+		</li>
+		<li>
+				<b><code name="code" class="python"><a name="f48503da80b6f630d1d06a11bad1d6e1" href="#summary">const _dds_base    = 0b_0000_0000   </a></code></b>
+				<p>	<pre>CONTROL MASKS FOR SOME FUNCTIONS
+
+mask are for the upper 8 bits (byte), remember LSBF (b39...b32)
+</pre>
+</p>
+		</li>
+	</ul>
+
+
+		<h3><a name="Procedures">Procedures</a></h3>
+		<ul>
+	</ul>
+
+
+		<h3><a name="Functions">Functions</a></h3>
+		<ul>
+	</ul>
+
+
+
+			<br/>
+				<h2><a name="related_samples">Related samples</a></h2>
+	Here are the list of samples which use this library:<br/><br/>
+	<table border=1>
+			<tr>
+			<td><b>16f877a</b></td><td><a href="http://code.google.com/p/jallib/source/browse/trunk/sample/16f877a_dds9850.jal" target="_blank">16f877a_dds9850.jal</a></td>
+			</tr>
+	</table>
+
+			<br/>
+
+            </div>
+        </div>
+
+
+	</body>
+</html>
+

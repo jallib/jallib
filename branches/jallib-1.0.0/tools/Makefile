@@ -11,11 +11,11 @@
 all : clean test
 
 WEEKLYBUILDCODENAME=bee
-VERSION=dev
+VERSION=1.0.0
 SAMPLIR_DIR=../sample
 TEST_DIR=../test
 INCLUDE_DIR=../include
-JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2
+JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2osx
 JALV2_VERSION := `${JALV2_BIN} 2> /dev/null | sed "s\#.*jal \(.*\) (.*\#\1\#"`
 
 
@@ -44,7 +44,7 @@ test :
 compile:
 	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
 	do \
-		../compiler/jalv2 -no-variable-reuse -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
+		../compiler/jalv2osx -no-variable-reuse -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
 	done 
 
 jsg:
@@ -94,11 +94,11 @@ export:
 	echo ${VERSION} > distrib/jallib-all_devices-${VERSION}/VERSION
 	# get clean source from repos
 	# (svn export gets the sources, but without any .svn dir (no svn metadata)
-	svn export http://jallib.googlecode.com/svn/trunk distrib/jallib-export
+	svn export http://jallib.googlecode.com/svn/branches/jallib-${VERSION} distrib/jallib-export
 	# license is common for both svn and release
-	svn export -N http://jallib.googlecode.com/svn/trunk distrib/jallib-extra
+	svn export -N http://jallib.googlecode.com/svn/branches/jallib-${VERSION} distrib/jallib-extra
 	# get readme for the release (force because target dir already exists)
-	svn export --force http://jallib.googlecode.com/svn/trunk/tools distrib/jallib-extra
+	svn export --force http://jallib.googlecode.com/svn/branches/jallib-${VERSION}/tools distrib/jallib-extra
 
 prepare:
 	# flatten library files
@@ -212,9 +212,9 @@ archive:
 	cd distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && zip -r jallib-pack-${JALV2_VERSION}-${VERSION}.zip . && mv jallib-pack-${JALV2_VERSION}-${VERSION}.zip ..
 
 check:
-	sh check_package.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2
-	sh check_package.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2
-	sh check_package.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2
+	sh check_package.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2osx
+	sh check_package.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2osx
+	sh check_package.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2osx
 
 bee-archive:
 	# simplify folder name so I can use `` while generating archive names (else some `` are nested)
@@ -230,7 +230,7 @@ bee-upload:
 	python2.6 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib, version `cat distrib/jallib-pack-${VERSION}/VERSION`" -p jallib -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.zip
 
 bee-check:
-	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2
+	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2osx
 
 release: export prepare jallib-pack archive check
 
