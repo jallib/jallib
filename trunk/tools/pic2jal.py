@@ -1,4 +1,4 @@
-#!/usr/bin/python/pic2jal
+#!/usr/bin/python
 # ----------------------------------------------------------------------
 # Title: pic2Jal.py  - Create JalV2 device files for flash PICs
 #
@@ -38,8 +38,8 @@
 
 import os, sys
 import re
-import fnmatch
 import time
+import fnmatch
 import json
 from string import maketrans
 from xml.dom.minidom import parse, Node
@@ -47,7 +47,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters -----------------------------
 
-scriptversion   = "0.0.5"
+scriptversion   = "0.0.7"
 scriptauthor    = "Rob Hamerling"
 compilerversion = "2.4q2"
 mplabxversion   = "210"
@@ -168,7 +168,7 @@ def list_devicefile_header(fp, picname):
    fp.write("-- Title: JalV2 device include file for " + picname + "\n")
    list_copyright(fp)
    fp.write("-- Description:\n")
-   fp.write("--    Device include file for PIC " + picname + ", containing:\n")
+   fp.write("--    Device include file for PIC" + picname + ", containing:\n")
    fp.write("--    - Declaration of ports and pins of the chip.\n")
    if cfgvar["haslat"] == True:
       fp.write("--    - Procedures to force the use of the LATx register\n")
@@ -215,7 +215,7 @@ def list_devicefile_header(fp, picname):
    fp.write("--\n")
    fp.write("include chipdef_jallib                  -- common constants\n")
    fp.write("--\n")
-   fp.write("pragma  target  cpu   PIC_" + cfgvar["core"] + "            -- (banks=%d)\n" % cfgvar["numbanks"])
+   fp.write("pragma  target  cpu    PIC_" + cfgvar["core"] + "            -- (banks=%d)\n" % cfgvar["numbanks"])
    fp.write("pragma  target  chip   " + picname.upper() + "\n")
    fp.write("pragma  target  bank   0x%04X\n" % cfgvar["banksize"])
    if cfgvar["pagesize"] > 0:
@@ -242,19 +242,27 @@ def list_devicefile_header(fp, picname):
    global sharedmem
    sharedmem = []                                           # clear
    if "SHARED" in picdata:
-      fp.write(picdata["SHARED"] + "\n")
       print "   pragma shared overruled by specification in devicespecific"
+      fp.write(picdata["SHARED"] + "\n")
       x = picdata["SHARED"].split("-", 1)
       sharedmem.append(eval(x[0]))
       sharedmem.append(eval(x[1]))
    else:
-      if cfgvar["core"] == '16':                            # add high range of access bank
+      if (cfgvar["core"] == '16'):                          # add high range of access bank
          fp.write("0x%X-0x%X,0xF%X-0xFFF\n" %  \
              (cfgvar["sharedrange"][0],        \
              (cfgvar["sharedrange"][-1] - 1),  \
               cfgvar["accessbanksplitoffset"]) )
-      elif cfgvar["core"] == "14H":                         # add core register memory
+      elif (cfgvar["core"] == "14H"):                       # add core register memory
          fp.write("0x00-0x0B,0x%X-0x%X\n" %    \
+             (cfgvar["sharedrange"][0],        \
+             (cfgvar["sharedrange"][-1] - 1)))
+      elif (picname == "12f510"):                           # special
+         fp.write("0x00-0x09,0x%X-0x%X\n" %    \
+             (cfgvar["sharedrange"][0],        \
+             (cfgvar["sharedrange"][-1] - 1)))
+      elif (picname == "16f506"):                           # special
+         fp.write("0x00-0x0C,0x%X-0x%X\n" %    \
              (cfgvar["sharedrange"][0],        \
              (cfgvar["sharedrange"][-1] - 1)))
       else:
@@ -358,7 +366,7 @@ def list_osccal(fp):
 
 
 # ---------------------------------------------------------
-# Ttiel:   Generate declarations of special function registers, pins, etc.
+# Title:   Generate declarations of special function registers, pins, etc.
 # Input:   - output file
 #          - root of .pic (xml parsed structure)
 # Output:  part of device files
@@ -385,7 +393,7 @@ def list_all_sfr(fp, root):
 #          - current SFR addr
 # Output:  part of device file
 # Returns: (nothing)
-# Notes:
+# Notes:   MuxedSFRDef can exist within JoinedSFRDef
 # ---------------------------------------------------------
 def list_sfrdata_child(fp, child, sfraddr):
    if (child.nodeType == Node.ELEMENT_NODE):
@@ -399,23 +407,321 @@ def list_sfrdata_child(fp, child, sfraddr):
          if (reg in ("FSR0", "FSR1", "PCLAT", "TABLAT", "TBLPTR")):
             list_variable(fp, "_" + reg.lower(), width, sfraddr)  # compiler required name
          gchild = child.firstChild
-         sfraddr_g = sfraddr
-         if (gchild.nodeName == "edc:SFRDef"):
+         sfraddr_g = sfraddr                                # addr of joined SFR
+         if (gchild.nodeName == "edc:MuxedSFRDef"):
+            selectsfrs = gchild.getElementsByTagName("edc:SelectSFR")
+            for selectsfr in selectsfrs:
+               list_muxed_sfr(fp, selectsfr, sfraddr_g)
+            sfraddr_g = sfraddr_g + 1
+         elif (gchild.nodeName == "edc:SFRDef"):
             list_sfr(fp, gchild, sfraddr)
             sfraddr_g = sfraddr_g + 1
          while gchild.nextSibling:
             gchild = gchild.nextSibling
-            if (gchild.nodeName == "edc:SFRDef"):
+            if (gchild.nodeName == "edc:MuxedSFRDef"):
+               selectsfrs = gchild.getElementsByTagName("edc:SelectSFR")
+               for selectsfr in selectsfrs:
+                  list_muxed_sfr(fp, selectsfr, sfraddr_g)
+               sfraddr_g = sfraddr_g + 1
+            elif (gchild.nodeName == "edc:SFRDef"):
                list_sfr(fp, gchild, sfraddr_g)
                sfraddr_g = sfraddr_g + 1
       elif (child.nodeName == "edc:MuxedSFRDef"):
-         if (child.hasAttribute("edc:width")):
-            width = (eval(child.getAttribute("edc:nzwidth")) + 7) / 8
          selectsfrs = child.getElementsByTagName("edc:SelectSFR")
          for selectsfr in selectsfrs:
             list_muxed_sfr(fp, selectsfr, sfraddr)
-
    return calc_sfraddr(child, sfraddr)                               # adjust for next child
+
+
+# ---------------------------------------------------------
+# Title:   Generate declaration of a single register (and its bitfields)
+# Input:   - output file
+#          - SFRDef node
+#          - current SFR addr
+# Output:  part of device files
+# Returns: (nothing)
+# ---------------------------------------------------------
+def list_sfr(fp, sfr, sfraddr):
+   picname = cfgvar["picname"]
+   list_separator(fp)
+   sfrname = sfr.getAttribute("edc:cname")
+
+   if not ((sfrname == "GPIO") | ((sfrname.startswith("PORT")) & (sfrname != "PORTVP"))):
+      list_variable(fp, sfrname, 1, sfraddr)                 # not a port
+
+   if ((sfrname.startswith("LAT")) & (sfrname != "LATVP")):
+      list_lat_shadow(fp, sfrname)
+   elif ((sfrname.startswith("PORT")) & (sfrname != "PORTVP")):
+      if ((sfrname == "PORTB")  &  picname.startswith("12")):
+         print "   PORTB register interpreted as GPIO / PORTA"
+         list_variable(fp, "_GPIO", 1, sfraddr)
+         list_alias(fp, "_PORTA", "_GPIO")
+         list_port_shadow(fp, "PORTA")
+      elif (cfgvar["haslat"] == False):
+         list_variable(fp, "_" + sfrname, 1, sfraddr)
+         list_port_shadow(fp, sfrname)
+      else:
+         list_variable(fp, sfrname, 1, sfraddr)
+   elif (sfrname == "GPIO"):
+      list_variable(fp, "_GPIO", 1, sfraddr)
+      list_alias(fp, "_PORTA", "_GPIO")
+      list_port_shadow(fp, "PORTA")
+   elif (sfrname in ("SPBRG", "SPBRG1")):
+      if ("SPBRGL" not in names):
+         list_alias(fp, "SPBRGL", sfrname)
+   elif (sfrname in ("SPBRG2", "SPBRG2")):
+      if ("SPBRGL2" not in names):
+         list_alias(fp, "SPBRGL2", sfrname)
+   elif ((sfrname == "TRISIO") | (sfrname == "TRISGPIO")):
+      list_alias(fp, "TRISA", sfrname)
+      list_alias(fp, "PORTA_direction", sfrname)
+      list_tris_nibbles(fp, "TRISA")
+   elif ((sfrname.startswith("TRIS")) & (sfrname != "TRISVP")):
+      list_alias(fp, "PORT" + sfrname[-1] + "_direction", sfrname)
+      list_tris_nibbles(fp, sfrname)
+
+   modelist = sfr.getElementsByTagName("edc:SFRMode")
+   for mode in modelist:
+      modeid = mode.getAttribute("edc:id")
+      if (modeid.startswith("DS.") | modeid.startswith("LT.")):
+         if (len(mode.childNodes) > 0):
+            child = mode.firstChild
+            offset = list_sfr_subfield(fp, child, sfrname, 0)
+            while (child.nextSibling):
+               child = child.nextSibling
+               offset = list_sfr_subfield(fp, child, sfrname, offset)
+
+   list_multi_module_register_alias(fp, sfr)
+
+   if sfrname in ("BSR",  \
+                  "FSR",    "FSR0L",   "FSR0H",   "FSR1L",   "FSR1H",   \
+                  "INDF",   "INDF0",  \
+                  "PCL",    "PCLATH", "PCLATU",  "STATUS",  \
+                  "TABLAT", "TBLPTR", "TBLPTRH", "TBLPTRL", "TBLPTRU"):
+      if (sfrname == "INDF") | (sfrname == "INDF0"):
+         sfrname = "IND"                                       # compiler wants '_ind'
+      list_variable(fp, "_" + sfrname.lower(), 1, sfraddr)     # compiler required name
+      if sfrname == "STATUS":
+         list_status_sfr(fp, sfr)                              # compiler required additions
+
+
+# ---------------------------------------------------------
+# Title:   Generate declaration of a register subfield
+# Input:   - output file
+#          - SFRDef child node
+#          - SFR name
+#          - field offset
+# Output:
+# Returns: offset next child
+# Notes:   - bitfield
+#          - pin_A3 and pin_E3 are frequently MCLR pins and read only,
+#            and then declared under PORTA/E, rather than LATA/E.
+#          - some configuration info collected
+# ---------------------------------------------------------
+def list_sfr_subfield(fp, child, sfrname, offset):
+   if child.nodeType == Node.ELEMENT_NODE:
+      if child.nodeName == "edc:AdjustPoint":
+         picname = cfgvar["picname"]
+         if ((offset == 0)  & (picname in ("18f13k50", "18lf13k50", "18f14k50", "18lf14k50"))):
+            if ((sfrname == "LATA") & ("pin_A0" not in names)):
+               print "Adding pin_A0, A1"
+               for p in range(2):                           # add pin_A0..A1
+                  list_bitfield(fp, "LATA_LATA%d" % (p), 1, "LATA", p)
+                  list_bitfield(fp, "pin_A%d" % (p), 1, "PORTA", p)
+                  list_pin_alias(fp, "A%d" % (p), "PORTA")
+                  fp.write("procedure pin_A%d'put(bit in x at LATA : %d) is\n" % (p, p))
+                  fp.write("   pragma inline\n")
+                  fp.write("end procedure\n")
+                  fp.write("--\n")
+            elif ((sfrname == "TRISA") & ("pin_A0_direction" not in names)):
+               print "Adding pin_A0/A1_direction"
+               for p in range(2):                           # add pin_A0..A1
+                  list_bitfield(fp, "TRISA_TRISA%d" % (p), 1, "TRISA", p)
+                  list_alias(fp, "pin_A%d_direction" % (p), "TRISA_TRISA%d" % (p))
+                  list_pin_direction_alias(fp, "A%d" % (p), "PORTA")
+         offset = offset + eval(child.getAttribute("edc:offset"))
+
+      elif child.nodeName == "edc:SFRFieldDef":
+         width = eval(child.getAttribute("edc:nzwidth"))
+         if (subfields_wanted(sfrname)):                    # exclude subfields of some registers
+            picname = cfgvar["picname"]
+            core = cfgvar["core"]
+            fieldname = child.getAttribute("edc:cname").upper()
+            portletter = sfrname[-1]
+            pinnumber = fieldname[-1]
+            adcssplitpics = ("16f737",  "16f747",  "16f767",  "16f777",                \
+                             "16f818",  "16f819",  "16f88",                            \
+                             "16f873a", "16f874a", "16f876a", "16f877a",               \
+                             "18f242",  "18f2439", "18f248",  "18f252", "18f2539",     \
+                             "18f258",  "18f442",  "18f4439",                          \
+                             "18f448",  "18f452",  "18f4539", "18f458")
+            if ((sfrname == "ADCON0") & (fieldname == "ADCS") & (width == 2) & (picname in adcssplitpics)):
+               list_bitfield(fp, "ADCON0_ADCS10", width, sfrname, offset)
+               if (core == "16"):                           # ADCON1 comes before ADCON0
+                  fp.write("--\n")
+                  fp.write("var volatile byte   ADCON0_ADCS    -- shadow\n")
+                  fp.write("procedure ADCON0_ADCS'put (byte in x) is\n")
+                  fp.write("   ADCON0_ADCS10 = (x & 0x03)      -- low order bits\n")
+                  fp.write("   ADCON1_ADCS2  = (x & 0x04)      -- high order bit\n")
+                  fp.write("end procedure\n")
+                  fp.write("--\n")
+            elif ((sfrname == "ADCON1") & (fieldname == "ADCS2") & (picname in adcssplitpics)):
+               list_bitfield(fp, "ADCON1_ADCS2", width, sfrname, offset)
+               if (core == "14"):                           # ADCON0 comes before ADCON1
+                  fp.write("--\n")
+                  fp.write("var volatile byte   ADCON0_ADCS    -- shadow\n")
+                  fp.write("procedure ADCON0_ADCS'put(byte in x) is\n")
+                  fp.write("   ADCON0_ADCS10 = (x & 0x03)      -- low order bits\n")
+                  fp.write("   ADCON1_ADCS2  = (x & 0x04)      -- high order bit\n")
+                  fp.write("end procedure\n")
+                  fp.write("--\n")
+            elif ((sfrname == "ADCON0") & (picname in ("16f737","16f747","16f767","16f777")) & \
+                  (fieldname == "CHS")):
+               list_bitfield(fp, "ADCON0_CHS210", width, sfrname, offset)
+               fp.write("--\n")
+               fp.write("procedure ADCON0_CHS'put(byte in x) is\n")
+               fp.write("   ADCON0_CHS210 = (x & 0x07)     -- low order bits\n")
+               fp.write("   ADCON0_CHS3   = 0              -- reset\n")
+               fp.write("   if ((x & 0x08) != 0) then\n")
+               fp.write("      ADCON0_CHS3 = 1             -- high order bit\n")
+               fp.write("   end if\n")
+               fp.write("end procedure\n")
+               fp.write("--\n")
+            elif ((sfrname == "GPIO") & (fieldname.startswith("RB"))):   # suppress wrong pinnames
+               None
+    #       elif ((sfrname == "GPIO") & (fieldname.startswith("GP"))):
+    #          if (width == 1):
+    #             list_bitfield(fp, "GPIO_GP" + fieldname[-1], 1, "_" + "GPIO", offset)
+            elif ((sfrname == "GPIO") & (width == 1) & ("0" <= pinnumber <= "7")):
+               list_bitfield(fp, sfrname + "_" + fieldname, width, "_" + sfrname, offset)
+               pin = "pin_A" + pinnumber
+               if (pin not in names):
+                  list_bitfield(fp, pin, 1, "_" + sfrname, offset)
+                  list_pin_alias(fp, "A" + pinnumber, "_PORTA")
+                  fp.write("procedure " + pin + "'put(bit in x" + " at _PORTA_shadow : " + pinnumber + ") is\n")
+                  fp.write("   pragma inline\n")
+                  fp.write("   _PORTA = _PORTA_shadow\n")
+                  fp.write("end procedure\n")
+                  fp.write("--\n")
+            elif (sfrname.startswith("LAT") & (sfrname != "LATVP") & (width == 1) & ("0" <= fieldname[-1] <= "7")):
+               if not ( ((fieldname == "LATA3") & (cfgvar["lata3_out"] == False)) | \
+                        ((fieldname == "LATE3") & (cfgvar["late3_out"] == False)) ):
+                  list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+                  pin = "pin_" + portletter + pinnumber
+                  list_bitfield(fp, pin, 1, "PORT" + portletter, offset)
+                  list_pin_alias(fp, portletter + pinnumber, "PORT" + portletter)
+                  fp.write("procedure " + pin + "'put(bit in x" + " at " + sfrname + " : " + pinnumber + ") is\n")
+                  fp.write("   pragma inline\n")
+                  fp.write("end procedure\n")
+                  fp.write("--\n")
+            elif ((fieldname == "NMCLR") & ((sfrname.startswith("PORT")) | (sfrname == "GPIO"))):
+#              print "   Renamed", fieldname, "of", sfrname, "to MCLR"
+               list_bitfield(fp, sfrname + "_MCLR", 1, sfrname, offset)
+            elif ((sfrname == "OPTION_REG") & (fieldname in ("T0CS", "T0SE", "PSA"))):
+               list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+               list_alias(fp, "T0CON_" + fieldname, sfrname + "_" + fieldname)
+            elif ((sfrname == "OPTION_REG")  &  (fieldname == "PS2")):
+               list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+               if ("OPTION_REG_PS" not in names):
+                  list_bitfield(fp, sfrname + "_PS", 3, sfrname, offset - 2)
+               list_alias(fp, "T0CON_T0PS", sfrname + "_PS")
+       #    elif ((sfrname == "OSCCON") & (fieldname.startswith("IRCF")) & (width == 1)):
+       #       print sfrname, fieldname, width
+       #       None                                   # suppress enumerated IRCF bits
+       #    elif ((sfrname == "OSCCON") & (len(fieldname) > 3) &  \
+       #          (fieldname.startswith("SCS")) & (width == 1)):
+       #       print sfrname, fieldname, width
+       #       None                                   # suppress enumerated SCS bits
+            elif ((sfrname == "PORTB") & (fieldname.startswith("RB")) & (picname.startswith("12"))):
+               list_bitfield(fp, "GPIO_GP" + fieldname[2:], 1, "_GPIO", offset)
+            elif ((sfrname.startswith("PORT")) & (sfrname != "PORTVP") & (width == 1) & \
+                  (fieldname.startswith("R")) & ("0" <= fieldname[-1] <= "7")):
+               pin = "pin_" + portletter + pinnumber
+               if ((sfrname == "PORTA") & (fieldname == "RA3") & \
+                   (cfgvar["haslat"] == True) & (cfgvar["lata3_out"] == False)):
+                  list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+                  list_bitfield(fp, pin, 1, sfrname, offset)
+                  list_pin_alias(fp, portletter + pinnumber, sfrname)
+               elif ((sfrname == "PORTE") & (fieldname == "RE3") & \
+                     (cfgvar["haslat"] == True) & (cfgvar["late3_out"] == False)):
+                  list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+                  list_bitfield(fp, pin, 1, sfrname, offset)
+                  list_pin_alias(fp, portletter + pinnumber, sfrname)
+               elif (cfgvar["haslat"] == False):
+                  list_bitfield(fp, sfrname + "_" + fieldname, width, "_" + sfrname, offset)
+                  list_bitfield(fp, pin, 1, "_PORT" + portletter, offset)
+               else:
+                  list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+               if (cfgvar["haslat"] == False):
+                  list_pin_alias(fp, portletter + pinnumber, "_PORT" + portletter)
+                  fp.write("procedure " + pin + "'put(bit in x at _" + sfrname + "_shadow : " + pinnumber + ") is\n")
+                  fp.write("   pragma inline\n")
+                  fp.write("   _" + sfrname + " = _" + sfrname + "_shadow\n")
+                  fp.write("end procedure\n")
+                  fp.write("--\n")
+            elif ((sfrname == "TRISGP") & (fieldname.startswith("TRISB")) & (picname.startswith("12"))):
+               None                                         # suppress this combination
+            elif (sfrname.startswith("TRIS") & (sfrname != "TRISVP") & (width == 1) & \
+                  fieldname.startswith("TRIS") & ("0" <= fieldname[-1] <= "7")):
+               list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+               if (sfrname.endswith("IO")):                    # TRISIO/TRISGPIO
+                  pin = "pin_A" + pinnumber
+                  list_bitfield(fp, pin + "_direction", 1, "TRISA", offset)
+                  list_pin_direction_alias(fp, "A" + pinnumber, "_PORTA")
+               else:
+                  pin = "pin_" + portletter + pinnumber
+                  list_bitfield(fp, pin + "_direction", 1, sfrname, offset)
+                  list_pin_direction_alias(fp, portletter + pinnumber, "PORT" + portletter)
+            elif ((width > 1) & \
+                  (sfrname.startswith("PORT") | sfrname.startswith("GPIO") | \
+                   sfrname.startswith("LAT")  | sfrname.startswith("TRIS"))):
+               None
+            else:
+               list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+
+# additional declarations:
+
+            if ((sfrname.startswith("ADCON")) & (fieldname.endswith("VCFG0"))):
+               list_bitfield(fp, sfrname + "_VCFG", 2, sfrname, offset)
+            elif ((fieldname.startswith("AN"))  &  (width == 1) &   \
+                  (sfrname.startswith("ADCON") | sfrname.startswith("ANSEL"))):
+               ansx = ansel2j(sfrname, fieldname)
+               if (ansx < 99):
+                  list_alias(fp, "JANSEL_ANS%d" % ansx, sfrname + "_" + fieldname)
+            elif ((sfrname == "CANCON") & (fieldname == "REQOP0")):
+               list_bitfield(fp, "CANCON_REQOP", 3, sfrname, offset)
+            elif ((sfrname == "FVRCON")  &  (fieldname in ("CDAFVR0", "ADFVR0"))):
+               list_bitfield(fp, sfrname + "_" + fieldname[:-1], 2, sfrname, offset)
+            elif (sfrname == "INTCON"):
+               if (fieldname.startswith("T0")):
+                  list_alias(fp, sfrname + "_TMR0" + fieldname[2:], sfrname + "_" + fieldname)
+            elif ((sfrname == "OSCCON") & (fieldname == "IRCF0")):
+               list_bitfield(fp, sfrname + "_IRCF", cfgvar["ircf_bits"], sfrname, offset)
+            elif ((sfrname == "OSCCON") & (fieldname ==  "SCS0")):
+               list_bitfield(fp, sfrname + "_SCS",  2, sfrname, offset)
+            elif ((sfrname == "PADCFG1") & (fieldname == "RTSECSEL0")):
+               list_bitfield(fp, sfrname + "_RTSECSEL", 2, sfrname, offset)
+            elif ( (sfrname.find("CCP") >= 0) & (sfrname.endswith("CON")) &  \
+                   (((fieldname.startswith("CCP")) & (fieldname.endswith("Y")))  | \
+                    ((fieldname.startswith("DC"))  & (fieldname.endswith("B0")))) ):
+               if (fieldname.startswith("DC")):
+                  field = sfrname + "_" + fieldname[:-1]
+               else:
+                  field = sfrname + "_DC" + fieldname[3:-1] + "B"
+               list_bitfield(fp, field, 2, sfrname, offset - width + 1)
+
+            list_multi_module_bitfield_alias(fp, sfrname, fieldname)
+
+         # collect some extra configuration info
+         if (sfrname[0:5] in ("ANSEL", "ADCON")):
+            if (fieldname == "ADCS"):
+               cfgvar["adcs_bits"] = width                    # width -> bits
+            elif (fieldname.startswith("ADCS")  &  (fieldname[4:].isdigit())):
+               cfgvar["adcs_bits"] = int(fieldname[4:]) + 1   # (highest) offset + 1
+
+         offset = offset + width
+
+   return offset
 
 
 # ---------------------------------------------------------
@@ -440,11 +746,11 @@ def list_muxed_sfr(fp, selectsfr, sfraddr):
       else:                                           # alternate sfr on this address
          global names
          sfrname = sfr.getAttribute("edc:cname")
-         if sfrname in names:
-            print "   Duplicate name:", sfrname
-         else:
+         if sfrname not in names:
             names.append(sfrname)
-         list_separator(fp)
+#        else:
+#           print "   Duplicate name:", sfrname
+#        list_separator(fp)
 
          core = cfgvar["core"]
          subst  = "_" + sfrname                       # substitute name
@@ -457,21 +763,18 @@ def list_muxed_sfr(fp, selectsfr, sfraddr):
 
          elif (core == "16"):
             if sfrname.startswith("PMDOUT"):
-               list_variable(fp, sfrname, 1, sfraddr)          #- master/slave automatic
-
+               list_variable(fp, sfrname, 1, sfraddr)          # master/slave: automatic
             elif (sfrname in ("SSP1MSK", "SSP2MSK")):
                list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond)
                if (sfrname == "SSP1MSK"):
                   list_alias(fp, "SSPMSK", sfrname)
-
             elif ( (sfrname in ("CVRCON", "MEMCON", "PADCFG1", "REFOCON")) | \
                    (sfrname.startswith("ODCON")) | \
-                   (sfrname.startswith("ANCON")) ) :
+                   (sfrname.startswith("ANCON")) ):
                list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond)
                if (sfrname == "SSP1MSK"):
                   list_alias(fp, "SSPMSK", sfrname)
-               list_muxed_sfr_subfields(fp, sfr)
-
+               list_muxed_sfr_subfields(fp, sfr)              # controlled by WDTCON_ADSHR
             else:
                print "Unexpected multiplexed SFR", sfrname, "for core", core
 
@@ -489,14 +792,16 @@ def list_muxed_sfr(fp, selectsfr, sfraddr):
 # Returns: (nothing)
 # ---------------------------------------------------------
 def list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond):
-
-   condl = cond.split()                         # parse condition elements from
-   val1 = condl[0][2:]                          #  ($val1 val2 val3) = val4
+   global names
+   condl = cond.split(" ")                      # parse condition elements from
+   val1 = condl[0][2:]                          #  ($val1 val2 val3) == val4
    val2 = condl[1]
    val3 = condl[2][:-1]
    val4 = condl[4]
    subst  = "_" + sfrname
    list_variable(fp, subst, 1, sfraddr)         # declare substitute variable
+   if (sfrname not in names):
+      names.append(sfrname)
    fp.write("--\n")
    fp.write("procedure " + sfrname + "'put(byte in x) is\n")
    fp.write("   var volatile byte _control_sfr at " + val1 + "\n")
@@ -519,173 +824,332 @@ def list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond):
 
 
 # ----------------------------------------------------------
-# Formatting of subfields of multiplexed SFRs
-# input:  - index in .pic
+# Title:  Format the subfields of multiplexed SFRs
+# Input:  - index in .pic
 #         - register node
 # Notes:  - Expected to be used with 18Fs only
 #         - Only valid for SFRs which use WDTCON_ADSHR bit
 #           to switch to the alternate content
 # ----------------------------------------------------------
 def list_muxed_sfr_subfields(fp, sfr):
-
-#  to be done!
-
-   return
-
-
-# ---------------------------------------------------------
-# Title:   Generate declaration of a single register (and its bitfields)
-# Input:   - output file
-#          - SFRDef node
-#          - current SFR addr
-# Output:  part of device files
-# Returns: (nothing)
-# ---------------------------------------------------------
-def list_sfr(fp, sfr, sfraddr):
-   picname = cfgvar["picname"]
-   list_separator(fp)
    sfrname = sfr.getAttribute("edc:cname")
-
-   if not (sfrname.startswith("PORT") | (sfrname == "GPIO")):
-      list_variable(fp, sfrname, 1, sfraddr)
-
-   if (sfrname.startswith("LAT")):
-      list_lat_shadow(fp, sfrname)
-   elif (sfrname.startswith("PORT")):
-      if ((sfrname == 'PORTB')  &  picname.startswith("12")):
-         print "   PORTB register interpreted as GPIO / PORTA"
-         list_variable(fp, "_GPIO", 1, sfraddr)
-         list_alias(fp, "_PORTA", "_GPIO")
-         list_port_shadow(fp, "PORTA")
-      elif (cfgvar["haslat"] == False):
-         list_variable(fp, "_" + sfrname, 1, sfraddr)
-         list_port_shadow(fp, sfrname)
-      else:
-         list_variable(fp, sfrname, 1, sfraddr)
-   elif (sfrname == "GPIO"):
-      list_variable(fp, "_GPIO", 1, sfraddr)
-      list_alias(fp, "_PORTA", "_GPIO")
-      list_port_shadow(fp, "PORTA")
-   elif ((sfrname == "TRISIO") | (sfrname == "TRSGPIO")):
-      list_alias(fp, "TRISA", sfrname)
-      list_alias(fp, "PORTA_direction", sfrname)
-      list_tris_nibbles(fp, sfrname)
-   elif (sfrname.startswith("TRIS")):
-      list_alias(fp, "PORT" + sfrname[-1] + "_direction", sfrname)
-      list_tris_nibbles(fp, sfrname)
-
    modelist = sfr.getElementsByTagName("edc:SFRMode")
    for mode in modelist:
+      offset = 0
       modeid = mode.getAttribute("edc:id")
       if modeid.startswith("DS.") | modeid.startswith("LT."):
          if len(mode.childNodes) > 0:
             child = mode.firstChild
-            offset = list_sfr_child(fp, child, sfrname, 0)
+            offset = list_muxed_sfr_bitfield(fp, child, sfrname, 0)
             while child.nextSibling:
                child = child.nextSibling
-               offset = list_sfr_child(fp, child, sfrname, offset)
+               offset = list_muxed_sfr_bitfield(fp, child, sfrname, offset)
 
-   if sfrname in ("BSR",   "FSR",    "FSR0L",   "FSR0H",   "FSR1L",   "FSR1H",   \
-                  "INDF",  "INDF0",  "PCL",     "PCLATH",  "PCLATU",  "STATUS",  \
-                  "TABLAT", "TBLPTR", "TBLPTRH", "TBLPTRL", "TBLPTRU"):
-      if (sfrname == "INDF") | (sfrname == "INDF0"):
-         sfrname = "IND"                                       # compiler wants '_ind'
-      list_variable(fp, "_" + sfrname.lower(), 1, sfraddr)     # compiler required name
-      if sfrname == "STATUS":
-         list_status_sfr(fp, sfr)                              # compiler required additions
-
-
-
-# ---------------------------------------------------------
-# Title:   Generate declaration of a register subfield
-# Input:   - output file
-#          - SFRDef child node
-#          - SFR name
-#          - field offset
-# Output:
-# Returns: offset next child
-# Notes:   - bitfield
-#          - some configuration info collected
-#          - pin_A3 and pin_E3 are frequently MCLR pins and read only,
-#            and then declared under PORTA/E, rather than LATA/E.
-# ---------------------------------------------------------
-def list_sfr_child(fp, child, sfrname, offset):
+# ----------------------------------------------------------
+# Title:  Format a single bitfield of a multiplexed SFR
+# Input:  - index in .pic
+#         - register node
+# Notes:  - Expected to be used with 18Fs only
+#         - Only valid for SFRs which use WDTCON_ADSHR bit
+#           to switch to the alternate content: controlled by
+#           SFR selection in list_muxed_sfr().
+# ----------------------------------------------------------
+def list_muxed_sfr_bitfield(fp, child, sfrname, offset):
    if child.nodeType == Node.ELEMENT_NODE:
       if child.nodeName == "edc:AdjustPoint":
          offset = offset + eval(child.getAttribute("edc:offset"))
       elif child.nodeName == "edc:SFRFieldDef":
          width = eval(child.getAttribute("edc:nzwidth"))
-         fieldname = child.getAttribute("edc:cname")
-         if ((sfrname == "GPIO") | (sfrname.startswith("PORT") & (cfgvar["haslat"] == False))):
-            list_bitfield(fp, sfrname + "_" + fieldname, width, "_" + sfrname, offset)
-         else:
-            list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
-         portletter = sfrname[-1]
-         pinnumber = fieldname[-1]
-         pin = "pin_" + portletter + pinnumber
+         if subfields_wanted(sfrname):
+            field = sfrname + "_" + child.getAttribute("edc:cname")
+            if (field not in names):                        # new variable
+               names.append(field)
+            subst = "_" + sfrname
+            if (width == 1):
+               fp.write("--\n")
+               fp.write("procedure " + field + "'put(bit in x) is\n")
+               fp.write("   var volatile bit control_bit at " + \
+                        "0x%X : %d" % cfgvar["wdtcon_adshr"] + "\n")
+               fp.write("   var bit y at " + subst + " : %d" % (offset) + "\n")
+               fp.write("   control_bit = TRUE\n")
+               fp.write("   y = x\n")
+               fp.write("   control_bit = FALSE\n")
+               fp.write("end procedure\n")
+               fp.write("function " + field  + "'get() return bit is\n")
+               fp.write("   var volatile bit control_bit at " + \
+                        "0x%X : %d" % cfgvar["wdtcon_adshr"] + "\n")
+               fp.write("   var bit x at " + subst + ' : %d' % (offset) + "\n")
+               fp.write("   var bit y\n")
+               fp.write("   control_bit = TRUE\n")
+               fp.write("   y = x\n")
+               fp.write("   control_bit = FALSE\n")
+               fp.write("   return y\n")
+               fp.write("end function\n")
+            elif (width < 8):                               # multi-bit
+               fp.write("--\n")
+               fp.write("procedure " + field + "'put(bit*%d" % (width) + " in x) is\n")
+               fp.write("   var volatile bit control_bit at " + \
+                        "0x%X : %d" % cfgvar["wdtcon_adshr"] + "\n")
+               fp.write("   var bit*%d" % (width) + " y at " + subst + " : %d" % (offset) + "\n")
+               fp.write("   control_bit = TRUE\n")
+               fp.write("   y = x\n")
+               fp.write("   control_bit = FALSE\n")
+               fp.write("end procedure\n")
+               fp.write("function " + field + "'get() return bit*%d" % (width) + " is\n")
+               fp.write("   var volatile bit control_bit at " + \
+                        "0x%X : %d" % cfgvar["wdtcon_adshr"] + "\n")
+               fp.write("   var bit*%d" % (width) + " x at " + subst + " : %d" % (offset) + "\n")
+               fp.write("   var bit*%d" % (width) + " y\n")
+               fp.write("   control_bit = TRUE\n")
+               fp.write("   y = x\n")
+               fp.write("   control_bit = FALSE\n")
+               fp.write("   return y\n")
+               fp.write("end function\n")
+         offset = offset + width
+   return offset
 
-         if (sfrname.startswith("LAT") & (width == 1) & ("0" <= fieldname[-1] <= "7")):
-            if not ( ((fieldname == "LATA3") & (cfgvar["lata3_out"] == False)) | \
-                     ((fieldname == "LATE3") & (cfgvar["late3_out"] == False)) ):
-               list_bitfield(fp, pin, 1, "PORT" + portletter, offset)
-               list_pin_alias(fp, portletter + pinnumber, "PORT" + portletter)
-               fp.write("procedure " + pin + "'put(bit in x" + " at " + sfrname + " : " + pinnumber + ") is\n")
-               fp.write("   pragma inline\n")
-               fp.write("end procedure\n")
-               fp.write("--\n")
-         elif (sfrname.startswith("PORT") & (width == 1) & ("0" <= fieldname[-1] <= "7")):
-            if ((sfrname == "PORTA") & (fieldname == "RA3") & \
-                (cfgvar["haslat"] == True) & (cfgvar["lata3_out"] == False)):
-               list_bitfield(fp, pin, 1, "PORT" + portletter, offset)
-               list_pin_alias(fp, portletter + pinnumber, sfrname)
-            elif ((sfrname == "PORTE") & (fieldname == "RE3") & \
-                  (cfgvar["haslat"] == True) & (cfgvar["late3_out"] == False)):
-               list_bitfield(fp, pin, 1, "PORT" + portletter, offset)
-               list_pin_alias(fp, portletter + pinnumber, sfrname)
-            elif (cfgvar["haslat"] == False):
-               list_bitfield(fp, pin, 1, "_PORT" + portletter, offset)
-               list_pin_alias(fp, portletter + pinnumber, "_PORT" + portletter)
-            if (cfgvar["haslat"] == False):
-               fp.write("procedure " + pin + "'put(bit in x at _" + sfrname + "_shadow : " + pinnumber + ") is\n")
-               fp.write("   pragma inline\n")
-               fp.write("   _" + sfrname + " = _" + sfrname + "_SHADOW\n")
-               fp.write("end procedure\n")
-               fp.write("--\n")
-         elif ((sfrname == "GPIO") & (width == 1) & ("0" <= fieldname[-1] <= "7")):
-            pin = "pin_A" + pinnumber
-            list_bitfield(fp, pin, 1, "_" + sfrname, offset)
-            list_pin_alias(fp, "A" + pinnumber, "_PORTA")
-            fp.write("procedure " + pin + "'put(bit in x" + " at _PORTA_shadow : " + pinnumber + ") is\n")
+
+# ---------------------------------------------------------
+# Title:   Generate declarations of all non memory mapped registers
+# Input:   - output file
+#          - root of .pic (xml parsed structure)
+# Output:  part of device files
+# Returns: (nothing)
+# Notes:   only for core 12
+# ---------------------------------------------------------
+def list_all_nmmr(fp, root):
+   if (cfgvar["core"] == "12"):
+      nmmrplaces = root.getElementsByTagName("edc:NMMRPlace")
+      for nmmrplace in nmmrplaces:
+         if len(nmmrplace.childNodes) > 0:
+            child = nmmrplace.firstChild
+            list_nmmrdata_child(fp, child)
+            while child.nextSibling:
+               child = child.nextSibling
+               list_nmmrdata_child(fp, child)
+
+
+# ---------------------------------------------------------
+# Title:   Generate declaration a memory mapped register
+# Input:   - output file
+#          - NMMR node
+# Output:  part of device files
+# Returns: (nothing)
+# Notes:   only for core 12
+# ---------------------------------------------------------
+def list_nmmrdata_child(fp, nmmr):
+   global names
+   if (nmmr.nodeType == Node.ELEMENT_NODE):
+      if (nmmr.nodeName == "edc:SFRDef"):
+         sfrname = nmmr.getAttribute("edc:cname")
+         picname = cfgvar["picname"]
+
+         if (sfrname == "OPTION_REG"):
+            if (sfrname not in names):
+               names.append(sfrname)
+            list_separator(fp)
+            shadow = "_" + sfrname + "_shadow"
+            sharedmem_avail = sharedmem[1] - sharedmem[0] + 1        # incl upper bound
+            if (sharedmem_avail < 1):
+#              print "   No (more) shared memory for", shadow
+               fp.write("var volatile byte  %-25s" % (shadow) + " = 0b1111_1111\n")
+            else:
+               shared_addr = sharedmem[1]
+               fp.write("var volatile byte   %-25s at 0x%X" % (shadow, shared_addr) + " = 0b1111_1111\n")
+               sharedmem[1] = sharedmem[1] - 1
+            fp.write("--\n")
+            fp.write("procedure " + sfrname + "'put(byte in x at " + shadow + ") is\n")
             fp.write("   pragma inline\n")
-            fp.write("   _PORTA = _PORTA_SHADOW\n")
+            fp.write("   asm movf " + shadow + ",0\n")
+            fp.write("   asm option\n")
+            fp.write("end procedure\n")
+            list_nmmr_option_subfields(fp, nmmr)
+
+         elif (sfrname.startswith("TRIS")):                     # handle TRISIO or TRISGPIO
+            if (sfrname not in names):
+               names.append(sfrname)
+            list_separator(fp)
+            portletter = sfrname[4:]
+            if (portletter in ("IO", "GPIO", "")):
+#              print sfrname, "register interpreted as TRISA"
+               portletter = "A"                                # handle as TRISA
+            elif ((portletter == "B") & (picname.startswith("12"))):
+               print sfrname, "register interpreted as TRISA"
+               sfrname = "TRISIO"
+               portletter = "A"
+            shadow = "_TRIS" + portletter + "_shadow"
+            sharedmem_avail = sharedmem[1] - sharedmem[0] + 1        # incl upper bound
+            if (sharedmem_avail < 1):
+#              print "   No (more) shared memory for", shadow
+               fp.write("var volatile byte  %-25s" % (shadow) + " = 0b1111_1111\n")
+            else:
+               shared_addr = sharedmem[1]
+               fp.write("var volatile byte   %-25s at 0x%X" % (shadow, shared_addr) + " = 0b1111_1111\n")
+               sharedmem[1] = sharedmem[1] - 1
+            fp.write("--\n")
+            fp.write("procedure PORT" + portletter + "_direction'put(byte in x at " + shadow + ") is\n")
+            fp.write("   pragma inline\n")
+            fp.write("   asm movf " + shadow + ",W\n")
+            if (sfrname in ("TRISIO", "TRISGPIO")):
+               fp.write("   asm tris 6\n")
+            else:                                              # TRISx
+               fp.write("   asm tris %d\n" % (5 + "ABCDE".find(portletter)))
             fp.write("end procedure\n")
             fp.write("--\n")
-         elif (sfrname.startswith("TRIS") & (width == 1) & \
-               fieldname.startswith("TRIS") & ("0" <= fieldname[-1] <= "7")):
-            if (sfrname.endswith("IO")):                    # TRISIO/TRISGPIO
-               pin = "pin_" + "A" + pinnumber
-               list_bitfield(fp, pin + "_direction", 1, "TRISA", offset)
-               list_pin_direction_alias(fp, "A" + pinnumber, "_PORTA")
-            else:
-               list_bitfield(fp, pin + "_direction", 1, sfrname, offset)
-               list_pin_direction_alias(fp, portletter + pinnumber, "PORT" + portletter)
+            half = "PORT" + portletter + "_low_direction"
+            fp.write("procedure " + half + "'put(byte in x) is\n")
+            fp.write("   " + shadow + " = (" + shadow + " & 0xF0) | (x & 0x0F)\n")
+            fp.write("   asm movf _TRIS" + portletter + "_shadow,W\n")
+            if (sfrname == "TRISIO"):
+               fp.write("   asm tris 6\n")
+            else:                                              # TRISx
+               fp.write("   asm tris %d\n" % (5 + "ABCDE".find(portletter)))
+            fp.write("end procedure\n")
+            fp.write("--\n")
+            half = "PORT" + portletter + "_high_direction"
+            fp.write("procedure " + half + "'put(byte in x) is\n")
+            fp.write("   " + shadow + " = (" + shadow +" & 0x0F) | (x << 4)\n")
+            fp.write("   asm movf _TRIS" + portletter + "_shadow,W\n")
+            if (sfrname == "TRISIO"):
+               fp.write("   asm tris 6\n")
+            else:                                              # TRISx
+               fp.write("   asm tris %d\n" % (5 + "ABCDE".find(portletter)))
+            fp.write("end procedure\n")
+            fp.write("--\n")
+            list_nmmr_tris_subfields(fp, nmmr)                 # individual TRIS bits
 
-         if (fieldname.startswith("AN")  &  (width == 1) &   \
-            (sfrname.startswith("ADCON") | sfrname.startswith("ANSEL"))):
-            ansx = ansel2j(sfrname, fieldname)
-            if (ansx < 99):
-               list_alias(fp, "JANSEL_ANS%d" % ansx, sfrname + "_" + fieldname)
 
-         # collect some extra configuration info
-         if sfrname[0:5] in ("ANSEL", "ADCON"):
-            if fieldname == "ADCS":
-               cfgvar["adcs_bits"] = width                    # width -> bits
-            elif fieldname.startswith("ADCS")  &  fieldname[4:].isdigit():
-               cfgvar["adcs_bits"] = int(fieldname[4:]) + 1   # (highest) offset + 1
+# ----------------------------------------------------------
+# Title:  Format all subfields of NMMR OPTION_REG
+# Input:  - file
+#         - NMMR node
+# Notes:  - Expected to be used with 12Fs only
+# ----------------------------------------------------------
+def list_nmmr_option_subfields(fp, nmmr):
+   sfrname = nmmr.getAttribute("edc:cname")
+   modelist = nmmr.getElementsByTagName("edc:SFRMode")
+   for mode in modelist:
+      offset = 0
+      modeid = mode.getAttribute("edc:id")
+      if modeid.startswith("DS.") | modeid.startswith("LT."):
+         if len(mode.childNodes) > 0:
+            child = mode.firstChild
+            offset = list_nmmr_option_bitfield(fp, child, sfrname, 0)
+            while child.nextSibling:
+               child = child.nextSibling
+               offset = list_nmmr_option_bitfield(fp, child, sfrname, offset)
 
+
+# ----------------------------------------------------------
+# Title:  Format all subfields of NMMR TRIS
+# Input:  - file
+#         - NMMR node
+# Notes:  - Expected to be used with 12Fs only
+# ----------------------------------------------------------
+def list_nmmr_tris_subfields(fp, nmmr):
+   sfrname = nmmr.getAttribute("edc:cname")
+   modelist = nmmr.getElementsByTagName("edc:SFRMode")
+   for mode in modelist:
+      offset = 0
+      modeid = mode.getAttribute("edc:id")
+      if modeid.startswith("DS.") | modeid.startswith("LT."):
+         if len(mode.childNodes) > 0:
+            child = mode.firstChild
+            offset = list_nmmr_tris_bitfield(fp, child, sfrname, 0)
+            while child.nextSibling:
+               child = child.nextSibling
+               offset = list_nmmr_tris_bitfield(fp, child, sfrname, offset)
+
+
+# ----------------------------------------------------------
+# Title:  Format a single bitfield of NMMR OPTION pseudo register
+# Input:  - index in .pic
+#         - register node
+# Notes:  - Expected to be used with 12Fs only
+# ----------------------------------------------------------
+def list_nmmr_option_bitfield(fp, child, sfrname, offset):
+   if child.nodeType == Node.ELEMENT_NODE:
+      if child.nodeName == "edc:AdjustPoint":
+         offset = offset + eval(child.getAttribute("edc:offset"))
+      elif child.nodeName == "edc:SFRFieldDef":
+         width = eval(child.getAttribute("edc:nzwidth"))
+         fieldname = child.getAttribute("edc:cname").upper()
+         field = sfrname + "_" + fieldname
+         if (field not in names):                        # new variable
+            names.append(field)
+         shadow = "_" + sfrname + "_shadow"
+         if (width == 1):
+            fp.write("--\n")
+            fp.write("procedure " + field + "'put(bit in x at " \
+                                  + shadow + ": %d" % (offset) + ") is\n")
+            fp.write("   pragma inline\n")
+            fp.write("   asm movf " + shadow + ",0\n")
+            fp.write("   asm option\n")
+            fp.write("end procedure\n")
+         elif (width < 8):                               # multi-bit
+            fp.write("--\n")
+            fp.write("procedure " + field + "'put(bit*%d" % (width) + " in x at " \
+                                  + shadow + ": %d" % (offset) + ") is\n")
+            fp.write("   pragma inline\n")
+            fp.write("   asm movf " + shadow + ",0\n")
+            fp.write("   asm option\n")
+            fp.write("end procedure\n")
+         if (fieldname in ("T0CS", "T0SE", "PSA")):
+            list_alias(fp, "T0CON_" + fieldname, field)
+         elif (fieldname == "PS"):
+            list_alias(fp, "T0CON_T0" + fieldname, field)
          offset = offset + width
-
    return offset
+
+
+# ----------------------------------------------------------
+# Title:  Format a single bitfield of NMMR TRIS pseudo register
+# Input:  - index in .pic
+#         - register node
+# Notes:  - Expected to be used with 12Fs only
+# ----------------------------------------------------------
+def list_nmmr_tris_bitfield(fp, child, sfrname, offset):
+   if (child.nodeType == Node.ELEMENT_NODE):
+      if (child.nodeName == "edc:AdjustPoint"):
+         offset = offset + eval(child.getAttribute("edc:offset"))
+      elif (child.nodeName == "edc:SFRFieldDef"):
+         portletter = child.getAttribute("edc:cname")[4:]
+         if (portletter.startswith("IO") | portletter.startswith("GPIO")):
+            portletter = 'A'                             # handle as TRISA
+         else:
+            portletter = portletter[0]
+         if ((portletter == "B") & (cfgvar["picname"].startswith("12"))):
+            return offset
+         shadow = "_TRIS" + portletter + "_shadow"
+         pin = "pin_" + portletter + "%d" % (offset)
+         field = pin + "_direction"
+         if (field not in names):                        # new variable
+            names.append(field)
+         fp.write("procedure " + field + "'put(bit in x at " \
+                               + shadow + ": %d" % (offset) + ") is\n")
+         fp.write("   pragma inline\n")
+         fp.write("   asm movf " + shadow + ",W\n")
+         if (sfrname in ("TRISIO", "TRISGPIO")):
+            fp.write("   asm tris 6\n")
+         else:
+            fp.write("   asm tris %d\n" % (5 + "ABCDE".index(portletter)))
+         fp.write("end procedure\n")
+         list_pin_direction_alias(fp, portletter + "%d" % (offset), shadow)
+         offset = offset + 1
+   return offset
+
+
+# --------------------------------------------------------------------
+# Title:   Indicate if subfields of a specific register are wanted
+# input:   Register name
+# returns: 0 - no expansion
+#          1 - expansion desired
+# --------------------------------------------------------------------
+def subfields_wanted(sfrname):
+   if ((sfrname.startswith("SSP")) & (sfrname[-3:] in ("ADD", "BUF", "MSK"))):
+      return False                                          # subfields not wanted
+   else:
+      return True                                           # subfields wanted
 
 
 # ----------------------------------------------------------------
@@ -694,7 +1158,7 @@ def list_sfr_child(fp, child, sfrname, offset):
 #          - name of bit (portletter||offset)
 #          - PORT of the pin
 # Returns: (nothing)
-# Notes:   - declare alias definitions for all synonyms in pinmap.
+# Notes:   - declare aliases for all synonyms in pinmap.
 #          - declare extra aliases for first of multiple I2C or SPI modules
 #          - declare extra aliases for TX and RX pins of only USART module
 # ----------------------------------------------------------------
@@ -706,14 +1170,18 @@ def list_pin_alias(fp, portbit, port):
             alias = alias[:-1] + "_NEG"
          elif alias.endswith("+"):
             alias = alias[:-1] + "_POS"
+         alias = alias.replace("+", "_POS_")
+         alias = alias.replace("-", "_NEG_")
          alias = "pin_" + alias
-         list_alias(fp, alias, "pin_" + portbit)
-#        if alias in ('pin_SDA1', 'pin_SDI1', 'pin_SDO1', 'pin_SCK1', \
-#                     'pin_SCL1', 'pin_SS1', 'pin_TX1', 'pin_RX1'):
-#           list_alias(fp, pinalias, pin)
+         pin = "pin_" + portbit
+         list_alias(fp, alias, pin)
+         if alias in ("pin_SDA1", "pin_SDI1", "pin_SDO1", "pin_SCK1", \
+                      "pin_SCL1", "pin_SS1", "pin_TX1", "pin_RX1"):
+            alias = alias[:-1]
+            list_alias(fp, alias, pin)
       fp.write("--\n")
-   else:
-      print "   R" + portbit, "not in pinmap of", PICname
+#  else:
+#     print "   R" + portbit, "not in pinmap of", PICname
 
 
 # -----------------------------------------------------------------
@@ -734,40 +1202,26 @@ def list_pin_direction_alias(fp, portbit, port):
             alias = alias[:-1] + "_NEG"
          elif alias.endswith("+"):
             alias = alias[:-1] + "_POS"
+         alias = alias.replace("+", "_POS_")
+         alias = alias.replace("-", "_NEG_")
          alias = 'pin_' + alias + "_direction"
-         list_alias(fp, alias, "pin_" + portbit + "_direction")
-#        if alias = "pin_SDA1_direction" |,              # 1st I2C module
-#           alias = "pin_SDI1_direction" |,              # 1st SPI module
-#           alias = "pin_SDO1_direction" |,
-#           alias = "pin_SCK1_direction" |,
-#           alias = "pin_SCL1_direction" then do
-#           alias = delstr(alias,8,1)
-#           call list_alias alias, portbit
-#        end
-#        else if alias = "pin_SS1_direction" |,          # 1st SPI module
-#                alias = "pin_TX1_direction" |,          # TX pin first USART
-#                alias = "pin_RX1_direction" then do     # RX   "  "     "
-#           alias = delstr(alias,7,1)
-#           call list_alias alias, Pin
+         pindir = "pin_" + portbit + "_direction"
+         list_alias(fp, alias, pindir)
+         if (alias in ("pin_SDA1_direction", \
+                       "pin_SDI1_direction", \
+                       "pin_SDO1_direction", \
+                       "pin_SCK1_direction", \
+                       "pin_SCL1_direction")):
+            alias = alias[:7] + alias[8:]
+            list_alias(fp, alias, pindir)
+         elif (alias in ("pin_SS1_direction", \
+                         "pin_TX1_direction", \
+                         "pin_RX1_direction")):
+            alias = alias[:6] + alias[7:]
+            list_alias(fp, alias, pindir)
       fp.write("--\n")
-   else:
-      print "   R" + portbit, "is an unknown pin"
-
-
-# -------------------------------------------------------
-# Title:   List a line with an alias declaration
-# Input:   - file pointer
-#          - name of alias
-#          - name of original variable (or other alias)
-# Returns: - returncode of duplicate_name()
-# -------------------------------------------------------
-def list_alias(fp, alias, original):
-   global names
-   if alias in names:
-      print "   Duplicate alias name:", alias
-   else:
-      names.append(alias)
-   fp.write("%-19s %-25s is %s\n" % ("alias", alias, original))
+#  else:
+#     print "   R" + portbit, "is an unknown pin"
 
 
 # -------------------------------------------------------
@@ -780,22 +1234,21 @@ def list_alias(fp, alias, original):
 # -------------------------------------------------------
 def list_variable(fp, var, width, addr):
    global names
-   if var in names:
-      print "   Duplicate name:", var
-   else:
+   if (var not in names):
       names.append(var)
-   if width == 1:
-      type = "byte"
-   elif width == 2:
-      type = "word"
-   else:
-      type = "byte*%d" % width
-   fp.write("var volatile %-6s %-25s at { " % (type, var))
-   if (cfgvar["core"] == "14H") & (addr < 0xC):
-      fp.write("0x%X" % sfrranges[addr][0])
-   else:
-      fp.write(", ".join(["0x%X" % x for x in sfrranges[addr]]))
-   fp.write(" }\n")
+      if width == 1:
+         type = "byte"
+      elif width == 2:
+         type = "word"
+      else:
+         type = "byte*%d" % width
+      fp.write("var volatile %-6s %-25s at { " % (type, var))
+      if (cfgvar["core"] == "14H") & (addr < 0xC):
+         fp.write("0x%X" % (sfrranges[addr][0]) + " }\n")
+      else:
+         fp.write(",".join(["0x%X" % x for x in sfrranges[addr]]) + " }\n")
+#  else:
+#     print "   Duplicate name:", var
 
 
 # -------------------------------------------------------
@@ -807,21 +1260,37 @@ def list_variable(fp, var, width, addr):
 # Returns: nothing
 # Notes:   Fields if 8 bits (or larger) are not declared
 # -------------------------------------------------------
-def list_bitfield(fp, var, width, reg, offset):
-   if not var.startswith("pin_"):
+def list_bitfield(fp, var, width, sfrname, offset):
+   if (not var.startswith("pin_")):
       bitfieldname = var.upper()
    else:
       bitfieldname = var
-   if bitfieldname in names:
-      print "   Duplicate name:", bitfieldname
-   else:
-      if reg.endswith("_SHAD") & bitfieldname.endswith("_SHAD"):
-         bitfieldname = bitfieldname[:-5]                # remove trailing "_SHAD"
+   if ((sfrname.endswith("_SHAD")) & (bitfieldname.endswith("_SHAD"))):
+      bitfieldname = bitfieldname[:-5]                # remove trailing "_SHAD"
+   if (bitfieldname not in names):
       names.append(bitfieldname)
-   if width == 1:
-      fp.write("var volatile bit    %-25s at %s : %d\n" % (bitfieldname, reg, offset))
-   elif width < 8:
-      fp.write("var volatile bit*%d  %-25s at %s : %d\n" % (width, bitfieldname, reg, offset))
+      if (width == 1):
+         fp.write("var volatile bit    %-25s at %s : %d\n" % (bitfieldname, sfrname, offset))
+      elif width < 8:
+         fp.write("var volatile bit*%d  %-25s at %s : %d\n" % (width, bitfieldname, sfrname, offset))
+   else:
+      print "   Duplicate name:", bitfieldname
+
+
+# -------------------------------------------------------
+# Title:   List a line with an alias declaration
+# Input:   - file pointer
+#          - name of alias
+#          - name of original variable (or other alias)
+# Returns: - returncode of duplicate_name()
+# -------------------------------------------------------
+def list_alias(fp, alias, original):
+   global names
+   if alias not in names:
+      names.append(alias)
+      fp.write("%-19s %-25s is %s\n" % ("alias", alias, original))
+#  else:
+#     print "   Duplicate alias name:", alias
 
 
 # ----------------------------------------------------------
@@ -834,37 +1303,37 @@ def list_bitfield(fp, var, width, reg, offset):
 def list_port_shadow(fp, reg):
    shadow = "_PORT" + reg[4:] + "_shadow"
    fp.write("--\n")
-   fp.write("var          byte   %-25s" % ("PORT" + reg[4:]) + "at _PORT" + reg[4:] + "\n")
+   fp.write("var          byte   %-25s at _PORT%s\n" % ("PORT" + reg[4:], reg[4:]))
    sharedmem_avail = sharedmem[1] - sharedmem[0] + 1        # incl upper bound
    if (sharedmem_avail < 1):
-      print "   No (more) shared memory for", shadow
+#     print "   No (more) shared memory for", shadow
       fp.write("var volatile byte  %-25s" % (shadow) + "\n")
    else:
       shared_addr = sharedmem[1]
-      fp.write("var volatile byte   %-25s  at 0x%X" % (shadow, shared_addr) + "\n")
+      fp.write("var volatile byte   %-25s at 0x%X" % (shadow, shared_addr) + "\n")
       sharedmem[1] = sharedmem[1] - 1
    fp.write("--\n")
-   fp.write("procedure " + reg + "'put(byte in x at" + shadow + ") is\n")
+   fp.write("procedure " + reg + "'put(byte in x at " + shadow + ") is\n")
    fp.write("   pragma inline\n")
-   fp.write("   _PORT" + reg[4:] + "=" + shadow + "\n")
+   fp.write("   _PORT" + reg[4:] + " = " + shadow + "\n")
    fp.write("end procedure\n")
    fp.write("--\n")
    half = "PORT" + reg[4:] + "_low"
    fp.write("procedure " + half + "'put(byte in x) is\n")
-   fp.write("   " + shadow + "= (" + shadow + "& 0xF0) | (x & 0x0F)\n")
-   fp.write("   _PORT" + reg[4:] + "=" + shadow + "\n")
+   fp.write("   " + shadow + " = (" + shadow + " & 0xF0) | (x & 0x0F)\n")
+   fp.write("   _PORT" + reg[4:] + " = " + shadow + "\n")
    fp.write("end procedure\n")
    fp.write("function " + half + "'get() return byte is\n")
-   fp.write("   return (" + reg + "& 0x0F)\n")
+   fp.write("   return (" + reg + " & 0x0F)\n")
    fp.write("end function\n")
    fp.write("--\n")
    half = "PORT" + reg[4:] + "_high"
    fp.write("procedure " + half + "'put(byte in x) is\n")
-   fp.write("   " + shadow + "= (" + shadow + "& 0x0F) | (x << 4)\n")
-   fp.write("   _PORT" + reg[4:] + "=" + shadow + "\n")
+   fp.write("   " + shadow + " = (" + shadow + " & 0x0F) | (x << 4)\n")
+   fp.write("   _PORT" + reg[4:] + " = " + shadow + "\n")
    fp.write("end procedure\n")
    fp.write("function " + half + "'get() return byte is\n")
-   fp.write("   return (" + reg + ">> 4)\n")
+   fp.write("   return (" + reg + " >> 4)\n")
    fp.write("end function\n")
    fp.write("--\n")
 
@@ -883,18 +1352,18 @@ def list_lat_shadow(fp, lat):
    fp.write("--\n")
    half = "PORT" + lat[3:] + "_low"
    fp.write("procedure " + half + "'put(byte in x) is\n")
-   fp.write("   " + lat + "= (" + lat + "& 0xF0) | (x & 0x0F)\n")
+   fp.write("   " + lat + " = (" + lat + " & 0xF0) | (x & 0x0F)\n")
    fp.write("end procedure\n")
    fp.write("function " + half + "'get() return byte is\n")
-   fp.write("   return (" + port + "& 0x0F)\n")
+   fp.write("   return (" + port + " & 0x0F)\n")
    fp.write("end function\n")
    fp.write("--\n")
    half = "PORT" + lat[3:] + "_high"
    fp.write("procedure " + half + "'put(byte in x) is\n")
-   fp.write("   " + lat + "= (" + lat + "& 0x0F) | (x << 4)\n")
+   fp.write("   " + lat + " = (" + lat + " & 0x0F) | (x << 4)\n")
    fp.write("end procedure\n")
    fp.write("function " + half + "'get() return byte is\n")
-   fp.write("   return (" + port + ">> 4)\n")
+   fp.write("   return (" + port + " >> 4)\n")
    fp.write("end function\n")
    fp.write("--\n")
 
@@ -928,6 +1397,133 @@ def list_tris_nibbles(fp, reg):
    fp.write("--\n")
 
 
+# ---------------------------------------------------------
+# Title:   Generate declaration of a register subfield alias
+# Input:   - output file
+#          - SFRDef node
+#          - aliasname of this SFR
+#          - offset of bitfield
+# Output:
+# Returns: offset next bitfield
+# Notes:
+# ---------------------------------------------------------
+def list_sfr_subfield_alias(fp, child, sfralias, sfrname, offset):
+   if child.nodeType == Node.ELEMENT_NODE:
+      if child.nodeName == "edc:AdjustPoint":
+         offset = offset + eval(child.getAttribute("edc:offset"))
+      elif child.nodeName == "edc:SFRFieldDef":
+         width = eval(child.getAttribute("edc:nzwidth"))
+         if (width < 8):
+            fieldname = child.getAttribute("edc:cname").upper()
+            list_alias(fp, sfralias + "_" + fieldname, sfrname + "_" + fieldname)
+         offset = offset + width
+   return offset
+
+
+# ------------------------------------------------------------------
+# Adding aliases of registers for PICs with multiple similar modules
+# Used only for registers which are fully dedicated to a module.
+# input:  - file pointer
+#         - SFR node
+# returns: nothing
+# notes:  - add unqualified alias for module 1
+#         - add (modified) alias for modules 2..9
+#         - bitfields are expanded as for 'real' registers
+# ------------------------------------------------------------------
+def list_multi_module_register_alias(fp, sfr):
+
+   sfrname = sfr.getAttribute("edc:cname")
+   if (len(sfrname) < 6):
+      return
+
+   alias = ''                                            # default: no alias
+
+   if (sfrname == "BAUDCTL"):                            # some midrange, 18f1x20
+      alias = 'BAUDCON'
+
+   elif (sfrname == "BAUD1CON"):                         # 1st USART: sfrname with index
+      alias = "BAUDCON"                                  # remove "1"
+
+   elif (sfrname == "BAUD2CON"):                         # 2nd USART: sfrname with suffix
+      alias = "BAUDCON2"                                 # make index "2" a suffix
+
+   elif (sfrname in ("BAUDCON1", "BAUDCTL1", "RCREG1", "RCSTA1", \
+                     "SPBRG1", "SPBRGH1", "SPBRGL1", "TXREG1", "TXSTA1")):
+      alias = sfrname[0:-1]                              # remove trailing "1" index
+
+   elif (sfrname in ("RC1REG", "RC1STA", "SP1BRG", "SP1BRGH", \
+                     "SP1BRGL", "TX1REG", "TX1STA")):
+      alias = sfrname[0:2] + sfrname[3:]                 # remove embedded "1" index
+
+   elif (sfrname in ("RC2REG", "RC2STA", "SP2BRG", "SP2BRGH", \
+                     "SP2BRGL", "TX2REG", "TX2STA")):
+      alias = sfrname[0:2] + sfrname[3:] + "2"           # make index "2" a suffix
+
+   elif (sfrname in ("SSPCON", "SSP2CON")):
+      alias = sfrname + "1"                              # add suffix "1"
+
+   elif ((sfrname.startswith("SSP")) & (sfrname[3] == "1")):   # first or only MSSP module
+      alias = sfrname[0:3] + sfrname[4:]                 # remove module number
+      if (alias in ("SSPCON", "SSP2CON")):
+         alias = alias + "1"
+
+   if (alias != ""):                                     # alias to be declared
+      fp.write("--\n")
+      list_alias(fp, alias, sfrname)
+
+      if (subfields_wanted(sfrname)):
+         modelist = sfr.getElementsByTagName("edc:SFRMode")
+         for mode in modelist:
+            modeid = mode.getAttribute("edc:id")
+            if (modeid.startswith("DS.") | modeid.startswith("LT.")):
+               if (len(mode.childNodes) > 0):
+                  child = mode.firstChild
+                  offset = list_sfr_subfield_alias(fp, child, alias, sfrname, 0)
+                  while child.nextSibling:
+                     child = child.nextSibling
+                     offset = list_sfr_subfield_alias(fp, child, alias, sfrname, offset)
+
+
+# -----------------------------------------------------
+# Title:    Add aliases of register bitfields related to
+#           multiple similar modules.
+# input:  - register
+#         - bitfield
+# returns: nothing
+# Notes:  - Used for registers which happen to contain bitfields
+#           For - PIE, PIR and IPR registers
+#           USART and SSP interrupt bits
+#         - add unqualified alias for module 1
+#         - add (modified) alias for modules 2..9
+# -----------------------------------------------------
+def list_multi_module_bitfield_alias(fp, reg, bitfield):
+   j = ""                                                   # default: no multi-module
+   bitfield.upper()                                         # must be all capitals
+   if (reg[0:3] in ("PIE", "PIR", "IPR")):
+      if (bitfield[0:2] in ("TX", "RC")):
+         j = bitfield[2]                                    # possibly module number
+         if (j.isdigit()):
+            strippedfield = bitfield[0:2] + bitfield[3:]
+         else:
+            j = bitfield[-1]                                # possibly module number
+            if (j.isdigit()):                               # numeric suffix
+               strippedfield = left(bitfield,length(bitfield)-1)
+            else:                                           # no module number found
+               j = ""                                       # no alias required
+      elif (bitfield.startswith("SSP")):                    # SSP related bitfields
+         j = bitfield[3]                                    # extract module number
+         if (j == "1"):                                     # first module
+            strippedfield = bitfield[:3] + bitfield[4:]     # remove the number
+         else:                                              # no module number found
+            j = ""                                          # no alias required
+   if (j == ""):                                            # no module number found
+      return                                                # no alias required
+   if (j == "1"):                                                # first module
+      j = ""                                                # no suffix
+   alias = reg + "_" + strippedfield + j                    # alias name (with suffix)
+   list_alias(fp, alias, reg + "_" + bitfield)              # declare alias subfields
+
+
 # -----------------------------------------------------
 # Title:  list status register
 # input:  - file pointer.
@@ -939,21 +1535,21 @@ def list_status_sfr(fp, status):
    for mode in modes:
       offset = 0
       bitfield = mode.firstChild
-      offset = list_status_field(fp, bitfield, offset)
+      offset = list_status_subfield(fp, bitfield, offset)
       while bitfield.nextSibling:
          bitfield = bitfield.nextSibling
-         offset = list_status_field(fp, bitfield, offset)
+         offset = list_status_subfield(fp, bitfield, offset)
    if cfgvar["core"] == "16":
       fp.write("const        byte   _banked %24s" % "=  1\n")
       fp.write("const        byte   _access %24s" % "=  0\n")
 
 
 # -----------------------------------------------------
-# Title: list status register subfields
+# Title: List subfields of status register
 # input: - start index in pic.
 # Note:  - name is stored but not checked on duplicates
 # -----------------------------------------------------
-def list_status_field(fp, field, offset):
+def list_status_subfield(fp, field, offset):
    if field.nodeType == Node.ELEMENT_NODE:
       if field.nodeName == "edc:AdjustPoint":
          offset = offset + eval(field.getAttribute("edc:offset"))
@@ -972,9 +1568,9 @@ def list_status_field(fp, field, offset):
 
 
 # ---------------------------------------------------
-# Title:   convert ANSEL-bit to JANSEL_number
+# Title:   Determine JANSEL number for ANSELx bity
 # input:   - register  (ANSELx,ADCONx,ANCONx, etc.)
-#          - Name of bit (ANSy)
+#          - Name of bit (ANSy / ANSELy)
 # returns: - channel number (decimal)
 #            (99 indicates 'no JANSEL number')
 # Notes:   - This procedure has 3 'core' groups,
@@ -1034,7 +1630,7 @@ def ansel2j(reg, ans):
             picname.endswith("f753") | picname.endswith("hv753"):
             ansx = (0, 1, 2, 99, 3, 99, 99, 99)[ansx]
          elif picname.startswith("16f70") | picname.startswith("16lf70") | \
-                 picname.startswith("16f72") | picname.startswith("16lf72"):
+              picname.startswith("16f72") | picname.startswith("16lf72"):
             ansx = (0, 1, 2, 3, 99, 4, 99, 99)[ansx]
          elif (picname.startswith("16f9") & (ans[0:3] != "ANS")):
             ansx = 99                                       # skip dup ANSEL subfields 16f9xx
@@ -1211,22 +1807,21 @@ def list_digital_io(fp, picname):
       ADC_res = "0"                                         # # bits
    else:                                                    # ADC group specified
       ADC_group = picdata["ADCGROUP"]
-      if "ADCMAXRESOLUTION" not in picdata:                 # # bits not specified
-         if (cfgvar["adc_highres"] == False) & (cfgvar["core"] != "16"):    # base/mid range without ADRESH
-            ADC_res = "8"
+      if ("ADCMAXRESOLUTION" not in picdata):               # # ADC bits not specified
+         if (not (("ADRESH" in names) | ("ADRES0H" in names))):
+            ADC_res = "8"                                   # default max res
          else:
-            ADC_res = "10"                                  # default max res
+            ADC_res = "10"
       else:
          ADC_res = picdata["ADCMAXRESOLUTION"]              # specified ADC resolution
 
-#  if ("ANCOUNT" not in picdata) | (ADC_group == "0"):       # PIC has no ADC module
-#     PinMap.picnameCaps.ANCOUNT = 0
-
    fp.write("const      ADC_GROUP          = " + ADC_group)
    if ADC_group == "0":
-      fp.write("        -- no ADC module present")
-   fp.write("\n")
-   fp.write("const byte ADC_NTOTAL_CHANNEL = " + "%d" % (len(pinanmap[picname.upper()])) + "\n")
+      fp.write("        -- no ADC module present\n")
+      fp.write("const byte ADC_NTOTAL_CHANNEL = " + "0\n")
+   else:
+      fp.write("\n")
+      fp.write("const byte ADC_NTOTAL_CHANNEL = " + "%d" % (len(pinanmap[picname.upper()])) + "\n")
    fp.write("const byte ADC_ADCS_BITCOUNT  = " + "%d" % cfgvar["adcs_bits"] + "\n")
    fp.write("const byte ADC_MAX_RESOLUTION = " + ADC_res + "\n")
    fp.write("--\n")
@@ -1261,7 +1856,7 @@ def list_digital_io(fp, picname):
          if qname in names:
             fp.write("   " + qname + " = 0b0000_0000\n")
       for i in range(10):                                   # ANCON0..ANCON9
-         qname = "ANCON" + str(i)
+         qname = "ANCON%d" % i
          if qname in names:
             bitname = "$$$"
             for j in range(0, 8 * i + 8):                   # all PCFG bits
@@ -1382,7 +1977,6 @@ def list_miscellaneous(fp, picname):
    list_separator(fp)
    fp.write("--    Miscellaneous information\n")
    list_separator(fp)
-
    fp.write("--\n")
    picdata = dict(devspec[picname.upper()].items())
    if "PPSGROUP" in picdata:                                # PPS group specified
@@ -1400,7 +1994,7 @@ def list_miscellaneous(fp, picname):
          print "   Has USB module but USB_BDT_ADDRESS not specified"
 
    fp.write("--\n")
-   sharedmem_avail = sharedmem[1] - sharedmem[0]
+   sharedmem_avail = sharedmem[1] - sharedmem[0] + 1
    if (sharedmem_avail > 0):
       fp.write("-- Free shared memory: 0x%X" % sharedmem[0])
       if (sharedmem_avail > 1):
@@ -1474,16 +2068,16 @@ def list_dcrdef(fp, dcrdef, addr):
 # Returns: config fuse address (updated if applicable)
 # ---------------------------------------------------------
 def list_dcrfielddef(fp, dcrfielddef, index, offset):
-   if dcrfielddef.nodeName == "edc:AdjustPoint":
+   if (dcrfielddef.nodeName == "edc:AdjustPoint"):
       offset = offset + eval(dcrfielddef.getAttribute("edc:offset"))
-   elif dcrfielddef.nodeName == "edc:DCRFieldDef":
+   elif (dcrfielddef.nodeName == "edc:DCRFieldDef"):
       width = eval(dcrfielddef.getAttribute("edc:nzwidth"))
-      if dcrfielddef.hasAttribute("edc:ishidden") == False:          # do not list hidden fields
+      if (dcrfielddef.hasAttribute("edc:ishidden") == False):          # do not list hidden fields
          name = dcrfielddef.getAttribute("edc:cname").upper()
          name = normalize_fusedef_key(name)
          mask = eval(dcrfielddef.getAttribute("edc:mask"))
          str = "pragma fuse_def " + name
-         if cfgvar["fusesize"] > 1:
+         if (cfgvar["fusesize"] > 1):
             str = str + ":%d " % (index)
          str = str + " 0x%X {" % (mask << offset)                    # position in byte!
          fp.write("%-40s -- %s\n" % (str, dcrfielddef.getAttribute("edc:desc")))
@@ -1506,22 +2100,26 @@ def list_dcrfielddef(fp, dcrfielddef, index, offset):
 def list_dcrfieldsem(fp, key, dcrfielddef, offset):
    for child in dcrfielddef.childNodes:
       if child.nodeName == "edc:DCRFieldSemantic":
-         if child.hasAttribute("edc:cname"):
+         if ((child.hasAttribute("edc:ishidden") == False) & \
+             (child.hasAttribute("edc:cname") == True)):
             fieldname = child.getAttribute("edc:cname").upper()
             if (fieldname != "RESERVED") & (fieldname != ""):
-               if (dcrfielddef.hasAttribute("edc:islanghidden") == False):
+               if (child.hasAttribute("edc:islanghidden") == False):
                   when = child.getAttribute("edc:when").split()
                   desc = child.getAttribute("edc:desc")
                   fieldname = normalize_fusedef_value(key, fieldname, desc)
-                  str = "       " + fieldname + " = " + "0x%X" % (eval(when[-1])<<offset)
-                  fp.write("%-40s -- %s\n" % (str, desc))
+                  if (fieldname != ""):
+                     str = "       " + fieldname + " = " + "0x%X" % (eval(when[-1])<<offset)
+                     fp.write("%-40s -- %s\n" % (str, desc))
                   if (key == "ICPRT"):
-                     print "  ", key, cfgvar["picname"]
                      if (cfgvar["picname"] in ("18f1230",  "18f1330",   "18f24k50", \
                                                "18f25k50", "18lf24k50", "18lf25k50")):
                         print "   Adding 'ENABLED' for fuse_def " + key
                         str = "       ENABLED = 0x20"
                         fp.write("%-40s %s\n" % (str, "-- ICPORT enabled"))
+                  elif ((key == "VOLTAGE") & (fieldname == "V21")):
+                     str = "       V20 = 0x%X" % (eval(when[-1])<<offset)
+                     fp.write("%-40s %s\n" % (str, "-- 2.1V (compatibility with older Jallib versions)"))
 
 
 # ----------------------------------------------------
@@ -1542,102 +2140,48 @@ def normalize_fusedef_key(key):
 
    if key.find("ENICPORT") >= 0:
       return key
-   elif (key in ("CPD", "WRTD"))  & \
-      (picname in ("18f2410", "18f2510", "18f2515", "18f2610", \
-                   "18f4410", "18f4510"  "18f4515"  "18f4610")):
-      return key
 
-   elif (key in ("EBTR_3", "CP_3", "WRT_3")) & (picname == "18f4585"):
-      return key
+#  elif (key in ("CPD", "WRTD"))  & \
+#     (picname in ("18f2410", "18f2510", "18f2515", "18f2610", \
+#                  "18f4410", "18f4510"  "18f4515"  "18f4610")):
+#     return key
 
-   elif (key in ("EBTR_4", "CP_4", "WRT_4", \
-                 "EBTR_5", "CP_5", "WRT_5", \
-                 "EBTR_6", "CP_6", "WRT_6", \
-                 "EBTR_7", "CP_7", "WRT_7"))   & \
-       (picname in ("18f6520", "18f8520")):
-      return key
-   elif (key == "ADDRBW"):
-      key = "ABW"
-   elif (key in ("BACKBUG", "BKBUG")):
-      key = "DEBUG"
-   elif (key == "BBSIZ0"):
-      key = "BBSIZ"
-   elif (key in ("BODENV", "BOR4V", "BORV")):
-      key = "VOLTAGE"
-   elif (key in ("BODEN", "BOREN", "DSBOREN", "BOD", "BOR")):
-      key = "BROWNOUT"
-   elif (key == "CANMX"):
-      key = "CANMUX"
    elif (key.startswith("CCP") & key.endswith("MX")):
       key = key[:-2] + "MUX"                          # CCP(x)MX -> CCP(x)MUX
-   elif (key == "CCPMUX"):
-      key = "CCP1MUX"                              # compatibility
-   elif (key == "CLKOEN"):
-      key = "CLKOUTEN"
-   elif (key in ("CPDF","CPSW")):
-      key = "CPD"
-   elif key.startswith("CP_")  &  key[3:].isdigit():
-      key = "CP" + key[3:]                           # remove underscore
+      if (key == "CCPMUX"):
+         key = "CCP1MUX"
+
+#  elif key.startswith("CP_")  &  key[3:].isdigit():
+#     key = "CP" + key[3:]                           # remove underscore
+#
+#  elif (key in ("EBTR_3", "CP_3", "WRT_3")) & (picname == "18f4585"):
+#     return key
+#
+#  elif (key in ("EBTR_4", "CP_4", "WRT_4", \
+#                "EBTR_5", "CP_5", "WRT_5", \
+#                "EBTR_6", "CP_6", "WRT_6", \
+#                "EBTR_7", "CP_7", "WRT_7"))   & \
+#      (picname in ("18f6520", "18f8520")):
+#     return key
+
    elif key.startswith("EBRT"):                         # typo MPLAB-X!
       key = "EBTR" + key[4:]
-   elif key.startswith("EBTR_")  &  key[5:].isdigit():
-      key = "EBTR" + key[5:]
-   elif (key in ("ECCPMX", "ECCPXM")):
-      key = "ECCPMUX"
-   elif (key == "EXCLKMX"):
-      key = "EXCLKMUX"
-   elif (key == "FLTAMX"):
-      key = "FLTAMUX"
-   elif (key in ("FOSC", "FOSC0")):
-      key = "OSC"
-   elif (key in ("FSCKM", "FSCM")):
-      key = "FCMEN"
-   elif (key == "MCLRE"):
-      key = "MCLR"
-   elif (key in ("MSSP7B_EN", "MSSPMSK")):
-      key = "MSSPMASK"
-   elif (key == "P2BMX"):
-      key = "P2BMUX"
-   elif (key in ("PLL_EN", "CFGPLLEN", "PLLCFG")):
-      key = "PLLEN"
-   elif (key in ("MODE", "PM")):
-      key = "PMODE"
-   elif (key == "PMPMX"):
-      key = "PMPMUX"
-   elif (key == "PWM4MX"):
-      key = "PWM4MUX"
-   elif (key in ("PUT", "PWRT", "PWRTEN")):
-      key = "PWRTE"
-   elif (key == "RTCSOSC"):
-      key = "RTCOSC"
-   elif (key == "SDOMX"):
-      key = "SDOMUX"
-   elif (key == "SOSCEL"):
-      key = "SOSCSEL"
-   elif (key == "SSPMX"):
-      key = "SSPMUX"
-   elif (key == "STVREN"):
-      key = "STVR"
-   elif (key == "T0CKMX"):
-      key = "T0CKMUX"
-   elif (key == "T1OSCMX"):
-      key = "T1OSCMUX"
-   elif (key in ("T3CKMX", "T3CMX")):
-      key = "T3CKMUX"
+
+#  elif key.startswith("EBTR_")  &  key[5:].isdigit():
+#     key = "EBTR" + key[5:]
+#
 #  elif (key = "USBDIV"  &,                         compatibility
 #       (left(PicName,6) = "18f245" | left(PicName,6) = "18f255" |,
 #        left(PicName,6) = "18f445" | left(PicName,6) = "18f455" ) ):
 #     key = "USBPLL"
-   elif (key in ("WDTEN", "WDTE")):
-      key = "WDT"
-   elif (key == "WDPS"):
-      key = "WDTPS"
-   elif (key in ("WRT_ENABLE", "WRTEN")):
-      key = "WRT"
-   elif (key.startswith("WRT_") & key[4:].isdigit()):
-      key = "WRT" + key[4:]
+#
+#  elif (key.startswith("WRT_") & key[4:].isdigit()):
+#     key = "WRT" + key[4:]
 
-   return key                                         # no match: return unchanged
+   elif (key in fusedef_kwd):
+      key = fusedef_kwd[key]                                # translate by table
+
+   return key
 
 
 # ------------------------------------------------------------------------
@@ -1651,7 +2195,7 @@ def normalize_fusedef_value(key, val, desc):
 
    picname = cfgvar["picname"]
 
-   descl = desc.upper().split()                             # list of words in description
+   descl = desc.upper().split(" ")                          # list of words in description
 
    descu = str(desc).upper()                                # to uppercase
    descu = descu.translate(xtable)                          # replace special chars by spaces
@@ -1659,26 +2203,42 @@ def normalize_fusedef_value(key, val, desc):
 
    kwdvalue = ""                                            # null value
 
-   if (val == "RESERVED"):                                  # reserved fields skipped
+   if ((val == "RESERVED") | (len(desc) == 0)):             # reserved or no desc: skip
       return ""
 
-   elif (key in ("ADCSEL", "ABW", "BW")):
-      kwdvalue = "B" + descl[0]                             # add prefix
+   elif (key == "ABW"):                                     # address bus width
+      if ((val.startswith("ADDR")) & (val.endswith("BIT"))):
+         kwdvalue = "B" + val[4:-3]
+      elif (val in ("XM12", "XM16", "XM20")):
+         kwdvalue = "B" + val[2:]
+      elif (val == "MM"):
+         kwdvalue = "B8"
+      elif (val.isdigit()):
+         kwdvalue = "B" + val
+      else:
+         kwdvalue = descu
+
+   elif (key == "ADCSEL"):
+      if (val.startswith("BIT")):
+         kwdvalue = "B" + val[3:]
+      elif (val.isdigit()):
+         kwdvalue = "B" + val
 
    elif (key == "BBSIZ"):
-      if (descu == "ENABLED"):
-         kwdvalue = desc
-      elif (descu == "DISABLED"):
-         kwdvalue = desc
+      if (val.isdigit()):
+         x = eval(val)
+         if (x >= 1024):
+            kwdvalue = "W%dK" % (x // 1024)
+         else:
+            kwdvalue = "W%d" % (d)
+      elif (val.startswith("BB")):
+         kwdvalue = "W%dK" % (eval(val[2]) / 2)
+      elif (descl[0].endswith("W")):
+         kwdvalue = "W" + descl[0][:-1]
       else:
-         for j in range(len(descl)):
-            if (descl[j][0].isdigit()):
-               kwdvalue = "W" + descl[j]                   # found leading digit
-               break
-      if ((kwdvalue[1:].isdigit()) & (descu.find("KW") >= 0)):   # contains kilowords
-         kwdvalue = kwdvalue + "K"                         # append "K"
+         kwdvalue = descu
 
-   elif (key == "BG"):                                     # band gap
+   elif (key == "BG"):                                      # band gap
       if (val == '0'):
          kwdvalue = "HIGHEST"
       elif (val == "3"):
@@ -1686,17 +2246,78 @@ def normalize_fusedef_value(key, val, desc):
       else:
          kwdvalue = descu
 
+   elif (key == "BORPWR"):                                  # BOR power mode
+      if (val == "ZPBORMV"):
+         kwdvalue = "ZERO"
+      elif (val == "HIGH"):
+         kwdvalue = "HP"
+      elif (val == "MEDIUM"):
+         kwdvalue = "MP"
+      elif (val == "LOW"):
+         kwdvalue = "LP"
+      else:
+         kwdvalue = descu
+
    elif (key == "BROWNOUT"):
-      if (val in ("BOACTIVE", "BOHW", "NOSLP", "NSLEEP", "ON_ACTIVE", "SLEEP_DIS")):
+      if (val in ("BOACTIVE", "NOSLP", "NSLEEP", "ON_ACTIVE", "SLEEP_DIS")):
          kwdvalue = "RUNONLY"
-      elif (val in ("EN", "ON")):
+      elif (val in ("ON")):
+         if (descu.find("CONTROLLED") >= 0):
+            kwdvalue = "CONTROL"
+         else:
+            kwdvalue = "ENABLED"
+      elif (val in ("EN", "ON", "BOHW", "SBORDIS")):
          kwdvalue = "ENABLED"
       elif (val in ("SBODEN", "SOFT", "SBORENCTRL")):
          kwdvalue = "CONTROL"
-      elif (val in ("DIS", "OFF", "SBORDIS")):
+      elif (val in ("DIS", "OFF")):
          kwdvalue = "DISABLED"
       else:
          kwdvalue = descu
+
+   elif (key == "CANMUX"):
+      if (val == "PORTB"):
+         kwdvalue = "pin_B2"
+      elif (val == "PORTC"):
+         kwdvalue = "pin_C6"
+      elif (val == "PORTE"):
+         kwdvalue = "pin_E5"
+      else:
+         kwdvalue = descu
+
+   elif ((key.startswith("CCP")) & key.endswith("MUX")):    # CCPxMUX
+      if (descu.find("MICRO") >= 0):                        # Microcontroller mode
+         kwdvalue = "pin_E7"                                # valid for all current PICs
+      elif ((val == "ON") | (descu == "ENABLED")):
+         kwdvalue = "ENABLED"
+      elif ((val == "OFF") | (descu == "DISABLED")):
+         kwdvalue = "DISABLED"
+      else:
+         kwdvalue = "pin_" + descu[-2:]                     # last 2 chars
+
+   elif (key == "CINASEL"):
+      if (descu.find("DEFAULT") >= 0):                      # Microcontroller mode
+         kwdvalue = "DEFAULT"
+      else:
+         kwdvalue = "MAPPED"
+
+   elif ((key == "CP") |  \
+         ((key.startswith("CP") & \
+          ((key[-1].isdigit()) | (key[-1] == "D") | (key[-1] == "B")))) ):
+      if (val in ("OFF", "DISABLE")):
+         kwdvalue = "DISABLED"
+      elif (val in ("ON", "ENABLE", "ALL")):
+         kwdvalue = "ENABLED"
+      elif ((val == "50") & (picname == "16f627")):
+         kwdvalue = "   "                                   # to be skipped
+      elif (desc[0] == "0"):                                # probably a range
+         kwdvalue = descl[0]                                # begin(-end) of range
+         if (len(descl) > 2):
+            if (descl[1] == "TO"):                          # splitted words
+               kwdvalue = kwdvalue + "_" + descl[2]         # add end of range
+         kwdvalue = "R" + kwdvalue.replace("-",'_')
+      else:
+         kwdvalue = "DISABLED"
 
    elif (key == "CPUDIV"):
       if (val in ("NOCLKDIV", "OSC1", "OSC1_PLL2")):
@@ -1715,6 +2336,111 @@ def normalize_fusedef_value(key, val, desc):
       else:
          kwdvalue = descu
 
+   elif (key == "DBW"):                                      # data bus width
+      if (val.isdigit()):
+         kwdvalue = "B" + val
+      elif ((val.startswith("DATA")) & (val.endswith("BIT"))):
+         kwdvalue = "B" + val[4:-3]
+      else:
+         kwdvalue = descu
+
+   elif (key == "DSWDTOSC"):
+      if (val == "INTOSCREF"):
+         kwdvalue = "INTOSC"
+      elif (val == "LPRC"):
+         kwdvalue = "LPRC"
+      elif (val == "SOSC"):
+         kwdvalue = "SOSC"
+      elif (val == "T1OSCREF"):
+         kwdvalue = "T1"
+      else:
+         kwdvalue = descu
+
+   elif (key == "ECCPMUX"):
+      offset = descu.find("_R")
+      if (offset >= 0):
+         kwdvalue = "pin_" + descu[offset + 2: offset + 4]
+      else:
+         kwdvalue = descu
+
+   elif (key == "EMB"):
+      if (desc.find("12") >= 0):                            # 12-bit mode
+         kwdvalue = "B12"
+      elif (descu.find("16") >= 0):                         # 16-bit mode
+         kwdvalue = "B16"
+      elif (descu.find("20") >= 0):                         # 20-bit mode
+         kwdvalue = "B20"
+      else:
+         kwdvalue = "DISABLED"                              # no en/disable balancing
+
+   elif (key == "ETHLED"):
+      if ((val == "ON") | (descu.find("ENABLED") >= 0)):    # LED enabled
+         kwdvalue = "ENABLED"
+      else:
+         kwdvalue = "DISABLED"
+
+   elif (key == "EXCLKMUX"):
+      offset = descu.find("_R")
+      if (offset >= 0):
+         kwdvalue = "pin_" + descu[offset + 2: offset + 4]
+      else:
+         kwdvalue = descu
+
+   elif (key == "FOSC2"):
+      if (val in ("ON", "OFF")):
+         kwdvalue = val
+      else:
+         kwdvalue = descu
+
+   elif (key == "FCMEN"):
+      if (val == "OFF"):
+         kwdvalue = "DISABLED"
+      elif (val == "ON"):
+         kwdvalue = "ENABLED"
+      elif (val == "CSDCMD"):
+         kwdvalue = "DISABLED"
+      elif (val == "CSECMD"):
+         kwdvalue = "SWITCHING"
+      elif (val == "CSECME"):
+         kwdvalue = "ENABLED"
+      else:
+         kwdvalue = descu
+
+   elif (key == "FLTAMUX"):
+      if ((val.startswith("R")) & (len(val) == 3)):
+         kwdvalue = "pin_" + val[1:]
+      else:
+         kwdvalue = descu
+
+   elif (key == "INTOSCSEL"):
+      if (val == "HIGH"):
+         kwdvalue = "HP"
+      elif (val == "LOW"):
+         kwdvalue = "LP"
+      else:
+         kwdvalue = descu
+
+   elif (key == "IOSCFS"):
+      if (val in ("ON", "8MHZ")):
+         kwdvalue = "F8MHZ"
+      elif (val in ("OFF", "4MHZ")):
+         kwdvalue = "F4MHZ"
+      else:
+         kwdvalue = descu
+         if (kwdvalue[0].isdigit()):
+            kwdvalue = "F" + kwdvalue[0] + "MHZ"
+
+   elif (key == "LPT1OSC"):
+      if (val == "ON"):
+         kwdvalue = "LOW_POWER"
+      elif (val == "OFF"):
+         kwdvalue = "HIGH_POWER"
+      else:
+         kwdvalue = descu
+
+   elif (key == "LS48MHZ"):
+      kwdvalue = "P" + val[-1]
+
    elif (key == "MCLR"):
       if (val in ("OFF", "INTMCLR")):
          kwdvalue = "INTERNAL"
@@ -1730,25 +2456,23 @@ def normalize_fusedef_value(key, val, desc):
          kwdvalue = descu
 
    elif (key == "OSC"):
-      if "0" <= descu[0] <= "1":
+      if ("0" <= descu[0] <= "1"):
          print "   Skipping probably duplicate/unused masks", key, ":", desc
-         kwdvalue = ""
+         kwdvalue = "   "
       else:
          if (val in fusedef_osc):
             kwdvalue = fusedef_osc[val]                  # translate val to keyword
-            tablevalue = kwdvalue                        # remember this keyword
+#           tablevalue = kwdvalue                        # remember this keyword
                                         # exception handling: sequence is important!
             if (picname in ("16f707", "16lf707", "16f720", "16lf720", "16f721", "16lf721")):
                if (val == "EXTRC"):
                   kwdvalue = "RC_CLKOUT"
                elif (val == "INTOSC"):
-
                   kwdvalue = "INTOSC_CLKOUT"
             elif (picname == "16f87"):
                if (val == "EC"):
                   kwdvalue = "EC_NOCLKOUT"
-            elif ((picname in ("16f83", "16f84", "16f84a")) | \
-                  (picname.startswith("16f87"))):
+            elif ((picname in ("16f83", "16f84", "16f84a")) | (picname.startswith("16f87"))):
               if (val == "EXTRC"):
                  kwdvalue = "RC_CLKOUT"
             elif (picname.startswith("10f3")  | picname.startswith("10lf3")  | \
@@ -1774,10 +2498,28 @@ def normalize_fusedef_value(key, val, desc):
             elif picname in ("18f25k80", "18f26k80"):
                if (val == "RC"):
                   kwdvalue = "RC_CLKOUT"
-            if (kwdvalue != tablevalue):                    # report any modification
-               print "   Modified fuse_def OSC kwdvalue from", tablevalue, "to", kwdvalue
+#           if (kwdvalue != tablevalue):                    # report any modification
+#              print "   Modified fuse_def OSC kwdvalue from", tablevalue, "to", kwdvalue
          else:
-            print "  Missing <", val, "> as key in fusedef_osc"
+            print "  Missing <" + val + "> as key in fusedef_osc"
+
+   elif (key == "P2BMUX"):
+      if (val in ("PORTB5", "PORTC0", "PORTD2")):
+         kwdvalue = "pin_" + val[4:]
+      else:
+         kwdvalue = descl[-1]
+
+   elif (key == "PARITY"):
+      if (desc.find("CLEAR") >= 0):
+         kwdvalue = "CLEAR"
+      else:
+         kwdvalue = "SET"
+
+   elif (key == "PBADEN"):
+      if (val in ("ANA", "ON")):
+         kwdvalue = "ANALOG"
+      else:
+         kwdvalue = "DIGITAL"
 
    elif (key == "PLLDIV"):
       if (descu == "RESERVED"):
@@ -1813,6 +2555,162 @@ def normalize_fusedef_value(key, val, desc):
       else:
          kwdvalue = descu
 
+   elif (key == "PMODE"):
+      if (val in ("XM12", "XM16", "XM20")):
+         kwdvalue = "B" + val[2:]
+      elif (val == "EM"):
+         kwdvalue = "EXT"
+      elif (val in ("MC", "MM")):
+         kwdvalue = "MICROCONTROLLER"
+      elif (val == "MP"):
+         kwdvalue = "MICROPROCESSOR"
+      elif (val == "MPB"):
+         kwdvalue = "MICROPROCESSOR_BOOT"
+      else:
+         kwdvalue = descu
+
+   elif (key == "PMPMUX"):
+      if (val == "ALTERNATE"):
+         kwdvalue = "PMP"
+      elif (val == "DEFAULT"):
+         kwdvalue = "EMB"
+      else:
+         kwdvalue = descu
+
+   elif (key == "POSCMD"):                              # primary osc
+      if (val in ("EC", "HS", "MS")):
+         kwdvalue = val
+      elif (val == "NONE"):
+         kwdvalue = "DISABLED"
+      else:
+         kwdvalue = descu
+
+   elif (key == "PWM4MUX"):
+      offset = descu.find("_R")
+      if (offset >= 0):
+         kwdvalue = "pin_" + descu[offset + 2: offset + 4]
+      else:
+         kwdvalue = descu
+
+   elif (key == "RTCOSC"):
+      if (val == "INTOSCREF"):
+         kwdvalue = "INTOSC"
+      elif (val == "SOCSREF"):
+         kwdvalue = "SOSC"
+      elif (val == "T1OSCREF"):
+         kwdvalue = "T1OSC"
+      else:
+         kwdvalue = descu
+
+   elif (key == "SDOMUX"):
+      if (val in ("RB3", "RC7")):
+         kwdvalue = "pin_" + val[1:]
+      else:
+         kwdvalue = descl[-1]                           # last word
+
+   elif (key == "SIGN"):
+      if (descu.find("CONDUC") >= 0):
+         kwdvalue = "NOT_CONDUCATED"
+      else:
+         kwdvalue = "AREA_COMPLETE"
+
+   elif (key == "SOSCSEL"):
+      if (val == "HIGH"):
+         kwdvalue = "HP"
+      elif (val == "DIG"):
+         kwdvalue = "DIG"
+      elif (val == "LOW"):
+         kwdvalue = "LP"
+#     elif (descu.find("SECURITY") >= 0):
+#        kwdvalue = "HS_CP"
+      else:
+         kwdvalue = descu
+
+   elif (key == "SSPMUX"):
+      offset = descu.find("_R")
+      if (offset >= 0):
+         kwdvalue = "pin_" + descu[offset + 2: offset + 4]
+      else:
+         kwdvalue = descu
+
+   elif (key == "T0CKMUX"):
+      if (val == "PORTB"):
+         kwdvalue = "pin_B5"
+      elif (val == "PORTG"):
+         kwdvalue = "pin_G4"
+      else:
+         kwdvalue = descu
+
+   elif (key == "T1OSCMUX"):
+      if (val in ("HIGH", "LOW")):
+         kwdvalue = "pin_" + descl[-1]
+      elif (val == "ON"):
+         kwdvalue = "LP"
+      elif (val == "OFF"):
+         kwdvalue = "STANDARD"
+      else:
+         kwdvalue = descu
+
+   elif (key == "T3CKMUX"):
+      offset = descu.find("_R")
+      if (offset >= 0):
+         kwdvalue = "pin_" + descu[offset + 2 : offset + 4]
+      else:
+         kwdvalue = descu
+
+   elif (key == "T5GSEL"):
+      if (val in ("T3G", "T5G")):
+         kwdvalue = val
+      else:
+         kwdvalue = descu
+
+   elif (key == "USBDIV"):                                  # mplab >= 8.60 (was USBPLL)
+      if ((val == "1") | (val == "OFF")):
+         kwdvalue = "P1"
+      else:
+         kwdvalue = "P2"
+
+   elif key == "USBLSCLK":
+      if (val == "48MHZ"):
+         kwdvalue = "F48MHZ"
+      else:
+         kwdvalue = "F24MHZ"
+
+   elif (key == "USBPLL"):
+      if descu.find("PLL") >= 0:
+         kwdvalue = "F48MHZ"
+      else:
+         kwdvalue = "OSC"
+
+   elif (key == "VCAPEN"):
+      if (val in ("OFF", "DIS")):
+         kwdvalue = "DISABLED"
+      elif (val == "ON"):
+         kwdvalue = "ENABLED"
+      elif (val.startswith("RA")):
+         kwdvalue = "pin_" + val[1:]                        # pin_Ax
+      else:
+         kwdvalue = "ENABLED"
+
+   elif (key == "VOLTAGE"):
+      kwdvalue = ""
+      for word in descl:                                    # scan descl for voltage
+         if ("0" <= word[0] <= "9"):
+            if (word[1] == "."):
+               kwdvalue = "V" + word[0] + word[2]
+  #            if (kwdvalue == "V21"):
+  #               kwdvalue = "V20"                          # compatibility
+               break
+      if (kwdvalue == ""):                                  # no voltage value found
+         if (("MINIMUM" in descl) | ("LOW" in descl) | ("LO" in descl)):
+            kwdvalue = "MINIMUM"
+         elif (("MAXIMUM" in descl) | ("HIGH" in descl) | ("HI" in desc)):
+            kwdvalue = "MAXIMUM"
+         elif (len(descu) == 0):
+            kwdvalue = "MEDIUM" + val
+         else:
+            kwdvalue = descu
+
    elif (key == "WDT"):                                     # Watchdog
       if (val in ("NOSLP", "NSLEEP", "SLEEP")):
          kwdvalue = "RUNONLY"
@@ -1833,61 +2731,138 @@ def normalize_fusedef_value(key, val, desc):
       else:
          kwdvalue = descu                                   # normalized description
 
+   elif (key == "WDTCCS"):
+      if (val in ("LFINTOSC", "MFINTOSC")):
+         kwdvalue = val
+      elif (val == "SWC"):
+         kwdvalue = "SOFTWARE"
+      else:
+         kwdvalue = descu
+
+   elif (key == "WDTCLK"):
+      if (val == "LPRC"):
+         kwdvalue = "INTOSC"
+      elif (val == "SOSC"):
+         kwdvalue = "SOSC"
+      elif (val == "FRC"):
+         kwdvalue = "FRC"
+      elif (val == "SYS"):
+         kwdvalue = "FOSC"
+      else:
+         kwdvalue = descu
+
+   elif (key == "WDTCS"):
+      if (descu.find("LOW") >= 0):
+         kwdvalue = 'LOW_POWER'
+      else:
+         kwdvalue = 'STANDARD'
+
+   elif (key == "WDTWIN"):
+      kwdvalue = "P" + val[2:4]
+
    elif (key == "WDTCPS"):
       if descl[0].startswith("1:"):
          kwdvalue = int(descl[0][2:])
          j = 0
-         while (kwdvalue > 1024):
-            kwdvalue = (kwdvalue + 1023) // 1024             # reduce to K, M, G, T
+         while (kwdvalue >= 1024):
+            kwdvalue = (kwdvalue + 1000) // 1024             # reduce to K, M, G, T
             j = j + 1
          kwdvalue = "F%d" % (kwdvalue) + " KMGT"[j]
       else:
          kwdvalue = "SOFTWARE"
 
+   elif (key == "WDTCWS"):
+      if (descl[0][0].isdigit()):
+         kwdvalue = "P%d" % int(float(descl[0]))            # truncate percentage to integer
+      else:
+         kwdvalue = "SOFTWARE"
+
    elif (key in ("WDTPS", "DSWDTPS")):
-      if (val.isdigit() | descl[0].startswith("1:")):
-         if val.isdigit():
-            kwdvalue = eval(val)
+      if (descl[0].startswith("1:")):
+         if (len(descl[0]) > 2):
+            kwdvalue = eval("".join(descl[0][2:].split(",")))     # 1:xxx
          else:
-            kwdvalue = descl[0][2:]
-            if (len(kwdvalue) == 0):                         # broken division
-               kwdvalue = descl[1]
-            if (kwdvalue.find(",") >= 0):                    # large number with commas
-               kwdvalue = eval("".join(kwdvalue.split(",")))
-            else:
-               kwdvalue = eval(kwdvalue)
+            kwdvalue = eval("".join(descl[1].split(",")))         # 1: xxx
          j = 0
          while (kwdvalue >= 1024):
-            kwdvalue = (kwdvalue + 1023) // 1024             # reduce to K, M, G, T
+            kwdvalue = (kwdvalue + 1000) // 1024             # reduce to K, M, G, T
             j = j + 1
          kwdvalue = "P%d" % (kwdvalue) + " KMGT"[j]
       else:
          kwdvalue = descu
 
+   elif (key == "WPCFG"):
+      if (val in ("ON", "WPCFGEN")):
+         kwdvalue = "ENABLED"
+      else:
+         kwdvalue = "DISABLED"
+
+   elif (key == "WPDIS"):
+      if (val in ("ON", "WPEN")):
+         kwdvalue = "ENABLED"
+      else:
+         kwdvalue = "DISABLED"
+
+   elif (key == "WPEND"):
+      if (val in ("PAGE_0", "WPSTARTMEM")):
+         kwdvalue = "P0_WPFP"
+      else:
+         kwdvalue = "PWPFP_END"
+
    elif (key == "WPFP"):
       kwdvalue = "P" + descl[-1]                               # last word
 
-   # generic determination when no dedicated determination
+   elif (key == "WPSA"):
+      if (val.isdigit()):
+         kwdvalue = "P" + val
+      else:
+         kwdvalue = descu
+
+   elif ( (key == "WRT") | \
+         ((key.startswith("WRT")) & ((key[3:].isdigit()) | (key[3:] in ("B", "C", "D")))) ):
+      if ((desc.find("NOT") >= 0) | (val == "OFF")):
+         kwdvalue = "DISABLED"                              # not protected
+      elif (val == "BOOT"):
+         kwdvalue = "BOOT_BLOCK"                            # boot block protected
+      elif (val == "HALF"):
+         kwdvalue = "HALF"                                  # 1/2 of memory protected
+      elif ((val == "FOURTH") | (val == "1FOURTH")):
+         kwdvalue = "FOURTH"                                # 1/4 of memory protected
+      elif (val.isdigit()):
+         kwdvalue = "W" + val                               # number of words
+      else:
+         kwdvalue = "ENABLED"                               # whole memory protected
+
+   elif (key == "WURE"):
+      if (val == "OFF"):
+         kwdvalue = "CONTINUE"
+      else:
+         kwdvalue = "RESET"
+
+   elif (key == "ZCDDIS"):
+      kwdvalue = val                                        # ON means disabled!
+
+   # generic determination when no dedicated determination present
 
    else:
-      if (val == "OFF") | (val == "DISABLED"):
+      if (val in ("OFF", "DISABLED")):
          kwdvalue = "DISABLED"
-      elif (val == "ON") | (val == "DISABLED"):
+      elif (val in ("ON", "ENABLED")):
          kwdvalue = "ENABLED"
-      elif desc.find("ACTIVE") >= 0:
-         if (desc.find("HIGH") > desc.find("ACTIVE")):
+      elif (descu.find("ACTIVE") >= 0):
+         if (descu.find("HIGH") > descu.find("ACTIVE")):
             kwdvalue = "ACTIVE_HIGH"
-         elif (desc.find("LOW") > desc.find("ACTIVE")):
+         elif (descu.find("LOW") > descu.find("ACTIVE")):
             kwdvalue = "ACTIVE_LOW"
          else:
             kwdvalue = "ENABLED"
-      elif ((desc.find("ENABLE") >= 0) | (desc == "ON") | (desc == "ALL")):
+      elif ((descu.find("ENABLE") >= 0) | (descu == "ON") | (descu == "ALL")):
          kwdvalue = "ENABLED"
-      elif ((desc.find("DISABLE") >= 0) | (desc == "OFF") | (desc.find("SOFTWARE") >= 0)):
+      elif ((descu.find("DISABLE") >= 0) | (descu == "OFF") | (descu.find("SOFTWARE") >= 0)):
          kwdvalue = "DISABLED"
-      elif (desc.find("ANALOG") >= 0):
+      elif (descu.find("ANALOG") >= 0):
          kwdvalue = "ANALOG"
-      elif (desc.find("DIGITAL") > 0):
+      elif (descu.find("DIGITAL") > 0):
          kwdvalue = "DIGITAL"
       elif (len(desc) == 0):                                   # no description
          kwdvalue = ""
@@ -1909,526 +2884,14 @@ def normalize_fusedef_value(key, val, desc):
          else:
             kwdvalue = descu                                   # if no alternative!
 
-   if kwdvalue == "":                                       # empty keyword
+   if kwdvalue == "":                                          # empty keyword
       print "   No keyword found for fuse_def", key, "<" + desc + ">"
    elif len(kwdvalue) > 22 :
       print "   fuse_def", key, "keyword excessively long: <" + kwdvalue + ">"
-
+   elif kwdvalue == "   ":                                     # to be skipped
+      kwdvalue = ""
    return kwdvalue
 
-"""
-# ===== following block still need be converted (further) =====
-
-   elif key == "BORPWR":                                     # BOR power mode
-      if pos("ZPBORMV",descu) > 0:
-         kwdvalue = "ZERO"
-      elif pos("HIGH_POWER",descu) > 0:
-         kwdvalue = "HP"
-      elif pos("MEDIUM_POWER",descu) > 0:
-         kwdvalue = "MP"
-      elif pos("LOW_POWER",descu) > 0:
-         kwdvalue = "LP"
-      else:
-         kwdvalue = descu
-   end
-
-   elif key = "CANMUX":
-      if pos("_RB", descu) > 0:
-         kwdvalue = "pin_"substr(descu, pos("_RB", descu) + 2, 2)
-      elif pos("_RC", descu) > 0:
-         kwdvalue = "pin_"substr(descu, pos("_RC", descu) + 2, 2)
-      elif pos("_RE", descu) > 0:
-         kwdvalue = "pin_"substr(descu, pos("_RE", descu) + 2, 2)
-      else:
-         kwdvalue = descu
-
-   elif left(key,3) = "CCP" & right(key,3) = "MUX":           # CCPxMUX
-      if pos("MICRO",descu) > 0:                        # Microcontroller mode
-         kwdvalue = "pin_E7"                                # valid for all current PICs
-      elif val = "ON"  | descu = "ENABLED" :
-         kwdvalue = "ENABLED"
-      elif val = "OFF" | descu = "DISABLED":
-         kwdvalue = "DISABLED"
-      else:
-         kwdvalue = "pin_"right(descu,2)                    # last 2 chars
-
-   elif key == "CINASEL":
-      if pos("DEFAULT",descu) > 0:                      # Microcontroller mode
-         kwdvalue = "DEFAULT"
-      else:
-         kwdvalue = "MAPPED"
-
-   elif key == "CP" |,                                       # code protection
-       ( left(key,2) = "CP" &,
-           (datatype(substr(key,3),"W") = 1 |,
-            substr(key,3,1) = "D"           |,
-            substr(key,3,1) = "B") )      :
-      if val = "OFF" | pos("NOT",desc) > 0 | pos("DISABLED",desc) > 0  |  pos("OFF",desc) > 0:
-         kwdvalue = "DISABLED"
-      elif left(val,5) = "UPPER" | left(val,5) = "LOWER"  | val = "HALF":
-         kwdvalue = val
-      elif pos("ALL_PROT", descu) > 0:               # all protected
-         kwdvalue = "ENABLED"
-      elif left(desc,1) = "0":                           # probably a range
-         kwdvalue = word(desc,1)                            # begin(-end) of range
-         if word(desc,2) = "TO":                        # splitted words
-            kwdvalue = kwdvalue"-"word(desc,3)              # add end of range
-         kwdvalue = "R"translate(kwdvalue,"_","-")          # format
-      end
-      else:
-         kwdvalue = "ENABLED"
-
-   elif (key == "DSBITEN"):
-      if (val = "ON"):
-         kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "DISABLED"
-
-   elif key == "DSWDTOSC":
-      if pos("INT",descu) > 0:
-         kwdvalue = "INTOSC"
-      elif pos("LPRC",descu) > 0:
-         kwdvalue = "LPRC"
-      elif pos("SOSC",descu) > 0:
-         kwdvalue = "SOSC"
-      else:
-         kwdvalue = "T1"
-
-   elif key == "EBTR" |,
-        left(key,4) = "EBTR"  &,
-           (datatype(substr(key,5),"W") = 1 |,
-            substr(key,5,1) = "B")      :
-      if val = "OFF":
-         kwdvalue = "DISABLED"                              # not protected
-      else:
-         kwdvalue = "ENABLED"
-
-   elif key == "ECCPMUX":
-      if pos("_R",descu) > 0:                           # check for _R<pin>
-         kwdvalue = "pin_"substr(descu,pos("_R",descu)+2,2)  # 2 chars after "_R"
-      else:
-         kwdvalue = descu
-
-   elif key == "EMB":
-      if pos("12",desc) > 0:                            # 12-bit mode
-         kwdvalue = "B12"
-      elif pos("16",desc) > 0:                       # 16-bit mode
-         kwdvalue = "B16"
-      elif pos("20",desc) > 0:                       # 20-bit mode
-         kwdvalue = "B20"
-      else:
-         kwdvalue = "DISABLED"                              # no en/disable balancing
-
-   elif key == "ETHLED":
-      if val = "ON" | pos("ENABLED",desc) > 0 :         # LED enabled
-         kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "DISABLED"
-
-   elif key == "EXCLKMUX":                                   # Timer0/5 clock pin
-      if pos("_R",descu) > 0:                          # check for _R<pin>
-         kwdvalue = "pin_"substr(descu,pos("_R",descu)+2,2)  # 2 chars after "_R"
-      else:
-         kwdvalue = descu
-
-   elif key == "FLTAMUX":
-      if pos("_R",descu) > 0:                          # check for _R<pin>
-         kwdvalue = "pin_"substr(descu,pos("_R",descu)+2,2)  # 2 chars after "_R"
-      else:
-         kwdvalue = descu
-
-   elif key == "FOSC2":
-      if val = "OFF" | val = "ON":
-         kwdvalue = val
-      else:
-         kwdvalue = descu
-
-   elif key == "FCMEN"  |,                                   # Fail safe clock monitor
-        key == "FSCKM":
-      x1 = pos("ENABLED", descu)
-      x2 = pos("DISABLED", descu)
-      if x1 > 0 & x2 > 0 & x2 > x1:
-         kwdvalue  = "SWITCHING"
-      elif x1 > 0 & x2 = 0:
-         kwdvalue  = "ENABLED"
-      elif x1 = 0 & x2 > 0:
-         kwdvalue  = "DISABLED"
-      else:
-         kwdvalue = descu
-
-   elif key == "HFOFST":
-      if val = "ON" | pos("NOT_DELAYED",descu) > 0:
-         kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "DISABLED"
-
-   elif key == "INTOSCSEL":
-      if pos("HIGH_POWER",descu) > 0:
-         kwdvalue = "HP"
-      elif pos("LOW_POWER",descu) > 0:
-         kwdvalue = "LP"
-      else:
-         kwdvalue = descu
-
-   elif key == "IOL1WAY":
-      if val = "ON":
-         kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "DISABLED"
-
-   elif key == "IOSCFS":
-      if val = "ON" | val = "8MHZ":
-         kwdvalue = "F8MHZ"
-      elif val = "OFF" | val = "4MHZ":
-         kwdvalue = "F4MHZ"                                 # otherwise
-      else:
-         kwdvalue = descu
-         if left(kwdvalue,1) >= "0" & left(kwdvalue,1) <= "9":
-            kwdvalue = "F"kwdvalue                          # prefix elif numeric
-
-   elif key == "LPT1OSC":
-      if pos("LOW",descu) > 0 | pos("ENABLE",descu) > 0:
-         kwdvalue = "LOW_POWER"
-      else:
-         kwdvalue = "HIGH_POWER"
-
-   elif key == "LS48MHZ":
-      if pos("TO_4",descu) > 0:
-         kwdvalue = "P4"
-      elif pos("TO_8",descu) > 0:
-         kwdvalue = "P8"
-      elif pos("BY_2",descu) > 0:
-         kwdvalue = "P2"
-      elif pos("BY_1",descu) > 0:
-         kwdvalue = "P1"
-      else:
-         kwdvalue = descu
-
-   elif key == "LVP":
-      if pos("ENABLE",desc) > 0:
-         kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "DISABLED"
-
-   elif key == "P2BMUX":
-      if substr(descu,length(descu)-3,2) = "_R":        # check for _R<pin>
-         kwdvalue = "pin_"right(descu,2)
-      else:
-         kwdvalue = descu
-
-   elif key == "PARITY":
-      if pos("CLEAR",descu) > 0:                        # check for _R<pin>
-         kwdvalue = "CLEAR"
-      else:
-         kwdvalue = "SET"
-
-   elif key == "PBADEN":
-      if pos("ANALOG",descu) > 0  |  desc = "ENABLED":
-         kwdvalue = "ANALOG"
-      else:
-         kwdvalue = "DIGITAL"
-
-   elif key == "PCLKEN":
-      if val = "ON":
-         kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "DISABLED"
-
-   elif key == "PLLEN":
-      if val = "DISABLED" | val = "OFF":
-         kwdvalue = "DISABLED"
-      elif val = "ENABLED" | val = "ON":
-         kwdvalue = "ENABLED"
-      else:
-         kwdvalue = descu
-
-   elif key == "PMODE":
-      if pos("EXT",desc) > 0:
-         if pos("-BIT", desc) > 0:
-            kwdvalue = "B"substr(desc, pos("-BIT",desc)-2, 2) # # bits
-         else:
-            kwdvalue = "EXT"
-      elif pos("PROCESSOR",desc) > 0:
-         kwdvalue = "MICROPROCESSOR"
-         if pos("BOOT",descu) > 0:
-            kwdvalue = kwdvalue"_BOOT"
-      else:
-         kwdvalue = "MICROCONTROLLER"
-
-   elif key == "PMPMUX":
-      if wordpos("ON",desc) > 0:                        # contains " ON "
-         kwdvalue = left(word(desc, wordpos("ON",desc) + 1),5)
-      elif wordpos("ELSEWHERE",desc) > 0  |,             # contains " ELSEWHERE "
-              wordpos(" NOT ",desc) > 0:                # contains " NOT "
-         kwdvalue = "ELSEWHERE"
-      elif wordpos("NOT",desc) = 0:                  # does not contain " NOT "
-         kwdvalue = left(word(desc, wordpos("TO",desc) + 1),5)
-      else:
-         kwdvalue = descu
-
-   elif key == "POSCMD":                                     # primary osc
-      if pos("DISABLED",descu) > 0:                     # check for _R<pin>
-         kwdvalue = "DISABLED"
-      elif pos("HS", descu) > 0:
-         kwdvalue = "HS"
-      elif pos("MS", descu) > 0:
-         kwdvalue = "MS"
-      elif pos("EXTERNAL", descu) > 0:
-         kwdvalue = "EC"
-      else:
-         kwdvalue = descu
-
-   elif key == "PWM4MUX":
-      if pos("_R",descu) > 0:                          # check for _R<pin>
-         kwdvalue = "pin_"substr(descu,pos("_R",descu)+2,2)  # 2 chars after "_R"
-      else:
-         kwdvalue = descu
-
-   elif key == "RETEN":
-      if val = "OFF":
-         kwdvalue = "DISABLED"
-      else:
-         kwdvalue = "ENABLED"
-
-   elif key == "RTCOSC":
-      if pos("INTRC",descu) > 0:
-         kwdvalue = "INTRC"
-      else:
-         kwdvalue = "T1OSC"
-
-   elif key == "SDOMUX":
-      if pos("ON_R", descu) > 0:
-         kwdvalue = "pin_"substr(descu, pos("ON_R", descu) + 4, 2)
-      else:
-         kwdvalue = word(desc,words(desc))                  # last word
-
-   elif key == "SIGN":
-      if pos("CONDUC",descu) > 0:
-         kwdvalue = "NOT_CONDUCATED"
-      else:
-         kwdvalue = "AREA_COMPLETE"
-
-   elif key == "SOSCSEL":
-      if val = "HIGH" | pos("HIGH_POWER",descu) > 0:
-         kwdvalue = "HP"
-      elif val = "DIG" | pos("DIGITAL",descu):
-         kwdvalue = "DIG"
-      elif val = "LOW" | pos("LOW_POWER",descu) > 0:
-         kwdvalue = "LP"
-      elif pos("SECURITY",descu) > 0:
-         kwdvalue = "HS_CP"
-      else:
-         kwdvalue = descu
-
-   elif key == "SSPMUX":
-      offset1 = pos("_MULTIPLEX",descu)
-      if offset1 > 0:                                       # "multiplexed" found
-         offset2 = pos("_R",substr(descu,offset1))          # first pin
-         if offset2 > 0:
-            kwdvalue = "pin_"substr(descu,offset1+offset2+1,2)
-         else:
-            kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "DISABLED"                              # no en/disable balancing
-
-   elif key == "STVR":
-      if pos("NOT", desc) > 0 | pos("DISABLED",desc) > 0:   # no stack overflow
-         kwdvalue = "DISABLED"
-      else:
-         kwdvalue = "ENABLED"
-
-   elif key == "T0CKMUX":
-      if pos("_RB", descu) > 0:
-         kwdvalue = "pin_"substr(descu, pos("_RB", descu) + 2, 2)
-      elif pos("_RG", descu) > 0:
-         kwdvalue = "pin_"substr(descu, pos("_RG", descu) + 2, 2)
-      else:
-         kwdvalue = descu
-
-   elif key == "T1OSCMUX":
-      if left(right(descu,4),2) = "_R":
-         kwdvalue = "pin_"right(descu,2)                    # last 2 chars
-      elif val = "ON":
-         kwdvalue = "LP"
-      elif val = "OFF":
-         kwdvalue = "STANDARD"
-      else:
-         kwdvalue = descu
-
-   elif key == "T1DIG":
-      if val = "ON":
-         kwdvalue = "ENABLED"
-      elif val = "OFF":
-         kwdvalue = "DISABLED"
-      else:
-         kwdvalue = descu
-
-   elif key == "T3CKMUX":
-      if pos("_R", descu) > 0:
-         kwdvalue = "pin_"substr(descu, pos("_R", descu) + 2, 2)
-      else:
-         kwdvalue = descu
-
-   elif key == "T5GSEL":
-      if pos("T3G",descu) > 0:
-         kwdvalue = "T3G"
-      else:
-         kwdvalue = "T5G"
-
-   elif key == "USBDIV":                                     # mplab >= 8.60 (was USBPLL)
-      if val = "1" | val = "OFF":
-         kwdvalue = "P1"
-      else:
-         kwdvalue = "P2"
-
-   elif key == "USBLSCLK":
-      if pos("48",descu) > 0:
-         kwdvalue = "F48MHZ"
-      else:
-         kwdvalue = "F24MHZ"
-
-   elif key == "USBPLL":
-      if pos("PLL",descu) > 0:
-         kwdvalue = "F48MHZ"
-      else:
-         kwdvalue = "OSC"
-
-   elif key == "VCAPEN":
-      if pos("DISABLED",desc) > 0:
-         kwdvalue = "DISABLED"
-      elif pos("ENABLED_ON",descu) > 0:
-         x = wordpos("ON",desc)
-         kwdvalue = word(desc, x + 1)                       # last word
-         if left(kwdvalue,1) = "R":                     # pinname Rxy
-            kwdvalue = "pin_"substr(kwdvalue,2)             # make it pin_xy
-         else:
-            kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "ENABLED"                               # probably never reached
-
-   elif key == "VOLTAGE":
-      do j=1 to words(desc)                                 # scan word by word
-         if left(word(desc,j),1) >= "0" & left(word(desc,j),1) <= "9":
-            if pos(".",word(desc,j)) > 0:                   # select digits
-               kwdvalue = "V"left(word(desc,j),1,1)||substr(word(desc,j),3,1)
-               if kwdvalue = "V21":
-                  kwdvalue = "V20"                          # compatibility
-               leave                                        # done
-      if j > words(desc):                                   # no voltage value found
-         if pos("MINIMUM",desc) > 0  |,
-            pos(" LOW ",desc) > 0:
-            kwdvalue = "MINIMUM"
-         elif pos("MAXIMUM",desc) > 0 |,
-            pos(" HIGH ",desc) > 0:
-            kwdvalue = "MAXIMUM"
-         elif descu = "":
-            kwdvalue = "MEDIUM"val
-         else:
-            kwdvalue = descu
-
-   elif key == "WAIT":
-      if val = "OFF" | pos("NOT",desc) > 0 | pos("DISABLE",desc) > 0:
-         kwdvalue = "DISABLED"
-      else:
-         kwdvalue = "ENABLED"
-
-   elif key == "WDTCCS":
-      if pos("LF",descu) > 0:
-         kwdvalue = "LFINTOSC"
-      elif pos("MF",descu) > 0:
-         kwdvalue = "MFINTOSC"
-      elif pos("SOFTWARE",descu) > 0:
-         kwdvalue = "SOFTWARE"
-      else:
-         kwdvalue = descu
-
-   elif key == "WDTCLK":
-      if pos("ALWAYS",descu) > 0:
-         if pos("INTOSC", descu) > 0:
-             kwdvalue = "INTOSC"
-         else:
-             kwdvalue = "SOCS"
-      elif pos("FRC",descu) > 0:
-         kwdvalue = "FRC"
-      elif pos("FOSC_4",descu) > 0:
-         kwdvalue = "FOSC"
-      else:
-         kwdvalue = descu
-
-   elif key == "WDTCWS":
-      if datatype(word(desc,1)) = "NUM":
-         kwdvalue = "P"trunc(word(desc,1))
-      else:
-         kwdvalue = "SOFTWARE"
-
-   elif key == "WDTCS":
-      if pos("LOW",descu) > 0:
-         kwdvalue = "LOW_POWER"
-      else:
-         kwdvalue = "STANDARD"
-
-   elif key == "WDTWIN":
-      x = pos("WIDTH_IS", descu)
-      if x > 0:
-         kwdvalue = "P"substr(descu, x + 9, 2)              # percentage
-      else:
-         kwdvalue = descu
-
-   elif key == "WPCFG":
-      if val = "ON" | val = "WPCFGEN":
-         kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "DISABLED"
-
-   elif key == "WPDIS":
-      if val = "ON" | val = "WPEN":
-         kwdvalue = "ENABLED"
-      else:
-         kwdvalue = "DISABLED"
-
-   elif key == "WPEND":
-      if pos("PAGES_0", descu) > 0  | pos("PAGE_0", descu) > 0 :
-         kwdvalue = "P0_WPFP"
-      else:
-         kwdvalue = "PWPFP_END"
-
-
-   elif key == "WPSA":
-      x = pos(":", desc)                                    # fraction
-      if x > 0:
-         kwdvalue = "P"substr(desc, x + 1)                  # divisor
-      else:
-         kwdvalue = descu
-
-   elif key == "WRT"  |,
-      ( left(key,3) = "WRT"  &,
-           (datatype(substr(key,4),"W") = 1 |,
-            substr(key,4,1) = "B"           |,
-            substr(key,4,1) = "C"           |,
-            substr(key,4,1) = "D") )    :
-      if pos("NOT",desc) > 0  |  val = "OFF":
-         kwdvalue = "DISABLED"                              # not protected
-      elif val = "BOOT":
-         kwdvalue = "BOOT_BLOCK"                            # boot block protected
-      elif val = "HALF":
-         kwdvalue = "HALF"                                  # 1/2 of memory protected
-      elif val = "FOURTH" | val = "1FOURTH":
-         kwdvalue = "FOURTH"                                # 1/4 of memory protected
-      elif datatype(val) = "NUM":
-         kwdvalue = "W"val                                  # number of words
-      else:
-         kwdvalue = "ENABLED"                               # whole memory protected
-
-   elif key == "WURE":
-      if val = "ON":
-         kwdvalue = "CONTINUE"
-      else:
-         kwdvalue = "RESET"
-
-   elif key == "ZCDDIS":
-      kwdvalue = val                                        # ON means disabled!
-
-"""
 
 
 # -------------------------------------------------------
@@ -2437,19 +2900,79 @@ def normalize_fusedef_value(key, val, desc):
 # Returns:  nothing
 # -------------------------------------------------------
 def list_separator(fp):
-   fp.write("-- " + "-"*65 + "\n")
+   fp.write("-- " + "-"*48 + "\n")
 
 
 # -----------------------------------------------------
-# Title:   Initialize dictionary "fusedef_osc" (mapping .pic -> .jal of OSC keyword)
+# Title:   Initialize dictionaries
 # Input:   nothing
 # Output:  fusedef_osc dictionary initialized
 # Returns: nothing
+# Notes:   Initializes - dictionary for fuse_def keywords
+#                      - dictionary for fuse_def OSC keywords
 # -----------------------------------------------------
 def init_fusedef_mapping():
 
-   global fusedef_osc
+   global fusedef_kwd
+   fusedef_kwd = {"ADDRBW"    : "ABW",
+                  "BACKBUG"   : "DEBUG",
+                  "BKBUG"     : "DEBUG",
+                  "BBSIZ0"    : "BBSIZ",
+                  "BODENV"    : "VOLTAGE",
+                  "BOR4V"     : "VOLTAGE",
+                  "BORV"      : "VOLTAGE",
+                  "BODEN"     : "BROWNOUT",
+                  "BOREN"     : "BROWNOUT",
+                  "BW"        : "DBW",
+                  "DSBOREN"   : "BROWNOUT",
+                  "BOD"       : "BROWNOUT",
+                  "BOR"       : "BROWNOUT",
+                  "CANMX"     : "CANMUX",
+                  "CLKOEN"    : "CLKOUTEN",
+                  "CPDF"      : "CPD",
+                  "CPSW"      : "CPD",
+                  "DATABW"    : "DBW",
+                  "ECCPMX"    : "ECCPMUX",
+                  "ECCPXM"    : "ECCPMUX",
+                  "EXCLKMX"   : "EXCLKMUX",
+                  "FLTAMX"    : "FLTAMUX",
+                  "FOSC"      : "OSC",
+                  "FOSC0"     : "OSC",
+                  "FEXTOSC"   : "OSC",
+                  "FSCKM"     : "FCMEN",
+                  "FSCM"      : "FCMEN",
+                  "MCLRE"     : "MCLR",
+                  "MODE"      : "PMODE",
+                  "MSSP7B_EN" : "MSSPMASK",
+                  "MSSPMSK"   : "MSSPMASK",
+                  "P2BMX"     : "P2BMUX",
+                  "PLL_EN"    : "PLLEN",
+                  "CFGPLLEN"  : "PLLEN",
+                  "PLLCFG"    : "PLLEN",
+                  "PM"        : "PMODE",
+                  "PMPMX"     : "PMPMUX",
+                  "PWM4MX"    : "PWM4MUX",
+                  "PUT"       : "PWRTE",
+                  "PWRT"      : "PWRTE",
+                  "PWRTEN"    : "PWRTE",
+                  "NPWRTE"    : "PWRTE",
+                  "NPWRTEN"   : "PWRTE",
+                  "RTCSOSC"   : "RTCOSC",
+                  "SDOMX"     : "SDOMUX",
+                  "SOSCEL"    : "SOSCSEL",
+                  "SSPMX"     : "SSPMUX",
+                  "STVREN"    : "STVR",
+                  "T0CKMX"    : "T0CKMUX",
+                  "T1OSCMX"   : "T1OSCMUX",
+                  "T3CKMX"    : "T3CKMUX",
+                  "T3CMX"     : "T3CKMUX",
+                  "WDTEN"     : "WDT",
+                  "WDTE"      : "WDT",
+                  "WDPS"      : "WDTPS",
+                  "WRT_ENABLE": "WRT",
+                  "WRTEN"     : "WRT" }
 
+   global fusedef_osc
    fusedef_osc = {"EC"             : "EC_CLKOUT",
                   "EC1"            : "ECL_NOCLKOUT",
                   "EC1IO"          : "ECL_CLKOUT",
@@ -2561,65 +3084,6 @@ def init_fusedef_mapping():
                   "XT_OSC"         : "XT",
                   "XT_XT"          : "XT"}
 
-   global fusedef_kwd
-
-   fusedef_kwd = {"ADDRBW"    : "ABW",
-                  "BACKBUG"   : "DEBUG",
-                  "BKBUG"     : "DEBUG",
-                  "BBSIZ0"    : "BBSIZ",
-                  "BODENV"    : "VOLTAGE",
-                  "BOR4V"     : "VOLTAGE",
-                  "BORV"      : "VOLTAGE",
-                  "BODEN"     : "BROWNOUT",
-                  "BOREN"     : "BROWNOUT",
-                  "DSBOREN"   : "BROWNOUT",
-                  "BOD"       : "BROWNOUT",
-                  "BOR"       : "BROWNOUT",
-                  "CANMX"     : "CANMUX",
-                  "CLKOEN"    : "CLKOUTEN",
-                  "CPDF"      : "CPD",
-                  "CPSW"      : "CPD",
-                  "DATABW"    : "BW",
-                  "ECCPMX"    : "ECCPMUX",
-                  "ECCPXM"    : "ECCPMUX",
-                  "EXCLKMX"   : "EXCLKMUX",
-                  "FLTAMX"    : "FLTAMUX",
-                  "FOSC"      : "OSC",
-                  "FOSC0"     : "OSC",
-                  "FEXTOSC"   : "OSC",
-                  "FSCKM"     : "FCMEN",
-                  "FSCM"      : "FCMEN",
-                  "MCLRE"     : "MCLR",
-                  "MSSP7B_EN" : "MSSPMASK",
-                  "MSSPMSK"   : "MSSPMASK",
-                  "P2BMX"     : "P2BMUX",
-                  "PLL_EN"    : "PLLEN",
-                  "CFGPLLEN"  : "PLLEN",
-                  "PLLCFG"    : "PLLEN",
-                  "MODE"      : "PMODE",
-                  "PM"        : "PMODE",
-                  "PMPMX"     : "PMPMUX",
-                  "PWM4MX"    : "PWM4MUX",
-                  "PUT"       : "PWRTE",
-                  "PWRT"      : "PWRTE",
-                  "PWRTEN"    : "PWRTE",
-                  "NPWRTE"    : "PWRTE",
-                  "NPWRTEN"   : "PWRTE",
-                  "RTCSOSC"   : "RTCOSC",
-                  "SDOMX"     : "SDOMUX",
-                  "SOSCEL"    : "SOSCSEL",
-                  "SSPMX"     : "SSPMUX",
-                  "STVREN"    : "STVR",
-                  "T0CKMX"    : "T0CKMUX",
-                  "T1OSCMX"   : "T1OSCMUX",
-                  "T3CKMX"    : "T3CKMUX",
-                  "T3CMX"     : "T3CKMUX",
-                  "WDTEN"     : "WDT",
-                  "WDTE"      : "WDT",
-                  "WDPS"      : "WDTPS",
-                  "WRT_ENABLE": "WRT",
-                  "WRTEN"     : "WRT" }
-
 
 # ---------------------------------------------------------
 #Title:    Calculate next SFRaddr with current Node
@@ -2631,37 +3095,37 @@ def init_fusedef_mapping():
 def calc_sfraddr(child, sfraddr):
    global sfrranges
    global cfgvar
-   if child.nodeName == "edc:SFRDef":
-      if sfraddr in sfrranges:
-         if sfraddr not in sfrranges[sfraddr]:
+   if (child.nodeName == "edc:SFRDef"):
+      if (sfraddr in sfrranges):
+         if (sfraddr not in sfrranges[sfraddr]):
             sfrranges[sfraddr].append(sfraddr)
       else:
          sfrranges[sfraddr] = [sfraddr]
       sfraddr = sfraddr + 1
-   elif child.nodeName == "edc:AdjustPoint":
+   elif (child.nodeName == "edc:AdjustPoint"):
       sfraddr = sfraddr + eval(child.getAttribute("edc:offset"))
-   elif child.nodeName == "edc:Mirror":
+   elif (child.nodeName == "edc:Mirror"):
       base = sfraddr % cfgvar["banksize"] + \
              eval(child.getAttribute("edc:regionidref")[-1]) * cfgvar["banksize"]
       for i in range(eval(child.getAttribute("edc:nzsize"))):
-         if (base + i) in sfrranges:
-            if sfraddr not in sfrranges[base + i]:
+         if ((base + i) in sfrranges):
+            if (sfraddr not in sfrranges[base + i]):
                sfrranges[base + i].append(sfraddr + i)
          else:
             sfrranges[base + i] = [sfraddr + i]
       sfraddr = sfraddr + eval(child.getAttribute("edc:nzsize"))
-   elif child.nodeName == "edc:MuxedSFRDef":
-      if sfraddr in sfrranges:
-         if sfraddr not in sfrranges[sfraddr]:
+   elif (child.nodeName == "edc:MuxedSFRDef"):
+      if (sfraddr in sfrranges):
+         if (sfraddr not in sfrranges[sfraddr]):
             sfrranges[sfraddr].append(sfraddr)
       else:
          sfrranges[sfraddr] = [sfraddr]
       sfraddr = sfraddr + (eval(child.getAttribute("edc:nzwidth")) + 7) / 8    # bits -> bytes, rounded
-   elif child.nodeName == "edc:JoinedSFRDef":
+   elif (child.nodeName == "edc:JoinedSFRDef"):
       width = max(2, (eval(child.getAttribute("edc:nzwidth")) + 7) / 8)        # circumvent mplab-x bugs
       for i in range(width):
-         if (sfraddr + i) in sfrranges:
-            if (sfraddr + i)  not in sfrranges[sfraddr + i]:
+         if ((sfraddr + i) in sfrranges):
+            if ((sfraddr + i)  not in sfrranges[sfraddr + i]):
                sfrranges[sfraddr+i].append(sfraddr+i)
          else:
             sfrranges[sfraddr+i] = [sfraddr+i]
@@ -2707,14 +3171,15 @@ def collect_config_info(root, picname):
 
    cfgvar.clear()                                        # empty dict. of config variables
    cfgvar["picname"] = picname
-   cfgvar["adc_highres"] = False                         # no high resolution ADC
    cfgvar["adcs_bits"] = 0                               # adcs bits in ANSEL/ANCON
    cfgvar["devid"] = 0                                   # no devID
    cfgvar["haslat"] = False                              # no LATx register
+   cfgvar["ircf_bits"] = 3                               # ircf bits in OSCCON
    cfgvar["lata3_out"] = False                           # True: LATA_RA3 bit output capable
    cfgvar["late3_out"] = False                           #       LATE_RE3  "    "       "
    cfgvar["numbanks"] = 1                                # RAM banks
    cfgvar["osccal"] = 0                                  # no OSCCAL
+   cfgvar["wdtcon_adshr"] = (0,0)                        # no WDTCON_ADSHR (address,offset)
 
    pic = root.getElementsByTagName("edc:PIC")
    cfgvar["arch"]   = pic[0].getAttribute("edc:arch")
@@ -2821,26 +3286,55 @@ def collect_config_info(root, picname):
          while child.nextSibling:
             child = child.nextSibling
             if child.nodeType == Node.ELEMENT_NODE:
-               if child.hasAttribute("edc:cname"):
+               if (child.hasAttribute("edc:cname")):
                   childname = child.getAttribute("edc:cname")
-                  if childname == "OSCCAL":
+                  if (childname == "OSCCAL"):
                      cfgvar["osccal"] = sfraddr
                   elif childname == "FSR":
                      cfgvar["fsr"] = sfraddr
-                  elif childname in ("ADRESH", "ADRES0H"):
-                     cfgvar["adc_highres"] = True
-                  elif childname.startswith("LAT") & (len(childname) == 4) & \
-                        ("A" <= childname[-1] <= "L"):
+                  elif ((childname.startswith("LAT")) & (len(childname) == 4) & \
+                        ("A" <= childname[-1] <= "L")):
                      cfgvar["haslat"] = True
                      access = child.getAttribute("edc:access")
-                     if ((childname == "LATA") | (childname == "LATE")):
+                     if (childname in ("LATA", "LATE")):
                         fields = child.getElementsByTagName("edc:SFRFieldDef")
                         for field in fields:
                            fieldname = field.getAttribute("edc:cname")
                            if ((fieldname == "LATA3") & (access[4] != "r")):
                               cfgvar["lata3_out"] = True
-                           elif ((fieldname == "LATE3") & (access[4] != "r")):
+                           if ((fieldname == "LATE3") & (access[4] != "r")):
                               cfgvar["late3_out"] = True
+                  elif (childname == "OSCCON"):
+                     modes = child.getElementsByTagName("edc:SFRMode")
+                     for mode in modes:
+                        bitfield = mode.firstChild             # skip
+                        while bitfield.nextSibling:
+                           bitfield = bitfield.nextSibling
+                           if (bitfield.nodeName == "edc:SFRFieldDef"):
+                              bname = bitfield.getAttribute("edc:cname")
+                              if (bname.startswith("IRCF")):
+                                 bwidth = eval(bitfield.getAttribute("edc:nzwidth"))
+                                 if (bwidth > 1):
+                                    cfgvar["ircf_bits"] = bwidth
+                                 else:
+                                    if (cfgvar["ircf_bits"] < eval(bname[-1])):
+                                       cfgvar["ircf_bits"] = eval(bname[-1])
+                  elif (childname == "WDTCON"):
+                     modes = child.getElementsByTagName("edc:SFRMode")
+                     offset = 0
+                     for mode in modes:
+                        bitfield = mode.firstChild             # skip
+                        while bitfield.nextSibling:
+                           bitfield = bitfield.nextSibling
+                           if (bitfield.nodeName == "edc:AdjustPoint"):
+                              offset = offset + eval(bitfield.getAttribute("edc:offset"))
+                           elif (bitfield.nodeName == "edc:SFRFieldDef"):
+                              bname = bitfield.getAttribute("edc:cname")
+                              bwidth = eval(bitfield.getAttribute("edc:nzwidth"))
+                              if (bname == "ADSHR"):
+                                 cfgvar["wdtcon_adshr"] = (sfraddr,offset)
+                                 break
+                              offset = offset + bwidth
                sfraddr = calc_sfraddr(child, sfraddr)                   # next adjust
 
    data = []                                                         # intermediate result
@@ -2988,7 +3482,9 @@ def read_datasheet_file():
 def pic2jal(picname, picfile):
    print picname
    global names
+   global sfrranges
    names = []
+   sfrranges.clear()
    root = parse(picfile)                                       # load xml file
    collect_config_info(root, picname)                          # first scan for selected info
    fp = open(os.path.join(dstdir, picname + ".jal"), "w")      # device file to be built
@@ -2996,6 +3492,7 @@ def pic2jal(picname, picfile):
    list_config_memory(fp)
    list_osccal(fp)                                             # works only for selected PICs
    list_all_sfr(fp, root)
+   list_all_nmmr(fp, root)
    list_digital_io(fp, picname)
    list_miscellaneous(fp, picname)
    list_fuse_defs(fp, root)
@@ -3014,7 +3511,8 @@ def pic2jal(picname, picfile):
 def main(selection):
 
    m_pic8flash  = re.compile(r"^1(0|2|6|8)(f|lf|hv).*")        # relevant PICs only
-   l_pic8excl   = ["16hv540", "16f527", "16f570"]              # exclude OTP, bank select by BSR
+   l_pic8excl   = ["12f529t39a", "12f529t48a", \
+                   "16hv540", "16f527", "16f570"]
 
    init_fusedef_mapping()
    read_datasheet_file()                                       # for datasheet suffix
@@ -3069,14 +3567,14 @@ if __name__ == "__main__":
       print "and optionally a pictype (wildcards allowed)"
 
    if len(sys.argv) > 3:
-      print "Expecting not more than 2 arguments: PICtype (with wildcards)"
-      print "===> Using * as wildcard may result in none or unexpected matches!"
+      print "Expecting not more than 2 arguments: runtype + selection (with wildcards)"
+      print "===> Use  1*  as selection if you want to generate all device files!"
       sys.exit(1)
    elif len(sys.argv) > 2:
       selection = sys.argv[2]
    else:
 #     selection = "*"
-      selection = "18f24k50"
+      selection = "18f67j50"
 
    elapsed = time.time()
    count = main(selection)
