@@ -226,8 +226,9 @@ bee-archive:
 	cd distrib/jallib-pack-${VERSION} && zip -r jallib-pack-`cat VERSION`.zip . && mv jallib-pack-`cat VERSION`.zip ..
 
 bee-upload:
-	##python ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib, version `cat distrib/jallib-pack-${VERSION}/VERSION`" -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.tar.gz
-	python2.6 ~/bin/googlecode_upload.py -s "Automated weekly build, bleeding edge jallib, version `cat distrib/jallib-pack-${VERSION}/VERSION`" -p jallib -l Type-Buildbot -p jallib -u $$UPLOAD_USER -w $$UPLOAD_PASSWD distrib/jallib-pack-`cat distrib/jallib-pack-${VERSION}/VERSION`.zip
+	# TODO: Googlecode uploads have been deactivated. Implementation needed: upload to drive for instance.
+	# Remember: this target is automatically called by builbot when generating weekly buils. While implementing this,
+	# code must be generic enough (paths, execs, environment) so it'll execute correctly on target server
 
 bee-check:
 	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2
