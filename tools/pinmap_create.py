@@ -4,16 +4,16 @@
    pinmap_create.py - create new pinmap.py from MPLAB-X
    This script is part of a sub-project using MPLAB-X info for Jallib,
    in particular the device files, but also for some other libraries.
-   This script uses the .edc files created by the pic2edc script.
+   This script uses the .pic files of MPLAB-X.
    The Pin section of these files contains the pin aliases.
    Some manipulations are performed, for example:
     - skip pins which are not accessible from the program like Vpp, Vdd
     - skip non-aliases of a pin, like IOC, INT
     - correct apparent errors or omissions of MPLAB-X
     - determine the base name of a pin and specify it as first in list
-   When pins are not in .edc file or known to be incorrect
+   When pins are not in .pic file or known to be incorrect
    the entry in the old pinmap file will be copied (when present).
-   Same when the .edc file does not contain a Pin section at all,
+   Same when the .pic file does not contain a Pin section at all,
    otherwise the pinmap will not contain an entry for this PIC and
    must be created manually from the datasheet.
    This script handles issues with MPLAB-X (version see below).
@@ -26,32 +26,28 @@ import fnmatch
 import re
 from xml.dom.minidom import parse, Node
 
-mplabxversion = "205"                                       # latest version of MPLAB-X
+mplabxversion = "210"                                       # latest version of MPLAB-X
+picdir    = "k:/mplab-x_" + mplabxversion + "/crownking.edc.jar/content/edc"   # basedir of .pic files
 
-edcdir    = "k:/jal/pic2jal/edc_" + mplabxversion           # dir with .edc files
 pinmapnew = "pinmapnew.py"                                  # output
-
-portpin = re.compile(r"^R[A-L]{1}[0-7]{1}\Z")               # Rx0..7 (x in range A..L)
-gpiopin = re.compile(r"^GP[0-5]{1}\Z")                      # GP0..5
-
-dir = fnmatch.filter(os.listdir(edcdir), "*.edc")           # get list of .edc files
-if len(dir) == 0:
-   print "No .edc files found in directory", edcdir
-   sys.exit(1)
-
-print "Building new pinmap from .edc files in", edcdir, "for (max)", len(dir), "PICs"
-
 try:
    fp = open(pinmapnew, "w")
 except IOError:
    print "Could not create output file", pinmapnew
    sys.exit(1)
+fp.write("{\n")                                             # opening line
 
+pic8flash  = re.compile(r"^1(0|2|6|8)(f|lf|hv).*")        # relevant PICs only
+pic8excl   = ["12f529t39a", "12f529t48a", \
+                "16hv540", "16f527", "16f570"]
+portpin = re.compile(r"^R[A-L]{1}[0-7]{1}\Z")               # Rx0..7 (x in range A..L)
+gpiopin = re.compile(r"^GP[0-5]{1}\Z")                      # GP0..5
 
 def list_pic(_pic, _alias):
 # list all pins and their aliases of a single _pic in dictionary _alias
    header = '   "' + _pic + '": {'                          # start of pinmap this PIC
    fp.write(header)
+
    pinlist_sorted = list(_alias.keys())
    pinlist_sorted.sort()
    for i in range(len(pinlist_sorted) - 1):                 # all but last
@@ -62,23 +58,18 @@ def list_pic(_pic, _alias):
    fp.write("},\n")                                         # end of pinmap this PIC
 
 
-from pinmap import pinmap                                   # current ('old') pinmap
-
-dir.sort()                                                  # alphanumeric sequence
-piccount = 0
-# fp.write("pinmap = {\n")                                  # pinmap header
-fp.write("{\n")                                             # opening line
-
-for filename in dir:
-   picname = os.path.splitext(filename)[0][0:].upper()      # determine PIC from filename
+def process_pic(picname, filename):
+#  process a specific PIC (expect picname in upper case)
    print picname
 
-   if (picname in ("16LF1713", "16F1716", "16LF1716")):
-      filename = "16f1713.edc"
-      print "  Pinmap derived from 16f1713"
+   if (int(mplabxversion) < 210):
+      if (picname in ("16LF1713", "16F1716", "16LF1716")):
+         filename = "pic16f1713.pic"
+         print "  Pinmap derived from 16F1713"
 
-   filepath = os.path.join(edcdir,filename)                 # pathspec
-   dom = parse(filepath)                                    # load .edc file
+#  filepath = os.path.join(picdir,filename)                 # pathspec
+   filepath = os.path.join(root,filename)                   # pathspec
+   dom = parse(filepath)                                    # load .pic file
 
    pinnumber = 0
    pinlist = {}                                             # new dictionary
@@ -143,7 +134,7 @@ for filename in dir:
                aliaslist.remove(portbit)
                aliaslist = [portbit] + aliaslist            # shift to front
             break
-         elif re.match(gpiopin,alias):                      # check gor GPx
+         elif re.match(gpiopin,alias):                      # check for GPx
             portbit = "RA" + alias[-1]                      # note: RAx not in aliaslist!
             break
       if portbit != None:                                   # found Rxy or GPx
@@ -165,13 +156,27 @@ for filename in dir:
 
    if len(pinlist) > 0:
       list_pic(picname, pinlist)                            # list pinmap this pic
-      piccount += 1
    elif pinmap.get(picname) != None:                        # present in old list
       list_pic(picname, pinmap[picname])                    # copy old mapping
-      piccount += 1
-      print "  Pinlist missing in .edc file, entry copied from current pinmap"
+      print "  Pinlist missing in .pic file, entry copied from current pinmap"
    else:
       print "  Pinlist missing, add it manually!"
+
+
+from pinmap import pinmap                                   # current ('old') pinmap
+
+print "Building new pinmap from .pic files in", picdir
+
+piccount = 0
+
+for (root, dirs, files) in os.walk(picdir):                 # whole tree (incl subdirs!)
+   files.sort()                                             # for unsorted filesystems!
+   for file in files:
+      picname = os.path.splitext(file)[0][3:].lower()       # 1st selection: pic type
+      if (re.match(pic8flash, picname) != None) & \
+         (picname not in pic8excl):                         # select 8-bits flash PICs
+         process_pic(picname.upper(), os.path.join(root,file))      # create device file from .pic file
+         piccount = piccount + 1
 
 fp.write("  }\n")                                           # end of pinmap
 fp.close()

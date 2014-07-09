@@ -41,11 +41,11 @@
 
 parse upper arg runtype .                                   /* any: list all unreleased files */
 
-base       = 'k:/jallib'                                    /* base Jallib directory */
-libdir     = base'/include'                                 /* libraries */
-smpdir     = base'/sample'                                  /* samples */
-projdir    = base'/project'                                 /* project files */
-torelease  = base'/TORELEASE'                                 /* TORELEASE file */
+base       = 'k:\jallib'                                    /* base Jallib directory */
+libdir     = base'\include'                                 /* libraries */
+smpdir     = base'\sample'                                  /* samples */
+projdir    = base'\project'                                 /* project files */
+torelease  = base'\TORELEASE'                                 /* TORELEASE file */
 newrelease = 'TORELEASE.NEW'                                /* release list */
 list       = 'torelease.lst'                                /* script output */
 
@@ -86,6 +86,7 @@ do linenumber = 1  while lines(torelease)                   /* collect files */
    if stream(base'/'ln, 'c', 'query exists') = '' then do   /* file not found */
       i = missing.0 + 1
       missing.i = format(linenumber,4)'.  'ln               /* remember */
+      say 'missing:' ln
       missing.0 = i
    end
    select
@@ -309,7 +310,9 @@ do i=1 to fls.0
                  say 'sample' left(filespec('n',fls.i),40) 'includes wrong device file:' libx
             end
             else do
+               say 'searching' '/'libx'.jal' 'in' torelease
                call SysFileSearch '/'libx'.jal', torelease, 'liby.'
+               say 'found' liby.0 'hits'
                if liby.0 = 0 then do                      /* not found */
                   say 'sample' left(filespec('N',fls.i),40) 'includes a non released library:' libx
                   u = unreleasedinclude.0 + 1
