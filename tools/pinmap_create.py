@@ -26,7 +26,8 @@ import fnmatch
 import re
 from xml.dom.minidom import parse, Node
 
-mplabxversion = "210"                                       # latest version of MPLAB-X
+mplabxversion = "215"                                       # latest version of MPLAB-X
+
 picdir    = "k:/mplab-x_" + mplabxversion + "/crownking.edc.jar/content/edc"   # basedir of .pic files
 
 pinmapnew = "pinmapnew.py"                                  # output
@@ -35,9 +36,9 @@ try:
 except IOError:
    print "Could not create output file", pinmapnew
    sys.exit(1)
-fp.write("{\n")                                             # opening line
+fp.write("pinmap = {\n")                                    # opening line
 
-pic8flash  = re.compile(r"^1(0|2|6|8)(f|lf|hv).*")        # relevant PICs only
+pic8flash  = re.compile(r"^1(0|2|6|8)(f|lf|hv).*")          # relevant PICs only
 pic8excl   = ["12f529t39a", "12f529t48a", \
                 "16hv540", "16f527", "16f570"]
 portpin = re.compile(r"^R[A-L]{1}[0-7]{1}\Z")               # Rx0..7 (x in range A..L)

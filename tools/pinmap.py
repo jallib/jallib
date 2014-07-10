@@ -1,4 +1,4 @@
-{
+pinmap = {
    "10F200": {"RA0" : ["GP0", "ICSPDAT"],
               "RA1" : ["GP1", "ICSPCLK"],
               "RA2" : ["GP2", "T0CKI", "FOSC4"],
@@ -208,8 +208,8 @@
                "RA1" : ["RA1", "ZCD1OUT", "VREF+DAC", "VREF+ADC", "AN1", "C1IN0-", "IOCA1"],
                "RA2" : ["RA2", "SMTSIG2", "ZCD1IN", "AN2", "CWG1A", "CWG1IN", "C1OUT", "T0CKI", "T4IN", "CCP1", "IOCA2"],
                "RA3" : ["RA3", "SMTWIN2", "T1G", "T6IN", "IOCA3"],
-               "RA4" : ["RA4", "SMTSIG1", "AN3", "C1IN1-", "CWG1B", "T1G", "IOCA4"],
-               "RA5" : ["RA5", "SMTWIN1", "CWG1A", "T1CKI", "T2IN", "CCP1", "IOCA5"]
+               "RA4" : ["RA4", "CLKOUT", "SMTSIG1", "AN3", "C1IN1-", "CWG1B", "T1G", "IOCA4"],
+               "RA5" : ["RA5", "CLKIN", "SMTWIN1", "CWG1A", "T1CKI", "T2IN", "CCP1", "IOCA5"]
                },
    "12F1822": {"RA0" : ["RA0", "AN0", "CPS0", "C1IN+", "DACOUT", "TX", "CK", "SDO", "SS", "P1B", "MDOUT", "ICSPDAT"],
                "RA1" : ["RA1", "AN1", "CPS1", "VREF", "C1IN0-", "SRI", "RX", "DT", "SCL", "SCK", "MDMIN", "ICSPCLK"],
@@ -334,8 +334,8 @@
                 "RA1" : ["RA1", "ZCD1OUT", "VREF+DAC", "VREF+ADC", "AN1", "C1IN0-", "IOCA1"],
                 "RA2" : ["RA2", "SMTSIG2", "ZCD1IN", "AN2", "CWG1A", "CWG1IN", "C1OUT", "T0CKI", "T4IN", "CCP1", "IOCA2"],
                 "RA3" : ["RA3", "SMTWIN2", "T1G", "T6IN", "IOCA3"],
-                "RA4" : ["RA4", "SMTSIG1", "AN3", "C1IN1-", "CWG1B", "T1G", "IOCA4"],
-                "RA5" : ["RA5", "SMTWIN1", "CWG1A", "T1CKI", "T2IN", "CCP1", "IOCA5"]
+                "RA4" : ["RA4", "CLKOUT", "SMTSIG1", "AN3", "C1IN1-", "CWG1B", "T1G", "IOCA4"],
+                "RA5" : ["RA5", "CLKIN", "SMTWIN1", "CWG1A", "T1CKI", "T2IN", "CCP1", "IOCA5"]
                 },
    "12LF1822": {"RA0" : ["RA0", "AN0", "CPS0", "C1IN+", "DACOUT", "TX", "CK", "SDO", "SS", "P1B", "MDOUT", "ICSPDAT", "ICDDAT"],
                 "RA1" : ["RA1", "AN1", "CPS1", "VREF", "C1IN0-", "SRI", "RX", "DT", "SCL", "SCK", "MDMIN", "ICSPCLK", "ICPCLK"],
