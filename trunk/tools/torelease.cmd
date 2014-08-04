@@ -310,9 +310,9 @@ do i=1 to fls.0
                  say 'sample' left(filespec('n',fls.i),40) 'includes wrong device file:' libx
             end
             else do
-               say 'searching' '/'libx'.jal' 'in' torelease
+       /*      say 'searching' '/'libx'.jal' 'in' torelease   */
                call SysFileSearch '/'libx'.jal', torelease, 'liby.'
-               say 'found' liby.0 'hits'
+       /*      say 'found' liby.0 'hits'     */
                if liby.0 = 0 then do                      /* not found */
                   say 'sample' left(filespec('N',fls.i),40) 'includes a non released library:' libx
                   u = unreleasedinclude.0 + 1

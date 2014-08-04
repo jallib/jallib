@@ -67,7 +67,7 @@ def pic_wiki(outfile):
          key = int(ds)                                   # numeric index!
          if key in datasheet:                            # DS present
             if datasheet[key].get("TITLE") != None:      # title present
-               fp.write("|| " + pic + " || "
+               fp.write("|| %-12s || " % pic
                         + '<a href="' + url + datasheet[key].get("NUMBER") + '.pdf">'
                         + datasheet[key].get("NUMBER") + "</a> || "
                         + datasheet[key].get("DATE")   + " || "
