@@ -5,7 +5,7 @@
  *                                                                          *
  * Adapted-by:                                                              *
  *                                                                          *
- * Revision: $Revision$                                                     *
+ * Revision: $Revision: 3245 $                                                     *
  *                                                                          *
  * Compiler: N/A                                                            *
  *                                                                          *
@@ -4689,7 +4689,7 @@ call lineout listfile, '-- Author:' ScriptAuthor', Copyright (c) 2008..2013,',
 call lineout listfile, '--'
 call lineout listfile, '-- Adapted-by:'
 call lineout listfile, '--'
-call lineout listfile, '-- Revision: $Revision$'
+call lineout listfile, '-- Revision: $Revision: 3245 $'
 call lineout listfile, '--'
 call lineout listfile, '-- Compiler:' CompilerVersion
 call lineout listfile, '--'
