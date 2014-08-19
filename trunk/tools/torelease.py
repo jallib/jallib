@@ -47,14 +47,14 @@ base       = "k:/jallib"                                    # base Jallib direct
 libdir     = base + "/include"                              # libraries
 smpdir     = base + "/sample"                               # samples
 projdir    = base + "/project"                              # project files
-torelease  = base + "/TORELEASE.tst"                        # TORELEASE file
+torelease  = base + "/TORELEASE"                            # TORELEASE file
 newrelease = 'TORELEASE.NEW'                                # release list
 report     = 'torelease.lst'                                # script output
 
 xunderscore = maketrans("_"," ")                            # from -> to
 xslash      = maketrans("\\","/")
 
-devpfx = ("10f", "10l", "12f", "12h", "12l", "16f", "16h", "16l", "18f", "18lf")
+devpfx = ("10f", "10l", "12f", "12h", "12l", "16f", "16h", "16l", "18f", "18l")
 
 fcount     = {}                                             # file counts
 dev        = {}                                             # PIC names in device files
@@ -80,7 +80,6 @@ def read_and_check_torelease(fr):
       else:
          lines.append(ln)
    ft.close()
-   print "lines in torelease:", len(lines)
 
    blink_sample_count = 0
    for ln in lines:
@@ -268,7 +267,9 @@ def list_unreleased_samples(fr):
 
          else:                                                 # found sample in torelease
             fi = open(os.path.join(root,file))                 # full pathspec
+            lncount = 0
             for ln in fi:
+               lncount = lncount + 1                           # line number
                ln = ln.lower().strip()
                if ((len(ln) < 2) | ln.startswith("--") | ln.startswith(";")):    # empty or comment line
                   continue
@@ -276,12 +277,10 @@ def list_unreleased_samples(fr):
                if ((word[0] == "include") & (len(word) > 1)):
                   if (word[1][:3] in devpfx):                  # probably device file
                      if (word[1] != picname):                  # not matching!
-                        print "Sample " + fs + " includes wrong device file: " + word[1]
-                  else:
-                     libi = word[1] + ".jal"
-                     if (word[1] + ".jal" not in libs):       # not
-                        print "sample", file, "includes an unreleased library:", word[1]
-                        unreleasedinclude.append(word[1])
+                        print "Sample " + fs + " includes wrong device file: ", word[1], "in line", lncount
+                  if (word[1] + ".jal" not in libs):
+                     print "sample", file, "includes an unreleased library:", word[1], "in line", lncount
+                     unreleasedinclude.append(file)
             fi.close()
 
    if (runtype != None):
@@ -294,7 +293,7 @@ def list_unreleased_samples(fr):
       fr.write("\nSamples in TORELEASE which include unreleased libraries\n")
       fr.write("-------------------------------------------------------\n\n")
       for f in unreleasedinclude:
-         fr.write(f)
+         fr.write(f + "\n")
       fr.write("\n")
 
    fr.write("\n\nUnreleased Project files\n")
