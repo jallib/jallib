@@ -1,0 +1,250 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library to support cascaded 8x8 led matrices with MAX7219s
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description: See the description of max7219.jal.
+--
+-- Dependencies: See max7219.jal
+--
+-- Notes:
+--
+-- -----------------------------------------------------------------------------
+
+if (!defined(MAX7219_NUM)) then
+   const byte MAX7219_NUM = 2                            -- default
+   _warn "MAX7219_NUM was not defined, 2 cascaded modules assumed"
+end if
+
+include max7219_common
+
+
+-- ========= 'private' procedures =====================
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  transfer addr + data to a specific max7219 in the chain
+-- Input:  - module number (0..7)
+--         - address (command) byte
+--         - data byte
+-- Notes:  Data/command is for 1 module, others in the chain receive a NOP.
+--         The last module in the chain is addressed first.
+-- ----------------------------------------------------------------------------
+procedure _max7219_write(byte in num, byte in addr, byte in data) is
+
+   max7219_cs = LOW
+   for (MAX7219_NUM - num - 1) loop       -- trailing modules
+      spi_master = MAX7219_NO_OP
+      spi_master = 0b0000_0000
+   end loop
+
+   spi_master = addr                      -- transfer addr byte
+   spi_master = data                      -- transfer data byte
+
+   for num loop                           -- leading modules
+      spi_master = MAX7219_NO_OP
+      spi_master = 0b0000_0000
+   end loop
+   max7219_cs = HIGH                      -- latch
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  transfer addr + data to all MAX7219s in the chain
+-- Input:  - addr
+--         - data
+-- Notes:  All modules receive the same addr + data
+-- ----------------------------------------------------------------------------
+procedure _max7219_write_all(byte in addr, byte in data) is
+
+   max7219_cs  = LOW
+   for MAX7219_NUM loop                   -- all modules
+      spi_master = addr
+      spi_master = data
+   end loop
+   max7219_cs = HIGH                      -- latch
+
+end procedure
+
+
+-- ========== 'public' procedures ==================
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Clear display (all LEDs off)
+-- Input:  (none)
+-- Notes:  All LEDs of all modules will be cleared
+--         (write 8 times the same column of every module))
+-- ----------------------------------------------------------------------------
+procedure max7219_display_clear() is
+
+   var byte i, j
+   for 8 using i loop                     -- all 8 columns of a module
+      if (MAX7219_DISPLAY_CACHE) then
+         for MAX7219_NUM using j loop     -- column i in all modules
+            max7219_cache[i + 8 * j] = 0b_0000_0000
+         end loop
+      end if
+      _max7219_write_all(i + 1, 0b_0000_0000)  -- to all modules
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Set LED intensity
+-- Input:  LED intensity (range 0..15)
+-- Notes:  All LEDs of all modules will have the same luminosity
+-- ----------------------------------------------------------------------------
+procedure max7219_display_intensity(byte in intensity) is
+
+   _max7219_write_all(MAX7219_INTENSITY, intensity)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Initialize all modules with max7219
+-- Input:  (none)
+-- Notes:  Must be called before any other operation involving the display
+-- ----------------------------------------------------------------------------
+procedure max7219_init() is
+
+   _max7219_write_all(MAX7219_SHUTDOWN,  0b_0000_0001)   -- return from shutdown
+   _max7219_write_all(MAX7219_TEST,      0b_0000_0000)   -- return from test
+   _max7219_write_all(MAX7219_DECODE,    0b_0000_0000)   -- no 7-segment decoding
+   _max7219_write_all(MAX7219_SCANLIMIT, 0b_0000_0111)   -- all rows/columns active
+   max7219_display_clear()                               -- all LEDs off
+   max7219_display_intensity(MAX7219_DISPLAY_PWM3)       -- pretty low intensity
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Put all MAX7219 modules in test mode for some time.
+-- Input:  test period (byte, number of 0.1 seconds)
+-- Notes:  All leds will be in maximum intensity during the specified period
+-- ----------------------------------------------------------------------------
+procedure max7219_display_test(byte in period) is
+
+   _max7219_write_all(MAX7219_TEST, 0b_0000_0001)        -- test: all leds on
+   delay_100ms(period)
+   _max7219_write_all(MAX7219_TEST, 0b_0000_0000)        -- return from test
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Blink whole module a number of times at a given speed
+-- Input:  - number of times the display should blink off and on (byte)
+--         - time in 0.1 seconds of the on and off periods (duty cycle is 50%)
+-- Notes:  All 'on' LEDs of all modules will blink simultaneously.
+-- ----------------------------------------------------------------------------
+procedure max7219_display_blink(byte in times, byte in halfperiod) is
+
+   for times loop
+      _max7219_write_all(MAX7219_SHUTDOWN,  0b_0000_0000)  -- shutdown
+      delay_100ms(halfperiod)
+      _max7219_write_all(MAX7219_SHUTDOWN,  0b_0000_0001)  -- return from shutdown
+      delay_100ms(halfperiod)
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display a column (byte, 8 bits) of one module
+-- Input: - module number (byte, 0..7)
+--        - column number (byte, 0..7)
+--        - with bit pattern to be displayed (byte)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_byte_bin(byte in num, byte in col, byte in data) is
+
+   col = col & 0x07                                      -- limit
+   if (MAX7219_DISPLAY_CACHE) then
+      max7219_cache[num * 8 + col] = data
+   end if
+   _max7219_write(num, col + 1, data)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display a column of leds (all leds in a column on or off)
+-- Input: - module number (byte, 0..7)
+--        - column number (byte, 0..7)
+--        - led state (true or false, resp. on or off)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_col(byte in num, byte in col, bit in state) is
+
+   if (state == TRUE) then
+      max7219_display_byte_bin(num, col, 0b_1111_1111)
+   else
+      max7219_display_byte_bin(num, col, 0b_0000_0000)
+   end if
+
+end procedure
+
+
+
+-- === Following procedures are only available when cache is active ===
+
+if (MAX7219_DISPLAY_CACHE) then
+
+-- ----------------------------------------------------------------------------
+-- Title: Set or reset a single LED
+-- Input: - module number (byte, 0..7)
+--        - column number (byte, 0..7)
+--        - row number (byte, 0..7)
+--        - led state (bit, true or false, on or off)
+-- Notes: - Writes 1 column of one module
+-- ----------------------------------------------------------------------------
+procedure max7219_display_bit(byte in num, byte in col, byte in row, bit in state) is
+
+   var byte mask
+
+   num = num & 0x07
+   col = col & 0x07
+   mask = 0b_0000_0001 << (row & 0x07)
+   if (state) then
+      max7219_cache[num * 8 + col] = max7219_cache[num * 8 + col] | mask     -- set bit
+   else
+      max7219_cache[num * 8 + col] = max7219_cache[num * 8 + col] & (!mask)  -- clear bit
+   end if
+   _max7219_write(num, col + 1, max7219_cache[num * 8 + col])
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display a row of leds (all leds in a row on or off) in one module
+-- Input: - module number (byte, 0..7)
+--        - row number (byte, 0..7)
+--        - led state (bit, true or false, resp. on or off)
+-- Notes: - Writes 8 columns of 1 module.
+-- ----------------------------------------------------------------------------
+procedure max7219_display_row(byte in num, byte in row, bit in state) is
+
+   var byte i
+
+   for 8 using i loop
+      max7219_display_bit(num, i, row, state)
+   end loop
+
+end procedure
+
+
+end if  -- max7219_display_cache present
+

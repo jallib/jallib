@@ -1,0 +1,207 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library to support a single 8x8 led matrix with MAX7219
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description: See the description of max7219.jal.
+--
+-- Dependencies: See max7219.jal
+--
+-- Notes: - This library supports only a single max7219 module.
+--
+-- -----------------------------------------------------------------------------
+
+if (!defined(MAX7219_NUM)) then
+   const MAX7219_NUM = 1                                 -- default
+end if
+
+include max7219_common
+
+
+-- ========= 'private' procedures =====================
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  transfer addr + data to the max7219
+-- Input:  - address (command) byte
+--         - data byte
+-- ----------------------------------------------------------------------------
+procedure _max7219_write(byte in addr, byte in data) is
+
+   max7219_cs = LOW
+   spi_master = addr                                     -- transfer addr byte
+   spi_master = data                                     -- transfer data byte
+   max7219_cs = HIGH
+
+end procedure
+
+
+-- ========== 'public' procedures ==================
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Clear display (all LEDs off)
+-- Input: (none)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_clear() is
+
+   var byte i
+   for 8 using i loop
+      if (MAX7219_DISPLAY_CACHE) then
+         max7219_cache[i] = 0b_0000_0000
+      end if
+      _max7219_write(i + 1, 0b_0000_0000)
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Set LED intensity
+-- Input:  LED intensity (supported range 0..15)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_intensity(byte in intensity) is
+
+   _max7219_write(MAX7219_INTENSITY, intensity)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Initialize LED module with max7219
+-- Input:  (none)
+-- Notes:  Must be called before any other operation involving the display
+-- ----------------------------------------------------------------------------
+procedure max7219_init() is
+
+   max7219_cs = HIGH                                     -- start position
+   _max7219_write(MAX7219_SHUTDOWN,  0b_0000_0001)       -- return from shutdown
+   _max7219_write(MAX7219_TEST,      0b_0000_0000)       -- return from test
+   _max7219_write(MAX7219_DECODE,    0b_0000_0000)       -- no 7-segment decoding
+   _max7219_write(MAX7219_SCANLIMIT, 0b_0000_0111)       -- all rows/columns active
+   max7219_display_clear()                               -- all LEDs off
+   max7219_display_intensity(MAX7219_DISPLAY_PWM5)       -- low intensity
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Put MAX7219 in test mode for some time.
+-- Input:  test period (byte, number of 0.1 seconds)
+-- Notes:  All leds will be in maximum intensity during the specified period
+-- ----------------------------------------------------------------------------
+procedure max7219_display_test(byte in period) is
+
+   _max7219_write(MAX7219_TEST,  0b_0000_0001)           -- enter test (all leds max)
+   delay_100ms(period)
+   _max7219_write(MAX7219_TEST,  0b_0000_0000)           -- return from test
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Blink whole module a number of times at a given speed
+-- Input:  - number of times the display should blink
+--         - time in 0.1 seconds of the on and off periods (duty cycle is 50%)
+-- Notes:  All 'on' LEDs will blink simultaneously.
+-- ----------------------------------------------------------------------------
+procedure max7219_display_blink(byte in times, byte in halfperiod) is
+
+   for times loop
+      _max7219_write(MAX7219_SHUTDOWN,  0b_0000_0000)    -- enter shutdown
+      delay_100ms(halfperiod)
+      _max7219_write(MAX7219_SHUTDOWN,  0b_0000_0001)    -- return from shutdown
+      delay_100ms(halfperiod)
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display whole column (byte, 8 bits)
+-- Input: - column number (byte, 0..7)
+--        - byte with value to be displayed
+-- ----------------------------------------------------------------------------
+procedure max7219_display_byte_bin(byte in col, byte in data) is
+
+   col = col & 0x07                                      -- limit
+   if (MAX7219_DISPLAY_CACHE) then
+      max7219_cache[col] = data
+   end if
+   _max7219_write(col + 1, data)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display a column of leds (all leds on a column on or off)
+-- Input: - column number (byte, 0..7)
+--        - led state (true or false, resp. on or off)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_col(byte in col, bit in state) is
+
+   if (state == TRUE) then
+      max7219_display_byte_bin(col, 0b_1111_1111)
+   else
+      max7219_display_byte_bin(col, 0b_0000_0000)
+   end if
+
+end procedure
+
+
+
+-- === Following procedures are only available when cache is active ===
+
+if (MAX7219_DISPLAY_CACHE) then
+
+-- ----------------------------------------------------------------------------
+-- Title: Set or reset a single LED
+-- Input: - column number (byte, 0..7)
+--        - row number (byte, 0..7)
+--        - led state (true or false, on or off)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_bit(byte in col, byte in row, bit in state) is
+
+   var byte mask
+
+   col = col & 0x07
+   mask = 0b_0000_0001 << (row & 0x07)
+   if (state) then
+      max7219_cache[col] = max7219_cache[col] | mask     -- set bit
+   else
+      max7219_cache[col] = max7219_cache[col] & (!mask)  -- clear bit
+   end if
+   _max7219_write(col + 1, max7219_cache[col])
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display a row of leds (all leds in a row on or off)
+-- Input: - row number (byte, 0..7)
+--        - led state (true or false, resp. on or off)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_row(byte in row, bit in state) is
+
+   var byte i
+
+   for 8 using i loop
+      max7219_display_bit(i, row, state)
+   end loop
+
+end procedure
+
+
+end if     -- (max7219_display_cache present)
+
