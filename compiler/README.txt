@@ -38,7 +38,23 @@ nb: I try to support most of the microcontrollers produced by MicroChip,
 
 History
 =======
-2.4q  -- ? ??? ????
+2.4q3 -- ?? ??? 2014
+         * fixed exponent adjust when floating multiply/divide by an integral
+           power of 2
+         * allow exponent adjust when floating multiply/divide by a floating
+           power of 2
+         * allow negative numbers in exponent adjust
+         * fixed some documentation types and examples (thanks Rob!)
+         * fixed the float_to_ascii routine to be more useful
+         * floating point constant folding was broken
+
+2.4q2 -- 23 January 2014
+         * fixed floating point constant 0
+         * incorrect movlp_nop usage
+         * fixed branching optimizer on conditional branch
+         * fixed a bug in pic_multiply_create_fn16
+
+2.4q  -- 13 November 2013
          * don't allow bit offset placement to non-bit variables
            (var BYTE x at y:2)
          * allow `VAR xx AT rec['.'member]['['subscript']']...'  

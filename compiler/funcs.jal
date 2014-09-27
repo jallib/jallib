@@ -11,29 +11,41 @@ const float M_PI   = 3.1415927
 const float M_PI_2 = M_PI / 2
 
 ;
-; a simple float to decimal conversion; assumes the integer
-; part of the float is  < 256
+; a simple float to decimal conversion
+; results in #.#######e[+/-]##
 ;
-procedure float_to_ascii(float in n, BYTE in buf[]) is
-  var byte ix
+procedure float_to_ascii(float in x, volatile byte out dev) is
+  var SBYTE exp
 
-  ix = 0
-  if (n < 0) then
-    buf[0] = "-"
-    ix = ix + 1
-    n = -n
+  exp = 0
+  if (x < 0) then
+    dev = "-";
+    x = -x;
   end if
-  buf[ix] = BYTE(n)
-  n = n - buf[ix]
-  ix = ix + 1
-  buf[ix] = "."
-  ix = ix + 1
-  while (ix < COUNT(buf)) loop
-    n = n * 10
-    buf[ix] = BYTE(n)
-    n = n - buf[ix]
-    ix = ix + 1
+  if (x > 0) then
+    while (x >= 10.0) loop
+      exp = exp + 1
+      x = x / 10.0
+    end loop
+    while (x < 1.0) loop
+      exp = exp - 1
+      x = x * 10.0
+    end loop
+  end if
+  dev = BYTE(x) + "0"
+  dev = "."
+  for 7 loop
+    x = x - BYTE(x)
+    x = x * 10.0
+    dev = BYTE(x) + "0"
   end loop
+  dev = "e"
+  if (exp < 0) then
+    dev = "-"
+    exp = - exp
+  end if
+  dev = (exp / 10) + "0"
+  dev = (exp % 10) + "0"
 end procedure
 
 
@@ -69,7 +81,7 @@ function sin(float in a) return float is
     a = a + M_PI
   end loop
   ;
-  ; the first six in the taylor series should be sufficient when a
+  ; the first six in the taylor series should be sufficient when a 
   ; is normalized
   ; taylor series for sign:
   ;    x = a/1! - a^3/3! + a^5/5! - a^7/7! + a^9/9! - a^11/11!
@@ -110,7 +122,7 @@ end function
 ;
 ; square root -- newton's method. This converges quickly,
 ; but the 10 is completely arbitrary. Another way to do
-; this is loop until the last two computer values are
+; this is loop until the last two computer values are 
 ; sufficiently close, but that requires quite a bit more
 ; space.
 ;
@@ -152,4 +164,4 @@ end function
 
 ; ln(1+x): x - x^2/2 + x^3/3 - x^4/4 ... (-1 < x <= 1)
 ; pow(x,y) : 1 + (x ln a) + (x ln a)^2/2! + (x ln a)^3/3! ...
-;
+; 
