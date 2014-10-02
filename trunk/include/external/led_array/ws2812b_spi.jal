@@ -1,0 +1,141 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library to support a chain of ws2812b chips via MSSP interface (SPI)
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description: Library to control a chain of WS2812Bs
+-- This library uses the MSSP module with SPI-master protocol.
+-- - A PIC with Fosc of at least 32 MHz and MSSP module is required.
+-- - The MSSP module must have the capability to set the baudrate in SPI master mode
+--   with SSPCON1_SSPM = 0b1010 : SPI Master mode, clock = FOSC/(4 * (SSPADD+1)).
+--   like with the 18f25k22 (note: e.g. with the 18f14k22 this works only for I2C).
+--   This requirement cannot be checked by the library, check the datasheet!
+-- - The DIN wire of the WS2812B must be connected to pin_SDO of the PIC
+--   The pin must be configured for digital output.
+--   Notes: - The pin_SDO may have to be configured with Peripheral Pin Select (PPS)
+--            or Alternate Pin Function (APFCON_SDOSEL).
+--          - The SDI and SCK pins are not used.
+-- - The number of WS2812Bs in the chain must be defined, e.g.:
+--      const byte WS2812B_NUM = 30       -- for 30 chained WS2812Bs
+-- - The user program should contain 3 byte arrays of WS2812B_NUM bytes each, e.g.:
+--      var byte agreen[WS2812B_NUM]
+--      var byte ared[WS2812B_NUM]
+--      var byte ablue[WS2812B_NUM]
+--   and call the procedure ws2812b_refresh() to pass the current color settings
+--   to the WS2812B LEDs.
+-- - Procedure ws2812b_all_color() can be used to set all LEDs to the same color
+--   while keeping the color settings in the array unchanged.
+--
+-- Dependencies: ws2812b_common.jal
+--
+-- Notes: - Warnings are temporary(?) commented out.
+--
+-- -----------------------------------------------------------------------------
+
+
+-- ========= 'private' procedures =====================
+
+-- ----------------------------------------------------------------------------
+-- Title:   Transmit a byte (with 2 WS2812B 'bits')
+-- Input:   Byte with 2 WS2812B bits in the form of 8 SPI bits.
+-- Notes: - We do not wait for completion immediately after a write, but
+--          wait for completion of the previous write before the next write!
+--          This allows to execute instructions during the transfer time to
+--          prepare for the transmission of the next byte.
+-- ----------------------------------------------------------------------------
+procedure _transfer_byte(byte in data) is
+   pragma inline
+   var volatile byte dummy                   -- input data
+   while (SSPSTAT_BF == 0) loop end loop     -- await completion of previous transfer
+   dummy = SSPBUF                            -- reset SSPSTAT_BF
+   SSPBUF = data
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Transmit 1 color byte to the WS2812B chain
+-- Input:  color intensity (byte)
+-- Notes:  - Each WS2812B bit is represented by 4 SPI bits:
+--           (WS2812B '0' = 0b1000, WS2812B '1' = 0b1110)
+-- ----------------------------------------------------------------------------
+procedure _ws2812b_write_color(byte in color) is
+
+   const WS2812B_BIT0 = 0b1000               -- WS2812B bit '0'  ) MSb first with SPI
+   const WS2812B_BIT1 = 0b1110               -- WS2812B bit '1'  )
+
+   var bit b0 at color : 7
+   var bit b1 at color : 6
+   var bit b2 at color : 5
+   var bit b3 at color : 4
+   var bit b4 at color : 3
+   var bit b5 at color : 2
+   var bit b6 at color : 1
+   var bit b7 at color : 0
+
+   var byte data                                -- byte to transfer
+
+   const byte data00 = (WS2812B_BIT0 << 4) + WS2812B_BIT0    -- '00'
+
+   data = data00
+   if (b0) then data = data | (WS2812B_BIT1 << 4) end if     -- '10'
+   if (b1) then data = data | (WS2812B_BIT1     ) end if     -- 'x1'
+   _transfer_byte(data)
+
+   data = data00
+   if (b2) then data = data | (WS2812B_BIT1 << 4) end if
+   if (b3) then data = data | (WS2812B_BIT1     ) end if
+   _transfer_byte(data)
+
+   data = data00
+   if (b4) then data = data | (WS2812B_BIT1 << 4) end if
+   if (b5) then data = data | (WS2812B_BIT1     ) end if
+   _transfer_byte(data)
+
+   data = data00
+   if (b6) then data = data | (WS2812B_BIT1 << 4) end if
+   if (b7) then data = data | (WS2812B_BIT1     ) end if
+   _transfer_byte(data)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Transfer 3 color bytes to the WS2812B chain
+-- Input:  color intensities of green, red and blue (3 bytes)
+-- Notes:
+-- ----------------------------------------------------------------------------
+procedure _ws2812b_write_pixel(byte in green, byte in red, byte in blue) is
+    _ws2812b_write_color(green)
+    _ws2812b_write_color(red)
+    _ws2812b_write_color(blue)
+end procedure
+
+
+-- --- SPI master hardware setup --------------------------------------
+
+; _warn "Check datasheet if SSPCON1_SSPM = 1010 is valid for SPI mode"
+
+const WS2812B_BITMUX = 4                     -- 4 SPI bits per WS2812 bit
+const WS2812B_BAUDRATE = 800_000             -- WS2812B baudrate = 800 KHz
+SSPADD        = byte(target_clock / 4 / WS2812B_BAUDRATE / WS2812B_BITMUX - 1)  -- baudrate
+SSPCON1       = 0                            -- reset all bits
+SSPCON1_SSPM  = 0b1010                       -- SPI clock by baudrate generator
+SSPCON1_CKP   = 0                            -- clock signal polarity: idle is low voltage
+SSPSTAT_SMP   = 0                            -- input sampling in the middle
+SSPSTAT_CKE   = 0                            -- transmit at idle to active transition
+SSPCON1_SSPEN = 1                            -- enable SPI module
+SSPBUF = 0                                   -- forces set of SSPSTAT_BF
+
+include ws2812b_common                       -- common procedures
+

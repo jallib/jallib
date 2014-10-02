@@ -1,0 +1,195 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library to support a chain of ws2812b chips via USART Asynchronous interface
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description: Library to control a chain of WS2812Bs
+-- This library uses the USART module with Asynchronous protocol.
+-- - A PIC with Fosc of at least 32 MHz is required.
+-- - A high speed USART is required (BRG16 bit in BAUDCON)
+-- - The first or only USART interface is used and initialized automatically.
+-- - The USART must be able to invert the polarity of the USART output
+--   (have a CKTXP or TXCKP bit in BAUDCON, like e.g. the 18f14k22 and 18f25k22).
+--   Alternatively an external signal inverter is required.
+-- - The DIN wire of the WS2812B chain must be connected to pin_TX of the PIC
+--   and this pin must be configured for digital I/O.
+--   Notes: - The pin_TX/CK may have to be configured with Peripheral Pin Select (PPS)
+--            or Alternate Pin Function (APFCON_TXCKSEL).
+--          - pin_RX is not used.
+-- - The number of WS2812Bs in the chain must be specified, e.g.:
+--      const byte WS2812B_NUM = 30       -- for 30 chained WS2812Bs
+-- - The user program should contain 3 byte arrays of WS2812B_NUM bytes each, e.g.:
+--      var byte agreen[WS2812B_NUM]
+--      var byte ared[WS2812B_NUM]
+--      var byte ablue[WS2812B_NUM]
+--   and call the procedure ws2812b_refresh() to pass the current color settings
+--   to the WS2812B LEDs.
+-- - Procedure ws2812b_all_color() can be used to set all LEDs to the same color
+--   while keeping the color settings in the arrays unchanged.
+--
+-- Dependencies: ws2812b_common.jal
+--
+-- Notes: - Warnings temporary(?) commented out.
+--
+-- -----------------------------------------------------------------------------
+
+
+-- ========= 'private' procedures =====================
+
+-- ----------------------------------------------------------------------------
+-- Title:   Transmit a byte (with 3 WS2812B 'bits')
+-- Input:   Byte with 3 WS2812B bits in the form of 9 USART bits.
+--          The startbit is fixed 1, so only 8 bits need be passed.
+-- Notes: - We do not wait for completion immediately after a write, but
+--          wait for completion of the previous write before the next write!
+--          This allows to execute instructions during the transfer time to
+--          prepare for the transmission of the next byte.
+-- ----------------------------------------------------------------------------
+procedure _transfer_byte(byte in data) is
+   pragma inline
+   while (!PIR1_TXIF) loop end loop          -- await completion of previous transfer
+   TXREG = data                              -- send byte to USART
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Transfer 3 color bytes to the WS2812B
+-- Input:  Three color values (bytes: green, red, blue)
+-- Notes:  - Each WS2812B bit is transferred as 3 USART data bits:
+--           a '0' as 0b100, a '1' as 0b110.
+--         - The USART transfers least significant data bits first.
+--         - The startbit (=1) and stopbit (=0) are part of the USART signal.
+--           - 1st WS2812B 'bit': startbit + bit0 + bit1
+--           - 2nd              : bit2 + bit3 + bit4
+--           - 3rd              : bit5 + bit6 + bit7 (+ stopbit)
+--           The last WS2812B 'bit' is represented by 4 USART bits,
+--           which proved to be acceptable for the WS2812B!
+--         - USART data polarity is negative (0-bit = high, 1-bit = low),
+--           but we need positive polarity. When BAUDCON_CKTXP/TXCKP is present
+--           with this PIC it is used to invert the control signal, otherwise
+--           an external inverter is required.
+-- ----------------------------------------------------------------------------
+procedure _ws2812b_write_pixel(byte in green, byte in red, byte in blue) is
+
+   var bit  b00   at green : 7
+   var bit  b01   at green : 6
+   var bit  b02   at green : 5
+   var bit  b03   at green : 4
+   var bit  b04   at green : 3
+   var bit  b05   at green : 2
+   var bit  b06   at green : 1
+   var bit  b07   at green : 0
+   var bit  b08   at red   : 7
+   var bit  b09   at red   : 6
+   var bit  b10   at red   : 5
+   var bit  b11   at red   : 4
+   var bit  b12   at red   : 3
+   var bit  b13   at red   : 2
+   var bit  b14   at red   : 1
+   var bit  b15   at red   : 0
+   var bit  b16   at blue  : 7
+   var bit  b17   at blue  : 6
+   var bit  b18   at blue  : 5
+   var bit  b19   at blue  : 4
+   var bit  b20   at blue  : 3
+   var bit  b21   at blue  : 2
+   var bit  b22   at blue  : 1
+   var bit  b23   at blue  : 0
+
+   var byte data                                -- byte to transfer
+   var bit  dbit0 at data  : 0                  -- )
+   var bit  dbit3 at data  : 3                  -- ) bits which could be modified
+   var bit  dbit6 at data  : 6                  -- )
+
+   const byte data000 = 0b_110_110_11           -- '000' (inverted)
+
+   data = data000                               -- '000'
+   if (b00) then dbit0 = 0 end if               -- '001'  )
+   if (b01) then dbit3 = 0 end if               -- '01x'  ) (inverted)
+   if (b02) then dbit6 = 0 end if               -- '1xx'  )
+   _transfer_byte(data)
+
+   data = data000
+   if (b03) then dbit0 = 0 end if
+   if (b04) then dbit3 = 0 end if
+   if (b05) then dbit6 = 0 end if
+   _transfer_byte(data)
+
+   data = data000
+   if (b06) then dbit0 = 0 end if
+   if (b07) then dbit3 = 0 end if
+   if (b08) then dbit6 = 0 end if
+   _transfer_byte(data)
+
+   data = data000
+   if (b09) then dbit0 = 0 end if
+   if (b10) then dbit3 = 0 end if
+   if (b11) then dbit6 = 0 end if
+   _transfer_byte(data)
+
+   data = data000
+   if (b12) then dbit0 = 0 end if
+   if (b13) then dbit3 = 0 end if
+   if (b14) then dbit6 = 0 end if
+   _transfer_byte(data)
+
+   data = data000
+   if (b15) then dbit0 = 0 end if
+   if (b16) then dbit3 = 0 end if
+   if (b17) then dbit6 = 0 end if
+   _transfer_byte(data)
+
+   data = data000
+   if (b18) then dbit0 = 0 end if
+   if (b19) then dbit3 = 0 end if
+   if (b20) then dbit6 = 0 end if
+   _transfer_byte(data)
+
+   data = data000
+   if (b21) then dbit0 = 0 end if
+   if (b22) then dbit3 = 0 end if
+   if (b23) then dbit6 = 0 end if
+   _transfer_byte(data)
+
+end procedure
+
+
+-- --- USART setup, asynchronous transmit-only -------------------------------------
+
+if (defined(BAUDCON_BRG16)) then
+   BAUDCON_BRG16 = 1                         -- high speed
+else
+   _error "PIC must have a high speed capable USART (16 bits SPBRG)"
+end if
+
+if (defined(BAUDCON_TXCKP)) then
+   BAUDCON_TXCKP = 1                         -- invert transmit data polarity
+else
+;  _warn "An external device is required to invert the polarity of the control signal!"
+end if
+
+const WS2812B_BITMUX = 3                     -- 3 USART bits per WS2812B 'bit'
+const WS2812B_BAUDRATE = 800000              -- bitrate of WS2812B is 800 Kbps
+SPBRGH        = 0
+SPBRGL        = byte(target_clock / 4 / WS2812B_BAUDRATE / WS2812B_BITMUX - 1)    -- baudrate divisor
+TXSTA_BRGH    = 1                            -- high speed
+TXSTA_SYNC    = 0                            -- asynchronous mode transmit
+TXSTA_TXEN    = 1                            -- enable transmitter
+TXSTA_TX9     = 0                            -- 8-bits data
+RCSTA_SREN    = 0                            -- disable receiver
+RCSTA_CREN    = 0                            -- no receive
+RCSTA_SPEN    = 1                            -- enable serial port
+
+include ws2812b_common                       -- common procedures
+
