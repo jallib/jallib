@@ -1,0 +1,104 @@
+-- ------------------------------------------------------
+-- Title: Test a chain of WS2812B chips with USART Synchronous interface
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4q3
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: 18f25k22 with INTOSC at Fosc = 64 MHz
+--              to demonstrate the use of WS2812B libraries.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+
+-- chip setup
+include 18f25k22
+
+-- Internal oscillator at 16 MHz with PLL enabled -> 64 MHz
+pragma target clock    64_000_000         -- oscillator frequency
+
+pragma target OSC      INTOSC_NOCLKOUT    -- internal oscillator
+pragma target PLLEN    ENABLED            -- PLL enabled
+pragma target PCLKEN   ENABLED            -- primary clock
+pragma target FCMEN    DISABLED           -- no clock monitoring
+pragma target IESO     DISABLED           -- no osc switchover
+pragma target PWRTE    ENABLED            -- power up delay
+pragma target BROWNOUT DISABLED           -- no brownout
+pragma target WDT      CONTROL            -- watchdog software controlled
+pragma target HFOFST   ENABLED            -- wait for stable osc
+pragma target MCLR     EXTERNAL           -- reset externally
+pragma target LVP      DISABLED           -- no LVP
+pragma target DEBUG    DISABLED           -- no debug
+
+WDTCON_SWDTEN = DISABLED                  -- WDT disabled
+
+OSCCON_IRCF   = 0b111                     -- 16 MHz (+ PLL -> 64 MHz)
+OSCCON_SCS    = 0b00                      -- Clock determined by fuses
+OSCTUNE_PLLEN = TRUE                      -- PLL enabled
+
+enable_digital_io()                       -- all pins digital
+
+alias led is pin_A0                       -- being alive signal
+pin_A0_direction = OUTPUT
+led = ON
+
+--
+const WS2812B_NUM = 30
+--
+include ws2812b_sync                      -- support library (USART SYNC variant)
+--
+-- --- Program ---
+
+var byte agreen[WS2812B_NUM]              -- green array
+var byte ared[WS2812B_NUM]                -- red array
+var byte ablue[WS2812B_NUM]               -- blue array
+var byte g0, r0, b0
+
+var byte i
+
+-- --- increasing luninosity of white ---
+for (127) using i loop                    -- increasing luminosity
+   ws2812b_all_color(i,i,i)               -- white
+   delay_1ms(35)
+end loop
+
+-- --- different basic colors ---
+ws2812b_all_color(63,0,0)                 -- green
+delay_100ms(15)
+ws2812b_all_color(0,63,0)                 -- red
+delay_100ms(15)
+ws2812b_all_color(0,0,63)                 -- blue
+delay_100ms(15)
+
+-- --- initialize the arrays with color patterns ---
+for (WS2812B_NUM) using i loop            -- init pattern
+   agreen[i] = ((i / 8) * 64)
+   ared[i]   = ((i / 4) * 64)
+   ablue[i]  = ((i    ) * 64)
+end loop
+
+-- --- walking lights with changing color pattern ---
+forever loop
+   ws2812b_refresh(agreen, ared, ablue)
+   for (WS2812B_NUM - 1) using i loop     -- modify led pattern
+      agreen[i] = agreen[i+1]
+      ared[i]   = ared[i+1]
+      ablue[i]  = ablue[i+1]
+   end loop
+   agreen[WS2812B_NUM - 1] = (agreen[WS2812B_NUM - 1] + 10) & 0x7F
+   ared[WS2812B_NUM - 1]   = (ared[WS2812B_NUM - 1]   - 20) & 0x7F
+   ablue[WS2812B_NUM - 1]  = (ablue[WS2812B_NUM - 1]  + 30) & 0x7F
+   led = !led
+   delay_1ms(125)
+end loop
+--

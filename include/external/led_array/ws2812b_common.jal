@@ -1,0 +1,98 @@
+-- -----------------------------------------------------------------------------
+-- Title: Common part of libraries supporting a chain of WS2812B chips
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description: Common part of several libraries to control a chain of WS2812Bs
+--              (RGB LEDs with builtin WS2811).
+--              See the description of the implementation variants for user guidance.
+-- .
+-- The main differences between the variants of the WS2812B libraries are:
+-- - The libraries using the PIC hardware (USART or MSSP modules)
+--   produce a signal which is generally closer to the specifications
+--   in the datasheet than with bit-banging. This is probably the effect
+--   of the buffering: while the MSSP or USART is busy with transmitting
+--   a byte (with 2 or 3 WS2812B 'bits') the processor is available
+--   to prepare the output for the next couple of bits to be transmitted.
+-- - With SPI and bit-banging the control signal can be generated with the
+--   correct polarity. Since a USART uses negative polarity for data the signal
+--   must be inverted. This can be done with an external circuit (a simple
+--   one transistor inverter will do), and for Snchronous protocol this is
+--   the only option. For Asynchronous protocol this can be done too, but some
+--   PICs can produce a signal with positive polarity (with the BAUDCON_TXCKP bit).
+--   When available the library will use this facility and no external inverter
+--   is needed.
+-- - When using MSSP or USART only one specific pin produces the control signal,
+--   while with bit-banging any digital output pin can be used.
+-- - A disadvantage of the bit-banging method is that the compiler
+--   generates somewhat different code for the 18Fs than for the midrange
+--   and enhanced midrange PICs, disrupting the bit timing somewhat.
+--   This may cause instable operation.
+--
+-- Dependencies:
+--
+-- Notes:
+--
+-- -----------------------------------------------------------------------------
+
+-- --- sanity check ----------------------------------
+
+if (target_clock < 32_000_000) then
+   _error "The WS2812B libraries require a target_clock of at least 32 MHz (Fosc >= 32 MHz)!"
+end if
+
+-- --- WS2812B constants -----------------------------
+
+if (!defined(WS2812B_NUM)) then
+   _warn "WS2812B_NUM not defined, defaults to 30"
+   const WS2812B_NUM = 30                    -- default # pixels
+end if
+
+include delay
+
+
+-- ========== 'public' procedures ==================
+
+-- ----------------------------------------------------------------------------
+-- Title: Set all LEDS to same color
+-- Input: 3 colors (bytes)
+-- Notes: It is assumed that the chain of WS2812Bs has WS2812B_NUM pixels
+-- ----------------------------------------------------------------------------
+procedure ws2812b_all_color(byte in g, byte in r, byte in b) is
+
+   delay_10us(5)                             -- reset
+   for (WS2812B_NUM) loop
+      _ws2812b_write_pixel(g, r, b)          -- all WS2812b same color
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Refresh contents of all pixels of the WS2812B chain.
+-- Input: 3 Arrays for green, red and blue
+-- Notes: It is assumed that the arrays have a length of WS2812B_NUM bytes
+-- ----------------------------------------------------------------------------
+procedure ws2812b_refresh(byte in g[], byte in r[], byte in b[]) is
+
+   var byte i
+
+   delay_10us(5)                             -- reset
+   for WS2812B_NUM using i loop              -- all pixels
+      _ws2812b_write_pixel(g[i], r[i], b[i])
+   end loop
+
+end procedure
+
+
