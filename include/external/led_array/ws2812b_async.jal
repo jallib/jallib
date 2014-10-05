@@ -27,6 +27,7 @@
 --   Notes: - The pin_TX/CK may have to be configured with Peripheral Pin Select (PPS)
 --            or Alternate Pin Function (APFCON_TXCKSEL).
 --          - pin_RX is not used.
+-- - Initialize the interface with procedure ws2812b_async_init().
 -- - The number of WS2812Bs in the chain must be specified, e.g.:
 --      const byte WS2812B_NUM = 30       -- for 30 chained WS2812Bs
 -- - The user program should contain 3 byte arrays of WS2812B_NUM bytes each, e.g.:
@@ -165,31 +166,41 @@ procedure _ws2812b_write_pixel(byte in green, byte in red, byte in blue) is
 end procedure
 
 
--- --- USART setup, asynchronous transmit-only -------------------------------------
+-- ----------------------------------------------------------------------------
+-- Title:   Initialize the USART for Asynchronous transmit at the required speed
+-- Input:   (none)
+-- ----------------------------------------------------------------------------
+procedure  ws2812b_async_init() is
 
-if (defined(BAUDCON_BRG16)) then
-   BAUDCON_BRG16 = 1                         -- high speed
-else
-   _error "PIC must have a high speed capable USART (16 bits SPBRG)"
-end if
+   if (defined(BAUDCON_BRG16)) then
+      BAUDCON_BRG16 = 1                      -- high speed
+   else
+      _error "PIC must have a high speed capable USART (16 bits SPBRG)"
+   end if
 
-if (defined(BAUDCON_TXCKP)) then
-   BAUDCON_TXCKP = 1                         -- invert transmit data polarity
-else
-;  _warn "An external device is required to invert the polarity of the control signal!"
-end if
+   if (defined(BAUDCON_CKTXP)) then
+      BAUDCON_CKTXP = 1                      -- invert transmit data polarity
+   elsif (defined(BAUDCON_TXCKP)) then
+      BAUDCON_TXCKP = 1                      -- invert transmit data polarity
+   else
+;     _warn "An external device is required to invert the polarity of the control signal!"
+   end if
 
-const WS2812B_BITMUX = 3                     -- 3 USART bits per WS2812B 'bit'
-const WS2812B_BAUDRATE = 800000              -- bitrate of WS2812B is 800 Kbps
-SPBRGH        = 0
-SPBRGL        = byte(target_clock / 4 / WS2812B_BAUDRATE / WS2812B_BITMUX - 1)    -- baudrate divisor
-TXSTA_BRGH    = 1                            -- high speed
-TXSTA_SYNC    = 0                            -- asynchronous mode transmit
-TXSTA_TXEN    = 1                            -- enable transmitter
-TXSTA_TX9     = 0                            -- 8-bits data
-RCSTA_SREN    = 0                            -- disable receiver
-RCSTA_CREN    = 0                            -- no receive
-RCSTA_SPEN    = 1                            -- enable serial port
+   const WS2812B_BITMUX = 3                  -- 3 USART bits per WS2812B 'bit'
+   const WS2812B_BAUDRATE = 800000           -- bitrate of WS2812B is 800 Kbps
+
+   SPBRGH     = 0
+   SPBRGL     = byte(target_clock / 4 / WS2812B_BAUDRATE / WS2812B_BITMUX - 1)
+   TXSTA_BRGH = 1                            -- high speed
+   TXSTA_SYNC = 0                            -- asynchronous mode transmit
+   TXSTA_TXEN = 1                            -- enable transmitter
+   TXSTA_TX9  = 0                            -- 8-bits data
+   RCSTA_SREN = 0                            -- disable receiver
+   RCSTA_CREN = 0                            -- no receive
+   RCSTA_SPEN = 1                            -- enable serial port
+
+end procedure
+
 
 include ws2812b_common                       -- common procedures
 
