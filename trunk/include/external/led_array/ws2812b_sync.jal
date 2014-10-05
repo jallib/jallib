@@ -25,6 +25,7 @@
 --            or Alternate Pin Function (APFCON_RXDTSEL).
 --          -- The clock pin is not used.
 -- - AN EXTERNAL SIGNAL INVERTER CIRCUIT IS REQUIRED!
+-- - Initialize the interface with procedure ws2812b_sync_init().
 -- - The number of WS2812Bs in the chain must be defined with a constant:
 --      const WS2812B_NUM = 30               -- for 30 chained WS2812Bs
 -- - The user program should contain 3 byte arrays of WS2812B_NUM bytes each,
@@ -156,28 +157,35 @@ procedure _ws2812b_write_pixel(byte in green, byte in red, byte in blue) is
 end procedure
 
 
--- --- USART setup: synchronous master mode transmit ---------------------------
+-- ----------------------------------------------------------------------------
+-- Title:   Initialize the USART for Synchronous transmit at the required speed
+-- Input:   (none)
+-- ----------------------------------------------------------------------------
+procedure  ws2812b_sync_init() is
 
-if (defined(BAUDCON_BRG16)) then
-   BAUDCON_BRG16 = 1                         -- high speed
-else
-   _error "PIC must have a high speed capable USART (16 bits SPBRG)"
-end if
+   if (defined(BAUDCON_BRG16)) then
+      BAUDCON_BRG16 = 1                         -- high speed
+   else
+      _error "PIC must have a high speed capable USART (16 bits SPBRG)"
+   end if
 
 ;  _warn "An external device is required to invert the polarity of the control signal!"
 
-const WS2812B_BITMUX = 3                     -- 3 USART bits per WS2812 bit
-const WS2812B_BAUDRATE = 800000              -- bitrate of WS2812B is 800 Kbps
-SPBRGH = 0
-SPBRGL = byte(target_clock / 4 / WS2812B_BAUDRATE / WS2812B_BITMUX - 1)  -- baudrate
-TXSTA_SYNC    = 1                            -- synchronous mode
-TXSTA_CSRC    = 1                            -- master mode (clock source)
-TXSTA_TXEN    = 1                            -- transmit mode
-TXSTA_TX9     = 1                            -- using 9-bits data
-TXSTA_TX9D    = 1                            -- 9th data bit is always zero!
-RCSTA_SREN    = 0                            -- no single receive
-RCSTA_CREN    = 0                            -- no continuous receive
-RCSTA_SPEN    = 1                            -- enable serial port
+   const WS2812B_BITMUX = 3                  -- 3 USART bits per WS2812 bit
+   const WS2812B_BAUDRATE = 800000           -- bitrate of WS2812B is 800 Kbps
+   SPBRGH = 0
+   SPBRGL = byte(target_clock / 4 / WS2812B_BAUDRATE / WS2812B_BITMUX - 1)
+   TXSTA_SYNC = 1                            -- synchronous mode
+   TXSTA_CSRC = 1                            -- master mode (clock source)
+   TXSTA_TXEN = 1                            -- transmit mode
+   TXSTA_TX9  = 1                            -- using 9-bits data
+   TXSTA_TX9D = 1                            -- 9th data bit is always one!
+   RCSTA_SREN = 0                            -- no single receive
+   RCSTA_CREN = 0                            -- no continuous receive
+   RCSTA_SPEN = 1                            -- enable serial port
+
+end procedure
+
 
 include ws2812b_common                       -- common procedures
 

@@ -26,6 +26,7 @@
 --   Notes: - The pin_SDO may have to be configured with Peripheral Pin Select (PPS)
 --            or Alternate Pin Function (APFCON_SDOSEL).
 --          - The SDI and SCK pins are not used.
+-- - Initialize the interface with procedure ws2812b_async_init().
 -- - The number of WS2812Bs in the chain must be defined, e.g.:
 --      const byte WS2812B_NUM = 30       -- for 30 chained WS2812Bs
 -- - The user program should contain 3 byte arrays of WS2812B_NUM bytes each, e.g.:
@@ -122,20 +123,28 @@ procedure _ws2812b_write_pixel(byte in green, byte in red, byte in blue) is
 end procedure
 
 
--- --- SPI master hardware setup --------------------------------------
 
-; _warn "Check datasheet if SSPCON1_SSPM = 1010 is valid for SPI mode"
+-- ----------------------------------------------------------------------------
+-- Title:   Initialize the MSSP for SPI master transmit at the required speed
+-- Input:   (none)
+-- ----------------------------------------------------------------------------
+procedure  ws2812b_spi_init() is
 
-const WS2812B_BITMUX = 4                     -- 4 SPI bits per WS2812 bit
-const WS2812B_BAUDRATE = 800_000             -- WS2812B baudrate = 800 KHz
-SSPADD        = byte(target_clock / 4 / WS2812B_BAUDRATE / WS2812B_BITMUX - 1)  -- baudrate
-SSPCON1       = 0                            -- reset all bits
-SSPCON1_SSPM  = 0b1010                       -- SPI clock by baudrate generator
-SSPCON1_CKP   = 0                            -- clock signal polarity: idle is low voltage
-SSPSTAT_SMP   = 0                            -- input sampling in the middle
-SSPSTAT_CKE   = 0                            -- transmit at idle to active transition
-SSPCON1_SSPEN = 1                            -- enable SPI module
-SSPBUF = 0                                   -- forces set of SSPSTAT_BF
+;  _warn "Check datasheet if SSPCON1_SSPM = 1010 is valid for SPI mode"
+
+   const WS2812B_BITMUX = 4                  -- 4 SPI bits per WS2812 bit
+   const WS2812B_BAUDRATE = 800_000          -- WS2812B baudrate = 800 KHz
+   SSPADD        = byte(target_clock / 4 / WS2812B_BAUDRATE / WS2812B_BITMUX - 1)
+   SSPCON1       = 0                         -- reset all bits
+   SSPCON1_SSPM  = 0b1010                    -- SPI clock by baudrate generator
+   SSPCON1_CKP   = 0                         -- clock signal polarity: idle is low voltage
+   SSPSTAT_SMP   = 0                         -- input sampling in the middle
+   SSPSTAT_CKE   = 0                         -- transmit at idle to active transition
+   SSPCON1_SSPEN = 1                         -- enable SPI module
+   SSPBUF = 0                                -- forces set of SSPSTAT_BF
+
+end procedure
+
 
 include ws2812b_common                       -- common procedures
 

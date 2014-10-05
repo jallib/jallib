@@ -25,24 +25,24 @@
 --   of the buffering: while the MSSP or USART is busy with transmitting
 --   a byte (with 2 or 3 WS2812B 'bits') the processor is available
 --   to prepare the output for the next couple of bits to be transmitted.
--- - With SPI and bit-banging the control signal can be generated with the
---   correct polarity. Since a USART uses negative polarity for data the signal
---   must be inverted. This can be done with an external circuit (a simple
---   one transistor inverter will do), and for Snchronous protocol this is
---   the only option. For Asynchronous protocol this can be done too, but some
---   PICs can produce a signal with positive polarity (with the BAUDCON_TXCKP bit).
---   When available the library will use this facility and no external inverter
---   is needed.
--- - When using MSSP or USART only one specific pin produces the control signal,
---   while with bit-banging any digital output pin can be used.
 -- - A disadvantage of the bit-banging method is that the compiler
 --   generates somewhat different code for the 18Fs than for the midrange
 --   and enhanced midrange PICs, disrupting the bit timing somewhat.
 --   This may cause instable operation.
+-- - When using MSSP or USART only one specific pin produces the control signal,
+--   while with bit-banging any digital output pin can be used.
+-- - With SPI and bit-banging the control signal can be generated with the
+--   correct polarity. Since a USART uses negative polarity for data the signal
+--   must be inverted. This can be done with an external circuit (a simple
+--   one transistor inverter will do) and for Synchronous protocol this is
+--   the only option. For Asynchronous protocol this can be used too, but some
+--   PICs have a builtin inverter. When available the library will use
+--   this feature to produce a positive signal (with the BAUDCON_TXCKP bit)
+--   and no external inverter is needed.
 --
 -- Dependencies:
 --
--- Notes:
+-- Notes: - Interrupts are disabled during transmission of data to the chain.
 --
 -- -----------------------------------------------------------------------------
 
@@ -71,10 +71,15 @@ include delay
 -- ----------------------------------------------------------------------------
 procedure ws2812b_all_color(byte in g, byte in r, byte in b) is
 
+   var bit old_gie
+
    delay_10us(5)                             -- reset
+   old_gie = INTCON_GIE                      -- save interrupt state
+   INTCON_GIE = disabled                     -- temporary disable interrupts
    for (WS2812B_NUM) loop
       _ws2812b_write_pixel(g, r, b)          -- all WS2812b same color
    end loop
+   INTCON_GIE = old_gie                      -- restore interrupt state
 
 end procedure
 
@@ -86,11 +91,15 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure ws2812b_refresh(byte in g[], byte in r[], byte in b[]) is
 
+   var bit old_gie
    var byte i
 
    delay_10us(5)                             -- reset
+   old_gie = INTCON_GIE                      -- save interrupt state
+   INTCON_GIE = disabled                     -- temporary disable interrupts
    for WS2812B_NUM using i loop              -- all pixels
       _ws2812b_write_pixel(g[i], r[i], b[i])
+   INTCON_GIE = old_gie                      -- restore interrupt state
    end loop
 
 end procedure
