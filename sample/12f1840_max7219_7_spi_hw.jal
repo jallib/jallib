@@ -1,0 +1,167 @@
+-- ------------------------------------------------------
+-- Title: Test 7-segment module with MAX7219 chip
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4q2
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Simple program to test the max7219_c library.
+-- It can use the SPI hardware or the SPI software library,
+-- selected by a constant.
+-- Most procedures and functions are called at least once,
+-- with different arguments to show the capabilities of
+-- a ready-built PCB with 8 7-segment display digits.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+-- chip setup
+include 12f1840
+
+-- This program uses the Internal oscillator at 8 MHz + PLL
+pragma target clock    32_000_000    -- oscillator frequency
+
+pragma target OSC      INTOSC_NOCLKOUT  -- internal oscillator
+pragma target WDT      DISABLED     -- watchdog
+pragma target PWRTE    ENABLED      -- powerup delay
+pragma target MCLR     EXTERNAL     -- reset externally
+pragma target BROWNOUT DISABLED     -- no brownout
+pragma target IESO     DISABLED     -- no osc switchover
+pragma target PLLEN    ENABLED      -- PLL software controlled
+pragma target LVP      DISABLED     -- no LVP
+
+-- setup internal oscillator
+
+OSCCON_IRCF = 0b1110                -- 8 MHz (+PLL -> 32 MHz)
+OSCCON_SCS = 0b00                   -- Clock determined by fuses
+-- OSCCON_SPLLEN = 0                -- PLL enabled by fuses
+
+enable_digital_io()
+
+include delay
+
+-- --- setup MAX7219 -------------------------------
+
+const bit MAX7219_SPI_HW = TRUE     -- select SPI hardware interface
+; const bit MAX7219_SPI_HW = FALSE    -- alternatively select SPI software interface
+
+if (MAX7219_SPI_HW == TRUE) then
+   if (defined(APFCON_SDOSEL)) then
+      apfcon_sdosel = 0             -- configure SDO on pin RA0
+      alias pin_SDO_direction is pin_SDO_RA0_direction
+   end if
+   pin_SDO_direction = OUTPUT       -- SDO = pin_A0
+   pin_SCK_direction = OUTPUT       -- CLK = pin_A1
+else
+   alias max7219_din is pin_A0
+   alias max7219_clk is pin_A1
+   pin_A0_direction  =  OUTPUT
+   pin_A1_direction  =  OUTPUT
+end if
+
+alias max7219_cs   is pin_A2
+pin_A2_direction = OUTPUT
+
+include max7219_7                   -- 7 segment MAX7219 library
+
+delay_100ms(1)                      -- power up delay before init
+
+max7219_init()                      -- initialise the MAX7219
+
+-- --------------------------------------------------
+
+var byte i,j
+
+forever loop
+
+   max7219_display_test(5)                         -- test pattern 1/2 sec
+   max7219_display_clear_all()                     -- blank the screen
+   max7219_display_intensity(MAX7219_DISPLAY_PWM5) -- low intensity
+   delay_100ms(5)                                  -- show blank display
+
+   for 8 using i loop
+      for 8 using j loop
+         max7219_display_pattern(1 << j, i)        -- 1 segment
+         delay_100ms(2)
+      end loop
+      max7219_display_clear(i)
+      delay_100ms(1)
+   end loop
+
+   for 8 using i loop
+      for 16 using j loop
+         max7219_display_digit(j, i, TRUE)         -- digit/char + dp
+         delay_100ms(2)
+      end loop
+      max7219_display_clear_all()
+   end loop
+
+   for 8 using i loop
+      max7219_display_byte_bin(1 << i)
+      delay_100ms(5)
+   end loop
+
+   for 8 using i loop
+      max7219_display_clear_all()
+      max7219_display_byte_hex(0xAB, i)
+      delay_100ms(5)
+   end loop
+
+   for 8 using i loop
+      max7219_display_clear_all()
+      max7219_display_word_hex(0xCDEF, i)
+      delay_100ms(5)
+   end loop
+
+   max7219_display_dword_hex(0x12345678, 0)
+   delay_100ms(10)
+
+   max7219_display_blink(3,5)
+
+   for 4 using i loop
+      max7219_display_clear_all()
+      max7219_display_dword_dec(dword(54321), 0b_0001_1000, i, FALSE)
+      delay_100ms(10)
+   end loop
+
+   for 6 using i loop
+      max7219_display_clear_all()
+      max7219_display_dword_dec(dword(123), 0b_0000_0100, i, TRUE)
+      delay_100ms(10)
+   end loop
+
+   for 6 using i loop
+      max7219_display_clear_all()
+      max7219_display_sdword_dec(sdword(-456), 0b_0000_0100, i, FALSE)
+      delay_100ms(10)
+   end loop
+
+   max7219_display_clear_all()
+   max7219_display_word_dec(word(678), 0b_0000_0100, 0, FALSE)
+   delay_100ms(10)
+
+   max7219_display_clear_all()
+   max7219_display_sword_dec(sword(-890), 0b_0000_0100, 1, FALSE)
+   delay_100ms(10)
+
+   max7219_display_clear_all()
+   max7219_display_byte_dec(byte(255), 0b_0000_0100, 2, FALSE)
+   delay_100ms(10)
+
+   max7219_display_clear_all()
+   max7219_display_sbyte_dec(sbyte(-127), 0b_0000_0100, 3, FALSE)
+   delay_100ms(10)
+
+end loop
+
