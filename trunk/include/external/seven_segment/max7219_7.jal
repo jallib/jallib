@@ -1,0 +1,409 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library to support an 8-character 7-segment display with MAX7219
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q3
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description: See the description of max7219_common.jal.
+-- The functionality is similar to the TM1638 library.
+-- This library supports a single MAX7219 module with an 8 character
+-- 7-segment display.
+-- This library supports binary, signed and unsigned decimal and unsigned
+-- hexadecimal representations. It does not support display of strings.
+-- Individual digits or segment patterns are addressed from left to right
+-- (offset 0 addresses the leftmost digit). However with the procedures to
+-- display formatted numbers an offset from the right must be specified.
+--
+-- Dependencies: See max7219_common.jal
+--
+-- Notes: - The feature to decode digits to segment patterns (builtin font) is
+--          not used, for the following reasons:
+--          * The builtin font does not support hexadecimal digits (A..F), so
+--            an external font is required anyway, thus the 'no-decode' mode.
+--          * Switching between decode and no-decode mode proved to give
+--            sometimes undesired effects, especially with screen 'blanking'.
+--
+-- -----------------------------------------------------------------------------
+
+if (!defined(MAX7219_NUM)) then
+   const byte MAX7219_NUM = 1
+end if
+
+include max7219_common                                   --
+
+include max7219_font                                     -- (hexa)decimal number font
+
+
+-- ========= 'private' procedures =====================
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Transfer addr + data to the max7219
+-- Input:  - address (command) byte
+--         - data byte
+-- ----------------------------------------------------------------------------
+procedure _max7219_write(byte in addr, byte in data) is
+
+   max7219_cs = LOW                                      -- active
+   spi_master = addr                                     -- transfer addr byte
+   spi_master = data                                     -- transfer data byte
+   max7219_cs = HIGH                                     -- idle
+
+end procedure
+
+
+
+-- ========== 'public' constants ===================
+
+const byte MAX7219_WIDTH = 8                             -- number of 7-segment displays
+                                                         -- supported by the MAX7219
+
+
+
+-- ========== 'public' procedures ==================
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display segment pattern of a digit.
+-- Input: - Segment pattern to be displayed (byte)
+--        - Offset of the digit from the left (byte, 0..7)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_pattern(byte in pattern, byte in offset) is
+
+   _max7219_write((offset & 0x07) + 1, pattern)          -- show pattern
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display a byte with decimal point
+-- Input: - Byte with (hexa)decimal digit to be displayed (0..15)
+--        - Offset of digit from the left (byte, 0..7)
+--        - Flag for decimal point (bit, 0 = no DP, 1 = DP)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_digit(byte in digit, byte in offset, bit in dp) is
+
+   digit = _MAX7219_NUMBER_FONT[digit & 0xF]             -- -> segment pattern
+   if (dp == TRUE) then
+      digit = digit | MAX7219_DP                         -- set decimal point
+   end if
+   _max7219_write((offset & 0x07) + 1, digit)            -- show pattern
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Clear a single display digit (all segments off)
+-- Input: Offset of digit from the left (0..7)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_clear(byte in offset) is
+
+   max7219_display_pattern(0b_0000_0000, (offset & 0x07))
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Clear all display digits (all segments off)
+-- Input: (none)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_clear_all() is
+
+   var byte i
+
+   for MAX7219_WIDTH using i loop
+      max7219_display_pattern(0b_0000_0000, i)
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Set LED intensity
+-- Input:  LED intensity (supported range 0..15)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_intensity(byte in intensity) is
+
+   _max7219_write(MAX7219_INTENSITY, intensity)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Initialize 8 digits 7-segment module with MAX7219
+-- Input:  (none)
+-- Notes:  Must be called before any other operation involving the display
+-- ----------------------------------------------------------------------------
+procedure max7219_init() is
+
+   -- prepare SPI interface
+
+   if (MAX7219_SPI_HW == FALSE) then                     -- using software SPI
+      spi_master_sw_init(SPI_MODE_00)
+   else
+      if (target_clock > 8_000_000) then                 -- fast processor
+         spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
+      else
+         spi_init(SPI_MODE_00, SPI_RATE_FOSC_4)
+      end if
+   end if
+
+   -- prepare MAX7219 module
+
+   max7219_cs = HIGH                                     -- start position (idle)
+   _max7219_write(MAX7219_SHUTDOWN,  0b_0000_0001)       -- return from shutdown
+   _max7219_write(MAX7219_TEST,      0b_0000_0000)       -- return from test
+   _max7219_write(MAX7219_SCANLIMIT, 0b_0000_0111)       -- all digits active
+   _max7219_write(MAX7219_DECODE,    0b_0000_0000)       -- no decode
+   max7219_display_clear_all()                           -- all segments off
+   max7219_display_intensity(MAX7219_DISPLAY_PWM5)       -- low intensity
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Put MAX7219 in test mode for some time.
+-- Input:  test period (byte, number of 0.1 seconds)
+-- Notes:  All segments will have maximum intensity during the specified period
+-- ----------------------------------------------------------------------------
+procedure max7219_display_test(byte in period) is
+
+   _max7219_write(MAX7219_TEST,   0b_0000_0001)           -- enter test (all leds max)
+   delay_100ms(period)
+   _max7219_write(MAX7219_TEST,   0b_0000_0000)           -- return from test
+   _max7219_write(MAX7219_DECODE, 0b_0000_0000)           -- no decode
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Blink whole module a number of times at a given speed
+-- Input:  - Number of times the display should blink
+--         - Time in 0.1 seconds of the on and off periods (duty cycle is 50%)
+-- Notes:  All 'on' segments will blink simultaneously.
+-- ----------------------------------------------------------------------------
+procedure max7219_display_blink(byte in times, byte in halfperiod) is
+
+   for times loop
+      _max7219_write(MAX7219_SHUTDOWN,  0b_0000_0000)    -- enter shutdown
+      delay_100ms(halfperiod)
+      _max7219_write(MAX7219_SHUTDOWN,  0b_0000_0001)    -- return from shutdown
+      delay_100ms(halfperiod)
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display binary number
+-- Input:  - Byte value to be displayed
+-- Notes:  - No decimal points
+-- ----------------------------------------------------------------------------
+procedure max7219_display_byte_bin(byte in number) is
+
+   var byte i
+   var bit msb at number : 7                              -- most significant bit
+
+   for MAX7219_WIDTH using i loop                         -- available positions
+      max7219_display_digit(byte(msb), i, FALSE)          -- bit value
+      number = number << 1
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title: Display (unsigned) double word as decimal value
+-- Input: - Dword value to be displayed
+--        - Pattern of decimal points (byte with bitmask)
+--        - Offset of the rightmost digit from the rightmost position
+--        - Flag if leading zeroes should be displayed (bit)
+-- Notes: - When the value is too large high order digits are truncated.
+--        - The decimal point(s) pattern is shifted left by 'offset' too.
+-- ----------------------------------------------------------------------------
+procedure max7219_display_dword_dec(dword in number,
+                                    byte  in dots,
+                                    byte  in offset,
+                                    bit   in leadingzeroes) is
+
+   var byte  rem10
+   var dword quot10
+   var bit   dp  at dots : 0
+
+   for (MAX7219_WIDTH - offset) loop                     -- cut off too large numbers
+      if (number > 0) then
+         quot10 = number / 10
+         rem10  = byte(number % 10)
+         max7219_display_digit(rem10, MAX7219_WIDTH - 1 - offset, dp)    -- display digit
+         number = quot10
+      else
+         if (leadingzeroes) then
+            max7219_display_digit("0", MAX7219_WIDTH - 1 - offset, dp)  -- display '0'
+         else
+            max7219_display_pattern(0, MAX7219_WIDTH - 1 - offset)      -- display ' '
+         end if
+      end if
+      offset = offset + 1
+      dots = dots >> 1
+   end loop
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display signed double word as decimal value
+-- Input:  - Sdword value to be displayed
+--         - Pattern of decimal points (byte with bitmask)
+--         - Offset of the rightmost digit from the rightmost position
+--         - Flag if leading zeroes should be displayed (bit)
+-- Notes: - A minus sign will be in the leftmost display position.
+--        - When the value is too large high order digits are not displayed.
+-- ----------------------------------------------------------------------------
+procedure max7219_display_sdword_dec(sdword in number,
+                                     byte   in dots,
+                                     byte   in offset,
+                                     bit    in leadingzeroes) is
+
+   if (number >= 0) then
+      max7219_display_dword_dec(dword(number), dots, offset, leadingzeroes)
+   else
+      max7219_display_dword_dec(dword(-number), dots, offset, leadingzeroes)
+      max7219_display_pattern(_MAX7219_MINUS | ((dots << offset) & 0b_1000_0000), 0)
+   end if
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display (unsigned) word as decimal value
+-- Input:  - Word value to be displayed
+--         - Pattern of decimal points (byte with bitmask)
+--         - Offset of the rightmost digit from the rightmost position
+--         - Flag if leading zeroes should be displayed (bit)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_word_dec(word   in number,
+                                   byte   in dots,
+                                   byte   in offset,
+                                   bit    in leadingzeroes) is
+
+   max7219_display_dword_dec(dword(number), dots, offset, leadingzeroes)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display signed word as decimal value
+-- Input:  - Sword value to be displayed
+--         - Pattern of decimal points (byte with bitmask)
+--         - Offset of the rightmost digit from the rightmost position
+--         - Flag if leading zeroes should be displayed (bit)
+-- Notes: - A minus sign will be in the leftmost display position
+-- ----------------------------------------------------------------------------
+procedure max7219_display_sword_dec(sword  in number,
+                                    byte   in dots,
+                                    byte   in offset,
+                                    bit    in leadingzeroes) is
+
+   max7219_display_sdword_dec(sdword(number), dots, offset, leadingzeroes)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display (unsigned) byte as decimal value
+-- Input:  - Byte value to be displayed
+--         - Pattern of decimal points (byte with bitmask)
+--         - Offset of the rightmost digit from the rightmost position
+--         - Flag if leading zeroes should be displayed (bit)
+-- ----------------------------------------------------------------------------
+procedure max7219_display_byte_dec(byte   in number,
+                                   byte   in dots,
+                                   byte   in offset,
+                                   bit    in leadingzeroes) is
+
+   max7219_display_dword_dec(dword(number), dots, offset, leadingzeroes)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display signed word as decimal value
+-- Input:  - Sword value to be displayed
+--         - Pattern of decimal points (byte with bitmask)
+--         - Offset of the rightmost digit from the rightmost position
+--         - Flag if leading zeroes should be displayed (bit)
+-- Notes: - A minus sign will be in the leftmost display position
+-- ----------------------------------------------------------------------------
+procedure max7219_display_sbyte_dec(sbyte  in number,
+                                    byte   in dots,
+                                    byte   in offset,
+                                    bit    in leadingzeroes) is
+
+   max7219_display_sdword_dec(sdword(number), dots, offset, leadingzeroes)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display byte as 2 hexadecimal digits
+-- Input:  - Byte value to be displayed
+--         - Offset of the rightmost digit from the rightmost position
+-- Notes:  - No decimal points
+-- ----------------------------------------------------------------------------
+procedure max7219_display_byte_hex(byte in number, byte in offset) is
+
+   if (offset < MAX7219_WIDTH) then
+      max7219_display_pattern(_MAX7219_NUMBER_FONT[number & 0xF], MAX7219_WIDTH - offset - 1)
+   end if
+   offset = offset + 1
+   if (offset < MAX7219_WIDTH) then
+      max7219_display_pattern(_MAX7219_NUMBER_FONT[number >> 4], MAX7219_WIDTH - offset - 1)
+   end if
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display word as 4 hexadecimal digits
+-- Input:  - Word value to be displayed
+--         - Offset of the rightmost digit from the rightmost position
+-- Notes:  - No decimal points
+-- ----------------------------------------------------------------------------
+procedure max7219_display_word_hex(word in number, byte in offset) is
+
+   var byte d[2] at number
+
+   max7219_display_byte_hex(d[0], offset + 0)
+   max7219_display_byte_hex(d[1], offset + 2)
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Title:  Display doubleword as 8 hexadecimal digits
+-- Input:  - Dword value to be displayed
+--         - Offset of the rightmost digit from the rightmost position
+-- Notes:  - No decimal points
+-- ----------------------------------------------------------------------------
+procedure max7219_display_dword_hex(dword in number, byte in offset) is
+
+   var byte b[4] at number
+
+   max7219_display_word_hex(b[0], offset + 0)
+   max7219_display_word_hex(b[1], offset + 2)
+   max7219_display_word_hex(b[2], offset + 4)
+   max7219_display_word_hex(b[3], offset + 6)
+
+end procedure
+
+

@@ -1,11 +1,11 @@
 -- -----------------------------------------------------------------------------
--- Title: Common for max7219 libraries
+-- Title: Common library for max7219 libraries
 --
 -- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
 --
 -- Adapted-by:
 --
--- Compiler: 2.4q2
+-- Compiler: 2.4q3
 --
 -- Revision: $Revision$
 --
@@ -14,7 +14,7 @@
 --
 -- Sources:
 --
--- Description: There are 2 variants of this library:
+-- Description: There are several variants of this library:
 --  - A library for cascaded MAX7219 modules each with an 8x8 LED matrix.
 --    Most procedures of this library require the specification of the module
 --    (sequence number in the chain). Some other procedures apply to all modules
@@ -22,12 +22,15 @@
 --  - A subset of this library for a single MAX7219 module with an 8x8 LED matrix.
 --    Because there is only one module no sequence number is needed in the procedures,
 --    thus this library is somewhat more efficient in terms of code memory and speed.
--- This description appleis to both variants, unless otherwise indicated.
---
--- For the multi-module variant you need to specify how many modules are cascaded:
+--  - A library for a single MAX7219 module with 8 7-segment displays
+--    with a functionality similar to the TM1638 library.
+-- This description applies to all variants, unless otherwise indicated.
+-- .
+-- For multi-module variants you need to specify how many modules are cascaded:
 --    const MAX7219_NUM = <number>        -- size of the chain
 -- .
--- When you want to control LEDs of modules individually while retaining
+-- For the 8x8 matrix variants of these libraries:
+-- When you want to control LEDs individually while retaining
 -- the state of the other LEDs a cache must be used. This is a builtin
 -- feature of the libraries, but you have to indicate if you need it.
 -- By default the cache is not active and some functions will not be
@@ -37,7 +40,7 @@
 -- .
 -- To initialize the max7219 module(s) call procedure max7219_init().
 -- .
--- This library uses either the software SPI library (spi_master_sw, default)
+-- These libraries use either the software SPI library (spi_master_sw, default)
 -- or the hardware SPI library (spi_master_hw).
 -- The advantage of using hardware SPI over software SPI (bit-banging) is
 -- higher efficiency (less CPU cycles and possibly higher speed).
@@ -56,24 +59,17 @@
 -- including the max7219[n] library:
 --    const bit MAX7219_SPI_HW = TRUE                  -- mandatory
 --    alias max7219_cs    is pin_??                    -- pin for chip select signal (cs)
--- When using this interface library:
---   - pin_SDO of the PIC needs be connected to the 'din' pin of the max7219
---   - pin_SCK of the PIC needs be connected to the 'clk' pin of the max7219
---   - Any pin configurable for digital output can be used for max7219_cs
---     and must be connected to the 'cs' pin of the max7219.
+--    pin_SDO of the PIC needs be connected to the 'din' pin of the max7219
+--    pin_SCK of the PIC needs be connected to the 'clk' pin of the max7219
+--    Any pin configurable for digital output can be used for max7219_cs
+--    and must be connected to the 'cs' pin of the max7219.
 -- .
 -- Regardless the selected SPI method all 3 used pins must be configured
 -- for output by the user program.
 --
 -- Dependencies: spi_master_hw, spi_master_sw
 --
--- Notes: - This library is designed for max7219 modules controlling an 8x8 LED matrix,
---          the features of the MAX7219 chip for 7-segment displays are disabled.
---        - The terms 'row' and 'column' are ambiguous: depending on the orientation
---          of the module! This library calls the LEDs which can be written with a
---          single write operation a column. Writing a row of a single module requires
---          8 writes and the cache being active.
---          See the procedures max7219_display_col() and max7219_display_row().
+-- Notes: -
 --
 -- -----------------------------------------------------------------------------
 
@@ -97,50 +93,45 @@ const  byte  MAX7219_TEST             = 0b_0000_1111
 
 -- --------- intensity register format -------------
 --
-const  byte  MAX7219_DISPLAY_PWM1     = 0b_0000_0000       --
-const  byte  MAX7219_DISPLAY_PWM3     = 0b_0000_0001       --
-const  byte  MAX7219_DISPLAY_PWM5     = 0b_0000_0010       --
-const  byte  MAX7219_DISPLAY_PWM7     = 0b_0000_0011       --
-const  byte  MAX7219_DISPLAY_PWM9     = 0b_0000_0100       --
-const  byte  MAX7219_DISPLAY_PWM11    = 0b_0000_0101       -- PWM dutycycle for LEDs
-const  byte  MAX7219_DISPLAY_PWM13    = 0b_0000_0110       --
-const  byte  MAX7219_DISPLAY_PWM15    = 0b_0000_0111       --
-const  byte  MAX7219_DISPLAY_PWM17    = 0b_0000_1000       --
-const  byte  MAX7219_DISPLAY_PWM19    = 0b_0000_1001       --
-const  byte  MAX7219_DISPLAY_PWM21    = 0b_0000_1010       --
-const  byte  MAX7219_DISPLAY_PWM23    = 0b_0000_1011       --
-const  byte  MAX7219_DISPLAY_PWM25    = 0b_0000_1100       --
-const  byte  MAX7219_DISPLAY_PWM27    = 0b_0000_1101       --
-const  byte  MAX7219_DISPLAY_PWM29    = 0b_0000_1110       --
-const  byte  MAX7219_DISPLAY_PWM31    = 0b_0000_1111       --
+const  byte  MAX7219_DISPLAY_PWM1     = 0b_0000_0000        --
+const  byte  MAX7219_DISPLAY_PWM3     = 0b_0000_0001        --
+const  byte  MAX7219_DISPLAY_PWM5     = 0b_0000_0010        --
+const  byte  MAX7219_DISPLAY_PWM7     = 0b_0000_0011        --
+const  byte  MAX7219_DISPLAY_PWM9     = 0b_0000_0100        --
+const  byte  MAX7219_DISPLAY_PWM11    = 0b_0000_0101        -- PWM dutycycle for LEDs
+const  byte  MAX7219_DISPLAY_PWM13    = 0b_0000_0110        --
+const  byte  MAX7219_DISPLAY_PWM15    = 0b_0000_0111        --
+const  byte  MAX7219_DISPLAY_PWM17    = 0b_0000_1000        --
+const  byte  MAX7219_DISPLAY_PWM19    = 0b_0000_1001        --
+const  byte  MAX7219_DISPLAY_PWM21    = 0b_0000_1010        --
+const  byte  MAX7219_DISPLAY_PWM23    = 0b_0000_1011        --
+const  byte  MAX7219_DISPLAY_PWM25    = 0b_0000_1100        --
+const  byte  MAX7219_DISPLAY_PWM27    = 0b_0000_1101        --
+const  byte  MAX7219_DISPLAY_PWM29    = 0b_0000_1110        --
+const  byte  MAX7219_DISPLAY_PWM31    = 0b_0000_1111        --
 
+const byte MAX7219_DP                 = 0b_1000_0000        -- segment of decimal point
 
--- --- select and prepare proper SPI master library -----
-
-if (!defined(MAX7219_SPI_HW)) then              -- not declared
-   const bit MAX7219_SPI_HW = FALSE             -- declare it with default
+if (!defined(MAX7219_SPI_HW)) then                          -- not declared
+   const bit MAX7219_SPI_HW = FALSE                         -- declare it, with default setting
 end if
-
-if (MAX7219_SPI_HW == FALSE) then
-   alias spi_master_sw_sdi is max7219_din       -- not used by max7219
+if (MAX7219_SPI_HW == FALSE) then                           -- using software SPI
+   alias spi_master_sw_sdi is max7219_din                   -- (not used by max7219)
    alias spi_master_sw_sdo is max7219_din
    alias spi_master_sw_sck is max7219_clk
-   include spi_master_sw                        -- use software SPI library
-   alias spi_master        is spi_master_sw     -- software SPI 'device'
-   spi_master_sw_init(SPI_MODE_00)              -- software SPI initialisation
+   include spi_master_sw                                    -- use software SPI library
+   alias spi_master is spi_master_sw                        -- software SPI 'device'
 else
-   include spi_master_hw                        -- use hardware SPI libary
-   alias spi_master        is spi_master_hw     -- hardware SPI device
-   spi_init(SPI_MODE_00, SPI_RATE_FOSC_4)       -- hardware SPI initialisation
+   include spi_master_hw                                    -- use hardware SPI libary
+   alias spi_master is spi_master_hw                        -- hardware SPI device
+end if
+
+if (!defined(MAX7219_DISPLAY_CACHE)) then
+   const bit MAX7219_DISPLAY_CACHE = FALSE                  -- default no caching
+end if
+if (MAX7219_DISPLAY_CACHE == TRUE) then                     -- cache desired, declare it:
+   var byte max7219_cache[MAX7219_NUM * 8]                  -- 8 bytes per max7219
 end if
 
 include delay
-
-if (!defined(MAX7219_DISPLAY_CACHE)) then
-   const bit MAX7219_DISPLAY_CACHE = FALSE      -- default no caching
-end if
-
-if (MAX7219_DISPLAY_CACHE == TRUE) then
-   var byte max7219_cache[MAX7219_NUM * 8]      -- cache: 8 bytes per max7219
-end if
 

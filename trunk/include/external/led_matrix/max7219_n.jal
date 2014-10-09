@@ -18,7 +18,13 @@
 --
 -- Dependencies: See max7219.jal
 --
--- Notes:
+-- Notes: - This library is designed for max7219 modules controlling an 8x8 LED matrix,
+--          the features of the MAX7219 chips for 7-segment displays are disabled.
+--        - The terms 'row' and 'column' are ambiguous: depending on the orientation
+--          of the module! This library calls the LEDs which can be written with a
+--          single write operation a column. Writing a row of a single module requires
+--          8 writes and the cache being active.
+--          See the procedures max7219_display_col() and max7219_display_row().
 --
 -- -----------------------------------------------------------------------------
 
@@ -121,6 +127,20 @@ end procedure
 -- Notes:  Must be called before any other operation involving the display
 -- ----------------------------------------------------------------------------
 procedure max7219_init() is
+
+   -- prepare SPI interface
+
+   if (MAX7219_SPI_HW == FALSE) then                     -- using software SPI
+      spi_master_sw_init(SPI_MODE_00)
+   else
+      if (target_clock > 8_000_000) then
+         spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)         -- limited clock freq.
+      else
+         spi_init(SPI_MODE_00, SPI_RATE_FOSC_4)
+      end if
+   end if
+
+   -- prepare MAX7219 modules
 
    _max7219_write_all(MAX7219_SHUTDOWN,  0b_0000_0001)   -- return from shutdown
    _max7219_write_all(MAX7219_TEST,      0b_0000_0000)   -- return from test
