@@ -1,0 +1,246 @@
+-- Title: bmp085 digital pressure sensor I2C routines.
+--
+-- Author: Urmas Joeleht, Copyright (c) 2014...2015, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4o
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: bmp085 digital pressure sensor I2C routines.
+--
+-- Functions and procedures:
+-- get_2_bytes() --address as input, returns 2 bytes of data
+-- bmp085_init() reads calibration data from chip
+-- get_uncompensated_temperature()
+-- get_uncompensated_pressure()
+-- calculate_true_temperature()
+-- calculate_true_pressure()
+-- Puts all together:
+-- bmp085_return_temperature_and_pressure(). Input - "mode".  Returns temperature (sword), pressure(dword) and success (bit)
+
+-- Notes:
+-- 3,3V device
+
+--
+-- Sources:
+-- http://www.bosch-sensortec.com/content/language1/downloads/BST-BMP085-DS000-05.pdf
+-- --------------------------------
+-- From datasheet:
+-- --------------------------------
+-- Chip I2C address
+const byte BMP085_I2C_WR_ADDR       = 0xEE  --write address
+const byte BMP085_I2C_RD_ADDR       = 0xEF  --read address
+
+-- Factory inserted calibration data register MSB aadresses (LSB is +1)
+const byte BMP085_AC1           = 0xAA
+const byte BMP085_AC2           = 0xAC
+const byte BMP085_AC3           = 0xAE
+const byte BMP085_AC4           = 0xB0
+const byte BMP085_AC5           = 0xB2
+const byte BMP085_AC6           = 0xB4
+const byte BMP085_B1            = 0xB6
+const byte BMP085_B2            = 0xB8
+const byte BMP085_MB            = 0xBA
+const byte BMP085_MC            = 0xBC
+const byte BMP085_MD            = 0xBE
+
+const byte BMP085_CONTROL_REG       = 0xF4
+const byte BMP085_TEMP_PRESS_MSB    = 0xF6
+const byte BMP085_READ_TEMP_CMD       = 0x2E
+const byte BMP085_READ_PRESSURE_CMD   = 0x34
+
+-- Variables
+-- For calculations
+var word  ac4, ac5, ac6
+var sword ac1, ac2, ac3, b1, b2, mb, mc, md
+var sdword b5
+-- Variable mode: --0 - Ultra low power; 1 - Standard; 2 - High resolution; 3 - Ultra high resolution
+var byte mode
+var bit ack -- for I2C
+var sword true_temp
+var dword true_pressure
+-- -----------------------------------------------------------------
+-- get 16-bit data from chip
+-- -----------------------------------------------------------------
+function get_2_bytes(byte in address, bit out flag)return word is
+   var word result
+   var byte msb, lsb
+   i2c_start()
+   flag = i2c_transmit_byte(BMP085_I2C_WR_ADDR)
+   flag = flag & i2c_transmit_byte(address) --registry address
+   i2c_stop()
+   i2c_start()
+   flag = flag & i2c_transmit_byte(BMP085_I2C_RD_ADDR)
+   msb = i2c_receive_byte(1)     --master ACK (will ask next byte also)
+   lsb = i2c_receive_byte(0)     --master NACK (last byte)
+   i2c_stop()
+   result = (word(msb) << 8 ) + lsb   --put msb and lsb together to 16bit result
+   return result
+end function
+-- -----------------------------------------------
+-- Get uncompensated temperature data from chip
+-- -----------------------------------------------
+function get_uncompensated_temp (bit out flag) return word is
+   var word result, msb, lsb
+   i2c_start()
+   flag = i2c_transmit_byte(BMP085_I2C_WR_ADDR)       -- Chip ID in write mode  EE
+   flag = flag & i2c_transmit_byte(BMP085_CONTROL_REG)          -- put register address
+   flag = flag & i2c_transmit_byte(BMP085_READ_TEMP_CMD)           -- put read temp command in the register
+   i2c_stop()
+   if defined (pin_eoc) then
+      while pin_eoc == 0 loop
+      end loop
+   else
+      delay_1ms(4)
+      delay_10us(50)
+   end if
+   i2c_start()
+   flag = flag & i2c_transmit_byte(BMP085_I2C_WR_ADDR)       -- Chip ID in write mode
+   flag = flag & i2c_transmit_byte(BMP085_TEMP_PRESS_MSB)          -- put register address
+   i2c_stop()
+   i2c_start()
+   flag = flag & i2c_transmit_byte(BMP085_I2C_RD_ADDR)
+   msb = i2c_receive_byte(1)
+   lsb = i2c_receive_byte(0)
+   i2c_stop()
+   result = (msb << 8) + lsb;
+   return result
+end function
+-- -----------------------------------------------
+--   Get uncompensated pressure data from chip
+-- -----------------------------------------------
+function get_uncompensated_pressure (byte in mode, bit out flag) return byte*3 is
+   var byte*3 result
+   var byte msb, lsb, xlsb  							--three bytes of data
+      var byte conversation_time
+   case mode of
+      0: conversation_time = 4
+      1: conversation_time = 7
+      2: conversation_time = 13
+      3: conversation_time = 25
+   end case
+   -- Starting I2C communication. Put "Read pressure" command with choosed mode to command register
+   i2c_start()
+   flag = i2c_transmit_byte(BMP085_I2C_WR_ADDR)			
+   flag = flag & i2c_transmit_byte(BMP085_CONTROL_REG)  
+   flag = flag & i2c_transmit_byte(BMP085_READ_PRESSURE_CMD + (mode << 6))
+   i2c_stop()
+   -- wait for chip pressure conversation
+    if defined (pin_eoc) then
+      while pin_eoc == 0 loop
+      end loop
+   else
+      delay_1ms(conversation_time)
+      delay_10us(50)
+   end if
+   -- read 3 bytes of data
+   i2c_start()
+   flag = flag & i2c_transmit_byte(BMP085_I2C_WR_ADDR)
+   flag = flag & i2c_transmit_byte(BMP085_TEMP_PRESS_MSB)
+   i2c_stop()
+   i2c_start()
+   flag = flag & i2c_transmit_byte(BMP085_I2C_RD_ADDR)
+   msb = i2c_receive_byte(1)
+   lsb = i2c_receive_byte(1)
+   xlsb = i2c_receive_byte(0)
+   i2c_stop()
+   result = ((byte*3(msb) << 16) + (byte*3(lsb) << 8) + byte*3(xlsb)) >> (8 - mode)
+   return result
+end function
+-- ----------------------------------------------------
+-- Get factory calibration data from chip and put it in variables
+-- ----------------------------------------------------
+procedure bmp085_init (bit out ack) is
+   ac1 = sword(get_2_bytes(BMP085_AC1, ack))
+   ac2 = sword(get_2_bytes(BMP085_AC2, ack))
+   ac3 = sword(get_2_bytes(BMP085_AC3, ack))
+   ac4 = get_2_bytes(BMP085_AC4, ack)
+   ac5 = get_2_bytes(BMP085_AC5, ack)
+   ac6 = get_2_bytes(BMP085_AC6, ack)
+   b1 = sword(get_2_bytes(BMP085_B1, ack))
+   b2 = sword(get_2_bytes(BMP085_B2, ack))
+   mb = sword(get_2_bytes(BMP085_MB, ack))
+   mc = sword(get_2_bytes(BMP085_MC, ack))
+   md = sword(get_2_bytes(BMP085_MD, ack))
+end procedure
+-- ----------------------------------------------------
+-- Calculate true temperature
+-- ----------------------------------------------------
+function calculate_true_temperature (word in uncomp_t) return sword is
+   var sdword x1, x2, temp
+   var sword true_t
+   x1 = (sdword(uncomp_t) - sdword(ac6)) * ac5 / 32768
+   x2 = sdword(mc) * 2048 / (x1 + sdword(md))
+   b5 = x1 + x2
+   true_t = sword((b5 + 8) / 16)
+   return sword(true_t)
+end function
+-- ----------------------------------------------------
+-- Calculate true pressure
+-- ----------------------------------------------------
+function calculate_true_pressure (byte*3 in uncomp_p, byte in mode) return dword is
+   var sdword x1, x2, x3, b3, b6, press
+   var dword  b4, b7, true_p
+   b6 = b5 - 4000
+   x1 = (b2 *(b6 * b6 / 4096)) / 2048
+   x2 = ac2 * b6 / 2048
+   x3 = x1 + x2
+   b3 = (((sdword(ac1) * 4 + x3) << mode) + 2) / 4
+   x1 = ac3 * b6 / 8192
+   x2 = (b1 * (b6 * b6 / 4096)) / 65536
+   x3 = ((x1 + x2) + 2 ) / 4
+   b4 = ac4 * (dword(x3) + 32768)/32768
+   b7 = dword((dword(uncomp_p) - b3)) * (50000 >> word(mode))
+   if (b7 < 0x80000000) then
+      true_p = (b7 * 2) / b4
+   else
+      true_p = (b7 / b4) * 2
+   end if
+   x1 = (sdword(true_p) / 256) * (sdword(true_p) / 256)
+   x1 = (x1 * 3038) / 65536
+   x2 = (-7357 * sdword(true_p)) / 65536
+   true_p = true_p + (x1 + x2 + 3791) / 16
+   return (true_p)
+end function
+-- ----------------------------------------------------
+-- return temp, pressure and succes bit
+-- ----------------------------------------------------
+procedure bmp085_return_temperature_and_pressure (byte in mode, sword out temperature, dword out pressure, bit out success) is
+   var bit ok
+   var word uc_temp
+   var byte*3 uc_press
+   uc_temp = get_uncompensated_temp(success)
+   ok = success
+   uc_press = get_uncompensated_pressure (mode, success)
+   ok = ok & success
+   temperature = calculate_true_temperature(uc_temp)
+   pressure = calculate_true_pressure(uc_press, mode)
+end procedure
+-------------------------------------------------------------------------
+-- Fast pressure measurement. Temperature is measured once in 128 times.
+-- If constant cycle, once per second
+-------------------------------------------------------------------------
+var byte bmp085_temp_counter = 127
+procedure bmp085_return_temperature_and_pressure_fast (byte in mode, sword out temperature, dword out pressure, bit out success) is
+   var bit ok
+   var word uc_temp
+   var byte*3 uc_press
+   if bmp085_temp_counter >= 127 then
+      bmp085_temp_counter = 0
+      uc_temp = get_uncompensated_temp(success)
+      temperature = calculate_true_temperature(uc_temp)
+      ok = success
+   else
+      ok = 1
+      bmp085_temp_counter = bmp085_temp_counter + 1
+   end if
+   uc_press = get_uncompensated_pressure (mode, success)
+   ok = ok & success
+   pressure = calculate_true_pressure(uc_press, mode)
+end procedure
+
