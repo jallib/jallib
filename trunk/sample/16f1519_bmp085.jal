@@ -1,0 +1,122 @@
+ --
+-- Author: Rob Hamerling, Copyright (c) 2008..2011, all rights reserved.
+--
+-- Adapted-by: Urmas Joeleht
+--
+-- Revision: $Revision: 2937 $
+--
+-- Compiler: 2.4o
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Sample program for use of BMP085 ressure sensor with Microchip PIC16lf1516.
+--
+-- Sources:
+--
+-- Notes:
+--  - File creation date/time: 15. Oct 2014 17:49:36.
+--
+-- ------------------------------------------------------
+--
+include 16f1519
+
+pragma target clock 16_000_000     -- oscillator frequency
+-- configuration memory settings (fuses)
+pragma target OSC      INTOSC_NOCLKOUT  -- internal oscillator
+OSCCON_IRCF = 0b1111                -- 16_000_000 Hz
+pragma target WDT      disabled     -- no watchdog
+pragma target DEBUG    disabled     -- no debugging
+pragma target LVP      disabled     -- no Low Voltage Programming
+pragma target MCLR     external     -- reset externally
+--
+enable_digital_io()
+alias   led      is pin_c1
+pin_c1_direction =  output
+
+include delay
+include print
+------------------------------
+--SERIAL HW
+------------------------------
+const serial_hw_baudrate = 115_200
+var bit serial_ctsinv		
+const serial_overflow_discard = false	
+const   SERIAL_XMTBUFSIZE  = 255	
+const   SERIAL_RCVBUFSIZE  = 1		
+const   SERIAL_DELTA       = 1
+include serial_hardware
+
+serial_hw_init()
+------------------------------
+--I2C software
+------------------------------
+alias i2c_scl is pin_d1
+alias i2c_scl_direction is pin_d1_direction
+alias i2c_sda is pin_d0
+alias i2c_sda_direction is pin_d0_direction
+var byte _i2c_bus_speed = 1
+const bit _i2c_level = true   ; i2c levels (not SMB)
+include i2c_software
+i2c_initialize()
+var byte i2c_tx_buffer[2]
+var byte i2c_rx_buffer[2]
+include i2c_level1
+------------------------------
+--BMP085
+------------------------------
+-- comment out next 3 lines if not using eoc pin (End Of Conversation)
+alias pin_eoc is pin_d4                       --Optional
+alias pin_eoc_direction is pin_d4_direction   --Optional
+pin_eoc_direction = input                     --Optional
+
+include bmp085
+var bit ok
+bmp085_init(ok)
+------------------------------
+--variables for sample
+------------------------------
+var byte mode_string[] = "Mode: "
+var byte temp_string[] = "Temperature: "
+var byte press_string[] = "Pressure: "
+var byte correct_string[] = "Data "
+var byte ok_string[] = "Ok"
+var byte nok_string[] = "Not Ok"
+var sword tmp
+var dword prs
+var bit success
+-----------------------------
+-- Forever loop
+-----------------------------
+forever loop
+   if mode >= 3 then
+      mode = 0
+   else
+      mode = mode + 1
+   end if
+   bmp085_return_temperature_and_pressure_fast (mode, tmp, prs, success)
+   print_string(serial_hw_data,mode_string)
+   print_byte_dec(serial_hw_data,mode)
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data,temp_string)
+   print_sword_dec(serial_hw_data,tmp)
+   serial_hw_data = "C"
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data,press_string)
+   print_dword_dec(serial_hw_data,prs)
+   serial_hw_data = "P"
+   serial_hw_data = "a"
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data,correct_string)
+   if success == 1 then
+      print_string(serial_hw_data,ok_string)
+   else
+      print_string(serial_hw_data,nok_string)
+   end if
+   print_crlf(serial_hw_data)
+   print_crlf(serial_hw_data)
+   led = !led
+   delay_1s(1)
+end loop
+
