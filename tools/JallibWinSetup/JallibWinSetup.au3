@@ -206,17 +206,6 @@ Func NextButton()
 		 GUICtrlSetState($Label5 ,$GUI_SHOW)
 		 GUICtrlSetState($Label6 ,$GUI_SHOW)
 
-		 if (GUICtrlRead($Checkbox3) == 1) Then
-			RunWait(@tempdir & '\7z.exe x -y "' & @tempdir & '\jaledit.zip" -o"' & $Folder & "\jaledit" & '"')
-			IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "deLibPath_Text", "C:\Jallib\lib")
-
-			$CompilerFolder = FindNewestFolder($Folder & "\compiler")
-			if ($CompilerFolder == -1) Then
-			   MsgBox(16, "Error", 'Failed to set the JalEdit compiler directory. You will need to set it manually in JalEdit at "Tools" -> "Environment Options"')
-			EndIf
-			IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "feJALExe_Text", "C:\Jallib\compiler\" & $CompilerFolder & "\bin\jalv2.exe")
-		 EndIf
-
 		 if (GUICtrlRead($Checkbox2) == 1) Then
 			RunWait(@tempdir & '\7z.exe x -y "' & @tempdir & '\jalv2.zip" -o"' & $Folder & "\compiler" & '"')
 		 EndIf
@@ -225,8 +214,28 @@ Func NextButton()
 			RunWait(@tempdir & '\7z.exe x -y "' & @tempdir & '\jallib.zip" -o"' & $Folder & '"')
 		 EndIf
 
+		 if (GUICtrlRead($Checkbox3) == 1) Then
+			RunWait(@tempdir & '\7z.exe x -y "' & @tempdir & '\jaledit.zip" -o"' & $Folder & "\jaledit" & '"')
+
+			$libfolder = $Folder & "\lib"
+			$libfolder = StringReplace($libfolder, "\\", "\")
+			IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "deLibPath_Text", $libfolder)
+
+			$CompilerFolder = FindNewestFolder($Folder & "\compiler")
+			if ($CompilerFolder == -1) Then
+			   MsgBox(16, "Error", 'Failed to set the JalEdit compiler directory. You will need to set it manually in JalEdit at "Tools" -> "Environment Options"')
+			EndIf
+			IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "feJALExe_Text", $Folder & "compiler\" & $CompilerFolder & "\bin\jalv2.exe")
+
+		 ;add shortcuts
+		 consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @DesktopDir & "\JalEdit.lnk", $Folder & "\jaledit\"))
+		 DirCreate(@StartMenuDir & "\JalEdit")
+		 consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @StartMenuDir & "\JalEdit\JalEdit.lnk", $Folder & "\jaledit\"))
+		 EndIf
+
 		 GUICtrlSetData($Label5, "Installation is complete!")
 		 GUICtrlSetData($NextButton, "Finnish")
+		 GUICtrlSetState($CancelButton ,$GUI_HIDE) ; hide the cancel button
 
 		 if (GUICtrlRead($Checkbox3) == 1) Then
 			guictrlsetstate($Checkbox4,$GUI_Checked)
@@ -240,6 +249,7 @@ Func NextButton()
    EndIf
 
    If ($Step == 4) Then
+
 	  if (GUICtrlRead($Checkbox4) == 1) Then
 		 run($Folder & "\jaledit\jaledit.exe")
 		 WinWaitActive("JAL Edit", "", 10)
@@ -285,6 +295,8 @@ Func CLOSEButton()
 
     If Not($iNewestIndex > 0) Then
         return -1
-    EndIf
+	 EndIf
+
+	 ConsoleWrite($avFiles[$iNewestIndex])
     return $avFiles[$iNewestIndex]
  EndFunc
