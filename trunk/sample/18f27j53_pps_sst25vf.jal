@@ -1,0 +1,419 @@
+-- Title: Test of the Microchip Flash SST25VF016 chip with PIC18lf27j53
+-- Author: Urmas Joeleht, Copyright (c) 2014, 2015, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4q3
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Sources:
+--
+-- Description:
+-- Sample Microchip (SST) 1...128 Mbit serial flash chip test program for Microchip SST25VFxxx.
+--
+-- Notes:
+-- File creation date/time: 7 Nov 2014 12:51:19.
+-- Led on pin_B0
+--
+
+-- -------------------------------------------------------------
+-- Basic declarations
+-- -------------------------------------------------------------
+include 18f27j53
+pragma target clock 48_000_000             -- oscillator frequency
+-- Clock
+pragma target PLLDIV    P2
+pragma target CPUDIV    P1
+pragma target PLLEN     ENABLED
+pragma target OSC INTOSC_NOCLKOUT_PLL      -- internal oscillator
+
+pragma target WDT  CONTROL                 -- Disabled. Controlled by SWDTEN bit
+OSCTUNE_PLLEN = on                         -- PLL via OSCTUNE enabled
+OSCCON_IRCF = 0b111
+OSCCON_SCS = 0b00                          -- select primary clock source
+
+pragma target RTCOSC T1OSC
+pragma target ADCSEL B12                   -- adc 10 or 12 bit select
+
+_usec_delay(2000)                          -- PLL needs 2ms before stable
+enable_digital_io()                        -- make all pins digital I/O
+
+-- -------------------------------------------------------------
+include delay
+include print
+
+-- -------------------------------------------------------------
+-- Serial HW
+-- -------------------------------------------------------------
+const SERIAL_HW_BAUDRATE = 115_200
+
+var bit serial_ctsinv                      -- dummy bit, we do not need cts
+const SERIAL_OVERFLOW_DISCARD = false      -- Data we send is important. Why should
+
+const   SERIAL_XMTBUFSIZE  = 255           -- transmit buffer as big as can be
+const   SERIAL_RCVBUFSIZE  = 1             -- we do not receive, so no buffer needed
+const   SERIAL_DELTA       = 1
+include serial_hardware
+
+serial_hw_init()
+
+-- ----------------------------------------------------------
+alias   led    is pin_B0
+pin_B0_direction =  output
+-- ----------------------------------------------------------
+-- 18F27J53 uses Peripherial Pin selection, so we have to define
+-- which pps (named RPx) pins we use for SPI
+
+include pps
+
+-- PPS module writes are protected, we need to first unlock it
+pps_control_lock(false)
+
+-- Tie SPI peripherial to PPS pins
+   PPS_MAP_RP1  = PPS_SCK2
+   PPS_MAP_RP13 = PPS_SDO2
+   PPS_MAP_SDI2 = RP0
+-- PPS configuration is done, we can lock again
+pps_control_lock(true)
+
+-- give more descriptive aliases for RP pins
+alias pin_SCK2            is  pin_RP1
+alias pin_SCK2_direction  is  pin_RP1_direction
+alias pin_SDI2            is  pin_RP0
+alias pin_SDI2_direction  is  pin_RP0_direction
+alias pin_SDO2            is  pin_RP13
+alias pin_SDO2_direction  is  pin_RP13_direction
+
+-- configure SPI to use MSSP2 module
+include spi_master_hw2
+
+pin_sdi2_direction = input                 -- spi input
+pin_sdo2_direction = output                -- spi output
+pin_sck2_direction = output                -- spi clock
+
+alias spi_master_hw is spi_master_hw2
+alias spi_master_set_mode is spi_master_hw2_set_mode
+alias spi_master_set_speed is spi_master_hw2_set_speed
+
+spi2_init(SPI_MODE_00,SPI_RATE_FOSC_4)     -- init spi, choose mode and speed
+
+-- ----------------------------------------------------------
+-- configuring flash chip
+-- ----------------------------------------------------------
+-- defying flash chip chip select pin
+alias sst25vf_cs is pin_A7
+alias sst25vf_cs_direction   is pin_a7_direction
+sst25vf_cs_direction = output              -- chip select/slave select pin
+sst25vf_cs = high                          -- disable chip first
+
+include flash_sst25vf
+sst25vf_init()
+
+-- variables for tests
+var byte*3 iii                             -- variable for addresses
+var word test = 0                          -- variable for read data (word)
+var dword test2 = 0                        -- variable for read data (dword)
+var dword error_counter = 0                -- variable for counting wrong values in tests
+var byte manufacturer                      -- variable for chip manufacturer
+var byte memory_type                       -- variable for chip type
+var byte memory_capacity                   -- variable for chip capacity
+var word mem_size                          -- memory size info
+var byte*3 chip_max_address = 0xFFFFFF     -- variable for chip max address
+
+--Strings for print to serial
+const byte result_str[]        = "Errors count: "
+const byte manufacturer_str1[] = "Made by Microchip (SST)"
+const byte manufacturer_str2[] = "Unknown manufacturer"
+const byte mem_type_str1[]     = "SS25VF series"
+const byte mem_type_str2[]     = "Unknown series"
+const byte mem_size_str[]      = "Memory size "
+const byte mem_max_str[]       = "Memory max address:  "
+const byte erased_str[]        = "Chip erased."
+const byte testing_str[]       = "Testing ..."
+const byte reading_str[]       = "Reading 4kB"
+const byte verifying_str[]     = "Verifying ..."
+const byte test_str[]          = "Test "
+const byte filled_str[]        = "Fill 4kB with 0xAA "
+const byte erased2_str[]       = "4kB sector erased"
+const byte filled2_str[]       = "Fill 4kB with 0x00 "
+const byte end_str[]           = "All tests finished"
+const byte progress_str[]      = "0____________________________l00"
+-- ----------------------------------------------------------
+-- Starting tests. Will be done once, no forever loop.
+-- Led goes 1, when test starts and 0 when finished
+-- ----------------------------------------------------------
+
+-- ----------------------------------------------------------
+-- Test 1. Read Chip ID, manufacturer, chip size.
+-- Put those in variables for future using
+-- ----------------------------------------------------------
+print_string(serial_hw_data, test_str)
+serial_hw_data = "1"
+print_crlf(serial_hw_data)
+
+led = 1
+sst25vf_read_jedec_id(manufacturer, memory_type, memory_capacity)
+if manufacturer == 0xBF then
+   print_string(serial_hw_data, manufacturer_str1)      -- Microchip
+else
+   print_string(serial_hw_data, manufacturer_str2)      -- other manufacturer
+end if
+print_crlf(serial_hw_data)
+if memory_type == 0x25 then
+   print_string(serial_hw_data, mem_type_str1)
+   serial_hw_data = " "
+   print_byte_hex(serial_hw_data,memory_type)
+else
+   print_string(serial_hw_data, mem_type_str2)
+end if
+print_crlf(serial_hw_data)
+-- ----------------------------------------------------------
+-- Change manufacturer memory size code to real size (Mb)
+-- ----------------------------------------------------------
+case memory_capacity of
+   0x8A: block
+            mem_size = 512                       -- 0.5M
+            chip_max_address = 0x00FFFF
+         end block
+   0x8B: block
+            mem_size = 1                         -- 1M
+            chip_max_address = 0x01FFFF
+         end block
+   0x8C: block
+            mem_size = 2                         -- 2M
+            chip_max_address = 0x03FFFF
+         end block
+   0x8D: block
+            mem_size = 4                         -- 4M
+            chip_max_address = 0x07FFFF
+         end block
+   0x8E: block
+            mem_size = 8                         -- 8M
+            chip_max_address = 0x0FFFFF
+         end block
+   0x41: block
+            mem_size = 16                        -- 16M
+            chip_max_address = 0x1FFFFF
+         end block
+   0x4A: block
+            mem_size = 32                        -- 32M
+            chip_max_address = 0x3FFFFF
+         end block
+   0x4B: block
+            mem_size = 64                        -- 64M
+            chip_max_address = 0x7FFFFF
+         end block
+   0x4C: block
+            mem_size = 128                       -- 128M
+            chip_max_address = 0xFFFFFF
+         end block
+   otherwise
+         block
+            mem_size = 0
+            chip_max_address = 0xFFFFFF
+         end block
+end case
+
+print_string(serial_hw_data, mem_size_str)       -- printing memory size
+serial_hw_data = " "
+print_word_dec(serial_hw_data, mem_size)
+if mem_size == 512 then
+   serial_hw_data = "k"
+else
+   serial_hw_data = "M"
+end if
+serial_hw_data = "b"
+print_crlf(serial_hw_data)
+print_string(serial_hw_data, mem_max_str)
+serial_hw_data = " "                             -- printing memory max size
+print_dword_hex(serial_hw_data,chip_max_address)
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+led = 0
+delay_1ms(100)
+
+-- ----------------------------------------------------------
+-- Test 2. Erasing chip and verifying all data, printing result
+-- ----------------------------------------------------------
+print_string(serial_hw_data, test_str)           -- print test number
+serial_hw_data = "2"
+print_crlf(serial_hw_data)
+led = 1
+sst25vf_chip_erase()                             -- erase whole chip
+while sst25vf_chip_ready()== 0 loop              -- wait when chip is ready after erasing.
+end loop                                         -- Alternative is wait for 50ms
+
+print_string(serial_hw_data, erased_str)
+print_crlf(serial_hw_data)
+print_string(serial_hw_data, verifying_str)
+print_crlf(serial_hw_data)
+
+led = 0
+
+-- ----------------------------------------------------------
+-- control, if all data is 0xFF after erase
+-- as it can take a lot of time with
+-- big chips, lets inform user about progress
+-- ----------------------------------------------------------
+led = 1
+print_crlf(serial_hw_data)
+print_string(serial_hw_data,progress_str)
+print_crlf(serial_hw_data)
+for ((chip_max_address + 1) / 2) using iii loop   
+   test = sst25vf_read_word(iii*2)                
+   if iii % ((chip_max_address + 1)/64) == 0 then 
+      serial_hw_data = "#"                        
+   end if
+   if test != 0xFFFF then
+      error_counter = error_counter + 1          -- count errors
+   end if
+end loop
+print_crlf(serial_hw_data)
+print_string(serial_hw_data,result_str)          -- print verifying result
+print_dword_dec(serial_hw_data, error_counter)
+test = 0
+error_counter = 0
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+led = 0
+delay_1ms(2000)                                  -- wait, for reading from screen
+
+-- ----------------------------------------------------------
+-- Test 3
+-- Read_by word. Reading first 4096 bytes and print to serial
+-- ----------------------------------------------------------
+print_string(serial_hw_data, test_str)
+serial_hw_data = "3"
+print_crlf(serial_hw_data)
+print_string(serial_hw_data, reading_str)
+print_crlf(serial_hw_data)
+led = 1
+for 2048 using iii loop
+   test = sst25vf_read_word(iii*2)
+   if (iii%16 == 0) then
+      print_crlf(serial_hw_data)
+   end if
+   print_word_hex(serial_hw_data, test)
+   delay_1ms(1)
+end loop
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+
+-- ----------------------------------------------------------
+-- Test 4
+-- Fill 4kB with 0xAA
+-- ----------------------------------------------------------
+print_string(serial_hw_data, test_str)
+serial_hw_data = "4"
+print_crlf(serial_hw_data)
+led = 0
+for 2048 using iii loop
+   sst25vf_write_word(iii*2,0xAAAA)
+end loop
+print_string(serial_hw_data, filled_str)
+print_crlf(serial_hw_data)
+led = 0
+delay_1ms(1000)
+
+-- ----------------------------------------------------------
+-- Read and verify 4kB with 0xAA
+-- ----------------------------------------------------------
+led = 1
+print_string(serial_hw_data, reading_str)
+
+print_crlf(serial_hw_data)
+for 2048 using iii loop
+   test = sst25vf_read_word(iii*2)
+   if (iii%16 == 0) then
+      print_crlf(serial_hw_data)
+   end if
+   print_word_hex(serial_hw_data, test)
+   if test != 0xAAAA then
+      error_counter = error_counter + 1
+   end if
+end loop
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+print_string(serial_hw_data,result_str)
+print_dword_dec(serial_hw_data, error_counter)
+test = 0
+error_counter = 0
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+delay_1ms(1)
+led = 0
+
+-- ----------------------------------------------------------
+-- erase 4kB sector
+-- ----------------------------------------------------------
+print_string(serial_hw_data, test_str)
+serial_hw_data = "5"
+print_crlf(serial_hw_data)
+led = 1
+sst25vf_erase_4kb_sector(0x00000000)
+print_string(serial_hw_data, erased2_str)
+print_crlf(serial_hw_data)
+
+-- ----------------------------------------------------------
+--controlling 4kB sector
+-- ----------------------------------------------------------
+for 1024 using iii loop
+   test2 = sst25vf_read_dword(iii*4)
+   if (iii%8 == 0) then
+      print_crlf(serial_hw_data)
+   end if
+   print_dword_hex(serial_hw_data, test2)
+   if test2 != 0xFFFFFFFF then
+      error_counter = error_counter + 1
+   end if
+end loop
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+print_string(serial_hw_data,result_str)
+print_dword_dec(serial_hw_data, error_counter)
+test = 0
+error_counter = 0
+print_crlf(serial_hw_data)
+
+-- ----------------------------------------------------------
+-- Fill 4kB with 0x00000000 using sst25vf_write_dword()
+-- ----------------------------------------------------------
+for 1024 using iii loop
+   sst25vf_write_dword(iii*4,0x00000000)
+end loop
+print_string(serial_hw_data, filled2_str)
+print_crlf(serial_hw_data)
+delay_1ms(1000)
+
+-- ----------------------------------------------------------
+-- Read and verify 4kB with 0x00000000
+-- ----------------------------------------------------------
+print_string(serial_hw_data, reading_str)
+
+print_crlf(serial_hw_data)
+for 1024 using iii loop
+   test2 = sst25vf_read_dword(iii*4)
+   if (iii%8 == 0) then
+      print_crlf(serial_hw_data)
+   end if
+   print_dword_hex(serial_hw_data, test2)
+   if test2 != 0x00000000 then
+      error_counter = error_counter + 1
+   end if
+end loop
+print_crlf(serial_hw_data)
+print_crlf(serial_hw_data)
+print_string(serial_hw_data,result_str)
+print_dword_dec(serial_hw_data, error_counter)
+test = 0
+error_counter = 0
+print_crlf(serial_hw_data)
+delay_1ms(1)
+led = 0
+
+-- ----------------------------------------------------------
+-- All tests done
+-- ----------------------------------------------------------
+print_string(serial_hw_data, end_str)
+print_crlf(serial_hw_data)
