@@ -1,0 +1,153 @@
+-- ---------------------------------------------------------------------------------------
+-- Title: Example of the Unipolar Stepper Motor with blocking delays lib with the pic16f630
+-- Author: Pavel Milanes Costa (CO7WT) - pavelmc@gmail.com, copyright (c) 2014, all rights reserved.
+-- Compiler: >=2.4q3
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Simple unipolar stepper motor example lib for Microchip pic16f630
+-- using internal HS 4.0 Mhz XTAL, and internal MCLR, with blocking delays
+-- --
+-- Blocking delays means that when the motor is moving the PIC can do ONLY that.
+-- --
+-- You must provide a unipolar stepper motor in the pins showed below, and it must
+-- be conected to a coil driver like a mosfet*4 or a darlingtown motor driver
+-- --
+-- I used a ULN2003 to do the testing job...
+-- --
+-- You MUST know at least the basic principle of unipolar stepper motors, and
+-- know what coil/wire is each one (Common, A, B, C, D), or a method to identify it.
+-- See stepper_unipolar_common for more details
+--
+-- Sources:
+-- To many to count, kind of http://www.google.com/?hl=en&q=stepper+motor+tutorial and pick the best?
+-- PLEASE read the stepper_unipolar_common lib and the stepper_unipolar_blockin lib for details
+--
+-- Notes:
+-- * This file is maintained by hand!!!
+-- --
+-- device map
+--                 +5 V > VCC [1  U  14] GND < GND
+--                         A5 [2     13] A0
+--                         A4 [3     12] A1
+--                         A3 [4     11] A2
+--                         C5 [5     10] C0 > A Coil driver
+--                         C4 [6      9] C1 > B Coil driver
+--        D Coil Driver <  C3 [7      8] C2 > C Coil driver
+-- ------------------------------------------------------
+--
+include 16f630								-- target PIC device
+--
+pragma	target clock	4_000_000			-- 4 Mhz is the work freq
+pragma	target OSC		INTOSC_NOCLKOUT		-- The PIC uses it's own internal 4Mhz CLOCK
+pragma	target WDT		DISABLED			-- no watchdog
+pragma	target BROWNOUT	DISABLED			-- no brownout
+pragma	target MCLR		INTERNAL			-- internal MCLR
+
+-- make all pins digital I/O
+enable_digital_io()
+
+-- library with delay procedures
+include delay
+
+--
+-- This example is going to do this:
+--		1 - Init Motor (energize) + 1s pause
+--		2 - set MODE to normal and do a 100 step forward + 2s pause + 100 step reverse + 5s pause
+--		3 - set MODE to wave and do a 100 step forward + 2s pause + 100 step reverse + 5s pause
+--		4 - set MODE to half and do a 100 step forward + 2s pause + 100 step reverse + 5s pause
+--		5 - wait for other 5 secs and start all over from 1
+--
+-- If you experiencie stale/vibrant but no moving motor you must tweak the RPM for you motor
+-- or check the wiring, specialy if you use a rescued/used motor with non marked leads
+
+-- configure the library before including it
+var bit stepper_cw					= on
+const word STEPPER_RPM				= 250
+const byte STEPPER_STEPS_1TURN		= 48
+-- this two below are optional features, read stepper_unipolar_common for details
+--const bit STEPPER_FREE = on
+--const bit STEPPER_SMOOTH = on
+
+-- A note about optional features
+-- --
+-- The optional features can save you a few bytes depending on the configuration you choose
+-- this is very handy when you are scarce of memory (when not?)
+-- --
+-- This is a resume of my experience in this example to ilustrate the options impact on code size
+-- --
+-- 		Options			| size bytes
+--	-------------------------------
+--		none (default)	| 336 bytes
+--		stepper free	| 334 bytes
+--		stepper smooth	| 442 bytes
+--		free + smooth	| 441 bytes
+--
+
+-- alias for the lib
+alias stepper_coil_a is pin_C0
+alias stepper_coil_b is pin_C1
+alias stepper_coil_c is pin_C2
+alias stepper_coil_d is pin_C3
+
+-- set the pins as outputs
+pin_C0_direction = output
+pin_C1_direction = output
+pin_C2_direction = output
+pin_C3_direction = output
+
+-- load & init
+include stepper_unipolar_blocking
+stepper_init()
+
+-- vars
+var byte pcount = 0				-- var for the mode change
+
+-- small delay to prevent overshoot on false start
+delay_1s(1)
+
+-- main loop
+forever loop
+   -- a loop for switch modes at a time
+   for 3 loop
+      -- which mode?
+      case pcount of
+         0:	block
+            -- Normal, two coils (also named 2-phase mode)
+            stepper_half = off
+            stepper_wave = off
+         end block
+         1:	block
+            -- Wave mode, just one coil
+            stepper_half = off
+            stepper_wave = on
+         end block
+         2:	block
+            -- Half step, mixed 1 or 2 coils
+            stepper_half = on
+            -- stepper_wave is ignored when stepper_half is active
+         end block
+      end case
+      -- 100 steps forward
+      stepper_cw = on
+      stepper_go(100)
+      -- wait for 2s
+      delay_1s(2)
+      -- 240 steps reverse
+      stepper_cw = off
+      stepper_go(100)
+      -- wait for 5s
+      delay_1s(5)
+      -- increment to change mode
+      pcount = pcount +1
+   end loop
+   -- reset pcount
+   if (pcount == 3) then
+      pcount = 0
+   end if
+   -- wait for 5s
+   delay_1s(5)
+end loop

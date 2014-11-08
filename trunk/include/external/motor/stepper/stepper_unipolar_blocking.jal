@@ -1,0 +1,137 @@
+-- -------------------------------------------------------------------
+-- Title: Library to manage unipolar stepper motors with blocking delays
+-- Author: Pavel Milanes Costa (CO7WT) - pavelmc@gmail.com, copyright (c) 2014, all rights reserved.
+-- Adapted-by: original design for jallib
+-- Compiler: >=2.4q3
+-- May work on older ones.
+-- Revision: $Revision$
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library implement the drive procedures for UNIPOLAR stepper motors
+-- using blocking delays.
+-- --
+-- See stepper_unipolar_common for modes explanations and optional features
+--
+-- Sources:
+-- I used a tutorial (in spanish) here http://www.todorobot.com.ar/informacion/tutorial%20stepper/
+-- This is a very good source also http://www.cs.uiowa.edu/~jones/step/ thanks vasi vasi
+-- A lib on jallib (in unreleased state) at the end of the development by Richard Zengerink dating
+-- back to 2010 give me some new ideas, thanks to all who put his knowledge in the public domain.
+--
+-- Notes:
+-- * You have to know & declare the sweet spot frequency/RPM of your motor before including the lib
+--   as always you can try & error until you find it.
+-- * Release date: 8 Nov 2014
+--
+-- Usage:
+-- --
+-- You need to define some vars/constants/alias BEFORE include the lib:
+-- --
+-- Declare you desired RPM of operation, but this is more complex because the RPM depends
+-- on how many steps the motor needs to make a 360 degree turn, so we need to know that too
+--				const word STEPPER_RPM = 60
+--				const byte STEPPER_STEPS_1TURN = 48
+-- --
+-- The limits on the RPM are from 1 RPM to about 300-600 RPM depending on the steps per full turn
+-- --
+-- WARNING !!!! The STEPPER_RPM * STEPPER_STEPS_1TURN value MUST NEVER be > 65535
+-- or you will get unexpected results.
+-- --
+-- Take notice:  the higher the RPM the inaccurate the results on the timing, you have been warned !
+-- --
+-- The direction of movement is controlled by this var (by default CW)
+-- 				var bit stepper_cw = on
+-- --
+-- I choose this convention: ON is forward (CW), OFF is reverse (CCW)
+-- You can olso invert the direction by hardware, so make up your logic to match this...
+-- --
+-- Then you must declare the pins and let them be outputs, you need 4 of them, called A, B, C, D
+--				alias stepper_coil_a is pin_a0
+--				alias stepper_coil_b is pin_a1
+--				alias stepper_coil_c is pin_a2
+--				alias stepper_coil_d is pin_a3
+-- --
+-- Declare them as outputs
+--				pin_A0_direction = output
+--				pin_A1_direction = output
+--				pin_A2_direction = output
+--				pin_A3_direction = output
+-- --
+-- You can now define the mode (only if different from normal which is the default)
+--				stepper_half = on
+--				stepper_wave = off
+-- --
+-- Define the options if needed (see stepper_unipolar_common for details)
+--				const bit STEPPER_FREE				= on
+--				const bit STEPPER_SMOOTH			= on
+-- --
+-- You can load now the lib & initialize it
+--				include stepper_unipolar_blocking
+--				stepper_init()
+-- --
+-- See the examples for more details
+--
+
+-- This is the blocking version so we instruct the common lib about
+const bit STEPPER_BLOCKIGN = on
+
+-- include the common lib to import constants and default procedures
+include stepper_unipolar_common
+
+-- make a predefined number of steps using accel and decel if defined
+procedure stepper_go(word in steps) is
+   -- vars
+   var word i = 0
+   -- define a var if smooth
+   if defined(STEPPER_SMOOTH) then
+      -- hold the real value of the var befor tweaking
+      var word real_delay = stepper_delay
+   end if
+   --
+   -- start moving
+   for steps using i loop
+      -- verify if isdefined the stepper_smoth
+      if defined(STEPPER_SMOOTH) then
+         -- calculating the simulated speed
+         if (smooth_pulses > 0) then
+            -- var
+            var word top_smooth = steps - smooth_pulses
+            -- calculate
+            --
+            -- decelerate first to take priotity if steps < 2* smooth_pulses
+            if (i > top_smooth) then
+               -- decelerating
+               stepper_delay = real_delay * (i - top_smooth)
+            elsif (i < smooth_pulses) then
+               -- new value, accelerating
+               stepper_delay = real_delay * (smooth_pulses - i)
+            end if
+         end if
+      end if
+      -- doing the real move
+      stepper_step()
+   end loop
+   -- restore the default delay at the end
+   if defined(STEPPER_SMOOTH) then
+      stepper_delay = real_delay
+   end if
+   -- free the coils (Power OFF) if commanded
+   if defined(STEPPER_FREE) then
+      -- shut off the coils
+      stepper_off()
+   end if
+end procedure
+
+-- init procedure for the blocking version
+procedure stepper_init() is
+   -- set the motor outs to off
+   stepper_off()
+   -- let the coil free is instructed so
+   if !defined(STEPPER_FREE) then
+      -- need to lock the motor to a astable state
+      -- doa 1 step fwd
+      stepper_cw = on
+      stepper_step()
+   end if
+end procedure

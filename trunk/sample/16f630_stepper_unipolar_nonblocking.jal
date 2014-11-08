@@ -1,0 +1,180 @@
+-- --------------------------------------------------------------------------------------------
+-- Title: Example of the Unipolar Stepper Motor with non blocking delays lib with the pic16f630
+-- Author: Pavel Milanes Costa (CO7WT) - pavelmc@gmail.com, copyright (c) 2014, all rights reserved.
+-- Compiler: >=2.4q3
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Simple unipolar stepper motor example lib for Microchip pic16f630,
+-- using internal HS 4.0 Mhz XTAL, and internal MCLR, with non blocking delays
+-- --
+-- Non Blocking delays means that the motor run indepndently of the main program
+-- or kind of, it uses the TMR0 feature and interrupts to move the motor.
+-- --
+-- You must provide a unipolar stepper motor in the pins showed below, and it must
+-- be conected to a coil driver like a mosfet*4 or or a darlingtown motor driver
+-- --
+-- I used a ULN2003 to do the testing job...
+-- --
+-- You MUST know at least the basic principle of unipolar stepper motors, and
+-- know what coil/wire is each one (Common, A, B, C, D), or a method to identify it.
+-- See stepper_unipolar_common for more details
+--
+-- Sources:
+-- To many to count, kind of http://www.google.com/?hl=en&q=stepper+motor+tutorial and pick the best?
+-- PLEASE read the stepper_unipolar_common lib and the stepper_unipolar_blockin lib for details
+--
+-- Notes:
+-- * This file is maintained by hand!!!
+-- --
+-- device map
+--                 +5 V > VCC [1  U  14] GND < GND
+--                         A5 [2     13] A0
+--                         A4 [3     12] A1
+--                         A3 [4     11] A2
+--                   LED < C5 [5     10] C0 > A Coil driver
+--                         C4 [6      9] C1 > B Coil driver
+--        D Coil Driver <  C3 [7      8] C2 > C Coil driver
+-- ------------------------------------------------------
+--
+include 16f630								-- target PIC device
+--
+pragma	target clock	4_000_000			-- 4 Mhz is the work freq
+pragma	target OSC		INTOSC_NOCLKOUT		-- The PIC uses it's own internal 4Mhz CLOCK
+pragma	target WDT		DISABLED			-- no watchdog
+pragma	target BROWNOUT	DISABLED			-- no brownout
+pragma	target MCLR		INTERNAL			-- internal MCLR
+
+-- make all pins digital I/O
+enable_digital_io()
+
+-- library with delay procedures
+include delay
+
+-- configure the library before including it
+var bit stepper_cw					= on
+const word STEPPER_RPM				= 250
+const byte STEPPER_STEPS_1TURN		= 48
+-- this two below are optional features, read stepper_unipolar_common for details
+const bit STEPPER_FREE = on
+const bit STEPPER_SMOOTH = on
+
+-- A note about optional features
+-- --
+-- The optional features can save you a few bytes depending on the configuration you choose
+-- this is very handy when you are scarce of memory (when not?)
+-- --
+-- This is a resume of my experience in this example to ilustrate the options impact on code size
+-- --
+-- 		Options			| size bytes
+--	-------------------------------
+--		none (default)	| 503 bytes
+--		stepper free	| 458 bytes
+--		stepper smooth	| 627 bytes
+--		free + smooth	| 582 bytes
+--
+
+-- alias for the lib
+alias stepper_coil_a is pin_C0
+alias stepper_coil_b is pin_C1
+alias stepper_coil_c is pin_C2
+alias stepper_coil_d is pin_C3
+
+-- set the pins as outputs
+pin_C0_direction = output
+pin_C1_direction = output
+pin_C2_direction = output
+pin_C3_direction = output
+
+-- load & init
+include stepper_unipolar_nonblocking
+stepper_init()
+
+-- lde declaration
+alias LED is pin_C5
+pin_C5_direction = output
+
+-- vars
+-- how many steps to move in the example
+var word how_many_steps = 200
+-- how many seconds the led will blink
+var byte time = 10
+
+-- small delay to prevent overshoot on false start
+delay_1s(1)
+
+-- Description:
+-- This example will command the motor to do a 200 steps (how_many_steps var) in forward direction
+-- in the background, in the meanwhile the CPU will concentrate in a 10 second flashing led
+--
+-- Then when the led finish his blink it will command the motor to make another 200 steps
+-- in the reverse direction but in wave mode, and will flash the led for another 10 sec
+--
+-- then at the end of flashing the motor will do a 200 steps in half step mode in reverse direction
+-- and will flash the led for another 10 sec
+--
+-- At the end of the 10 second flashing the entire cycle will repeat.
+--
+-- NOTE:
+-- If you don't see a pause in the motor before reversing, then your motor is taking to long
+-- to do the how_many_steps (more then 10 seconds)
+--
+-- In this case you must INCREASE the RPM of the motor or LOWER the value of how_many_steps var
+-- until you see a pause before the motor take the reverse direction movement, also you can
+-- increase the time of the time of flshing
+
+procedure wait(byte in sec) is
+   pragma inline
+   -- make a led blick tiwce a second for sec seconds
+   for sec loop
+      LED = on
+      delay_1ms(500)
+      LED = off
+      delay_1ms(500)
+   end loop
+end procedure
+
+-- main loop
+forever loop
+   -- set mode to normal (2-phase)
+   stepper_wave = off
+   stepper_half = off
+   -- forward direction
+   stepper_cw = on
+   -- set how many steps to move
+   stepper_steps = how_many_steps
+   -- GO !
+   stepper_go = true
+   --
+   -- blink a led for x second
+   wait(time)
+   --
+   -- set mode to wave
+   stepper_wave = on
+   stepper_half = off
+   -- forward direction
+   stepper_cw = on
+   -- set how many steps to move
+   stepper_steps = how_many_steps
+   -- GO !
+   stepper_go = true
+   --
+   -- blink a led for x second
+   wait(time)
+   --
+   -- set mode to normal (2-phase)
+   stepper_wave = off
+   stepper_half = on
+   -- forward direction
+   stepper_cw = off
+   -- set how many steps to move
+   stepper_steps = word(how_many_steps * 4)
+   -- GO !
+   stepper_go = true
+   --
+   -- blink a led for x second
+   wait(time)
+end loop
