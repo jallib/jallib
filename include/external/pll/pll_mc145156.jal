@@ -1,0 +1,134 @@
+-- -------------------------------------------------------------------
+-- Title: Library to manage the pll chip MC145156 from Motorola
+-- Author: Pavel Milanes Costa (CO7WT) - pavelmc@gmail.com, copyright (c) 2014, all rights reserved.
+-- Compiler: >=2.4q3
+-- May work on older ones.
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library files implement the procedures to manage a PLL system using the
+-- Motorola MC145156[-1|-2] chips
+-- --
+-- A PLL is a Phase Locked Loop, a kind of Controlled oscillator used in base/mobile/handheld
+-- radios before the invention of the DDS chips.
+-- --
+-- A PLL is no more than a Voltage Controled Oscillator (VCO) that is controled by the phase
+-- difference of it's output compared against a reference, usualy the comparison is made
+-- after a programable division of the output of the VCO. In this case with a dual modulus prescaler
+-- --
+-- I assume that you know how all this work, if not please ask to google...
+-- --
+-- All you need is the reference frequency, by the datasheet this is calculated by the Xtal
+-- the division ratio configured in the pins RA0..RA2, see datasheet page 14 (look for a table)
+-- this will be called "PLL_R" and expressed in Khz
+-- --
+-- Then you need to know the simple division ratio of your prescaler, mine is 64 (64/65), this is
+-- called "PLL_P"
+-- --
+-- From the math from the datasheet you need to calculate the register N and A, I solved that for you
+-- --
+-- Nt = (Desired_freq/Reference_freq); but also Nt = (N*P)+A
+-- --
+-- So, to calculate N and A registers (pll_N and pll_A in this lib) you need to know the desired freq
+-- for example 145000Khz
+-- --
+-- Nt = 145000/5 = 29000; N = Nt/P
+-- A = Nt - (N*P)
+-- --
+-- Next step is to send the info via SPI to the chip. For that you need three pins
+-- in this case we use pll_clk, pll_dat and pll_ena aliases, and if your circuit need to send sw1 & sw2
+-- you must define its value at load time in normal condition and then you can vary it
+--
+-- Sources:
+-- Motorola Datasheet
+--
+-- Notes:
+-- * Release date: 11 Nov 2014
+--
+
+-- sanity checks
+if !defined(PLL_R) then
+   _error "You must define the reference frequency to use in Khz"
+end if
+
+if !defined(PLL_P) then
+   _error "You must define the prescaler simple value to use"
+end if
+
+-- vars used internally on the lib
+var dword _pll_nt = 0
+var word _pll_n = 0
+var byte _pll_a = 0
+
+-- calculating the N and A vars to send
+procedure _calc(dword in freq) is
+   pragma inline
+   -- temp var for calculations
+   var dword dwtemp
+   -- calculations
+   _pll_nt = freq
+   _pll_nt = _pll_nt / PLL_R
+   _pll_n = word(_pll_nt / PLL_P)
+   dwtemp = _pll_n
+   dwtemp = dwtemp * PLL_P
+   _pll_a = byte(_pll_nt - dwtemp)
+end procedure
+
+procedure _sendbit(bit in b) is
+   -- send a bit at a time, the delay of 10usec is mine and work ok on my setup
+   -- as per the datasheet it can be as low as 1 uSec
+   pll_dat = b
+   _usec_delay(10)
+   pll_clk = 1
+   _usec_delay(10)
+   pll_clk = 0
+end procedure
+
+procedure _pll_rset() is
+   -- reset the PLL IC by sending a full enable cycles to clear the shift registers
+   pll_en = off
+   _usec_delay(10)
+   pll_en = on
+   _usec_delay(10)
+   pll_en = off
+end procedure
+
+procedure pll_set(dword in freq) is
+   -- calculate the middle vars
+   _calc(freq)
+   -- reset to clean al infos on the shift register buffers
+   _pll_rset()
+   -- send sw1/2 if def
+   if (defined(pll_sw1) & defined(pll_sw2)) then
+      -- send the two switch data
+      _sendbit(pll_sw1)
+      _sendbit(pll_sw2)
+   else
+      _sendbit(0)
+      _sendbit(0)
+   end if
+   -- send the N value; 10 bits in MSBF
+   var byte cnt = 0
+   var bit b = 0
+   for 10 using cnt loop
+      -- rescue the msb bit
+      b = bit((_pll_n >> (9-cnt)) & 1)
+      -- sen the bit
+      _sendbit(b)
+   end loop
+   -- send the A value; 7 bits MSBF
+   cnt = 0
+   for 7 using cnt loop
+      -- rescue the msb bit
+      b = bit((_pll_a >> (6-cnt)) & 1)
+      -- sen the bit
+      _sendbit(b)
+   end loop
+   -- instruct the PLL to load the data
+   _pll_rset()
+end procedure
+
+-- alias for the init procedure
+alias pll_init is pll_set
