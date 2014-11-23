@@ -15,7 +15,7 @@
 #              http://www.opensource.org/licenses/bsd-license.php
 #
 # Description:
-# - read TORELEASE and collect entries on a per-directory basis
+# - Read TORELEASE and collect entries on a per-directory basis
 #   (2nd level subdirectory for includes, 1st level for others).
 # - Collect PICnames used in filenames of sample programs.
 #   Check if there is at least 1 blink-a-led sample for each PIC.
@@ -65,7 +65,6 @@ lines      = []                                             # contents of TORELE
 libs       = []                                             # libraries (without path)
 
 
-
 # -----------------------------------------------
 # Read TORELEASE into a list of lines
 # -----------------------------------------------
@@ -74,12 +73,17 @@ def read_torelease():
    global lines
    ft = open(torelease, "r")
    for ln in ft:
-      ln = ln.lower().strip()
+      ln = ln.strip()
+      lnlow = ln.lower()
+      if ( (lnlow != ln) & (not ln.startswith("#")) ):
+         print "Warning: uppercase character(s) fixed in:"
+         print "   ", ln
       if ((len(ln) < 2)  |  ln.startswith("#")):            # empty or comment line
          lines.append("")
       else:
-         lines.append(ln)
+         lines.append(lnlow)
    ft.close()
+
 
 # -----------------------------------------------
 # Analyze TORELEASE
@@ -119,6 +123,64 @@ def analyze_torelease(fr):
 
 
 # -----------------------------------------------
+# Produce some statistics
+# - Chech if there is a device file for every sample
+# - Count samples in functional groups based on filename
+# -----------------------------------------------
+def list_counts(fr):
+   print "Classify and count released samples in major groups"
+   global f
+   for smp in f["sample"]:                                  # all samples
+      smp = smp[7:-4]                                       # sample name
+      word = smp.split("_")
+      picname = word[0]
+      if (picname != dev.get(picname)):                     # not released device file
+         fr.write("  Device file of " + picname + \
+                  " for sample " + smp + " not released\n")
+      smpname = word[1]
+      if (smpname in ("blink", "adc", "i2c", "lcd", "glcd", "network", "pwm", "pwm2", "serial", "usb")):
+         fcount[smpname] = fcount.get(smpname, 0) + 1
+      else:
+         fcount["other"] = fcount.get("other", 0) + 1    # other sample
+
+   total_libraries = len(f["external"])   + \
+                     len(f["filesystem"]) + \
+                     len(f["jal"])        + \
+                     len(f["networking"]) + \
+                     len(f["peripheral"]) + \
+                     len(f["protocol"])
+   total_samples = 0
+   for p in fcount:
+      total_samples = total_samples + fcount[p]
+
+   fr.write("\n\n")
+   fr.write("TORELEASE contains %4d Device files\n" % (len(f["device"]) - 1))
+   fr.write("                   %4d Function libraries in the following categories:\n" % (total_libraries))
+   fr.write("                        %4d External\n" % (len(f["external"])))
+   fr.write("                        %4d FileSystem\n" % (len(f["filesystem"])))
+   fr.write("                        %4d JAL Extension\n" % (len(f["jal"])))
+   fr.write("                        %4d Networking\n" % (len(f["networking"])))
+   fr.write("                        %4d Peripheral\n" % (len(f["peripheral"])))
+   fr.write("                        %4d Protocol\n" % (len(f["protocol"])))
+   fr.write("                   %4d Samples in following categories (based on primary library):\n" \
+                                    % (total_samples))
+   fr.write("                        %4d ADC\n" % (fcount["adc"]))
+   fr.write("                        %4d Blink-a-led\n" % (fcount["blink"]))
+   fr.write("                        %4d I2C\n" % (fcount["i2c"]))
+   fr.write("                        %4d [G]LCD\n" % (fcount["lcd"] + fcount["glcd"]))
+   fr.write("                        %4d Networking\n" % (fcount["network"]))
+   fr.write("                        %4d PWM\n" % (fcount["pwm"] + fcount["pwm2"]))
+   fr.write("                        %4d Serial\n" % (fcount["serial"]))
+   fr.write("                        %4d USB\n" % (fcount["usb"]))
+   fr.write("                        %4d Other\n" % (fcount["other"]))
+   fr.write("                   %4d Project files\n" % (len(f["project"])))
+   fr.write("                   %4d Documentation files\n" % (len(f["doc"])))
+   if (f.get("misc") != None):
+      fr.write("                   %4d Other files\n" % (len(f["misc"])))
+   fr.write("\n")
+
+
+# -----------------------------------------------
 # Check blink samples against device files
 # - Make a list of picnames from the device files
 # - Check if there is a blink-a-led sample for every device file
@@ -138,64 +200,6 @@ def check_blink(fr):
             fr.write("  No basic blink sample for " + picname + "\n")
 
 
-# -----------------------------------------------
-# Produce some statistics
-# - Chech if there is a device file for every sample
-# - Count samples in functional groups based on filename
-# -----------------------------------------------
-def list_counts(fr):
-   print "Classify and count released samples in major groups"
-   global f
-   for smp in f["sample"]:                                     # all samples
-      smp = smp[7:-4]                                          # sample name
-      word = smp.split("_")
-      picname = word[0]
-      if (picname != dev.get(picname)):                        # not released device file
-         fr.write("  Device file of " + picname + \
-                  " for sample " + smp + " not released\n")
-      smpname = word[1]
-      if (smpname in ("blink", "adc", "i2c", "lcd", "glcd", "network", "pwm", "pwm2", "serial", "usb")):
-         fcount[smpname] = fcount.get(smpname, 0) + 1
-      else:
-         fcount["othersamples"] = fcount.get("othersamples", 0) + 1           # other sample
-
-   total_libraries = len(f["external"])   + \
-                     len(f["filesystem"]) + \
-                     len(f["jal"])        + \
-                     len(f["networking"]) + \
-                     len(f["peripheral"]) + \
-                     len(f["protocol"])
-   total_samples = 0
-   for p in fcount:
-      total_samples = total_samples + fcount[p]
-
-   fr.write("\n\n")
-   fr.write("TORELEASE contains %4d Device files\n" % (len(f["device"]) - 1))
-   fr.write("                   %4d Function libraries\n" % (total_libraries))
-   fr.write("                        %4d External\n" % (len(f["external"])))
-   fr.write("                        %4d FileSystem\n" % (len(f["filesystem"])))
-   fr.write("                        %4d JAL Extension\n" % (len(f["jal"])))
-   fr.write("                        %4d Networking\n" % (len(f["networking"])))
-   fr.write("                        %4d Peripheral\n" % (len(f["peripheral"])))
-   fr.write("                        %4d Protocol\n" % (len(f["protocol"])))
-   fr.write("                   %4d Samples in following categories (based on primary library)\n" \
-                                    % (total_samples))
-   fr.write("                        %4d ADC samples\n" % (fcount["adc"]))
-   fr.write("                        %4d Blink-a-led samples\n" % (fcount["blink"]))
-   fr.write("                        %4d I2C samples\n" % (fcount["i2c"]))
-   fr.write("                        %4d [G]LCD samples\n" % (fcount["lcd"] + fcount["glcd"]))
-   fr.write("                        %4d Networking samples\n" % (fcount["network"]))
-   fr.write("                        %4d PWM samples\n" % (fcount["pwm"] + fcount["pwm2"]))
-   fr.write("                        %4d Serial samples\n" % (fcount["serial"]))
-   fr.write("                        %4d USB samples\n" % (fcount["usb"]))
-   fr.write("                        %4d Other samples\n" % (fcount["othersamples"]))
-   fr.write("                   %4d Project files\n" % (len(f["project"])))
-   fr.write("                   %4d Documentation files\n" % (len(f["doc"])))
-   if (f.get("misc") != None):
-      fr.write("                   %4d Other files\n" % (len(f["misc"])))
-   fr.write("\n")
-
-
 # ---------------------------------------------
 # List unreleased libraries
 # - Walk the include directory tree
@@ -213,24 +217,24 @@ def list_unreleased_libraries(fr):
    fr.write("\n--------------------------------------------------------\n")
    unlisted = 0
    unlisteddevice = 0
-   for (root, dirs, files) in os.walk(libdir):                 # whole tree (incl subdirs!)
+   for (root, dirs, files) in os.walk(libdir):              # whole tree (incl subdirs!)
       dirs.sort()
       files.sort()
       for file in files:
-         picname = file[:-4]                                   # filename less extension
-         fs = os.path.join(root,file)                          # full pathspec
-         fs.translate(xslash)                                  # backward to forward slash
-         fs = fs[(len(base) + 1):]                             # remove base prefix
+         picname = file[:-4]                                # filename less extension
+         fs = os.path.join(root,file)                       # full pathspec
+         fs.translate(xslash)                               # backward to forward slash
+         fs = fs[(len(base) + 1):]                          # remove base prefix
          if (fs not in lines):
             unlisted = unlisted + 1
-            if (fs.startswith("include/device/")):             # unreleased device file
+            if (fs.startswith("include/device/")):          # unreleased device file
                unlisteddevice = unlisteddevice + 1
                if (runtype != None):
                   fr.write(fs + "\n")
                if (smppic.get(picname) != None):
                   fr.write(fs + "  (unreleased device file, but sample program(s) released!)\n")
-            else:                                              # function library
-               fr.write(fs + "\n")                             # unreleased library
+            else:                                           # function library
+               fr.write(fs + "\n")                          # unreleased library
    if (runtype != None):
       fr.write("\n%d unreleased libraries and device files\n\n" % (unlisted))
    else:
@@ -258,28 +262,28 @@ def list_unreleased_samples(fr):
    unlistedblink = 0
    unreleasedinclude  = []
 
-   for (root, dirs, files) in os.walk(smpdir):                 # whole tree (incl subdirs!)
+   for (root, dirs, files) in os.walk(smpdir):              # whole tree (incl subdirs!)
       dirs.sort()
       files.sort()
       for file in files:
          word = file.split("_")
          picname = word[0]
-         fs = os.path.join(root,file)                          # full pathspec
-         fs.translate(xslash)                                  # backward to forward slash
-         fs = fs[(len(base) + 1):]                             # remove base prefix
-         if (fs not in lines):                                 # unreleased sample
+         fs = os.path.join(root,file)                       # full pathspec
+         fs.translate(xslash)                               # backward to forward slash
+         fs = fs[(len(base) + 1):]                          # remove base prefix
+         if (fs not in lines):                              # unreleased sample
             unlisted = unlisted + 1
             if (word[1] == "blink"):
                unlistedblink = unlistedblink + 1
-               if (runtype != None):                           # blink samples to be listed
-                  fr.write(fs + "\n")                          # list unreleased blink sample
-            else:                                              # not a blink sample
-               fr.write(fs + "\n")                             # list unreleased sample
-         else:                                                 # found sample in torelease
-            fi = open(os.path.join(root,file))                 # full pathspec
+               if (runtype != None):                        # blink samples to be listed
+                  fr.write(fs + "\n")                       # list unreleased blink sample
+            else:                                           # not a blink sample
+               fr.write(fs + "\n")                          # list unreleased sample
+         else:                                              # found sample in torelease
+            fi = open(os.path.join(root,file))              # full pathspec
             lncount = 0
             for ln in fi:
-               lncount = lncount + 1                           # line number
+               lncount = lncount + 1                        # line number
                ln = ln.lower().strip()
                if ((len(ln) < 2) | ln.startswith("--") | ln.startswith(";")):    # empty or comment line
                   continue
@@ -319,16 +323,16 @@ def list_unreleased_projects(fr):
    fr.write("\n\nUnreleased Project files\n")
    fr.write("------------------------\n")
    unlisted = 0
-   for (root, dirs, files) in os.walk(projdir):                # whole tree (incl subdirs!)
+   for (root, dirs, files) in os.walk(projdir):             # whole tree (incl subdirs!)
       dirs.sort()
       files.sort()
       for file in files:
-         fs = os.path.join(root,file)                          # full pathspec
-         fs.translate(xslash)                                  # backward to forward slash
-         fs = fs[(len(base) + 1):]                             # remove base prefix
+         fs = os.path.join(root,file)                       # full pathspec
+         fs.translate(xslash)                               # backward to forward slash
+         fs = fs[(len(base) + 1):]                          # remove base prefix
          if (fs not in lines):
             unlisted = unlisted + 1
-            fr.write(fs + "\n")                                # list unreleased sample
+            fr.write(fs + "\n")                             # list unreleased sample
    fr.write("\n%d unreleased project files\n\n" % (unlisted))
 
 
@@ -373,6 +377,7 @@ def create_new_torelease():
 # Comment out duplicates
 # -----------------------------------------------
 def listpart(fn, part, title):
+   global f
    fn.write("# " + title + "\n")
    f[part].sort(key = sortpart)                             # custom sort!
    for i in range(len(f[part])):                            # list this part
