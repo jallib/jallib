@@ -1,7 +1,7 @@
 -- Title: timer0 isr interval
 -- Author: Joep Suijs, Copyright (C) 2008 Joep Suijs
 -- Adapted-by: Rob Hamerling
--- Compiler: >=2.4j
+-- Compiler: 2.4q3
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -15,31 +15,31 @@
 -- load on your PIC. Be carefull if you go beyond 1000 (1kHz). The lowest possible
 -- rate depends on the clock frequency you use and is 77 with an 16f877 on 20 MHz.
 -- .
--- >>> const timer0_isr_rate = 1000 -- 1 kHz isr rate
+--    const TIMER0_ISR_RATE = 1000  -- 1 kHz isr rate
 -- .
 -- Next, you need to specify the number of slots. A slot is used to store the
 -- end-time of a delay-period so you need one slot for each concurrent delay.
 -- .
--- >>> const DELAY_SLOTS = 2 -- support 2 delays at the same time
+--    const DELAY_SLOTS = 2         -- support 2 delays at the same time
 -- .
--- Now, include the library and call it's init function:
+-- Now, include the library and call its init function:
 -- .
--- >>> include timer0_isr_interval
--- >>> timer0_isr_init() -- init timer0 isr
+--    include timer0_isr_interval
+--    timer0_isr_init()             -- init timer0 isr
 -- .
--- Now we are ready to use the delay functions. To demonstrate it's use, we take
+-- Now we are ready to use the delay functions. To demonstrate its use, we take
 -- two LEDs and let them blink at their own interval:
 -- .
--- >> forever loop
--- >> if (check_delay(0)) then
--- >> set_delay(0, 409) -- 409 ticks on delay-slot 0
--- >> led = !led
--- >> end if
--- >> if (check_delay(1)) then
--- >> set_delay(1, 619) -- 619 ticks on delay-slot 1
--- >> led2 = !led2
--- >> end if
--- >> end loop
+--    forever loop
+--       if (check_delay(0)) then
+--          set_delay(0, 409)        -- 409 ticks on delay-slot 0
+--          led = !led
+--       end if
+--       if (check_delay(1)) then
+--          set_delay(1, 619)        -- 619 ticks on delay-slot 1
+--          led2 = !led2
+--       end if
+--    end loop
 --
 -- TODO:
 --
@@ -48,6 +48,7 @@ var word internal_isr_counter
 
 var word isr_countdown[DELAY_SLOTS]
 var byte timer0_load
+
 
 function isr_counter'get() return word is
    var word temp
@@ -59,6 +60,7 @@ function isr_counter'get() return word is
    return temp
 end function
 
+
 procedure set_delay(byte in slot, word in ticks) is
 
    if (slot >= DELAY_SLOTS) then return end if
@@ -68,6 +70,7 @@ procedure set_delay(byte in slot, word in ticks) is
    INTCON_TMR0IE = on
 
 end procedure
+
 
 function check_delay(byte in slot) return bit is
 
@@ -85,9 +88,10 @@ function check_delay(byte in slot) return bit is
 
 end function
 
+
 procedure timer0_isr_init() is
 
-   const dword timer0_div = (dword(target_clock) / 4 / timer0_isr_rate) - 1
+   const dword timer0_div = (dword(target_clock) / 4 / TIMER0_ISR_RATE) - 1
 
    if (timer0_div > ((256 * 256) - 1)) then
       _error "requested ISR rate is too low"
@@ -122,7 +126,7 @@ procedure timer0_isr_init() is
 
    else
       T0CON_T0PS = 0 ; prescaler 2
-      timer0_load = 255 - timer0_div / 2
+      timer0_load = 255 - byte(timer0_div / 2)
    end if
 
    T0CON_T0CS = 0  ; internal clock
@@ -131,15 +135,14 @@ procedure timer0_isr_init() is
    INTCON_TMR0IF = off
    INTCON_TMR0IE = on
    INTCON_GIE  = on    ; enable global interrupts
-   INTCON_PEIE = on
 
    var byte i
    for DELAY_SLOTS using i loop
       isr_countdown[i] = 0
    end loop
 
-
 end procedure
+
 
 procedure ISR() is
    pragma interrupt
@@ -167,3 +170,4 @@ procedure ISR() is
    end if
 
 end procedure
+
