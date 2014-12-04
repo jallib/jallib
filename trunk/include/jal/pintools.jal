@@ -1,637 +1,400 @@
--- Title: utility functions and procedures to manipulate pins (level, mode, etc...)
+-- Title: Manipulate pins (level, mode) by variable settings.
 -- Author: Sebastien Lelong, Copyright (C) 2009, all rights reserved.
--- Adapted-by: 
--- Compiler: 2.4m
+-- Adapted-by: Rob Hamerling
+--            (improved memory usage and hardware stack levels; support for more ports).
+-- Compiler: 2.4q3
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
--- 
--- Description: This library provides a set of utility functions and procedures
+--
+-- Description: This library provides a set of functions and procedures
 -- to help users manipulating pins. For instance, you can dynamically access pins
--- using a specific mapping (RA0 is #0, RB1 is #2, etc...) and act on levels, mode,
--- directions, etc...
--- --
--- Using this library requires that array "pintools_map" is first defined. This array 
--- is composed by elements going by two:
---  * the first element corresponds to the port letter ("A", "B", ...)
---  * the second element corresponds to the pin number in this port (0, 1, 2, ...)
--- Pins are then accessed according to the index in this array (starting with 0)
--- Ex: const byte pintools_map [] = {"A","1", "B","1", "D","3}
--- This 6 elements (2x3) array specifies that:
---  * pin #0 corresponds to pin_A1
---  * pin #1 corresponds to pin_B1
---  * pin #2 corresponds to pin_D3
+-- using a specific mapping (RA0 is #0, RB1 is #2, etc...) and act on levels and
+-- directions.
+-- .
+-- Using this library requires that an array "pintools_map" is defined before
+-- including the library. This byte array is populated by pairs of elements:
+--  * the first element of a pair corresponds to the port letter ("A", "B", ...)
+--  * the second element of a pair is the pin number in this port (0, 1, 2, ...)
+-- Pins can then be accessed with their index in this array.
+-- Example: const byte pintools_map[] = { "A",1, "B",1, "D",3 }
+-- This 6 elements array (of 3 pairs) specifies that:
+--  * pin #0 refers to pin_A1
+--  * pin #1 refers to pin_B1
+--  * pin #2 refers to pin_D3
+-- Example of use:
+--  * To obtain the current level of pin_B1:
+--      pin_level = pintools_level[1]
+--  * To set the direction of pin_D3 to output:
+--      pintools_direction[2] = OUTPUT
 --
--- Notes: this library hasn't been fully tested, this is still BETA...
+-- Notes:
 --
 
 --------------------------------------------------------------------------------
--- Access pin by number and set its level (low/high)
---------------------------------------------------------------------------------
-procedure pintools_set_level(byte in pinnum, bit in level) is
-   _warn "pintools_set_level(pinum,level) is deprecated, use pintools_level[pinnum] = level"
-   var byte portmapletter = pintools_map[pinnum*2]
-   var byte pinmapnum = pintools_map[pinnum*2+1]
-
-   procedure _process_porta() is
-      if defined(PORTA) == true then
-         if level == high then
-            PORTA = PORTA | (1 << pinmapnum)
-         else
-            PORTA = PORTA & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_portb() is
-      if defined(PORTB) == true then
-         if level == high then
-            PORTB = PORTB | (1 << pinmapnum)
-         else
-            PORTB = PORTB & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_portc() is
-      if defined(PORTC) == true then
-         if level == high then
-            PORTC = PORTC | (1 << pinmapnum)
-         else
-            PORTC = PORTC & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_portd() is
-      if defined(PORTD) == true then
-         if level == high then
-            PORTD = PORTD | (1 << pinmapnum)
-         else
-            PORTD = PORTD & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_porte() is
-      if defined(PORTE) == true then
-         if level == high then
-            PORTE = PORTE | (1 << pinmapnum)
-         else
-            PORTE = PORTE & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_portf() is
-      if defined(PORTF) == true then
-         if level == high then
-            PORTF = PORTF | (1 << pinmapnum)
-         else
-            PORTF = PORTF & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_portg() is
-      if defined(PORTG) == true then
-         if level == high then
-            PORTG = PORTG | (1 << pinmapnum)
-         else
-            PORTG = PORTG & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_porth() is
-      if defined(PORTH) == true then
-         if level == high then
-            PORTH = PORTH | (1 << pinmapnum)
-         else
-            PORTH = PORTH & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_portj() is
-      if defined(PORTJ) == true then
-         if level == high then
-            PORTJ = PORTJ | (1 << pinmapnum)
-         else
-            PORTJ = PORTJ & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   -- because we can't refer to port name just as we can't refer to pin since
-   -- these are pseudo-variable, we need to switch over different cases...
-   -- Note: there's no such PORTI in PIC....
-   case portmapletter of
-      "A" : _process_porta()
-      "B" : _process_portb()
-      "C" : _process_portc()
-      "D" : _process_portd()
-      "E" : _process_porte()
-      "F" : _process_portf()
-      "G" : _process_portg()
-      "H" : _process_porth()
-      "J" : _process_portj()
-   end case
-
-end procedure
-
-
--- Access pin by number and set its direction (low/high)
-procedure pintools_set_direction(byte in pinnum, bit in direction) is
-   _warn "pintools_set_direction(pinum,direction) is deprecated, use pintools_direction[pinnum] = direction"
-   var byte portmapletter = pintools_map[pinnum*2]
-   var byte pinmapnum = pintools_map[pinnum*2+1]
-
-   procedure _process_trisa() is
-      if defined(TRISA) == true then
-         if direction == input then
-            TRISA = TRISA | (1 << pinmapnum)
-         else
-            TRISA = TRISA & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_trisb() is
-      if defined(TRISB) == true then
-         if direction == input then
-            TRISB = TRISB | (1 << pinmapnum)
-         else
-            TRISB = TRISB & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_trisc() is
-      if defined(TRISC) == true then
-         if direction == input then
-            TRISC = TRISC | (1 << pinmapnum)
-         else
-            TRISC = TRISC & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_trisd() is
-      if defined(TRISD) == true then
-         if direction == input then
-            TRISD = TRISD | (1 << pinmapnum)
-         else
-            TRISD = TRISD & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_trise() is
-      if defined(TRISE) == true then
-         if direction == input then
-            TRISE = TRISE | (1 << pinmapnum)
-         else
-            TRISE = TRISE & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_trisf() is
-      if defined(TRISF) == true then
-         if direction == input then
-            TRISF = TRISF | (1 << pinmapnum)
-         else
-            TRISF = TRISF & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_trisg() is
-      if defined(TRISG) == true then
-         if direction == input then
-            TRISG = TRISG | (1 << pinmapnum)
-         else
-            TRISG = TRISG & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_trish() is
-      if defined(TRISH) == true then
-         if direction == input then
-            TRISH = TRISH | (1 << pinmapnum)
-         else
-            TRISH = TRISH & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-   procedure _process_trisj() is
-      if defined(TRISJ) == true then
-         if direction == input then
-            TRISJ = TRISJ | (1 << pinmapnum)
-         else
-            TRISJ = TRISJ & (0b_1111_1111 ^ (1 << pinmapnum))
-         end if
-      end if
-   end procedure
-
-
-   case portmapletter of
-      "A" : _process_trisa()
-      "B" : _process_trisb()
-      "C" : _process_trisc()
-      "D" : _process_trisd()
-      "E" : _process_trise()
-      "F" : _process_trisf()
-      "G" : _process_trisg()
-      "H" : _process_trish()
-      "J" : _process_trisj()
-   end case
-end procedure
-
---------------------------------------------------------------------------------
--- Pseudo pin levels. Use as pintools_level[pinnum]
+-- Title: Set pin level
+-- Usage: pintools_level[pinnum] = level           -- 0 / 1
 --------------------------------------------------------------------------------
 procedure pintools_level'put(byte in pinnum, bit in level) is
-   var byte portmapletter = pintools_map[pinnum*2]
-   var byte pinmapnum = pintools_map[pinnum*2+1]
-   
-   procedure _process_porta() is
-      if defined(PORTA) == true then
-         if level == high then
-            PORTA = PORTA | (1 << pinmapnum)
+
+   var byte portletter = pintools_map[pinnum * 2]
+   var byte portmask = 1 << pintools_map[pinnum * 2 + 1]
+   if (level == LOW) then
+      portmask = !portmask                         -- flip all bits
+   end if
+
+   if defined(portA) then
+      if (portletter == "A") then
+         if (level == HIGH) then
+            portA = portA | portmask
          else
-            PORTA = PORTA & (0b_1111_1111 ^ (1 << pinmapnum))
+            portA = portA & portmask
          end if
       end if
-   end procedure
-   
-   procedure _process_portb() is
-      if defined(PORTB) == true then
-         if level == high then
-            PORTB = PORTB | (1 << pinmapnum)
+   end if
+   if defined(portB) then
+      if (portletter == "B") then
+        if (level == HIGH) then
+            portB = portB | portmask
          else
-            PORTB = PORTB & (0b_1111_1111 ^ (1 << pinmapnum))
+            portB = portB & portmask
          end if
       end if
-   end procedure
-   
-   procedure _process_portc() is
-      if defined(PORTC) == true then
-         if level == high then
-            PORTC = PORTC | (1 << pinmapnum)
+   end if
+   if defined(portC) then
+      if (portletter == "C") then
+        if (level == HIGH) then
+            portC = portC | portmask
          else
-            PORTC = PORTC & (0b_1111_1111 ^ (1 << pinmapnum))
+            portC = portC & portmask
          end if
       end if
-   end procedure
-   
-   procedure _process_portd() is
-      if defined(PORTD) == true then
-         if level == high then
-            PORTD = PORTD | (1 << pinmapnum)
+   end if
+   if defined(portD) then
+      if (portletter == "D") then
+        if (level == HIGH) then
+            portD = portD | portmask
          else
-            PORTD = PORTD & (0b_1111_1111 ^ (1 << pinmapnum))
+            portD = portD & portmask
          end if
       end if
-   end procedure
-   
-   procedure _process_porte() is
-      if defined(PORTE) == true then
-         if level == high then
-            PORTE = PORTE | (1 << pinmapnum)
+   end if
+   if defined(portE) then
+      if (portletter == "E") then
+        if (level == HIGH) then
+            portE = portE | portmask
          else
-            PORTE = PORTE & (0b_1111_1111 ^ (1 << pinmapnum))
+            portE = portE & portmask
          end if
       end if
-   end procedure
-   
-   procedure _process_portf() is
-      if defined(PORTF) == true then
-         if level == high then
-            PORTF = PORTF | (1 << pinmapnum)
+   end if
+   if defined(portF) then
+      if (portletter == "F") then
+        if (level == HIGH) then
+            portF = portF | portmask
          else
-            PORTF = PORTF & (0b_1111_1111 ^ (1 << pinmapnum))
+            portF = portF & portmask
          end if
       end if
-   end procedure
-   
-   procedure _process_portg() is
-      if defined(PORTG) == true then
-         if level == high then
-            PORTG = PORTG | (1 << pinmapnum)
+   end if
+   if defined(portG) then
+      if (portletter == "G") then
+        if (level == HIGH) then
+            portG = portG | portmask
          else
-            PORTG = PORTG & (0b_1111_1111 ^ (1 << pinmapnum))
+            portG = portG & portmask
          end if
       end if
-   end procedure
-   
-   procedure _process_porth() is
-      if defined(PORTH) == true then
-         if level == high then
-            PORTH = PORTH | (1 << pinmapnum)
+   end if
+   if defined(portH) then
+      if (portletter == "H") then
+        if (level == HIGH) then
+            portH = portH | portmask
          else
-            PORTH = PORTH & (0b_1111_1111 ^ (1 << pinmapnum))
+            portH = portH & portmask
          end if
       end if
-   end procedure
-   
-   procedure _process_portj() is
-      if defined(PORTJ) == true then
-         if level == high then
-            PORTJ = PORTJ | (1 << pinmapnum)
+   end if
+   if defined(portJ) then
+      if (portletter == "J") then
+        if (level == HIGH) then
+            portJ = portJ | portmask
          else
-            PORTJ = PORTJ & (0b_1111_1111 ^ (1 << pinmapnum))
+            portJ = portJ & portmask
          end if
       end if
-   end procedure
-   
-   -- because we can't refer to port name just as we can't refer to pin since
-   -- these are pseudo-variable, we need to switch over different cases...
-   -- Note: there's no such PORTI in PIC....
-   case portmapletter of
-      "A" : _process_porta()
-      "B" : _process_portb()
-      "C" : _process_portc()
-      "D" : _process_portd()
-      "E" : _process_porte()
-      "F" : _process_portf()
-      "G" : _process_portg()
-      "H" : _process_porth()
-      "J" : _process_portj()
-   end case
-   
+   end if
+   if defined(portK) then
+      if (portletter == "K") then
+        if (level == HIGH) then
+            portK = portK | portmask
+         else
+            portK = portK & portmask
+         end if
+      end if
+   end if
+   if defined(portL) then
+      if (portletter == "L") then
+        if (level == HIGH) then
+            portL = portL | portmask
+         else
+            portL = portL & portmask
+         end if
+      end if
+   end if
+
 end procedure
 
-function pintools_level'get(byte in pinnum) return bit is
-   var bit level
-   var byte x
-   var byte portmapletter = pintools_map[pinnum*2]
-   var byte pinmapnum = pintools_map[pinnum*2+1]
-
-   procedure _process_porta() is
-      if defined(PORTA) == true then
-         level = ((PORTA >> pinmapnum) & 1)
-      end if
-   end procedure
-
-   procedure _process_portb() is
-      if defined(PORTB) == true then
-         level = ((PORTB >> pinmapnum) & 1)
-      end if
-   end procedure
-
-   procedure _process_portc() is
-      if defined(PORTC) == true then
-         level = ((PORTC >> pinmapnum) & 1)
-      end if
-   end procedure
-
-   procedure _process_portd() is
-      if defined(PORTD) == true then
-         level = ((PORTD >> pinmapnum) & 1)
-      end if
-   end procedure
-
-   procedure _process_porte() is
-      if defined(PORTE) == true then
-         level = ((PORTE >> pinmapnum) & 1)
-      end if
-   end procedure
-
-   procedure _process_portf() is
-      if defined(PORTF) == true then
-         level = ((PORTF >> pinmapnum) & 1)
-      end if
-   end procedure
-
-   procedure _process_portg() is
-      if defined(PORTG) == true then
-         level = ((PORTG >> pinmapnum) & 1)
-      end if
-   end procedure
-
-   procedure _process_porth() is
-      if defined(PORTH) == true then
-         level = ((PORTH >> pinmapnum) & 1)
-      end if
-   end procedure
-
-   procedure _process_portj() is
-      if defined(PORTJ) == true then
-         level = ((PORTJ >> pinmapnum) & 1)
-      end if
-   end procedure
-
-   -- because we can't refer to port name just as we can't refer to pin since
-   -- these are pseudo-variable, we need to switch over different cases...
-   -- Note: there's no such PORTI in PIC....
-   case portmapletter of
-      "A" : _process_porta()
-      "B" : _process_portb()
-      "C" : _process_portc()
-      "D" : _process_portd()
-      "E" : _process_porte()
-      "F" : _process_portf()
-      "G" : _process_portg()
-      "H" : _process_porth()
-      "J" : _process_portj()
-   end case
-
-   return level
-end function
 
 --------------------------------------------------------------------------------
--- Pseudo pin direction. Use as pintools_direction[pinnum]
+-- Title: Get pin level
+-- Usage: var bit pin_level = pintools_level[pinnum]
+--------------------------------------------------------------------------------
+function pintools_level'get(byte in pinnum) return bit is
+
+   var byte portletter = pintools_map[pinnum * 2]
+   var byte pinoffset = pintools_map[pinnum * 2 + 1]
+
+   if defined(portA) then
+      if (portletter == "A") then
+         return (portA >> pinoffset) & 1
+      end if
+   end if
+   if defined(portB) then
+      if (portletter == "B") then
+         return (portB >> pinoffset) & 1
+      end if
+   end if
+   if defined(portC) then
+      if (portletter == "C") then
+         return (portC >> pinoffset) & 1
+      end if
+   end if
+   if defined(portD) then
+      if (portletter == "D") then
+         return (portD >> pinoffset) & 1
+      end if
+   end if
+   if defined(portE) then
+      if (portletter == "E") then
+         return (portE >> pinoffset) & 1
+      end if
+   end if
+   if defined(portF) then
+      if (portletter == "F") then
+         return (portF >> pinoffset) & 1
+      end if
+   end if
+   if defined(portG) then
+      if (portletter == "G") then
+         return (portG >> pinoffset) & 1
+      end if
+   end if
+   if defined(portH) then
+      if (portletter == "H") then
+         return (portH >> pinoffset) & 1
+      end if
+   end if
+   if defined(portJ) then
+      if (portletter == "J") then
+         return (portJ >> pinoffset) & 1
+      end if
+   end if
+   if defined(portK) then
+      if (portletter == "K") then
+         return (portK >> pinoffset) & 1
+      end if
+   end if
+   if defined(portL) then
+      if (portletter == "L") then
+         return (portL >> pinoffset) & 1
+      end if
+   end if
+
+end function
+
+
+--------------------------------------------------------------------------------
+-- Title: Set pin direction
+-- Usage: pintools_direction[pinnum] = direction   -- INPUT / OUTPUT
 --------------------------------------------------------------------------------
 procedure pintools_direction'put(byte in pinnum, bit in direction) is
-   var byte portmapletter = pintools_map[pinnum*2]
-   var byte pinmapnum = pintools_map[pinnum*2+1]
 
-   procedure _process_trisa() is
-      if defined(TRISA) == true then
-         if direction == high then
-            TRISA = TRISA | (1 << pinmapnum)
+   var byte portletter = pintools_map[pinnum * 2]
+   var byte portmask = 1 << pintools_map[pinnum * 2 + 1]
+   if (direction == OUTPUT) then
+      portmask = !portmask                         -- flip all bits
+   end if
+
+   if defined(portA) then
+      if (portletter == "A") then
+         if (direction == INPUT) then
+            portA_direction = portA_direction | portmask
          else
-            TRISA = TRISA & (0b_1111_1111 ^ (1 << pinmapnum))
+            portA_direction = portA_direction & portmask
          end if
       end if
-   end procedure
-
-   procedure _process_trisb() is
-      if defined(TRISB) == true then
-         if direction == high then
-            TRISB = TRISB | (1 << pinmapnum)
+   end if
+   if defined(portB) then
+      if (portletter == "B") then
+         if (direction == INPUT) then
+            portB_direction = portB_direction | portmask
          else
-            TRISB = TRISB & (0b_1111_1111 ^ (1 << pinmapnum))
+            portB_direction = portB_direction & portmask
          end if
       end if
-   end procedure
-
-   procedure _process_trisc() is
-      if defined(TRISC) == true then
-         if direction == high then
-            TRISC = TRISC | (1 << pinmapnum)
+   end if
+   if defined(portC) then
+      if (portletter == "C") then
+         if (direction == INPUT) then
+            portC_direction = portC_direction | portmask
          else
-            TRISC = TRISC & (0b_1111_1111 ^ (1 << pinmapnum))
+            portC_direction = portC_direction & portmask
          end if
       end if
-   end procedure
-
-   procedure _process_trisd() is
-      if defined(TRISD) == true then
-         if direction == high then
-            TRISD = TRISD | (1 << pinmapnum)
+   end if
+   if defined(portD) then
+      if (portletter == "D") then
+         if (direction == INPUT) then
+            portD_direction = portD_direction | portmask
          else
-            TRISD = TRISD & (0b_1111_1111 ^ (1 << pinmapnum))
+            portD_direction = portD_direction & portmask
          end if
       end if
-   end procedure
-
-   procedure _process_trise() is
-      if defined(TRISE) == true then
-         if direction == high then
-            TRISE = TRISE | (1 << pinmapnum)
+   end if
+   if defined(portE) then
+      if (portletter == "E") then
+         if (direction == INPUT) then
+            portE_direction = portE_direction | portmask
          else
-            TRISE = TRISE & (0b_1111_1111 ^ (1 << pinmapnum))
+            portE_direction = portE_direction & portmask
          end if
       end if
-   end procedure
-
-   procedure _process_trisf() is
-      if defined(TRISF) == true then
-         if direction == high then
-            TRISF = TRISF | (1 << pinmapnum)
+   end if
+   if defined(portF) then
+      if (portletter == "F") then
+         if (direction == INPUT) then
+            portF_direction = portF_direction | portmask
          else
-            TRISF = TRISF & (0b_1111_1111 ^ (1 << pinmapnum))
+            portF_direction = portF_direction & portmask
          end if
       end if
-   end procedure
-
-   procedure _process_trisg() is
-      if defined(TRISG) == true then
-         if direction == high then
-            TRISG = TRISG | (1 << pinmapnum)
+   end if
+   if defined(portG) then
+      if (portletter == "G") then
+         if (direction == INPUT) then
+            portG_direction = portG_direction | portmask
          else
-            TRISG = TRISG & (0b_1111_1111 ^ (1 << pinmapnum))
+            portG_direction = portG_direction & portmask
          end if
       end if
-   end procedure
-
-   procedure _process_trish() is
-      if defined(TRISH) == true then
-         if direction == high then
-            TRISH = TRISH | (1 << pinmapnum)
+   end if
+   if defined(portH) then
+      if (portletter == "H") then
+         if (direction == INPUT) then
+            portH_direction = portH_direction | portmask
          else
-            TRISH = TRISH & (0b_1111_1111 ^ (1 << pinmapnum))
+            portH_direction = portH_direction & portmask
          end if
       end if
-   end procedure
-
-   procedure _process_trisj() is
-      if defined(TRISJ) == true then
-         if direction == high then
-            TRISJ = TRISJ | (1 << pinmapnum)
+   end if
+   if defined(portJ) then
+      if (portletter == "J") then
+         if (direction == INPUT) then
+            portJ_direction = portJ_direction | portmask
          else
-            TRISJ = TRISJ & (0b_1111_1111 ^ (1 << pinmapnum))
+            portJ_direction = portJ_direction & portmask
          end if
       end if
-   end procedure
-
-   -- because we can't refer to port name just as we can't refer to pin since
-   -- these are pseudo-variable, we need to switch over different cases...
-   -- Note: there's no such TRISI in PIC....
-   case portmapletter of
-      "A" : _process_trisa()
-      "B" : _process_trisb()
-      "C" : _process_trisc()
-      "D" : _process_trisd()
-      "E" : _process_trise()
-      "F" : _process_trisf()
-      "G" : _process_trisg()
-      "H" : _process_trish()
-      "J" : _process_trisj()
-   end case
+   end if
+   if defined(portK) then
+      if (portletter == "K") then
+         if (direction == INPUT) then
+            portK_direction = portK_direction | portmask
+         else
+            portK_direction = portK_direction & portmask
+         end if
+      end if
+   end if
+   if defined(portL) then
+      if (portletter == "L") then
+         if (direction == INPUT) then
+            portL_direction = portL_direction | portmask
+         else
+            portL_direction = portL_direction & portmask
+         end if
+      end if
+   end if
 
 end procedure
 
+
+--------------------------------------------------------------------------------
+-- Title: Get pin direction
+-- Usage: var bit pin_direction = pintools_direction[pin_number]
+--------------------------------------------------------------------------------
 function pintools_direction'get(byte in pinnum) return bit is
-   var bit direction
-   var byte x
-   var byte portmapletter = pintools_map[pinnum*2]
-   var byte pinmapnum = pintools_map[pinnum*2+1]
 
-   procedure _process_trisa() is
-      if defined(TRISA) == true then
-         direction = ((TRISA >> pinmapnum) & 1)
+   var byte portletter = pintools_map[pinnum * 2]
+   var byte pinoffset = pintools_map[pinnum * 2 + 1]
+
+   if defined(portA) then
+      if (portletter == "A") then
+         return (portA_direction >> pinoffset) & 1
       end if
-   end procedure
-
-   procedure _process_trisb() is
-      if defined(TRISB) == true then
-         direction = ((TRISB >> pinmapnum) & 1)
+   end if
+   if defined(portB) then
+      if (portletter == "B") then
+         return (portB_direction >> pinoffset) & 1
       end if
-   end procedure
-
-   procedure _process_trisc() is
-      if defined(TRISC) == true then
-         direction = ((TRISC >> pinmapnum) & 1)
+   end if
+   if defined(portC) then
+      if (portletter == "C") then
+         return (portC_direction >> pinoffset) & 1
       end if
-   end procedure
-
-   procedure _process_trisd() is
-      if defined(TRISD) == true then
-         direction = ((TRISD >> pinmapnum) & 1)
+   end if
+   if defined(portD) then
+      if (portletter == "D") then
+         return (portD_direction >> pinoffset) & 1
       end if
-   end procedure
-
-   procedure _process_trise() is
-      if defined(TRISE) == true then
-         direction = ((TRISE >> pinmapnum) & 1)
+   end if
+   if defined(portE) then
+      if (portletter == "E") then
+         return (portE_direction >> pinoffset) & 1
       end if
-   end procedure
-
-   procedure _process_trisf() is
-      if defined(TRISF) == true then
-         direction = ((TRISF >> pinmapnum) & 1)
+   end if
+   if defined(portF) then
+      if (portletter == "F") then
+         return (portF_direction >> pinoffset) & 1
       end if
-   end procedure
-
-   procedure _process_trisg() is
-      if defined(TRISG) == true then
-         direction = ((TRISG >> pinmapnum) & 1)
+   end if
+   if defined(portG) then
+      if (portletter == "G") then
+         return (portG_direction >> pinoffset) & 1
       end if
-   end procedure
-
-   procedure _process_trish() is
-      if defined(TRISH) == true then
-         direction = ((TRISH >> pinmapnum) & 1)
+   end if
+   if defined(portH) then
+      if (portletter == "H") then
+         return (portH_direction >> pinoffset) & 1
       end if
-   end procedure
-
-   procedure _process_trisj() is
-      if defined(TRISJ) == true then
-         direction = ((TRISJ >> pinmapnum) & 1)
+   end if
+   if defined(portJ) then
+      if (portletter == "J") then
+         return (portJ_direction >> pinoffset) & 1
       end if
-   end procedure
+   end if
+   if defined(portK) then
+      if (portletter == "K") then
+         return (portK_direction >> pinoffset) & 1
+      end if
+   end if
+   if defined(portL) then
+      if (portletter == "L") then
+         return (portL_direction >> pinoffset) & 1
+      end if
+   end if
 
-   -- because we can't refer to port name just as we can't refer to pin since
-   -- these are pseudo-variable, we need to switch over different cases...
-   -- Note: there's no such TRISI in PIC....
-   case portmapletter of
-      "A" : _process_trisa()
-      "B" : _process_trisb()
-      "C" : _process_trisc()
-      "D" : _process_trisd()
-      "E" : _process_trise()
-      "F" : _process_trisf()
-      "G" : _process_trisg()
-      "H" : _process_trish()
-      "J" : _process_trisj()
-   end case
-
-   return direction
 end function
+
+
