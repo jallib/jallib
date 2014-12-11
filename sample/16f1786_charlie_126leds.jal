@@ -1,0 +1,279 @@
+-- ------------------------------------------------------
+-- Title: Demonstrate the use of library 'charlie' with a 9x14 led matrix
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4q3
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Demonstrate the use of the charlieplexing library
+-- with a 'LoL Shield' with 126 leds in a 9 x 14 matrix.
+--
+-- Sources:
+-- - Microchip Application note TB029.
+-- - The LoL shield http://jimmieprodgers.com/kits/lolshield/makelolshield/
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+include 16f1786                                 -- target PICmicro
+--
+pragma target clock    32_000_000               -- oscillator frequency
+--
+pragma target OSC      INTOSC_NOCLKOUT          -- crystal or resonator
+pragma target WDT      DISABLED                 -- watchdog
+pragma target PWRTE    ENABLED                  -- startup delay
+pragma target MCLR     EXTERNAL                 -- reset
+pragma target BROWNOUT DISABLED                 -- brownout reset
+pragma target CLKOUTEN DISABLED                 -- no clockout
+pragma target IESO     DISABLED                 -- int/ext osc. switch
+pragma target FCMEN    DISABLED                 -- clock monitoring
+pragma target VCAPEN   DISABLED                 -- no voltage regulator output
+pragma target PLLEN    DISABLED                 -- PLL software controlled
+pragma target LVP      DISABLED                 -- low voltage programming
+--
+OSCCON_IRCF = 0b1110                            -- 8 MHz (with PLL 32 MHz)
+OSCCON_SPLLEN = TRUE                            -- enable software PLL
+OSCCON_SCS = 0b00                               -- select primary oscillator
+--
+enable_digital_io()                             -- all pins digital I/O
+--
+include delay
+
+-- --- setup for charlie library -----------------------------
+--
+const CP_COLS = 14                              -- 12 leds per row
+const CP_ROWS = 9                               -- 1 row
+const CP_FREQ = 40                              -- refresh frequency
+
+-- --- LoL shield connections ----------------
+-- Per led - upper nibble: source pin number
+--         - lower nibble: sink pin number
+-- The pin numbers correspond to the numbers of the LoL Shield.
+-- pin numbers 2..7  connected to pin_A2..pin_A7
+-- pin numbers 8..13 connected to pin_C0..pin_C5
+--
+const byte CP_XY[CP_COLS * CP_ROWS] = { 0x_D_5,         -- ROW 1
+                                        0x_D_6,
+                                        0x_D_7,
+                                        0x_D_8,
+                                        0x_D_9,
+                                        0x_D_A,
+                                        0x_D_B,
+                                        0x_D_C,
+                                        0x_D_4,
+                                        0x_4_D,
+                                        0x_D_3,
+                                        0x_3_D,
+                                        0x_D_2,
+                                        0x_2_D,
+
+                                        0x_C_5,         -- ROW 2
+                                        0x_C_6,
+                                        0x_C_7,
+                                        0x_C_8,
+                                        0x_C_9,
+                                        0x_C_A,
+                                        0x_C_B,
+                                        0x_C_D,
+                                        0x_C_4,
+                                        0x_4_C,
+                                        0x_C_3,
+                                        0x_3_C,
+                                        0x_C_2,
+                                        0x_2_C,
+
+                                        0x_B_5,         -- ROW 3
+                                        0x_B_6,
+                                        0x_B_7,
+                                        0x_B_8,
+                                        0x_B_9,
+                                        0x_B_A,
+                                        0x_B_C,
+                                        0x_B_D,
+                                        0x_B_4,
+                                        0x_4_B,
+                                        0x_B_3,
+                                        0x_3_B,
+                                        0x_B_2,
+                                        0x_2_B,
+
+                                        0x_A_5,         -- ROW 4
+                                        0x_A_6,
+                                        0x_A_7,
+                                        0x_A_8,
+                                        0x_A_9,
+                                        0x_A_B,
+                                        0x_A_C,
+                                        0x_A_D,
+                                        0x_A_4,
+                                        0x_4_A,
+                                        0x_A_3,
+                                        0x_3_A,
+                                        0x_A_2,
+                                        0x_2_A,
+
+                                        0x_9_5,         -- ROW 5
+                                        0x_9_6,
+                                        0x_9_7,
+                                        0x_9_8,
+                                        0x_9_A,
+                                        0x_9_B,
+                                        0x_9_C,
+                                        0x_9_D,
+                                        0x_9_4,
+                                        0x_4_9,
+                                        0x_9_3,
+                                        0x_3_9,
+                                        0x_9_2,
+                                        0x_2_9,
+
+                                        0x_8_5,         -- ROW 6
+                                        0x_8_6,
+                                        0x_8_7,
+                                        0x_8_9,
+                                        0x_8_A,
+                                        0x_8_B,
+                                        0x_8_C,
+                                        0x_8_D,
+                                        0x_8_4,
+                                        0x_4_8,
+                                        0x_8_3,
+                                        0x_3_8,
+                                        0x_8_2,
+                                        0x_2_8,
+
+                                        0x_7_5,         -- ROW 7
+                                        0x_7_6,
+                                        0x_7_8,
+                                        0x_7_9,
+                                        0x_7_A,
+                                        0x_7_B,
+                                        0x_7_C,
+                                        0x_7_D,
+                                        0x_7_4,
+                                        0x_4_7,
+                                        0x_7_3,
+                                        0x_3_7,
+                                        0x_7_2,
+                                        0x_2_7,
+
+                                        0x_6_5,         -- ROW 8
+                                        0x_6_7,
+                                        0x_6_8,
+                                        0x_6_9,
+                                        0x_6_A,
+                                        0x_6_B,
+                                        0x_6_C,
+                                        0x_6_D,
+                                        0x_6_4,
+                                        0x_4_6,
+                                        0x_6_3,
+                                        0x_3_6,
+                                        0x_6_2,
+                                        0x_2_6,
+
+                                        0x_5_6,         -- ROW 9
+                                        0x_5_7,
+                                        0x_5_8,
+                                        0x_5_9,
+                                        0x_5_A,
+                                        0x_5_B,
+                                        0x_5_C,
+                                        0x_5_D,
+                                        0x_5_4,
+                                        0x_4_5,
+                                        0x_5_3,
+                                        0x_3_5,
+                                        0x_5_2,
+                                        0x_2_5
+                                      }
+
+
+-- --- led pattern ------------------------
+
+var word cp_pattern[CP_ROWS]
+
+-- --- ports used by this board -----------
+--
+alias cp_port1 is portA
+alias cp_port1_direction is portA_direction
+alias cp_port2 is portC
+alias cp_port2_direction is portC_direction
+
+include charlie
+
+charlie_init()
+
+
+-- ----------------------------------------
+-- Title: Fill the cp_pattern array with a specific value
+-- Notes: All rows will show the same pattern: columns
+-- ----------------------------------------
+procedure fill_pattern(word in x) is
+   var byte j
+   for CP_ROWS using j loop
+      cp_pattern[j] = x
+   end loop
+end procedure
+
+
+-- === main line ==========================
+
+alias led is pin_B0
+pin_B0_direction = OUTPUT
+
+forever loop
+
+   led = !led
+
+   var byte j
+   var byte x,y
+
+   fill_pattern(0)                                 -- clear the matrix
+   for CP_ROWS using j loop
+      cp_pattern[j] = 0xFFFF                       -- all leds of this row ON
+      delay_1ms(200)
+      cp_pattern[j] = 0x0000                       -- all leds OFF
+   end loop
+   delay_100ms(2)
+
+   for CP_COLS using j loop
+      fill_pattern(word(1) << j)                   -- all rows same led ON
+      delay_100ms(2)
+   end loop
+   delay_100ms(2)
+
+   for (CP_ROWS + CP_COLS) using y loop            -- all diagonals
+      for CP_ROWS using x loop
+         cp_pattern[x] = (word(1) << (y - x))      -- one led per row, shifted
+      end loop
+      delay_100ms(2)
+   end loop
+   delay_100ms(2)
+
+   cp_pattern[0] = 0b_00001111110000               -- picture (face)
+   cp_pattern[1] = 0b_00010000001000
+   cp_pattern[2] = 0b_00101100110100
+   cp_pattern[3] = 0b_01000011000010
+   cp_pattern[4] = 0b_01000011000010
+   cp_pattern[5] = 0b_01010000001010
+   cp_pattern[6] = 0b_00101111110100
+   cp_pattern[7] = 0b_00010000001000
+   cp_pattern[8] = 0b_00001111110000
+   delay_100ms(20)
+   cp_pattern[2] = 0b_00101100000100               -- wink
+   delay_100ms(4)
+   cp_pattern[2] = 0b_00101100110100
+   delay_100ms(20)
+
+end loop
+

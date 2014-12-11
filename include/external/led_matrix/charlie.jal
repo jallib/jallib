@@ -1,0 +1,240 @@
+-- ------------------------------------------------------
+-- Title: charlie.jal - Control charlieplexed led matrix
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q3
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Control an array or matrix of charlieplexed leds.
+-- Of a set of charlieplexed leds only one led can be on at a time. To display
+-- a stable pattern formed by multiple on-leds the leds must be switched on and off
+-- very quickly after each other such that the human eye won't notice the off-period.
+-- This library takes care of this switching. The user-program only needs to provide
+-- the pattern to be shown in the led matrix (and some parameters describing the
+-- physical configuration).
+-- This library was developed with in mind Jimmie Rogers' LoL (Lots of Leds) shield
+-- for the Arduino with 9x14 (126) leds controlled with 12 pins, but the library is
+-- flexible enough to control other configurations of charlieplexed leds.
+-- .
+-- Before including this library some constants should be declared:
+--   const byte CP_COLS             -- number of leds in a row (default 14, max 16)
+--   const byte CP_ROWS             -- number of rows of leds (default 9)
+--   const byte CP_FREQ             -- led refresh frequency (default 40)
+-- .
+-- One or two dedicated ports are required, depending on the number of pins that
+-- have to be controlled. For up to 56 leds a single port (8 pins) is sufficient.
+-- With a larger number of leds a second port is required.
+-- For the chosen ports an alias must be specified, for example:
+--    alias cp_port1 is portA       -- required first or only port (default portA)
+--    alias cp_port2 is portC       -- [optional] second port
+-- Also corresponding aliases for the direction settings are required, like:
+--    alias cp_port1_direction is portA_direction
+--    alias cp_port2_direction is portC_direction
+-- Because of performance reasons this library handles the assigned port(s)
+-- exclusively, unused pins are probably(!) not usable for other purposes.
+-- .
+-- A const byte array CP_XY[CP_ROWS * CP_COLS] must be specified to describe the
+-- matrix of charlieplexed leds. Each byte of the array represents 1 led and must
+-- contain the pin-number of the '+'pin (source pin) in the higher nibble and the
+-- pin-number of the '-'pin (sink pin) in the lower nibble.
+-- Pin numbers 0..7 should be connected to <cp_port1> pins 0..7,
+-- pin numbers 8..15 should be connected to <cp_port2> pins 0..7.
+-- The required array may look like:
+--    const byte CP_XY[CP_ROWS * CP_COLS] = { (3 << 4) | 1    -- source pin 3, sink pin 1
+--                                            (2 << 4) | 9    -- source pin 2, sink pin 9
+--                                            etc....
+--                                          }
+-- .
+-- An array of words must be specified to contain the pattern to be
+-- shown in the led matrix. Each word represents a row of the led matrix.
+-- This is most likely an array of which the elements are changed over time.
+-- For example to have 4 leds ON in the upper row of a matrix specify:
+--    var word cp_pattern[CP_ROWS] = { 0b0000_0011_1100_0000,  -- 1st row
+--                                     0b0000_0000_0000_0000   -- 2nd row
+--                                     etc....                 -- for every row
+--                                   }
+-- The low order bit of the first word represents the first led of the first row,
+-- the next higher order bit the second led in the row, and so on.
+-- How this corresponds to the physical matrix display depends of course on
+-- the orientation of the led matrix and the contents of the CP_XY[] array.
+--
+-- Sources:
+-- - Microchip Application note TB029.
+-- - Site of Jimmie Rogers for a LoL ("Lots of Leds") shield for Arduino
+--   (a 9x14 matrix of charlieplexed leds).
+--
+-- Notes: - This library uses Timer0 and a Timer0 interrupt routine. Don't
+--          touch TMR0IE and GIE. The leds are normally controlled with a
+--          pretty high current for a very short time (low PWM duty cycle).
+--          Interrupting the refresh cycle may damage the led matrix.
+--        - The interrupt processing is quite intensive:
+--          Each ON-bit requires about 250 processor cycles
+--          (machine instructions), each OFF-bit about 30 cycles.
+--          A high Fosc value is desired to leave some time for the 'real'
+--          application. The more leds the stronger this requirement.
+--        - Limitations: - Maximum colums: 16
+--                       - Maximum number of pins: 16
+--        - Other possible implementations with existing libraries like
+--          pintools and timer0_isr_interval showed (much) heavier
+--          processor load and memory usage.
+--
+
+-- --- basic parameters ---------------------------------
+
+if (!defined(CP_COLS)) then
+   const byte CP_COLS = 14
+end if
+
+if (!defined(CP_ROWS)) then
+   const byte CP_ROWS = 9
+end if
+
+if (!defined(CP_FREQ)) then
+   const byte CP_FREQ = 40
+end if
+
+if (!defined(cp_port1)) then
+   alias cp_port1 is portA
+end if
+if (!defined(cp_port1_direction)) then
+   alias cp_port1_direction is portA_direction
+end if
+
+-- determine period for Timer0 (and set prescaler)
+-- for an interrupt rate close to the desired led refresh rate.
+if    (target_clock / 4 / 2 / CP_FREQ / CP_COLS / CP_ROWS < 255) then
+   T0CON_T0PS = 0b000                              -- prescaler 1:2
+   const _CP_T0_PERIOD = target_clock / 4 / 2 / CP_FREQ / CP_COLS / CP_ROWS
+elsif (target_clock / 4 / 4 / CP_FREQ / CP_COLS / CP_ROWS < 255) then
+   T0CON_T0PS = 0b001                              -- prescaler 1:4
+   const _CP_T0_PERIOD = target_clock / 4 / 4 / CP_FREQ / CP_COLS / CP_ROWS
+elsif (target_clock / 4 / 8 / CP_FREQ / CP_COLS / CP_ROWS < 255) then
+   T0CON_T0PS = 0b010                              -- prescaler 1:8
+   const _CP_T0_PERIOD = target_clock / 4 / 8 / CP_FREQ / CP_COLS / CP_ROWS
+elsif (target_clock / 4 / 16 / CP_FREQ / CP_COLS / CP_ROWS < 255) then
+   T0CON_T0PS = 0b011                              -- prescaler 1:16
+   const _CP_T0_PERIOD = target_clock / 4 / 16 / CP_FREQ / CP_COLS / CP_ROWS
+elsif (target_clock / 4 / 32 / CP_FREQ / CP_COLS / CP_ROWS < 255) then
+   T0CON_T0PS = 0b100                              -- prescaler 1:32
+   const _CP_T0_PERIOD = target_clock / 4 / 32 / CP_FREQ / CP_COLS / CP_ROWS
+elsif (target_clock / 4 / 64 / CP_FREQ / CP_COLS / CP_ROWS < 255) then
+   T0CON_T0PS = 0b101                              -- prescaler 1:64
+   const _CP_T0_PERIOD = target_clock / 4 / 64 / CP_FREQ / CP_COLS / CP_ROWS
+elsif (target_clock / 4 / 128 / CP_FREQ / CP_COLS / CP_ROWS < 255) then
+   T0CON_T0PS = 0b110                              -- prescaler 1:128
+   const _CP_T0_PERIOD = target_clock / 4 / 128 / CP_FREQ / CP_COLS / CP_ROWS
+elsif (target_clock / 4 / 256 / CP_FREQ / CP_COLS / CP_ROWS < 255) then
+   T0CON_T0PS = 0b111                              -- prescaler 1:256
+   const _CP_T0_PERIOD = target_clock / 4 / 256 / CP_FREQ / CP_COLS / CP_ROWS
+else
+   T0CON_T0PS = 0b111                              -- prescaler 1:256
+   _warn "High Fosc or few leds: using a higher refresh frequency than requested!"
+   const _CP_T0_PERIOD = 254                       -- as long as possible
+end if
+
+
+-- ----------------------------------------------------
+-- Title: Initialize library: start the refresh process
+-- ----------------------------------------------------
+procedure charlie_init() is
+
+   var byte i
+
+   cp_port1 = 0b0000_0000                          -- all leds off
+   cp_port1_direction = 0b1111_1111                -- all pins input
+   if (defined(cp_port2)) then                     -- same for optional second port
+      cp_port2 = 0b0000_0000
+      cp_port2_direction = 0b1111_1111
+   end if
+
+   T0CON_T0CS = 0                                  -- clock source: oscillator
+   T0CON_PSA = 0                                   -- prescaler for Timer0 (not WDT)
+
+   TMR0 = 256 - _CP_T0_PERIOD                      -- start delay
+
+   INTCON_TMR0IE = TRUE                            -- enable Timer 0 interrupts
+   INTCON_GIE    = TRUE                            -- enable interrupts
+
+end procedure
+
+
+-- -----------------------------------------------------
+-- Title: LED matrix refresh
+-- With every interrupt the next led of the matrix handled.
+-- -----------------------------------------------------
+
+var byte _cpx = CP_COLS - 1                  -- led offset in row
+var byte _cpy = CP_ROWS - 1                  -- row offset
+
+procedure _charlie_timer0_isr() is
+
+   pragma interrupt
+
+   var byte i, j, k                          -- index values
+   var bit  i_high at k : 7                  -- check for high number source pin
+   var bit  j_high at k : 3                  --   "    "    "     "   sink pin
+   var byte mask                             -- port(_direction) register mask
+   var word _cp_pattern                      -- pattern current row
+   var bit lowbit at _cp_pattern : 0         -- low order bit of pattern
+
+   if (INTCON_TMR0IF == TRUE) then
+      TMR0 = 256 - _CP_T0_PERIOD             -- reload timer
+
+      cp_port1 = 0b0000_0000                 -- all off
+      cp_port1_direction = 0b1111_1111       -- all input
+      if (defined(cp_port2)) then
+         cp_port2 = 0b0000_0000
+         cp_port2_direction = 0b1111_1111
+      end if
+
+      _cpx = _cpx + 1                        -- next led of this row
+      if (_cpx >= CP_COLS) then              -- past last led of row
+         _cpx = 0                            -- begin of next row
+         _cpy = _cpy + 1                     -- next row
+         if (_cpy >= CP_ROWS) then           -- past last row
+            _cpy = 0                         -- first row
+         end if
+         _cp_pattern = cp_pattern[_cpy]      -- load new row pattern
+      end if
+      if (lowbit) then                       -- led on
+         k = CP_XY[CP_COLS * _cpy + _cpx]    -- index byte this led
+         i = k / 16                          -- index of source pin
+         j = k % 16                          -- index of sink pin
+         if (! i_high) then                  -- source pin at first or only port
+            mask = (1 << i)
+            cp_port1 = mask                  -- source pin level
+            cp_port1_direction = cp_port1_direction & (!mask)   -- source is output
+         else                                -- source pin at second port
+            if defined(cp_port2) then
+               i = i & 7                     -- reduce 15..8 to 7..0
+               mask = (1 << i)
+               cp_port2 = mask
+               cp_port2_direction = cp_port2_direction & (!mask)
+            end if
+         end if
+         if (! j_high) then                  -- sink pin at first port
+            mask = (1 << j)
+            cp_port1_direction = cp_port1_direction & (!mask)   -- sink pin output
+         else                                -- sink pin at second port
+            if (defined(cp_port2)) then
+               j = j & 7
+               mask = (1 << j)
+               cp_port2_direction = cp_port2_direction & (!mask)
+            end if
+         end if
+      end if
+      _cp_pattern = _cp_pattern >> 1         -- prepare for next led this row
+
+      INTCON_TMR0IF = FALSE                  -- end of interrupt
+
+   end if
+
+end procedure
+
