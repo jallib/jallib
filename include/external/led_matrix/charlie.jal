@@ -5,25 +5,26 @@
 --
 -- Adapted-by:
 --
--- Compiler: 2.4q3
 -- Revision: $Revision$
+--
+-- Compiler: 2.4q3
 --
 -- This file is part of jallib  (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description:
--- Control an array or matrix of charlieplexed leds.
+-- Control a matrix or array of charlieplexed leds.
 -- Of a set of charlieplexed leds only one led can be on at a time. To display
 -- a stable pattern formed by multiple on-leds the leds must be switched on and off
 -- very quickly after each other such that the human eye won't notice the off-period.
 -- This library takes care of this switching. The user-program only needs to provide
--- the pattern to be shown in the led matrix (and some parameters describing the
--- physical configuration).
+-- the pattern to be shown in the led matrix and some parameters describing the
+-- physical configuration.
 -- This library was developed with in mind Jimmie Rogers' LoL (Lots of Leds) shield
 -- for the Arduino with 9x14 (126) leds controlled with 12 pins, but the library is
 -- flexible enough to control other configurations of charlieplexed leds.
 -- .
--- Before including this library some constants should be declared:
+-- Before including this library some basic constants should be declared:
 --   const byte CP_COLS             -- number of leds in a row (default 14, max 16)
 --   const byte CP_ROWS             -- number of rows of leds (default 9)
 --   const byte CP_FREQ             -- led refresh frequency (default 40)
@@ -38,50 +39,53 @@
 --    alias cp_port1_direction is portA_direction
 --    alias cp_port2_direction is portC_direction
 -- Because of performance reasons this library handles the assigned port(s)
--- exclusively, unused pins are probably(!) not usable for other purposes.
+-- exclusively. Unused pins may be usable for other purposes but for input only.
 -- .
--- A const byte array CP_XY[CP_ROWS * CP_COLS] must be specified to describe the
--- matrix of charlieplexed leds. Each byte of the array represents 1 led and must
+-- A const byte array CP_XY[CP_ROWS * CP_COLS] must be declared to describe the
+-- matrix of charlieplexed leds. Each byte of the array represents one led and must
 -- contain the pin-number of the '+'pin (source pin) in the higher nibble and the
 -- pin-number of the '-'pin (sink pin) in the lower nibble.
 -- Pin numbers 0..7 should be connected to <cp_port1> pins 0..7,
 -- pin numbers 8..15 should be connected to <cp_port2> pins 0..7.
 -- The required array may look like:
---    const byte CP_XY[CP_ROWS * CP_COLS] = { (3 << 4) | 1    -- source pin 3, sink pin 1
---                                            (2 << 4) | 9    -- source pin 2, sink pin 9
+--    const byte CP_XY[CP_ROWS * CP_COLS] = { (3 << 4) | 1,   -- source pin 3, sink pin 1
+--                                            (2 << 4) | 9,   -- source pin 2, sink pin 9
 --                                            etc....
 --                                          }
 -- .
--- An array of words must be specified to contain the pattern to be
--- shown in the led matrix. Each word represents a row of the led matrix.
--- This is most likely an array of which the elements are changed over time.
+-- An array of words 'cp_pattern' must be declared for the pattern to be shown
+-- in the led matrix. Each word represents a row of the led matrix.
+-- The low order bit of the first word represents the first led of the first row,
+-- the next higher order bit the second led in the row, and so on.
+-- How this corresponds to the physical display depends of course on the
+-- orientation of the led matrix and the contents of the CP_XY[] array.
+--    var word cp_pattern[CP_ROWS]
+-- This is most likely an array of which the elements will change over time.
+-- It can be initialized with the declaration with all zeroes and be
+-- filled later in the program, but may also contain an initial pattern.
 -- For example to have 4 leds ON in the upper row of a matrix specify:
 --    var word cp_pattern[CP_ROWS] = { 0b0000_0011_1100_0000,  -- 1st row
 --                                     0b0000_0000_0000_0000   -- 2nd row
 --                                     etc....                 -- for every row
 --                                   }
--- The low order bit of the first word represents the first led of the first row,
--- the next higher order bit the second led in the row, and so on.
--- How this corresponds to the physical matrix display depends of course on
--- the orientation of the led matrix and the contents of the CP_XY[] array.
 --
 -- Sources:
 -- - Microchip Application note TB029.
 -- - Site of Jimmie Rogers for a LoL ("Lots of Leds") shield for Arduino
 --   (a 9x14 matrix of charlieplexed leds).
 --
--- Notes: - This library uses Timer0 and a Timer0 interrupt routine. Don't
---          touch TMR0IE and GIE. The leds are normally controlled with a
---          pretty high current for a very short time (low PWM duty cycle).
+-- Notes: - This library uses Timer0 and a Timer0 interrupt routine.
+--          Don't touch TMR0IE and GIE. The leds are normally controlled with
+--          a pretty high current for a very short time (low PWM duty cycle).
 --          Interrupting the refresh cycle may damage the led matrix.
 --        - The interrupt processing is quite intensive:
---          Each ON-bit requires about 250 processor cycles
---          (machine instructions), each OFF-bit about 30 cycles.
---          A high Fosc value is desired to leave some time for the 'real'
---          application. The more leds the stronger this requirement.
+--          Each ON-bit requires (avg) about 300 processor cycles
+--          (machine instructions), each OFF-bit about 60 cycles.
+--          A high Fosc value is desired to leave enough cycles for the
+--          'real' application! The more leds the stronger this requirement.
 --        - Limitations: - Maximum colums: 16
 --                       - Maximum number of pins: 16
---        - Other possible implementations with existing libraries like
+--        - A more flexible implementations with existing libraries like
 --          pintools and timer0_isr_interval showed (much) heavier
 --          processor load and memory usage.
 --
@@ -167,62 +171,63 @@ end procedure
 
 -- -----------------------------------------------------
 -- Title: LED matrix refresh
--- With every interrupt the next led of the matrix handled.
+-- With every Timer0 interrupt any previous led is switched off
+-- and the next led is controlled, whether on or off.
 -- -----------------------------------------------------
 
-var byte _cpx = CP_COLS - 1                  -- led offset in row
-var byte _cpy = CP_ROWS - 1                  -- row offset
+var byte _cp_x = CP_COLS - 1                    -- led offset in row
+var byte _cp_y = CP_ROWS - 1                    -- row offset
 
 procedure _charlie_timer0_isr() is
 
    pragma interrupt
 
-   var byte i, j, k                          -- index values
-   var bit  i_high at k : 7                  -- check for high number source pin
-   var bit  j_high at k : 3                  --   "    "    "     "   sink pin
-   var byte mask                             -- port(_direction) register mask
-   var word _cp_pattern                      -- pattern current row
-   var bit lowbit at _cp_pattern : 0         -- low order bit of pattern
+   var byte i, j, k                             -- index values
+   var bit  i_high at k : 7                     -- check for high number source pin
+   var bit  j_high at k : 3                     --   "    "    "     "   sink pin
+   var byte mask                                -- port(_direction) register mask
+   var word row_pattern                         -- pattern current row
+   var bit  lowbit at row_pattern : 0           -- low order bit of pattern
 
    if (INTCON_TMR0IF == TRUE) then
-      TMR0 = 256 - _CP_T0_PERIOD             -- reload timer
+      TMR0 = 256 - _CP_T0_PERIOD                -- reload timer
 
-      cp_port1 = 0b0000_0000                 -- all off
-      cp_port1_direction = 0b1111_1111       -- all input
+      cp_port1 = 0                              -- clear
+      cp_port1_direction = ALL_INPUT
       if (defined(cp_port2)) then
-         cp_port2 = 0b0000_0000
-         cp_port2_direction = 0b1111_1111
+         cp_port2 = 0
+         cp_port2_direction = ALL_INPUT
       end if
 
-      _cpx = _cpx + 1                        -- next led of this row
-      if (_cpx >= CP_COLS) then              -- past last led of row
-         _cpx = 0                            -- begin of next row
-         _cpy = _cpy + 1                     -- next row
-         if (_cpy >= CP_ROWS) then           -- past last row
-            _cpy = 0                         -- first row
+      _cp_x = _cp_x + 1                         -- next led of this row
+      if (_cp_x >= CP_COLS) then                -- past last led of row
+         _cp_x = 0                              -- begin of next row
+         _cp_y = _cp_y + 1                      -- next row
+         if (_cp_y >= CP_ROWS) then             -- past last row
+            _cp_y = 0                           -- first row
          end if
-         _cp_pattern = cp_pattern[_cpy]      -- load new row pattern
+         row_pattern = cp_pattern[_cp_y]        -- load new row pattern
       end if
-      if (lowbit) then                       -- led on
-         k = CP_XY[CP_COLS * _cpy + _cpx]    -- index byte this led
-         i = k / 16                          -- index of source pin
-         j = k % 16                          -- index of sink pin
-         if (! i_high) then                  -- source pin at first or only port
+      if (lowbit) then                          -- led on
+         k = CP_XY[CP_COLS * _cp_y + _cp_x]     -- index byte this led
+         i = k / 16                             -- index of source pin
+         j = k % 16                             -- index of sink pin
+         if (! i_high) then                     -- source pin at first or only port
             mask = (1 << i)
-            cp_port1 = mask                  -- source pin level
-            cp_port1_direction = cp_port1_direction & (!mask)   -- source is output
-         else                                -- source pin at second port
+            cp_port1 = mask                     -- source pin level
+            cp_port1_direction = (!mask)        -- source pin output
+         else                                   -- source pin at second port
             if defined(cp_port2) then
-               i = i & 7                     -- reduce 15..8 to 7..0
+               i = i & 7                        -- reduce 15..8 to 7..0
                mask = (1 << i)
                cp_port2 = mask
-               cp_port2_direction = cp_port2_direction & (!mask)
+               cp_port2_direction = (!mask)
             end if
          end if
-         if (! j_high) then                  -- sink pin at first port
+         if (! j_high) then                     -- sink pin at first port
             mask = (1 << j)
             cp_port1_direction = cp_port1_direction & (!mask)   -- sink pin output
-         else                                -- sink pin at second port
+         else                                   -- sink pin at second port
             if (defined(cp_port2)) then
                j = j & 7
                mask = (1 << j)
@@ -230,9 +235,9 @@ procedure _charlie_timer0_isr() is
             end if
          end if
       end if
-      _cp_pattern = _cp_pattern >> 1         -- prepare for next led this row
+      row_pattern = row_pattern >> 1            -- prepare for next led this row
 
-      INTCON_TMR0IF = FALSE                  -- end of interrupt
+      INTCON_TMR0IF = FALSE                     -- end of interrupt
 
    end if
 
