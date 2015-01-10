@@ -273,10 +273,13 @@ def list_unreleased_samples(fr):
          fs = fs[(len(base) + 1):]                          # remove base prefix
          if (fs not in lines):                              # unreleased sample
             unlisted = unlisted + 1
-            if (word[1] == "blink"):
-               unlistedblink = unlistedblink + 1
-               if (runtype != None):                        # blink samples to be listed
-                  fr.write(fs + "\n")                       # list unreleased blink sample
+            if (len(word) > 1):
+               if (word[1] == "blink"):
+                  unlistedblink = unlistedblink + 1
+                  if (runtype != None):                     # blink samples to be listed
+                     fr.write(fs + "\n")                    # list unreleased blink sample
+               else:                                        # not a blink sample
+                  fr.write(fs + "\n")                       # list unreleased sample
             else:                                           # not a blink sample
                fr.write(fs + "\n")                          # list unreleased sample
          else:                                              # found sample in torelease
