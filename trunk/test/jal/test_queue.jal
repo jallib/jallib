@@ -1,40 +1,41 @@
 -- ----------------------------------------------------------------------------
 -- Title: Test program for queue01.jal
--- 
+--
 -- Author: Joep Suijs, Copyright (c) 2008..2014, all rights reserved.
--- 
--- Adapted-by: 
--- 
+--
+-- Adapted-by:
+--
 -- Compiler: >=2.4q2
 -- Revision: $Revision$
--- 
+--
 -- This file is part of jallib  (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
--- 
+--
 -- Description: Test program
--- 
+--
 -- Sources:
--- 
--- Notes: as output, this sample produces characters on a serial link. First 
+--
+-- Notes: as output, this sample produces characters on a serial link. First
 --        run serial tests to make sure serial comms works okay.
--- 
+--
 -- ----------------------------------------------------------------------------
 
 ;@jallib use chipdef
-;@jallib use led     
+
+;@jallib use led
 
 -- set all IO as digital
 enable_digital_io()
 
 led_direction= output
 
-const byte  queue01_size = 8           
-include queue01         
-queue01_clear()  
-           
+const byte  queue01_size = 8
+include queue01
+queue01_clear()
+
 var byte isr_put_counter = 0
-var volatile byte test_mode                                     
-                       
+var volatile byte test_mode
+
 include delay
 
 -- setup serial (see echo.jal for more details)
@@ -48,29 +49,29 @@ const byte str1[] = " - Test queue\r\n"   -- define a string
 print_string(serial_hw_data, str1)                 -- output string
 
 
- 
+
 var byte char, i
-  
+
  forever loop
    delay_100ms( 2 )
 ;   LED = ! LED ; high
 ;   delay_100ms( 2 )
 ;   LED = low
-   
+
    serial_hw_data = "."
 
-   while (serial_hw_read(char)) loop               
-      case char of 
+   while (serial_hw_read(char)) loop
+      case char of
 
          "0" : block
             test_mode = char - "0"
-            
+
          end block
-   
+
          "1" : block
             test_mode = char - "0"
-            const byte str11[] = "\r\n1 - put 5 chars in queue (blocking)\r\n" 
-            print_string(serial_hw_data, str11)      
+            const byte str11[] = "\r\n1 - put 5 chars in queue (blocking)\r\n"
+            print_string(serial_hw_data, str11)
             for 5 using i loop
                queue01 = i
                serial_hw_data = "0" | i
@@ -79,23 +80,23 @@ var byte char, i
 
         "2" : block
             test_mode = char - "0"
-            const byte str11[] = "\r\n2 - try to put 5 chars in queue (non-blocking)r\n" 
-            print_string(serial_hw_data, str11)      
+            const byte str11[] = "\r\n2 - try to put 5 chars in queue (non-blocking)r\n"
+            print_string(serial_hw_data, str11)
 
             for 5 using i loop
                serial_hw_data = "0" | i
                if (queue01_nb_put(i) == true) then
                   serial_hw_data = "s" -- succes
-               else 
+               else
                   serial_hw_data = "f" -- fail
-               end if         
-            end loop              
+               end if
+            end loop
          end block
-   
+
          "3" : block
             test_mode = char - "0"
-            const byte str11[] = "\r\n1 - get 5 chars from queue (blocking)\r\n" 
-            print_string(serial_hw_data, str11)      
+            const byte str11[] = "\r\n1 - get 5 chars from queue (blocking)\r\n"
+            print_string(serial_hw_data, str11)
             for 5 loop
                i = queue01
                serial_hw_data = "0" | i
@@ -104,25 +105,25 @@ var byte char, i
 
          "4" : block
             test_mode = char - "0"
-            const byte str11[] = "\r\n1 - get 5 chars from queue (non-blocking)\r\n" 
-            print_string(serial_hw_data, str11)      
+            const byte str11[] = "\r\n1 - get 5 chars from queue (non-blocking)\r\n"
+            print_string(serial_hw_data, str11)
 
             for 5 loop
                if (queue01_nb_get(i) == true) then  -- get byte
                   serial_hw_data = "s" -- succes
-               else 
+               else
                   serial_hw_data = "f" -- fail
-               end if                        
+               end if
                serial_hw_data = "0" | i             -- print byte
-            end loop              
+            end loop
          end block
 
          "8" : block
             test_mode = char - "0"
             const byte str11[] = "put "
-            print_string(serial_hw_data, str11)      
+            print_string(serial_hw_data, str11)
 
-            var bit ret = queue01_nb_put(99)  
+            var bit ret = queue01_nb_put(99)
             print_bit_logic(serial_hw_data, ret)
 
             serial_hw_data = "+"
@@ -136,8 +137,8 @@ var byte char, i
          "9" : block
             test_mode = char - "0"
             const byte str11[] = "get "
-            print_string(serial_hw_data, str11)      
-            var bit ret = queue01_nb_get(i)  
+            print_string(serial_hw_data, str11)
+            var bit ret = queue01_nb_get(i)
             print_bit_logic(serial_hw_data, ret)
             serial_hw_data = "+"
             print_byte_dec(serial_hw_data, queue01_in_pointer)
@@ -146,13 +147,13 @@ var byte char, i
             print_crlf(serial_hw_data)
 
          end block
-    
+
 
          " " : block
             test_mode = char - "0"
             const byte str11[] = "free/used: "
-            print_string(serial_hw_data, str11)      
-            var byte ret = queue01_nr_free()  
+            print_string(serial_hw_data, str11)
+            var byte ret = queue01_nr_free()
             print_byte_dec(serial_hw_data, ret)
             serial_hw_data = "/"
             ret = queue01_nr_used()
@@ -160,7 +161,7 @@ var byte char, i
             print_crlf(serial_hw_data)
 
          end block
-      
+
       end case
-   end loop     
+   end loop
 end loop
