@@ -43,6 +43,7 @@ import time
 from string import maketrans
 
 base       = "k:/jallib"                                    # base directory of local copy of Jallib
+
 libdir     = base + "/include"                              # device files and function libraries
 smpdir     = base + "/sample"                               # samples
 projdir    = base + "/project"                              # projecta
@@ -74,13 +75,13 @@ def read_torelease():
    ft = open(torelease, "r")
    for ln in ft:
       ln = ln.strip()
-      lnlow = ln.lower()
-      if ( (lnlow != ln) & (not ln.startswith("#")) ):
-         print "Warning: uppercase character(s) fixed in:"
-         print "   ", ln
-      if ((len(ln) < 2)  |  ln.startswith("#")):            # empty or comment line
-         lines.append("")
-      else:
+      if (ln == ""):
+         continue
+      if (ln[0] != "#"):
+         lnlow = ln.lower()
+         if (lnlow != ln):
+            print "Warning: uppercase character(s) fixed in:"
+            print "   ", ln
          lines.append(lnlow)
    ft.close()
 
@@ -223,9 +224,16 @@ def list_unreleased_libraries(fr):
       for file in files:
          picname = file[:-4]                                # filename less extension
          fs = os.path.join(root,file)                       # full pathspec
-         fs.translate(xslash)                               # backward to forward slash
          fs = fs[(len(base) + 1):]                          # remove base prefix
+         fs = fs.translate(xslash)                               # backward to forward slash
          if (fs not in lines):
+#           if (unlisted == 0):
+#             for x in lines:
+#                print x
+#           elif (unlisted > 5):
+#             return
+#           print "fs ", fs
+#           print "   ", os.path.join(root,file)
             unlisted = unlisted + 1
             if (fs.startswith("include/device/")):          # unreleased device file
                unlisteddevice = unlisteddevice + 1
@@ -269,17 +277,14 @@ def list_unreleased_samples(fr):
          word = file.split("_")
          picname = word[0]
          fs = os.path.join(root,file)                       # full pathspec
-         fs.translate(xslash)                               # backward to forward slash
          fs = fs[(len(base) + 1):]                          # remove base prefix
+         fs = fs.translate(xslash)                          # backward to forward slash
          if (fs not in lines):                              # unreleased sample
             unlisted = unlisted + 1
-            if (len(word) > 1):
-               if (word[1] == "blink"):
-                  unlistedblink = unlistedblink + 1
-                  if (runtype != None):                     # blink samples to be listed
-                     fr.write(fs + "\n")                    # list unreleased blink sample
-               else:                                        # not a blink sample
-                  fr.write(fs + "\n")                       # list unreleased sample
+            if (word[1] == "blink"):
+               unlistedblink = unlistedblink + 1
+               if (runtype != None):                        # blink samples to be listed
+                  fr.write(fs + "\n")                       # list unreleased blink sample
             else:                                           # not a blink sample
                fr.write(fs + "\n")                          # list unreleased sample
          else:                                              # found sample in torelease
@@ -331,8 +336,8 @@ def list_unreleased_projects(fr):
       files.sort()
       for file in files:
          fs = os.path.join(root,file)                       # full pathspec
-         fs.translate(xslash)                               # backward to forward slash
          fs = fs[(len(base) + 1):]                          # remove base prefix
+         fs = fs.translate(xslash)                          # backward to forward slash
          if (fs not in lines):
             unlisted = unlisted + 1
             fr.write(fs + "\n")                             # list unreleased sample
