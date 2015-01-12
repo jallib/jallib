@@ -281,12 +281,15 @@ def list_unreleased_samples(fr):
          fs = fs.translate(xslash)                          # backward to forward slash
          if (fs not in lines):                              # unreleased sample
             unlisted = unlisted + 1
-            if (word[1] == "blink"):
-               unlistedblink = unlistedblink + 1
-               if (runtype != None):                        # blink samples to be listed
-                  fr.write(fs + "\n")                       # list unreleased blink sample
-            else:                                           # not a blink sample
-               fr.write(fs + "\n")                          # list unreleased sample
+            if (len(word) > 1):                             # filename at least 2 parts
+               if (word[1] == "blink"):
+                  unlistedblink = unlistedblink + 1
+                  if (runtype != None):                     # blink samples to be listed
+                     fr.write(fs + "\n")                    # list unreleased blink sample
+               else:                                        # not a blink sample
+                  fr.write(fs + "\n")                       # list unreleased sample
+            else:                                           # probably not a sample file
+               fr.write(fs + "\n")                          # list file
          else:                                              # found sample in torelease
             fi = open(os.path.join(root,file))              # full pathspec
             lncount = 0
