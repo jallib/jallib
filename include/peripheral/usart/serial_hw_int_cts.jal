@@ -1,14 +1,14 @@
 -- ----------------------------------------------------------------------
 -- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
--- Author: Rob Hamerling, Copyright (c) 2008..2012, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2008..2015, all rights reserved.
 -- Adapted-by: Joep Suijs
--- Compiler: 2.4o
+-- Compiler: 2.4q3
 -- Revision: $Revision$
 --
 -- This file is part of jallib  (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Serial communications:
+-- Description: Serial communications for first or only USART:
 --   - receive and transmit data transfer is interrupt driven
 --   - receive and transmit data transfer is buffered (circular buffers)
 --   - provides automatic CTS flow control with spare free space for FiFo buffer
@@ -37,26 +37,28 @@
 -- .
 --   - <byte> = serial_hw_data                   -- receive byte, wait if queue empty
 -- .
--- Directions for use of this library in application programs
--- (in this sequence):
+-- Directions for use of this library in application programs (in this sequence):
 -- .
--- 1. Declare the following constant:
+-- 1. Declare the following constants:
 -- .
---      const   serial_hw_baudrate = 115200     -- line speed
+--      const  serial_hw_baudrate = 115200      -- line speed must be declared (no default)
 -- .
---    and variables:
--- .
---      alias serial_ctsinv  is  pin_B4         -- incoming data flow control
---                                              -- Optional, if no CTS flow control needed
---                                              -- no dummy needs to be assigned.
--- .
---      var  bit serial_overflow_discard        -- With transmit buffer overflow:
---                                              --   TRUE: discard data (non-blocking)
+--      const bit serial_overflow_discard = TRUE  -- Transmit buffer overflow:
 --                                              --   FALSE: wait for free space (blocking)
---                                              -- With receive buffer overflow data is
---                                              -- discarded without notification,
---                                              -- but prevented with CTS flow control,
---                                              -- provided the sender has flow control enabled
+--                                              --   TRUE: discard data (non-blocking)
+--                                              -- This flag may be dynamically changed
+--                                              -- but must then be declared as 'var bit'
+-- .
+--                                              -- Receive buffer overflow data is
+--                                              -- prevented by CTS flow control, provided
+--                                              -- the sender has flow control enabled.
+--                                              -- Otherwise data discarded without notification!
+-- .
+--    and an alias
+-- .
+--      alias serial_ctsinv  is  pin_B4         -- Incoming data flow control signal
+--                                              -- Optional, if no CTS flow control needed
+--                                              -- no dummy needs to be declared.
 -- .
 --    and optionally you could define one or more of the constants below.
 --    You should do so if you want different values than shown (= default).
@@ -83,7 +85,6 @@
 -- .
 -- 3. Prepare pins:
 --       pin_B4_direction = OUTPUT              -- incoming data flow control
---       serial_overflow_discard = FALSE        -- do not discard output
 --    Notes: - pin_TX and pin_RX are selected automatically
 --           - direction settings of these pins are taken care of by the library
 -- .
@@ -119,8 +120,6 @@
 -- Additional remarks:
 --  - The selection of the CTS pin above is an example, any other pin
 --    which is configurable for output can be used.
---  - The serial_overflow_discard flag may be dynamically changed
---    (depending on how important the data is for the receiving party).
 --  - Do not touch the following interrupt bits: TXIE, RCIE, PEIE and GIE
 --
 -- Sources:
@@ -148,6 +147,10 @@ if (defined(serial_hw_baudrate) == FALSE) then
    else
       _error "no baudrate defined"
    end if
+end if
+
+if (defined(serial_overflow_discard) == FALSE) then
+   const bit serial_overflow_discard = FALSE       -- no transmit overflow
 end if
 
 include usart_common                               -- common serial functions/procedures
@@ -225,7 +228,6 @@ procedure  _serial_receive_interrupt_handler() is
          end loop                               -- until no more overrun
          _serial_offsetrcvtail = 0              -- \  flush circular buffer
          _serial_offsetrcvhead = 0              -- /
-
          if defined(serial_ctsinv) then
             serial_ctsinv = FALSE               -- ensure CTS true
          end if
@@ -271,7 +273,6 @@ procedure  _serial_receive_interrupt_handler() is
                end if
             end if
          end if
-
       end if
 
    end if
@@ -427,8 +428,7 @@ procedure serial_hw_init() is
 
    pin_RX_direction       = INPUT               -- make receive pin input
    pin_TX_direction       = INPUT               -- make transmit pin input!
-                                                -- (required by some older
-                                                --  PICs like 16f628)
+                                                -- (required by some older PICs like 16f628)
 
    TXSTA_TXEN             = ENABLED             -- enable transmit (makes TX pin output)
 
