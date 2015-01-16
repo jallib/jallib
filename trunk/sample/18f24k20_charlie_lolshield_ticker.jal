@@ -1,0 +1,351 @@
+-- ------------------------------------------------------
+-- Title: Demonstrate the use of library charlie with a 9x14 led matrix
+--
+-- Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4q3
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Demonstrate the use of the charlieplexing library
+-- with a 'LoL Shield' with 126 leds in a 9 x 14 matrix.
+--
+-- Sources:
+-- - Microchip Application note TB029.
+-- - The LoL shield http://jimmieprodgers.com/kits/lolshield/makelolshield/
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+include 18f24k20                                -- target PICmicro
+--
+pragma target clock    64_000_000               -- oscillator frequency
+--
+pragma target OSC      INTOSC_NOCLKOUT          -- crystal or resonator
+pragma target FCMEN    DISABLED                 -- clock monitoring
+pragma target IESO     DISABLED                 -- int/ext osc. switch
+pragma target PWRTE    ENABLED                  -- startup delay
+pragma target BROWNOUT DISABLED                 -- brownout reset
+pragma target WDT      CONTROL                  -- watchdog
+pragma target CCP2MUX  pin_B3                   -- CPP2 pin
+pragma target PBADEN   DIGITAL                  -- PortB pins
+pragma target HFOFST   DISABLED                 -- slow start
+pragma target MCLR     EXTERNAL                 -- reset
+pragma target LVP      DISABLED                 -- low voltage programming
+pragma target DEBUG    DISABLED                 -- no debug
+--
+OSCCON_IRCF = 0b111                             -- 16 MHz (with PLL 64 MHz)
+OSCCON_SCS = 0b00                               -- select primary oscillator
+WDTCON_SWDTEN = FALSE                           -- no WDT
+--
+OSCTUNE_PLLEN = TRUE                            -- enable PLL (4x)
+--
+enable_digital_io()                             -- all pins digital I/O
+--
+include delay
+
+-- --- setup for charlie library -----------------------------
+--
+const CP_COLS = 14                              -- 14 leds per row
+const CP_ROWS = 9                               -- 9 rows
+const CP_FREQ = 40                              -- refresh frequency
+
+-- LoL shield configuration
+-- Per led - upper nibble: source pin number
+--         - lower nibble: sink pin number
+-- The pin numbers correspond to the numbers of the LoL Shield.
+-- pin numbers 2..7  connected to pin_A2..pin_A7
+-- pin numbers 8..13 connected to pin_C0..pin_C5
+--
+const byte CP_XY[CP_COLS * CP_ROWS] = { 0x_D_5,         -- ROW 1
+                                        0x_D_6,
+                                        0x_D_7,
+                                        0x_D_8,
+                                        0x_D_9,
+                                        0x_D_A,
+                                        0x_D_B,
+                                        0x_D_C,
+                                        0x_D_4,
+                                        0x_4_D,
+                                        0x_D_3,
+                                        0x_3_D,
+                                        0x_D_2,
+                                        0x_2_D,
+
+                                        0x_C_5,         -- ROW 2
+                                        0x_C_6,
+                                        0x_C_7,
+                                        0x_C_8,
+                                        0x_C_9,
+                                        0x_C_A,
+                                        0x_C_B,
+                                        0x_C_D,
+                                        0x_C_4,
+                                        0x_4_C,
+                                        0x_C_3,
+                                        0x_3_C,
+                                        0x_C_2,
+                                        0x_2_C,
+
+                                        0x_B_5,         -- ROW 3
+                                        0x_B_6,
+                                        0x_B_7,
+                                        0x_B_8,
+                                        0x_B_9,
+                                        0x_B_A,
+                                        0x_B_C,
+                                        0x_B_D,
+                                        0x_B_4,
+                                        0x_4_B,
+                                        0x_B_3,
+                                        0x_3_B,
+                                        0x_B_2,
+                                        0x_2_B,
+
+                                        0x_A_5,         -- ROW 4
+                                        0x_A_6,
+                                        0x_A_7,
+                                        0x_A_8,
+                                        0x_A_9,
+                                        0x_A_B,
+                                        0x_A_C,
+                                        0x_A_D,
+                                        0x_A_4,
+                                        0x_4_A,
+                                        0x_A_3,
+                                        0x_3_A,
+                                        0x_A_2,
+                                        0x_2_A,
+
+                                        0x_9_5,         -- ROW 5
+                                        0x_9_6,
+                                        0x_9_7,
+                                        0x_9_8,
+                                        0x_9_A,
+                                        0x_9_B,
+                                        0x_9_C,
+                                        0x_9_D,
+                                        0x_9_4,
+                                        0x_4_9,
+                                        0x_9_3,
+                                        0x_3_9,
+                                        0x_9_2,
+                                        0x_2_9,
+
+                                        0x_8_5,         -- ROW 6
+                                        0x_8_6,
+                                        0x_8_7,
+                                        0x_8_9,
+                                        0x_8_A,
+                                        0x_8_B,
+                                        0x_8_C,
+                                        0x_8_D,
+                                        0x_8_4,
+                                        0x_4_8,
+                                        0x_8_3,
+                                        0x_3_8,
+                                        0x_8_2,
+                                        0x_2_8,
+
+                                        0x_7_5,         -- ROW 7
+                                        0x_7_6,
+                                        0x_7_8,
+                                        0x_7_9,
+                                        0x_7_A,
+                                        0x_7_B,
+                                        0x_7_C,
+                                        0x_7_D,
+                                        0x_7_4,
+                                        0x_4_7,
+                                        0x_7_3,
+                                        0x_3_7,
+                                        0x_7_2,
+                                        0x_2_7,
+
+                                        0x_6_5,         -- ROW 8
+                                        0x_6_7,
+                                        0x_6_8,
+                                        0x_6_9,
+                                        0x_6_A,
+                                        0x_6_B,
+                                        0x_6_C,
+                                        0x_6_D,
+                                        0x_6_4,
+                                        0x_4_6,
+                                        0x_6_3,
+                                        0x_3_6,
+                                        0x_6_2,
+                                        0x_2_6,
+
+                                        0x_5_6,         -- ROW 9
+                                        0x_5_7,
+                                        0x_5_8,
+                                        0x_5_9,
+                                        0x_5_A,
+                                        0x_5_B,
+                                        0x_5_C,
+                                        0x_5_D,
+                                        0x_5_4,
+                                        0x_4_5,
+                                        0x_5_3,
+                                        0x_3_5,
+                                        0x_5_2,
+                                        0x_2_5
+                                      }
+
+
+-- led pattern -------------
+
+var word cp_pattern[CP_ROWS]                 -- pattern to be displayed on the LoL shield
+
+-- ports used with this board
+alias cp_port1           is portA
+alias cp_port1_direction is portA_direction
+alias cp_port2           is portC
+alias cp_port2_direction is portC_direction
+
+include charlie                              -- library
+charlie_init()
+
+var dword cache[CP_ROWS] = {0,0,0,0,0,0,0,0,0}   -- cache for cp_pattern
+
+include lolfont                              -- font table(s)
+
+
+-- ----------------------------------------
+-- Title: Determine index of character in font table
+-- ----------------------------------------
+function font_index(byte in c) return byte is
+
+   if (c >= 32 & c <= 126) then
+      return (c - 32)
+   else
+      return count(lolfont_0) - 1            -- last element
+   end if
+
+end function
+
+
+-- ----------------------------------------
+-- Title: Determine maximum of 2 bytes
+-- ----------------------------------------
+function max(byte in p, byte in q) return byte is
+
+   if (p > q) then return p else return q end if
+
+end function
+
+
+-- ----------------------------------------
+-- Title: Determine width of a character
+-- ----------------------------------------
+function char_width(byte in c) return byte is
+
+   if (c == " ") then                        -- required space
+      return 4                               -- fixed width
+   end if
+
+   var byte n = 0                            -- maximum pattern value
+   var byte x = font_index(c)                -- index in font table
+
+   n = max(n,lolfont_0[x])
+   n = max(n,lolfont_1[x])
+   n = max(n,lolfont_2[x])
+   n = max(n,lolfont_3[x])
+   n = max(n,lolfont_4[x])
+   n = max(n,lolfont_5[x])
+   n = max(n,lolfont_6[x])
+   n = max(n,lolfont_7[x])
+   n = max(n,lolfont_8[x])
+
+   var byte i = 0                            -- width
+   x = 1                                     -- 2 ^ 0
+   while (n >= x) loop
+      i = i + 1                              -- next width
+      x = x * 2                              -- 2 ^ i
+   end loop
+   return i                                  -- width in colums
+
+end function
+
+
+-- -------------------------------------------
+-- Title: Add a character pattern to the cache
+-- Input: - character to be added to cache
+--        - shift position of the pattern of this
+--          character (= current bits in cache)
+-- -------------------------------------------
+procedure cache_char(byte in c, byte in sh) is
+
+   var byte x = font_index(c)
+
+   cache[0] = cache[0] | (dword(lolfont_0[x]) << sh)
+   cache[1] = cache[1] | (dword(lolfont_1[x]) << sh)
+   cache[2] = cache[2] | (dword(lolfont_2[x]) << sh)
+   cache[3] = cache[3] | (dword(lolfont_3[x]) << sh)
+   cache[4] = cache[4] | (dword(lolfont_4[x]) << sh)
+   cache[5] = cache[5] | (dword(lolfont_5[x]) << sh)
+   cache[6] = cache[6] | (dword(lolfont_6[x]) << sh)
+   cache[7] = cache[7] | (dword(lolfont_7[x]) << sh)
+   cache[8] = cache[8] | (dword(lolfont_8[x]) << sh)
+
+end procedure
+
+
+-- ----------------------------------------
+-- Title: Shift pattern 1 position
+-- ----------------------------------------
+procedure shift_pattern(byte in pause) is
+
+   var byte i
+
+   for CP_ROWS using i loop
+      cache[i] = (cache[i] >> 1)
+      cp_pattern[i] = word(cache[i])
+   end loop
+   delay_100ms(pause)
+
+end procedure
+
+
+-- === main line ==========================
+
+var byte  str[] = "Ticker tape with LoL shield + JalV2 and Jallib"
+var byte  pause = 1                       -- units of 100 milliseconds
+var byte  cc                              -- cache counter
+
+delay_100ms(3)
+
+forever loop
+
+   var byte c                             -- character
+   var byte w                             -- character width
+   var byte i                             -- counter
+
+   cc = CP_COLS                           -- cache counter: empty cache
+   for count(str) using i loop            -- whole string
+      c = str[i]                          -- next character
+      w = char_width(c) + 1               -- width this char + 1 space
+      while (w > (31 - cc)) loop          -- char doesn't fit in cache
+         shift_pattern(pause)             -- shift 1 column out
+         cc = cc - 1                      -- 1 column more space
+      end loop
+      cache_char(c, cc + 1)               -- add char + 1 space to cache
+      cc = cc + w
+   end loop
+
+   cc = cc + 1                            -- for complete shift out
+   while (cc > 0) loop
+      shift_pattern(pause)
+      cc = cc - 1
+   end loop
+
+end loop
+
