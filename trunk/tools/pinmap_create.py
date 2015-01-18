@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+ # Author: Rob Hamerling, Copyright (c) 2009..2015. All rights reserved.
+
 """
    pinmap_create.py - create new pinmap.py from MPLAB-X
    This script is part of a sub-project using MPLAB-X info for Jallib,
@@ -26,7 +28,7 @@ import fnmatch
 import re
 from xml.dom.minidom import parse, Node
 
-mplabxversion = "215"                                       # latest version of MPLAB-X
+mplabxversion = "226"                                       # latest version of MPLAB-X
 
 picdir    = "k:/mplab-x_" + mplabxversion + "/crownking.edc.jar/content/edc"   # basedir of .pic files
 
@@ -40,7 +42,7 @@ fp.write("pinmap = {\n")                                    # opening line
 
 pic8flash  = re.compile(r"^1(0|2|6|8)(f|lf|hv).*")          # relevant PICs only
 pic8excl   = ["12f529t39a", "12f529t48a", \
-                "16hv540", "16f527", "16f570"]
+              "16hv540", "16f527", "16f570"]
 portpin = re.compile(r"^R[A-L]{1}[0-7]{1}\Z")               # Rx0..7 (x in range A..L)
 gpiopin = re.compile(r"^GP[0-5]{1}\Z")                      # GP0..5
 
