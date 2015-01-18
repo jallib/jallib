@@ -1,5 +1,7 @@
 
 # CreateDSwiki.py
+#
+# Author: Rob Hamerling, Copyrigh (c) 2009..2015. All rights reserved.
 
 import os, sys
 import time
