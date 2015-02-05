@@ -15,7 +15,7 @@
 
 FileInstall(	"files\7z.exe"					,@tempdir & "\7z.exe",1)
 FileInstall(	"files\jaledit0.9.0.9.zip"		,@tempdir & "\jaledit.zip",1)
-FileInstall(	"files\jallib-1.0.0.zip"		,@tempdir & "\jallib.zip",1)
+FileInstall(	"files\jallib-pack-jalv24q3-1.1.0beta.zip"		,@tempdir & "\jallib.zip",1)
 FileInstall(	"files\jalv24q3.zip"			,@tempdir & "\jalv2.zip",1)
 
 ;includes
@@ -32,7 +32,7 @@ Opt("GUIOnEventMode", 1) ; Change to OnEvent mode
 Global $Width = 600
 Global $Height = 300
 Global $Step = 1
-Global $Folder = "C:\Jallib\"
+Global $Folder = "C:\JallibWorkplace\"
 Local Const $Font2 = "Arial"
 Local Const $Font1 = "Comic Sans Ms"
 
@@ -212,6 +212,9 @@ Func NextButton()
 
 		 if (GUICtrlRead($Checkbox1) == 1) Then
 			RunWait(@tempdir & '\7z.exe x -y "' & @tempdir & '\jallib.zip" -o"' & $Folder & '"')
+			if (GUICtrlRead($Checkbox2) == 1) Then
+			   FileDelete($Folder & "\compiler\*") ;we will use the new compiler directory (eg. \compiler\jalv24q3\)
+			EndIf
 		 EndIf
 
 		 if (GUICtrlRead($Checkbox3) == 1) Then
