@@ -13,10 +13,15 @@
 ;-- 	   - Compile this with AutoIT.
 ;--
 
-FileInstall(	"files\7z.exe"					,@tempdir & "\7z.exe",1)
-FileInstall(	"files\jaledit0.9.0.9.zip"		,@tempdir & "\jaledit.zip",1)
-FileInstall(	"files\jallib-pack-jalv24q3-1.1.0beta.zip"		,@tempdir & "\jallib.zip",1)
-FileInstall(	"files\jalv24q3.zip"			,@tempdir & "\jalv2.zip",1)
+ClipPut(@tempdir)
+
+Dim $Folder = "C:\JallibWorkplace" ; NO TRAILING /
+
+FileInstall(	"files\7za.exe"											,@tempdir & "\7za.exe",1)
+FileInstall(	"files\jaledit0.9.0.9.zip"								,@tempdir & "\jaledit.zip",1)
+FileInstall(	"files\jallib-pack-jalv24q3-1.1.0beta.zip"				,@tempdir & "\jallib.zip",1)
+FileInstall(	"files\jalv24q3.zip"									,@tempdir & "\jalv2.zip",1)
+FileInstall(	"images\jal_logo.jpg"									,@tempdir & "\jal_logo.jpg")
 
 ;includes
 #include <GUIConstantsEx.au3>
@@ -32,7 +37,6 @@ Opt("GUIOnEventMode", 1) ; Change to OnEvent mode
 Global $Width = 600
 Global $Height = 300
 Global $Step = 1
-Global $Folder = "C:\JallibWorkplace\"
 Local Const $Font2 = "Arial"
 Local Const $Font1 = "Comic Sans Ms"
 
@@ -41,7 +45,7 @@ $Title = "Jallib Full Installer"
 Local $hMainGUI = GUICreate($Title, $width, $height)
 
 ;Create the gui widgets
-$Logo = GUICtrlCreatePic ( "images/jal_logo.jpg", 5, 8,190,242)
+$Logo = GUICtrlCreatePic (@tempdir & "\jal_logo.jpg", 5, 8,190,242)
 
 Local $Group1 = GUICtrlCreateGroup("", 200, 0, 395, $height - 50)
    Local $Label1 = GUICtrlCreateLabel("Welcome to the Jallib Setup Wizard", 220, 25,370)
@@ -113,9 +117,9 @@ Local $NextButton = GUICtrlCreateButton("Next", $width - 160, $height - 40, 60)
 GUICtrlSetOnEvent(-1, "NextButton")
 
 Local $CancelButton = GUICtrlCreateButton("Cancel", $width - 80, $height - 40, 60)
-GUICtrlSetOnEvent($CancelButton, "CLOSEButton")
+GUICtrlSetOnEvent($CancelButton, "QuitProgram")
 
-GUISetOnEvent($GUI_EVENT_CLOSE, "CLOSEButton")
+GUISetOnEvent($GUI_EVENT_CLOSE, "QuitProgram")
 
 ;Show the GUI
 GUISetState(@SW_SHOW, $hMainGUI)
@@ -178,7 +182,7 @@ Func NextButton()
 		 WinSetOnTop($hMainGUI, "", 1)
 	  Else
 
-		 If (FileExists($Folder & "sample")) Or (FileExists($Folder & "\sample")) Or (FileExists($Folder & "lib")) Or (FileExists($Folder & "\lib")) Then
+		 If (FileExists($Folder & "\sample")) Or (FileExists($Folder & "\lib")) Then
 			If $DirCreated == 0 Then
 			   WinSetOnTop($hMainGUI, "", 0)
 			   $Answer = MsgBox(4 + 0x40000,"Warning!", "An installation exists in this directory, are you sure you wish to overwrite your previous installation?")
@@ -207,18 +211,19 @@ Func NextButton()
 		 GUICtrlSetState($Label6 ,$GUI_SHOW)
 
 		 if (GUICtrlRead($Checkbox2) == 1) Then
-			RunWait(@tempdir & '\7z.exe x -y "' & @tempdir & '\jalv2.zip" -o"' & $Folder & "\compiler" & '"')
+			RunCommand(@tempdir & '\7za.exe x -y "' & @tempdir & '\jalv2.zip" -o"' & $Folder & "\compiler" & '"')
+			;ConsoleWrite(@tempdir & '\7za.exe x -y "' & @tempdir & '\jalv2.zip" -o"' & $Folder & "\compiler" & '"')
 		 EndIf
 
 		 if (GUICtrlRead($Checkbox1) == 1) Then
-			RunWait(@tempdir & '\7z.exe x -y "' & @tempdir & '\jallib.zip" -o"' & $Folder & '"')
+			RunCommand(@tempdir & '\7za.exe x -y "' & @tempdir & '\jallib.zip" -o"' & $Folder & '"')
 			if (GUICtrlRead($Checkbox2) == 1) Then
 			   FileDelete($Folder & "\compiler\*") ;we will use the new compiler directory (eg. \compiler\jalv24q3\)
 			EndIf
 		 EndIf
 
 		 if (GUICtrlRead($Checkbox3) == 1) Then
-			RunWait(@tempdir & '\7z.exe x -y "' & @tempdir & '\jaledit.zip" -o"' & $Folder & "\jaledit" & '"')
+			RunCommand(@tempdir & '\7za.exe x -y "' & @tempdir & '\jaledit.zip" -o"' & $Folder & "\jaledit" & '"')
 
 			$libfolder = $Folder & "\lib"
 			$libfolder = StringReplace($libfolder, "\\", "\")
@@ -228,12 +233,12 @@ Func NextButton()
 			if ($CompilerFolder == -1) Then
 			   MsgBox(16, "Error", 'Failed to set the JalEdit compiler directory. You will need to set it manually in JalEdit at "Tools" -> "Environment Options"')
 			EndIf
-			IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "feJALExe_Text", $Folder & "compiler\" & $CompilerFolder & "\bin\jalv2.exe")
+			IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "feJALExe_Text", $Folder & "\compiler\" & $CompilerFolder & "\bin\jalv2.exe")
 
 		 ;add shortcuts
-		 consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @DesktopDir & "\JalEdit.lnk", $Folder & "\jaledit\"))
+		 ;consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @DesktopDir & "\JalEdit.lnk", $Folder & "\jaledit\"))
 		 DirCreate(@StartMenuDir & "\JalEdit")
-		 consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @StartMenuDir & "\JalEdit\JalEdit.lnk", $Folder & "\jaledit\"))
+		 ;consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @StartMenuDir & "\JalEdit\JalEdit.lnk", $Folder & "\jaledit\"))
 		 EndIf
 
 		 GUICtrlSetData($Label5, "Installation is complete!")
@@ -255,12 +260,12 @@ Func NextButton()
 
 	  if (GUICtrlRead($Checkbox4) == 1) Then
 		 run($Folder & "\jaledit\jaledit.exe")
-		 WinWaitActive("JAL Edit", "", 10)
+		 ;WinWaitActive("JAL Edit", "", 10)
 	  EndIf
 	  if (GUICtrlRead($Checkbox5) == 1) Then
 		 run("Explorer.exe " & $Folder)
 	  EndIf
-	  Exit
+	  QuitProgram()
    EndIf
 
 
@@ -275,9 +280,10 @@ Func BrowseButton()
    ;WinSetOnTop($hMainGUI, "", 1)
 EndFunc
 
-Func CLOSEButton()
-    Exit
- EndFunc   ;==>CLOSEButton
+Func QuitProgram()
+   FileDelete(@tempdir & "jal_logo.jpg")
+   Exit
+ EndFunc   ;==>QuitProgram
 
  Func FindNewestFolder($Folder)
     $avFiles = _FileListToArray($Folder & "\", "*",2)
@@ -300,6 +306,21 @@ Func CLOSEButton()
         return -1
 	 EndIf
 
-	 ConsoleWrite($avFiles[$iNewestIndex])
+   ;ConsoleWrite($avFiles[$iNewestIndex])
     return $avFiles[$iNewestIndex]
  EndFunc
+
+
+Func RunCommand(ByRef $Command)
+   ; create a test file
+   FileDelete(@tempdir & 'adb.bat')
+   FileWrite(@tempdir & 'adb.bat',$Command & @CRLF)
+
+   Global $stream, $Pid = Run(@tempdir & 'adb.bat', @ScriptDir, @SW_HIDE, 8); merged stream
+   Do
+	   Sleep(10)
+	   $stream &= StdOutRead($pid)
+   Until @error
+
+   FileWrite ($Folder & "\install.log",$stream)
+EndFunc
