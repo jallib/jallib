@@ -29,6 +29,7 @@ FileInstall(	"images\jal_logo.jpg"									,@tempdir & "\jal_logo.jpg")
 #include <Date.au3>
 #include <Array.au3>
 #include <File.au3>
+#Include <WinAPIEx.au3>
 
 ;On event mode when clicking widgets
 Opt("GUIOnEventMode", 1) ; Change to OnEvent mode
@@ -218,7 +219,11 @@ Func NextButton()
 		 if (GUICtrlRead($Checkbox1) == 1) Then
 			RunCommand(@tempdir & '\7za.exe x -y "' & @tempdir & '\jallib.zip" -o"' & $Folder & '"')
 			if (GUICtrlRead($Checkbox2) == 1) Then
-			   FileDelete($Folder & "\compiler\*") ;we will use the new compiler directory (eg. \compiler\jalv24q3\)
+			   FileDelete($Folder & "\compiler\*") ;delete all files in \compiler\
+
+			   $CompilerFolder = FindNewestFolder($Folder & "\compiler")
+			   FileCopyMulti($Folder & "\compiler\" & $CompilerFolder & "\bin\",$Folder & "\compiler","*")
+			   DirRemove($Folder & "\compiler\" & $CompilerFolder,1)
 			EndIf
 		 EndIf
 
@@ -323,4 +328,32 @@ Func RunCommand(ByRef $Command)
    Until @error
 
    FileWrite ($Folder & "\install.log",$stream)
+EndFunc
+
+;copy multiple files
+Func FileCopyMulti($Source, $Destination, $Mask = '*')
+    Local $FileList, $FileName, $Time, $Path, $Count
+    $FileList = _FileListToArray($Source, $Mask, 1)
+    If Not @error Then
+        For $i = 1 To $FileList[0]
+			ConsoleWrite($FileList[$i])
+            $Path = $Destination & '\' & $FileList[$i]
+            $Count = 2
+            While FileExists($Path)
+                $Count += 1
+            WEnd
+            If Not FileCopy($Source & '\' & $FileList[$i], $Path, 8) Then
+                Return 0
+            EndIf
+        Next
+    EndIf
+    $FileList = _FileListToArray($Source, '*', 2)
+    If Not @error Then
+        For $i = 1 To $FileList[0]
+            If Not FileCopyMulti($Source & '\' & $FileList[$i], $Destination, $Mask) Then
+                Return 0
+            EndIf
+        Next
+    EndIf
+    Return 1
 EndFunc
