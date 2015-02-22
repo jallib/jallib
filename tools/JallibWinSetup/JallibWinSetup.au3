@@ -19,7 +19,7 @@ Dim $Folder = "C:\JallibWorkplace" ; NO TRAILING /
 
 FileInstall(	"files\7za.exe"											,@tempdir & "\7za.exe",1)
 FileInstall(	"files\jaledit0.9.0.9.zip"								,@tempdir & "\jaledit.zip",1)
-FileInstall(	"files\jallib-pack-jalv24q3-1.1.0beta.zip"				,@tempdir & "\jallib.zip",1)
+FileInstall(	"files\jallib-pack-jalv24q3-1.1.2beta.zip"				,@tempdir & "\jallib.zip",1)
 FileInstall(	"files\jalv24q3.zip"									,@tempdir & "\jalv2.zip",1)
 FileInstall(	"images\jal_logo.jpg"									,@tempdir & "\jal_logo.jpg")
 
@@ -74,20 +74,20 @@ Local $Group3 = GUICtrlCreateGroup("", 200, 0, 395, $height - 50)
    Local $Label4 = GUICtrlCreateLabel("Choose the options you would like to install.", 220, 25,370)
    GUICtrlSetFont(-1, 10, 700, 4, $Font1)
 
-   Local $Checkbox1 = GUICtrlCreateCheckbox("Jallib Libraries", 220, 75, 370)
+   Local $Checkbox1 = GUICtrlCreateCheckbox("Jallib Libraries + Compiler", 220, 75, 370)
    GUICtrlSetFont(-1, 9, 400, 0, $Font2)
-   Local $Checkbox2 = GUICtrlCreateCheckbox("Jalv2 Compiler", 220, 100, 370)
+   Local $Checkbox3 = GUICtrlCreateCheckbox("JalEdit", 220, 100, 370)
    GUICtrlSetFont(-1, 9, 400, 0, $Font2)
-   Local $Checkbox3 = GUICtrlCreateCheckbox("JalEdit", 220, 125, 370)
-   GUICtrlSetFont(-1, 9, 400, 0, $Font2)
+;~    Local $Checkbox2 = GUICtrlCreateCheckbox("Jalv2 Compiler", 220, 125, 370)
+;~    GUICtrlSetFont(-1, 9, 400, 0, $Font2)
 
    GUICtrlSetState($Label4 ,$GUI_HIDE)
    GUICtrlSetState($Checkbox1 ,$GUI_HIDE)
-   GUICtrlSetState($Checkbox2 ,$GUI_HIDE)
+;~    GUICtrlSetState($Checkbox2 ,$GUI_HIDE)
    GUICtrlSetState($Checkbox3 ,$GUI_HIDE)
 
    guictrlsetstate($Checkbox1,$GUI_Checked)
-   guictrlsetstate($Checkbox2,$GUI_Checked)
+;~    guictrlsetstate($Checkbox2,$GUI_Checked)
    guictrlsetstate($Checkbox3,$GUI_Checked)
 GUICtrlCreateGroup("", -99, -99, 1, 1) ;close group
 
@@ -146,7 +146,7 @@ Func NextButton()
 
 	  GUICtrlSetState($Label4 ,$GUI_SHOW)
 	  GUICtrlSetState($Checkbox1 ,$GUI_SHOW)
-	  GUICtrlSetState($Checkbox2 ,$GUI_SHOW)
+;~ 	  GUICtrlSetState($Checkbox2 ,$GUI_SHOW)
 	  GUICtrlSetState($Checkbox3 ,$GUI_SHOW)
    EndIf
 
@@ -154,7 +154,7 @@ Func NextButton()
 
 	  GUICtrlSetState($Label4 ,$GUI_HIDE)
 	  GUICtrlSetState($Checkbox1 ,$GUI_HIDE)
-	  GUICtrlSetState($Checkbox2 ,$GUI_HIDE)
+;~ 	  GUICtrlSetState($Checkbox2 ,$GUI_HIDE)
 	  GUICtrlSetState($Checkbox3 ,$GUI_HIDE)
 
 	  GUICtrlSetState($Label3 ,$GUI_SHOW)
@@ -211,20 +211,21 @@ Func NextButton()
 		 GUICtrlSetState($Label5 ,$GUI_SHOW)
 		 GUICtrlSetState($Label6 ,$GUI_SHOW)
 
-		 if (GUICtrlRead($Checkbox2) == 1) Then
-			RunCommand(@tempdir & '\7za.exe x -y "' & @tempdir & '\jalv2.zip" -o"' & $Folder & "\compiler" & '"')
-			;ConsoleWrite(@tempdir & '\7za.exe x -y "' & @tempdir & '\jalv2.zip" -o"' & $Folder & "\compiler" & '"')
-		 EndIf
+;~ 		 if (GUICtrlRead($Checkbox2) == 1) Then
+;~ 			;RunCommand(@tempdir & '\7za.exe x -y "' & @tempdir & '\jalv2.zip" -o"' & $Folder & "\compiler" & '"')
+;~ 		 EndIf
 
 		 if (GUICtrlRead($Checkbox1) == 1) Then
 			RunCommand(@tempdir & '\7za.exe x -y "' & @tempdir & '\jallib.zip" -o"' & $Folder & '"')
-			if (GUICtrlRead($Checkbox2) == 1) Then
-			   FileDelete($Folder & "\compiler\*") ;delete all files in \compiler\
+;~ 			   if (GUICtrlRead($Checkbox2) == 1) Then
+;~    ;~ 			   FileDelete($Folder & "\compiler\*") ;delete all files in \compiler\
 
-			   $CompilerFolder = FindNewestFolder($Folder & "\compiler")
-			   FileCopyMulti($Folder & "\compiler\" & $CompilerFolder & "\bin\",$Folder & "\compiler","*")
-			   DirRemove($Folder & "\compiler\" & $CompilerFolder,1)
-			EndIf
+;~    ;~ 			   $CompilerFolder = FindNewestFolder($Folder & "\compiler")
+;~    ;~ 			   FileCopyMulti($Folder & "\compiler\" & $CompilerFolder & "\bin\",$Folder & "\compiler","*")
+;~    ;~ 			   DirRemove($Folder & "\compiler\" & $CompilerFolder,1)
+;~ 			   Else
+;~    ;~ 			   DirRemove($Folder & "\compiler",1)
+;~ 			   EndIf
 		 EndIf
 
 		 if (GUICtrlRead($Checkbox3) == 1) Then
@@ -238,7 +239,8 @@ Func NextButton()
 			if ($CompilerFolder == -1) Then
 			   MsgBox(16, "Error", 'Failed to set the JalEdit compiler directory. You will need to set it manually in JalEdit at "Tools" -> "Environment Options"')
 			EndIf
-			IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "feJALExe_Text", $Folder & "\compiler\" & $CompilerFolder & "\bin\jalv2.exe")
+			;IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "feJALExe_Text", $Folder & "\compiler\" & $CompilerFolder & "\bin\jalv2.exe")
+			IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "feJALExe_Text", $Folder & "\compiler\jalv2.exe")
 
 		 ;add shortcuts
 		 ;consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @DesktopDir & "\JalEdit.lnk", $Folder & "\jaledit\"))
@@ -336,7 +338,7 @@ Func FileCopyMulti($Source, $Destination, $Mask = '*')
     $FileList = _FileListToArray($Source, $Mask, 1)
     If Not @error Then
         For $i = 1 To $FileList[0]
-			ConsoleWrite($FileList[$i])
+			;ConsoleWrite($FileList[$i])
             $Path = $Destination & '\' & $FileList[$i]
             $Count = 2
             While FileExists($Path)
