@@ -1,0 +1,225 @@
+-- Title: unittest to check ADC libs for 16F88
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this describes multiple unittests (a testcase), to test the 
+-- many different combination while setting up ADC.
+--
+-- Notes: see jallib wiki page about unit testing to learn how to use this file
+--
+
+;@jallib section pic_20MHz
+include 16f877           
+pragma target OSC HS
+pragma target clock 20_000_000
+pragma target WDT  disabled
+pragma target LVP  disabled
+enable_digital_io()
+
+;@jallib section pic_4MHz
+include 16f877           
+pragma target OSC HS
+pragma target clock 4_000_000
+pragma target WDT  disabled
+pragma target LVP  disabled
+enable_digital_io()
+
+;@jallib section pic_1MHz
+include 16f877           
+pragma target OSC HS
+pragma target clock 1_000_000
+pragma target WDT  disabled
+pragma target LVP  disabled
+enable_digital_io()
+
+;@jallib section self_test
+include unittest
+var byte a = 120
+test_byte(a)		 ;@assertEquals 120 test_test
+
+
+;@jallib testcase test_delay_clock_20MHz
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 1
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+include adc
+adc_init()
+-- Check delay
+test_byte(adc_conversion_delay)	 ;@assertEquals 21 test_compute_delay
+-- Check clock section bits
+--			  XYY
+-- adcs =? 0b_010
+asm nop
+var byte adcon0_temp = ADCON0 & 0b_1100_0000
+test_byte(adcon0_temp) ;@assertEquals 128 test_compute_tad_adcs
+
+
+;@jallib testcase test_delay_clock_4MHz
+;@jallib use pic_4MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 1
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+include adc
+adc_init()
+-- Check clock section bits
+--			  XYY
+-- adcs =? 0b_010
+asm nop
+var byte adcon0_temp = ADCON0 & 0b_1100_0000
+test_byte(adcon0_temp) ;@assertEquals 64 test_compute_tad_adcs
+
+
+;@jallib testcase test_delay_clock_1MHz
+;@jallib use pic_1MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 1
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+include adc
+adc_init()
+-- Check clock section bits
+--			  XYY
+-- adcs =? 0b_010
+asm nop
+var byte adcon0_temp = ADCON0 & 0b_1100_0000
+test_byte(adcon0_temp) ;@assertEquals 0 test_compute_tad_adcs
+
+-- deactivate, right justification not used anymore
+;;@jallib testcase test_right_justification
+;;@jallib use pic_20MHz
+;;@jallib use self_test
+;const bit ADC_HIGH_RESOLUTION = true
+;const byte ADC_NCHANNEL = 1
+;const byte ADC_NVREF = ADC_NO_EXT_VREF
+;include adc
+;adc_init()
+;var byte adcon1_temp = ADCON1 & 0b_1000_0000
+;test_byte(adcon1_temp) ;@assertEquals 128 test_right_justified
+
+
+;@jallib testcase test_left_justification
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = false
+const byte ADC_NCHANNEL = 1
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_1000_0000
+test_byte(adcon1_temp) ;@assertEquals 0 test_right_justified
+
+
+;@jallib testcase test_combo_0vref_1an
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 1
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_0000_1111 -- should be 0b_1110 = 14
+test_byte(adcon1_temp) ;@assertEquals 14 test_pcfg_combo
+
+
+;@jallib testcase test_combo_0vref_3an
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 3
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_0000_1111 -- should be 0b_0100 = 4
+test_byte(adcon1_temp) ;@assertEquals 4 test_pcfg_combo
+
+
+;@jallib testcase test_combo_0vref_5an
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 5
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_0000_1111 -- should be 0b_0010 = 2
+test_byte(adcon1_temp) ;@assertEquals 2 test_pcfg_combo
+
+
+;@jallib testcase test_combo_0vref_6an
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 6
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_0000_1111 -- should be 0b_1001 = 9
+test_byte(adcon1_temp) ;@assertEquals 9 test_pcfg_combo
+
+
+;@jallib testcase test_combo_0vref_8an
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 8
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_0000_1111 -- should be 0b_0000 = 0
+test_byte(adcon1_temp) ;@assertEquals 0 test_pcfg_combo
+
+
+;@jallib testcase test_combo_1vref_6an
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 6
+const byte ADC_NVREF = ADC_VREF_POS
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_0000_1111 -- should be 0b_1010 = 10
+test_byte(adcon1_temp) ;@assertEquals 10 test_pcfg_combo
+
+
+;@jallib testcase test_combo_1vref_8an
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 8
+const byte ADC_NVREF = ADC_VREF_POS
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_0000_1111 -- should be 0b_0001 = 1
+test_byte(adcon1_temp) ;@assertEquals 1 test_pcfg_combo
+
+
+;@jallib testcase test_combo_2vref_3an
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 3
+const byte ADC_NVREF = ADC_VREF_POS_NEG
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_0000_1111 -- should be 0b_1111 = 15
+test_byte(adcon1_temp) ;@assertEquals 15 test_pcfg_combo
+
+
+;@jallib testcase test_combo_2vref_8an
+;@jallib use pic_20MHz
+;@jallib use self_test
+const bit ADC_HIGH_RESOLUTION = true
+const byte ADC_NCHANNEL = 8
+const byte ADC_NVREF = ADC_VREF_POS_NEG
+include adc
+adc_init()
+var byte adcon1_temp = ADCON1 & 0b_0000_1111 -- should be 0b_0000 = 8
+test_byte(adcon1_temp) ;@assertEquals 8 test_pcfg_combo
+

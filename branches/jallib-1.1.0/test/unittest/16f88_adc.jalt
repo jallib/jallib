@@ -1,0 +1,226 @@
+-- Title: unittest to check ADC libs for 16F88
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this describes multiple unittests (a testcase), to test the 
+-- many different combination while setting up ADC.
+--
+-- Notes: see jallib wiki page about unit testing to learn how to use this file
+--
+
+
+-- These are the different PIC configuration, with different clock
+-- speed. Clock speed can have impacts on acquisition delay computation,
+;@jallib section pic_20MHz
+include 16f88   ;@no_debug     
+pragma target OSC HS           
+pragma target clock 20_000_000 
+pragma target WDT  disabled
+enable_digital_io()            
+
+;@jallib section pic_10MHz
+include 16f88   ;@no_debug     
+pragma target OSC HS           
+pragma target clock 10_000_000 
+pragma target WDT  disabled
+enable_digital_io()            
+
+;@jallib section pic_8MHz
+include 16f88   ;@no_debug     
+pragma target OSC HS           
+pragma target clock 8_000_000 
+pragma target WDT  disabled
+enable_digital_io()            
+
+;@jallib section pic_4MHz
+include 16f88   ;@no_debug     
+pragma target OSC HS           
+pragma target clock 4_000_000 
+pragma target WDT  disabled
+enable_digital_io()            
+
+;@jallib section pic_1MHz
+include 16f88   ;@no_debug     
+pragma target OSC HS           
+pragma target clock 1_000_000 
+pragma target WDT  disabled
+enable_digital_io()            
+
+
+-- This unittest is a "self test". It should always be run and
+-- give a success. It not, current PIC is probably not supported
+-- by PICShell.
+;@jallib section self_test
+include unittest
+var byte a = 120
+test_byte(a)		 ;@assertEquals 120 test_test
+
+
+
+;@jallib testcase test_1vref_low_rsource
+;@jallib use pic_20MHz
+;@jallib use self_test
+const byte ADC_NVREF = ADC_VREF_POS
+const bit ADC_HIGH_RESOLUTION = true
+const word ADC_RSOURCE = 2_500
+include adc
+adc_init()
+
+test_byte(adc_conversion_delay)	 ;@assertEquals 14 test_compute_delay
+set_analog_pin(0)
+
+asm nop
+var byte adcon0_temp = ADCON0 & 0b_1100_0000
+test_byte(adcon0_temp) ;@assertEquals 128 test_compute_tad_adcs
+asm nop
+var byte adcon1_temp = ADCON1 & 0b_0100_0000
+test_byte(adcon1_temp) ;@assertEquals 0 test_compute_tad_adcs2
+
+
+
+;@jallib testcase test_1vref_max_rsource
+;@jallib use pic_10MHz
+;@jallib use self_test
+const byte ADC_NVREF = ADC_VREF_POS
+const bit ADC_HIGH_RESOLUTION = true
+const word ADC_RSOURCE = 10_000
+include adc
+adc_init()
+
+test_byte(adc_conversion_delay)	 ;@assertEquals 21 test_compute_delay
+set_analog_pin(0)
+asm nop
+var byte adcon1_vcfg_tmp = ADCON1 & 0b_0011_0000
+test_byte(adcon1_vcfg_tmp) ;@assertEquals 16 test_vcfg
+--			  XYY
+-- adcs =? 0b_010
+asm nop
+var byte adcon0_temp = ADCON0 & 0b_1100_0000
+test_byte(adcon0_temp) ;@assertEquals 64 test_compute_tad_adcs
+asm nop
+var byte adcon1_temp = ADCON1 & 0b_0100_0000
+test_byte(adcon1_temp) ;@assertEquals 64 test_compute_tad_adcs2
+
+
+;@jallib testcase test_0vref_8MHz
+;@jallib use pic_8MHz
+;@jallib use self_test
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+const bit ADC_HIGH_RESOLUTION = true
+const word ADC_RSOURCE = 10_000
+include adc
+adc_init()
+test_byte(adc_conversion_delay)	 ;@assertEquals 21 test_compute_delay
+set_analog_pin(0)
+--			  XYY
+-- adcs =? 0b_010
+asm nop
+var byte adcon0_temp = ADCON0 & 0b_1100_0000
+test_byte(adcon0_temp) ;@assertEquals 64 test_compute_tad_adcs
+asm nop
+var byte adcon1_temp = ADCON1 & 0b_0100_0000
+test_byte(adcon1_temp) ;@assertEquals 64 test_compute_tad_adcs2
+
+
+;@jallib testcase test_0vref_4MHz
+;@jallib use pic_4MHz
+;@jallib use self_test
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+const bit ADC_HIGH_RESOLUTION = true
+const word ADC_RSOURCE = 10_000
+include adc
+adc_init()
+set_analog_pin(0)
+--			  XYY
+-- adcs =? 0b_101
+asm nop
+var byte adcon0_temp = ADCON0 & 0b_1100_0000
+test_byte(adcon0_temp) ;@assertEquals 64 test_compute_tad_adcs
+asm nop
+var byte adcon1_temp = ADCON1 & 0b_0100_0000
+test_byte(adcon1_temp) ;@assertEquals 0 test_compute_tad_adcs2
+
+
+;@jallib testcase test_0vref_1MHz
+;@jallib use pic_1MHz
+;@jallib use self_test
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+const bit ADC_HIGH_RESOLUTION = true
+const word ADC_RSOURCE = 10_000
+include adc
+adc_init()
+set_analog_pin(0)
+--			  XYY
+-- adcs =? 0b_101
+asm nop
+var byte adcon0_temp = ADCON0 & 0b_1100_0000
+test_byte(adcon0_temp) ;@assertEquals 0 test_compute_tad_adcs
+asm nop
+var byte adcon1_temp = ADCON1 & 0b_0100_0000
+test_byte(adcon1_temp) ;@assertEquals 0 test_compute_tad_adcs2
+
+;@jallib testcase test_all_analog_pins
+;@jallib use pic_8MHz
+;@jallib use self_test
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+const bit ADC_HIGH_RESOLUTION = true
+const word ADC_RSOURCE = 2_500
+porta_direction = all_output
+portb_direction = all_output
+
+include adc
+adc_init()
+
+set_analog_pin(0)
+-- check pin on PORTA configured as inputs (1 is 0b0000_0001 => RA0)
+asm nop
+test_byte(TRISA)  ;@assertEquals 1 test_porta_pin_an0_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an0_input
+
+set_analog_pin(1)
+-- check pin on PORTA configured as inputs (3 is 0b0000_0011 => RA{0,1})
+asm nop
+test_byte(TRISA)  ;@assertEquals 3 test_porta_pin_an01_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an01_input
+
+set_analog_pin(2)
+-- check pin on PORTA configured as inputs (6 is 0b0000_0111 => RA{0,1,2})
+asm nop
+test_byte(TRISA)  ;@assertEquals 7 test_porta_pin_an012_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an012_input
+
+set_analog_pin(3)
+-- check pin on PORTA configured as inputs (6 is 0b0000_0111 => RA{0,1,2,3})
+asm nop
+test_byte(TRISA)  ;@assertEquals 15 test_porta_pin_an0123_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an0123_input
+
+set_analog_pin(4)
+-- check pin on PORTA configured as inputs (6 is 0b0000_0111 => RA{0,1,2})
+asm nop
+test_byte(TRISA)  ;@assertEquals 31 test_porta_pin_an01234_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 0 test_portb_pin_an01234_input
+
+set_analog_pin(5)
+-- check pin on PORTA configured as inputs (6 is 0b0000_0111 => RA{0,1,2})
+asm nop
+test_byte(TRISA)  ;@assertEquals 31 test_porta_pin_an012345_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 64 test_portb_pin_an012345_input
+
+set_analog_pin(6)
+-- check pin on PORTA configured as inputs (6 is 0b0000_0111 => RA{0,1,2})
+asm nop
+test_byte(TRISA)  ;@assertEquals 31 test_porta_pin_an0123456_input
+asm nop
+test_byte(TRISB)  ;@assertEquals 192 test_portb_pin_an0123456_input
+

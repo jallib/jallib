@@ -1,0 +1,99 @@
+-- ------------------------------------------------------
+-- Title: Tst (no-sample version) program for ds18b20.jal
+--
+-- Author: Vasile Guta Ciucur, Copyright (c) 2010..2010, all rights reserved.
+--
+-- Adapted-by: mkerna@gmail.com
+--
+-- Compiler: >=2.4m
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Test program
+--    Read sensor temperature DS18B20. It does not use device ID, so there
+--    can only be a single device on the bus.
+--
+-- Sources:
+--
+-- Notes: requires serial port to display result
+--
+-- ------------------------------------------------------
+
+;@jallib use chipdef
+
+include delay
+include print
+include format
+
+-- set all IO as digital
+enable_digital_io()
+
+-- ok, now setup serial
+const serial_hw_baudrate = 9600
+include serial_hardware
+serial_hw_init()
+alias device is serial_hw_data
+
+-- setup pin definitions for dallas one-wire bus
+alias d1w_bus            is pin_b1
+alias d1w_bus_direction  is pin_b1_direction
+include one_wire           -- include one-wire library
+d1w_init()                 -- init one-wire bus
+
+-- select one of the output formats below
+const ds18b20_value_raw          = 0
+const ds18b20_value_celcius      = 1
+const ds18b20_value_farenheit    = 0
+
+const ds18b20_ignore_crc         = 0 -- 1 tell lib to ignore crc (code becomes smaller and faster, but reliability of data is less)
+const ds18b20_max_retries        = 2 -- 1 means the library re-reads once when crc fails, 4 means up to 4 retries (so max 5 reads)
+
+include ds18b20            -- include library for ds18b20 temperature sensor with one-wire interface
+
+-- strings and vars for the main loop
+const byte str1[]       = "Temp="
+const byte str_err1[]   = "ds18b20 read failed."
+var byte i
+var sword temperature
+var bit r
+
+led_direction = output
+
+forever loop
+
+   ds18b20_convert()  -- tell all ds18b20 devices to start conversion
+
+   delay_1ms(750)    -- wait for conversion to complete (mandatory when
+                     -- sensor is working in parasite mode)
+
+   led = high
+   r = ds18b20_s_temp(temperature)                  -- read conversion result
+   if (r) then
+      -- success, so print temperature
+      print_string(device, str1)                   -- print string
+      format_sword_dec(device, temperature, 5, 1)  -- print temperature in xx.x format
+      device = "C"
+      device = " "
+   else
+      -- print fail message
+      print_string(device, str_err1)
+   end if
+
+   -- read the device's ID and print it
+   r = ds18b20_s_read_rom()
+   if (r) then
+      -- read_rom successful, so print ID which is now stored in scratchpad
+      for 8 using i loop
+         print_byte_hex(device, scratchpad[i])
+         if (i != 7) then device = "." end if
+      end loop
+   else
+      -- print fail message
+      print_string(device, str_err1)
+   end if
+
+   print_crlf(device)
+   led = low
+end loop

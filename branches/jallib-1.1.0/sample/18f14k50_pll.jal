@@ -1,0 +1,196 @@
+-- --------------------------------------------------------------------------------------------
+-- Title: Example of the Motorola MC145156 PLL IC Lib using a PIC18F14K50
+-- Author: Pavel Milanes Costa (CO7WT) - pavelmc@gmail.com, copyright (c) 2014, all rights reserved.
+-- Compiler: >=2.4q3
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Example of use of the PLL lib for the MC145156 IC. This example is for demostrating the
+-- capabilities of jallib to manage the IC to revive an ancient VHF tranceiver from the
+-- Yaesu house: an FT-23R
+-- --
+-- This tranceiver has afully functional system with the MC145156-2, the only thing you need to
+-- know is how to wire the data, clock and enable wires
+-- --
+-- Other technical details: the IC has a 10.240 Mhz XTAL as the reference and is configured
+-- to divide by 2048, that gives you a 5Khz reference clock and minimum step; the prescaler is a
+-- common dual modulus 64/65 one.
+--
+-- Sources:
+-- Thechnical Suplement for the Yaesy FT-23R in the internet, the datasheet of the MC145156-2,
+-- datasheet of the prescaller and a old FT-23R
+--
+-- Notes:
+-- * This file is maintained by hand!!!
+-- * The goal of the lib is to make a simple VHF signal (RF) generator for VHF testing/repairing
+--   this is only a demo of the capabilities.
+-- * With my stock hardware the generator can cover ~116 to ~150 Mhz, with modifications & tweaking
+--  (VCC increased from 5V to 8V and some adjustments) it can cover now from ~100 to 190 Mhz
+--
+
+-- device map
+--             +VCC [1     20] GND
+--               A5 [2     19] PGD
+--               A4 [3     18] PGC
+--        MCLR > A3 [4     17] +VUSB
+--         DAT < C5 [5     16] C0 > d7  |
+--         CLK < C4 [6     15] C1 > d6  | LCD 4 bits
+--         ENB < C3 [7     14] C2 > d5  |
+--               C6 [8     13] B4 > d4  |
+--       abajo > C7 [9     12] B5 > RS  |
+--      arriba > B7 [10    11] B6 > EN  |
+
+-- include the device
+include	18F14K50	-- target PICmicro
+pragma target clock       16_000_000
+
+-- fuses
+WDTCON_SWDTEN               = OFF           -- WDT off
+OSCCON_SCS                  = 0b10          -- Clock Source is internal
+OSCCON_IRCF                 = 0b111         -- The internal Clock sources is set to 16 Mhz
+pragma target CPUDIV        P1              -- NO_CPU_SYSTEM_CLOCK_DIVIDE
+pragma target USBDIV        P1              -- USB_CLOCK_COMES_DIRECTLY_FROM_THE_OSC1_OSC2_OSCILLATOR_BLOCK_NO_DIVIDE
+pragma target OSC           INTOSC_NOCLKOUT
+pragma target PLLEN         DISABLED
+pragma target FCMEN         DISABLED
+pragma target IESO          DISABLED
+pragma target PWRTE         DISABLED        -- power up timer
+pragma target BROWNOUT      DISABLED        -- no brownout detection
+pragma target VOLTAGE       V30             -- brown out voltage
+pragma target WDT           CONTROL         -- watchdog software controlled
+pragma target WDTPS         P32K            -- watch dog scaler setting
+pragma target MCLR          INTERNAL        -- external reset
+pragma target LVP           DISABLED        -- no low-voltage programming
+pragma target XINST         ENABLED         -- extended instruction set
+pragma target DEBUG         DISABLED        -- background debugging
+pragma target CP0           DISABLED        -- code block 0 not protected
+pragma target CP1           DISABLED        -- code block 1 not protected
+pragma target CPB           DISABLED        -- bootblock code not write protected
+pragma target WRT0          DISABLED        -- table writeblock 0 not protected
+pragma target WRT1          DISABLED        -- table write block 1 not protected
+pragma target WRTB          DISABLED        -- bootblock not write protected
+pragma target WRTC          DISABLED        -- config not write protected
+pragma target EBTR0         DISABLED        -- table read block 0 not protected
+pragma target EBTR1         DISABLED        -- table read block 1 not protected
+pragma target EBTRB         DISABLED        -- boot block not protected
+pragma target HFOFST        ENABLED         -- THE_SYSTEM_CLOCK_IS_HELD_OFF_UNTIL_THE_HFINTOSC_IS_STABLE
+
+-- All digital
+enable_digital_io()
+
+-- ### LCD @ 4 bits (1x16)
+const		byte		LCD_ROWS		= 1
+const		byte		LCD_CHARS		= 16
+alias		lcd_d4		is pin_B4
+alias		lcd_d5		is pin_C2
+alias		lcd_d6		is pin_C1
+alias		lcd_d7		is pin_C0
+alias		lcd_rs		is pin_B5
+alias		lcd_en		is pin_B6
+-- all lcd pins to output
+pin_B4_direction		= output
+pin_B5_direction		= output
+pin_B6_direction		= output
+pin_C0_direction		= output
+pin_C1_direction		= output
+pin_C2_direction		= output
+-- loading and init...
+include lcd_hd44780_4
+lcd_init()
+
+-- include delay lib
+include delay
+
+-- setup the format lib to show data to the lcd
+include format
+include print
+
+-- pins for up/down with external pull-ups of 10k
+-- alias
+alias UP is pin_B7
+alias DOWN is pin_C7
+-- dir
+pin_B7_direction	= input
+pin_C7_direction	= input
+
+-- pins for PLL, alias
+alias pll_dat is pin_C5
+alias pll_clk is pin_C4
+alias pll_en is pin_C3
+-- dirs
+pin_C5_direction	= output
+pin_C4_direction	= output
+pin_C3_direction	= output
+
+-- debounce
+include debounce
+
+-- variables
+var dword freq = 145_000	-- the initial freq in Khzm this is a common Ham radio freq
+-- debounce ones
+var word updb = debounce_init(255)
+var word dwdb = debounce_init(255)
+-- temp
+var word tword
+
+-- setup of the PLL lib
+const byte PLL_R = 5		-- 5 Khz of minimun step
+const byte PLL_P = 64		-- prescaler simple value, in my case 64/65
+include pll_mc145156
+pll_init(freq)			-- set the initial freq to 145.000 Mhz as predefined before
+
+procedure showit() is
+   -- update the LCD
+   lcd_cursor_position(0,0)
+   print_string(lcd,"Freq ")
+   format_dword_dec(lcd,freq,6,3)
+   print_string(lcd," Mhz")
+end procedure
+
+-- WELCOME of the LCD
+lcd_cursor_position(0,0)
+--                0123456789abcdef
+print_string(lcd,"PLL test FT-23R ")
+-- delay
+delay_1s(5)
+--
+lcd_cursor_position(0,0)
+--                0123456789abcdef
+print_string(lcd,"As RF Generator ")
+-- delay
+delay_1s(5)
+
+var bit show = on
+
+-- forever loop, fun is down here
+forever loop
+   -- I need to update the LCD & PLL?
+   if (show == on) then
+      -- Set the PLL to the new freq
+      pll_set(freq)
+      -- Show it on the LCD
+      showit()
+      -- flag down
+      show = off
+   end if
+   --
+   -- check for inputs
+   -- UP first...
+   tword = debounce(UP, updb)
+   if (tword == 2) then
+      -- +1 and update
+      freq = freq + PLL_R
+      show = on
+   end if
+   --
+   -- DOWN ...
+   tword = debounce(DOWN, dwdb)
+   if (tword == 2) then
+      -- -1 and update
+      freq = freq - PLL_R
+      show = on
+   end if
+end loop
