@@ -19,7 +19,7 @@ Dim $Folder = "C:\JallibWorkplace" ; NO TRAILING /
 
 FileInstall(	"files\7za.exe"											,@tempdir & "\7za.exe",1)
 FileInstall(	"files\jaledit0.9.0.9.zip"								,@tempdir & "\jaledit.zip",1)
-FileInstall(	"files\jallib-pack-jalv24q3-1.1.2beta.zip"				,@tempdir & "\jallib.zip",1)
+FileInstall(	"files\jallib-pack-jalv24q3-1.1.0.zip"				,@tempdir & "\jallib.zip",1)
 FileInstall(	"files\jalv24q3.zip"									,@tempdir & "\jalv2.zip",1)
 FileInstall(	"images\jal_logo.jpg"									,@tempdir & "\jal_logo.jpg")
 
@@ -243,9 +243,9 @@ Func NextButton()
 			IniWrite($folder & "\jaledit\JALEdit.ini", "Compiler", "feJALExe_Text", $Folder & "\compiler\jalv2.exe")
 
 		 ;add shortcuts
-		 ;consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @DesktopDir & "\JalEdit.lnk", $Folder & "\jaledit\"))
+		 consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @DesktopDir & "\JalEdit.lnk", $Folder & "\jaledit\"))
 		 DirCreate(@StartMenuDir & "\JalEdit")
-		 ;consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @StartMenuDir & "\JalEdit\JalEdit.lnk", $Folder & "\jaledit\"))
+		 consolewrite (FileCreateShortcut($Folder & "\jaledit\jaledit.exe", @StartMenuDir & "\JalEdit\JalEdit.lnk", $Folder & "\jaledit\"))
 		 EndIf
 
 		 GUICtrlSetData($Label5, "Installation is complete!")
@@ -338,7 +338,7 @@ Func FileCopyMulti($Source, $Destination, $Mask = '*')
     $FileList = _FileListToArray($Source, $Mask, 1)
     If Not @error Then
         For $i = 1 To $FileList[0]
-			;ConsoleWrite($FileList[$i])
+			ConsoleWrite($FileList[$i])
             $Path = $Destination & '\' & $FileList[$i]
             $Count = 2
             While FileExists($Path)
