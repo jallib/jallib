@@ -1,0 +1,337 @@
+-- --------------------------------------------------------------------------------------------
+-- Title: LCD library for LCDs with just one big dot matrix for use as simple character device
+--
+-- Author: Pavel Milanes Costa, Copyright (c) 2015, all rights reserved. pavelmc@gmail.com
+--
+-- Adapted-by:
+--
+-- Compiler: >=2.4p3
+--
+-- Revision: 1
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: Datasheets of two type of GLCD modules & dot matrix controllers
+--		- DATA IMAGE PY163210 REV:A (thanks to sally Kao at DATA IMAGE enterprise)
+--		- XIAMEN OCULAR GDM16032D VER1.0 (from website)
+--		- Datasheets for the SBN1661, AX6120 and SED1520 dot matrix LCD controllers
+-- --
+--		As usual nowdays, a variety of sources on the internet...
+--
+-- Description:
+--		This modules have the (same) following pinouts:
+-- --
+--		1		GND		Ground or 0.0 volts
+--		2		VDD		(2.7 to 5.5 V)
+--		3		VEE		(-1.0 to -2.3V) This is used for display contrast, see datasheet !!!
+--		4		A0		Instruction (off) / Data (on) selector
+--		5		R/W		Read/Write, tie it to GND, this lib doesn't read.
+--		6		E3		Enable chip 3
+--		7		D0		bit 0 data
+--		8		D1		bit 1 data
+--		9		D2		bit 2 data
+--		10		D3		bit 3 data
+--		11		D4		bit 4 data
+--		12		D5		bit 5 data
+--		13		D6		bit 6 data
+--		14		D7		bit 7 data
+--		15		LED K	Backlight Led Cathode (hole, but no pin on)
+--		16		LED A	Backlight Led Anode (hole, but no pin on)
+--		17		E1		Enable chip 1
+--		18		E2		Enable chip 2
+-- --
+--		This LCD need 12 pins from your PIC and will eat about ~1k more of your memory over
+--		the classic lcd library, plus some data banks, and only implement charcater capability
+--		no graphs here.
+-- --
+--		As per the datasheet the command set of this lib is compatible with this chips:
+--		AX6120, AX6121, SBN1661, SBN0080, SED1520, SED1521 and SED1522
+--		others can be supported.
+-- --
+--		You must define a full 8 bit dataport for data communication
+-- --
+--			alias lcd_dataport 				is portB
+-- --
+-- 		Also need to define the handshake and enable pins
+-- --
+--			alias lcd_a0				is pin_C0
+--			alias lcd_e1				is pin_C1
+--			alias lcd_e2				is pin_C2
+--			alias lcd_e3				is pin_C3
+-- --
+--		You need to set all this pins/ports to 'output' direction
+-- --
+--		This lib asume your hardware use 3 chips to manage the 160 columns in a 40+80+40 splits,
+--		then, when used in character mode (not graphics) you can use a 26x4 area (pretty good!!!)
+--		so this size is hard coded on the lib code. If your hardware use other split or size
+--		of the matrix: copy this file, adapt it, create another lib and submmit it to jallib project
+-- --
+--		Then include the library
+-- --
+--			include lcd_one_dot_matrix.jal
+-- --
+--		Call the init of the lib and you are rocking now
+-- --
+--			lcd_init()
+--
+-- Note: This lib doesn't read anything from the LCD, the lcd has this capability, but it will eat
+--		one of your precious pins and more code area; we manage to wait the time stated on the
+--		datasheets to not get caught in a busy state when writing.
+-- --
+--		This lib use the data port ONLY when writing to it, so the rest of the time it's on input
+--		mode and you can use this port as you like, so you can play with it to multiplex a function
+--		on this data port.
+--
+-- Dependencies: delay.jal, lcd_5x7_font.jal
+
+-- compiler sanity checks
+if !defined(lcd_dataport) | !defined(lcd_dataport_direction) then
+   -- ERROR
+   _error "You must define a full data port for comunication pruposes, and it's direction alias"
+end if
+--
+if !defined(lcd_a0) then
+   -- ERROR
+   _error "You must define a command/data aliase pins (lcd_a0)"
+end if
+--
+if !defined(lcd_e1) | !defined(lcd_e2) | !defined(lcd_e3) then
+   -- ERROR
+   _error "You must define all the enable aliases pins (lcd_e1 to lcd_e3)"
+end if
+
+-- including the small font and delay lib
+include glcd_5x7_font
+include delay
+
+-- configure the small font lib
+alias _fbxc		is FONT_5X7_BYTE_PER_CHAR
+alias _fw		is FONT_5X7_WIDTH
+alias _fchars	is FONT_5X7_CHARS
+
+-- This lib use a 160x32 dot matrix, in character mode you can use 4 rows and 26 chars
+-- Whit this arrangement you have 4 columns(dots) to spare, this lib place 2 before and left 2
+-- after the character block to center the data on the display.
+const LCD_ROWS = 4
+const LCD_CHARS = 26
+
+-- Default command set for the AX6120/SB1661/SED1520 dot matrix controllers
+const byte _CMD_ADC_FWD			= 0b1010_0000		-- CW order of the data left to right
+const byte _CMD_LINE_START_0	= 0b1100_0000		-- Chip start line, where? line 0
+const byte _CMD_ON				= 0b1010_1111		-- Chip on
+const byte _CMD_OFF				= 0b1010_1110		-- Chip off
+const byte _CMD_DUTY_32			= 0b1010_1001		-- This config use 32 lines (olso 1/16 lines)
+const byte _CMD_STATIC_ON		= 0b1010_0100		-- Enable the segments outputs
+const byte _CMD_STATIC_OFF		= 0b1010_0101		-- Disable the segments outputs
+const byte _CMD_RESET			= 0b1110_0010		-- Reset by software, this don'touch display image
+const byte _CMD_PAGE_MASK		= 0b1011_1000		-- Page selecion mask
+
+-- load enable flags to set
+var bit _lcd_le1
+var bit _lcd_le2
+var bit _lcd_le3
+
+-- current position of the row and col
+var byte _lcd_curr_row
+var byte _lcd_curr_col
+
+procedure _lcd_send_cmd(byte in sd, bit in d) is
+   -- send data to the lcd, either command or data, depending of "d"
+   -- d on; is data
+   -- d off; is command
+   --
+   lcd_a0 = d
+   --
+   lcd_dataport = sd
+   --
+   -- set the enable flags
+   lcd_e1 = _lcd_le1
+   lcd_e2 = _lcd_le2
+   lcd_e3 = _lcd_le3
+   --
+   -- this delay is from the datasheet, 800 nsec typical
+   _usec_delay(1)
+   --
+   -- reset the enable flags
+   lcd_e1 = off
+   lcd_e2 = off
+   lcd_e3 = off
+end procedure
+
+procedure _lcd_on(bit in start) is
+   -- turn the display on, or put it on full standby mode
+   --
+   -- the start is for each individual chip, but doing all at once is proved to be safe
+   -- at least on my setup (tested with SBN1661/AX6120)
+   _lcd_le1 = on
+   _lcd_le2 = on
+   _lcd_le3 = on
+   --
+   if start then
+      -- chip on
+      _lcd_send_cmd(_CMD_ON, off)
+      -- reset
+      _lcd_send_cmd(_CMD_RESET, off)
+      -- init on line 0
+      _lcd_send_cmd(_CMD_LINE_START_0, off)
+      -- adc forward, aka normal
+      _lcd_send_cmd(_CMD_ADC_FWD, off)
+      -- duty 1/32, aka 32 lines or 4 rows
+      _lcd_send_cmd(_CMD_DUTY_32, off)
+      -- static drive on
+      _lcd_send_cmd(_CMD_STATIC_ON, off)
+   else
+      -- full standby mode, my display make (sometimes) a funny fadding out effect...
+      -- if you are not satisfied with this, make a lcd_clear before
+      _lcd_send_cmd(_CMD_OFF, off)
+      _lcd_send_cmd(_CMD_STATIC_OFF, off)
+   end if
+end procedure
+
+procedure _lcd_set_page(byte in page) is
+   -- This must be done all at once, otherwise it won't work
+   --
+   _lcd_le1 = on
+   _lcd_le2 = on
+   _lcd_le3 = on
+   -- send cmd
+   _lcd_send_cmd(_CMD_PAGE_MASK + page, off)
+end procedure
+
+procedure _lcd_set_column(byte in col) is
+   -- I must determine the correct enable pins to activate
+   -- in this hardware case I have 40+80+40 columns aka e1, e2 and e3
+   -- column 0   - 39		E1
+   -- column 40  > 119		E2
+   -- column 120 > 159		E3
+   --
+   if (col < 40) then
+      _lcd_le1 = on
+      _lcd_le2 = off
+      _lcd_le3 = off
+   end if
+   --
+   if (col > 39 & col < 120) then
+      _lcd_le1 = off
+      _lcd_le2 = on
+      _lcd_le3 = off
+      --
+      col = col - 40
+   end if
+   --
+   if (col > 119) then
+      _lcd_le1 = off
+      _lcd_le2 = off
+      _lcd_le3 = on
+      --
+      col = col - 120
+   end if
+   --
+   _lcd_send_cmd(col, off)
+end procedure
+
+procedure _lcd_write(byte in sd) is
+   -- This is the proc in charge of write a char to the display
+   -- the position is set before in the current postion vars
+   --
+   var byte _i = 0
+   var byte _char = 0
+   var word _pos = 0
+   for _fbxc using _i loop
+      -- calculate the position on the array
+      _pos = sd
+      _pos = ((_pos - 32) * _fbxc ) +_i
+      _char = _fchars[_pos]
+      -- reuse pos to calc the correct column
+      _pos = _lcd_curr_col * (_FW+1) +2		-- 160 mod 6 = 4, then left 2 dots each side
+      -- write it down
+      _lcd_set_page(_lcd_curr_row)
+      _lcd_set_column(byte(_pos) + _i)
+      _lcd_send_cmd(_char, on)
+   end loop
+end procedure
+
+-- ### this is my command option, I need it on my test code.
+
+-- ----------------------------------------------------------------------------
+-- lcd_clear_row - clears a LCD row
+-- ----------------------------------------------------------------------------
+procedure lcd_clear_row(byte in r) is
+   -- run for all bytes on the array for the corresponding page and set it to 0
+   var byte _t1
+   _lcd_set_page(r)
+   for 160 using _t1 loop
+      _lcd_set_column(_t1)
+      _lcd_send_cmd(0, on)
+   end loop
+end procedure
+
+
+-- ###################### to satisfy the operation of the "normal" lcd lib
+
+-- ----------------------------------------------------------------------------
+-- lcd_clear_screen - clears the LCD
+-- ----------------------------------------------------------------------------
+procedure lcd_clear_screen() is
+   -- run for all bytes on the array and set it to 0 (off) one page at a time
+   var byte _t1
+   for 4 using _t1 loop
+      lcd_clear_row(_t1)
+   end loop
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- lcd_init - initialize the lib
+-- ----------------------------------------------------------------------------
+procedure lcd_init() is
+   -- initialize the lcd lib
+   --
+   -- re-power on the device
+   _lcd_on(on)
+   --
+   -- reset position variables
+   _lcd_curr_row = 0
+   _lcd_curr_col = 0
+   --
+   _usec_delay(40)
+   lcd_clear_screen()
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- lcd_write_char - write one char to LCD
+-- ----------------------------------------------------------------------------
+procedure lcd_write_char(byte in data) is
+   _lcd_write(data)
+   _lcd_curr_col = _lcd_curr_col +1
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- lcd'put - write one char to screen (pseudo var, enables streams)
+-- ----------------------------------------------------------------------------
+procedure lcd'put(byte in data) is
+   -- ' <- syntax higlight correction on editra :-)
+   --
+   _lcd_write(data)
+   _lcd_curr_col =_lcd_curr_col +1
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- lcd_cursor_position - Specify row and column (0-based)
+-- --
+-- This is an array of 26 chars on every row and 4 rows
+-- Any position beyond/out the end of the working area is discarded
+-- ----------------------------------------------------------------------------
+procedure lcd_cursor_position(byte in line, byte in pos) is
+   -- border check
+   if line > LCD_ROWS then
+      return
+   end if
+   --
+   if pos > LCD_CHARS then
+      return
+   end if
+   --
+   _lcd_curr_row = line
+   _lcd_curr_col = pos
+end procedure
