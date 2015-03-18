@@ -1,40 +1,38 @@
 #!/usr/bin/python
-# ----------------------------------------------------------------------
-# Title: pic2Jal.py  - Create JalV2 device files for flash PICs
-#
-# Author: Rob Hamerling, Copyright (c) 2014..2014, all rights reserved.
-#
-# Adapted-by:
-#
-# Revision: $Revision$
-#
-# Compiler: N/A
-#
-# This file is part of jallib  http://jallib.googlecode.com
-# Released under the BSD license
-#              http://www.opensource.org/licenses/bsd-license.php
-#
-# Description:
-#   Python script to create device specifications for JALV2, and
-#   the file chipdef_jallib.jal, included by each of these.
-#   Input are .pic files from MPLAB-X.
-#   Apart from declaration of all registers, register-subfields, ports
-#   and pins of the chip the device files contain shadowing procedures
-#   to prevent the 'read-modify-write' problems and use the LATx register
-#   (for PICs which have such registers) for output in stead of PORTx.
-#   In addition some device dependent procedures are provided
-#   for common operations, like enable_digital_io().
-#   Also various aliases are declared to 'normalize' the names of
-#   registers and bit fields, which makes it easier to build device
-#   independent libraries.
-#
-# Sources:  MPLAB-X .pic files
-#
-# Notes:
-#   - A summary of changes of this script is maintained in 'changes.txt'
-#     (not published, available on request).
-#
-# ----------------------------------------------------------------------
+"""Create JalV2 device files for flash PICs.
+
+Author: Rob Hamerling, Copyright (c) 2014..2015, all rights reserved.
+
+Adapted-by:
+
+Revision: $Revision$
+
+Compiler: N/A
+
+This file is part of jallib  http://jallib.googlecode.com
+Released under the BSD license
+             http://www.opensource.org/licenses/bsd-license.php
+
+Description:
+  Python script to create device specifications for JALV2, and
+  the file chipdef_jallib.jal, included by each of these.
+  Primary input are .pic files of MPLAB-X.
+  Apart from declaration of all registers, register-subfields, ports
+  and pins of the chip the device files contain shadowing procedures
+  to prevent the 'read-modify-write' problems and use the LATx register
+  (for PICs which have such registers) for output in stead of PORTx.
+  In addition some device dependent procedures are provided
+  for common operations, like enable_digital_io().
+  Also various aliases are declared to 'normalize' the names of
+  registers and bit fields, which makes it easier to build device
+  independent libraries.
+
+Sources:  MPLAB-X .pic files
+
+Notes:
+  - A summary of changes of this script is maintained in 'changes.txt'
+    (not published, available on request).
+"""
 
 import os, sys
 import re
@@ -45,28 +43,30 @@ from string import maketrans
 from xml.dom.minidom import parse, Node
 
 
-# --- basic working parameters -----------------------------
-
-scriptversion   = "0.0.8"
+# --- basic working parameters
+scriptversion   = "0.1.0"
 scriptauthor    = "Rob Hamerling"
-compilerversion = "2.4q2"
-mplabxversion   = "215"
-mplabxbase      = "k:/mplab-x_" + mplabxversion                # MPLAB-X base directory
-jallibbase      = "k:/jallib"                                  # local copy of jallib trunk
+compilerversion = "2.4q3"
+mplabxversion   = "300"                                                     # latest MPLAB-X version
 
-# --- input -----------------------------------------------
 
+# --- input
+home          = os.path.join("/", "home", "robh")                           # user home directory
+base          = os.path.join("/", "media", "NAS")                           # base of MPLAB-X material  
+mplabxbase    = os.path.join(base, "mplab-x_" + mplabxversion)              # MPLAB-X base directory
+jallibbase    = os.path.join(home, "jallib")                                # local copy of jallib trunk
 picdir        = os.path.join(mplabxbase, "crownking.edc.jar/content/edc")   # basedir of .pic files
 devspecfile   = os.path.join(jallibbase, "tools/devicespecific.json")       # additional PIC properties
 pinmapfile    = os.path.join(jallibbase, "tools/pinmap_pinsuffix.json")     # pin aliases
 datasheetfile = os.path.join(jallibbase, "tools/datasheet.list")            # list of datasheets
 
-# --- output ----------------------------------------------
 
-dstdir      = "./test"                                         # dest. of generated (test) device files
+# --- output
+dstdir      = "./test"                                         # default destination of device files
+chipdeffile = "chipdef_jallib.jal"                             # chip type identifications
 
-# --- global constants and variables ----------------------
 
+# --- global variables
 cfgvar      = {}                                               # PIC properties on picname
 devspec     = {}                                               # PIC specific info on picname
 pinmap      = {}                                               # pin mapping (pin aliases)
@@ -74,26 +74,21 @@ pinanmap    = {}                                               # list of pin_ANx
 datasheet   = {}                                               # datasheet + suffix on DS number
 fusedef_osc = {}                                               # fuse_def OSC keyword mapping
 fusedef_kwd = {}                                               # fuse_def keyword normalization
-
 sharedmem   = []                                               # begin,end allocatable shared mem
-
 sfrranges   = {}                                               # address range per base address
-
 names       = []                                               # names of declared variables
-
-xtable      = maketrans("+-:;.,<>{}[]()=/?",     \
+xtable      = maketrans("+-:;.,<>{}[]()=/?",  \
                         "                 ")                   # translate fuse_def descriptions
 
 
-
-# ---------------------------------------------------------
-# Title:   Add copyright, etc to header in device files and chipdef.jallib
-# Input:   filespec of destination file
-# Returns: nothing
-# ---------------------------------------------------------
 def list_copyright(fp):
+   """ Add copyright, etc to header in device files and chipdef.jallib
+
+   Input:   filespec of destination file
+   Returns: nothing
+   """
    fp.write("--\n")
-   fp.write("-- Author: " + scriptauthor + ", Copyright (c) 2008..2014, " +
+   fp.write("-- Author: " + scriptauthor + ", Copyright (c) 2008..2015, " +
                           "all rights reserved.\n")
    fp.write("--\n")
    fp.write("-- Adapted-by: N/A (generated file, do not change!)\n")
@@ -108,12 +103,13 @@ def list_copyright(fp):
    fp.write("--\n")
 
 
-# ---------------------------------------------------------
-# Title:   List common constants in ChipDef.Jal
-# Input:   filespec of destination file
-# Returns: nothing
-# ---------------------------------------------------------
+
 def list_chipdef_header(fp):
+   """ List common constants in ChipDef.Jal
+
+   Input:   filespec of destination file
+   Returns: nothing
+   """
    list_separator(fp)
    fp.write("-- Title: Common Jallib include file for device files\n")
    list_copyright(fp)                                      # insert copyright and other info
@@ -124,6 +120,7 @@ def list_chipdef_header(fp):
    fp.write("--\n")
    fp.write("-- Notes:\n")
    fp.write("--    - File creation date/time: " + time.ctime() + "\n")
+   fp.write("--    - Based on MPLAB-X " + mplabxversion[0:1] + "." + mplabxversion[1:3] + "\n")
    fp.write("--    - This file is generated by <pic2jal.py> script version " + scriptversion + "\n")
    fp.write("--\n")
    list_separator(fp)
@@ -152,18 +149,20 @@ def list_chipdef_header(fp):
    fp.write("--      ....                                  -- for 16F88 only\n")
    fp.write("--    endif\n")
    fp.write("--\n")
+   list_separator(fp)
 
 
-# ---------------------------------------------------------
-# Title:   Generate common header
-# Input:   - picname
-#          - destination file
-# Returns: nothing
-# Notes:   - Shared memory for _pic_accum and _pic_isr_w is allocated:
-#            - for core 12, 14 and 14H from high to low address
-#            - for core 16 from low to high address
-# ---------------------------------------------------------
+
 def list_devicefile_header(fp, picname):
+   """ Generate common header
+
+   Input:   - picname
+            - destination file
+   Returns: nothing
+   Notes:   - Shared memory for _pic_accum and _pic_isr_w is allocated:
+              - for core 12, 14 and 14H from high to low address
+              - for core 16 from low to high address
+   """
    list_separator(fp)
    fp.write("-- Title: JalV2 device include file for " + picname + "\n")
    list_copyright(fp)
@@ -199,8 +198,9 @@ def list_devicefile_header(fp, picname):
    if "dsid" in cfgvar:
       dsid1 = cfgvar["dsid"]
       if (dsid1 != "0") & (dsid1 != ""):
-         dsid2 = dsid1[0:1] + "000" + dsid1[1:]
-         if (dsid1 != picdata["DATASHEET"]) & (dsid2 != picdata["DATASHEET"]):
+         dsid1 = dsid1[-4]                      # last 4 digits cfgvar spec
+         dsid2 = picdata["DATASHEET"][-4]       #  "   "   "    devicespecific
+         if (dsid1 != dsid2):
             print "   Conflicting datasheet numbers:"
             print "   .pic file: ", cfgvar["dsid"], ", devicespecific: ", picdata["DATASHEET"]
    if picdata["PGMSPEC"] != "-":
@@ -237,7 +237,6 @@ def list_devicefile_header(fp, picname):
       for i in range(0, len(cfgvar["datarange"]), 5):       # max 5 ranges per line
          y = cfgvar["datarange"][i : i+5]
          fp.write("pragma  data           " + ",".join(("0x%X-0x%X" % (r[0], r[1]-1)) for r in y) + "\n")
-
    fp.write("pragma  shared         ")
    global sharedmem
    sharedmem = []                                           # clear
@@ -272,7 +271,6 @@ def list_devicefile_header(fp, picname):
       sharedmem = list(cfgvar["sharedrange"])               # take a workcopy for allocation
       sharedmem[1] = sharedmem[1]  - 1                      # high address
    fp.write("--\n")
-
    sharedmem_avail = sharedmem[1] - sharedmem[0] + 1        # incl upper bound
    if (cfgvar["core"] == "12") | (cfgvar["core"] == "14"):
       if sharedmem_avail < 2:
@@ -294,14 +292,15 @@ def list_devicefile_header(fp, picname):
    fp.write("--\n")
 
 
-# ---------------------------------------------------------
-# Title:   Generate configuration memory declaration and defaults
-# Input:   - picname
-#          - output file
-# Output:  part of device files
-# Returns: (nothing)
-# ---------------------------------------------------------
+
 def list_config_memory(fp):
+   """ Generate configuration memory declaration and defaults
+
+   Input:   - picname
+            - output file
+   Output:  part of device files
+   Returns: (nothing)
+   """
    fp.write("const word   _FUSES_CT             = " + "%d" % cfgvar["fusesize"] + "\n")
    if cfgvar["fusesize"] == 1:                    #  single word: only with baseline/midrange
       fp.write("const word   _FUSE_BASE            = 0x%X" % cfgvar["fuseaddr"] + "\n")
@@ -334,18 +333,17 @@ def list_config_memory(fp):
 
 
 
-# ---------------------------------------------------------
-# Title:   Generate oscillator calibration instructions
-# Input:   - picname
-#          - output file
-# Output:  part of device files
-# Returns: (nothing)
-# Notes:   - Only for PICs with OSCCAL
-#          - Only safe for 12-bits core
-#          - Code for 14-bits core is present but disabled
-# ---------------------------------------------------------
 def list_osccal(fp):
+   """ Generate oscillator calibration instructions
 
+   Input:   - picname
+            - output file
+   Output:  part of device files
+   Returns: (nothing)
+   Notes:   - Only for PICs with OSCCAL
+            - Only safe for 12-bits core
+            - Code for 14-bits core is present but disabled
+   """
    if cfgvar["osccal"] > 0:                                 # PIC has OSCCAL register
       if cfgvar["core"] == '12':                            # 10F2xx, some 12F5xx, 16f5xx
          fp.write("var volatile byte  __osccal  at  0x%x" % cfgvar["osccal"] + "\n")
@@ -356,24 +354,24 @@ def list_osccal(fp):
                fp.write("asm          bcf   __fsr,6                  --   \"     \"\n")
          fp.write("asm          movwf __osccal                 -- calibrate INTOSC\n")
          fp.write("--\n")
-"""
+      """
       elif cfgvar["core"] == '14':                          # 12F629/675, 16F630/676
          fp.write("var  volatile byte  __osccal  at  0x%x" % cfgvar["osccal"] + "\n")
          fp.write("asm  page    call   0x%x" % (cfgvar["codesize"]-1) + " "*15 + "-- fetch calibration value\n")
          fp.write("asm  bank    movwf  __osccal            -- calibrate INTOSC\n")
          fp.write("--\n")
-"""
+      """
 
 
-# ---------------------------------------------------------
-# Title:   Generate declarations of special function registers, pins, etc.
-# Input:   - output file
-#          - root of .pic (xml parsed structure)
-# Output:  part of device files
-# Returns: (nothing)
-# Notes:   - skip SFRs with 'ExtendedModeOnly' parent
-# ---------------------------------------------------------
 def list_all_sfr(fp, root):
+   """ Generate declarations of special function registers, pins, etc.
+
+   Input:   - output file
+            - root of .pic (xml parsed structure)
+   Output:  part of device files
+   Returns: (nothing)
+   Notes:   - skip SFRs with 'ExtendedModeOnly' parent
+   """
    sfrdatasectors = root.getElementsByTagName("edc:SFRDataSector")
    for sfrdatasector in sfrdatasectors:
       if (sfrdatasector.parentNode.nodeName != "edc:ExtendedModeOnly"):
@@ -386,16 +384,17 @@ def list_all_sfr(fp, root):
                sfraddr = list_sfrdata_child(fp, child, sfraddr)
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration of a single SFR or a joined SFR with individual SFRs
-# Input:   - output file
-#          - SFRDef node
-#          - current SFR addr
-# Output:  part of device file
-# Returns: (nothing)
-# Notes:   MuxedSFRDef can exist within JoinedSFRDef
-# ---------------------------------------------------------
+
 def list_sfrdata_child(fp, child, sfraddr):
+   """ Generate declaration of a single SFR or a joined SFR with individual SFRs
+
+   Input:   - output file
+            - SFRDef node
+            - current SFR addr
+   Output:  part of device file
+   Returns: (nothing)
+   Notes:   MuxedSFRDef can exist within JoinedSFRDef
+   """
    if (child.nodeType == Node.ELEMENT_NODE):
       if (child.nodeName == "edc:SFRDef"):
          list_sfr(fp, child, sfraddr)
@@ -404,6 +403,7 @@ def list_sfrdata_child(fp, child, sfraddr):
          width = max(2, (eval(child.getAttribute("edc:nzwidth")) + 7) / 8)   # mplab-x bug
          list_separator(fp)
          list_variable(fp, reg, width, sfraddr)
+         list_multi_module_register_alias(fp, child)
          if (reg in ("FSR0", "FSR1", "PCLAT", "TABLAT", "TBLPTR")):
             list_variable(fp, "_" + reg.lower(), width, sfraddr)  # compiler required name
          gchild = child.firstChild
@@ -433,26 +433,25 @@ def list_sfrdata_child(fp, child, sfraddr):
    return calc_sfraddr(child, sfraddr)                               # adjust for next child
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration of a single register (and its bitfields)
-# Input:   - output file
-#          - SFRDef node
-#          - current SFR addr
-# Output:  part of device files
-# Returns: (nothing)
-# ---------------------------------------------------------
+
 def list_sfr(fp, sfr, sfraddr):
+   """ Generate declaration of a single register (and its bitfields)
+
+   Input:   - output file
+            - SFRDef node
+            - current SFR addr
+   Output:  part of device files
+   Returns: (nothing)
+   """
    picname = cfgvar["picname"]
    list_separator(fp)
    sfrname = sfr.getAttribute("edc:cname")
-
    if not ((sfrname == "GPIO") | ((sfrname.startswith("PORT")) & (sfrname != "PORTVP"))):
       list_variable(fp, sfrname, 1, sfraddr)                 # not a port
-
    if ((sfrname.startswith("LAT")) & (sfrname != "LATVP")):
       list_lat_shadow(fp, sfrname)
    elif ((sfrname.startswith("PORT")) & (sfrname != "PORTVP")):
-      if ((sfrname == "PORTB")  &  picname.startswith("12")):
+      if ((sfrname == "PORTB")  &  (picname.startswith("12"))):
          print "   PORTB register interpreted as GPIO / PORTA"
          list_variable(fp, "_GPIO", 1, sfraddr)
          list_alias(fp, "_PORTA", "_GPIO")
@@ -466,10 +465,14 @@ def list_sfr(fp, sfr, sfraddr):
       list_variable(fp, "_GPIO", 1, sfraddr)
       list_alias(fp, "_PORTA", "_GPIO")
       list_port_shadow(fp, "PORTA")
-   elif (sfrname in ("SPBRG", "SPBRG1")):
-      if ("SPBRGL" not in names):
+   elif (sfrname in ("SPBRG", "SPBRG1", "SP1BRG")):
+      width = eval(sfr.getAttribute("edc:nzwidth"))
+      if ((width == 8) & ("SPBRGL" not in names)):
          list_alias(fp, "SPBRGL", sfrname)
-   elif (sfrname in ("SPBRG2", "SPBRG2")):
+   #  elif (sfrname in ("SPBRGH", "SPBRGH1", "SP1BRGH")):
+   #     if ("SPBRG" not in names):
+   #        list_variable(fp, "SPBRG", 2, sfraddr - 1)
+   elif (sfrname in ("SPBRG2", "SP2BRG")):
       if ("SPBRGL2" not in names):
          list_alias(fp, "SPBRGL2", sfrname)
    elif ((sfrname == "TRISIO") | (sfrname == "TRISGPIO")):
@@ -491,8 +494,13 @@ def list_sfr(fp, sfr, sfraddr):
                child = child.nextSibling
                offset = list_sfr_subfield(fp, child, sfrname, offset)
 
-   list_multi_module_register_alias(fp, sfr)
+   #  Adding missing bitfields:
+   if ( (sfrname in ("SSPCON1", "SSP1CON1", "SSP2CON1"))  & \
+        (sfrname + "_SSPM" not in names) & (sfrname + "_SSPM3" in names)):
+      list_bitfield(fp, sfrname + "_SSPM", 4, sfrname, 0)
 
+   #  Special cases:
+   list_multi_module_register_alias(fp, sfr)
    if sfrname in ("BSR",  \
                   "FSR",    "FSR0L",   "FSR0H",   "FSR1L",   "FSR1H",   \
                   "INDF",   "INDF0",  \
@@ -505,25 +513,28 @@ def list_sfr(fp, sfr, sfraddr):
          list_status_sfr(fp, sfr)                              # compiler required additions
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration of a register subfield
-# Input:   - output file
-#          - SFRDef child node
-#          - SFR name
-#          - field offset
-# Output:
-# Returns: offset next child
-# Notes:   - bitfield
-#          - pin_A3 and pin_E3 are frequently MCLR pins and read only,
-#            and then declared under PORTA/E, rather than LATA/E.
-#          - some configuration info collected
-# ---------------------------------------------------------
+
 def list_sfr_subfield(fp, child, sfrname, offset):
+   """ Generate declaration of a register subfield
+
+   Input:   - output file
+            - SFRDef child node
+            - SFR name
+            - field offset
+   Output:
+   Returns: offset next child
+   Notes:   - bitfield
+            - pin_A3 and pin_E3 are frequently MCLR pins and read only,
+              and then declared under PORTA/E, rather than LATA/E.
+            - some configuration info collected
+   """
    global cfgvar
    if child.nodeType == Node.ELEMENT_NODE:
       if child.nodeName == "edc:AdjustPoint":
          picname = cfgvar["picname"]
-         if ((offset == 0)  & (picname in ("18f13k50", "18lf13k50", "18f14k50", "18lf14k50"))):
+         if ((offset == 0)  & (picname in ("18f13k50", "18lf13k50", "18f14k50", "18lf14k50",
+                                           "16f1454", "16f1455", "16f1459",
+                                           "16lf1454", "16lf1455", "16lf1459"))):
             if ((sfrname == "LATA") & ("pin_A0" not in names)):
                print "   Adding pin_A0, A1"
                for p in range(2):                           # add pin_A0..A1
@@ -563,12 +574,14 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                elif (fieldname.startswith("ADCS")  &  (fieldname[4:].isdigit())):
                   if (int(fieldname[4:]) >= cfgvar["adcs_bits"]):
                      cfgvar["adcs_bits"] = int(fieldname[4:]) + 1   # (highest) offset + 1
+            elif (fieldname == "RESERVED"):
+               pass                                         # skip reserved bits
             if ((sfrname == "ADCON0") & (fieldname == "ADCS") & (width == 2) & (picname in adcssplitpics)):
                list_bitfield(fp, "ADCON0_ADCS10", width, sfrname, offset)
                if (core == "16"):                           # ADCON1 comes before ADCON0
                   fp.write("--\n")
                   fp.write("var volatile byte   ADCON0_ADCS    -- shadow\n")
-                  fp.write("procedure ADCON0_ADCS'put (byte in x) is\n")
+                  fp.write("procedure ADCON0_ADCS'put(byte in x) is\n")
                   fp.write("   ADCON0_ADCS10 = (x & 0x03)      -- low order bits\n")
                   fp.write("   ADCON1_ADCS2  = (x & 0x04)      -- high order bit\n")
                   fp.write("end procedure\n")
@@ -595,13 +608,19 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                fp.write("   end if\n")
                fp.write("end procedure\n")
                fp.write("--\n")
+            elif ((sfrname.startswith("BAUDC")) & (fieldname == "CKTXP")):   # 'inverted' fieldname
+               list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+               list_alias(fp, sfrname + "_TXCKP", sfrname + "_CKTXP")
+            elif ((sfrname.startswith("BAUDC")) & (fieldname == "DTRXP")):   # 'inverted' fieldname
+               list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+               list_alias(fp, sfrname + "_RXDTP", sfrname + "_DTRXP")
             elif ((sfrname == "GPIO") & (fieldname.startswith("RB"))):   # suppress wrong pinnames
-               None
+               pass
             elif ((sfrname == "GPIO") & (fieldname.startswith("GPIO"))):
-               None
-    #       elif ((sfrname == "GPIO") & (fieldname.startswith("GP"))):
-    #          if (width == 1):
-    #             list_bitfield(fp, "GPIO_GP" + fieldname[-1], 1, "_" + "GPIO", offset)
+               pass
+            # elif ((sfrname == "GPIO") & (fieldname.startswith("GP"))):
+            #    if (width == 1):
+            #       list_bitfield(fp, "GPIO_GP" + fieldname[-1], 1, "_" + "GPIO", offset)
             elif ((sfrname == "GPIO") & (width == 1) & ("0" <= pinnumber <= "7")):
                list_bitfield(fp, sfrname + "_" + fieldname, width, "_" + sfrname, offset)
                pin = "pin_A" + pinnumber
@@ -625,23 +644,25 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                   fp.write("end procedure\n")
                   fp.write("--\n")
             elif ((fieldname == "NMCLR") & ((sfrname.startswith("PORT")) | (sfrname == "GPIO"))):
-#              print "   Renamed", fieldname, "of", sfrname, "to MCLR"
+               # print "   Renamed", fieldname, "of", sfrname, "to MCLR"
                list_bitfield(fp, sfrname + "_MCLR", 1, sfrname, offset)
             elif ((sfrname == "OPTION_REG") & (fieldname in ("T0CS", "T0SE", "PSA"))):
                list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
                list_alias(fp, "T0CON_" + fieldname, sfrname + "_" + fieldname)
+            elif ((sfrname == "OPTION_REG") & (fieldname == "NWPUEN")):
+               list_bitfield(fp, sfrname + "_" + "WPUEN", width, sfrname, offset)
             elif ((sfrname == "OPTION_REG")  &  (fieldname == "PS2")):
                list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
                if ("OPTION_REG_PS" not in names):
                   list_bitfield(fp, sfrname + "_PS", 3, sfrname, offset - 2)
                list_alias(fp, "T0CON_T0PS", sfrname + "_PS")
-       #    elif ((sfrname == "OSCCON") & (fieldname.startswith("IRCF")) & (width == 1)):
-       #       print sfrname, fieldname, width
-       #       None                                   # suppress enumerated IRCF bits
-       #    elif ((sfrname == "OSCCON") & (len(fieldname) > 3) &  \
-       #          (fieldname.startswith("SCS")) & (width == 1)):
-       #       print sfrname, fieldname, width
-       #       None                                   # suppress enumerated SCS bits
+            # elif ((sfrname == "OSCCON") & (fieldname.startswith("IRCF")) & (width == 1)):
+            #    print sfrname, fieldname, width
+            #    None                                   # suppress enumerated IRCF bits
+            # elif ((sfrname == "OSCCON") & (len(fieldname) > 3) &  \
+            #       (fieldname.startswith("SCS")) & (width == 1)):
+            #    print sfrname, fieldname, width
+            #    None                                   # suppress enumerated SCS bits
             elif ((sfrname == "PORTB") & (fieldname.startswith("RB")) & (picname.startswith("12"))):
                list_bitfield(fp, "GPIO_GP" + fieldname[2:], 1, "_GPIO", offset)
             elif ((sfrname.startswith("PORT")) & (sfrname != "PORTVP") & (width == 1) & \
@@ -679,7 +700,7 @@ def list_sfr_subfield(fp, child, sfrname, offset):
             elif (sfrname.startswith("TRIS") & (sfrname != "TRISVP") & (width == 1) & \
                   fieldname.startswith("TRIS") & ("0" <= fieldname[-1] <= "7")):
                list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
-               if (sfrname.endswith("IO")):                    # TRISIO/TRISGPIO
+               if (sfrname.endswith("IO")):                 # TRISIO/TRISGPIO
                   pin = "pin_A" + pinnumber
                   list_bitfield(fp, pin + "_direction", 1, "TRISA", offset)
                   list_pin_direction_alias(fp, "A" + pinnumber, "_PORTA")
@@ -690,12 +711,18 @@ def list_sfr_subfield(fp, child, sfrname, offset):
             elif ((width > 1) & \
                   (sfrname.startswith("PORT") | sfrname.startswith("GPIO") | \
                    sfrname.startswith("LAT")  | sfrname.startswith("TRIS"))):
-               None
+               pass                                         # no multi-bit subfields for these regs
+            elif (fieldname == "RESERVED"):
+               pass                                         # skip reserved bits
             else:
+               mask = eval(child.getAttribute("edc:mask"))
+               if ((width == 8) & (mask in (1,3,7,15,31,64,127))):
+                  #  print "width", width, "mask", mask
+                  width = 1 + (1,3,7,15,31,64,127).index(mask)
+                  #  print "new width", width
                list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
 
-# additional declarations:
-
+            # additional declarations:
             if ((sfrname.startswith("ADCON")) & (fieldname.endswith("VCFG0"))):
                list_bitfield(fp, sfrname + "_VCFG", 2, sfrname, offset)
             elif ((fieldname.startswith("AN"))  &  (width == 1) &   \
@@ -727,24 +754,24 @@ def list_sfr_subfield(fp, child, sfrname, offset):
 
             list_multi_module_bitfield_alias(fp, sfrname, fieldname)
 
-
          offset = offset + width
 
    return offset
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration of multiplexed registers
-# Input:   - output file
-#          - SelectSFR node
-#          - current SFR addr
-# Output:  part of device files
-# Returns: (nothing)
-# Notes:   Multiplexed registers must be declared after all other SFRs
-#          because the pseudo procedures access a control register
-#          which must have been declared first, otherwise it is 'unknown'.
-# ---------------------------------------------------------
+
 def list_muxed_sfr(fp, selectsfr, sfraddr):
+   """ Generate declaration of multiplexed registers
+
+   Input:   - output file
+            - SelectSFR node
+            - current SFR addr
+   Output:  part of device files
+   Returns: (nothing)
+   Notes:   Multiplexed registers must be declared after all other SFRs
+            because the pseudo procedures access a control register
+            which must have been declared first, otherwise it is 'unknown'.
+   """
    cond = None
    if (selectsfr.hasAttribute("edc:when")):
       cond = selectsfr.getAttribute("edc:when")
@@ -754,16 +781,15 @@ def list_muxed_sfr(fp, selectsfr, sfraddr):
          list_sfr(fp, sfr, sfraddr)
       else:                                           # alternate sfr on this address
          sfrname = sfr.getAttribute("edc:cname")
-#        global names
-#        if sfrname not in names:
-#           names.append(sfrname)
-#        else:
-#           print "   Duplicate name:", sfrname
-#        list_separator(fp)
+         # global names
+         # if sfrname not in names:
+         #    names.append(sfrname)
+         # else:
+         #    print "   Duplicate name:", sfrname
+         # list_separator(fp)
 
          core = cfgvar["core"]
          subst  = "_" + sfrname                       # substitute name
-
          if (core == "14"):
             if (sfrname == "SSPMSK"):
                list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond)
@@ -791,16 +817,17 @@ def list_muxed_sfr(fp, selectsfr, sfraddr):
             print "Unexpected core", core, "with multiplexed SFR", sfrname
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration of pseudo variable of muxed sfr
-# Input:   - output file
-#          - substituted name of muxed SFR
-#          - current SFR addr
-#          - condition expression
-# Output:  part of device files
-# Returns: (nothing)
-# ---------------------------------------------------------
+
 def list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond):
+   """ Generate declaration of pseudo variable of muxed sfr
+
+   Input:   - output file
+            - substituted name of muxed SFR
+            - current SFR addr
+            - condition expression
+   Output:  part of device files
+   Returns: (nothing)
+   """
    global names
    condl = cond.split(" ")                      # parse condition elements from
    val1 = condl[0][2:]                          #  ($val1 val2 val3) == val4
@@ -832,15 +859,16 @@ def list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond):
    fp.write("end function\n")
 
 
-# ----------------------------------------------------------
-# Title:  Format the subfields of multiplexed SFRs
-# Input:  - index in .pic
-#         - register node
-# Notes:  - Expected to be used with 18Fs only
-#         - Only valid for SFRs which use WDTCON_ADSHR bit
-#           to switch to the alternate content
-# ----------------------------------------------------------
+
 def list_muxed_sfr_subfields(fp, sfr):
+   """ Format the subfields of multiplexed SFRs
+
+   Input:  - index in .pic
+           - register node
+   Notes:  - Expected to be used with 18Fs only
+           - Only valid for SFRs which use WDTCON_ADSHR bit
+             to switch to the alternate content
+   """
    sfrname = sfr.getAttribute("edc:cname")
    modelist = sfr.getElementsByTagName("edc:SFRMode")
    for mode in modelist:
@@ -854,16 +882,18 @@ def list_muxed_sfr_subfields(fp, sfr):
                child = child.nextSibling
                offset = list_muxed_sfr_bitfield(fp, child, sfrname, offset)
 
-# ----------------------------------------------------------
-# Title:  Format a single bitfield of a multiplexed SFR
-# Input:  - index in .pic
-#         - register node
-# Notes:  - Expected to be used with 18Fs only
-#         - Only valid for SFRs which use WDTCON_ADSHR bit
-#           to switch to the alternate content: controlled by
-#           SFR selection in list_muxed_sfr().
-# ----------------------------------------------------------
+
+
 def list_muxed_sfr_bitfield(fp, child, sfrname, offset):
+   """ Format a single bitfield of a multiplexed SFR
+
+   Input:  - index in .pic
+           - register node
+   Notes:  - Expected to be used with 18Fs only
+           - Only valid for SFRs which use WDTCON_ADSHR bit
+             to switch to the alternate content: controlled by
+             SFR selection in list_muxed_sfr().
+   """
    if child.nodeType == Node.ELEMENT_NODE:
       if child.nodeName == "edc:AdjustPoint":
          offset = offset + eval(child.getAttribute("edc:offset"))
@@ -894,7 +924,12 @@ def list_muxed_sfr_bitfield(fp, child, sfrname, offset):
                fp.write("   control_bit = FALSE\n")
                fp.write("   return y\n")
                fp.write("end function\n")
-            elif (width < 8):                               # multi-bit
+            elif (width <= 8):                               # multi-bit
+               mask = eval(child.getAttribute("edc:mask"))
+               if ((width == 8) & (mask in (1,3,7,15,31,64,127))):
+                  # print "width", width, "mask", mask
+                  width = 1 + (1,3,7,15,31,64,127).index(mask)
+                  # print "new width", width
                fp.write("--\n")
                fp.write("procedure " + field + "'put(bit*%d" % (width) + " in x) is\n")
                fp.write("   var volatile bit control_bit at " + \
@@ -918,15 +953,16 @@ def list_muxed_sfr_bitfield(fp, child, sfrname, offset):
    return offset
 
 
-# ---------------------------------------------------------
-# Title:   Generate declarations of all non memory mapped registers
-# Input:   - output file
-#          - root of .pic (xml parsed structure)
-# Output:  part of device files
-# Returns: (nothing)
-# Notes:   only for core 12
-# ---------------------------------------------------------
+
 def list_all_nmmr(fp, root):
+   """ Generate declarations of all non memory mapped registers
+
+   Input:   - output file
+            - root of .pic (xml parsed structure)
+   Output:  part of device files
+   Returns: (nothing)
+   Notes:   only for core 12
+   """
    if (cfgvar["core"] == "12"):
       nmmrplaces = root.getElementsByTagName("edc:NMMRPlace")
       for nmmrplace in nmmrplaces:
@@ -938,21 +974,22 @@ def list_all_nmmr(fp, root):
                list_nmmrdata_child(fp, child)
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration a memory mapped register
-# Input:   - output file
-#          - NMMR node
-# Output:  part of device files
-# Returns: (nothing)
-# Notes:   only for core 12
-# ---------------------------------------------------------
+
 def list_nmmrdata_child(fp, nmmr):
+
+   """ Generate declaration a memory mapped register
+
+   Input:   - output file
+            - NMMR node
+   Output:  part of device files
+   Returns: (nothing)
+   Notes:   only for core 12
+   """
    global names
    if (nmmr.nodeType == Node.ELEMENT_NODE):
       if (nmmr.nodeName == "edc:SFRDef"):
          sfrname = nmmr.getAttribute("edc:cname")
          picname = cfgvar["picname"]
-
          if (sfrname == "OPTION_REG"):
             if (sfrname not in names):
                names.append(sfrname)
@@ -960,7 +997,7 @@ def list_nmmrdata_child(fp, nmmr):
             shadow = "_" + sfrname + "_shadow"
             sharedmem_avail = sharedmem[1] - sharedmem[0] + 1        # incl upper bound
             if (sharedmem_avail < 1):
-#              print "   No (more) shared memory for", shadow
+               # print "   No (more) shared memory for", shadow
                fp.write("var volatile byte  %-25s" % (shadow) + " = 0b1111_1111\n")
             else:
                shared_addr = sharedmem[1]
@@ -980,7 +1017,7 @@ def list_nmmrdata_child(fp, nmmr):
             list_separator(fp)
             portletter = sfrname[4:]
             if (portletter in ("IO", "GPIO", "")):
-#              print sfrname, "register interpreted as TRISA"
+               # print sfrname, "register interpreted as TRISA"
                portletter = "A"                                # handle as TRISA
             elif ((portletter == "B") & (picname.startswith("12"))):
                print sfrname, "register interpreted as TRISA"
@@ -989,7 +1026,7 @@ def list_nmmrdata_child(fp, nmmr):
             shadow = "_TRIS" + portletter + "_shadow"
             sharedmem_avail = sharedmem[1] - sharedmem[0] + 1        # incl upper bound
             if (sharedmem_avail < 1):
-#              print "   No (more) shared memory for", shadow
+               # print "   No (more) shared memory for", shadow
                fp.write("var volatile byte  %-25s" % (shadow) + " = 0b1111_1111\n")
             else:
                shared_addr = sharedmem[1]
@@ -1028,13 +1065,14 @@ def list_nmmrdata_child(fp, nmmr):
             list_nmmr_tris_subfields(fp, nmmr)                 # individual TRIS bits
 
 
-# ----------------------------------------------------------
-# Title:  Format all subfields of NMMR OPTION_REG
-# Input:  - file
-#         - NMMR node
-# Notes:  - Expected to be used with 12Fs only
-# ----------------------------------------------------------
+
 def list_nmmr_option_subfields(fp, nmmr):
+   """ Format all subfields of NMMR OPTION_REG
+
+   Input:  - file
+           - NMMR node
+   Notes:  - Expected to be used with 12Fs only
+   """
    sfrname = nmmr.getAttribute("edc:cname")
    modelist = nmmr.getElementsByTagName("edc:SFRMode")
    for mode in modelist:
@@ -1049,13 +1087,14 @@ def list_nmmr_option_subfields(fp, nmmr):
                offset = list_nmmr_option_bitfield(fp, child, sfrname, offset)
 
 
-# ----------------------------------------------------------
-# Title:  Format all subfields of NMMR TRIS
-# Input:  - file
-#         - NMMR node
-# Notes:  - Expected to be used with 12Fs only
-# ----------------------------------------------------------
+
 def list_nmmr_tris_subfields(fp, nmmr):
+   """ Format all subfields of NMMR TRIS
+
+   Input:  - file
+           - NMMR node
+   Notes:  - Expected to be used with 12Fs only
+   """
    sfrname = nmmr.getAttribute("edc:cname")
    modelist = nmmr.getElementsByTagName("edc:SFRMode")
    for mode in modelist:
@@ -1070,13 +1109,14 @@ def list_nmmr_tris_subfields(fp, nmmr):
                offset = list_nmmr_tris_bitfield(fp, child, sfrname, offset)
 
 
-# ----------------------------------------------------------
-# Title:  Format a single bitfield of NMMR OPTION pseudo register
-# Input:  - index in .pic
-#         - register node
-# Notes:  - Expected to be used with 12Fs only
-# ----------------------------------------------------------
+
 def list_nmmr_option_bitfield(fp, child, sfrname, offset):
+   """ Format a single bitfield of NMMR OPTION pseudo register
+
+   Input:  - index in .pic
+           - register node
+   Notes:  - Expected to be used with 12Fs only
+   """
    if child.nodeType == Node.ELEMENT_NODE:
       if child.nodeName == "edc:AdjustPoint":
          offset = offset + eval(child.getAttribute("edc:offset"))
@@ -1111,16 +1151,19 @@ def list_nmmr_option_bitfield(fp, child, sfrname, offset):
    return offset
 
 
-# ----------------------------------------------------------
-# Title:  Format a single bitfield of NMMR TRIS pseudo register
-# Input:  - index in .pic
-#         - register node
-# Notes:  - Expected to be used with 12Fs only
-# ----------------------------------------------------------
+
 def list_nmmr_tris_bitfield(fp, child, sfrname, offset):
+   """ Format a single bitfield of NMMR TRIS pseudo register
+
+   Input:  - index in .pic
+           - register node
+   Notes:  - Expected to be used with 12Fs only
+   """
    if (child.nodeType == Node.ELEMENT_NODE):
       if (child.nodeName == "edc:AdjustPoint"):
          offset = offset + eval(child.getAttribute("edc:offset"))
+
+
       elif (child.nodeName == "edc:SFRFieldDef"):
          portletter = child.getAttribute("edc:cname")[4:]
          if (portletter.startswith("IO") | portletter.startswith("GPIO")):
@@ -1148,30 +1191,36 @@ def list_nmmr_tris_bitfield(fp, child, sfrname, offset):
    return offset
 
 
-# --------------------------------------------------------------------
-# Title:   Indicate if subfields of a specific register are wanted
-# input:   Register name
-# returns: 0 - no expansion
-#          1 - expansion desired
-# --------------------------------------------------------------------
+
 def subfields_wanted(sfrname):
+   """ Indicate if subfields of a specific register are wanted
+
+   input:   Register name
+   returns: 0 - no expansion
+            1 - expansion desired
+   """
    if ((sfrname.startswith("SSP")) & (sfrname[-3:] in ("ADD", "BUF", "MSK"))):
+      return False                                          # subfields not wanted
+   elif ((sfrname.startswith("SPBRG"))  | \
+         (sfrname.startswith("SP1BRG")) | \
+         (sfrname.startswith("SP2BRG")) ):
       return False                                          # subfields not wanted
    else:
       return True                                           # subfields wanted
 
 
-# ----------------------------------------------------------------
-# Title:   Generate pin aliases
-# Input:   - file pointer
-#          - name of bit (portletter||offset)
-#          - PORT of the pin
-# Returns: (nothing)
-# Notes:   - declare aliases for all synonyms in pinmap.
-#          - declare extra aliases for first of multiple I2C or SPI modules
-#          - declare extra aliases for TX and RX pins of only USART module
-# ----------------------------------------------------------------
+
 def list_pin_alias(fp, portbit, port):
+   """ Generate pin aliases
+
+   Input:   - file pointer
+            - name of bit (portletter||offset)
+            - PORT of the pin
+   Returns: (nothing)
+   Notes:   - declare aliases for all synonyms in pinmap.
+            - declare extra aliases for first of multiple I2C or SPI modules
+            - declare extra aliases for TX and RX pins of only USART module
+   """
    PICname = cfgvar["picname"].upper()
    if ("R" + portbit in pinmap[PICname]):
       for alias in pinmap[PICname]["R" + portbit]:
@@ -1181,25 +1230,26 @@ def list_pin_alias(fp, portbit, port):
          pin = "pin_" + portbit
          list_alias(fp, alias, pin)
          if alias in ("pin_SDA1", "pin_SDI1", "pin_SDO1", "pin_SCK1", \
-                      "pin_SCL1", "pin_SS1", "pin_TX1", "pin_RX1"):
+                      "pin_SCL1", "pin_SS1", "pin_TX1", "pin_RX1", "pin_DT1", "pin_CK1"):
             alias = alias[:-1]
             list_alias(fp, alias, pin)
       fp.write("--\n")
-#  else:
-#     print "   R" + portbit, "not in pinmap of", PICname
+   # else:
+   #    print "   R" + portbit, "not in pinmap of", PICname
 
 
-# -----------------------------------------------------------------
-# Title:   Generate pin_direction aliases
-# input:   - file pointer
-#          - name of bit (portletter||offset)
-#          - port of the pin
-# returns: (nothing)
-# notes:   - generate alias definitions for all synonyms in pinmap
-#            with '_direction' added!
-#          - generate extra aliases for first of multiple I2C or SPI modules
-# -----------------------------------------------------------------
+
 def list_pin_direction_alias(fp, portbit, port):
+   """ Generate pin_direction aliases
+
+   input:   - file pointer
+            - name of bit (portletter||offset)
+            - port of the pin
+   returns: (nothing)
+   notes:   - generate alias definitions for all synonyms in pinmap
+              with '_direction' added!
+            - generate extra aliases for first of multiple I2C or SPI modules
+   """
    PICname = cfgvar["picname"].upper()                      # capitals!
    if ("R" + portbit in pinmap[PICname]):
       for alias in pinmap[PICname]["R"+ portbit]:
@@ -1229,15 +1279,16 @@ def list_pin_direction_alias(fp, portbit, port):
 #     print "   R" + portbit, "is an unknown pin"
 
 
-# -------------------------------------------------------
-# Title:   Generate a line with a volatile variable
-# Input:   - file pointer
-#          - name
-#          - width (in bytes)
-#          - address (decimal)   ??? maybe string ???
-# Returns: nothing
-# -------------------------------------------------------
+
 def list_variable(fp, var, width, addr):
+   """ Generate a line with a volatile variable
+
+   Input:   - file pointer
+            - name
+            - width (in bytes)
+            - address (decimal)   ??? maybe string ???
+   Returns: nothing
+   """
    global names
    if (var not in names):
       names.append(var)
@@ -1252,20 +1303,21 @@ def list_variable(fp, var, width, addr):
          fp.write("0x%X" % (sfrranges[addr][0]) + " }\n")
       else:
          fp.write(",".join(["0x%X" % x for x in sfrranges[addr]]) + " }\n")
-#  else:
-#     print "   Duplicate name:", var
+   # else:
+   #    print "   Duplicate name:", var
 
 
-# -------------------------------------------------------
-# Title:   Generate a line with a volatile variable
-# Input:   - file pointer
-#          - type (byte, word, etc.)
-#          - name
-#          - address (decimal or string)
-# Returns: nothing
-# Notes:   Fields if 8 bits (or larger) are not declared
-# -------------------------------------------------------
+
 def list_bitfield(fp, var, width, sfrname, offset):
+   """ Generate a line with a volatile variable
+
+   Input:   - file pointer
+            - type (byte, word, etc.)
+            - name
+            - address (decimal or string)
+   Returns: nothing
+   Notes:   Fields if 8 bits (or larger) are not declared
+   """
    if (not var.startswith("pin_")):
       bitfieldname = var.upper()
    else:
@@ -1278,40 +1330,42 @@ def list_bitfield(fp, var, width, sfrname, offset):
          fp.write("var volatile bit    %-25s at %s : %d\n" % (bitfieldname, sfrname, offset))
       elif width < 8:
          fp.write("var volatile bit*%d  %-25s at %s : %d\n" % (width, bitfieldname, sfrname, offset))
-#  else:
-#     print "   Duplicate name:", bitfieldname
+   # else:
+   #    print "   Duplicate name:", bitfieldname
 
 
-# -------------------------------------------------------
-# Title:   List a line with an alias declaration
-# Input:   - file pointer
-#          - name of alias
-#          - name of original variable (or other alias)
-# Returns: - returncode of duplicate_name()
-# -------------------------------------------------------
+
 def list_alias(fp, alias, original):
+   """ List a line with an alias declaration
+
+   Input:   - file pointer
+            - name of alias
+            - name of original variable (or other alias)
+   Returns: - returncode of duplicate_name()
+   """
    global names
    if alias not in names:
       names.append(alias)
       fp.write("%-19s %-25s is %s\n" % ("alias", alias, original))
-#  else:
-#     print "   Duplicate alias name:", alias
+   # else:
+   #    print "   Duplicate alias name:", alias
 
 
-# ----------------------------------------------------------
-# Title:   Create port shadowing functions for
-#          full byte, lower- and upper-nibbles of 12- and 14-bit core
-# input:  - file pointer
-#         - Port register
-# notes:  - shared memory is allocated from high to low address
-# ----------------------------------------------------------
+
 def list_port_shadow(fp, reg):
+   """ Create port shadowing functions for
+   full byte, lower- and upper-nibbles of 12- and 14-bit core
+
+   input:  - file pointer
+           - Port register
+   notes:  - shared memory is allocated from high to low address
+   """
    shadow = "_PORT" + reg[4:] + "_shadow"
    fp.write("--\n")
    fp.write("var          byte   %-25s at _PORT%s\n" % ("PORT" + reg[4:], reg[4:]))
    sharedmem_avail = sharedmem[1] - sharedmem[0] + 1        # incl upper bound
    if (sharedmem_avail < 1):
-#     print "   No (more) shared memory for", shadow
+      # print "   No (more) shared memory for", shadow
       fp.write("var volatile byte  %-25s" % (shadow) + "\n")
    else:
       shared_addr = sharedmem[1]
@@ -1343,12 +1397,12 @@ def list_port_shadow(fp, reg):
    fp.write("--\n")
 
 
-# ------------------------------------------------
-# Title:    Force use of LATx with core 14H and 16
-#           for full byte, lower- and upper-nibbles
-# input:  - LATx register
-# ------------------------------------------------
+
 def list_lat_shadow(fp, lat):
+   """ Force use of LATx with core 14H and 16 for full byte, lower- and upper-nibbles
+
+   input:  - LATx register
+   """
    port = "PORT" + lat[3:]
    fp.write("--\n")
    fp.write("procedure " + port + "'put(byte in x at " + lat + ") is\n")
@@ -1373,13 +1427,13 @@ def list_lat_shadow(fp, lat):
    fp.write("--\n")
 
 
-# ----------------------------------------------
-# Title   Create TRIS functions
-#         for lower- and upper-nibbles only
-# input:  - file pointer
-#         - TRIS register
-# ----------------------------------------------
+
 def list_tris_nibbles(fp, reg):
+   """ Create TRIS functions for lower- and upper-nibbles only
+
+   Input:  - file pointer
+           - TRIS register
+   """
    port = "PORT" + reg[4:]
    if port.endswith("IO"):
       port = "PORTA"
@@ -1402,17 +1456,18 @@ def list_tris_nibbles(fp, reg):
    fp.write("--\n")
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration of a register subfield alias
-# Input:   - output file
-#          - SFRDef node
-#          - aliasname of this SFR
-#          - offset of bitfield
-# Output:
-# Returns: offset next bitfield
-# Notes:
-# ---------------------------------------------------------
+
 def list_sfr_subfield_alias(fp, child, sfralias, sfrname, offset):
+   """ Generate declaration of a register subfield alias
+
+   Input:   - output file
+            - SFRDef node
+            - aliasname of this SFR
+            - offset of bitfield
+   Output:
+   Returns: offset next bitfield
+   Notes:
+   """
    if child.nodeType == Node.ELEMENT_NODE:
       if child.nodeName == "edc:AdjustPoint":
          offset = offset + eval(child.getAttribute("edc:offset"))
@@ -1421,61 +1476,55 @@ def list_sfr_subfield_alias(fp, child, sfralias, sfrname, offset):
          if (width < 8):
             fieldname = child.getAttribute("edc:cname").upper()
             list_alias(fp, sfralias + "_" + fieldname, sfrname + "_" + fieldname)
+            if (sfralias.startswith("BAUDC")):
+               if (fieldname == "CKTXP"):
+                  list_alias(fp, sfralias + "_TXCKP", sfrname + "_" + fieldname)
+               elif (fieldname == "DTRXP"):
+                  list_alias(fp, sfralias + "_RXDTP", sfrname + "_" + fieldname)
          offset = offset + width
    return offset
 
 
-# ------------------------------------------------------------------
-# Adding aliases of registers for PICs with multiple similar modules
-# Used only for registers which are fully dedicated to a module.
-# input:  - file pointer
-#         - SFR node
-# returns: nothing
-# notes:  - add unqualified alias for module 1
-#         - add (modified) alias for modules 2..9
-#         - bitfields are expanded as for 'real' registers
-# ------------------------------------------------------------------
+
 def list_multi_module_register_alias(fp, sfr):
+   """ Adding aliases of registers for PICs with multiple similar modules
+   used only for registers which are fully dedicated to a module.
 
+   Input:  - file pointer
+           - SFR node
+   Returns: nothing
+   Notes:  - add unqualified alias for module 1
+           - add (modified) alias for modules 2..9
+           - bitfields are expanded as for 'real' registers
+   """
    sfrname = sfr.getAttribute("edc:cname")
-   if (len(sfrname) < 6):
+   if (len(sfrname) < 5):                                # can skip short names
       return
-
    alias = ''                                            # default: no alias
-
    if (sfrname == "BAUDCTL"):                            # some midrange, 18f1x20
       alias = 'BAUDCON'
-
    elif (sfrname == "BAUD1CON"):                         # 1st USART: sfrname with index
       alias = "BAUDCON"                                  # remove "1"
-
    elif (sfrname == "BAUD2CON"):                         # 2nd USART: sfrname with suffix
       alias = "BAUDCON2"                                 # make index "2" a suffix
-
    elif (sfrname in ("BAUDCON1", "BAUDCTL1", "RCREG1", "RCSTA1", \
                      "SPBRG1", "SPBRGH1", "SPBRGL1", "TXREG1", "TXSTA1")):
       alias = sfrname[0:-1]                              # remove trailing "1" index
-
    elif (sfrname in ("RC1REG", "RC1STA", "SP1BRG", "SP1BRGH", \
                      "SP1BRGL", "TX1REG", "TX1STA")):
       alias = sfrname[0:2] + sfrname[3:]                 # remove embedded "1" index
-
    elif (sfrname in ("RC2REG", "RC2STA", "SP2BRG", "SP2BRGH", \
                      "SP2BRGL", "TX2REG", "TX2STA")):
       alias = sfrname[0:2] + sfrname[3:] + "2"           # make index "2" a suffix
-
    elif (sfrname in ("SSPCON", "SSP2CON")):
       alias = sfrname + "1"                              # add suffix "1"
-
    elif ((sfrname.startswith("SSP")) & (sfrname[3] == "1")):   # first or only MSSP module
       alias = sfrname[0:3] + sfrname[4:]                 # remove module number
       if (alias in ("SSPCON", "SSP2CON")):
          alias = alias + "1"
-
    if (alias != ""):                                     # alias to be declared
       fp.write("--\n")
       list_alias(fp, alias, sfrname)
-
       if (subfields_wanted(sfrname)):
          modelist = sfr.getElementsByTagName("edc:SFRMode")
          for mode in modelist:
@@ -1488,20 +1537,26 @@ def list_multi_module_register_alias(fp, sfr):
                      child = child.nextSibling
                      offset = list_sfr_subfield_alias(fp, child, alias, sfrname, offset)
 
+         #  Adding aliases for missing bitfields:
+         if ( (sfrname in ("SSPCON1", "SSP1CON1", "SSP2CON1"))  & \
+              (alias + "_SSPM" not in names) & (alias + "_SSPM3" in names)):
+            list_alias(fp, alias + "_SSPM", sfrname + "_SSPM")
 
-# -----------------------------------------------------
-# Title:    Add aliases of register bitfields related to
-#           multiple similar modules.
-# input:  - register
-#         - bitfield
-# returns: nothing
-# Notes:  - Used for registers which happen to contain bitfields
-#           For - PIE, PIR and IPR registers
-#           USART and SSP interrupt bits
-#         - add unqualified alias for module 1
-#         - add (modified) alias for modules 2..9
-# -----------------------------------------------------
+
+
 def list_multi_module_bitfield_alias(fp, reg, bitfield):
+   """Add aliases of register bitfields related to
+             multiple similar modules.
+
+   input:  - register
+           - bitfield
+   returns: nothing
+   Notes:  - Used for registers which happen to contain bitfields
+             For - PIE, PIR and IPR registers
+             USART and SSP interrupt bits
+           - add unqualified alias for module 1
+           - add (modified) alias for modules 2..9
+   """
    j = ""                                                   # default: no multi-module
    bitfield.upper()                                         # must be all capitals
    if (reg[0:3] in ("PIE", "PIR", "IPR")):
@@ -1529,13 +1584,14 @@ def list_multi_module_bitfield_alias(fp, reg, bitfield):
    list_alias(fp, alias, reg + "_" + bitfield)              # declare alias subfields
 
 
-# -----------------------------------------------------
-# Title:  list status register
-# input:  - file pointer.
-#         - node of status sfr
-# Note:
-# -----------------------------------------------------
+
 def list_status_sfr(fp, status):
+   """ list status register
+
+   Input:  - file pointer.
+           - node of status sfr
+   Note:
+   """
    modes = status.getElementsByTagName("edc:SFRMode")
    for mode in modes:
       offset = 0
@@ -1549,12 +1605,13 @@ def list_status_sfr(fp, status):
       fp.write("const        byte   _access %24s" % "=  0\n")
 
 
-# -----------------------------------------------------
-# Title: List subfields of status register
-# input: - start index in pic.
-# Note:  - name is stored but not checked on duplicates
-# -----------------------------------------------------
+
 def list_status_subfield(fp, field, offset):
+   """List subfields of status register
+
+   Input: - start index in pic.
+   Notes: - name is stored but not checked on duplicates
+   """
    if field.nodeType == Node.ELEMENT_NODE:
       if field.nodeName == "edc:AdjustPoint":
          offset = offset + eval(field.getAttribute("edc:offset"))
@@ -1572,22 +1629,21 @@ def list_status_subfield(fp, field, offset):
    return offset
 
 
-# ---------------------------------------------------
-# Title:   Determine JANSEL number for ANSELx bity
-# input:   - register  (ANSELx,ADCONx,ANCONx, etc.)
-#          - Name of bit (ANSy / ANSELy)
-# returns: - channel number (decimal, default is the value of y in ANSy)
-#            (99 indicates 'no JANSEL number')
-# Notes:   - procedure has 3 'core' groups and a subgroup for each ANSELx register.
-#          - needs adaptation for every new PIC(-group).
-# ---------------------------------------------------
-def ansel2j(reg, ans):
 
+def ansel2j(reg, ans):
+   """ Determine JANSEL number for ANSELx bity
+
+   Input:   - register  (ANSELx,ADCONx,ANCONx, etc.)
+            - Name of bit (ANSy / ANSELy)
+   Returns: - channel number (decimal, default is the value of y in ANSy)
+              (99 indicates 'no JANSEL number')
+   Notes:   - procedure has 3 'core' groups and a subgroup for each ANSELx register.
+            - needs adaptation for every new PIC(-group).
+   """
    if (ans[-2:].isdigit()):                                    # name ends with 2 digits
       ansx = int(ans[-2:])                                     # 2 digits seq. nbr.
    else:                                                       # 1 digit assumed
       ansx = int(ans[-1:])                                     # single digit seq. nbr.
-
    core = cfgvar["core"]
    picname = cfgvar["picname"]                                 # in lowercase!
 
@@ -1636,12 +1692,12 @@ def ansel2j(reg, ans):
               picname.startswith("16f72") | picname.startswith("16lf72"):
             ansx = (0, 1, 2, 3, 99, 4, 99, 99)[ansx]
          elif (picname.startswith("16f9") & (ans[0:3] != "ANS")):
-            ansx = 99                                       # skip dup ANSEL subfields 16f9xx
+            ansx = 99                                    # skip dup ANSEL subfields 16f9xx
       else:
          print "   Unsupported ADC register:", reg
          ansx = 99
 
-   elif (core == "14H"):                                       # enhanced midrange
+   elif (core == "14H"):                                 # enhanced midrange
       if (reg == "ANSELG"):
          ansx = (99, 15, 14, 13, 12, 99, 99, 99)[ansx]
       elif (reg == "ANSELF"):
@@ -1656,38 +1712,52 @@ def ansel2j(reg, ans):
          elif (picname.startswith("16f152") | picname.startswith("16lf152")):
             ansx = (27, 28, 29, 99, 99, 99, 99, 99)[ansx]
          elif (picname.startswith("16f194") | picname.startswith("16lf194")):
-            ansx = 99                              # none
+            ansx = 99                                    # none
          else:
             ansx = ansx + 20
       elif (reg == "ANSELD"):
          if (picname.startswith("16f151") | picname.startswith("16lf151") | \
-             picname.startswith("16f171") | picname.startswith("16lf171")):
+             picname.startswith("16f17" ) | picname.startswith("16lf17" )):
             ansx = ansx + 20
          elif (picname.startswith("16f152") | picname.startswith("16lf152")):
             ansx = (23, 24, 25, 26, 99, 99, 99, 99)[ansx]
+         elif (picname.startswith("16f193") | picname.startswith("16lf193")):
+            ansx = 99
          else:
+            print "   ANSEL2J: Unsupported ADC register:", reg
             ansx = 99                              # none
       elif (reg == "ANSELC"):
          if (picname.startswith("16f151") | picname.startswith("16lf151") | \
              picname.startswith("16f171") | picname.startswith("16lf171")):
             ansx = (99, 99, 14, 15, 16, 17, 18, 19)[ansx]
-         elif (picname.startswith("16f161") | picname.startswith("16lf161")):
-            ansx = (4, 5, 6, 7, 99, 99, 99, 99)[ansx]
+         elif (picname.startswith("16lf1554")):
+            ansx = (13, 23, 12, 22, 11, 21, 99, 99)[ansx]
+         elif (picname.startswith("16lf1559")):
+            ansx = (13, 23, 12, 22, 11, 21, 14,24)[ansx]
          elif (picname.startswith("16f145") | picname.startswith("16lf145") | \
                picname.startswith("16f150") | picname.startswith("16lf150") | \
+               picname.startswith("16f157") | picname.startswith("16lf157") | \
+               picname.startswith("16f161") | picname.startswith("16lf161") | \
                picname.startswith("16f170") | picname.startswith("16lf170") | \
+               picname.startswith("16f176") | picname.startswith("16lf176") | \
                picname.startswith("16f182") | picname.startswith("16lf182")):
             ansx = (4, 5, 6, 7, 99, 99, 8, 9)[ansx]
+         elif (picname.startswith("16f178") | picname.startswith("16lf178")):
+            ansx = 99                              # none
          else:
+            print "   ANSEL2J: Unsupported ADC register:", reg
             ansx = 99                              # none
       if (reg == "ANSELB"):
          if ((picname == "16f1826") | (picname == "16lf1826") | \
              (picname == "16f1827") | (picname == "16lf1827") | \
              (picname == "16f1847") | (picname == "16lf1847")):
             ansx = (99, 11, 10, 9, 8, 7, 5, 6)[ansx]
-         elif (picname.startswith("16f145") | picname.startswith("16lf145")):
+         elif (picname.startswith("16f145") | picname.startswith("16lf145") | \
+               picname.startswith("16f161") | picname.startswith("16lf161") | \
+               picname.startswith("16f176") | picname.startswith("16lf176")):
             ansx = (99, 99, 99, 99, 10, 11, 99, 99)[ansx]
          elif (picname.startswith("16f150") | picname.startswith("16lf150") | \
+               picname.startswith("16f157") | picname.startswith("16lf157") | \
                picname.startswith("16f170") | picname.startswith("16lf170") | \
                picname.startswith("16f182") | picname.startswith("16lf182")):
             ansx = (99, 99, 99, 99, 10, 11, 99, 99)[ansx]
@@ -1697,9 +1767,12 @@ def ansel2j(reg, ans):
                                               picname.startswith("16lf190") | \
                picname.startswith("16f193") | picname.startswith("16lf193")):
             ansx = (12, 10, 8, 9, 11, 13, 99, 99)[ansx]
+         elif (picname.startswith("16lf155")):
+            ansx = (99, 99, 99, 99, 26, 16, 25, 15)[ansx]
          elif picname.startswith("16f152") | picname.startswith("16lf152"):
             ansx = (17, 18, 19, 20, 21, 22, 99, 99)[ansx]
          else:
+            print "   ANSEL2J: Unsupported ADC register:", reg
             ansx = 99                              # none
       if (reg == "ANSELA"):
          if ((picname == "16f1826") | (picname == "16lf1826") | \
@@ -1708,17 +1781,21 @@ def ansel2j(reg, ans):
             ansx = ansx + 0
          elif (picname.startswith("16f145") | picname.startswith("16lf145")):
             ansx = (99, 99, 99, 99, 3, 99, 99, 99)[ansx]
-         elif (picname.startswith("16f170") | picname.startswith("16lf170")):
+         elif (picname.startswith("16f157") | picname.startswith("16lf157") | \
+               picname.startswith("12f161") | picname.startswith("12lf161") | \
+               picname.startswith("16f161") | picname.startswith("16lf161") | \
+               picname.startswith("16f170") | picname.startswith("16lf170") | \
+               picname.startswith("16f176") | picname.startswith("16lf176")):
             ansx = (0, 1, 2, 99, 3, 99, 99, 99)[ansx]
          elif (picname.startswith("12f15")  | picname.startswith("12lf15")  | \
                picname.startswith("16f150") | picname.startswith("16lf150") | \
-               picname.startswith("12f161") | picname.startswith("12lf161") | \
-               picname.startswith("16f161") | picname.startswith("16lf161") | \
                picname.startswith("16f170") | picname.startswith("16lf170") | \
                picname.startswith("12f182") | picname.startswith("12lf182") | \
                picname.startswith("16f182") | picname.startswith("16lf182") | \
                picname.startswith("12f184") | picname.startswith("12lf184")):
             ansx = (0, 1, 2, 99, 3, 4, 99, 99)[ansx]
+         elif (picname.startswith("16lf155")):
+            ansx = (0, 1, 2, 99, 10, 20, 99, 99)[ansx]
          elif (picname.startswith("16f151") | picname.startswith("16lf151") | \
                picname.startswith("16f152") | picname.startswith("16lf152") | \
                picname.startswith("16f171") | picname.startswith("16lf171") | \
@@ -1728,7 +1805,7 @@ def ansel2j(reg, ans):
                picname.startswith("16f194") | picname.startswith("16lf194")):
             ansx = (0, 1, 2, 3, 99, 4, 99, 99)[ansx]
          else:
-            print "   Unsupported ADC register:", reg
+            print "   ANSEL2J: Unsupported ADC register:", reg
             ansx = 99
 
    elif (core == "16"):                                        # 18F series
@@ -1771,7 +1848,7 @@ def ansel2j(reg, ans):
       elif reg in ("ANSELA", "ANSEL", "ANSEL0"):
          if (picname in ("18f13k22", "18lf13k22", "18f14k22", "18lf14k22")):
             if (ans.startswith("ANSEL")):
-  #            print "   Suppressing probably duplicate JANSEL_ANSx declarations (" + ans + ")"
+               # print "   Suppressing probably duplicate JANSEL_ANSx declarations (" + ans + ")"
                ansx = 99
          elif (picname in ("18f24k50", "18lf24k50", "18f25k50", "18lf25k50", "18f45k50", "18lf45k50")):
             ansx = (0, 1, 2, 3, 99, 4, 99, 99)[ansx]
@@ -1788,14 +1865,15 @@ def ansel2j(reg, ans):
    return ansx
 
 
-# ---------------------------------------------------------
-# Title:   Generate instructions to set all I/O to digital mode
-# Input:   - picname
-#          - output file
-# Output:  part of device files
-# Returns: (nothing)
-# ---------------------------------------------------------
+
 def list_digital_io(fp, picname):
+   """ Generate instructions to set all I/O to digital mode
+
+   Input:   - picname
+            - output file
+   Output:  part of device files
+   Returns: (nothing)
+   """
    fp.write("--\n")
    list_separator(fp)
    fp.write("-- Constants and procedures related to analog features\n")
@@ -1830,10 +1908,10 @@ def list_digital_io(fp, picname):
    fp.write("const byte ADC_MAX_RESOLUTION = " + ADC_res + "\n")
    fp.write("--\n")
 
-#  if ((ADC_group == "0"  &  picdata["PinMap.picnameCaps.ANCOUNT > 0) |,
-#      (ADC_group \= "0" & PinMap.picnameCaps.ANCOUNT = 0)):
-#     print "   Possible conflict between ADC-group (" + ADC_group + ") " \
-#           "and number of ADC channels (" + PinMap.picnameCaps.ANCOUNT + ")\n")
+   # if ((ADC_group == "0"  &  picdata["PinMap.picnameCaps.ANCOUNT > 0) |,
+   #     (ADC_group \= "0" & PinMap.picnameCaps.ANCOUNT = 0)):
+   #    print "   Possible conflict between ADC-group (" + ADC_group + ") " \
+   #          "and number of ADC channels (" + PinMap.picnameCaps.ANCOUNT + ")\n")
 
    analog = []                                              # list of analog component names
    if (("ANSEL"  in names) | \
@@ -1969,14 +2047,15 @@ def list_digital_io(fp, picname):
    fp.write("end procedure\n")
 
 
-# ---------------------------------------------------------
-# Title:   Generate miscellaneous information
-# Input:   - picname
-#          - output file
-# Output:  part of device files
-# Returns: (nothing)
-# ---------------------------------------------------------
+
 def list_miscellaneous(fp, picname):
+   """ Generate miscellaneous information
+
+   Input:   - picname
+            - output file
+   Output:  part of device files
+   Returns: (nothing)
+   """
    fp.write("--\n")
    list_separator(fp)
    fp.write("--    Miscellaneous information\n")
@@ -2008,14 +2087,15 @@ def list_miscellaneous(fp, picname):
       fp.write("-- No free shared memory!\n")
 
 
-# ---------------------------------------------------------
-# Tile:    Generate all fuse_def statements
-# Input:   - picname
-#          - output file
-# Output:  part of device files
-# Returns: (nothing)
-# ---------------------------------------------------------
+
 def list_fuse_defs(fp, root):
+   """ Generate all fuse_def statements
+
+   Input:   - picname
+            - output file
+   Output:  part of device files
+   Returns: (nothing)
+   """
    fp.write("--\n")
    list_separator(fp)
    fp.write("--    Symbolic Fuse Definitions\n")
@@ -2033,15 +2113,16 @@ def list_fuse_defs(fp, root):
             dcraddr = list_dcrdef(fp, dcrdef, dcraddr)
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration of a configuration byte/word, incl subfields
-# Input:   - output file
-#          - config fuse sector node
-#          - current config address
-# Output:  part of device file
-# Returns: config fuse address (updated if applicable)
-# ---------------------------------------------------------
+
 def list_dcrdef(fp, dcrdef, addr):
+   """ Generate declaration of a configuration byte/word, incl subfields
+
+   Input:   - output file
+            - config fuse sector node
+            - current config address
+   Output:  part of device file
+   Returns: config fuse address (updated if applicable)
+   """
    if dcrdef.nodeName == "edc:AdjustPoint":
       addr = addr + eval(dcrdef.getAttribute("edc:offset"))
    elif dcrdef.nodeName == "edc:DCRDef":
@@ -2063,15 +2144,16 @@ def list_dcrdef(fp, dcrdef, addr):
    return addr
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration of a configuration byte/word, incl subfields
-# Input:   - output file
-#          - config fuse sector node
-#          - current config address
-# Output:  part of device file
-# Returns: config fuse address (updated if applicable)
-# ---------------------------------------------------------
+
 def list_dcrfielddef(fp, dcrfielddef, index, offset):
+   """ Generate declaration of a configuration byte/word, incl subfields
+
+   Input:   - output file
+            - config fuse sector node
+            - current config address
+   Output:  part of device file
+   Returns: config fuse address (updated if applicable)
+   """
    if (dcrfielddef.nodeName == "edc:AdjustPoint"):
       offset = offset + eval(dcrfielddef.getAttribute("edc:offset"))
    elif (dcrfielddef.nodeName == "edc:DCRFieldDef"):
@@ -2091,17 +2173,18 @@ def list_dcrfielddef(fp, dcrfielddef, index, offset):
    return offset
 
 
-# ---------------------------------------------------------
-# Title:   Generate declaration of a dcrdeffield semantics
-# Input:   - output file
-#          - SFRDef child node
-#          - SFRe
-#          - field offset
-# Output:
-# Returns: offset next child
-# Notes:   - bitfield
-# ---------------------------------------------------------
+
 def list_dcrfieldsem(fp, key, dcrfielddef, offset):
+   """ Generate declaration of a dcrdeffield semantics
+
+   Input:   - output file
+            - SFRDef child node
+            - SFRe
+            - field offset
+   Output:
+   Returns: offset next child
+   Notes:   - bitfield
+   """
    for child in dcrfielddef.childNodes:
       if child.nodeName == "edc:DCRFieldSemantic":
          if ((child.hasAttribute("edc:ishidden") == False) & \
@@ -2121,69 +2204,64 @@ def list_dcrfieldsem(fp, key, dcrfielddef, offset):
                         print "   Adding 'ENABLED' for fuse_def " + key
                         str = "       ENABLED = 0x20"
                         fp.write("%-40s %s\n" % (str, "-- ICPORT enabled"))
-                  elif ((key == "PLLDIV") & (fieldname == "X1")):
-                     str = "       P1 = 0x%X" % (eval(when[-1])<<offset)
-                     fp.write("%-40s %s\n" % (str, "-- (deprecated, compatibility with older Jallib versions)"))
                   elif ((key == "VOLTAGE") & (fieldname == "V21")):
                      str = "       V20 = 0x%X" % (eval(when[-1])<<offset)
                      fp.write("%-40s %s\n" % (str, "-- 2.1V (deprecated, compatibility with older Jallib versions)"))
 
 
-# ----------------------------------------------------
-# Title:   Normalize fusedef keywords (rename synonyms to base keyword)
-# Input:   - keyword
-# Returns: - normalized keyword
-# Noted:   - maybe better for performance with (partly) a dictionary
-# ----------------------------------------------------
-def normalize_fusedef_key(key):
 
+def normalize_fusedef_key(key):
+   """ Normalize fusedef keywords (rename synonyms to base keyword)
+
+   Input:   - keyword
+   Returns: - normalized keyword
+   Noted:   - maybe better for performance with (partly) a dictionary
+   """
    if key == "":
       return key
-
    if (key in ("RES", "RES1")) | key.startswith("RESERVED"):
       return key
-
    picname = cfgvar["picname"]
 
    if key.find("ENICPORT") >= 0:
       return key
 
-#  elif (key in ("CPD", "WRTD"))  & \
-#     (picname in ("18f2410", "18f2510", "18f2515", "18f2610", \
-#                  "18f4410", "18f4510"  "18f4515"  "18f4610")):
-#     return key
+   # elif (key in ("CPD", "WRTD"))  & \
+   #    (picname in ("18f2410", "18f2510", "18f2515", "18f2610", \
+   #                 "18f4410", "18f4510"  "18f4515"  "18f4610")):
+   #    return key
 
    elif (key.startswith("CCP") & key.endswith("MX")):
       key = key[:-2] + "MUX"                          # CCP(x)MX -> CCP(x)MUX
       if (key == "CCPMUX"):
          key = "CCP1MUX"
 
-#  elif key.startswith("CP_")  &  key[3:].isdigit():
-#     key = "CP" + key[3:]                           # remove underscore
-#
-#  elif (key in ("EBTR_3", "CP_3", "WRT_3")) & (picname == "18f4585"):
-#     return key
-#
-#  elif (key in ("EBTR_4", "CP_4", "WRT_4", \
-#                "EBTR_5", "CP_5", "WRT_5", \
-#                "EBTR_6", "CP_6", "WRT_6", \
-#                "EBTR_7", "CP_7", "WRT_7"))   & \
-#      (picname in ("18f6520", "18f8520")):
-#     return key
+   #  elif key.startswith("CP_")  &  key[3:].isdigit():
+   #     key = "CP" + key[3:]                           # remove underscore
+   #
+   #  elif (key in ("EBTR_3", "CP_3", "WRT_3")) & (picname == "18f4585"):
+   #     return key
+   #
+   #  elif (key in ("EBTR_4", "CP_4", "WRT_4", \
+   #                "EBTR_5", "CP_5", "WRT_5", \
+   #                "EBTR_6", "CP_6", "WRT_6", \
+   #                "EBTR_7", "CP_7", "WRT_7"))   & \
+   #      (picname in ("18f6520", "18f8520")):
+   #     return key
 
    elif key.startswith("EBRT"):                         # typo MPLAB-X!
       key = "EBTR" + key[4:]
 
-#  elif key.startswith("EBTR_")  &  key[5:].isdigit():
-#     key = "EBTR" + key[5:]
-#
-#  elif (key = "USBDIV"  &,                         compatibility
-#       (left(PicName,6) = "18f245" | left(PicName,6) = "18f255" |,
-#        left(PicName,6) = "18f445" | left(PicName,6) = "18f455" ) ):
-#     key = "USBPLL"
-#
-#  elif (key.startswith("WRT_") & key[4:].isdigit()):
-#     key = "WRT" + key[4:]
+   #  elif key.startswith("EBTR_")  &  key[5:].isdigit():
+   #     key = "EBTR" + key[5:]
+   #
+   #  elif (key = "USBDIV"  &,                         compatibility
+   #       (left(PicName,6) = "18f245" | left(PicName,6) = "18f255" |,
+   #        left(PicName,6) = "18f445" | left(PicName,6) = "18f455" ) ):
+   #     key = "USBPLL"
+   #
+   #  elif (key.startswith("WRT_") & key[4:].isdigit()):
+   #     key = "WRT" + key[4:]
 
    elif (key in fusedef_kwd):
       key = fusedef_kwd[key]                                # translate by table
@@ -2191,24 +2269,24 @@ def normalize_fusedef_key(key):
    return key
 
 
-# ------------------------------------------------------------------------
-# Title:   Determination of appropriate keyword value for fuse_defs
-# Input:   - fuse_def keyword
-#          - keyword value (name of DCRFieldSemantic)
-#          - keyword value description string
-# Returns: Keyword value
-# ------------------------------------------------------------------------
+
 def normalize_fusedef_value(key, val, desc):
+   """ Determination of appropriate keyword value for fuse_defs
 
+   Input:   - fuse_def keyword
+            - keyword value (name of DCRFieldSemantic)
+            - keyword value description string
+   Returns: Keyword value
+   """
    picname = cfgvar["picname"]
-
    descl = desc.upper().split(" ")                          # list of words in description
-
    descu = str(desc).upper()                                # to uppercase
    descu = descu.translate(xtable)                          # replace special chars by spaces
    descu = "_".join(descu.split())                          # replace all space by single underscore
-
    kwdvalue = ""                                            # null value
+
+
+
 
    if ((val == "RESERVED") | (len(desc) == 0)):             # reserved or no desc: skip
       return ""
@@ -2302,14 +2380,12 @@ def normalize_fusedef_value(key, val, desc):
          kwdvalue = descu
 
    elif ((key.startswith("CCP")) & key.endswith("MUX")):    # CCPxMUX
-      if (descu.find("MICRO") >= 0):                        # Microcontroller mode
-         kwdvalue = "pin_E7"                                # valid for all current PICs
-      elif ((val == "ON") | (descu == "ENABLED")):
-         kwdvalue = "ENABLED"
-      elif ((val == "OFF") | (descu == "DISABLED")):
-         kwdvalue = "DISABLED"
+      if ((descu.find("RB3") != -1) & (descu.find("RE7") != -1)):    # special
+         kwdvalue = "pin_RB3_RE7"
+      elif descl[-1].startswith("R"):                       # last word is pin name
+         kwdvalue = "pin_" + descl[-1][-2:]                 # last 2 chars
       else:
-         kwdvalue = "pin_" + descu[-2:]                     # last 2 chars
+         kwdvalue = descu
 
    elif (key == "CINASEL"):
       if (descu.find("DEFAULT") >= 0):                      # Microcontroller mode
@@ -2464,6 +2540,7 @@ def normalize_fusedef_value(key, val, desc):
          kwdvalue = "INTERNAL"
       elif (val in ("ON", "EXTMCLR")):
          kwdvalue = "EXTERNAL"
+
       else:
          kwdvalue = descu
 
@@ -2516,8 +2593,8 @@ def normalize_fusedef_value(key, val, desc):
             elif picname in ("18f25k80", "18f26k80"):
                if (val == "RC"):
                   kwdvalue = "RC_CLKOUT"
-#           if (kwdvalue != tablevalue):                    # report any modification
-#              print "   Modified fuse_def OSC kwdvalue from", tablevalue, "to", kwdvalue
+            # if (kwdvalue != tablevalue):                    # report any modification
+            #    print "   Modified fuse_def OSC kwdvalue from", tablevalue, "to", kwdvalue
          else:
             print "  Missing <" + val + "> as key in fusedef_osc"
 
@@ -2542,8 +2619,10 @@ def normalize_fusedef_value(key, val, desc):
    elif (key == "PLLDIV"):
       if (descu == "RESERVED"):
          kwdvalue = "   "                                   # to be ignored
-      elif (val in ("1", "NODIV", "NOPLL")):
+      elif (val in ("NOPLL")):
          kwdvalue = "X1"                                    # no PLL
+      elif (val in ("NODIV", '1')):
+         kwdvalue = "P1"                                    # no divice
       elif (val in ("2", "DIV2")):
          kwdvalue = "P2"
       elif (val in ("3", "DIV3")):
@@ -2639,8 +2718,8 @@ def normalize_fusedef_value(key, val, desc):
          kwdvalue = "DIG"
       elif (val == "LOW"):
          kwdvalue = "LP"
-#     elif (descu.find("SECURITY") >= 0):
-#        kwdvalue = "HS_CP"
+      # elif (descu.find("SECURITY") >= 0):
+      #    kwdvalue = "HS_CP"
       else:
          kwdvalue = descu
 
@@ -2716,8 +2795,8 @@ def normalize_fusedef_value(key, val, desc):
          if ("0" <= word[0] <= "9"):
             if (word[1] == "."):
                kwdvalue = "V" + word[0] + word[2]
-  #            if (kwdvalue == "V21"):
-  #               kwdvalue = "V20"                          # compatibility
+            # if (kwdvalue == "V21"):
+            #    kwdvalue = "V20"                          # compatibility
                break
       if (kwdvalue == ""):                                  # no voltage value found
          if (("MINIMUM" in descl) | ("LOW" in descl) | ("LO" in descl)):
@@ -2857,11 +2936,10 @@ def normalize_fusedef_value(key, val, desc):
       else:
          kwdvalue = "RESET"
 
-   elif (key == "ZCDDIS"):
+   elif (key == "ZCD"):
       kwdvalue = val                                        # ON means disabled!
 
    # generic determination when no dedicated determination present
-
    else:
       if (val in ("OFF", "DISABLED")):
          kwdvalue = "DISABLED"
@@ -2912,25 +2990,25 @@ def normalize_fusedef_value(key, val, desc):
 
 
 
-# -------------------------------------------------------
-# Title:   Generate a separator line
-# Input:   file pointer
-# Returns:  nothing
-# -------------------------------------------------------
 def list_separator(fp):
+   """ Generate a separator line
+
+   Input:   file pointer
+   Returns:  nothing
+   """
    fp.write("-- " + "-"*48 + "\n")
 
 
-# -----------------------------------------------------
-# Title:   Initialize dictionaries
-# Input:   nothing
-# Output:  fusedef_osc dictionary initialized
-# Returns: nothing
-# Notes:   Initializes - dictionary for fuse_def keywords
-#                      - dictionary for fuse_def OSC keywords
-# -----------------------------------------------------
-def init_fusedef_mapping():
 
+def init_fusedef_mapping():
+   """ Initialize dictionaries
+
+   Input:   nothing
+   Output:  fusedef_osc dictionary initialized
+   Returns: nothing
+   Notes:   Initializes - dictionary for fuse_def keywords
+                        - dictionary for fuse_def OSC keywords
+   """
    global fusedef_kwd
    fusedef_kwd = {"ADDRBW"    : "ABW",
                   "BACKBUG"   : "DEBUG",
@@ -2963,7 +3041,7 @@ def init_fusedef_mapping():
                   "MODE"      : "PMODE",
                   "MSSP7B_EN" : "MSSPMASK",
                   "MSSPMSK"   : "MSSPMASK",
-                  "NZCD"      : "ZCDDIS",
+                  "NZCD"      : "ZCD",
                   "P2BMX"     : "P2BMUX",
                   "PLL_EN"    : "PLLEN",
                   "CFGPLLEN"  : "PLLEN",
@@ -2976,6 +3054,7 @@ def init_fusedef_mapping():
                   "PWRTEN"    : "PWRTE",
                   "NPWRTE"    : "PWRTE",
                   "NPWRTEN"   : "PWRTE",
+                  "PRICLKEN"  : "PCLKEN",
                   "RTCSOSC"   : "RTCOSC",
                   "SDOMX"     : "SDOMUX",
                   "SOSCEL"    : "SOSCSEL",
@@ -2989,7 +3068,8 @@ def init_fusedef_mapping():
                   "WDTE"      : "WDT",
                   "WDPS"      : "WDTPS",
                   "WRT_ENABLE": "WRT",
-                  "WRTEN"     : "WRT" }
+                  "WRTEN"     : "WRT",
+                  "ZCDDIS"    : "ZCD" }
 
    global fusedef_osc
    fusedef_osc = {"EC"             : "EC_CLKOUT",
@@ -3104,14 +3184,15 @@ def init_fusedef_mapping():
                   "XT_XT"          : "XT"}
 
 
-# ---------------------------------------------------------
-#Title:    Calculate next SFRaddr with current Node
-# Input:   - Node
-#          - current SFR address (decimal)
-# Output:  (nothing)
-# Returns: new SFR address (decimal)
-# ---------------------------------------------------------
+
 def calc_sfraddr(child, sfraddr):
+   """ Calculate next SFRaddr with current Node
+
+   Input:   - Node
+            - current SFR address (decimal)
+   Output:  (nothing)
+   Returns: new SFR address (decimal)
+   """
    global sfrranges
    global cfgvar
    if (child.nodeName == "edc:SFRDef"):
@@ -3152,13 +3233,14 @@ def calc_sfraddr(child, sfraddr):
    return sfraddr
 
 
-# ---------------------------------------------------------
-# Title:   Compact address ranges
-# Input:   list of pairs of address ranges
-# Output:  (nothing)
-# Returns: compacted list of pairs of address ranges
-# ---------------------------------------------------------
+
 def compact_address_range(r):
+   """ Compact address ranges
+
+   Input:   list of pairs of address ranges
+   Output:  (nothing)
+   Returns: compacted list of pairs of address ranges
+   """
    x = list(r[:])
    x.sort()
    j = 0
@@ -3173,22 +3255,25 @@ def compact_address_range(r):
    return y
 
 
-# ---------------------------------------------------------
-# Title:   Collect PIC various configuration data
-# Input:   - "pic" xml structure
-#          - picname
-# Output:  fills "cfgvar" dictionary
-# Returns: (nothing)
-# Notes:   - JalV2 compiler supports for 12- and 14-bits core only 4 memory banks
-#          - Fuse defaults are set fo baseline and (extended) midrange
-#            for 16-bits core the defaults are collected from the.pic file.
-# ---------------------------------------------------------
-def collect_config_info(root, picname):
 
+def collect_config_info(root, picname):
+   """ Collect PIC various configuration data
+
+   Input:   - "pic" xml structure
+            - picname
+   Output:  fills "cfgvar" dictionary
+   Returns: (nothing)
+   Notes:   - JalV2 compiler supports for 12- and 14-bits core only 4 memory banks
+            - Fuse defaults are set ('1') for baseline and (extended) midrange.
+              For 16-bits core the defaults are collected from the .pic file.
+   """
    global cfgvar
    global names
-
    cfgvar.clear()                                        # empty dict. of config variables
+   pic = root.getElementsByTagName("edc:PIC")
+   cfgvar["procid"] = eval(pic[0].getAttribute("edc:procid"))      # first (only) "PIC" node
+   if (runtype == "CHIPDEF"):
+      return                                             # nothing more needed for a chipdef run
    cfgvar["picname"] = picname
    cfgvar["adcs_bits"] = 0                               # adcs bits in ANSEL/ANCON
    cfgvar["devid"] = 0                                   # no devID
@@ -3200,31 +3285,29 @@ def collect_config_info(root, picname):
    cfgvar["osccal"] = 0                                  # no OSCCAL
    cfgvar["wdtcon_adshr"] = (0,0)                        # no WDTCON_ADSHR (address,offset)
 
-   pic = root.getElementsByTagName("edc:PIC")
-   cfgvar["arch"]   = pic[0].getAttribute("edc:arch")
-   if cfgvar["arch"]    == "16c5x":
+   cfgvar["arch"] = pic[0].getAttribute("edc:arch")
+   if (cfgvar["arch"] == "16c5x"):
       cfgvar["core"]     = "12"
       cfgvar["maxram"]   = 128
       cfgvar["banksize"] = 32
       cfgvar["pagesize"] = 512
-   elif cfgvar["arch"]  == "16xxxx":
+   elif (cfgvar["arch"]  == "16xxxx"):
       cfgvar["core"]     = "14"
       cfgvar["maxram"]   = 512
       cfgvar["banksize"] = 128
       cfgvar["pagesize"] = 2048
-   elif cfgvar["arch"]  == "16Exxx":
+   elif (cfgvar["arch"]  == "16Exxx"):
       cfgvar["core"]     = "14H"
       cfgvar["maxram"]   =  4096
       cfgvar["banksize"] = 128
       cfgvar["pagesize"] = 2048
-   elif cfgvar["arch"]  == "18xxxx":
+   elif (cfgvar["arch"]  == "18xxxx"):
       cfgvar["core"]     = "16"
       cfgvar["maxram"]   = 4096
       cfgvar["banksize"] = 256
       cfgvar["pagesize"] = 0                             # no pages!
    else:
       print "   undetermined core : ", cfgvar["arch"]
-   cfgvar["procid"] = eval(pic[0].getAttribute("edc:procid"))      # first (only) "PIC" node
    cfgvar["dsid"]   = pic[0].getAttribute("edc:dsid")
 
    power = root.getElementsByTagName("edc:Power")
@@ -3251,29 +3334,30 @@ def collect_config_info(root, picname):
                             eval(codesector.getAttribute("edc:beginaddr"))
    cfgvar["codesize"] = codesize
    useridsectors = pgmspace[0].getElementsByTagName("edc:UserIDSector")
-   if len(useridsectors) > 0:
+   if (len(useridsectors) > 0):
       cfgvar["idaddr"] = eval(useridsectors[0].getAttribute("edc:beginaddr"))
       cfgvar["idsize"] = eval(useridsectors[0].getAttribute("edc:endaddr")) - \
                          eval(useridsectors[0].getAttribute("edc:beginaddr"))
    eedatasectors = pgmspace[0].getElementsByTagName("edc:EEDataSector")
-   if len(eedatasectors) > 0:
+   if (len(eedatasectors) > 0):
       cfgvar["eeaddr"] = eval(eedatasectors[0].getAttribute("edc:beginaddr"))
       cfgvar["eesize"] = eval(eedatasectors[0].getAttribute("edc:endaddr")) - \
                          eval(eedatasectors[0].getAttribute("edc:beginaddr"))
    flashdatasectors = pgmspace[0].getElementsByTagName("edc:FlashDataSector")
-   if len(flashdatasectors) > 0:
+   if (len(flashdatasectors) > 0):
       cfgvar["eeaddr"] = eval(flashdatasectors[0].getAttribute("edc:beginaddr"))
       cfgvar["eesize"] = eval(flashdatasectors[0].getAttribute("edc:endaddr")) - \
                          eval(flashdatasectors[0].getAttribute("edc:beginaddr"))
    devidsectors = pgmspace[0].getElementsByTagName("edc:DeviceIDSector")
-   if len(devidsectors) > 0:
+   if (len(devidsectors) > 0):
       cfgvar["devid"] = eval(devidsectors[0].getAttribute("edc:value"))
    configfusesectors = pgmspace[0].getElementsByTagName("edc:ConfigFuseSector")
-   if len(configfusesectors) > 0:
+   if (len(configfusesectors) > 0):
       cfgvar["fuseaddr"] = eval(configfusesectors[0].getAttribute("edc:beginaddr"))
       cfgvar["fusesize"] = eval(configfusesectors[0].getAttribute("edc:endaddr")) - \
                            eval(configfusesectors[0].getAttribute("edc:beginaddr"))
       picdata = dict(devspec[picname.upper()].items())
+
       if "FUSESDEFAULT" in picdata:
          cfgvar["fusedefault"] = [eval("0x" + picdata["FUSESDEFAULT"])]
       else:
@@ -3286,7 +3370,7 @@ def collect_config_info(root, picname):
             cfgvar["fusedefault"] = [0] * cfgvar["fusesize"]
             load_fuse_defaults(root)
    wormholesectors = pgmspace[0].getElementsByTagName("edc:WORMHoleSector")
-   if len(wormholesectors) > 0:                       # expected with 16-bits code only
+   if (len(wormholesectors) > 0):                       # expected with 16-bits code only
       cfgvar["fuseaddr"] = eval(wormholesectors[0].getAttribute("edc:beginaddr"))
       cfgvar["fusesize"] = eval(wormholesectors[0].getAttribute("edc:endaddr")) - \
                            eval(wormholesectors[0].getAttribute("edc:beginaddr"))
@@ -3401,15 +3485,16 @@ def collect_config_info(root, picname):
          print "   Multiple banks, but no shared data!"
 
 
-# ---------------------------------------------------------
-# Title:   Load fuse defaults
-# Input:   - xml structure
-# Output:  cfgvar["fusedefault"]
-# Returns: (nothing)
-# Notes:   Can be used for all cores, but only useful with 16-bits
-#          core since only defaults of 16-bits core will be updated.
-# ---------------------------------------------------------
+
 def load_fuse_defaults(root):
+   """ Load fuse defaults
+
+   Input:   - xml structure
+   Output:  cfgvar["fusedefault"]
+   Returns: (nothing)
+   Notes:   Can be used for all cores, but only useful with 16-bits
+            core since only defaults of 16-bits core will be updated.
+   """
    configfusesectors = root.getElementsByTagName("edc:ConfigFuseSector")
    if len(configfusesectors) == 0:
       configfusesectors = root.getElementsByTagName("edc:WORMHoleSector")
@@ -3423,14 +3508,15 @@ def load_fuse_defaults(root):
             dcraddr = load_dcrdef_default(dcrdef, dcraddr)
 
 
-# ---------------------------------------------------------
-# Title:   Load individual configuration byte/word
-# Input:   - dcrdef
-#          - current fuse address
-# Output:  part of device file
-# Returns: next config fuse address
-# ---------------------------------------------------------
+
 def load_dcrdef_default(dcrdef, addr):
+   """ Load individual configuration byte/word
+
+   Input:   - dcrdef
+            - current fuse address
+   Output:  part of device file
+   Returns: next config fuse address
+   """
    if dcrdef.nodeName == "edc:AdjustPoint":
       addr = addr + eval(dcrdef.getAttribute("edc:offset"))
    elif dcrdef.nodeName == "edc:DCRDef":
@@ -3441,26 +3527,28 @@ def load_dcrdef_default(dcrdef, addr):
    return addr
 
 
-# ---------------------------------------------------------
-# Title:   Read devicespecific.json
-# Input:   file with datasheet info
-# Output:  fills "devspec" dictionary
-# Returns: (nothing)
-# ---------------------------------------------------------
+
 def read_devspec_file():
+   """ Read devicespecific.json
+
+   Input:   file with datasheet info
+   Output:  fills "devspec" dictionary
+   Returns: (nothing)
+   """
    global devspec                                              # global variable
    fp = open(devspecfile, "r")
    devspec = json.load(fp)                                     # obtain contents devicespecific
    fp.close()
 
 
-# ---------------------------------------------------------
-# Title:   Read pinmap file pinmape_pinsuffix.json
-# Input:   file with datasheet info
-# Output:  fills "pinmap" dictionary
-# Returns: (nothing)
-# ---------------------------------------------------------
+
 def read_pinmap_file():
+   """ Read pinmap file pinmape_pinsuffix.json
+
+   Input:   file with datasheet info
+   Output:  fills "pinmap" dictionary
+   Returns: (nothing)
+   """
    global pinmap                                               # global variable
    global pinanmap
    fp = open(pinmapfile, "r")
@@ -3475,13 +3563,15 @@ def read_pinmap_file():
    fp.close()
 
 
-# ---------------------------------------------------------
-# Title:   Read datasheet.list
-# Input:   none
-# Output:  fills "datasheet" dictionary
-# Returns: (nothing)
-# ---------------------------------------------------------
+
 def read_datasheet_file():
+   """ Read datasheet.list
+
+   Input:   none
+   Output:  fills "datasheet" dictionary
+   Returns: (nothing)
+   Notes:   Translates unqualified datasheet number to one with suffix (letter)
+   """
    global datasheet
    fp = open(datasheetfile, "r")
    for ln in fp:
@@ -3490,22 +3580,28 @@ def read_datasheet_file():
    fp.close()
 
 
-# ---------------------------------------------------------
-# Title:   Convert MPLAB-X .pic file to a JalV2 device file
-# Input:   - name of the PIC
-#          - path of the .pic file
-# Output:  - device file
-# Returns: (nothing)
-# Notes:
-# ---------------------------------------------------------
+
 def pic2jal(picname, picfile):
+   """ Convert MPLAB-X .pic file to a JalV2 device file
+
+   Input:   - name of the PIC
+            - path of the .pic file
+   Output:  - device file
+   Returns: (nothing)
+   Notes:
+   """
    print picname
    global names
    global sfrranges
-   names = []
-   sfrranges.clear()
+
+   names = []                                                  # start with empty collection
+   sfrranges.clear()                                           # start with empty collection
+
    root = parse(picfile)                                       # load xml file
    collect_config_info(root, picname)                          # first scan for selected info
+   if (runtype == "CHIPDEF"):
+      return
+
    fp = open(os.path.join(dstdir, picname + ".jal"), "w")      # device file to be built
    list_devicefile_header(fp, picname)
    list_config_memory(fp)
@@ -3519,43 +3615,50 @@ def pic2jal(picname, picfile):
    fp.close()
 
 
-# ---------------------------------------------------------
-# Main procedure: - process external configuration info
-#                 - select .pic files to be processed (8-bits flash PICs)
-# Input:    PICs to be selected (wildcard specification)
-# Output:   - device file per selected PICs
-#           - chipdef_jallib file
-# Returns:  Number of generated device files
-# ---------------------------------------------------------
-def main(selection):
 
-   m_pic8flash  = re.compile(r"^1(0|2|6|8)(f|lf|hv).*")        # relevant PICs only
-   l_pic8excl   = ["12f529t39a", "12f529t48a", \
-                   "16hv540", "16f527", "16f570"]
+def main(selection):
+   """ Main procedure: - process external configuration info
+                       - select .pic files to be processed (8-bits flash PICs)
+
+   Input:    PICs to be selected (wildcard specification)
+   Output:   - device file per selected PICs
+             - chipdef_jallib file
+   Returns:  Number of generated device files
+   """
+
+   m_pic8flash  = re.compile(r"^1(0|2|6|8)(f|lf|hv).*")        # relevant PIC types only
+   l_pic8excl   = ("12f529t39a", "12f529t48a", \
+                   "16hv540", "16f527", "16f570")              # unsupported by JalV2
+   typedir      = {"16c5x"  : "baseline (12-bits core)",
+                   "16xxxx" : "(extended) midrange (14-bits core)",
+                   "18xxxx" : "18Fs Series (16-bits core)"}
 
    init_fusedef_mapping()
    read_datasheet_file()                                       # for datasheet suffix
    read_devspec_file()                                         # PIC specific info, like datasheet #
    read_pinmap_file()                                          # pin aliases
-   fp = open(os.path.join(dstdir, "chipdef_jallib.jal"), "w")  # common include for device files
+   fp = open(os.path.join(dstdir, chipdeffile), "w")           # common include for device files
    list_chipdef_header(fp)                                     # create header of chipdef file
    devcount = 0
    for (root, dirs, files) in os.walk(picdir):                 # whole tree (incl subdirs!)
-      files.sort()                                             # for unsorted filesystems!
+      if (os.path.basename(root) in typedir.keys()):
+         fp.write("--\n-- " + typedir[os.path.basename(root)] + "\n--\n")
+      dirs.sort()                                              # on core (12,14,16 bits)
+      files.sort()                                             # on picname
       for file in files:
          picname = os.path.splitext(file)[0][3:].lower()       # 1st selection: pic type
-         if (re.match(m_pic8flash, picname) != None) & \
-            (picname not in l_pic8excl):                       # select 8-bits flash PICs
+         if ((re.match(m_pic8flash, picname) != None) & \
+             (picname not in l_pic8excl)):                       # select 8-bits flash PICs
             if fnmatch.fnmatch(picname, selection):            # 2nd selection (user wildcard)
-               if picname.upper() in devspec:                  # must be in devicespecific
+               if (picname.upper() in devspec):                # must be in devicespecific
                   picdata = dict(devspec[picname.upper()].items())  # properties of this PIC
-                  if picdata.get("DATASHEET") != "-":               # 3rd selection (must have datasheet)
+                  if (picdata.get("DATASHEET") != "-"):             # 3rd selection (must have datasheet)
                      pic2jal(picname, os.path.join(root,file))      # create device file from .pic file
                      fp.write("const  word  PIC_%-14s" % picname.upper() + \
                               " = 0x%X" % (cfgvar["procid"]) + "\n")
                      devcount = devcount + 1
                   else:
-                     print picname, "no datasheet!"
+                     print picname, "   no datasheet!"
                else:
                   print picname, "\a not present in", devspecfile    # sound a bell!
    fp.write("--\n")
@@ -3563,34 +3666,37 @@ def main(selection):
    return devcount
 
 
-# === start ====================================================
-# process commandline parameters, start process, time execution
-# ==============================================================
 
-if __name__ == "__main__":
+if (__name__ == "__main__"):
+   """ Process commandline parameters, start process, time execution
+   """
 
-   if len(sys.argv) > 1:
+   if (len(sys.argv) > 1):
       runtype = sys.argv[1].upper()
    else:
-      print "Specify at least PROD or TEST as first argument"
-      print "and optionally a pictype (wildcards allowed)"
+      print "Specify at least PROD or TEST or CHIPDEF as first argument"
+      print "and optionally as second argument a pictype (wildcards allowed)"
       sys.exit(1)
-      runtype = "TEST"
 
-   if runtype == "PROD":
+   if (runtype == "PROD"):
       dstdir = os.path.join(jallibbase, "include/device")
-   elif runtype == "TEST":
+   elif (runtype == "TEST"):
+      dstdir = "./test"
+   elif (runtype == "CHIPDEF"):
+      print "==> Only 'chipdef_jallib' will be created!"
       dstdir = "./test"
    else:
-      print "Specify PROD or TEST as first argument"
-      print "and optionally a pictype (wildcards allowed)"
+      print "Specify PROD, TEST or CHIPDEF as first argument"
+      print "and optionally a PICtype as second argument (wildcards allowed)"
 
-   if len(sys.argv) > 3:
-      print "Expecting not more than 2 arguments: runtype + selection (with wildcards)"
-      print "===> Use  1*  as selection if you want to generate all device files!"
+   if (len(sys.argv) > 3):
+      print "Expecting not more than 2 arguments: runtype + selection"
+      print "==> Use  1*  as selection if you want to generate all device files!"
       sys.exit(1)
-   elif len(sys.argv) > 2:
+   elif (len(sys.argv) > 2):
       selection = sys.argv[2]
+      if (selection == "*"):              # special case
+         selection = "1*"                 # replacement
    else:
       selection = "1*"
 
