@@ -3,10 +3,6 @@
 #
 # Author: Rob Hamerling, Copyrigh (c) 2009..2015. All rights reserved.
 
-import os, sys
-import time
-import json
-
 """
  CreateDSwikis.py - create wiki files:
                     * DataSheet
@@ -21,15 +17,22 @@ import json
         (and programming specifications) have been downloaded.
 """
 
+import os, sys
+import time
+import json
+
+
 #  input (may require changes for other systems or platforms)
-picspecfile = "k:/jallib/tools/devicespecific.json"         # PIC specific properties
-dslist      = "k:/jallib/tools/datasheet.list"              # datasheet number/title file
-pdfdir      = "n:/picdatasheets"                            # dir with datasheets (local)
+home        = os.path.join("/", "home", "robh")             # user home directory
+base        = os.path.join("/", "media", "NAS")             # base of MPLAB-X material  
+picspecfile = os.path.join(home,"jallib","tools","devicespecific.json")   # PIC specific properties
+dslist      = os.path.join(home,"jallib","tools","datasheet.list")        # datasheet number/title file
+pdfdir      = os.path.join(base,"PicDatasheets")                          # dir with datasheets
 
 #  output
-dst         = "k:/jallib/wiki"                              # output path
+dst         = os.path.join(home, "jallib","wiki")                         # output path
 
-url         = "http://ww1.microchip.com/downloads/en/DeviceDoc/"  # Microchip site
+url         = "http://ww1.microchip.com/downloads/en/DeviceDoc/"          # Microchip site
 
 
 def read_datasheet(infile):

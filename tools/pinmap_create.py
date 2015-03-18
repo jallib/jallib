@@ -96,10 +96,6 @@ def process_pic(picname, filename):
             elif (alias == "DAC1VREF+N"):                   # MPLAB-X error
                aliaslist.append("DAC1VREF+")
                print "  Replaced", alias, "by DAC1VREF+ for pin", pinnumber
-            elif (alias.find("MCLR") > 0):
-               pass                                         # no MCLR pin
- #             aliaslist.append("MCLR")
- #             print "  Replaced", alias, "by MCLR for pin", pinnumber
             elif (alias.find("MCLR") >= 0):                 # anywhere in alias name
                pass                                         # suppress MCLR alias
             elif ( (picname in ("16F1707", "16LF1707")) &

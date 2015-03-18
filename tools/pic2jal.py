@@ -55,10 +55,10 @@ home          = os.path.join("/", "home", "robh")                           # us
 base          = os.path.join("/", "media", "NAS")                           # base of MPLAB-X material  
 mplabxbase    = os.path.join(base, "mplab-x_" + mplabxversion)              # MPLAB-X base directory
 jallibbase    = os.path.join(home, "jallib")                                # local copy of jallib trunk
-picdir        = os.path.join(mplabxbase, "crownking.edc.jar/content/edc")   # basedir of .pic files
-devspecfile   = os.path.join(jallibbase, "tools/devicespecific.json")       # additional PIC properties
-pinmapfile    = os.path.join(jallibbase, "tools/pinmap_pinsuffix.json")     # pin aliases
-datasheetfile = os.path.join(jallibbase, "tools/datasheet.list")            # list of datasheets
+picdir        = os.path.join(mplabxbase, "crownking.edc.jar","content","edc")  # basedir of .pic files
+devspecfile   = os.path.join(jallibbase, "tools","devicespecific.json")     # additional PIC properties
+pinmapfile    = os.path.join(jallibbase, "tools","pinmap_pinsuffix.json")   # pin aliases
+datasheetfile = os.path.join(jallibbase, "tools","datasheet.list")          # list of datasheets
 
 
 # --- output
@@ -1887,6 +1887,7 @@ def list_digital_io(fp, picname):
          print "   Has ADCONx register, but no ADCgroup found in devicespecific.json"
       ADC_group = "0"                                       # no ADC module
       ADC_res = "0"                                         # # bits
+
    else:                                                    # ADC group specified
       ADC_group = picdata["ADCGROUP"]
       if ("ADCMAXRESOLUTION" not in picdata):               # # ADC bits not specified
@@ -3679,7 +3680,7 @@ if (__name__ == "__main__"):
       sys.exit(1)
 
    if (runtype == "PROD"):
-      dstdir = os.path.join(jallibbase, "include/device")
+      dstdir = os.path.join(jallibbase, "include","device")
    elif (runtype == "TEST"):
       dstdir = "./test"
    elif (runtype == "CHIPDEF"):
@@ -3690,7 +3691,7 @@ if (__name__ == "__main__"):
       print "and optionally a PICtype as second argument (wildcards allowed)"
 
    if (len(sys.argv) > 3):
-      print "Expecting not more than 2 arguments: runtype + selection"
+      print "Expecting not more than 2 arguments: runtype and selection"
       print "==> Use  1*  as selection if you want to generate all device files!"
       sys.exit(1)
    elif (len(sys.argv) > 2):
