@@ -3,23 +3,25 @@
  # Author: Rob Hamerling, Copyright (c) 2009..2015. All rights reserved.
 
 """
-   pinmap_create.py - create new pinmap.py from MPLAB-X
+   pinmap_create.py - create new pinmap.py (pinmapnew.py) from MPLAB-X.
    This script is part of a sub-project using MPLAB-X info for Jallib,
-   in particular the device files, but also for some other libraries.
-   This script uses the .pic files of MPLAB-X.
-   The Pin section of the .pic files contains the pin aliases.
-   Some manipulations are performed, for example:
+   in particular the generation of device files, but also for some
+   other libraries. This script uses the .pic files of MPLAB-X.
+   The Pin section of a .pic file contains the pin aliases.
+   Some manipulation is performed, for example:
     - skip pins which are not accessible from the program like Vpp, Vdd
-    - skip non-aliases of a pin, like IOC, INT
+    - skip non-aliases of a pin, like IOCxx, INTxx
+    - skip aliases which are not likely be used by Jal programs,
+      like ICSPDAT/CLK, ICDDAT/CLK, MCLR
     - correct apparent errors or omissions of MPLAB-X
-    - determine the base name of a pin and specify it as first in list
+    - determine the base name of a pin and make it first in the list
    When pins are not in .pic file or known to be incorrect
    the entry in the old pinmap file will be copied (when present).
-   Same when the .pic file does not contain a Pin section at all,
-   otherwise the pinmap will not contain an entry for this PIC and
-   must be created manually from the datasheet.
+   Same when the .pic file does not contain a Pin section at all.
+   When not present the pinmap must be created manually from the datasheet.
    This script handles issues with MPLAB-X (version see below).
-   for other MPLAB-X versions it will probably have to be adapted!
+   for newer MPLAB-X versions it will probably have to be adapted
+   because of corrections made by Microchip or with new .pic files.
 """
 
 import os
@@ -28,9 +30,9 @@ import fnmatch
 import re
 from xml.dom.minidom import parse, Node
 
-mplabxversion = "226"                                       # latest version of MPLAB-X
+mplabxversion = "300"                                       # latest version of MPLAB-X
 
-picdir    = "k:/mplab-x_" + mplabxversion + "/crownking.edc.jar/content/edc"   # basedir of .pic files
+picdir = os.path.join("/", "media", "NAS", "mplab-x_" + mplabxversion, "crownking.edc.jar", "content", "edc")   # place of .pic files
 
 pinmapnew = "pinmapnew.py"                                  # output
 try:
@@ -63,12 +65,7 @@ def list_pic(_pic, _alias):
 
 def process_pic(picname, filename):
 #  process a specific PIC (expect picname in upper case)
-   print picname
-
-   if (int(mplabxversion) < 210):
-      if (picname in ("16LF1713", "16F1716", "16LF1716")):
-         filename = "pic16f1713.pic"
-         print "  Pinmap derived from 16F1713"
+   print picname                                            # progress signal
 
    filepath = os.path.join(root,filename)                   # pathspec
    dom = parse(filepath)                                    # load .pic file
@@ -87,8 +84,8 @@ def process_pic(picname, filename):
       aliaslist = []                                        # new aliaslist this pin
       for vpin in pin.getElementsByTagName("edc:VirtualPin"):
          alias = vpin.getAttribute("edc:name").upper().strip("_")
-         if alias not in ("INT", "IOC"):                    # only 'real' alias names
-            if alias.startswith("RB")  & picname.startswith("12"):   # Jallib requirement
+         if (alias[0:3] not in ("INT", "IOC", "VPP", "ICD", "ICS")):  # excluded aliases
+            if alias.startswith("RB") & picname.startswith("12"):     # Jallib requirement
                aliaslist.append("RA" + alias[-1])           # RBx -> RAx
                aliaslist.append("GP" + alias[-1])           # add GPx
                print "  Renamed pin", alias, "to RA" + alias[-1]
@@ -96,12 +93,15 @@ def process_pic(picname, filename):
                aliaslist.append(alias[0:3])
                aliaslist.append(alias[3:])
                print "  Splitted alias", alias, "into", alias[0:3], "and", alias[3:], "for pin", pinnumber
-            elif alias == "DAC1VREF+N":                     # MPLAB-X error
+            elif (alias == "DAC1VREF+N"):                   # MPLAB-X error
                aliaslist.append("DAC1VREF+")
                print "  Replaced", alias, "by DAC1VREF+ for pin", pinnumber
-            elif alias == "NMCLR":
-               aliaslist.append("MCLR")
-               print "  Replaced", alias, "by MCLR for pin", pinnumber
+            elif (alias.find("MCLR") > 0):
+               pass                                         # no MCLR pin
+ #             aliaslist.append("MCLR")
+ #             print "  Replaced", alias, "by MCLR for pin", pinnumber
+            elif (alias.find("MCLR") >= 0):                 # anywhere in alias name
+               pass                                         # suppress MCLR alias
             elif ( (picname in ("16F1707", "16LF1707")) &
                    (alias == "AN9") & (pinnumber == 8) ):
                aliaslist.append("AN8")
@@ -118,10 +118,22 @@ def process_pic(picname, filename):
             else:
                aliaslist.append(alias)                      # normal alias!
 
-      if (picname in ("18F2331", "18F2431")) & (pinnumber == 26):
-         aliaslist = ["RE3"] + aliaslist                    # prepend missing pin name
+      if (picname in ("16LF1559")) & (pinnumber == 18):
+         if not "AN1" in aliaslist:
+            aliaslist.append("AN1")                         # missing in mplab-x 2.30
+            print "  Added missing alias AN1 to pin", pinnumber
+      elif (picname in ("16F1614", "16LF1614")) & (pinnumber == 3):
+         if not "AN3" in aliaslist:
+            aliaslist.append("AN3")                         # missing in mplab-x 2.30
+            print "  Added missing alias AN3 to pin", pinnumber
+      elif (picname in ("16F1618", "16LF1618", "16F1619", "16LF1619")) & (pinnumber == 19):
+         if not "AN0" in aliaslist:
+            aliaslist.append("AN0")                         # missing in mplab-x 2.30
+            print "  Added missing alias AN0 to pin", pinnumber
+      elif (picname in ("18F2331", "18F2431")) & (pinnumber == 26):
+         aliaslist = ["RE3"] + aliaslist                    # missing pin name
          print "  Added RE3 to pin", pinnumber
-      elif (picname in ("18F4220", "18F4320")) & (pinnumber == 36):  # MPLAB-X omission
+      elif (picname in ("18F4220", "18F4320")) & (pinnumber == 36):
          aliaslist = pinmap[picname].get("RB3", ["RB3"])    # copy from old pinmap if present
          print "  Aliaslist of pin", pinnumber, "copied from old pinmap"
       elif (picname in ("18F86J11", "18F86J16", "18F87J11"))  & (pinnumber == 55):
@@ -145,17 +157,6 @@ def process_pic(picname, filename):
          else:
             pinlist[portbit] = aliaslist                    # add aliaslist this pin
 
-
-   if picname in ("16F1704", "16LF1704"):
-      for pin in ("RB4", "RB5", "RB6", "RB7", "RC6", "RC7"):
-         if pinlist.get(pin) == None:                       # MPLAB-X omission
-            if pinmap[picname].get(pin) != None:            # pin present in old pinmap
-               pinlist[pin] = pinmap[picname].get(pin)      # take it from old pinmap
-               print "  Copied missing alias list of pin", pin, "from old pinmap"
-            else:
-               pinlist[pin] = [pin]                         # insert dummy
-               print "  Inserted dummy alias list for missing pin", pin
-
    if len(pinlist) > 0:
       list_pic(picname, pinlist)                            # list pinmap this pic
    elif pinmap.get(picname) != None:                        # present in old list
@@ -165,7 +166,7 @@ def process_pic(picname, filename):
       print "  Pinlist missing, add it manually!"
 
 
-# --- mainline ---
+# === mainline ===
 
 if (__name__ == "__main__"):
 
@@ -179,8 +180,7 @@ if (__name__ == "__main__"):
       files.sort()                                             # for unsorted filesystems!
       for file in files:
          picname = os.path.splitext(file)[0][3:].lower()       # 1st selection: pic type
-         if (re.match(pic8flash, picname) != None) & \
-            (picname not in pic8excl):                         # select 8-bits flash PICs
+         if ((re.match(pic8flash, picname) != None) & (picname not in pic8excl)):   # Jallib selection!
             process_pic(picname.upper(), os.path.join(root,file))      # create device file from .pic file
             piccount = piccount + 1
 
