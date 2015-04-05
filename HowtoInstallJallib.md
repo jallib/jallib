@@ -1,0 +1,1 @@
+TODO... Here we have to explain, step-by-step, how to install jallib from a downloaded package Yes, there's no package for now... :)
