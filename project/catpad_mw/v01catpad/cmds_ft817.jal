@@ -1,0 +1,604 @@
+-- Title: cmds_FT817
+-- Author: Michael Watterson Copyright (c) 2010, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- Revision: $Revision$
+-- ft817   cat control
+
+
+
+const CMD_lockOn = 0            ;1
+Const CMD_lockOff = 0x80        ;1
+Const CMD_FreqWr = 1            ;0
+Const CMD_FreqRd = 3            ;5
+Const CMD_VFOtoggle = 0x81     ;0
+Const CMD_SplitOn = 2           ;1
+Const CMD_SplitOff = 0x82      ;1
+Const CMD_ClarOn = 5            ;1
+Const CMD_ClarOff = 0x85       ;1
+Const CMD_ClarFreq = 0xF5      ;0  RIT
+Const CMD_ModMode = 7           ;0
+Const CMD_PTTon = 8             ;1
+Const CMD_PTToff = 0x88        ;1
+Const CMD_RepOffDir = 9         ;0
+Const CMD_RepOffFreq = 0xF9    ;0  0 .. 99MHz
+Const CMD_SqlMode = 0xA        ;0
+Const CMD_CTSSfreq = 0xB       ;0
+Const CMD_DCScode = 0xC        ;0
+Const CMD_PwrOn = 0xF          ;0
+Const CMD_PwrOff = 0x8F        ;0
+Const CMD_RXstats = 0xE7       ;1
+Const CMD_TXstats = 0xF7       ;1
+Const CMD_TXmeter = 0xBD       ;2 unofficial  but only 1 byte = 0 if in RX mode
+Const CMD_TXkeyState = 0x10    ;1 unofficial
+Const CMD_ConfigRd = 0xA7      ;9 unofficial
+Const CMD_ConfigRes = 0xBE     ;0 unofficial But DO NOT do this!
+Const CMD_EEPROM_Rd = 0xBB     ;2 unofficial
+Const CMD_EEPROM_Wr = 0xBC     ;0 unofficial
+--  End commands
+Const TimeCommShort = 50
+Const TimeOutInitial = 200
+
+-- Memory Constants
+var byte FreqLast[4]
+var byte ModeLast
+var byte MemLast
+    -- 00 .. 26  is R/T band
+    -- 27 .. 99  is Scan
+    -- 100 .. 199 is C channels
+    -- 200 .. 1200 is # channels
+Const SIZE_UserName = 32
+
+Const OFF_Memlast = 0
+Const OFF_ModLast = OFF_Memlast + 2
+Const OFF_FreqLast = OFF_ModLast + 2
+Const OFF_UserName = OFF_FreqLast + 4
+Const Off_UserCall = OFF_UserName + SIZE_UserName
+
+
+var word memIndex      -- index into EEPROM
+var word eepromIndex        -- index into EEPROM
+var word eepromExtIndex
+-- External EEPROM
+-- Frequency stored as 976.543,21MHz etc, i.e. 10s of Hz  as BCD (or GHz if GHz Flag)
+--  97 65 43 21 = 4bytes
+
+--
+--  R/T  64 bytes per band. 27 bands  00 to 26  =        bytes
+-- Name,  RX L,  RX H, Last Rx, Mode, Aerial, Trans, Filter, Atten, FMN, IPO,
+--  8        4      4      4       1 ,   2xF    4xF,     2xF    2xF F  F,     = 23 bytes
+--
+--
+-- TX L, TX H, Last Tx, Offset, Tone, CTCSS, DCS, Pwr,  Split, spare
+--   4     4     4         4      2     2     2,  4xF,    F     F    ,
+-- C-TX, D-Tx, T-Tx, Spare, C-Sql, D-Sql, T-RB, Sel,
+-- F     F      F      F     F       F    F      F                = 24 bytes
+
+const IO_Start = 2
+const IO_MyCall = IO_Start    -- 16 bytes
+const IO_Seconds = IO_MyCall +16
+const IO_Minutes = IO_Seconds +1
+const IO_Hours = IO_Minutes +1
+const IO_Day = IO_Hours +1
+const IO_Month = IO_Day +1
+const IO_Year = IO_Month +1  -- word
+const IO_Boots = IO_Year +2  -- word
+
+-- offsets per band for 0 .. 27 and per Scan band 28..99
+const EO_Start = 2
+
+Const EO_BandName = 32
+Const EO_BandRXL = EO_BandName + 8
+Const EO_BandRXH = EO_BandRXL + 4
+Const EO_BandLastRX = EO_BandRXH + 4
+Const EO_BandMode = EO_BandLastRX + 4
+Const EO_BandTAS = EO_BandMode + 1
+    -- Aerial=4,5,  Transverter=0,1,2,3, Spare = 6,7
+Const EO_BandAFNI = EO_BandTAS + 1
+    -- Filter=4,5,  Atten=0,1,3 FMN=6 IP0=7
+Const LASTBAND = 27
+-- TX part. Only offsets per band for 0 .. 26
+Const EO_BandTXL = 32
+Const EO_BandTXH = EO_BandTXL + 4
+Const EO_BandLastTX = EO_BandTXH + 4
+Const EO_BandOffset = EO_BandLastTX + 4
+Const EO_BandTone = EO_BandOffset + 4
+Const EO_BandCTCSS = EO_BandTone + 2
+Const EO_BandDCS = EO_BandCTCSS + 2
+Const EO_BandPS = EO_BandDCS + 2
+    -- Power=0,1,2,3  Split=7
+Const EO_BandSquelch = EO_BandPS + 1
+    -- TX=0,1,2  RX=4,5,6,7  C-TX, D-Tx, T-Tx, Spare, C-Sql, D-Sql, T-RB, Sel
+Const BANDS_FIELDS = 30
+Const SCANS_FIELDS = 13
+Const TRANS_FIELDS = 13
+-- Scanner/Broadcast  32 bytes   100 -27 = 83 bands = 27 to 99  =       bytes
+-- Name,  RX L,  RX H, Last Rx, Mode, Aerial, Trans, Filter, Atten, IPO, spare
+--  8        4      4      4       1 ,   2xF    4xF     2xF  ,  2xF   F,  5xF   = 24 bytes
+
+--  we make the first 32 bytes same to use same routines and save code.
+
+
+--  Memory  32 bytes  100 channels + 100 channels  = 6400 bytes
+-- Name,   Rx, ModeRX, AerialRX, TransRX, Filter, Atten, IPO, spare
+--  8      4    1 ,   2xF       4xF     ,  2xF  ,  2xF    F  5xF,   = 15 bytes
+--  Last Tx,  ModeTX, AerialTX, TransTX, Tone, CTCSS, DCS, Pwr,  Split, spare
+--       4      1 ,   2xF    4xF ,  2     2     2,  4xF,    F     F    ,
+-- C-TX, D-Tx, T-Tx, C-Sql, D-Sql, T-RB, Sel, Spare
+--  F     F      F      F     F       F    F      F                = 14 bytes    total =30
+Const EO_ChanName = 0
+Const EO_ChanRX = EO_ChanName + 8
+Const EO_ChanModeRX = EO_ChanRX + 4
+Const EO_ChanTAS = EO_ChanModeRX + 1
+    -- Aerial=4,5,  Transverter=0,1,2,3, Spare = 6,7
+Const EO_ChanAFNI = EO_ChanTAS + 1
+    -- Filter=4,5,  Atten=0,1,3 FMN=6 IP0=7
+
+-- TX part. Only offsets per band for 0 .. 26
+Const EO_ChanTX = 16
+Const EO_ChanModeTX = EO_ChanTX + 4
+Const EO_ChanTone = EO_ChanModeTX + 1
+Const EO_ChanCTCSS = EO_ChanTone + 2
+Const EO_ChanDCS = EO_ChanCTCSS + 2
+Const EO_ChanPS = EO_ChanDCS + 2
+    -- Power=0,1,2,3  Split=7
+Const EO_ChanSquelch = EO_ChanPS + 1
+    -- TX=0,1,2  RX=4,5,6,7  C-TX, D-Tx, T-Tx, Spare, C-Sql, D-Sql, T-RB, Sel
+
+
+-- Transverter 32 bytes each x 16   = 1024 Bytes
+-- Name,  RX L,  RX H, RX Offset, TX L, TX H,  TX Offset, spare, RXneg, TXneg, GHz, 5 spare
+--   6     4      4     4     4       4         4,         1      F      F     F ,  5       =32
+Const EO_TranName = 0
+Const EO_TranRXL = EO_TranName + 6
+Const EO_TranRXH = EO_TranRXL + 4
+Const EO_TranRXO = EO_TranRXH + 4
+Const EO_TranTXL = EO_TranRXO + 4
+Const EO_TranTXH = EO_TranTXL + 4
+Const EO_TranTXO = EO_TranTXH + 4
+Const EO_TranFlg = EO_TranTXO + 4
+    -- RXneg=0, TXneg=1, GHz=7   spare=2,3,4,5,6
+
+-- Rig band definitions
+--  Name,  RX L,  RX H, TX L, TX H, Modes, Filters, Resolution, GHz,Phantom,spare, Id"
+--   8        4      4     4     4    1      1       1           (1   1   )  2     2      =32
+Const EO_RigBandName = 0
+Const EO_RigBandRXL = EO_RigBandName + 8
+Const EO_RigBandRXH = EO_RigBandRXL + 4
+Const EO_RigBandTXL = EO_RigBandRXH + 4
+Const EO_RigBandTXH = EO_RigBandTXL + 4
+Const EO_RigBandModes = EO_RigBandTXH + 4
+Const EO_RigBandFilters = EO_RigBandModes + 1
+Const EO_RigBandResolution = EO_RigBandFilters + 1
+Const EO_RigBandGP = EO_RigBandResolution + 1
+Const EO_RigBandSpare = EO_RigBandGP + 1
+Const EO_RigBandId = EO_RigBandSpare + 2
+
+--                 total = 14,356 bytes
+-- External 24LC512 = 512 x 1024 / 8 = 64Ki byte
+-- Memories and Bands are in a separate I2C eeprom
+
+
+-- memory is frequency TX, frequency Rx  = 4 words per channel
+-- Frequency stored as 12,987.654MHz etc as 54 76 = word1 89 21 = Word2
+
+
+-- END of External Memory
+-- 27 x 64  R/T band
+-- 83 x 32  Scanner bands
+-- 200 x 32 Memory
+-- 16 x 32  Transverter
+-- 16 x 32  Radio band defines
+-- last  8k is radio backup
+const EE_24LC512_I2C = 0       -- addrees on bus
+Const EXT_EEPROM_LIMIT = 65535
+Const LAST_BAND = 27
+Const MEM_BLOCK_SIZE = 32
+Const RIG_MEM_SIZE = 8192
+Const EXTOFF_BAND = 0
+Const NUM_MEMS  = 100
+Const NUM_TRANS = 16
+Const EXTOFF_SCAN = EXTOFF_BAND + ((LAST_BAND + 1) * MEM_BLOCK_SIZE * 2)
+Const EXTOFF_CHS1 = EXTOFF_SCAN + ((NUM_MEMS - EXTOFF_BAND) * MEM_BLOCK_SIZE)    -- 100
+Const EXTOFF_CHS2 = EXTOFF_CHS1 + (NUM_MEMS * MEM_BLOCK_SIZE)                    -- 1000
+Const EXTOFF_TRAN = EXTOFF_CHS2 + (10 * NUM_MEMS * MEM_BLOCK_SIZE)                -- 16
+Const EXTOFF_RIG_BANDS = EXTOFF_TRAN + (NUM_TRANS * MEM_BLOCK_SIZE)
+Const EXTOFF_RIG_MISC = EXTOFF_RIG_BANDS + (NUM_TRANS * MEM_BLOCK_SIZE)
+Const EXTOFF_RIG_BACKUP = EXT_EEPROM_LIMIT - RIG_MEM_SIZE
+
+const byte MOD_MODE_TABLE[] = {
+"L","S","B",     ;0
+"U","S","B",     ;1
+" ","C","W",     ;2
+"C","W","R",     ;3
+" ","A","M",     ;4
+"E","0","5",     ;5
+"W","F","M",     ;6
+"E","0","7",     ;7
+" ","F","M",     ;8
+"E","0","9",     ;9
+"D","I","G",     ;10
+"E","1","1",     ;11
+"P","K","T",     ;12
+"E","1","3",     ;13
+"E","1","4",     ;14
+"E","1","5"}     ;15
+-- if ox80 higher it's narrow mode
+
+const RIGMODE_OFF = 0
+const RIGMODE_RX = 1
+const RIGMODE_FREQ = 2  -- enter new freq
+const RIGMODE_MAIN_MENU = 3
+const RIGMODE_S_MENU = 4
+const RIGMODE_TX = 5
+
+const RIGMODE_IMPORT = 128
+const RIGMODE_REMOTE = 255
+var byte rigModeNow = RIGMODE_OFF
+var byte rigModeOld = RIGMODE_OFF
+
+-- make sure noting in serial port buffer before issue a command
+procedure serial_flush_read() is
+var volatile byte temp
+    while (serial_hw_data_available) loop
+        temp = serial_hw_data
+        _usec_delay(40)
+    end loop
+end procedure
+
+--tested
+-- Higher level Rig specific
+function RIG_ModeLegal(byte in modMode) return bit is
+-- Warning the FT817 will hang if you try to set wrong Mode.
+-- Never set WFM or unlisted modes.
+    case modMode of
+    0, 1, 2, 3, 4, 8, 10, 12 :
+        return (True)
+    otherwise
+        return (false)
+    End case
+end function
+
+--tested
+function RIG_ModeText(byte in modMode, byte out modText[3])return bit is
+var bit narrow = false
+   if (modMode > 0x80) & !(modMode == 255) then
+      modMode = modMode - 0x80
+      narrow =true
+   end if
+
+   if modMode < 16 then
+       modMode = modMode *3
+       modText[0] = MOD_MODE_TABLE[modMode]
+       modText[1] = MOD_MODE_TABLE[modMode+1]
+       modText[2] = MOD_MODE_TABLE[modMode+2]
+   Else
+       modText[0] = "E"
+       modText[1] = "R"
+       modText[2] = "R"
+    end if
+   Return narrow
+end function
+
+--tested
+procedure CAT_FreqBCDRd(byte out ModMode,  byte out bcdfreq[4])  is
+pragma inline
+var byte TimeOut
+var byte digit
+    bcdfreq[0] = 0
+    bcdfreq[1] = 0
+    bcdfreq[2] = 1
+    bcdfreq[3] = 0
+    ModMode = 255
+    serial_flush_read() -- make sure nothing in buffer
+    -- timeouts incase radio off or serial unplugged.
+    for 4 loop
+        serial_hw_write(0)
+    end loop
+    serial_hw_write(CMD_FreqRd)
+    -- get back the frequency & mode
+    --suspend
+    for 4 using digit loop
+       Timeout = TimeOutInitial
+       while (!serial_hw_data_available) & (TimeOut > 0) loop
+           _usec_delay(20)
+           TimeOut = TimeOut -1
+       end loop
+       if TimeOut < 1 then return end if
+       bcdfreq[digit]= serial_hw_data
+    end loop
+    Timeout = TimeOutInitial
+    while (!serial_hw_data_available)  & (TimeOut > 0) loop
+        _usec_delay(10)
+        TimeOut = TimeOut -1
+    end loop
+    if TimeOut < 1 then return end if
+    ModMode = serial_hw_data
+end procedure
+
+
+--tested
+procedure CAT_FreqBCDWr(byte in freq[4] ) is
+-- we assume nn n.n nn,nn  tens of Hz
+var byte ind
+var byte TimeOut
+    for 4 using ind loop
+        serial_hw_write(freq[ind])
+    end loop
+    serial_hw_write(CMD_FreqWr)
+end procedure
+
+procedure CAT_Mode(byte in  mode) is
+-- sets modulation for current Band
+    If RIG_ModeLegal(mode) Then
+       serial_hw_write (mode)
+       serial_hw_write (0)
+       serial_hw_write (0)
+       serial_hw_write (0)
+       serial_hw_write (CMD_ModMode)
+    end if
+end procedure
+
+
+function CAT_PTT(bit in KeyOn) return bit is
+--This command returns lastKey state
+var bit pttState
+var byte temp
+var word TimeOut
+    pttState = False
+    TimeOut = TimeOutInitial
+    serial_flush_Read()
+    serial_hw_write (0)
+    serial_hw_write (0)
+    serial_hw_write (0)
+    serial_hw_write (0)
+    If KeyOn Then
+        serial_hw_write ( CMD_PTTon )   -- 00 if the FT817 WAS unkeyed, & F0 if already keyed
+    Else
+         serial_hw_write (CMD_PTToff)  -- returns 00 if the '817 was keyed, & F0 if already unkeyed.
+    End If
+    -- returns one byte
+    Timeout = TimeOutInitial
+    while (!serial_hw_data_available)  & (TimeOut > 0) loop
+        _usec_delay(10)
+        TimeOut = TimeOut -1
+    end loop
+    if TimeOut > 0 then
+        temp = serial_hw_data
+        temp = temp & 0xF0
+        pttState = (temp > 0)
+    End If
+    return (pttState)
+end Function
+
+function CAT_RXstats(bit out squelch, bit out toneSql, bit out discrim)return byte  is
+pragma inline
+ -- returns S meter
+var byte RXstatus
+var byte  meter
+var word TimeOut
+     -- must set to default for TX or no connection
+    meter = 255
+    squelch = off
+    toneSql = off
+    discrim = off
+    TimeOut = TimeOutInitial
+    serial_flush_read() -- make sure nothing in buffer
+    -- timeouts incase radio off or serial unplugged.
+    for 4 loop
+        Timeout = TimeOutInitial
+        while (!serial_hw_data_ready)& (TimeOut > 0) loop
+            _usec_delay(10)
+             TimeOut = TimeOut -1
+        end loop
+        if TimeOut < 1 then return (meter) end if
+        serial_hw_write(0)
+    end loop
+    Timeout = TimeOutInitial
+    -- suspend
+    while (!serial_hw_data_ready)& (TimeOut > 0)loop
+        _usec_delay(10)
+        TimeOut = TimeOut -1
+    end loop
+    if TimeOut < 1 then return (meter) end if
+    serial_hw_write(CMD_RXstats)     -- Read RX status & sigmeter
+    TimeOut = TimeOutInitial
+    -- returns one byte
+    Timeout = TimeOutInitial
+    while (!serial_hw_data_available)  & (TimeOut > 0) loop
+        _usec_delay(10)
+        TimeOut = TimeOut -1
+    end loop
+    if TimeOut < 1 then return (meter) end if
+    If TimeOut > 0 Then
+       RXstatus= serial_hw_data
+       If RXstatus < 255 Then
+            meter = RXstatus & 15
+            squelch = (RXstatus & 128) > 0
+            toneSql = (RXstatus & 64) > 0
+            discrim = (RXstatus & 32) > 0
+        End If
+    End If
+    return (meter)
+End Function
+
+function CAT_TXstats(bit out PTTon, bit out SWRhi, bit out SplitOn)return byte  is
+ -- returns power meter
+var byte TXstatus
+var byte  meter
+var word TimeOut
+     -- must set to default for TX or no connection
+    meter = 0
+    PTTon = off
+    SWRhi = off
+    SplitOn = off
+    TimeOut = TimeOutInitial
+    serial_flush_Read()
+    serial_hw_write (0)
+    serial_hw_write (0)
+    serial_hw_write (0)
+    serial_hw_write (0)
+    serial_hw_write (CMD_TXstats)     -- Read RX status & sigmeter
+    TimeOut = TimeOutInitial
+    -- returns one byte
+    while ! _serial_hw_read(TXstatus) & (timeOut > 0) Loop
+          _usec_delay(100)
+          TimeOut = TimeOut - 1
+    end loop
+    If TimeOut > 0 Then
+         If TXstatus < 255 Then
+            meter = TXstatus & 15
+            PTTon = (TXstatus & 128) > 0
+            SWRhi = (TXstatus & 64) > 0
+            SplitOn = (TXstatus & 32) > 0
+        end if
+    end if
+    return (meter)
+end function
+
+function CAT_TXmeters(byte out pwrMeter, byte out alcMeter, byte out modMeter) return byte is
+ --returns SWRmeter
+var byte temp[2]
+var byte swrMeter
+var word TimeOut
+    swrMeter = 255
+    pwrMeter = 0
+    alcMeter = 0
+    modMeter = 0
+    TimeOut = TimeOutInitial
+    serial_flush_Read()
+    serial_hw_write (0)
+    serial_hw_write (0)
+    serial_hw_write (0)
+    serial_hw_write (0)
+    serial_hw_write (CMD_TXmeter)    -- Read four nybbles = 2 byte
+    Timeout = TimeOutInitial
+    while (!serial_hw_data_available)  & (TimeOut > 0) loop
+        _usec_delay(10)
+        TimeOut = TimeOut -1
+    end loop
+    if TimeOut > 0 then
+        temp[0] = serial_hw_data
+        Timeout = TimeOutInitial
+        while (!serial_hw_data_available)  & (TimeOut > 0) loop
+            _usec_delay(10)
+            TimeOut = TimeOut -1
+        end loop
+        if TimeOut > 0 then
+            temp[1] = serial_hw_data
+              -- alc, Power
+            pwrMeter = temp[0] / 16
+            alcMeter = temp[0] & 15
+              -- swr, Mod
+            swrMeter = temp[1] / 16
+            modMeter = temp[1] & 15
+        End If
+    End If
+    return (swrMeter)
+end function
+
+procedure CAT_EEPROMread(word in eeAddress, byte out buffer[2] )is
+-- returns two bytes, i.e. the byte at the address & the next byte
+var word  TimeOut
+    buffer[0] = 0
+    buffer[1] = 0
+    TimeOut = TimeOutInitial
+    serial_flush_Read()
+    serial_hw_write (byte(eeAddress / 256))
+    serial_hw_write (byte(eeAddress & 0xFF))
+    serial_hw_write (0)
+    serial_hw_write (0)
+    serial_hw_write (CMD_EEPROM_Rd)   --Read two bytes eeprom
+    while ! _serial_hw_read(buffer[0]) & (timeOut > 0) Loop
+          _usec_delay(100)
+          TimeOut = TimeOut - 1
+    end loop
+    If TimeOut > 0 Then
+        while ! _serial_hw_read(buffer[1]) & (timeOut > 0) Loop
+          _usec_delay(100)
+          TimeOut = TimeOut - 1
+        end loop
+    End If
+end procedure
+
+
+--  Write FT-817 EEPROM Data  (Undocumented)    Address MSB Address
+--  LSB Data for Address    Data for Address + 1    BC
+--  This command writes two bytes to the EEPROM at the address in data bytes 1 & 2
+procedure CAT_EEPROMwrite(word in eeAddress, byte in datab[2])  is
+    serial_hw_write (byte(eeAddress / 256))
+    serial_hw_write (byte(eeAddress & 0xFF))
+    serial_hw_write (datab[0])
+    serial_hw_write (datab[1])
+    serial_hw_write (CMD_EEPROM_Wr)
+end procedure
+
+
+
+procedure RIG_Backup() is
+var word dest
+var word idxCnt
+var byte datawd[2]
+var word datas at datawd
+    dest = EXTOFF_RIG_BACKUP
+    for RIG_MEM_SIZE /2  using idxCnt loop
+        -- use  idxCnt for progress bar
+         CAT_EEPROMread(idxCnt*2, datawd)
+        -- WriteBlockEEPROM2ex data, dest
+        EepromWord[dest]= datas
+        dest = dest + 2
+    end loop
+end procedure
+
+procedure RIG_Restore() is
+var word dest
+var word idxCnt
+var byte datawd[2]
+var word datas at datawd
+    dest = EXTOFF_RIG_BACKUP
+    for RIG_MEM_SIZE /2  using idxCnt loop
+        -- use  idxCnt for progress bar
+        datas  = EepromWord[dest]
+        CAT_EEPROMwrite (idxCnt, datawd)
+        dest = dest + 2
+    end loop
+end procedure
+
+-- must be global
+var byte smeter = 50
+var byte modMode = 0
+
+procedure RIG_ModeNext (byte in modMode) is
+    modMode = ModMode +1
+    if modMode > 15 then
+         modMode = 0
+    end if
+    while !RIG_ModeLegal (modMode) loop
+          modMode = ModMode +1
+       if modMode > 15 then
+          modMode = 0
+       end if
+    end loop
+    CAT_Mode(modMode)
+end procedure
+
+
+procedure RIG_ModePrior (byte in modMode) is
+    if modMode == 0 then
+         modMode = 15
+    else
+        modMode = modMode -1
+    end if
+    while !RIG_ModeLegal (modMode) loop
+        if modMode == 0 then
+             modMode = 15
+        else
+            modMode = modMode -1
+        end if
+    end loop
+    CAT_Mode(modMode)
+end procedure
+
+
+
+

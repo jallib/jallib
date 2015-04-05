@@ -1,0 +1,164 @@
+-- -----------------------------------------------------------------------------
+-- Title: LCD library for HD44780 compatible LCDs, with 4 bits wide datatransfer
+--
+-- Author: Rob Hamerling, Copyright (c) 2008..2009, all rights reserved.
+--
+-- Adapted-by: Eur van Andel, Joep Suijs (refactoring),Richard Zengerink (lcd_init)
+--             Rob Hamerling (issue # 137)
+--             Rob Hamerling (issue # 190)
+--
+-- Compiler: 2.4p
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description:
+--    Nibble interface for HD44780 compatible alphanumeric LCD screens.
+--    Uses 4 bits wide datapath + 2 handshake lines (total 6 PIC pins).
+--    Expects: 2 pins for handshake: 'lcd_rs' and 'lcd_en'
+--             and
+--                  1 port nibble for data: 'lcd_dataport'
+--               or
+--                  4 individual pins for data: 'lcd_d4' .. 'lcd_d7'
+-- .
+--    Note:  a 'port nibble' (the lower or higher 4 bits of a port)
+--           gives faster and more compact code than 4 individual pins.
+-- .
+--    Directions for use of this library in application programs
+--    (in this sequence):
+--    1. Declare the following constants:
+--          const byte LCD_ROWS     = 2               -- 1, 2 or 4 lines
+--          const byte LCD_CHARS    = 16              -- 8, 16 or 20 chars per line
+--       and aliases for handshake lines:
+--          alias   lcd_rs          is  pin_A5        -- cmd/data select
+--          alias   lcd_en          is  pin_A4        -- trigger
+--       and aliases for 4 data lines:
+--             alias lcd_dataport  is  portA_low      -- 4 databits
+--          or
+--             alias  lcd_d4       is  pin_A3         -- lcd databit d4
+--             alias  lcd_d5       is  pin_A1         -- lcd databit d5
+--             alias  lcd_d6       is  pin_C0         -- lcd databit d6
+--             alias  lcd_d7       is  pin_C2         -- lcd databit d7
+-- .
+--    2. Set the chosen LCD dataport and handshake pins to output:
+--          pin_A4_direction       = output
+--          pin_A5_direction       = output
+--       and the data port nibble to output:
+--             portA_low_direction = all_output
+--          or the 4 individual datapins to output:
+--             pin_A3_direction    = output
+--             pin_A1_direction    = output
+--             pin_C0_direction    = output
+--             pin_C2_direction    = output
+-- .
+--    3. Include this library.
+-- .
+--    4. Call lcd_init() to initialize the lcd controller.
+-- .
+--    Above is an example for a 2x16 LCD.
+-- .
+--    See hd_44780_common for the LCD API.
+--
+-- Dependencies: delay.jal
+--               lcd_hd44780_common.jal
+--
+-- -----------------------------------------------------------------------------
+
+include delay
+
+-- ----------------------------------------------------------------------------
+-- Sends low nibble in <value> to LCD
+-- Can be used for both commands and data (nibbles).
+-- ----------------------------------------------------------------------------
+procedure __lcd_write_nibble(byte in value) is
+
+   if (defined(lcd_dataport) == TRUE) then
+      -- write nibble at once
+      lcd_dataport = value                      -- write low nibble
+   else
+      -- write nibble bit by bit
+      var bit bit0 at value : 0                 -- )
+      var bit bit1 at value : 1                 -- )
+      var bit bit2 at value : 2                 -- ) declare databits
+      var bit bit3 at value : 3                 -- )
+
+      lcd_d4 = bit0                             -- )
+      lcd_d5 = bit1                             -- )
+      lcd_d6 = bit2                             -- ) write databits
+      lcd_d7 = bit3                             -- )
+   end if
+                                                -- clock puls
+   lcd_en = HIGH                                -- trigger on
+   _usec_delay(1)                               -- delay (> 400 ns)
+   lcd_en = LOW                                 -- trigger off
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Sends byte in <value> to LCD
+-- Wait cycle only required after lower nibble (not between nibbles).
+-- ----------------------------------------------------------------------------
+procedure __lcd_write(byte in value) is
+
+   __lcd_write_nibble(value >> 4)               -- write high nibble
+   __lcd_write_nibble(value)                    -- write low nibble
+   delay_10us(4)                                -- > 37 us
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Sends data byte in <value> to LCD
+-- ----------------------------------------------------------------------------
+procedure _lcd_write_data(byte in value) is
+
+   lcd_rs = high                                -- select data mode
+   __lcd_write(value)                           -- write byte
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Sends command byte in <value> to LCD
+-- For slow commands an extra delay should be added.
+-- ----------------------------------------------------------------------------
+procedure _lcd_write_command(byte in value) is
+
+   lcd_rs = low                                 -- select command mode
+   __lcd_write(value)                           -- write byte
+
+end procedure
+
+
+include lcd_hd44780_common                      -- include common LCD API
+
+
+-- ----------------------------------------------------------------------------
+-- Initialize LCD controller to 4-bits mode and default operational settings
+-- ----------------------------------------------------------------------------
+procedure lcd_init() is
+
+   lcd_rs = LOW                                 -- set to control char mode
+   delay_1ms(25)                                -- power-up delay (> 15 ms)
+   __lcd_write_nibble(0b0000_0011)              -- function set
+   delay_1ms(5)                                 -- > 4.1 milliseconds
+   __lcd_write_nibble(0b0000_0011)              -- function set
+   delay_10us(10)                               -- > 100 us
+   __lcd_write_nibble(0b0000_0011)              -- function set
+   delay_10us(4)                                -- > 37 us
+   __lcd_write_nibble(0b0000_0010)              -- select 4-bits mode
+   delay_10us(4)                                -- > 37 us
+   _lcd_write_command(0b_0010_1000)             -- 2 lines, 5x8 dots font
+   _lcd_write_command(0b_0001_1100)             -- cursor (not data) move right
+   _lcd_write_command(0b_0000_1100)             -- display on, cursor off, no blink
+   _lcd_write_command(0b_0000_0110)             -- cursor shift right, no data shift
+                                                -- during read/write operations
+   lcd_clear_screen()                           -- clear display
+
+end procedure
+

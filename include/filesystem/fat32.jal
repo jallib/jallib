@@ -1,0 +1,2739 @@
+-- Title: FAT32 library for reading fat32 filesystem (beta version)
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library reads files & folders from a fat32 formatted media
+--              such as sd cards & hard disks. BETA VERSION!
+--
+-- Sources:
+-- http://www.microsoft.com/whdc/system/platform/firmware/fatgen.mspx
+-- http://www.pjrc.com/tech/8051/ide/fat32.html
+-- http://en.wikipedia.org/wiki/File_Allocation_Table
+-- http://en.wikipedia.org/wiki/8.3_filename
+-- http://www.ntfs.com/fat-filenames.htm
+--
+-- Notes:
+-- This lib does not create file_name's on fat32 partitions, although it may
+-- in the future. Please see this article http://www.desktoplinux.com/news/NS4980952387.html?kc=rss
+-- before you think about implementing writing of file_names into your project.
+--
+-- some of the following may not be correct in this beta version
+--
+-- "file location list info"
+-- choose max number of files, choose highest entry address (file_name's address).
+-- eg. chosen -> FAT32_ENTRIES_MAX = 1, FAT32_FILES_MAX = 30 and there are 3 files A, B & C all in c:\
+-- File A is in sector 0, entry 6. file B is in sector 4, entry 2. file C is in sector 50, entry 2.
+-- file A is entry address 0*16 + 6 = 6, file B is entry address 4*16 + 2 = 64, file C is entry address 50*16 + 2 = 802
+-- therefore, file C is out of range and will not be accessable due to fragmentation of the directory structure.
+-- memory space required is byte*1 times 30 = 30bytes
+-- the theoretical max number of files for this config is 256 if
+-- there have been no deleted files and all names are short file_names.
+-- if you choose FAT32_ENTRIES_MAX = 2 you will use 2 times 30 = 60bytes and the
+-- theoretical max number of files for this config is 65535
+--
+--     --here's an example:
+--     ;const byte FAT32_ENTRIES_MAX = 1     -- highest file entry address can be 256
+--     const byte FAT32_ENTRIES_MAX = 2      -- highest file entry address can be 65535
+--     ;var byte*FAT32_ENTRIES_MAX fat32_entry_location[FAT32_FILES_MAX] -- we will use large_array library instead
+--
+-- Default uses internal memory for file location list. You may add an
+-- external memory source if you want to have a large amount
+-- of files in a directory. see the sample file
+--
+-- Debug:
+--    -- setup debug lib
+--    alias debug_data is serial_data
+--    const bit DEBUG_MASTER_ENABLE = TRUE    -- enables debugging
+--    include debug
+--    --
+--    -- turn on and off debug levels.
+--    debug_lvl_0 = ON
+--    --
+--    var byte debug_text1[] = "DEBUG STARTED"
+--    debug_string(DEBUG_2,debug_text1)
+--    debug_crlf(DEBUG_2)
+--
+-- Known issues:
+-- Can't write to the end of a file if out of file fragment boundaries
+-- Can't write a file_name if out of dir fragment boundaries
+--
+-- TODO:
+-- make file delete procedure.
+-- maybe allow showing of deleted files in directory.
+-- error checking, this could be done by the user instead??
+-- add a check to see if lib loaded ok (add to sample file).
+-- try to reduce data/ram usage. any ideas?? I have to go through everything.
+-- support writing of long file names.
+-- can/should I combine read/write procedures.
+-- change all reads of sector_buffer to use buffer_low[], buffer_high[] (faster)
+-- some procedures may not be needed anymore.
+-- check fat32_file_sectors_available procedure, not working.
+-- update disk usage variable (in boot sector?) during change of file size.
+-- see if I can get rid of fat32_short_file_name array. Is it needed?
+-- need dir_referesh procedure. Maybe just alias fat32_read_dir_info()
+-- do we really need to specify what to get/put in fat32_file_entry_data?
+-- make list partitions procedure.
+-- create file rename procedure
+-- create file delete procedure
+-- one file does not show size/cluster correctly (#4)
+-- rename fat32_set_file_size to fat32_file_set_size
+--
+
+------- GENERAL SETTINGS & VARS -------
+
+-- vars you can read info from
+;fat32_file_name[]                     -- holds the long file_name
+var byte fat32_file_name_length        -- holds the size of the long file_name
+var dword fat32_file_size              -- holds file size after file_read_info()
+var byte  fat32_full_short_file_name[11]                                -- holds full file short name (name & extension) after file_read_info()
+var byte  fat32_short_file_name[8] at fat32_full_short_file_name[0]     -- holds file short name after file_read_info()
+var byte  fat32_file_extension[3] at fat32_full_short_file_name[8]      -- holds file extension after file_read_info()
+var dword fat32_file_cluster_address   -- hold the location of the files start cluster after file_read_info()
+var bit   fat32_file_has_long_name     -- holds if the file name has a long file name after file_read_info()
+var word  fat32_dir_file_count         -- number of files in current directory
+
+var dword fat32_sectors_per_fat        -- sectors per fat (fat32_sectors_per_fat * (512/4) * fat32_sectors_per_cluster = sectors available)
+;var dword fat32_root_dir               -- sector location of the root dir
+var volatile dword fat32_current_dir_location -- sector location of last dir read
+var word fat32_fat_begin               -- the sector location of the file alocation table for current partition
+var byte  fat32_sectors_per_cluster    -- the number of sectors per cluster, usually 8
+var dword fat32_root_dir_first_cluster -- the location of the root dir's first cluster, (should be 2 only after init)
+;var dword fat32_file_location         -- holds file location after file_read_info()
+var dword fat32_cluster_begin          -- the location of the beginning of clusters (where files & folders data is)
+var bit fat32_init_ok = FALSE          -- tells you if fat32 initalized ok or not.
+alias fat32_dir_cluster_address is fat32_root_dir_first_cluster -- current dir address (re-use fat32_root_dir_first_cluster variable)
+
+-- Create file fat32_file_attribute variables
+var byte fat32_file_attrib
+var bit fat32_is_read_only at fat32_file_attrib : 0
+var bit fat32_is_hidden at fat32_file_attrib    : 1
+var bit fat32_is_system at fat32_file_attrib    : 2
+var bit fat32_is_volume_id at fat32_file_attrib : 3
+var bit fat32_is_directory at fat32_file_attrib : 4
+var bit fat32_is_archive at fat32_file_attrib   : 5
+
+-- filter file attributes
+var byte fat32_file_attrib_filter = 0 -- default is do not filter any file attributes
+var bit fat32_filter_is_read_only at fat32_file_attrib_filter : 0
+var bit fat32_filter_is_hidden at fat32_file_attrib_filter    : 1
+var bit fat32_filter_is_system at fat32_file_attrib_filter    : 2
+var bit fat32_filter_is_volume_id at fat32_file_attrib_filter : 3
+var bit fat32_filter_is_directory at fat32_file_attrib_filter : 4
+var bit fat32_filter_is_archive at fat32_file_attrib_filter   : 5
+-- move these filters to your your main program then modify there values.
+-- filters out files with unwanted file types
+;fat32_filter_is_read_only  = FALSE
+;fat32_filter_is_hidden     = FALSE
+;fat32_filter_is_system     = FALSE
+;fat32_filter_is_volume_id  = FALSE
+;fat32_filter_is_directory  = FALSE
+;fat32_filter_is_archive    = FALSE
+
+-- other intarnal vars
+var byte*3 _fat32_file_sector_count    -- a sector counter
+var word   _fat32_file_byte_count      -- a byte counter within a sector
+var word   _fat32_fragment_number      -- the fragment number being used
+var bit    _fat32_last_operation       -- last operation read or write
+const bit  _fat32_read = 0
+const bit  _fat32_write = 1
+var dword  _fat32_file_last_cluster
+var dword  _fat32_dir_last_cluster
+var byte*FAT32_ENTRIES_MAX fat32_current_file_number
+;var byte*FAT32_ENTRIES_MAX fat32_current_dir_number
+var dword _fat32_dir_sectors           -- holds dir size (in sectors) after _fat32_read_dir_info
+var byte _fat32_file_cluster_address[4] at fat32_file_cluster_address
+var byte _fat32_dir_cluster_address[4] at fat32_dir_cluster_address
+
+const byte FAT32_DIRECTORY = 0
+const byte FAT32_FILE = 1
+const byte FAT32_VALID_CHARACTERS[] = {
+   "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+   "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+   "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+   " ", "`", "&", "'", "@", "{", "}", "[", "]", ",", "$", "=", "!", "-", "#", "(", ")", "%", ".", "+", "~", "_"
+   }
+
+-- prototypes
+procedure _fat32_set_size(bit in file_or_dir, dword in file_size)
+
+-- includes
+-- print and format are needed for some procedures
+include print
+include format
+
+-- warnings an errors
+if FAT32_WRITE_LONG_FILE_NAMES == TRUE then
+   _warn "Writing of long file names is not supported yet"
+end if
+--
+if FAT32_FILE_NAME_SIZE < 12 then
+   _error "Please choose a file name size > 11"
+end if
+
+include storage_drivers
+
+
+-- ----------------------------------------------------------------------------
+-- the sector buffer
+-- ----------------------------------------------------------------------------
+alias fat32_sector_buffer is storage_sector_buffer
+
+-- ----------------------------------------------------------------------------
+-- print the sector buffer
+-- ----------------------------------------------------------------------------
+procedure fat32_print_sector_buffer_hex(volatile byte out device,word in bytes_per_line) is
+   var word step1 = 0
+   for 512 / bytes_per_line loop
+      print_crlf(device)
+      ;for bytes_per_line loop
+      ;   device = " "
+      ;   print_byte_hex(device,storage_sector_buffer[step1])
+      ;   step1 = step1 + 1
+      ;end loop
+
+
+      for bytes_per_line / 2 loop
+         device = " "
+         print_byte_hex(device,storage_sector_buffer_low[step1])
+         device = " "
+         print_byte_hex(device,storage_sector_buffer_high[step1])
+         step1 = step1 + 1
+      end loop
+
+   end loop
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- set media idle
+-- ----------------------------------------------------------------------------
+alias fat32_set_idle is storage_set_idle
+
+-- ----------------------------------------------------------------------------
+-- Start reading a file
+-- ----------------------------------------------------------------------------
+procedure fat32_start_file_read() is
+   pragma inline
+;   storage_start_read(fat32_file_location)
+
+   -- reset read counts
+   _fat32_file_sector_count = 0
+   _fat32_file_byte_count = 0
+   _fat32_fragment_number = 0
+
+   -- last operation was read
+   _fat32_last_operation = _FAT32_READ
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Start writing to a file
+-- ----------------------------------------------------------------------------
+procedure fat32_start_file_write() is
+   pragma inline
+;   storage_start_write(fat32_file_location)
+
+   -- reset read counts
+   _fat32_file_sector_count = 0
+   _fat32_file_byte_count = 0
+   _fat32_fragment_number = 0
+
+   -- last operation was write
+   _fat32_last_operation = _FAT32_WRITE
+end procedure
+
+alias fat32_stop_file_read is storage_stop_read
+alias fat32_stop_file_write is storage_stop_write
+
+-- ----------------------------------------------------------------------------
+-- creaate an array for fat32 file_names. You may define this
+-- on your own (in a external memory device) if you want.
+-- ----------------------------------------------------------------------------
+if !defined(fat32_file_name) then
+   var byte fat32_file_name[FAT32_FILE_NAME_SIZE]                                  -- make an array to hold file_name characters
+end if
+
+-- ----------------------------------------------------------------------------
+-- Reads a fat32 boot sector to get the location of the root directory
+-- and FAT Location on the media for the partition selected.
+-- Only primary partitions are supported. Secondary partitions are not.
+-- ----------------------------------------------------------------------------
+procedure _fat32_read_boot_sector(byte in partition_select) is
+   var byte _fat32_sectors_per_fat[4] at fat32_sectors_per_fat
+   var word reserved_sectors -- usually 20h (may only need var reserved_sectors_1)
+   var byte _reserved_sectors[2] at reserved_sectors
+   var dword partition_lba_begin = 0
+   var word part_addr = ((partition_select - 1)* 16)
+
+   storage_raw_read_sector_address(0)
+
+   -- debug info
+   if defined(debug_lvl_1) then
+      if debug_lvl_1 == ON then
+         const byte str1[] = "DEBUG - Boot Sector..."
+         debug_string(1,str1)
+         fat32_print_sector_buffer_hex(debug_data, 16)
+         debug_crlf(1)
+      end if
+   end if
+
+   -- read the FileSystem Information Sector
+   storage_raw_read_sector_address((word(storage_sector_buffer[49])*256)+storage_sector_buffer[48])
+
+   -- check for the signature of a FileSystem Information Sector
+   -- "FS information sector signature"
+   if ((storage_sector_buffer[0] == 0x52) & (storage_sector_buffer[1] == 0x52) &
+   (storage_sector_buffer[2] == 0x61) &(storage_sector_buffer[3] == 0x41)) then
+
+      if defined(debug_lvl_0) then
+         const byte str1[] = "DEBUG - No FileSystem Information Sector"
+         debug_string(0,str1)
+         debug_crlf(0)
+      end if
+
+      -- Medium is identified as FAT32 filesystem
+      storage_raw_read_sector_address(0)
+      fat32_init_ok = TRUE
+
+      if defined(debug_lvl_0) then
+         const byte str0[] = "DEBUG - Init OK, FAT32 Found"
+         debug_string(0,str0)
+         debug_crlf(0)
+      end if
+
+   else -- Medium is partitioned or contains no FAT32 filesystem
+
+      if defined(debug_lvl_0) then
+         const byte str2[] = "DEBUG - FileSystem Information Sector Found"
+         debug_string(0,str2)
+         debug_crlf(0)
+      end if
+
+      storage_raw_read_sector_address(0)
+      -- check if the partition is fat32
+      var byte type_code -- partition type code
+      type_code = storage_sector_buffer[450 + part_addr]
+      if (type_code == 0x0B) | (type_code == 0x0C) then
+         fat32_init_ok = TRUE
+
+         if defined(debug_lvl_0) then
+            const byte str0[] = "DEBUG - Init OK, FAT32 Found"
+            debug_string(0,str0)
+            debug_crlf(0)
+         end if
+      else
+
+         if defined(debug_lvl_0) then
+            const byte str0_[] = "DEBUG - Init Fail, FAT32 Not Found"
+            debug_string(0,str0_)
+            debug_crlf(0)
+         end if
+
+      end if
+
+      var byte _partition_lba_begin[4] at partition_lba_begin
+      _partition_lba_begin[0] = storage_sector_buffer[454 + part_addr]
+      _partition_lba_begin[1] = storage_sector_buffer[455 + part_addr]
+      _partition_lba_begin[2] = storage_sector_buffer[456 + part_addr]
+      _partition_lba_begin[3] = storage_sector_buffer[457 + part_addr]
+   end if
+
+   if defined(debug_lvl_0) then
+      const byte str3[] = "DEBUG - LBA Begin: "
+      debug_string(0,str3)
+      debug_dword_dec(0,partition_lba_begin)
+      debug_crlf(0)
+   end if
+
+   storage_raw_read_sector_address(partition_lba_begin) -- read at sector volume id location
+
+   -- debug info
+   if defined(debug_lvl_1) then
+      if debug_lvl_1 == ON then
+         const byte str1[] = "DEBUG - Volume ID Sector..."
+         debug_string(1,str1)
+         fat32_print_sector_buffer_hex(debug_data, 16)
+         debug_crlf(1)
+      end if
+   end if
+
+   fat32_sectors_per_cluster = storage_sector_buffer[13]
+
+   if defined(debug_lvl_0) then
+      const byte str4[] = "DEBUG - Sectors Per Cluster: "
+      debug_string(0,str4)
+      debug_dword_dec(0,fat32_sectors_per_cluster)
+      debug_crlf(0)
+   end if
+
+   -- reserved sectors
+   _reserved_sectors[0] = storage_sector_buffer[14]
+   _reserved_sectors[1] = storage_sector_buffer[15]
+
+   if defined(debug_lvl_0) then
+      const byte str5[] = "DEBUG - Reserved Sectors: "
+      debug_string(0,str5)
+      debug_word_dec(0,reserved_sectors)
+      debug_crlf(0)
+   end if
+
+   _fat32_sectors_per_fat[0] = storage_sector_buffer[36]
+   _fat32_sectors_per_fat[1] = storage_sector_buffer[37]
+   _fat32_sectors_per_fat[2] = storage_sector_buffer[38]
+   _fat32_sectors_per_fat[3] = storage_sector_buffer[39]
+
+   if defined(debug_lvl_0) then
+      const byte str6[] = "DEBUG - Sectors Per Fat: "
+      debug_string(0,str6)
+      debug_dword_dec(0,fat32_sectors_per_fat)
+      debug_crlf(0)
+   end if
+
+   -- get root dir first cluster (usually 00 00 00 02)
+   var byte _fat32_root_dir_first_cluster[4] at fat32_root_dir_first_cluster
+   _fat32_root_dir_first_cluster[0] = storage_sector_buffer[44]
+   _fat32_root_dir_first_cluster[1] = storage_sector_buffer[45]
+   _fat32_root_dir_first_cluster[2] = storage_sector_buffer[46]
+   _fat32_root_dir_first_cluster[3] = storage_sector_buffer[47]
+
+   if defined(debug_lvl_0) then
+      const byte str7[] = "DEBUG - Root Dir First Cluster: "
+      debug_string(0,str7)
+      debug_dword_dec(0,fat32_root_dir_first_cluster)
+      debug_crlf(0)
+   end if
+
+   -- get fat begin
+   fat32_fat_begin = word(partition_lba_begin + reserved_sectors)
+
+   if defined(debug_lvl_0) then
+      const byte str8[] = "DEBUG - Fat Begin: "
+      debug_string(0,str8)
+      debug_dword_dec(0,fat32_fat_begin)
+      debug_crlf(0)
+   end if
+
+   -- get cluster begin
+;   fat32_root_dir = partition_lba_begin + reserved_sectors + (2 * fat32_sectors_per_fat)
+   fat32_current_dir_location = partition_lba_begin + reserved_sectors + (2 * fat32_sectors_per_fat)
+
+   fat32_cluster_begin = fat32_current_dir_location - (fat32_sectors_per_cluster * 2)
+
+   if defined(debug_lvl_0) then
+      const byte str9[] = "DEBUG - Cluster Begin: "
+      debug_string(0,str9)
+      debug_dword_dec(0,fat32_cluster_begin)
+      debug_crlf(0)
+   end if
+
+   if defined(debug_lvl_0) then
+      const byte str10[] = "DEBUG - Current Dir Location: "
+      debug_string(0,str10)
+      debug_dword_dec(0,fat32_current_dir_location)
+      debug_crlf(0)
+   end if
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- read fragment locations from fat, store in
+-- fat32_dir_fragments_start & fat32_dir_fragment_cluster_count arrays
+-- ----------------------------------------------------------------------------
+var dword fat32_current_cluster
+--
+-- the user may create these arrays themselves in an external memory source
+if !defined(fat32_dir_fragments_start) then
+   -- start cluster location of each directory fragment
+   var dword fat32_dir_fragments_start[FAT32_DIR_FRAGMENTS_TO_ALLOW]
+   -- count clusters that are next to eachother, max 32 if byte (256/8), var fat32_dir_count_3 must be same (default byte)
+   var dword fat32_dir_fragment_cluster_count[FAT32_DIR_FRAGMENTS_TO_ALLOW]
+end if
+--
+-- the user may create these arrays themselves in an external memory source
+if !defined(fat32_file_fragments_start) then
+   -- start cluster location of each file fragment
+   var dword fat32_file_fragments_start[FAT32_FILE_FRAGMENTS_TO_ALLOW]
+   -- count sectors that are next to eachother, max fragment size is 4.19 megabites if word, 274.878 gb if dword, var fat32_file_count_3 must be same (default dword)
+   var dword fat32_file_fragment_cluster_count[FAT32_FILE_FRAGMENTS_TO_ALLOW]
+end if
+--
+;      procedure _fat32_read_fragments(dword in dir_cluster_start, bit in file_or_dir) is
+;         if file_or_dir == FAT32_DIRECTORY then
+;            var byte fat32_dir_fragments_start_count = 0
+;            var word cluster_location_in_sector
+;            fat32_current_cluster = dir_cluster_start
+;            var bit done = false
+;            var dword custers_sector
+;            var byte custers_sector_array[4] at custers_sector
+;            var byte fat32_dir_count_3 = 1
+;
+;            -- next cluster variables
+;            var byte next_cluster_array[4]
+;            var byte in_0, in_1, in_2, in_3
+;            var dword next_cluster at next_cluster_array
+;
+;            var byte fat32_current_cluster_array[4] at fat32_current_cluster
+;
+;            fat32_dir_fragments_start[0] = dir_cluster_start -- store the first cluster's start location in first array value
+;
+;            fat32_dir_fragments_start_count = fat32_dir_fragments_start_count + 1 -- increment fat32_dir_fragments_start address
+;
+;            while done == FALSE loop
+;
+;               fat32_current_cluster = fat32_current_cluster << 1
+;
+;               custers_sector_array[0] = fat32_current_cluster_array[1]
+;               custers_sector_array[1] = fat32_current_cluster_array[2]
+;               custers_sector_array[2] = fat32_current_cluster_array[3]
+;               custers_sector_array[3] = 0
+;
+;               cluster_location_in_sector = fat32_current_cluster_array[0]
+;
+;               fat32_current_cluster = fat32_current_cluster >> 1
+;
+;               -- for troubleshooting only
+;               ;print_dword_dec(serial_hw_data, custers_sector)
+;               ;print_dword_dec(serial_hw_data, cluster_location_in_sector)
+;
+;
+;               storage_start_read (fat32_fat_begin + custers_sector) -- go to the fat's sector where the first cluster value is located
+;               ;fat32_read_pulse (cluster_location_in_sector)       -- go to the location of the value in the sector
+;               storage_read_pulse_byte (cluster_location_in_sector*2)
+;
+;               -- get the location of the next cluster
+;               -- put it into a dword
+;               next_cluster_array[0] = storage_raw_data_byte
+;               next_cluster_array[1] = storage_raw_data_byte
+;               next_cluster_array[2] = storage_raw_data_byte
+;               next_cluster_array[3] = storage_raw_data_byte
+;
+;               -- for troubleshooting only
+;               ;print_dword_dec(serial_hw_data,fat32_current_cluster
+;               ;print_dword_dec(serial_hw_data,next_cluster
+;
+;               -- store number of clusters that are beside eachother
+;               fat32_dir_fragment_cluster_count[fat32_dir_fragments_start_count - 1] = 1
+;
+;               if next_cluster == 0x0F_FF_FF_FF then -- exit if the file is only 1 cluster
+;                  done = TRUE
+;               end if
+;
+;               while done == FALSE loop
+;                  fat32_dir_count_3 = 1
+;                  if fat32_current_cluster + 1 == next_cluster  then -- if no fragmentation
+;                     while fat32_current_cluster + 1 == next_cluster loop
+;                        fat32_current_cluster = next_cluster -- increment since we read the next cluster, no fragmentation
+;
+;                        -- get the location of the next cluster
+;                        -- put it into a dword
+;                        next_cluster_array[0] = storage_raw_data_byte
+;                        next_cluster_array[1] = storage_raw_data_byte
+;                        next_cluster_array[2] = storage_raw_data_byte
+;                        next_cluster_array[3] = storage_raw_data_byte
+;
+;                        -- store number of clusters that are beside eachother
+;                        fat32_dir_count_3 = fat32_dir_count_3 + 1
+;                     end loop
+;                     fat32_dir_fragment_cluster_count[fat32_dir_fragments_start_count - 1] = fat32_dir_count_3
+;                  elsif (next_cluster == 0x0F_FF_FF_FF) | (next_cluster == 0x00_00_00_00) then -- if end of clusters
+;      _fat32_dir_last_cluster = fat32_current_cluster
+;                     done = TRUE -- we are done, quit all loops
+;                  else -- if fragmentation
+;
+;                     fat32_dir_fragments_start[fat32_dir_fragments_start_count] = next_cluster -- store the location of the start of the next fragment
+;                     fat32_dir_fragments_start_count = fat32_dir_fragments_start_count + 1 -- increment fat32_dir_fragments_start address
+;                     fat32_current_cluster = next_cluster
+;
+;                     -- for troubleshooting only
+;                     ;_fat32_send_dword (fat32_current_cluster)
+;
+;                     exit loop -- exit this loop and go to the next fragment
+;                  end if
+;
+;                  -- exit if there are more fragments then FAT32_DIR_FRAGMENTS_TO_ALLOW
+;                  if fat32_dir_fragments_start_count == FAT32_DIR_FRAGMENTS_TO_ALLOW then
+;                     done = TRUE
+;                     exit loop
+;                  end if
+;
+;               end loop
+;               storage_stop_read() -- stop reading media
+;
+;            end loop
+;
+;            ;-- set the rest of the values to 0x0F_FF_FF_FF
+;            ;for FAT32_DIR_FRAGMENTS_TO_ALLOW - fat32_dir_fragments_start_count loop
+;            ;   fat32_dir_fragments_start[fat32_dir_fragments_start_count] = 0xFF_FF_FF_FF
+;            ;   ;fat32_dir_fragment_cluster_count[fat32_dir_fragments_start_count] = 0xFF
+;            ;   fat32_dir_fragments_start_count = fat32_dir_fragments_start_count + 1
+;            ;end loop
+;
+;         else -- if file
+;
+;            -- same as above but renamed variables to fat32_file_fragments_start, fat32_file_fragments_start_count
+;            -- finds fragments in files
+;            var byte fat32_file_fragments_start_count = 0
+;            var word cluster_location_in_sector
+;            var dword fat32_current_cluster = dir_cluster_start
+;            var bit done = false
+;            var dword custers_sector
+;            var byte custers_sector_array[4] at custers_sector
+;            var dword fat32_file_count_3 = 1
+;
+;            -- next cluster variables
+;            var byte next_cluster_array[4]
+;            var byte in_0, in_1, in_2, in_3
+;            var dword next_cluster at next_cluster_array
+;
+;            var byte fat32_current_cluster_array[4] at fat32_current_cluster
+;
+;            fat32_file_fragments_start[0] = dir_cluster_start -- store the first cluster's start location in first array value
+;            fat32_file_fragments_start_count = fat32_file_fragments_start_count + 1 -- increment fat32_file_fragments_start address
+;
+;            while done == FALSE loop
+;
+;               fat32_current_cluster = fat32_current_cluster << 1
+;
+;               custers_sector_array[0] = fat32_current_cluster_array[1]
+;               custers_sector_array[1] = fat32_current_cluster_array[2]
+;               custers_sector_array[2] = fat32_current_cluster_array[3]
+;               custers_sector_array[3] = 0
+;
+;               cluster_location_in_sector = fat32_current_cluster_array[0]
+;
+;               fat32_current_cluster = fat32_current_cluster >> 1
+;
+;               -- for troubleshooting only
+;               ;_fat32_send_dword (custers_sector)
+;               ;_fat32_send_dword (cluster_location_in_sector)
+;
+;
+;               storage_start_read (fat32_fat_begin + custers_sector) -- go to the fat's sector where the first cluster value is located
+;               ;fat32_read_pulse (cluster_location_in_sector)       -- go to the location of the value in the sector
+;               storage_read_pulse_byte (cluster_location_in_sector*2)
+;
+;               -- get the location of the next cluster
+;               -- put it into a dword
+;               next_cluster_array[0] = storage_raw_data_byte
+;               next_cluster_array[1] = storage_raw_data_byte
+;               next_cluster_array[2] = storage_raw_data_byte
+;               next_cluster_array[3] = storage_raw_data_byte
+;
+;               -- for troubleshooting only
+;               ;_fat32_send_dword (fat32_current_cluster)
+;               ;_fat32_send_dword (next_cluster)
+;               ;send_word (0xAA, 0xAA)
+;
+;               -- store number of clusters that are beside eachother
+;               fat32_file_fragment_cluster_count[fat32_file_fragments_start_count - 1] = 1
+;
+;               if next_cluster == 0x0F_FF_FF_FF then -- exit if the file is only 1 cluster
+;                  done = TRUE
+;               end if
+;
+;               while done == FALSE loop
+;
+;                  fat32_file_count_3 = 1
+;                  if fat32_current_cluster + 1 == next_cluster  then -- if no fragmentation
+;                     while fat32_current_cluster + 1 == next_cluster loop
+;
+;                        -- increment since we read the next cluster, no fragmentation
+;                        fat32_current_cluster = next_cluster
+;
+;                        -- get the location of the next cluster
+;                        -- put it into a dword
+;                        next_cluster_array[0] = storage_raw_data_byte
+;                        next_cluster_array[1] = storage_raw_data_byte
+;                        next_cluster_array[2] = storage_raw_data_byte
+;                        next_cluster_array[3] = storage_raw_data_byte
+;
+;                        -- store number of clusters that are beside eachother
+;                        fat32_file_count_3 = fat32_file_count_3 + 1
+;                     end loop
+;
+;                     fat32_file_fragment_cluster_count[fat32_file_fragments_start_count - 1] = fat32_file_count_3
+;
+;                  elsif (next_cluster == 0x0F_FF_FF_FF) | (next_cluster == 0x00_00_00_00) then -- if end of clusters
+;      _fat32_file_last_cluster = fat32_current_cluster
+;                     done = TRUE -- we are done, quit all loops
+;                  else -- if fragmentation
+;                     fat32_file_fragments_start[fat32_file_fragments_start_count] = next_cluster -- store the cluster location of the start of the next fragment
+;                     fat32_file_fragments_start_count = fat32_file_fragments_start_count + 1 -- increment fat32_file_fragments_start address
+;                     fat32_current_cluster = next_cluster
+;                     exit loop -- exit this loop and go to the next fragment
+;                  end if
+;
+;                  -- exit if there are more fragments then FAT32_FILE_FRAGMENTS_TO_ALLOW
+;                  if fat32_file_fragments_start_count == FAT32_FILE_FRAGMENTS_TO_ALLOW then
+;                     done = TRUE
+;                     exit loop
+;                  end if
+;
+;               end loop
+;               storage_stop_read() -- stop reading media
+;            end loop
+;
+;            ;-- set the rest of the values to 0x0F_FF_FF_FF
+;            ;for FAT32_DIR_FRAGMENTS_TO_ALLOW - fat32_file_fragments_start_count loop
+;            ;   fat32_file_fragments_start[fat32_file_fragments_start_count] = 0xFF_FF_FF_FF
+;            ;   fat32_file_fragment_cluster_count[fat32_file_fragments_start_count] = 0xFF_FF
+;            ;   fat32_file_fragments_start_count = fat32_file_fragments_start_count + 1
+;            ;end loop
+;         end if
+;
+;         storage_stop_read() -- stop reading media
+;      end procedure
+
+-- get a cluster from the sector buffer (as an array of dwords)
+procedure fat32_cluster_in_sector_buffer'put(byte in address, dword in value) is
+   ;pragma inline
+   var byte _value[4] at value
+   var word _address = word(address) * 4
+
+   storage_sector_buffer[(_address + 0)] = _value[0]
+   storage_sector_buffer[_address + 1] = _value[1]
+   storage_sector_buffer[_address + 2] = _value[2]
+   storage_sector_buffer[_address + 3] = _value[3]
+end procedure
+
+-- put a cluster into the sector buffer (as an array of dwords)
+function fat32_cluster_in_sector_buffer'get(byte in address) return dword is
+   ;pragma inline
+   var dword value
+   var byte _value[4] at value
+   var word _address = word(address) * 4
+   _value[0] = storage_sector_buffer[_address + 0]
+   _value[1] = storage_sector_buffer[_address + 1]
+   _value[2] = storage_sector_buffer[_address + 2]
+   _value[3] = storage_sector_buffer[_address + 3]
+   return value
+end function
+
+-- get a cluster from anywhere within the fat (as an array of dwords)
+var dword fat32_current_sector = 20
+procedure fat32_cluster'put(dword in address, dword in value) is
+      alias fat_sector_number is address
+
+      -- find what entry it is located at in the current sector
+      var byte sector_cluseter_number = byte(address) & 0b0111_1111
+
+      -- calculate the sector number
+      fat_sector_number = (fat_sector_number >> 7)
+
+      ;-- read the sector if we are not already at that sector
+      if fat32_current_sector != (fat_sector_number + fat32_fat_begin) then
+
+         -- write the previous sector we where at before moving to the next one
+         storage_raw_write_sector_address(fat32_current_sector)
+
+         -- read the sector
+         storage_raw_read_sector_address(fat_sector_number + fat32_fat_begin)
+
+         -- set our current sector
+         fat32_current_sector = fat_sector_number + fat32_fat_begin
+      end if
+
+      -- put the value into the sector/cluster buffer
+      fat32_cluster_in_sector_buffer[sector_cluseter_number] = value
+      ;storage_raw_write_sector_address(fat_sector_number + fat32_fat_begin)
+end procedure
+
+-- put a cluster into anywhere within the fat (as an array of dwords)
+function fat32_cluster'get(dword in address) return dword is
+      alias fat_sector_number is address
+      var dword value
+
+      -- find what entry it is located at in the current sector
+      var byte sector_cluseter_number = byte(address) & 0b0111_1111
+
+      -- calculate the sector number
+      fat_sector_number = (fat_sector_number >> 7)
+
+      -- read the sector if we are not already at that sector
+      if fat32_current_sector != (fat_sector_number + fat32_fat_begin) then
+
+         -- write the previous sector we where at before moving to the next one
+         storage_raw_write_sector_address(fat32_current_sector)
+
+         -- read the sector
+         storage_raw_read_sector_address(fat_sector_number + fat32_fat_begin)
+
+         -- set our current sector
+         fat32_current_sector = fat_sector_number + fat32_fat_begin
+      end if
+
+      -- return the value from the sector/cluster buffer
+      return fat32_cluster_in_sector_buffer[sector_cluseter_number]
+end function
+
+--------------------------------------------------------------------------------
+-- read fragments of a file or directory
+--------------------------------------------------------------------------------
+var word  _fat32_file_fragment_count
+var dword _fat32_dir_fragment_count
+procedure _fat32_read_fragments(dword in cluster_start, bit in file_or_dir) is
+
+   _fat32_file_fragment_count = 0
+   _fat32_dir_fragment_count = 0
+
+   fat32_current_sector = fat32_fat_begin + (cluster_start >> 7)
+   storage_raw_read_sector_address(fat32_current_sector)
+
+   var dword address = cluster_start
+   var dword cluster_count
+
+   if file_or_dir == FAT32_DIRECTORY then
+
+      -- debug info
+      if defined(debug_lvl_1) then
+         if debug_lvl_1 == ON then
+            const byte str1[] = "DEBUG - Current Directory FAT Start..."
+            debug_string(1,str1)
+            fat32_print_sector_buffer_hex(debug_data, 32)
+            debug_crlf(1)
+         end if
+      end if
+
+      fat32_dir_fragments_start[0] = cluster_start
+      fat32_dir_fragment_cluster_count[0] = 0
+   else
+      fat32_file_fragments_start[0] = cluster_start
+      fat32_file_fragment_cluster_count[0] = 0
+   end if
+
+   forever loop
+      cluster_count = 1
+
+      -- see if the next fragment is directly after the current one
+      while fat32_cluster[address] == (address + 1) loop
+         -- count how many clusters are directly after eachoter
+         cluster_count = cluster_count + 1
+         address = address + 1
+      end loop
+
+      -- if we are at the end of the fragments, exit the loop
+      if fat32_cluster[address] == 0x0F_FF_FF_FF then
+         if file_or_dir == FAT32_DIRECTORY then
+            -- store our last cluster count
+            fat32_dir_fragment_cluster_count[_fat32_dir_fragment_count] = cluster_count
+
+            -- set the location of the last cluster. may not be needed since
+            -- _fat32_file_last_cluster = fat32_dir_fragments_start[last_fragment] + fat32_dir_fragment_cluster_count[last_fragment]
+            _fat32_dir_last_cluster = address
+         else
+            -- store our last cluster count
+            fat32_file_fragment_cluster_count[_fat32_file_fragment_count] = cluster_count
+
+            -- set the location of the last cluster. may not be needed since
+            -- _fat32_file_last_cluster = fat32_dir_fragments_start[last_fragment] + fat32_dir_fragment_cluster_count[last_fragment]
+            _fat32_file_last_cluster = address
+
+         end if
+
+         exit loop
+      end if
+
+      if file_or_dir == FAT32_DIRECTORY then
+         -- store our cluster count
+         fat32_dir_fragment_cluster_count[_fat32_dir_fragment_count] = cluster_count
+      else
+         -- store our cluster count
+         fat32_file_fragment_cluster_count[_fat32_file_fragment_count] = cluster_count
+      end if
+      -- set our new address, the current cluster tells us where the next one is
+      address = fat32_cluster[address]
+
+
+      if file_or_dir == FAT32_DIRECTORY then
+         -- lets do the next fragment
+         _fat32_dir_fragment_count = _fat32_dir_fragment_count + 1
+
+         -- set the start address of the now current fragment
+         fat32_dir_fragments_start[_fat32_dir_fragment_count] = address
+
+         -- if too many fragments
+         if _fat32_dir_fragment_count > FAT32_DIR_FRAGMENTS_TO_ALLOW then
+            exit loop
+         end if
+      else
+         -- lets do the next fragment
+         _fat32_file_fragment_count = _fat32_file_fragment_count + 1
+
+         -- set the start address of the now current fragment
+         fat32_file_fragments_start[_fat32_file_fragment_count] = address
+
+         -- if too many fragments
+         if _fat32_file_fragment_count > FAT32_FILE_FRAGMENTS_TO_ALLOW then
+            exit loop
+         end if
+      end if
+
+   end loop
+
+   if file_or_dir == FAT32_DIRECTORY then
+      -- debug info
+      if defined(debug_lvl_1) then
+         if debug_lvl_1 == ON then
+            var byte x
+            const byte str1[] = "DEBUG - Current Directory Fragment Count:"
+            debug_string(1,str1)
+            for (_fat32_dir_fragment_count + 1) using x loop
+               debug_dword_hex(1,fat32_dir_fragment_cluster_count[x])
+               debug_char(1," ")
+            end loop
+            debug_crlf(1)
+
+
+            const byte str2[] = "DEBUG - Current Directory Fragment Locations:"
+            debug_string(1,str2)
+            for (_fat32_dir_fragment_count + 1) using x loop
+               debug_dword_hex(1,fat32_file_fragments_start[x])
+               debug_char(1," ")
+            end loop
+            debug_crlf(1)
+         end if
+      end if
+   end if
+
+end procedure
+
+;      procedure _fat32_read_fragments(dword in dir_cluster_start, bit in file_or_dir) is
+;         -- finds fragments in files
+;         var byte fat32_file_fragments_start_count = 0
+;         var word cluster_location_in_sector
+;         var dword fat32_current_cluster = dir_cluster_start
+;         var bit done = false
+;         var dword custers_sector
+;         var byte custers_sector_array[4] at custers_sector
+;         var dword fat32_file_count_3 = 1
+;
+;         -- next cluster variables
+;         var byte next_cluster_array[4]
+;         var byte in_0, in_1, in_2, in_3
+;         var dword next_cluster at next_cluster_array
+;
+;         var byte fat32_current_cluster_array[4] at fat32_current_cluster
+;
+;         if file_or_dir == FAT32_FILE then
+;            fat32_file_fragments_start[0] = dir_cluster_start -- store the first cluster's start location in first array value
+;         else
+;            fat32_dir_fragments_start[0] = dir_cluster_start -- store the first cluster's start location in first array value
+;         end if
+;         fat32_file_fragments_start_count = fat32_file_fragments_start_count + 1 -- increment fat32_file_fragments_start address
+;
+;         while done == FALSE loop
+;
+;            fat32_current_cluster = fat32_current_cluster << 1
+;
+;            custers_sector_array[0] = fat32_current_cluster_array[1]
+;            custers_sector_array[1] = fat32_current_cluster_array[2]
+;            custers_sector_array[2] = fat32_current_cluster_array[3]
+;            custers_sector_array[3] = 0
+;
+;            cluster_location_in_sector = fat32_current_cluster_array[0]
+;
+;            fat32_current_cluster = fat32_current_cluster >> 1
+;
+;            -- for troubleshooting only
+;            ;_fat32_send_dword (custers_sector)
+;            ;_fat32_send_dword (cluster_location_in_sector)
+;
+;
+;            storage_start_read (fat32_fat_begin + custers_sector) -- go to the fat's sector where the first cluster value is located
+;            ;fat32_read_pulse (cluster_location_in_sector)       -- go to the location of the value in the sector
+;            storage_read_pulse_byte (cluster_location_in_sector*2)
+;
+;            -- get the location of the next cluster
+;            -- put it into a dword
+;            next_cluster_array[0] = storage_raw_data_byte
+;            next_cluster_array[1] = storage_raw_data_byte
+;            next_cluster_array[2] = storage_raw_data_byte
+;            next_cluster_array[3] = storage_raw_data_byte
+;
+;            -- for troubleshooting only
+;            ;_fat32_send_dword (fat32_current_cluster)
+;            ;_fat32_send_dword (next_cluster)
+;            ;send_word (0xAA, 0xAA)
+;
+;            -- store number of clusters that are beside eachother
+;            if file_or_dir == FAT32_FILE then
+;               fat32_file_fragment_cluster_count[fat32_file_fragments_start_count - 1] = 1
+;            else
+;               fat32_dir_fragment_cluster_count[fat32_file_fragments_start_count - 1] = 1
+;            end if
+;
+;            if next_cluster == 0x0F_FF_FF_FF then -- exit if the file is only 1 cluster
+;               done = TRUE
+;            end if
+;
+;            while done == FALSE loop
+;
+;               fat32_file_count_3 = 1
+;               if fat32_current_cluster + 1 == next_cluster  then -- if no fragmentation
+;                  while fat32_current_cluster + 1 == next_cluster loop
+;
+;                     -- increment since we read the next cluster, no fragmentation
+;                     fat32_current_cluster = next_cluster
+;
+;                     -- get the location of the next cluster
+;                     -- put it into a dword
+;                     next_cluster_array[0] = storage_raw_data_byte
+;                     next_cluster_array[1] = storage_raw_data_byte
+;                     next_cluster_array[2] = storage_raw_data_byte
+;                     next_cluster_array[3] = storage_raw_data_byte
+;
+;                     -- store number of clusters that are beside eachother
+;                     fat32_file_count_3 = fat32_file_count_3 + 1
+;                  end loop
+;
+;                  if file_or_dir == FAT32_FILE then
+;                     fat32_file_fragment_cluster_count[fat32_file_fragments_start_count - 1] = fat32_file_count_3
+;                  else
+;                     fat32_dir_fragment_cluster_count[fat32_file_fragments_start_count - 1] = fat32_file_count_3
+;                  end if
+;
+;               elsif (next_cluster == 0x0F_FF_FF_FF) | (next_cluster == 0x00_00_00_00) then -- if end of clusters
+;                  if file_or_dir == FAT32_FILE then
+;                     _fat32_file_last_cluster = fat32_current_cluster
+;                  else
+;                     _fat32_dir_last_cluster = fat32_current_cluster
+;                  end if
+;                  done = TRUE -- we are done, quit all loops
+;               else -- if fragmentation
+;
+;                  if file_or_dir == FAT32_FILE then
+;                     fat32_file_fragments_start[fat32_file_fragments_start_count] = next_cluster -- store the cluster location of the start of the next fragment
+;                  else
+;                     fat32_dir_fragments_start[fat32_file_fragments_start_count] = next_cluster -- store the cluster location of the start of the next fragment
+;                  end if
+;                  fat32_file_fragments_start_count = fat32_file_fragments_start_count + 1 -- increment fat32_file_fragments_start address
+;                  fat32_current_cluster = next_cluster
+;                  exit loop -- exit this loop and go to the next fragment
+;               end if
+;
+;               if file_or_dir == FAT32_FILE then
+;                  -- exit if there are more fragments then FAT32_FILE_FRAGMENTS_TO_ALLOW
+;                  if fat32_file_fragments_start_count == FAT32_FILE_FRAGMENTS_TO_ALLOW then
+;                     done = TRUE
+;                     exit loop
+;                  end if
+;               else
+;                  -- exit if there are more fragments then FAT32_DIR_FRAGMENTS_TO_ALLOW
+;                  if fat32_file_fragments_start_count == FAT32_DIR_FRAGMENTS_TO_ALLOW then
+;                     done = TRUE
+;                     exit loop
+;                  end if
+;               end if
+;
+;
+;            end loop
+;            storage_stop_read() -- stop reading media
+;         end loop
+;
+;         storage_stop_read() -- stop reading media
+;      end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- reads selected sector from a directory.
+-- fragmented dirs should work (not tested)
+-- ----------------------------------------------------------------------------
+procedure _fat32_read_dir_sector_number(dword in dir_sector_number) is
+   -- last operation was read
+   _fat32_last_operation = _FAT32_READ
+
+   -- find what fragment the requested dir sector number is located in
+
+   -- rename/reuse the input variable
+   alias sectors_left is dir_sector_number
+
+   -- start at first fragment
+   _fat32_fragment_number = 0
+
+   -- calculate how many sectors are in the current fragment
+   var dword count_fragment_sectors = fat32_dir_fragment_cluster_count[0] * fat32_sectors_per_cluster
+
+   -- while we are not at the correct fragment,
+   -- number of sectors left is > the number of sectors in the current fragment.
+   while !((fat32_dir_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster) > sectors_left) loop
+      -- subtract the number of sectors in the current fragment from sectors left
+      sectors_left = sectors_left - (fat32_dir_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster)
+      -- increment to the next fragment
+      _fat32_fragment_number = _fat32_fragment_number + 1
+   end loop
+
+   -- calculate the address
+   var dword address
+   address = fat32_cluster_begin + (fat32_dir_fragments_start[_fat32_fragment_number] * fat32_sectors_per_cluster) + sectors_left
+
+   -- read a sector at the address
+   storage_raw_read_sector_address(address)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Reads where file names in the current dir are stored, and stores them
+-- into fat32_entry_location[]
+-- ----------------------------------------------------------------------------
+const byte FAT32_ENTRY_DELETED = 0xE5            -- usually from a deleted file
+const byte FAT32_ENTRY_IS_PART_OF_LONG_NAME = 0x0F  -- entry has a few characters of a long file_name
+procedure _fat32_read_dir_info() is
+   var dword address = 0
+   var word entry
+   var bit is_long_name = FALSE
+
+   fat32_dir_file_count = 0
+
+   -- read the fragment locations of the current directory
+   _fat32_read_fragments (fat32_dir_cluster_address , FAT32_DIRECTORY) -- read the fragment locations
+
+   forever loop
+      entry = 0
+
+      _fat32_read_dir_sector_number(address)
+
+      if defined(debug_lvl_1) then
+         if defined(serial_data) then
+            if debug_lvl_1 == ON then
+               var byte x
+               const byte str1[] = "DEBUG - Directory Cluster Hex:"
+               debug_string(1,str1)
+               fat32_print_sector_buffer_hex(serial_data,32)
+               debug_crlf(1)
+            end if
+         end if
+      end if
+
+
+      for 16 loop
+
+         var word attrib = entry + 11
+
+         if (storage_sector_buffer[entry] != FAT32_ENTRY_DELETED) then -- if it is not a deleted entry
+            if (storage_sector_buffer[entry] != 0x00) then
+
+               -- check attribute filter
+               if !((fat32_file_attrib_filter & storage_sector_buffer[attrib]) > 0) then
+
+                  if (storage_sector_buffer[attrib] == FAT32_ENTRY_IS_PART_OF_LONG_NAME) | is_long_name == TRUE then -- it is a long name
+
+                     -- if it is the first entry of this long name
+                     if is_long_name == FALSE then
+                        is_long_name = TRUE
+                        -- store entry
+                        fat32_entry_location[fat32_dir_file_count] = (address << 4) + (entry / 32)
+                        fat32_dir_file_count = fat32_dir_file_count + 1
+                        -- if it is the last entry (the short name entry) of this long file name
+                     elsif (storage_sector_buffer[attrib] != 0x0F) then
+                        -- it is a short filename entry of a long name
+                        is_long_name = FALSE
+                     end if
+
+                  else -- if it is a short file name with no long file name
+                     -- store entry
+                     fat32_entry_location[fat32_dir_file_count] = (address << 4) + (entry / 32)
+                     fat32_dir_file_count = fat32_dir_file_count + 1
+                  end if
+               end if
+            else
+               -- check if max files allowed was reached
+               if fat32_dir_file_count > FAT32_FILES_MAX then
+                  fat32_dir_file_count = FAT32_FILES_MAX
+                  _fat32_dir_sectors = address -- number of sectors used by this directory
+               end if
+               return
+            end if
+         end if
+         entry = entry + 32
+      end loop
+      address = address + 1
+   end loop
+   _fat32_dir_sectors = address - 1 -- number of sectors used by this directory
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- writes selected sector to a directory.
+-- fragmented dirs should work (not tested)
+-- ----------------------------------------------------------------------------
+procedure _fat32_write_dir_sector_number(dword in dir_sector_number) is
+   -- last operation was write
+   _fat32_last_operation = _FAT32_WRITE
+
+   -- find what fragment the requested dir sector number is located in
+
+   -- rename/reuse the input variable
+   alias sectors_left is dir_sector_number
+
+   -- start at first fragment
+   _fat32_fragment_number = 0
+
+   -- calculate how many sectors are in the current fragment
+   var dword count_fragment_sectors = fat32_dir_fragment_cluster_count[0] * fat32_sectors_per_cluster
+
+   -- while we are not at the correct fragment,
+   -- number of sectors left is > the number of sectors in the current fragment.
+   while !((fat32_dir_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster) > sectors_left) loop
+      -- subtract the number of sectors in the current fragment to sectors left
+      sectors_left = sectors_left - (fat32_dir_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster)
+      -- increment to the next fragment
+      _fat32_fragment_number = _fat32_fragment_number + 1
+   end loop
+
+   -- calculate the address
+   var dword address
+   address = fat32_cluster_begin + (fat32_dir_fragments_start[_fat32_fragment_number] * fat32_sectors_per_cluster) + sectors_left
+
+   -- write a sector at the address
+   storage_raw_write_sector_address(address)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Get or put file information such as file name, extension, attributes, etc
+-- of the currently opened file or directory
+-- hopefully will replace file_get_info
+-- FAT32_DIR = Current Directory
+-- FAT32_file = Currently selected file number
+-- ----------------------------------------------------------------------------
+const _FAT32_LONG_NAME         = 1   -- GET IS OK
+const _FAT32_SHORT_NAME        = 2   -- OK
+const _FAT32_EXTENSION         = 4   -- OK
+const _FAT32_ATTRIB            = 8   -- OK
+const _FAT32_CLUSTER_LOCATION  = 16   -- OK
+const _FAT32_SIZE              = 32  -- OK
+const _FAT32_ALL               = 255 -- GET IS OK
+--
+const bit _FAT32_GET = 0       -- GET FILE INFO
+const bit _FAT32_PUT = 1       -- PUT/SAVE FILE INFO
+--
+procedure fat32_file_entry_data(bit in file_or_dir, bit in get_put, byte in data_type) is
+   var byte sector_after_entry_location
+   var word sector_entry_number
+   var byte char_pos = 0
+   fat32_file_has_long_name = FALSE
+
+   -- calculate & read the sector number of the beginning of the file_name
+   if file_or_dir == FAT32_FILE then -- if it is a file
+      _fat32_read_dir_sector_number(fat32_entry_location[fat32_current_file_number] >> 4)
+   else                              -- if it is a dir
+      ------------------------------------------------------------------------------------------------------------
+   end if
+
+   -- calculate entry number of the beginning of the file_name
+   if file_or_dir == FAT32_FILE then -- if it is a file
+      sector_entry_number = byte(fat32_entry_location[fat32_current_file_number]) & 0x0F
+   else                              -- if it is a dir
+      ------------------------------------------------------------------------------------------------------------
+   end if
+
+   ;serial_hw_data = " "
+   ;print_dword_dec(serial_hw_data, sector_entry_number)
+   ;serial_hw_data = " "
+
+
+   ;print_crlf(serial_hw_data)
+   ;print_crlf(serial_hw_data)
+
+
+   ;print_crlf(serial_hw_data)
+   ;print_dword_dec(serial_hw_data, sector_entry_number)
+   ;print_crlf(serial_hw_data)
+   ;fat32_print_sector_buffer_hex(serial_hw_data, 32)
+
+   -- get the attributes
+   ;fat32_file_attrib = byte((sector_entry_number*32) + 11)
+   ;fat32_file_attrib = storage_sector_buffer[sector_entry_number*32 + 11]
+
+   if get_put == _FAT32_GET then
+
+      -- check byte 11 of this entry to see if it is a long file name
+      if storage_sector_buffer[sector_entry_number*32 + 11] == 0x0F then
+         var byte number_of_entries
+
+         -- reset the filename
+         var byte step3
+         for count(fat32_file_name) using step3 loop
+            fat32_file_name[step3] = 0
+         end loop
+
+         -- get the longname
+         if (data_type & _FAT32_LONG_NAME) > 0 then
+
+            fat32_file_has_long_name = TRUE
+            var word sector_entry_number2 = sector_entry_number * 32
+
+            var byte long_name_step = FAT32_FILE_NAME_SIZE - 13
+            var byte sector_step = 0
+            number_of_entries = storage_sector_buffer[sector_entry_number2] - 0x40
+
+            for number_of_entries loop
+               fat32_file_name[0 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 1]
+               fat32_file_name[1 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 3]
+               fat32_file_name[2 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 5]
+               fat32_file_name[3 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 7]
+               fat32_file_name[4 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 9]
+               fat32_file_name[5 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 14]
+               fat32_file_name[6 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 16]
+               fat32_file_name[7 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 18]
+               fat32_file_name[8 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 20]
+               fat32_file_name[9 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 22]
+               fat32_file_name[10 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 24]
+               fat32_file_name[11 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 28]
+               fat32_file_name[12 + long_name_step] = storage_sector_buffer[sector_entry_number2 + 30]
+
+               long_name_step = long_name_step - 13
+               sector_entry_number2 = sector_entry_number2 + 32
+               if sector_entry_number2 == 512 then
+                  sector_entry_number2 = sector_entry_number2 - 512
+                  sector_step = sector_step + 1
+                  _fat32_read_dir_sector_number( (fat32_entry_location[fat32_current_file_number] >> 4) + sector_step)
+               end if
+            end loop
+            -- move the file_name to the beginning of the file_name array
+            var byte first_char
+            if fat32_file_name[0] == 0 then
+               for count(fat32_file_name) using first_char loop
+                  if fat32_file_name[first_char] != 0 then
+                     exit loop
+                  end if
+               end loop
+               for (FAT32_FILE_NAME_SIZE - first_char) using char_pos loop
+                  fat32_file_name[char_pos] = fat32_file_name[first_char + char_pos]
+                  fat32_file_name[first_char + char_pos] = 0
+               end loop
+            end if
+
+         end if
+
+         ;var byte step2
+         ;for count(fat32_file_name) using step2 loop
+         ;   serial_hw_data = fat32_file_name[step2]
+         ;end loop
+
+
+         -- calculate entry number/location of the short name entry
+         -- of this long name
+         ;_fat32_read_dir_sector_number(fat32_entry_location[fat32_current_file_number] >> 4)
+         sector_entry_number = sector_entry_number + number_of_entries
+
+         -- check if the short name entry is in the current sector
+         sector_after_entry_location = 0
+         while (sector_entry_number > 15) loop
+            sector_after_entry_location = sector_after_entry_location + 1
+            sector_entry_number = sector_entry_number - 16
+         end loop
+
+         -- if it is not in the current sector, read the correct sector
+         if sector_after_entry_location != 0 then
+            -- read the sector that has the short name entry
+            if file_or_dir == FAT32_FILE then -- if it is a file
+               _fat32_read_dir_sector_number((fat32_entry_location[fat32_current_file_number] >> 4) + sector_after_entry_location)
+            else  -- if it is a dir
+               ------------------------------------------------------------------------------------------------------------
+            end if
+         end if
+      else
+         -- file does not have long name
+      end if
+
+      sector_entry_number = sector_entry_number*32
+
+      -- get the attributes
+      if (data_type & _FAT32_ATTRIB) > 0 then
+         fat32_file_attrib = storage_sector_buffer[sector_entry_number + 11]
+      end if
+
+      if (data_type & _FAT32_EXTENSION) > 0 then
+         -- get the file's extension
+         fat32_file_extension[0] = storage_sector_buffer[sector_entry_number + 8]
+         fat32_file_extension[1] = storage_sector_buffer[sector_entry_number + 9]
+         fat32_file_extension[2] = storage_sector_buffer[sector_entry_number + 10]
+      end if
+
+      if (data_type & _FAT32_SHORT_NAME) > 0 then
+         -- get the file's short name
+         fat32_short_file_name[0] = storage_sector_buffer[sector_entry_number + 0]
+         fat32_short_file_name[1] = storage_sector_buffer[sector_entry_number + 1]
+         fat32_short_file_name[2] = storage_sector_buffer[sector_entry_number + 2]
+         fat32_short_file_name[3] = storage_sector_buffer[sector_entry_number + 3]
+         fat32_short_file_name[4] = storage_sector_buffer[sector_entry_number + 4]
+         fat32_short_file_name[5] = storage_sector_buffer[sector_entry_number + 5]
+         fat32_short_file_name[6] = storage_sector_buffer[sector_entry_number + 6]
+         fat32_short_file_name[7] = storage_sector_buffer[sector_entry_number + 7]
+
+         -- if there is no long filename, put the short filename into the long filename array
+         if fat32_file_has_long_name == FALSE then
+            -- reset the filename
+            var byte step1, step2
+            for count(fat32_file_name) using step1 loop
+               fat32_file_name[step1] = 0
+            end loop
+
+           if fat32_is_volume_id == TRUE then
+              -- find location of last " " char
+              step2 = 10
+              for 11 loop
+                 if fat32_full_short_file_name[step1] != " " then
+                    exit loop
+                 end if
+                 step2 = step2 - 1
+              end loop
+              -- put volume id into file name array
+              for step2 using step1 loop
+                    fat32_file_name[step1] = fat32_full_short_file_name[step1]
+              end loop
+           elsif fat32_is_directory == TRUE then
+              -- put 8 byte volume id into file name array
+              for 8 using step1 loop
+                 if fat32_short_file_name[step1] != " " then
+                    fat32_file_name[step1] = fat32_short_file_name[step1]
+                 end if
+              end loop
+           else -- if it is a file
+              -- get 8 byte file name, no spaces
+              var byte step2 = 0
+              for 8 using step1 loop
+                 if (fat32_short_file_name[step1] != " ") then
+                    fat32_file_name[step2] = fat32_short_file_name[step1]
+                    step2 = step2 + 1
+                 end if
+              end loop
+              -- add the extention, if it is not spaces
+              if (fat32_file_extension[0] != " ") then
+                 fat32_file_name[step2] = "."
+                 fat32_file_name[step2 + 1] = fat32_file_extension[0]
+              end if
+              if (fat32_file_extension[1] != " ") then
+                 fat32_file_name[step2 + 2] = fat32_file_extension[1]
+              end if
+              if (fat32_file_extension[2] != " ") then
+                 fat32_file_name[step2 + 3] = fat32_file_extension[2]
+              end if
+           end if
+           
+         end if
+      end if
+
+      if (data_type & _FAT32_CLUSTER_LOCATION) > 0 then
+         -- get the first cluster's location
+         var byte _cluster_address[4] at fat32_file_cluster_address
+         _cluster_address[3] = storage_sector_buffer[sector_entry_number + 21]
+         _cluster_address[2] = storage_sector_buffer[sector_entry_number + 20]
+         _cluster_address[1] = storage_sector_buffer[sector_entry_number + 27]
+         _cluster_address[0] = storage_sector_buffer[sector_entry_number + 26]
+
+;         fat32_file_location = fat32_file_cluster_address + (fat32_root_dir_first_cluster * fat32_sectors_per_cluster)
+      end if
+
+      -- get the file size
+      if (data_type & _FAT32_SIZE) > 0 then
+         var byte _file_size[4] at fat32_file_size
+         _file_size[0] = storage_sector_buffer[sector_entry_number + 28]
+         _file_size[1] = storage_sector_buffer[sector_entry_number + 29]
+         _file_size[2] = storage_sector_buffer[sector_entry_number + 30]
+         _file_size[3] = storage_sector_buffer[sector_entry_number + 31]
+      end if
+
+      -- get the size of the file_name
+      for FAT32_FILE_NAME_SIZE using char_pos loop
+         if fat32_file_name[char_pos] == 0 then
+            fat32_file_name_length = char_pos
+            exit loop
+         end if
+      end loop
+
+   else -- _FAT32_PUT
+
+      -- check byte 11 of this entry to see if it is a long file name, and make sure it is not a deleted file.
+      var word index = sector_entry_number*32
+      if (storage_sector_buffer[index + 11] == 0x0F) & (storage_sector_buffer[index] != 0x00) & (storage_sector_buffer[index] != FAT32_ENTRY_DELETED) then
+
+         fat32_file_has_long_name = TRUE
+
+         -- calculate entry number/location of the short name entry
+         -- of this long name
+         ;_fat32_read_dir_sector_number(fat32_entry_location[fat32_current_file_number] >> 4)
+         sector_entry_number = sector_entry_number + (storage_sector_buffer[sector_entry_number * 32] - 0x40)
+
+         -- check if the short name entry is in the current sector
+         sector_after_entry_location = 0
+         while (sector_entry_number > 15) loop
+            sector_after_entry_location = sector_after_entry_location + 1
+            sector_entry_number = sector_entry_number - 16
+         end loop
+
+         -- if it is not in the current sector, read the correct sector
+         if sector_after_entry_location != 0 then
+            -- read the sector that has the short name entry
+            if file_or_dir == FAT32_FILE then -- if it is a file
+               _fat32_read_dir_sector_number((fat32_entry_location[fat32_current_file_number] >> 4) + sector_after_entry_location)
+            else  -- if it is a dir
+               ------------------------------------------------------------------------------------------------------------
+            end if
+         end if
+      else
+         -- file does not have long name
+      end if
+
+      -- writing of long filenames is not supported yet
+      if (data_type & _FAT32_LONG_NAME) > 0 then
+      end if
+
+      sector_entry_number = sector_entry_number*32
+
+      -- put the file's short name
+      if (data_type & _FAT32_SHORT_NAME) > 0 then
+         storage_sector_buffer[sector_entry_number + 0] = fat32_short_file_name[0]
+         storage_sector_buffer[sector_entry_number + 1] = fat32_short_file_name[1]
+         storage_sector_buffer[sector_entry_number + 2] = fat32_short_file_name[2]
+         storage_sector_buffer[sector_entry_number + 3] = fat32_short_file_name[3]
+         storage_sector_buffer[sector_entry_number + 4] = fat32_short_file_name[4]
+         storage_sector_buffer[sector_entry_number + 5] = fat32_short_file_name[5]
+         storage_sector_buffer[sector_entry_number + 6] = fat32_short_file_name[6]
+         storage_sector_buffer[sector_entry_number + 7] = fat32_short_file_name[7]
+      end if
+
+      -- put the file's extension
+      if (data_type & _FAT32_EXTENSION) > 0 then
+
+         storage_sector_buffer[sector_entry_number + 8] = fat32_file_extension[0]
+         storage_sector_buffer[sector_entry_number + 9] = fat32_file_extension[1]
+         storage_sector_buffer[sector_entry_number + 10] = fat32_file_extension[2]
+      end if
+
+      -- put the first cluster's location
+      if (data_type & _FAT32_CLUSTER_LOCATION) > 0 then
+         var byte _cluster_address[4] at fat32_file_cluster_address
+         storage_sector_buffer[sector_entry_number + 21] = _cluster_address[3]
+         storage_sector_buffer[sector_entry_number + 20] = _cluster_address[2]
+         storage_sector_buffer[sector_entry_number + 27] = _cluster_address[1]
+         storage_sector_buffer[sector_entry_number + 26] = _cluster_address[0]
+
+;sd_sector_buffer_low[29] = 0xDD
+;fat32_print_sector_buffer_hex(serial_hw_data, 32)
+;print_dword_hex(serial_hw_data,sd_sector_buffer_low[29])
+;print_crlf(serial_hw_data)
+
+
+      end if
+
+      -- put the attributes
+      if (data_type & _FAT32_ATTRIB) > 0 then
+         storage_sector_buffer[sector_entry_number + 11] = fat32_file_attrib
+      end if
+
+      -- put the file size
+      if (data_type & _FAT32_SIZE) > 0 then
+         var byte _file_size[4] at fat32_file_size
+         storage_sector_buffer[sector_entry_number + 28] = _file_size[0]
+         storage_sector_buffer[sector_entry_number + 29] = _file_size[1]
+         storage_sector_buffer[sector_entry_number + 30] = _file_size[2]
+         storage_sector_buffer[sector_entry_number + 31] = _file_size[3]
+      end if
+
+
+      -- write the file name entry
+      if fat32_file_has_long_name == FALSE then
+         _fat32_write_dir_sector_number(fat32_entry_location[fat32_current_file_number] >> 4)
+      else
+         -- meeds to be tested
+         _fat32_write_dir_sector_number((fat32_entry_location[fat32_current_file_number] >> 4) + sector_after_entry_location)
+      end if
+   end if
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- reads file info such as file_name, file size, filelocation, etc. into memory.
+-- ----------------------------------------------------------------------------
+procedure fat32_read_file_info(byte*FAT32_ENTRIES_MAX in file_number) is
+   fat32_current_file_number = file_number
+   fat32_file_entry_data(FAT32_FILE, _FAT32_GET, _FAT32_ALL)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- initalize fat32
+-- ----------------------------------------------------------------------------
+procedure fat32_init(byte in primary_partition_number) is
+   _fat32_read_boot_sector (primary_partition_number) -- get the location of first partition ( c:\ )
+   _fat32_read_dir_info() -- put root directory into memory
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- change directory, returns 1 = success, 0 = not a directory
+-- ----------------------------------------------------------------------------
+function fat32_cd(byte*FAT32_ENTRIES_MAX in file_number) return bit is
+   fat32_read_file_info(file_number) -- read file's name, location, size, attributes
+
+   if fat32_is_directory then       -- if it is a directory
+      fat32_dir_cluster_address = fat32_file_cluster_address
+
+      -- if it is the root dir from a directory named ".."
+      if fat32_dir_cluster_address == 0 then
+         fat32_dir_cluster_address = 2
+      end if
+
+      _fat32_read_dir_info()        -- read info about the dir chosen
+      return 1
+   elsif fat32_is_volume_id then
+      -- if it is a volume id, we are already in the root dir so don't read the dir
+      return 1
+   else
+      return 0
+   end if
+end function
+
+-- ----------------------------------------------------------------------------
+-- check if file is ok to start reading, returns 1 = success, 0 = not a file
+-- ----------------------------------------------------------------------------
+function fat32_file_open(byte*FAT32_ENTRIES_MAX in file_number) return bit is
+   fat32_current_file_number = file_number
+
+   -- read the file's information such as file name, attrib, etc.
+   fat32_read_file_info(file_number)
+
+   -- read the fragment locations if file is > 0 bytes
+   if fat32_file_size > 0 then
+      _fat32_read_fragments(fat32_file_cluster_address , FAT32_FILE)
+   end if
+
+   if (!fat32_is_directory) & (!fat32_is_volume_id) then -- if it is a file
+      _fat32_file_sector_count = 0
+      _fat32_fragment_number = 0 -- the current fragment of a file we are in
+
+      return 1
+   else
+      return 0
+   end if
+end function
+
+-- ----------------------------------------------------------------------------
+-- close the currently opened file.
+-- ----------------------------------------------------------------------------
+procedure fat32_file_close() is
+   -- ensure all reading/writing is done
+   if _fat32_last_operation == _FAT32_READ then
+      -- stop reading
+      fat32_stop_file_read()
+   else
+      -- stop writing, write 0's to rest of current sector
+      fat32_stop_file_write()
+   end if
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- read one sector from a file starting at the beginning of the file.
+-- auto increments to next sector in file. fragmented files work.
+-- requires: fat32_start_file_read(fat32_file_location), fat32_stop_file_read()
+-- faster then fat32_read_file_sector_number() procedure
+-- ----------------------------------------------------------------------------
+procedure fat32_read_file_sector() is
+   -- last operation was read
+   _fat32_last_operation = _FAT32_READ
+
+   -- if between fragments, go to the next fragment and read
+   if _fat32_file_sector_count == (fat32_file_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster) then
+
+      storage_stop_read() -- stop the current read process if any
+      _fat32_fragment_number = _fat32_fragment_number + 1  -- increment the fragment number being read
+
+      -- start reading at the beginning of the fragment
+      storage_start_read (fat32_cluster_begin + (fat32_file_fragments_start[_fat32_fragment_number] * fat32_sectors_per_cluster) )
+      _fat32_file_sector_count = 0 -- reset the sector counter.
+   end if
+
+   _fat32_file_sector_count = _fat32_file_sector_count + 1 -- increment sector number
+   storage_raw_read_sector()
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- reads selected sector from a file. fragmented files work.
+-- slower then fat32_read_file_sector() procedure, but user friendly.
+-- ----------------------------------------------------------------------------
+procedure fat32_read_file_sector_number(dword in file_sector_number) is
+   -- last operation was read
+   _fat32_last_operation = _FAT32_READ
+   -- find what fragment the requested file sector number is located in
+
+   -- rename/reuse the input variable
+   alias sectors_left is file_sector_number
+
+   -- start at first fragment
+   _fat32_fragment_number = 0
+
+   -- calculate how many sectors are in the current fragment
+   var dword count_fragment_sectors = fat32_file_fragment_cluster_count[0] * fat32_sectors_per_cluster
+
+   -- while we are not at the correct fragment,
+   -- number of sectors left is > the number of sectors in the current fragment.
+   while !((fat32_file_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster) > sectors_left) loop
+      -- subtract the number of sectors in the current fragment from sectors left
+      sectors_left = sectors_left - (fat32_file_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster)
+      -- increment to the next fragment
+      _fat32_fragment_number = _fat32_fragment_number + 1
+   end loop
+
+   -- calculate the address
+   var dword address
+   address = fat32_cluster_begin + (fat32_file_fragments_start[_fat32_fragment_number] * fat32_sectors_per_cluster) + sectors_left
+
+   -- read a sector at the address
+   storage_raw_read_sector_address(address)
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- read one byte from a file starting at the beginning of the file.
+-- auto increments to next byte in file. fragmented files work.
+-- requires: fat32_start_file_read(fat32_file_location), fat32_stop_file_read()
+-- faster then fat32_read_file_address() procedure
+-- ----------------------------------------------------------------------------
+function fat32_read_file_byte() return byte is
+   var byte data
+   if _fat32_file_byte_count == 0 then
+      fat32_read_file_sector()
+      _fat32_file_byte_count = _fat32_file_byte_count + 1
+      return storage_sector_buffer[0]
+   else
+      data = storage_sector_buffer[_fat32_file_byte_count]
+      _fat32_file_byte_count = _fat32_file_byte_count + 1
+      if _fat32_file_byte_count == 512 then
+         _fat32_file_byte_count = 0
+      end if
+      return data
+   end if
+end function
+
+-- ----------------------------------------------------------------------------
+-- reads selected byte from a file. fragmented files work.
+-- slower then fat32_read_file() procedure, but user friendly.
+-- ----------------------------------------------------------------------------
+var dword current_address = 0xFFFFFFFF
+function fat32_read_file_byte_address(dword in address) return byte is
+   var byte data
+   var word sector_location = 0
+
+   while address > 512 loop
+      -- calculate what sector the byte is in
+      sector_location = sector_location + 1
+
+      -- calculate where the byte is in the sector
+      address = address - 512
+   end loop
+
+   -- read the sector
+   if !(sector_location == current_address) then
+      fat32_read_file_sector_number(sector_location)
+      current_address = sector_location
+   end if
+
+   -- return the data byte
+   return storage_sector_buffer[word(address)]
+end function
+
+-- ----------------------------------------------------------------------------
+-- write one sector to a file starting at the beginning of the file.
+-- auto increments to next sector in file. fragmented files work.
+-- requires: fat32_start_file_write(fat32_file_location), fat32_stop_file_write
+-- faster then fat32_write_file_sector_number() procedure
+-- ----------------------------------------------------------------------------
+procedure fat32_write_file_sector() is
+   -- last operation was write
+   _fat32_last_operation = _FAT32_WRITE
+
+   -- if between fragments, go to the next fragment and write
+   if _fat32_file_sector_count == (fat32_file_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster) then
+
+      storage_stop_write() -- stop the current write process if any
+      _fat32_fragment_number = _fat32_fragment_number + 1  -- increment the fragment number being write
+
+      -- start writeing at the beginning of the fragment
+      storage_start_write (fat32_cluster_begin + (fat32_file_fragments_start[_fat32_fragment_number] * fat32_sectors_per_cluster) )
+      _fat32_file_sector_count = 0 -- reset the sector counter.
+   end if
+
+   _fat32_file_sector_count = _fat32_file_sector_count + 1 -- increment sector number
+   storage_raw_write_sector()
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- writes selected sector to a file. fragmented files work.
+-- slower then fat32_write_file_sector() procedure, but user friendly.
+-- ----------------------------------------------------------------------------
+procedure fat32_write_file_sector_number(dword in file_sector_number) is
+   -- last operation was write
+   _fat32_last_operation = _FAT32_WRITE
+
+   -- find what fragment the requested file sector number is located in
+
+   -- rename/reuse the input variable
+   alias sectors_left is file_sector_number
+
+   -- start at first fragment
+   _fat32_fragment_number = 0
+
+   -- calculate how many sectors are in the current fragment
+   var dword count_fragment_sectors = fat32_file_fragment_cluster_count[0] * fat32_sectors_per_cluster
+
+   -- while we are not at the correct fragment,
+   -- number of sectors left is > the number of sectors in the current fragment.
+   while !((fat32_file_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster) > sectors_left) loop
+      -- subtract the number of sectors in the current fragment to sectors left
+      sectors_left = sectors_left - (fat32_file_fragment_cluster_count[_fat32_fragment_number] * fat32_sectors_per_cluster)
+      -- increment to the next fragment
+      _fat32_fragment_number = _fat32_fragment_number + 1
+   end loop
+
+   -- calculate the address
+   var dword address
+   address = fat32_cluster_begin + (fat32_file_fragments_start[_fat32_fragment_number] * fat32_sectors_per_cluster) + sectors_left
+
+   -- write a sector at the address
+   storage_raw_write_sector_address(address)
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Print a file_name to an output device. Use the following constants as
+-- input options.
+-- ----------------------------------------------------------------------------
+const FAT32_PRINT_LONG_FILE_NAME    = 1
+const FAT32_PRINT_NUMBER            = 2
+const FAT32_PRINT_SIZE              = 4
+const FAT32_PRINT_CLUSTER           = 8
+const FAT32_PRINT_TABLE             = 16
+const FAT32_PRINT_DATE              = 32
+const FAT32_PRINT_ATTRIBUTES        = 64
+;const FAT32_PRINT_SHORT_FILE_NAME  = 128
+const FAT32_PRINT_ALL               = 0xFF
+procedure fat32_print_file_info(volatile byte out output_device, byte in options) is
+   var byte step1
+
+   -- print the file number
+   if (options & FAT32_PRINT_NUMBER) > 0 then
+      format_dword_dec(output_device,fat32_current_file_number,4,0)
+      const byte string1[] = ". "
+      print_string(output_device,string1)
+
+      if (options & FAT32_PRINT_TABLE) > 0 then
+         output_device = "|"
+      end if
+   end if
+
+   -- print the file size
+   if (options & FAT32_PRINT_SIZE) > 0 then
+      format_dword_dec(output_device,fat32_file_size,10,0)
+      output_device = " "
+
+      if (options & FAT32_PRINT_TABLE) > 0 then
+         output_device = "|"
+      end if
+   end if
+
+   -- print the files first cluster location
+   if (options & FAT32_PRINT_CLUSTER) > 0 then
+      format_dword_dec(output_device,fat32_file_cluster_address,8,0)
+      output_device = " "
+
+      if (options & FAT32_PRINT_TABLE) > 0 then
+         output_device = "|"
+      end if
+   end if
+
+   -- print the files attributes
+   if (options & FAT32_PRINT_ATTRIBUTES) > 0 then
+      print_byte_bin(output_device,fat32_file_attrib)
+
+      if (options & FAT32_PRINT_TABLE) > 0 then
+         output_device = "|"
+      end if
+   end if
+
+   -- print the file name
+   if (options & FAT32_PRINT_LONG_FILE_NAME) > 0 then
+      output_device = " "
+      for fat32_file_name_length using step1 loop
+         if fat32_file_name[step1] != 0 then
+            output_device = fat32_file_name[step1]
+         end if
+      end loop
+   end if
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- print the current directory to an output device. Use same options as
+-- in fat32_print_file_info
+-- ----------------------------------------------------------------------------
+procedure fat32_print_directory(volatile byte out output_device, byte in options) is
+   var word count4 = 0          -- set count to 0
+
+   -- print the table header
+   const byte string1[] = "----------------------------------------------------"
+   const byte string2[] = "FILE #|"
+   const byte string3[] = "      SIZE |"
+   const byte string4[] = " CLUSTER |"
+   const byte string5[] = " FILE NAME"
+   const byte string6[] = "XXADVSHR|" -- Archive-Directory-Volume_id-System--Hidden-Read_only
+   if (options & FAT32_PRINT_TABLE) > 0 then
+
+      print_crlf(output_device) -- cend CRLF to serial port
+      print_string(output_device,string1)
+      print_crlf(output_device) -- cend CRLF to serial port
+
+      if (options & FAT32_PRINT_NUMBER) > 0 then
+         print_string(output_device,string2) -- "FILE #|"
+      end if
+
+      if (options & FAT32_PRINT_SIZE) > 0 then
+         print_string(output_device,string3) -- "    SIZE |"
+      end if
+
+      if (options & FAT32_PRINT_CLUSTER) > 0 then
+         print_string(output_device,string4) -- " CLUSTER |"
+      end if
+
+      if (options & FAT32_PRINT_ATTRIBUTES) > 0 then
+         print_string(output_device,string6) -- "ATTRIB|"
+      end if
+
+      if (options & FAT32_PRINT_NUMBER) > 0 then
+         print_string(output_device,string5) -- " FILE NAME"
+      end if
+
+      print_crlf(output_device) -- cend CRLF to serial port
+      print_string(output_device,string1)
+      print_crlf(output_device) -- cend CRLF to serial port
+   end if
+
+   -- print the file data
+   for fat32_dir_file_count loop          -- loop untill end of files
+
+      -- choose the file number to read acording to the count
+      fat32_read_file_info(count4) -- read file's name, location, size, attributes
+      fat32_print_file_info(output_device,options)
+
+      print_crlf(output_device) -- cend CRLF to serial port
+
+      count4 = count4 + 1  -- increment count
+   end loop
+
+
+   -- print the table footer
+   if (options & FAT32_PRINT_TABLE) > 0 then
+      print_string(output_device,string1)
+      print_crlf(output_device) -- cend CRLF to serial port
+   end if
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- create a file with a size of 0 bytes in the current directory.
+-- Set fat32_attrib before running this procedure
+-- If there is a file currently opened, it will be closed.
+-- not for directories. see fat32_dir_create()
+-- ----------------------------------------------------------------------------
+function fat32_file_create(byte in file_name[], byte in file_extension[3]) return byte is
+   var byte step1, step2
+   var word sector_count
+   var word sector_byte_location
+
+   -- check if the file name has only valid characters
+   var bit char_is_valid = FALSE
+   for count(file_name) using step1 loop
+      for count(FAT32_VALID_CHARACTERS) using step2 loop
+         if file_name[step1] == FAT32_VALID_CHARACTERS[step2] then
+            char_is_valid = TRUE
+            exit loop
+         end if
+      end loop
+      if char_is_valid == FALSE then
+         return 0
+      else
+         char_is_valid = FALSE
+      end if
+   end loop
+   --
+   if FAT32_WRITE_LONG_FILE_NAMES == FALSE then
+      step1 = byte(count(file_name)) - 1
+
+      while file_name[step1] == " " loop
+         step1 = step1 - 1
+      end loop
+      step1 = step1 + 1
+
+      for step1 using step2 loop
+         if file_name[step2] == " " then
+            return 0
+         end if
+      end loop
+   end if
+
+   -- find somewhere to write the file_name in the current dir
+   sector_count = 0
+   forever loop
+      
+      -- if the directory size is too small
+      if sector_count > _fat32_dir_sectors then
+         _fat32_set_size(FAT32_DIRECTORY, (_fat32_dir_sectors + 128) * 512)
+      end if
+
+      -- start reading at the beginning of the directory and continue
+      _fat32_read_dir_sector_number(sector_count) -- need to change for fragmented directory
+
+      for 16 using step1 loop -- there are 16 file_name entries per sector
+         -- check for a deleted entry, or an entry at the end of the directory
+         sector_byte_location = word(step1) * 32
+         if storage_sector_buffer[sector_byte_location] == 0x00 | storage_sector_buffer[sector_byte_location] == FAT32_ENTRY_DELETED then
+
+            -- save it's location
+            fat32_entry_location[fat32_dir_file_count] = (sector_count << 4) + (step1)
+            
+            fat32_current_file_number = fat32_dir_file_count
+
+            --add a file to the file list
+            fat32_dir_file_count = fat32_dir_file_count + 1
+
+            -- set the short file name
+            for count(file_name) using step2 loop
+               fat32_short_file_name[step2] = file_name[step2]
+            end loop
+
+            -- add spaces if short file name is less then 8 characters
+            for 8 - count(file_name) loop
+               fat32_short_file_name[step2] = " "
+            end loop
+
+            -- write the file extension
+            for 3 using step2 loop
+               fat32_file_extension[step2] = file_extension[step2]
+               storage_sector_buffer[sector_byte_location] = file_extension[step2]
+            end loop
+
+            -- write the file attributes
+            fat32_file_attrib = fat32_file_attrib
+
+            -- write the file cluster high location as 0's
+            fat32_file_cluster_address = 0
+
+            -- write the file size as 0 bytes
+            fat32_file_size = 0
+
+            fat32_file_entry_data(FAT32_FILE, _FAT32_PUT,_FAT32_SHORT_NAME + _FAT32_EXTENSION + _FAT32_ATTRIB + _FAT32_CLUSTER_LOCATION + _FAT32_SIZE)
+
+            return 1 -- all done, lets get out of here!
+         end if
+      end loop
+      sector_count = sector_count + 1
+   end loop
+
+   return 0
+end function
+
+------------------------------------------------------------------------------------------------
+
+;   const fat32_fat_backup[] = {
+;   0xF8,0xFF,0xFF,0x0F
+;   ,0xFF,0xFF,0xFF,0x7F
+;   ,0x05,0x00,0x00,0x00
+;   ,0xFF,0xFF,0xFF,0x0F
+;   ,0x12,0x00,0x00,0x00
+;   ,0x06,0x00,0x00,0x00
+;   ,0xFF,0xFF,0xFF,0x0F
+;   ,0xFF,0xFF,0xFF,0x0F
+;   ,0xFF,0xFF,0xFF,0x0F
+;   ,0xFF,0xFF,0xFF,0x0F
+;   ,0x00,0x00,0x00,0x00
+;   ,0x00,0x00,0x00,0x00
+;   ,0x00,0x00,0x00,0x00
+;   ,0x00,0x00,0x00,0x00
+;   ,0x00,0x00,0x00,0x00
+;   ,0x00,0x00,0x00,0x00
+;   ,0x00,0x00,0x00,0x00
+;   ,0x00,0x00,0x00,0x00
+;   ,0x13,0x00,0x00,0x00
+;   ,0x14,0x00,0x00,0x00
+;   ,0x15,0x00,0x00,0x00
+;   ,0x17,0x00,0x00,0x00
+;   ,0xFF,0xFF,0xFF,0x0F
+;   ,0x18,0x00,0x00,0x00
+;   ,0x19,0x00,0x00,0x00
+;   ,0x1A,0x00,0x00,0x00
+;   ,0x1B,0x00,0x00,0x00
+;   ,0xFF,0xFF,0xFF,0x0F
+;   ,0x1D,0x00,0x00,0x00
+;   ,0x1E,0x00,0x00,0x00
+;   ,0x1F,0x00,0x00,0x00
+;   ,0x20,0x00,0x00,0x00
+;   ,0x21,0x00,0x00,0x00
+;   ,0x22,0x00,0x00,0x00
+;   ,0x23,0x00,0x00,0x00
+;   ,0x24,0x00,0x00,0x00
+;   ,0x25,0x00,0x00,0x00
+;   ,0x26,0x00,0x00,0x00
+;   ,0x27,0x00,0x00,0x00
+;   ,0x28,0x00,0x00,0x00
+;   ,0x29,0x00,0x00,0x00
+;   ,0x2A,0x00,0x00,0x00
+;   ,0x2B,0x00,0x00,0x00
+;   ,0x2C,0x00,0x00,0x00
+;   ,0x2D,0x00,0x00,0x00
+;   ,0x2E,0x00,0x00,0x00
+;   ,0x2F,0x00,0x00,0x00
+;   ,0x30,0x00,0x00,0x00
+;   ,0x31,0x00,0x00,0x00
+;   ,0x32,0x00,0x00,0x00
+;   ,0x33,0x00,0x00,0x00
+;   ,0x34,0x00,0x00,0x00
+;   ,0x35,0x00,0x00,0x00
+;   ,0x36,0x00,0x00,0x00
+;   ,0x37,0x00,0x00,0x00
+;   ,0x38,0x00,0x00,0x00
+;   ,0x39,0x00,0x00,0x00
+;   ,0x3A,0x00,0x00,0x00
+;   ,0x3B,0x00,0x00,0x00
+;   ,0x3C,0x00,0x00,0x00
+;   ,0x3D,0x00,0x00,0x00
+;   ,0x3E,0x00,0x00,0x00
+;   ,0x3F,0x00,0x00,0x00
+;   ,0x40,0x00,0x00,0x00
+;   ,0x41,0x00,0x00,0x00
+;   ,0x42,0x00,0x00,0x00
+;   ,0x43,0x00,0x00,0x00
+;   ,0x44,0x00,0x00,0x00
+;   ,0x45,0x00,0x00,0x00
+;   ,0x46,0x00,0x00,0x00
+;   ,0x47,0x00,0x00,0x00
+;   ,0x48,0x00,0x00,0x00
+;   ,0x49,0x00,0x00,0x00
+;   ,0x4A,0x00,0x00,0x00
+;   ,0x4B,0x00,0x00,0x00
+;   ,0x4C,0x00,0x00,0x00
+;   ,0x4D,0x00,0x00,0x00
+;   ,0x4E,0x00,0x00,0x00
+;   ,0x4F,0x00,0x00,0x00
+;   ,0x50,0x00,0x00,0x00
+;   ,0x51,0x00,0x00,0x00
+;   ,0x52,0x00,0x00,0x00
+;   ,0x53,0x00,0x00,0x00
+;   ,0x54,0x00,0x00,0x00
+;   ,0x55,0x00,0x00,0x00
+;   ,0x56,0x00,0x00,0x00
+;   ,0x57,0x00,0x00,0x00
+;   ,0x58,0x00,0x00,0x00
+;   ,0x59,0x00,0x00,0x00
+;   ,0x5A,0x00,0x00,0x00
+;   ,0x5B,0x00,0x00,0x00
+;   ,0x5C,0x00,0x00,0x00
+;   ,0x5D,0x00,0x00,0x00
+;   ,0x5E,0x00,0x00,0x00
+;   ,0x5F,0x00,0x00,0x00
+;   ,0x60,0x00,0x00,0x00
+;   ,0x61,0x00,0x00,0x00
+;   ,0x62,0x00,0x00,0x00
+;   ,0x63,0x00,0x00,0x00
+;   ,0x64,0x00,0x00,0x00
+;   ,0x65,0x00,0x00,0x00
+;   ,0x66,0x00,0x00,0x00
+;   ,0x67,0x00,0x00,0x00
+;   ,0x68,0x00,0x00,0x00
+;   ,0x69,0x00,0x00,0x00
+;   ,0x6A,0x00,0x00,0x00
+;   ,0x6B,0x00,0x00,0x00
+;   ,0x6C,0x00,0x00,0x00
+;   ,0x6D,0x00,0x00,0x00
+;   ,0x6E,0x00,0x00,0x00
+;   ,0x6F,0x00,0x00,0x00
+;   ,0x70,0x00,0x00,0x00
+;   ,0x71,0x00,0x00,0x00
+;   ,0x72,0x00,0x00,0x00
+;   ,0x73,0x00,0x00,0x00
+;   ,0x74,0x00,0x00,0x00
+;   ,0x75,0x00,0x00,0x00
+;   ,0x76,0x00,0x00,0x00
+;   ,0x77,0x00,0x00,0x00
+;   ,0x78,0x00,0x00,0x00
+;   ,0x79,0x00,0x00,0x00
+;   ,0x7A,0x00,0x00,0x00
+;   ,0x7B,0x00,0x00,0x00
+;   ,0x7C,0x00,0x00,0x00
+;   ,0x7D,0x00,0x00,0x00
+;   ,0x7E,0x00,0x00,0x00
+;   ,0x7F,0x00,0x00,0x00
+;   ,0x80,0x00,0x00,0x00
+;   }
+;   procedure fat_restore() is
+;      var word step
+;      for 512 using step loop
+;         storage_sector_buffer[step] = fat32_fat_backup[step]
+;      end loop
+;
+;      ;print_dword_dec(serial_hw_data,fat32_fat_begin)
+;      fat32_print_sector_buffer_hex(serial_hw_data,32)
+;
+;      storage_raw_write_sector_address(fat32_fat_begin)
+;   end procedure
+
+
+------------------------------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- Removes clusters for a file or directory
+-- ----------------------------------------------------------------------------
+procedure _fat32_remove_fat_clusters(dword in clusters_to_remove, bit in file_or_dir) is              ---------------
+   var dword address
+   var volatile dword left_in_fragment
+
+   var dword start_at
+   if file_or_dir == FAT32_DIRECTORY then
+       start_at = _fat32_dir_last_cluster
+   else
+       start_at = _fat32_file_last_cluster
+   end if
+
+   -- read the sector that the last cluster is in
+   fat32_current_sector = fat32_fat_begin + (start_at >> 7)
+   storage_raw_read_sector_address(fat32_current_sector)
+
+   if file_or_dir == FAT32_FILE then
+
+      -- continue till the clusters have been removed
+      while clusters_to_remove > 0 loop
+         -- get the location of the end of the last fragment
+         address = (fat32_file_fragments_start[_fat32_file_fragment_count] + fat32_file_fragment_cluster_count[_fat32_file_fragment_count])
+
+         -- count how many clusters are left in the current fragment
+         left_in_fragment = fat32_file_fragment_cluster_count[_fat32_file_fragment_count]
+
+         -- why is this needed? compiler bug?
+         var dword _left_in_fragment = left_in_fragment
+
+         -- loop through all clusters in the current fragment
+         for _left_in_fragment loop
+
+            -- decremnt the cluster address
+            address = address - 1
+
+            -- exit if there are no more clusters to remove
+            if clusters_to_remove == 0 then
+               exit loop
+            end if
+
+            -- decrement the number of clusters in the current fragment
+            left_in_fragment = left_in_fragment - 1
+
+            -- clear the cluster
+            fat32_cluster[address] = 0
+
+            -- decrement the number of clusters to remove
+            clusters_to_remove = clusters_to_remove - 1
+         end loop
+
+         -- exit if there are no more clusters to remove
+         if clusters_to_remove == 0 then
+            exit loop
+         end if
+
+         -- set the current fragment's count
+         fat32_file_fragment_cluster_count[_fat32_file_fragment_count] = left_in_fragment
+         _fat32_file_fragment_count = _fat32_file_fragment_count - 1
+      end loop
+
+      if left_in_fragment == 0 then
+         -- if there are no clusters left in the current fragment, go to
+         -- the next fragment down
+         if _fat32_file_fragment_count > 0 then
+            _fat32_file_fragment_count = _fat32_file_fragment_count - 1
+
+            -- set the last cluster in this fragment as the end cluster
+            address = (fat32_file_fragments_start[_fat32_file_fragment_count] + fat32_file_fragment_cluster_count[_fat32_file_fragment_count] - 1)
+            fat32_cluster[address] = 0x0F_FF_FF_FF
+         end if
+      elsif clusters_to_remove == 0 then
+         -- if there are no more clusters to remove, set the current
+         -- cluster address as the end cluster
+         fat32_cluster[address] = 0x0F_FF_FF_FF
+      end if
+   end if
+
+   -- write the last sector that was modified in fat32_cluster'get/put
+   storage_raw_write_sector_address(fat32_current_sector)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Creates clusters for a file or directory
+-- ----------------------------------------------------------------------------
+procedure _fat32_create_fat_clusters(dword in clusters_to_make, bit in file_or_dir) is
+   var dword start_at
+
+   if file_or_dir == FAT32_DIRECTORY then
+       start_at = _fat32_dir_last_cluster
+   else
+       start_at = _fat32_file_last_cluster
+   end if
+
+   ;pragma inline
+   var dword prev_cluster_address  = start_at
+   ;alias next_cluster_address is start_at -- rename/reuse the input variable
+   var dword next_cluster_address = start_at
+   var bit exit_ok = FALSE
+
+   -- read the sector that the first cluster is in
+   fat32_current_sector = fat32_fat_begin + (start_at >> 7)
+   storage_raw_read_sector_address(fat32_current_sector)
+
+   -- start looking at next cluster address
+   next_cluster_address = next_cluster_address + 1
+   for 2 loop -- first loop starts at file cluster end, 2nd loop starts at cluster 0
+      for (fat32_sectors_per_fat * 128) - start_at loop -- loop through all fat sectors
+      ;for 3 * 128 loop -- loop through all fat sectors
+
+         if fat32_cluster[next_cluster_address] == 0 then
+
+
+   ;print_crlf(serial_hw_data)
+   ;print_dword_hex(serial_hw_data,next_cluster_address)
+   ;serial_hw_data = " "
+   ;;print_dword_hex(serial_hw_data,fat32_cluster[0x51])
+
+
+
+            fat32_cluster[prev_cluster_address] = next_cluster_address   ;current_cluster_address = next_cluster_address
+            prev_cluster_address = next_cluster_address
+            clusters_to_make = clusters_to_make - 1
+         else
+   ;return
+         end if
+
+         if clusters_to_make == 0 then
+            exit_ok = TRUE
+            exit loop
+         end if
+
+         next_cluster_address = next_cluster_address + 1
+
+      end loop
+
+      if exit_ok == FALSE then
+         -- out of space, start at the beginning
+         start_at = (fat32_sectors_per_fat * 128) - start_at -- set the new "for" count
+         next_cluster_address = 0                    -- our cluster address now is 0
+      else
+         exit loop
+      end if
+   end loop
+
+    if exit_ok == FALSE then
+       -- mark the last available cluster as the end of the files clusters
+       fat32_cluster[prev_cluster_address] = 0x0F_FF_FF_FF
+
+       -- some warning for out of space?
+       ;var byte string[] = "ERROR OUT OF DISK SPACE"
+       ;print_string(serial_hw_data, string)
+
+       ;return clusters_to_make -- return the number of clusters that could not be added
+    else
+      -- mark the last cluster as the end of the files clusters
+      fat32_cluster[next_cluster_address] = 0x0F_FF_FF_FF
+    end if
+
+   -- write the last sector that was modified in fat32_cluster'get/put
+   storage_raw_write_sector_address(fat32_current_sector)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Sets the size of the current file or directory
+-- ----------------------------------------------------------------------------
+procedure _fat32_set_size(bit in file_or_dir, dword in file_size) is
+   ;var dword old_file_size = file_size
+   var word clusters_needed = 0
+   var word clusters_current = 0
+
+   if file_or_dir == FAT32_DIRECTORY then
+      -- NOT SUPPORTED YET
+   else
+      -- get how many clusters the file will need to use
+      -- maybe this could be optimized by subtracting 1 from file size then remove if statment?
+      clusters_needed = word(file_size / 512 / fat32_sectors_per_cluster)
+      if !((file_size) == clusters_needed * (512 * word(fat32_sectors_per_cluster))) then
+         clusters_needed = clusters_needed + 1
+      end if
+
+      -- get how many clusters the file currently uses
+      clusters_current = word(fat32_file_size / 512 / fat32_sectors_per_cluster)
+      if !((fat32_file_size) == clusters_current * (512 * word(fat32_sectors_per_cluster))) then
+         clusters_current = clusters_current + 1
+      end if
+   end if
+
+   if file_or_dir == FAT32_DIRECTORY then
+
+   else
+      -- get the first cluster's location
+      fat32_file_entry_data(FAT32_FILE, _FAT32_GET, _FAT32_CLUSTER_LOCATION)
+   end if
+
+
+   if file_or_dir == FAT32_DIRECTORY then
+
+   else
+      -- if the file does not have a cluster address find a cluster for it.
+      if (fat32_file_cluster_address == 0) & (file_size > 0) then
+         -- It is 0 bytes in size, and has no clusters, so
+         -- serach for an empty cluster to start at, then start writing clusters
+         -- and aslo write the start cluster number in the file_name entry
+         var dword sector_count
+         var word step3
+         -- count sectors (maybe I should start at the last file's, last cluster instead?)
+         sector_count = fat32_fat_begin
+
+         -- search the entire fat, this could take a while if
+         -- lots of files any idea's? Maybe choose a random one?
+         var bit continue = TRUE
+         while continue == TRUE loop
+            -- If there is no space for a file, get out of here.
+            -- we should check the disk usage thing in the boot sector instead.
+            if sector_count == (fat32_fat_begin + fat32_sectors_per_fat) then
+               return
+            end if
+
+            -- read a sector in the FAT
+            storage_raw_read_sector_address(sector_count)
+
+            step3 = 0 -- count cluster location
+            for 512 / 4 loop
+               -- check for a empty cluster (0x00_00_00_00)
+               if (storage_sector_buffer[step3 + 0]) == 0 & (storage_sector_buffer[step3 + 1]) == 0 &
+               (storage_sector_buffer[step3 + 2]) == 0 & (storage_sector_buffer[step3 + 3]) == 0 then
+                  continue = FALSE -- we found a empty cluster!
+                  exit loop
+               end if
+               step3 = step3 + 4 -- step 4 ahead in the current sector
+            end loop
+            sector_count = sector_count + 1 -- increment to next sector
+         end loop
+         sector_count = sector_count - 1 -- we don't want the last increment
+
+         -- set the first cluster as in use
+         storage_sector_buffer[step3 + 0] = 0xFF
+         storage_sector_buffer[step3 + 1] = 0xFF
+         storage_sector_buffer[step3 + 2] = 0xFF
+         storage_sector_buffer[step3 + 3] = 0x0F
+
+         -- write the new sector data
+         storage_raw_write_sector_address(sector_count)
+
+         ;print_crlf(serial_hw_data)
+         ;fat32_print_sector_buffer_hex(serial_hw_data, 16)
+
+         -- set the file location
+         sector_count = sector_count - fat32_fat_begin -- get the fat sector number
+         fat32_file_cluster_address = sector_count            -- move into dword
+         fat32_file_cluster_address = (fat32_file_cluster_address * 128) + (step3 / 4) -- calculate cluster number
+
+         -- store the cluster number in the file name entry
+         fat32_file_entry_data(FAT32_FILE, _FAT32_PUT, _FAT32_CLUSTER_LOCATION)
+
+   ;      --
+   ;      print_crlf(serial_hw_data)
+   ;      print_dword_dec(serial_hw_data,sector_count)
+   ;      print_crlf(serial_hw_data)
+         ;print_dword_dec(serial_hw_data, fat32_file_cluster_address)
+   ;      print_crlf(serial_hw_data)
+   ;
+   ;
+   ;      print_crlf(serial_hw_data)
+   ;      fat32_print_sector_buffer_hex(serial_hw_data, 32)
+   ;      print_crlf(serial_hw_data)
+   ;      print_crlf(serial_hw_data)
+
+         ;_fat32_read_dir_sector_number(address)
+         ;fat32_print_sector_buffer_hex(serial_hw_data, 32)
+
+         -- we created 1 cluster, so set current clusters to 1
+         clusters_current = 1
+
+         -- get the files last cluster.
+         _fat32_file_last_cluster = fat32_file_cluster_address
+
+      end if
+   end if
+
+   ---- start making clusters at the end of this file or dir
+
+   ;print_crlf(serial_hw_data)
+   ;print_crlf(serial_hw_data)
+   ;print_dword_dec(serial_hw_data,clusters_current)
+   ;print_crlf(serial_hw_data)
+   ;print_dword_dec(serial_hw_data,clusters_needed)
+   ;print_crlf(serial_hw_data)
+   ;print_crlf(serial_hw_data)
+
+
+   -- set the clusters
+   if clusters_needed == clusters_current then -- we have the right number of clusters already
+   elsif clusters_needed == 0 then
+      -- delete all clusters and set file location to 0
+      _fat32_remove_fat_clusters(clusters_current,file_or_dir)
+
+      -- set file cluster address to 0
+      fat32_file_cluster_address = 0
+      fat32_file_entry_data(FAT32_FILE, _FAT32_PUT, _FAT32_CLUSTER_LOCATION)
+
+;      serial_hw_data = "!"
+   elsif clusters_needed > clusters_current then    -- file clusters is exapnding in size
+      _fat32_create_fat_clusters(clusters_needed - clusters_current,file_or_dir)
+;      serial_hw_data = "*"
+   else
+      _fat32_remove_fat_clusters(clusters_current - clusters_needed,file_or_dir)
+;      serial_hw_data = "#"
+   end if
+
+
+   --
+
+
+   ;print_dword_dec(serial_hw_data,fat32_file_cluster_address)
+
+   ;storage_raw_read_sector_address(fat32_fat_begin)
+   ;fat32_print_sector_buffer_hex(serial_hw_data, 32)
+   ----
+
+
+;   print_crlf(serial_hw_data)
+;   print_crlf(serial_hw_data)
+;   ;print_byte_dec(serial_hw_data, entry_number)
+;   print_crlf(serial_hw_data)
+;   print_crlf(serial_hw_data)
+;   ;print_byte_dec(serial_hw_data, (storage_sector_buffer[entry_number * 32]) - 0x40)
+;   print_crlf(serial_hw_data)
+;   print_crlf(serial_hw_data)
+
+
+   ;print_dword_dec(serial_hw_data,file_size)
+   -- save the file size
+   fat32_file_size = file_size
+   fat32_file_entry_data(FAT32_FILE, _FAT32_PUT, _FAT32_SIZE)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Sets the size of the currently opened file
+-- ----------------------------------------------------------------------------
+procedure fat32_file_set_size(dword in file_size) is
+   pragma inline
+   _fat32_set_size(FAT32_FILE, file_size)
+   
+   -- maybe I can do this faster in _fat32_set_size by adding values to the
+   -- fat array.
+   _fat32_read_fragments(fat32_file_cluster_address , FAT32_FILE)
+end procedure
+alias fat32_set_file_size is fat32_file_set_size
+
+-- ----------------------------------------------------------------------------
+-- Sets the size of the currently opened directory
+-- ----------------------------------------------------------------------------
+procedure fat32_dir_set_size(dword in dir_size) is
+   pragma inline
+   _fat32_set_size(FAT32_DIRECTORY, dir_size)
+   
+   -- maybe I can do this faster in _fat32_set_size by adding values to the
+   -- fat array.
+   _fat32_read_fragments(fat32_dir_cluster_address , FAT32_DIRECTORY)
+end procedure
+alias fat32_set_dir_size is fat32_dir_set_size
+
+-- ----------------------------------------------------------------------------
+-- not working in a for loop, bug?
+-- ----------------------------------------------------------------------------
+;   function fat32_file_sectors_available'get() return dword is
+;      var dword sectors
+;
+;      -- calculate number of sectors in file
+;      if (fat32_file_size) == (fat32_file_size / 512) * 512 then
+;         sectors = (fat32_file_size / 512)
+;      else
+;         sectors = (fat32_file_size / 512) + 1
+;      end if
+;
+;      return sectors
+;   end function
+
+-- ----------------------------------------------------------------------------
+-- not working, it's on the todo list
+-- ----------------------------------------------------------------------------
+procedure fat32_file_remove(word in file_number) is
+   ;fat32_read_file_info(file_number)
+
+   -- set the first byte of the file name to 0xE5 (FAT32_ENTRY_DELETED)
+
+
+   -- clean up the FAT
+   if !fat32_file_size == 0 then -- if there are clusters to delete
+      -- set all FAT clusters to 0's
+      -- removing clusters should start at end (in case of power failure)
+
+   end if
+
+   -- set the file size to 0 bytes
+   ;fat32_set_file_size(0)
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Creates a directory.
+-- If a file was open previously, it will be closed.
+-- dir can hold up to 2048 short file names (65536/32), if no long file names.
+-- I have not tested adding more then that.
+-- For now, you may change the line "fat32_set_file_size(65536)" to suit your
+-- needs.
+-- ----------------------------------------------------------------------------
+function fat32_dir_create(byte in dirname[]) return byte is
+   var dword sector_step
+   var word byte_step
+   var byte result
+
+   -- create the file/dir name.
+   const byte ext[] = "   "
+   fat32_is_directory = FALSE -- It is a file at the moment.
+   fat32_is_read_only = FALSE
+   fat32_is_hidden = FALSE
+   fat32_is_system = FALSE
+   fat32_is_volume_id = FALSE
+   fat32_is_archive = FALSE
+   result = fat32_file_create(dirname, ext)
+   
+   -- return if failed to create file
+   if result == 0 then
+      return 0
+   end if
+
+   -- open the file
+   var byte ignore_return1 = fat32_file_open(fat32_dir_file_count - 1)
+
+   -- set the file size.
+   -- dir can hold 2048 short file names. (65536/32)
+   fat32_set_file_size(65536)
+   
+   ;fat32_file_close()
+   ;ignore_return1 = fat32_file_open(fat32_dir_file_count - 1)
+
+   -- set the data to be written (all zero's)
+   for 512 using byte_step loop
+      storage_sector_buffer[byte_step] = 0x00
+   end loop
+   for 65536/512 using sector_step loop
+      fat32_write_file_sector_number(sector_step)
+   end loop
+
+   -- make the first sector's directories "." and ".."
+   const byte fat32_dir_first_sector[64] = {
+      0x2E,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x10,0x00,0x0E,0xE7,0x8E,
+      0x5A,0x40,0x5A,0x40,0x00,0x00,0xE8,0x8E,0x5A,0x40,0x03,0x00,0x00,0x00,0x00,0x00,
+      0x2E,0x2E,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x20,0x10,0x00,0x0E,0xE7,0x8E,
+      0x5A,0x40,0x5A,0x40,0x00,0x00,0xE8,0x8E,0x5A,0x40,0x00,0x00,0x00,0x00,0x00,0x00
+      }
+
+   -- put the constant array into the first sector of the file (soon to be dir)
+   for 64 using byte_step loop
+      var byte temp = fat32_dir_first_sector[byte_step] -- compiler bug? need to assign to variable first.
+      storage_sector_buffer[byte_step] = temp
+   end loop
+
+   -- set "." cluster location (current dir)
+   storage_sector_buffer[21] = _fat32_file_cluster_address[3]
+   storage_sector_buffer[20] = _fat32_file_cluster_address[2]
+   storage_sector_buffer[27] = _fat32_file_cluster_address[1]
+   storage_sector_buffer[26] = _fat32_file_cluster_address[0]
+
+   -- set ".." cluster location (parent dir)
+   storage_sector_buffer[32 + 21] = _fat32_dir_cluster_address[3]
+   storage_sector_buffer[32 + 20] = _fat32_dir_cluster_address[2]
+   storage_sector_buffer[32 + 27] = _fat32_dir_cluster_address[1]
+   storage_sector_buffer[32 + 26] = _fat32_dir_cluster_address[0]
+
+   fat32_write_file_sector_number(0) -- write to file sector 0
+
+   ;-- print the sector that was just written to the file
+   ;fat32_read_file_sector_number(0)
+   ;fat32_print_sector_buffer_hex(serial_data,16)
+
+   -- change the file into a directory by changing it's attributes.
+   -- Also set it's size to 0
+   fat32_is_directory = TRUE
+   fat32_file_size = 0
+   fat32_file_entry_data(FAT32_FILE, _FAT32_PUT, _FAT32_ATTRIB + _FAT32_SIZE)
+
+   fat32_file_close()
+
+   return result
+end function
+
+-- ----------------------------------------------------------------------------
+-- Delete a fat32 directory entry. not finnished yet.
+-- requires dir refresh with _fat32_read_dir_info() after, otherwise
+-- file will still show in dir listing.
+-- ----------------------------------------------------------------------------
+procedure fat32_entry_delete(byte*FAT32_ENTRIES_MAX in file_number) is
+   _fat32_read_dir_sector_number(fat32_entry_location[file_number] >> 4)
+   var byte sector_entry_number = byte(fat32_entry_location[file_number]) & 0x0F
+
+      -- check byte 11 of this entry to see if it is a long file name
+      if storage_sector_buffer[sector_entry_number*32 + 11] == 0x0F then
+
+         -- get the longname
+
+         fat32_file_has_long_name = TRUE
+         var word sector_entry_number2 = sector_entry_number * 32
+
+         var byte long_name_step = FAT32_FILE_NAME_SIZE - 13
+         var byte sector_step = 0
+         for (storage_sector_buffer[sector_entry_number2] - 0x40) loop
+
+            storage_sector_buffer[sector_entry_number2] = 0xAA
+
+;            serial_hw_data = "."
+
+            long_name_step = long_name_step - 13
+            sector_entry_number2 = sector_entry_number2 + 32
+            if sector_entry_number2 == 512 then
+               sector_entry_number2 = sector_entry_number2 - 512
+               sector_step = sector_step + 1
+               _fat32_read_dir_sector_number( (fat32_entry_location[fat32_current_file_number] >> 4) + sector_step)
+            end if
+         end loop
+
+         -- calculate entry number/location of the short name entry
+         -- of this long name
+         ;_fat32_read_dir_sector_number(fat32_entry_location[fat32_current_file_number] >> 4)
+         sector_entry_number = sector_entry_number + (storage_sector_buffer[sector_entry_number * 32] - 0x40)
+
+         -- check if the short name entry is in the current sector
+         var byte sector_after_entry_location = 0
+         while (sector_entry_number > 15) loop
+            sector_after_entry_location = sector_after_entry_location + 1
+            sector_entry_number = sector_entry_number - 16
+         end loop
+
+         -- if it is not in the current sector, read the correct sector
+         if sector_after_entry_location != 0 then
+            -- read the sector that has the short name entry
+            _fat32_read_dir_sector_number((fat32_entry_location[fat32_current_file_number] >> 4) + sector_after_entry_location)
+         end if
+      else
+         -- file does not have long name
+         storage_sector_buffer[sector_entry_number * 32] = 0xE5
+         _fat32_write_dir_sector_number(fat32_entry_location[file_number] >> 4)
+      end if
+
+;   print_crlf(serial_hw_data)
+
+;   print_dword_dec(serial_hw_data,sector_entry_number)
+;   fat32_print_sector_buffer_hex(serial_hw_data, 32)
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Delete a file. not finnished yet.
+-- requires dir refresh with _fat32_read_dir_info() after, otherwise
+-- file will still show in dir listing.
+-- ----------------------------------------------------------------------------
+procedure fat32_file_delete() is
+   ;fat32_set_file_size(0)
+end procedure

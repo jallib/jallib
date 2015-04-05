@@ -1,0 +1,74 @@
+-- Title: Real Time Clock running from ISR on TMR3
+-- Author: Eur van Andel, Copyright (c) 2010, all rights reserved.
+--         corrected V.Surducan 14.05.2012
+-- Compiler: 2.4o
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: http://www.romanblack.com/one_sec.htm
+--          http://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+--
+-- Description: This Interrupt Service Routine updates the variable seconds
+-- about once per second. The precision is 0.2 ppm, the accuracy depends
+-- on the Xtal used. The main program should check if seconds are > 60 and
+-- if so, increase minutes, hours, days, months, etc. calendar.jal does this
+--
+-- Notes: This is the Bresenham Line Algorithm, invented at IBM in 1962,
+-- which gets an accurate end result by summing the small errors resulting of
+-- taking discrete steps and correcting when the error gets too large. This
+-- means that individual second lengths may show some jitter, but that long-term
+-- timekeeping is accurate. 
+-- .
+-- For instance: if xtal=20 MHz, then 5 MHz clock, so 5 000 000 clocks/second
+-- TMR3 runs on internal clock speed and interrupts on overflow
+-- every TMR3 interrupt decreases _rtc_bresenham by 0x1_00_00, or 2^16
+-- if _rts_bresenham < 0x1_00_00 then 5_000_000 is added
+-- so the jitter is 2^15/5e6 = 0.6%
+-- Total second count is accurate, since the lower 15 bits stay intact and add up
+-- .
+-- Example of use:
+-- init_timer3 ()               ;initialize TMR3
+-- INTCON_GIE = on             ;enable interrupts
+-- PIE2_TMR3IE = on            ;enable TMR3 interrupts
+-- forever loop
+--                             ; use seconds for whatever you need
+-- end loop
+--
+
+var volatile byte seconds               -- global variable updated by ISR
+const  _rtc_cycles_per_second = (target_clock / 4)
+var volatile dword _rtc_bresenham = _rtc_cycles_per_second
+
+procedure init_timer3() is
+   T3CON_TMR3ON  = 0         ; TMR3 off
+   T3CON_T3CKPS   = 0b00     ; 1:1 prescaler
+   T3CON_TMR3CS = 0          ; internal clock (Fosc/4)
+   T3CON_RD16 = 0            ; two 8 bit operation
+   TMR3L = 0
+   TMR3H = 0
+   RCON_IPEN = low           ; set low priority interrupts
+   PIR2_TMR3IF = low         ; clear interrupt flag
+   PIE2_TMR3IE    = on       ; TMR3 interrupt enabled
+   T3CON_TMR3ON  = 1         ; enable TMR3
+end procedure
+
+
+procedure RTC() is
+   pragma interrupt
+   
+   if PIR2_TMR3IF == on then   ; check the interrupt flag
+      _rtc_bresenham = _rtc_bresenham - 0x1_00_00
+      PIR2_TMR3IF = low        ; clear the interrupt flag
+   end if
+   if _rtc_bresenham < 0x1_00_00 then
+      seconds = seconds + 1
+      -- put here your other code which increments or decrements other variables every second
+      _rtc_bresenham = _rtc_bresenham + _rtc_cycles_per_second
+   end if
+end procedure
+
+
+
+

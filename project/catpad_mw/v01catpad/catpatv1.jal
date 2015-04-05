@@ -1,0 +1,685 @@
+-- Title: CATPADV1
+-- Author: Michael Watterson Copyright (c) 2010, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- Revision: $Revision$
+--
+
+include 18f4550
+-- even though the external crystal is 20 MHz, the configuration is such that
+-- the CPU clock is derived from the 96 Mhz PLL clock (div2), therefore set
+-- target frequency to 48 MHz
+pragma target clock       48_000_000
+
+-- fuses
+pragma target PLLDIV        P5          -- divide by 5 - 20MHZ_INPUT
+pragma target CPUDIV        P2          -- OSC1_OSC2_SRC_1_96MHZ_PLL_SRC_2
+pragma target USBPLL        F48MHZ      -- CLOCK_SRC_FROM_96MHZ_PLL_2
+pragma target OSC           HS_PLL
+pragma target FCMEN         DISABLED
+pragma target IESO          DISABLED
+pragma target PWRTE         ENABLED    -- power up timer
+pragma target VREGEN        ENABLED     -- USB voltage regulator
+pragma target VOLTAGE       V20         -- brown out voltage
+pragma target BROWNOUT      DISABLED    -- no brownout detection
+pragma target WDTPS         P32K        -- watch dog saler setting
+pragma target WDT           DISABLED    -- no watchdog
+pragma target CCP2MUX       pin_C1      -- CCP2 pin
+pragma target PBADEN        DIGITAL     -- digital input port<0..4>
+pragma target LPT1OSC       LOW_POWER   -- low power timer 1
+pragma target MCLR          EXTERNAL    -- master reset on RE3
+pragma target STVR          DISABLED    -- reset on stack over/under flow
+pragma target LVP           DISABLED    -- no low-voltage programming
+pragma target XINST         ENABLED     -- extended instruction set
+pragma target DEBUG         DISABLED    -- background debugging
+pragma target CP0           DISABLED    -- code block 0 not protected
+pragma target CP1           DISABLED    -- code block 1 not protected
+pragma target CP2           DISABLED    -- code block 2 not protected
+pragma target CP3           DISABLED    -- code block 3 not protected
+pragma target CPB           DISABLED    -- bootblock code not write protected
+pragma target CPD           DISABLED    -- eeprom code not write protected
+pragma target WRT0          DISABLED    -- table writeblock 0 not protected
+pragma target WRT1          DISABLED    -- table write block 1 not protected
+pragma target WRT2          DISABLED    -- table write block 2 not protected
+pragma target WRT3          DISABLED    -- table write block 3 not protected
+pragma target WRTB          DISABLED    -- bootblock not write protected
+pragma target WRTD          DISABLED    -- eeprom not write protected
+pragma target WRTC          DISABLED    -- config not write protected
+pragma target EBTR0         DISABLED    -- table read block 0 not protected
+pragma target EBTR1         DISABLED    -- table read block 1 not protected
+pragma target EBTR2         DISABLED    -- table read block 2 not protected
+pragma target EBTR3         DISABLED    -- table read block 3 not protected
+pragma target EBTRB         DISABLED    -- boot block not protected
+
+
+enable_digital_io()
+
+-- ---------------------------- LIBRARIES -----------------------------
+
+-- ok, now setup serial;@jallib section serial
+const serial_hw_baudrate = 38_400
+include serial_hardwarew
+-- 400kHz Bus
+-- Use B0 as SDA and B1 as SCL
+Const _i2c_bus_speed = 4
+
+--Alias   i2c_scl_direction is pin_C3_direction
+--Alias   i2c_sda_direction is pin_C4_direction
+--Alias _i2c_level is pin_C4
+
+--18F4550
+Alias   i2c_scl_direction is pin_b1_direction
+Alias   i2c_sda_direction is pin_b0_direction
+Alias _i2c_level is pin_b0
+--include I2c_software
+include I2C_hardware
+-- Also needs
+var byte i2c_tx_buffer[10]
+var byte i2c_rx_buffer[10]
+-- include i2c_level1
+include eeprom_24lc256w
+--GLCD ports
+alias  GLCD_CS2           is pin_b2
+alias  GLCD_CS2_direction is pin_b2_direction
+alias  GLCD_CS1           is pin_b3
+alias  GLCD_CS1_direction is pin_b3_direction
+alias  GLCD_RW            is pin_b6
+alias  GLCD_RW_direction  is pin_b6_direction
+alias  GLCD_DI            is pin_b7 -- LCD command/data select.
+alias  GLCD_DI_direction  is pin_b7_direction
+alias  GLCD_E             is pin_E2
+alias  GLCD_E_direction   is pin_E2_direction
+alias  GLCD_LED           is pin_E1
+alias  GLCD_LED_direction is pin_E1_direction
+
+
+alias GLCD_dataprt        is portd    -- LCD data
+alias GLCD_DATAPRT_DIR    is portd_direction
+
+
+
+
+include glcd_ks0108mw
+
+
+-- 5x5 Keypad setup
+-- keyboard map (4x4, col4 is left out with 4x3 keyboard)
+-- --
+--      1 2 3 A   ^  row1
+--      4 5 6 B   <  row2
+--      7 8 9 C   v  row3
+--      * 0 # D   >  row4
+--      r g y b   e
+-- --
+--  col 1 2 3 4   5
+
+-- 4x4 pad
+;pin numbers of keypad shown in <> brackets
+;
+;	   <1> <2> <3> <4>
+;	<5>	1	2	3	A
+;	<6>	4	5	6	B
+;	<7>	7	8	9	C
+;	<8>	*	0	#	D
+
+; *top view* of keypad pins: 1,2,3,4,5,6,7,8
+; pin 1 is near * key.
+--
+alias keyscan  is portb      -- rows of keyboard
+alias keyscan_direction is portb_direction
+alias keydrive is portd      -- columns of keyboard
+alias keydrive_direction is portd_direction
+include keypad5_2
+include math_mw
+include graphics_mw
+
+
+alias  ptt      is pin_E0
+alias  ptt_direction   is pin_E0_direction
+alias  led      is pin_A5
+alias  led_direction   is pin_A5_direction
+alias  led2            is pin_a4
+alias  led2_direction  is pin_a4_direction
+led2_direction =  output
+led_direction =  output
+include delay
+
+-- set all IO as digital
+--enable_digital_io(
+
+include usb_serial
+--
+include print
+include bcd_utils
+
+var byte rigFreq[4]
+var byte rigFreqText[10] = "430.125,00"
+var byte modmodeText[3]
+include cmds_ft817
+
+
+-- For RDS decoder
+alias rds_data is pin_A1
+alias rds_data_direction is pin_A1_direction
+rds_data_direction = input
+alias rds_clock is pin_A2
+alias rds_clock_direction is pin_A2_direction
+rds_clock_direction = input
+ -- include rds_rx
+
+
+
+--graphics layout
+-- 0,0--------------------------------------------------------127,0
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- ----------------------------------------------------------------
+-- 0,63------------------------------------------------------127,63
+-- constants
+const  byte str_welcome[] = "EI9FEB's Catpad test\n"
+
+-- variables
+
+-- interrupts? No thanks
+--INTCON_GIE = false
+
+var bit clock_on = false
+const byte str1[] = "EI9FEB's"
+const byte str2[] = "CatPad for FT817 1.3"
+const byte Mhz[] = "0MHz"
+var byte press
+
+
+
+
+
+
+
+var byte char	-- will store received char
+var byte lastPress = 0
+var byte keyPresses[8] -- raw user entry
+var byte digitEntryIndex   -- index to last press
+
+var byte minutes = 27
+var byte hours = 16
+
+
+var byte date     = 12
+var byte month    = 3
+var word year     = 2010
+
+
+
+--include isr_250_tmr0
+--OPTION_REG_T0CS = 0
+T0CON_T0CS =0                          -- TMR0 on internal clock
+T0CON_PSA = 1                                -- prescaler
+-- OPTION_REG_PSA  = 1                          -- so no prescaler for TMR0 (= default)
+INTCON_TMR0IE = on                  -- if your PIC freezes, move these lines
+INTCON_GIE = on                     -- to see if the ISR causes trouble
+include calendar
+
+
+procedure welcome() is
+
+    DrawClockFace(18,18,16, on)
+    lcd_setcursor(2,5)
+    LCD_double = on
+    print_string(lcd,str1)
+    LCD_double = off
+    LCD_bold = on
+    lcd_setcursor(1,7)
+    print_string(lcd, str2)
+    lcd_bold = off
+    const byte welMsg[] = "Hello"
+    drawbutton (57,22, 36,11, welMsg, on)
+    GLCD_LED = on
+    clock_on = true
+end procedure
+
+procedure ClockWidget () is
+var word temp
+  --  forever loop
+        if CheckTime > 0 then
+            if seconds > 59 then
+               calendar()
+               if clock_on then
+
+                end if
+            end if
+            if clock_on then
+                DrawHands (off)
+                UpdateHands(hours, minutes, seconds)
+                DrawHands (on)
+                If rigModeNow == RIGMODE_OFF then
+                        LCD_setcursor (7,0)
+                        LCD_clearEOL ()
+                        temp = word(genrand() >> 16)
+                        LCD_setcursor (12-digitsWord(temp),0)
+                        print_word_dec (lcd, temp)
+                        temp =rand()
+                        LCD_setcursor (18-digitsWord(temp),0)
+                        print_word_dec (lcd, temp)
+
+                        LCD_setcursor (9,1)
+                    else
+                        LCD_setcursor (0,7)
+                    end if
+                    print_byte_dec(lcd,date)
+                    lcd ="/"
+                    print_byte_dec(lcd,month)
+                    lcd ="/"
+                    print_word_dec(lcd,(year % 100))
+                    lcd = " "
+            end if
+            CheckTime = CheckTime -1
+            if  CheckTime == 0 then
+               -- suspend
+            end if
+         else
+            -- suspend
+         end if
+  --  end loop
+end procedure
+
+procedure RDSWidget () is
+   -- forever loop
+        if CheckRDS > 0 then
+            CheckRDS = CheckRDS -1
+            if  CheckRDS == 0 then
+                --suspend
+            end if
+         else
+            --suspend
+         end if
+   -- end loop
+end procedure
+
+procedure RadioWidget () is
+CONST byte MENU1[] = " Tune Lamp Redo OFF"
+CONST byte MENU2_1[] = "CTCS"
+CONST byte MENU2_2[] = "DCS"
+CONST byte MENU2_3[] = "Sql"
+CONST byte MENU2_4[] = "Anay"
+
+CONST byte MENU3_1[] = "Ant"
+CONST byte MENU3_2[] = "PreA
+CONST byte MENU3_3[] = "Pwr"
+CONST byte MENU3_4[] = "Band"
+
+CONST byte MENU4_1[] = "Tone"
+CONST byte MENU4_2[] = "Msg"
+CONST byte MENU4_3[] = " "
+CONST byte MENU4_4[] = "Mems"
+
+CONST byte MENU5_1[] = "More"
+CONST byte MENU5_2[] = "Spli"
+CONST byte MENU5_3[] = "Exit"
+CONST byte MENU5_4[] = "Defs"
+
+CONST byte S_MENU1[] = " Settings & PC I/O"
+CONST byte S_MENU2_1[] = "Time"
+CONST byte S_MENU2_2[] = "Date"
+CONST byte S_MENU2_3[] = "CAT"
+CONST byte S_MENU2_4[] = "USB"
+
+CONST byte S_MENU3_1[] = "Sleep"
+CONST byte S_MENU3_2[] = "Lamp"
+CONST byte S_MENU3_3[] = " "
+CONST byte S_MENU3_4[] = " "
+
+CONST byte S_MENU4_1[] = "Save"
+CONST byte S_MENU4_2[] = "Rest"
+CONST byte S_MENU4_3[] = "Exp"
+CONST byte S_MENU4_4[] = "Imp "
+
+CONST byte S_MENU5_1[] = "Main"
+CONST byte S_MENU5_2[] = " "
+CONST byte S_MENU5_3[] = "Exit"
+CONST byte S_MENU5_4[] = "Call"
+  --  forever loop
+        if CheckRadio > 0 then
+            case rigModeNow of
+            RIGMODE_RX: block
+                     if !(rigModeNow  == rigModeOld) then
+                          rigModeOld = rigModeNow
+                          DrawClockFace(18,34,16, on)
+                          clock_on = true
+                          DrawMeterFace(42, 18, 32, on)
+                     end if
+                     RIG_RxPoll()
+                 end block
+            RIGMODE_FREQ: block
+                  if !(rigModeNow  == rigModeOld) then
+                     rigModeOld = rigModeNow
+                   end if
+                  end block
+            RIGMODE_REMOTE: block
+                  if !(rigModeNow  == rigModeOld) then
+                     rigModeOld = rigModeNow
+                     LCD_Fill (0)
+                     LCD_setcursor (0, 4)
+                     const byte USB_MODE_MSG []= "USB to Radio Cat"
+                     print_string(lcd,USB_MODE_MSG)
+                     DrawButton (64, 11+39, 27, 11, MENU5_3, True)
+                   end if
+                  end block
+            RIGMODE_OFF: block
+                  if !(rigModeNow  == rigModeOld) then
+                     rigModeOld = rigModeNow
+                     welcome()
+                   end if
+                  end block
+            RIGMODE_MAIN_MENU: block
+                  if !(rigModeNow  == rigModeOld) then
+                        rigModeOld = rigModeNow
+                        clock_on = false
+                        LCD_bold = on
+                        LCD_double= off
+                        LCD_Fill (0)
+                        LCD_setcursor (0, 0)
+                        print_string(lcd, MENU1)
+                        LCD_bold = off
+                        DrawButton (4,  11, 27, 11, MENU2_1, True )
+                        DrawButton (34, 11, 27, 11, MENU2_2, True)
+                        DrawButton (64, 11, 27, 11, MENU2_3, True)
+                        DrawButton (94, 11, 27, 11, MENU2_4, True )
+                        DrawButton (4,  11+13, 27, 11, MENU3_1, True )
+                        DrawButton (34, 11+13, 27, 11, MENU3_2, True)
+                        DrawButton (64, 11+13, 27, 11, MENU3_3, True)
+                        DrawButton (94, 11+13, 27, 11, MENU3_4, True )
+                        DrawButton (4,  11+26, 27, 11, MENU4_1, True )
+                        DrawButton (34, 11+26, 27, 11, MENU4_2, True)
+                        DrawButton (64, 11+26, 27, 11, MENU4_3, True)
+                        DrawButton (94, 11+26, 27, 11, MENU4_4, True )
+                        DrawButton (4,  11+39, 27, 11, MENU5_1, True )
+                        DrawButton (34, 11+39, 27, 11, MENU5_2, True)
+                        DrawButton (64, 11+39, 27, 11, MENU5_3, True)
+                        DrawButton (94, 11+39, 27, 11, MENU5_4, True )
+                   end if
+                  end block
+            RIGMODE_S_MENU: block
+                  if !(rigModeNow  == rigModeOld) then
+                        rigModeOld = rigModeNow
+                        clock_on = false
+                        LCD_bold = on
+                        LCD_double= off
+                        LCD_Fill (0)
+                        LCD_setcursor (0, 0)
+                        print_string(lcd, S_MENU1)
+                        LCD_bold = off
+                        DrawButton (4,  11, 27, 11, S_MENU2_1, True )
+                        DrawButton (34, 11, 27, 11, S_MENU2_2, True)
+                        DrawButton (64, 11, 27, 11, S_MENU2_3, True)
+                        DrawButton (94, 11, 27, 11, S_MENU2_4, True )
+                        DrawButton (4,  11+13, 27, 11, S_MENU3_1, True )
+                        DrawButton (34, 11+13, 27, 11, S_MENU3_2, True)
+                        DrawButton (64, 11+13, 27, 11, S_MENU3_3, True)
+                        DrawButton (94, 11+13, 27, 11, S_MENU3_4, True )
+                        DrawButton (4,  11+26, 27, 11, S_MENU4_1, True )
+                        DrawButton (34, 11+26, 27, 11, S_MENU4_2, True)
+                        DrawButton (64, 11+26, 27, 11, S_MENU4_3, True)
+                        DrawButton (94, 11+26, 27, 11, S_MENU4_4, True )
+                        DrawButton (4,  11+39, 27, 11, S_MENU5_1, True )
+                        DrawButton (34, 11+39, 27, 11, S_MENU5_2, True)
+                        DrawButton (64, 11+39, 27, 11, S_MENU5_3, True)
+                        DrawButton (94, 11+39, 27, 11, S_MENU5_4, True )
+                   end if
+                  end block
+            end case
+            CheckRadio = CheckRadio -1
+            if  CheckRadio == 0 then
+                --suspend
+            end if
+        else
+           -- suspend
+        end if
+   -- end loop
+end procedure
+
+procedure UserInput ()  is
+
+
+var byte plotIdx
+--forever loop
+    if CheckUser > 0 then
+   	    press = getkey_once()
+        if (press == 254) Then  -- key up
+            if (lastKey == 0) then lastpress = 0 end if
+            if lastkey != lastpress  then   -- new command
+                 Case rigModeNow of
+                 RIGMODE_OFF, RIGMODE_REMOTE: block
+                          if lastKey =="*" then
+                              rigModeNow = RIGMODE_RX
+                          elsif lastKey == "g" then
+                              GLCD_LED = !GLCD_LED
+                          elsif lastKey =="#" then
+                              if rigModeNow == RIGMODE_REMOTE then
+                                  rigModeNow = RIGMODE_OFF
+                              else
+                                  rigModeNow = RIGMODE_REMOTE
+                              end if
+                         end if
+                     end block
+                 RIGMODE_MAIN_MENU: block
+                         if lastKey =="*" then
+                            rigModeNow = RIGMODE_S_MENU
+                         elsif lastKey =="#" then
+                            rigModeNow = RIGMODE_RX
+                         elsif lastKey == "g" then
+                            GLCD_LED = !GLCD_LED
+                         elsif lastKey == "b" then
+                            rigModeNow = RIGMODE_OFF
+                         end if
+                     end block
+                 RIGMODE_S_MENU: block
+                         if lastKey =="*" then
+                             rigModeNow = RIGMODE_MAIN_MENU
+                         elsif lastKey =="#" then
+                             rigModeNow = RIGMODE_RX
+                         elsif lastKey =="1" then
+                              -- enter time
+                         elsif lastKey =="2" then
+                              -- enter date
+                          elsif lastKey =="3" then
+                              -- enter CAT baud rate
+                         elsif lastKey == "A" then
+                             rigModeNow = RIGMODE_REMOTE
+                         end if
+                     end block
+                 RIGMODE_RX: Block
+                      if (lastKey >="0") & (lastKey <= "9") then
+                         rigModeNow = RIGMODE_FREQ
+                         clock_on = false
+                         for count(keypresses) using digitEntryIndex loop
+                            keypresses[digitEntryIndex] = "0"
+                          end loop
+                          keypresses[0] = lastKey
+                         LCD_bold = off
+                         LCD_double= on
+                         LCD_setcursor (0,0)
+                         LCD_ClearEOL ()
+                         digitEntryIndex = 0
+                         LCD_double= on
+                         lcd = lastKey
+                         LCD_double= off
+                      elsif (lastKey =="A") then
+                            -- Scan band
+                     elsif (lastKey =="B") then
+                            -- new band
+                     elsif (lastKey =="C") then
+                            -- new channel
+
+                      elsif (lastKey =="D") then
+
+                      elsif (lastKey =="*") then
+                            -- menu
+                        rigModeNow = RIGMODE_MAIN_MENU
+                      elsif (lastKey =="r") then
+                            LCD_setcursor (20,7)
+                            lcd = "r"
+                            -- proir band/channel
+                      elsif (lastKey =="g") then
+                           -- next band/channel
+                             LCD_setcursor (20,7)
+                            lcd = "g"
+                      elsif (lastKey =="y") then
+                           -- prior mode
+                            RIG_ModePrior(modMode)
+                       elsif (lastKey =="b") then
+                            -- next mode
+                             RIG_ModeNext(modMode)
+                       elsif (lastKey =="v") then
+                           LCD_setcursor (20,7)
+                           lcd = lastkey
+                      elsif (lastKey =="^") then
+                           LCD_setcursor (20,7)
+                           lcd = lastkey
+                      elsif (lastKey =="<") then
+                           LCD_setcursor (20,7)
+                           lcd = lastkey
+                      elsif (lastKey ==">") then
+                           LCD_setcursor (20,7)
+                           lcd = lastkey
+                      elsif (lastKey ==1) then
+                           LCD_setcursor (20,7)
+                           lcd = lastkey + "0"
+                      elsif (lastKey ==2) then
+                           LCD_setcursor (20,7)
+                           lcd = lastkey + "0"
+                      elsif (lastKey ==3) then
+                           LCD_setcursor (20,7)
+                           lcd = lastkey + "0"
+                      elsif (lastKey ==4) then
+                           LCD_setcursor (20,7)
+                           lcd = lastkey + "0"
+                      elsif (lastKey ==13) then
+                           LCD_setcursor (20,7)
+                           lcd = "E"
+                      end if
+                  end block
+
+                 RIGMODE_FREQ: block
+
+                         if (lastKey >="0") & (lastKey <= "9") then
+                             digitEntryIndex = digitEntryIndex + 1
+                             keypresses[digitEntryIndex] = lastKey
+                             LCD_setcursor (digitEntryIndex*2,0)
+                             LCD_double = on
+                             lcd = lastkey
+                             LCD_double = off
+                             if  digitEntryIndex >= (count(keyPresses)-1) then
+                                          --all done
+                                   if StringToBCD4 (keypresses,rigFreq) then
+                                      CAT_FreqBCDWr (rigFreq)
+                                   end if
+                                  rigModeNow = RIGMODE_RX
+                             end if
+                         elsif (lastkey == "*") & (digitEntryIndex < 2) then  --decimal
+                               if digitEntryIndex == 0 then
+                                    keypresses[2] =  keypresses[0]
+                                    keypresses[1] = "0"
+                                    keypresses[0] = "0"
+                               elsif digitEntryIndex == 1 then
+                                    keypresses[2] =  keypresses[1]
+                                    keypresses[1] =  keypresses[0]
+                                    keypresses[0] = "0"
+                               end if
+                               digitEntryIndex = 2
+                               LCD_setcursor (digitEntryIndex*2,0)
+                               LCD_double = on
+                               lcd = "."
+                               LCD_double = off
+                         elsif (lastkey == "#") then
+                              -- all done pad to zero
+                               if StringToBCD4 (keypresses,rigFreq) then
+                                  CAT_FreqBCDWr (rigFreq)
+                               end if
+                               rigModeNow = RIGMODE_RX
+                         end if
+                     end block
+                   end case
+                   lastpress = lastkey
+               end if
+           end if
+           CheckUser = CheckUser -1
+        end if
+        --suspend
+   --end loop
+end procedure
+--
+serial_hw_init()
+--serial_twostop_bits(on)
+lcd_init()
+--lcd_fill(on)
+--lcd_ink = off
+LCD_double = on
+lcd_setcursor(2,5)
+print_string(lcd,str1)
+LCD_double = off
+LCD_bold = on
+lcd_setcursor(1,7)
+print_string(lcd, str2)
+lcd_bold = off
+--
+led_direction = output
+ptt_direction = output
+for 10 loop
+   LED = on
+   delay_100ms(3)
+   LED = off
+   delay_100ms(3)
+end loop
+ -- rand_seed( word(seconds) + year )
+
+GLCD_LED_direction = output
+-- GLCD_LED =on
+--for 20_000 loop
+--    PlotPixel(byte(rand() % 127), byte(rand() % 63), 1)
+--end loop
+  rand_seed( word(seconds) + word(minutes) + year)
+--for 10_000 loop
+--    PlotPixel(byte(rand % 127), byte(rand % 63), bit(rand & 1))
+--end loop
+--for 20_000 loop
+--    PlotPixel(byte(rand() % 127), byte(rand() % 63), 0)
+--end loop
+
+-- setup the USB serial library, but too quickly!
+-- must do usb_serial_flush() as soon as USB port is enabled
+welcome()
+
+--lcd_ink = on
+usb_serial_init()
+
+--start ClockWidget
+--start RadioWidget
+--start UserInput
+--start RDSWidget
+
+forever loop
+    usb_serial_flush()
+	_usec_delay(100)
+	if (rigModeNow == RIGMODE_REMOTE) then
+        if serial_hw_read(char) &( usb_cdc_line_status() !=  0x00 ) then
+           usb_serial_data = char
+        end if
+        if  ( usb_cdc_line_status() !=  0x00 ) & _usb_serial_read(char)then
+            serial_hw_write(char)
+        end if
+       	
+       	GLCD_LED = !GLCD_LED
+    end if
+    RadioWidget()
+    usb_serial_flush()
+    UserInput()
+    usb_serial_flush()
+    ClockWidget()
+    usb_serial_flush()
+    RDSWidget()
+    --suspend
+end loop
+

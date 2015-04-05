@@ -1,0 +1,621 @@
+-- Title: External mcp2515 CAN controller
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4m
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: -- The MCP2515 is an external CAN controller with Slave SPI 
+-- interface.  The controller has 3 transmit buffers and 2 receive buffers.
+--
+-- Note:  uses SPI Master library and also needs a 'chip select' pin such as:
+--              alias can_sel is pin_B0
+
+-- Three transmit buffers. Each transmit buffer has a control register, header 
+-- registers, length register and (up to ) eight bytes of payload.
+const CAN_TXB0CTRL = 0x30
+const CAN_TXB0SIDH = 0x31
+const CAN_TXB0SIDL = 0x32
+const CAN_TXB0EID8 = 0x33
+const CAN_TXB0EID0 = 0x34
+const CAN_TXB0DLC = 0x35
+const CAN_TXB0D0 = 0x36
+const CAN_TXB0D1 = 0x37
+const CAN_TXB0D2 = 0x38
+const CAN_TXB0D3 = 0x39
+const CAN_TXB0D4 = 0x3A
+const CAN_TXB0D5 = 0x3B
+const CAN_TXB0D6 = 0x3C
+const CAN_TXB0D7 = 0x3D
+
+const CAN_TXB1CTRL = 0x40
+const CAN_TXB1SIDH = 0x41
+const CAN_TXB1SIDL = 0x42
+const CAN_TXB1EID8 = 0x43
+const CAN_TXB1EID0 = 0x44
+const CAN_TXB1DLC = 0x45
+const CAN_TXB1D0 = 0x46
+const CAN_TXB1D1 = 0x47
+const CAN_TXB1D2 = 0x48
+const CAN_TXB1D3 = 0x49
+const CAN_TXB1D4 = 0x4A
+const CAN_TXB1D5 = 0x4B
+const CAN_TXB1D6 = 0x4C
+const CAN_TXB1D7 = 0x4D
+
+const CAN_TXB2CTRL = 0x50
+const CAN_TXB2SIDH = 0x51
+const CAN_TXB2SIDL = 0x52
+const CAN_TXB2EID8 = 0x53
+const CAN_TXB2EID0 = 0x54
+const CAN_TXB2DLC = 0x55
+const CAN_TXB2D0 = 0x56
+const CAN_TXB2D1 = 0x57
+const CAN_TXB2D2 = 0x58
+const CAN_TXB2D3 = 0x59
+const CAN_TXB2D4 = 0x5A
+const CAN_TXB2D5 = 0x5B
+const CAN_TXB2D6 = 0x5C
+const CAN_TXB2D7 = 0x5D
+
+-- There are two receive buffers -- RXB0 and RXB1.  Note that RXB0 has 
+-- a 'higher priority' than RXB1.  Also, you can set up RXB0 such that 
+-- it can 'roll over' into RXB1, if you don't want to keep the buffers
+-- separate.
+
+-- Each receive buffer has a control register, header registers, length
+-- register and (up to ) eight bytes of payload.
+const CAN_RXB0CTRL = 0x60
+const CAN_RXB0SIDH = 0x61
+const CAN_RXB0SIDL = 0x62
+const CAN_RXB0EID8 = 0x63
+const CAN_RXB0EID0 = 0x64
+const CAN_RXB0DLC = 0x65
+const CAN_RXB0D0 = 0x66
+const CAN_RXB0D1 = 0x67
+const CAN_RXB0D2 = 0x68
+const CAN_RXB0D3 = 0x69
+const CAN_RXB0D4 = 0x6A
+const CAN_RXB0D5 = 0x6B
+const CAN_RXB0D6 = 0x6C
+const CAN_RXB0D7 = 0x6D
+
+const CAN_RXB1CTRL = 0x70
+const CAN_RXB1SIDH = 0x71
+const CAN_RXB1SIDL = 0x72
+const CAN_RXB1EID8 = 0x73
+const CAN_RXB1EID0 = 0x74
+const CAN_RXB1DLC = 0x75
+const CAN_RXB1D0 = 0x76
+const CAN_RXB1D1 = 0x77
+const CAN_RXB1D2 = 0x78
+const CAN_RXB1D3 = 0x79
+const CAN_RXB1D4 = 0x7A
+const CAN_RXB1D5 = 0x7B
+const CAN_RXB1D6 = 0x7C
+const CAN_RXB1D7 = 0x7D
+
+-- The controller has powerful MASK and FILTER registers for receiving
+-- packets/frames. Since the CAN bus is a 'broadcast' medium, you will
+-- likely want to filter out messages that are not useful. On the other
+-- hand, in some cases, like a diagnostic mode, you may want to receive
+-- any/all messages, and this can also be done via the MASK and/or FILTER
+-- registers.
+
+-- RXB0, the 'high priority' buffer, has one mask and two filters.
+-- N.B. The datasheet's naming convention for these is unfortunate and error 
+-- prone, so please be careful.
+
+-- RXB0 mask
+const CAN_RXM0SIDH = 0x20
+const CAN_RXM0SIDL = 0x21
+const CAN_RXM0EID8 = 0x22
+const CAN_RXM0EID0 = 0x23
+
+-- RXB0 filter #0
+const CAN_RXF0SIDH = 0x00
+const CAN_RXF0SIDL = 0x01
+const CAN_RXF0EID8 = 0x02
+const CAN_RXF0EID0 = 0x03
+
+-- RXB0 filter #1
+const CAN_RXF1SIDH = 0x04
+const CAN_RXF1SIDL = 0x05
+const CAN_RXF1EID8 = 0x06
+const CAN_RXF1EID0 = 0x07
+
+-- RXB1, the 'low priority' buffer, has one mask and four filters.
+-- N.B. The datasheet's naming convention for these is unfortunate and error 
+-- prone, so please be careful.
+
+-- RXB1 mask
+const CAN_RXM1SIDH = 0x24
+const CAN_RXM1SIDL = 0x25
+const CAN_RXM1EID8 = 0x26
+const CAN_RXM1EID0 = 0x27
+
+-- RXB1 filter #2
+const CAN_RXF2SIDH = 0x08
+const CAN_RXF2SIDL = 0x09
+const CAN_RXF2EID8 = 0x0A
+const CAN_RXF2EID0 = 0x0B
+
+-- RXB1 filter #3
+const CAN_RXF3SIDH = 0x10
+const CAN_RXF3SIDL = 0x11
+const CAN_RXF3EID8 = 0x12
+const CAN_RXF3EID0 = 0x13
+
+-- RXB1 filter #4
+const CAN_RXF4SIDH = 0x14
+const CAN_RXF4SIDL = 0x15
+const CAN_RXF4EID8 = 0x16
+const CAN_RXF4EID0 = 0x17
+
+-- RXB1 filter #5
+const CAN_RXF5SIDH = 0x18
+const CAN_RXF5SIDL = 0x19
+const CAN_RXF5EID8 = 0x1A
+const CAN_RXF5EID0 = 0x1B
+
+-- CANCTRL register and fields
+const CANCTRL = 0x0F
+const CAN_MODE_NORMAL = 0x00
+const CAN_MODE_SLEEP = 0x20
+const CAN_MODE_LOOPBACK = 0x40
+const CAN_MODE_LISTENONLY = 0x60
+const CAN_MODE_CONFIG = 0x80
+const CAN_MODE_POWERUP = 0xE0
+const CAN_MODE_MASK = 0xE0
+const CAN_ABORT_TX = 0x10
+const CAN_MODE_ONESHOT = 0x08
+const CAN_CLKOUT_ENABLE = 0x04
+const CAN_CLKOUT_DISABLE = 0x00
+const CAN_CLKOUT_PS1 = 0x00
+const CAN_CLKOUT_PS2 = 0x01
+const CAN_CLKOUT_PS4 = 0x02
+const CAN_CLKOUT_PS8 = 0x03
+
+-- Bit-rate and related registers and fields. Big topic. See datasheet.
+-- CNF1 register and fields
+const CAN_CNF1 = 0x2A
+const CAN_SJW1 = 0x00
+const CAN_SJW2 = 0x40
+const CAN_SJW3 = 0x80
+const CAN_SJW4 = 0xC0
+
+-- CNF2 register and fields
+const CAN_CNF2 = 0x29
+const CAN_BTLMODE = 0x80
+const CAN_SAMPLE_1X = 0x00
+const CAN_SAMPLE_3X = 0x40
+
+-- CNF3 and fields
+const CAN_CNF3 = 0x28
+const CAN_SOF_ENABLE = 0x80
+const CAN_SOF_DISABLE = 0x00
+const CAN_WAKFIL_ENABLE = 0x40
+const CAN_WAKFIL_DISABLE = 0x00
+
+-- There are 8 sources of interrupts inside the controller, and there is
+-- a single interrupt 'pin' that you may choose to wire up to your project.
+-- Alternatively you can poll using SPI commands.
+
+-- CANINTE register and fields
+const CANINTE = 0x2B
+const CAN_RX0IE = 0x01
+const CAN_RX1IE = 0x02
+const CAN_TX0IE = 0x04
+const CAN_TX1IE = 0x08
+const CAN_TX2IE = 0x10
+const CAN_ERRIE = 0x20
+const CAN_WAKIE = 0x40
+const CAN_MERRE = 0x80
+
+-- CANINTF register and fields
+const CANINTF = 0x2C
+const CAN_RX0IF = 0x01
+const CAN_RX1IF = 0x02
+const CAN_TX0IF = 0x04
+const CAN_TX1IF = 0x08
+const CAN_TX2IF = 0x10
+const CAN_ERRIF = 0x20
+const CAN_WAKIF = 0x40
+const CAN_MERRF = 0x80
+
+-- other misc registers
+const CANSTAT = 0x0E
+const CAN_TEC = 0x1C
+const CAN_REC = 0x1D
+const CAN_EFLG = 0x2D
+
+-- MCP2515 Instructions ( SPI interface )
+const CAN_WRITE_CMD = 0x02
+const CAN_READ_CMD = 0x03
+const CAN_BITMOD = 0x05
+const CAN_LOAD_TX0 = 0x40
+const CAN_LOAD_TX1 = 0x42
+const CAN_LOAD_TX2 = 0x44
+const CAN_RTS_TX0 = 0x81
+const CAN_RTS_TX1 = 0x82
+const CAN_RTS_TX2 = 0x84
+const CAN_RTS_ALL = 0x87
+const CAN_READ_RX0_DATA = 0x92
+const CAN_READ_RX1_DATA = 0x96
+const CAN_READ_STATUS_CMD = 0xA0
+const CAN_RX_STATUS_CMD = 0xB0
+const CAN_RESET_CMD = 0xC0
+
+-- the CAN ID uses the same 32-bit unsigned int format as the socket-CAN C library
+-- bit 0-28 : CAN identifier (11/29 bit)
+-- bit 29   : error frame flag (0 = data frame, 1 = error frame)
+-- bit 30   : remote transmission request flag (1 = rtr frame)
+-- bit 31   : frame format flag (0 = standard 11 bit, 1 = extended 29 bit)
+--
+
+procedure can_encode_rtr_id(dword in out can_id) is
+   pragma inline
+   var bit rtr at can_id:30
+   rtr = 1
+end procedure
+
+procedure can_encode_ext_id(dword in out can_id) is
+   pragma inline
+   var bit ext at can_id:31
+   ext = 1
+end procedure
+
+procedure can_encode_std_id(dword in out can_id) is
+   pragma inline
+   var bit ext at can_id:31
+   ext = 0
+end procedure
+
+-- FIXME: will we ever need this?
+function can_is_error_id(dword in can_id) return bit is
+   pragma inline
+   var bit error at can_id:29
+   return error
+end function
+
+function can_is_rtr_id(dword in can_id) return bit is
+   pragma inline
+   var bit rtr at can_id:30
+   return rtr
+end function
+
+function can_is_ext_id(dword in can_id) return bit is
+   pragma inline
+   var bit ext at can_id:31
+   return ext
+end function
+
+function can_is_std_id(dword in can_id) return bit is
+   pragma inline
+   var bit ext at can_id:31
+   return ext == 0
+end function
+
+-- mcp2515 Reset instruction.
+-- Puts the mcp2515 in Configuration Mode.
+procedure can_reset() is
+   can_sel = 0
+   spi_master_hw = CAN_RESET_CMD
+   can_sel = 1
+end procedure
+
+-- mcp2515 read status instruction
+function can_read_status() return byte is
+   var byte data, dummy
+   can_sel = 0
+   spi_master_hw = CAN_READ_STATUS_CMD
+   data = spi_master_hw
+   dummy = spi_master_hw
+   can_sel = 1
+   return data
+end function
+
+-- mcp2515 RX status instruction
+function can_rx_status() return byte is
+   var byte data, dummy
+   can_sel = 0
+   spi_master_hw = CAN_RX_STATUS_CMD
+   data = spi_master_hw
+   dummy = spi_master_hw
+   can_sel = 1
+   return data
+end function
+
+-- mcp2515 read instruction (single byte)
+-- returns the current value of the specified register
+function can_read(byte in addr) return byte is
+   var byte data
+   can_sel = 0
+   spi_master_hw = CAN_READ_CMD
+   spi_master_hw = addr
+   data = spi_master_hw
+   can_sel = 1
+   return data
+end function
+
+-- mcp2515 write instruction (single byte)
+-- writes the value to the specified register
+procedure can_write(byte in addr, byte in data) is
+   can_sel = 0
+   spi_master_hw = CAN_WRITE_CMD
+   spi_master_hw = addr
+   spi_master_hw = data
+   can_sel = 1
+end procedure
+
+-- set bit-rate and related can bus configuration.
+-- see datasheet for details.
+-- N.B. The chip must already be in 'configuration mode'.
+procedure can_set_config(byte in p1, byte in p2, byte in p3) is
+   can_write(CAN_CNF1, p1)
+   can_write(CAN_CNF2, p2)
+   can_write(CAN_CNF3, p3)
+end procedure
+
+-- set RX acceptance mask for buffer RXB0
+-- N.B. calling with 0,0,0,0 will pass all messages
+procedure can_set_rxb0_mask(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(CAN_RXM0SIDH, sidh)
+   can_write(CAN_RXM0SIDL, sidl)
+   can_write(CAN_RXM0EID8, eid8)
+   can_write(CAN_RXM0EID0, eid0)
+end procedure
+
+-- set RXB0 acceptance filter #0
+procedure can_set_rxb0_filter0(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(CAN_RXF0SIDH, sidh)
+   can_write(CAN_RXF0SIDL, sidl)
+   can_write(CAN_RXF0EID8, eid8)
+   can_write(CAN_RXF0EID0, eid0)
+end procedure
+
+-- set RXB0 acceptance filter #1
+procedure can_set_rxb0_filter1(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(CAN_RXF1SIDH, sidh)
+   can_write(CAN_RXF1SIDL, sidl)
+   can_write(CAN_RXF1EID8, eid8)
+   can_write(CAN_RXF1EID0, eid0)
+end procedure
+
+-- set RX acceptance mask for buffer RXB1
+-- N.B. calling with 0,0,0,0 will pass all messages
+procedure can_set_rxb1_mask(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(CAN_RXM1SIDH, sidh)
+   can_write(CAN_RXM1SIDL, sidl)
+   can_write(CAN_RXM1EID8, eid8)
+   can_write(CAN_RXM1EID0, eid0)
+end procedure
+
+-- set RXB1 acceptance filter #2
+procedure can_set_rxb1_filter2(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(CAN_RXF2SIDH, sidh)
+   can_write(CAN_RXF2SIDL, sidl)
+   can_write(CAN_RXF2EID8, eid8)
+   can_write(CAN_RXF2EID0, eid0)
+end procedure
+
+-- set RXB1 acceptance filter #3
+procedure can_set_rxb1_filter3(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(CAN_RXF3SIDH, sidh)
+   can_write(CAN_RXF3SIDL, sidl)
+   can_write(CAN_RXF3EID8, eid8)
+   can_write(CAN_RXF3EID0, eid0)
+end procedure
+
+-- set RXB1 acceptance filter #4
+procedure can_set_rxb1_filter4(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(CAN_RXF4SIDH, sidh)
+   can_write(CAN_RXF4SIDL, sidl)
+   can_write(CAN_RXF4EID8, eid8)
+   can_write(CAN_RXF4EID0, eid0)
+end procedure
+
+-- set RXB1 acceptance filter #5
+procedure can_set_rxb1_filter5(byte in sidh, byte in sidl, byte in eid8, byte in eid0) is
+   can_write(CAN_RXF5SIDH, sidh)
+   can_write(CAN_RXF5SIDL, sidl)
+   can_write(CAN_RXF5EID8, eid8)
+   can_write(CAN_RXF5EID0, eid0)
+end procedure
+
+-- send CAN frame
+-- Non-blocking -- function returns immediately if buffer is busy (in-use)
+-- FIXME. this is ugly code
+function can_send(byte in buf_no, dword in can_id, byte in buf[8], byte in len) return bit is
+   var bit can_id_rtr at can_id:30
+   var bit can_id_ext at can_id:31
+   var bit stat, rtr, exid
+   var byte r_base, i, v
+   var dword sidh, sidl, eidh, eidl, dtmp
+   
+   exid = can_id_ext
+   rtr = can_id_rtr
+   
+   -- bullet-proofing
+   if exid then
+      can_id = can_id & 0x1FFFFFFF
+   else
+      can_id = can_id & 0x7FF
+   end if
+   
+   -- bullet-proofing
+   if len > 8 then
+      len = 8
+   end if
+   
+   -- Remote Request frame? set RTR bit
+   if rtr then
+      len = len | 0x40
+   end if
+   
+   if buf_no == 0 then
+      r_base = CAN_TXB0CTRL
+   elsif buf_no == 1 then
+      r_base = CAN_TXB1CTRL
+   elsif buf_no == 2 then
+      r_base = CAN_TXB2CTRL
+   else
+      return 0
+   end if
+   
+   -- buffer already in-use / busy?
+   stat = can_read(r_base) & 8
+   if stat == 1 then
+      return 0
+   end if
+   
+   -- FIXME this sets priority and other side-effects
+   can_write(r_base, 0)
+   
+   -- N.B. SIDH and SIDL bit-layout are weird (see datasheet)
+   -- tip: to allow both 11-bit and 29-bit on same bus and same controller,
+   -- the 29-bit is broken into an 11-bit section and an 18-bit section.
+   
+   -- we'll do the 18-bit section first
+   
+   if exid then
+      eidl = can_id & 0xff
+      can_id = can_id >> 8
+      
+      eidh = can_id & 0xff
+      can_id = can_id >> 8
+      
+      sidl = can_id & 3
+      can_id = can_id >> 2
+      
+      -- set the EXIDEN bit
+      sidl = sidl | 8
+   else
+      sidl = 0
+   end if
+   
+   -- now the 11-bit section.
+   dtmp = can_id & 7
+   can_id = can_id >> 3
+   dtmp = dtmp << 5
+   sidl = sidl | dtmp
+   
+   -- the final 8 bits.
+   sidh = can_id
+   
+   can_write(r_base+1, byte(sidh))
+   can_write(r_base+2, byte(sidl))
+   can_write(r_base+3, byte(eidh))
+   can_write(r_base+4, byte(eidl))
+   can_write(r_base+5, len)
+   for 8 using i loop
+      var byte j
+      j = r_base + i + 6
+      can_write(j, buf[i])
+   end loop
+   
+   can_write(r_base, 8) -- request TX now/soonest
+   
+   return 1
+end function
+
+-- receive CAN frame, sets can_id flag bits as to standard/extended, error, and remote.
+-- Non-blocking -- function returns immediately if no message is available.
+-- FIXME. this is ugly code
+function can_receive(byte in buf_no, dword out can_id, byte out buf[8], byte out len) return bit is
+   var bit can_id_error at can_id:29
+   var bit can_id_rtr at can_id:30
+   var bit can_id_ext at can_id:31
+   var bit rtr, exid, stat 
+   var byte r_base, i, v, op
+   var byte sidh, sidl, eidh, eidl
+   var dword dtmp
+   
+   -- quick check to make sure we have a message waiting
+   if buf_no == 0 then
+      stat = can_read_status() & 1
+      if stat == 0 then
+         return 0
+      end if
+      r_base = CAN_RXB0CTRL
+      op = CAN_READ_RX0_DATA
+      
+   elsif buf_no == 1 then
+      stat = can_read_status() & 2
+      if stat == 0 then
+         return 0
+      end if
+      r_base = CAN_RXB1CTRL
+      op = CAN_READ_RX1_DATA
+   else
+      return 0 -- illegal value for buf_no
+   end if
+   
+   -- N.B. At this point we have a message.
+   rtr = can_read(r_base) & 8
+   sidh = can_read(r_base+1)
+   sidl = can_read(r_base+2)
+   eidh = can_read(r_base+3)
+   eidl = can_read(r_base+4)
+   len = can_read(r_base+5)
+   
+   -- fast read of the buffer
+   can_sel = 0
+   spi_master_hw = op
+   for 8 using i loop
+      buf[i] = spi_master_hw
+   end loop
+   can_sel = 1
+   
+   rtr = len & 0x40
+   len = len & 0x0F
+   
+   -- bullet-proofing
+   if len > 8 then
+      len = 8
+   end if
+   
+   -- is this an extended frame? save this info for later.
+   exid = sidl & 8
+   
+   -- form the CAN ID, watch out for weird hardware bits. See datasheet.
+   -- tip: to allow both 11-bit and 29-bit on same bus and same controller,
+   -- the 29-bit is broken into an 11-bit section and an 18-bit section.
+   
+   -- start of 11-bit section.
+   -- 8 highest bits
+   can_id = dword(sidh)
+   
+   -- next 3 bits. OK that's 11 bits so far.
+   -- SIDL has a weird layout. see datasheet.
+   can_id = can_id << 3
+   dtmp = dword(sidl) >> 5
+   can_id = can_id | dtmp
+   
+   if exid then
+      
+      -- start of 18-bit section.
+      -- 2 bits.
+      can_id = can_id << 2
+      dtmp = dword(sidl) & 3
+      can_id = can_id | dtmp
+      
+      -- next 8 bits
+      can_id = can_id << 8
+      can_id = can_id | dword(eidh)
+      
+      -- final 8 bits. 11+18=29 bits.
+      can_id = can_id << 8
+      can_id = can_id | dword(eidl)
+      
+   end if
+   
+   can_id_ext = exid
+   can_id_rtr = rtr
+   can_id_error = 0
+   
+   return 1
+end function
+

@@ -1,0 +1,211 @@
+-- -------------------------------------------------------------------
+-- Title: Library to manage unipolar stepper motors, common lib
+-- Author: Pavel Milanes Costa (CO7WT) - pavelmc@gmail.com, copyright (c) 2014, all rights reserved.
+-- Compiler: >=2.4q3
+-- May work on older ones.
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library files implement the drive procedures for UNIPOLAR stepper motors
+-- This file is the common vars/constants/procs to all stepper unipolar libs
+-- --
+-- This lib supports 3 modes for the operation of stepper motors:
+-- --
+-- This is a schematic representation of the wire naming of this lib
+--
+--      A(B)    Common      C(D)    < Coils ends
+--       |         |          |
+--       mmmmmmmmmmmmmmmmmmmmmm     < coils
+-- --
+-- The first letter is for one coil, the second in parenthesis is the second coil designation
+-- --
+-- 		- 2-PHASE MODE (two coils at any time) this will be called NORMAL (and default) mode...
+--				Maximum torque of 1.41 times of just one coil (WAVE drive),
+--				then it use double the current of one coil, and the step is the normal
+--				ratio of the one on the datasheet, it uses 4 states, se the table below
+--				  | A | B | C | D | decimal
+--				1 | 1 | 1 | 0 | 0 | 12
+--				2 | 0 | 1 | 1 | 0 | 6
+--				3 | 0 | 0 | 1 | 1 | 3
+--				4 | 1 | 0 | 0 | 1 | 9
+-- --
+--			in the config this will be
+--			var bit stepper_half = off	; set half mode to off
+--			var bit stepper_wave = off	; set wave mode to off
+-- --
+-- 		- WAVE DRIVE mode (one coil any time)
+--				Normal torque, some motors like this mode more than normal mode,
+--				current is the normal rating for one coil, the step is also the normal
+--				specified value from the datasheet, it also uses 4 states, see table
+--				  | A | B | C | D | decimal
+--				1 | 1 | 0 | 0 | 0 | 8
+--				2 | 0 | 1 | 0 | 0 | 4
+--				3 | 0 | 0 | 1 | 0 | 2
+--				4 | 0 | 0 | 0 | 1 | 1
+-- --
+--			in the config this will be
+--			var bit stepper_half = off	; set half mode to off
+--			var bit stepper_wave = on	; set wave mode to ON
+-- --
+-- 		- HALF STEP mode (two/one coils at intervals)
+--				Torque is a mix of full and normal torque at intervals, as also the current;
+--				because it use the two sequences stated before to make half steps, then
+--				it uses 8 states beside the normal 4 states, see table
+--				  | A | B | C | D | decimal
+--				1 | 1 | 0 | 0 | 0 | 8
+--				2 | 1 | 1 | 0 | 0 | 12
+--				3 | 0 | 1 | 0 | 0 | 4
+--				4 | 0 | 1 | 1 | 0 | 6
+--				5 | 0 | 0 | 1 | 0 | 2
+--				6 | 0 | 0 | 1 | 1 | 3
+--				7 | 0 | 0 | 0 | 1 | 1
+--				8 | 1 | 0 | 0 | 1 | 9
+-- --
+--			in the config this will be
+--			var bit stepper_half = off	; set half mode to off
+--			the value of stepper_wave is ignored in this mode.
+-- --
+-- This libs have 2 Options that are activated just by defining the appropriate constant BEFORE
+-- calling any of the two libraries (with blocking delays or not) This options are not compiled
+-- if not defined, so small code is generated on demand ;-)
+-- --
+-- * Freeing the coils at the end of the movement, you must provide a mechanical lock
+--   for the gears to remains in place, or ignore it if this is not important in your
+--   application also the motor drain no power when resting, so green power!!! ;-)
+--		const bit STEPPER_FREE = on
+-- --
+-- * Smoothing the start and stop on loads with inertia, the lib will use a trick of slow
+--    the start & stop pulses (hence INCREASE the DUTY CYCLE) using the 0.2% of the speed as
+--    the amount of pulses; this value (0.1%) is experimental an my guess, any improvements
+--    on this procedure (theory or code) is welcomed to my email (see top of file for email)
+--		const bit STEPPER_SMOOTH = on
+--
+-- Sources:
+-- I used a tutorial (in spanish) here http://www.todorobot.com.ar/informacion/tutorial%20stepper/
+-- This is a very good source also http://www.cs.uiowa.edu/~jones/step/ thanks vasi vasi
+-- A lib on jallib (in unreleased state) at the end of the development by Richard Zengerink dating
+-- back to 2010 give me some new ideas, thanks to all who put his knowledge in the public domain.
+--
+
+-- include needed libs
+include delay
+
+-- setting defaults: RPM
+if !defined(STEPPER_RPM) then
+   _warn "You must define the RPM you want to use, set to 60 RPM by default"
+   const word STEPPER_RPM = 60
+end if
+
+-- setting defaults: STEPS per TURN
+if !defined(STEPPER_STEPS_1TURN) then
+   _warn "You must define how much steps for a full turn, set to 48 steps per turn by default"
+   const word STEPPER_STEPS_1TURN = 48
+end if
+
+-- setting defaults: CW vs. CCW
+if !defined(stepper_cw) then
+   -- if not defined, set it to cw (forward)
+   var bit stepper_cw = on
+end if
+
+-- this array is the secuence of motion used en the 3 modes.
+const byte STEPPER_POS[8]	= {8,12,4,6,2,3,1,9}
+
+-- How much time we need to stabilize the magnet on one position
+-- this is a delay expressed in miliseconds after each
+-- movement of the motor; This is the length of the pulse.
+var word stepper_delay = 0
+
+-- modes of operation, by deaful user normal mode
+var bit stepper_half = off		-- by default half step if off
+var bit stepper_wave = off		-- by default is normal mode
+
+-- state of the motor, is a pointer to the array index
+var byte _stepper_state = 0
+var word smooth_pulses = 0
+
+-- This calculation must be done ride away or the compiler make a kaput!!! & RIP
+--
+-- this is the calculated speed of the motor (how many pulses per minute)
+const word _STEPPER_SPEED = STEPPER_STEPS_1TURN * STEPPER_RPM
+-- delay in function of the speed (expressed in function of 1ms)
+stepper_delay = 60_000 / _STEPPER_SPEED
+
+-- fi defned smooth initialize
+if defined(STEPPER_SMOOTH) then
+   -- must use smooth start/stop
+   smooth_pulses = _STEPPER_SPEED / 1000
+   -- /500 is 0.2%; /1000 is 0.1 %, etc...
+   -- adapt it to your project if needed
+end if
+
+-- motor shut off, leave it run free
+procedure stepper_off() is
+   -- set all outs to off
+   stepper_coil_a = off
+   stepper_coil_b = off
+   stepper_coil_c = off
+   stepper_coil_d = off
+end procedure
+
+-- calculate the next step in the given direction from the actual state and mode
+procedure stepper_step() is
+   -- variables
+   var byte limit = 3
+   var bit offset = 0
+   var byte coil_state
+   --
+   if (stepper_half == on) then
+      limit = 7
+   end if
+   --
+   -- direction ?
+   if (stepper_cw == on) then
+      -- forward
+      if (_stepper_state == limit) then
+         -- fold back
+         _stepper_state = 0
+      else
+         _stepper_state = _stepper_state +1
+      end if
+   else
+      -- reverse
+      if (_stepper_state == 0) then
+         -- fold back
+         _stepper_state = limit
+      else
+         _stepper_state = _stepper_state -1
+      end if
+   end if
+   --
+   -- at this level, _stepper_state has the correct NEXT state
+   -- let's determine the coil activation position
+   --
+   if (stepper_half == on) then
+      -- it is half mode
+      -- return the bare state for coil position
+      coil_state = _stepper_state
+   else
+      -- the array offset  (normal or wave?)
+      if (stepper_wave == off) then
+         offset = 1
+      end if
+      -- calculate the new position for the magnets
+      coil_state = (_stepper_state * 2) + offset
+   end if
+   --
+   -- calculating & setting the final coil activation
+   stepper_coil_a = bit((STEPPER_POS[coil_state] & 0b0000_1000) >> 3)
+   stepper_coil_b = bit((STEPPER_POS[coil_state] & 0b0000_0100) >> 2)
+   stepper_coil_c = bit((STEPPER_POS[coil_state] & 0b0000_0010) >> 1)
+   stepper_coil_d =  bit(STEPPER_POS[coil_state] & 0b0000_0001)
+   --
+   -- I'm in the blocking version to generate a delay?
+   if (STEPPER_BLOCKIGN == on) then
+      -- make the delay to wait the motor jump state and torque pull
+      delay_1ms(stepper_delay)
+   end if
+end procedure
+

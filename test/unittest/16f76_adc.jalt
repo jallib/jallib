@@ -1,0 +1,123 @@
+-- Title: unittest to check ADC libs for 16F76
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: this describes multiple unittests (a testcase), to test the 
+-- many different combination while setting up ADC.
+-- This is one is special, it comes with 16F77 unittests. 16F77 and 16F76 are in the
+-- same datasheet, but 16F77 has more analog pins than 16F76. These tests are here
+-- to check the PCFG bits combination is done correctly according to available
+-- analog pins
+--
+-- Notes: see jallib wiki page about unit testing to learn how to use this file
+--
+
+;@jallib section pic_20MHz
+include 16f76   ;@no_debug     
+pragma target OSC HS           
+pragma target clock 20_000_000 
+pragma target WDT  disabled
+enable_digital_io()            
+-- force analog pin/port to be output, so we can check they are 
+-- automagically set as input when configured
+porta_direction = all_output
+
+
+;@jallib section self_test
+include unittest
+var byte a = 120
+test_byte(a)		 ;@assertEquals 120 test_test
+
+
+;@jallib testcase test_5an_0vref
+;@jallib use pic_20MHz
+;@jallib use self_test
+const byte ADC_NCHANNEL = 5
+const byte ADC_NVREF = ADC_NO_EXT_VREF
+const bit ADC_HIGH_RESOLUTION = false
+include adc
+adc_init()
+
+asm nop
+var byte adcon1_pcfg_tmp = ADCON1 & 0b_0000_0111
+-- PCFG = 0 is the first combination for 5 analogs / 0 vref
+-- for 16F76 (but not for 16F77)
+test_byte(adcon1_pcfg_tmp) ;@assertEquals 0 test_pcfg
+-- check pin on PORTA configured as inputs (47 is 0b0011_1101 => RA{0,1,2,3,5}
+asm nop
+test_byte(TRISA)  ;@assertEquals 47 test_pin_porta_input
+
+
+;@jallib testcase test_5an_1vref
+;@jallib use pic_20MHz
+;@jallib use self_test
+const byte ADC_NCHANNEL = 5
+const byte ADC_NVREF = 1
+const bit ADC_HIGH_RESOLUTION = false
+include adc
+adc_init()
+
+asm nop
+var byte adcon1_pcfg_tmp = ADCON1 & 0b_0000_0111
+-- PCFG = 3 works, but 1 is the first combination that fulfills 5 analogs
+-- and 1 vref.
+test_byte(adcon1_pcfg_tmp) ;@assertEquals 1 test_pcfg
+-- check pin on PORTA configured as inputs (47 is 0b0011_1101 => RA{0,1,2,3,5}
+asm nop
+test_byte(TRISA)  ;@assertEquals 47 test_pin_porta_input
+
+
+;@jallib testcase test_3an_0vref
+;@jallib use pic_20MHz
+;@jallib use self_test
+const byte ADC_NCHANNEL = 3
+const byte ADC_NVREF = 0
+const bit ADC_HIGH_RESOLUTION = false
+include adc
+adc_init()
+
+asm nop
+var byte adcon1_pcfg_tmp = ADCON1 & 0b_0000_0111
+test_byte(adcon1_pcfg_tmp) ;@assertEquals 4 test_pcfg
+-- check pin on PORTA configured as inputs (11 is 0b0000_1011 => RA{0,1,2,3,5}
+asm nop
+test_byte(TRISA)  ;@assertEquals 11 test_pin_porta_input
+
+
+;@jallib testcase test_3an_1vref
+;@jallib use pic_20MHz
+;@jallib use self_test
+const byte ADC_NCHANNEL = 3
+const byte ADC_NVREF = 1
+const bit ADC_HIGH_RESOLUTION = false
+include adc
+adc_init()
+
+asm nop
+var byte adcon1_pcfg_tmp = ADCON1 & 0b_0000_0111
+test_byte(adcon1_pcfg_tmp) ;@assertEquals 5 test_pcfg
+-- check pin on PORTA configured as inputs (11 is 0b0000_1011 => RA{0,1,2,3,5}
+asm nop
+test_byte(TRISA)  ;@assertEquals 11 test_pin_porta_input
+
+
+;@jallib testcase test_0an_0vref
+;@jallib use pic_20MHz
+;@jallib use self_test
+const byte ADC_NCHANNEL = 0
+const byte ADC_NVREF = 0
+const bit ADC_HIGH_RESOLUTION = false
+include adc
+adc_init()
+
+asm nop
+var byte adcon1_pcfg_tmp = ADCON1 & 0b_0000_0110   -- last bit is "x" : unknown
+test_byte(adcon1_pcfg_tmp) ;@assertEquals 6 test_pcfg
+-- check pin on PORTA configured as inputs (0 is 0b0000_0000 => RA{0,1,2,3,5}
+asm nop
+test_byte(TRISA)  ;@assertEquals 0 test_pin_porta_input
+

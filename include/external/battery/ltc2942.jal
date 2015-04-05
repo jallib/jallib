@@ -1,0 +1,199 @@
+-- Title: LTC2942 I2C battery gas gauge with temperature and voltage measurement
+-- Author: Bogdan Mihai Octavian, NO copyright....use it or loose it!
+-- Compiler: 2.4o
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: I2C read, write, conversion to decimal(mAh, mV, Celsius degrees), ARA response routines.
+-- I2C 1 cell LiFePO4/LiPo gas gauge (capacity) / Coulomb counter with programmable alarms
+-- This library contains the basic routines to build a battery gas gauge
+-- Capacity is calculated with prescaler M set to 1:128 and Rsense resistor of 25 miliOhms (0R025) !!!!
+-- Voltage and temperature routines works independently of battery capacity.
+-- Please read the datasheet for a better understanding !!!
+-- DATASHEET : http://cds.linear.com/docs/en/datasheet/2942fa.pdf
+--
+-- Some LTC2942 registers
+-- 00h "A" register = STATUS       (R)
+-- 01h "B" register = CONTROL      (R/W)
+-- 02h "C" register = ACR MSB      (R/W)  Accumulated charge
+-- 03h "D" register = ACR LSB      (R/W)
+-- 04h "E" register = CTH MSB      (R/W)  Charge Threshold High
+-- 05h "F" register = CTH LSB      (R/W)
+-- 06h "G" register = CTL MSB      (R/W)  Charge Threshold Low
+-- 07h "H" register = CTL LSB      (R/W)
+-- 08h "I" register = VOLTAGE MSB  (R)
+-- 09h "J" register = VOLTAGE LSB  (R)
+-- 0Ah "K" register = VTH          (R/W)  Voltage Threshold High
+-- 0Bh "L" register = VTL          (R/W)  Voltage Threshold LOW
+-- 0Ch "M" register = Temp. MSB    (R)    Temperature on chip
+-- 0Dh "N" register = Temp. LSB    (R)
+-- 0Eh "O" register = TTH          (R/W)  Temperature Threshold High
+-- 0Fh "P" register = TTL          (R/W)  Temperature Threshold Low
+--
+-- STATUS:
+--        b7 = Chip ID (0 = 2942 / 1 = 2941)
+--        b6 = reserved
+--        b5 = ACR Over/Under flow (1 = TRUE)
+--        b4 = Temp. alert       (1 = TRUE)
+--        b3 = Charge alert high (1 = TRUE)
+--        b2 = Charge alert low  (1 = TRUE)
+--        b1 = Voltage alert    (1 = voltage limits exceeded)
+--        b0 = UnderVoltage Lockout alert (1 = UVLO has occured)
+-- CONTROL:
+--        b7:b6 = ADC mode -- default
+--        b5:b3 = Prescaler M (111 = default)
+--        b2:b1 = AL/CC configure (10 = ALERT = default / 11 = NOT allowed)
+--        b0 =    shutdown analog section (1 = TRUE)
+--
+
+------------------------------------------------------------------------------
+-- reading registers
+--------------------------------------------------------------------------------
+procedure ltc2942_read( byte in ad , byte out d ) is
+   var bit flag
+   i2c_start()
+   flag = i2c_transmit_byte( 0xC8 )       -- Chip ID in write mode
+   flag = i2c_transmit_byte( ad )         -- put register address
+   i2c_start()
+   flag = i2c_transmit_byte( 0xC9 )       -- Chip ID in read mode
+   d = i2c_receive_byte( false )          -- get data
+   i2c_stop()
+end procedure
+
+
+------------------------------------------------------------------------------
+-- writing registers
+--------------------------------------------------------------------------------
+procedure ltc2942_write( byte in ad , byte in d ) is
+   var bit flag
+   i2c_start()
+   flag = i2c_transmit_byte( 0xC8 )       -- Chip ID in write mode
+   flag = i2c_transmit_byte( ad )          -- put register address
+   flag = i2c_transmit_byte( d )           -- put data in the register
+   i2c_stop()
+end procedure
+
+
+------------------------------------------------------------------------------
+-- read battery voltage in millivolts
+-- return "1234" mV
+------------------------------------------------------------------------------
+function ltc2942_voltage() return word is
+   var word d = 0
+   var byte date[2] at d
+   var dword data = 0
+   var byte sir[4] at data
+   sir[3] = 0
+   sir[2] = 0
+   ltc2942_read( 0x08 , sir[1] )
+   ltc2942_read( 0x09 , sir[0] )
+   data = ( data * 916 ) / 10000
+   date[1] = sir[1]
+   date[0] = sir[0]
+   return d
+end function
+
+--------------------------------------------------------------------------------
+-- good enough for knowing batt environment temperature
+-- returns +/- "12" gr. Celsius (signed)
+--------------------------------------------------------------------------------
+function ltc2942_temperature() return byte is
+   var byte d = 0
+   var dword data = 0
+   var byte sir[4] at data
+   sir[3] = 0
+   sir[2] = 0
+   ltc2942_read( 0x0C , sir[1] )
+   ltc2942_read( 0x0D , sir[0] )
+   data = ( data * 916 ) / 100000
+   if data >= 273 then            --> Kelvin to Celsius (> 0^C)
+      data = data - 273
+      d = sir[0]
+      d = 128 + d
+      var bit sign at d:7 = FALSE
+   else
+      data = 273 - data           --> Kelvin to Celsius (< 0^C)
+      d = sir[0]
+      d = 128 - d
+      var bit sign at d:7 = TRUE
+   end if
+   return d
+end function
+
+
+--------------------------------------------------------------------------------
+-- Prescaler M must be adapted to battery capacity
+-- RSENSE must be calculated regarding maximum charging current
+-- Maximum capacity must be set when cell full prior to reading it
+-- See DATASHEET !!!
+-- Below routine works for 1 cell LiFePO4, 10Ah capacity
+-- For other battery capacities the math must be rethink.
+--------------------------------------------------------------------------------
+function lrc2942_acr_read() return word is -- returns "1234" mAh
+   var word d = 0
+   var byte date[2] at d
+   var dword data = 0
+   var byte sir[4] at data
+   sir[3] = 0
+   sir[2] = 0
+   ltc2942_read( 0x02 , sir[1] )
+   ltc2942_read( 0x03 , sir[0] )
+   data = ( data * 17 ) / 100   -- ONLY if RSENSE = 25mOhmi & Prescaler M = 128
+   date[1] = sir[1]
+   date[0] = sir[0]
+   return d
+end function
+
+
+function ltc2942_status'get() return byte is
+   var byte data = 0
+   ltc2942_read( 0x00 , data )
+   return data
+end function
+
+function ltc2942_control'get() return byte is
+   var byte data = 0
+   ltc2942_read( 0x01 , data )
+   return data
+end function
+
+procedure ltc2942_control'put(byte in data) is
+   ltc2942_write( 0x01 , data )
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- ARA Alert response procedure --
+-- A4 = Temperature threshold high or low alert
+-- A2 = Capacity threshold low alert
+-- A1 = Voltage threshold high or low alert
+-- A0 = Under Voltage Lockout alert
+-- related registers must be set first, see datasheet
+--------------------------------------------------------------------------------
+function ltc2942_ara( bit out A4, bit out A2, bit out A1, bit out A0 ) return bit is
+   var byte data = 0
+   var bit flag
+   i2c_start()
+   flag = i2c_transmit_byte( 0b_0001_1001 )   -- Alert Response Address
+   data = i2c_receive_byte( false )           -- get response
+   i2c_stop()
+   if data == 0b_1100_1000 then               -- receive LTC2942 address
+      var volatile byte A = ltc2942_status    -- STATUS register content
+      var volatile bit b4 at A:4
+          if b4 then A4 = TRUE else A4 = FALSE end if
+      var volatile bit b2 at A:2
+          if b2 then A2 = TRUE else A2 = FALSE end if
+      var volatile bit b1 at A:1
+          if b1 then A1 = TRUE else A1 = FALSE end if
+      var volatile bit b0 at A:0
+          if b0 then A0 = TRUE else A0 = FALSE end if
+      return TRUE
+   else
+      return FALSE
+   end if
+end function
+--
+
+

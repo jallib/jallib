@@ -1,0 +1,71 @@
+-- Title: GP2D02 IR ranger library
+-- Author: Sebastien Lelong, Copyright (c) 2008-2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this lib is able to handle the GP2D02 lib, reading distance 
+-- measure with this IR Ranger.
+-- --
+-- You can either use the read procedure, or access the pseudo-variable
+-- to retrieve distance measures.
+-- --
+-- When defining pins the ranger is connected to to, it's important to 
+-- set them as "volatile" (level will go low/high within function call)
+-- See sample(s) for more.
+--
+-- Notes: reading a distance can take quite a long time, approx. 74ms.
+-- See datasheet for more, but you should remember this while using this IR ranger
+--
+-- Sources:
+--   - datasheet: http://www.datasheetcatalog.org/datasheet/Sharp/mXvryzu.pdf
+-- 
+
+
+
+include delay
+
+
+function gp2d02_read_pins(volatile bit out pin_vin, volatile bit in pin_vout) return byte is
+   -- See GP2D02 for detailed specs
+   var byte range = 0b_0000_0000
+   -- pin_in to 1: ready for next range
+   pin_vin = high
+   -- pin_in to 0: request for read
+   pin_vin = low
+   -- wait 70ms
+   delay_1ms(70)
+   
+   -- ok, actually read the measure
+   for 8 loop
+      pin_vin = high
+      delay_10us(10)
+      pin_vin = low
+      delay_10us(10)
+      -- read bit from pin vout
+      range = range << 1
+      -- append bit 1 to the end
+      -- preserving previous bits
+      -- if ranger is on
+      if pin_vout == high
+      then
+         -- append bit 1 to the end
+         -- preserving previous bits
+         range = range | 0b_0000_0001
+      end if
+   end loop
+   
+   -- inactivate ranger
+   pin_vin = high
+   delay_1ms(2)
+   pin_vin = low
+   
+   -- done, return the results
+   return range
+   
+end function
+
+

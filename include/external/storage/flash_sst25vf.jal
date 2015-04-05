@@ -1,0 +1,466 @@
+-- Title: External SPI bus 1...128Mb Flash from Microchip/SST,
+-- Author: Urmas Joeleht (c) 2014, 2015, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4q3
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: http://ww1.microchip.com/downloads/en/DeviceDoc/20005045B.pdf (8Mb serial Flash)
+-- http://ww1.microchip.com/downloads/en/DeviceDoc/25071A.pdf (32Mb serial Flash)
+-- 23K256 sram library. Author: Matthew Schinkel, adapted-by: Sebastien Lelong
+--
+-- Description: Microchip (SST) 1...128 Mbit serial flash chip.
+-- Functions and procedures:
+-- sst25vf_init()
+-- sst25vf_read_byte()
+-- sst25vf_read_word()
+-- sst25vf_read_dword()
+-- sst25vf_rd_status()
+-- sst25vf_read_id()
+-- sst25vf_read_jedec_id()
+-- sst25vf_chip_ready()
+-- sst25vf_write_byte()
+-- sst25vf_write_word()
+-- sst25vf_write_dword()
+-- sst25vf_erase_4kb_sector()
+-- sst25vf_erase_32kb_block()
+-- sst25vf_erase_64kb_block()
+--
+-- Notes:
+-- User must take care
+-- in program about max addresses of chip
+-- Size: Max mem address:
+--   1M: 0x01FFFF (no erase_64 and get jedec_id functions)
+--   2M: 0x03FFFF
+--   4M: 0x07FFFF
+--   8M: 0x0FFFFF     Tested!
+--  16M: 0x1FFFFF     Tested!
+--  32M: 0x3FFFFF
+--  64M: 0x7FFFFF
+-- 128M: 0xFFFFFF
+-- Example declaration:
+-- alias sst25vf_cs is pin_A7    -- chip select/slave select pin
+-- alias sst25vf_cs_direction   is pin_a7_direction
+-- sst25vf_cs_direction = output
+-- sst25vf_cs = high
+-- --
+-- If several SPI devices used, then:
+-- const bit SST25VF_ALWAYS_SET_SPI_MODE = TRUE
+-- alias sst25vf_force_spi_mode is spi_master_hw_set_mode_00
+-- or
+-- alias sst25vf_force_spi_mode is spi_master_hw2_set_mode_00
+-- include sst25vf
+-- var byte sst25vf_settings
+-- sst25vf_init()
+--
+-- Example file:
+-- 18f27j53_pps_sst25vf.jal
+-- ToDo:
+-- Continuous  read, write
+-- Read in high (80Mhz) speed mode
+-- Block protection
+--
+-- --------------------------------------------------------------------------------
+-- Device Operation Instructions from datasheet:
+-- --------------------------------------------------------------------------------
+const byte SST25VF_READ_COMM				   = 0x03
+const byte SST25VF_READ_HS_COMM				= 0x0B
+const byte SST25VF_4K_SECTOR_ERASE_COMM 	= 0x20
+const byte SST25VF_32K_SECTOR_ERASE_COMM 	= 0x52
+const byte SST25VF_64K_SECTOR_ERASE_COMM 	= 0xD8
+const byte SST25VF_CHIP_ERASE_COMM 			= 0x60
+const byte SST25VF_BYTE_PROGRAM_COMM 		= 0x02
+const byte SST25VF_AAI_W_PROGRAM_COMM 		= 0xAD
+const byte SST25VF_READ_STATUS_COMM 		= 0x05
+const byte SST25VF_ENABLE_WR_STATUS_COMM 	= 0x50
+const byte SST25VF_WRITE_STATUS_COMM 		= 0x01
+const byte SST25VF_WRITE_ENABLE_COMM 		= 0x06
+const byte SST25VF_WRITE_DISABLE_COMM 		= 0x04
+const byte SST25VF_READ_ID_COMM 			   = 0x90
+const byte SST25VF_READ_JEDEC_ID_COMM 		= 0x9F
+const byte SST25VF_EBSY_COMM 				   = 0x70 	-- Enable SO as an output RY/BY# status during AAI programming
+const byte SST25VF_DBSY_COMM 				   = 0x80 	-- Disable SO as an output RY/BY# status during AAI programming
+
+-- --------------------------------------------------------------------------------
+-- Read one byte
+-- --------------------------------------------------------------------------------
+function sst25vf_read_byte(byte*3 in addr) return byte is
+   var byte data
+   var byte byte_addr[3] at addr
+
+   -- put spi into mode 00
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_READ_COMM
+   spi_master_hw = byte_addr[2]                    -- MSB of address
+   spi_master_hw = byte_addr[1]
+   spi_master_hw = byte_addr[0]                    -- LSB of address
+   data = spi_master_hw
+   sst25vf_cs = 1
+
+   return data
+
+end function
+
+-- --------------------------------------------------------------------------------
+-- Read one word
+-- --------------------------------------------------------------------------------
+function sst25vf_read_word(byte*3 in addr) return word is
+   var word data
+   var byte byte_data[2] at data
+   var byte byte_addr[3] at addr
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_READ_COMM
+   spi_master_hw = byte_addr[2]                    -- MSB of address
+   spi_master_hw = byte_addr[1]
+   spi_master_hw = byte_addr[0]                    -- LSB of address
+   byte_data[1] = spi_master_hw                    -- high byte of data
+   byte_data[0] = spi_master_hw                    -- low byte of data
+   sst25vf_cs = 1
+
+   return data
+
+end function
+
+-- --------------------------------------------------------------------------------
+-- Read dword
+-- --------------------------------------------------------------------------------
+function sst25vf_read_dword(byte*3 in addr) return dword is
+   var dword data
+   var byte byte_data[4] at data
+   var byte byte_addr[3] at addr
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_READ_COMM               -- read one byte
+   spi_master_hw = byte_addr[2]                    -- MSB of address
+   spi_master_hw = byte_addr[1]
+   spi_master_hw = byte_addr[0]                    -- LSB of address
+   byte_data[3] = spi_master_hw                    -- MSB of data
+   byte_data[2] = spi_master_hw
+   byte_data[1] = spi_master_hw
+   byte_data[0] = spi_master_hw                    -- LSB of data
+   sst25vf_cs = 1
+
+   return data
+
+end function
+
+-- --------------------------------------------------------------------------------
+-- Write one byte
+-- --------------------------------------------------------------------------------
+procedure sst25vf_write_byte(byte*3 in address, byte in data) is
+   var byte byte_address[3] at address
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_ENABLE_COMM       -- enable write
+   sst25vf_cs = 1
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_BYTE_PROGRAM_COMM       -- write one byte
+   spi_master_hw = byte_address[2]                 -- MSB of address
+   spi_master_hw = byte_address[1]
+   spi_master_hw = byte_address[0]                 -- LSB of address
+   spi_master_hw = data
+   sst25vf_cs = 1
+
+   _usec_delay(10)                                 -- mandatory 10uS delay
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_DISABLE_COMM      -- disable write
+   sst25vf_cs = 1
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Write word
+-- --------------------------------------------------------------------------------
+procedure sst25vf_write_word(byte*3 in addr, word in data) is
+   var byte byte_data[2] at data
+   var byte byte_addr[3] at addr
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   -- enable write
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_ENABLE_COMM       -- enable write (0x06)
+   sst25vf_cs = 1
+   -- write the value
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_AAI_W_PROGRAM_COMM      -- write multiple bytes
+   spi_master_hw = byte_addr[2]
+   spi_master_hw = byte_addr[1]
+   spi_master_hw = byte_addr[0]
+   spi_master_hw = byte_data[1]
+   spi_master_hw = byte_data[0]
+   sst25vf_cs = 1
+
+   _usec_delay(10)                                 -- mandatory 10uS delay
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_DISABLE_COMM      -- disable write
+   sst25vf_cs = 1
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Write dword
+-- --------------------------------------------------------------------------------
+procedure sst25vf_write_dword(byte*3 in addr, dword in data) is
+   var byte byte_data[4] at data
+   var byte byte_addr[3] at addr
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   -- enable write
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_ENABLE_COMM       -- enable write (0x06)
+   sst25vf_cs = 1
+   -- write the value
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_AAI_W_PROGRAM_COMM      -- write multiple bytes
+   spi_master_hw = byte_addr[2]
+   spi_master_hw = byte_addr[1]
+   spi_master_hw = byte_addr[0]
+   spi_master_hw = byte_data[3]
+   spi_master_hw = byte_data[2]
+   sst25vf_cs = 1                                  -- continuous read needs after each word
+   _usec_delay(10)                                 -- repeat command SST25VF_AAI_W_PROGRAM_COMM
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_AAI_W_PROGRAM_COMM
+   spi_master_hw = byte_data[1]
+   spi_master_hw = byte_data[0]
+   sst25vf_cs = 1
+   _usec_delay(10)                                 -- mandatory 10uS delay
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_DISABLE_COMM      -- disable write
+   sst25vf_cs = 1
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Get ID (1 byte manufacturer's ID, 1 byte device ID)
+-- --------------------------------------------------------------------------------
+procedure sst25vf_read_id(byte out manufacturer, byte out device_id) is
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_READ_ID_COMM
+   spi_master_hw = 0x00                            -- empty byte
+   spi_master_hw = 0x00                            -- empty byte
+   spi_master_hw = 0x00                            -- empty byte
+   manufacturer = spi_master_hw
+   device_id = spi_master_hw
+   sst25vf_cs = 1
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Get JEDEC ID (1B Manufacturer, 1B Memory type, 1B Memory capacity code; see datasheet)
+-- --------------------------------------------------------------------------------
+procedure sst25vf_read_jedec_id(byte out manufacturer, byte out memory_type, byte out memory_capacity) is
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_READ_JEDEC_ID_COMM
+   manufacturer = spi_master_hw
+   memory_type = spi_master_hw
+   memory_capacity = spi_master_hw
+   sst25vf_cs = 1
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Read status registry
+-- --------------------------------------------------------------------------------
+function sst25vf_rd_status() return byte is
+   var byte data
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_READ_STATUS_COMM
+   data = spi_master_hw
+   sst25vf_cs = 1
+
+   return data
+
+end function
+
+-- --------------------------------------------------------------------------------
+-- Ask if chip is ready. 0: chip busy; 1: erase or write is finished
+-- --------------------------------------------------------------------------------
+function sst25vf_chip_ready() return bit is
+   var byte data
+   var bit ready
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_READ_STATUS_COMM
+   data = spi_master_hw
+   sst25vf_cs = 1
+   if (data & 0b00000001) == 0 then
+      return true
+   else
+      return false
+   end if
+end function
+
+-- --------------------------------------------------------------------------------
+-- Write status registry
+-- --------------------------------------------------------------------------------
+procedure sst25vf_wr_status(byte in data) is
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_ENABLE_WR_STATUS_COMM   -- enable write status register (0x50)
+   sst25vf_cs = 1
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_STATUS_COMM       -- write status register (0x01)
+   spi_master_hw = data
+   sst25vf_cs = 1
+   _usec_delay(10)
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Erase whole chip
+-- --------------------------------------------------------------------------------
+procedure sst25vf_chip_erase() is
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_ENABLE_COMM       -- 0x06 write enable
+   sst25vf_cs = 1
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_CHIP_ERASE_COMM         -- 0x60 chip erase
+   sst25vf_cs = 1
+
+   delay_1ms(50)
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Erase 4kB sector
+-- --------------------------------------------------------------------------------
+procedure sst25vf_erase_4kb_sector(byte*3 in address) is
+   var byte byte_addr[3] at address
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_ENABLE_COMM       -- 0x06 write enable
+   sst25vf_cs = 1
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_4K_SECTOR_ERASE_COMM    -- 0x60 chip erase
+   spi_master_hw = byte_addr[2]                    -- MSB of address
+   spi_master_hw = byte_addr[1]
+   spi_master_hw = byte_addr[0]                    -- LSB of address
+   sst25vf_cs = 1
+
+   delay_1ms(100)
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Erase 32kB sector
+-- --------------------------------------------------------------------------------
+procedure sst25vf_erase_32kb_block(byte*3 in address) is
+   var byte byte_addr[3] at address
+
+      if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_ENABLE_COMM       -- 0x06 write enable
+   sst25vf_cs = 1
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_32K_SECTOR_ERASE_COMM   -- 0x52
+   spi_master_hw = byte_addr[2]
+   spi_master_hw = byte_addr[1]
+   spi_master_hw = byte_addr[0]
+   sst25vf_cs = 1
+
+   delay_1ms(100)
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Erase 64kB sector
+-- --------------------------------------------------------------------------------
+procedure sst25vf_erase_64kb_block(byte*3 in address) is
+   var byte byte_addr[3] at address
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_ENABLE_COMM       -- 0x06 write enable
+   sst25vf_cs = 1
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_64K_SECTOR_ERASE_COMM   -- 0xD8
+   spi_master_hw = byte_addr[2]
+   spi_master_hw = byte_addr[1]
+   spi_master_hw = byte_addr[0]
+   sst25vf_cs = 1
+
+   delay_1ms(100)
+
+end procedure
+
+-- --------------------------------------------------------------------------------
+-- Init chip
+-- --------------------------------------------------------------------------------
+procedure sst25vf_init() is
+
+   if defined(sst25vf_force_spi_mode) == true then
+      sst25vf_force_spi_mode()
+   end if
+
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_ENABLE_WR_STATUS_COMM   -- enable status register write
+   sst25vf_cs = 1
+   sst25vf_cs = 0
+   spi_master_hw = SST25VF_WRITE_STATUS_COMM       -- write status register
+   spi_master_hw = 0
+   delay_1ms(10)
+   sst25vf_cs = 1
+
+end procedure
+

@@ -1,0 +1,62 @@
+-- ------------------------------------------------------
+-- Title: tc74.jal
+--
+-- Author: Joep Suijs, Copyright (c) 2010..2011, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: 
+--
+-- Sources:
+--
+-- Notes:
+--
+--
+-- ------------------------------------------------------
+
+; status: this procedure worked okay. However, sometimes 
+; - the device returned deviated values; since it was a few degrees up/down  from the expected
+;   value, I assume it is not a comms issue.
+; - the device seems to suffer from self-heating (I used it to measure air-temperature; it was
+;   not mounted on anything). 
+; I swithed to an lm35 for this particular application and abandoned this development. 
+; It result as is could be good staring point if you want to use this particular sensor.
+
+
+; setup:
+;const word _i2c_bus_speed = 1 ; * 100kHz
+;const bit _i2c_level = true   ; i2c levels (not SMB)
+;include i2c_software   
+;i2c_initialize()
+;include tc74
+
+
+-- return true = okay
+-- type is x in TC74Ax (5, 7)
+function tc74_read(byte in type, sbyte in out value) return bit is
+   var bit r
+   var byte i   
+
+   var byte base_address = 0x90 + (type & 0x0f) * 2
+
+   -- select temperature registser
+   i2c_start()
+   r =     i2c_transmit_byte(base_address + 0)  -- i2c write address
+   r = r & i2c_transmit_byte(0)                 -- select temp register
+   
+   -- read temperature
+   i2c_restart()
+   r = r & i2c_transmit_byte(base_address + 1)  -- i2c read address
+   value = sbyte(i2c_receive_byte(false))       -- false = nack (this is the only
+                                                -- and thus last byte we read)
+   i2c_stop()
+
+   return r   
+end function
+

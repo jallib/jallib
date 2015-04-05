@@ -1,0 +1,81 @@
+-- Title: SPI Master  (spi_master_hw.jal)
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4l
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: SPI Master hardware control.
+-- Routines for sending and receiving through the SPI in master mode
+--
+-- Sources: good overview of SPI at http://en.wikipedia.org/wiki/Serial_Peripheral_Interface_Bus
+-- also at: http://elm-chan.org/docs/spi_e.html
+--
+
+-- Use these when calling the spi_init() routine below ( SPI master mode, see sources above )
+const SPI_MODE_00 = 0
+const SPI_MODE_01 = 1
+const SPI_MODE_10 = 2
+const SPI_MODE_11 = 3
+
+-- Use these when calling the spi_init() routine below ( SPI clock frequency )
+const SPI_RATE_FOSC_4 = 0
+const SPI_RATE_FOSC_16 = 1
+const SPI_RATE_FOSC_64 = 2
+const SPI_RATE_TMR = 3
+
+-- SPI is full-duplex, so we exchange master and slave data byte
+function spi_master_hw_exchange(byte in m_data) return byte is
+
+   SSPBUF = m_data
+
+   if ( SSPCON_WCOL != 0 ) then
+      -- FIXME how to report error???
+      return 0xFF
+   end if
+
+   while ( SSPSTAT_BF == 0 ) loop end loop
+
+   -- return slave data
+   return SSPBUF
+end function
+
+-- half-duplex convenience function. send data to slave, discard reply
+procedure spi_master_hw'put(byte in data) is
+   var byte dummy
+   dummy = spi_master_hw_exchange(data)
+end procedure
+
+-- half-duplex convenience function. send 0xFF, get slave data
+function spi_master_hw'get() return byte is
+   var byte data
+   data = spi_master_hw_exchange(0xFF)
+   return data
+end function
+
+-- Initialize the SPI registers.
+-- Note: check your datasheet -- TRIS settings, any SPI errata?
+procedure spi_init(byte in spi_mode, byte in spi_rate) is
+   SSPCON = 0
+   SSPSTAT_SMP = 0
+
+   if spi_mode == SPI_MODE_00 then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 1
+   elsif spi_mode == SPI_MODE_01 then
+      SSPCON_CKP = 0
+      SSPSTAT_CKE = 0
+   elsif spi_mode == SPI_MODE_10 then
+      SSPCON_CKP = 1
+      SSPSTAT_CKE = 1
+   else
+      SSPCON_CKP = 1
+      SSPSTAT_CKE = 0
+   end if
+
+   SSPCON_SSPM = spi_rate
+   SSPCON_SSPEN = 1
+end procedure
+
