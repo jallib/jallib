@@ -2,7 +2,7 @@
 # Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
 # Adapted by:
 # 
-# This file is part of jallib (http://jallib.googlecode.com)
+# This file is part of jallib (https://github.com/jallib/jallib)
 # Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 #
 #
@@ -94,11 +94,11 @@ export:
 	echo ${VERSION} > distrib/jallib-all_devices-${VERSION}/VERSION
 	# get clean source from repos
 	# (svn export gets the sources, but without any .svn dir (no svn metadata)
-	svn export http://jallib.googlecode.com/svn/trunk distrib/jallib-export
+	svn export https://github.com/jallib/Jallib.git/trunk distrib/jallib-export
 	# license is common for both svn and release
-	svn export -N http://jallib.googlecode.com/svn/trunk distrib/jallib-extra
+	svn export -N https://github.com/jallib/Jallib.git/trunk distrib/jallib-extra
 	# get readme for the release (force because target dir already exists)
-	svn export --force http://jallib.googlecode.com/svn/trunk/tools distrib/jallib-extra
+	svn export --force https://github.com/jallib/Jallib.git/trunk/tools distrib/jallib-extra
 
 prepare:
 	# flatten library files
@@ -147,7 +147,7 @@ prepare:
 	# doc menu...
 	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
 	# manually include device files doc, as it's not generated from a lib
-	echo "<a href='http://jallib.googlecode.com' target='_parent'><i>back to jallib</i></a><br/><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
+	echo "<a href='https://github.com/jallib/jallib' target='_parent'><i>back to jallib</i></a><br/><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
 	echo "<a href='devicefiles.html' target='lib_desc'>device files</a><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
 	# generate html from lib included in the release, and specifcy to create local links to samples (-l option)
 	for htmlfile in `ls distrib/jallib-${VERSION}/doc/html/*.html | egrep -v menu\.html\|welcome\.html\|index\.html\|devicefiles\.html | sort  `; \
