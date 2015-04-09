@@ -260,7 +260,7 @@ def content_not_empty(val):
 def compiler_version(val):
     return re.match("^(>|<|>=|<=|=)?\d+(\.\d+\w*)+\s+$",val)
 
-JALLIB = """^-- This file is part of (jallib|jaluino)\s+\(http://(jallib|jaluino).googlecode.com\)"""
+JALLIB = """^-- This file is part of (jallib|jaluino)\s+\((http://(jallib|jaluino).googlecode.com|https://github.com/jallib/jallib)\)"""
 LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
 LICENSE2 = """^-- Released under the ZLIB license\s+\(http://www.opensource.org/licenses/zlib-license.html\)"""
 
