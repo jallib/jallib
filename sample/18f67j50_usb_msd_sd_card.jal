@@ -1,7 +1,7 @@
 -- Title: USB Mass Storage Device Sample (SD Card)
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4o
+-- Compiler: >=2.4q3
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
@@ -23,26 +23,30 @@
 -- Notes:
 --
 
-include 18f67j50                   -- target PICmicro
--- include chip
-pragma target clock 48_000_000     -- oscillator frequency
--- configuration memory settings (fuses)
-pragma target WDT  CONTROL        -- no watchdog
-pragma target PLLDIV        P2     -- divide by 2
-pragma target CPUDIV        P1     -- no cpu system clock divide
-pragma target OSC  INTOSC_NOCLKOUT_PLL -- internal resonator
-pragma target IESO  DISABLED
-pragma target FCMEN DISABLED
-OSCTUNE_PLLEN = 1                  -- set 96mhz pll
-OSCCON_SCS = 0b00
-_usec_delay(1_000)                 -- wait for OSC PLL to settle
+include 18f67j50                      -- target PICmicro
 --
-enable_digital_io()   -- disable all analog pins if any
-_usec_delay (100_000) -- wait for power to stablilize
+-- This program uses the internal oscillator with PLL active.
+pragma target clock 48_000_000      -- oscillator frequency
 --
-enable_digital_io()                -- make all pins digital I/O
-
-include delay
+pragma target OSC      INTOSC_NOCLKOUT_PLL       -- internal oscillator
+pragma target PLLDIV   P2                        -- 8 MHz -> 4 MHz
+pragma target CPUDIV   P1                        -- Fosc divisor
+pragma target WDT      CONTROL                   -- watchdog
+pragma target XINST    DISABLED                  -- extended instruction set
+pragma target DEBUG    DISABLED                  -- debugging
+pragma target FCMEN    DISABLED                  -- clock monitoring
+pragma target IESO     DISABLED                  -- int/ext osc. switch
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+WDTCON_SWDTEN = OFF                 -- disable WDT
+OSCCON_SCS = 0                      -- select primary oscillator
+OSCTUNE_PLLEN = TRUE                -- use PLL
+--
+enable_digital_io()                 -- make all pins digital I/O
+--
+include delay                       -- library with delay procedures
 
 include print
 
@@ -67,9 +71,6 @@ spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
 alias spi_master is spi_master_hw
 alias spi_master_exchange is spi_master_hw_exchange
 
--- whether or not using the serial port
-const HAS_SERIAL_DEBUG_PORT = 1
-
 include format
 
 -- enable usb debugging
@@ -80,11 +81,11 @@ const bit USB_DEBUG_HIGH = FALSE
 
 -- setup debug lib
 alias debug_data is serial_data
-const bit DEBUG_MASTER_ENABLE = FALSE    -- enables debugging
+const bit DEBUG_MASTER_ENABLE = OFF    -- enables debugging
 include debug
 --
 -- turn on and off debug levels.
-debug_lvl_0 = OFF  -- short debugging
+debug_lvl_0 = ON  -- short debugging
 debug_lvl_1 = OFF  -- display data in/out
 debug_lvl_2 = OFF  -- display commands
 debug_lvl_3 = OFF  -- short debug info
@@ -120,31 +121,76 @@ usb_msd_init()
 -- main Program
 --------------------------------------------------------------------------------
 
--- print welcome string
 print_crlf(serial_data)
-const  byte str_welcome[] = "JAL USB MSD demo! Please wait (takes about 10 seconds) before the device is fully configured"
-print_string(serial_data, str_welcome )
-print_crlf(serial_data)
-
--- wait till MSD is configured
-usb_msd_wait_configured()
-
--- notify user
-const  byte str[] = "Mass Storage Device (MSD) has been configured by the HOST!"
-print_string(serial_data, str )
-print_crlf(serial_data)
+print_string(serial_data,"Your mass storage device size is ")
+print_dword_dec(serial_data,usb_msd_num_of_blocks * 512)
+print_string(serial_data," bytes.")
 
 --------------------------------------------------------------------------------
 -- main loop
 --------------------------------------------------------------------------------
+
+-- define procedures and variables
+procedure usb_disconnected_tasks()
+procedure usb_connected_tasks()
 var word char_count = 0
+var word usb_check = 0
+alias USB_EVENT is PIR2_USBIF
+var byte usb_connected = TRUE
+
+-- main loop to serve USB
 forever loop
-   -- poll the usb ISR function on a regular base, in order to 
+   -- poll the usb ISR function on a regular base, in order to
    -- serve the USB MSD requests
    usb_msd_tasks()
 
-   -- if you do anything else here, don't take to long!
-   
+   -- Check if usb is still connected
+   -- Another way would be to check the voltage on a USB+ pin.
+   if USB_EVENT == 1 then
+      usb_check = 0
+   elsif usb_check == 0xFFFF then
+      -- USB is not connected
+      usb_disconnected_tasks() -- perform your tasks
+   else
+      -- USB is connected
+      usb_connected_tasks()
+      usb_check = usb_check + 1
+   end if
+end loop
+
+-- Do anything you want here while usb is disconnected.
+-- Quit the procedure when USB_EVENT = 1
+procedure usb_disconnected_tasks() is
+   if usb_connected == TRUE then
+      print_crlf(serial_data)
+      print_string(serial_data, "USB is disconnected." )
+      usb_connected = FALSE
+   end if
+
+   forever loop
+      serial_data = "!"
+      delay_1s(1)
+      
+      if USB_EVENT == 1 then
+         exit loop
+      end if
+   end loop
+end procedure
+
+-- Do anything you want here while usb is connected, but don't take long!
+procedure usb_connected_tasks() is
+   if usb_connected == FALSE then
+      ;-- wait till MSD is configured
+      usb_msd_wait_configured()
+      print_crlf(serial_data)
+      print_string(serial_data, "USB is connected." )
+      usb_connected = TRUE
+   end if
+
+   -- poll the usb ISR function on a regular base, in order to
+   -- serve the USB MSD requests
+   usb_msd_tasks()
+      
    -- let us know the PIC is actually doing something
    -- by sending char "." to serial port
    if char_count == 40000 then
@@ -153,7 +199,8 @@ forever loop
       char_count = 0
    end if
    char_count = char_count + 1
-end loop
+end procedure
+
 
 
 
