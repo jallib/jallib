@@ -1,4 +1,4 @@
-
+#!/usr/bin/python
 # CreateDSwiki.py
 #
 # Author: Rob Hamerling, Copyrigh (c) 2009..2015. All rights reserved.
@@ -25,21 +25,21 @@ import json
 #  input (may require changes for other systems or platforms)
 home        = os.path.join("/", "home", "robh")             # user home directory
 base        = os.path.join("/", "media", "nas")             # base of MPLAB-X material  
-picspecfile = os.path.join(base,"jallib","tools","devicespecific.json")   # PIC specific properties
-dslist      = os.path.join(base,"jallib","tools","datasheet.list")        # datasheet number/title file
-pdfdir      = os.path.join(base,"picdatasheets")                          # dir with datasheets
+picspecfile = os.path.join(base, "jallib", "tools", "devicespecific.json") # PIC specific properties
+dslist      = os.path.join(base, "jallib", "tools", "datasheet.list")      # datasheet number/title file
+pdfdir      = os.path.join(base, "picdatasheets")                          # dir with datasheets
 
 #  output
-dst         = os.path.join(home, "jallib", "jallib.wiki")                 # output path
+dst         = os.path.join(home, "jallib", "jallib.wiki")                  # output path
 
-url         = "http://ww1.microchip.com/downloads/en/DeviceDoc/"          # Microchip site
+url         = "http://ww1.microchip.com/downloads/en/DeviceDoc/"           # Microchip site with datasheets
 
 
-def read_datasheet(infile):
+def read_datasheet_list(infile):
    """ fill dictionary 'datasheet' with number, date and title """
-   fp = open(infile, "r")                             # datasheet list
+   fp = open(infile, "r")                                # datasheet list        
    for ln in fp:
-      w = ln.split(" ", 1)                            # separate number from title
+      w = ln.split(" ", 1)                               # separate number from title
       if (len(w) > 1):
          dd = w[0].upper()
          ds = w[1].strip()
@@ -89,11 +89,11 @@ def pic_wiki(outfile):
 
 def group_wiki(outfile):
    """ create wiki of groups of PICs with the same datasheet or programming specifications """
-
+   
    def sort_group_on_pic(group):
       """ custom sort on first PIC of group in groups """
       return groups[group][0]
-
+      
    if outfile.find("Pgm") >= 0:
       type  = "ps"
       title = "PICs sharing the same Programming Specifications"
@@ -150,12 +150,12 @@ def group_wiki(outfile):
 
 
 if __name__ == "__main__":
-
    datasheet = {}                                           # new dictionary
-   read_datasheet(dslist)                                   # load datasheet info
+   read_datasheet_list(dslist)                                   # load datasheet info
    picspec = json.load(file(picspecfile))                   # load PIC specific info
    pic_wiki("DataSheets.md")
    pic_wiki("ProgrammingSpecifications.md")
    group_wiki("PicGroups.md")
    group_wiki("PicPgmGroups.md")
+   
 
