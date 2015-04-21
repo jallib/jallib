@@ -1,55 +1,55 @@
 #!/usr/bin/python
-# -----------------------------------------------------------------------
-# Title: Analyze TORELEASE and check consistency with Jallib
-#
-# Author: Rob Hamerling, Copyright (c) 2008..2014, all rights reserved.
-#
-# Adapted-by:
-#
-# Revision: $Revision$
-#
-# Compiler: N/A
-#
-# This file is part of jallib  http://jallib.googlecode.com
-# Released under the BSD license
-#              http://www.opensource.org/licenses/bsd-license.php
-#
-# Description:
-# - Read TORELEASE and collect entries on a per-directory basis
-#   (2nd level subdirectory for includes, 1st level for others).
-# - Collect PICnames used in filenames of sample programs.
-#   Check if there is at least 1 blink-a-led sample for each PIC.
-# - Check if every sample uses a released device file.
-# - Collect and list some statistics for every main library group.
-# - Collect Jallib contents (directory tree) and
-#    - list unreleased samples
-#    - list released samples which include one or more unreleased libraries
-# - Sort each of the parts and create a new TORELEASE
-#   (report and comment-out duplicate entries)
-#
-# Sources: none
-#
-# Notes:
-#  - When a commandline argument 'runtype' is specified a slightly more
-#    extensive listing is produced: ALL unreleased files are listed.
-#    By default unreleased device files and unreleased basic blink-a-led
-#    samples are not listed, only counted.
-#
-# -----------------------------------------------------------------------
+"""
+ Title: Analyze TORELEASE and check consistency with Jallib
+
+ Author: Rob Hamerling, Copyright (c) 2008..2014, all rights reserved.
+
+ Adapted-by:
+
+ Revision: $Revision$
+
+ Compiler: N/A
+
+ This file is part of jallib  http://jallib.googlecode.com
+ Released under the BSD license
+              http://www.opensource.org/licenses/bsd-license.php
+
+ Description:
+ - Read TORELEASE and collect entries on a per-directory basis
+   (2nd level subdirectory for includes, 1st level for others).
+ - Collect PICnames used in filenames of sample programs.
+   Check if there is at least 1 blink-a-led sample for each PIC.
+ - Check if every sample uses a released device file.
+ - Collect and list some statistics for every main library group.
+ - Collect Jallib contents (directory tree) and
+    - list unreleased samples
+    - list released samples which include one or more unreleased libraries
+ - Sort each of the parts and create a new TORELEASE
+   (report and comment-out duplicate entries)
+
+ Sources: none
+
+ Notes:
+  - When a commandline argument 'runtype' is specified a slightly more
+    extensive listing is produced: ALL unreleased files are listed.
+    By default unreleased device files and unreleased basic blink-a-led
+    samples are not listed, only counted.
+
+"""
 
 import os, sys
 import re
 import time
 from string import maketrans
 
-base       = "k:/jallib"                                    # base directory of local copy of Jallib
-
-libdir     = base + "/include"                              # device files and function libraries
-smpdir     = base + "/sample"                               # samples
-projdir    = base + "/project"                              # projecta
-torelease  = base + "/TORELEASE"                            # TORELEASE
-newrelease = 'TORELEASE.NEW'                                # New TORELEASE
-report     = 'torelease.lst'                                # Report file
+home       = os.path.join("/", "home", "robh")              # home directory
+base       = os.path.join(home, "jallib")                   # base directory of local copy of Jallib
+libdir     = os.path.join(base, "include")                  # device files and function libraries
+smpdir     = os.path.join(base, "sample")                   # samples
+projdir    = os.path.join(base, "project")                  # projects
+torelease  = os.path.join(base, "TORELEASE")                # TORELEASE
+newrelease = "TORELEASE.NEW"                                # New TORELEASE
+report     = "torelease.lst"                                # Report file
 
 xunderscore = maketrans("_"," ")                            # underscore -> space
 xslash      = maketrans("\\","/")                           # backward slash -> forward slash
