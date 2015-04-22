@@ -3,13 +3,13 @@
 -- Adapted-by:
 -- Compiler: >=2.4q3
 --
--- This file is part of jallib (http://jallib.googlecode.com)
+-- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description: Test program for USB MSD (Mass Storage Device) with SD card.
 --
 --              Here are my speed tests:
---              Read Speed (SD_READ_EXTRA_SPEED = TRUE)  - 122KB/s
+--              Read Speed (SD_READ_EXTRA_SPEED = TRUE)  - 205KB/s (usb only)
 --              Read Speed (SD_READ_EXTRA_SPEED = FALSE) - 108KB/s
 --              Write Speed                              - 110KB/s
 --
@@ -48,6 +48,7 @@ enable_digital_io()                 -- make all pins digital I/O
 --
 include delay                       -- library with delay procedures
 
+const PRINT_MAX_VAR_SIZE = 6
 include print
 
 -- setup uart for communication
@@ -103,8 +104,7 @@ sd_chip_select_direction = output
 --
 -- setup the sd card library
 alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
-const bit SD_READ_EXTRA_SPEED = FALSE
-const bit SD_DELAY_AFTER_WRITE = FALSE
+const bit SD_READ_EXTRA_SPEED = TRUE
 include sd_card              -- include the sd card ide hard disk library
 sd_init()                    -- initialize startup settings
 --
@@ -116,18 +116,13 @@ end if
 -- setup MSD library
 include usb_msd
 usb_msd_init()
-
---------------------------------------------------------------------------------
--- main Program
---------------------------------------------------------------------------------
-
 print_crlf(serial_data)
 print_string(serial_data,"Your mass storage device size is ")
-print_dword_dec(serial_data,usb_msd_num_of_blocks * 512)
+print_maxvar_dec(serial_data,byte*6(usb_msd_num_of_blocks)*512)
 print_string(serial_data," bytes.")
 
 --------------------------------------------------------------------------------
--- main loop
+-- main Program
 --------------------------------------------------------------------------------
 
 -- define procedures and variables
@@ -135,7 +130,6 @@ procedure usb_disconnected_tasks()
 procedure usb_connected_tasks()
 var word char_count = 0
 var word usb_check = 0
-alias USB_EVENT is PIR2_USBIF
 var byte usb_connected = TRUE
 
 -- main loop to serve USB
@@ -146,7 +140,7 @@ forever loop
 
    -- Check if usb is still connected
    -- Another way would be to check the voltage on a USB+ pin.
-   if USB_EVENT == 1 then
+   if USB_EVENT_OCCURRED == 1 then
       usb_check = 0
    elsif usb_check == 0xFFFF then
       -- USB is not connected
@@ -159,7 +153,7 @@ forever loop
 end loop
 
 -- Do anything you want here while usb is disconnected.
--- Quit the procedure when USB_EVENT = 1
+-- Quit the procedure when USB_EVENT_OCCURRED = 1
 procedure usb_disconnected_tasks() is
    if usb_connected == TRUE then
       print_crlf(serial_data)
@@ -171,7 +165,7 @@ procedure usb_disconnected_tasks() is
       serial_data = "!"
       delay_1s(1)
       
-      if USB_EVENT == 1 then
+      if USB_EVENT_OCCURRED == 1 then
          exit loop
       end if
    end loop
@@ -200,6 +194,7 @@ procedure usb_connected_tasks() is
    end if
    char_count = char_count + 1
 end procedure
+
 
 
 
