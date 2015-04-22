@@ -21,6 +21,16 @@ include usb_defs -- USB Definitions
 
 include storage_drivers
 
+include memory_pointer2
+
+-- Use the read/write callbacks for extra speed.
+--
+-- If (STORAGE_READ_EXTRA_SPEED = TRUE) and (USB_MSD_USE_READ_CALLBACK = FALSE)
+-- you can write your own storage_read_callback().
+if !defined(USB_MSD_USE_READ_CALLBACK) then
+   const bit USB_MSD_USE_READ_CALLBACK = STORAGE_READ_EXTRA_SPEED
+end if
+
 -- variables
 var dword usb_msd_sector_step_
 var dword usb_msd_address
@@ -48,7 +58,7 @@ var volatile bit usb_msd_sae_owns_bit_in at usb_bd1in_stat : USB_BDSTATUS_UOWN
 var volatile bit usb_msd_sae_owns_bit_out at usb_bd1out_stat : USB_BDSTATUS_UOWN	
  	
 -- prototypes. can't live without them :)
-procedure usb_msd_process_data()
+procedure usb_msd_process_data(byte in do_copy)
 procedure usb_handle_isr()
 procedure usb_send_csw()
 
@@ -207,17 +217,12 @@ const word USB_EP1_IN_ADDR  =  (USB_EP1_OUT_ADDR + USB_EP1_OUT_SIZE) + 0x30
 const bit USB_EP2 = DISABLED
 const bit USB_EP3 = DISABLED
 
-var volatile byte msd_tx_buffer[USB_EP1_IN_SIZE] at 0x600
+var byte msd_tx_buffer[USB_EP1_IN_SIZE] at { 0x600 }
 ;var byte msd_tx_buffer[USB_EP1_IN_SIZE] at USB_EP1_IN_ADDR
 ;var volatile byte msd_tx_buffer[USB_EP1_IN_SIZE]
 
 var volatile byte usb_ep1in_buf[USB_EP1_IN_SIZE] at USB_EP1_IN_ADDR
 var volatile byte usb_ep1out_buf[USB_EP1_OUT_SIZE] at USB_EP1_OUT_ADDR
-
--- fix some memory space so varibles don't get overwritten. needs a perminant fix
-var byte usb_msd_temp at 0x400 + 255
-var volatile byte reserve_array[0x10] at 0x400 + 256
-usb_msd_temp = reserve_array[0]
 
 -- ---------------------------------------------------------------------
 -- Default USB_DEVICE_DESCRIPTOR
@@ -586,13 +591,45 @@ function msd_cbw_is_valid() return bit is
 end function
 
 -- -----------------------------------------------------------------------
+-- Read from the storage device into USB_EP1 for output to the host.
+-- -----------------------------------------------------------------------
+procedure usb_msd_read(dword in address) is
+   storage_raw_read_sector_address(address)
+   while usb_msd_data_residue != 0 loop
+         usb_msd_step64_ = 0
+         for 8 loop
+
+            mem_pointer1_address = USB_EP1_IN_ADDR
+            msd_wait_own_tx() -- wait till we can write to the tx buffer
+            --  read data from drive buffer in 64 byte chunks and place it
+            --  into the usb tx buffer.   		
+            var byte step2
+            for 64 using step2 loop
+               ;msd_tx_buffer[step2] = 0xAA -- for testing
+               mem_pointer1 = storage_sector_buffer[usb_msd_step64_ + word(step2)]
+               ;-- possible compiler bug with:
+               ;msd_tx_buffer[step2] = storage_sector_buffer[usb_msd_step64_ + step2]
+            end loop
+
+            usb_msd_step64_ = usb_msd_step64_ + 64
+
+            -- success if all data was read from the data device ok.
+            usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
+
+            usb_msd_process_data(0)
+         end loop
+   end loop
+end procedure
+
+-- -----------------------------------------------------------------------
 -- Do whatever needs to be done with a command received.
 -- -----------------------------------------------------------------------
 procedure usb_msd_command_received() is
    debug_char(0,"C")
 
    var byte step
-
+   msd_wait_own_tx() -- wait till we can write to the tx buffer
+   
    if usb_msd_cbw_command_[0] == USB_MSD_INQUIRY then
       debug_char(0,"I")
 
@@ -685,6 +722,7 @@ procedure usb_msd_command_received() is
       usb_msd_state = USB_MSD_STATE_DATA_IN -- waiting to send data to host
 
    elsif usb_msd_cbw_command_[0] == USB_MSD_READ_10 then
+
       debug_char(0,"R")
 
       debug_crlf(2)
@@ -698,42 +736,30 @@ procedure usb_msd_command_received() is
       address_[1] = usb_msd_cbw_command_[4]
       address_[2] = usb_msd_cbw_command_[3]
       address_[3] = usb_msd_cbw_command_[2]
-
-      var dword sector_step = 0
-
+      
+      -- transfer data into USB_EP1
       for usb_msd_cbw_data_transfer_length / 512 loop
-         storage_raw_read_sector_address(address + sector_step)
-
-         sector_step = sector_step + 1
-
          usb_msd_data_residue = 512
-
-         while usb_msd_data_residue != 0 loop
-
-            usb_msd_step64_ = 0
-            for 8 loop
-
-               --  read data from drive buffer in 64 byte chunks and place it
-               --  into the usb tx buffer.   		
-               var byte step2
-               for 64 using step2 loop
-                  ;msd_tx_buffer[step2] = 0xAA -- for testing
-
-                  msd_tx_buffer[step2] = storage_sector_buffer[usb_msd_step64_ + word(step2)]
-                  ;-- possible compiler bug with:
-                  ;msd_tx_buffer[step2] = storage_sector_buffer[usb_msd_step64_ + step2]
-
-               end loop
-
-
-               usb_msd_step64_ = usb_msd_step64_ + 64
-
-               -- success if all data was read from the data device ok.
-               usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
-
-               usb_msd_process_data()
-            end loop
-         end loop
+         if STORAGE_DEVICE == SD_CARD then
+            if defined(STORAGE_READ_EXTRA_SPEED) then
+               if (STORAGE_READ_EXTRA_SPEED == TRUE) then
+                  -- Read is done through storage_read_callback()
+                  -- for faster reads.
+                  storage_read_sector_address_with_callback(address)
+               else
+                   -- Read through storage_sector_buffer[]
+                   usb_msd_read(address)
+               end if
+            else
+               -- Read through storage_sector_buffer[]
+               usb_msd_read(address)
+            end if
+            
+         else -- devices other then sd card
+             -- Read through storage_sector_buffer[]
+             usb_msd_read(address)
+         end if
+            address = address + 1
       end loop
 
       usb_msd_data_residue = 0 -- done sending all data
@@ -790,7 +816,7 @@ procedure usb_msd_command_received() is
 ;                     -- success if all data was read from the data device ok.
 ;                     usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
 ;
-;                     usb_msd_process_data()
+;                     usb_msd_process_data(1)
 ;
 ;                  end loop
 ;
@@ -992,7 +1018,6 @@ procedure usb_msd_command_received() is
 
 end procedure
 
-
 -- -----------------------------------------------------------------------
 -- Handeles data going out from PIC and into the host.
 -- -----------------------------------------------------------------------
@@ -1138,8 +1163,6 @@ procedure msd_send_data(byte in size, bit in do_copy, bit in wait_own) is
 
    debug_char(0,"*")
 
-   mem_pointer1_address = USB_EP1_IN_ADDR
-
    -- note: I don't like blocking loops!
    -- does usb_send_data do this?
    if wait_own == TRUE then
@@ -1160,6 +1183,7 @@ procedure msd_send_data(byte in size, bit in do_copy, bit in wait_own) is
    ;	end loop
    	
       -- copy the array to the bulk endpoiint (endpoint 1)
+      mem_pointer1_address = USB_EP1_IN_ADDR
       var byte index
    	for size using index loop
    	   ;serial_data = msd_tx_buffer[index]
@@ -1224,7 +1248,7 @@ end procedure
 -- set the amount of data to be sent to the host through msd_send_data
 -- and update the amount of data left to be sent.
 -- -----------------------------------------------------------------------
-procedure usb_msd_process_data() is
+procedure usb_msd_process_data(byte in do_copy) is
    debug_char(0,"E")
 
    -- if there is more the 64 bytes to be sent (the size of the in endpoint)
@@ -1240,7 +1264,7 @@ procedure usb_msd_process_data() is
       -- subtract 64 bytes from what is left to send.
       usb_msd_data_residue = usb_msd_data_residue - 64
       -- send 64 bytes of data
-      msd_send_data(64,1,1)
+      msd_send_data(64,do_copy,1)
 
    elsif usb_msd_data_residue != 0 then -- if there is less then 64 bytes to send, or if there was an error
       if usb_msd_csw_status == USB_MSD_CSW_STATUS_SUCCESS then
@@ -1257,7 +1281,7 @@ procedure usb_msd_process_data() is
             -- send data that was expected by host
             ;usb_send_data(1, msd_tx_buffer, byte(usb_msd_data_residue), low )
 
-            msd_send_data(byte(usb_msd_data_residue),1,1)
+            msd_send_data(byte(usb_msd_data_residue),do_copy,1)
             usb_msd_data_residue = 0
       elsif usb_msd_csw_status == USB_MSD_CSW_STATUS_FAIL then
          -- if there was an error (usually during reading or writing data)
@@ -1278,7 +1302,7 @@ procedure usb_msd_process_data() is
             end loop
 
             -- send data
-            msd_send_data(64,1,1)
+            msd_send_data(64,do_copy,1)
             usb_msd_data_residue = usb_msd_data_residue - 64
             usb_msd_data_residue = 0
          else                                   		                  ------------------- may be more then 64 bytes to send???
@@ -1289,7 +1313,7 @@ procedure usb_msd_process_data() is
             end loop
 
             -- send data
-            msd_send_data(byte(usb_msd_data_residue),1,1)
+            msd_send_data(byte(usb_msd_data_residue),do_copy,1)
             usb_msd_data_residue = 0
          end if
       end if
@@ -1326,7 +1350,7 @@ procedure usb_msd_tasks() is
          -- if there is data to send
          -- set the amount of data to be sent to the host through msd_send_data
          -- and update the amount of data left to be sent.
-         usb_msd_process_data()
+         usb_msd_process_data(1)
       end if
 
    elsif !usb_msd_sae_owns_bit_in & (usb_msd_state == USB_MSD_STATE_WAIT) then
@@ -1366,6 +1390,118 @@ procedure usb_msd_wait_configured() is
    end loop
 end procedure
 
+-- -----------------------------------------------------------------------
+-- USB read procedure, a callback from your chosen storage library.
+-- also see storage_read_callback() below.
+-- -----------------------------------------------------------------------
+procedure usb_read_callback() is
+   if STORAGE_DEVICE == SD_CARD then
+      while usb_msd_data_residue != 0 loop
+            for 8 loop
 
+               mem_pointer1_address = USB_EP1_IN_ADDR
+               msd_wait_own_tx() -- wait till we can write to the tx buffer
+               --  read data from drive buffer in 64 byte chunks and place it
+               --  into the usb tx buffer.   		
 
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
+               mem_pointer1 = spi_master
 
+               usb_msd_step64_ = usb_msd_step64_ + 64
+
+               -- success if all data was read from the data device ok.
+               usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
+
+               usb_msd_process_data(0)
+            end loop
+      end loop
+   else
+      _error "This storage device is not supported by the USB_MSD lib"
+   end if
+end procedure
+
+-- -----------------------------------------------------------------------
+-- point the storage read callback to usb_read_callback()
+-- for faster reads. You make your own custom storage_read_callback()
+-- by setting const bit USB_MSD_USE_READ_CALLBACK = FALSE
+-- -----------------------------------------------------------------------
+if defined (USB_MSD_USE_READ_CALLBACK) then
+   if USB_MSD_USE_READ_CALLBACK == TRUE then
+      if defined(STORAGE_READ_EXTRA_SPEED) then
+         if STORAGE_READ_EXTRA_SPEED == TRUE then -- see storage_drivers.jal
+
+            procedure storage_read_callback() is
+               pragma inline
+               usb_read_callback()
+            end procedure
+            
+         else
+             _error "You can't use usb_read_callback without STORAGE_READ_EXTRA_SPEED = TRUE. See storage_drivers.jal for STORAGE_READ_EXTRA_SPEED."
+         end if
+      end if
+   end if
+end if
+
+-- -----------------------------------------------------------------------
