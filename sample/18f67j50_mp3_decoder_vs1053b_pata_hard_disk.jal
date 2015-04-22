@@ -1,9 +1,9 @@
 -- Title: MP3 decoder vs1053b sample
 -- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4n
+-- Compiler: >=2.4q3
 --
--- This file is part of jallib (http://jallib.googlecode.com)
+-- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description: example usage of the vs1053 mp3 decoder. plays .mp3 files from
@@ -59,7 +59,15 @@ alias serial_data is serial_hw_data
 alias serial_data_available is serial_hw_data_available
 
 
+const PRINT_MAX_VAR_SIZE = 6
 include print
+var byte sample_started[] = "***Jallib Sample Started***"
+print_string(serial_data,sample_started)
+print_crlf(serial_data)
+
+
+include strings
+
 
 -- setup SPI library
 include spi_master_hw         -- includes the spi library
@@ -91,6 +99,8 @@ const bit PATA_HD_READ_EXTRA_SPEED = FALSE -- uses additonal code space to add a
 const byte PATA_HD_USE_CS0_CS1_PINS = TRUE -- set true if you will use Alternate Status, Digital Output or Drive Address registers
 const bit PATA_HD_NO_INVERTER = TRUE -- if true, an external inverter chip is not needed on /iowr, /iord, /cs0, /cs1 pins
 -- pin assignments
+alias     pata_hd_reset                 is pin_e5 -- reset pin
+alias     pata_hd_reset_direction       is pin_e5_direction
 alias     pata_hd_data_low              is porta   -- data port (low bits)
 alias     pata_hd_data_low_direction    is porta_direction
 alias     pata_hd_data_high             is portd   -- data port (high bits)
@@ -272,16 +282,13 @@ forever loop
          sector_step = sector_step + 1
 
          -- do something with the data
-         if (fat32_file_extension[0] == "m" & fat32_file_extension[1] == "p" & fat32_file_extension[2] == "3") |
-            (fat32_file_extension[0] == "m" & fat32_file_extension[1] == "P" & fat32_file_extension[2] == "3") |
-            (fat32_file_extension[0] == "M" & fat32_file_extension[1] == "p" & fat32_file_extension[2] == "3") |
-            (fat32_file_extension[0] == "M" & fat32_file_extension[1] == "P" & fat32_file_extension[2] == "3") then
+         if string_compare(fat32_file_extension, "mp3") then
 
             -- now send it to vs1053b
 
             -- set to spi mode 00
             spi_master_hw_set_mode_00()
-            
+
             -- enable vs1053b
             vs_data_chip_select = low
 
@@ -435,7 +442,7 @@ forever loop
          end if
          vs_data_chip_select = high -- disable vs1053b
          count8 = count8 + 1
-         
+
       end loop
       -- close the file
       fat32_file_close()
