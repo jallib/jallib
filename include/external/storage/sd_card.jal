@@ -2,7 +2,7 @@
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4q2
--- Revision: $Revision$
+-- Revision: $Revision: 3534 $
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -124,6 +124,16 @@ if !defined(STORAGE_DEVICE) then
    const STORAGE_DEVICE = SD_CARD
 end if
 
+-- give extra delay after writing.
+-- may help to get old standard capacity cards working.
+if !defined(SD_DELAY_AFTER_WRITE) then
+   const SD_DELAY_AFTER_WRITE = FALSE
+end if
+
+-- number of sectors variable
+var dword sd_number_of_sectors -- number of sectors * 512 = sd card size
+procedure sd_get_number_of_sectors() -- procedure prototype
+
 --------------------------------------------------------------------------------
 -- send a command to the sd card (commands with 1 response only)
 --------------------------------------------------------------------------------
@@ -153,7 +163,7 @@ procedure send_command(byte in command,dword in data, byte out response) is
 
    -- CRC data byte, crc disabled in this lib, but required for SD_GO_IDLE_STATE & SD_SEND_IF_COND commands.
    spi_master = x
-   
+
    -- Get a responce from the card after each command
    for 100 loop
       response = spi_master
@@ -253,6 +263,7 @@ procedure sd_init() is
       sd_chip_select = low  -- enable the sd card
       sd_ready()            -- wait till sd card is ready
       sd_chip_select = high -- disable the sd card
+      sd_get_number_of_sectors()
       return
    else -- SD CARD SPEC 2
       ;print_byte_hex(serial_data,spi_master)
@@ -298,9 +309,11 @@ procedure sd_init() is
       else
          sd_error = TRUE
          sd_chip_select = high  -- disable the sd card
+         sd_get_number_of_sectors()
          return
       end if
    end if
+   sd_get_number_of_sectors()
 end procedure
 
 --------------------------------------------------------------------------------
@@ -333,7 +346,7 @@ procedure  sd_start_read(dword in address) is
    if sd_card_type == SD_STANDARD_CAPACITY then
       address = address * SD_BYTE_PER_SECTOR -- make sd card sector addressable, sd cards are normally byte addressable.
    end if
-   
+
    send_command(SD_READ_MULTIPLE_BLOCK,address,response) -- send read multi block command, ignore response.
    sd_byte_count = 0
    sd_sector_count = 0     -- reset count
@@ -344,7 +357,7 @@ end procedure
 --------------------------------------------------------------------------------
 function sd_data_byte'get() return byte is
    var byte x, data_byte
-   
+
    if sd_byte_count == 0 then            -- beginning of sector read
       while spi_master != 0xFE loop      -- wait till data is ready to read
       end loop
@@ -411,7 +424,7 @@ end procedure
 --------------------------------------------------------------------------------
 procedure sd_data_byte'put(byte in data_byte) is
    var byte x
-   
+
    if sd_byte_count == 0 then    -- beginning of sector write
       spi_master = 0xFC       -- send "stop transmission token" write multiple command
       ;spi_master = 0xFE      -- send "stop transmission token" for write single command
@@ -1060,7 +1073,7 @@ end procedure
 --------------------------------------------------------------------------------
 -- read one entire sector
 --------------------------------------------------------------------------------
-procedure  sd_read_sector() is
+procedure sd_read_sector() is
    var byte x
    var word count1 = 0
 
@@ -1085,7 +1098,7 @@ procedure  sd_read_sector() is
          sd_sector_buffer_high[count1] = spi_master -- get high data
       end loop
    end if
-   
+
    sd_sector_count = sd_sector_count + 1 -- increment sector number
    x = spi_master                     -- get junk crc data, crc is disabled
    x = spi_master                     -- get junk crc data, crc is disabled
@@ -1094,6 +1107,56 @@ procedure  sd_read_sector() is
 
    sd_sector_select = sd_sector_select + 1
 end procedure
+
+
+;------------------------------------------------------------------------------
+; storage_read_callback prototype definition, for use in libs such as USB.
+;------------------------------------------------------------------------------
+if SD_READ_EXTRA_SPEED == TRUE then
+   procedure storage_read_callback()
+end if
+
+;------------------------------------------------------------------------------
+; read one entire sector with callback to storage_read_callback()
+; for direct reading with spi_master. Make sure you call spi_master
+; 512 times in your storage_read_callback().
+;------------------------------------------------------------------------------
+procedure sd_read_sector_with_callback() is
+   var byte x
+   var word count1 = 0
+
+   while spi_master != 0xFE loop      -- wait till data is ready to read
+   end loop
+
+;    get sector data
+   if defined(SD_READ_EXTRA_SPEED) == TRUE then
+      if SD_READ_EXTRA_SPEED == TRUE then
+         storage_read_callback()
+      else
+         for 256 using count1 loop
+            -- get the data trough spi
+            sd_sector_buffer_low[count1] = spi_master  -- get low data
+            sd_sector_buffer_high[count1] = spi_master -- get high data
+         end loop
+      end if
+   else
+      for 256 using count1 loop
+         -- get the data trough spi
+         sd_sector_buffer_low[count1] = spi_master  -- get low data
+         sd_sector_buffer_high[count1] = spi_master -- get high data
+      end loop
+   end if
+
+   sd_sector_count = sd_sector_count + 1 -- increment sector number
+   x = spi_master                     -- get junk crc data, crc is disabled
+   x = spi_master                     -- get junk crc data, crc is disabled
+
+   sd_byte_count = sd_byte_count + 2       -- increment byte_count
+
+   sd_sector_select = sd_sector_select + 1
+end procedure
+
+
 
 --------------------------------------------------------------------------------
 -- read one entire sector at address
@@ -1110,13 +1173,31 @@ procedure sd_read_sector_address(dword in address) is
    sd_stop_read()
 end procedure
 
+;------------------------------------------------------------------------------
+; read one entire sector at address with callback  to storage_read_callback()
+; for direct reading with spi_master. Make sure you call spi_master
+; 512 times in your storage_read_callback().
+;------------------------------------------------------------------------------
+procedure sd_read_sector_address_with_callback(dword in address) is
+
+;    force sd card mode
+   if defined(sd_force_spi_mode) == true then
+      sd_force_spi_mode()
+   end if
+
+   sd_start_read(address)
+   sd_read_sector_with_callback()
+   sd_stop_read()
+end procedure
+
+
 --------------------------------------------------------------------------------
 -- write one entire sector
 --------------------------------------------------------------------------------
 procedure sd_write_sector() is
    var byte x
    var word count1
-   
+
    spi_master = 0xFC       -- send "stop transmission token" write multiple command
 
    -- send the data via spi
@@ -1209,10 +1290,10 @@ end procedure
 ;   end procedure
 
 --------------------------------------------------------------------------------
--- returns sd card size in number of sectors.
+-- Gets sd card size in number of sectors into dword sd_number_of_sectors
 -- Total size in bytes = sd_number_of_sectors * 512
 --------------------------------------------------------------------------------
-function sd_number_of_sectors'get() return dword is
+procedure sd_get_number_of_sectors() is
    sd_chip_select = low  -- enable the sd card
 
    var byte x
@@ -1258,7 +1339,7 @@ function sd_number_of_sectors'get() return dword is
 
       sd_chip_select = high  -- disable the sd card
 
-      return (c_size << (c_size_mult + 2))
+      sd_number_of_sectors = (c_size << (c_size_mult + 2))
    else
       -- throw data we dont' need
       for 7 loop
@@ -1277,14 +1358,9 @@ function sd_number_of_sectors'get() return dword is
       -- get crc
       x = spi_master
       x = spi_master
-
-      ;print_dword_hex(serial_data, c_size)
-
-      ;return (dword(0x3BBB)+1) * 0x80000     ;8016887808
-      return (dword(c_size)+1) * 1024
-
+      
       sd_chip_select = high  -- disable the sd card
+      sd_number_of_sectors = (dword(c_size)+1) * 1024
 
-       return 0
    end if
-end function
+end procedure
