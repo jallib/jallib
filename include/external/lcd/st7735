@@ -1,0 +1,867 @@
+-- Title: library for ST7735 controller
+-- Author: Urmas Joeleht Copyright (c) 2015..2016, all rights reserved.
+-- Adapted-by:
+-- Compiler:  >=2.4q3
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: https://github.com/adafruit/Adafruit-ST7735-Library
+-- ST7735 datasheet
+--
+-- Description: library for 1.8" display with ST7735 controller
+--
+-- Notes:
+-- User must take care of:
+-- set up SPI: SPI_MODE_10 and SPI_RATE max 1M
+--
+-- declare 3 glcd pins:
+-- alias st7735_cs is pin_b4
+-- alias st7735_reset is pin_b3
+-- alias st7735_dc is pin_b5
+--
+-- pin_b4_direction = output
+-- pin_b3_direction = output
+-- pin_b5_direction = output
+--
+-- include glcd_font   (glcd font library)
+-- include st7735   -- include library
+-- st7735_init()    -- initialize glcd
+--
+-- Usable procedures in this library:
+-- st7735_init()
+-- st7735_hw_reset()
+-- st7735_fill_screen()
+--
+-- Some procedures are different, when using display vertically or horizontally
+--
+-- For vertically oriented display:
+-- st7735_draw_pixel()
+-- st7735_draw_v_line()
+-- st7735_draw_h_line()
+-- st7735_fill_rectangle()
+-- st7735_cursor_position()
+--
+-- For horizontally oriented (rotated) display:
+-- st7735_rot_draw_pixel()
+-- st7735_rot_draw_v_line()
+-- st7735_rot_draw_h_line()
+-- st7735_rot_fill_rectangle()
+-- st7735_rot_cursor_position()
+--
+-- Pseudo variables for printing:
+-- st7735'put
+-- st7735_rot'put print on horizontally oriented dislay
+--
+-- Example file:
+-- 18f26k22_st7735.jal
+-- ToDo:
+-- Draw bitmap
+-- Blinking area
+--
+-- Variables:
+-- st7735_autowrap        - if end of line, go to next line (1) or not (0)
+-- st7735_pen_color       - color of font
+-- st7735_backround_color - color of font backround
+-- st7735_x_position      - x position of character left top corner
+-- st7735_y_position      - y position of character left top corner
+-- st7735_rot_x_position  - x position of character left top corner when using rotated display
+-- st7735_rot_y_position  - y position of character left top corner when using rotated display
+--
+-- -------------------------------------------------------------------------
+-- GLCD variables
+-- -------------------------------------------------------------------------
+var byte st7735_x_position       = 0
+var byte st7735_y_position       = 0
+var byte st7735_rot_x_position   = 0
+var byte st7735_rot_y_position   = 0
+var word st7735_pen_color        = 0x0000
+var word st7735_backround_color  = 0xFFFF
+var bit st7735_autowrap          = 0
+
+-- -------------------------------------------------------------------------
+-- GLCD specifications
+-- -------------------------------------------------------------------------
+const byte ST7735_TFTWIDTH      = 128
+const byte ST7735_TFTHEIGHT     = 160
+const byte ST7735_ROT_TFTWIDTH  = 160  --rotated display width
+const byte ST7735_ROT_TFTHEIGHT = 128  --rotated display height
+
+-- -------------------------------------------------------------------------
+-- Color definitions
+-- -------------------------------------------------------------------------
+const word ST7735_BLACK   = 0x0000
+const word ST7735_BLUE    = 0xF800
+const word ST7735_RED     = 0x001F
+const word ST7735_GREEN   = 0x07E0
+const word ST7735_CYAN    = 0xFFE0
+const word ST7735_MAGENTA = 0xF81F
+const word ST7735_YELLOW  = 0x07FF
+const word ST7735_WHITE   = 0xFFFF
+
+-- -------------------------------------------------------------------------
+-- Flags for initR()
+-- -------------------------------------------------------------------------
+const byte INITR_GREENTAB = 0x00
+const byte INITR_REDTAB   = 0x01
+const byte INITR_BLACKTAB = 0x02
+
+const byte ST7735_NOP     = 0x00
+const byte ST7735_SWRESET = 0x01
+const byte ST7735_RDDID   = 0x04
+const byte ST7735_RDDST   = 0x09
+
+const byte ST7735_SLPIN   = 0x10
+const byte ST7735_SLPOUT  = 0x11
+const byte ST7735_PTLON   = 0x12
+const byte ST7735_NORON   = 0x13
+
+const byte ST7735_INVOFF  = 0x20
+const byte ST7735_INVON   = 0x21
+const byte ST7735_DISPOFF = 0x28
+const byte ST7735_DISPON  = 0x29
+const byte ST7735_CASET   = 0x2A
+const byte ST7735_RASET   = 0x2B
+const byte ST7735_RAMWR   = 0x2C
+const byte ST7735_RAMRD   = 0x2E
+
+const byte ST7735_PTLAR   = 0x30
+const byte ST7735_COLMOD  = 0x3A
+const byte ST7735_MADCTL  = 0x36
+
+const byte ST7735_FRMCTR1 = 0xB1
+const byte ST7735_FRMCTR2 = 0xB2
+const byte ST7735_FRMCTR3 = 0xB3
+const byte ST7735_INVCTR  = 0xB4
+const byte ST7735_DISSET5 = 0xB6
+
+const byte ST7735_PWCTR1  = 0xC0
+const byte ST7735_PWCTR2  = 0xC1
+const byte ST7735_PWCTR3  = 0xC2
+const byte ST7735_PWCTR4  = 0xC3
+const byte ST7735_PWCTR5  = 0xC4
+const byte ST7735_VMCTR1  = 0xC5
+
+const byte ST7735_RDID1   = 0xDA
+const byte ST7735_RDID2   = 0xDB
+const byte ST7735_RDID3   = 0xDC
+const byte ST7735_RDID4   = 0xDD
+
+const byte ST7735_PWCTR6  = 0xFC
+
+const byte ST7735_GMCTRP1 = 0xE0
+const byte ST7735_GMCTRN1 = 0xE1
+
+-- -------------------------------------------------------------------------
+-- Define to spi_master_hw, if aliases aren't previously defined
+-- -------------------------------------------------------------------------
+if !defined(spi_master) then
+   alias spi_master is spi_master_hw
+   alias spi_master_set_mode is spi_master_hw_set_mode
+   alias spi_master_set_speed is spi_master_hw_set_speed
+end if
+
+-- -------------------------------------------------------------------------
+-- Write command to LCD
+-- -------------------------------------------------------------------------
+procedure st7735_wr_command(byte in data) is
+   st7735_dc = 0
+   st7735_cs = 0
+   spi_master = data
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Write data to LCD
+-- -------------------------------------------------------------------------
+procedure st7735_wr_data(byte in data) is
+   st7735_dc = 1
+   st7735_cs = 0
+   spi_master = data
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- LCD hardware reset
+-- -------------------------------------------------------------------------
+procedure st7735_hw_reset() is
+   st7735_reset = 1
+   delay_1ms(10)
+   st7735_reset = 0
+   delay_1ms(100)
+   st7735_reset = 1
+   delay_1ms(100)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- LCD initialization
+-- -------------------------------------------------------------------------
+procedure st7735_init() is
+   st7735_hw_reset()
+    
+   st7735_wr_command(ST7735_SWRESET)
+   delay_1ms(150)
+   st7735_wr_command(ST7735_SLPOUT) -- Exit sleep
+   delay_1ms (150)
+   
+   --ST7735R Frame Rate
+   st7735_wr_command(ST7735_FRMCTR1)
+   st7735_wr_data(0x01)
+   st7735_wr_data(0x2C)
+   st7735_wr_data(0x2D)
+   st7735_wr_command(ST7735_FRMCTR2)
+   st7735_wr_data(0x01)
+   st7735_wr_data(0x2C)
+   st7735_wr_data(0x2D)
+   st7735_wr_command(ST7735_FRMCTR3)
+   st7735_wr_data(0x01)
+   st7735_wr_data(0x2C)
+   st7735_wr_data(0x2D)
+   st7735_wr_data(0x01)
+   st7735_wr_data(0x2C)
+   st7735_wr_data(0x2D)
+
+   st7735_wr_command(ST7735_INVCTR)
+   st7735_wr_data(0x07)
+   
+   --ST7735R Power Sequence
+   st7735_wr_command(0xC0)
+   st7735_wr_data(0xA2)
+   st7735_wr_data(0x02)
+   st7735_wr_data(0x84)
+
+   st7735_wr_command(ST7735_PWCTR1)
+   st7735_wr_data(0xC5)
+
+   st7735_wr_command(ST7735_PWCTR2)
+   st7735_wr_data(0x0A)
+   st7735_wr_data(0x00)
+
+   st7735_wr_command(ST7735_PWCTR3)
+   st7735_wr_data(0x8A)
+   st7735_wr_data(0x2A)
+
+   st7735_wr_command(ST7735_PWCTR4)
+   st7735_wr_data(0x8A)
+   st7735_wr_data(0xEE)
+
+   st7735_wr_command(ST7735_PWCTR5)
+   st7735_wr_data(0x0E)
+
+   -- Invert off
+   st7735_wr_command(ST7735_VMCTR1)
+
+   -- MX, MY, RGB mode
+   st7735_wr_command(ST7735_MADCTL)
+   st7735_wr_data(0xC8)
+
+   -- Color Mode = 65k mode
+   st7735_wr_command(ST7735_COLMOD)
+   st7735_wr_data(0x05)
+   st7735_wr_command(ST7735_CASET)
+   st7735_wr_data(0x00)
+   st7735_wr_data(0x00)
+   st7735_wr_data(0x00)
+   st7735_wr_data(0x7f)
+
+   -- Row Address Set
+   st7735_wr_command(ST7735_RASET)
+   st7735_wr_data(0x00)
+   st7735_wr_data(0x00)
+   st7735_wr_data(0x00)
+   st7735_wr_data(0x9f)
+   
+   -- ST7735R  GMCTRP1 Gamma correction
+   st7735_wr_command(ST7735_GMCTRP1)
+   st7735_wr_data(0x02)
+   st7735_wr_data(0x1C)
+   st7735_wr_data(0x07)
+   st7735_wr_data(0x12)
+   st7735_wr_data(0x37)
+   st7735_wr_data(0x32)
+   st7735_wr_data(0x29)
+   st7735_wr_data(0x2D)
+   st7735_wr_data(0x29)
+   st7735_wr_data(0x25)
+   st7735_wr_data(0x2B)
+   st7735_wr_data(0x39)
+   st7735_wr_data(0x00)
+   st7735_wr_data(0x01)
+   st7735_wr_data(0x03)
+   st7735_wr_data(0x10)
+
+   -- GMCTRP2 Gamma Polarity correction
+   st7735_wr_command(ST7735_GMCTRN1)
+   st7735_wr_data(0x03)
+   st7735_wr_data(0x1d)
+   st7735_wr_data(0x07)
+   st7735_wr_data(0x06)
+   st7735_wr_data(0x2E)
+   st7735_wr_data(0x2c)
+   st7735_wr_data(0x29)
+   st7735_wr_data(0x2d)
+   st7735_wr_data(0x2E)
+   st7735_wr_data(0x2E)
+   st7735_wr_data(0x37)
+   st7735_wr_data(0x3f)
+   st7735_wr_data(0x00)
+   st7735_wr_data(0x00)
+   st7735_wr_data(0x02)
+   st7735_wr_data(0x10)
+
+   --Display on
+   st7735_wr_command(ST7735_NORON)
+   delay_1ms(10)
+   st7735_wr_command(ST7735_DISPON)
+   delay_1ms(100)
+
+   st7735_wr_command(0x2C)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Set address window which will be filled with color info (16 bit per pixel)
+-- -------------------------------------------------------------------------
+procedure st7735_addr_window(byte in x0, byte in y0, byte in x_end, byte in y_end)  is
+   st7735_wr_command(ST7735_CASET)
+   st7735_wr_data(0x00)
+   st7735_wr_data(x0)
+   st7735_wr_data(0x00)
+   st7735_wr_data(x_end)
+   
+   st7735_wr_command(ST7735_RASET)
+   st7735_wr_data(0x00)
+   st7735_wr_data(y0)
+   st7735_wr_data(0x00)
+   st7735_wr_data(y_end)
+   st7735_wr_command(ST7735_RAMWR)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Set address window of rotated display (x - 320 pixels, y - 240 pixels)
+-- -------------------------------------------------------------------------
+procedure st7735_rot_addr_window(byte in x0, byte in y0, byte in x1, byte in y1)  is
+   st7735_wr_command(ST7735_CASET)
+   st7735_wr_data(byte(ST7735_ROT_TFTHEIGHT - y1 - 1 >> 8))
+   st7735_wr_data(byte(ST7735_ROT_TFTHEIGHT - y1 - 1 & 0xFF))
+   st7735_wr_data(byte(ST7735_ROT_TFTHEIGHT - y0 - 1 >> 8))
+   st7735_wr_data(byte(ST7735_ROT_TFTHEIGHT - y0 - 1 & 0xFF))
+   
+   st7735_wr_command(ST7735_RASET)
+   st7735_wr_data(x0 >> 8)
+   st7735_wr_data(x0)
+   st7735_wr_data(x1 >> 8)
+   st7735_wr_data(x1)
+   st7735_wr_command(ST7735_RAMWR)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw pixel in x, y coordinates
+-- -------------------------------------------------------------------------
+procedure st7735_draw_pixel(byte in x, byte in y, word in color) is
+   -- control, if pixel is on screen
+   if ((x >= ST7735_TFTWIDTH) | (y >= ST7735_TFTHEIGHT)) then
+      return
+   end if
+   
+   --set address window and fill with color
+   st7735_addr_window(x, y, x, y)
+   st7735_dc = 1
+   st7735_cs = 0
+   spi_master = color >> 8
+   spi_master = color
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw pixel in rotated x, y coordinates (x - 160 pixels, y - 128 pixels)
+-- -------------------------------------------------------------------------
+procedure st7735_rot_draw_pixel(byte in x, byte in y, word in color) is
+   -- control, if pixel is on screen
+   if ((x >= ST7735_ROT_TFTWIDTH) | (y >= ST7735_ROT_TFTHEIGHT)) then
+      return
+   end if
+   
+   --set address window and fill with color
+   st7735_addr_window(y, x, y, x)
+   st7735_dc = 1
+   st7735_cs = 0
+   spi_master = color >> 8
+   spi_master = color
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw vertical line
+-- -------------------------------------------------------------------------
+procedure st7735_draw_v_line(byte in x, byte in y, byte in h, word in color) is
+   -- if beginning of line is out of screen, do nothing
+   if ((x >= ST7735_TFTWIDTH) | (y >= ST7735_TFTHEIGHT) ) then
+      return
+   end if
+   
+   -- if line goes out of border, make it shorter
+   if (y + h > ST7735_TFTHEIGHT) then
+      h = ST7735_TFTHEIGHT - y
+   end if
+   
+   --set address window and fill with color
+   st7735_addr_window(x, y, x, y + h - 1)
+   st7735_dc = 1
+   st7735_cs = 0
+   for h loop
+      spi_master = color >> 8
+      spi_master = color
+   end loop
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw horizontal line on rotated (x - 160 pixels, y - 128 pixels) display
+-- -------------------------------------------------------------------------
+procedure st7735_rot_draw_h_line(byte in x, byte in y, byte in w, word in color) is
+   -- if beginning of line is out of screen, do nothing
+   if ((x >= ST7735_ROT_TFTWIDTH) | (y >= ST7735_ROT_TFTHEIGHT) ) then
+      return
+   end if
+   
+   -- if line goes out of border, make it shorter
+   if (x + w) >= ST7735_ROT_TFTWIDTH then
+      w = ST7735_ROT_TFTWIDTH - x
+   end if
+   
+   --set address window and fill with color
+   st7735_rot_addr_window(x, y , x + w - 1, y)
+   st7735_dc = 1
+   st7735_cs = 0
+   for w loop
+      spi_master_hw = color >> 8
+      spi_master_hw = color
+   end loop
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+--Draw horizontal line
+-- -------------------------------------------------------------------------
+procedure st7735_draw_h_line(byte in x, byte in y, byte in w, word in color) is
+   -- if beginning of line is out of screen, do nothing
+   if ((x >= ST7735_TFTWIDTH) | (y >= ST7735_TFTHEIGHT) ) then
+      return
+   end if
+   
+   -- if line goes out of border, make it shorter
+   if (x + w > ST7735_TFTWIDTH) then
+      w = ST7735_TFTWIDTH - x
+   end if
+
+   --set address window and fill with color
+   st7735_addr_window(x, y, x + w - 1 , y)
+   st7735_dc = 1
+   st7735_cs = 0
+   for w loop
+      spi_master = color >> 8
+      spi_master = color
+   end loop
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw vertical line on rotated (x - 320 pixels, y - 240 pixels) display
+-- -------------------------------------------------------------------------
+procedure st7735_rot_draw_v_line(byte in x, byte in y, byte in h, word in color) is
+   -- if beginning of line is out of screen, do nothing
+   if ((x >= ST7735_ROT_TFTWIDTH) | (y >= ST7735_ROT_TFTHEIGHT) ) then
+      return
+   end if
+   -- if line goes out of border, make it shorter
+   if (y + h) >= ST7735_ROT_TFTHEIGHT then
+      h = ST7735_ROT_TFTHEIGHT - y
+   end if
+   
+   --set address window and fill with color
+   st7735_rot_addr_window(x, y, x, y + h - 1)
+   st7735_dc = 1
+   st7735_cs = 0
+   for h loop
+      spi_master_hw = color >> 8
+      spi_master_hw = color
+   end loop
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw filled rectangle (x, y, width, height, color)
+-- -------------------------------------------------------------------------
+procedure st7735_fill_rectangle(byte in x, byte in y, byte in w, byte in h, word in color) is
+   -- if beginning point is out of screen, do nothing
+   if ((x >= ST7735_TFTWIDTH) | (y >= ST7735_TFTHEIGHT) ) then
+      return
+   end if
+   
+   -- if rectangle don't fit to screen, cut it smaller
+   if (y + h >= ST7735_TFTHEIGHT) then
+      h = ST7735_TFTHEIGHT - y
+   end if
+   if (x + w >= ST7735_TFTWIDTH) then
+      w = ST7735_TFTWIDTH - x
+   end if
+   
+   --set address window and fill with color
+   st7735_addr_window(x, y, x + w - 1 , y + h - 1)
+   st7735_dc = 1
+   st7735_cs = 0
+   for w loop
+      for h loop
+         spi_master = color >> 8
+         spi_master = color
+      end loop
+   end loop
+   st7735_cs = 1
+end procedure
+-- -------------------------------------------------------------------------
+-- Draw filled rectangle on rotated (x - 160 pixels, y - 128 pixels) display  (x, y, width, height, color)
+-- -------------------------------------------------------------------------
+procedure st7735_rot_fill_rectangle(byte in x, byte in y, byte in w, byte in h, word in color) is
+   -- if beginning point is out of screen, do nothing
+   if ((x >= ST7735_ROT_TFTWIDTH) | (y >= ST7735_ROT_TFTHEIGHT) ) then
+      return
+   end if
+   
+   -- if rectangle don't fit to screen, cut it smaller
+   if ((y + h) >= ST7735_ROT_TFTHEIGHT) then
+      h = ST7735_ROT_TFTHEIGHT - y
+   end if
+   if ((x + w) >= ST7735_ROT_TFTWIDTH) then
+      w = ST7735_ROT_TFTWIDTH - x
+   end if
+   
+   --set address window and fill with color
+   st7735_rot_addr_window(x, y, x + w - 1, y + h - 1)
+   st7735_dc = 1
+   st7735_cs = 0
+   for w loop
+      for h loop
+         spi_master_hw = color >> 8
+         spi_master_hw = color
+      end loop
+   end loop
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Fill screen with one color
+-- -------------------------------------------------------------------------
+procedure st7735_fill_screen(word in color) is
+   st7735_fill_rectangle(0,0,ST7735_TFTWIDTH,ST7735_TFTHEIGHT, color)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- For FONT_TOP_LEFT_HORIZONTAL fonts.
+-- Writes one character. Before usage must be set st7735_pen_color,
+-- st7735_backlight_color, st7735_cursor_position() and choose font by glcd_font_use()
+-- Procedure is filling character area from left to right, from top to bottom with
+-- pen and backround color. Faster than pixel-by pixel method for FONT_TOP_LEFT_HORIZONTAL fonts
+-- becouse x and y coordinates will be sent to LCD only once per character.
+-- -------------------------------------------------------------------------
+procedure st7735_write_char_rectangle(byte in x, byte in y, byte in character) is
+   var word i = 0  -- row, which is written. From top starting at 0
+   var word j = 0  -- how many pixels are in actual row
+   var byte k = 0  -- actual byte of row
+   var byte m = 0  -- how many bytes are in one row
+   var byte mask = 1
+   var byte char_byte = 0
+   var byte bytes_per_width = glcd_font_current_width_ / 8
+   var byte pixels_per_width_rem = glcd_font_current_width_ % 8
+   
+   -- if character doesn't fit to screen, do nothing
+   if ((x + glcd_font_current_width_>= ST7735_TFTWIDTH) | (y + glcd_font_current_height_ >= ST7735_TFTHEIGHT) ) then
+      return
+   end if
+   
+   --replace unsupported character with space
+   if (character < 32) | (character > 122) then
+      character = " "
+   end if
+
+   -- if font width is not eights multiples, we need somewhere extra bytes
+   if pixels_per_width_rem > 0 then
+      m = bytes_per_width + 1
+   else
+      m = bytes_per_width
+   end if
+   
+   --set address window of character and fill with data from font array
+   st7735_addr_window(x, y, x + glcd_font_current_width_ - 1,y + glcd_font_current_height_ - 1)
+   st7735_dc = 1
+   st7735_cs = 0
+   for glcd_font_current_height_ using i loop
+      for m using k loop  -- do it bytes_per_row times (incomplete bytes included)
+         char_byte = glcd_font_lookup(word(character - 32) * glcd_font_current_byte_per_char_ + i * m + m - 1 - k)
+         -- do 8 or as many times, as left over from full byte
+         if k == bytes_per_width then
+            j = pixels_per_width_rem
+         else
+            j = 8
+         end if
+         mask = 0b10000000
+         -- if "1" in font pixel, then write pen color, else backround color
+         for j loop
+            if (mask & char_byte) == mask then
+               spi_master = st7735_pen_color >> 8   -- MSB of color
+               spi_master = st7735_pen_color        -- LSB of color
+            else
+               spi_master = st7735_backround_color >> 8
+               spi_master = st7735_backround_color
+            end if
+            mask = mask >> 1
+         end loop
+      end loop
+   end loop
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Write character column by column. For FONT_BOTTOM_LEFT_VERTICAL fonts
+-- Write one character. Before usage must be set st7735_pen_color,
+-- st7735_backlight_color, st7735_cursor_position() and choose font by glcd_font_use()
+-- Procedure is filling character area with lines from top to bottom, from left to right with
+-- pen and backround color. Faster than pixel-by pixel method for FONT_BOTTOM_LEFT_VERTICAL fonts,
+-- becouse x and y coordinates will be sent to LCD only once by every column of font.
+-- -------------------------------------------------------------------------
+procedure st7735_write_char_cbc(byte in x, byte in y, byte in character) is
+   var byte i, j, k, m = 0
+   var byte mask = 1
+   var byte char_byte = 0
+   var byte bytes_per_height = glcd_font_current_height_ / 8
+   var byte pixels_per_height_rem = glcd_font_current_height_ % 8
+   
+   -- if character doesn't fit to screen, do nothing
+   if ((x + glcd_font_current_width_ >= ST7735_TFTWIDTH) | (y + glcd_font_current_height_ >= ST7735_TFTHEIGHT) ) then
+      return
+   end if
+   
+   --replace unsupported character with space
+   if (character < 32) | (character > 122) then
+      character = " "
+   end if
+
+   -- if font height is not eights multiples, we need somewhere extra bytes
+   if pixels_per_height_rem > 0 then
+      m = bytes_per_height + 1
+   else
+      m = bytes_per_height
+   end if
+   --set address window for every column of character and fill it with data from font array
+   for glcd_font_current_width_ using i loop  -- do it font width pixel times
+      st7735_addr_window(x + i, y, x + i, y + glcd_font_current_height_ - 1 )
+      st7735_dc = 1
+      st7735_cs = 0
+      for m using k loop  -- do it bytes_per_row times (incomplete bytes includes)
+         char_byte = glcd_font_lookup(word(character - 32) * glcd_font_current_byte_per_char_ + i * m + k)
+         -- do 8 or as many times, as left over from full bytes
+         if (k == 0 & m!= bytes_per_height) then
+            j = pixels_per_height_rem
+            mask = 0b1 << (8 - pixels_per_height_rem)
+         else
+            j = 8
+            mask = 0b1
+         end if
+         for j loop
+            if (mask & char_byte) == mask then
+               spi_master_hw = st7735_pen_color >> 8
+               spi_master_hw = st7735_pen_color
+             else
+               spi_master_hw = st7735_backround_color >> 8
+               spi_master_hw = st7735_backround_color
+            end if
+            mask = mask << 1
+         end loop
+      end loop
+   end loop
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- For rotated (horizontal) display (x - 160 pixels, y - 128 pixels)
+-- For FONT_BOTTOM_LEFT_VERTICAL fonts
+-- Write one character. Before usage must be set st7735_pen_color,
+-- st7735_backlight_color, st7735_rot_cursor_position() and choose font by glcd_font_use()
+-- Procedure is filling character area with lines from top to bottom, from left to right with
+-- pen and backround color. Faster than pixel-by pixel method for FONT_BOTTOM_LEFT_VERTICAL fonts,
+-- becouse x and y coordinates will be sent to LCD only once by every row of font.
+-- -------------------------------------------------------------------------
+procedure st7735_rot_write_char_rectangle(byte in x, byte in y, byte in character) is
+   var word step = 0
+   var word i = 0  -- actual column of actual character. From left starting at 0
+   var word j = 0  -- how many pixels are in actual row
+   var byte k = 0  -- number of actual byte in row
+   var byte m = 0
+   var byte mask = 1
+   var byte char_byte = 0
+   var byte bytes_per_height = glcd_font_current_height_ / 8
+   var byte pixels_per_height_rem = glcd_font_current_height_ % 8
+   
+   -- if character doesn't fit to screen, do nothing
+   if ((x + glcd_font_current_width_ >= ST7735_ROT_TFTWIDTH) | (y + glcd_font_current_height_ >= ST7735_ROT_TFTHEIGHT) ) then
+      return
+   end if
+   
+   --replace unsupported character with space
+   if (character < 32) | (character > 122) then
+      character = " "
+   end if
+
+   if pixels_per_height_rem > 0 then
+      m = bytes_per_height + 1
+   else
+      m = bytes_per_height
+   end if
+   
+   --set address window of character and fill with data from font array
+   st7735_rot_addr_window(x, y, x + glcd_font_current_width_ - 1,y + glcd_font_current_height_ - 1)
+   st7735_dc = 1
+   st7735_cs = 0
+   for glcd_font_current_width_ using i loop
+      for m using k loop  -- do it bytes_per_row times
+         char_byte = glcd_font_lookup(word(character - 32) * glcd_font_current_byte_per_char_ + i * m + (m - (k + 1))) --
+         if k == bytes_per_height then
+            j = pixels_per_height_rem
+         else
+            j = 8
+         end if
+         mask = 0b10000000
+         for j loop
+            if (mask & char_byte) == mask then
+               spi_master_hw = st7735_pen_color >> 8
+               spi_master_hw = st7735_pen_color
+            else
+               spi_master_hw = st7735_backround_color >> 8
+               spi_master_hw = st7735_backround_color
+            end if
+            mask = mask >> 1
+         end loop
+      end loop
+   end loop
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Writing FONT_TOP_LEFT_HORIZONTAL fonts for rotated (x - 160, y - 128 pixels) display
+-- Writes one character. Before usage must be set st7735_pen_color,
+-- st7735_backlight_color, st7735_rot_cursor_position() and choose font by glcd_font_use()
+-- Procedure is filling character area line by line from left to right, from top to bottom with
+-- pen and backround color. Faster than pixel-by pixel method for FONT_TOP_LEFT_HORIZONTAL fonts
+-- becouse x and y coordinates will be sent to LCD only once per character.
+-- -------------------------------------------------------------------------
+procedure st7735_rot_write_char_lbl(byte in x, byte in y, byte in character) is
+   var byte i = 0  -- actual row. From top starting at 0
+   var byte j = 0  -- how many pixels are in actual byte
+   var byte k = 0  -- byte number of actual row
+   var byte m = 0  -- how many full and incomplete bytes are in one row
+   var byte mask = 1
+   var byte char_byte = 0
+   var byte bytes_per_width = glcd_font_current_width_ / 8
+   var byte pixels_per_width_rem = glcd_font_current_width_ % 8
+   
+   -- if character doesn't fit to screen, do nothing
+   if ((x + glcd_font_current_width_ >= ST7735_ROT_TFTWIDTH) | (y + glcd_font_current_height_ >= ST7735_ROT_TFTHEIGHT) ) then
+      return
+   end if
+   
+   --replace unsupported character with space
+   if (character < 32) | (character > 122) then
+      character = " "
+   end if
+
+   if pixels_per_width_rem > 0 then
+      m = bytes_per_width + 1
+   else
+      m = bytes_per_width
+   end if
+   
+   for glcd_font_current_height_ using i loop
+      --set address window for every column of character and fill with data from font array
+      st7735_rot_addr_window(x, y + i, x + glcd_font_current_width_ - 1, y + i)
+      st7735_dc = 1
+      st7735_cs = 0
+      for m using k loop
+         char_byte = glcd_font_lookup(word(character - 32) * glcd_font_current_byte_per_char_ + i * m + m - k - 1)
+         if k == bytes_per_width then
+            j = pixels_per_width_rem
+         else
+            j = 8
+         end if
+         mask = 0b10000000
+         for j loop
+            if (mask & char_byte) == mask then
+               spi_master_hw = st7735_pen_color >> 8
+               spi_master_hw = st7735_pen_color
+            else
+               spi_master_hw = st7735_backround_color >> 8
+               spi_master_hw = st7735_backround_color
+            end if
+            mask = mask >> 1
+         end loop
+      end loop
+   end loop
+   st7735_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Set cursor position (x - 0...128, y - 0...160)
+-- -------------------------------------------------------------------------
+procedure st7735_cursor_position(byte in x, byte in y) is
+   st7735_x_position = x
+   st7735_y_position = y
+end procedure
+
+-- -------------------------------------------------------------------------
+-- pseudo variable
+-- chooses write function by glcd font orientation
+-- writes characters to LCD
+-- if st7735_autowrap is 1, then goes to next line
+-- -------------------------------------------------------------------------
+procedure st7735'put(byte in character) is
+   if glcd_font_current_bit_direction_ == FONT_BOTTOM_LEFT_VERTICAL then
+      st7735_write_char_cbc(st7735_x_position,st7735_y_position,character)
+   else
+      st7735_write_char_rectangle(st7735_x_position,st7735_y_position,character)
+   end if
+   st7735_x_position = st7735_x_position + glcd_font_current_width_
+   
+   -- do autowrap, if enabled
+   if (st7735_x_position + glcd_font_current_width_) > (ST7735_TFTWIDTH - 1) & (st7735_autowrap == 1) then
+      st7735_x_position = 0
+      st7735_y_position = st7735_y_position + glcd_font_current_height_
+   end if
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Set cursor position of rotated display (x - 0...160, y - 0...128)
+-- -------------------------------------------------------------------------
+procedure st7735_rot_cursor_position(byte in x, byte in y) is
+      st7735_rot_x_position = x
+      st7735_rot_y_position = y
+end procedure
+
+-- -------------------------------------------------------------------------
+-- pseudo variable for rotated display
+-- chooses write function by glcd font orientation
+-- writes characters to LCD
+-- if st7735_autowrap is 1, then goes to next line
+-- -------------------------------------------------------------------------
+procedure st7735_rot'put(byte in character) is
+   if glcd_font_current_bit_direction_ == FONT_BOTTOM_LEFT_VERTICAL then
+      st7735_rot_write_char_rectangle(st7735_rot_x_position,st7735_rot_y_position,character)
+   else
+      st7735_rot_write_char_lbl(st7735_rot_x_position,st7735_rot_y_position,character)
+   end if
+   st7735_rot_x_position = st7735_rot_x_position + glcd_font_current_width_
+   
+   -- do autowrap, if enabled
+   if (st7735_rot_x_position + glcd_font_current_width_) > (ST7735_ROT_TFTWIDTH - 1) & st7735_autowrap == 1 then
+      st7735_rot_x_position = 0
+      st7735_rot_y_position = st7735_rot_y_position + glcd_font_current_height_
+   end if
+end procedure
