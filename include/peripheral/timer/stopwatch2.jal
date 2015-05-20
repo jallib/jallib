@@ -1,0 +1,314 @@
+-- Title: Stopwatch library
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4q3
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Creates a stopwatch for timing events
+--
+-- Sources:
+--
+-- Notes:
+-- You do not need to define any constants in your program. Stopwatch will
+-- choose these default values for you.
+--
+-- const STOPWATCH2_VAR_SIZE = 4
+-- const STOPWATCH2_MIN_VALUE = STOPWATCH_NS
+-- const STOPWATCH2_USE_TIMER = 1
+--
+-- You will probobly not need to do error checking by reading
+-- stopwatch2_time_overflow with STOPWATCH2_VAR_SIZE = 4
+--
+-- max time measurement is STOPWATCH2_MIN_VALUE 0xFFFF or 0xFFFFFFFF
+-- depending on STOPWATCH2_VAR_SIZE, or (1/0SC*4*0xFF_FF_FF_FF_FF_FF)
+--
+-- example: with STOPWATCH_NS and STOPWATCH2_VAR_SIZE = 2, the max time to
+-- measure is 65535ns
+--
+-- I have not tested instruction measurement of greater then 0xFFFF
+--
+
+-- set some default values if no constants are defined:
+if !defined(STOPWATCH2_VAR_SIZE) then
+   -- set stopwatch2 variable size, (2 = word) or (4 = dword)
+   const STOPWATCH2_VAR_SIZE = 4
+end if
+--
+if !defined(STOPWATCH2_MIN_VALUE) then
+   -- the lowest time unit to measure
+   const STOPWATCH2_MIN_VALUE = STOPWATCH_NS
+end if
+--
+if !defined(STOPWATCH_USE_TIMER) then
+   -- choose what timer to use
+   const STOPWATCH_USE_TIMER = 1
+end if
+
+-- size of stopwatch2 counter
+const _STOPWATCH2_COUNT_SIZE = 6
+
+-- define the stopwatch2 counter
+var byte*_STOPWATCH2_COUNT_SIZE _stopwatch2_counter
+var byte stopwatch2_counter[_STOPWATCH2_COUNT_SIZE] at _stopwatch2_counter
+var byte*4 stopwatch2_high_value at _stopwatch2_counter + 2
+
+-- time of one timer step
+var word _stopwatch2_step_time
+
+-- check if PIC has selected timer
+if defined(STOPWATCH_USE_TIMER) == TRUE then
+   if STOPWATCH_USE_TIMER == 0 then
+      _error "this library does not support timer0 module yet"
+   elsif STOPWATCH_USE_TIMER == 1 then
+      if !(defined(tmr1) == TRUE) then
+         _error "target pic does not have a timer1 module"
+      end if
+   elsif STOPWATCH_USE_TIMER == 3 then
+      if !(defined(tmr3) == TRUE) then
+         _error "target pic does not have a timer3 module"
+      end if
+   end if
+end if
+
+-- set aliases for timer choosen
+if STOPWATCH_USE_TIMER == 1 then
+   -- set special timer1 settings
+   -- set timer registers to timer1
+   alias stopwatch2_on       is t1con_tmr1on     -- enables timer
+   alias stopwatch2_tmr      is TMR1             -- timer interval
+   alias stopwatch2_cs       is T1CON_TMR1CS     -- timer clock source bit
+   alias stopwatch2_ie       is PIE1_TMR1IE      -- interrupt enable
+   alias stopwatch2_if       is PIR1_TMR1IF      -- interrupt overflow bit
+   alias stopwatch2_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+elsif STOPWATCH_USE_TIMER == 3 then
+   -- set timer registers to timer3
+   alias stopwatch2_on       is t3con_tmr3on     -- enables timer
+   alias stopwatch2_tmr      is TMR3             -- timer interval
+   alias stopwatch2_cs       is T3CON_TMR3CS     -- timer clock source bit
+   alias stopwatch2_ie       is PIE2_TMR3IE      -- interrupt enable
+   alias stopwatch2_if       is PIR2_TMR3IF      -- interrupt overflow bit
+   alias stopwatch2_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+end if
+
+--------------------------------------------------------------------------------
+-- initialize the stopwatch2
+--------------------------------------------------------------------------------
+procedure stopwatch2_init() is
+   -- init pic interrupt settings
+   intcon_gie  = on      -- enables all unmasked interrupts
+   intcon_peie = on      -- enables all unmasked peripheral interrupts
+
+   -- timer3 setup
+   stopwatch2_cs = 0      -- use internal clock
+   stopwatch2_ie  = 1     -- enable the timer3 interrupt bit
+   stopwatch2_if  = off   -- turn off interrupt overflow flag
+   ;stopwatch2_on = 1     -- enables timer
+
+   -- set timer3 clock prescaler
+   stopwatch2_ps = 0 -- set prscal of 1:1 (osc/4)
+
+   -- calculate min time of one timer step
+   _stopwatch2_step_time = 400_000 / (target_clock/100000)
+
+   ;print_crlf(serial_hw_data)
+   ;print_dword_dec(serial_hw_data, _stopwatch2_step_time)
+   ;print_crlf(serial_hw_data)
+
+   -- remainder (if remainder is not 0, time will not be as accurate
+   -- due to cut decimal places. Maybe this should be fixed in read_time proc?
+   ;_stopwatch2_step_time = 400_000 % (target_clock/100000) -- get remainder
+
+   stopwatch2_tmr = 0
+end procedure
+
+--------------------------------------------------------------------------------
+-- start the stopwatch2 at time = 0
+--------------------------------------------------------------------------------
+procedure stopwatch2_start() is
+   pragma inline
+   
+   -- set timer to 0
+   stopwatch2_tmr = 0
+   --
+   if STOPWATCH2_VAR_SIZE > 2 then
+      _stopwatch2_counter = 0
+   end if
+
+   stopwatch2_on = ON  -- enable timer
+end procedure
+
+--------------------------------------------------------------------------------
+-- continue running the stopwatch2 at it's current value.
+--------------------------------------------------------------------------------
+procedure stopwatch2_continue() is
+   pragma inline
+   stopwatch2_on = ON -- enable timer
+end procedure
+
+--------------------------------------------------------------------------------
+-- stop the stopwatch2
+--------------------------------------------------------------------------------
+procedure stopwatch2_stop() is
+   pragma inline
+   stopwatch2_on = OFF -- disable timer
+end procedure
+
+--------------------------------------------------------------------------------
+-- read the stopwatch2. returns number of instructions cycles run.
+--------------------------------------------------------------------------------
+function stopwatch2_read_cycles() return byte*STOPWATCH2_VAR_SIZE is
+
+   -- get value of timer3 + overflow
+   var byte _stopwatch2_tmr[2] at stopwatch2_tmr
+   stopwatch2_counter[1] = _stopwatch2_tmr[1]
+   stopwatch2_counter[0] = _stopwatch2_tmr[0]
+
+   if STOPWATCH2_VAR_SIZE == 2 then
+      return word(_stopwatch2_counter)
+   elsif STOPWATCH2_VAR_SIZE == 4 then
+      return dword(_stopwatch2_counter)
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- read the stopwatch2 as time, reutrns value in "STOPWATCH2_MIN_VALUE"
+--------------------------------------------------------------------------------
+function stopwatch2_read_time() return byte*STOPWATCH2_VAR_SIZE is
+
+   -- get value of timer3 + overflow
+   var byte _stopwatch2_tmr[2] at stopwatch2_tmr
+   stopwatch2_counter[1] = _stopwatch2_tmr[1]
+   stopwatch2_counter[0] = _stopwatch2_tmr[0]
+
+   var byte*6 _stopwatch2_time
+
+   -- calculate time
+   if STOPWATCH2_MIN_VALUE == STOPWATCH_NS then
+      _stopwatch2_time = (_stopwatch2_step_time * _stopwatch2_counter) / 10
+   elsif STOPWATCH2_MIN_VALUE == STOPWATCH_US then
+      _stopwatch2_time = (_stopwatch2_step_time * _stopwatch2_counter) / 10000
+   elsif STOPWATCH2_MIN_VALUE == STOPWATCH_MS then
+      _stopwatch2_time = (_stopwatch2_step_time * _stopwatch2_counter) / 10000000
+   elsif STOPWATCH2_MIN_VALUE == STOPWATCH_S then
+      _stopwatch2_time = ((_stopwatch2_step_time * _stopwatch2_counter) / 1000000) / 10000
+   end if
+
+   if STOPWATCH2_VAR_SIZE == 2 then
+      return word(_stopwatch2_time)
+   else
+      return dword(_stopwatch2_time)
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- read the stopwatch2 (pseudo variable).
+-- returns approximate time in micro seconds.
+--------------------------------------------------------------------------------
+function stopwatch2'get() return byte*STOPWATCH2_VAR_SIZE is
+   pragma inline
+
+   if STOPWATCH2_VAR_SIZE == 2 then
+      return word(stopwatch2_read_time())
+   else
+      return dword(stopwatch2_read_time())
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- read the stopwatch2 cycles (pseudo variable).
+-- returns number of instructions cycles run.
+--------------------------------------------------------------------------------
+function stopwatch2_cycles'get() return byte*STOPWATCH2_VAR_SIZE is
+   pragma inline
+
+   if STOPWATCH2_VAR_SIZE == 2 then
+      return word(stopwatch2_read_cycles())
+   else
+      return dword(stopwatch2_read_cycles())
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- check stopwatch2 instruction cycle count overflowed.
+--------------------------------------------------------------------------------
+function stopwatch2_cycle_overflow'get() return bit is
+   var bit stopwatch2_overflow = FALSE
+
+   -- get value of timer3 + overflow
+   var byte _stopwatch2_tmr[2] at stopwatch2_tmr
+   stopwatch2_counter[1] = _stopwatch2_tmr[1]
+   stopwatch2_counter[0] = _stopwatch2_tmr[0]
+
+   if STOPWATCH2_VAR_SIZE == 2 then
+      -- error checking
+      if _stopwatch2_counter > 0xFFFF then
+         stopwatch2_overflow = TRUE
+      end if
+   elsif STOPWATCH2_VAR_SIZE == 4 then
+      -- error checking
+      if _stopwatch2_counter > 0xFFFFFFFF then
+         stopwatch2_overflow = TRUE
+      end if
+   end if
+
+   return stopwatch2_overflow
+end function
+
+--------------------------------------------------------------------------------
+-- check if stopwatch2 time counter has overflowed.
+--------------------------------------------------------------------------------
+function stopwatch2_time_overflow'get() return bit is
+   var bit stopwatch2_overflow = FALSE
+
+   -- get value of timer3 + overflow
+   var byte _stopwatch2_tmr[2] at stopwatch2_tmr
+   stopwatch2_counter[1] = _stopwatch2_tmr[1]
+   stopwatch2_counter[0] = _stopwatch2_tmr[0]
+
+   var byte*6 _stopwatch2_time
+
+   -- calculate time
+   if STOPWATCH2_MIN_VALUE == STOPWATCH_NS then
+      _stopwatch2_time = (_stopwatch2_step_time * _stopwatch2_counter) / 10
+   elsif STOPWATCH2_MIN_VALUE == STOPWATCH_US then
+      _stopwatch2_time = (_stopwatch2_step_time * _stopwatch2_counter) / 10000
+   elsif STOPWATCH2_MIN_VALUE == STOPWATCH_MS then
+      _stopwatch2_time = (_stopwatch2_step_time * _stopwatch2_counter) / 10000000
+   elsif STOPWATCH2_MIN_VALUE == STOPWATCH_S then
+      _stopwatch2_time = ((_stopwatch2_step_time * _stopwatch2_counter) / 1000000) / 10000
+   end if
+
+   if STOPWATCH2_VAR_SIZE == 2 then
+      -- error checking
+      if _stopwatch2_counter > 0xFFFF then
+         stopwatch2_overflow = TRUE
+      end if
+   else
+      -- error checking
+      if _stopwatch2_counter > 0xFFFFFFFF then
+         stopwatch2_overflow = TRUE
+      end if
+   end if
+
+   return stopwatch2_overflow
+end function
+
+--------------------------------------------------------------------------------
+-- interrupt to increment stopwatch2 if hardware timer > 65535
+--------------------------------------------------------------------------------
+procedure stopwatch2_isr() is
+   pragma interrupt          -- interupt procedure
+
+   if !stopwatch2_if then      -- check if this is a timer3 interupt
+      return                 -- exit interupt if it is not
+   end if
+
+   -- add an overflow
+   stopwatch2_high_value = stopwatch2_high_value + 1
+
+   -- turn off interrupt overflow flag
+   stopwatch2_if = off
+end procedure
+
