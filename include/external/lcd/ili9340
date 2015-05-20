@@ -1,0 +1,520 @@
+                          -- Title: FONT library for use with GLCD's
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4k
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Main font library.
+-- API: include as many font library as you want, then include this one.
+-- Define which font you want to use during programm execution, calling
+-- glcd_font_use(font_id). Font lookup (retrieving a char) is done using
+-- glcd_font_lookup(idx)
+--
+-- Notes: Fonts have an ID, unique amongst all font libraries. ID goes from
+-- 0x01 to 0xFE (0x00 and 0xFF are reserved for internal usage). Fonts which
+-- are part of jallib distribution have their ID starting from 0x01,
+-- increasing. There are also "slots" for user-defined libraries, starting from
+-- 0xFE, decreasing. This way all jallib IDs are consecutive, so are user-defined.
+-- This leaves room for 253 fonts. Each font library addition involves updating
+-- procedures glcd_font_use() and glcd_font_lookup().
+-- --
+-- Font name usually includes information about its Width x Height (eg. FONT_5X7).
+-- A font library often declares characters, but can also declares other kind of
+-- stuff (like sprites).
+-- --
+-- Example: FONT_9X12_TOP_RIGHT_HORIZONTAL_MY_FONT_NAME
+-- --
+-- Your lcd will most likely only support one font bit order.
+-- --
+-- This example is 9x12 (font_top_right_horizontal)
+-- const byte FONT_9x12_0_NONAME[] = {0x00,0x00,0x20,0x20,0x20,0x20,0x20,0x20,0x00,0x20,0x00,0x00} -- "!"
+-- ---horizontal--->
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
+-- --
+-- This example is FONT_9x12_7_NONAME (FONT_BOTTOM_LEFT_VERTICAL)
+-- const byte font_table[] = {0x0000 0x0000 0x0000 0x0000 0x0000 0x0000 0x2F0C 0x0000 0x0000} -- "!"
+-- --
+-- 0      0      0      0      0      0      0      0      0        ^
+-- 0      0      0      0      0      0      0      0      0        |
+-- 0      0      1      0      0      0      0      0      0        L
+-- 0      0      1      0      0      0      0      0      0        A
+-- 0      0      1      0      0      0      0      0      0        C
+-- 0      0      1      0      0      0      0      0      0        I
+-- 0      0      1      0      0      0      0      0      0        T
+-- 0      0      1      0      0      0      0      0      0        R
+-- 0      0      0      0      0      0      0      0      0        E
+-- 0      0      1      0      0      0      0      0      0        V
+-- 0      0      0      0      0      0      0      0      0        |
+-- 0      0      0      0      0      0      0      0      0        |
+-- 0x0000 0x0000 0x2F0C 0x0000 0x0000 0x0000 0x0000 0x0000 0x0000
+--
+-- Sources:
+-- http://www.divshare.com/download/11463401-4a9
+--
+
+-- flag: do we use font & chars related features ?
+const bit GLCD_FONT_USAGE = true
+
+var byte glcd_font_current_id_
+var byte glcd_font_current_byte_per_char_
+var byte glcd_font_current_width_
+var byte glcd_font_current_height_
+var byte glcd_font_current_bit_direction_
+
+procedure glcd_font_use(byte in font_id) is
+   if defined(FONT_4X6) then
+      if font_id == FONT_4X6 then
+         glcd_font_current_id_ = FONT_4X6
+         glcd_font_current_byte_per_char_ = FONT_4X6_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_4X6_WIDTH
+         glcd_font_current_height_ = FONT_4X6_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_4X6_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_4X6_R) then
+      if font_id == FONT_4X6_R then
+         glcd_font_current_id_ = FONT_4X6_R
+         glcd_font_current_byte_per_char_ = FONT_4X6_R_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_4X6_R_WIDTH
+         glcd_font_current_height_ = FONT_4X6_R_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_4X6_R_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_5X7) then
+      if font_id == FONT_5X7 then
+         glcd_font_current_id_ = FONT_5X7
+         glcd_font_current_byte_per_char_ = FONT_5X7_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_5X7_WIDTH
+         glcd_font_current_height_ = FONT_5X7_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_5X7_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_5X8) then
+      if font_id == FONT_5X8 then
+         glcd_font_current_id_ = FONT_5X8
+         glcd_font_current_byte_per_char_ = FONT_5X8_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_5X8_WIDTH
+         glcd_font_current_height_ = FONT_5X8_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_5X8_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_5X12) then
+      if font_id == FONT_5X12 then
+         glcd_font_current_id_ = FONT_5X12
+         glcd_font_current_byte_per_char_ = FONT_5X12_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_5X12_WIDTH
+         glcd_font_current_height_ = FONT_5X12_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_5X12_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_5X12_R) then
+      if font_id == FONT_5X12_R then
+         glcd_font_current_id_ = FONT_5X12_R
+         glcd_font_current_byte_per_char_ = FONT_5X12_R_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_5X12_R_WIDTH
+         glcd_font_current_height_ = FONT_5X12_R_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_5X12_R_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_6X8) then
+      if font_id == FONT_6X8 then
+         glcd_font_current_id_ = FONT_6X8
+         glcd_font_current_byte_per_char_ = FONT_6X8_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_6X8_WIDTH
+         glcd_font_current_height_ = FONT_6X8_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_6X8_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_6X8_U) then
+      if font_id == FONT_6X8_U then
+         glcd_font_current_id_ = FONT_6X8_U
+         glcd_font_current_byte_per_char_ = FONT_6X8_U_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_6X8_U_WIDTH
+         glcd_font_current_height_ = FONT_6X8_U_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_6X8_U_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_6X10) then
+      if font_id == FONT_6X10 then
+         glcd_font_current_id_ = FONT_6X10
+         glcd_font_current_byte_per_char_ = FONT_6X10_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_6X10_WIDTH
+         glcd_font_current_height_ = FONT_6X10_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_6X10_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_7X12) then
+      if font_id == FONT_7X12 then
+         glcd_font_current_id_ = FONT_7X12
+         glcd_font_current_byte_per_char_ = FONT_7X12_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_7X12_WIDTH
+         glcd_font_current_height_ = FONT_7X12_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_7X12_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_7X12_U) then
+      if font_id == FONT_7X12_U then
+         glcd_font_current_id_ = FONT_7X12_U
+         glcd_font_current_byte_per_char_ = FONT_7X12_U_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_7X12_U_WIDTH
+         glcd_font_current_height_ = FONT_7X12_U_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_7X12_U_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_8X8) then
+      if font_id == FONT_8X8 then
+         glcd_font_current_id_ = FONT_8X8
+         glcd_font_current_byte_per_char_ = FONT_8X8_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_8X8_WIDTH
+         glcd_font_current_height_ = FONT_8X8_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_8X8_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_8X12) then
+      if font_id == FONT_8X12 then
+         glcd_font_current_id_ = FONT_8X12
+         glcd_font_current_byte_per_char_ = FONT_8X12_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_8X12_WIDTH
+         glcd_font_current_height_ = FONT_8X12_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_8X12_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_8X12_R) then
+      if font_id == FONT_8X12_R then
+         glcd_font_current_id_ = FONT_8X12_R
+         glcd_font_current_byte_per_char_ = FONT_8X12_R_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_8X12_R_WIDTH
+         glcd_font_current_height_ = FONT_8X12_R_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_8X12_R_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_8X12_U) then
+      if font_id == FONT_8X12_U then
+         glcd_font_current_id_ = FONT_8X12_U
+         glcd_font_current_byte_per_char_ = FONT_8X12_U_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_8X12_U_WIDTH
+         glcd_font_current_height_ = FONT_8X12_U_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_8X12_U_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_8X14) then
+      if font_id == FONT_8X14 then
+         glcd_font_current_id_ = FONT_8X14
+         glcd_font_current_byte_per_char_ = FONT_8X14_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_8X14_WIDTH
+         glcd_font_current_height_ = FONT_8X14_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_8X14_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_8X14_R) then
+      if font_id == FONT_8X14_R then
+         glcd_font_current_id_ = FONT_8X14_R
+         glcd_font_current_byte_per_char_ = FONT_8X14_R_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_8X14_R_WIDTH
+         glcd_font_current_height_ = FONT_8X14_R_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_8X14_R_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_10X16) then
+      if font_id == FONT_10X16 then
+         glcd_font_current_id_ = FONT_10X16
+         glcd_font_current_byte_per_char_ = FONT_10X16_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_10X16_WIDTH
+         glcd_font_current_height_ = FONT_10X16_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_10X16_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_10X16_R) then
+      if font_id == FONT_10X16_R then
+         glcd_font_current_id_ = FONT_10X16_R
+         glcd_font_current_byte_per_char_ = FONT_10X16_R_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_10X16_R_WIDTH
+         glcd_font_current_height_ = FONT_10X16_R_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_10X16_R_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_12X16) then
+      if font_id == FONT_12X16 then
+         glcd_font_current_id_ = FONT_12X16
+         glcd_font_current_byte_per_char_ = FONT_12X16_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_12X16_WIDTH
+         glcd_font_current_height_ = FONT_12X16_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_12X16_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_12X16_R) then
+      if font_id == FONT_12X16_R then
+         glcd_font_current_id_ = FONT_12X16_R
+         glcd_font_current_byte_per_char_ = FONT_12X16_R_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_12X16_R_WIDTH
+         glcd_font_current_height_ = FONT_12X16_R_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_12X16_R_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_12X20) then
+      if font_id == FONT_12X20 then
+         glcd_font_current_id_ = FONT_12X20
+         glcd_font_current_byte_per_char_ = FONT_12X20_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_12X20_WIDTH
+         glcd_font_current_height_ = FONT_12X20_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_12X20_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_16X8) then
+      if font_id == FONT_16X8 then
+         glcd_font_current_id_ = FONT_16X8
+         glcd_font_current_byte_per_char_ = FONT_16X8_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_16X8_WIDTH
+         glcd_font_current_height_ = FONT_16X8_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_16X8_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_16X12) then
+      if font_id == FONT_16X12 then
+         glcd_font_current_id_ = FONT_16X12
+         glcd_font_current_byte_per_char_ = FONT_16X12_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_16X12_WIDTH
+         glcd_font_current_height_ = FONT_16X12_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_16X12_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_16X26) then
+      if font_id == FONT_16X26 then
+         glcd_font_current_id_ = FONT_16X26
+         glcd_font_current_byte_per_char_ = FONT_16X26_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_16X26_WIDTH
+         glcd_font_current_height_ = FONT_16X26_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_16X26_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_22X36) then
+      if font_id == FONT_22X36 then
+         glcd_font_current_id_ = FONT_22X36
+         glcd_font_current_byte_per_char_ = FONT_22X36_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_22X36_WIDTH
+         glcd_font_current_height_ = FONT_22X36_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_22X36_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_24X40) then
+      if font_id == FONT_24X40 then
+         glcd_font_current_id_ = FONT_24X40
+         glcd_font_current_byte_per_char_ = FONT_24X40_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_24X40_WIDTH
+         glcd_font_current_height_ = FONT_24X40_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_24X40_BIT_DIRECTION
+      end if
+   end if
+   if defined(FONT_32X53) then
+      if font_id == FONT_32X53 then
+         glcd_font_current_id_ = FONT_32X53
+         glcd_font_current_byte_per_char_ = FONT_32X53_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_32X53_WIDTH
+         glcd_font_current_height_ = FONT_32X53_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_32X53_BIT_DIRECTION
+      end if
+   end if
+   -- User-defined font.
+   if defined(FONT_UDF_0XFE) then
+      if font_id == FONT_UDF_0XFE then
+         glcd_font_current_id_ = FONT_UDF_0XFE
+         glcd_font_current_byte_per_char_ = FONT_UDF_0XFE_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_UDF_0XFE_WIDTH
+         glcd_font_current_height_ = FONT_UDF_0XFE_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_UDF_0XFE_BIT_DIRECTION
+      end if
+   end if
+   -- User-defined font.
+   if defined(FONT_UDF_0XFD) then
+      if font_id == FONT_UDF_0XFD then
+         glcd_font_current_id_ = FONT_UDF_0XFD
+         glcd_font_current_byte_per_char_ = FONT_UDF_0XFD_BYTE_PER_CHAR
+         glcd_font_current_width_ = FONT_UDF_0XFD_WIDTH
+         glcd_font_current_height_ = FONT_UDF_0XFD_HEIGHT
+         glcd_font_current_bit_direction_ = FONT_UDF_0XFD_BIT_DIRECTION
+      end if
+   end if
+   -- Internal usage (from reserved ID)
+   if font_id == 0x00 then
+      -- special case
+   end if
+   if font_id == 0xFF then
+      -- special case
+   end if
+end procedure
+
+function glcd_font_lookup(word in idx) return byte is
+   if defined(FONT_4X6) then
+      if glcd_font_current_id_ == FONT_4X6 then
+         return FONT_4X6_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_4X6_R) then
+      if glcd_font_current_id_ == FONT_4X6_R then
+         return FONT_4X6_R_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_5X7) then
+      if glcd_font_current_id_ == FONT_5X7 then
+         return FONT_5X7_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_5X8) then
+      if glcd_font_current_id_ == FONT_5X8 then
+         return FONT_5X8_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_5X12) then
+      if glcd_font_current_id_ == FONT_5X12 then
+         return FONT_5X12_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_5X12_R) then
+      if glcd_font_current_id_ == FONT_5X12_R then
+         return FONT_5X12_R_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_6X8) then
+      if glcd_font_current_id_ == FONT_6X8 then
+         return FONT_6X8_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_6X8_U) then
+      if glcd_font_current_id_ == FONT_6X8_U then
+         return FONT_6X8_U_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_6X10) then
+      if glcd_font_current_id_ == FONT_6X10 then
+         return FONT_6X10_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_7X12) then
+      if glcd_font_current_id_ == FONT_7X12 then
+         return FONT_7X12_CHARS[idx]
+      end if
+   end if
+    if defined(FONT_7X12_U) then
+      if glcd_font_current_id_ == FONT_7X12_U then
+         return FONT_7X12_U_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_8X8) then
+      if glcd_font_current_id_ == FONT_8X8 then
+         return FONT_8X8_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_8X12) then
+      if glcd_font_current_id_ == FONT_8X12 then
+         return FONT_8X12_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_8X12_R) then
+      if glcd_font_current_id_ == FONT_8X12_R then
+         return FONT_8X12_R_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_8X12_U) then
+      if glcd_font_current_id_ == FONT_8X12_U then
+         return FONT_8X12_U_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_8X14) then
+      if glcd_font_current_id_ == FONT_8X14 then
+         return FONT_8X14_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_8X14_R) then
+      if glcd_font_current_id_ == FONT_8X14_R then
+         return FONT_8X14_R_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_10X16) then
+      if glcd_font_current_id_ == FONT_10X16 then
+         return FONT_10X16_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_10X16_R) then
+      if glcd_font_current_id_ == FONT_10X16_R then
+         return FONT_10X16_R_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_12X16) then
+      if glcd_font_current_id_ == FONT_12X16 then
+         return FONT_12X16_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_12X16_R) then
+      if glcd_font_current_id_ == FONT_12X16_R then
+         return FONT_12X16_R_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_12X20) then
+      if glcd_font_current_id_ == FONT_12X20 then
+         return FONT_12X20_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_16X8) then
+      if glcd_font_current_id_ == FONT_16X8 then
+         return FONT_16X8_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_16X12) then
+      if glcd_font_current_id_ == FONT_16X12 then
+         return FONT_16X12_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_16X26) then
+      if glcd_font_current_id_ == FONT_16X26 then
+         return FONT_16X26_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_22X36) then
+      if glcd_font_current_id_ == FONT_22X36 then
+         return FONT_22X36_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_24X40) then
+      if glcd_font_current_id_ == FONT_24X40 then
+         return FONT_24X40_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_32X53) then
+      if glcd_font_current_id_ == FONT_32X53 then
+         return FONT_32X53_CHARS[idx]
+      end if
+   end if
+   -- user-defined
+   if defined(FONT_UDF_0XFE) then
+      if glcd_font_current_id_ == FONT_UDF_0XFE then
+         return FONT_UDF_0XFE_CHARS[idx]
+      end if
+   end if
+   if defined(FONT_UDF_0XFD) then
+      if glcd_font_current_id_ == FONT_UDF_0XFD then
+         return FONT_UDD_0XFD_CHARS[idx]
+      end if
+   end if
+   -- if we get there, can't lookup onto existing char tables
+   return 0
+end function
+
+
+if !defined (FONT_BIT_DIRECTION) then
+   const byte FONT_BIT_DIRECTION = FONT_TOP_RIGHT_VERTICAL
+end if
+
