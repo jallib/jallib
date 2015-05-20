@@ -1,520 +1,865 @@
-                          -- Title: FONT library for use with GLCD's
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+ -- Title: library for ILI9340 controller
+-- Author: Urmas Joeleht Copyright (c) 2015..2016, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4k
+-- Compiler:  >=2.4q3
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Main font library.
--- API: include as many font library as you want, then include this one.
--- Define which font you want to use during programm execution, calling
--- glcd_font_use(font_id). Font lookup (retrieving a char) is done using
--- glcd_font_lookup(idx)
+-- Sources: ILI9340 driver datasheet
+-- https://github.com/adafruit/Adafruit_ILI9340/blob/master/Adafruit_ILI9340.cpp
 --
--- Notes: Fonts have an ID, unique amongst all font libraries. ID goes from
--- 0x01 to 0xFE (0x00 and 0xFF are reserved for internal usage). Fonts which
--- are part of jallib distribution have their ID starting from 0x01,
--- increasing. There are also "slots" for user-defined libraries, starting from
--- 0xFE, decreasing. This way all jallib IDs are consecutive, so are user-defined.
--- This leaves room for 253 fonts. Each font library addition involves updating
--- procedures glcd_font_use() and glcd_font_lookup().
--- --
--- Font name usually includes information about its Width x Height (eg. FONT_5X7).
--- A font library often declares characters, but can also declares other kind of
--- stuff (like sprites).
--- --
--- Example: FONT_9X12_TOP_RIGHT_HORIZONTAL_MY_FONT_NAME
--- --
--- Your lcd will most likely only support one font bit order.
--- --
--- This example is 9x12 (font_top_right_horizontal)
--- const byte FONT_9x12_0_NONAME[] = {0x00,0x00,0x20,0x20,0x20,0x20,0x20,0x20,0x00,0x20,0x00,0x00} -- "!"
--- ---horizontal--->
--- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
--- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
--- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
--- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
--- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
--- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
--- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
--- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
--- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
--- 0 0 1 0 0 0 0 0 0   -- 0x20 0x00
--- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
--- 0 0 0 0 0 0 0 0 0   -- 0x00 0x00
--- --
--- This example is FONT_9x12_7_NONAME (FONT_BOTTOM_LEFT_VERTICAL)
--- const byte font_table[] = {0x0000 0x0000 0x0000 0x0000 0x0000 0x0000 0x2F0C 0x0000 0x0000} -- "!"
--- --
--- 0      0      0      0      0      0      0      0      0        ^
--- 0      0      0      0      0      0      0      0      0        |
--- 0      0      1      0      0      0      0      0      0        L
--- 0      0      1      0      0      0      0      0      0        A
--- 0      0      1      0      0      0      0      0      0        C
--- 0      0      1      0      0      0      0      0      0        I
--- 0      0      1      0      0      0      0      0      0        T
--- 0      0      1      0      0      0      0      0      0        R
--- 0      0      0      0      0      0      0      0      0        E
--- 0      0      1      0      0      0      0      0      0        V
--- 0      0      0      0      0      0      0      0      0        |
--- 0      0      0      0      0      0      0      0      0        |
--- 0x0000 0x0000 0x2F0C 0x0000 0x0000 0x0000 0x0000 0x0000 0x0000
+-- Description: library for 2.2" display with ILI9340 controller
 --
--- Sources:
--- http://www.divshare.com/download/11463401-4a9
+-- Notes:
+-- User must take care of:
+-- set up SPI: SPI_MODE_10 and SPI_RATE max 1M
 --
+-- declare 3 glcd pins:
+-- alias ili9340_cs is pin_a0
+-- alias ili9340_reset is pin_a2
+-- alias ili9340_dc is pin_a1
+--
+-- pin_a0_direction = output
+-- pin_a1_direction = output
+-- pin_a2_direction = output
+--
+-- include glcd_font   (glcd font library)
+-- include ili9340   -- include library
+-- ili9340_init()    -- initialize glcd
+--
+-- Usable procedures in this library:
+-- ili9340_init()
+-- ili9340_hw_reset()
+-- ili9340_fill_screen()
+--
+-- For vertically oriented display:
+-- ili9340_draw_pixel()
+-- ili9340_draw_v_line()
+-- ili9340_draw_h_line()
+-- ili9340_fill_rectangle()
+-- ili9340_cursor_position()
+--
+-- For horizontally oriented (rotated) display:
+-- ili9340_rot_draw_pixel()
+-- ili9340_rot_draw_v_line()
+-- ili9340_rot_draw_h_line()
+-- ili9340_rot_fill_rectangle()
+-- ili9340_rot_cursor_position()
+--
+-- Pseudo variables for printing:
+-- ili9340'put
+-- ili9340_rot'put - write to rotated display
+--
+-- Example file:
+-- 18f26k22_ili9340.jal
+-- ToDo:
+-- Draw bitmap
+--
+-- Variables:
+-- ili9340_autowrap        - if end of line, go to next line (1) or not (0)
+-- ili9340_pen_color       - color of font
+-- ili9340_backround_color - color of font backround
+-- ili9340_x_position      - x position of character left top corner
+-- ili9340_y_position      - y position of character left top corner
+-- ili9340_rot_x_position  - x position of character left top corner when using rotated display
+-- ili9340_rot_y_position  - y position of character left top corner when using rotated display
+--
+-- -------------------------------------------------------------------------
+-- GLCD variables
+-- -------------------------------------------------------------------------
+var word ili9340_x_position      = 0
+var word ili9340_y_position      = 0
+var word ili9340_rot_x_position  = 0
+var word ili9340_rot_y_position  = 0
+var word ili9340_pen_color       = 0x0000
+var word ili9340_backround_color = 0xFFFF
+var bit ili9340_autowrap         = 0
 
--- flag: do we use font & chars related features ?
-const bit GLCD_FONT_USAGE = true
+-- -------------------------------------------------------------------------
+-- GLCD x, y parameters
+-- -------------------------------------------------------------------------
+const byte ILI9340_TFTWIDTH      = 240
+const word ILI9340_TFTHEIGHT     = 320
+const word ILI9340_ROT_TFTWIDTH  = 320  --rotated (horizontal) display width
+const byte ILI9340_ROT_TFTHEIGHT = 240  --rotated display height
 
-var byte glcd_font_current_id_
-var byte glcd_font_current_byte_per_char_
-var byte glcd_font_current_width_
-var byte glcd_font_current_height_
-var byte glcd_font_current_bit_direction_
+-- -------------------------------------------------------------------------
+--Color definitions
+-- -------------------------------------------------------------------------
+const word ILI9340_BLACK   = 0x0000
+const word ILI9340_BLUE    = 0xF800
+const word ILI9340_RED     = 0x001F
+const word ILI9340_GREEN   = 0x07E0
+const word ILI9340_CYAN    = 0xFFE0
+const word ILI9340_MAGENTA = 0xF81F
+const word ILI9340_YELLOW  = 0x07FF
+const word ILI9340_WHITE   = 0xFFFF
 
-procedure glcd_font_use(byte in font_id) is
-   if defined(FONT_4X6) then
-      if font_id == FONT_4X6 then
-         glcd_font_current_id_ = FONT_4X6
-         glcd_font_current_byte_per_char_ = FONT_4X6_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_4X6_WIDTH
-         glcd_font_current_height_ = FONT_4X6_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_4X6_BIT_DIRECTION
-      end if
+-- -------------------------------------------------------------------------
+-- GLCD commands
+-- -------------------------------------------------------------------------
+
+const byte ILI9340_NOP        = 0x00
+const byte ILI9340_SWRESET    = 0x01
+const byte ILI9340_RDDID      = 0x04
+const byte ILI9340_RDDST      = 0x09
+
+const byte ILI9340_SLPIN      = 0x10
+const byte ILI9340_SLPOUT     = 0x11
+const byte ILI9340_PTLON      = 0x12
+const byte ILI9340_NORON      = 0x13
+
+const byte ILI9340_RDMODE     = 0x0A
+const byte ILI9340_RDMADCTL   = 0x0B
+const byte ILI9340_RDPIXFMT   = 0x0C
+const byte ILI9340_RDIMGFMT   = 0x0A
+const byte ILI9340_RDSELFDIAG = 0x0F
+
+const byte ILI9340_INVOFF     = 0x20
+const byte ILI9340_INVON      = 0x21
+const byte ILI9340_GAMMASET   = 0x26
+const byte ILI9340_DISPOFF    = 0x28
+const byte ILI9340_DISPON     = 0x29
+
+const byte ILI9340_CASET      = 0x2A
+const byte ILI9340_PASET      = 0x2B
+const byte ILI9340_RAMWR      = 0x2C
+const byte ILI9340_RAMRD      = 0x2E
+
+const byte ILI9340_PTLAR      = 0x30
+const byte ILI9340_MADCTL     = 0x36
+
+const byte ILI9340_MADCTL_MY  = 0x80
+const byte ILI9340_MADCTL_MX  = 0x40
+const byte ILI9340_MADCTL_MV  = 0x20
+const byte ILI9340_MADCTL_ML  = 0x10
+const byte ILI9340_MADCTL_RGB = 0x00
+const byte ILI9340_MADCTL_BGR = 0x08
+const byte ILI9340_MADCTL_MH  = 0x04
+
+const byte ILI9340_PIXFMT     = 0x3A
+
+const byte ILI9340_FRMCTR1    = 0xB1
+const byte ILI9340_FRMCTR2    = 0xB2
+const byte ILI9340_FRMCTR3    = 0xB3
+const byte ILI9340_INVCTR     = 0xB4
+const byte ILI9340_DFUNCTR    = 0xB6
+
+const byte ILI9340_PWCTR1     = 0xC0
+const byte ILI9340_PWCTR2     = 0xC1
+const byte ILI9340_PWCTR3     = 0xC2
+const byte ILI9340_PWCTR4     = 0xC3
+const byte ILI9340_PWCTR5     = 0xC4
+const byte ILI9340_VMCTR1     = 0xC5
+const byte ILI9340_VMCTR2     = 0xC7
+
+const byte ILI9340_RDID1      = 0xDA
+const byte ILI9340_RDID2      = 0xDB
+const byte ILI9340_RDID3      = 0xDC
+const byte ILI9340_RDID4      = 0xDD
+
+const byte ILI9340_GMCTRP1    = 0xE0
+const byte ILI9340_GMCTRN1    = 0xE1
+
+const byte ILI9340_PWCTR6     = 0xFC
+
+-- -------------------------------------------------------------------------
+-- write command to LCD
+-- -------------------------------------------------------------------------
+procedure ili9340_wr_command(byte in data) is
+   ili9340_dc = 0
+   ili9340_cs = 0
+   spi_master = data
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- write data to LCD
+-- -------------------------------------------------------------------------
+procedure ili9340_wr_data(byte in data) is
+   ili9340_dc = 1
+   ili9340_cs = 0
+   spi_master = data
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- LCD hardware reset
+-- -------------------------------------------------------------------------
+procedure ili9340_hw_reset() is
+   ili9340_reset = 1
+   delay_1ms(5)
+   ili9340_reset = 0
+   delay_1ms(20)
+   ili9340_reset = 1
+   delay_1ms(150)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- LCD initialization
+-- -------------------------------------------------------------------------
+procedure ili9340_init() is
+   ili9340_wr_command (0xEF)
+   ili9340_wr_data (0x03)
+   ili9340_wr_data (0x80)
+   ili9340_wr_data (0x02)
+
+   ili9340_wr_command (0xCF)
+   ili9340_wr_data (0x00)
+   ili9340_wr_data (0xC1)
+   ili9340_wr_data (0x30)
+
+   ili9340_wr_command (0xED)
+   ili9340_wr_data (0x64)
+   ili9340_wr_data (0x03)
+   ili9340_wr_data (0x12)
+   ili9340_wr_data (0x81)
+
+   ili9340_wr_command (0xE8)
+   ili9340_wr_data (0x85)
+   ili9340_wr_data (0x00)
+   ili9340_wr_data (0x78)
+
+   ili9340_wr_command (0xCB)
+   ili9340_wr_data (0x39)
+   ili9340_wr_data (0x2C)
+   ili9340_wr_data (0x00)
+   ili9340_wr_data (0x34)
+   ili9340_wr_data (0x02)
+
+   ili9340_wr_command (0xF7)
+   ili9340_wr_data (0x20)
+
+   ili9340_wr_command (0xEA)
+   ili9340_wr_data (0x00)
+   ili9340_wr_data (0x00)
+
+   ili9340_wr_command (ILI9340_PWCTR1)
+   ili9340_wr_data (0x23)
+
+   ili9340_wr_command (ILI9340_PWCTR2)
+   ili9340_wr_data (0x10)
+
+   ili9340_wr_command (ILI9340_VMCTR1)
+   ili9340_wr_data (0x3e)
+   ili9340_wr_data (0x28)
+
+   ili9340_wr_command (ILI9340_VMCTR2)
+   ili9340_wr_data (0x86)
+
+   ili9340_wr_command (ILI9340_MADCTL)
+   ili9340_wr_data (ILI9340_MADCTL_MX)
+
+   ili9340_wr_command (ILI9340_PIXFMT)
+   ili9340_wr_data (0x55)
+
+   ili9340_wr_command (ILI9340_FRMCTR1)
+   ili9340_wr_data (0x00)
+   ili9340_wr_data (0x18)
+
+   ili9340_wr_command (ILI9340_DFUNCTR)
+   ili9340_wr_data (0x08)
+   ili9340_wr_data (0x82)
+   ili9340_wr_data (0x27)
+
+   ili9340_wr_command (0xF2)
+   ili9340_wr_data (0x00)
+
+   ili9340_wr_command (ILI9340_GAMMASET)
+   ili9340_wr_data (0x01)
+
+   ili9340_wr_command (ILI9340_GMCTRP1)
+   ili9340_wr_data (0x0F)
+   ili9340_wr_data (0x31)
+   ili9340_wr_data (0x2B)
+   ili9340_wr_data (0x0C)
+   ili9340_wr_data (0x0E)
+   ili9340_wr_data (0x08)
+   ili9340_wr_data (0x4E)
+   ili9340_wr_data (0xF1)
+   ili9340_wr_data (0x37)
+   ili9340_wr_data (0x07)
+   ili9340_wr_data (0x10)
+   ili9340_wr_data (0x03)
+   ili9340_wr_data (0x0E)
+   ili9340_wr_data (0x09)
+   ili9340_wr_data (0x00)
+
+   ili9340_wr_command (ILI9340_GMCTRN1)
+   ili9340_wr_data (0x00)
+   ili9340_wr_data (0x0E)
+   ili9340_wr_data (0x14)
+   ili9340_wr_data (0x03)
+   ili9340_wr_data (0x11)
+   ili9340_wr_data (0x07)
+   ili9340_wr_data (0x31)
+   ili9340_wr_data (0xC1)
+   ili9340_wr_data (0x48)
+   ili9340_wr_data (0x08)
+   ili9340_wr_data (0x0F)
+   ili9340_wr_data (0x0C)
+   ili9340_wr_data (0x31)
+   ili9340_wr_data (0x36)
+   ili9340_wr_data (0x0F)
+
+   ili9340_wr_command (ILI9340_SLPOUT)
+   delay_1ms(120)
+   ili9340_wr_command (ILI9340_DISPON)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Set address window which will be filled with color info (16 bit per pixel)
+-- -------------------------------------------------------------------------
+procedure ili9340_addr_window(word in x0, word in y0, word in x1, word in y1)  is
+   -- andmete kontroll
+   if ((x0 >= ILI9340_TFTWIDTH) | (y0 >= ILI9340_TFTHEIGHT) | (x1 >= ILI9340_TFTWIDTH) | (y1 >= ILI9340_TFTHEIGHT)) then
+      return
    end if
-   if defined(FONT_4X6_R) then
-      if font_id == FONT_4X6_R then
-         glcd_font_current_id_ = FONT_4X6_R
-         glcd_font_current_byte_per_char_ = FONT_4X6_R_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_4X6_R_WIDTH
-         glcd_font_current_height_ = FONT_4X6_R_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_4X6_R_BIT_DIRECTION
-      end if
+   ili9340_wr_command(ILI9340_CASET)
+   ili9340_wr_data(byte(x0 >> 8))
+   ili9340_wr_data(byte(x0 & 0xFF))
+   ili9340_wr_data(byte(x1 >> 8))
+   ili9340_wr_data(byte(x1 & 0xFF))
+   ili9340_wr_command(ILI9340_PASET)
+   ili9340_wr_data(byte(y0 >> 8))
+   ili9340_wr_data(byte(y0))
+   ili9340_wr_data(byte(y1 >> 8))
+   ili9340_wr_data(byte(y1))
+   ili9340_wr_command(ILI9340_RAMWR)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Set address window of rotated display (x - 320 pixels, y - 240 pixels)
+-- -------------------------------------------------------------------------
+procedure ili9340_rot_addr_window(word in x0, word in y0, word in x1, word in y1)  is
+   -- control, if area is on screen
+   if ((x0 >= ILI9340_ROT_TFTWIDTH) | (y0 >= ILI9340_ROT_TFTHEIGHT) | (x1 >= ILI9340_ROT_TFTWIDTH) | (y1 >= ILI9340_ROT_TFTHEIGHT)) then
+      return
    end if
-   if defined(FONT_5X7) then
-      if font_id == FONT_5X7 then
-         glcd_font_current_id_ = FONT_5X7
-         glcd_font_current_byte_per_char_ = FONT_5X7_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_5X7_WIDTH
-         glcd_font_current_height_ = FONT_5X7_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_5X7_BIT_DIRECTION
-      end if
+   ili9340_wr_command(ILI9340_CASET)
+   ili9340_wr_data(byte(ILI9340_ROT_TFTHEIGHT - y1 - 1 >> 8))
+   ili9340_wr_data(byte(ILI9340_ROT_TFTHEIGHT - y1 - 1 & 0xFF))
+   ili9340_wr_data(byte(ILI9340_ROT_TFTHEIGHT - y0 - 1 >> 8))
+   ili9340_wr_data(byte(ILI9340_ROT_TFTHEIGHT - y0 - 1 & 0xFF))
+   ili9340_wr_command(ILI9340_PASET)
+   ili9340_wr_data(byte((x0) >> 8))
+   ili9340_wr_data(byte(x0))
+   ili9340_wr_data(byte((x1) >> 8))
+   ili9340_wr_data(byte(x1))
+   ili9340_wr_command(ILI9340_RAMWR)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw pixel in x, y coordinates
+-- -------------------------------------------------------------------------
+procedure ili9340_draw_pixel(word in x, word in y, word in color) is
+   -- control, if pixel is on screen
+   if ((x >= ILI9340_TFTWIDTH) | (y >= ILI9340_TFTHEIGHT)) then
+      return
    end if
-   if defined(FONT_5X8) then
-      if font_id == FONT_5X8 then
-         glcd_font_current_id_ = FONT_5X8
-         glcd_font_current_byte_per_char_ = FONT_5X8_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_5X8_WIDTH
-         glcd_font_current_height_ = FONT_5X8_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_5X8_BIT_DIRECTION
-      end if
+   
+   --set address window and fill with color
+   ili9340_addr_window(x, y, x, y)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   spi_master = color >> 8
+   spi_master = color
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw pixel in rotated x, y coordinates (x - 320 pixels, y - 240 pixels)
+-- -------------------------------------------------------------------------
+procedure ili9340_rot_draw_pixel(word in x, word in y, word in color) is
+   -- control, if pixel is on screen
+   if ((x >= ILI9340_ROT_TFTWIDTH) | (y >= ILI9340_ROT_TFTHEIGHT)) then
+      return
    end if
-   if defined(FONT_5X12) then
-      if font_id == FONT_5X12 then
-         glcd_font_current_id_ = FONT_5X12
-         glcd_font_current_byte_per_char_ = FONT_5X12_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_5X12_WIDTH
-         glcd_font_current_height_ = FONT_5X12_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_5X12_BIT_DIRECTION
-      end if
+   
+   --set address window and fill with color
+   ili9340_rot_addr_window(x, y, x, y)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   spi_master_hw = color >> 8
+   spi_master_hw = color
+   ili9340_cs = 1
+ end procedure
+ 
+-- -------------------------------------------------------------------------
+--Draw horizontal line
+-- -------------------------------------------------------------------------
+procedure ili9340_draw_h_line(word in x, word in y, word in w, word in color) is
+   -- control, if pixels are on screen:
+   if ((x >= ILI9340_TFTWIDTH) | (y >= ILI9340_TFTHEIGHT) ) then
+      return
    end if
-   if defined(FONT_5X12_R) then
-      if font_id == FONT_5X12_R then
-         glcd_font_current_id_ = FONT_5X12_R
-         glcd_font_current_byte_per_char_ = FONT_5X12_R_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_5X12_R_WIDTH
-         glcd_font_current_height_ = FONT_5X12_R_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_5X12_R_BIT_DIRECTION
-      end if
+   
+   -- if line goes out of border, make it shorter
+   if (x + w) >= ILI9340_TFTWIDTH then
+      w = ILI9340_TFTWIDTH - x
    end if
-   if defined(FONT_6X8) then
-      if font_id == FONT_6X8 then
-         glcd_font_current_id_ = FONT_6X8
-         glcd_font_current_byte_per_char_ = FONT_6X8_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_6X8_WIDTH
-         glcd_font_current_height_ = FONT_6X8_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_6X8_BIT_DIRECTION
-      end if
+   
+   --set address window and fill with color
+   ili9340_addr_window(x, y, x + w - 1, y)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   for w loop
+      spi_master = color >> 8
+      spi_master = color
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw horizontal line on rotated (x - 320 pixels, y - 240 pixels) display
+-- -------------------------------------------------------------------------
+procedure ili9340_rot_draw_h_line(word in x, word in y, word in w, word in color) is
+   -- if beginning of line is out of screen, do nothing
+   if ((x >= ILI9340_ROT_TFTWIDTH) | (y >= ILI9340_ROT_TFTHEIGHT) ) then
+      return
    end if
-   if defined(FONT_6X8_U) then
-      if font_id == FONT_6X8_U then
-         glcd_font_current_id_ = FONT_6X8_U
-         glcd_font_current_byte_per_char_ = FONT_6X8_U_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_6X8_U_WIDTH
-         glcd_font_current_height_ = FONT_6X8_U_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_6X8_U_BIT_DIRECTION
-      end if
+   
+   -- if line goes out of border, make it shorter
+   if (x + w) >= ILI9340_ROT_TFTWIDTH then
+      w = ILI9340_ROT_TFTWIDTH - x
    end if
-   if defined(FONT_6X10) then
-      if font_id == FONT_6X10 then
-         glcd_font_current_id_ = FONT_6X10
-         glcd_font_current_byte_per_char_ = FONT_6X10_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_6X10_WIDTH
-         glcd_font_current_height_ = FONT_6X10_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_6X10_BIT_DIRECTION
-      end if
+   
+   --set address window and fill with color
+   ili9340_rot_addr_window(x, y , x + w - 1, y)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   for w loop
+      spi_master_hw = color >> 8
+      spi_master_hw = color
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw vertical line
+-- -------------------------------------------------------------------------
+procedure ili9340_draw_v_line(word in x, word in y, word in h, word in color) is
+   -- if beginning of line is out of screen, do nothing
+   if ((x >= ILI9340_TFTWIDTH) | (y >= ILI9340_TFTHEIGHT) ) then
+      return
    end if
-   if defined(FONT_7X12) then
-      if font_id == FONT_7X12 then
-         glcd_font_current_id_ = FONT_7X12
-         glcd_font_current_byte_per_char_ = FONT_7X12_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_7X12_WIDTH
-         glcd_font_current_height_ = FONT_7X12_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_7X12_BIT_DIRECTION
-      end if
+   
+   -- if line goes out of border, make it shorter
+   if ((y + h) >= ILI9340_TFTHEIGHT) then
+      h = ILI9340_TFTHEIGHT - y
    end if
-   if defined(FONT_7X12_U) then
-      if font_id == FONT_7X12_U then
-         glcd_font_current_id_ = FONT_7X12_U
-         glcd_font_current_byte_per_char_ = FONT_7X12_U_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_7X12_U_WIDTH
-         glcd_font_current_height_ = FONT_7X12_U_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_7X12_U_BIT_DIRECTION
-      end if
+   
+   --set address window and fill with color
+   ili9340_addr_window(x, y, x, y + h - 1)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   for h loop
+      spi_master = color >> 8
+      spi_master = color
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw vertical line on rotated (x - 320 pixels, y - 240 pixels) display
+-- -------------------------------------------------------------------------
+procedure ili9340_rot_draw_v_line(word in x, word in y, word in h, word in color) is
+   -- if beginning of line is out of screen, do nothing
+   if ((x >= ILI9340_ROT_TFTWIDTH) | (y >= ILI9340_ROT_TFTHEIGHT) ) then
+      return
    end if
-   if defined(FONT_8X8) then
-      if font_id == FONT_8X8 then
-         glcd_font_current_id_ = FONT_8X8
-         glcd_font_current_byte_per_char_ = FONT_8X8_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_8X8_WIDTH
-         glcd_font_current_height_ = FONT_8X8_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_8X8_BIT_DIRECTION
-      end if
+   
+   -- if line goes out of border, make it shorter
+   if (y + h) >= ILI9340_ROT_TFTHEIGHT then
+      h = ILI9340_ROT_TFTHEIGHT - y
    end if
-   if defined(FONT_8X12) then
-      if font_id == FONT_8X12 then
-         glcd_font_current_id_ = FONT_8X12
-         glcd_font_current_byte_per_char_ = FONT_8X12_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_8X12_WIDTH
-         glcd_font_current_height_ = FONT_8X12_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_8X12_BIT_DIRECTION
-      end if
+   
+   --set address window and fill with color
+   ili9340_rot_addr_window(x, y, x, y + h - 1)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   for h loop
+      spi_master_hw = color >> 8
+      spi_master_hw = color
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw filled rectangle (x, y, width, height, color)
+-- -------------------------------------------------------------------------
+procedure ili9340_fill_rectangle(word in x, word in y, word in w, word in h, word in color) is
+   -- if beginning of line is out of screen, do nothing
+   if ((x >= ILI9340_TFTWIDTH) | (y >= ILI9340_TFTHEIGHT) ) then
+      return
    end if
-   if defined(FONT_8X12_R) then
-      if font_id == FONT_8X12_R then
-         glcd_font_current_id_ = FONT_8X12_R
-         glcd_font_current_byte_per_char_ = FONT_8X12_R_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_8X12_R_WIDTH
-         glcd_font_current_height_ = FONT_8X12_R_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_8X12_R_BIT_DIRECTION
-      end if
+   
+   -- if rectangle don't fit to screen, cut it smaller
+   if (y + h >= ILI9340_TFTHEIGHT) then
+      h = ILI9340_TFTHEIGHT - y
    end if
-   if defined(FONT_8X12_U) then
-      if font_id == FONT_8X12_U then
-         glcd_font_current_id_ = FONT_8X12_U
-         glcd_font_current_byte_per_char_ = FONT_8X12_U_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_8X12_U_WIDTH
-         glcd_font_current_height_ = FONT_8X12_U_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_8X12_U_BIT_DIRECTION
-      end if
+   if (x + w >= ILI9340_TFTWIDTH) then
+      w = ILI9340_TFTWIDTH - x
    end if
-   if defined(FONT_8X14) then
-      if font_id == FONT_8X14 then
-         glcd_font_current_id_ = FONT_8X14
-         glcd_font_current_byte_per_char_ = FONT_8X14_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_8X14_WIDTH
-         glcd_font_current_height_ = FONT_8X14_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_8X14_BIT_DIRECTION
-      end if
+   
+   --set address window and fill with color
+   ili9340_addr_window(x, y, x + w - 1 , y + h - 1)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   for w loop
+      for h loop
+         spi_master = color >> 8
+         spi_master = color
+      end loop
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Draw filled rectangle on rotated (x - 320 pixels, y - 240 pixels) display  (x, y, width, height, color)
+-- -------------------------------------------------------------------------
+procedure ili9340_rot_fill_rectangle(word in x, word in y, word in w, word in h, word in color) is
+-- if beginning is out of screen, do nothing
+   if ((x >= ILI9340_ROT_TFTWIDTH) | (y >= ILI9340_ROT_TFTHEIGHT) ) then
+      return
    end if
-   if defined(FONT_8X14_R) then
-      if font_id == FONT_8X14_R then
-         glcd_font_current_id_ = FONT_8X14_R
-         glcd_font_current_byte_per_char_ = FONT_8X14_R_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_8X14_R_WIDTH
-         glcd_font_current_height_ = FONT_8X14_R_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_8X14_R_BIT_DIRECTION
-      end if
+   
+   -- if rectangle don't fit to screen, cut it smaller
+   if ((y + h) >= ILI9340_ROT_TFTHEIGHT) then
+      h = ILI9340_ROT_TFTHEIGHT - y
    end if
-   if defined(FONT_10X16) then
-      if font_id == FONT_10X16 then
-         glcd_font_current_id_ = FONT_10X16
-         glcd_font_current_byte_per_char_ = FONT_10X16_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_10X16_WIDTH
-         glcd_font_current_height_ = FONT_10X16_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_10X16_BIT_DIRECTION
-      end if
+   if ((x + w) >= ILI9340_ROT_TFTWIDTH) then
+      w = ILI9340_ROT_TFTWIDTH - x
    end if
-   if defined(FONT_10X16_R) then
-      if font_id == FONT_10X16_R then
-         glcd_font_current_id_ = FONT_10X16_R
-         glcd_font_current_byte_per_char_ = FONT_10X16_R_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_10X16_R_WIDTH
-         glcd_font_current_height_ = FONT_10X16_R_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_10X16_R_BIT_DIRECTION
-      end if
+   
+   --set address window and fill with color
+   ili9340_rot_addr_window(x, y, x + w - 1, y + h - 1)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   for w loop
+      for h loop
+         spi_master_hw = color >> 8
+         spi_master_hw = color
+      end loop
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Fill screen with one color
+-- -------------------------------------------------------------------------
+procedure ili9340_fill_screen(word in color) is
+   ili9340_fill_rectangle(0,0,ILI9340_TFTWIDTH,ILI9340_TFTHEIGHT,color)
+end procedure
+
+-- -------------------------------------------------------------------------
+-- For FONT_TOP_LEFT_HORIZONTAL fonts.
+-- Writes one character. Before usage must be set ili9340_pen_color,
+-- ili9340_backlight_color, ili9340_cursor_position() and choose font by glcd_font_use()
+-- Procedure is filling character area from left to right, from top to bottom with
+-- pen and backround color. Faster than pixel-by pixel method for FONT_TOP_LEFT_HORIZONTAL fonts
+-- becouse x and y coordinates will be sent to LCD only once per character.
+-- -------------------------------------------------------------------------
+procedure ili9340_write_char_rectangle(word in x, word in y, byte in character) is
+   var word i = 0  -- row, which is written
+   var word j = 0  -- how many pixels are in actual row
+   var byte k = 0  -- actual byte of row
+   var byte m = 0  -- how many bytes are in one row
+   var byte mask = 1
+   var byte char_byte = 0
+   var byte bytes_per_width = glcd_font_current_width_ / 8
+   var byte pixels_per_width_rem = glcd_font_current_width_ % 8
+   
+   if ((x + glcd_font_current_width_>= ILI9340_TFTWIDTH) | (y + glcd_font_current_height_ >= ILI9340_TFTHEIGHT) ) then  --kontroll, kas alguspunkt on ekraanil ja kas täht mahub ära
+      return
    end if
-   if defined(FONT_12X16) then
-      if font_id == FONT_12X16 then
-         glcd_font_current_id_ = FONT_12X16
-         glcd_font_current_byte_per_char_ = FONT_12X16_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_12X16_WIDTH
-         glcd_font_current_height_ = FONT_12X16_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_12X16_BIT_DIRECTION
-      end if
+   
+   --replace unsupported character with space
+   if (character < 32) | (character > 122) then
+      character = " "
    end if
-   if defined(FONT_12X16_R) then
-      if font_id == FONT_12X16_R then
-         glcd_font_current_id_ = FONT_12X16_R
-         glcd_font_current_byte_per_char_ = FONT_12X16_R_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_12X16_R_WIDTH
-         glcd_font_current_height_ = FONT_12X16_R_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_12X16_R_BIT_DIRECTION
-      end if
+
+   -- if font width is not eights multiples, we need somewhere extra bytes
+   if pixels_per_width_rem > 0 then
+      m = bytes_per_width + 1
+   else
+      m = bytes_per_width
    end if
-   if defined(FONT_12X20) then
-      if font_id == FONT_12X20 then
-         glcd_font_current_id_ = FONT_12X20
-         glcd_font_current_byte_per_char_ = FONT_12X20_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_12X20_WIDTH
-         glcd_font_current_height_ = FONT_12X20_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_12X20_BIT_DIRECTION
-      end if
+   
+   --set address window of character and fill with data from font array
+   ili9340_addr_window(x, y, x + glcd_font_current_width_ - 1, y + glcd_font_current_height_ - 1)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   for glcd_font_current_height_ using i loop -- do it font height times
+      for m using k loop                      -- do it bytes_per_row times (incomplete bytes includes)
+         char_byte = glcd_font_lookup(word(character - 32) * glcd_font_current_byte_per_char_ + i * m + m - 1 - k)
+         -- do 8 or so many times, as left over from full bytes
+         if k == bytes_per_width then
+            j = pixels_per_width_rem
+         else
+            j = 8
+         end if
+         mask = 0b10000000
+         -- if "1" in font pixel, then write pen color, else backround color
+         for j loop
+            if (mask & char_byte) == mask then
+               spi_master = ili9340_pen_color >> 8  -- MSB of color
+               spi_master = ili9340_pen_color          -- LSB of color
+            else
+               spi_master = ili9340_backround_color >> 8
+               spi_master = ili9340_backround_color
+            end if
+            mask = mask >> 1
+         end loop
+      end loop
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Write character column by column. For FONT_BOTTOM_LEFT_VERTICAL fonts
+-- Write one character. Before usage must be set ili9340_pen_color,
+-- ili9340_backlight_color, ili9340_cursor_position() and choose font by glcd_font_use()
+-- Procedure is filling character area with lines from top to bottom, from left to right with
+-- pen and backround color. Faster than pixel-by pixel method for FONT_BOTTOM_LEFT_VERTICAL fonts,
+-- becouse x and y coordinates will be sent to LCD only once by every column of font.
+-- -------------------------------------------------------------------------
+procedure ili9340_write_char_cbc(word in x, word in y, byte in character) is
+   var word i,j = 0
+   var byte k, m = 0
+   var byte mask = 1
+   var byte char_byte = 0
+   var byte bytes_per_height = glcd_font_current_height_ / 8
+   var byte pixels_per_height_rem = glcd_font_current_height_ % 8
+   
+   if ((x + glcd_font_current_width_ >= ILI9340_TFTWIDTH) | (y + glcd_font_current_height_ >= ILI9340_TFTHEIGHT) ) then  --kontroll, kas alguspunkt on ekraanil ja kas täht mahub ära
+      return
    end if
-   if defined(FONT_16X8) then
-      if font_id == FONT_16X8 then
-         glcd_font_current_id_ = FONT_16X8
-         glcd_font_current_byte_per_char_ = FONT_16X8_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_16X8_WIDTH
-         glcd_font_current_height_ = FONT_16X8_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_16X8_BIT_DIRECTION
-      end if
+   
+   --replace unsupported character with space
+   if (character < 32) | (character > 122) then
+      character = " "
    end if
-   if defined(FONT_16X12) then
-      if font_id == FONT_16X12 then
-         glcd_font_current_id_ = FONT_16X12
-         glcd_font_current_byte_per_char_ = FONT_16X12_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_16X12_WIDTH
-         glcd_font_current_height_ = FONT_16X12_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_16X12_BIT_DIRECTION
-      end if
+
+   -- if font height is not eights multiples, we need somewhere extra bytes
+   if pixels_per_height_rem > 0 then
+      m = bytes_per_height + 1
+   else
+      m = bytes_per_height
    end if
-   if defined(FONT_16X26) then
-      if font_id == FONT_16X26 then
-         glcd_font_current_id_ = FONT_16X26
-         glcd_font_current_byte_per_char_ = FONT_16X26_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_16X26_WIDTH
-         glcd_font_current_height_ = FONT_16X26_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_16X26_BIT_DIRECTION
-      end if
+   
+   --set address window for every column of character and fill it with data from font array
+   for glcd_font_current_width_ using i loop -- do it font width pixel times
+      ili9340_addr_window(x + i, y, x + i, y + glcd_font_current_height_ - 1 )
+      ili9340_dc = 1
+      ili9340_cs = 0
+      for m using k loop  -- do it bytes_per_row times (incomplete bytes includes)
+         char_byte = glcd_font_lookup(word(character - 32) * glcd_font_current_byte_per_char_ + i * m + k)
+         -- do 8 or so many times, as left over from full bytes
+         if (k == 0 & m!= bytes_per_height) then
+            j = pixels_per_height_rem
+            mask = 0b1 << (8 - pixels_per_height_rem)
+         else
+            j = 8
+            mask = 0b1
+         end if
+         for j loop
+            if (mask & char_byte) == mask then
+               spi_master_hw = ili9340_pen_color >> 8
+               spi_master_hw = ili9340_pen_color
+             else
+               spi_master_hw = ili9340_backround_color >> 8
+               spi_master_hw = ili9340_backround_color
+            end if
+            mask = mask << 1
+         end loop
+      end loop
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- For rotated (horizontal) display (x - 320 pixels, y - 240 pixels)
+-- For FONT_BOTTOM_LEFT_VERTICAL fonts
+-- Write one character. Before usage must be set ili9340_pen_color,
+-- ili9340_backlight_color, ili9340_cursor_position() and choose font by glcd_font_use()
+-- Procedure is filling character area with lines from top to bottom, from left to right with
+-- pen and backround color. Faster than pixel-by pixel method for FONT_BOTTOM_LEFT_VERTICAL fonts,
+-- becouse x and y coordinates will be sent to LCD only once by every row of font.
+-- -------------------------------------------------------------------------
+procedure ili9340_rot_write_char_rectangle(word in x, word in y, byte in character) is
+   var word step = 0
+   var word i = 0  -- actual column of actual character. From left starting at 0
+   var word j = 0  -- how many pixels are in actual row
+   var byte k = 0  -- number of actual byte in row
+   var byte m = 0
+   var byte mask = 1
+   var byte char_byte = 0
+   var byte bytes_per_height = glcd_font_current_height_ / 8
+   var byte pixels_per_height_rem = glcd_font_current_height_ % 8
+   
+   if ((x + glcd_font_current_width_ >= ILI9340_ROT_TFTWIDTH) | (y + glcd_font_current_height_ >= ILI9340_ROT_TFTHEIGHT) ) then  --kontroll, kas alguspunkt on ekraanil ja kas täht mahub ära
+      return
    end if
-   if defined(FONT_22X36) then
-      if font_id == FONT_22X36 then
-         glcd_font_current_id_ = FONT_22X36
-         glcd_font_current_byte_per_char_ = FONT_22X36_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_22X36_WIDTH
-         glcd_font_current_height_ = FONT_22X36_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_22X36_BIT_DIRECTION
-      end if
+   
+   --replace unsupported character with space
+   if (character < 32) | (character > 122) then
+      character = " "
    end if
-   if defined(FONT_24X40) then
-      if font_id == FONT_24X40 then
-         glcd_font_current_id_ = FONT_24X40
-         glcd_font_current_byte_per_char_ = FONT_24X40_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_24X40_WIDTH
-         glcd_font_current_height_ = FONT_24X40_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_24X40_BIT_DIRECTION
-      end if
+
+   -- if font height is not eights multiples, we need somewhere extra bytes
+   if pixels_per_height_rem > 0 then
+      m = bytes_per_height + 1
+   else
+      m = bytes_per_height
    end if
-   if defined(FONT_32X53) then
-      if font_id == FONT_32X53 then
-         glcd_font_current_id_ = FONT_32X53
-         glcd_font_current_byte_per_char_ = FONT_32X53_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_32X53_WIDTH
-         glcd_font_current_height_ = FONT_32X53_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_32X53_BIT_DIRECTION
-      end if
+   
+   --set address window of character and fill with data from font array
+   ili9340_rot_addr_window(x, y, x + glcd_font_current_width_ - 1,y + glcd_font_current_height_ - 1)
+   ili9340_dc = 1
+   ili9340_cs = 0
+   for glcd_font_current_width_ using i loop
+      for m using k loop  -- do it bytes_per_row times
+         char_byte = glcd_font_lookup(word(character - 32) * glcd_font_current_byte_per_char_ + i * m + (m - (k + 1)))
+         if k == bytes_per_height then
+            j = pixels_per_height_rem
+         else
+            j = 8
+         end if
+         mask = 0b10000000
+         for j loop
+            if (mask & char_byte) == mask then
+               spi_master_hw = ili9340_pen_color >> 8
+               spi_master_hw = ili9340_pen_color
+            else
+               spi_master_hw = ili9340_backround_color >> 8
+               spi_master_hw = ili9340_backround_color
+            end if
+            mask = mask >> 1
+         end loop
+      end loop
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Writing FONT_TOP_LEFT_HORIZONTAL fonts for rotated (x - 320, y - 240 pixels) display
+-- Writes one character. Before usage must be set ili9340_pen_color,
+-- ili9340_backlight_color, ili9340_cursor_position() and choose font by glcd_font_use()
+-- Procedure is filling character area line by line from left to right, from top to bottom with
+-- pen and backround color. Faster than pixel-by pixel method for FONT_TOP_LEFT_HORIZONTAL fonts
+-- becouse x and y coordinates will be sent to LCD only once per character.
+-- -------------------------------------------------------------------------
+procedure ili9340_rot_write_char_lbl(word in x, word in y, byte in character) is
+   var word i = 0  -- actual row. From top starting at 0
+   var byte j = 0  -- how many pixels are in actual byte
+   var byte k = 0  -- byte number of actual row
+   var byte m = 0  -- how many full and incomplete bytes are in one row
+   var byte mask = 1
+   var byte char_byte = 0
+   var byte bytes_per_width = glcd_font_current_width_ / 8
+   var byte pixels_per_width_rem = glcd_font_current_width_ % 8
+   
+   if ((x + glcd_font_current_width_ >= ILI9340_ROT_TFTWIDTH) | (y + glcd_font_current_height_ >= ILI9340_ROT_TFTHEIGHT) ) then  --kontroll, kas alguspunkt on ekraanil ja kas täht mahub ära
+      return
    end if
-   -- User-defined font.
-   if defined(FONT_UDF_0XFE) then
-      if font_id == FONT_UDF_0XFE then
-         glcd_font_current_id_ = FONT_UDF_0XFE
-         glcd_font_current_byte_per_char_ = FONT_UDF_0XFE_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_UDF_0XFE_WIDTH
-         glcd_font_current_height_ = FONT_UDF_0XFE_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_UDF_0XFE_BIT_DIRECTION
-      end if
+   
+   --replace unsupported character with space
+   if (character < 32) | (character > 122) then
+      character = " "
    end if
-   -- User-defined font.
-   if defined(FONT_UDF_0XFD) then
-      if font_id == FONT_UDF_0XFD then
-         glcd_font_current_id_ = FONT_UDF_0XFD
-         glcd_font_current_byte_per_char_ = FONT_UDF_0XFD_BYTE_PER_CHAR
-         glcd_font_current_width_ = FONT_UDF_0XFD_WIDTH
-         glcd_font_current_height_ = FONT_UDF_0XFD_HEIGHT
-         glcd_font_current_bit_direction_ = FONT_UDF_0XFD_BIT_DIRECTION
-      end if
+
+   -- if font width is not eights multiples, we need somewhere extra bytes
+   if pixels_per_width_rem > 0 then
+      m = bytes_per_width + 1
+   else
+      m = bytes_per_width
    end if
-   -- Internal usage (from reserved ID)
-   if font_id == 0x00 then
-      -- special case
+   
+   --set address window for every row of character and fill with data from font array
+   for glcd_font_current_height_ using i loop
+      ili9340_rot_addr_window(x, y + i, x + glcd_font_current_width_ - 1, y + i)
+      ili9340_dc = 1
+      ili9340_cs = 0
+      for m using k loop
+         char_byte = glcd_font_lookup(word(character - 32) * glcd_font_current_byte_per_char_ + i * m + m - k - 1)
+         if k == bytes_per_width then
+            j = pixels_per_width_rem
+         else
+            j = 8
+         end if
+         mask = 0b10000000
+         for j loop
+            if (mask & char_byte) == mask then
+               spi_master_hw = ili9340_pen_color >> 8
+               spi_master_hw = ili9340_pen_color
+            else
+               spi_master_hw = ili9340_backround_color >> 8
+               spi_master_hw = ili9340_backround_color
+            end if
+            mask = mask >> 1
+         end loop
+      end loop
+   end loop
+   ili9340_cs = 1
+end procedure
+
+-- -------------------------------------------------------------------------
+-- Set cursor position (x - 0...240, y - 0...320)
+-- -------------------------------------------------------------------------
+procedure ili9340_cursor_position(word in x, word in y) is
+   ili9340_x_position = x
+   ili9340_y_position = y
+end procedure
+
+-- -------------------------------------------------------------------------
+-- pseudo variable
+-- chooses write function by glcd font orientation
+-- writes characters to LCD
+-- if ili9340_autowrap is 1, then goes to next line
+-- -------------------------------------------------------------------------
+procedure ili9340'put(byte in character) is
+   if glcd_font_current_bit_direction_ == FONT_BOTTOM_LEFT_VERTICAL then
+      ili9340_write_char_cbc(ili9340_x_position,ili9340_y_position,character)
+   else
+      ili9340_write_char_rectangle(ili9340_x_position,ili9340_y_position,character)
    end if
-   if font_id == 0xFF then
-      -- special case
+   ili9340_x_position = ili9340_x_position + glcd_font_current_width_
+   
+   -- do autowrap, if enabled
+   if (ili9340_x_position + glcd_font_current_width_) > (ILI9340_TFTWIDTH - 1) & (ili9340_autowrap == 1) then
+      ili9340_x_position = 0
+      ili9340_y_position = ili9340_y_position + glcd_font_current_height_
    end if
 end procedure
 
-function glcd_font_lookup(word in idx) return byte is
-   if defined(FONT_4X6) then
-      if glcd_font_current_id_ == FONT_4X6 then
-         return FONT_4X6_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_4X6_R) then
-      if glcd_font_current_id_ == FONT_4X6_R then
-         return FONT_4X6_R_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_5X7) then
-      if glcd_font_current_id_ == FONT_5X7 then
-         return FONT_5X7_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_5X8) then
-      if glcd_font_current_id_ == FONT_5X8 then
-         return FONT_5X8_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_5X12) then
-      if glcd_font_current_id_ == FONT_5X12 then
-         return FONT_5X12_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_5X12_R) then
-      if glcd_font_current_id_ == FONT_5X12_R then
-         return FONT_5X12_R_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_6X8) then
-      if glcd_font_current_id_ == FONT_6X8 then
-         return FONT_6X8_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_6X8_U) then
-      if glcd_font_current_id_ == FONT_6X8_U then
-         return FONT_6X8_U_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_6X10) then
-      if glcd_font_current_id_ == FONT_6X10 then
-         return FONT_6X10_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_7X12) then
-      if glcd_font_current_id_ == FONT_7X12 then
-         return FONT_7X12_CHARS[idx]
-      end if
-   end if
-    if defined(FONT_7X12_U) then
-      if glcd_font_current_id_ == FONT_7X12_U then
-         return FONT_7X12_U_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_8X8) then
-      if glcd_font_current_id_ == FONT_8X8 then
-         return FONT_8X8_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_8X12) then
-      if glcd_font_current_id_ == FONT_8X12 then
-         return FONT_8X12_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_8X12_R) then
-      if glcd_font_current_id_ == FONT_8X12_R then
-         return FONT_8X12_R_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_8X12_U) then
-      if glcd_font_current_id_ == FONT_8X12_U then
-         return FONT_8X12_U_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_8X14) then
-      if glcd_font_current_id_ == FONT_8X14 then
-         return FONT_8X14_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_8X14_R) then
-      if glcd_font_current_id_ == FONT_8X14_R then
-         return FONT_8X14_R_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_10X16) then
-      if glcd_font_current_id_ == FONT_10X16 then
-         return FONT_10X16_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_10X16_R) then
-      if glcd_font_current_id_ == FONT_10X16_R then
-         return FONT_10X16_R_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_12X16) then
-      if glcd_font_current_id_ == FONT_12X16 then
-         return FONT_12X16_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_12X16_R) then
-      if glcd_font_current_id_ == FONT_12X16_R then
-         return FONT_12X16_R_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_12X20) then
-      if glcd_font_current_id_ == FONT_12X20 then
-         return FONT_12X20_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_16X8) then
-      if glcd_font_current_id_ == FONT_16X8 then
-         return FONT_16X8_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_16X12) then
-      if glcd_font_current_id_ == FONT_16X12 then
-         return FONT_16X12_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_16X26) then
-      if glcd_font_current_id_ == FONT_16X26 then
-         return FONT_16X26_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_22X36) then
-      if glcd_font_current_id_ == FONT_22X36 then
-         return FONT_22X36_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_24X40) then
-      if glcd_font_current_id_ == FONT_24X40 then
-         return FONT_24X40_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_32X53) then
-      if glcd_font_current_id_ == FONT_32X53 then
-         return FONT_32X53_CHARS[idx]
-      end if
-   end if
-   -- user-defined
-   if defined(FONT_UDF_0XFE) then
-      if glcd_font_current_id_ == FONT_UDF_0XFE then
-         return FONT_UDF_0XFE_CHARS[idx]
-      end if
-   end if
-   if defined(FONT_UDF_0XFD) then
-      if glcd_font_current_id_ == FONT_UDF_0XFD then
-         return FONT_UDD_0XFD_CHARS[idx]
-      end if
-   end if
-   -- if we get there, can't lookup onto existing char tables
-   return 0
-end function
+-- -------------------------------------------------------------------------
+-- Set cursor position of rotated display (x - 0...320, y - 0...240)
+-- -------------------------------------------------------------------------
+procedure ili9340_rot_cursor_position(word in x, word in y) is
+      ili9340_rot_x_position = x
+      ili9340_rot_y_position = y
+end procedure
 
-
-if !defined (FONT_BIT_DIRECTION) then
-   const byte FONT_BIT_DIRECTION = FONT_TOP_RIGHT_VERTICAL
-end if
-
+-- -------------------------------------------------------------------------
+-- pseudo variable for rotated display
+-- chooses write function by glcd font orientation
+-- writes characters to LCD
+-- if ili9340_autowrap is 1, then goes to next line
+-- -------------------------------------------------------------------------
+procedure ili9340_rot'put(byte in character) is
+   if glcd_font_current_bit_direction_ == FONT_BOTTOM_LEFT_VERTICAL then
+      ili9340_rot_write_char_rectangle(ili9340_rot_x_position,ili9340_rot_y_position,character)
+   else
+      ili9340_rot_write_char_lbl(ili9340_rot_x_position,ili9340_rot_y_position,character)
+   end if
+   ili9340_rot_x_position = ili9340_rot_x_position + glcd_font_current_width_
+   
+   -- do autowrap, if enabled
+   if (ili9340_rot_x_position + glcd_font_current_width_) > (ILI9340_ROT_TFTWIDTH - 1) & ili9340_autowrap == 1 then
+      ili9340_rot_x_position = 0
+      ili9340_rot_y_position = ili9340_rot_y_position + glcd_font_current_height_
+   end if
+end procedure
