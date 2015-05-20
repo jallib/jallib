@@ -1,0 +1,223 @@
+-- Title: sample file for ILI9340 controller library
+-- Author: Urmas Joeleht Copyright (c) 2015..2016, all rights reserved.
+-- Adapted-by:
+-- Compiler:  >=2.4q3
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+--
+-- Description: sample file for 2.2" ILI9340 LCD display demo
+--
+-- Notes:
+--
+include 18f26k22                    -- target PICmicro
+
+pragma target osc INTOSC_NOCLKOUT
+OSCCON_IRCF = 0b111                 -- set internal osc to 111 = 16M
+OSCTUNE_PLLEN = true                -- multiply internal osc by 4
+pragma target clock 64_000_000      -- oscillator frequency
+pragma target WDT      disabled     -- no watchdog
+pragma target XINST    disabled     -- not supported by JalV2
+pragma target DEBUG    disabled     -- no debugging
+pragma target LVP      disabled     -- no Low Voltage Programming
+
+pragma target MCLR	external	      -- no external reset
+pragma target BROWNOUT	enabled		-- stay in reset until power good
+pragma target PWRTE	enabled		   -- wait a bit more on startup
+pragma target CCP3MUX  pin_C6       -- leave C1 free for USART
+pragma target CCP2MUX  pin_C1
+
+enable_digital_io()                  -- make all pins digital I/O
+
+include delay
+include print
+
+alias led is pin_a3
+pin_a3_direction = output
+
+   -- configure SPI to use MSSP module
+include spi_master_hw
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+
+spi_init(SPI_MODE_10,SPI_RATE_FOSC_16) -- init spi, choose mode and speed 1M (64/4/16)
+alias spi_master_set_mode is spi_master_hw_set_mode
+alias spi_master_set_speed is spi_master_hw_set_speed
+alias spi_master is spi_master_hw
+
+-- GLCD pins
+alias ili9340_cs is pin_a0
+alias ili9340_reset is pin_a2
+alias ili9340_dc is pin_a1
+
+pin_a0_direction = output
+pin_a1_direction = output
+pin_a2_direction = output
+
+-- include needed font libraries --font ID
+include font_4x6          --0x04
+include font_4x6_r        --0x1C
+include font_5x7          --0x01
+include font_5x8          --0x05
+include font_5x12         --0x06
+include font_5x12_r       --0x07
+include font_6x8          --0x02
+include font_6x8_u        --0x08
+include font_6x10         --0x09
+include font_7x12         --0x0A
+include font_7x12_u       --0x0B
+include font_8x8          --0x0C
+include font_8x12         --0x03
+include font_8x12_u       --0x0D
+include font_8x12_r       --0x0E
+include font_8x14         --0x0F
+include font_8x14_r       --0x10
+include font_10x16        --0x11
+include font_10x16_r      --0x12
+include font_12x16        --0x13
+include font_12x16_r      --0x14
+include font_12x20        --0x15
+include font_16x8         --0x16
+include font_16x12        --0x17
+include font_16x26        --0x18
+--include font_22x36        --0x19
+--include font_24x40        --0x1A
+--include font_32x53        --0x1B
+
+include glcd_font
+
+include ili9340
+ili9340_init()
+
+ili9340_pen_color = ILI9340_BLACK
+ili9340_backround_color = ILI9340_WHITE
+ili9340_autowrap = 1
+var byte test_str[]="0123456789ABCDEFGHIabcdefghijklmnop"
+var word r = 0
+var byte t
+
+--################################################################################
+forever loop
+   -- TEST 1. Fill screen with different colors
+   ili9340_fill_screen(ILI9340_RED)
+   delay_1s(1)
+   ili9340_fill_screen(ILI9340_BLUE)
+   delay_1s(1)
+   ili9340_fill_screen(ILI9340_GREEN)
+   delay_1s(1)
+   ili9340_fill_screen(ILI9340_BLACK)
+   delay_1s(1)
+   ili9340_fill_screen(ILI9340_CYAN)
+   delay_1s(1)
+   ili9340_fill_screen(ILI9340_MAGENTA)
+   delay_1s(1)
+   ili9340_fill_screen(ILI9340_YELLOW)
+   delay_1s(1)
+   ili9340_fill_screen(ILI9340_WHITE)
+   delay_1s(1)
+
+   -- TEST 2. 45 degree lines from corners
+   for 240 using r loop
+      ili9340_draw_pixel(r, r, 0)
+   end loop
+   for 240 using r loop
+      ili9340_draw_pixel(239 - r, r, 0)
+   end loop
+   for 240 using r loop
+      ili9340_draw_pixel(r, 80 + r, 0)
+   end loop
+   for 240 using r loop
+      ili9340_draw_pixel(239 - r, 80 + r, 0)
+   end loop
+   delay_1s(3)
+   
+   -- TEST 3. 45 degree lines from corners with rotated display procedures
+   ili9340_fill_screen(ILI9340_WHITE)
+   for 240 using r loop
+      ili9340_rot_draw_pixel(r, r, 0)
+   end loop
+   for 240 using r loop
+      ili9340_rot_draw_pixel(r, 239 - r, 0)
+   end loop
+   for 240 using r loop
+      ili9340_rot_draw_pixel(80 + r, r, 0)
+   end loop
+   for 240 using r loop
+      ili9340_rot_draw_pixel(80 + r, 239 - r, 0)
+   end loop
+   delay_1s(3)
+   
+   -- TEST 4. rectangle 1 pixel away from each side
+   ili9340_fill_screen(ILI9340_WHITE)
+   ili9340_draw_h_line(1,1,238,0)
+   ili9340_draw_h_line(1,318,238,0)
+   ili9340_draw_v_line(1,1,318,0)
+   ili9340_draw_v_line(238,1,318,0)
+   delay_1s(3)
+   
+   -- TEST 5. rectangle 1 pixel away from each side with rotated display procedures
+   ili9340_fill_screen(ILI9340_WHITE)
+   ili9340_rot_draw_h_line(1,1,318,0)
+   ili9340_rot_draw_h_line(1,238,318,0)
+   ili9340_rot_draw_v_line(1,1,238,0)
+   ili9340_rot_draw_v_line(318,1,238,0)
+   delay_1s(3)
+   
+   -- TEST 4. Filled rectangle 1 pixel away from each side
+   ili9340_fill_screen(ILI9340_WHITE)
+   ili9340_fill_rectangle(1,1,238,318,0)
+   delay_1s(3)
+   
+   -- TEST 5. Filled rectangle 1 pixel away from each side with rotated display procedures
+   ili9340_fill_screen(ILI9340_WHITE)
+   ili9340_fill_rectangle(0,0,240,320,0)
+   delay_1s(3)
+   
+   --TEST 6. Fonts without autowrap
+   ili9340_fill_screen(ILI9340_WHITE)
+   ili9340_autowrap = 0
+   ili9340_cursor_position(0,0)
+   for 26 using t loop
+      glcd_font_use(t + 1)
+      print_string(ili9340, test_str)
+      ili9340_x_position = 0
+      ili9340_y_position = ili9340_y_position + glcd_font_current_height_
+   end loop
+   delay_1s(3)
+   
+   --TEST 7. Fonts without autowrap, rotated display
+   ili9340_fill_screen(ILI9340_WHITE)
+   ili9340_autowrap = 0
+   ili9340_rot_cursor_position(0,0)
+   for 26 using t loop
+      glcd_font_use(t + 1)
+      print_string(ili9340_rot, test_str)
+      ili9340_rot_x_position = 0
+      ili9340_rot_y_position = ili9340_rot_y_position + glcd_font_current_height_
+   end loop
+   delay_1s(3)
+
+   --TEST 8. Fonts with autowrap
+   ili9340_fill_screen(ILI9340_WHITE)
+   ili9340_autowrap = 1
+   glcd_font_use(font_5x12)
+   ili9340_cursor_position(0,0)
+   for 50 loop
+      print_string(ili9340, test_str)
+   end loop
+   delay_1s(3)
+   
+   --TEST 9. Fonts with autowrap, rotated display
+   ili9340_fill_screen(ILI9340_WHITE)
+   ili9340_autowrap = 1
+   glcd_font_use(font_5x12)
+   ili9340_rot_cursor_position(0,0)
+   for 50 loop
+      print_string(ili9340_rot, test_str)
+   end loop
+   delay_1s(3)
+end loop
