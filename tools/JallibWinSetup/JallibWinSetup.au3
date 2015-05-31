@@ -13,6 +13,8 @@
 ;-- 	   - Compile this with AutoIT.
 ;--
 
+#RequireAdmin
+
 ClipPut(@tempdir)
 
 Dim $Folder = "C:\JallibWorkplace" ; NO TRAILING /
