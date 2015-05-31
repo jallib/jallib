@@ -1,0 +1,216 @@
+-- ------------------------------------------------------
+-- Title: Test DS1302 rtc clock module
+--
+-- Author: Rob Hamerling, Copyright (c) 2013..2015, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q3
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Testing rtc_ds1302 with 182580 and graphical LCD
+--
+-- Sources:
+--
+-- Notes:
+--
+-- --------------------------------------------------------
+
+include 18f2580
+
+pragma target clock      8_000_000                  -- xtal frequency
+
+pragma target  OSC       intosc_noclkout            -- internal oscillator
+pragma target  WDT       control
+pragma target  PWRTE     enabled
+pragma target  MCLR      external
+pragma target  BROWNOUT  disabled
+pragma target  IESO      disabled
+pragma target  FCMEN     disabled
+pragma target  LVP       disabled
+pragma target  DEBUG     disabled
+
+WDTCON_SWDTEN = false                        -- no wdt
+
+OSCCON_IRCF = 0b111                          -- internal oscillator at 8 MHz
+OSCCON_SCS  = 0                              -- select primary clock   
+
+include delay
+include print
+include math
+
+-- GRAPHIC_LCD IO definition ------------------------
+
+alias glcd_dataprt     is portB
+alias glcd_dataprt_dir is portB_direction
+
+const bit GLCD_REVERSE_DATABITS = TRUE       -- reversed wiring sequence of databits
+
+alias glcd_di  is pin_A2
+alias glcd_rw  is pin_A1
+alias glcd_e   is pin_A0
+alias glcd_cs1 is pin_C5
+alias glcd_cs2 is pin_C6
+alias glcd_rst is pin_C7
+
+alias glcd_di_direction  is pin_A2_direction
+alias glcd_rw_direction  is pin_A1_direction
+alias glcd_e_direction   is pin_A0_direction
+alias glcd_cs1_DIRECTION is pin_C5_direction
+alias glcd_cs2_direction is pin_C6_direction
+alias glcd_rst_direction is pin_C7_direction
+
+const bit GLCD_CLIPPING = TRUE               -- enable clipping
+
+include glcd_5x7_font                        -- font to be used
+include glcd_font                            -- common font stuff
+glcd_font_use(FONT_5X7)                      -- activate font
+
+include glcd_ks0108                          -- glcd device dependent library
+include glcd_common                          -- common glcd library
+
+delay_100ms(2)				                     -- power on delay
+
+glcd_init()                                  -- initialize display
+
+
+-- === With the used board the DS1302 is powered by the PIC ===
+
+pin_A7 = 1                                   -- Vcc for DS1302
+pin_A6 = 0                                   -- gnd for DS1302
+pin_A7_direction = OUTPUT
+pin_A6_direction = OUTPUT
+
+-- === DS1302 rtc library setup ===
+
+alias  rtc_sclk  is pin_C0                   -- clock pin   
+alias  rtc_io    is pin_C1                   -- data pin
+alias  rtc_iodir is pin_C1_direction         -- data pin direction
+alias  rtc_ce    is pin_C2                   -- CE and clock control (RST)
+
+pin_C0_direction = OUTPUT                    -- clk / sclk  ) fixed output
+pin_C2_direction = OUTPUT                    -- rst / CE    )   "     "
+                                             -- iodir is controlled by the library
+                                             
+const RTC_DIODE    = 2                       -- Diode:  1 or 2
+const RTC_RESISTOR = 8                       -- Resistor: 2 (2K), 4 (4K) or 8 (8K)
+                                             -- any other combination of values
+                                             -- will not enable trickle charging
+
+include rtc_ds1302                           -- ds1302 rtc library
+rtc_init()                                   -- init the ds1302 module
+
+
+-- display date or time at current coordinates ------------------
+procedure display_3bcd(byte in bcd1,
+                       byte in bcd2,
+                       byte in bcd3,
+                       byte in sep) is
+   print_byte_hex(glcd, bcd1)
+   glcd = sep
+   print_byte_hex(glcd, bcd2)
+   glcd = sep
+   print_byte_hex(glcd, bcd3)
+end procedure
+
+
+--  check and set date and time ---------
+const byte set_minute = 0x51
+const byte set_second = 0x51
+
+var   byte ram_minute = 0xAA
+var   byte ram_second = 0x55
+
+rtc_read_reg_(rtc_reg_ram_ + 0, ram_minute)   -- read 1st byte of ram
+rtc_read_reg_(rtc_reg_ram_ + 2, ram_second)   -- read 2nd byte of ram
+
+if ( (ram_second != set_second)  |
+     (ram_minute != set_minute) )  then   -- footprint not matching
+   rtc_write_year(0x15)
+   rtc_write_month(0x05)
+   rtc_write_dayofmonth(0x15)
+   rtc_write_hour(0x19)
+   rtc_write_minute(set_minute)
+   rtc_write_second(set_second)
+   rtc_write_reg_(rtc_reg_ram_ + 0, set_minute)   -- 1st byte of ram
+   rtc_write_reg_(rtc_reg_ram_ + 2, set_second)   -- 2nd byte of ram
+end if
+
+
+--  main line -------------------------
+
+const byte str_chip[] = "DS1302"
+const byte str_date[] = "dmy "
+const byte str_time[] = "hms "
+const byte str_dow[]  = "day "
+const byte str_prot[] = "Prt "
+const byte str_adow[] = "..SuMoTuWeThFrSa"          -- indexes 1..7 (*2)
+
+glcd_background_color = GLCD_WHITE                  -- background color
+
+glcd_clear_screen()
+print_string(glcd, PICTYPE)
+glcd = " "
+print_string(glcd, str_chip)
+
+var byte x, y
+var sword dx, dy, ex, ey, r
+y = GLCD_Y_PIXELS / 2                           -- y-coord. clock center 
+x = GLCD_X_PIXELS - y                           -- x-coord. clock center
+r = sword(GLCD_Y_PIXELS / 2 - 2)                -- radius of clock circle
+glcd_circle(x, y, byte(r) + 1)                  -- clock border
+
+var byte sec = 0                                -- previous binary values 
+var byte min = 0
+var byte day = 0
+var byte newsec, newmin, newday                 -- new binary values
+
+forever loop
+
+   newsec = rtc_second_bin                         -- get second of 'time now'
+   if (sec != newsec) then                         -- second value has changed
+      glcd_char_goto(0,10)
+      print_string(glcd, str_time)
+      display_3bcd(rtc_hour_bcd, rtc_minute_bcd, rtc_second_bcd, ":")
+      glcd_pen_color = GLCD_WHITE
+      polar_to_cartesian(r - 2, sword(sec) * 6 - 90, dx, dy)   -- end point 
+      glcd_line(x, y, byte(x + dx), byte(y + dy))  -- erase previous hand
+      sec = rtc_second_bin                         -- new value
+      glcd_pen_color = GLCD_BLACK
+      polar_to_cartesian(r - 2, sword(sec) * 6 - 90, dx, dy)   -- end point 
+      glcd_line(x, y, byte(x + dx), byte(y + dy))  -- draw new hand	
+      
+      newmin = rtc_minute_bin                      -- get minute now	
+      if (min != newmin) then
+         glcd_pen_color = GLCD_WHITE
+         polar_to_cartesian(r + 1, sword(min) * 6 - 90, dx, dy)   -- begin point 
+         polar_to_cartesian(r - 1, sword(min) * 6 - 90, ex, ey)   -- end point 
+         glcd_line(byte(x + ey), byte(y + ey), byte(x + dx), byte(y + dy))  -- erase previous hand
+         min = rtc_minute_bin                      -- new value
+         glcd_pen_color = GLCD_BLACK
+         polar_to_cartesian(r + 1, sword(min) * 6 - 90, dx, dy)   -- begin point 
+         polar_to_cartesian(r - 1, sword(min) * 6 - 90, ex, ey)   -- end point 
+         glcd_line(byte(x + ex), byte(y + ey), byte(x + dx), byte(y + dy))  -- draw new hand	
+         
+         newday = rtc_dayofmonth_bin
+         if (day != newday) then                      -- day has changed
+            glcd_char_goto(0,20)
+            print_string(glcd, str_date)
+            display_3bcd(rtc_dayofmonth_bcd, rtc_month_bcd, rtc_year_bcd, "/")
+            glcd_char_goto(0,30)
+            print_string(glcd, str_dow)
+            glcd = str_adow[rtc_dayofweek * 2]
+            glcd = str_adow[rtc_dayofweek * 2 + 1]
+            glcd_char_goto(0,40)
+            print_string(glcd, str_prot)
+            print_byte_hex(glcd, rtc_protect_)   
+         end if
+      end if
+   end if
+
+   delay_100ms(3)
+
+end loop
+

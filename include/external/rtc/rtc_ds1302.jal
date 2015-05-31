@@ -3,10 +3,11 @@
 --
 -- Author: Richard Zengerink,  Copyright (c) 2008, all rights reserved
 --
--- Adapted-by:
+-- Adapted-by: Rob Hamerling (2013, 2015), refactoring.
 --
--- Compiler: =2.4
--- Revision: $Revision$
+-- Compiler: 2.4q3
+--
+-- Revision: $Revision: 2760 $
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -17,642 +18,310 @@
 --
 -- Notes:
 --
---
--- -------------------------------------------------------------------------
---  Start of code
--- -------------------------------------------------------------------------
---
---
 -- ----------------------------------------------------------------------------
--- variable declaration needed for this library
---
+-- constants declarations
 -- ----------------------------------------------------------------------------
 
-var byte trick_char_reg ;trickel charge  register (90h)
+-- --- realtime clock hardware identification
+const RTC_HW = 1302                                 -- DS1302 module
 
-var byte second    ;seconds (0 TO 59)
-var byte minut     ;minutes (0 TO 59)
-var byte hrs       ;houres  (0 TO 23)
-var byte date      ;day of mounth (1 to 31)
-var byte mounth    ;mounth (1 to 12)
-var byte day       ;day of week (1 = monday 7 = sunday)
-var word year      ;year (00 to 99)
-var byte protreg   ;protect register
 
-var volatile bit rout0 at trick_char_reg :0
-var volatile bit rout1 at trick_char_reg :1
-var volatile bit ds0 at trick_char_reg :2
-var volatile bit ds1 at trick_char_reg :3
+include rtc_common                                  -- common rtc functions and procedures
+
+
+-- write-addresses of the registers
+-- for read the least significant bit must be set
+
+const  byte  rtc_reg_second_      = 0x80
+const  byte  rtc_reg_minute_      = 0x82
+const  byte  rtc_reg_hour_        = 0x84
+const  byte  rtc_reg_dayofmonth_  = 0x86
+const  byte  rtc_reg_month_       = 0x88
+const  byte  rtc_reg_dayofweek_   = 0x8A
+const  byte  rtc_reg_year_        = 0x8C
+const  byte  rtc_reg_protect_     = 0x8E
+const  byte  rtc_reg_trickle_     = 0x90
+const  byte  rtc_reg_burst_clock_ = 0xBE
+const  byte  rtc_reg_ram_         = 0xC0            -- first of 31 bytes
+const  byte  rtc_reg_burst_ram_   = 0xFE
+
 
 -- ----------------------------------------------------------------------------
--- programs the trickel charge register according the parameters set in the MAIN file
--- (this procedure is only used inside this file)
+-- private variable declarations exclusive for this library
+-- in addition to variables declared in rtc_common.
 -- ----------------------------------------------------------------------------
 
-if rtc_trickel then
-   trick_char_reg = 0b1010_0000
-   if rtc_diode ==1 then             ;1 diode then DS1 = 0 and DS0 = 1
-      ds0 = 1
-      ds1 = 0
+var  volatile  byte  rtc_protect_     = 0x00          -- no write protection
+var  volatile  byte  rtc_trickle_     = 0b1010_0000   -- basic trickle pattern
+
+
+-- ----------------------------------------------------------------------------
+-- Declare and pre-format the trickle charge mask byte
+-- according the constants defined in the application program.
+-- Trickle charging of the backup battery will only be active
+-- with rtc_diode value 1 or 2, and rtc_resistor value 2, 4 or 8.
+-- Any other combination will result in no trickle charging, without warning!
+-- ----------------------------------------------------------------------------
+var  bit   rtc_trickle__rs0  at  rtc_trickle_ : 0
+var  bit   rtc_trickle__rs1  at  rtc_trickle_ : 1
+var  bit   rtc_trickle__ds0  at  rtc_trickle_ : 2
+var  bit   rtc_trickle__ds1  at  rtc_trickle_ : 3
+
+if defined(RTC_DIODE) then                         -- user specified
+   if (RTC_DIODE == 1) then                          -- 1 diode
+      rtc_trickle__ds0 = 1
+   elsif (RTC_DIODE == 2) then                       -- 2 diodes
+      rtc_trickle__ds1 = 1
    else
-      if rtc_diode ==2 then          ;2 diodes then DS1 = 1 and DS0 = 0
-         ds0 = 0
-         ds1 = 1
-      else
-         ds0 = 0                 ;no diode selection
-         ds1 = 0
-      end if
+      _error "Invalid value of RTC_DIODE"
    end if
-   if rtc_resistor ==0 then          ;rtc_RESISTOR = 0Ohm then ROUT0 = 0 and ROUT1 = 0
-      rout0 = 0
-      rout1 = 0
+end if
+
+if defined(rtc_resistor) then                      -- user specified
+   if (RTC_RESISTOR == 2) then                     -- 2 kOhm
+      rtc_trickle__rs0 = 1
+   elsif (RTC_RESISTOR == 4) then                  -- 4 kOhm
+      rtc_trickle__rs1 = 1
+   elsif (RTC_RESISTOR == 8) then                  -- 8 kOhm
+      rtc_trickle__rs0 = 1
+      rtc_trickle__rs1 = 1
    else
-      if rtc_resistor ==2 then       ;rtc_RESISTOR = 2kOhm then ROUT0 = 1 and ROUT1 = 0
-         rout0 = 1
-         rout1 = 0
-      else
-         if rtc_resistor ==4 then    ;rtc_RESISTOR = 4kOhm then ROUT0 = 0 and ROUT1 = 1
-            rout0 = 0
-            rout1 = 1
-         else
-            rout0 = 1            ;rtc_RESISTOR = 8kOhm then ROUT0 = 1 and ROUT1 = 1
-            rout1 = 1
-         end if
-      end if
+      _error "Invalid value of RTC_RESISTOR"
    end if
-else
-   trick_char_reg = 0b0000_0001
 end if
 
 
--- ----------------------------------------------------------------------------
--- convert from decimal to rtc format
--- (this procedure is only used inside this file)
--- ----------------------------------------------------------------------------
+-- ----------------------------------------------------------------------
+-- physical clock pulse  { high - 1us - low - 1us }
+-- ----------------------------------------------------------------------
+procedure rtc_clock_pulse_() is
+   rtc_sclk = high
+   _usec_delay(1)
+   rtc_sclk = low
+   _usec_delay(1)
+end procedure
 
-procedure dec_to_rtc( byte in out data ) is
-  var byte rtc
-  rtc = data
-  if rtc <= 9 then
-    rtc = rtc
-    else
-    if rtc <= 19 then
-        rtc = rtc + 6
-        else
-        if rtc <= 29 then
-            rtc = rtc + 12
-            else
-            if rtc <= 39 then
-                rtc = rtc + 18
-                else
-                if rtc <= 49 then
-                    rtc = rtc + 24
-                    else
-                    if rtc <= 59 then
-                        rtc = rtc + 30
-                    end if
-                end if
-            end if
-        end if
-    end if
-end if
- data = rtc
+-- ----------------------------------------------------------------------------
+-- physical read of byte from ds1302
+-- ----------------------------------------------------------------------------
+procedure rtc_read_byte_raw_(byte out data) is
+   var bit db at data : 7                          -- MSb 
+   rtc_sclk = LOW                                  -- clock initially low
+   rtc_iodir = INPUT                               -- set ds1302 read mode
+   for 7 loop
+      db = rtc_io                                  -- read pin
+      data = data >> 1                             -- next
+      rtc_clock_pulse_()
+   end loop
+   db = rtc_io                                     -- last bit
+   rtc_clock_pulse_()                              -- last clock 
+end procedure
+
+-- ----------------------------------------------------------------------
+-- physical write of a byte to ds1302 (register or data)
+-- ----------------------------------------------------------------------------
+procedure rtc_write_byte_raw_(byte in data) is 
+   var bit db at data : 0                          -- LSb 
+   rtc_sclk = LOW                                  -- clock initially low
+   rtc_iodir = OUTPUT                              -- set ds1302 to write mode
+   for 8 loop
+      if (db) then                                 -- 1-bit
+         rtc_io = HIGH
+      else
+         rtc_io = LOW                              -- 0-bit
+      end if
+      rtc_clock_pulse_()
+      data = data >> 1                             -- next bit
+   end loop
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Read specified data from a specified register
+-- ----------------------------------------------------------------------------
+procedure rtc_read_reg_(byte in register, byte out data) is
+   var bit RD at register : 0                      -- read address 
+   rtc_ce = HIGH                                   -- start of read
+   RD = 1                                          -- set to read mode
+   rtc_write_byte_raw_(register)                       -- set read address
+   rtc_read_byte_raw_(data)
+   rtc_ce = LOW                                    -- 
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Write specified data to a specified register
+-- ----------------------------------------------------------------------------
+procedure rtc_write_reg_(byte in register, byte in data) is
+   rtc_ce = HIGH                                   -- start of write
+   rtc_write_byte_raw_(register)                   -- set write address
+   rtc_write_byte_raw_(data)
+   rtc_ce = LOW                                    -- 
 end procedure
 
 
 -- ----------------------------------------------------------------------------
--- convert from rtc format to decimal
--- (this procedure is only used inside this file)
+-- read second value from rtc
 -- ----------------------------------------------------------------------------
-
-procedure rtc_to_dec( byte in out data ) is
-  var byte dec
-  dec = data
-  dec = dec & 0b0111_1111
-
-  if dec <= 9 then
-    dec = dec
-    else
-    if dec <= 25 then
-        dec = dec - 6
-        else
-        if dec <= 41 then
-            dec = dec - 12
-            else
-            if dec <= 57 then
-                dec = dec - 18
-                else
-                if dec <= 73 then
-                    dec = dec - 24
-                    else
-                    if dec <= 89 then
-                        dec = dec - 30
-                    end if
-                end if
-            end if
-        end if
-    end if
-  end if
-  data = dec
-end procedure
-
-
-
+function rtc_read_second() return byte is
+   var byte second 
+   rtc_read_reg_(rtc_reg_second_, second)
+   return (second & 0b0111_1111)                      -- strip Clock Halt bit
+end function
 
 -- ----------------------------------------------------------------------------
--- gives a clock puls
--- (this procedure is only used inside this file)
+-- write second value to the rtc
 -- ----------------------------------------------------------------------------
-
-procedure rtc_clock()  is
- rtc_sclk = high
- delay_1us
- rtc_sclk = low
- delay_1us
-end procedure
-
-
-
-
-procedure rtc_register_send(byte in register) is
-  for 8 loop
-      if (register & 0b0000_0001)== 1 then rtc_io = high else rtc_io = low end if
-      rtc_clock
-      register = register >> 1  ;shift right register
-  end loop
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- sends data to rtc
--- (this procedure is only used inside this file)
--- ----------------------------------------------------------------------------
-
-procedure rtc_data_send( byte in data ) is
-  for 8 loop
-      if (data & 0b0000_0001)== 1 then rtc_io = high else rtc_io = low end if
-      rtc_clock
-      data = data >> 1   ;shift right data
-  end loop
-end procedure
-
-
-
--- ----------------------------------------------------------------------------
--- reads data from rtc
--- (this procedure is only used inside this file)
--- ----------------------------------------------------------------------------
-
-procedure rtc_read_data(byte out data) is
-
-  var bit db at data : 7
-    for 7 loop
-      db = rtc_io
-      data = data >> 1   ;shift right data
-      rtc_clock
-    end loop
-      db = rtc_io
-      rtc_clock
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- Writes specified data (without converting) to a specified register in the
--- rtc
--- ----------------------------------------------------------------------------
-
-procedure rtc_write( byte in data, byte in register ) is ; send data to rtc
-
-  rtc_iodir = output
-  rtc_sclk = low
-  rtc_ce =  high
-
-  rtc_register_send (register)
-
-  rtc_data_send (data)
-  
-  rtc_ce =  low
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- reads specified data from a specified register in the
--- rtc (without converting)
--- ----------------------------------------------------------------------------
-
-procedure rtc_read( byte in register , byte out data ) is ; recieve data from rtc
-  var bit db at data : 7
-
-  rtc_iodir = output
-  rtc_sclk = low
-  rtc_ce =  high
-
-
-  rtc_register_send (register)
-
-  rtc_iodir = input
-
-  data = 0
-
-  for 7 loop
-      db = rtc_io
-      data = data >> 1   ;shift right data
-      rtc_clock
-  end loop
-      db = rtc_io
-
-  rtc_ce =  low
-  
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- converts the 8 varables (SECOND,MINUT,..., YEAR and PROTREG) from decimal
--- to rtc format and writes them directly to rtc
--- ----------------------------------------------------------------------------
-
-procedure rtc_burst_write_clock()  is ; send 8 datas to rtc
-
-  var byte data
-
-  rtc_iodir = output
-  rtc_sclk = low
-  rtc_ce =  high
-
-  rtc_register_send (0xBE)
-
-  rtc_sclk = low
-
-  data = second
-  dec_to_rtc ( data )
-  rtc_data_send (data)
-
-  data = minut
-  dec_to_rtc ( data )
-  rtc_data_send (data)
-
-  data = hrs
-  dec_to_rtc ( data )
-  rtc_data_send (data)
-
-  data = date
-  dec_to_rtc ( data )
-  rtc_data_send (data)
-
-  data = mounth
-  dec_to_rtc ( data )
-  rtc_data_send (data)
-
-  data = day
-  dec_to_rtc ( data )
-  rtc_data_send (data)
-
-  data = year
-  dec_to_rtc ( data )
-  rtc_data_send (data)
-
-  data = protreg
-  dec_to_rtc ( data )
-  rtc_data_send (data)
-
-  rtc_ce =  low
-
+procedure rtc_write_second(byte in second) is
+   var byte halt_state = rtc_read_second() & 0b1000_0000  
+   rtc_write_reg_(rtc_reg_second_, second | halt_state)   -- preserve CH bit
 end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Reads 8 variable from rtc converts them from rtc format to decimal and
--- put them in SECOND,MINUT,..., YEAR and PROTREG
+-- read minute value from rtc
 -- ----------------------------------------------------------------------------
+function rtc_read_minute() return byte is 
+   var byte minute 
+   rtc_read_reg_(rtc_reg_minute_, minute)
+   return (minute & 0b0111_1111)
+end function
 
-procedure rtc_burst_read_clock()  is ; READ 8 datas from rtc
-
-  var byte data
-
-  rtc_iodir = output
-  rtc_sclk = low
-  rtc_ce =  high
-
-  rtc_register_send (0xBF)
-
-  rtc_iodir = input
-
-  rtc_sclk = low
-
-  rtc_read_data (data)
-  second = data
-
-  rtc_read_data (data)
-  minut = data
-
-  rtc_read_data (data)
-  hrs = data
-
-  rtc_read_data (data)
-  date = data
-
-  rtc_read_data (data)
-  mounth = data
-
-  rtc_read_data (data)
-  day = data
-
-  rtc_read_data (data)
-  year = data
-
-  rtc_read_data (data)
-  protreg = data
-
-  rtc_ce =  low
-
-
-  rtc_to_dec ( second )
-  rtc_to_dec ( minut )
-  rtc_to_dec ( hrs )
-  rtc_to_dec ( date )
-  rtc_to_dec ( mounth )
-  rtc_to_dec ( year )
+-- ----------------------------------------------------------------------------
+-- write minute value to the rtc
+-- ----------------------------------------------------------------------------
+procedure rtc_write_minute(byte in minute) is
+   rtc_write_reg_(rtc_reg_minute_, minute)
 end procedure
 
 
 -- ----------------------------------------------------------------------------
--- reads second value from rtc converts it from rtc format to decimal and
--- place it in variable SECOND
+-- read hour value from rtc
 -- ----------------------------------------------------------------------------
+function rtc_read_hour() return byte is
+   var byte hour
+   rtc_read_reg_(rtc_reg_hour_, hour)
+   return (hour & 0b0011_1111)                        -- 24-hour mode
+end function
 
-procedure second_read() is
-   var byte data
-   rtc_read ( 0x81 , data )
-   rtc_to_dec ( data )
-   second = data
+-- ----------------------------------------------------------------------------
+-- write hour value to the rtc
+-- ----------------------------------------------------------------------------
+procedure rtc_write_hour(byte in hour) is
+   rtc_write_reg_(rtc_reg_hour_, hour & 0b0011_1111)
 end procedure
 
 
+-- ----------------------------------------------------------------------------
+-- read day of month value from rtc
+-- ----------------------------------------------------------------------------
+function rtc_read_dayofmonth() return byte is
+   var byte dayofmonth
+   rtc_read_reg_(rtc_reg_dayofmonth_, dayofmonth)
+   return dayofmonth
+end function
 
 -- ----------------------------------------------------------------------------
--- reads minut value from rtc converts it from rtc format to decimal and
--- place it in variable MINUT
+-- write day of month value to the rtc
 -- ----------------------------------------------------------------------------
-
-procedure minut_read() is
-   var byte data
-   rtc_read ( 0x83 , data )
-   rtc_to_dec ( data )
-   minut = data
+procedure rtc_write_dayofmonth(byte in dayofmonth) is
+   rtc_write_reg_(rtc_reg_dayofmonth_, dayofmonth & 0b0011_1111)
 end procedure
 
 
-
 -- ----------------------------------------------------------------------------
--- reads hrs value from rtc converts it from rtc format to decimal and
--- place it in variable HRS
+-- read month value from rtc
 -- ----------------------------------------------------------------------------
+function rtc_read_month() return byte is
+   var byte month 
+   rtc_read_reg_(rtc_reg_month_, month)
+   return month
+end function
 
-procedure hrs_read() is
-   var byte data
-   rtc_read ( 0x85 , data )
-   rtc_to_dec ( data )
-   hrs = data
+-------------------------------------------------------------------------------
+-- write month value to the rtc
+-- ----------------------------------------------------------------------------
+procedure rtc_write_month(byte in month) is
+   rtc_write_reg_(rtc_reg_month_, month & 0b0001_1111)
 end procedure
 
 
+-- ----------------------------------------------------------------------------
+-- read year value from rtc
+-- ----------------------------------------------------------------------------
+function rtc_read_year() return byte is
+   var byte year 
+   rtc_read_reg_(rtc_reg_year_, year)
+   return year
+end function
 
 -- ----------------------------------------------------------------------------
--- reads date value from rtc converts it from rtc format to decimal and
--- place it in variable DATE
+-- write year value to the rtc
 -- ----------------------------------------------------------------------------
-
-procedure date_read() is
-   var byte data
-   rtc_read ( 0x87 , data )
-   rtc_to_dec ( data )
-   date = data
+procedure rtc_write_year(byte in year) is
+   rtc_write_reg_(rtc_reg_year_, year)
 end procedure
 
 
+-- ----------------------------------------------------------------------------
+-- read clock-write-protection state from rtc
+-- ----------------------------------------------------------------------------
+function rtc_read_protect() return bit is
+   var byte protect
+   var bit  protect_bit at protect : 7
+   rtc_read_reg_(rtc_reg_protect_, protect)
+   return protect_bit
+end function
 
 -- ----------------------------------------------------------------------------
--- reads mounth value from rtc converts it from rtc format to decimal and
--- place it in variable MOUNTH
+-- write clock-write-protection state to rtc
 -- ----------------------------------------------------------------------------
-
-procedure mounth_read() is
-   var byte data
-   rtc_read ( 0x89 , data )
-   rtc_to_dec ( data )
-   mounth = data
+procedure rtc_write_protect(bit in flag) is
+   var byte protect = 0b0000_0000
+   if (flag == TRUE) then
+      protect = 0b1000_0000
+   end if
+   rtc_write_reg_(rtc_reg_protect_, protect)
 end procedure
 
 
-
 -- ----------------------------------------------------------------------------
--- reads day value from rtc converts it from rtc format to decimal and
--- place it in variable DAY
--- ----------------------------------------------------------------------------
-
-procedure day_read() is
-   var byte data
-   rtc_read ( 0x8B , data )
-   rtc_to_dec ( data )
-   day = data
-end procedure
-
-
-
--- ----------------------------------------------------------------------------
--- reads year value from rtc converts it from rtc format to decimal and
--- place it in variable YEAR
--- ----------------------------------------------------------------------------
-
-procedure year_read() is
-   var byte data
-   rtc_read ( 0x8D , data )
-   rtc_to_dec ( data )
-   year = data
-end procedure
-
-
-
--- ----------------------------------------------------------------------------
--- reads protection register value from rtc converts it from rtc format to
--- decimal and place it in variable PROTREG
--- ----------------------------------------------------------------------------
-
-procedure protreg_read() is
-   var byte data
-   rtc_read ( 0x8F , data )
-   rtc_to_dec ( data )
-   protreg = data
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- converts value from variable SECOND from decimal to rtc format and
--- writes it into the rtc second register
--- ----------------------------------------------------------------------------
-
-procedure second_write() is
-   var byte data
-   data = second
-   dec_to_rtc ( data )
-   rtc_write ( data , 0x80 )
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- converts value from variable MINUT from decimal to rtc format and
--- writes it into the rtc minut register
--- ----------------------------------------------------------------------------
-
-procedure minut_write() is
-   var byte data
-   data = minut
-   dec_to_rtc ( data )
-   rtc_write ( data , 0x82 )
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- converts value from variable HRS from decimal to rtc format and
--- writes it into the rtc hrs register
--- ----------------------------------------------------------------------------
-
-procedure hrs_write() is
-   var byte data
-   data = hrs
-   dec_to_rtc ( data )
-   rtc_write ( data , 0x84 )
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- converts value from variable DATE from decimal to rtc format and
--- writes it into the rtc date register
--- ----------------------------------------------------------------------------
-
-procedure date_write() is
-   var byte data
-   data = date
-   dec_to_rtc ( data )
-   rtc_write ( data , 0x86 )
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- converts value from variable MOUNTH from decimal to rtc format and
--- writes it into the rtc mounth register
--- ----------------------------------------------------------------------------
-
-procedure mounth_write() is
-   var byte data
-   data = mounth
-   dec_to_rtc ( data )
-   rtc_write ( data , 0x88 )
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- converts value from variable DAY from decimal to rtc format and
--- writes it into the rtc day register
--- ----------------------------------------------------------------------------
-
-procedure day_write() is
-   var byte data
-   data = day
-   dec_to_rtc ( data )
-   rtc_write ( data , 0x8A )
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- converts value from variable YEAR from decimal to rtc format and
--- writes it into the rtc year register
--- ----------------------------------------------------------------------------
-
-procedure year_write() is
-   var byte data
-   data = year
-   dec_to_rtc ( data )
-   rtc_write ( data , 0x8c )
-end procedure
-
-
-
--- ----------------------------------------------------------------------------
--- converts value from variable PROTREG from decimal to rtc format and
---  writes it into the rtc protection register
--- ----------------------------------------------------------------------------
-
-procedure protreg_write() is
-   var byte data
-   data = protreg
-   dec_to_rtc ( data )
-   rtc_write ( data , 0x8e )
-end procedure
-
-
-
-
--- ----------------------------------------------------------------------------
--- stops the rtc
---
--- ----------------------------------------------------------------------------
-
 procedure rtc_stop() is
-   second_read
-   second = second | 0b1000_0000
-   second_write
+   var byte second = rtc_read_second()
+   rtc_write_reg_(rtc_reg_second_, second | 0b1000_0000)  -- set clock halt bit
 end procedure
 
-
-
-
 -- ----------------------------------------------------------------------------
--- starts the rtc
---
+-- start the rtc
 -- ----------------------------------------------------------------------------
-
 procedure rtc_start() is
-   second_read
-   second = second & 0b0111_1111
-   second_write
+   var byte second = rtc_read_second()
+   rtc_write_reg_(rtc_reg_second_, second & 0b0111_1111)  -- clear halt bit
 end procedure
 
 
-
 -- ----------------------------------------------------------------------------
--- initials the rtc
--- (this procedure is only used inside this file)
+-- initialize the rtc
 -- ----------------------------------------------------------------------------
-
-procedure init_rtc() is
-rtc_iodir   = output
-rtc_ce = low
-rtc_write ( trick_char_reg , 0x90 ) ;program trickel charge register
+procedure rtc_init() is
+   var byte hourbcd                                -- bcd code of hour
+   var byte hourbin                                -- binary value of hour
+   var bit  mode12h at hourbcd : 7                 -- 12/24 hour mode flag
+   var bit  modePM  at hourbcd : 5                 -- AM/PM flag
+   rtc_ce = low                                    -- quiesce
+   rtc_write_protect(FALSE)                        -- enable writes 
+   hourbcd = rtc_read_hour()                       -- actual bcd value
+   if  (mode12h == TRUE) then                      -- 12 hour mode
+      hourbin = rtc_bcd2bin(hourbcd & 0b0001_1111)  -- hour value binary   
+      if (hourbin == 12) then                      -- just after midnight or midday
+         hourbin = 0                               -- 12 -> 0  in 24-hour notation
+      end if
+      if (modePM) then                             -- post meridiem
+         hourbin = hourbin + 12                    -- to 24-hour value
+      end if
+      rtc_write_hour(rtc_bin2bcd(hourbin))         -- init hour in 24-hour mode
+   end if
+   rtc_write_reg_(rtc_reg_trickle_, rtc_trickle_)  -- program trickle charge 
+   rtc_start()                                     -- make sure clock is running
 end procedure
 
 
-init_rtc
 

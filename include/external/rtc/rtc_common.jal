@@ -1,0 +1,420 @@
+-- ------------------------------------------------------
+-- Title: Common RealTime Clock routines and RTC user interface
+--
+-- Author: Rob Hamerling,  Copyright (c) 2013..2015, all rights reserved
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q3
+--
+-- Revision: $Revision: 
+--
+-- This file is part of jallib (http://github/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library with common code and data for all rtc libraries.
+-- .
+-- Supported values:
+-- .
+--    - Elementary values of date and time (and alarm):
+--       * year:         byte 00..99     
+--       * month:        byte 01..12
+--       * day of month: byte 01..31
+--       * hour:         byte 00..23 
+--       * minute:       byte 00..59
+--       * second:       byte 00..59
+-- .
+--    - Derived values (in binary notation):
+--       * day of the year:    word    1..366
+--       * day of the week:    byte    1..7      (1 = Sunday)
+--       * minute of the day:  word    1..1440  
+--       * second of the hour: word    1..3600 
+--       * second of the day:  byte*3  1..86400
+--
+-- Sources:
+--
+-- Notes:
+-- - variables in bcd notation can be printed conveniently with print_..._hex()
+--
+--
+-- -------------------------------------------------------------------------
+-- Some device specific declarations
+-- Each hardware specific part of the rtc libraries should identify itself
+-- with a unique numeric value of constant RTC_HW.
+-- -------------------------------------------------------------------------
+if !defined(RTC_HW) then
+   _error "Specify constant RTC_HW to identify the realtime clock hardware"
+end if
+
+if (RTC_HW == 0000) then                 -- rtcc module of PIC
+   const byte RTC_ID[] = "RTCC"
+elsif (RTC_HW == 1302) then
+   const byte RTC_ID[] = "DS1302"
+elsif (RTC_HW == 1307) then
+   const byte RTC_ID[] = "DS1307"
+   const _RTC_DEVICE_ADDRESS = 0xD0
+   -- include base rtc ram base address
+   -- include end of base address
+elsif (RTC_HW == 7940) then
+   const byte RTC_ID[] = "MCP7940"
+   const _RTC_DEVICE_ADDRESS = 0xDE
+elsif (RTC_HW == 8563) then
+   const byte RTC_ID[] = "PCF8563"
+   const _RTC_DEVICE_ADDRESS = 0xA2
+else
+   _error "Unrecognized value of realtime clock hardware identifier (RTC_HW)"
+end if
+
+
+-- === Prototypes of functions and procedures === 
+-- === mandatory in device specific libraries ===
+--
+function  rtc_read_second() return byte
+function  rtc_read_minute() return byte
+function  rtc_read_hour() return byte
+function  rtc_read_dayofmonth() return byte
+function  rtc_read_month() return byte
+function  rtc_read_year() return byte
+procedure rtc_write_second(byte in second)
+procedure rtc_write_minute(byte in minute) 
+procedure rtc_write_hour(byte in hour) 
+procedure rtc_write_dayofmonth(byte in dayofmonth)
+procedure rtc_write_month(byte in month)
+procedure rtc_write_year(byte in year) 
+  
+  
+-- === general procedures and functions ===  
+  
+-- ---------------------------------------------------------------------------
+-- Convert one byte packed bcd to one byte binary.
+-- input:   byte with bcd data
+-- output:  none
+-- returns: byte with binary value of bcd byte
+-- notes: - A byte in bcd notation contains ((16 * tens) + ones).
+--          To convert it to a binary value: subtract (6 * tens),
+--          implemented as subtract (8*tens - 2*tens).
+--          Algorithm is modelled after an assembler version of
+--          Scott Dattalo at PicList (and only slightly less efficient!).
+-- ----------------------------------------------------------------------------
+function rtc_bcd2bin(byte in bcd) return byte is
+   var byte t                       -- intermediate value         
+   t = (bcd >> 1) & 0b0111_1000     -- tens * 8
+   return (bcd - t + (t >> 2))      -- bcd - tens*8 + tens*2
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Convert one byte binary to bcd notation.
+-- input:   byte with binary value
+-- output:  none
+-- returns: byte with bcd notation of binary value
+-- notes:   Algorithm without division by 10, by iteration
+--          bcd = (16 * tens) + ones
+--          bcd = (tens * (10 + 6)) + ones
+--          Works correctly for binary values 0..99
+--          (values outside this range are not expected with rtc).
+-- ---------------------------------------------------------------------
+function  rtc_bin2bcd(byte in bin) return byte is
+   var byte bcd = bin                              -- result initially
+   while (bin > 9) loop                            -- for all tens
+      bcd = bcd + 6                                -- 10d -> 16d
+      bin = bin - 10
+   end loop
+   return bcd                                      -- bcd notation of bin value
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Title:   Multiply a word by 60 (e.g. minutes -> seconds, hours -> minutes)
+-- input:   word with binary data
+-- output:  none
+-- returns: byte*3 with product
+-- notes: - (x * 60) == (x * 64) - (x * 4)
+--        - algorithm without multiplication (only bit shifting)
+--        - word as input, byte*3 as returnvalue
+--          (chosen for relative second of day) 
+-- ----------------------------------------------------------------------
+function  rtc_mult60(word in x) return byte*3 is
+   var byte*3 y = x                             -- cast
+   return  (y << 6) - (y << 2)                  -- (x * 64) - (x * 4)
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Title:   Calculate day of the week
+-- input:   year, month, day-of-month in bcd noation
+-- returns: day of week number in range 1..7  (1 is Sunday)
+-- ---------------------------------------------------------------------
+function rtc_calc_dayofweek(byte in yy, byte in mm, byte in dd) return byte is
+   const byte dow[12] = {0,3,2,5,0,3,5,1,4,6,2,4}  -- day-of-week offsets
+   dd = rtc_bcd2bin(dd)                         -- day decimal
+   mm = rtc_bcd2bin(mm)                         -- month decimal
+   yy = rtc_bcd2bin(yy)                         -- year decimal
+   if (mm < 3) then                             -- Jan/Feb
+      if (yy > 0) then                          -- after year 2000
+         yy = yy - 1                            -- previous year
+      else
+         yy = 4                                 -- for Jan/Feb 2000
+      end if
+   end if
+   return ((yy + (yy / 4) + dow[mm-1] + dd) % 7) + 1
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Title: calculate day of the year
+-- input: year, month, day-of-month in bcd notation
+-- returns: number of the day of this year (binary word 1..366)
+-- ----------------------------------------------------------------------
+function rtc_calc_dayofyear(byte in yy, byte in mm, byte in dd) return word is
+   const word dpm[12] = {0,31,59,90,120,151,181,212,243,273,304,334}
+   mm = rtc_bcd2bin(mm) - 1                        -- relative month (0..11)
+   dd = rtc_bcd2bin(dd) - 1                        -- relative day of month (0..30)
+   if ( (rtc_bcd2bin(yy) % 4) == 0) then           -- leap year
+      if (mm > 1) then                             -- for March..December
+         dd = dd + 1                               -- add 1 day
+      end if
+   end if
+   return dd + dpm[mm] + 1                         -- result (1..366)
+end function
+
+
+-- === pseudo variables of elementary values === 
+
+-- ----------------------------------------------------------------------
+-- Title: get or set the seconds value of clock, bcd or bin
+-- ----------------------------------------------------------------------
+function rtc_second_bcd'get() return byte is
+   return rtc_read_second()
+end function
+
+procedure rtc_second_bcd'put(byte in s) is
+   rtc_write_second(s)
+end procedure
+
+function rtc_second_bin'get() return byte is
+   return rtc_bcd2bin(rtc_read_second())
+end function
+
+procedure rtc_second_bin'put(byte in s) is
+   rtc_write_second(rtc_bin2bcd(s))
+end procedure
+
+
+
+-- ----------------------------------------------------------------------
+-- Title: get or set the minutes value of clock, bcd or bin
+-- ----------------------------------------------------------------------
+function rtc_minute_bcd'get() return byte is
+   return rtc_read_minute()
+end function
+
+procedure rtc_minute_bcd'put(byte in m) is
+   rtc_write_minute(m)
+end procedure
+
+function rtc_minute_bin'get() return byte is
+   return rtc_bcd2bin(rtc_read_minute())
+end function
+
+procedure rtc_minute_bin'put(byte in m) is
+   rtc_write_minute(rtc_bin2bcd(m))
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title: get or set the hours value of clock, bcd or bin
+-- ----------------------------------------------------------------------
+function rtc_hour_bcd'get() return byte is
+   return rtc_read_hour()
+end function
+
+procedure rtc_hour_bcd'put(byte in h) is
+   rtc_write_hour(h)
+end procedure
+
+function rtc_hour_bin'get() return byte is
+   return rtc_bcd2bin(rtc_read_hour())
+end function
+
+procedure rtc_hour_bin'put(byte in h) is
+   rtc_write_hour(rtc_bin2bcd(h))
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title: get or set the day-of-month value of clock, bcd or bin
+-- ----------------------------------------------------------------------
+function rtc_dayofmonth_bcd'get() return byte is
+   return rtc_read_dayofmonth()
+end function
+
+procedure rtc_dayofmonth_bcd'put(byte in d) is
+   rtc_write_dayofmonth(d)
+end procedure
+
+function rtc_dayofmonth_bin'get() return byte is
+   return rtc_bcd2bin(rtc_read_dayofmonth())
+end function
+
+procedure rtc_dayofmonth_bin'put(byte in d) is
+   rtc_write_dayofmonth(rtc_bin2bcd(d))
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title: get or set the months value of clock, bcd or bin
+-- ----------------------------------------------------------------------
+function rtc_month_bcd'get() return byte is
+   return rtc_read_month()
+end function
+
+procedure rtc_month_bcd'put(byte in m) is
+   rtc_write_month(m)
+end procedure
+
+function rtc_month_bin'get() return byte is
+   return rtc_bcd2bin(rtc_read_month)
+end function
+
+procedure rtc_month_bin'put(byte in m) is
+   rtc_write_month(rtc_bin2bcd(m))
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title: get or set the years value of clock, bcd or bin
+-- ----------------------------------------------------------------------
+function rtc_year_bcd'get() return byte is
+   return rtc_read_year()
+end function
+
+procedure rtc_year_bcd'put(byte in y) is
+   rtc_write_year(y)
+end procedure
+
+function rtc_year_bin'get() return byte is
+   return rtc_bcd2bin(rtc_read_year())
+end function
+
+procedure rtc_year_bin'put(byte in y) is
+   rtc_write_year(rtc_bin2bcd(y))
+end procedure
+
+
+-- --- derived values ---
+
+-- ----------------------------------------------------------------------
+-- Title: get day of year value (binary)
+-- ----------------------------------------------------------------------
+function rtc_dayofyear'get() return word is
+   return rtc_calc_dayofyear(rtc_year_bcd, rtc_month_bcd, rtc_dayofmonth_bcd)   
+end function
+
+-- ----------------------------------------------------------------------
+-- Title: get day of week value (binary)
+-- ----------------------------------------------------------------------
+function rtc_dayofweek'get() return byte is
+   return rtc_calc_dayofweek(rtc_year_bcd, rtc_month_bcd, rtc_dayofmonth_bcd)              
+end function
+
+-- ----------------------------------------------------------------------
+-- Title: get minute of day (binary)
+-- ----------------------------------------------------------------------
+function rtc_minuteofday'get() return word is
+   return word(rtc_mult60(word(rtc_hour_bin))) + rtc_minute_bin + 1
+end function
+
+-- ----------------------------------------------------------------------
+-- Title: get second of hour (binary)
+-- ----------------------------------------------------------------------
+function rtc_secondofhour'get() return word is
+   return word(rtc_mult60(rtc_minute_bin)) + rtc_second_bin + 1
+end function
+
+-- ----------------------------------------------------------------------
+-- Title: get second of day (binary)
+-- ----------------------------------------------------------------------
+function rtc_secondofday'get() return byte*3 is
+   return rtc_mult60(rtc_mult60(rtc_hour_bin) + rtc_minute_bin) + rtc_second_bin + 1
+end function
+
+
+-- --- additional convenience functions ---
+
+
+-- ----------------------------------------------------------------------
+-- Title: get time (hour, minute, second) in bcd notation
+-- ----------------------------------------------------------------------
+procedure rtc_get_time_bcd(byte out hh, byte out mm, byte out ss) is
+   hh = rtc_hour_bcd
+   mm = rtc_minute_bcd
+   ss = rtc_second_bcd
+end procedure
+
+-- ----------------------------------------------------------------------
+-- Title: set time (hour, minute, second) in bcd notation
+-- ----------------------------------------------------------------------
+procedure rtc_set_time_bcd(byte in hh, byte in mm, byte in ss) is
+   rtc_hour_bcd = hh
+   rtc_minute_bcd = mm
+   rtc_second_bcd = ss
+end procedure
+
+-- ----------------------------------------------------------------------
+-- Title: get date (year, month, dayofmonth) in bcd notation
+-- ----------------------------------------------------------------------
+procedure rtc_get_date_bcd(byte out yy, byte out mm, byte out dd) is
+   yy = rtc_year_bcd
+   mm = rtc_month_bcd
+   dd = rtc_dayofmonth_bcd
+end procedure
+
+-- ----------------------------------------------------------------------
+-- Title: set date (year, month, dayofmonth) in bcd notation
+-- ----------------------------------------------------------------------
+procedure rtc_set_date_bcd(byte in yy, byte in mm, byte in dd) is
+   rtc_year_bcd = yy
+   rtc_month_bcd = mm
+   rtc_dayofmonth_bcd = dd
+end procedure
+
+-- ----------------------------------------------------------------------
+-- Title: get time (hour, minute, second) in binary notation
+-- ----------------------------------------------------------------------
+procedure rtc_get_time_bin(byte out hh, byte out mm, byte out ss) is
+   hh = rtc_hour_bin
+   mm = rtc_minute_bin
+   ss = rtc_second_bin
+end procedure
+
+-- ----------------------------------------------------------------------
+-- Title: set time (hour, minute, second) in binary notation
+-- ----------------------------------------------------------------------
+procedure rtc_set_time_bin(byte in hh, byte in mm, byte in ss) is
+   rtc_hour_bin = hh
+   rtc_minute_bin = mm
+   rtc_second_bin = ss
+end procedure
+
+-- ----------------------------------------------------------------------
+-- Title: get date (year, month, dayofmonth) in binary notation
+-- ----------------------------------------------------------------------
+procedure rtc_get_date_bin(byte out yy, byte out mm, byte out dd) is
+   yy = rtc_year_bin
+   mm = rtc_month_bin
+   dd = rtc_dayofmonth_bin
+end procedure
+
+-- ----------------------------------------------------------------------
+-- Title: set date (year, month, dayofmonth) in binary notation
+-- ----------------------------------------------------------------------
+procedure rtc_set_date_bin(byte in yy, byte in mm, byte in dd) is
+   rtc_year_bin = yy
+   rtc_month_bin = mm
+   rtc_dayofmonth_bin = dd
+end procedure
+
+
+
+
