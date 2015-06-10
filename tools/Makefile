@@ -142,8 +142,13 @@ prepare:
 		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
 		python2.6 jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
 	done
+
+
 	# one-page doc
-	python2.6 jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
+#THIS NEEDS TO BE FIXED:
+#	python2.6 jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
+
+
 	# doc menu...
 	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
 	# manually include device files doc, as it's not generated from a lib
