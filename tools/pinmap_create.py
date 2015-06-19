@@ -30,9 +30,10 @@ import fnmatch
 import re
 from xml.dom.minidom import parse, Node
 
-mplabxversion = "300"                                       # latest version of MPLAB-X
+mplabxversion = "3.05"                                      # latest version of MPLAB-X
 
-picdir = os.path.join("/", "media", "NAS", "mplab-x_" + mplabxversion, "crownking.edc.jar", "content", "edc")   # place of .pic files
+picdir = os.path.join("/", "home", "robh", "mplab-x_" + mplabxversion, "content", "edc")
+# picdir = os.path.join("/", "media", "NAS", "mplab-x_" + mplabxversion, "content", "edc")   # place of .pic files
 
 pinmapnew = "pinmapnew.py"                                  # output
 try:
@@ -173,6 +174,7 @@ if (__name__ == "__main__"):
    piccount = 0
 
    for (root, dirs, files) in os.walk(picdir):                 # whole tree (incl subdirs!)
+      dirs.sort()
       files.sort()                                             # for unsorted filesystems!
       for file in files:
          picname = os.path.splitext(file)[0][3:].lower()       # 1st selection: pic type
