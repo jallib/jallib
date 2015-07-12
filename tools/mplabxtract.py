@@ -10,9 +10,9 @@ import subprocess
 # specify working environment
 mplabxversion = "3.05"
 edc = "crownking.edc.jar"
-home = os.path.join("/", "media", "nas", "jallib")
+base = os.path.join("/", "home", "robh")
 jar = os.path.join("/", "opt","microchip","mplabx","v"+mplabxversion,"mplab_ipe","lib",edc)
-dst = os.path.join(home,"mplab-x_" + mplabxversion)
+dst = os.path.join(base,"mplab-x_" + mplabxversion)
 
 def extract(ddd, ppp):
    # ddd = subdirectory,  ppp = PIC name (start characters of name)
