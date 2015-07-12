@@ -23,14 +23,13 @@ import json
 
 
 #  input (may require changes for other systems or platforms)
-home        = os.path.join("/", "home", "robh")             # user home directory
 base        = os.path.join("/", "media", "nas")             # base of MPLAB-X material  
 picspecfile = os.path.join(base, "jallib", "tools", "devicespecific.json") # PIC specific properties
 dslist      = os.path.join(base, "jallib", "tools", "datasheet.list")      # datasheet number/title file
 pdfdir      = os.path.join(base, "picdatasheets")                          # dir with datasheets
 
 #  output
-dst         = os.path.join(home, "jallib", "jallib.wiki")                  # output path
+dst         = os.path.join(base, "jallib", "wiki")                         # output path
 
 url         = "http://ww1.microchip.com/downloads/en/DeviceDoc/"           # Microchip site with datasheets
 

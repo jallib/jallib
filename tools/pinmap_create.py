@@ -31,9 +31,7 @@ import re
 from xml.dom.minidom import parse, Node
 
 mplabxversion = "3.05"                                      # latest version of MPLAB-X
-
-picdir = os.path.join("/", "home", "robh", "mplab-x_" + mplabxversion, "content", "edc")
-# picdir = os.path.join("/", "media", "NAS", "mplab-x_" + mplabxversion, "content", "edc")   # place of .pic files
+picdir = os.path.join("/", "media", "NAS", "mplab-x_" + mplabxversion, "content", "edc")   # place of .pic files
 
 pinmapnew = "pinmapnew.py"                                  # output
 try:
@@ -50,7 +48,7 @@ portpin = re.compile(r"^R[A-L]{1}[0-7]{1}\Z")               # Rx0..7 (x in range
 gpiopin = re.compile(r"^GP[0-5]{1}\Z")                      # GP0..5
 
 def list_pic(_pic, _alias):
-# list all pins and their aliases of a single _pic in dictionary _alias
+   # list all pins and their aliases of a single _pic in dictionary _alias
    header = '   "' + _pic + '": {'                          # start of pinmap this PIC
    fp.write(header)
 
@@ -65,7 +63,7 @@ def list_pic(_pic, _alias):
 
 
 def process_pic(picname, filename):
-#  process a specific PIC (expect picname in upper case)
+   #  process a specific PIC (expect picname in upper case)
    print picname                                            # progress signal
 
    filepath = os.path.join(root,filename)                   # pathspec

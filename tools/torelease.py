@@ -42,14 +42,13 @@ import re
 import time
 from string import maketrans
 
-home       = os.path.join("/", "home", "robh")              # home directory
-base       = os.path.join(home, "jallib")                   # base directory of local copy of Jallib
-libdir     = os.path.join(base, "include")                  # device files and function libraries
-smpdir     = os.path.join(base, "sample")                   # samples
-projdir    = os.path.join(base, "project")                  # projects
-torelease  = os.path.join(base, "TORELEASE")                # TORELEASE
-newrelease = "TORELEASE.NEW"                                # New TORELEASE
-report     = "torelease.lst"                                # Report file
+jallib     = os.path.join("/", "media", "nas", "jallib")    # directory of local copy of Jallib
+libdir     = os.path.join(jallib, "include")                # device files and function libraries
+smpdir     = os.path.join(jallib, "sample")                 # samples
+projdir    = os.path.join(jallib, "project")                # projects
+torelease  = os.path.join(jallib, "TORELEASE")              # TORELEASE
+newrelease = "./TORELEASE.NEW"                              # New TORELEASE
+report     = "./torelease.lst"                              # Report file
 
 xunderscore = maketrans("_"," ")                            # underscore -> space
 xslash      = maketrans("\\","/")                           # backward slash -> forward slash
@@ -102,7 +101,7 @@ def analyze_torelease(fr):
       linecount = linecount + 1                             # line number
       if (ln == ""):                                        # empty (comment)
          continue
-      if (os.path.exists(os.path.join(base, ln)) == False): # file not found
+      if (os.path.exists(os.path.join(jallib, ln)) == False): # file not found
          missing.append([linecount, ln])                    # line number and pathspec
       dirs = ln.split("/")
       if (len(dirs) > 1):                                   # at least 2 level directory
@@ -194,7 +193,7 @@ def check_blink(fr):
          continue
       picname = df[15:-4]
       dev[picname] = picname                                 # remember device file
-      if (os.path.exists(os.path.join(base, df)) == True):   # device file present
+      if (os.path.exists(os.path.join(jallib, df)) == True):   # device file present
          if (blinkpic.get(picname) == None):
             fr.write("  No basic blink sample for " + picname + "\n")
          elif (blinkpic[picname] != picname):
@@ -224,8 +223,8 @@ def list_unreleased_libraries(fr):
       for file in files:
          picname = file[:-4]                                # filename less extension
          fs = os.path.join(root,file)                       # full pathspec
-         fs = fs[(len(base) + 1):]                          # remove base prefix
-         fs = fs.translate(xslash)                               # backward to forward slash
+         fs = fs[(len(jallib) + 1):]                        # remove base prefix
+         fs = fs.translate(xslash)                          # backward to forward slash
          if (fs not in lines):
 #           if (unlisted == 0):
 #             for x in lines:
@@ -277,7 +276,7 @@ def list_unreleased_samples(fr):
          word = file.split("_")
          picname = word[0]
          fs = os.path.join(root,file)                       # full pathspec
-         fs = fs[(len(base) + 1):]                          # remove base prefix
+         fs = fs[(len(jallib) + 1):]                        # remove base prefix
          fs = fs.translate(xslash)                          # backward to forward slash
          if (fs not in lines):                              # unreleased sample
             unlisted = unlisted + 1
@@ -339,7 +338,8 @@ def list_unreleased_projects(fr):
       files.sort()
       for file in files:
          fs = os.path.join(root,file)                       # full pathspec
-         fs = fs[(len(base) + 1):]                          # remove base prefix
+
+         fs = fs[(len(jallib) + 1):]                        # remove base prefix
          fs = fs.translate(xslash)                          # backward to forward slash
          if (fs not in lines):
             unlisted = unlisted + 1
@@ -415,7 +415,7 @@ def sortpart(key):
 def main():
    read_torelease()
    fr = open(report, "w")
-   fr.write("\nAnalysis of " +  torelease + \
+   fr.write("\n\nAnalysis of " +  torelease + \
             " dd " + time.ctime() + " (local time)\n\n")
    analyze_torelease(fr)
    check_blink(fr)
