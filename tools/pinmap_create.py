@@ -1,6 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/python 
 
- # Author: Rob Hamerling, Copyright (c) 2009..2015. All rights reserved.
+# Author: Rob Hamerling, Copyright (c) 2009..2015. All rights reserved.
 
 """
    pinmap_create.py - create new pinmap.py (pinmapnew.py) from MPLAB-X.
@@ -31,7 +31,7 @@ import re
 from xml.dom.minidom import parse, Node
 
 mplabxversion = "3.05"                                      # latest version of MPLAB-X
-picdir = os.path.join("/", "media", "NAS", "mplab-x_" + mplabxversion, "content", "edc")   # place of .pic files
+picdir = os.path.join("/", "media", "nas", "mplab-x_" + mplabxversion, "content", "edc")   # place of .pic files
 
 pinmapnew = "pinmapnew.py"                                  # output
 try:

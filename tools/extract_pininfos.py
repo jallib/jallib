@@ -1,6 +1,7 @@
+#!/usr/bin/python
+
 import sys
 import pprint
-#import simplejson as json
 import json
 
 from pinmap import pinmap

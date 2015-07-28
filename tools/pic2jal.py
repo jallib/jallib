@@ -2288,10 +2288,9 @@ def normalize_fusedef_value(key, val, desc):
    descu = "_".join(descu.split())                          # replace all space by single underscore
    kwdvalue = ""                                            # null value
 
-
-
-
    if ((val == "RESERVED") | (len(desc) == 0)):             # reserved or no desc: skip
+      return ""
+   if (val == "UNIMPLEMENTED")                              # bit(s) not implemented
       return ""
 
    elif (key == "ABW"):                                     # address bus width
@@ -3172,6 +3171,7 @@ def init_fusedef_mapping():
                   "LP"             : "LP",
                   "LPRC"           : "INTOSC_LP",
                   "LP_OSC"         : "LP",
+                  "OFF"            : "OFF",                  
                   "PRI"            : "PRI",
                   "PRIPLL"         : "PRI_PLL",
                   "RC"             : "RC_CLKOUT",

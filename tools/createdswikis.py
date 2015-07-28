@@ -50,7 +50,7 @@ def read_datasheet_list(infile):
 
 def pic_wiki(outfile):
    """ create datasheet or programming specifications wiki """
-   if outfile.find("Programming") >= 0:
+   if (outfile.find("Programming") >= 0):
       type  = "ps"
       title = "PICname - Programming Specifications cross reference"
    else:
@@ -65,11 +65,11 @@ def pic_wiki(outfile):
    piclist.sort()
    for pic in piclist:
       picd = dict(picspec[pic].items())
-      if type == "ds":
+      if (type == "ds"):
          ds = picd.get("DATASHEET", "-")
       else:
          ds = picd.get("PGMSPEC", "-")
-      if ds != "-":
+      if (ds != "-"):
          key = int(ds)                                   # numeric index!
          if key in datasheet:                            # DS present
             if datasheet[key].get("TITLE") != None:      # title present
