@@ -1,14 +1,14 @@
 -- Title: FAT32-small sample for reading fat32 filesystem
 -- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
--- Compiler: >=2.4k
+-- Compiler: >=2.4q3
 --
--- This file is part of jallib  (http://jallib.googlecode.com)
+-- This file is part of jallib  (https://github.com/jallib/jallib)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: This example reads files & folders from a fat32 formatted sd card
---              using the fat32-small library. This small version only supports
---              the first partition, and only one file.
+-- Description: This example reads files & folders from a fat32 formatted storage
+--              device using the fat32-small library. This small version only
+--              supports the first partition, and only one file.
 --
 -- Sources:
 -- http://www.microsoft.com/whdc/system/platform/firmware/fatgen.mspx
@@ -28,27 +28,34 @@ include 18f4620                      -- target PICmicro
 --
 -- This program assumes that a 20 MHz resonator or crystal
 -- is connected to pins OSC1 and OSC2.
--- (unspecified configuration bits may cause a different frequency!)
-pragma target OSC INTOSC_NOCLKOUT -- internal oscillator
-                                  -- and using PLL
-pragma target CLOCK 32_000_000    -- oscillator frequency
-pragma target WDT      CONTROL      -- watchdog
-pragma target XINST    DISABLED     -- not supported by JalV2
-pragma target DEBUG    DISABLED     -- no debugging
-pragma target IESO     DISABLED     -- no in/ext oscillator switchover
-pragma target LVP      DISABLED     -- no Low Voltage Programming
-pragma target MCLR     EXTERNAL     -- reset externally
+pragma target clock 40_000_000      -- oscillator frequency
+--
+pragma target OSC      HS_PLL                    -- crystal or resonator
+pragma target WDT      CONTROL                   -- watchdog
+pragma target XINST    DISABLED                  -- extended instruction set
+pragma target DEBUG    DISABLED                  -- debugging
+pragma target BROWNOUT DISABLED                  -- brownout reset
+pragma target FCMEN    DISABLED                  -- clock monitoring
+pragma target IESO     DISABLED                  -- int/ext osc. switch
+pragma target LVP      DISABLED                  -- low voltage programming
+pragma target MCLR     EXTERNAL                  -- reset
 --
 -- The configuration bit settings above are only a selection, sufficient
--- for this program, but other programs may need more or different settings.
+-- for this program. Other programs may need more or different settings.
 --
 WDTCON_SWDTEN = OFF                 -- disable WDT
+OSCCON_SCS = 0                      -- select primary oscillator
+OSCTUNE_PLLEN = TRUE                -- PLL
 --
 enable_digital_io()                 -- make all pins digital I/O
-_usec_delay(100_000) -- wait for power to settle
+_usec_delay (100_000)               -- wait for power to stablilize
 
 
 include delay
+
+const PRINT_MAX_VAR_SIZE = 6
+include print
+
 
 -- setup uart for communication
 const serial_hw_baudrate  = 115200   -- set the baudrate
@@ -59,9 +66,10 @@ alias serial_write is serial_hw_write
 alias serial_read is serial_hw_read
 alias serial_data is serial_hw_data
 alias serial_data_available is serial_hw_data_available
-
-
-include print
+--
+var byte sample_started[] = "***Jallib Sample Started***"
+print_string(serial_data,sample_started)
+print_crlf(serial_data)
 
 -- setup SPI library
 include spi_master_hw         -- includes the spi library
@@ -96,11 +104,22 @@ sd_chip_select_direction = output
 --
 -- setup the sd card library
 alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
-;const bit SD_ALWAYS_SET_SPI_MODE = TRUE -- old constant, replaced by sd_force_spi_mode 
-;const bit SD_EXTRA_SPEED = TRUE
-const bit SD_DELAY_AFTER_WRITE = FALSE
+;const bit SD_READ_EXTRA_SPEED = TRUE -- extra read speed
+;const bit SD_WRITE_EXTRA_SPEED = TRUE -- extra write speed
+;const bit SD_DELAY_AFTER_WRITE = FALSE ;Try this if you are having troulbe with your card.
 include sd_card              -- include the sd card ide hard disk library
 sd_init()                    -- initialize startup settings
+
+if sd_error == TRUE then
+   print_string(serial_data, "ERROR - SD CARD FAILED\r\n")
+else
+   if sd_card_type == SD_STANDARD_CAPACITY then
+      print_string(serial_data, "Standard capacity ")
+   elsif sd_card_type == SD_HIGH_CAPACITY then
+      print_string(serial_data, "High capacity ")
+   end if
+   print_string(serial_data, "SD card successfully loaded!\r\n")
+end if
 
 
 -- setup fat32 --
@@ -129,7 +148,7 @@ end procedure
 -- Send something to the serial port.
 separator()             -- send "----" via serial port
 print_crlf(serial_data)
-var byte start_string[] = "SD CARD FAT32 SMALL - SAMPLE STARTED"
+var byte start_string[] = "FAT32 SMALL - SAMPLE STARTED"
 print_string(serial_data,start_string)
 separator()             -- send "----" via serial port
 print_crlf(serial_data)
