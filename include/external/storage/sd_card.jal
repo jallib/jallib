@@ -44,7 +44,6 @@ if !defined(spi_master_set_speed) then
 end if
 
 -- counters
-var byte sd_word_count = 0
 var word sd_byte_count = 0
 var word sd_sector_count = 0
 var dword sd_sector_select
@@ -425,6 +424,7 @@ procedure sd_start_write(dword in address) is
    send_command(SD_WRITE_MULTIPLE_BLOCK,address,response) -- send read multi block command, ignore response.
    sd_byte_count = 0       -- reset count
    sd_sector_count = 0     -- reset count
+
 end procedure
 
 --------------------------------------------------------------------------------
@@ -563,6 +563,9 @@ procedure sd_sector_buffer'put(word in address, byte in data) is
    end if
 end procedure
 
+---------------------------------------------------------------------------
+-- Extra speed read procedure
+---------------------------------------------------------------------------
 procedure _sd_read_512() is
    sd_sector_buffer_low[0] = spi_master
    sd_sector_buffer_high[0] = spi_master
@@ -1111,7 +1114,7 @@ procedure sd_read_sector() is
    x = spi_master                     -- get junk crc data, crc is disabled
    x = spi_master                     -- get junk crc data, crc is disabled
 
-   sd_byte_count = sd_byte_count + 2       -- increment byte_count
+   ;sd_byte_count = sd_byte_count + 2       -- increment byte_count
 
    sd_sector_select = sd_sector_select + 1
 end procedure
@@ -1120,48 +1123,64 @@ end procedure
 ;------------------------------------------------------------------------------
 ; storage_read_callback prototype definition, for use in libs such as USB.
 ;------------------------------------------------------------------------------
-if SD_READ_EXTRA_SPEED == TRUE then
-   procedure storage_read_callback()
+if defined(SD_READ_EXTRA_SPEED) then
+   if SD_READ_EXTRA_SPEED == TRUE then
+      procedure storage_read_callback(word in chunk_size)
+   end if
+end if
+
+if defined(SD_WRITE_EXTRA_SPEED) then
+   if SD_WRITE_EXTRA_SPEED == TRUE then
+      procedure storage_write_callback(word in chunk_size)
+   end if
 end if
 
 ;------------------------------------------------------------------------------
 ; read one entire sector with callback to storage_read_callback()
 ; for direct reading with spi_master. Make sure you call spi_master
-; 512 times in your storage_read_callback().
+; chunk_size times in your storage_read_callback().
+; chunk_size must be a division of 512 (ex, chunk_size 64 is 512/8)
 ;------------------------------------------------------------------------------
-procedure sd_read_sector_with_callback() is
+procedure sd_read_sector_with_callback(word in chunk_size) is
    var byte x
-   var word count1 = 0
+   var byte count1
 
-   while spi_master != 0xFE loop      -- wait till data is ready to read
-   end loop
+   if sd_byte_count == 0 then
+      while spi_master != 0xFE loop      -- wait till data is ready to read
+      end loop
+   end if
+   
+   sd_byte_count = sd_byte_count + chunk_size
 
 ;    get sector data
    if defined(SD_READ_EXTRA_SPEED) == TRUE then
       if SD_READ_EXTRA_SPEED == TRUE then
-         storage_read_callback()
+         storage_read_callback(chunk_size)
       else
-         for 256 using count1 loop
+         for chunk_size/2 using count1 loop
             -- get the data trough spi
             sd_sector_buffer_low[count1] = spi_master  -- get low data
             sd_sector_buffer_high[count1] = spi_master -- get high data
          end loop
       end if
    else
-      for 256 using count1 loop
+      for chunk_size/2 using count1 loop
          -- get the data trough spi
          sd_sector_buffer_low[count1] = spi_master  -- get low data
          sd_sector_buffer_high[count1] = spi_master -- get high data
       end loop
    end if
 
-   sd_sector_count = sd_sector_count + 1 -- increment sector number
-   x = spi_master                     -- get junk crc data, crc is disabled
-   x = spi_master                     -- get junk crc data, crc is disabled
 
-   sd_byte_count = sd_byte_count + 2       -- increment byte_count
+   if sd_byte_count == 512 then
+      sd_sector_count = sd_sector_count + 1 -- increment sector number
+      x = spi_master                     -- get junk crc data, crc is disabled
+      x = spi_master                     -- get junk crc data, crc is disabled
 
-   sd_sector_select = sd_sector_select + 1
+      ;sd_byte_count = sd_byte_count + 2       -- increment byte_count
+
+      sd_sector_select = sd_sector_select + 1
+   end if
 end procedure
 
 
@@ -1170,34 +1189,528 @@ end procedure
 -- read one entire sector at address
 --------------------------------------------------------------------------------
 procedure sd_read_sector_address(dword in address) is
-
-   -- force sd card mode
-   if defined(sd_force_spi_mode) == true then
-      sd_force_spi_mode()
-   end if
-
    sd_start_read(address)
    sd_read_sector()
    sd_stop_read()
 end procedure
 
-;------------------------------------------------------------------------------
-; read one entire sector at address with callback  to storage_read_callback()
-; for direct reading with spi_master. Make sure you call spi_master
-; 512 times in your storage_read_callback().
-;------------------------------------------------------------------------------
-procedure sd_read_sector_address_with_callback(dword in address) is
-
-;    force sd card mode
-   if defined(sd_force_spi_mode) == true then
-      sd_force_spi_mode()
-   end if
-
-   sd_start_read(address)
-   sd_read_sector_with_callback()
-   sd_stop_read()
+---------------------------------------------------------------------------
+-- Extra speed write procedure
+---------------------------------------------------------------------------
+procedure _sd_write_512() is
+   spi_master = sd_sector_buffer_low[0]
+   spi_master = sd_sector_buffer_high[0]
+   spi_master = sd_sector_buffer_low[1]
+   spi_master = sd_sector_buffer_high[1]
+   spi_master = sd_sector_buffer_low[2]
+   spi_master = sd_sector_buffer_high[2]
+   spi_master = sd_sector_buffer_low[3]
+   spi_master = sd_sector_buffer_high[3]
+   spi_master = sd_sector_buffer_low[4]
+   spi_master = sd_sector_buffer_high[4]
+   spi_master = sd_sector_buffer_low[5]
+   spi_master = sd_sector_buffer_high[5]
+   spi_master = sd_sector_buffer_low[6]
+   spi_master = sd_sector_buffer_high[6]
+   spi_master = sd_sector_buffer_low[7]
+   spi_master = sd_sector_buffer_high[7]
+   spi_master = sd_sector_buffer_low[8]
+   spi_master = sd_sector_buffer_high[8]
+   spi_master = sd_sector_buffer_low[9]
+   spi_master = sd_sector_buffer_high[9]
+   spi_master = sd_sector_buffer_low[10]
+   spi_master = sd_sector_buffer_high[10]
+   spi_master = sd_sector_buffer_low[11]
+   spi_master = sd_sector_buffer_high[11]
+   spi_master = sd_sector_buffer_low[12]
+   spi_master = sd_sector_buffer_high[12]
+   spi_master = sd_sector_buffer_low[13]
+   spi_master = sd_sector_buffer_high[13]
+   spi_master = sd_sector_buffer_low[14]
+   spi_master = sd_sector_buffer_high[14]
+   spi_master = sd_sector_buffer_low[15]
+   spi_master = sd_sector_buffer_high[15]
+   spi_master = sd_sector_buffer_low[16]
+   spi_master = sd_sector_buffer_high[16]
+   spi_master = sd_sector_buffer_low[17]
+   spi_master = sd_sector_buffer_high[17]
+   spi_master = sd_sector_buffer_low[18]
+   spi_master = sd_sector_buffer_high[18]
+   spi_master = sd_sector_buffer_low[19]
+   spi_master = sd_sector_buffer_high[19]
+   spi_master = sd_sector_buffer_low[20]
+   spi_master = sd_sector_buffer_high[20]
+   spi_master = sd_sector_buffer_low[21]
+   spi_master = sd_sector_buffer_high[21]
+   spi_master = sd_sector_buffer_low[22]
+   spi_master = sd_sector_buffer_high[22]
+   spi_master = sd_sector_buffer_low[23]
+   spi_master = sd_sector_buffer_high[23]
+   spi_master = sd_sector_buffer_low[24]
+   spi_master = sd_sector_buffer_high[24]
+   spi_master = sd_sector_buffer_low[25]
+   spi_master = sd_sector_buffer_high[25]
+   spi_master = sd_sector_buffer_low[26]
+   spi_master = sd_sector_buffer_high[26]
+   spi_master = sd_sector_buffer_low[27]
+   spi_master = sd_sector_buffer_high[27]
+   spi_master = sd_sector_buffer_low[28]
+   spi_master = sd_sector_buffer_high[28]
+   spi_master = sd_sector_buffer_low[29]
+   spi_master = sd_sector_buffer_high[29]
+   spi_master = sd_sector_buffer_low[30]
+   spi_master = sd_sector_buffer_high[30]
+   spi_master = sd_sector_buffer_low[31]
+   spi_master = sd_sector_buffer_high[31]
+   spi_master = sd_sector_buffer_low[32]
+   spi_master = sd_sector_buffer_high[32]
+   spi_master = sd_sector_buffer_low[33]
+   spi_master = sd_sector_buffer_high[33]
+   spi_master = sd_sector_buffer_low[34]
+   spi_master = sd_sector_buffer_high[34]
+   spi_master = sd_sector_buffer_low[35]
+   spi_master = sd_sector_buffer_high[35]
+   spi_master = sd_sector_buffer_low[36]
+   spi_master = sd_sector_buffer_high[36]
+   spi_master = sd_sector_buffer_low[37]
+   spi_master = sd_sector_buffer_high[37]
+   spi_master = sd_sector_buffer_low[38]
+   spi_master = sd_sector_buffer_high[38]
+   spi_master = sd_sector_buffer_low[39]
+   spi_master = sd_sector_buffer_high[39]
+   spi_master = sd_sector_buffer_low[40]
+   spi_master = sd_sector_buffer_high[40]
+   spi_master = sd_sector_buffer_low[41]
+   spi_master = sd_sector_buffer_high[41]
+   spi_master = sd_sector_buffer_low[42]
+   spi_master = sd_sector_buffer_high[42]
+   spi_master = sd_sector_buffer_low[43]
+   spi_master = sd_sector_buffer_high[43]
+   spi_master = sd_sector_buffer_low[44]
+   spi_master = sd_sector_buffer_high[44]
+   spi_master = sd_sector_buffer_low[45]
+   spi_master = sd_sector_buffer_high[45]
+   spi_master = sd_sector_buffer_low[46]
+   spi_master = sd_sector_buffer_high[46]
+   spi_master = sd_sector_buffer_low[47]
+   spi_master = sd_sector_buffer_high[47]
+   spi_master = sd_sector_buffer_low[48]
+   spi_master = sd_sector_buffer_high[48]
+   spi_master = sd_sector_buffer_low[49]
+   spi_master = sd_sector_buffer_high[49]
+   spi_master = sd_sector_buffer_low[50]
+   spi_master = sd_sector_buffer_high[50]
+   spi_master = sd_sector_buffer_low[51]
+   spi_master = sd_sector_buffer_high[51]
+   spi_master = sd_sector_buffer_low[52]
+   spi_master = sd_sector_buffer_high[52]
+   spi_master = sd_sector_buffer_low[53]
+   spi_master = sd_sector_buffer_high[53]
+   spi_master = sd_sector_buffer_low[54]
+   spi_master = sd_sector_buffer_high[54]
+   spi_master = sd_sector_buffer_low[55]
+   spi_master = sd_sector_buffer_high[55]
+   spi_master = sd_sector_buffer_low[56]
+   spi_master = sd_sector_buffer_high[56]
+   spi_master = sd_sector_buffer_low[57]
+   spi_master = sd_sector_buffer_high[57]
+   spi_master = sd_sector_buffer_low[58]
+   spi_master = sd_sector_buffer_high[58]
+   spi_master = sd_sector_buffer_low[59]
+   spi_master = sd_sector_buffer_high[59]
+   spi_master = sd_sector_buffer_low[60]
+   spi_master = sd_sector_buffer_high[60]
+   spi_master = sd_sector_buffer_low[61]
+   spi_master = sd_sector_buffer_high[61]
+   spi_master = sd_sector_buffer_low[62]
+   spi_master = sd_sector_buffer_high[62]
+   spi_master = sd_sector_buffer_low[63]
+   spi_master = sd_sector_buffer_high[63]
+   spi_master = sd_sector_buffer_low[64]
+   spi_master = sd_sector_buffer_high[64]
+   spi_master = sd_sector_buffer_low[65]
+   spi_master = sd_sector_buffer_high[65]
+   spi_master = sd_sector_buffer_low[66]
+   spi_master = sd_sector_buffer_high[66]
+   spi_master = sd_sector_buffer_low[67]
+   spi_master = sd_sector_buffer_high[67]
+   spi_master = sd_sector_buffer_low[68]
+   spi_master = sd_sector_buffer_high[68]
+   spi_master = sd_sector_buffer_low[69]
+   spi_master = sd_sector_buffer_high[69]
+   spi_master = sd_sector_buffer_low[70]
+   spi_master = sd_sector_buffer_high[70]
+   spi_master = sd_sector_buffer_low[71]
+   spi_master = sd_sector_buffer_high[71]
+   spi_master = sd_sector_buffer_low[72]
+   spi_master = sd_sector_buffer_high[72]
+   spi_master = sd_sector_buffer_low[73]
+   spi_master = sd_sector_buffer_high[73]
+   spi_master = sd_sector_buffer_low[74]
+   spi_master = sd_sector_buffer_high[74]
+   spi_master = sd_sector_buffer_low[75]
+   spi_master = sd_sector_buffer_high[75]
+   spi_master = sd_sector_buffer_low[76]
+   spi_master = sd_sector_buffer_high[76]
+   spi_master = sd_sector_buffer_low[77]
+   spi_master = sd_sector_buffer_high[77]
+   spi_master = sd_sector_buffer_low[78]
+   spi_master = sd_sector_buffer_high[78]
+   spi_master = sd_sector_buffer_low[79]
+   spi_master = sd_sector_buffer_high[79]
+   spi_master = sd_sector_buffer_low[80]
+   spi_master = sd_sector_buffer_high[80]
+   spi_master = sd_sector_buffer_low[81]
+   spi_master = sd_sector_buffer_high[81]
+   spi_master = sd_sector_buffer_low[82]
+   spi_master = sd_sector_buffer_high[82]
+   spi_master = sd_sector_buffer_low[83]
+   spi_master = sd_sector_buffer_high[83]
+   spi_master = sd_sector_buffer_low[84]
+   spi_master = sd_sector_buffer_high[84]
+   spi_master = sd_sector_buffer_low[85]
+   spi_master = sd_sector_buffer_high[85]
+   spi_master = sd_sector_buffer_low[86]
+   spi_master = sd_sector_buffer_high[86]
+   spi_master = sd_sector_buffer_low[87]
+   spi_master = sd_sector_buffer_high[87]
+   spi_master = sd_sector_buffer_low[88]
+   spi_master = sd_sector_buffer_high[88]
+   spi_master = sd_sector_buffer_low[89]
+   spi_master = sd_sector_buffer_high[89]
+   spi_master = sd_sector_buffer_low[90]
+   spi_master = sd_sector_buffer_high[90]
+   spi_master = sd_sector_buffer_low[91]
+   spi_master = sd_sector_buffer_high[91]
+   spi_master = sd_sector_buffer_low[92]
+   spi_master = sd_sector_buffer_high[92]
+   spi_master = sd_sector_buffer_low[93]
+   spi_master = sd_sector_buffer_high[93]
+   spi_master = sd_sector_buffer_low[94]
+   spi_master = sd_sector_buffer_high[94]
+   spi_master = sd_sector_buffer_low[95]
+   spi_master = sd_sector_buffer_high[95]
+   spi_master = sd_sector_buffer_low[96]
+   spi_master = sd_sector_buffer_high[96]
+   spi_master = sd_sector_buffer_low[97]
+   spi_master = sd_sector_buffer_high[97]
+   spi_master = sd_sector_buffer_low[98]
+   spi_master = sd_sector_buffer_high[98]
+   spi_master = sd_sector_buffer_low[99]
+   spi_master = sd_sector_buffer_high[99]
+   spi_master = sd_sector_buffer_low[100]
+   spi_master = sd_sector_buffer_high[100]
+   spi_master = sd_sector_buffer_low[101]
+   spi_master = sd_sector_buffer_high[101]
+   spi_master = sd_sector_buffer_low[102]
+   spi_master = sd_sector_buffer_high[102]
+   spi_master = sd_sector_buffer_low[103]
+   spi_master = sd_sector_buffer_high[103]
+   spi_master = sd_sector_buffer_low[104]
+   spi_master = sd_sector_buffer_high[104]
+   spi_master = sd_sector_buffer_low[105]
+   spi_master = sd_sector_buffer_high[105]
+   spi_master = sd_sector_buffer_low[106]
+   spi_master = sd_sector_buffer_high[106]
+   spi_master = sd_sector_buffer_low[107]
+   spi_master = sd_sector_buffer_high[107]
+   spi_master = sd_sector_buffer_low[108]
+   spi_master = sd_sector_buffer_high[108]
+   spi_master = sd_sector_buffer_low[109]
+   spi_master = sd_sector_buffer_high[109]
+   spi_master = sd_sector_buffer_low[110]
+   spi_master = sd_sector_buffer_high[110]
+   spi_master = sd_sector_buffer_low[111]
+   spi_master = sd_sector_buffer_high[111]
+   spi_master = sd_sector_buffer_low[112]
+   spi_master = sd_sector_buffer_high[112]
+   spi_master = sd_sector_buffer_low[113]
+   spi_master = sd_sector_buffer_high[113]
+   spi_master = sd_sector_buffer_low[114]
+   spi_master = sd_sector_buffer_high[114]
+   spi_master = sd_sector_buffer_low[115]
+   spi_master = sd_sector_buffer_high[115]
+   spi_master = sd_sector_buffer_low[116]
+   spi_master = sd_sector_buffer_high[116]
+   spi_master = sd_sector_buffer_low[117]
+   spi_master = sd_sector_buffer_high[117]
+   spi_master = sd_sector_buffer_low[118]
+   spi_master = sd_sector_buffer_high[118]
+   spi_master = sd_sector_buffer_low[119]
+   spi_master = sd_sector_buffer_high[119]
+   spi_master = sd_sector_buffer_low[120]
+   spi_master = sd_sector_buffer_high[120]
+   spi_master = sd_sector_buffer_low[121]
+   spi_master = sd_sector_buffer_high[121]
+   spi_master = sd_sector_buffer_low[122]
+   spi_master = sd_sector_buffer_high[122]
+   spi_master = sd_sector_buffer_low[123]
+   spi_master = sd_sector_buffer_high[123]
+   spi_master = sd_sector_buffer_low[124]
+   spi_master = sd_sector_buffer_high[124]
+   spi_master = sd_sector_buffer_low[125]
+   spi_master = sd_sector_buffer_high[125]
+   spi_master = sd_sector_buffer_low[126]
+   spi_master = sd_sector_buffer_high[126]
+   spi_master = sd_sector_buffer_low[127]
+   spi_master = sd_sector_buffer_high[127]
+   spi_master = sd_sector_buffer_low[128]
+   spi_master = sd_sector_buffer_high[128]
+   spi_master = sd_sector_buffer_low[129]
+   spi_master = sd_sector_buffer_high[129]
+   spi_master = sd_sector_buffer_low[130]
+   spi_master = sd_sector_buffer_high[130]
+   spi_master = sd_sector_buffer_low[131]
+   spi_master = sd_sector_buffer_high[131]
+   spi_master = sd_sector_buffer_low[132]
+   spi_master = sd_sector_buffer_high[132]
+   spi_master = sd_sector_buffer_low[133]
+   spi_master = sd_sector_buffer_high[133]
+   spi_master = sd_sector_buffer_low[134]
+   spi_master = sd_sector_buffer_high[134]
+   spi_master = sd_sector_buffer_low[135]
+   spi_master = sd_sector_buffer_high[135]
+   spi_master = sd_sector_buffer_low[136]
+   spi_master = sd_sector_buffer_high[136]
+   spi_master = sd_sector_buffer_low[137]
+   spi_master = sd_sector_buffer_high[137]
+   spi_master = sd_sector_buffer_low[138]
+   spi_master = sd_sector_buffer_high[138]
+   spi_master = sd_sector_buffer_low[139]
+   spi_master = sd_sector_buffer_high[139]
+   spi_master = sd_sector_buffer_low[140]
+   spi_master = sd_sector_buffer_high[140]
+   spi_master = sd_sector_buffer_low[141]
+   spi_master = sd_sector_buffer_high[141]
+   spi_master = sd_sector_buffer_low[142]
+   spi_master = sd_sector_buffer_high[142]
+   spi_master = sd_sector_buffer_low[143]
+   spi_master = sd_sector_buffer_high[143]
+   spi_master = sd_sector_buffer_low[144]
+   spi_master = sd_sector_buffer_high[144]
+   spi_master = sd_sector_buffer_low[145]
+   spi_master = sd_sector_buffer_high[145]
+   spi_master = sd_sector_buffer_low[146]
+   spi_master = sd_sector_buffer_high[146]
+   spi_master = sd_sector_buffer_low[147]
+   spi_master = sd_sector_buffer_high[147]
+   spi_master = sd_sector_buffer_low[148]
+   spi_master = sd_sector_buffer_high[148]
+   spi_master = sd_sector_buffer_low[149]
+   spi_master = sd_sector_buffer_high[149]
+   spi_master = sd_sector_buffer_low[150]
+   spi_master = sd_sector_buffer_high[150]
+   spi_master = sd_sector_buffer_low[151]
+   spi_master = sd_sector_buffer_high[151]
+   spi_master = sd_sector_buffer_low[152]
+   spi_master = sd_sector_buffer_high[152]
+   spi_master = sd_sector_buffer_low[153]
+   spi_master = sd_sector_buffer_high[153]
+   spi_master = sd_sector_buffer_low[154]
+   spi_master = sd_sector_buffer_high[154]
+   spi_master = sd_sector_buffer_low[155]
+   spi_master = sd_sector_buffer_high[155]
+   spi_master = sd_sector_buffer_low[156]
+   spi_master = sd_sector_buffer_high[156]
+   spi_master = sd_sector_buffer_low[157]
+   spi_master = sd_sector_buffer_high[157]
+   spi_master = sd_sector_buffer_low[158]
+   spi_master = sd_sector_buffer_high[158]
+   spi_master = sd_sector_buffer_low[159]
+   spi_master = sd_sector_buffer_high[159]
+   spi_master = sd_sector_buffer_low[160]
+   spi_master = sd_sector_buffer_high[160]
+   spi_master = sd_sector_buffer_low[161]
+   spi_master = sd_sector_buffer_high[161]
+   spi_master = sd_sector_buffer_low[162]
+   spi_master = sd_sector_buffer_high[162]
+   spi_master = sd_sector_buffer_low[163]
+   spi_master = sd_sector_buffer_high[163]
+   spi_master = sd_sector_buffer_low[164]
+   spi_master = sd_sector_buffer_high[164]
+   spi_master = sd_sector_buffer_low[165]
+   spi_master = sd_sector_buffer_high[165]
+   spi_master = sd_sector_buffer_low[166]
+   spi_master = sd_sector_buffer_high[166]
+   spi_master = sd_sector_buffer_low[167]
+   spi_master = sd_sector_buffer_high[167]
+   spi_master = sd_sector_buffer_low[168]
+   spi_master = sd_sector_buffer_high[168]
+   spi_master = sd_sector_buffer_low[169]
+   spi_master = sd_sector_buffer_high[169]
+   spi_master = sd_sector_buffer_low[170]
+   spi_master = sd_sector_buffer_high[170]
+   spi_master = sd_sector_buffer_low[171]
+   spi_master = sd_sector_buffer_high[171]
+   spi_master = sd_sector_buffer_low[172]
+   spi_master = sd_sector_buffer_high[172]
+   spi_master = sd_sector_buffer_low[173]
+   spi_master = sd_sector_buffer_high[173]
+   spi_master = sd_sector_buffer_low[174]
+   spi_master = sd_sector_buffer_high[174]
+   spi_master = sd_sector_buffer_low[175]
+   spi_master = sd_sector_buffer_high[175]
+   spi_master = sd_sector_buffer_low[176]
+   spi_master = sd_sector_buffer_high[176]
+   spi_master = sd_sector_buffer_low[177]
+   spi_master = sd_sector_buffer_high[177]
+   spi_master = sd_sector_buffer_low[178]
+   spi_master = sd_sector_buffer_high[178]
+   spi_master = sd_sector_buffer_low[179]
+   spi_master = sd_sector_buffer_high[179]
+   spi_master = sd_sector_buffer_low[180]
+   spi_master = sd_sector_buffer_high[180]
+   spi_master = sd_sector_buffer_low[181]
+   spi_master = sd_sector_buffer_high[181]
+   spi_master = sd_sector_buffer_low[182]
+   spi_master = sd_sector_buffer_high[182]
+   spi_master = sd_sector_buffer_low[183]
+   spi_master = sd_sector_buffer_high[183]
+   spi_master = sd_sector_buffer_low[184]
+   spi_master = sd_sector_buffer_high[184]
+   spi_master = sd_sector_buffer_low[185]
+   spi_master = sd_sector_buffer_high[185]
+   spi_master = sd_sector_buffer_low[186]
+   spi_master = sd_sector_buffer_high[186]
+   spi_master = sd_sector_buffer_low[187]
+   spi_master = sd_sector_buffer_high[187]
+   spi_master = sd_sector_buffer_low[188]
+   spi_master = sd_sector_buffer_high[188]
+   spi_master = sd_sector_buffer_low[189]
+   spi_master = sd_sector_buffer_high[189]
+   spi_master = sd_sector_buffer_low[190]
+   spi_master = sd_sector_buffer_high[190]
+   spi_master = sd_sector_buffer_low[191]
+   spi_master = sd_sector_buffer_high[191]
+   spi_master = sd_sector_buffer_low[192]
+   spi_master = sd_sector_buffer_high[192]
+   spi_master = sd_sector_buffer_low[193]
+   spi_master = sd_sector_buffer_high[193]
+   spi_master = sd_sector_buffer_low[194]
+   spi_master = sd_sector_buffer_high[194]
+   spi_master = sd_sector_buffer_low[195]
+   spi_master = sd_sector_buffer_high[195]
+   spi_master = sd_sector_buffer_low[196]
+   spi_master = sd_sector_buffer_high[196]
+   spi_master = sd_sector_buffer_low[197]
+   spi_master = sd_sector_buffer_high[197]
+   spi_master = sd_sector_buffer_low[198]
+   spi_master = sd_sector_buffer_high[198]
+   spi_master = sd_sector_buffer_low[199]
+   spi_master = sd_sector_buffer_high[199]
+   spi_master = sd_sector_buffer_low[200]
+   spi_master = sd_sector_buffer_high[200]
+   spi_master = sd_sector_buffer_low[201]
+   spi_master = sd_sector_buffer_high[201]
+   spi_master = sd_sector_buffer_low[202]
+   spi_master = sd_sector_buffer_high[202]
+   spi_master = sd_sector_buffer_low[203]
+   spi_master = sd_sector_buffer_high[203]
+   spi_master = sd_sector_buffer_low[204]
+   spi_master = sd_sector_buffer_high[204]
+   spi_master = sd_sector_buffer_low[205]
+   spi_master = sd_sector_buffer_high[205]
+   spi_master = sd_sector_buffer_low[206]
+   spi_master = sd_sector_buffer_high[206]
+   spi_master = sd_sector_buffer_low[207]
+   spi_master = sd_sector_buffer_high[207]
+   spi_master = sd_sector_buffer_low[208]
+   spi_master = sd_sector_buffer_high[208]
+   spi_master = sd_sector_buffer_low[209]
+   spi_master = sd_sector_buffer_high[209]
+   spi_master = sd_sector_buffer_low[210]
+   spi_master = sd_sector_buffer_high[210]
+   spi_master = sd_sector_buffer_low[211]
+   spi_master = sd_sector_buffer_high[211]
+   spi_master = sd_sector_buffer_low[212]
+   spi_master = sd_sector_buffer_high[212]
+   spi_master = sd_sector_buffer_low[213]
+   spi_master = sd_sector_buffer_high[213]
+   spi_master = sd_sector_buffer_low[214]
+   spi_master = sd_sector_buffer_high[214]
+   spi_master = sd_sector_buffer_low[215]
+   spi_master = sd_sector_buffer_high[215]
+   spi_master = sd_sector_buffer_low[216]
+   spi_master = sd_sector_buffer_high[216]
+   spi_master = sd_sector_buffer_low[217]
+   spi_master = sd_sector_buffer_high[217]
+   spi_master = sd_sector_buffer_low[218]
+   spi_master = sd_sector_buffer_high[218]
+   spi_master = sd_sector_buffer_low[219]
+   spi_master = sd_sector_buffer_high[219]
+   spi_master = sd_sector_buffer_low[220]
+   spi_master = sd_sector_buffer_high[220]
+   spi_master = sd_sector_buffer_low[221]
+   spi_master = sd_sector_buffer_high[221]
+   spi_master = sd_sector_buffer_low[222]
+   spi_master = sd_sector_buffer_high[222]
+   spi_master = sd_sector_buffer_low[223]
+   spi_master = sd_sector_buffer_high[223]
+   spi_master = sd_sector_buffer_low[224]
+   spi_master = sd_sector_buffer_high[224]
+   spi_master = sd_sector_buffer_low[225]
+   spi_master = sd_sector_buffer_high[225]
+   spi_master = sd_sector_buffer_low[226]
+   spi_master = sd_sector_buffer_high[226]
+   spi_master = sd_sector_buffer_low[227]
+   spi_master = sd_sector_buffer_high[227]
+   spi_master = sd_sector_buffer_low[228]
+   spi_master = sd_sector_buffer_high[228]
+   spi_master = sd_sector_buffer_low[229]
+   spi_master = sd_sector_buffer_high[229]
+   spi_master = sd_sector_buffer_low[230]
+   spi_master = sd_sector_buffer_high[230]
+   spi_master = sd_sector_buffer_low[231]
+   spi_master = sd_sector_buffer_high[231]
+   spi_master = sd_sector_buffer_low[232]
+   spi_master = sd_sector_buffer_high[232]
+   spi_master = sd_sector_buffer_low[233]
+   spi_master = sd_sector_buffer_high[233]
+   spi_master = sd_sector_buffer_low[234]
+   spi_master = sd_sector_buffer_high[234]
+   spi_master = sd_sector_buffer_low[235]
+   spi_master = sd_sector_buffer_high[235]
+   spi_master = sd_sector_buffer_low[236]
+   spi_master = sd_sector_buffer_high[236]
+   spi_master = sd_sector_buffer_low[237]
+   spi_master = sd_sector_buffer_high[237]
+   spi_master = sd_sector_buffer_low[238]
+   spi_master = sd_sector_buffer_high[238]
+   spi_master = sd_sector_buffer_low[239]
+   spi_master = sd_sector_buffer_high[239]
+   spi_master = sd_sector_buffer_low[240]
+   spi_master = sd_sector_buffer_high[240]
+   spi_master = sd_sector_buffer_low[241]
+   spi_master = sd_sector_buffer_high[241]
+   spi_master = sd_sector_buffer_low[242]
+   spi_master = sd_sector_buffer_high[242]
+   spi_master = sd_sector_buffer_low[243]
+   spi_master = sd_sector_buffer_high[243]
+   spi_master = sd_sector_buffer_low[244]
+   spi_master = sd_sector_buffer_high[244]
+   spi_master = sd_sector_buffer_low[245]
+   spi_master = sd_sector_buffer_high[245]
+   spi_master = sd_sector_buffer_low[246]
+   spi_master = sd_sector_buffer_high[246]
+   spi_master = sd_sector_buffer_low[247]
+   spi_master = sd_sector_buffer_high[247]
+   spi_master = sd_sector_buffer_low[248]
+   spi_master = sd_sector_buffer_high[248]
+   spi_master = sd_sector_buffer_low[249]
+   spi_master = sd_sector_buffer_high[249]
+   spi_master = sd_sector_buffer_low[250]
+   spi_master = sd_sector_buffer_high[250]
+   spi_master = sd_sector_buffer_low[251]
+   spi_master = sd_sector_buffer_high[251]
+   spi_master = sd_sector_buffer_low[252]
+   spi_master = sd_sector_buffer_high[252]
+   spi_master = sd_sector_buffer_low[253]
+   spi_master = sd_sector_buffer_high[253]
+   spi_master = sd_sector_buffer_low[254]
+   spi_master = sd_sector_buffer_high[254]
+   spi_master = sd_sector_buffer_low[255]
+   spi_master = sd_sector_buffer_high[255]
 end procedure
-
 
 --------------------------------------------------------------------------------
 -- write one entire sector
@@ -1208,11 +1721,26 @@ procedure sd_write_sector() is
 
    spi_master = 0xFC       -- send "stop transmission token" write multiple command
 
-   -- send the data via spi
-   for 256 using count1 loop
-    spi_master = sd_sector_buffer_low[count1] -- set low data
-    spi_master = sd_sector_buffer_high[count1]-- set high data
-   end loop
+   -- get sector data
+   if defined(SD_WRITE_EXTRA_SPEED) == TRUE then
+      if SD_WRITE_EXTRA_SPEED == TRUE then
+         _sd_write_512()
+      else
+         -- send the data via spi
+         for 256 using count1 loop
+          spi_master = sd_sector_buffer_low[count1] -- set low data
+          spi_master = sd_sector_buffer_high[count1]-- set high data
+         end loop
+      end if
+   else
+      -- send the data via spi
+      for 256 using count1 loop
+       spi_master = sd_sector_buffer_low[count1] -- set low data
+       spi_master = sd_sector_buffer_high[count1]-- set high data
+      end loop
+   end if
+
+
 
    sd_sector_count = sd_sector_count + 1 -- increment sector count
 
@@ -1231,6 +1759,52 @@ procedure sd_write_sector() is
    while x != 0xFF loop
       x = spi_master
    end loop
+end procedure
+
+--------------------------------------------------------------------------------
+; write one entire sector with callback to storage_write_callback()
+; for direct reading with spi_master. Make sure you call spi_master
+; 512 times in your storage_write_callback().
+--------------------------------------------------------------------------------
+procedure sd_write_sector_with_callback(word in chunk_size) is
+   var byte x
+   var word count1
+
+   if sd_byte_count == 0 then
+      spi_master = 0xFC       -- send "stop transmission token" write multiple command
+   end if
+
+   -- get sector data
+   if defined(SD_WRITE_EXTRA_SPEED) == TRUE then
+      if SD_WRITE_EXTRA_SPEED == TRUE then
+         storage_write_callback(chunk_size)
+         sd_byte_count = sd_byte_count + chunk_size
+      else
+          _error "You can't use callback without SD_WRITE_EXTRA_SPEED == TRUE"
+      end if
+   else
+      _error "You can't use callback without SD_WRITE_EXTRA_SPEED == TRUE"
+   end if
+   
+   if sd_byte_count == 512 then
+      sd_sector_count = sd_sector_count + 1 -- increment sector count
+
+      spi_master = 0xFF  -- send junk crc, crc is disabled
+      spi_master = 0xFF  -- send junk crc, crc is disabled
+
+      x = spi_master   -- wait for a response
+      while x == 0 loop
+         x = spi_master
+      end loop
+      -- response = 010 = data accepted
+      -- response = 101 = crc error
+      -- response = 110 = write error
+
+      x = spi_master   -- wait for sd card to become ready
+      while x != 0xFF loop
+         x = spi_master
+      end loop
+   end if
 end procedure
 
 --------------------------------------------------------------------------------

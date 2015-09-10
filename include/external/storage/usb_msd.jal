@@ -30,6 +30,46 @@ include memory_pointer2
 if !defined(USB_MSD_USE_READ_CALLBACK) then
    const bit USB_MSD_USE_READ_CALLBACK = STORAGE_READ_EXTRA_SPEED
 end if
+if !defined(USB_MSD_USE_WRITE_CALLBACK) then
+   const bit USB_MSD_USE_WRITE_CALLBACK = STORAGE_WRITE_EXTRA_SPEED
+end if
+
+
+-- Select Write Speed. Extra speed uses more code space.
+-- Only for devices that support it.
+const byte USB_WRITE_EXTRA_SPEED = 1
+const byte USB_WRITE_NORMAL_SPEED = 2
+if (STORAGE_DEVICE == SD_CARD) | (STORAGE_DEVICE == PATA_HARD_DISK) then
+   if defined(STORAGE_WRITE_EXTRA_SPEED) then
+      if (STORAGE_WRITE_EXTRA_SPEED == TRUE) then
+         const byte USB_WRITE_TRANSFER_SPEED = USB_WRITE_EXTRA_SPEED
+      else
+         const byte USB_WRITE_TRANSFER_SPEED = USB_WRITE_NORMAL_SPEED
+      end if
+   else
+         const byte USB_WRITE_TRANSFER_SPEED = USB_WRITE_NORMAL_SPEED
+   end if
+else
+   const byte USB_WRITE_TRANSFER_SPEED = USB_WRITE_NORMAL_SPEED
+end if
+
+-- Select Read Speed. Extra speed uses more code space.
+-- Only for devices that support it.
+const byte USB_READ_EXTRA_SPEED = 1
+const byte USB_READ_NORMAL_SPEED = 2
+if (STORAGE_DEVICE == SD_CARD) | (STORAGE_DEVICE == PATA_HARD_DISK) then
+   if defined(STORAGE_READ_EXTRA_SPEED) then
+      if (STORAGE_READ_EXTRA_SPEED == TRUE) then
+         const byte USB_READ_TRANSFER_SPEED = USB_READ_EXTRA_SPEED
+      else
+         const byte USB_READ_TRANSFER_SPEED = USB_READ_NORMAL_SPEED
+      end if
+   else
+      const byte USB_READ_TRANSFER_SPEED = USB_READ_NORMAL_SPEED
+   end if
+else
+   const byte USB_READ_TRANSFER_SPEED = USB_READ_NORMAL_SPEED
+end if
 
 -- variables
 var dword usb_msd_sector_step_
@@ -236,7 +276,7 @@ const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] =
 0x00, -- Class is specified in the interface level
 0x00, -- Subclass is specified at interface level
 0x00, -- Protocol isspecified at interface level
-0x40, -- Maximum packet size for endpoint zero - 64
+USB_EP0_OUT_SIZE, -- Maximum packet size for endpoint zero - 64
 0xD8,
 0x04, -- Vendor ID - Assigned by the USB-IF - Microchip Technology
 0x09,
@@ -283,7 +323,7 @@ const byte USB_CONFIGURATION_DESCRIPTOR[USB_CONFIGURATION_DESCRIPTOR_SIZE] =
 0x81, -- The address of this endpoint on the USB device (bit 3..0 = endpoint number 1) (bit 7 = 1 = in)
 0x02, -- Transfer type - Bulk
 0x40,
-0x00, -- Maximum packet size - 64
+USB_EP1_IN_SIZE, -- Maximum packet size - 64
 0x00, -- Does not apply to Bulk endpoints
 
 -- Endpoint Descriptor (ENDPOINT 1 OUT)
@@ -292,7 +332,7 @@ const byte USB_CONFIGURATION_DESCRIPTOR[USB_CONFIGURATION_DESCRIPTOR_SIZE] =
 0x01, -- The address of this endpoint on the USB device (bit 3..0 = endpoint number 1) (bit 7 = 0 = out)
 0x02, -- Transfer type - Bulk
 0x40,
-0x00, -- Maximum packet size - 64
+USB_EP0_OUT_SIZE, -- Maximum packet size - 64
 0x00  -- Does not apply to Bulk endpoints
 }
 
@@ -629,7 +669,7 @@ procedure usb_msd_command_received() is
 
    var byte step
    msd_wait_own_tx() -- wait till we can write to the tx buffer
-   
+
    if usb_msd_cbw_command_[0] == USB_MSD_INQUIRY then
       debug_char(0,"I")
 
@@ -736,30 +776,23 @@ procedure usb_msd_command_received() is
       address_[1] = usb_msd_cbw_command_[4]
       address_[2] = usb_msd_cbw_command_[3]
       address_[3] = usb_msd_cbw_command_[2]
-      
+
       -- transfer data into USB_EP1
       for usb_msd_cbw_data_transfer_length / 512 loop
          usb_msd_data_residue = 512
-         if STORAGE_DEVICE == SD_CARD then
-            if defined(STORAGE_READ_EXTRA_SPEED) then
-               if (STORAGE_READ_EXTRA_SPEED == TRUE) then
-                  -- Read is done through storage_read_callback()
-                  -- for faster reads.
-                  storage_read_sector_address_with_callback(address)
-               else
-                   -- Read through storage_sector_buffer[]
-                   usb_msd_read(address)
-               end if
-            else
-               -- Read through storage_sector_buffer[]
-               usb_msd_read(address)
-            end if
-            
-         else -- devices other then sd card
-             -- Read through storage_sector_buffer[]
-             usb_msd_read(address)
+
+         if (USB_READ_TRANSFER_SPEED == USB_READ_EXTRA_SPEED) & defined(storage_read_sector_with_callback) then
+            while usb_msd_data_residue != 0 loop -- while there is data available
+               storage_start_read(address) -- start reading
+               for 512 / 64 loop -- read one sector
+                  storage_read_sector_with_callback(64) -- read data
+               end loop
+               storage_stop_read() -- stop reading
+            end loop
+         else
+            usb_msd_read(address)
          end if
-            address = address + 1
+         address = address + 1
       end loop
 
       usb_msd_data_residue = 0 -- done sending all data
@@ -857,19 +890,13 @@ procedure usb_msd_command_received() is
       debug_dword_dec(0, usb_msd_data_residue)
       debug_char(0,")")
 
+      usb_msd_sector_step_ = 0
+      usb_msd_step64_ = 0
 
-      ;if (usb_msd_address == 0) then -- don't write to boot sector (when testing writes) -----------------------------------------------------------------------
-      ;   usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
-      ;   usb_msd_data_residue = 0 -- done getting all data
-      ;   usb_msd_state = USB_MSD_STATE_DATA_IN
-      ;else
-         usb_msd_sector_step_ = 0
-         usb_msd_step64_ = 0
-         -- release EP OUT uown to SIE to allow data to arrive.
-         usb_prime_epx_out(1,USB_EP1_OUT_SIZE)
-      ;end if
+      -- release EP OUT uown to SIE to allow data to arrive.
+      usb_prime_epx_out(1,USB_EP1_OUT_SIZE)
 
-      -- see out callback for what next write steps.
+      -- see out callback for the next write steps.
 
       debug_char(0,"W")
       debug_char(0,"R")
@@ -1054,6 +1081,116 @@ procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte i
    debug_crlf(2) -- crlf
 end procedure
 
+procedure usb_msd_write(dword in address) is
+
+   ;mem_pointer1_address = buffer_addr -- already in usb_ep_data_out_callback()
+   ;msd_wait_own_rx() -- wait till we can read from the receive buffer
+
+   if usb_msd_step64_ == 0 then
+       storage_start_write(address)
+   end if
+
+   -- write data to sector buffer
+   If (USB_WRITE_TRANSFER_SPEED == USB_WRITE_EXTRA_SPEED) & defined(storage_write_sector_with_callback) then
+      storage_write_sector_with_callback(64)
+   else
+      for 64 using usb_msd_step_byte_ loop
+         storage_sector_buffer[usb_msd_step64_ + word(usb_msd_step_byte_)] = mem_pointer1
+      end loop
+   end If
+
+   usb_msd_step64_ = usb_msd_step64_ + 64
+
+   -- allow host to send more
+   usb_prime_epx_out(1,USB_EP1_OUT_SIZE)
+
+   if usb_msd_step64_ == 512 then
+      -- write sector buffer to storage device
+      If !((USB_WRITE_TRANSFER_SPEED == USB_WRITE_EXTRA_SPEED) & defined(storage_write_sector_with_callback)) then
+         storage_raw_write_sector()
+      end if
+      storage_stop_write()
+
+      usb_msd_cbw_data_transfer_length = usb_msd_cbw_data_transfer_length - 512
+   end if
+
+end procedure
+
+--------------------------------------------------------------------------------
+-- Callback from your storage device library. The fastest way to write data.
+--------------------------------------------------------------------------------
+procedure usb_write_callback() is
+   pragma inline
+   if STORAGE_DEVICE == SD_CARD then
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+      spi_master = mem_pointer1
+   else
+      _error "This storage device is not supported by the USB_MSD lib with STORAGE_WRITE_EXTRA_SPEED = TRUE"
+   end if
+end procedure
+
 -- -----------------------------------------------------------------------
 -- Handeles data going out of host to the PIC.
 -- -----------------------------------------------------------------------
@@ -1087,24 +1224,12 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
       if (usb_msd_state == USB_MSD_STATE_DATA_OUT) then
          debug_char(0,"O")
 
-         -- write data to sector buffer
-         for 64 using usb_msd_step_byte_ loop
-            storage_sector_buffer[usb_msd_step64_ + word(usb_msd_step_byte_)] = mem_pointer1
-         end loop
 
-         usb_msd_step64_ = usb_msd_step64_ + 64
-
-         -- allow host to send more if it wants to while we write to the
-         -- storage device
-         usb_prime_epx_out(1,USB_EP1_OUT_SIZE)
+         usb_msd_write(usb_msd_address + usb_msd_sector_step_)
 
          if usb_msd_step64_ == 512 then
 
-            -- write sector buffer to storage device
-            storage_raw_write_sector_address(usb_msd_address + usb_msd_sector_step_)
-
             usb_msd_sector_step_ = usb_msd_sector_step_ + 1
-            usb_msd_cbw_data_transfer_length = usb_msd_cbw_data_transfer_length - 512
             usb_msd_step64_ = 0
 
             -- we're done!
@@ -1360,7 +1485,7 @@ procedure usb_msd_tasks() is
       -- not supported yet, so lets just go to wait state??
       -- the previous command received was probobly not supported anyways,
       -- so we should never be in this state.
-;usb_msd_state = USB_MSD_STATE_WAIT
+      ;usb_msd_state = USB_MSD_STATE_WAIT
    end if
 end procedure
 
@@ -1393,115 +1518,127 @@ end procedure
 -- -----------------------------------------------------------------------
 -- USB read procedure, a callback from your chosen storage library.
 -- also see storage_read_callback() below.
+-- Gets run by a call to storage_read_sector_address_with_callback()
 -- -----------------------------------------------------------------------
 procedure usb_read_callback() is
+   pragma inline
    if STORAGE_DEVICE == SD_CARD then
-      while usb_msd_data_residue != 0 loop
-            for 8 loop
+      mem_pointer1_address = USB_EP1_IN_ADDR
+      msd_wait_own_tx() -- wait till we can write to the tx buffer
+      --  read data from drive buffer in 64 byte chunks and place it
+      --  into the usb tx buffer.   		
 
-               mem_pointer1_address = USB_EP1_IN_ADDR
-               msd_wait_own_tx() -- wait till we can write to the tx buffer
-               --  read data from drive buffer in 64 byte chunks and place it
-               --  into the usb tx buffer.   		
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
+      mem_pointer1 = spi_master
 
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
-               mem_pointer1 = spi_master
+      usb_msd_step64_ = usb_msd_step64_ + 64
 
-               usb_msd_step64_ = usb_msd_step64_ + 64
+      -- success if all data was read from the data device ok.
+      usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
 
-               -- success if all data was read from the data device ok.
-               usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
+      usb_msd_process_data(0)
 
-               usb_msd_process_data(0)
-            end loop
-      end loop
    else
-      _error "This storage device is not supported by the USB_MSD lib"
+      _error "This storage device is not supported by the USB_MSD lib with STORAGE_READ_EXTRA_SPEED = TRUE"
    end if
 end procedure
 
 -- -----------------------------------------------------------------------
--- point the storage read callback to usb_read_callback()
+-- alias the storage_read_callback() to usb_read_callback()
 -- for faster reads. You make your own custom storage_read_callback()
 -- by setting const bit USB_MSD_USE_READ_CALLBACK = FALSE
 -- -----------------------------------------------------------------------
 if defined (USB_MSD_USE_READ_CALLBACK) then
    if USB_MSD_USE_READ_CALLBACK == TRUE then
-      if defined(STORAGE_READ_EXTRA_SPEED) then
-         if STORAGE_READ_EXTRA_SPEED == TRUE then -- see storage_drivers.jal
-
-            procedure storage_read_callback() is
-               pragma inline
-               usb_read_callback()
-            end procedure
-            
-         else
-             _error "You can't use usb_read_callback without STORAGE_READ_EXTRA_SPEED = TRUE. See storage_drivers.jal for STORAGE_READ_EXTRA_SPEED."
-         end if
+      if USB_READ_TRANSFER_SPEED == USB_READ_EXTRA_SPEED then
+         -- alias storage_read_callback to usb_read_callback
+         procedure storage_read_callback(word in chunk_size) is
+            pragma inline
+            usb_read_callback()
+         end procedure
+      else
+          _error "You can't use usb_read_callback without STORAGE_READ_EXTRA_SPEED = TRUE. See storage_drivers.jal for STORAGE_READ_EXTRA_SPEED."
       end if
    end if
 end if
 
 -- -----------------------------------------------------------------------
+-- alias the storage_WRITE_callback() to usb_WRITE_callback()
+-- for faster WRITEs. You make your own custom storage_WRITE_callback()
+-- by setting const bit USB_MSD_USE_WRITE_CALLBACK = FALSE
+-- -----------------------------------------------------------------------
+if defined (USB_MSD_USE_WRITE_CALLBACK) then
+   if USB_MSD_USE_WRITE_CALLBACK == TRUE then
+      if USB_WRITE_TRANSFER_SPEED == USB_WRITE_EXTRA_SPEED then
+         -- alias storage_write_callback to usb_WRITE_callback
+         procedure storage_write_callback(word in chunk_size) is
+            pragma inline
+            usb_write_callback()
+         end procedure
+      else
+          _error "You can't use usb_write_callback without STORAGE_WRITE_EXTRA_SPEED = TRUE. See storage_drivers.jal for STORAGE_WRITE_EXTRA_SPEED."
+      end if
+   end if
+end if
