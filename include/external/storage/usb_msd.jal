@@ -21,28 +21,22 @@ include usb_defs -- USB Definitions
 
 include storage_drivers
 
-include memory_pointer2
-
--- Use the read/write callbacks for extra speed.
---
--- If (STORAGE_READ_EXTRA_SPEED = TRUE) and (USB_MSD_USE_READ_CALLBACK = FALSE)
--- you can write your own storage_read_callback().
-if !defined(USB_MSD_USE_READ_CALLBACK) then
-   const bit USB_MSD_USE_READ_CALLBACK = STORAGE_READ_EXTRA_SPEED
-end if
-if !defined(USB_MSD_USE_WRITE_CALLBACK) then
-   const bit USB_MSD_USE_WRITE_CALLBACK = STORAGE_WRITE_EXTRA_SPEED
-end if
-
-
--- Select Write Speed. Extra speed uses more code space.
+-- Select Write Speed. Extra speed may use more code space.
 -- Only for devices that support it.
-const byte USB_WRITE_EXTRA_SPEED = 1
-const byte USB_WRITE_NORMAL_SPEED = 2
+const byte USB_WRITE_SUPER_SPEED = 1  -- uses memory pointer for extra speed,
+                                      -- data direct from devide to USB endpoint, no buffer array
+const byte USB_WRITE_EXTRA_SPEED = 2  -- uses storage device extra speed routines,
+                                      -- with 512 byte buffer array
+const byte USB_WRITE_NORMAL_SPEED = 3 -- uses normal storage device routines
+                                      -- with 512 byte buffer array
 if (STORAGE_DEVICE == SD_CARD) | (STORAGE_DEVICE == PATA_HARD_DISK) then
    if defined(STORAGE_WRITE_EXTRA_SPEED) then
       if (STORAGE_WRITE_EXTRA_SPEED == TRUE) then
-         const byte USB_WRITE_TRANSFER_SPEED = USB_WRITE_EXTRA_SPEED
+         if defined(storage_read_sector_with_callback) then
+            const byte USB_WRITE_TRANSFER_SPEED = USB_WRITE_SUPER_SPEED
+         else
+            const byte USB_WRITE_TRANSFER_SPEED = USB_WRITE_EXTRA_SPEED
+         end if
       else
          const byte USB_WRITE_TRANSFER_SPEED = USB_WRITE_NORMAL_SPEED
       end if
@@ -53,19 +47,27 @@ else
    const byte USB_WRITE_TRANSFER_SPEED = USB_WRITE_NORMAL_SPEED
 end if
 
--- Select Read Speed. Extra speed uses more code space.
+-- Select Read Speed. Extra speed may use more code space.
 -- Only for devices that support it.
-const byte USB_READ_EXTRA_SPEED = 1
-const byte USB_READ_NORMAL_SPEED = 2
+const byte USB_READ_SUPER_SPEED = 1  -- uses memory pointer for extra speed,
+                                     -- data direct from devide to USB endpoint, no buffer array
+const byte USB_READ_EXTRA_SPEED = 2  -- uses storage device extra speed routines,
+                                     -- with 512 byte buffer array
+const byte USB_READ_NORMAL_SPEED = 3 -- uses normal storage device routines
+                                     -- with 512 byte buffer array.
 if (STORAGE_DEVICE == SD_CARD) | (STORAGE_DEVICE == PATA_HARD_DISK) then
    if defined(STORAGE_READ_EXTRA_SPEED) then
       if (STORAGE_READ_EXTRA_SPEED == TRUE) then
-         const byte USB_READ_TRANSFER_SPEED = USB_READ_EXTRA_SPEED
+         if defined(storage_read_sector_with_callback) then
+            const byte USB_READ_TRANSFER_SPEED = USB_READ_SUPER_SPEED
+         else
+            const byte USB_READ_TRANSFER_SPEED = USB_READ_EXTRA_SPEED
+         end if
       else
          const byte USB_READ_TRANSFER_SPEED = USB_READ_NORMAL_SPEED
       end if
    else
-      const byte USB_READ_TRANSFER_SPEED = USB_READ_NORMAL_SPEED
+         const byte USB_READ_TRANSFER_SPEED = USB_READ_NORMAL_SPEED
    end if
 else
    const byte USB_READ_TRANSFER_SPEED = USB_READ_NORMAL_SPEED
@@ -781,7 +783,7 @@ procedure usb_msd_command_received() is
       for usb_msd_cbw_data_transfer_length / 512 loop
          usb_msd_data_residue = 512
 
-         if (USB_READ_TRANSFER_SPEED == USB_READ_EXTRA_SPEED) & defined(storage_read_sector_with_callback) then
+         if USB_READ_TRANSFER_SPEED == USB_READ_SUPER_SPEED then
             while usb_msd_data_residue != 0 loop -- while there is data available
                storage_start_read(address) -- start reading
                for 512 / 64 loop -- read one sector
@@ -1091,13 +1093,13 @@ procedure usb_msd_write(dword in address) is
    end if
 
    -- write data to sector buffer
-   If (USB_WRITE_TRANSFER_SPEED == USB_WRITE_EXTRA_SPEED) & defined(storage_write_sector_with_callback) then
+   if USB_WRITE_TRANSFER_SPEED == USB_WRITE_SUPER_SPEED then
       storage_write_sector_with_callback(64)
    else
       for 64 using usb_msd_step_byte_ loop
          storage_sector_buffer[usb_msd_step64_ + word(usb_msd_step_byte_)] = mem_pointer1
       end loop
-   end If
+   end if
 
    usb_msd_step64_ = usb_msd_step64_ + 64
 
@@ -1106,7 +1108,7 @@ procedure usb_msd_write(dword in address) is
 
    if usb_msd_step64_ == 512 then
       -- write sector buffer to storage device
-      If !((USB_WRITE_TRANSFER_SPEED == USB_WRITE_EXTRA_SPEED) & defined(storage_write_sector_with_callback)) then
+      if !(USB_WRITE_TRANSFER_SPEED == USB_WRITE_SUPER_SPEED) then
          storage_raw_write_sector()
       end if
       storage_stop_write()
@@ -1187,7 +1189,7 @@ procedure usb_write_callback() is
       spi_master = mem_pointer1
       spi_master = mem_pointer1
    else
-      _error "This storage device is not supported by the USB_MSD lib with STORAGE_WRITE_EXTRA_SPEED = TRUE"
+      _error "This storage device is not supported by the USB_MSD lib with USB_WRITE_SUPER_SPEED"
    end if
 end procedure
 
@@ -1601,44 +1603,30 @@ procedure usb_read_callback() is
       usb_msd_process_data(0)
 
    else
-      _error "This storage device is not supported by the USB_MSD lib with STORAGE_READ_EXTRA_SPEED = TRUE"
+      _error "This storage device is not supported by the USB_MSD lib with USB_READ_SUPER_SPEED"
    end if
 end procedure
 
 -- -----------------------------------------------------------------------
 -- alias the storage_read_callback() to usb_read_callback()
--- for faster reads. You make your own custom storage_read_callback()
--- by setting const bit USB_MSD_USE_READ_CALLBACK = FALSE
+-- for faster reads.
 -- -----------------------------------------------------------------------
-if defined (USB_MSD_USE_READ_CALLBACK) then
-   if USB_MSD_USE_READ_CALLBACK == TRUE then
-      if USB_READ_TRANSFER_SPEED == USB_READ_EXTRA_SPEED then
-         -- alias storage_read_callback to usb_read_callback
-         procedure storage_read_callback(word in chunk_size) is
-            pragma inline
-            usb_read_callback()
-         end procedure
-      else
-          _error "You can't use usb_read_callback without STORAGE_READ_EXTRA_SPEED = TRUE. See storage_drivers.jal for STORAGE_READ_EXTRA_SPEED."
-      end if
-   end if
+if USB_READ_TRANSFER_SPEED == USB_READ_SUPER_SPEED then
+   procedure storage_read_callback(word in chunk_size) is
+      pragma inline
+      usb_read_callback()
+   end procedure
 end if
+
 
 -- -----------------------------------------------------------------------
 -- alias the storage_WRITE_callback() to usb_WRITE_callback()
--- for faster WRITEs. You make your own custom storage_WRITE_callback()
--- by setting const bit USB_MSD_USE_WRITE_CALLBACK = FALSE
+-- for faster writes.
 -- -----------------------------------------------------------------------
-if defined (USB_MSD_USE_WRITE_CALLBACK) then
-   if USB_MSD_USE_WRITE_CALLBACK == TRUE then
-      if USB_WRITE_TRANSFER_SPEED == USB_WRITE_EXTRA_SPEED then
-         -- alias storage_write_callback to usb_WRITE_callback
-         procedure storage_write_callback(word in chunk_size) is
-            pragma inline
-            usb_write_callback()
-         end procedure
-      else
-          _error "You can't use usb_write_callback without STORAGE_WRITE_EXTRA_SPEED = TRUE. See storage_drivers.jal for STORAGE_WRITE_EXTRA_SPEED."
-      end if
-   end if
+if USB_WRITE_TRANSFER_SPEED == USB_WRITE_SUPER_SPEED then
+   procedure storage_write_callback(word in chunk_size) is
+      pragma inline
+      usb_write_callback()
+   end procedure
 end if
+
