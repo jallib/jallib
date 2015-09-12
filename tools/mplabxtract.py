@@ -2,13 +2,14 @@
 """
 # Extract .pic files of JALV2 supported PICs from MPLAB-X file crownking.edc.jar
 # Resulting files will have all lowercase names.
+# May need to be run under root or sudo
 """
 
 import os
 import subprocess
 
 # specify working environment
-mplabxversion = "3.05"
+mplabxversion = "3.10"
 edc = "crownking.edc.jar"
 base = os.path.join("/", "media", "nas")
 jar = os.path.join("/", "opt","microchip","mplabx","v"+mplabxversion,"mplab_ipe","lib",edc)

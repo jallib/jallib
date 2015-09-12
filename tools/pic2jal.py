@@ -10,8 +10,7 @@ Revision: $Revision$
 Compiler: N/A
 
 This file is part of jallib  https://github.com/jallib/jallib
-Released under the BSD license
-             http://www.opensource.org/licenses/bsd-license.php
+Released under the BSD license http://www.opensource.org/licenses/bsd-license.php
 
 Description:
   Python script to create device specifications for JALV2, and
@@ -44,15 +43,14 @@ from xml.dom.minidom import parse, Node
 
 
 # --- basic working parameters
-scriptversion   = "0.1.0"
+scriptversion   = "0.1.1"
 scriptauthor    = "Rob Hamerling"
 compilerversion = "2.4q3"
-mplabxversion   = "3.05"                                                # latest MPLAB-X version
+mplabxversion   = "3.10"                                                # latest MPLAB-X version
 
 
 # --- input   
 base          = os.path.join("/", "media", "nas")                       # base of all used material 
-# base          = os.path.join("/", "home", "robh")                     # alternative location
 mplabxbase    = os.path.join(base, "mplab-x_" + mplabxversion)          # MPLAB-X base directory
 jallib        = os.path.join(base, "jallib")                            # local copy of jallib 
 picdir        = os.path.join(mplabxbase, "content", "edc")              # basedir of .pic files
@@ -1731,7 +1729,8 @@ def ansel2j(reg, ans):
             ansx = 99                              # none
       elif (reg == "ANSELC"):
          if (picname.startswith("16f151") | picname.startswith("16lf151") | \
-             picname.startswith("16f171") | picname.startswith("16lf171")):
+             picname.startswith("16f171") | picname.startswith("16lf171") | \
+             picname.startswith("16f177") | picname.startswith("16lf177")):
             ansx = (99, 99, 14, 15, 16, 17, 18, 19)[ansx]
          elif (picname.startswith("16lf1554")):
             ansx = (13, 23, 12, 22, 11, 21, 99, 99)[ansx]
@@ -1747,6 +1746,8 @@ def ansel2j(reg, ans):
             ansx = (4, 5, 6, 7, 99, 99, 8, 9)[ansx]
          elif (picname.startswith("16f178") | picname.startswith("16lf178")):
             ansx = 99                              # none
+         elif (picname.startswith("16f183") | picname.startswith("16lf183")):         # 16[l]f183xx
+            ansx = ansx + 16
          else:
             print "   ANSEL2J: Unsupported ADC register:", reg
             ansx = 99                              # none
@@ -1766,6 +1767,7 @@ def ansel2j(reg, ans):
             ansx = (99, 99, 99, 99, 10, 11, 99, 99)[ansx]
          elif (picname.startswith("16f151") | picname.startswith("16lf151") | \
                picname.startswith("16f171") | picname.startswith("16lf171") | \
+               picname.startswith("16f177") | picname.startswith("16lf177") | \
                picname.startswith("16f178") | picname.startswith("16lf178") | \
                                               picname.startswith("16lf190") | \
                picname.startswith("16f193") | picname.startswith("16lf193")):
@@ -1774,6 +1776,8 @@ def ansel2j(reg, ans):
             ansx = (99, 99, 99, 99, 26, 16, 25, 15)[ansx]
          elif picname.startswith("16f152") | picname.startswith("16lf152"):
             ansx = (17, 18, 19, 20, 21, 22, 99, 99)[ansx]
+         elif (picname.startswith("16f183") | picname.startswith("16lf183")):         # 16[l]f183xx
+            ansx = ansx + 8
          else:
             print "   ANSEL2J: Unsupported ADC register:", reg
             ansx = 99                              # none
@@ -1797,11 +1801,14 @@ def ansel2j(reg, ans):
                picname.startswith("16f182") | picname.startswith("16lf182") | \
                picname.startswith("12f184") | picname.startswith("12lf184")):
             ansx = (0, 1, 2, 99, 3, 4, 99, 99)[ansx]
+         elif (picname.startswith("16f183") | picname.startswith("16lf183")):         # 16[l]f183xx
+            ansx = ansx + 0                                   # ansx is OK asis
          elif (picname.startswith("16lf155")):
             ansx = (0, 1, 2, 99, 10, 20, 99, 99)[ansx]
          elif (picname.startswith("16f151") | picname.startswith("16lf151") | \
                picname.startswith("16f152") | picname.startswith("16lf152") | \
                picname.startswith("16f171") | picname.startswith("16lf171") | \
+               picname.startswith("16f177") | picname.startswith("16lf177") | \
                picname.startswith("16f178") | picname.startswith("16lf178") | \
                                               picname.startswith("16lf190") | \
                picname.startswith("16f193") | picname.startswith("16lf193") | \
@@ -1861,10 +1868,14 @@ def ansel2j(reg, ans):
          print "   Unsupported ADC register:", reg
          ansx = 99
 
-   aliasname = "AN%d" % ansx
-   if ((ansx < 99) & (aliasname not in pinanmap[picname.upper()])):
-      print "   No", aliasname, "in pinanmap corresponding to", reg + "_" + ans
-      ansx = 99
+   if (ansx < 99):                                          # AN pin present
+      if (picname.startswith("16f183") | picname.startswith("16lf183")):  # 16[l]f183xx
+         aliasname = "AN%c%d" % ("ABCDE"[ansx//8], ansx%8)   # new ADC pin naming convention
+      else:
+         aliasname = "AN%d" % ansx
+      if (aliasname not in pinanmap[picname.upper()]):
+         print "   No", aliasname, "in pinanmap corresponding to", reg + "_" + ans
+         ansx = 99
    return ansx
 
 
@@ -2288,9 +2299,10 @@ def normalize_fusedef_value(key, val, desc):
    descu = "_".join(descu.split())                          # replace all space by single underscore
    kwdvalue = ""                                            # null value
 
-   if ((val == "RESERVED") | (len(desc) == 0)):             # reserved or no desc: skip
-      return ""
-   if (val == "UNIMPLEMENTED")                              # bit(s) not implemented
+
+
+
+   if ((val == "RESERVED") | (val == "UNIMPLEMENTED") | (len(desc) == 0)):     # skip
       return ""
 
    elif (key == "ABW"):                                     # address bus width
@@ -2355,7 +2367,7 @@ def normalize_fusedef_value(key, val, desc):
          kwdvalue = descu
 
    elif (key == "BROWNOUT"):
-      if (val in ("BOACTIVE", "NOSLP", "NSLEEP", "ON_ACTIVE", "SLEEP_DIS")):
+      if (val in ("BOACTIVE", "NOSLP", "SLEEP", "NSLEEP", "ON_ACTIVE", "SLEEP_DIS")):
          kwdvalue = "RUNONLY"
       elif (val in ("ON")):
          if (descu.find("CONTROLLED") >= 0):
@@ -2364,7 +2376,7 @@ def normalize_fusedef_value(key, val, desc):
             kwdvalue = "ENABLED"
       elif (val in ("EN", "ON", "BOHW", "SBORDIS")):
          kwdvalue = "ENABLED"
-      elif (val in ("SBODEN", "SOFT", "SBORENCTRL")):
+      elif (val in ("SBODEN", "SBOREN", "SOFT", "SBORENCTRL")):
          kwdvalue = "CONTROL"
       elif (val in ("DIS", "OFF")):
          kwdvalue = "DISABLED"
@@ -2691,6 +2703,9 @@ def normalize_fusedef_value(key, val, desc):
       else:
          kwdvalue = descu
 
+   elif (key == "RSTOSC"):
+      kwdvalue = val      
+   
    elif (key == "RTCOSC"):
       if (val == "INTOSCREF"):
          kwdvalue = "INTOSC"
@@ -3008,8 +3023,8 @@ def init_fusedef_mapping():
    Input:   nothing
    Output:  fusedef_osc dictionary initialized
    Returns: nothing
-   Notes:   Initializes - dictionary for fuse_def keywords
-                        - dictionary for fuse_def OSC keywords
+   Notes:   Initializes - dictionary for fuse_def keywords (synonyms)
+                        - dictionary specificly for fuse_def OSC keywords (synonyms)
    """
    global fusedef_kwd
    fusedef_kwd = {"ADDRBW"    : "ABW",
@@ -3171,7 +3186,7 @@ def init_fusedef_mapping():
                   "LP"             : "LP",
                   "LPRC"           : "INTOSC_LP",
                   "LP_OSC"         : "LP",
-                  "OFF"            : "OFF",                  
+                  "OFF"            : "OFF",
                   "PRI"            : "PRI",
                   "PRIPLL"         : "PRI_PLL",
                   "RC"             : "RC_CLKOUT",
@@ -3562,7 +3577,7 @@ def read_pinmap_file():
       pinanmap[PICname] = []
       for pin in pinmap[PICname]:
          for alias in pinmap[PICname][pin]:
-            if (alias.startswith("AN") & alias[2:].isdigit()):
+            if (alias.startswith("AN") & (alias[2:].isdigit() | alias[3:].isdigit())):
                pinanmap[PICname].append(alias)
    fp.close()
 
@@ -3580,7 +3595,7 @@ def read_datasheet_file():
    fp = open(datasheetfile, "r")
    for ln in fp:
       ds = ln.split(" ",1)[0]                                  # datasheet number+suffix
-      datasheet[ds[:-1]] = ds                                  # number -> number + sufix
+      datasheet[ds[:-1]] = ds                                  # strip suffix
    fp.close()
 
 
@@ -3657,7 +3672,7 @@ def main(selection):
                if fnmatch.fnmatch(picname, selection):         # 2nd selection (user wildcard)
                   if (picname.upper() in devspec):             # must be in devicespecific
                      picdata = dict(devspec[picname.upper()].items())  # properties of this PIC
-                     if (picdata.get("DATASHEET") != "-"):     # 3rd selection (must have datasheet)
+                     if (picdata.get("DATASHEET") != "-"):     # 3rd selection: must have datasheet
                         pic2jal(os.path.join(root,file))       # create device file from .pic file
                         fp.write("const  word  PIC_%-14s" % picname.upper() + \
                                  " = 0x%X" % (cfgvar["procid"]) + "\n")
@@ -3679,7 +3694,7 @@ if (__name__ == "__main__"):
    if (len(sys.argv) > 1):
       runtype = sys.argv[1].upper()
    else:
-      print "Specify at least PROD or TEST or CHIPDEF as first argument"
+      print "Specify at least PROD, TEST or CHIPDEF as first argument"
       print "and optionally as second argument a pictype (wildcards allowed)"
       sys.exit(1)
 

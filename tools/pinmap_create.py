@@ -30,7 +30,7 @@ import fnmatch
 import re
 from xml.dom.minidom import parse, Node
 
-mplabxversion = "3.05"                                      # latest version of MPLAB-X
+mplabxversion = "3.10"                                      # latest version of MPLAB-X
 picdir = os.path.join("/", "media", "nas", "mplab-x_" + mplabxversion, "content", "edc")   # place of .pic files
 
 pinmapnew = "pinmapnew.py"                                  # output
