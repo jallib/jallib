@@ -23,7 +23,7 @@
                if all OK:                                               
                - in PROD mode move the source of the sample to            
                  the jalib sample directory               
-               - in TEST mode move the source to ./test   
+               - in TEST mode move the source to test directory
                                                                           
   Sources:                                                                
                                                                           
@@ -68,7 +68,7 @@ compiler = os.path.join(jallib, "compiler", "jalv2")     # compiler executable
 
 # --- output
 dstprod = os.path.join(jallib, "sample")                 # production samples          
-dsttest = "./test"                                       # test samples
+dsttest = os.path.join(home, "jal", "blink", "test")     # test samples
 
 
 # global dictionaries for PIC information, re-filled with every PIC
