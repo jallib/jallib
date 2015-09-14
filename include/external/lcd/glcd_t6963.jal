@@ -1,0 +1,687 @@
+-- ------------------------------------------------------
+-- Title: Character/graphic LCD with Toshiba T6963C controller
+--
+-- Author: Rob Hamerling,  Copyright (c) 2015-2015, all rights reserved
+--
+-- Adapted-by: 
+--
+-- Compiler: 2.4q3
+--
+-- Revision: $Revision:$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library to handle character/graphics LCD with Toshiba T6963c controller
+-- Tested with thi following modules: 
+--        TW-7894V-0 (120x64)
+--        MG2406G    (240x64)   
+--        MTG-2460G  (240x64)
+-- .
+-- The t6963 ia a rather special glcd controller: it supports an LCD as
+-- text and as graphics LCD simultaneously and independently. 
+-- .
+-- Connector pins of these modules: 
+--   pin   symb   I/O   description
+--    1     FG          frame ground
+--    2    GND          ground     
+--    3    VCC          lcd logic voltage 
+--    4    VEE          lcd (contrast) voltage
+--    5     wr     O    write enable (L)
+--    6     rd     O    read enable (L)
+--    7     ce     O    chip enable (L)
+--    8     cd     O    H: command, L: data 
+--    9                 not connected  
+--   10   reset    O    reset (L)
+--  11-18 db0-7   I/O   data byte
+--   19     fs     O    font select (H: 6X8, L: 8x8)
+--   20                 not connected
+-- Other modules may have a different pin layout!
+-- Of the TW-7894V-0 pin 19 seems not connected: fixed 6x8 font.
+-- Of the MG2406G pin 9 is Vee: negative voltage for LCD contrast.
+-- .
+-- The following aliases must be defined by the user program:
+-- .
+-- Data port and pins:
+--    alias glcd_dataport  is portX
+--    alias glcd_dataport_direction is portX_direction
+-- The library requires that all 8 data pins are wired to the
+-- same PIC-port and in sequence 'd0' to pin_X0, 'd1' to pin_X1, etc.
+-- All pins must be capable of digital output and input.
+-- The port direction is dynamically selected by the library.
+-- .
+-- Control pins:
+--    alias glcd_wr        is pin_Ya      -- write enable
+--    alias glcd_rd        is pin_Yb      -- read enable
+--    alias glcd_cd        is pin_Yc      -- command or data selection
+--    alias glcd_ce        is pin_Yd      -- chip enable
+--    alias glcd_reset     is pin_Ye      -- reset controller
+--    alias glcd_fs        is pin_Yf      -- font select 
+-- The control pins may be connected to any pin of the PIC capable
+-- of digital output and must be set for output by the user program.
+-- The font selection pin of the glcd module may be hard wired or the module
+-- may have a fixed font width. In that case the specification of glcd_fs
+-- is optional and the font selection pin specification is not required.
+-- .
+-- The following constants must be declared:
+--   const byte GLCD_X_PIXELS    = 120    )
+--   const byte GLCD_Y_PIXELS    = 64     ) example values
+--   const byte GLCD_FONT_WIDTH  = 6      ) 
+--   const bit  GLCD_CLIPPING    = FALSE 
+--   var bit glcd_pen_color      = 1      (0 = clear pixel, 1 = set pixel)
+-- When GLCD_FONT_WIDTH is not specified an 8 pixels wide font is assumed.
+-- Note: - The line length is derived from X-pixels and font width.
+--         The T6963c performs auto-wrapping of text and attributes based
+--         on this line length.
+--       - When the specified font width does not match with the hardware
+--         you may not see what you expected to see.
+-- .
+-- T6963c memory organisation as used by this library.
+--    +-----------------------+ 0x0000
+--    |                       |
+--    |      Text Space       |  
+--    |    (1/4 of total)     |
+--    + ----------------------+ 0x....
+--    |                       |
+--    |   Graphics Space      |
+--    |                       |
+--    |                       |
+--    +-----------------------+ 0x....
+--    |   CG area (2KB)       |
+--    +-----------------------+
+-- Text and Graphics space depend on available memory, 
+-- determined by glcd_init() by probing (max 64KB).
+-- This memory layout is hardly of interest for user programs.
+-- .
+-- This library supports a subset of the features of the T6963c controller.
+-- Currently not supported are for example:
+--   - screen peek and copy (combined text and graphics memory)
+--   - modules with 'dual scan'
+-- .
+-- This library contains a number of procedures and functions which are
+-- for 'ínternal library use only'. The names of these start with 't6963_'.
+-- Names of public procedures and functions start with 'glcd_' 
+-- .
+-- Public procedures and functions:
+--    glcd_init()
+--    glcd_set_mode()
+--    glcd_display_mode()
+--    glcd_clear_text()
+--    glcd_clear_graphics()
+--    glcd_clear_screen() 
+--    glcd_read_char()
+--    glcd_read_next_char()
+--    glcd_write_char()
+--    glcd_write_next_char()
+--    glcd_write_string()
+--    glcd_set_cursor_pattern()
+--    glcd_set_cursor_position()
+--    glcd_set_attribute()
+--    glcd_write_pixel()
+--    glcd_read_cg_memory()
+--    glcd_write_cg_memory()
+-- .
+-- The library 'glcd_common' may be included by the user program for
+-- drawing lines, rectangulars, blocks, ellipses, etc. and the library
+-- math.jal for trigonometric functions.
+--
+-- Sources: http://www.lcd-module.de/fileadmin/eng/pdf/zubehoer/t6963c.pdf        
+--          https://www.crystalfontz.com/controllers/Toshiba/T6963C/360
+--
+-- Notes:
+--
+-- --------------------------------------------------------------------------
+
+-- some basic sanity checks
+--
+if ( !defined(GLCD_FONT_WIDTH) ) then
+   _warn "T6963 - Missing font width specification, using default 8"
+   const byte GLCD_FONT_WIDTH = 8
+elsif ( !((GLCD_FONT_WIDTH == 8) | (GLCD_FONT_WIDTH == 6)) ) then
+   _error "T6963 - Font width may only be 6 or 8" 
+end if
+
+if ( !defined(GLCD_PEN_COLOR) ) then
+   var bit glcd_pen_color = ON         -- default pixel on
+end if
+
+if ( !defined(GLCD_CLIPPING)) then
+   const bit GLCD_CLIPPING = FALSE     -- Set default: clipping!
+end if
+       
+-- device specific constants and variables 
+
+const word T6963_GRAPHICS_SIZE			= GLCD_X_PIXELS * GLCD_Y_PIXELS
+const word T6963_TEXT_SIZE				   = GLCD_X_PIXELS * GLCD_Y_PIXELS / 8  
+
+const byte T6963_GRAPHICS_AREA		   = GLCD_X_PIXELS / GLCD_FONT_WIDTH
+const byte T6963_TEXT_AREA				   = GLCD_X_PIXELS / GLCD_FONT_WIDTH
+
+const byte T6963_TEXT_ROWS             = GLCD_Y_PIXELS / 8
+
+const word T6963_TEXT_HOME 			   = 0x0000       -- fixed
+
+var   word t6963_memsize               = 0x2000       -- )
+var   word t6963_graphics_home         = 0x0800       -- ) defaults!
+var   byte t6963_external_cg_offset    = 0x02         -- ) 
+
+-- --- T6963 specific commands --- ---------------
+
+const byte T6963_SET_CURSOR_POINTER			   = 0x21
+const byte T6963_SET_OFFSET_REGISTER		   = 0x22
+const byte T6963_SET_ADDRESS_POINTER		   = 0x24
+
+const byte T6963_SET_TEXT_HOME_ADDRESS		   = 0x40
+const byte T6963_SET_TEXT_AREA				   = 0x41
+const byte T6963_SET_GRAPHICS_HOME_ADDRESS	= 0x42
+const byte T6963_SET_GRAPHICS_AREA			   = 0x43
+
+const byte T6963_SET_MODE_OR  				   = 0x80
+const byte T6963_SET_MODE_EXOR               = 0x81
+const byte T6963_SET_MODE_AND                = 0x83
+const byte T6963_SET_MODE_TEXT_ONLY          = 0x84
+const byte T6963_SET_MODE_CG_EXTERNAL        = 0x88
+
+const byte T6963_ATTRIBUTE_NORMAL            = 0x00
+const byte T6963_ATTRIBUTE_REVERSE           = 0x05
+const byte T6963_ATTRIBUTE_INHIBiT           = 0x03
+const byte T6963_ATTRIBUTE_NORMAL_BLINK      = 0x08
+const byte T6963_ATTRIBUTE_REVERSE_BLINK     = 0x0D
+const byte T6963_ATTRIBUTE_INHIBIT_BLINK     = 0x0B
+
+const byte T6963_DISPLAY_OFF     		      = 0x90      
+const byte T6963_DISPLAY_CURSOR_BLINK_ON     = 0x91
+const byte T6963_DISPLAY_CURSOR_ON  		   = 0x92
+const byte T6963_DISPLAY_TEXT_ON 			   = 0x94
+const byte T6963_DISPLAY_GRAPHICS_ON   	   = 0x98				
+
+const byte T6963_CURSOR_PATTERN_SELECT		   = 0xA0
+
+const byte T6963_DATA_AUTO_WRITE    		   = 0xB0
+const byte T6963_DATA_AUTO_READ		   	   = 0xB1
+const byte T6963_DATA_AUTO_RESET				   = 0xB2
+
+const byte T6963_DATA_WRITE_AND_INCREMENT	   = 0xC0
+const byte T6963_DATA_READ_AND_INCREMENT     = 0xC1
+const byte T6963_DATA_WRITE_AND_DECREMENT	   = 0xC2
+const byte T6963_DATA_READ_AND_DECREMENT     = 0xC3
+const byte T6963_DATA_WRITE                  = 0xC4
+const byte T6963_DATA_READ                   = 0xC5
+
+const byte T6963_SCREEN_PEEK  				   = 0xE0
+const byte T6963_SCREEN_COPY					   = 0xE8
+
+const byte T6963_PIXEL_CLEAR                 = 0xF0
+const byte T6963_PIXEL_SET                   = 0xF8
+
+
+-- ===- PRIVATE variables, constants, procedures, functions ===
+--     (supposedly not to be used by user programs)
+
+
+-- ---------------------------------------------------------------
+-- read dataport 
+-- Setting of glcd_cd by user determines data or command read
+-- Upon return:
+--  - the dataport is left in INPUT mode
+--  - the control pins ce and rd are left low
+--  The caller is supposed to restore these as required.
+-- Note: This implementation is for the T6963_wait_unitil_ready_mask()
+--       which may interrogate the dataport multiple times. 
+function t6963_read_dataport() return byte is
+   glcd_dataport_direction = ALL_INPUT
+   glcd_wr = HIGH                         -- )
+   glcd_rd = LOW                          -- ) select read mode
+   glcd_ce = LOW
+   _usec_delay(1)
+   return glcd_dataport                   -- calle should restore quisce state!
+end function
+
+
+-- ---------------------------------------------------------------
+-- write dataport 
+-- Setting of glcd_cd determines data or command write
+-- Upon return:
+--  - the dataport is left in OUTPUT mode
+--  - the control pins ce and wr are left LOW,
+--  the caller is supposed to restore these as required.
+procedure t6963_write_dataport(byte in data) is 
+   glcd_dataport = data    
+   glcd_dataport_direction = ALL_OUTPUT 
+   glcd_rd = HIGH                         -- )     
+   glcd_wr = LOW                          -- ) select write mode   
+   glcd_ce = LOW
+   _usec_delay(1)
+   glcd_wr = HIGH                         -- restore quiesce state
+   glcd_ce = HIGH
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Spin until ready for next command or data
+-- Input: Mask is the bit combination in the status byte 
+--        to specify which bytes must be set 
+procedure t6963_wait_until_ready_mask(byte in mask) is
+   var byte data 
+   glcd_cd = HIGH                            -- command (status)
+   data = t6963_read_dataport()
+   while ((glcd_dataport & mask) != mask) loop end loop 
+   glcd_rd = HIGH                            -- restore quiesce state
+   glcd_ce = HIGH
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Spin until ready for next data (status bits 0 and 1 are both 1)
+procedure t6963_wait_until_ready() is
+   t6963_wait_until_ready_mask(1 + 2)        -- sta0 + sta1
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Spin until ready to auto-read (status bit 2 is 1)
+procedure t6963_wait_until_ready_to_auto_read() is
+   t6963_wait_until_ready_mask(4)            -- sta2   
+end procedure
+
+
+-- --------------------------------------------------------------
+-- Spin until ready to auto-write (status bit 3 is 1)
+procedure t6963_wait_until_ready_to_auto_write() is
+   t6963_wait_until_ready_mask(8)            -- sta3
+end procedure
+
+
+-- --------------------------------------------------------------
+procedure t6963_read_data() is
+   t6963_wait_until_ready()
+   glcd_cd = LOW                             -- data
+   var byte data = t6963_read_dataport()      
+   glcd_rd = HIGH                            -- restore quiesce state
+   glcd_ce = HIGH
+end procedure
+
+
+-- ---------------------------------------------------------------
+procedure t6963_write_data(byte in data) is
+   t6963_wait_until_ready()
+   glcd_cd = LOW                             -- data
+   t6963_write_dataport(data)
+end procedure
+
+
+-- ---------------------------------------------------------------
+procedure t6963_write_command(byte in cmd) is
+   t6963_wait_until_ready()
+   glcd_cd = HIGH                            -- command
+   t6963_write_dataport(cmd)
+end procedure
+
+
+-- ---------------------------------------------------------------
+procedure t6963_set_address(word in address) is
+   var byte addr[2] at address                  -- overlay
+   t6963_write_data(addr[0])                    -- LSB 
+   t6963_write_data(addr[1])                    -- MSB
+   t6963_write_command(T6963_SET_ADDRESS_POINTER)  
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Clear memory region
+procedure t6963_clear_memory_region(word in addr, word in amount) is
+   t6963_set_address(addr)
+   t6963_write_command(T6963_DATA_AUTO_WRITE)
+   for (amount) loop                            
+      t6963_wait_until_ready_to_auto_write()
+      t6963_write_data(0)
+   end loop
+   t6963_write_command(T6963_DATA_AUTO_RESET) 
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Probe RAM memory to determine the amount available RAM
+-- Using steps of 2 KB
+-- Writes and reads back 0x55 and 0xAA to last byte of each 2K block
+-- as long as read back data matches written data.
+-- Returns the number of 2KB blocks available.
+function glcd_probe_memory() return word is 
+   -- Function to write byte to current address and read it back. 
+   -- return TRUE when matching, FALSE otherwise
+   function verify(byte in x) return bit is
+      var byte y
+      t6963_write_data(x)
+      t6963_write_command(T6963_DATA_WRITE)  -- keep address! 
+      t6963_write_command(T6963_DATA_READ)
+      t6963_wait_until_ready()                   
+      glcd_cd = LOW                          -- data
+      y = t6963_read_dataport()              -- get data
+      glcd_rd = HIGH
+      glcd_ce = HIGH   
+      return  (y == x)                       -- TRUE when equal
+   end function      
+   const word step = 0x800                   -- blocks of 2 KB
+   var byte blocks
+   var word addr = step - 1                  -- last byte first block
+   for 32 using blocks loop                  -- 32 x 2KB = 64 KB
+      t6963_set_address(addr)
+      if (verify(0x55) == FALSE) then
+         exit loop
+      elsif (verify(0xAA) == FALSE) then
+         exit loop
+      end if
+      addr = addr + step                     -- still OK, try next block
+   end loop
+   return blocks
+                                             -- (0 with 64 KB!)
+end function
+  
+
+-- === PUBLIC procedures ========================================
+
+
+-- ---------------------------------------------------------------
+-- Clear text memory
+procedure glcd_clear_text() is
+   pragma inline
+   t6963_clear_memory_region(T6963_TEXT_HOME, t6963_graphics_home - T6963_TEXT_HOME)
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Clear graphics memory
+-- Note: Works fine even with 64K memory (when t6963_memsize is 0)
+procedure glcd_clear_graphics() is
+   pragma inline
+   t6963_clear_memory_region(t6963_graphics_home, t6963_memsize - t6963_graphics_home - 0x800)
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Clear screen (both text and graphics memory
+procedure glcd_clear_screen() is
+   pragma inline
+   glcd_clear_text()
+   glcd_clear_graphics()
+end procedure
+
+-- ---------------------------------------------------------------
+-- Read a byte from the current address 
+function glcd_read_next_char() return byte is
+   var byte data
+   t6963_write_command(T6963_DATA_READ_AND_INCREMENT)
+   t6963_wait_until_ready()                   
+   glcd_cd = LOW                             -- data
+   data = t6963_read_dataport()              -- get it
+   glcd_rd = HIGH
+   glcd_ce = HIGH                      
+   return data
+end function
+
+
+-- ---------------------------------------------------------------
+-- Read a character at a specific location (column, row) in text memory
+-- This procedured
+function glcd_read_char(byte in column, byte in row) return byte is
+   var word addr = T6963_TEXT_HOME + column + word(T6963_TEXT_AREA) * row
+   t6963_set_address(addr)
+   return glcd_read_next_char()
+end function
+
+
+-- ---------------------------------------------------------------
+-- Display a character on the screen at the current location
+-- Address is incremented, subsequent glcd_write_next_char() 
+-- will use the next text location and wraps automatically.
+-- ASCII values 0x00-0x1F (dec 0..31) are not available!
+procedure glcd_write_next_char(byte in d) is
+   if ((d >= 32) & (d < 128)) then          -- builtin table
+      d = d - 32
+   end if
+   t6963_write_data(d)
+   t6963_write_command(T6963_DATA_WRITE_AND_INCREMENT) 
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Display a character at a specific location on the screen,
+-- column and row are character offsets on the physical screen.
+-- After the write the address is incremented. Adjacent characters
+-- (e.g. of an array or string) may use glcd_write_next_char(), 
+-- no need for the user to maintain the current position.
+procedure glcd_write_char(byte in column, byte in row, byte in d) is
+   var word addr = T6963_TEXT_HOME + column + word(T6963_TEXT_AREA) * row
+   t6963_set_address(addr)
+   glcd_write_next_char(d)
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Display a string starting at a specific location on the screen,
+-- column and row are character offsets on the physical screen.
+-- This procedure is more efficient than writing individual adjacent characters.
+procedure glcd_write_string(byte in column, byte in row, byte in string[]) is
+   var word addr = T6963_TEXT_HOME + column + word(T6963_TEXT_AREA) * row
+   var byte i, d
+   t6963_set_address(addr)
+   t6963_write_command(T6963_DATA_AUTO_WRITE)
+   for count(string) using i loop
+      d = string[i]
+      if ((d >= 32) & (d < 128)) then          -- builtin table
+         d = d - 32
+      end if
+      t6963_wait_until_ready_to_auto_write()
+      t6963_write_data(d) 
+   end loop   
+   t6963_write_command(T6963_DATA_AUTO_RESET)
+end procedure
+
+-- ---------------------------------------------------------------
+-- Set mode for mixed graphics and text (or text only)
+-- Set one of the following constants:
+--   T6963_SET_MODE_OR     		      
+--   T6963_SET_MODE_EXOR     
+--   T6963_SET_MODE_OR
+--   T6963_SET_MODE_TEXT_ONLY  
+-- Optionally combined with characterset selection:
+--   T6963_SET_MODE_CG_EXTERNAL
+procedure glcd_set_mode(byte in mode) is
+   t6963_write_command(T6963_SET_MODE_OR | (mode & 0x0F))      -- ensure correct command!
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Set display mode
+-- Set any or a combination (or-ed) of the following constants:
+--   T6963_DISPLAY_OFF     		      
+--   T6963_DISPLAY_CURSOR_BLINK_ON     
+--   T6963_DISPLAY_CURSOR_ON  		   
+--   T6963_DISPLAY_TEXT_ON 			   
+--   T6963_DISPLAY_GRAPHICS_ON   
+-- Note: To switch one of these off de-select it!
+procedure glcd_display_mode(byte in mode) is
+   t6963_write_command(T6963_DISPLAY_OFF | (mode & 0x0F))      -- ensure correct command!
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Set cursor pattern
+-- Input: height of the cursor: number of pixels (1..8)
+-- Notes: - Cursor ON/OFF/BLINK must be selected with glcd_display_mode)
+--        - lines=1 is bottom line, lines=2 bottom 2 lines, lines=8 block cursor
+procedure glcd_set_cursor_pattern(byte in lines) is
+   t6963_write_command(T6963_CURSOR_PATTERN_SELECT | ((lines - 1) & 0x07))
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Set cursor position
+-- Input: column and row of the cursor
+-- Notes: - Cursor ON/OFF/BLINK must be selected with glcd_display_mode)
+--        - The cursor does not automatically move when writing characters!
+procedure glcd_set_cursor_position(byte in column, byte in row) is
+--   var word addr = T6963_TEXT_HOME + column + word(T6963_TEXT_AREA) * row
+   var word addr
+   var byte aaddr[2] at addr
+   aaddr[0] = column
+   aaddr[1] = row
+   t6963_set_address(addr)
+   t6963_write_command(T6963_SET_CURSOR_POINTER)
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Set attribute
+-- Input: (Start-)column and row of the attribyte, 
+--        the atribute byte and the number of atttributes.
+--        The attribyte byte may be one of the following:
+--        T6963_ATTRIBUTE_NORMAL            
+--        T6963_ATTRIBUTE_REVERSE
+--        T6963_ATTRIBUTE_INHIBIT
+--        T6963_ATTRIBUTE_NORMAL_BLINK
+--        T6963_ATTRIBUTE_REVERSE_BLINK
+--        T6963_ATTRIBUTE_INHIBIT_BLINK
+-- Notes: - Attribute bytes are bytes in graphics memory.
+--        - The controller is set to text mode only (required with attributes).
+--        - Text and graphics display must be set on by the user program!
+--          with or without cursor(blinking).
+--        - The graphics may have to be erased when starting with setting attributes.
+procedure glcd_set_attribute(byte in column, byte in row, byte in attr, byte in num) is
+   var word addr = T6963_GRAPHICS_HOME + column + word(T6963_GRAPHICS_AREA) * row
+   t6963_write_command(T6963_SET_MODE_TEXT_ONLY)   -- ensure attribute mode
+   t6963_set_address(addr)
+   t6963_write_command(T6963_DATA_AUTO_WRITE)
+   for num loop                            
+      t6963_wait_until_ready_to_auto_write()
+      t6963_write_data(attr) 
+   end loop   
+   t6963_write_command(T6963_DATA_AUTO_RESET)
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Read byte pattern(s) from CG RAM
+-- The pattern of one CG character consists of 8 bytes.
+-- This procedure allows yo to read 1 or several patterns, 
+-- depending on the size of the specified array.
+procedure glcd_read_cg_memory(byte in x, byte in pattern[]) is
+   var byte i
+   var word addr = (word(t6963_external_cg_offset) << 11) + (word(x) * 8)
+   t6963_set_address(addr)
+   t6963_write_command(T6963_DATA_AUTO_READ)
+-- for 8 using i loop
+   for count(pattern) using i loop
+      t6963_wait_until_ready_to_auto_read()
+      glcd_cd = LOW                             -- data
+      pattern[i] = t6963_read_dataport()   
+      glcd_rd = HIGH                            -- restore quiesce state
+      glcd_ce = HIGH
+   end loop   
+   t6963_write_command(T6963_DATA_AUTO_RESET)
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Write byte pattern to CG-RAM
+-- This procedure allows you to define patterns for more than one
+-- character in one operation. It takes the specified character value
+-- as the first position and writes as many patterns as are in
+-- the pattern array (most likely 8 or a multiple of 8 bytes).   
+-- The characters after the first will have subsequent character values.  
+-- Input: - Character value 0x80..0xff (dec 128..255)  
+--        - Array with bitpatterns (8 bytes per CG character, each of
+--          the bytes represents a horizontal line of 8 pixels.
+-- Notes: This library uses the internal font, which means:
+--          - characters 0x00..0x7F are fixed (builtin the T6963 chip)
+--          - characters 0x80..0xFF are user defined.
+procedure glcd_write_cg_memory(byte in char, byte in pattern[]) is
+   var word addr = (word(t6963_external_cg_offset) << 11) + (word(char) * 8)
+   var byte i
+   t6963_set_address(addr)
+   t6963_write_command(T6963_DATA_AUTO_WRITE)
+   for count(pattern) using i loop
+      t6963_wait_until_ready_to_auto_write()
+      t6963_write_data(pattern[i])
+   end loop   
+   t6963_write_command(T6963_DATA_AUTO_RESET)
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- Display or clear a single pixel in graphics 
+-- (x,y) are pixel offset on the physical screen
+-- Notes: pixel writing is pretty slow compared to other glcds!
+procedure glcd_write_pixel(byte in x, byte in y) is
+   if (GLCD_CLIPPING) then
+      if ( (x >= GLCD_X_PIXELS) | (y >= GLCD_Y_PIXELS) ) then
+         return
+      end if
+   end if
+   var byte byte_addr  = x / GLCD_FONT_WIDTH
+   var byte bit_offset = x % GLCD_FONT_WIDTH
+   bit_offset = GLCD_FONT_WIDTH - 1 - bit_offset  -- left-to-right!
+   var word addr = t6963_graphics_home + byte_addr + word(T6963_GRAPHICS_AREA) * y
+   t6963_set_address(addr)
+   if (glcd_pen_color == ON) then 
+      t6963_write_command(T6963_PIXEL_SET | bit_offset)
+   else
+      t6963_write_command(T6963_PIXEL_CLEAR | bit_offset)
+   end if
+end procedure
+
+
+-- ---------------------------------------------------------------
+-- initialize t6963
+-- Control signals use negative logic  (LOW is TRUE)
+-- All control pins must be set for output by the application 
+procedure glcd_init() is
+   glcd_reset = LOW                         
+   delay_1ms(10)                             -- safe reset period
+   glcd_reset = HIGH
+   
+   glcd_wr = HIGH                            -- )
+   glcd_rd = HIGH                            -- ) 
+   glcd_cd = HIGH                            -- ) quiesced state
+   glcd_ce = HIGH                            -- )  
+   if (defined(glcd_fs)) then                -- font selection pin alias is optional         
+      if (GLCD_FONT_WIDTH == 6) then
+         glcd_fs = HIGH                   -- 6x8 font
+      else
+         glcd_fs = LOW                    -- 8x8 font  
+      end if
+   end if
+   t6963_set_address(T6963_TEXT_HOME)
+   t6963_write_command(T6963_SET_TEXT_HOME_ADDRESS)
+   t6963_set_address(t6963_graphics_home)           
+   t6963_write_command(T6963_SET_GRAPHICS_HOME_ADDRESS)             
+   t6963_set_address(word(T6963_TEXT_AREA))
+   t6963_write_command(T6963_SET_TEXT_AREA)
+   t6963_set_address(word(T6963_GRAPHICS_AREA))   
+   t6963_write_command(T6963_SET_GRAPHICS_AREA)   
+   t6963_write_command(T6963_SET_MODE_OR)           -- using internal font (default)
+   t6963_set_address(word(t6963_external_cg_offset))   
+   t6963_write_command(T6963_SET_OFFSET_REGISTER)
+   t6963_write_command(T6963_DISPLAY_TEXT_ON | T6963_DISPLAY_GRAPHICS_ON)      
+   
+   -- Now determine total amount of RAM by probing and 
+   -- modify initial settings of graphics home and offset register    
+   -- Note: memory probing seems to works only correctly after a complete init 
+   t6963_memsize = 0x800 * glcd_probe_memory() 
+   if (t6963_memsize > 0) then                        -- less than 64 KB
+      t6963_graphics_home = t6963_memsize / 4         -- 1st quarter for text 
+   else                                               -- 64 KB    
+      t6963_graphics_home = 0x4000                    -- 16 of 64 KB for text   
+   end if 
+   t6963_set_address(t6963_graphics_home)
+   t6963_write_command(T6963_SET_GRAPHICS_HOME_ADDRESS)                     
+   t6963_external_cg_offset = byte((t6963_memsize - 0x800) >> 11)   -- CG RAM in upper 2 KB memory       
+   t6963_set_address(word(t6963_external_cg_offset))           
+   t6963_write_command(T6963_SET_OFFSET_REGISTER)        
+         
+   glcd_clear_screen()
+      
+end procedure
+
+
+

@@ -1,0 +1,238 @@
+-- ------------------------------------------------------
+-- Title: Test glcd_t6963c_library with a pic16f877a
+--
+-- Author: Rob Hamerling, Copyright (c) 2015..2015, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler:2.4q3
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+--    Elementary test of the glcd_t6963c library!
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+include 16f877a                           -- target PICmicro
+--
+pragma target clock    4_000_000          -- oscillator frequency
+--
+pragma target OSC      XT                 -- resonator
+pragma target WDT      DISABLED           -- watchdog
+pragma target PWRTE    ENABLED            -- power-on delay
+pragma target BROWNOUT DISABLED           -- no brownout reset
+pragma target LVP      DISABLED           -- no low voltage programming
+--
+--
+enable_digital_io()                       -- make all pins digital I/O
+--
+include delay                             -- library with delay procedures
+include print
+--
+-- --- serial hardware setup --------------------------------- 
+
+const serial_hw_baudrate = 19200
+alias serial_ctsinv      is pin_B0        -- CTS incoming flow ctl
+var   bit serial_overflow_discard = FALSE     -- no transmit buffer overflow
+pin_rx_direction = INPUT
+pin_tx_direction = OUTPUT
+pin_B0_direction = OUTPUT
+
+include serial_hw_int_cts                 -- serial library
+
+serial_hw_init()
+
+-- --- setup the GLCD --------------------------------------
+
+alias glcd_dataport is portD
+alias glcd_dataport_direction is portD_direction  
+
+-- control signal pins
+alias glcd_wr		is pin_C0
+alias glcd_rd		is pin_C1
+alias glcd_ce		is pin_C2
+alias glcd_cd		is pin_C3
+alias glcd_reset	is pin_C4
+-- alias glcd_fs		is pin_C5
+
+-- all control pins are on portC and all are output
+pin_C0_direction = OUTPUT
+pin_C1_direction = OUTPUT
+pin_C2_direction = OUTPUT
+pin_C3_direction = OUTPUT
+pin_C4_direction = OUTPUT
+pin_C5_direction = INPUT
+
+-- display properties
+const byte GLCD_X_PIXELS	 = 240
+const byte GLCD_Y_PIXELS    = 64
+const byte GLCD_FONT_WIDTH	 = 6
+const bit  GLCD_CLIPPING    = TRUE
+
+var bit glcd_pen_color = ON                  -- pixel ON (to clear a pixel: OFF)
+
+include glcd_t6963                           -- GLCD device library      
+
+include glcd_common                          -- GLCD common library
+
+glcd_init()
+
+print_string(serial_hw_data, PICTYPE)        
+serial_hw_data = " "
+print_word_dec(serial_hw_data, t6963_memsize)        
+serial_hw_data = " "
+print_word_dec(serial_hw_data, t6963_graphics_home)
+serial_hw_data = " " 
+print_byte_dec(serial_hw_data, t6963_external_cg_offset)
+serial_hw_data = " "
+
+-- ---------------------------------------------------------
+
+glcd_clear_screen()
+
+glcd_display_mode(T6963_DISPLAY_TEXT_ON)     -- display only text
+
+glcd_write_char(8,2,"<")                     -- start at column 9, line 3   
+glcd_write_next_char("T")
+glcd_write_next_char("6")
+glcd_write_next_char("9")
+glcd_write_next_char("6")
+glcd_write_next_char("3")
+glcd_write_next_char("c")
+glcd_write_next_char(">")
+
+delay_100ms(20)
+
+var byte i,j, x,y
+
+glcd_write_char(0,0," ") 
+for 256 using i loop                         -- complete font table
+   glcd_write_next_char(i)                  
+end loop  
+delay_100ms(60)  
+
+glcd_clear_text()
+glcd_write_string(4,3,"String AUTO write")
+delay_100ms(20)
+
+glcd_clear_graphics()
+glcd_display_mode(T6963_DISPLAY_GRAPHICS_ON | T6963_DISPLAY_TEXT_ON)  -- required for attributes
+glcd_set_attribute(4,3,0b00000101, 11)       -- reverse video (may change mode!)
+delay_100ms(20)
+
+glcd_set_mode(T6963_SET_MODE_OR)             -- back from text only with attributes  
+glcd_write_char(0,0,"$")                     -- in upper left corner
+glcd_pen_color = ON                          -- set pixels
+for GLCD_X_PIXELS using x loop
+   for GLCD_Y_PIXELS loop 
+      y = x % 64
+      glcd_write_pixel(x, y)
+   end loop
+end loop
+glcd_circle(60,32,31)
+delay_100ms(20)
+
+glcd_box(0,0, 50,50)
+delay_100ms(20)
+
+glcd_set_mode(T6963_SET_MODE_EXOR)        -- reverse video for overwritten text
+glcd_box_fill(70,12, 119,63) 
+delay_100ms(20)  
+
+glcd_set_mode(T6963_SET_MODE_OR)
+for 3 loop
+   glcd_display_mode(T6963_DISPLAY_TEXT_ON)     -- only text
+   delay_100ms(10)   
+   glcd_display_mode(T6963_DISPLAY_GRAPHICS_ON)   -- only graphics 
+   delay_100ms(10)
+end loop
+
+glcd_display_mode(T6963_DISPLAY_TEXT_ON | T6963_DISPLAY_GRAPHICS_ON)  -- mixed
+glcd_clear_screen()
+
+glcd_clear_text()
+var byte euro[16] = {0b0000_0000,         -- Euro
+                     0b0000_1110,
+                     0b0001_0001,
+                     0b0011_1100,
+                     0b0001_0000,
+                     0b0011_1100,
+                     0b0001_0001,
+                     0b0000_1110,
+                     
+                     0b1111_1110,         -- slash in reverse video
+                     0b1111_1101,
+                     0b1111_1011,
+                     0b1111_0111,
+                     0b1110_1111,
+                     0b1101_1111,
+                     0b1011_1111,
+                     0b0111_1111}
+                     
+glcd_write_cg_memory(0x80, euro)          -- define the Euro character in CG-RAM   
+glcd_write_char(25, 6, 0x80)              -- display the Euro character
+glcd_write_char(27, 6, 0x81)              -- display 2nd CG char
+delay_100ms(30)
+
+var byte cg[] = {0,1,2,3,4,5,6,7, 8,9,0,1,2,3,4,5}
+glcd_read_cg_memory(0x80, cg)
+for count(cg) using i loop
+   serial_hw_data = cg[i]
+end loop   
+delay_100ms(20)
+
+glcd_display_mode(T6963_DISPLAY_TEXT_ON | T6963_DISPLAY_CURSOR_ON | T6963_DISPLAY_CURSOR_BLINK_ON)
+for 8 using i loop
+   glcd_set_cursor_pattern(i + 1)
+   glcd_set_cursor_position(10 + i, 4)
+   delay_100ms(20)
+end loop
+
+glcd_display_mode(T6963_DISPLAY_TEXT_ON)     -- no cursor, no graphics!
+
+alias  led       is pin_A0                   -- alias for pin with LED
+pin_A0_direction = OUTPUT
+
+alias button is pin_A4
+pin_A4_direction = INPUT
+
+x = 0
+y = 0
+
+-
+forever loop
+   var byte char, back
+   if (serial_hw_read(char) == TRUE) then
+      serial_hw_write(char)                  -- echo
+      if ((x == 0) & (y == 0)) then
+         glcd_clear_text()
+      end if   
+      glcd_write_char(x,y,char)
+      back = glcd_read_char(x,y)
+      serial_hw_write(0x00)
+      serial_hw_write(back)   
+      x = x + 1
+      if (x >= GLCD_X_PIXELS / GLCD_FONT_WIDTH) then
+         x = 0
+         y = y + 1
+         if (y >= (GLCD_Y_PIXELS / 8)) then
+            y = 0
+         end if
+      end if  
+   elsif (button == FALSE) then
+       serial_hw_write(".")
+       delay_100ms(1)
+   else
+      led = ON
+      delay_100ms(1)
+      led = OFF
+      delay_100ms(1)
+   end if
+end loop
+--
