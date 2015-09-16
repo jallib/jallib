@@ -74,14 +74,14 @@ def read_torelease():
    ft = open(torelease, "r")
    for ln in ft:
       ln = ln.strip()
-      if (ln == ""):
-         continue
-      if (ln[0] != "#"):
-         lnlow = ln.lower()
-         if (lnlow != ln):
-            print "Warning: uppercase character(s) fixed in:"
-            print "   ", ln
-         lines.append(lnlow)
+      if (len(ln) > 0): 
+         if (ln[0] == "#"):         # blank comment lines
+            ln = ""
+      lnlow = ln.lower()
+      if (lnlow != ln):
+         print "Warning: uppercase character(s) fixed in:"
+         print "   ", ln
+      lines.append(lnlow)
    ft.close()
 
 
@@ -338,6 +338,7 @@ def list_unreleased_projects(fr):
       files.sort()
       for file in files:
          fs = os.path.join(root,file)                       # full pathspec
+
 
          fs = fs[(len(jallib) + 1):]                        # remove base prefix
          fs = fs.translate(xslash)                          # backward to forward slash
