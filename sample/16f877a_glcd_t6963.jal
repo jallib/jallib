@@ -11,7 +11,7 @@
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description:
---    Elementary test of the glcd_t6963c library!
+--    Elementary tests of the glcd_t6963c library!
 --
 -- Sources:
 --
@@ -29,12 +29,11 @@ pragma target PWRTE    ENABLED            -- power-on delay
 pragma target BROWNOUT DISABLED           -- no brownout reset
 pragma target LVP      DISABLED           -- no low voltage programming
 --
---
 enable_digital_io()                       -- make all pins digital I/O
 --
 include delay                             -- library with delay procedures
 include print
---
+
 -- --- serial hardware setup --------------------------------- 
 
 const serial_hw_baudrate = 19200
@@ -50,18 +49,18 @@ serial_hw_init()
 
 -- --- setup the GLCD --------------------------------------
 
-alias glcd_dataport is portD
-alias glcd_dataport_direction is portD_direction  
+alias t6963_dataport is portD
+alias t6963_dataport_direction is portD_direction  
 
 -- control signal pins
-alias glcd_wr		is pin_C0
-alias glcd_rd		is pin_C1
-alias glcd_ce		is pin_C2
-alias glcd_cd		is pin_C3
-alias glcd_reset	is pin_C4
--- alias glcd_fs		is pin_C5
+alias t6963_wr		is pin_C0
+alias t6963_rd		is pin_C1
+alias t6963_ce		is pin_C2
+alias t6963_cd		is pin_C3
+alias t6963_reset	is pin_C4
+alias t6963_fs		is pin_C5
 
--- all control pins are on portC and all are output
+-- all control pins are output
 pin_C0_direction = OUTPUT
 pin_C1_direction = OUTPUT
 pin_C2_direction = OUTPUT
@@ -69,19 +68,46 @@ pin_C3_direction = OUTPUT
 pin_C4_direction = OUTPUT
 pin_C5_direction = INPUT
 
--- display properties
-const byte GLCD_X_PIXELS	 = 240
-const byte GLCD_Y_PIXELS    = 64
-const byte GLCD_FONT_WIDTH	 = 6
-const bit  GLCD_CLIPPING    = TRUE
+-- general display properties
 
-var bit glcd_pen_color = ON                  -- pixel ON (to clear a pixel: OFF)
+const byte T6963_X_PIXELS	  = 240
+const byte T6963_Y_PIXELS    = 64
+const byte T6963_FONT_WIDTH  = 6
+const bit  T6963_CLIPPING    = TRUE
+var   bit  t6963_pen_color   = ON            -- pixel ON (to clear a pixel: OFF)
 
-include glcd_t6963                           -- GLCD device library      
+include glcd_t6963                           -- T6963 device specific library      
 
-include glcd_common                          -- GLCD common library
+t6963_init()                                 -- init t6963 library
 
-glcd_init()
+-- glcd aliases for public t6963 procedures, functions, etc.
+-- These generic names are used in this sample, and
+-- some of these are also needed by the glcd_common library
+
+alias  glcd_set_mode            is t6963_set_mode    
+alias  glcd_display_mode        is t6963_display_mode
+alias  glcd_clear_text          is t6963_clear_text
+alias  glcd_clear_graphics      is t6963_clear_graphics
+alias  glcd_clear_screen        is t6963_clear_screen
+alias  glcd_read_char           is t6963_read_char
+alias  glcd_read_next_char      is t6963_read_next_char
+alias  glcd_write_char          is t6963_write_char
+alias  glcd_write_next_char     is t6963_write_next_char
+alias  glcd_write_string        is t6963_write_string
+alias  glcd_set_cursor_pattern  is t6963_set_cursor_pattern
+alias  glcd_set_cursor_position is t6963_set_cursor_position
+alias  glcd_set_attribute       is t6963_set_attribute
+alias  glcd_write_pixel         is t6963_write_pixel
+alias  glcd_read_cg_memory      is t6963_read_cg_memory
+alias  glcd_write_cg_memory     is t6963_write_cg_memory
+
+alias  GLCD_X_PIXELS	           is T6963_X_PIXELS
+alias  GLCD_Y_PIXELS            is T6963_Y_PIXELS
+alias  GLCD_FONT_WIDTH          is T6963_FONT_WIDTH
+alias  GLCD_CLIPPING            is T6963_CLIPPING
+alias  glcd_pen_color           is t6963_pen_color 
+
+include glcd_common                          -- library for lines, circles, etc.
 
 print_string(serial_hw_data, PICTYPE)        
 serial_hw_data = " "
@@ -126,6 +152,7 @@ glcd_display_mode(T6963_DISPLAY_GRAPHICS_ON | T6963_DISPLAY_TEXT_ON)  -- require
 glcd_set_attribute(4,3,0b00000101, 11)       -- reverse video (may change mode!)
 delay_100ms(20)
 
+glcd_clear_graphics()
 glcd_set_mode(T6963_SET_MODE_OR)             -- back from text only with attributes  
 glcd_write_char(0,0,"$")                     -- in upper left corner
 glcd_pen_color = ON                          -- set pixels
@@ -199,13 +226,12 @@ glcd_display_mode(T6963_DISPLAY_TEXT_ON)     -- no cursor, no graphics!
 alias  led       is pin_A0                   -- alias for pin with LED
 pin_A0_direction = OUTPUT
 
-alias button is pin_A4
+alias button is pin_A4                       -- push button for ??
 pin_A4_direction = INPUT
 
 x = 0
 y = 0
-
--
+--
 forever loop
    var byte char, back
    if (serial_hw_read(char) == TRUE) then
@@ -236,3 +262,4 @@ forever loop
    end if
 end loop
 --
+
