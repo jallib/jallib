@@ -58,7 +58,7 @@ alias t6963_rd		is pin_C1
 alias t6963_ce		is pin_C2
 alias t6963_cd		is pin_C3
 alias t6963_reset	is pin_C4
-alias t6963_fs		is pin_C5
+-- alias t6963_fs		is pin_C5
 
 -- all control pins are output
 pin_C0_direction = OUTPUT
@@ -115,7 +115,9 @@ print_word_dec(serial_hw_data, t6963_memsize)
 serial_hw_data = " "
 print_word_dec(serial_hw_data, t6963_graphics_home)
 serial_hw_data = " " 
-print_byte_dec(serial_hw_data, t6963_external_cg_offset)
+print_word_dec(serial_hw_data, t6963_cg_home)
+serial_hw_data = " "
+print_word_dec(serial_hw_data, t6963_cg_home >> 11)
 serial_hw_data = " "
 
 -- ---------------------------------------------------------
@@ -124,7 +126,7 @@ glcd_clear_screen()
 
 glcd_display_mode(T6963_DISPLAY_TEXT_ON)     -- display only text
 
-glcd_write_char(8,2,"<")                     -- start at column 9, line 3   
+glcd_write_char(8,1,"<")                     -- start at 9th column 9, 2nd line
 glcd_write_next_char("T")
 glcd_write_next_char("6")
 glcd_write_next_char("9")
@@ -138,7 +140,7 @@ delay_100ms(20)
 var byte i,j, x,y
 
 glcd_write_char(0,0," ") 
-for 256 using i loop                         -- complete font table
+for 256 using i loop                         -- complete ASCII range
    glcd_write_next_char(i)                  
 end loop  
 delay_100ms(60)  
@@ -154,22 +156,31 @@ delay_100ms(20)
 
 glcd_clear_graphics()
 glcd_set_mode(T6963_SET_MODE_OR)             -- back from text only with attributes  
-glcd_write_char(0,0,"$")                     -- in upper left corner
 glcd_pen_color = ON                          -- set pixels
-for GLCD_X_PIXELS using x loop
-   for GLCD_Y_PIXELS loop 
-      y = x % 64
-      glcd_write_pixel(x, y)
-   end loop
+for GLCD_X_PIXELS using x loop               -- equivalent of glcd_line()
+   y = x % GLCD_Y_PIXELS
+   glcd_write_pixel(x, y)
 end loop
-glcd_circle(60,32,31)
 delay_100ms(20)
 
-glcd_box(0,0, 50,50)
+glcd_clear_graphics()
+x = 0
+while (x < (GLCD_X_PIXELS - GLCD_Y_PIXELS)) loop
+   glcd_pen_color = ON
+   glcd_circle(x + GLCD_Y_PIXELS/2, GLCD_Y_PIXELS/2, GLCD_Y_PIXELS/2 - 1)    -- draw
+   delay_100ms(2)
+   glcd_pen_color = OFF
+   glcd_circle(x + GLCD_Y_PIXELS/2, GLCD_Y_PIXELS/2, GLCD_Y_PIXELS/2 - 1)    -- erase
+   x = x + 5                                 
+end loop
 delay_100ms(20)
 
-glcd_set_mode(T6963_SET_MODE_EXOR)        -- reverse video for overwritten text
-glcd_box_fill(70,12, 119,63) 
+glcd_pen_color = ON
+glcd_box(0,0, GLCD_Y_PIXELS/2, GLCD_Y_PIXELS/2)
+delay_100ms(20)
+
+glcd_set_mode(T6963_SET_MODE_EXOR)        -- reverse video with overwritten text
+glcd_box_fill(GLCD_X_PIXELS/4, GLCD_Y_PIXELS/4, GLCD_X_PIXELS/2, GLCD_Y_PIXELS - 1) 
 delay_100ms(20)  
 
 glcd_set_mode(T6963_SET_MODE_OR)
@@ -212,16 +223,18 @@ glcd_read_cg_memory(0x80, cg)
 for count(cg) using i loop
    serial_hw_data = cg[i]
 end loop   
-delay_100ms(20)
 
+glcd_write_string(1,1, "Different cursor patterns (blinking)")
 glcd_display_mode(T6963_DISPLAY_TEXT_ON | T6963_DISPLAY_CURSOR_ON | T6963_DISPLAY_CURSOR_BLINK_ON)
 for 8 using i loop
    glcd_set_cursor_pattern(i + 1)
-   glcd_set_cursor_position(10 + i, 4)
+   glcd_set_cursor_position(i, 2)
    delay_100ms(20)
 end loop
 
+glcd_clear_screen()
 glcd_display_mode(T6963_DISPLAY_TEXT_ON)     -- no cursor, no graphics!
+glcd_write_string(0,0, "Awaiting data from serial port")
 
 alias  led       is pin_A0                   -- alias for pin with LED
 pin_A0_direction = OUTPUT
