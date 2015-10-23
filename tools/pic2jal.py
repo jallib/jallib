@@ -1712,6 +1712,9 @@ def ansel2j(reg, ans):
             ansx = ansx + 5
          elif (picname.startswith("16f152") | picname.startswith("16lf152")):
             ansx = (27, 28, 29, 99, 99, 99, 99, 99)[ansx]
+         elif (picname.startswith("16f183") | picname.startswith("16lf183") |         # 16[l]f183xx
+               picname.startswith("16f188") | picname.startswith("16lf188")):         # 16[l]f188xx 
+            ansx = ansx + 32
          elif (picname.startswith("16f194") | picname.startswith("16lf194")):
             ansx = 99                                    # none
          else:
@@ -1722,6 +1725,9 @@ def ansel2j(reg, ans):
             ansx = ansx + 20
          elif (picname.startswith("16f152") | picname.startswith("16lf152")):
             ansx = (23, 24, 25, 26, 99, 99, 99, 99)[ansx]
+         elif (picname.startswith("16f183") | picname.startswith("16lf183") |         # 16[l]f183xx
+               picname.startswith("16f188") | picname.startswith("16lf188")):         # 16[l]f188xx 
+            ansx = ansx + 24
          elif (picname.startswith("16f193") | picname.startswith("16lf193")):
             ansx = 99
          else:
@@ -1746,7 +1752,8 @@ def ansel2j(reg, ans):
             ansx = (4, 5, 6, 7, 99, 99, 8, 9)[ansx]
          elif (picname.startswith("16f178") | picname.startswith("16lf178")):
             ansx = 99                              # none
-         elif (picname.startswith("16f183") | picname.startswith("16lf183")):         # 16[l]f183xx
+         elif (picname.startswith("16f183") | picname.startswith("16lf183") |         # 16[l]f183xx
+               picname.startswith("16f188") | picname.startswith("16lf188")):         # 16[l]f188xx 
             ansx = ansx + 16
          else:
             print "   ANSEL2J: Unsupported ADC register:", reg
@@ -1776,7 +1783,8 @@ def ansel2j(reg, ans):
             ansx = (99, 99, 99, 99, 26, 16, 25, 15)[ansx]
          elif picname.startswith("16f152") | picname.startswith("16lf152"):
             ansx = (17, 18, 19, 20, 21, 22, 99, 99)[ansx]
-         elif (picname.startswith("16f183") | picname.startswith("16lf183")):         # 16[l]f183xx
+         elif (picname.startswith("16f183") | picname.startswith("16lf183") |         # 16[l]f183xx
+               picname.startswith("16f188") | picname.startswith("16lf188")):         # 16[l]f188xx 
             ansx = ansx + 8
          else:
             print "   ANSEL2J: Unsupported ADC register:", reg
@@ -1784,8 +1792,10 @@ def ansel2j(reg, ans):
       if (reg == "ANSELA"):
          if ((picname == "16f1826") | (picname == "16lf1826") | \
              (picname == "16f1827") | (picname == "16lf1827") | \
-             (picname == "16f1847") | (picname == "16lf1847")):
-            ansx = ansx + 0
+             (picname == "16f1847") | (picname == "16lf1847") | \
+              picname.startswith("16f183") | picname.startswith("16lf183") |         # 16[l]f183xx
+              picname.startswith("16f188") | picname.startswith("16lf188")):         # 16[l]f188xx 
+            ansx = ansx + 0                                   # ansx is OK asis
          elif (picname.startswith("16f145") | picname.startswith("16lf145")):
             ansx = (99, 99, 99, 99, 3, 99, 99, 99)[ansx]
          elif (picname.startswith("16f157") | picname.startswith("16lf157") | \
@@ -1801,8 +1811,7 @@ def ansel2j(reg, ans):
                picname.startswith("16f182") | picname.startswith("16lf182") | \
                picname.startswith("12f184") | picname.startswith("12lf184")):
             ansx = (0, 1, 2, 99, 3, 4, 99, 99)[ansx]
-         elif (picname.startswith("16f183") | picname.startswith("16lf183")):         # 16[l]f183xx
-            ansx = ansx + 0                                   # ansx is OK asis
+         
          elif (picname.startswith("16lf155")):
             ansx = (0, 1, 2, 99, 10, 20, 99, 99)[ansx]
          elif (picname.startswith("16f151") | picname.startswith("16lf151") | \
@@ -1869,7 +1878,8 @@ def ansel2j(reg, ans):
          ansx = 99
 
    if (ansx < 99):                                          # AN pin present
-      if (picname.startswith("16f183") | picname.startswith("16lf183")):  # 16[l]f183xx
+      if (picname.startswith("16f183") | picname.startswith("16lf183") |     # 16[l]f183xx
+          picname.startswith("16f188") | picname.startswith("16lf188")):     # 16[l]f188xx
          aliasname = "AN%c%d" % ("ABCDE"[ansx//8], ansx%8)   # new ADC pin naming convention
       else:
          aliasname = "AN%d" % ansx
@@ -2210,8 +2220,12 @@ def list_dcrfieldsem(fp, key, dcrfielddef, offset):
                   desc = child.getAttribute("edc:desc")
                   fieldname = normalize_fusedef_value(key, fieldname, desc)
                   if (fieldname != ""):
-                     str = "       " + fieldname + " = " + "0x%X" % (eval(when[-1])<<offset)
-                     fp.write("%-40s -- %s\n" % (str, desc))
+                     if ((key == "XINST") & (fieldname == "ENABLED")):
+                        str = "--     " + fieldname + " = " + "0x%X" % (eval(when[-1])<<offset)
+                        fp.write("%-40s -- %s\n" % (str, "NOTE: not supported by JALV2"))
+                     else:
+                        str = "       " + fieldname + " = " + "0x%X" % (eval(when[-1])<<offset)
+                        fp.write("%-40s -- %s\n" % (str, desc))
                   if (key == "ICPRT"):
                      if (cfgvar["picname"] in ("18f1230",  "18f1330",   "18f24k50", \
                                                "18f25k50", "18lf24k50", "18lf25k50")):
@@ -2298,9 +2312,6 @@ def normalize_fusedef_value(key, val, desc):
    descu = descu.translate(xtable)                          # replace special chars by spaces
    descu = "_".join(descu.split())                          # replace all space by single underscore
    kwdvalue = ""                                            # null value
-
-
-
 
    if ((val == "RESERVED") | (val == "UNIMPLEMENTED") | (len(desc) == 0)):     # skip
       return ""
@@ -2721,7 +2732,13 @@ def normalize_fusedef_value(key, val, desc):
          kwdvalue = "pin_" + val[1:]
       else:
          kwdvalue = descl[-1]                           # last word
-
+         
+   elif (key == "SCANE"):
+      if (val in ("AVAILABLE", "NOT_AVAILABLE")):
+         kwdvalue = val
+      else:
+         kwdvalue = descu
+         
    elif (key == "SIGN"):
       if (descu.find("CONDUC") >= 0):
          kwdvalue = "NOT_CONDUCATED"
@@ -2846,9 +2863,9 @@ def normalize_fusedef_value(key, val, desc):
          kwdvalue = descu                                   # normalized description
 
    elif (key == "WDTCCS"):
-      if (val in ("LFINTOSC", "MFINTOSC")):
+      if (val in ("LFINTOSC", "MFINTOSC", "HFINTOSC")):
          kwdvalue = val
-      elif (val == "SWC"):
+      elif (val in ("SC", "SWC")):
          kwdvalue = "SOFTWARE"
       else:
          kwdvalue = descu
@@ -3006,7 +3023,6 @@ def normalize_fusedef_value(key, val, desc):
    return kwdvalue
 
 
-
 def list_separator(fp):
    """ Generate a separator line
 
@@ -3014,7 +3030,6 @@ def list_separator(fp):
    Returns:  nothing
    """
    fp.write("-- " + "-"*48 + "\n")
-
 
 
 def init_fusedef_mapping():
@@ -3202,7 +3217,6 @@ def init_fusedef_mapping():
                   "XT_XT"          : "XT"}
 
 
-
 def calc_sfraddr(child, sfraddr):
    """ Calculate next SFRaddr with current Node
 
@@ -3273,7 +3287,6 @@ def compact_address_range(r):
    return y
 
 
-
 def collect_config_info(root, picname):
    """ Collect PIC various configuration data
 
@@ -3304,22 +3317,22 @@ def collect_config_info(root, picname):
    cfgvar["wdtcon_adshr"] = (0,0)                        # no WDTCON_ADSHR (address,offset)
 
    cfgvar["arch"] = pic[0].getAttribute("edc:arch")
-   if (cfgvar["arch"] == "16c5x"):
+   if (cfgvar["arch"] == "16c5x"):                       # baseline (12-bits)
       cfgvar["core"]     = "12"
       cfgvar["maxram"]   = 128
       cfgvar["banksize"] = 32
       cfgvar["pagesize"] = 512
-   elif (cfgvar["arch"]  == "16xxxx"):
+   elif (cfgvar["arch"]  == "16xxxx"):                   # midrange (14 bits)
       cfgvar["core"]     = "14"
       cfgvar["maxram"]   = 512
       cfgvar["banksize"] = 128
       cfgvar["pagesize"] = 2048
-   elif (cfgvar["arch"]  == "16Exxx"):
+   elif (cfgvar["arch"]  == "16Exxx"):                   # entended midrange (14 bits)  
       cfgvar["core"]     = "14H"
       cfgvar["maxram"]   =  4096
       cfgvar["banksize"] = 128
       cfgvar["pagesize"] = 2048
-   elif (cfgvar["arch"]  == "18xxxx"):
+   elif (cfgvar["arch"]  == "18xxxx"):                   # high performance range (16 bits)
       cfgvar["core"]     = "16"
       cfgvar["maxram"]   = 4096
       cfgvar["banksize"] = 256
@@ -3520,12 +3533,10 @@ def load_fuse_defaults(root):
       dcraddr = eval(configfusesector.getAttribute("edc:beginaddr"))    # start address
       if len(configfusesector.childNodes) > 0:
          dcrdef = configfusesector.firstChild
-
          dcraddr = load_dcrdef_default(dcrdef, dcraddr)
          while dcrdef.nextSibling:
             dcrdef = dcrdef.nextSibling
             dcraddr = load_dcrdef_default(dcrdef, dcraddr)
-
 
 
 def load_dcrdef_default(dcrdef, addr):
@@ -3546,7 +3557,6 @@ def load_dcrdef_default(dcrdef, addr):
    return addr
 
 
-
 def read_devspec_file():
    """ Read devicespecific.json
 
@@ -3558,7 +3568,6 @@ def read_devspec_file():
    fp = open(devspecfile, "r")
    devspec = json.load(fp)                                     # obtain contents devicespecific
    fp.close()
-
 
 
 def read_pinmap_file():
@@ -3582,7 +3591,6 @@ def read_pinmap_file():
    fp.close()
 
 
-
 def read_datasheet_file():
    """ Read datasheet.list
 
@@ -3597,7 +3605,6 @@ def read_datasheet_file():
       ds = ln.split(" ",1)[0]                                  # datasheet number+suffix
       datasheet[ds[:-1]] = ds                                  # strip suffix
    fp.close()
-
 
 
 def pic2jal(picfile):
@@ -3634,7 +3641,6 @@ def pic2jal(picfile):
    fp.close()
 
 
-
 def main(selection):
    """ Main procedure: - process external configuration info
                        - select .pic files to be processed (8-bits flash PICs)
@@ -3650,7 +3656,7 @@ def main(selection):
                    "16hv540", "16f527", "16f570")              # unsupported by JalV2
    typedir      = {"16c5x"  : "baseline (12-bits core)",
                    "16xxxx" : "(extended) midrange (14-bits core)",
-                   "18xxxx" : "18Fs Series (16-bits core)"}
+                   "18xxxx" : "high performance series (16-bits core)"}
 
    init_fusedef_mapping()
    read_datasheet_file()                                       # for datasheet suffix
@@ -3684,7 +3690,6 @@ def main(selection):
    fp.write("--\n")
    fp.close()
    return devcount
-
 
 
 if (__name__ == "__main__"):

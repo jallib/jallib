@@ -82,7 +82,7 @@ def process_pic(picname, filename):
                pinnumber = int(wlist[1])
       aliaslist = []                                        # new aliaslist this pin
       for vpin in pin.getElementsByTagName("edc:VirtualPin"):
-         alias = vpin.getAttribute("edc:name").upper().strip("_")
+         alias = vpin.getAttribute("edc:name").upper().strip("_").split()[0]   # first word
          if (alias[0:3] not in ("INT", "IOC", "VPP", "ICD", "ICS")):  # excluded aliases
             if alias.startswith("RB") & picname.startswith("12"):     # Jallib requirement
                aliaslist.append("RA" + alias[-1])           # RBx -> RAx
@@ -110,7 +110,7 @@ def process_pic(picname, filename):
                else:
                   aliaslist.append("RC1")
                   print "  Added RC1 to pin", pinnumber
-            else:
+            elif (not alias in aliaslist):
                aliaslist.append(alias)                      # normal alias!
 
       if (picname in ("16LF1559")) & (pinnumber == 18):
