@@ -1,0 +1,69 @@
+-- ----------------------------------------------------
+-- Title: Test program for serial speed conversion (PC <--> MIDI)
+--
+-- Author: Rob Hamerling, Copyright (c) 2015..2015, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q3
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: test program for serial hardware lib using interrupts
+--              and CTS input flow control
+--              Incoming data from port 1 goes to port2 and vice versa.
+--
+-- Sources:
+--
+-- Notes:
+--    The 18f6310 has two USARTs, both are used.
+--
+-- ------------------------------------------------------
+
+-- chip setup
+include 18f6310
+
+pragma target   clock    20_000_000             -- Fosc 
+
+pragma target   OSC      HS
+pragma target   FCMEN    disabled
+pragma target   IESO     disabled
+pragma target   PWRTE    enabled
+pragma target   BROWNOUT disabled
+pragma target   WDT      control
+pragma target   MCLR     external
+pragma target   XINST    disabled
+pragma target   DEBUG    disabled
+
+WDTCON_SWDTEN = disabled
+
+enable_digital_io()
+
+-- setup USART 1  (PC-side)
+const serial_hw_baudrate = 115200
+alias serial_ctsinv  is  pin_A4                 -- incoming data flow control
+pin_A4_direction = OUTPUT
+const bit serial_overflow_discard = false       -- do not allow xmit buffer overflow
+include serial_hw_int_cts
+serial_hw_init()
+
+-- setup USART 2 (terminal side)
+const serial_hw2_baudrate = 31250               -- MIDI speed
+alias serial2_ctsinv  is  pin_E1                -- incoming data flow control
+pin_E1_direction = OUTPUT
+const bit serial2_overflow_discard = false      -- do not allow xmit buffer overflow
+include serial_hw2_int_cts
+serial_hw2_init()
+
+forever loop
+   var byte char
+   if (serial_hw_read(char) == true) then
+      serial_hw2_write(char)
+   end if
+   if (serial_hw2_read(char) == true) then
+      serial_hw_write(char)
+   end if
+end loop
+
+
