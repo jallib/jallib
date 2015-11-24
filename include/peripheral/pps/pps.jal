@@ -1,7 +1,7 @@
 -- Title: Peripheral Pin Select (PPS) library
 -- Author: Sebastien Lelong, Copyright (c) 2011, all rights reserved.
--- Adapted-by:
--- Compiler: >=2.4o
+-- Adapted-by: Rob Hamerling (2015)
+-- Compiler: 2.4q3
 -- Revision: $Revision$
 --
 -- This file is part of jallib (http://jallib.googlecode.com)
@@ -33,13 +33,6 @@
 -- .
 -- Please refer to datasheet in order to have a better overview of PPS.
 --
-
-if PPS_GROUP == PPS_0 then
-   _error "PIC doesn't have PPS module"
-end if
-
-var bit _pps_gie_state = INTCON_GIE
-
 -- For convenience, aliases for output functions. Careful, not all may be
 -- available depending on the involved PIC
 
@@ -48,28 +41,25 @@ var bit _pps_gie_state = INTCON_GIE
 -- PPS must be locked again to apply changes
 -- Note: interrupts are temporarily disabled. When pps_lock(true) is called
 -- interrupts are restored back to previous state
+-- Modification (2015) disable interrupts with every call
 procedure pps_control_lock(bit in state) is
-
-   if (state == TRUE) then
-      asm bank PPSCON
+   var bit pps_gie_state = INTCON_GIE  -- save current interrupt state
+   INTCON_GIE = FALSE                  -- disable interrupts
+   if (state == TRUE) then             -- lock PPS module
       EECON2 = 0x55
       EECON2 = 0xAA
       PPSCON_IOLOCK = TRUE
-      INTCON_GIE = _pps_gie_state   -- restore interrupt state
-   else
-      _pps_gie_state = INTCON_GIE   -- save interrupt state
-      asm bank PPSCON
-      INTCON_GIE = DISABLED         -- disable interrupts
+   else                                -- unlock PPS module
       EECON2 = 0x55
       EECON2 = 0xAA
       PPSCON_IOLOCK = FALSE
    end if
-
+   INTCON_GIE = pps_gie_state          -- restore interrupt state
 end procedure
 
 
 -- PPS module differs between devices, currently we can build 2 groups whom devices behave the same
-if PPS_GROUP == PPS_1 then
+if (PPS_GROUP == PPS_1) then
 
    -- ----------------------------
    -- OUTPUT FUNCTION CONSTANTS --
@@ -92,7 +82,7 @@ if PPS_GROUP == PPS_1 then
    const byte PPS_P2C     = 20   -- ECCP1 Enhanced PWM Output, Channel C
    const byte PPS_P2D     = 21   -- ECCP1 Enhanced PWM Output, Channel D
 
-elsif PPS_GROUP == PPS_2 then
+elsif (PPS_GROUP == PPS_2) then
 
    -- ----------------------------
    -- OUTPUT FUNCTION CONSTANTS --
@@ -121,7 +111,7 @@ elsif PPS_GROUP == PPS_2 then
    const byte PPS_P3D     = 25   -- ECCP3 Enhanced PWM Output, Channel D
 
 else
-   _error "Unsupported PPS_GROUP, please report !"
+   _error "Unsupported PPS_GROUP, please report!"
 end if
 
 

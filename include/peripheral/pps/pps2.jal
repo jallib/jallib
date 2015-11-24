@@ -1,0 +1,69 @@
+-- ------------------------------------------------------------------------
+-- Title: Peripheral Pin Select (PPS) library 2 for Enhanced midrange PICs
+--
+-- Author: Rob Hamerling, Copyright (c) 2015, All rights reserved.
+--
+-- Adapted-by: 
+--
+-- Compiler: 2.4q3
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library supports Peripheral Pin Select of the enhanced
+-- midrange PICs, like the 16f15xx, 16f16xx, 16f17xx, 16f18xx and LF variants.
+-- .
+-- Using PPS to (re-)configure a PIC involves 3 stages: 
+-- 1. The PPS module must be unlocked with: 
+--       pps2_control_lock(FALSE)
+-- 2. Assign peripheral functions to specific pins. 
+--    The PPS section of the datasheet contains tables to determine which
+--    register must be given which value to obtain the desired pin mapping. 
+--    Example to (re)map pins RX and TX of the USART of a 16f1708: 
+--    To assign output of the USART (TX) to physical pin_B7 specify:
+--       RB7PPS = 0b_000_10100
+--    and to assign input of the USART (RX) to physical pin_B6 specify:        
+--       RXPPS = 0b000_01110
+--    Multiple peripheral functions can be mapped while the PPS module is
+--    unlocked.
+-- 3. Finally the PPS module must be locked with:  
+--       pps2_control_lock(TRUE).
+-- .
+-- When 1-way locking is used (with pragma fuse_def PPS1WAY ENABLED) 
+-- peripheral pins can be assigned only once. When the PPS module is locked again,
+-- further changes are ignored. This is the default behaviour of the PIC.
+-- When several unlock/remap/loc sequences are required specify:
+--    pragma fuse_def PPS1WAY DISABLED  
+-- 
+-- Notes: - The method of assiging peripheral functions to physical pins with
+--          the Enhanced Midrange PICs differs significanty from the method 
+--          used with the 18FxxJxx PICs, hence a separate library!  
+--        - This library contains only a unlock/lock procedure, which
+--          requires a specific sequence of instructions.  
+--          The actual assignment of peripheral functions to physical pins
+--          is PIC specific and not implemented in this library. See the
+--          PPS section of the datasheet of the used PIC for details.
+--      
+-- ------------------------------------------------------------------------
+
+-- Unlock PPS module, allowing mapping of peripheral functions to 
+-- specific pins, and lock PPS module afterwards.  
+-- Interrupts are temporarily disabled.
+procedure pps2_control_lock(bit in state) is
+   var bit gie_state = INTCON_GIE         -- save current interrupt state
+   INTCON_GIE = DISABLED                  -- disable interrupts
+   if (state == TRUE) then                -- lock PPS module   
+      PPSLOCK = 0x55
+      PPSLOCK = 0xAA
+      PPSLOCK_PPSLOCKED = TRUE
+   else                                   -- (FALSE) unlock PPS module                    
+      PPSLOCK = 0x55
+      PPSLOCK = 0xAA
+      PPSLOCK_PPSLOCKED = FALSE   
+   end if
+   INTCON_GIE = gie_state                 -- restore interrupt state
+end procedure
+
+
