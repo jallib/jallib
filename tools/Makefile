@@ -71,7 +71,7 @@ vimdoc:
 	do \
 		libfile=`basename $$f`; \
 		vimfile=`echo $$libfile | sed "s#\.jal#.txt#"`; \
-		python2.6 jallib.py jalapi -l -d ../sample -t jalapi_vim.tmpl -o ../doc/vim/$$vimfile $$f ;\
+		python2.7 jallib.py jalapi -l -d ../sample -t jalapi_vim.tmpl -o ../doc/vim/$$vimfile $$f ;\
 	done
 
 matrix:
@@ -140,13 +140,13 @@ prepare:
 	do \
 		libfile=`basename $$f`; \
 		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
-		python2.6 jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
+		python2.7 jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
 	done
 
 
 	# one-page doc
 #THIS NEEDS TO BE FIXED:
-#	python2.6 jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
+#	python2.7 jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
 
 
 	# doc menu...
