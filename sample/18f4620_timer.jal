@@ -1,4 +1,4 @@
--- Title: Basic usage of ticker library
+-- Title: Basic usage of timer library
 -- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
 -- Adapted-by:
 -- Compiler: >=2.4q5
@@ -6,7 +6,7 @@
 -- This file is part of jallib (http://jallib.googlecode.com)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: This example shows basic usage of ticker library for a
+-- Description: This example shows basic usage of timer library for a
 --              standard way to use timers. This sample outputs a 1khz
 --              square wave, while blinking a led.
 --
@@ -54,15 +54,21 @@ alias led_direction   is pin_a0_direction
 --
 led_direction = output
 
--- Setup Ticker Lib
-const byte TICKER0_USE_TIMER = 0             -- TICKER0 is TIMER0
-const byte TICKER0_PS_RATIO = 1              -- set prescaller ratio
-const byte TICKER0_BITS = 16                 -- Use 8 or 16 bits
-const byte TICKER0_ENABLE_INTERRUPT = TRUE   -- Interrupts off/on
-include ticker
-timer_init()                              -- configures and starts timer
+-- Setup timer Lib
+const byte TIMER0_PS_RATIO = 1              -- set prescaller ratio
+const byte TIMER0_BITS = 16                 -- Use 8 or 16 bits
+const byte TIMER0_ENABLE_INTERRUPT = TRUE   -- Interrupts off/on
+include timer0
+timer_init()                                -- configures and starts timer
 -- Other config:
-ticker0_cs = 0                            -- 0 = internal, 1 = external
+timer0_cs = 0                               -- 0 = internal, 1 = external
+
+-- Alias the timer to allow this sample to use timer0
+alias timer          is timer0              -- the timer/counter
+alias TIMER_PS_RATIO is TIMER0_PS_RATIO     -- prescaller ratio
+alias TIMER_BITS     is TIMER0_BITS         -- timer bits
+alias timer_cs       is timer0_cs           -- timer clock select
+alias timer_if       is timer0_if           -- timer interrupt occurred bit
 
 --------------------------------------------------------------------------
 -- returns timer interval required for a desired frequency
@@ -71,11 +77,11 @@ ticker0_cs = 0                            -- 0 = internal, 1 = external
 -- freq_adjust - adjust by number of timer steps (may want to use OSCCAL reg.)
 --------------------------------------------------------------------------
 function calc_freq(dword in freq_hz, sword in freq_adjust) return word is
-   var dword ticker_interval
-   
+   var dword timer_interval
+
    -- Timer rollover value - 65535 for 16 bit timer, 255 for 8 bit.
-   var bit*TICKER0_BITS ticker_rollover = 0
-   ticker_rollover = ticker_rollover - 1
+   var bit*TIMER_BITS timer_rollover = 0
+   timer_rollover = timer_rollover - 1
 
    var dword value1 = (1000000000/freq_hz)/2                    ;5000
    var dword value2 = (1000/(target_clock/1000000))*4           ;100
@@ -83,13 +89,13 @@ function calc_freq(dword in freq_hz, sword in freq_adjust) return word is
    if (value2 > value1) then
       return 0
    else
-      if ticker_rollover > (value1 / value2) then ;Check if the timer can wait this long
-         ticker_interval = ticker_rollover - (value1 / value2)
+      if timer_rollover > (value1 / value2) then ;Check if the timer can wait this long
+         timer_interval = timer_rollover - (value1 / value2)
 
-         if (value1 / value2) < 50 then;Allow enough time for the IRS to complete
+         if (value1 / value2) < 50 then ;Allow enough time for the IRS to complete
             return 0
          else
-            return word(ticker_interval + freq_adjust)
+            return word(timer_interval + freq_adjust)
          end if
       else
           return 0
@@ -98,36 +104,36 @@ function calc_freq(dword in freq_hz, sword in freq_adjust) return word is
 end function
 
 -- Set this to desired interval. timer3 will count up.
--- Interupt will occur when ticker_interval rolls
+-- Interupt will occur when timer_interval rolls
 -- over from 65535 to 0
-;var word ticker_interval = 65535 - 2500 -- 63035 = 1khz square wave at 20mhz,
-var word ticker_interval = calc_freq(1000,0) -- same result as previous line at 20mhz
+;var word timer_interval = 65535 - 2500 -- 63035 = 1khz square wave at 20mhz,
+var word timer_interval = calc_freq(1000,0) -- same result as previous line at 20mhz
 --
 -- output will change every 0.5ms, full wave in 1ms.
 -- interrupt occurs every 0.5ms
 -- this value can be calculated:
 -- 65535    - ( (1/1khz/2) / ( (1/20_000_000)*4 ) ) = 63035
--- timermax - ( (1/HZ/2) / ( (1/OSC FREQ  )*4 ) ) = ticker_interval
+-- timermax - ( (1/HZ/2) / ( (1/OSC FREQ  )*4 ) ) = timer_interval
 
 -- Turn off timer if timer can't be set to the correct freq.
 -- Try 16 bit timer.
 -- If it's not working with your settings, you may need prescaler
-if ticker_interval == 0 then
-   ;ticker0_on = 0  -- uncomment
+if timer_interval == 0 then
+   ;timer_on = 0  -- uncomment
 end if
 
 -----------
-procedure ticker_isr() is
+procedure timer_isr() is
    pragma interrupt          -- interupt procedure
-   
-   if !ticker0_if then       -- check if this is a ticker0 interupt
+
+   if !timer_if then       -- check if this is a timer interupt
       return                 -- exit interupt if it is not
    end if
-   
-   ticker0_if = off          -- clear overflow to start ticker
-   
+
+   timer_if = off          -- clear overflow to start timer
+
    wave_out = !wave_out      -- change wave_out pin to oposite value
-   ticker0 = ticker_interval -- set the interval
+   timer = timer_interval -- set the interval
 end procedure
 
 -- main program here
