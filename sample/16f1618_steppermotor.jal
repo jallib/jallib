@@ -1,0 +1,92 @@
+-- --------------------------------------------------------------
+-- Title: Example of using the stepper library 
+--
+-- Author: Rob Hamerling, Copyright (c) 2016, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q5
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Simple stepper motor example with 16f1618
+--
+-- Sources:
+--
+-- Notes:
+-- 
+-- ----------------------------------------------------------
+
+include 16f1618                              
+
+-- internal oscillator at 8 MHz (with 4xPLL -> 32 MHz)
+
+pragma target clock     32_000_000           -- Fosc
+
+pragma target OSC       INTOSC_NOCLKOUT
+pragma target WDT       DISABLED             -- no watchdog
+pragma target PWRTE     ENABLED
+pragma target MCLR      EXTERNAL
+pragma target BROWNOUT  DISABLED 
+pragma target CLKOUTEN  DISABLED             -- no clock out
+pragma target PPS1WAY   DISABLED
+pragma target PLLEN     DISABLED             -- PLL software controlled
+pragma target LVP       DISABLED             -- no Low Voltage Programming
+
+OSCCON_IRCF   = 0b1110                       -- 8 MHz 
+OSCCON_SCS    = 0b00                         -- clock determined by fuses
+OSCCON_SPLLEN = TRUE                         -- PLL (8 -> 32 MHz)
+
+if !defined(TMR3) then
+   var volatile word TMR3 at TMR3L           -- work around for missing word declaration
+end if                                       -- in device file
+
+include delay
+
+alias  stepper_led              is pin_A0     -- led
+alias  stepper_led_direction    is pin_A0_direction
+stepper_led_direction           = OUTPUT 
+
+alias  stepper_coils            is  portC_high    -- stepper control 
+alias  stepper_coils_direction  is  portC_high_direction
+stepper_coils_direction         = ALL_OUTPUT  
+
+const word stepper_steps_per_rotation = 48   -- steps per full rotation
+
+include steppermotor                         -- stepper motor library
+
+-- ------- main program --------
+
+forever loop
+   stepper_cw = TRUE                         -- clockwise
+   stepper_fullstep = TRUE                   -- full steps
+   stepper_accel(100,1500)                   -- accelaration rate 15 RPM/sec
+   stepper_decel(100,1500)                   -- decelaration rate 15 RPM/sec
+   stepper_led = ON
+   stepper_run(500)                          -- 50 RPM forward
+   delay_100ms(50) 
+  
+   stepper_led = OFF 
+   stepper_stop()                            -- decellerate to 0 RPM (in 2 secs) 
+   delay_100ms(50)    
+   
+   stepper_cw = FALSE                        -- reverse
+   stepper_fullstep = FALSE                  -- half steps
+   stepper_accel(100,1000)                   -- accelaration rate 10 RPM/sec
+   stepper_decel(100,1000)                   -- decelaration rate 10 RPM/sec
+   stepper_led = ON
+   stepper_run(300)                          -- 30 RPM backward    
+   delay_100ms(40) 
+   
+   stepper_led = OFF
+   stepper_stop()                            -- decellerate to 0 RPM
+   delay_100ms(40) 
+      
+end loop
+ 
+
+
+
