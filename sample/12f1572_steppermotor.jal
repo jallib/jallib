@@ -1,0 +1,100 @@
+-- ------------------------------------------------------
+-- Title: Stepper motor control with 12f1572
+--
+-- Author: Rob Hamerling, Copyright (c) 2016..2016, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.4q5
+--
+-- This file is part of jallib  (http://jallib.googlecode.com)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+-- Simple program to test the stepper motor library with a 12F1572
+-- This chip has no full nibble capable of output (pin_A3 is input only)
+-- therefore aliases for individual pins have to be declared.
+-- This chip has also no 16-bits timer0 or timer3,  
+-- so the steppermotor library will use the PWM3 module.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+-- chip setup
+
+include 12f1572
+
+-- This program uses the Internal oscillator at 8 MHz + 4x PLL
+pragma target clock    32_000_000   -- Fosc
+
+pragma target OSC      INTOSC_NOCLKOUT  -- internal oscillator
+pragma target WDT      DISABLED     -- watchdog
+pragma target MCLR     EXTERNAL     -- reset
+pragma target BROWNOUT DISABLED     -- no brownout
+pragma target CLKOUTEN DISABLED     -- no clockout
+pragma target PLLEN    DISABLED     -- (software controlled)
+pragma target LVP      DISABLED     -- no low voltage programming
+
+OSCCON_IRCF = 0b1110                -- 8 MHz
+OSCCON_SPLLEN = ENABLED             -- (enabled -> 32 MHz)
+
+enable_digital_io()                 -- make all pins digital I/O
+
+include delay                       -- library with delay procedures
+
+WPUA    = 0b0000_0000               -- no pins weak pull-up
+ODCONA  = 0b0000_0000               -- no pins open drain
+SLRCONA = 0b0000_0000               -- all pins maximum slewrate
+INLVLA  = 0b0000_0000               -- TTL level 
+
+-- stepper motor control
+alias stepper_coil1a  is  pin_A0
+alias stepper_coil2a  is  pin_A1
+alias stepper_coil1b  is  pin_A2
+alias stepper_coil2b  is  pin_A4
+pin_A0_direction = OUTPUT
+pin_A1_direction = OUTPUT
+pin_A2_direction = OUTPUT
+pin_A4_direction = OUTPUT
+
+const word stepper_steps_per_rotation = 48   -- steps per full rotation
+
+include steppermotor                         -- stepper motor library
+
+-- ------- main program --------
+
+forever loop
+
+   stepper_cw = TRUE                         -- clockwise
+   stepper_fullstep = TRUE                   -- full steps
+   stepper_accel(100,1500)                   -- accelleration rate 15 RPM/sec
+   stepper_decel(100,3000)                   -- decelleration rate 30 RPM/sec
+   stepper_run(3000)                         -- accelerate to 300 RPM 
+   delay_1s(25) 
+  
+   stepper_stop()                            -- decellerate to 0 RPM  
+   while (stepper_actual_rpm() != 0) loop
+      -- nop
+   end loop   
+      
+   stepper_cw = FALSE                        -- counter clockwise
+   stepper_fullstep = FALSE                  -- half steps
+   stepper_accel(100,1000)                   -- accelleration rate 10 RPM/sec
+   stepper_decel(100,1000)                   -- decelleration rate 10 RPM/sec
+   stepper_run(300)                          -- accelerate to 30 RPM 
+   delay_1s(5) 
+   
+   stepper_stop()                            -- decellerate to 0 RPM
+   while (stepper_actual_rpm() != 0) loop
+      -- nop
+   end loop   
+      
+end loop
+ 
+
+

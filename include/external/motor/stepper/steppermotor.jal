@@ -1,5 +1,6 @@
---------------------------------------------------------
--- Title: single stepper motor library (unipolar or bipolar)
+-- -----------------------------------------------------------------------
+-- Title: Single stepper motor library (unipolar or bipolar)
+--
 -- Author: Richard Zengerink, Copyright (c) 2009..2010, all rights reserved.
 --
 -- Adapted-by: Rob Hamerling (2016)
@@ -17,26 +18,35 @@
 --              Supports inverting and non-inverting buffer-ICs
 -- .
 -- Required declarations before including the library:
---    This library requires 4 control pins of the same nibble (half port)
---    Declare an alias for this nibble, 
---    for example when pins pin_B0 to pin_B3 are used:
---       alias stepper_coils           is  portb_low    
---       alias stepper_coils_direction is  portb_low_direction
---    and set the pins in output mode, like:
---       port_stepper_coils_direction = ALL_OUTPUT 
---    The wiring of the 4 pins to the coils is free.
---    (but must match the bit patterns in the arrays below).
+--    This library uses 4 control pins to control a stepper motor.
+--    When all pins are in the same nibble (most efficient) declare an alias
+--    for this nibble, for example when pins pin_B0 through pin_B3 are used:
+--       alias stepper_coils  is  portB_low    
+--    and set all the pins if this nibble to output:
+--       portB_low_direction = ALL_OUTPUT
+--    Alternatively with individual pins (not necessarily on the same nibble)
+--       alias stepper_coil1a is pin_B0 
+--       alias stepper_coil2a is pin_B1 
+--       alias stepper_coil1b is pin_C0 
+--       alias stepper_coil2b is pin_C1 
+--    and set these pins to output:
+--       pin_B0 = OUTPUT
+--       pin_B1 = OUTPUT
+--       pin_C0 = OUTPUT
+--       pin_C1 = OUTPUT
+--    The wiring of the 4 pins to the coils must of course match 
+--    the bit patterns in the arrays below!
 -- .
---    A constant array of bit patterns is required
---    to specify the signal state for each half-step: 
+--    A constant array of bit patterns is required to
+--    specify the signal state for each half-step: 
 --       const byte STEPPER_ARRAY[8] =  
 --          { 
---          0b_0001,             -- coil a1
---          0b_0011,             -- coil 1a + 1b   
---          0b_0010,             -- coil 1b
---          0b_0110,             -- coil 1b + 2a
---          0b_0100,             -- coil 2a
---          0b_1100,             -- coil 2a + 2b 
+--          0b_0001,             -- coil 1a
+--          0b_0011,             -- coil 1a + 2a   
+--          0b_0010,             -- coil 2a
+--          0b_0110,             -- coil 2a + 1b
+--          0b_0100,             -- coil 1b
+--          0b_1100,             -- coil 1b + 2b 
 --          0b_1000,             -- coil 2b
 --          0b_1001              -- coil 2b + 1a 
 --          }
@@ -71,93 +81,137 @@
 --      var bit stepper_fullstep = TRUE
 --   The value may be changed dynamically by the user program.  
 -- . 
--- Originally this library was designed for PICs with 16-bits wide Timer0.
+-- This library was initially designed for PICs with 16-bits wide Timer0.
 -- This excluded the use of midrange PICs, which have only 8-bits Timer0.
 -- A 16-bits timer is required to support a wide enough speedrange
--- of stepper motors. When using a PIC without a 16-bits wide Timer0 the
--- revised version of the library automatically selects Timer3 when
--- present.
+-- of stepper motors. When using a PIC without a 16-bits wide Timer0 
+-- this revised version of the library automatically selects Timer3 or
+-- the PWM3 modules when present.
 -- . 
 -- Available public procedures: 
---    stepper_run()     -- set motor speed (smoothly)  
---    stepper_stop()    -- stop motor (smoothly)
---    stepper_hold()    -- stop motor immediately and lock it (keep powered)
---    stepper_accel()   -- set acceleration ratio (smooth speeding-up)
---    stepper_decel()   -- set decellaration ratio (smooth breaking)
---    stepper_detach()  -- stop motor immediately and release it (power off)
---    stepper_attach()  -- lock motor in position (power on, no stepping)
+--    stepper_run()        -- set motor speed (accellerate/decellerate smoothly)  
+--    stepper_stop()       -- stop motor (decellerate smoothly)
+--    stepper_hold()       -- stop motor immediately and lock it (keep powered)
+--    stepper_accel()      -- set acceleration ratio (smooth accelleration)
+--    stepper_decel()      -- set decellaration ratio (smooth decelleration)
+--    stepper_detach()     -- stop motor immediately and release it (power off)
+--    stepper_attach()     -- lock motor in position (power on, no stepping)
+--    stepper_actual_rpm() -- return actual rpm
 --
 -- Sources:
 --
 -- Dependencies: - This library uses Timer1 and 
---                 Timer0 if it is 16-bits wide, otherwize Timer3
---              
--- Notes: Log of changes 2016/02 
--- * loading of timers: word-operation in JAL (surrounded by timer off/on)
--- * changed global non-static variables which are used only in 
---   one procedure into local variables
--- * added support for other Fosc values than 48 MHz 
--- * introduced a constant 'STEPPER_INVERTING_BUFFER' to support
---   positive and negative logic for motor control (depending of buffer IC)
--- * stepper_attach() uses current entry in stepper array in stead of all zero
--- * added use of Timer3 for PICs with an 8-bit Timer0 (midrange)
--- * fixed 'flippering' effect which occurred randomly when switching 
---   from half-step ccw to full-step cw rotation.
--- * fixed very long first step when accellerating from zero speed.
--- * added, improved, aligned comments 
--- * renamed several variables/constants/procedures
--- * enforced Jallib standards, i.c. global names prefixed by  'stepper_' 
--- 
+--                 Timer0 if it is 16-bits wide, otherwize Timer3 or PWM3
+--                 and corresponding interrupts.
+--               - 18Fs use high-priority interrupt vector (reset default).
+--
+-- Notes: - Log of changes 2016/02 
+--    * loading of 16-bits timers by a procedure for proper sequence
+--    * changed global non-static variables which are used only in 
+--      one procedure into local variables
+--    * added support for other Fosc values than 48 MHz 
+--    * introduced a constant 'STEPPER_INVERTING_BUFFER' to support
+--      positive and negative logic for motor control (depending of buffer IC)
+--    * stepper_attach() uses current entry in stepper array in stead of all zero
+--    * added use of Timer3 for PICs with an 8-bit Timer0 (midrange)
+--    * fixed 'flippering' effect which occurred randomly when switching 
+--      from half-step ccw to full-step cw rotation.
+--    * fixed very long first step when accellerating from zero speed.
+--    * added, improved, aligned comments 
+--    * renamed several variables/constants/procedures
+--    * enforced Jallib standards, i.c. global names prefixed by  'stepper_' 
+-- - Log of changes 2016/03
+--    * Added support for control pins not in the same nibble.
+--    * Stepper motor stops always on full-step position
+--    * Added support for use of 16-bits timer of PWM3 module when
+--      no 16-bits Timer0 or Timer3 is available (12/16f15xx). 
+--    * Added function returning actual RPM (pos:cw, neg:ccw)
+--    * Added support for 16-bits timer0 of 16f183xx/188xx
+--    * All timers temporary disabled for (re-)loading.
+
+
 
 --------------------------------------------------------
------------------- Stepper timer initialisation  -------
+----------- Stepper timer initialisation  --------------
+-- Uses Timer0 when it is 16-bits wide, 
+-- otherwise Timer3 or the PWM3 module
 --------------------------------------------------------
-if defined(TMR0H) then           -- 16-bits timer0 present
-   -- Initialize Timer0 for driving the steppermotor
+if defined(TMR0H) then                    -- 16-bits timer0 present
+   -- Initialize Timer0 for driving the steppermotor  
    
-   if defined(INTCON2_TMR0IP) then
-      INTCON2_TMR0IP = HIGH      -- Select high priority interupts for Timer0 
-   end if
-   
-   if defined(T0CON_TMR0ON) then
-      T0CON_TMR0ON = OFF          -- do no start Timer0 yet
+   if defined(T0CON) then
+      T0CON = 0b0000_0000                 -- all off, Timer0 not started
+   elsif defined(T0CON0) then
+      T0CON0 = 0b0000_0000                -- all off, Timer0 not started
    end if
    
    if defined(T0CON_T08BIT) then
-      T0CON_T08BIT = 0            -- clock width: 1 = 8-bits, 0 = 16-bit
+      T0CON_T08BIT = 0                    -- use 16-bits mode
+   elsif defined(T0CON0_T016BIT) then
+      T0CON0_T016BIT = 1                  -- use 16-bits mode
    end if 
    
-   T0CON_T0CS = 0                 -- clock source 1 = T0CKI pin, 0 = Foc/4
-   T0CON_T0SE = 0                 -- clock source edge 1 = H=>L ON T0CKI pin, 0 = L=>H ON T0CKI pin
-   T0CON_PSA = 0                  -- prescaler: 1 = no prescaller,  0 = with prescaler
-   T0CON_T0PS = 0                 -- prescaler mask 0..7 (1:2 .. 1:256)
-   --                             -- Note: 16-bits Timer0 required
+   if defined(T0CON_T0CS) then
+      T0CON_T0CS = 0                      -- Fosc/4
+   elsif defined(T0CON1_T0CS) then
+      T0CON1_T0CS = 0b010                 -- Fosc/4 (16F18xxx)
+   end if
+   
+   if defined(T0CON_PSA) then
+      T0CON_PSA = 0                       -- grab prescaler (not assigned to WDT)
+   end if
+   
+   if defined(T0CON_T0PS) then
+      T0CON_T0PS = 0                      -- 1:2 
+   elsif defined(T0CON1_T0CKPS) then      
+      T0CON1_T0CKPS = 1                   -- prescaler 1:2
+      T0CON0_T0OUTPS = 0                  -- postscaler 1:1
+   end if
+   
+   if defined(INTCON2_TMR0IP) then        -- with 18Fs:
+      INTCON2_TMR0IP = HIGH               -- Select high priority interrupts for Timer0 
+   end if
+   
+   if defined(INTCON_TMR0IE) then
+      INTCON_TMR0IE = OFF                 -- no timer0 interrupts yet
+   elsif defined(PIE0_TMR0IE) then
+      PIE0_TMR0IE = OFF                   -- no timer0 interrupts yet
+   end if
+   
    -- with Fosc = 48 MHz
-   -- for a stepper motor with 200 steps/rotation maximum rpm: 
+   -- for a stepper motor with 200 steps/rotation full-step maximum RPM: 
    -- = 48_000_000/4/prescaler_min/TMR0_min/STEPPER_STEPS_PER_ROTATION*60 
    -- = 48_000_000/4/2/TMR0_min/200*60 
    -- = 12_000_000/2/1/200*60
    -- = 30000 * 60 
-   -- = 1800000 rpm 
+   -- = 1800000 RPM 
    --
-   -- for a stepper motor with 200 steps/rotation minimum rpm:
-   -- = 48_000_000/4/prescaler_max/TMR0_max/STEPPER_STEPS_PER_ROTATION*60
-   -- = 48_000_000/4/256/TMR0_max/200*60 
-   -- = 12_000_000/256/65535/200*60 
-   -- = 0.00358 * 60 
-   -- = 0.21 rpm 
+   -- for a stepper motor with 200 steps/rotation half-steps minimum RPM:
+   -- = 48_000_000/4/prescaler_max/TMR0_max/STEPPER_STEPS_PER_ROTATION/2*60
+   -- = 48_000_000/4/256/TMR0_max/200/2*60 
+   -- = 12_000_000/256/65535/200/2*60 
+   -- = 0.00179 * 60 
+   -- = 0.11 RPM 
    
-elsif defined(TMR3H) then        -- 16-bits timer3 present
+elsif defined(TMR3H) then                 -- 16-bits timer3 present
    -- Initialize Timer3 for driving the steppermotor
-     
-   if defined(INTCON2_TMR0IP) then
-      IPR2_TMR0IP = HIGH         -- Select high priority interupts for Timer3
-   end if
    
-   T3CON_TMR3ON = OFF                     -- do not start Timer3 yet
- 
-   if defined(PIE2_TMR3IE) then           -- aliases for different locations
-      alias PIEX_TMR3IE is PIE2_TMR3IE    -- of TMR3IE/IF interrupt bits
+   T3CON = 0b0000_0000                    -- all off, Timer3 not started
+   if defined(T3CON_RD16) then
+      T3CON_RD16 = 0                      -- rd/wr in 8-bit mode 
+   elsif defined(T3CON_T3RD16) then
+      T3CON_T3RD16 = 0                    -- rd/wr in 8-bit mode
+   end if         
+   T3CON_TMR3CS = 0b11                    -- clock source: LFINTOSC (31 KHz)
+   T3CON_T3SYNC = TRUE                    -- clock sync with Fosc
+   T3CON_T3CKPS = 0                       -- prescaler 1:1
+   
+   if defined(T3GCON) then                -- Timer with gate support
+      T3GCON = 0b0000_0000                -- free running Timer3
+   end if
+  
+   if defined(PIE2_TMR3IE) then           -- catch differences in devices
+      alias PIEX_TMR3IE is PIE2_TMR3IE   
       alias PIRX_TMR3IF is PIR2_TMR3IF 
    elsif defined(PIE3_TMR3IE) then      
       alias PIEX_TMR3IE is PIE3_TMR3IE 
@@ -169,55 +223,86 @@ elsif defined(TMR3H) then        -- 16-bits timer3 present
       alias PIEX_TMR3IE is PIE5_TMR3IE 
       alias PIRX_TMR3IF is PIR5_TMR3IF 
    else
-      _error "Could not find Timer3 interrupt bits"
-   end if
-         
--- T3CON_TMR3CS = 0b10  
-   T3CON_TMR3CS = 0b11                    -- clock source LFINTOSC (31 KHz)
-   T3CON_T3SYNC = FALSE                   -- no clock sync with Fosc
-   T3CON_T3CKPS = 0                       -- prescaler 1:1
+      _error "Could not find Timer3 peripheral interrupt bits"
+   end if   
    
-   if defined(T3GCON) then
-      T3GCON = 0b0000_0000                -- free running Timer3
-   end if
-     
+   PIEX_TMR3IE = 0                        -- no timer3 interrupts yet
+   
    -- with LFINTOSC = 31 KHz
-   -- for a stepper motor with 200 steps/rotation maximum rpm: 
+   -- for a stepper motor with 200 steps/rotation full-step maximum RPM: 
    -- = 31_000/prescaler_min/TMR3_min/STEPPER_STEPS_PER_ROTATION*60 
    -- = 31_000/1/1/200*60 
-   -- = 9300 rpm 
+   -- = 9300 RPM 
    --
-   -- for a stepper motor with 200 steps/rotation minimum rpm:
-   -- = 31_000_000/prescaler_max/TMR3_max/STEPPER_STEPS_PER_ROTATION*60
-   -- = 31_000/8/65535/200*60 
-   -- = 0.018 rpm 
+   -- for a stepper motor with 200 steps/rotation half step minimum RPM:
+   -- = 31_000_000/prescaler_max/TMR3_max/STEPPER_STEPS_PER_ROTATION/2*60
+   -- = 31_000/8/65535/200/2*60 
+   -- = 0.009 RPM
+   
+elsif defined(PWM3TMR) then               -- 16-bits PWM3 module present
+   -- Initialize PWM3 module for driving the steppermotor  
+
+   PWM3CON_PWM3EN = DISABLED              -- do not enable PWM3 module yet
+   PWM3CON_PWM3OE = DISABLED              -- no PWM output 
+   PWM3CON_PWM3MODE = 0b00                -- standard mode
+
+   PWM3CLKCON_PWM3CS = 0b10               -- clock source LFINTOSC (31 KHz)
+   PWM3CLKCON_PWM3PS = 0                  -- prescaler 1:1 
+   
+   PWM3OFCON_PWM3OFM = 0b00               -- independent run mode   
+   
+   PWM3LDCON_LDT = 0                      -- immediate load mode
+     
+   PWM3PH = 0                             -- no phase offset
+   PWM3OF = 0                             -- no offset
+   PWM3DC = 1                             -- fixed one clock cycle
+   
+   if defined(PIE2_PWM3IE) then           -- ctach differences in devices
+      alias PIEX_PWM3IE is PIE2_PWM3IE   
+      alias PIRX_PWM3IF is PIR2_PWM3IF 
+   elsif defined(PIE3_PWM3IE) then      
+      alias PIEX_PWM3IE is PIE3_PWM3IE 
+      alias PIRX_PWM3IF is PIR3_PWM3IF 
+   elsif defined(PIE4_PWM3IE) then          
+      alias PIEX_PWM3IE is PIE4_PWM3IE 
+      alias PIRX_PWM3IF is PIR4_PWM3IF 
+   elsif defined(PIE5_PWM3IE) then           
+      alias PIEX_PWM3IE is PIE5_PWM3IE 
+      alias PIRX_PWM3IF is PIR5_PWM3IF 
+   else
+      _error "Could not find PWM3 peripheral interrupt bits"
+   end if
+   
+   PIEX_PWM3IE = 0                        -- no PWM3 interrupts yet
+   PWM3INTE = 0                           -- clear all PWM3 interrupt types
+  
+   -- same maximum and minimum RPM as with Timer3
 
 else
-   _error "PIC does not have a 16-bits Timer0 or Timer3"
+   _error "PIC does not have a 16-bits Timer0, Timer3 or PWM3 module"
       
 end if   
 
--- better keep speed setting between 0.3 to 300 rpm (is max OFF my tested motor)
+-- The theoretical speed settings are just a design consideration,
+-- practical speed setting is between 0.3 and 300 RPM (depends on motor)
 
 
 -------------------------------------------------------------
 ----- Accelleration/decelleration timer initialisation  -----
+-- Uses Timer1 (16-bits)
 -------------------------------------------------------------
 -- Initialize Timer1 for fixed 0.01 seconds interrupt intervals
-T1CON = 0b0000_0000           -- all zero
---                            -- Note: bits may vary between PIC types! 
--- T1CON_RD16                 -- 1 = register rd/wr in one 16 bit operation
---                            -- 0 = register rd/wr in two 8 bit operation
--- T1CON_T1RUN                -- 1 = device clock derived from T1 oscillator
---                            -- 0 = device clock derived from another source
--- T1CON_T1CKPS   (see below) -- prescaler: 0(1:1), 1(1:2), 2(1:4), 3(1:8)
--- T1CON_T1OSCEN              -- 1 = osc is enabled 0 = osc is shut OFF
--- T1CON_NT1SYNC              -- 1 = do not sync ext. clk  0 = sync ext.clk
--- T1CON_TMR1CS               -- 1 = ext. clock 0 = int. clock (Fosc/4)
--- T1CON_TMR1ON               -- 1 = enables timer1 0 =  disables timer 1
---                            -- Note: not all PICs have the same Timer1 bits!
--- 
--- For highest precision and for any Fosc
+T1CON = 0b0000_0000                       -- init all zero
+--                                        -- Note: bits may vary between PIC types! 
+-- T1CON_T1RUN                            -- 1 = device clock derived from T1 oscillator
+--                                        -- 0 = device clock derived from another source
+-- T1CON_T1CKPS   (see below)             -- prescaler: 0(1:1), 1(1:2), 2(1:4), 3(1:8)
+-- T1CON_T1OSCEN                          -- 1 = osc is enabled 0 = osc is shut OFF
+-- T1CON_NT1SYNC                          -- sync ext.clk
+-- T1CON_TMR1CS = 0                       -- select clock: Fosc/4
+-- T1CON_TMR1ON = 0                       -- 1 = enables, 0 = disables timer 1
+
+-- Select Timer1 prescaler for highest precision and for any Fosc
 if (target_clock <= 24_000_000) then 
    T1CON_T1CKPS = 0                       -- prescaler 1:1
    const STEPPER_TIMER1_PRESCALE = 1
@@ -231,7 +316,19 @@ else
    T1CON_T1CKPS = 3                       -- prescaler 1:8
    const STEPPER_TIMER1_PRESCALE = 8
 end if
-
+--
+if defined(T1CON_RD16) then
+   T1CON_RD16 = 0                         -- rd/wr in 8-bits mode
+elsif defined(T1CON_T1RD16) then
+   T1CON_T1RD16 = 0                       -- rd/wr in 8-bits mode
+end if
+--
+if defined(T1GCON) then                   -- timer with gate support
+   T1GCON = 0b0000_0000                   -- Timer1 free running 
+end if 
+--
+PIE1_TMR1IE = OFF                         -- no timer1 interrupts yet
+-- 
 const word STEPPER_TIMER1_RELOAD = 65535 - word(target_clock / 4 / STEPPER_TIMER1_PRESCALE / 100)
 
 -- for example: Fosc = 48_000_000 (and thus prescaler 1:2)
@@ -240,24 +337,24 @@ const word STEPPER_TIMER1_RELOAD = 65535 - word(target_clock / 4 / STEPPER_TIMER
 -- = 48_000_000/4/2/100 
 -- = 60000
 -- result: 48_000_000/4/2/60000 = 100 Hz (interval = 0.01 sec)
+--
 
-if defined(T1GCON) then
-   T1GCON = 0b0000_0000                   -- free running Timer1 
-end if
-
+-- ----------------------------------------------------
+-- For all selected timers:  
 
 INTCON_PEIE = ENABLED                     -- enable peripheral interrupts 
 INTCON_GIE = ENABLED                      -- enable interrupts 
                            
 
-
 -- =====================================================
 -- =============== Global variables  ===================
 -- =====================================================
+
 if !defined(stepper_cw) then              -- not user defined
    var bit stepper_cw = TRUE              -- TRUE is clockwise, FALSE = counter clockwise
                                           -- depends also on wiring!
-end if              
+end if  
+            
 if !defined(stepper_fullstep) then        -- not user defined
    var bit stepper_fullstep = TRUE        -- TRUE is full step, FALSE half step
 end if
@@ -272,31 +369,31 @@ var bit  stepper_slope_speedset = FALSE   -- TRUE while accellerating/decellerat
 
 var word stepper_accel_ratio = 0          -- accelleration ratio in rpm/sec
 var word stepper_decel_ratio = 0          -- decelleration ratio in rpm/sec
-var word stepper_steptimer_interval = 0   -- holds actual interval for Timer0
+var word stepper_steptimer_interval = 0   -- holds actual interval for stepper timer
+var byte stepper_steptimer_byte[2] at stepper_steptimer_interval  -- THMxH/TMRxL
 
-var word stepper_set_vel = 0              -- desired speed in 1/100 rpm
-var word stepper_actual_vel = 0           -- actual speed in 1/100 rpm
+var word stepper_set_speed = 0            -- desired speed in 1/10 rpm
+var word stepper_actual_speed = 0         -- actual speed in 1/10 rpm
 
-var byte stepper_step_index = 0           -- index of step in full/half step array
+var byte stepper_step_index = 0           -- index in step pattern array
 
 if !defined(STEPPER_STEPS_PER_ROTATION) then
    const word STEPPER_STEPS_PER_ROTATION = 200
-   _warn "Variable STEPPER_STEPS_PER_ROTATION not defined, defaulting to 200"
+   _warn "Variable STEPPER_STEPS_PER_ROTATION not defined, using 200"
 end if
  
-
 if !defined(STEPPER_ARRAY) then
    -- Default bit patterns for half steps (full steps: even entries)
    const byte STEPPER_ARRAY[8] =  
       {  
-      0b_0001,
-      0b_0011,
-      0b_0010,
-      0b_0110,
-      0b_0100,
-      0b_1100,
-      0b_1000,
-      0b_1001
+      0b_0001,       -- coil1a                           
+      0b_0011,       -- coil1a + coil2a
+      0b_0010,       -- coil2a 
+      0b_0110,       -- coil2a + coil1b
+      0b_0100,       -- coil1b
+      0b_1100,       -- coil1b + coil2b
+      0b_1000,       -- coil2b
+      0b_1001        -- coil2b + coil1a
       }
 end if
 
@@ -305,10 +402,67 @@ if !defined(STEPPER_INVERTING_BUFFER) then
 end if
 
 
-
 -- ==================================================
 -- ========== Private Procedures ====================
 -- ==================================================
+
+
+-- --------------------------------------------------
+-- Control the stepper motor
+-- Activate the coils with pattern 'p' (low nibble)
+-- Control by nibble or individual pins
+-- Take care of inverting steppermotor buffer 
+-- --------------------------------------------------
+procedure stepper_control(byte in p) is         -- coil pattern
+   if (STEPPER_INVERTING_BUFFER) then  
+      p = p ^ 0b1111                            -- invert pattern
+   end if
+   if defined(stepper_coils) then               -- control by nibble
+      stepper_coils = p
+   else                                         -- control by individual pins
+      var bit b0 at p : 0
+      var bit b1 at p : 1
+      var bit b2 at p : 2
+      var bit b3 at p : 3
+      stepper_coil1a = b0
+      stepper_coil2a = b1
+      stepper_coil1b = b2
+      stepper_coil2b = b3
+   end if
+end procedure
+   
+    
+-- --------------------------------------------------
+-- Load stepper timer
+-- Timer is temporarily stopped
+-- (PWM3 module has double buffering, no need to stop)
+-- --------------------------------------------------
+procedure stepper_timer_load(word in t)  is
+   var bit state
+   if defined(TMR0H) then                 -- using Timer0         
+      if defined(T0CON_TMR0ON) then
+         state = T0CON_TMR0ON             -- save state
+         T0CON_TMR0ON = 0                 -- stop timer0 
+         TMR0 = t                         -- load timer0
+         T0CON_TMR0ON = state             -- restire state
+      elsif defined(T0CON0_T0EN) then
+         state = T0CON0_T0EN              -- save state
+         T0CON0_T0EN = 0                  -- stop timer0
+         TMR0 = t                         -- load timer0
+         T0CON0_T0EN = state              -- restore state
+      end if          
+   elsif defined(TMR3H) then
+      state = T3CON_TMR3ON                -- safe state
+      T3CON_TMR3ON = 0                    -- stop timer3        
+      TMR3 = t                            -- load timer3
+      T3CON_TMR3ON = state                -- restore state     
+   elsif defined(PWM3TMR) then   
+      PWM3PR = t                          -- load period count
+      PWM3DC = t/2                        -- duty cycle 50%
+      PWM3LDCON_LDA = 1                   -- enable register loads
+   end if
+end procedure   
+ 
     
 -- --------------------------------------------------
 -- Activate timer1 interrupts (100 per second)
@@ -316,29 +470,31 @@ end if
 procedure stepper_timer1_on()  is
    T1CON_TMR1ON = OFF      -- disable timer 1 before writing
    TMR1 = 0                -- clear timer before enabling interrupts  
-   PIR1_TMR1IF = OFF       -- clear interrupt flag for next interrupt
+   PIR1_TMR1IF = OFF       -- clear interrupt flag 
    PIE1_TMR1IE = ON        -- enable timer1 interrupt 
-   TMR1 = STEPPER_TIMER1_RELOAD -- load timer1 for 100 Hz
+   TMR1 = STEPPER_TIMER1_RELOAD   -- load timer1 for 100 Hz
    T1CON_TMR1ON = ON       -- enable timer1 
 end procedure
 
 
 -- --------------------------------------------------
--- Deactivate timer1 interrupts
+-- Deactivate timer1 
 -- --------------------------------------------------
 procedure stepper_timer1_off()  is
-   T1CON_TMR1ON = OFF     -- set timer1 OFF
-   PIE1_TMR1IE = OFF      -- disable timer1 interrupt
+   T1CON_TMR1ON = OFF     -- disable timer 1 
+   PIE1_TMR1IE = OFF      -- disable timer 1 interrupts
    PIR1_TMR1IF = OFF      -- clear interrupt flag
 end procedure
 
 
 -- -----------------------------------------------------------------
--- Descr:   Calculate interval for step-timer for specified RPM
--- Returns: Steptime in timer tick
--- Notes: - Prescaler value may be changed depending on speed.
---          Timer0: 1:2 for high speeds, 1:256 for low speeds
---          Timer3: 1:1                  1:8 
+-- Descr:   Calculate pulse width for specified RPM
+-- Returns: Steptime in timer ticks
+-- Notes: - Prescaler value may be changed depending on RPM
+--          Timer0: 1:2 for high RPM,  1:256 for low RPM
+--          Timer3: 1:1                1:8 
+--          PWM3:   1:1                1:8
+--          (PWM3 allows 1:128, but is not needed with LFINTOSC at 31 KHz)
 -- ------------------------------------------------------------------
 function stepper_stepticks(word in rpm) return word is    
 
@@ -355,10 +511,18 @@ function stepper_stepticks(word in rpm) return word is
    
    if defined(TMR0H) then
       if (pulses_per_tsec > 100) then           -- select low prescaler with high speeds
-         T0CON_T0PS = 0b000                     -- prescaler => 1:2
+         if defined(T0CON_T0PS) then
+            T0CON_T0PS = 0                      -- prescaler 1:2
+         elsif defined(T0CON1_T0CKPS) then
+            T0CON1_T0CKPS = 1                   -- 1:2 (Timer0 of 16f18xxx)
+         end if
          return word(target_clock/4/2/pulses_per_tsec)    
       else 
-         T0CON_T0PS = 0b111                     -- prescaler => 1:256
+         if defined(T0CON_T0PS) then
+            T0CON_T0PS = 0b111                  -- prescaler 1:256
+         elsif defined(T0CON1_T0CKPS) then
+            T0CON1_T0CKPS = 0b1000              -- 1:256
+         end if
          return word(target_clock/4/256/pulses_per_tsec)   
       end if
    elsif defined(TMR3H) then
@@ -367,6 +531,14 @@ function stepper_stepticks(word in rpm) return word is
          return word(31_000/1/pulses_per_tsec)       
       else
          T3CON_T3CKPS = 0b11                    -- prescaler 1:8
+         return word(31_000/8/pulses_per_tsec) 
+      end if      
+   elsif defined(PWM3TMR) then
+      if (pulses_per_tsec > 100) then           -- select low prescaler with high speeds
+         PWM3CLKCON_PS = 0                      -- prescaler 1:1
+         return word(31_000/1/pulses_per_tsec)       
+      else
+         PWM3CLKCON_PS = 3                      -- prescaler 1:8
          return word(31_000/8/pulses_per_tsec) 
       end if      
    end if
@@ -381,21 +553,46 @@ end function
 
 -- ------------------------------------------------------
 -- Descr: Immediately stop and lock stepper
+-- Notes: Stepper locked on full-step boundary.
+--        This prevents a (half) step in the wrong direction when
+--        switching from half to full-step mode at restart. 
 -- ------------------------------------------------------
 procedure stepper_hold() is 
+   var bit lsb at stepper_step_index : 0     -- low order bit
+   if (lsb) then                             -- odd (half-step) position
+      if (stepper_cw) then                   -- clockwise
+         stepper_step_index = (stepper_step_index + 1) & (count(STEPPER_ARRAY) - 2)   -- even
+      else 
+         stepper_step_index = stepper_step_index - 1      -- half step ccw
+      end if
+      stepper_control(STEPPER_ARRAY[stepper_step_index])  -- position at full step
+   end if
    if defined(TMR0H) then 
-      T0CON_TMR0ON = OFF                     -- stop timer0 and thus stop steppermotor
-      INTCON_TMR0IE = OFF                    -- disable timer0 interrupts
+      if defined(T0CON_TMR0ON) then
+         T0CON_TMR0ON = 0                    -- stop timer0 
+      elsif defined(T0CON0_T0EN) then
+         T0CON0_T0EN = 0     
+      end if
+      if defined(INTCON_TMR0IE) then
+         INTCON_TMR0IE = OFF                 -- disable timer0 interrupts
+      elsif defined(PIE0_TMR0IE) then
+         PIE0_TMR0IE = OFF
+      end if
    elsif defined(TMR3H) then
       T3CON_TMR3ON = OFF                     -- stop timer3 and thus stop steppermotor
       PIEX_TMR3IE = OFF                      -- disable timer3 interrupts
+   elsif defined(PWM3TMR) then
+      PWM3CON_PWM3EN = OFF                   -- stop PWM3 and thus stop steppermotor
+      PWM3INTE_PRIE = OFF                    -- disable interrupts on period        
+      PIEX_PWM3IE = OFF                      -- disable PWM3 interrupts
    end if
+   stepper_actual_speed = 0                  -- stopped
    stepper_running = FALSE                   -- )  
    stepper_to_stop = FALSE                   -- )
    stepper_decel_active = FALSE              -- ) reset all flags
    stepper_accel_active = FALSE              -- )
    stepper_slope_speedset = FALSE            -- )
-   stepper_timer1_off()                      -- deactivate also timer1
+   stepper_timer1_off()                      -- deactivate Timer1
 end procedure
   
  
@@ -404,11 +601,7 @@ end procedure
 -- --------------------------------------------------------------
 procedure stepper_detach() is
    stepper_hold()
-   if (STEPPER_INVERTING_BUFFER) then
-      stepper_coils = 0b_1111            
-   else
-      stepper_coils = 0b_0000   
-   end if
+   stepper_control(0b0000)                   -- stepper power off
 end procedure
 
 
@@ -416,11 +609,7 @@ end procedure
 -- Descr: (re-)power one coil 
 -- --------------------------------------------------------------
 procedure stepper_attach() is
-   if (STEPPER_INVERTING_BUFFER) then
-      stepper_coils = STEPPER_ARRAY[stepper_step_index] ^ 0b_1111                  
-   else
-      stepper_coils = STEPPER_ARRAY[stepper_step_index] 
-   end if
+   stepper_control(STEPPER_ARRAY[stepper_step_index])  -- fix on current position
 end procedure
 
 
@@ -437,8 +626,8 @@ procedure stepper_stop() is
    stepper_accel_active = FALSE                 -- no (more) accelleration
    stepper_decel_active = TRUE                  -- decellerating
    stepper_to_stop = TRUE
-   stepper_set_vel = 0                          -- set speed value to 0
-   stepper_timer1_on()                          -- start timer1 for decelleration
+   stepper_set_speed = 0                        -- set desired speed value to 0
+   stepper_timer1_on()                          -- start Timer1 for decelleration
 end procedure
 
 
@@ -451,13 +640,10 @@ end procedure
 --        - Use stepper_detach() to remove power (automatic with rpm zero)  
 -- -----------------------------------------------------------------
 procedure stepper_run(word in rpm) is              -- in units of 0.1 RPM
-
-   var word steptimer_interval_new                 -- new timer0 interval
-   
+  
    if (stepper_slope_speedset) then                -- accellerating or decellerating 
       stepper_slope_speedset = FALSE               -- because it is slope_up/slope_down speed
-      steptimer_interval_new = stepper_stepticks(rpm)   -- determine value for this speed
-      stepper_steptimer_interval = steptimer_interval_new    -- new step interval
+      stepper_steptimer_interval = stepper_stepticks(rpm)  -- new step interval
       return
    end if
 
@@ -466,19 +652,18 @@ procedure stepper_run(word in rpm) is              -- in units of 0.1 RPM
          stepper_stop()
          return
       end if
-      steptimer_interval_new = stepper_stepticks(rpm)   -- new interval for this RPM
-      stepper_set_vel = (rpm * 10)                 -- set_vel is 10 times data for accuracy
-      if (stepper_set_vel > stepper_actual_vel) then  -- new speed faster
+      stepper_set_speed = (rpm * 10)                 -- set_speed is 10 times data for accuracy
+      if (stepper_set_speed > stepper_actual_speed) then  -- new speed faster
          if (stepper_accel_ratio == 0) then        -- check for using slope or not
-            stepper_steptimer_interval = steptimer_interval_new  
+            stepper_steptimer_interval = stepper_stepticks(rpm) 
          else
             stepper_accel_active = TRUE            -- set during accelleration
             stepper_decel_active = FALSE           -- consequently not decellerating 
             stepper_timer1_on()                    -- start timer1 for accelleration
          end if
-      elsif (stepper_set_vel < stepper_actual_vel) then    -- new speed slower
+      elsif (stepper_set_speed < stepper_actual_speed) then    -- new speed slower
          if (stepper_decel_ratio == 0) then        -- check for using slope or not
-            stepper_steptimer_interval = steptimer_interval_new
+            stepper_steptimer_interval = stepper_stepticks(rpm) 
          else
             stepper_decel_active = TRUE            -- set during decelleration
             stepper_accel_active = FALSE           -- consequently not accellerating
@@ -486,36 +671,56 @@ procedure stepper_run(word in rpm) is              -- in units of 0.1 RPM
          end if
       end if
       if (rpm == 0) then
-         stepper_stop()                             -- quiesce stepper controle
+         stepper_stop()                            -- quiesce stepper controler
       end if
       return
    end if
 
-   stepper_set_vel = rpm * 10                      -- set_vel is 10 times RPM for accuracy
-   stepper_actual_vel = 0                          -- start: actual speed is 0
+   stepper_set_speed = rpm * 10                    -- set_speed is 10 times RPM for accuracy
+   stepper_actual_speed = 0                        -- start: actual speed is 0
    if (stepper_accel_ratio == 0) then              -- no accel: step at desired speed immediately
-      steptimer_interval_new = stepper_stepticks(rpm)
+      stepper_steptimer_interval = stepper_stepticks(rpm)
    else                                            -- accelleration
-      steptimer_interval_new = stepper_stepticks(1)    -- (long) first step
+      stepper_steptimer_interval = stepper_stepticks(1)    -- (long) first step
       stepper_accel_active = TRUE                  -- flag set for accelleration
       stepper_decel_active = FALSE                 -- consequently not decellerating
       stepper_timer1_on()                          -- start timer1 for accelleration
    end if
-
-   stepper_steptimer_interval = steptimer_interval_new       -- store new timer0 interval
    
    if defined(TMR0H) then
-      T0CON_TMR0ON = OFF                           -- disable timer before write
-      TMR0 = 65535                                 -- force fast timer0 overflow
-      T0CON_TMR0ON = ON                            -- start timer0 and thus start steppermotor  
-      INTCON_TMR0IE = ON                           -- enable timer0 interrupts
+      if defined(T0CON_TMR0ON) then
+         T0CON_TMR0ON = OFF                        -- disable timer0
+      elsif defined(T0CON0_T0EN) then
+         T0CON0_T0EN = OFF                         -- disable timer (16f183xx)
+      end if   
+      stepper_timer_load(0)                        -- clear before enabling interrupts
+      if defined(INTCON_TMR0IE) then
+         INTCON_TMR0IF = OFF
+         INTCON_TMR0IE = ON                        -- enable timer0 interrupts
+      elsif defined(PIE0_TMR0IE) then
+         PIR0_TMR0IF = OFF
+         PIE0_TMR0IE = ON
+      end if
+      stepper_timer_load(65535)                    -- force fast timer0 overflow
+      if defined(T0CON_TMR0ON) then
+         T0CON_TMR0ON = ON                         -- start timer
+      elsif defined(T0CON0_T0EN) then
+         T0CON0_T0EN = ON                          -- start timer (16f183xx)
+      end if   
    elsif defined(TMR3H) then
-      TMR3 = 0                                     -- clear TMR3 before enabling interrupts 
-      PIRX_TMR3IF = OFF                            -- clear Timer3 interrupt flag   
+      T3CON_TMR3ON = OFF                           -- disable timer3
+      stepper_timer_load(0)                        -- clear before enabling interrupts 
+      PIRX_TMR3IF = OFF                            -- clear timer3 interrupt flag   
       PIEX_TMR3IE = ON                             -- enable timer3 interrupts
-      T3CON_TMR3ON = OFF                           -- disable timer before write
-      TMR3 = 65535                                 -- force fast timer3 overflow
-      T3CON_TMR3ON = ON                            -- start timer3 and thus start steppermotor 
+      stepper_timer_load(65535)                    -- force fast timer3 overflow
+      T3CON_TMR3ON = ON                            -- start timer3  
+   elsif defined(PWM3TMR) then
+      PWM3INTF_PRIF = OFF                          -- clear PWM3 period interrupt flag
+      PIRX_PWM3IF = OFF                            -- clear PWM3 interrupt flag  
+      PWM3CON_PWM3EN = ON                          -- start PWM3 module  
+      PWM3INTE_PRIE = ON                           -- enable interrupts on PWM3 period  
+      PIEX_PWM3IE = ON                             -- enable PWM3 timer interrupts
+      stepper_timer_load(2)                        -- force fast PWM3 interrupt
    end if 
    stepper_running = TRUE                          -- stepping...
    
@@ -541,6 +746,7 @@ procedure stepper_accel(word in sec, word in rpm) is
    end if                        
 end procedure
 
+
 -- -----------------------------------------------------------------
 -- Descr: Determine decelleration ratio
 -- Input: - sec      (word) number of 0.1 seconds
@@ -554,6 +760,19 @@ procedure stepper_decel(word in sec, word in rpm) is
    end if                          
 end procedure
 
+
+-- -----------------------------------------------------------------
+-- Descr:   Obtain current stepper speed RPM
+-- Returns: The actual RPM in units of 0.1 RPM
+--          A negative value means counter-clockwise rotation
+-- --------------------------------------------------------------------------------
+function stepper_actual_rpm() return sword is   
+   if (stepper_cw) then
+      return sword(stepper_actual_speed)            
+   else
+      return sword(0 - stepper_actual_speed)
+   end if
+end function
 
 
 -- =========================================================
@@ -569,23 +788,34 @@ procedure stepper_steptimer_isr() is
    pragma interrupt
   
    if defined(TMR0H) then
-      if !(INTCON_TMR0IF & INTCON_TMR0IE) then  -- not an expected timer0 interrupt
-         return      
-      end if 
+      if defined(INTCON_TMR0IE) then
+         if !(INTCON_TMR0IF & INTCON_TMR0IE) then  -- not an expected timer0 interrupt
+            return      
+         end if 
+      elsif defined(PIE0_TMR0IE) then
+          if !(PIR0_TMR0IF & PIE0_TMR0IE) then     -- not an expected timer0 interrupt
+            return      
+         end if 
+      end if
    elsif defined(TMR3H) then
-      if !(PIRX_TMR3IF & PIEX_TMR3IE) then      -- not an expected timer3 interrupt
+      if !(PIRX_TMR3IF & PIEX_TMR3IE) then         -- not an expected timer3 interrupt
          return
       end if 
+   elsif defined(PWM3TMR) then
+      if !(PIRX_PWM3IF & PIEX_PWM3IE) then         -- not an expected PWM3 interrupt
+         return
+      end if
+      if !(PWM3INTE_PRIE & PWM3INTF_PRIF) then     -- not PWM3 period interrupt
+         return                                            
+      end if 
    end if       
- 
+   
    if defined(TMR0H) then
-      T0CON_TMR0ON = OFF                           -- disable timer0 before write
-      TMR0 = 65535 - stepper_steptimer_interval    -- reload timer0
-      T0CON_TMR0ON = ON                            -- reenable timer0
+      stepper_timer_load(65535 - stepper_steptimer_interval)
    elsif defined(TMR3H) then
-      T3CON_TMR3ON = OFF                           -- disable timer3 before write
-      TMR3 = 65535 - stepper_steptimer_interval    -- reload timer3-
-      T3CON_TMR3ON = ON                            -- reenable timer3
+      stepper_timer_load(65535 - stepper_steptimer_interval)
+   elsif defined(PWM3TMR) then
+      stepper_timer_load(stepper_steptimer_interval)  -- PWM3 period
    end if
                                                    -- determine next index in range 0..7 (wrap)
    if (stepper_cw == TRUE) then                    -- clockwise
@@ -602,23 +832,28 @@ procedure stepper_steptimer_isr() is
       end if
    end if
    
-   if (STEPPER_INVERTING_BUFFER) then
-      stepper_coils = STEPPER_ARRAY[stepper_step_index] ^ 0b_1111    -- invert bits
-   else
-      stepper_coils = STEPPER_ARRAY[stepper_step_index]
-   end if
-   
+   stepper_control(STEPPER_ARRAY[stepper_step_index])  -- step now!
+            
    if defined(TMR0H) then
-      INTCON_TMR0IF = OFF                          -- clear interrupt flag for next interrupt
+      if defined(INTCON_TMR0IF) then
+         INTCON_TMR0IF = OFF                       -- clear timer0 interrupt flag 
+      elsif defined(PIR0_TMR0IF) then
+         PIR0_TMR0IF = OFF                         -- clear timer0 interrupt flag
+      end if
    elsif defined(TMR3H) then
-      PIRX_TMR3IF = OFF
+      PIRX_TMR3IF = OFF                            -- clear timer3 interrupt flag      
+   elsif defined(PWM3TMR) then
+      PWM3INTF_PRIF = OFF                          -- reset all PWM3 types of IF
+      PIRX_PWM3IF = OFF                            -- reset PWM3 IF                  
    end if
    
 end procedure
 
 
 -- ----------------------------------------------------------------
--- ---- Accelleration/Decelleration Timer interrupt handler --------
+-- ---- Accelleration/Decelleration Timer interrupt handler -------
+-- When Timer1 active this handler is called every 0.01 seconds
+-- When accelerating or decellerating the steptime is adjusted.
 -- ----------------------------------------------------------------
 procedure stepper_slope_timer_isr() is
 
@@ -629,39 +864,39 @@ procedure stepper_slope_timer_isr() is
    end if  
                                   
    PIR1_TMR1IF = OFF                               -- clear interrupt flag for next interrupt
-   T1CON_TMR1ON = OFF                              -- disable timer before write
-   TMR1 = STEPPER_TIMER1_RELOAD                    -- load timer1
-   T1CON_TMR1ON = ON                               -- (re)enable timer1
-
+   T1CON_TMR1ON = OFF                              -- stop timer1   
+   TMR1 = STEPPER_TIMER1_RELOAD                    -- re-load 
+   T1CON_TMR1ON = ON                               -- restart 
+ 
    if (stepper_accel_active) then                  -- accellerating
-      if (stepper_set_vel > (stepper_actual_vel + stepper_accel_ratio)) then -- if TRUE than accellerate
-         stepper_actual_vel = stepper_actual_vel + stepper_accel_ratio       -- target speed is not yet reached
+      if (stepper_set_speed > (stepper_actual_speed + stepper_accel_ratio)) then -- accellerate
+         stepper_actual_speed = stepper_actual_speed + stepper_accel_ratio       -- target speed not yet reached
       else
-         stepper_actual_vel = stepper_set_vel      -- target speed is reached and
+         stepper_actual_speed = stepper_set_speed  -- target speed is reached and
          stepper_accel_active = FALSE              -- stop accelleration
          stepper_timer1_off()
       end if
       stepper_slope_speedset = TRUE                -- still accellerating/decellerating
-      stepper_run(stepper_actual_vel/10)           -- pass real rpm
+      stepper_run(stepper_actual_speed/10)         -- pass rpm 
    end if
    
    if (stepper_decel_active) then                  -- decellerating       
-      if (stepper_decel_ratio > stepper_actual_vel) then   -- if TRUE than desired speed is reached
-         stepper_hold()                            -- and hold stepper and reset flags
+      if (stepper_decel_ratio > stepper_actual_speed) then   -- desired speed is reached
+         stepper_hold()                            -- hold stepper and reset flags
       else
-         if (stepper_set_vel < (stepper_actual_vel - stepper_decel_ratio)) then   -- if TRUE than decellerate 
-            stepper_actual_vel = stepper_actual_vel - stepper_decel_ratio         -- target speed yet reached
+         if (stepper_set_speed < (stepper_actual_speed - stepper_decel_ratio)) then   -- if TRUE then decellerate 
+            stepper_actual_speed = stepper_actual_speed - stepper_decel_ratio         -- target speed reached
          else
             if (stepper_to_stop) then
                stepper_hold()
             else
-               stepper_actual_vel = stepper_set_vel   -- target speed is reached and
-               stepper_decel_active = FALSE           -- stop decelleration
+               stepper_actual_speed = stepper_set_speed   -- target speed is reached and
+               stepper_decel_active = FALSE        -- stop decelleration
             end if
             stepper_timer1_off()
          end if
          stepper_slope_speedset = TRUE             -- still accellerating/decellerating
-         stepper_run(stepper_actual_vel/10)        -- pass real rpm
+         stepper_run(stepper_actual_speed/10)      -- pass rpm 
       end if
    end if
    
