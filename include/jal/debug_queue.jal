@@ -1,0 +1,146 @@
+-- Title: Debug Queue
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4q5
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: A Queue to delay sending of debug data. Some libraries are
+--              time sensitive (such as USB). Sending large amounts of debug
+--              data at the same time can cause too much delay for the
+--              device waiting.
+--
+-- Sources:
+--
+-- Notes:
+--      This lib uses TIMER3 (a 16 bit timer)
+--
+-- Example:
+--      alias debug_queue_out is serial_data -- output data to serial port
+--      const byte DEBUG_QUEUE_SIZE = 254    -- queue holds 254 bytes (the maximum)
+--      const byte DEBUG_QUEUE_AMOUNT = 1    -- Output 1 byte(s) max
+--      const word DEBUG_QUEUE_FREQ = 100    -- look for output data at 100hz (every .01 ms)
+--      const byte DEBUG_QUEUE_INTERRUPT = TRUE -- USE the interrupt routine.
+--      include debug_queue
+--      debug_queue_init()
+--
+--      print_string(debug_queue,"Debug Queue is Ready")
+--      debug_queue = "."
+--      print_crlf(debug_queue)
+--
+
+-- Include the queue lib
+alias QUEUE01_SIZE is DEBUG_QUEUE_SIZE
+include queue01 -- include the queue/buffer library
+alias debug_queue is queue01_nb  -- alias buffer for received data
+
+var word timer_interval
+
+--------------------------------------------------------------------------
+-- Write data to the debug queue.
+--------------------------------------------------------------------------
+procedure debug_queue_write(byte in data) is
+   pragma inline
+   debug_queue = data
+end procedure
+
+--------------------------------------------------------------------------
+-- returns timer interval required for a desired frequency
+-- return value of 0 indicates the desired frequency can't be calculated.
+-- freq_hz     - your desired frequency
+-- freq_adjust - adjust by number of timer steps (may want to use OSCCAL reg.)
+--------------------------------------------------------------------------
+function debug_queue_calc_freq(dword in freq_hz, byte in freq_adjust) return word is
+   var dword timer_interval
+
+   -- Timer rollover value - 65535 for 16 bit timer, 255 for 8 bit.
+   var word timer_rollover = 0
+   timer_rollover = timer_rollover - 1
+
+   var dword value1 = (1000000000/freq_hz)/2                    ;5000
+   var dword value2 = (1000/(target_clock/1000000))*4           ;100
+
+   if (value2 > value1) then
+      return 0
+   else
+      if timer_rollover > (value1 / value2) then ;Check if the timer can wait this long
+         timer_interval = timer_rollover - (value1 / value2)
+
+         if (value1 / value2) < 50 then ;Allow enough time for the IRS to complete
+            return 0
+         else
+            return word(timer_interval + freq_adjust)
+         end if
+      else
+          return 0
+      end if
+   end if
+end function
+
+
+--------------------------------------------------------------------------
+-- Initalize the debug_queue lib.
+--------------------------------------------------------------------------
+procedure debug_queue_init() is
+   queue01_clear() -- clear the queue.
+
+   -- init pic interrupt settings
+   intcon_gie  = on    ; enables all unmasked interrupts
+   intcon_peie = on    ; enables all unmasked peripheral interrupts
+
+   -- Set this to desired interval. timer3 will count up.
+   -- Interupt will occur when timer_interval rolls
+   -- over from 65535 to 0
+   timer_interval = debug_queue_calc_freq(DEBUT_QUEUE_FREQ,0)
+   -- output will change every 0.5ms, full wave in 1ms.
+   -- interrupt occurs every 0.5ms
+   -- this value can be calculated:
+   -- 65535    - ( (1/1khz/2) / ( (1/20_000_000)*4 ) ) = 63035
+   -- timermax - ( (1/HZ/2) / ( (1/OSC FREQ  )*4 ) ) = timer_interval
+
+   -- timer3 setup
+   tmr3 = timer_interval  -- timer interval
+   t3con_tmr3cs = 0       -- use internal clock
+   pie2_tmr3ie  = 1       -- enable the timer3 interrupt bit
+   t3con_tmr3on = 1       -- 1 = enables timer 3
+   pir2_tmr3if  = off     -- clear overflow to start timer
+
+   -- set timer3 clock prescaler
+   -- each increment slows clock by a multiple of 2
+   t3con_t3ckps = 0 -- set prscal of 1:1
+end procedure
+
+--------------------------------------------------------------------------
+-- Poll for data in, and send it out.
+-- Use regularily if you do not want to use interrupts
+--------------------------------------------------------------------------
+procedure debug_queue_poll() is
+   var byte step = 0
+   for queue01_nr_used() using step loop
+       debug_queue_out = debug_queue
+       if step > DEBUG_QUEUE_AMOUNT then
+          exit loop
+       end if
+   end loop
+end procedure
+
+--------------------------------------------------------------------------
+-- Interrupt routine to send debug data out
+--------------------------------------------------------------------------
+if debug_queue_interrupt == TRUE then
+   procedure debug_queue_isr() is
+      pragma interrupt          -- interupt procedure
+
+      if !PIR2_TMR3IF then      -- check if this is a timer3 interupt
+         return                 -- exit interupt if it is not
+      end if
+
+      PIR2_TMR3IF = off         -- clear overflow to start timer
+
+      debug_queue_poll()
+
+      TMR3 = timer_interval     -- set the interval
+   end procedure
+end if
+
