@@ -87,10 +87,8 @@ const USB_MSD_STATE_DATA_OUT  = 2   -- data out state (time for device to receiv
 var byte usb_msd_state  = USB_MSD_STATE_WAIT
 
 -- size of the storage device
-const dword USB_MSD_BLOCK_SIZE = 512
 var dword usb_msd_num_of_blocks = storage_number_of_sectors
 var byte usb_msd_num_of_blocks_[4] at usb_msd_num_of_blocks
-var byte USB_MSD_BLOCK_SIZE_[4] at USB_MSD_BLOCK_SIZE
 
 -- UOWN bit
 -- When SAE owns, we cannot use the endpoint. SAE is the usb module or  output interface.
@@ -545,8 +543,6 @@ function msd_cbw_is_valid() return bit is
    usb_msd_cbw_signature_[3] = mem_pointer1
 
    if usb_msd_cbw_signature == USB_MSD_CBW then
-;   if (usb_msd_cbw_signature_[0] == mem_pointer1) & (usb_msd_cbw_signature_[1] == mem_pointer1) &
-;      (usb_msd_cbw_signature_[2] == mem_pointer1) & (usb_msd_cbw_signature_[3] == mem_pointer1) then
 
       debug_char(0,"B")
 
@@ -727,9 +723,9 @@ procedure usb_msd_command_received() is
       msd_tx_buffer[6] = usb_msd_num_of_blocks_[1] ;0x13
       msd_tx_buffer[7] = usb_msd_num_of_blocks_[0] ;0x88
       msd_tx_buffer[8] = FORMATTED_MEDIA
-      msd_tx_buffer[9] = USB_MSD_BLOCK_SIZE_[2];0x00	  -- 512 bytes per block (from media's CSD register)
-      msd_tx_buffer[10] = USB_MSD_BLOCK_SIZE_[1];0x02
-      msd_tx_buffer[11] = USB_MSD_BLOCK_SIZE_[0];0x00
+      msd_tx_buffer[9] =  0x00 -- block size			-- 512 bytes per block
+      msd_tx_buffer[10] = 0x02 -- block size			-- 512 bytes per block
+      msd_tx_buffer[11] = 0x00 -- block size			-- 512 bytes per block
 
       usb_msd_data_residue = 12                       -- amount of data left to send
       usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS -- command success
@@ -752,10 +748,10 @@ procedure usb_msd_command_received() is
       msd_tx_buffer[1] = usb_msd_num_of_blocks_[2];0x00 -- number of blocks
       msd_tx_buffer[2] = usb_msd_num_of_blocks_[1];0x13 -- number of blocks
       msd_tx_buffer[3] = usb_msd_num_of_blocks_[0];0x88 -- number of blocks
-      msd_tx_buffer[4] = 0x00 ;USB_MSD_BLOCK_SIZE_[3];0x00 -- block size			-- 512 bytes per block
-      msd_tx_buffer[5] = 0x00 ;USB_MSD_BLOCK_SIZE_[2];0x00 -- block size
-      msd_tx_buffer[6] = 0x02 ;USB_MSD_BLOCK_SIZE_[1];0x02 -- block size
-      msd_tx_buffer[7] = 0x00 ;USB_MSD_BLOCK_SIZE_[0];0x00 -- block size
+      msd_tx_buffer[4] = 0x00 -- block size			-- 512 bytes per block
+      msd_tx_buffer[5] = 0x00 -- block size			-- 512 bytes per block
+      msd_tx_buffer[6] = 0x02 -- block size			-- 512 bytes per block
+      msd_tx_buffer[7] = 0x00 -- block size			-- 512 bytes per block
 
       usb_msd_data_residue = 8 -- amount of data left to send
       usb_msd_csw_status = USB_MSD_CSW_STATUS_SUCCESS
@@ -1276,6 +1272,40 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
    else
       usb_prime_epx_out(0,USB_EP1_OUT_SIZE) -- do we need this?
    end if
+end procedure
+
+-- -----------------------------------------------------------------------
+-- Respond to class specific requests
+-- -----------------------------------------------------------------------
+procedure usb_handle_class_request_callback() is
+
+   const byte MSD_REQ_GET_MAX_LUN = 0xFE
+
+   -- compiler issue, do local assignment to resolve
+   var byte req01 = usb_sdp_request
+   var word len = usb_sdp_length
+   var word val = usb_sdp_value
+   var byte valbt[2] at usb_sdp_value
+
+   case (req01) of
+   MSD_REQ_GET_MAX_LUN:
+      block
+         var byte send_bytes[1] = {0}
+
+         usb_delivery_bytes_max_send = 0xFF
+         usb_delivery_bytes_to_send = 1
+         _usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, send_bytes, usb_delivery_bytes_to_send )
+         usb_delivery_buffer_size = USB_EP0_IN_SIZE
+         -- usb_delivery_bytes_to_send
+         usb_control_mode = USB_CM_CTRL_READ_DATA_STAGE
+         usb_delivery_bytes_sent = 0
+         var bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
+         dts_bit = low				
+
+         -- AF ISO OF PRIME
+         usb_send_data_chunk()
+      end block
+   end case
 end procedure
 
 include usb_drv
