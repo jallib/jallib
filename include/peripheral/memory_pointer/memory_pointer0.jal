@@ -1,0 +1,80 @@
+-- Title: Memory Pointers (indirect registers)
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4ql
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Memory Pointers. For fast sequential array read/writes.
+--
+-- Sources:
+--
+-- Notes: This lib will not produce errors if POSTINC0 is not supported by
+--        your chip. Your code should check if defined(mem_pointer0) before
+--        using, otherwise use another method of doing whatever it is your
+--        trying to do.
+--
+
+--------------------------------------------------------------------------------
+-- WHEREIS() is now supported by the compiler, please use WHEREIS() instead.
+-- Get the address of an array variable.
+--------------------------------------------------------------------------------
+if !defined(mem_whereis_array) then
+   function mem_whereis_array(byte in var[]) return word is
+       var word rval
+
+       var byte rval_[2] at rval
+       assembler
+           bank movf var,w
+           movwf rval_[0]
+           movf var+1,w
+           movwf rval_[1]
+       end assembler
+
+       return rval
+   end function
+end if
+
+--------------------------------------------------------------------------------
+-- Check if POSTINC0 exists on this chip.
+--------------------------------------------------------------------------------
+if defined(POSTINC0) then
+   -- aliases
+   alias mem_pointer0_address is FSR0
+   alias mem_pointer0_low is FSR0L
+   alias mem_pointer0_high is FSR0H
+
+   if !defined(MEM_POINTER0_VAR_SIZE) then
+      const MEM_POINTER0_VAR_SIZE = 1
+   end if
+
+   -- memory pointer data retreval variable
+   if MEM_POINTER0_VAR_SIZE == 1 then
+      alias mem_pointer0 is POSTINC0
+   end if
+
+   if MEM_POINTER0_VAR_SIZE == 2 then
+      function mem_pointer0() return word is
+         pragma inline
+         var word data
+         var byte _data[2] at data
+         _data[0] = POSTINC0
+         _data[1] = POSTINC0
+         return data
+      end function
+   end if
+
+   if MEM_POINTER0_VAR_SIZE == 4 then
+      function mem_pointer0() return dword is
+         pragma inline
+         var dword data
+         var byte _data[4] at data
+         _data[0] = POSTINC0
+         _data[1] = POSTINC0
+         _data[2] = POSTINC0
+         _data[3] = POSTINC0
+         return data
+      end function
+   end if
+end if
