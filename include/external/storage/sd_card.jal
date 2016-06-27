@@ -127,6 +127,10 @@ const byte SD_COMMAND_NOT_SUPPORTED   = 5
 const byte SD_READ_ERROR              = 6
 const byte SD_WRITE_ERROR             = 7
 
+-- Read/write constants
+const byte SD_READ = 0
+const byte SD_WRITE = 1
+
 -- carrier used to access SD-Card (pseudo-var dealing with SPI)
 if !defined(spi_master) then
    alias spi_master is spi_master_hw
@@ -150,6 +154,9 @@ end if
 if !defined(SD_WRITE_EXTRA_SPEED) then
    const SD_WRITE_EXTRA_SPEED = FALSE
 end if
+if defined(SD_EXTRA_SPEED) then
+   _warn "Please remove removed from your sample code."
+end if
 
 -- number of sectors variable
 var dword sd_number_of_sectors -- number of sectors * 512 = sd card size
@@ -162,11 +169,11 @@ procedure sd_init()
 --------------------------------------------------------------------------------
 -- read sd card error (resets error status)
 --------------------------------------------------------------------------------
-function sd_error'get() return word is
-   var word return_val = sd_error_details
-   sd_error_details = 0
-   return return_val
-end function
+;function sd_error'get() return word is
+;   var word return_val = sd_error_details
+;   sd_error_details = 0
+;   return return_val
+;end function
 
 --------------------------------------------------------------------------------
 -- set sd_card error
@@ -180,53 +187,53 @@ end procedure
 --------------------------------------------------------------------------------
 -- Report sd card error (does NOT reset error status)
 --------------------------------------------------------------------------------
-procedure sd_print_error() is
+procedure sd_print_error(byte in device) is
    if sd_error_details == 0 then
-      print_string(serial_data,"NO ERROR")
-      print_crlf(serial_data)
+      print_string(device,"NO ERROR")
+      print_crlf(device)
    else
       ;print_string(serial_data,"ERROR: ")
       ;print_dword_bin(serial_data,sd_error_details)
       ;print_crlf(serial_data)
 
       if (sd_error_details & (word(1) << SD_DEVICE_NOT_FOUND )) > 0 then
-         print_string(serial_data,"SD_DEVICE_NOT_FOUND ")
-         print_crlf(serial_data)
+         print_string(device,"SD_DEVICE_NOT_FOUND ")
+         print_crlf(device)
       end if
 
       if (sd_error_details & (word(1) << SD_TYPE_NOT_SUPPORTED )) > 0 then
-         print_string(serial_data,"SD_TYPE_NOT_SUPPORTED ")
-         print_crlf(serial_data)
+         print_string(device,"SD_TYPE_NOT_SUPPORTED ")
+         print_crlf(device)
       end if
 
       if (sd_error_details & (word(1) << SD_INIT_FAILURE )) > 0 then
-         print_string(serial_data,"SD_INIT_FAILURE ")
-         print_crlf(serial_data)
+         print_string(device,"SD_INIT_FAILURE ")
+         print_crlf(device)
       end if
 
       if (sd_error_details & (word(1) << SD_TIMED_OUT)) > 0 then
-         print_string(serial_data,"SD_TIMED_OUT")
-         print_crlf(serial_data)
+         print_string(device,"SD_TIMED_OUT")
+         print_crlf(device)
       end if
 
       if (sd_error_details & (word(1) << SD_COMMAND_TIME_OUT)) > 0 then
-         print_string(serial_data,"SD_COMMAND_TIME_OUT")
-         print_crlf(serial_data)
+         print_string(device,"SD_COMMAND_TIME_OUT")
+         print_crlf(device)
       end if
 
       if (sd_error_details & (word(1) << SD_COMMAND_NOT_SUPPORTED)) > 0 then
-         print_string(serial_data,"SD_COMMAND_NOT_SUPPORTED")
-         print_crlf(serial_data)
+         print_string(device,"SD_COMMAND_NOT_SUPPORTED")
+         print_crlf(device)
       end if
 
       if (sd_error_details & (word(1) << SD_READ_ERROR)) > 0 then
-         print_string(serial_data,"SD_READ_ERROR")
-         print_crlf(serial_data)
+         print_string(device,"SD_READ_ERROR")
+         print_crlf(device)
       end if
 
       if (sd_error_details & (word(1) << SD_WRITE_ERROR)) > 0 then
-         print_string(serial_data,"SD_WRITE_ERROR")
-         print_crlf(serial_data)
+         print_string(device,"SD_WRITE_ERROR")
+         print_crlf(device)
       end if
    end if
 end procedure
@@ -362,13 +369,24 @@ function sd_is_inserted() return bit is
       sd_error = SD_INIT_FAILURE
       sd_number_of_sectors = 0
       sd_has_init = 0
+
+      -- set pins back to start state.
+      pin_sdo = low
+      pin_sdi = low
+      pin_sck = low
+      sd_chip_select = high
+
       return 0
    else
    
       if sd_has_init == 0 then
          sd_init()
+         ;serial_data = "%"
+      else
+         ;var byte ignore_return_value = sd_ready() -- wait till card is ready
+         ;serial_data = "*"
       end if
-   
+
       return 1
    end if
 
@@ -379,12 +397,12 @@ end function
 --------------------------------------------------------------------------------
 procedure sd_init() is
    var byte response = 0 -- sd_card command response
-   
+
    sd_has_init = 1
-   
    if !sd_is_inserted() then
       return
    end if
+
    
    sd_number_of_sectors = 0
 
@@ -512,16 +530,32 @@ procedure  sd_start_read(dword in address) is
    sd_sector_count = 0     -- reset count
 end procedure
 
+
+function sd_read_write_next_ready(byte in read_write) return byte is
+   if sd_byte_count == 0 then            -- beginning of sector read
+      var byte count1 = 0
+      while spi_master != 0xFE loop      -- wait till data is ready to read
+         if count1 == 100 then
+            if read_write == SD_READ then
+               sd_error = SD_READ_ERROR
+            else
+               sd_error = SD_WRITE_ERROR
+            end if
+            return 0
+         end if
+         count1 = count1 + 1
+      end loop
+   end if
+   return 1
+end function
+
 --------------------------------------------------------------------------------
 -- read 1 bytes from the sd card (pseudo var)
 --------------------------------------------------------------------------------
 function sd_data_byte'get() return byte is
    var byte x, data_byte
 
-   if sd_byte_count == 0 then            -- beginning of sector read
-      while spi_master != 0xFE loop      -- wait till data is ready to read
-      end loop
-   end if
+   if sd_read_write_next_ready(SD_READ) == FALSE then return end if -- return on read error
 
    data_byte = spi_master                -- get data byte
 
@@ -586,10 +620,7 @@ end procedure
 procedure sd_data_byte'put(byte in data_byte) is
    var byte x
 
-   if sd_byte_count == 0 then    -- beginning of sector write
-      spi_master = 0xFC       -- send "stop transmission token" write multiple command
-      ;spi_master = 0xFE      -- send "stop transmission token" for write single command
-   end if
+   if sd_read_write_next_ready(SD_WRITE) == FALSE then return end if -- return on read error
 
    spi_master = data_byte     -- send data byte
 
@@ -1241,8 +1272,7 @@ procedure sd_read_sector() is
    var byte x
    var word count1 = 0
 
-   while spi_master != 0xFE loop      -- wait till data is ready to read
-   end loop
+   if sd_read_write_next_ready(SD_READ) == FALSE then return end if -- return on read error
 
    -- get sector data
    if defined(SD_READ_EXTRA_SPEED) == TRUE then
@@ -1298,10 +1328,7 @@ procedure sd_read_sector_with_callback(word in chunk_size) is
    var byte x
    var byte count1
 
-   if sd_byte_count == 0 then
-      while spi_master != 0xFE loop      -- wait till data is ready to read
-      end loop
-   end if
+   if sd_read_write_next_ready(SD_READ) == FALSE then return end if -- return on read error
 
    sd_byte_count = sd_byte_count + chunk_size
 
@@ -1915,9 +1942,9 @@ procedure sd_write_sector() is
 end procedure
 
 --------------------------------------------------------------------------------
-; write one entire sector with callback to storage_write_callback()
-; for direct reading with spi_master. Make sure you call spi_master
-; 512 times in your storage_write_callback().
+-- write one entire sector with callback to storage_write_callback()
+-- for direct reading with spi_master. Make sure you call spi_master
+-- chunk_size times in your storage_write_callback().
 --------------------------------------------------------------------------------
 procedure sd_write_sector_with_callback(word in chunk_size) is
    var byte x
