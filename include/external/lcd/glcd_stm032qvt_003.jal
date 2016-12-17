@@ -70,9 +70,9 @@ procedure stm_glcd_write_command(word in data) is
 	glcd_high_port = _data[1]	
 	glcd_low_port = _data[0]
 	
-	;glcd_cs = 0
+   ;glcd_cs = 0	  	
 	stm_glcd_write_pulse()
-	;glcd_cs = 1	
+   ;glcd_cs = 1	
 	
 	-- assume that data will be next
    glcd_rs = 1 -- select the data port
@@ -82,12 +82,12 @@ end procedure
 -- Write data
 --------------------------------------------------------------------------------
 procedure stm_glcd_write_data(word in data) is
-   pragma inline -- pragma inline for faster color data writes
+   pragma inline -- pragma inline for faster writes
 
    var byte _data[2] at data
    glcd_high_port = _data[1]	
    glcd_low_port = _data[0]
-   
+
    ;glcd_cs = 0	  				
    stm_glcd_write_pulse()
    ;glcd_cs = 1	
@@ -97,14 +97,9 @@ end procedure
 -- Write color.
 --------------------------------------------------------------------------------
 procedure glcd_write_color(word in data) is
-   ;pragma inline -- pragma inline not working
+   pragma inline -- pragma inline for faster writes
 
    var byte _data[2] at data
-
-   -- bug fix, don't know why this is needed
-   -- maybe a problem with my lcd? already tested another PIC.
-   ;_data[1] = _data[1] | 1
-   -- works after putting it on PCB. Maybe I should remove these notes?
 
    ;glcd_rs = 1
    glcd_high_port = _data[1]
@@ -133,6 +128,7 @@ end procedure
 -- Write a command + data
 --------------------------------------------------------------------------------
 procedure stm_glcd_write_command_data(word in com1,word in dat1) is
+    -- pragma inline for faster writes
    stm_glcd_write_command(com1)
    stm_glcd_write_data(dat1)
 end procedure
@@ -224,16 +220,25 @@ alias glcd_block_write_color is glcd_write_color
 --------------------------------------------------------------------------------
 procedure stm_glcd_init() is
    glcd_cs = 0 -- enable the glcd
-   
+
    -- do it a few times, incase of data reception problems.
    for 10 loop
 
+      -- reset
       glcd_reset = 1
       delay_1ms(5)	
       glcd_reset = 0
       delay_1ms(10)
       glcd_reset = 1
       delay_1ms(20)
+      
+      -- toggle cs
+      glcd_cs = 1	
+      delay_1ms(1)
+      glcd_cs = 0
+   	
+   	-- disable reading
+      glcd_rd = 1
 
       -- Vendor
       stm_glcd_write_command_data(0x0046,0x00A4)
