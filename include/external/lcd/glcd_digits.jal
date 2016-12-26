@@ -1,0 +1,339 @@
+-- Title: Library to display large numbers on a GLCD
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4q2
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library draws large seven-segment like numbers on a glcd.
+--              Large text takes a long time to draw if the font lib is used.
+--              This is a faster since Seven-Segment like numbers can be drawn
+--              easily using lines, and if a new number to be drawn is neairly
+--              the same some digits do not need to be re-drawn.
+--
+-- Notes:
+--
+-- Sources:
+--
+
+include format
+
+-- Max size of any number set is 10 decimal digits.
+const byte _GLCD_DIGITS_MAX_LENGTH = 10
+
+-- test if number < 0
+var byte _glcd_digits_lt_0 = FALSE
+
+-- define digit type
+RECORD glcd_digits_type IS
+   byte decimal_location
+   byte length
+   byte x
+   byte y
+   byte numbers[_GLCD_DIGITS_MAX_LENGTH]
+END RECORD
+--
+var glcd_digits_type glcd_digits_properties[GLCD_DIGITS_NUMBER_SETS]
+
+-- The number set to draw
+var byte _glcd_digits_select = 0
+-- The digit of the number set to draw
+var byte glcd_digits_num_step = 0
+
+-- give default values to glcd_digits_numbers_x
+var byte glcd_digits_step_sets = 0
+for GLCD_DIGITS_NUMBER_SETS using glcd_digits_step_sets loop
+   var byte glcd_digits_step = 0
+   for _GLCD_DIGITS_MAX_LENGTH using glcd_digits_step loop
+      glcd_digits_properties[glcd_digits_step_sets].numbers[glcd_digits_step] = 0xFF
+   end loop
+end loop
+
+--------------------------------------------------------------------------------
+-- Block write of one segment of a digit.
+--------------------------------------------------------------------------------
+procedure _glcd_digits_line(byte*GLCD_X_SIZE in x1,byte*GLCD_Y_SIZE in y1,byte*GLCD_X_SIZE in x2,byte*GLCD_Y_SIZE in y2) is
+   pragma inline
+
+   -- send block write addresses
+   glcd_block_set_address(x1,y1,x2,y2)
+   
+   -- write the data
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+
+   -- some lines are longer then others, send a few extra data.
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+   glcd_write_color(glcd_pen_color)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Draw one segment of a digit.
+--------------------------------------------------------------------------------
+procedure _glcd_digits_led_f(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y) is
+   -- block write draw
+   if GLCD_USE_BLOCK_WRITE == TRUE then
+      _glcd_digits_line(x+0,y+4,x+0,y+4+14)
+      _glcd_digits_line(x+1,y+3,x+1,y+3+16)
+      _glcd_digits_line(x+2,y+3,x+2,y+3+16)
+      _glcd_digits_line(x+3,y+4,x+3,y+4+14)
+   else -- pixel draw
+      glcd_line(x+0,y+4,x+0,y+4+14)
+      glcd_line(x+1,y+3,x+1,y+3+16)
+      glcd_line(x+2,y+3,x+2,y+3+16)
+      glcd_line(x+3,y+4,x+3,y+4+14)
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Draw segments
+--------------------------------------------------------------------------------
+procedure _glcd_digits_led_a(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y) is
+   if GLCD_USE_BLOCK_WRITE == TRUE then
+      _glcd_digits_line(x+4,y+0,x+4+14,y+0)
+      _glcd_digits_line(x+3,y+1,x+3+16,y+1)
+      _glcd_digits_line(x+3,y+2,x+3+16,y+2)
+      _glcd_digits_line(x+4,y+3,x+4+14,y+3)
+   else
+      glcd_line(x+4,y+0,x+4+14,y+0)
+      glcd_line(x+3,y+1,x+3+16,y+1)
+      glcd_line(x+3,y+2,x+3+16,y+2)
+      glcd_line(x+4,y+3,x+4+14,y+3)
+   end if
+end procedure
+--
+procedure _glcd_digits_led_b(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y) is
+   if GLCD_USE_BLOCK_WRITE == TRUE then
+      _glcd_digits_line(x+19+0,y+4,x+19+0,y+4+14)
+      _glcd_digits_line(x+19+1,y+3,x+19+1,y+3+16)
+      _glcd_digits_line(x+19+2,y+3,x+19+2,y+3+16)
+      _glcd_digits_line(x+19+3,y+4,x+19+3,y+4+14)
+   else
+      glcd_line(x+19+0,y+4,x+19+0,y+4+14)
+      glcd_line(x+19+1,y+3,x+19+1,y+3+16)
+      glcd_line(x+19+2,y+3,x+19+2,y+3+16)
+      glcd_line(x+19+3,y+4,x+19+3,y+4+14)
+   end if
+   
+end procedure
+--
+procedure _glcd_digits_led_g(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y) is
+   if GLCD_USE_BLOCK_WRITE == TRUE then
+      _glcd_digits_line(x+4,y+19+0,x+4+14,y+19+0)
+      _glcd_digits_line(x+3,y+19+1,x+3+16,y+19+1)
+      _glcd_digits_line(x+3,y+19+2,x+3+16,y+19+2)
+      _glcd_digits_line(x+4,y+19+3,x+4+14,y+19+3)
+   else
+      glcd_line(x+4,y+19+0,x+4+14,y+19+0)
+      glcd_line(x+3,y+19+1,x+3+16,y+19+1)
+      glcd_line(x+3,y+19+2,x+3+16,y+19+2)
+      glcd_line(x+4,y+19+3,x+4+14,y+19+3)
+   end if
+end procedure
+--
+procedure _glcd_digits_led_e(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y) is
+   if GLCD_USE_BLOCK_WRITE == TRUE then
+      _glcd_digits_line(x+0,y+19+4,x+0,y+19+4+14)
+      _glcd_digits_line(x+1,y+19+3,x+1,y+19+3+16)
+      _glcd_digits_line(x+2,y+19+3,x+2,y+19+3+16)
+      _glcd_digits_line(x+3,y+19+4,x+3,y+19+4+14)
+   else
+      glcd_line(x+0,y+19+4,x+0,y+19+4+14)
+      glcd_line(x+1,y+19+3,x+1,y+19+3+16)
+      glcd_line(x+2,y+19+3,x+2,y+19+3+16)
+      glcd_line(x+3,y+19+4,x+3,y+19+4+14)
+   end if
+end procedure
+--
+procedure _glcd_digits_led_c(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y) is
+   if GLCD_USE_BLOCK_WRITE == TRUE then
+      _glcd_digits_line(x+19+0,y+19+4,x+19+0,y+19+4+14)
+      _glcd_digits_line(x+19+1,y+19+3,x+19+1,y+19+3+16)
+      _glcd_digits_line(x+19+2,y+19+3,x+19+2,y+19+3+16)
+      _glcd_digits_line(x+19+3,y+19+4,x+19+3,y+19+4+14)
+   else
+      glcd_line(x+19+0,y+19+4,x+19+0,y+19+4+14)
+      glcd_line(x+19+1,y+19+3,x+19+1,y+19+3+16)
+      glcd_line(x+19+2,y+19+3,x+19+2,y+19+3+16)
+      glcd_line(x+19+3,y+19+4,x+19+3,y+19+4+14)
+   end if
+end procedure
+--
+procedure _glcd_digits_led_d(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y) is
+   if GLCD_USE_BLOCK_WRITE == TRUE then
+      glcd_line(x+4,y+19+19+0,x+4+14,y+19+19+0)
+      glcd_line(x+3,y+19+19+1,x+3+16,y+19+19+1)
+      glcd_line(x+3,y+19+19+2,x+3+16,y+19+19+2)
+      glcd_line(x+4,y+19+19+3,x+4+14,y+19+19+3)
+   else
+      glcd_line(x+4,y+19+19+0,x+4+14,y+19+19+0)
+      glcd_line(x+3,y+19+19+1,x+3+16,y+19+19+1)
+      glcd_line(x+3,y+19+19+2,x+3+16,y+19+19+2)
+      glcd_line(x+4,y+19+19+3,x+4+14,y+19+19+3)
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- draws one digit
+--------------------------------------------------------------------------------
+procedure _glcd_digits_draw_digit'put(byte in num) is
+   alias x is glcd_char_x_pos
+   alias y is glcd_char_y_pos
+
+   -- Get out if we already drew this number.
+   var byte glcd_digits_step = 0
+   for GLCD_DIGITS_NUMBER_SETS using glcd_digits_step loop
+      if _glcd_digits_select == glcd_digits_step then
+         if glcd_digits_properties[glcd_digits_step].numbers[glcd_digits_num_step] == num then
+            if num != "." then -- "."
+               glcd_char_x_pos = glcd_char_x_pos + 29
+               glcd_digits_num_step = glcd_digits_num_step + 1
+               return
+            end if
+         end if
+         glcd_digits_properties[glcd_digits_step].numbers[glcd_digits_num_step] = num
+      end if
+   end loop
+
+   -- clear the digit that was at this location before we write a new one.
+   if num != "." then
+      var word prev_pen = glcd_pen_color
+      glcd_pen_color = glcd_background_color
+      glcd_box_fill(x+0,y+0,x+22,y+42) -- clear last num
+      glcd_pen_color = prev_pen
+   end if
+   
+   -- draw the digit, minus sign, or decimal.
+   if num == "-" then
+      _glcd_digits_led_a(x,y)
+      _glcd_digits_led_b(x,y)
+      _glcd_digits_led_c(x,y)
+      _glcd_digits_led_d(x,y)
+      _glcd_digits_led_e(x,y)
+      _glcd_digits_led_f(x,y)
+
+      var word prev_pen = glcd_pen_color
+      glcd_pen_color = glcd_background_color
+
+      -- clear first position and draw a minus sign.
+      var byte glcd_digits_step
+      for GLCD_DIGITS_NUMBER_SETS using glcd_digits_step loop
+         if _glcd_digits_select == glcd_digits_step then
+            glcd_box_fill(glcd_digits_properties[glcd_digits_step].x+0,glcd_digits_properties[glcd_digits_step].y+0,glcd_digits_properties[glcd_digits_step].x+22,glcd_digits_properties[glcd_digits_step].y+42) -- clear last num
+            glcd_pen_color = prev_pen
+            _glcd_digits_led_g(glcd_digits_properties[glcd_digits_step].x,glcd_digits_properties[glcd_digits_step].y)
+         end if
+      end loop
+   elsif num == "." then -- draw "."
+      const sbyte DOT_POS = -4
+      glcd_line(x+DOT_POS+1,y+38,x+DOT_POS+2,y+38)
+      glcd_line(x+DOT_POS+0,y+39,x+DOT_POS+3,y+39)
+      glcd_line(x+DOT_POS+0,y+40,x+DOT_POS+3,y+40)
+      glcd_line(x+DOT_POS+1,y+41,x+DOT_POS+2,y+41)
+   elsif (num == "0") | (num == " ") | (num == "-") then -- zero or space or minus sign
+      _glcd_digits_led_a(x,y) -- draw a "0"
+      _glcd_digits_led_b(x,y)
+      _glcd_digits_led_c(x,y)
+      _glcd_digits_led_d(x,y)
+      _glcd_digits_led_e(x,y)
+      _glcd_digits_led_f(x,y)
+   elsif num == "1" then      -- draw a "1"
+      _glcd_digits_led_b(x,y)
+      _glcd_digits_led_c(x,y)
+   elsif num == "2" then
+      _glcd_digits_led_a(x,y)
+      _glcd_digits_led_b(x,y)
+      _glcd_digits_led_d(x,y)
+      _glcd_digits_led_e(x,y)
+      _glcd_digits_led_g(x,y)
+   elsif num == "3" then
+      _glcd_digits_led_a(x,y)
+      _glcd_digits_led_b(x,y)
+      _glcd_digits_led_c(x,y)
+      _glcd_digits_led_d(x,y)
+      _glcd_digits_led_g(x,y)
+   elsif num == "4" then
+      _glcd_digits_led_b(x,y)
+      _glcd_digits_led_c(x,y)
+      _glcd_digits_led_f(x,y)
+      _glcd_digits_led_g(x,y)
+   elsif num == "5" then
+      _glcd_digits_led_a(x,y)
+      _glcd_digits_led_c(x,y)
+      _glcd_digits_led_d(x,y)
+      _glcd_digits_led_f(x,y)
+      _glcd_digits_led_g(x,y)
+   elsif num == "6" then
+      _glcd_digits_led_c(x,y)
+      _glcd_digits_led_d(x,y)
+      _glcd_digits_led_e(x,y)
+      _glcd_digits_led_f(x,y)
+      _glcd_digits_led_g(x,y)
+   elsif num == "7" then
+      _glcd_digits_led_a(x,y)
+      _glcd_digits_led_b(x,y)
+      _glcd_digits_led_c(x,y)
+   elsif num == "8" then
+      _glcd_digits_led_a(x,y)
+      _glcd_digits_led_b(x,y)
+      _glcd_digits_led_c(x,y)
+      _glcd_digits_led_d(x,y)
+      _glcd_digits_led_e(x,y)
+      _glcd_digits_led_f(x,y)
+      _glcd_digits_led_g(x,y)
+   elsif num == "9" then
+      _glcd_digits_led_a(x,y)
+      _glcd_digits_led_b(x,y)
+      _glcd_digits_led_c(x,y)
+      _glcd_digits_led_f(x,y)
+      _glcd_digits_led_g(x,y)
+   end if
+
+   -- Move to next position
+   if num != "." then
+      glcd_char_x_pos = glcd_char_x_pos + 29
+   end if
+   
+   -- Increment digit count.
+   glcd_digits_num_step = glcd_digits_num_step + 1
+end procedure
+
+--------------------------------------------------------------------------------
+-- Draw a number to the GLCD.
+--------------------------------------------------------------------------------
+procedure glcd_digits'put(byte in address, sdword in num) is
+   -- Reset digit counter.
+   glcd_digits_num_step = 0
+
+   -- test if we need a minus sign
+   if num < 0 then
+      _glcd_digits_lt_0 = TRUE
+   end if
+
+   -- set the current number set to draw
+   _glcd_digits_select = address
+
+   -- draw numbers using the format lib.
+   var byte glcd_digits_step = 0
+   for GLCD_DIGITS_NUMBER_SETS using glcd_digits_step loop
+      if address == glcd_digits_step then
+         glcd_char_x_pos = glcd_digits_properties[glcd_digits_step].x
+         glcd_char_y_pos = glcd_digits_properties[glcd_digits_step].y
+         format_sdword_dec(_glcd_digits_draw_digit, num, glcd_digits_properties[glcd_digits_step].length, glcd_digits_properties[glcd_digits_step].decimal_location)
+      end if
+   end loop
+end procedure
