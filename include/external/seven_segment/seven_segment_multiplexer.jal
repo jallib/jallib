@@ -1,0 +1,243 @@
+-- Title: Seven Segment Multiplexer
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4q5
+-- Revision:
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Allows use of more than one 7 segement display by
+--              switching (multiplexing) accross them via a timer.
+--
+-- Sources:
+--
+-- Notes: Currently supports up to six 7 segement displays, but the library
+--        can easily be changed to add more.
+--
+
+-- set common anode if user set the constant.
+if defined(SEVEN_SEGMENT_MULTIPLEXER_COMMON_ANODE) then
+   if SEVEN_SEGMENT_MULTIPLEXER_COMMON_ANODE == TRUE then
+      const seven_segment_common_anode = TRUE
+   end if
+end if
+
+include seven_segment
+
+-- define veriables
+var word timer_interval
+seven_segment_multiplexer_port_direction = all_output
+
+seven_segment_multiplexer_segment0_direction = output
+if defined (seven_segment_multiplexer_segment1_direction) then
+   seven_segment_multiplexer_segment1_direction = output
+end if
+if defined (seven_segment_multiplexer_segment2_direction) then
+   seven_segment_multiplexer_segment2_direction = output
+end if
+if defined (seven_segment_multiplexer_segment3_direction) then
+   seven_segment_multiplexer_segment3_direction = output
+end if
+if defined (seven_segment_multiplexer_segment4_direction) then
+   seven_segment_multiplexer_segment4_direction = output
+end if
+if defined (seven_segment_multiplexer_segment5_direction) then
+   seven_segment_multiplexer_segment5_direction = output
+end if
+
+-- setup a timer via timer0 lib
+-- this lib only supports timer0 at the moment.
+if SEVEN_SEGMENT_MULTIPLEXER_USE_TIMER == 0 then
+   -- Setup timer Lib
+   const byte TIMER0_PS_RATIO = 1              -- set prescaller ratio
+   const byte TIMER0_BITS = 16                 -- Use 8 or 16 bits
+   const byte TIMER0_ENABLE_INTERRUPT = TRUE   -- Interrupts off/on
+   include timer0
+   timer_init()                                -- configures and starts timer
+   -- Other config:
+   timer0_cs = 0                               -- 0 = internal, 1 = external
+
+   -- Alias the timer to allow this lib to use timer0
+   alias _ssm_timer          is timer0              -- the timer/counter
+   alias _SSM_TIMER_PS_RATIO is TIMER0_PS_RATIO     -- prescaller ratio
+   alias _SSM_TIMER_BITS     is TIMER0_BITS         -- timer bits
+   alias _ssm_timer_cs       is timer0_cs           -- timer clock select
+   alias _ssm_timer_if       is timer0_if           -- timer interrupt occurred bit
+end if
+
+-- variables
+var byte _seven_segment_multiplexer_rotate = 0
+var word _seven_segment_multiplexer_number = 0
+var byte _seven_segment_multiplexer_digit[6]
+
+-------------------------------------------------------------------------------
+-- Init procedure
+-------------------------------------------------------------------------------
+procedure seven_segment_multiplexer_init(word in freq) is
+   timer_interval = timer_freq(freq,0) -- same result as previous line at 20mhz
+   
+   ;set all to 0's
+   var byte step = 0
+   for SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS using step loop
+       _seven_segment_multiplexer_digit[step] = 0
+   end loop
+end procedure
+
+-------------------------------------------------------------------------------
+-- Interrupt to handel switching of 7 segment displays
+-------------------------------------------------------------------------------
+procedure seven_segment_multiplexer_isr() is
+   pragma interrupt        -- interupt procedure
+
+   if !_ssm_timer_if then       -- check if this is a timer interupt
+      return               -- exit interupt if it is not
+   end if
+
+   _ssm_timer_if = off          -- clear overflow to start timer
+
+   -- Select the 7 segment display to draw to.
+   if _seven_segment_multiplexer_rotate == 0 then
+      seven_segment_multiplexer_segment0 = 1
+      if defined(seven_segment_multiplexer_segment1) then
+         seven_segment_multiplexer_segment1 = 0
+      end if
+      if defined(seven_segment_multiplexer_segment2) then
+         seven_segment_multiplexer_segment2 = 0
+      end if
+      if defined(seven_segment_multiplexer_segment3) then
+         seven_segment_multiplexer_segment3 = 0
+      end if
+      if defined(seven_segment_multiplexer_segment4) then
+         seven_segment_multiplexer_segment4 = 0
+      end if
+      if defined(seven_segment_multiplexer_segment5) then
+         seven_segment_multiplexer_segment5 = 0
+      end if
+   end if
+   if SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS > 1 then
+      if _seven_segment_multiplexer_rotate == 1 then
+         seven_segment_multiplexer_segment0 = 0
+         if defined(seven_segment_multiplexer_segment1) then
+            seven_segment_multiplexer_segment1 = 1
+         end if
+         if defined(seven_segment_multiplexer_segment2) then
+            seven_segment_multiplexer_segment2 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment3) then
+            seven_segment_multiplexer_segment3 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment4) then
+            seven_segment_multiplexer_segment4 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment5) then
+            seven_segment_multiplexer_segment5 = 0
+         end if
+      end if
+   end if
+   if SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS > 2 then
+      if _seven_segment_multiplexer_rotate == 2 then
+         seven_segment_multiplexer_segment0 = 0
+         if defined(seven_segment_multiplexer_segment1) then
+            seven_segment_multiplexer_segment1 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment2) then
+            seven_segment_multiplexer_segment2 = 1
+         end if
+         if defined(seven_segment_multiplexer_segment3) then
+            seven_segment_multiplexer_segment3 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment4) then
+            seven_segment_multiplexer_segment4 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment5) then
+            seven_segment_multiplexer_segment5 = 0
+         end if
+      end if
+   end if
+   if SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS > 3 then
+      if _seven_segment_multiplexer_rotate == 3 then
+         seven_segment_multiplexer_segment0 = 0
+         if defined(seven_segment_multiplexer_segment1) then
+            seven_segment_multiplexer_segment1 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment2) then
+            seven_segment_multiplexer_segment2 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment3) then
+            seven_segment_multiplexer_segment3 = 1
+         end if
+         if defined(seven_segment_multiplexer_segment4) then
+            seven_segment_multiplexer_segment4 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment5) then
+            seven_segment_multiplexer_segment5 = 0
+         end if
+      end if
+   end if
+   if SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS > 4 then
+      if _seven_segment_multiplexer_rotate == 4 then
+         seven_segment_multiplexer_segment0 = 0
+         if defined(seven_segment_multiplexer_segment1) then
+            seven_segment_multiplexer_segment1 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment2) then
+            seven_segment_multiplexer_segment2 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment3) then
+            seven_segment_multiplexer_segment3 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment4) then
+            seven_segment_multiplexer_segment4 = 1
+         end if
+         if defined(seven_segment_multiplexer_segment5) then
+            seven_segment_multiplexer_segment5 = 0
+         end if
+      end if
+   end if
+   if SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS > 5 then
+      if _seven_segment_multiplexer_rotate == 5 then
+         seven_segment_multiplexer_segment0 = 0
+         if defined(seven_segment_multiplexer_segment1) then
+            seven_segment_multiplexer_segment1 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment2) then
+            seven_segment_multiplexer_segment2 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment3) then
+            seven_segment_multiplexer_segment3 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment4) then
+            seven_segment_multiplexer_segment4 = 0
+         end if
+         if defined(seven_segment_multiplexer_segment5) then
+            seven_segment_multiplexer_segment5 = 1
+         end if
+      end if
+   end if
+
+   -- Draw to a 7 segment display.
+   seven_segment_multiplexer_port = seven_from_digit(_seven_segment_multiplexer_digit[_seven_segment_multiplexer_rotate])
+
+   -- Switch to the next display.
+   _seven_segment_multiplexer_rotate = _seven_segment_multiplexer_rotate + 1
+   if _seven_segment_multiplexer_rotate == SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS then
+      _seven_segment_multiplexer_rotate = 0
+   end if
+
+   _ssm_timer = timer_interval -- set the interval
+end procedure
+
+-------------------------------------------------------------------------------
+-- Write to this pseudo var to put a number on your seven segment displays.
+-------------------------------------------------------------------------------
+procedure seven_segment_multiplexer'put(word in value) is
+   _seven_segment_multiplexer_number = value
+   
+   var byte step = 0
+   for SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS using step loop
+      _seven_segment_multiplexer_digit[step] = byte(value % 10);
+      value = value / 10
+   end loop
+
+end procedure
