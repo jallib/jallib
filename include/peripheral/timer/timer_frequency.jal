@@ -1,0 +1,50 @@
+-- Title: Timer Frequency library
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4q5
+-- Revision:
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Provides a procedure to easily set a timer interval
+--              for a given frequrency.
+--
+-- Sources:
+--
+-- Notes:
+--
+
+--------------------------------------------------------------------------
+-- returns timer interval required for a desired frequency
+-- return value of 0 indicates the desired frequency can't be calculated.
+-- freq_hz     - your desired frequency
+-- freq_adjust - adjust by number of timer steps
+--               (may want to use OSCCAL reg instead)
+--------------------------------------------------------------------------
+function timer_freq(dword in freq_hz, sword in freq_adjust) return word is
+   var dword timer_interval
+
+   -- Timer rollover value - 65535 for 16 bit timer, 255 for 8 bit.
+   var word timer_rollover = 0
+   timer_rollover = timer_rollover - 1
+
+   var dword value1 = (1000000000/freq_hz)/2                    ;5000
+   var dword value2 = (1000/(target_clock/1000000))*4           ;100
+
+   if (value2 > value1) then
+      return 0
+   else
+      if timer_rollover > (value1 / value2) then ;Check if the timer can wait this long
+         timer_interval = timer_rollover - (value1 / value2)
+
+         if (value1 / value2) < 50 then ;Allow enough time for the IRS to complete
+            return 0
+         else
+            return word(timer_interval + freq_adjust)
+         end if
+      else
+          return 0
+      end if
+   end if
+end function
