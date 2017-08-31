@@ -1,0 +1,86 @@
+-- Title: Timer library (Timer Alias for timer 0)
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4q5
+-- Revision:
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Provides a standard way to use timers.
+--
+-- Sources:
+--
+-- Notes:
+--
+
+include timer_frequency
+
+-- User must choose 8 or 16 bits.
+if (TIMER3_BITS != 8) & (TIMER3_BITS) != 16 then
+   _error "Please select 8 or 16 bits for const timer3_TRY_BITS"
+end if
+
+-- set timer registers to timer3
+alias timer3             is TMR3            -- timer interval
+alias timer3_cs          is T3CON_TMR3CS    -- timer clock source bit
+alias timer3_ie          is PIE2_TMR3IE     -- interrupt enable
+alias timer3_if          is PIR2_TMR3IF     -- interrupt overflow bit
+alias timer3_ps          is T3CON_T3CKPS    -- timer prescaler select bits
+alias timer3_set_8_bits  is T3CON_RD16      -- set the timer bits
+alias timer3_on          is T3CON_TMR3ON    -- set the timer bits
+;alias timer3_disable_ps  is T3CON_PSA       -- prescaler assign bit
+
+-- set timer to 16 bit if we can.
+if defined(TMR0H) then
+   if TIMER3_BITS == 16 then
+      const byte TIMER3_IS_BITS = 16
+      timer3_set_8_bits = 0 ;set timer to 16 bit
+   elsif TIMER3_BITS == 8 then
+      const byte TIMER3_IS_BITS = 8
+      timer3_set_8_bits = 1 ;set timer to 8 bit
+   end if
+else
+   const byte TIMER3_IS_BITS = 8
+end if
+
+-------------------------------------------------
+-- Initialize timer and start timer
+-- with interrupts enabled.
+-------------------------------------------------
+procedure timer_init() is
+
+   ---- SETUP TIMER 0
+   -- Set the prescaler
+   if defined(timer3_disable_ps) then -- only defined for timer3
+      if TIMER3_PS_RATIO == 0 then
+         _error "You may not set prescaler to 0:1 ratio"
+      elsif TIMER3_PS_RATIO == 1 then -- 1:1 prescaler ratio (timer3 only)
+         timer3_disable_ps = 1
+      elsif TIMER3_PS_RATIO >= 2 then -- 2:1 prescaler ratio or higher (timer3 only)
+         timer3_disable_ps = 0
+         timer3_ps = TIMER3_PS_RATIO - 2
+      else
+         _error "not setup here yet"
+      end if
+   else                                -- 1:1 prescaler ratio or higher
+      timer3_ps = TIMER3_PS_RATIO - 1
+   end if
+   --
+   -- Interrupts
+   if TIMER3_ENABLE_INTERRUPT == 1 then
+      intcon_gie  = on       -- enables all unmasked interrupts
+      intcon_peie = on       -- enables all unmasked peripheral interrupts
+
+      timer3_ie = 1         -- enable the timer3 interrupt bit
+   end if
+   --
+   -- enable/start the timer
+   timer3_on = 1    -- turn timer on
+   timer3_if = off  -- ensure overflow bit is cleared
+
+end procedure
+
+if TIMER3_BITS != TIMER3_IS_BITS then
+   _error "timer library was not able to set timer bits. Try changing timer3_BITS"
+end if

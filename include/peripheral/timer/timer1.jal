@@ -1,0 +1,86 @@
+-- Title: Timer library (Timer Alias for timer 0)
+-- Author: Matthew Schinkel, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4q5
+-- Revision:
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Provides a standard way to use timers.
+--
+-- Sources:
+--
+-- Notes:
+--
+
+include timer_frequency
+
+-- User must choose 8 or 16 bits.
+if (TIMER1_BITS != 8) & (TIMER1_BITS) != 16 then
+   _error "Please select 8 or 16 bits for const timer1_TRY_BITS"
+end if
+
+-- set timer registers to timer1
+alias timer1             is TMR1            -- timer interval
+alias timer1_cs          is T1CON_TMR1CS    -- timer clock source bit
+alias timer1_ie          is PIE1_TMR1IE     -- interrupt enable
+alias timer1_if          is PIR1_TMR1IF     -- interrupt overflow bit
+alias timer1_ps          is T1CON_T1CKPS    -- timer prescaler select bits
+alias timer1_set_8_bits  is T1CON_RD16      -- set the timer bits
+alias timer1_on          is T1CON_TMR1ON    -- Timer1 On bit
+;alias timer1_disable_ps  is T1CON_PSA       -- prescaler assign bit
+
+-- set timer to 16 bit if we can.
+if defined(TMR0H) then
+   if TIMER1_BITS == 16 then
+      const byte TIMER1_IS_BITS = 16
+      timer1_set_8_bits = 0 ;set timer to 16 bit
+   elsif TIMER1_BITS == 8 then
+      const byte TIMER1_IS_BITS = 8
+      timer1_set_8_bits = 1 ;set timer to 8 bit
+   end if
+else
+   const byte TIMER1_IS_BITS = 8
+end if
+
+-------------------------------------------------
+-- Initialize timer and start timer
+-- with interrupts enabled.
+-------------------------------------------------
+procedure timer_init() is
+
+   ---- SETUP TIMER
+   -- Set the prescaler
+   if defined(timer1_disable_ps) then -- only defined for timer1
+      if TIMER1_PS_RATIO == 0 then
+         _error "You may not set prescaler to 0:1 ratio"
+      elsif TIMER1_PS_RATIO == 1 then -- 1:1 prescaler ratio (timer1 only)
+         timer1_disable_ps = 1
+      elsif TIMER1_PS_RATIO >= 2 then -- 2:1 prescaler ratio or higher (timer1 only)
+         timer1_disable_ps = 0
+         timer1_ps = TIMER1_PS_RATIO - 2
+      else
+         _error "not setup here yet"
+      end if
+   else                                -- 1:1 prescaler ratio or higher
+      timer1_ps = TIMER1_PS_RATIO - 1
+   end if
+   --
+   -- Interrupts
+   if TIMER1_ENABLE_INTERRUPT == 1 then
+      intcon_gie  = on       -- enables all unmasked interrupts
+      intcon_peie = on       -- enables all unmasked peripheral interrupts
+      
+      timer1_ie = 1         -- enable the timer1 interrupt bit
+   end if
+   --
+   -- enable/start the timer
+   timer1_on = 1    -- turn timer on
+   timer1_if = off  -- ensure overflow bit is cleared
+
+end procedure
+
+if TIMER1_BITS != TIMER1_IS_BITS then
+   _error "timer library was not able to set timer bits. Try changing timer1_BITS"
+end if
