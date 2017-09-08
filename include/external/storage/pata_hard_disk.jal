@@ -192,26 +192,24 @@ end procedure
 -- Wait for drive to be ready for a data transfer.
 -- Sets data pins as inputs or outputs for next read or write.
 -- ----------------------------------------------------------------------------
-procedure pata_hd_data_request(bit in read_write) is begin
-  var bit s
-  var bit drq at pata_hd_data_low : 3           -- set drq pin to check
-  s = 0
-	
+procedure pata_hd_data_request(bit in read_write) is
+  var bit wait = 0
+ 	
   -- set data pins as inputs
   pata_hd_data_low_direction = all_input
   pata_hd_data_high_direction = all_input
 
   pata_hd_select_register (PATA_HD_STATUS_REG)  -- select status register	
 
-  -- wait for drq in status register to be high.
+  -- wait for data request bit in status register to be high.
   -- may get stuck in loop if drq never goes high
   -- you can modify to check for errors or have a time-out
-  while s == 0 loop
-    pata_hd_iord = high ^ PATA_HD_NO_INVERTER   -- start read pulse
-    if drq == high then
-      s = 1                                     -- exit loop
+  while wait == 0 loop
+    pata_hd_iord = high ^ PATA_HD_NO_INVERTER    -- start read pulse
+    if (pata_hd_data_low & 0b0000_1000) > 0 then -- check "data request" bit
+      wait = 1                                   -- exit loop
     end if
-    pata_hd_iord = low ^ PATA_HD_NO_INVERTER    -- end read pulse
+    pata_hd_iord = low ^ PATA_HD_NO_INVERTER     -- end read pulse
   end loop
 
   -- after drive is ready for data transfer, go to the data register
@@ -230,10 +228,8 @@ end procedure
 -- Registers may not be accessed unless bsy bit is
 -- low due to internal operations.
 -- ----------------------------------------------------------------------------
-procedure pata_hd_busy() is begin
-  var bit s
-  s = 1
-  var bit bsy at pata_hd_data_low : 7           -- set bsy pin to check
+procedure pata_hd_drive_busy() is
+  var byte wait = 1
 	
   -- set data pins as inputs
   pata_hd_data_low_direction = all_input
@@ -241,13 +237,13 @@ procedure pata_hd_busy() is begin
 
   pata_hd_select_register (PATA_HD_STATUS_REG)  -- select status register
 	
-  -- wait for bsy in status register to be high
+  -- wait for bsy in status register to be low
   -- may get stuck in loop if bsy never goes low
   -- you can modify to check for errors or have a time-out
-  while s == 1 loop
-    pata_hd_iord = high ^ PATA_HD_NO_INVERTER   -- start read pulse
-    if bsy == low then
-      s = 0                                     -- end loop
+  while wait == 1 loop
+    pata_hd_iord = high ^ PATA_HD_NO_INVERTER     -- start read pulse
+    if (pata_hd_data_low & 0b1000_0000) == 0 then -- check "busy" bit
+      wait = 0                                    -- end loop
     end if
     pata_hd_iord = low ^ PATA_HD_NO_INVERTER    -- end read pulse
   end loop
@@ -256,10 +252,8 @@ end procedure
 -- ----------------------------------------------------------------------------
 -- Wait for drive to be up to speed and ready for a command.
 -- ----------------------------------------------------------------------------
-procedure pata_hd_drive_ready() is begin
-  var bit s
-  s = 1
-  var bit rdy at pata_hd_data_low : 6           -- set rdy pin to check
+procedure pata_hd_drive_ready() is
+  var byte wait = 1
 	
   -- set data pins as inputs
   pata_hd_data_low_direction = all_input
@@ -270,12 +264,12 @@ procedure pata_hd_drive_ready() is begin
   -- wait for rdy in status register to be high
   -- may get stuck in loop if rdy never goes high
   -- you can modify to check for errors or have a time-out
-  while s == 1 loop
-    pata_hd_iord = high ^ PATA_HD_NO_INVERTER   -- start read pulse
-    if rdy == high then
-      s = 0                                     -- end loop
+  while wait == 1 loop
+    pata_hd_iord = high ^ PATA_HD_NO_INVERTER    -- start read pulse
+    if (pata_hd_data_low & 0b0100_0000) > 0 then -- check "drive ready" bit
+      wait = 0                                   -- end loop
     end if
-    pata_hd_iord = low ^ PATA_HD_NO_INVERTER    -- end read pulse
+    pata_hd_iord = low ^ PATA_HD_NO_INVERTER     -- end read pulse
   end loop
 end procedure
 
@@ -286,7 +280,7 @@ procedure pata_hd_register_write(byte in register, byte in low_byte) is begin
   var byte high_byte = 0
 
   -- registers may not be accessed unless drive is not busy
-  pata_hd_busy()
+  pata_hd_drive_busy()
 
   if register == PATA_HD_COMMAND_REG then
     -- make sure the drive is up to speed and ready for a command
@@ -313,7 +307,7 @@ procedure pata_hd_register_read(byte in register, byte out low_byte) is begin
   var byte high_byte
 
   -- registers may not be accessed unless drive is not busy
-  pata_hd_busy()
+  pata_hd_drive_busy()
 
   pata_hd_select_register (register)     -- select register
 
@@ -591,6 +585,17 @@ procedure pata_hd_write_to_sector_end(byte in input_byte) is
   x = 0 - pata_hd_word_count -- calculate how many words are left to write to current sector
   for x loop                 -- loop till end of sector
     pata_hd_write_data(input_byte, input_byte) -- write 2 bytes
+  end loop
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Finnish reading the current sector with input byte.
+-- ----------------------------------------------------------------------------
+procedure pata_hd_read_to_sector_end() is
+  var byte x
+  x = 0 - pata_hd_word_count -- calculate how many words are left to read from the current sector
+  for x loop                 -- loop till end of sector
+    pata_hd_read_data(x, x)  -- read 2 bytes
   end loop
 end procedure
 
@@ -2127,12 +2132,13 @@ procedure pata_hd_init() is begin
    end if
    
   -- set startup setting for read/read pins
-	pata_hd_iowr = low ^ PATA_HD_NO_INVERTER   -- start write pulse pin low
-   pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- start read pulse pin low
+	pata_hd_iowr = low ^ PATA_HD_NO_INVERTER   -- start write pulse inactive
+   pata_hd_iord = low ^ PATA_HD_NO_INVERTER   -- start read pulse inactive
 
    -- recalibrate the drive
    pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE)
-   pata_hd_busy()
+   pata_hd_drive_busy()
+   pata_hd_drive_ready()
 
    -- send some read pulses
    pata_hd_start_read(0)
@@ -2140,7 +2146,8 @@ procedure pata_hd_init() is begin
    pata_hd_stop_read()
 
    pata_hd_register_write (PATA_HD_COMMAND_REG,PATA_HD_RECALIBRATE) -- recalibrate the drive
-   pata_hd_busy()
+   pata_hd_drive_busy()
+   pata_hd_drive_ready()
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -2158,13 +2165,243 @@ function pata_hd_number_of_sectors'get() return dword is
    -- this MUST be used before reading since we did not use pata_hd_start_read
    pata_hd_data_request(PATA_HD_WAIT_READ)
 
-   -- Read
+   -- Read to get to where we need to be
    for 60 loop
-      pata_hd_read_data(_num_of_sectors[0],_num_of_sectors[0])
+      pata_hd_read_data(_num_of_sectors[0],_num_of_sectors[1])
    end loop
 
+   -- Get number of sectors
    pata_hd_read_data(_num_of_sectors[0],_num_of_sectors[1])
    pata_hd_read_data(_num_of_sectors[2],_num_of_sectors[3])
 
+   -- read till end of identify drive (512 bytes)
+   pata_hd_read_pulse(192)
+
    return num_of_sectors
 end function
+
+-- ----------------------------------------------------------------------------
+-- Read drive information (identify drive command)
+-- ----------------------------------------------------------------------------
+procedure pata_hd_print_drive_information(volatile byte out device) is
+   var byte x,y
+   
+   -- send the identify drive command
+   pata_hd_register_write(PATA_HD_COMMAND_REG,PATA_HD_IDENTIFY_DRIVE)
+
+   -- check if drive is ready reading and set data ports as inputs
+   -- this MUST be used before reading since we did not use pata_hd_start_read
+   pata_hd_data_request(PATA_HD_WAIT_READ)
+
+   print_string(device,"Configuration/ID word: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"Number of fixed cylinders: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"No. of removable cylinders: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"No. of heads: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"No. of unformatted bytes per physical track: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"No. of unformatted bytes per sector: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"No. of physical sectors per Track: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"No. of bytes in the inter-sector gaps: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"No. of bytes in the sync fields: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"N/A: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"Serial number: ")
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   print_crlf(device)
+
+
+   print_string(device,"Controller type: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"Controller buffer size (in sectors): ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"No. of ECC bytes on 'long' commands: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"Controller firmware revision: ")
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   print_crlf(device)
+
+   print_string(device,"Model number: ")
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   pata_hd_read_data(y,x)
+   serial_data = x
+   serial_data = y
+   print_crlf(device)
+
+   print_string(device,"No. of sectors/interrupt (0 = no support): ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"Double word transfer flag (1 = capable): ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+
+   print_string(device,"Write protected: ")
+   pata_hd_read_data(y,x)
+   print_byte_hex(device,x)
+   print_byte_hex(device,y)
+   print_crlf(device)
+   
+   -- Read
+   ;pata_hd_read_pulse(206)
+   pata_hd_read_to_sector_end()
+end procedure
