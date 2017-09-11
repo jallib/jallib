@@ -1,0 +1,112 @@
+-- Title: Accelerometer & Gyroscope BMI160
+-- Author: Matthew Schinkel, copyright (c) 2017, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4q5
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This sample reads x,y,z values from BMI160's
+--              accelerometer & gyroscope and sends it via serial port.
+--
+-- Sources:
+-- http://www.mouser.com/ds/2/783/BST-BMI160-DS000-07-786474.pdf
+--
+--
+-- This file has been manually generated.
+--
+include 18f4620                     -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal
+-- is connected to pins OSC1 and OSC2.
+pragma target clock 20_000_000      -- oscillator frequency
+--
+pragma target OSC      HS                        -- crystal or resonator
+pragma target WDT      CONTROL                   -- watchdog
+pragma target XINST    DISABLED                  -- do not use extended instructionset
+pragma target DEBUG    DISABLED                  -- no debugging
+pragma target BROWNOUT DISABLED                  -- no brownout reset
+pragma target FCMEN    DISABLED                  -- no clock monitoring
+pragma target IESO     DISABLED                  -- no int/ext osc switching
+pragma target LVP      DISABLED                  -- no low voltage programming
+pragma target MCLR     EXTERNAL                  -- external reset
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+WDTCON_SWDTEN = OFF                 -- disable WDT
+OSCCON_SCS = 0                      -- select primary oscillator
+OSCTUNE_PLLEN = FALSE               -- no PLL
+--
+enable_digital_io()                 -- make all pins digital I/O
+_usec_delay (100_000)               -- wait for power to stablilize
+--
+include delay                       -- library with delay procedures
+
+-- setup uart for communication
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+--
+include print
+include format
+--
+var byte sample_started[] = "***Jallib Sample Started***"
+print_string(serial_data,sample_started)
+print_crlf(serial_data)
+
+
+include spi_master_hw         -- includes the spi library
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+--
+spi_init(SPI_MODE_11,SPI_RATE_FOSC_64) -- init spi, choose mode and speed
+alias spi_master is spi_master_hw
+alias spi_master_exchange is spi_master_hw_exchange
+
+-- led
+alias led           is pin_a1
+alias led_direction is pin_a1_direction
+led_direction = output
+
+-- setup BMI160 accelerometer via SPI
+alias sd_chip_select is pin_ss
+alias sd_chip_select_direction is pin_ss_direction
+--
+include accelerometer_gyroscope_bmi160
+bmi160_init()
+--
+if bmi_160_communication_test() then
+   print_string(serial_data,"BMI160 Loaded OK")
+else
+   print_string(serial_data,"BMI160 communication failed")
+end if
+print_crlf(serial_data)
+
+-- main program
+forever loop
+   led = !led
+   _usec_delay(250_000)
+
+   print_string(serial_data,"Acc X: ")
+   format_word_dec(serial_data,bmi_160_accelerometer_x(),5,0)
+   print_string(serial_data,"   Y: ")
+   format_word_dec(serial_data,bmi_160_accelerometer_y(),5,0)
+   print_string(serial_data,"   Z: ")
+   format_word_dec(serial_data,bmi_160_accelerometer_z(),5,0)
+   
+   print_string(serial_data,"         Gyro X: ")
+   format_word_dec(serial_data,bmi_160_gyro_x(),5,0)
+   print_string(serial_data,"   Y: ")
+   format_word_dec(serial_data,bmi_160_gyro_y(),5,0)
+   print_string(serial_data,"   Z: ")
+   format_word_dec(serial_data,bmi_160_gyro_z(),5,0)
+   print_crlf(serial_data)
+end loop
