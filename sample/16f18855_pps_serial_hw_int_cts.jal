@@ -1,0 +1,79 @@
+-- =======================================================================
+-- Title: Test program for serial communications with PPS
+-- Author: Rob Hamerling, Copyright (c) 2008..2015, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.4q3
+--
+-- This file is part of jallib  (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Program to test the serial hardweare libraries
+--
+-- Sources:
+--
+-- Dependencies:
+--
+-- Notes:
+--
+-- -----------------------------------------------------------------------
+
+include 16f18855                             -- target
+
+pragma target clock      16_000_000          -- resonator frequency
+
+pragma target OSC        hs
+pragma target CLKOUTEN   disabled
+pragma target FCMEN      disabled
+pragma target MCLR       external
+pragma target PWRTE      enabled
+pragma target BROWNOUT   enabled
+pragma target ZCD        off
+pragma target PPS1WAY    disabled            -- allow multiple changes
+pragma target WDT        disabled
+pragma target LVP        disabled
+
+enable_digital_io()                          -- disable analog functions
+
+alias led is pin_A0
+pin_A0_direction = output
+
+include pps
+pps_control_lock(FALSE)                      -- unlock PPS module
+RB6PPS = PPS_TX                              -- pin_B6 is pin_TX (OUTPUT)
+RXPPS  = PPS_RB7                             -- pin_RX is on pin_B7 (INPUT)
+pps_control_lock(TRUE)                       -- lock PPS module
+
+const SERIAL_HW_BAUDRATE = 115200            -- serial speed
+
+-- Aliases for the USART pins 
+-- (not declared in the device files) 
+alias pin_RX            is  pin_B7
+alias pin_TX            is  pin_B6 
+alias pin_RX_direction  is  pin_B7_direction
+alias pin_TX_direction  is  pin_B6_direction
+
+alias serial_ctsinv     is  pin_C0           -- incoming data flow control
+pin_C0_direction        =   OUTPUT
+
+-- Because the 16f18855 has the interrupt bits of the USART in PIE3/PIR3 than
+-- the serial library defaults (PIE1/PIR1), the following aliases are used:
+alias PIE1_TXIE is PIE3_TXIE                 
+alias PIE1_RCIE is PIE3_RCIE
+alias PIR1_TXIF is PIR3_TXIF
+alias PIR1_RCIF is PIR3_RCIF
+
+include serial_hw_int_cts                    -- RS232 library
+serial_hw_init()
+
+include print
+print_string(serial_hw_data, PICTYPE)
+
+var   byte  x
+forever loop
+   if (serial_hw_read(x) == true) then       -- char available
+      led = !led                             -- signal something received
+      serial_hw_data = x                     -- echo every char 
+   end if
+end loop
+
+
