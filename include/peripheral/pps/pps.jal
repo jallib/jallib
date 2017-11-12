@@ -1,16 +1,16 @@
 -- ------------------------------------------------------------------------
--- Title: Peripheral Pin Select (PPS) library 
+-- Title: Peripheral Pin Select (PPS) library
 --
 -- Author: Sebastion Lelong, Copyright (c) 2011, All rights reserved.
---         Rob Hamerling, Copyright (c) 2015, All rights reserved.
+--         Rob Hamerling, Copyright (c) 2015..2017, All rights reserved.
 --
--- Adapted-by: 
+-- Adapted-by:
 --
--- Compiler: 2.4q5
+-- Compiler: 2.4q6
 --
 -- Revision: $Revision$
 --
--- This file is part of jallib (http://jallib.googlecode.com)
+-- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: This library supports Peripheral Pin Select of 3 major groups
@@ -19,55 +19,55 @@
 --    - 18F PICs with PPS-light (high end PICs 18fxxj94/99)
 --    - Enhanced Midrange (16f15xx, 16f16xx, 16f17xx, 16f18xxx and lf variants).
 -- Within these groups there are minor differences, such that we distinguish
--- 5 PPS_GROUPS: PPS_1 for 18fxxj11, 18fxxj50
---               PPS_2 for 18fxxj13, 18fxxj53
---               PPS_3 for 18fxxj94, 1v8fxxj99
---               PPS_4 for 16f1xxx without PMD0 register
---               PPS_5 for 16f18xxx  with PMD0 register  
+-- 5 PPS_GROUPS: PPS_1 for 18FxxJ11, 18FxxJ50
+--               PPS_2 for 18FxxJ13, 18FxxJ53
+--               PPS_3 for 18FxxJ94, 18FxxJ99
+--               PPS_4 for 16F16xx, 16f17xx (without PMD0 register)
+--               PPS_5 for 16F15xxx, 16f18xxx, 18FxxK40 (with PMD0 register)
 -- The actual PPS-group is specified in the device file of each PIC
 --  (PPS_0 when the PIC has no PPS).
--- For all groups the basic rules with PPS are: 
+-- For all groups the basic rules with PPS are:
 --    * With OUTPUT a pin is assigned to a peripheral function
 --    * with INPUT the peripheral function is assigned to a pin.
 -- .
--- Using PPS to (re-)configure a PIC involves 3 stages: 
--- 1. The PPS module must be unlocked with: 
+-- Using PPS to (re-)configure a PIC involves 3 stages:
+-- 1. The PPS module must be unlocked with:
 --       pps_control_lock(FALSE)
--- 2. Assign peripheral functions to specific pins. 
+-- 2. Assign peripheral functions to specific pins.
 --    This stage is somewhat different for each of the major groups.
 --    PPS_1 and PPS_2:
---       Example to (re)map pins TX2 and RX2 of the USART2 of a 18f27j53: 
+--       Example to (re)map pins TX2 and RX2 of the USART2 of a 18f27j53:
 --       To assign physical pin_B6 (alias pin_RP9) to the OUTPUT
 --       of the USART2 (TX2) specify:
 --             PPS_MAP_RP9 = PPS_TX2
 --       To assign INPUT of the USART2 (RX2) to physical pin_B7
---       (alias RP10) specify:        
+--       (alias RP10) specify:
 --             PPS_MAP_RX2 = RP10
---    PPS_3: 
+--    PPS_3:
 --       Not supported yet.
 --    PPS_4 and PPS_5:
---       Example to (re)map pins TX and RX of the USART of a 16f1708: 
+--       Example to (re)map pins TX and RX of the USART of a 16f1708:
 --       To assign physical pin_B7 to the OUTPUT of the USART (TX) specify:
 --             RC7PPS = PPS_TX
---       To assign INPUT of the USART (RX) to physical pin_B6 specify:        
---             RXPPS = PPS_RB6  
---    For all PPS groups holds: 
+--       To assign INPUT of the USART (RX) to physical pin_B6 specify:
+--             RXPPS = PPS_RB6
+--    For all PPS groups holds:
 --      -  Multiple peripheral functions can be mapped while the
---         PPS module is unlocked. 
+--         PPS module is unlocked.
 --      -  For bi-directional peripherals INPUT and OUTPUT must be
---         mapped to the same physical pin.   
--- 3. Finally the PPS module must be locked with:  
+--         mapped to the same physical pin.
+-- 3. Finally the PPS module must be locked with:
 --       pps_control_lock(TRUE).
 -- .
--- When 1-way locking is used with:  
---   - for groups PPS_1, 2 and 3:   pragma fuse_def IOL1WAY ENABLED 
+-- When 1-way locking is used with:
+--   - for groups PPS_1, 2 and 3:   pragma fuse_def IOL1WAY ENABLED
 --   - for groups 4 and 5:          pragma fuse_def PPS1WAY ENABLED
--- peripheral pins can be assigned only once. When the PPS module is locked 
--- again further changes are ignored (until reset or power-off). 
+-- peripheral pins can be assigned only once. When the PPS module is locked
+-- again further changes are ignored (until reset or power-off).
 -- This is the default behaviour of the PIC!
 -- When more than one unlock/remap/lock sequence is required specify:
---   for groups PPS_1, 2 and 3:  pragma fuse_def IOL1WAY DISABLED 
---   for groups PPS_4 and 5:     pragma fuse_def PPS1WAY DISABLED  
+--   for groups PPS_1, 2 and 3:  pragma fuse_def IOL1WAY DISABLED
+--   for groups PPS_4 and 5:     pragma fuse_def PPS1WAY DISABLED
 --
 -- Sources: Microchip TB3130 - Peripheral Pin Select in 8-Bit Microcontrollers Technical Brief
 --                    TB3098 - PIC16F170X Peripheral Pin Select (PPS) Technical Brief
@@ -75,21 +75,21 @@
 --
 -- Notes: - This library is the original PPS library by Sebastien Lelong for
 --          the 18Fs, extended by Rob Hamerling for the Enhanced Midrange.
---      
+--
 -- ------------------------------------------------------------------------
-var bit pps_gie_state                     -- interrupt state at unlock
+var bit pps_gie_state = 0                 -- interrupt state at unlock
 -- ---------------------------------------------------------------
--- Title:  Unlock/Lock the PPS module.  
+-- Title:  Unlock/Lock the PPS module.
 -- Input:  Desired PPS lock state (bit: TRUE == locked, FALSE == unlocked)
 -- Returns: (nothing)
 -- Notes:  - Applies to all PPS-groups, differences are taken care of.
 --         - Interrupts are disabled during the unlocked state.
 -- ---------------------------------------------------------------
 procedure pps_control_lock(bit in state) is
-   
+
    if ((PPS_GROUP == PPS_1) | (PPS_GROUP == PPS_2) | (PPS_GROUP == PPS_3)) then
       if (state == TRUE) then             -- lock PPS module
-         EECON2 = 0x55                    
+         EECON2 = 0x55
          EECON2 = 0xAA
          PPSCON_IOLOCK = TRUE
          INTCON_GIE = pps_gie_state       -- restore interrupt state
@@ -99,24 +99,27 @@ procedure pps_control_lock(bit in state) is
          EECON2 = 0x55
          EECON2 = 0xAA
          PPSCON_IOLOCK = FALSE
-      end if   
-            
-   elsif ((PPS_GROUP == PPS_4) | (PPS_GROUP == PPS_5)) then  
-      if (state == TRUE) then             -- lock PPS module   
+      end if
+
+   elsif ((PPS_GROUP == PPS_4) | (PPS_GROUP == PPS_5)) then
+      if (state == TRUE) then             -- lock PPS module
          PPSLOCK = 0x55
          PPSLOCK = 0xAA
          PPSLOCK_PPSLOCKED = TRUE
          INTCON_GIE = pps_gie_state       -- restore interrupt state
-      else                                -- (state == FALSE) unlock PPS module       
+      else                                -- (state == FALSE) unlock PPS module
          pps_gie_state = INTCON_GIE       -- save current interrupt state
-         INTCON_GIE = FALSE               -- disable interrupts             
+         INTCON_GIE = FALSE               -- disable interrupts
          PPSLOCK = 0x55
          PPSLOCK = 0xAA
-         PPSLOCK_PPSLOCKED = FALSE   
+         PPSLOCK_PPSLOCKED = FALSE
       end if
-      
+   elsif (PPS_GROUP == 0) then
+      _warning "This PIC has no PPS module"
+   else
+      _ warning "This PIC has an unsupported PPS_GROUP"
    end if
-  
+
 end procedure
 
 
@@ -126,7 +129,7 @@ end procedure
 -- =================================================================
 
 -- ----------------------------
--- OUTPUT FUNCTION CONSTANTS 
+-- OUTPUT FUNCTION CONSTANTS
 -- ----------------------------
 if ((PPS_GROUP == PPS_1) | (PPS_GROUP == PPS_2)) then
    -- For 18Fs (18FxxJ11, 18FxxJ13, 18FxxJ50, 18FxxJ53)
@@ -175,7 +178,7 @@ if ((PPS_GROUP == PPS_1) | (PPS_GROUP == PPS_2)) then
       alias PPS_MAP_RP24 is RPOR24_RPOR
    end if
 end if
-   
+
 -- -------------------------
 -- OUTPUT function constants
 -- -------------------------
@@ -198,13 +201,13 @@ if (PPS_GROUP == PPS_1) then
    const byte PPS_P1B     = 15   -- ECCP1 PWM Output Channel B
    const byte PPS_P1C     = 16   -- ECCP2 PWM Output Channel C
    const byte PPS_P1D     = 17   -- ECCP1 PWM Output Channel D
-   const byte PPS_CCP2    = 18   -- ECCP2 Compare 
-   const byte PPS_P2A     = 18   -- ECCP2 PWM Output Channel A   
+   const byte PPS_CCP2    = 18   -- ECCP2 Compare
+   const byte PPS_P2A     = 18   -- ECCP2 PWM Output Channel A
    const byte PPS_P2B     = 19   -- ECCP2 PWM Output Channel B
    const byte PPS_P2C     = 20   -- ECCP2 PWM Output Channel C
    const byte PPS_P2D     = 21   -- ECCP2 PWM Output Channel D
-end if   
-   
+end if
+
 if (PPS_GROUP == PPS_2) then
    -- For 18Fs (18FxxJ13, 18FxxJ53)
    const byte PPS_NULL    = 0    -- Disable RPn output function
@@ -219,7 +222,7 @@ if (PPS_GROUP == PPS_2) then
    const byte PPS_SCK2    = 11   -- SPI2 Clock Output
    const byte PPS_SSDMA   = 12   -- SPI DMA Slave Select
    const byte PPS_ULPOUT  = 13   -- Ultra Low-Power Wake-Up Event
-   const byte PPS_CCP1    = 14   -- ECCP1 Compare 
+   const byte PPS_CCP1    = 14   -- ECCP1 Compare
    const byte PPS_P1A     = 14   -- ECCP1 PWM Output Channel A
    const byte PPS_P1B     = 15   -- ECCP1 PWM Output Channel B
    const byte PPS_P1C     = 16   -- ECCP1 PWM Output Channel C
@@ -229,19 +232,19 @@ if (PPS_GROUP == PPS_2) then
    const byte PPS_P2B     = 19   -- ECCP2 PWM Output Channel B
    const byte PPS_P2C     = 20   -- ECCP2 PWM Output Channel C
    const byte PPS_P2D     = 21   -- ECCP2 PWM Output Channel D
-   const byte PPS_CCP3    = 22   -- ECCP3 Compare 
+   const byte PPS_CCP3    = 22   -- ECCP3 Compare
    const byte PPS_P3A     = 22   -- ECCP3 PWM Output Channel A
    const byte PPS_P3B     = 23   -- ECCP3 PWM Output Channel B
    const byte PPS_P3C     = 24   -- ECCP3 PWM Output Channel C
    const byte PPS_P3D     = 25   -- ECCP3 PWM Output Channel D
-end if   
+end if
 
 if (PPS_GROUP == PPS_3) then
    _error "The PPS_GROUP (PPS_3) of this PIC is not supported yet"
 end if
 
 if ((PPS_GROUP == PPS_4) | (PPS_GROUP == PPS_5)) then
-   -- For Enhanced Midrange PICs (16f1xxx)
+   -- For Enhanced Midrange PICs (16f1xxx) and 18Fs
    -- The output mapping constants are device specific
    -- and are (assumed to be) in the device files.
 end if
@@ -279,7 +282,7 @@ if ((PPS_GROUP == PPS_1) | (PPS_GROUP == PPS_2)) then
    const byte RP22 = 22
    const byte RP23 = 23
    const byte RP24 = 24
-   
+
    -- Input function mapping
    alias PPS_MAP_INT1   is RPINR1_INT1       -- External Interrupt 1
    alias PPS_MAP_INT2   is RPINR2_INT2       -- External Interrupt 2
@@ -313,48 +316,80 @@ if (PPS_GROUP == PPS_3) then
 end if
 
 if ((PPS_GROUP == PPS_4) | (PPS_GROUP == PPS_5)) then
-   -- For Enhanced Midrange (16f1xxx)
+   -- For Enhanced Midrange (16[L]F1xxx) and 18F series (like 18[L]FxxK40)
    -- Note: Not all PICs have all (re-mappable) pins defined below.
-   const byte PPS_RA0      = 0b000_00000     
-   const byte PPS_RA1      = 0b000_00001
-   const byte PPS_RA2      = 0b000_00010
-   const byte PPS_RA3      = 0b000_00011
-   const byte PPS_RA4      = 0b000_00100
-   const byte PPS_RA5      = 0b000_00101
-   const byte PPS_RA6      = 0b000_00110
-   const byte PPS_RA7      = 0b000_00111
+   const byte PPS_RA0      = 0b00000_000
+   const byte PPS_RA1      = 0b00000_001
+   const byte PPS_RA2      = 0b00000_010
+   const byte PPS_RA3      = 0b00000_011
+   const byte PPS_RA4      = 0b00000_100
+   const byte PPS_RA5      = 0b00000_101
+   const byte PPS_RA6      = 0b00000_110
+   const byte PPS_RA7      = 0b00000_111
 
-   const byte PPS_RB0      = 0b000_01000     
-   const byte PPS_RB1      = 0b000_01001
-   const byte PPS_RB2      = 0b000_01010
-   const byte PPS_RB3      = 0b000_01011
-   const byte PPS_RB4      = 0b000_01100
-   const byte PPS_RB5      = 0b000_01101
-   const byte PPS_RB6      = 0b000_01110
-   const byte PPS_RB7      = 0b000_01111
+   const byte PPS_RB0      = 0b00001_000
+   const byte PPS_RB1      = 0b00001_001
+   const byte PPS_RB2      = 0b00001_010
+   const byte PPS_RB3      = 0b00001_011
+   const byte PPS_RB4      = 0b00001_100
+   const byte PPS_RB5      = 0b00001_101
+   const byte PPS_RB6      = 0b00001_110
+   const byte PPS_RB7      = 0b00001_111
 
-   const byte PPS_RC0      = 0b000_10000     
-   const byte PPS_RC1      = 0b000_10001
-   const byte PPS_RC2      = 0b000_10010
-   const byte PPS_RC3      = 0b000_10011
-   const byte PPS_RC4      = 0b000_10100
-   const byte PPS_RC5      = 0b000_10101
-   const byte PPS_RC6      = 0b000_10110
-   const byte PPS_RC7      = 0b000_10111
+   const byte PPS_RC0      = 0b00010_000
+   const byte PPS_RC1      = 0b00010_001
+   const byte PPS_RC2      = 0b00010_010
+   const byte PPS_RC3      = 0b00010_011
+   const byte PPS_RC4      = 0b00010_100
+   const byte PPS_RC5      = 0b00010_101
+   const byte PPS_RC6      = 0b00010_110
+   const byte PPS_RC7      = 0b00010_111
 
-   const byte PPS_RD0      = 0b000_11000     
-   const byte PPS_RD1      = 0b000_11001
-   const byte PPS_RD2      = 0b000_11010
-   const byte PPS_RD3      = 0b000_11011
-   const byte PPS_RD4      = 0b000_11100
-   const byte PPS_RD5      = 0b000_11101
-   const byte PPS_RD6      = 0b000_11110
-   const byte PPS_RD7      = 0b000_11111
+   const byte PPS_RD0      = 0b00011_000
+   const byte PPS_RD1      = 0b00011_001
+   const byte PPS_RD2      = 0b00011_010
+   const byte PPS_RD3      = 0b00011_011
+   const byte PPS_RD4      = 0b00011_100
+   const byte PPS_RD5      = 0b00011_101
+   const byte PPS_RD6      = 0b00011_110
+   const byte PPS_RD7      = 0b00011_111
 
-   const byte PPS_RE0      = 0b001_00000
-   const byte PPS_RE1      = 0b001_00001
-   const byte PPS_RE2      = 0b001_00010
-   const byte PPS_RE3      = 0b001_00011
+   const byte PPS_RE0      = 0b00100_000
+   const byte PPS_RE1      = 0b00100_001
+   const byte PPS_RE2      = 0b00100_010
+   const byte PPS_RE3      = 0b00100_011
+   const byte PPS_RE4      = 0b00100_100
+   const byte PPS_RE5      = 0b00100_101
+   const byte PPS_RE6      = 0b00100_110
+   const byte PPS_RE7      = 0b00100_111
+
+   const byte PPS_RF0      = 0b00101_000
+   const byte PPS_RF1      = 0b00101_001
+   const byte PPS_RF2      = 0b00101_010
+   const byte PPS_RF3      = 0b00101_011
+   const byte PPS_RF4      = 0b00101_100
+   const byte PPS_RF5      = 0b00101_101
+   const byte PPS_RF6      = 0b00101_110
+   const byte PPS_RF7      = 0b00101_111
+
+   const byte PPS_RG0      = 0b00110_000
+   const byte PPS_RG1      = 0b00110_001
+   const byte PPS_RG2      = 0b00110_010
+   const byte PPS_RG3      = 0b00110_011
+   const byte PPS_RG4      = 0b00110_100
+   const byte PPS_RG5      = 0b00110_101
+   const byte PPS_RG6      = 0b00110_110
+   const byte PPS_RG7      = 0b00110_111
+
+   const byte PPS_RH0      = 0b00111_000
+   const byte PPS_RH1      = 0b00111_001
+   const byte PPS_RH2      = 0b00111_010
+   const byte PPS_RH3      = 0b00111_011
+   const byte PPS_RH4      = 0b00111_100
+   const byte PPS_RH5      = 0b00111_101
+   const byte PPS_RH6      = 0b00111_110
+   const byte PPS_RH7      = 0b00111_111
+
 end if
 
 

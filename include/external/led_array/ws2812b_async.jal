@@ -9,7 +9,7 @@
 --
 -- Revision: $Revision$
 --
--- This file is part of jallib (http://jallib.googlecode.com)
+-- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Sources:
@@ -20,7 +20,8 @@
 -- - A high speed USART is required (BRG16 bit in BAUDCON)
 -- - The first or only USART interface is used and initialized automatically.
 -- - The USART must be able to invert the polarity of the USART output
---   (have a CKTXP or TXCKP bit in BAUDCON, like e.g. the 18f14k22 and 18f25k22).
+--   (have a CKTXP or TXCKP bit in BAUDCON, like with many 18Fs,
+--    or the SCKP bit in BAUDCON like the midrnage and other 18Fs).
 --   Alternatively an external signal inverter is required.
 -- - The DIN wire of the WS2812B chain must be connected to pin_TX of the PIC
 --   and this pin must be configured for digital I/O.
@@ -77,9 +78,12 @@ end procedure
 --           The last WS2812B 'bit' is represented by 4 USART bits,
 --           which proved to be acceptable for the WS2812B!
 --         - USART data polarity is negative (0-bit = high, 1-bit = low),
---           but we need positive polarity. When BAUDCON_CKTXP/TXCKP is present
---           with this PIC it is used to invert the control signal, otherwise
---           an external inverter is required.
+--           but we need positive polarity. Since polarity of start- and stop-bits
+--           is fixed and part of the signal to the ws2812b, the data-bits
+--           are in inverted polarity ('0' = 0b011, '1' = 0b001') and
+--           a polarity inverter is required. The polarity inverted can be an
+--           external circuit, but when BAUDCON_CKTXP/TXCKP is present with
+--           this PIC it is used to invert the signal.
 -- ----------------------------------------------------------------------------
 procedure _ws2812b_write_pixel(byte in green, byte in red, byte in blue) is
 
@@ -182,8 +186,10 @@ procedure  ws2812b_async_init() is
       BAUDCON_CKTXP = 1                      -- invert transmit data polarity
    elsif (defined(BAUDCON_TXCKP)) then
       BAUDCON_TXCKP = 1                      -- invert transmit data polarity
+   elsif (defined(BAUDCON_SCKP)) then
+      BAUDCON_SCKP = 1                       -- invert transmit data polarity
    else
-;     _warn "An external device is required to invert the polarity of the control signal!"
+      _warn "An external device is required to invert the polarity of the control signal!"
    end if
 
    const WS2812B_BITMUX = 3                  -- 3 USART bits per WS2812B 'bit'
