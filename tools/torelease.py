@@ -1,8 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 """
  Title: Analyze TORELEASE and check consistency with Jallib
 
- Author: Rob Hamerling, Copyright (c) 2008..2014, all rights reserved.
+ Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
 
  Adapted-by:
 
@@ -40,7 +40,8 @@
 import os, sys
 import re
 import time
-from string import maketrans
+import string
+
 
 jallib     = os.path.join("/", "media", "nas", "jallib")    # directory of local copy of Jallib
 libdir     = os.path.join(jallib, "include")                # device files and function libraries
@@ -50,8 +51,8 @@ torelease  = os.path.join(jallib, "TORELEASE")              # TORELEASE
 newrelease = "./TORELEASE.NEW"                              # New TORELEASE
 report     = "./torelease.lst"                              # Report file
 
-xunderscore = maketrans("_"," ")                            # underscore -> space
-xslash      = maketrans("\\","/")                           # backward slash -> forward slash
+xunderscore = str.maketrans("_", " ")                            # underscore -> space
+xslash      = str.maketrans("\\", "/")                           # backward slash -> forward slash
 pic8flash   = re.compile(r"^1(0|2|6|8)(f|lf|hv).*")         # 8 bits flash PIC name pattern
 
 fcount     = {}                                             # file counts
@@ -65,36 +66,40 @@ lines      = []                                             # contents of TORELE
 libs       = []                                             # libraries (without path)
 
 
-# -----------------------------------------------
-# Read TORELEASE into a list of lines
+
 # -----------------------------------------------
 def read_torelease():
-   print "Reading", torelease
+   """ Read TORELEASE into a list of lines (comments removed)
+   """
+   print("Reading", torelease)
    global lines
-   ft = open(torelease, "r")
-   for ln in ft:
-      ln = ln.strip()
-      if (len(ln) > 0): 
-         if (ln[0] == "#"):         # blank comment lines
-            ln = ""
-      lnlow = ln.lower()
-      if (lnlow != ln):
-         print "Warning: uppercase character(s) fixed in:"
-         print "   ", ln
-      lines.append(lnlow)
-   ft.close()
+   try:
+      with open(torelease, "r") as ft:
+         for ln in ft:
+            ln = ln.strip()
+            if (len(ln) > 0):
+               if (ln[0] == "#"):                                 # blank comment lines
+                  ln = ""
+            lnlow = ln.lower()
+            if (lnlow != ln):
+               print("Warning: uppercase character(s) fixed in:")
+               print("   ", ln)
+            lines.append(lnlow)
+   except:
+      print("Failed open", torelease)
+
 
 
 # -----------------------------------------------
-# Analyze TORELEASE
-# - Check existence of each of the released files
-# - Collect the files into groups (parts)
-# - Make a list of picnames used in the name of the sample and
-#   make a list of picnames used in the name of the blink-samples
-#   (for later analysis)
-# -----------------------------------------------
-def analyze_torelease(fr):
-   print "Analyzing", torelease
+def analyze_torelease():
+   """ Analyze TORELEASE
+      - Check existence of each of the released files
+      - Collect the files into groups (parts)
+      - Make a list of picnames used in the name of the sample and
+        make a list of picnames used in the name of the blink-samples
+        (for later analysis)
+   """
+   print("Analyzing", torelease)
    global f, lines, libs, smppic, blinkpic, missing         # externs
    linecount = 0
    for ln in lines:
@@ -112,7 +117,7 @@ def analyze_torelease(fr):
             part = dirs[0]                                  # part is 1st level subdirectory
          if (part == "sample"):
             word = ln.split("_")
-            picname = word[0][7:]
+            picname = word[0][7:]                           # strip 'sample/'
             if (picname != ""):
                smppic[picname] = picname                    # PIC with at least 1 sample
                if (word[1] == "blink"):
@@ -122,13 +127,14 @@ def analyze_torelease(fr):
          f[part].append(ln)                                 # add filespec
 
 
-# -----------------------------------------------
-# Produce some statistics
-# - Chech if there is a device file for every sample
-# - Count samples in functional groups based on filename
+
 # -----------------------------------------------
 def list_counts(fr):
-   print "Classify and count released samples in major groups"
+   """ Produce some statistics
+       - Check if there is a device file for every sample
+       - Count samples in functional groups based on filename
+   """
+   print("Classify and count released samples in major groups")
    global f
    for smp in f["sample"]:                                  # all samples
       smp = smp[7:-4]                                       # sample name
@@ -181,33 +187,36 @@ def list_counts(fr):
 
 
 # -----------------------------------------------
-# Check blink samples against device files
-# - Make a list of picnames from the device files
-# - Check if there is a blink-a-led sample for every device file
-# -----------------------------------------------
-def check_blink(fr):
-   print "Checking if a blink sample is released for every released device file"
+def list_missing_blink(fr):
+   """ Check blink samples against device files
+       - Make a list of picnames from the released device files
+       - Check if there is a blink-a-led sample for every released device file
+   """
+   print("Checking if a blink sample is released for every released device file")
    global f, dev
-   for df in f["device"]:
+   devlist = f["device"]
+   devlist.sort()
+   for df in devlist:
       if (df == "include/device/chipdef_jallib.jal"):
          continue
       picname = df[15:-4]
       dev[picname] = picname                                 # remember device file
       if (os.path.exists(os.path.join(jallib, df)) == True):   # device file present
          if (blinkpic.get(picname) == None):
-            fr.write("  No basic blink sample for " + picname + "\n")
+            fr.write("  No basic blink sample for released" + picname + "devicefile\n")
          elif (blinkpic[picname] != picname):
-            fr.write("  No basic blink sample for " + picname + "\n")
+            fr.write("  No basic blink sample for released" + picname + "devicefile\n")
 
 
-# ---------------------------------------------
-# List unreleased libraries
-# - Walk the include directory tree
-#   to find unreleased libraries and device files
-# - Check if samples use unreleased device files
+
 # ---------------------------------------------
 def list_unreleased_libraries(fr):
-   print "Searching for unreleased libraries"
+   """ List unreleased libraries
+       - Walk the include directory tree
+         to find unreleased libraries and device files
+       - Check if samples use unreleased device files
+   """
+   print("Searching for unreleased libraries")
    global libs
    fr.write("\nUnreleased libraries")
    if (runtype == None):
@@ -249,15 +258,16 @@ def list_unreleased_libraries(fr):
                 (unlisted - unlisteddevice, unlisteddevice))
 
 
-# ---------------------------------------------
-# List unreleased samples or use of unreleased libraries or device files
-# - Walk the sample directory tree
-#   to find unreleased samples
-# - Check if sample name and included device file are matching
-# - Check if unreleased libraries are included
+
 # ---------------------------------------------
 def list_unreleased_samples(fr):
-   print "Searching for unreleased samples and checking for include of unreleased libraries"
+   """ List unreleased samples or use of unreleased libraries or device files
+       - Walk the sample directory tree
+         to find unreleased samples
+       - Check if sample name and included device file are matching
+       - Check if unreleased libraries are included
+   """
+   print("Searching for unreleased samples and checking for include of unreleased libraries")
    fr.write("\nUnreleased samples")
    if (runtype == None):
       fr.write(" (excluding unreleased basic blink samples)")
@@ -290,25 +300,27 @@ def list_unreleased_samples(fr):
             else:                                           # probably not a sample file
                fr.write(fs + "\n")                          # list file
          else:                                              # found sample in torelease
-            fi = open(os.path.join(root,file))              # full pathspec
-            lncount = 0
-            for ln in fi:
-               lncount = lncount + 1                        # line number
-               ln = ln.lower().strip()
-               if ((len(ln) < 2) | ln.startswith("--") | ln.startswith(";")):    # empty or comment line
-                  continue
-               word = ln.split()
-               if ((word[0] == "include") & (len(word) > 1)):
-                  if (re.match(pic8flash, word[1]) != None):   # probably device file
-                     if (word[1] != picname):                  # not matching!
-                        print "Sample " + fs + " includes wrong device file: ", word[1], "in line", lncount
-                     elif (word[1] not in dev):
-                        print "Sample " + fs + " includes unreleased device file: ", word[1], "in line", lncount
-                        unreleasedinclude.append(file)
-                  elif (word[1] + ".jal" not in libs):
-                     print "sample", file, "includes an unreleased library:", word[1], "in line", lncount
-                     unreleasedinclude.append(file)
-            fi.close()
+            try:
+               with open(os.path.join(root, file), "r") as fi:       # full pathspec
+                  lncount = 0
+                  for ln in fi:
+                     lncount = lncount + 1                        # line number
+                     ln = ln.lower().strip()
+                     if ((len(ln) < 2) | ln.startswith("--") | ln.startswith(";")):    # empty or comment line
+                        continue
+                     word = ln.split()
+                     if ((word[0] == "include") & (len(word) > 1)):
+                        if (re.match(pic8flash, word[1]) != None):   # probably device file
+                           if (word[1] != picname):                  # not matching!
+                              print("Sample " + fs + " includes wrong device file: ", word[1], "in line", lncount)
+                           elif (word[1] not in dev):
+                              print("Sample " + fs + " includes unreleased device file: ", word[1], "in line", lncount)
+                              unreleasedinclude.append(file)
+                        elif (word[1] + ".jal" not in libs):
+                           print("sample", file, "includes an unreleased library:", word[1], "in line", lncount)
+                           unreleasedinclude.append(file)
+            except:
+               print("Failed to open sample", file, "for reading")
 
    if (runtype != None):
       fr.write("\n%d unreleased sample files\n" % (unlisted))
@@ -324,12 +336,13 @@ def list_unreleased_samples(fr):
       fr.write("\n")
 
 
-# ---------------------------------------------
-# List unreleased project files
-# - Walks project directory tree to find unreleased project files
+
 # ---------------------------------------------
 def list_unreleased_projects(fr):
-   print "Searching for unreleased project files"
+   """ List unreleased project files
+       - Walks project directory tree to find unreleased project files
+   """
+   print("Searching for unreleased project files")
    fr.write("\n\nUnreleased Project files\n")
    fr.write("------------------------\n")
    unlisted = 0
@@ -348,11 +361,12 @@ def list_unreleased_projects(fr):
    fr.write("\n%d unreleased project files\n\n" % (unlisted))
 
 
-# ---------------------------------------------
-# List files listed in TORELEASE but missing in Jallib
+#
 # ---------------------------------------------
 def list_missing_files(fr):
-   print "Listing missing Jallib files"
+   """  List files listed in TORELEASE but missing in Jallib
+   """
+   print("Listing missing Jallib files")
    if (len(missing) > 0):
       fr.write("\n\nFiles listed in TORELEASE, but missing in Jallib\n")
       fr.write("------------------------------------------------\n")
@@ -362,33 +376,23 @@ def list_missing_files(fr):
       fr.write("\n")
 
 
+
 # ---------------------------------------------
-# Create new TORELEASE
-# ---------------------------------------------
-def create_new_torelease():
-   print "Creating new TORELEASE:", torelease
-   fn = open(newrelease, "w")
-   fn.write("# Title: List of files to release\n")
-   fn.write("#\n# $Revision$\n#\n")
-   listpart(fn, "device", "Device files")
-   listpart(fn, "external", "Externals")
-   listpart(fn, "filesystem", "FileSystems")
-   listpart(fn, "jal", "JAL extensions")
-   listpart(fn, "networking", "Networking")
-   listpart(fn, "peripheral", "Peripherals")
-   listpart(fn, "protocol", "Protocols")
-   listpart(fn, "project", "Projects")
-   listpart(fn, "sample", "Samples")
-   listpart(fn, "doc", "Static documentation (only in jallib-pack)")
-   fn.close()
+def sortpart(key):
+   """ Custom sort of files
+       Chars '_' in name treated as ' '
+       such that e.g. 16f72_xxx appears before 16f722_xxx
+   """
+   return key.translate(xunderscore)                        # underscore -> space
 
 
-# -----------------------------------------------
-# Write members of subdirectory to new torelease
-# after being sorted on name
-# Comment out duplicates
+
 # -----------------------------------------------
 def listpart(fn, part, title):
+   """ Write members of subdirectory to new torelease
+       after being sorted on name
+       Comment out duplicates
+   """
    global f
    fn.write("# " + title + "\n")
    f[part].sort(key = sortpart)                             # custom sort!
@@ -402,49 +406,56 @@ def listpart(fn, part, title):
 
 
 # ---------------------------------------------
-# Custom sort of files
-# Chars '_' in name treated as ' '
-# such that e.g. 16f72_xxx appears before 16f722_xxx
+# Create new TORELEASE
 # ---------------------------------------------
-def sortpart(key):
-   return key.translate(xunderscore)                        # underscore -> space
+def create_new_torelease():
+   print("Creating new TORELEASE:", newrelease)
+   try:
+      with open(newrelease, "w") as fn:
+         fn.write("# Title: List of files to release\n")
+         fn.write("#\n# $Revision$\n#\n")
+         listpart(fn, "device", "Device files")
+         listpart(fn, "external", "Externals")
+         listpart(fn, "filesystem", "FileSystems")
+         listpart(fn, "jal", "JAL extensions")
+         listpart(fn, "networking", "Networking")
+         listpart(fn, "peripheral", "Peripherals")
+         listpart(fn, "protocol", "Protocols")
+         listpart(fn, "project", "Projects")
+         listpart(fn, "sample", "Samples")
+         listpart(fn, "doc", "Static documentation (only in jallib-pack)")
+   except:
+      print("Failed to create", newrelease)
 
 
-# --------------------------------------------------------------
-# mainline
-# --------------------------------------------------------------
-def main():
-   read_torelease()
-   fr = open(report, "w")
-   fr.write("\n\nAnalysis of " +  torelease + \
-            " dd " + time.ctime() + " (local time)\n\n")
-   analyze_torelease(fr)
-   check_blink(fr)
-   list_counts(fr)
-   list_unreleased_libraries(fr)
-   list_unreleased_samples(fr)
-   list_unreleased_projects(fr)
-   list_missing_files(fr)
-   create_new_torelease()
-   fr.close()
-   print "See", report, "for results."
 
-
-# === start ====================================================
-# process commandline parameters, start process
-# ==============================================================
+# === E N T R Y   P  O I N T ===
 
 if (__name__ == "__main__"):
 
-   runtype = None
+   runtype = None                   # default
    if (len(sys.argv) > 1):
-      runtype = sys.argv[1].upper()
+      runtype = True
 
-   print "Checking", torelease, "against content of Jallib"
+   print("Checking", torelease, "against content of Jallib")
    if (runtype == None):
-      print '   Excluding unreleased device files and basic blink samples'
-      print '   To include these specify any non blank character as argument'
-
-   main()
+      print('  --> Excluding unreleased device files and basic blink samples')
+      print('  --> To include these specify any non blank character as argument')
+   read_torelease()
+   try:
+      with open(report, "w") as fr:
+         fr.write("\n\nAnalysis of " +  torelease + \
+                  " dd " + time.ctime() + " (local time)\n\n")
+         analyze_torelease()
+         list_missing_blink(fr)
+         list_counts(fr)
+         list_unreleased_libraries(fr)
+         list_unreleased_samples(fr)
+         list_unreleased_projects(fr)
+         list_missing_files(fr)
+         create_new_torelease()
+         print("See", report, "for results.")
+   except:
+      print("Failed to create", report)
 
 
