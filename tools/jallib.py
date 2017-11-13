@@ -6,7 +6,7 @@
 # Adapted-by:
 # Compiler:
 #
-# This file is part of jallib (http://jallib.googlecode.com)
+# This file is part of jallib (https://github.com/jallib/jallib)
 # Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 #
 # Sources:
