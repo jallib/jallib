@@ -1,10 +1,10 @@
-#!/usr/bin/python
+#!/usr/bin/en python3
 # ---------------------------------------------------------------
 # Title: Sampleclas.py - Create list with count of sample types based on filename
 #
-# Author: Rob Hamerling, Copyright (c) 2012..2014, all rights reserved.
+# Author: Rob Hamerling, Copyright (c) 2012..2017, all rights reserved.
 #
-# Adapted-by:
+# Adapted-by: Rob Hamerling 2017: converted to Python3
 #
 # Revision: $Revision$
 #
@@ -27,37 +27,35 @@
 
 import os, sys
 
-base       = "k:/jallib"                                    # base directory of local copy of Jallib
-smpdir     = base + "/sample"                               # samples
-report     = "sampleclass.lst"
+base       = os.path.join("/", "media", "nas", "jallib")    # local copy of Jallib base
+smpdir     = os.path.join(base, "sample")                   # samples subdirectory
+report     = "sampleclass.lst"                              # list in curent working directory
 
 # --------------------------------------------------------------
 # mainline
 # --------------------------------------------------------------
 def main():
-   print "Collecting primary library usage"
-   fr = open(report, "w")
+   print("Collecting primary library usage")
    libcount = {}
-   for (root, dirs, files) in os.walk(smpdir):              # whole tree (incl subdirs!)
-      dirs.sort()
-      files.sort()
-      for file in files:
-         fn = file[:-4]                                     # remove extension '.jal'
-         word = fn.split("_", 1)
-         libname = word[1]                                  # 2nd part of filename
-         libcount[libname] = libcount.get(libname, 0) + 1
+   files = os.listdir(smpdir)                            # whole sample directory)
+   files.sort()
+   for file in files:
+      fn = os.path.splitext(file)[0]                           # remove extension
+      words = fn.split("_", 1)
+      libname = words[1]                                 # 2nd part of filename
+      libcount[libname] = libcount.get(libname, 0) + 1   # update/init counter
+   try:
+      with open(report, "w") as fr:
+         keylist = sorted(libcount.keys())
+         for lib in keylist:
+            fr.write("%4d  %s\n" % (libcount[lib], lib))
+   except:
+      print("Feil to write output:", report)
 
-   keylist = sorted(libcount.keys())
-   for lib in keylist:
-       fr.write("%4d  %s\n" % (libcount[lib], lib))
-
-   fr.close()
-   print "See", report, "for results."
+   print("See", report, "for results.")
 
 
-# === start ====================================================
-# process commandline parameters, start process
-# ==============================================================
+#  === E N T R Y   P O I N T ===
 
 if (__name__ == "__main__"):
 
