@@ -73,6 +73,7 @@ def pic_wiki(outfile):
    print("Building", title)
    with open(os.path.join(wikidir, outfile), "w") as fp:
       fp.write("#" + title + "\n\n")
+      fp.write("## (" + time.ctime() + ")\n\n")
       fp.write("<table>\n")
       fp.write("<tr><th>PIC type</th><th>Number</th><th>Datasheet Title</th></tr>\n")
       piclist = list(picspec.keys())
@@ -128,7 +129,8 @@ def group_wiki(outfile):
             groups[key].append(pic)
             groups[key].sort()                              # keep list in sequence
    with open(os.path.join(wikidir, outfile), "w") as fp:
-      fp.write("#" + title + "\n")
+      fp.write("#" + title + "\n\n")
+      fp.write("## (" + time.ctime() + ")\n\n")
       fp.write("##Sorted on DataSheet number\n")
       fp.write("###(see below for a list sorted on PIC type)\n\n")
       fp.write("<table>\n")
