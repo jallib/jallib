@@ -1,0 +1,1831 @@
+
+ ===================================================================
+ Summary of changes in the generation process of Jallib device files
+ ===================================================================
+
+ The generation process has had globally 3 phases:
+
+ 1.  March 2008 - October 2013
+     With a script in REXX language convertion MPLAB .edc files
+
+ 2.  May 2013 - May 2014
+     Using a script in Rexx language converting MPLABX .pic (xml-)files.
+
+ 3.  April 2014 - today
+     Using a script in Python language converting MPLABX .pic (xml-)files.
+
+
+ The changes in of all 3 phases are listed below.
+
+
+ --------------------------------------------------------------------
+   Summary of changes for dev2jal.cmd Rexx script
+ --------------------------------------------------------------------
+ 2008/03/17 - first attempt: 14-bits core only
+ 2008/03/18 - added GPR mirror specification
+            - repaired 'twin' names (xxx/yyy) in .dev file
+            - added names for compiler variables for isr
+            - repaired pragma code and eeprom
+ 2008/03/20 - added synonyms for PORT pins: (pin_A0..7), etc
+              for PORT and GPIO registers
+              including pin_xx_direction
+            - removed (some) duplicate bit namings
+            - removed Vdd / Vpp (comments)
+            - added parsing of .lkr file of chip
+            - added 'popular' aliases (like T0IE <- TMR0IE)
+ 2008/03/21 - script restricted to 14-bit core (12Fxxx, 16Fxxx),
+              when 12-bit core detected Dev2Jal12 script invoked
+            - Split scripts for 12, 14 and 16-bit PICs.
+ 2008/03/22 - Unused fuse bits represented in array '_fuses'
+            - Prepared for parsing of MPASM include file
+            - Added scan of fuse fields for 'really' used fuse bits
+ 2008/03/25 - Reorganised code (more separate procedures)
+ 2008/03/27 - Added shadows for ports
+            - Added pseudo variables for ports and port bits
+ 2008/03/29 - First attempt for 16-bits core
+            - Some global changes to support 18F series
+ 2008/03/30 - ID and fuse contents changed to 'byte',
+              ID and fuse addresses to dword (bot for 16-bit core).
+ 2008/03/31 - 'word' specification for 16-bit fields (e.g. TMR0)
+              and 'byte*3' for 24-bit fields (e.g. TBLPTR)
+            - 'word' specification for 16-bits fields (e.g. TMR1)
+ 2008/04/01 - .INC file not read anymore when not specified,
+              it is not (yet) used anyway
+            - simplified detection of fuses memory range (and core).
+ 2008/04/03 - Added ScriptVersion/Author parameters.
+            - Added comments with Vdd and Vpp information.
+            - First attempt for 12-bits core
+ 2008/04/04 - Skipping (most) comment lines in .dev file.
+ 2008/04/05 - Simplified data range collection from .lkr file.
+            - Splitted unshared/shared data specification
+ 2008/04/06 - Added comment with datasheet and Pgmg Specs.
+            - Because of the many redundant functions the
+              separate scripts are combined to a single script.
+ 2008/04/07 - Removed [optional] use of MPASM .inc files.
+            - ID-byte/word contents fixed: (12,14)0x000F or (16)0xFF.
+ 2008/04/08 - Several corrections for pseudo-variable and shadowing.
+ 2008/04/09 - Added 'put and 'get for port_x_low and port_x_high.
+            - Revised shared data specification for 16-bits core.
+ 2008/04/10 - Combined list_head functions.
+ 2008/04/11 - Warning mismatch unused fusebits removed.
+            - Constants for ID words/bytes uncommented.
+            - Combined fuse_def generation for all cores and made
+              separate procedures for bit groups like OSC, WDT, etc
+ 2008/04/12 - Several fixes in the shadowing functions.
+ 2008/04/13 - Made most shadowing 'put-procedures 'inline', which
+              required minor change of pin_Xy'put routines.
+              Note: port_X_low and port_X_high routines not inline.
+ 2008/04/16 - Removed Port aliases 'Rx' (duplicates with bit names).
+ 2008/04/17 - Restored read of .inc (for duplicate name control).
+ 2008/04/18 - Reduced output (temporary) to flash-PICs
+              (10F, 12F, 16F, 18F, incl 'HV' and 'LF' variants).
+            - added check on duplicate names -> comment line
+ 2008/04/19 - Register names included in duplicate check:
+              bits or bit-groups may not have name of a register.
+              Inserted line shows register of first occurance of dup.
+ 2008/04/20 - Duplicate field names are prefixed with register_name
+              and now generated as normal var (was comment line).
+            - With single fuse word no fuse-base array declared.
+ 2008/04/21 - Modifications in shadowing procedures/functions.
+ 2008/04/22 - Some more improvements in fuse_def generation.
+ 2008/04/23 - Fixed error in ID address array for 18F.
+            - Fixed truncation error with long names (16 -> 20).
+ 2008/04/24 - shadow registers initialised to 0b0000_0000.
+            - Revised fuse_def generation, esp. oscillator.
+ 2008/04/26 - Shadow registers initialised to actual Port value.
+            - Fuse_def generation (oscillator) further refined.
+ 2008/04/27 - Revised fuse_def for OSC completely: splitted OSC-type
+              and OSC1/2 pin assignments. To be improved: many dups.
+ 2008/04/28 - All 18F port bits declared 'shared'.
+ 2008/04/30 - Fuse_def OSC inprovements.
+            - Added read for hardware stack depth.
+            - Preparing for 16 memory banks (14-bit core).
+            - Improved error checking of register bits specs in .dev
+ 2008/05/02 - Fixed error in ID-bytes of 16-bits core (word -> byte).
+            - Added milti-bit variables if in register
+ 2008/05/04 - Fixed bug with missing .lkr file with 18Fs, .jal file
+              was created anyway while ram specs were missing.
+ 2008/05/31 - Reserved config bits not in 'pragma fuse_def'.
+ 2008/06/01 - Suppress duplicate names of (full) register.
+ 2008/06/18 - Removed 'const pic_xxxxxxx' definitions from .jal files
+            - Added creation of 'chipdef.jal'.
+            - Added fix for missing devid of 16F627/8 and 16F84A.
+ 2008/06/20 - Adapted Dir2Php scripts for PHP4/5 compatibility.
+ 2008/06/21 - Added config bytes specification example for
+              an 18F242 to UserGuide.txt.
+ 2008/06/23 - Generated file names are in lowercase (for Linux users)
+            - Improved file reading / parsing of comment lines.
+ 2008/07/06 - MPLAB 8.14 used as info source
+ 2008/07/10 - When 18LFxxxx.lkr not found then first alternative
+              is 18Fxxxx.lkr and second alternative 18Lxxxx.lkr.
+ 2008/07/13 - Discovered problem with .lkr files for 16F870/1/2.
+              Partly shared memory ... temporary changed to unshared
+              (in MPLAB files!!!) (thanks Joep Suijs)
+              Applies to 16870/1/2/3[A]/4[A]
+            - Skip .lkr lines which start with '//'
+            - Fuses_def names which start with digit get leading '_'.
+            - Bug fix for non-direction TRISx bits (esp. TRISE).
+ 2008/07/15 - Bug fix for assignment of non existing (shared or
+              nonshared) RAM to variables _pic_accum and _pic_isr_w.
+            - Builtin warning if PIC has only shared RAM, which is
+              probably incorrect in the mind of JalV2, except for
+              some specific chips (12F629/675,16F630/676).
+ 2008/07/16 - Removed code to process .inc files.
+            - Some cosmetic changes in the .jal files.
+            - Split procedures for reading .dev and .lkr files,
+              needed to be able to process 'generic' .lkr files.
+            - Added support for generic .lkr files (with #ifdef logic, etc).
+ 2008/07/17 - 0.0.24
+            - Removed enumeration of multi-bit fields (caused many
+              duplicate names and probably hardly used).
+              Note: When enumerated in the .dev files, this is maintained!
+            - Fixed bug with multi-bit offset (due to this code removal!).
+            - Extended bit name search to 8 lines per sfr (was 4).
+            - Removed 'pin_xy' naming for 'Rxy' names bits and excluded
+              also these non I/O-bits from shadowing (bug fix 18Fs).
+            - Bug fix: Bit field names other than Rxy for (multiplexed)
+              PORT pins are now part of the include file.
+            - Bit naming lines in .dev now also limited by 'nmmr' records.
+ 2008/07/18 - 0.0.25
+            - Improved Fuse_Def WDTPS naming for 18Fs for values > 32K.
+ 2008/07/19 - 0.0.26
+            - Bug fix for shared data: sometimes splitted in .dev file.
+            - 16F818/819 have 'abnormal' shared memory configuration.
+            - Shared and unshared memory for 'exceptional' chips now
+              hard coded in stead of scanning their .lkr files.
+            - 12- and 14-bits core now use same code for these.
+            - Changed pic_accum and _isw_w to high shared memory address for
+              16-bits core; is more consistent with the baseline and
+              midrange PICs.
+ 2008/07/21 - Include files will be stored in version-directory.
+ 2008/07/22 - Added sample program with comments to user guide.
+            - Filespecs used and shown with forward slashed (Unix style).
+ 2008/07/23 - 0.0.27
+            - Added procedures to set direction of upper and lower nibble
+              of Ports (Port_x_high_direction, Port_x_high_direction).
+            - When 'all' the .jal files go to a version directory,
+              otherwise the destination is the current directory.
+ 2008/07/25 - 0.0.28
+            - Added warning when PIC has no shared RAM.
+            - Added some simple debugging procedures to catch Rexx errors.
+ 2008/07/27 - 0.0.29
+            - Improved checks of range specs in load_sfr1x and load_sfr16
+            - Removed 'N' from all X2D() operations.
+            - 0.0.30
+            - Files stored directly in proper dir of svn tree '/jallib'.
+            - Initial loading of GoogleCode repository.
+ 2008/07/30 - 0.0.31
+            - Added License information line to all created files.
+            - 'include ChipDef' changed to 'include chipdef' in include files.
+ 2008/08/02 - All register subfields preceeded with registername.
+            - No more shadowing of 18Fs, but forced use of LATx in stead of
+              PORTx when PORTx is addressed for output.
+ 2008/08/03 - 0.0.32
+            - 18Fxxxx port 'shadowing' moved to LATx register declaration,
+              and pin_xy declarations use LATx register (was PORTx).
+            - Fixed error in header: missing CompilerVersion number.
+            - Significantly enhanced logic for 'enable_digital_io' procedure.
+ 2008/08/04 - 0.0.33
+            - Removed the separation of include files into core-specific
+              directories: all go into the device directory.
+            - MPLAB bug fix for 12F510, 12F606, 16F506 and 15F526:
+              'width' specs added for GPIO and PORTB in .dev files.
+ 2008/08/05 - 0.0.34
+            - Bug fix Blink script: pin_xy_direction now generated.
+            - MPLAB bug fix for 12F609: 'width' spec added for TRISIO in
+              .dev file
+ 2008/08/06 - 0.0.35
+            - Shadowing functions for 18Fs (use LATx for PORTx) temporary(?)
+              without pragma inline (compiler problem).
+ 2008/08/07 - Synchronise files with changes in the style guide
+              (parsable headers).
+ 2008/08/08 - 0.0.36
+            - Converted all variables to uppercase ('port' and 'pin').
+            - Bug fix for missing var declaration of low and high half of 18F
+              Ports, and corrected namings: PORTx_LOW -> PORT_x_LOW, etc
+ 2008/08/08 - 0.0.37
+            - Changed header: Compiler: >=2.4g (removed 'JalV').
+            - Correction of some forgotten capitals in 0.0.36
+ 2008/08/09 - 0.0.38
+            - Included '>=' to compiler version string (was hard coded).
+ 2008/08/11 - Corrections in fuse_def procudures WDT and WDTPS.
+            - Refinements for 'OSC' selection for fuse_def.
+            - Refinements for Brownout for fuse_def.
+            - PicName is now lower case: PicName compare strings changed.
+ 2008/08/12 - 0.0.39
+            - All names containing PORT_x renamed to PORTx, such as for:
+              . PORT_x_DIRECTION,
+              . PORT_x_LOW and _HIGH,
+              . PORT_x_LOW_DIRECTION and _HIGH_DIRECTION
+              Similarly for 'internal' names: _PORT_x_shadow, _flush, etc
+            - Re-instated 'pragma inline' for enable_digital_io() and
+              related procedures: no problems when no parameters passed.
+            - Some bug fixes for pragma fuse_def OSC and WDT:
+              . WDTCS (16F72x), DSWDTOSC (e.g. 18F24J11)
+              . OSC: handle T1OSCMX (e.g. 18F1230) and FOSC2 (e.g. 18F24J10)
+ 2008/08/13 - 0.0.40
+            - Bug fix: ANSEL0 was not reset in analog_off().
+            - Enhancement: all ANSELx registers reset in analog_off().
+            - Change in disable_adc():
+              . reset ADCON0 bit 0 (was whole register)
+              . set ADCON1 to 0xFF (was only bits 2..0)
+            - Added support for ANCONx registers in disable_analog().
+            - Minor internal script re-organization (order of procedures).
+ 2008/08/17 - 0.0.41
+            - Converted names of variables and procedures back to lower case
+              (with the exception of the port letter which remains uppercase
+              (as in portA). Converted chipdef.jal constants to uppercase.
+            - Removed the statements in the script to limit PIC selection
+              for testing. Script needs now 1 parameter (mandatory):
+               - 'prod' - destination is jallib\unvalidated\include\device
+               - 'test' - destination is jallib\test
+ 2008/08/20 - 0.0.42
+            - Chips with only shared memory must have their RAM declared
+              as non-shared (compiler limitation).
+            - Bug fix of incorrect limit for scanning registers/subfields.
+ 2008/08/21 - Not all NMMR registers are ignored anymore, some have to be
+              taken into account. These are declared as pseudo variables.
+              It mainly concerns OPTION_REG and TRISIO of the 12-bits core
+              and ANCONx and some others of the 16-bits core (the 14-bits
+              core seems not to have NMMRs). Current script has a preliminary
+              implementation of the pseudo variables.
+ 2008/08/22 - ADCON0 set to all zero to disable ADC.
+            - Bug fix parsing on 'ADDR' -> ' ADDR' (can be part of sfr name).
+ 2008/08/23 - 0.0.43
+            - Changed compiler version reference to '=2.4' (was '>=2.4g')
+            - JSG: added '()' with procedure declarations and calls.
+            - Direction pseudo variables added for all existing pins.
+            - Pseudo variables for OPTION_REG and OPTION2 subfields added.
+            - Replaced most assembler in pseudo variables by JAL code.
+            - Fixed bug for PORTA_direction (was fixed '6' now variable).
+            - disable_ADC(): ADCON0 reset to all zeroes (undone change of
+              0.0.40).
+            - ADCON1 for midrange PIC-dependent (0b0000_0111 or 0b0000_1111).
+            - Bugfix: wrong subfield declaration with 16-bits wide variables
+              (such as TMR1)
+ 2008/08/24 - 0.0.44
+            - Added shadow register for non-memory mapped registers, esp.
+              for ANCONx of the 16-bits core.
+            - Created a separate external' Rexx script to determine ADC-group.
+              For 18F series a header file of MCC18 compiler is used, for
+              baseline and midrange the data is manual input (datasheet info).
+              Script is called by Dev2Jal and returns the ADC group of a PIC.
+              Procedures for enable_digital_io() require ADC-group to select
+              proper register settings.
+              ADC-group is (temporary?) reported in disable_adc().
+ 2008/08/26 - 0.0.45
+            - Bug fix disable_ADC() for group ADC_V4: ADCON1 = 0b0000_1111
+ 2008/08/28 - Made circumvention for compiler bug with allocation of shared
+              memory with 18F series: shared memory declared as non shared.
+            - Removed ANSEL declaration for 12F609, 12HV609, 16F610, 16HV610.
+              (from .dev files in MPLAB).
+ 2008/08/31 - 0.0.46
+            - RAM locations 0x7F-0xFF of 18Fs (temporary) not declared
+              because of RAM allocation problem in compiler.
+              See also change dd 2008/08/28.
+            - Bug fix max unshared ram calculation.
+            - Allowed subfield of a register to have same name as the register
+              (example 'var byte PCLATH' and 'var bit*5 PCLATH_PCLATH').
+ 2008/09/01 - Added names of (some) register-subfields to the Name.- compound
+              variable in the script for checks on duplicates and existence.
+            - Added reset of T0CS for most baseline PICs in procedure
+              disable_analog().
+ 2008/09/02 - Normalized 'pragma fuse_def IOSCFS' to F8MHZ and F4MHZ.
+              Used in Blink-an-led programs to get 4 MHz in stead of 8MHz.
+ 2008/09/03 - 0.0.47
+            - JSG: removed space between 'put and opening bracket.
+            - Removed superflous declarations (var byte PORTx_low and _high).
+            - Script 'TEST' option expects now PICname (was .dev filespec).
+ 2008/09/04 - Moved bit declaration in 'put procedures from procedure body to
+              header (where possible) for improved readability and less lines.
+ 2008/09/05 - Datasheet number obtained from external script.
+            - Minor parsing improvements.
+ 2008/09/06 - 0.0.48
+            - Limit memory banks for 12- and 14-bits core to 4 (compiler
+              limitation). Applies currently only to 16F59, but warning issued
+              for all.
+ 2008/09/12 - Activated disabled 'pragma inline' statements for 18Fs, since
+              these were not the cause of the code generation problems.
+ 2008/09/13 - Declared the lower half of the access bank of the 18Fs as
+              shared again, and rehabilitated the upper half of bank 0 as
+              data memory.
+ 2008/09/14 - Combined scripts ADCgetgroup.cmd and DS_Number.cmd to a single
+              script 'devicespecific.cmd', to be extended later for other
+              device specific properties.
+ 2008/09/15 - Programming Specifications number obtained from external script
+              (and added corresponding procedure to devicespecific script).
+            - DataSheet and PgmSpec not read from .dev file comments anymore.
+ 2008/09/18 - 0.0.49
+            - Code indent 3 positions, was 2.
+            - Renamed common include file 'chipdef.jal' to 'chipdef_jallib.jal'
+              to be sure the Jallib version is included, not the compiler file.
+ 2008/09/29 - Corrected some omissions in datasheet table in
+              devicespecific.cmd, and added warning when PIC not in table.
+ 2008/10/10 - 0.0.50
+            - Added device specific default fuses (via devicespecific.cmd).
+              Source for 18Fs: MPlab .dev files, for others: Xwisp2.cfg files.
+ 2008/10/13 - 0.0.51
+            - Removed HS_USB from Fuse_Def options (temporary).
+            - Other enhancements for 'pragma fuse_def OSC' options.
+ 2008/10/17 - Bug fix for offsets of option_reg subfields of 12-bits core.
+ 2008/10/18 - Added forgotten disable_comparator() procedures for PICs
+              with 'deviating' comparator control register names (of the
+              format CMxCONy).
+              Added 'warning' in device files for all registers 'CMxxxx'.
+ 2008/10/21 - 0.0.52
+            - Removed 'warning' in device files for all registers 'CMxxxx'.
+ 2008/10/22 - Using MPLAB 8.15.
+            - Improvements in MPLAB 8.15:
+              * fixed several register name typos
+              * 12F519: added shadows for PCL, STATUS, FSR registers.
+              * 12F609: added bit fields for INTCON,PIR1,PIE,PCON,WPU,IOC.
+              * 18F13K50 and sisters: added EEADDRH, fixes of (NO)CLOCKOUT
+                fuses.
+              * 18F4585 several fixes of config bits.
+              * New .dev files for 18LF13K22, 18LF14K22
+              * New .lkr files for 18F66J90,18F67J90,18F86J90,18F96J90
+ 2008/10/23 - Fixed several MPLAB 8.15 .dev files (per to do list below).
+            - DevID in .dev file AND-ed with revision mask (to be sure).
+ 2008/10/30 - Changed default config bits  of the 18F series:
+              * CPUDIV configuration bits of 18Fs changed to 'no divide'.
+            - Moved some error checking from dev2jal.cmd to devicespecific.cmd.
+ 2008/11/01 - Added some missing and fixed other Datasheet and PgmSpec numbers.
+ 2008/11/07 - 0.0.53
+ 2008/11/15 - Changed license for device files from BSD to ZLIB.
+            - Converted script to Classic Rexx (was Object Rexx) for speed
+              and because of memory leaks.
+            - Reformatted description text in device files.
+            - Added more program specifications numbers to devicespecific.cmd.
+            - Reset PLLEN config bit: PLL by default disabled. Applies to
+              16[L]F72x and 18[L]F1xK22.
+            - Revised default fuses settings of 18[L]F2xJ11/18[L]F4xJ11,
+              and 18[L]F6xJ9x/18[L]FxxJ9x.
+ 2008/11/16 - Multiple code size spec in .dev file.
+ 2008/11/17 - PICs of the extended 14-bit architecture are excluded
+              (specifically 16f19xx series).
+ 2008/11/21 - 0.0.54
+            - Some dev2jal script code cleanup and streamlining.
+ 2008/12/09 - Of PICs with only shared RAM 2 bytes reserved as shared RAM
+              for _pic_isr_w and _pic_accum, rest as unshared.
+ 2008/12/13 - 0.0.55
+            - Minor change in read procedures  of .dev and .lkr files.
+            - Removed comment in chipdef.jal about 'local' variables in
+              a conditionally compiled piece of code.
+ 2008/12/29 - 0.0.56
+ 2009/01/01 - Copyright notice 2008..2009
+ 2009/01/02 - Remove 'unvalidated' directory from destination path.
+ 2009/01/24 - Improved exclusion of extended 14-bit core PICs.
+            - Updates w.r.t. MPlab 8.20:
+              * New PICs added to devicespecific.cmd
+              * Made the 'to do with new release' corrections as below.
+            - MSSP registers normalized. Details: see devicefiles.html.
+            - Fixed sometimes wrong determination of program memory size
+              (for PICs with support for extern memory).
+ 2009/01/29 - Fixed program memory size specification of 18Fs (now in words,
+              for baseline and midrange it was already in words).
+ 2009/01/30 - 0.0.57
+ 2009/02/13 - Renamed OSCCON_IOSCF to OSCCON_IRCF for:
+              12F635, 16F631/36/39, 16F677, 16F684/5/7/8/9, 16F690.
+            - OSCCON_ICRF changed to OSCCON_IRCF for 16F882/3/4/6/7.
+            - Updated devicespecific.cmd with recent datasheet releases.
+ 2009/03/01 - 0.0.58
+            - Updated devicespecific.cmd with recent datasheet releases.
+            - Bug fix for NMMRs of 12-bits core: multi-bit bit fields
+              declared as bit* field (was byte).
+ 2009/03/02 - 0.0.59
+ 2009/03/06 - Update of devicespecific.cmd and DS/PS wiki's for new and
+              updated datasheets.
+ 2009/03/11 - Bug fix: PORTx'get functions for 18F series read LATx,
+              changed to read PORTx, for pin_xy'get functions too.
+ 2009/03/15 - Extended and improved doc file devicefiles.html.
+ 2009/03/17 - 0.0.60
+            - Removed superfluous code for SSPCON1 in list_sfr1x procedure.
+            - Renamed procedure 'list_tris_shadow' to 'list_tris_nibbles'
+              (because TRIS registers are not shadowed!).
+ 2009/03/18 - Removed some reduncies in dev2jal script.
+            - Revised default fuse settings of newer PICs.
+ 2009/03/19 - Added comments to fusesdefault procedure in devicespecific.cmd
+              to indicate if settings are unchecked/checked/tested.
+            - Added to devicefiles.html a section about compiler
+              requirements and the consequences for some PIC types.
+ 2009/03/25 - Removed aliases for INTCON_TMR0IE/TMR0IF (was INTCON_T0IE/T0IF)
+ 2009/03/25 - 0.0.61
+            - Normalized Write protection (WRT) fuses for midrange PICs with
+              self-write capabilities (applies only to 16F8xx series).
+ 2009/03/28 - Using MPlab 8.30 as source, major differences:
+              * ANSEL of 12F609 16HV610 and their HV variants now declared
+                (undo a change dd 2008/08/28)
+              * Rename of several register subfields, for example of
+                the UEPx registers of the 18F13K50 and 18F14K50.
+              * Several corrections, mainly sizes of subfields and bitmasks.
+              * No additional PICs!
+            - Fixed error in fuse_def PWRTE of 16F72x/16LF72x and some of
+              the 18F series (was sometimes called NPWRTE or NPWRTEN)
+ 2009/03/29 - 0.0.62
+            - Corrected minor error in headers: filespec of .lkr file
+            - Reported errors and omissions in MPLAB 8.30 to Microchip
+              (ticket 1-140852).
+ 2009/03/30 - Some minor script improvements.
+ 2009/03/31 - Added display of elapsed time to script.
+ 2009/04/06 - ADC group setting checked against MCC18 version 3.30.
+            - New ADC group: ADC_V12 for 18F66J90/67J90, 18F86J90/87J90
+            - ADC group of baseline and midrange checked against datasheets.
+            - Added unchecked/checked comment to ADC-group assignment in
+              devicespecific.cmd (all 'checked').
+ 2009/04/07 - 0.0.63
+            - testing with compiler version 2.4k (beta)
+ 2009/04/13 - Changed default config word specifications from hex to binary
+              format (conform datasheet).
+            - Appended config bytes of 18Fs with comment CONFIGxL/H and
+              of midrange PICs with multiple configuration words with CONFIGx.
+ 2009/04/14 - Revised DeviceSpecific.cmd for better performance (25%):
+              all PIC specific data read once in associative memory.
+ 2009/04/15 - Set PLLEN bit in default config bits of 16(L)F72x to enabled.
+            - Added specification of constant ADC_GROUP to every device file.
+              Value '-' for PICs without ADC module, 'ADC_Vxxx' for others.
+ 2009/04/16 - 0.0.64
+            - Added error checking for missing specs in devicespecific.cmd.
+            - Added a set of ADC-group constants to chipdef_jallib.jal.
+            - ADC_GROUP in device files specify now a symbolic name of
+              one of these constants (was string).
+              Specification of ADC_GROUP = 0 means: no ADC module present.
+ 2009/04/17 - 0.0.65
+ 2009/04/18 - Minor changes in output formatting (for html doc generation).
+ 2009/05/12 - Added enumeration of bitfield VCFG of ADCON0 and ADCON1.
+ 2009/05/13 - Removed code for bitfields > 8 bits for 12- and 14-bits core,
+              these types of fields seem not to exist in .dev files.
+ 2009/05/14 - Added bit*2 declaration ADCONx_[P]VCFG for devices which have
+              only the enumerated names in their .dev files.
+ 2009/05/22 - Fix for declaration of SFRs of 18Fs: only SFRs above
+              (0xF00 + AccessBankSplitOffset) to be declared 'shared'.
+ 2009/05/25 - 0.0.66
+ 2009/06/01 - 12F519 has gpr 'PORTB' in .dev file in stead of GPIO and
+              and nmmr 'TRISB' (in datasheet TRISGPIO instruction) in stead
+              of TRISIO register.
+              Corrected by editing .dev file: PORTB -> GPIO and TRISB -> TRISIO
+              and similarly for their subfields.
+ 2009/06/05 - Text enhancements in devicefiles.html.
+ 2009/06/05 - Added 12F519 for setting T0CS in enable_digital_io().
+ 2009/06/07 - Declare 'flashdata' in .dev files as 'eeprom'.
+              Applies with MPLAB 8.30 to 12F519, (12F520), 16f526.
+ 2009/06/15 - 0.0.67
+            - Added pseudo variable 'ADCONx_CHS' for PICs with splitted CHS
+              subfield in ADCONx register (applies to 16[L]F737/747/767/777).
+              NOTE: Assumes CHS3 has lower offset than CHS!
+ 2009/06/17 - 0.0.68
+            - Added pin_A3,1,0 and _direction for 18F13K50,14K50 and
+              their LF variants (by correcting .dev files of MPLAB V 8.30).
+ 2009/06/28 - 0.0.69
+            - Redone some changes of 0.0.65 - 0.0.68 which were lost with
+              0.0.68 due to synchronisation error between two development
+              systems of the author of the device files.
+            - Using MPLAB 8.33 as source, new device files for:
+              12F520, 18F66J93, 18F67J93, 18F86J93, 18F87J93, 18F87K22,
+              18F87K90.
+            - ANSEL of 12F609, 12HV609, 16F610, and 16HV610 rehabilitated.
+              These chips have no ADC, but do have an analog comparator!
+            - Start address of EEPROM (or flash) memory taken from .dev file
+              when the region specifies a startvalue > 0 (some baseline PICs).
+            - Fuse_def ENICPORT not specified anymore: only very few (18F) PICS
+              have a dedicate ICD/ISCP port and .dev files do not specify it
+              completely most of the times (e.g. only 'disable', not 'enable').
+            - The following fuse_defs are not specified anymore because the
+              config bits are not supported for the mentioned PICs:
+              For 18F2410,2510,2515,2610,4410,4510,4515,4610: CPD, WRTD
+              For 18F4585: EBTR_3, CP_3, WRT_3
+              For 18F6520,18F8520: CP_4/5/6/7,WRT_4/5/6/7,EBTR_4/5/6/7
+              Note: This action by the dev2jal script is required because the
+                    .dev files still contain the specifications of these config
+                    bits (although incomplete).
+ 2009/06/29 - 0.0.70
+            - Bug fix: port shadowing of midrange re-establised.
+              (error was introduced with script 0.0.68).
+ 2009/07/01 - 0.0.71
+            - Added pin alias declarations from pinmap.py.
+              Note: No provisions yet for multiplexed (config bit controlled)
+                    function pins (most frequently: pin_CCP1 and pin_CCP2
+                    pins). First occurence in .dev declared, others suppressed.
+            - Some re-alignments for readability.
+ 2009/07/02 - 0.0.72
+            - Added: const byte ADC_NTOTAL_CHANNEL = <number> (of AN channels)
+              (when PIC has no ADC module this const is forced to 0)
+            - Modified Pinmap file contains provisions to avoid duplicate
+              names, solving issue with Note of version 0.0.71.
+ 2009/07/03 - Multi-bit subfields of ANSELx registers are enumerated.
+            - Normalized ANSx subfields of ANSELx and ADCONx to JANSEL_ANSx
+              naming
+            - Declarations of 8- and 16-bit wide subfields with the same
+              name as the register itself have been removed (considered
+              not very useful with register prefix!). When names are not
+              equal a bit*8 or bit*16 variable is declared.
+            - Fixed some minor errors and omissions of version 0.0.71.
+ 2009/07/20 - 0.0.73
+            - More compact format of pinmap.cmd for better performance.
+            - PICTYPE, DATASHEET and PGMSPEC (without suffix) declared
+              as string constants, and added DEVICE_ID as word constant.
+              Removed corresponding comment lines.
+            - Incorporated some corrections for MPLAB .dev files,
+              previously done by editing of .dev files.
+            - Using a table for fuse_def normalization
+              (currently only for pragma fuse_def OSC).
+ 2009/07/21 - 0.0.74
+            - RC and INTOSC default to CLKOUT.
+            - Removed USB indication from 'pragma fuse_def OSC' keywords.
+ 2009/07/22 - 0.0.75
+            - Generation of pin_ declarations for the 18Fs based on PORTx
+              register specifications in .dev file (was LATx register).
+              Reason: some input-only pins have no corresponding LATx_bit.
+ 2009/07/23 - 0.0.76
+            - Using new pinmap file (result of Jallib issue #78)
+ 2009/07/28 - Pragma code for 16-bits core specified in bytes
+              (see change dd 2009/01/29, and Jallib issue #57).
+ 2009/07/31 - Replaced '<type> var ... is  ...' by  'alias ... is ...'
+              (requires JALV2 compiler version 2.4l).
+            - Removed TRISAx aliases for TRISIOx pins of smaller PICs.
+              These names are not used by libraries and should not be used
+              by application programs.
+              Note: Alias tables add pin_GPx aliases for these PICs.
+ 2009/08/02 - 'bit*4 PS' of T0CON splitted into 'bit PSA' and 'bit*3 PS'
+            - Bit TxSYNC in TxCON register normalized to NTxSYNC for:
+               - T1CON of baseline and midrange
+               - T1CON, T3CON, T5CON and T7CON of 18F series.
+ 2009/08/03 - 0.0.77
+            - Minor bug fix for declarations of JANSEL_ANS fields.
+ 2009/08/05 - Normalized TxCON_TOUTPS -> TxCON_TxOUTPS for 18Fs
+              (not for baseline).
+            - Fixed missing EECON bit fields of 16F526.
+            - Cleaned up procedures list_sfr_subfields1x and
+              list_sfr_subfields16.
+ 2009/08/06 - 0.0.78
+            - Integrated parsing of pinmap_pinsuffix.json in dev2jal script
+              (no more separate script and intermediate pinmap.cmd needed).
+            - Fix for pin shadowing of 18Fs. Pseudo variables for pins set
+              LATx (was PORTx). Bug was introduced with 0.0.75.
+ 2009/08/07 - 0.0.79
+ 2009/08/08 - Most constructs with multiple 'else if' replaced by a select
+              construct for better readability and maintenance.
+ 2009/08/10 - Suppress pin_A4_direction declarations for T0CKI bit
+              for 16F54/57/59 and 16HV540.
+ 2009/08/29 - 0.0.80
+            - MPLAB 8.36
+            - Rename pins of GPIO register from GPIOx to GPx (when applicable)
+            - Do not generate device file when no datasheet of PIC available.
+ 2009/08/30 - 0.0.81
+ 2009/09/01 - Devicespecific.cmd converted to simple JSON format.
+              Dev2jal script processes devicespecific.json (was
+              devicespecific.cmd) for device specific information.
+ 2009/09/03 - Some code improvements (use of delstr and insert).
+ 2009/09/04 - Added aliases for ECCPxCON registers and their subfields to be
+              able to access these as legacy CCP modules with corresponding
+              names.
+              For 18f448, 18f4480, 18f458, 18f4580, 18f4585, 18f4680, 18f4682
+              and 18f4685 the ECCP module is accessible as second CCP module
+              (ECCP2CON, etc).
+ 2009/09/05 - Extended devicefiles.html with a chapter about CCP module naming
+              and aliases (work in progress).
+            - Added bits*2 field 'DCxB' for CCPxCON registers with
+              single bits fields CCPxX and CCPxY (16F91x and several 18Fs)
+              or single bits DC1B1 and DCxB0 (16f88x).
+            - Fixed naming error of ECCPR1L subfield of 18F448 and 18F458.
+ 2009/09/06 - 0.0.82
+            - Added aliases for some SSP1... registers of the 18F series and
+              their subfields to be able to address these with midrange names
+              (e.g. by the spi_master_hw and i2c_hardware libraries).
+            - SSP aliases in spi_master_hw and i2c_hardware libraries removed
+              (file i2c_hardware_aliases.jal deleted).
+ 2009/09/07 - 0.0.83
+ 2009/09/22 - Some changes to simplify running the script on other platforms
+              than my eComStation: with 'Regina' Rexx and 'Regutils'.
+              Added comments with instructions for probable changes when using
+              the script on a different platform or system configuration.
+ 2009/09/26 - For 18Fs with SFRs with shared address (e.g. 18F87J50 family,
+              DS39775 and 18F87J11 family,DS39778) now all NMMRs ('alternate'
+              registers) are declared with pseudo variables and:
+              * the shadow registers are initialised to 0x00 (was 0xff),
+              * the WDTCON_ADSHR bit is initialised to 0 explicitly to ensure
+                default (legacy) SFR mapping.
+              Note: Subfields of these NMMRs are not declared (yet).
+ 2009/09/27 - Indentation now conform JSG (like JAL files: 3 spaces per level).
+ 2009/09/28 - Devicefiles.html extended with a section about generating device
+              files on other systems or platforms. Also a paragraph added
+              about 18F NMMRs (SFRs with shared memory address)
+ 2009/10/06 - Reversed PicName and Property in compound variable PicSpec.
+ 2009/10/11 - Added 'get functions for NMMRs of 18F series (see 2009/09/26).
+            - Added sub-field declarations for NMMRs of 18Fs.
+ 2009/10/12 - Changed 'put and 'get procedures for NMMRs of 18Fs: no more
+              separate flush or read procedures, no more shadow registers.
+              SFRs given an '_' prefix to prevent compiler loop when
+              reading the SFR in 'get procedures.
+ 2009/10/13 - MPLAB 8.40: required several changes in the script.
+            - Normalized more fuse_defs:
+              - VCAPEN of 16F72x family (requires change in samples).
+              - fixed bug for MCLR setting 16F818/819.
+            - Added several new mapping lines to fusedefmap.cmd.
+            - Extended the check for fuse_defs on 'enabled'/'disabled' pairs.
+ 2009/10/15 - 0.0.84
+ 2009/10/28 - Reorganized script for generation of fuse_def declarations
+              (removed many redundancies).
+            - Merged scripts for creating datasheet and PIC group wikis and
+              added URL to PIC group tables, added to tools directory.
+ 2009/10/29 - Fuse_def 'CCPxMX' normalized to 'CCPxMUX',
+              and its possible values normalized to pin_xy.
+              Note: where applicable: 'microcontroller mode' is assumed.
+            - Removed leading, trailing and multiple consecutive underscores
+              from Fuse_def keywords.
+ 2009/10/30 - 0.0.85
+            - Pinmap.py: added 12f617, updated 12F615, 12HVF615.
+            - New device file for 12F617
+            - Devicefiles.html made up-to-date with recent changes.
+            - Fixed 'numeric' keyword with fuse_def CP in 16f873/4 device files.
+ 2009/11/01 - Fuse_def for size of boot block: keywords normalized to Wx or WxK
+              (x is number of words).
+ 2009/11/03 - Fuse_def WPFP keywords normalized to P<page number>
+ 2009/11/03 - Grouping of fuse_def key synonyms more strictly by comparing
+              whole key (was with scan for a substring in key).
+ 2009/11/04 - Added keyword description from .dev file as comment with every fuse_def.
+            - Fuse_def BACKBUG and BKBUG synonyms of DEBUG.
+            - Removed duplicate keywords of ALL fuse_defs.
+ 2009/11/05 - Fuse_def WDTCS keywords normalized to STANDARD and LOW_POWER.
+ 2009/11/06 - 0.0.86
+            - Fuse_def key synonyms reduced to a single key.
+            - Several fuse_def keys renamed (e.g. xxxxMX -> xxxxMUX).
+            - Most fuse_def long descriptions reduced to a single word.
+            - Added errorlevel control of messages generated by the script
+ 2009/11/08 - Extended the section about fuse_defs in devicefiles.html
+ 2009/11/13 - 0.0.87
+            - Fixed omitted generation of ADCON0_CHS'put(), introduced by
+              mistake with code for errorlevel of msgs (2009/11/06).
+ 2009/11/13 - Compiler 2.4m
+ 2009/12/23 - MPLAB 8.43
+            - Fixed bug with missing IOSCFS keyword when not numeric.
+            - Fixed wrong 18F config byte names in comments.
+            - Added comment when chip has no ID memory.
+ 2009/12/27 - 0.0.88
+            - Adapted the specification of ID bytes to 2.4m style
+              (add 'pragma ID', remove old provisional declarations).
+ 2009/12/29 - 0.0.89
+            - Added main procedure for extended midrange (PIC_14H)
+            - Created SFR handling for 14H core from copy of midrange
+              same for bit fields handling.
+            - Added OSC descriptions of 14H core to fusedefmapping.cmd.
+ 2009/12/30 - ANSELA now explicitly handled for ADC (JANSEL names).
+              excludes ANSELD, which seems not for ADC (in 14H core).
+            - Shadowing for 14H core in core 16 style (LAT registers).
+ 2010/01/01 - PIC ID in jallib_chipdef core limited to 2 chars (14H -> 14).
+            - Simplified compiler required declarations (esp. status1x).
+            - Fusedefmap.cmd updated for extended 14 bits PICs.
+            - Updated devicespecific.json for extended 14 bits PICs.
+ 2010/01/02 - 16F54,57,59 withdrawn from JalV2: no more device files.
+ 2010/01/02 - Updated pinmap.py for 16(L)F720/1.
+ 2010/01/03 - Added configuration byte/word name to fuse_def sections.
+            - Revised JANSEL numbering for 14H code (many ANSELx registers).
+            - Test for WDT fuse_def 'disabled' in front of 'controlled'
+              (18Fs .dev files have 'disabled-controlled' in description)
+ 2010/01/04 - Added 16HV540 to list of unsupported PICs (is OTP PIC!).
+ 2010/01/31 - Added aliases without suffix for PICs with 2 USARTs
+              (Jallib issue #110).
+            - Added aliases with '1' suffix for USART registers when the
+              .dev file contains unqualified names for the first USART.
+ 2010/02/03 - 0.0.90
+            - Compiler 2.4n-beta
+            - Included separate generation of '_ind0' for 14H core into
+              generation of other compiler required declarations.
+ 2010/02/03 - 14H core: many 'binary' bit fields enumerated in .dev files
+              Suppressed enumerated fields and added multi-bit fields:
+              - bit*3  OPTION_REG_PS
+              - bit*5  WDTCON_WDTPS
+              - bit*4  OSCCON_IRCF
+              - bit*6  OSCTUNE_TUN
+              - bit*2  T1CON_T1CKPS
+              - bit*2  TxCON_T1CKPS
+              - bit*4  TxCON_T2OUTPS
+              - bit*5  ADCONx_CHS
+              - bit*2  CCPxCON_PxM
+              - bit*2  CCPxCON_DCxB
+              - bit*4  CCPxCON_CCPxM
+              - bit*4  SSPCONx_SSPM
+              Other multi-bit fields may be added later (on request).
+ 2010/02/05 - 14H core: added alias SPBRG for SPBRGL
+ 2010/02/07 - 0.0.91
+            - Removed code to handle CCPxCON_VCFG and _CCPxX/Y for 14H core.
+            - Fixed bug for midrange: VCFG bits are in ADCONx, not CCPxCON
+              (enumeration failed, but nobody missed enumerated bitfields).
+ 2010/02/16 - replaced address list for _pic_accum, etc. by single address.
+ 2010/02/17 - _pic_accum and _pic_isr_w always declared 'shared'
+              'Shadow' locations in unshared memory excluded from pragma data!
+              Added warning for 16F73/4 for calculations with multibyte vars.
+ 2010/02/18 - 16 new device files for 18[L]F2X/4XK22
+            - pinmap.py and datasheet.list updated for above new PICs
+ 2010/02/19 - 0.0.92
+            - Fixed JANSEL_ANSxx settings for 18[L]F2/4xK22.
+            - Added T0CON-like aliases to timer 0 control fields in OPTION_REG
+              for baseline and midrange (issue 111).
+ 2010/02/20 - Fixed missing '_ind' for 18F
+ 2010/02/25 - 0.0.93
+            - OPTION_REG_TMR0xx renamed to OPTION_REG_T0xx
+            - Some improvements in devicefiles.html.
+            - Check for OPTION_REG_T0CS made generic (for all 12-bits core PICs)
+            - T1CON_TMR1CS1/0 bits declared as bit*2 T1CON_TMR1CS
+ 2010/03/01 - 0.0.94
+            - Port nibble pseudo variables: added 'pragma inline'
+            - warning for > 16-bits calculations with 16f73/74 improved
+ 2010/03/05 - 0.0.95
+            - Removed double quotes around sources in header.
+            - MPLAB 8.46
+            - 12 new device files and blink samples, for:
+              18f23k22, 18f24k22, 18f26k22, 18f43k22, 18f44k22, 18f46k22 and
+              their LF variants.
+ 2010/03/07 - 0.0.96
+            - Update pinmap.py for 16[L]F18xx and 16[L]F19xx.
+ 2010/03/12 - Change of devicespecific.json: all items have a single
+              property, thus the 'list' format is overdone.
+ 2010/03/13 - 0.0.97
+            - New device files for 12F182x, 16f182x, 16F194x and their
+              LF variants.
+            - Fixed JANSEL-ANSxx numbering for extended midrange.
+ 2010/03/15 - 0.0.98
+            - Fixed missing JANSEL declarations for 16f91x/946
+ 2010/03/24 - Revised script for JANSEL_ANSxx numbering.
+              Algorithm for all cores in single separate procedure:
+              Fixes several JANSEL_ANSx misnumberings and errors
+              with memory type declarations with 18Fs: shared or not.
+ 2010/03/25 - 0.0.99
+            - Suppress JANSEL_ANSx declaration when PIC has no pin_ANx
+              (according to pinmap_pinsuffix.json).
+ 2010/03/26 - 0.1.00
+ 2010/04/08 - Added some new ADC groups (ADC_V11_1, ADC_V13)
+            - Corrected several ADC_group settings in devicespecific.json
+              with info in pconfig.h of MPLAB C18 V3.35 Lite.
+ 2010/04/12 - Added 16F722A and 16F723A and their LF variants
+              (added these to pinmap.py as well).
+ 2010/04/13 - 0.1.01
+            - Corrected 'long' fuse_def PMPMUX with 18f87j11
+ 2010/04/16 - MPLAB 8.50
+ 2010/04/17 - sfr_subfields16: only first accepted 'BIT'-line processed to
+              prevent duplicate names and additional bitfield enumerations
+            - Fixed fuse-def brownout keyword duplicates (18F23K20 etc.).
+            - Moved 'todo' list to devicefiles.html.
+ 2010/04/19 - 0.1.02
+            - Corrected datasheet errors in devicespecific.cmd,
+              requires update of datasheet wikis.
+ 2010/04/22 - Added 16F707 and LF variant after update of
+              datasheet.lst, pinmap.py, devicespecific.json.
+            - Enhanced devicefiles.html with more instructions to generate
+              device files especially for new PIC.
+ 2010/04/23 - Compiler required variables _RP0 and _RP1 to lower case.
+ 2010/04/24 - 0.1.03
+            - Corrected DeviceID of 16f84a.
+ 2010/06/14 - Added bit*2 field for RTCCFG_RTCPTR1/0.
+            - Corrected specifications of MPLAB names in dev2jal script
+              (upper case where appropriate, for use under Linux).
+ 2010/06/16 - Added bit*2 field for RTCCFG_RTSECSEL1/0.
+ 2010/07/01 - MPLAB 8.53
+            - Changed directory names to the case as they are after
+              install of MPLAB (mixed case).
+ 2010/07/02 - Update of devicefiles.html for RTCC modules.
+            - Extended table of contents of devicefiles.html.
+ 2010/07/03 - Update pinmap.py: added some new devices.
+              18f26j13, 18f26j53, 18f27j13, 18f27j53,
+              18f46j13, 18f46j53, 18f47j13, 18f47j53,
+              18f65k22, 18f65k90, 18f66k22, 18f66k90, 18f67k22, 18f67k90,
+              18f85k22, 18f85k90, 18f86j72, 18f86k22, 18f86k90, 18f87j72
+              and their LF variants (if present).
+              Some corrections for existing devices.
+ 2010/07/05 - Added support for FuseDef SOSCSEL, LS48MHZ, BORPWR.
+ 2010/07/06 - Revised handling of fuse_def WDT.
+              Note: For backward compatilibilty with previous device files
+              the 18Fs have 'disabled' where 'control' would be more
+              appropriate, since 18Fs have WDT software control.
+            - Minor improvements in fuse_def specifications.
+ 2010/07/19 - 0.1.04
+            - added handling of 'CMxCON' to enable_digital_io()
+              for PICs like 18f26j11, 18f46j53, etc.
+            - Added missing 'fusedef INTOSC_NOCLKOUT' for many PICs
+              Note: Changed INTOSC value in fusedefmap.cmd to INTOSC_NOCLKOUT.
+                    16f91x are exceptions, handled in dev2jal script.
+            - Some other (minor) fuse_def OSC corrections in fusedefmap.cmd.
+            - Improvement of fuse_def WDT handling (added missing keywords).
+ 2010/07/20 - 0.1.05
+ 2010/08/18 - MPLAB 8.56
+            - Corrected some typos in devicefiles.html and added a paragraph
+              about the STATUS_SHAD register.
+            - Register bit fields can now also have a 'twin' name in
+              format xxx_yyy ('_' in stead of '/')
+              (e.g 12f1822 T1GCON register: T1GGO_nDONE).
+              Exceptions:
+               - names starting with 'PRI_'
+               - names ending with '_SHAD'
+ 2010/09/05 - Added check for duplicate device const in chipdef_jallib.jal,
+              and add an 'a' suffix for the duplicate device.
+ 2010/09/08 - 0.1.06
+ 2010/09/16 - Added device files for 16f/LF720/721 (updated pinmap.py).
+            - ADC_GROUP assignments based on header files of MCC18 3.36.
+            - Fixed some errors and omissions in devicespecific.json and
+              devicespecific.json.
+ 2010/09/20 - Devid-suffix 'a' in chipdef_jallib only allowed for PicNames
+              ending with '39'.
+ 2010/09/21 - Corrected ADC groups in devicespecific.cmd for 18F/LFxxK80
+              (added group ADC_V13_2)
+ 2010/09/30 - Corrected several errors in devicespecific.cmd. a.o. for SDO/SDI
+ 2010/10/01 - Added aliases for SPI pin: SDI for SDI1, SDO for SDO1, SCLK for
+              SCLK1 and SS for SS1 in pinmap.py (see Jallib issue 136).
+            - Added fuse_def OSC phrases for 16[l]lf720/721 to fusedefmap.cmd.
+ 2010/10/02 - 0.1.07
+ 2010/10/07 - Added aliases for I2C pins: SDA for SDA1, SCL for SCL1 in
+              pinmap.py (see Jallib issue 136).
+            - Added section in devicefiles.html about pin aliases for PICs
+              with multiple SPI or I2C modules.
+ 2010/10/13 - 0.1.08
+ 2010/10/14 - Tested 16f1828_blink -> released 16[L]F1824/28.
+ 2010/10/15 - Added un-numbered aliases for the first or only MSSP module
+              of the 14H core PICs.
+            - Several corrections handling of SSPxCONy registers of 14H core
+              (suppress enumeration, generate multi-bit SSPM field).
+ 2010/10/16 - Added aliases PIR1_SSPIF for PIR1_SSP1IF and
+              PIE1_SSPIE for PIE1_SSP1IE for extended midrange and 18F PICs.
+ 2010/10/17 - 0.1.09
+ 2010/10/20 - Normalized some new fuse_def keywords, mainly with 18Fxxk22
+              family (P2BMX, T3CMX).
+            - Fixed some pin alias names in pinmap.py (typo in datasheet!).
+ 2010/10/21 - 0.1.10
+            - Some fuse_def handling routines made more general purpose.
+ 2010/11/03 - ADCONx_ADCS enumeration replaced by var bit*3 ADCON1_ADCS
+              Applies to 14H core and some 14 core PICs (16f720/1).
+            - Added a pseudo variable for PICS which have their ADCS bits
+              scattered over ADCON0 and ADCON1.
+ 2010/11/05 - Added a section in devicefiles.html to explain the declaration
+              of the pseudo variable for ADCON0_ADCS for some PICs.
+            - Changed ADCCONx_CHS012 into ADCCONx_CHS210
+              (cosmetic change, represents better the bit numbering).
+ 2010/11/06 - 0.1.11
+ 2010/11/08 - Added constant ADC_ADCS_BITCOUNT
+ 2010/11/09 - Added real ADCCON0_ADCS variable as anchor for pseudo variable.
+ 2010/11/10 - 0.1.12
+            -  (added check for slow osc. in adc_clock.jal)
+            - Moved 12/16 F18/19xx to ADC group ADC_V0 (was ADC_V1).
+            - fusedef OSC descr.: also multi underscores reduced to single.
+ 2010/11/11 - MPLAB 8.60
+              Many config bits changed description in MPLAB .dev files.
+              Needed rebuild of fusedefmap.cmd, with chances that new
+              fuse_def OSC keyword don't match with previous versions
+              (because of errors in previous or new fusedefmap.cmd!).
+              Some fuse_defs have an new name (e.d. USBPLL -> USBDIV).
+              But in general MPLAB 8.60 is more consistent.
+ 2010/11/12 - Improved msglevel handling (added procedure 'msg' to script)
+            - Updated pinmap.py and derived files.
+ 2010/11/13 - All CMxCONx registers initialized to 0b0000_0000
+              (no more 0b0000_0111) in procedure comparator_off().
+ 2010/11/14 - Several minor changes such as:
+              - added var bit*2 OSCCON_SCS when .dev file has enumerated bits
+              - improved range keyword generation in fuse_def specifications
+              - for 18Fs: fuse_def FSCM renamed to FCMEN     )
+                          fuse_def USBDIV renamed to USBPLL  }compatibility
+                          fuse_def CCPMUX renamed to CCP1MUX )
+              - added some missing SSP1CON aliases
+ 2010/11/15 - 0.1.13
+ 2010/11/19 - Fixed CMxCONy initializations in comparator_off() procedure:
+              - undone the change dd 2010/11/13
+              - more selective: only PICS with bit*3 CM subfield in CMCON(0)
+                are set to 0x07, other CMxCONy registers set to 0x00.
+ 2010/11/20 - split off library constants to separate file
+              constants_jallib.jal, to be included by chipdef_jallib.jal.
+ 2010/11/21 - 0.1.14
+ 2010/11/23 - Removed from script: providing devid for 16f627/628/84A
+ 2010/11/24 - Added pin declarations for input only pins when the pin
+              has no entry in the LAT register (of MPLAB .dev file).
+              Applies to 14H and 16 bits core.
+ 2010/11/26 - Added some missing aliases in pinmap.py
+ 2010/11/26 - 0.1.15
+ 2010/11/29 - Compiler version 2.4o (beta dd 28 nov 2010)
+            - Improved compilesamples.cmd (master will destroy queue after
+              Ctrl-Break, which causes the slaves to terminate).
+            - Removed _warn for use of multibyte variables from 16f73/74.
+ 2010/12/04 - Revised and extended devicefiles.html:
+              - the section about memory allocation
+              - a note about the new 'constants.jallib.jal'
+ 2011/01/08 - Added 16f1516/7/8/9, adapted ANSEL register handling for these.
+            - Updated datasheet info and fixed typos in devicespecific.json.
+ 2011/01/14 - Added 16lf1902/3 and adapted ANSEL register handling for these.
+ 2011/01/22 - Added 16[l]f1847 (incl ANSEL handling).
+ 2011/01/23 - MPLAB 8.63 (numerous little changes, esp. for newer PICs).
+ 2011/01/25 - 16f72 has only shared RAM: handled special.
+            - Adapted script for core=14H: multi-bit ADCS field of ADCON0/1
+              and multibit PS field of OPTION_REG.
+ 2011/01/26 - 0.1.16
+ 2011/01/27 - Fixed missing SPI and I2C pin aliases in pinmap.py and
+              created Rexx script to check presence of these aliases.
+ 2011/02/01 - Compiler 2.4o (beta dd 1 feb 2010)
+ 2011/02/07 - Added a section in devicefiles.html with instructions for
+              generating new device files when new datasheets become
+              available.
+            - Added 12 new device files: 18F25/6K80, 18F45/6K80, 18F65/6XK80
+              and their LF variants.
+            - New 18FxxK80 PICs have ANSEL bits in ANCONx:
+              adapted list_sfr_subfields16 to support these.
+ 2011/02/14 - Moved generation of unnumbered aliases for SDA1 and SCL1
+              (for I2C), and SDI1, SDO1, SCK1 and SS (for SPI) from
+              pinmap.py to dev2jal script.
+              Removed script to check aliases in pinmap.py (see 2011/01/27).
+ 2011/02/15 - 0.1.17
+ 2011/02/25 - Fixed accidental skip of ADCON1_VCFG bit (18f1230/1330) and
+              ADCON1_PVCFG and ADCON1_NVCFG bits when enumerated in .dev file
+              (18f13K50, 18F14K50 and LF variants).
+ 2011/03/13 - Always erase destination directory before creating new device
+              files (even when selection specified).
+ 2011/03/17 - Added counter + report for failing to generate device files
+              because of missing datasheets in DeviceSpecific.json.
+            - Fixed missing JANSEL_AN3 bit of 12[L]F1840.
+ 2011/03/23 - Added sort on pathname of .dev file when MPLAB is on a
+              filesystem which does not have a built-in sort on filenames.
+ 2011/03/25 - Added alias BAUDCON for register BAUDCTL (for bit fields too).
+              (applies to 16f687,88,89,90, 16f882,3,4,6,7, 18F1220/1320)
+ 2011/03/26 - Fixed wrong CPUDIV keywords for some 18Fs (P2 -> P1, etc).
+ 2011/03/29 - Enhanced text in devicefiles.html about OSCCAL.
+ 2011/03/29 - MPLAB 8.66
+            - Fixed pinmap.py for missing RA6/7 of 18f67k50
+ 2011/03/30 - 0.1.18
+            - Added USBBDT keyword to devicespecific.json for devices
+              with USB module.
+            - Added const USB_BDT_ADDRESS to device files with USB module
+              (USBBDT is specified in devicespecific.cmd).
+ 2011/04/10 - Added 16lf1904/05/07
+ 2011/04/17 - Added PPS groups:
+              * Added symbolic names for PPS groups in constants_jallib.jal
+              * Added PPSGROUP to devicespecific.json (for PICs with PPS)
+              * Added generation of PPS_GROUP constant in device files.
+ 2011/04/18 - 0.1.19
+            - Enhanced PPS section in devicefiles.html.
+ 2011/04/21 - Enhanced description of OSCCAL handling in devicefiles.html.
+ 2011/05/15 - Compiler version 2.4o
+ 2011/05/19 - Added 16[l]f1782/3
+            - Fixed truncation of (some) pin-direction alias names.
+ 2011/06/04 - Improved pseudo 'put variables passing a byte, in particular
+              PORT and TRIS variables but also some others
+              (Jallib issue # 159).
+ 2011/06/16 - Added declaration of pin_E3 when it is the only active pin in
+              PORTE for the 18F and extended midrange PICs: core 16 and 14H.
+              (Jallib issue # 162)
+            - Added a section in devicefiles.html about input-only pins
+              (esp. for pin_E3).
+ 2011/06/18 - Added checks for duplicate pin name for core 14H and 16,
+              (esp. for pin_E3 when PIC has LATE).
+ 2011/06/19 - Added some missing aliases in pinmap.py for RE3.
+ 2011/06/25 - 0.1.20
+            - Improvement of port shadowing of the midrange and baseline PICs.
+              Renamed PORTx to _PORTx, added 'var byte PORTx at _PORTx',
+              modified PORTx'put procedure accordingly and removed
+              PORTx_flush() procedures.
+              See also Jallib issue #159.
+            - Fixed pseudo_variables PORTx_low and PORTx_high of
+              18Fs and extended midrange PICs (PICs with LATx registers).
+              See also Jallib issue #163.
+ 2011/06/27 - 0.1.21
+            - Minor improvements in devicefiles.html.
+            - Removed initialisation of port shadow vars (midrange, baseline).
+ 2011/06/28 - 0.1.22
+ 2011/07/03 - MPLAB 8.73a
+            - Added 16f1507 and LF variant.
+ 2011/07/12 - 0.1.23
+            - Added 10F320/322 and LF variants.
+              Adapted memory allocation for compiler variables
+              (list_shared_data_range and list_unshared_data_range).
+              Port shadowing via LATA register.
+ 2011/07/14 - Baseline and midrange: enumerated ICRF bits suppressed,
+              replaced by bit*3 field.
+            - Fix: declare 3-bytes fields as 'byte*3'
+              (was dword, esp. for baseline and [exhanced] midrange).
+ 2011/07/25 - Added explanation in devicefiles.html for fuse_def CPUDIV.
+              Some samples need to be changed (see jallib issue #165).
+ 2011/07/30 - Added line with $Revision$ to device file headers.
+ 2011/09/12 - MPLAB 8.76
+ 2011/09/13 - 0.1.24
+ 2011/09/25 - DataSheet and PgmSpec declared with actual suffix (letter).
+ 2011/10/24 - MPLAB 8.80
+ 2011/10/29 - Added aliases pin_TX1 for pin_TX and pin_RX1 for pin_RX
+              and similarly for _direction bits. Allows use of libraries
+              supporting multi-USART for PICs with a single USART.
+ 2011/11/08 - Added alias SSPCON for SSPCON1 of extended midrange
+              with a single MSSP module (issue #167).
+ 2011/11/08 - Fixed SSPM enumeration of some extended midrange PICs
+              with register name SSPCON1 in stead of SSP1CON.
+              Note: Maybe SSPCONx should be normalized to SSP1CONx.
+            - Fixed missing SSPxCONx_SSPM field aliases (e.g. 16f15xx)
+ 2011/11/09 - 0.1.25
+            - Added 16F1503/8/9 and LF variants.
+ 2011/11/27 - Added 12F/HV752 (PORTA, LATA, ANSELA handling)
+            - Generalized handling of classic midrange with LATx registers
+              more generic (no tests for specific PICs, but with 'HasLatReg').
+ 2011/12/02 - Fixed missing fuse_def WPEND settings (18f26J60 and others)
+ 2011/12/18 - MPLAB 8.83
+            - (in MPLAB several PICs: Brownout voltage level renamed to
+              'minimum' and 'maximum'; was a voltage value).
+            - Fixed duplicate alias SPBRG (of SPBRGL)
+ 2011/12/20 - 0.1.26
+ 2011/12/24 - Procedure load_config() now has returnvalue: core
+              (in stead of setting core, for future enhancements)
+              Procedures file_read_xxxx() have now returncodes.
+ 2011/12/26 - Added error messages when for missing shared and unshared data
+            - Eliminated the .lkr files from sources of information:
+              'shareddata' and 'nonshareddata' information moved to
+              devicespecific.json (new info to be derived from datasheets).
+            - Changed unused shared memory blocks to unshared memory.
+            - Added 12F1501 and LF variant.
+ 2011/12/27 - Enhanced devicefiles.html, espec. memory allocation and
+              and device file geberation process.
+ 2011/12/28 - Revised allocation of _pic_accum and _pic_isr_w:
+              * Most baseline and midrange need both.
+              * Extended midrange and 18Fs need only _pic_accum.
+              * _pic_accum for 18Fs moved to begin of access bank (0x00),
+              * Rest of shared memory specified as unshared,
+                amd added to the (last) largest unshared memory block.
+ 2012/01/02 - Simplified enabled/disabled keyword balance check.
+ 2012/01/03 - Generate pin_TX alias for pin_TX1 and pin_RX for pin_RX1
+              (in addition to change dd 2011/10/29).
+ 2012/01/05 - 0.1.27
+            - Moved method of adding aliases to registers and bitfields:
+              is now in separate procedures, in stead of inline. Advantages:
+              (1) same procedure for all cores, (2) more elegant format.
+            - Remove aliases with '1' suffix of USART registers and pins
+              (partly undo change of 2011/10/29).
+            - Fixed missing aliases for extended midrange PICs
+              (for USART and SSP modules)
+            - Normalized SSP registers and subfield
+              (add aliases for first module without number '1' if needed).
+ 2012/01/07 - Suppress 8-bits wide 'subfields' of registers,
+              except for registers to be enumerated (only ANSEL)
+              (no more declarations of variables like bit*8 TMR0_TMR0).
+ 2012/01/11 - Removed normalization of SSP1CON/SSPCON1 in start of list_sfr1x()
+              (not needed: classic midrange has only SSPCON).
+              Needed changes in I2C and SPI libraries, and some MP3 samples.
+ 2012/01/13 - Updated devicefiles.html for the new naming conventions,
+              especially revised the sections about MSSP.
+            - Removed generation of pin_TX1/RC1 and pin_TX1/RC1_direction
+              aliases with unqualified names (undo change dd. 2011/10/29)
+ 2012/01/15 - Multi-module aliases now for all PIC types (was 16,14H):
+              prepared for other multi modules than USART and MSSP also
+              in baseline and classic midrange.
+            - Only first 'BIT' line of registers processed (this may not
+              give expansion of all bit fields ... watch possible issues!).
+            - declare PORTx_ and pin_xy_direction, etc. as alias (was variable).
+ 2012/01/17 - 0.1.28
+            - moved common line formatting code to cross-PIC procedures:
+              * list_alias
+              * list_bitfield
+              * list_variable
+ 2012/01/18 - fixed missing 'shared' for enumerated ANSEL bits (a.o. 18f1xk22)
+ 2012/01/20 - Parsing of .dev file header now in 1 procedure.
+ 2012/01/21 - Combined different core specific procedures into mainline.
+ 2012/01/22 - 0.1.29
+ 2012/01/23 - Combined list_status1x and list_status16 to list_status.
+            - Added support for groups ADC_V14 and ADC_V14_1
+              (for 18F4xk22 and 18f2xk22 in devicespecific.json).
+ 2012/01/24 - Added alias names to list of used names: fixes duplicate
+              names and wrong decisions with checks for existing names.
+ 2012/01/26 - Corrected ADC_GROUP assignment for some midrange PICs
+              and ADCON1 initialization for some higher ADC_GROUPS.
+ 2012/01/27 - Added duplicate name check to list_bitfield procedure: allows
+              removal of this check with every variable or alias declaration.
+            - JANSEL_ANSxx bits now defined as alias of original bitfield
+              (was a replacement of these).
+ 2012/01/27 - When ANCONx is NMMR and has all PCFG bits: enumerate and
+              add aliases for ANCON0_PCFG0..7 and ANCON1_PCFG8..15
+            - Fixed missing JANSEL_ANS3 declaration for 12[l]f150x.
+ 2012/01/28 - Fixed missing initialization with enable_digital_io of
+              registers ADCON (10F3xx) and ANCON2 (larger 18Fs).
+ 2012/01/29 - 0.1.30
+ 2012/01/30 - Enumerated ADCON1_ADPREF for 14H (esp. 16f15xx).
+ 2012/01/31 - 0.1.31
+            - Renamed procedure insert_pin_alias to list_pin_alias
+              (same for pin direction aliases).
+ 2012/02/08 - Changed pin_Xy declarations as alias back to variable.
+              Fixes failing reads. Bug introduced with changes dd 2012/01/15
+              (PORTx <-> LATx difference).
+ 2012/02/09 - 0.1.32
+ 2012/02/27 - MPLAB 8.84
+ 2012/02/29 - Added 16f1512/13 and LF variants
+ 2012/03/11 - 0.1.33
+ 2012/03/14 - Removed alias SPBRG for SPBRGL (undo change dd 2010/02/05)
+            - Added alias SPBRGL for 8-bits SPBRG.
+            - Serial hardware libraries should use SPBRGH (/ SPBRGH2) and
+              SPBRGL (/ SPBRGL2) in stead of SPBRG (/ SPBRG2).
+            - Fixed missing pin aliases of 16(l)f1512/13
+ 2012/03/18 - 0.1.34
+ 2012/03/26 - Pins of baseline and midrange now declared as variable in
+              stead of alias (was supposed to be done with change 2012/02/08).
+ 2012/03/30 - Added a section in doc about default config bits settings.
+ 2012/03/30 - 0.1.35
+            - Added procedure to derive default fuses from MPLAB .dev file.
+              May be overriden by value in devicespecific.json with
+              keyword FUSESDEFAULT (optional, but the length must match
+              that of configuration memory!).
+ 2012/03/31 - ADCGroup in devicespecific.json now optional, default 0.
+              Removed from devicespecific.json when value 0.
+            - Updated devicefiles.html for the recent changes.
+ 2012/04/01 - Merged procedures list_fuses_words1x and list_fuses_bytes16.
+ 2012/04/02 - 0.1.36
+            - Common list_fuses procedure: outside core-specific calls.
+ 2012/04/07 - Minor internal changes, like procedure renames, etc.
+ 2012/04/10 - Added check on presence of PIC in pinmap_pinsuffix.json.
+ 2012/05/23 - Fixing missing pin_CCPx (in pinmap.py).
+ 2012/05/31 - MPLAB 8.85
+            - Several minor changes in MPLAB
+            - Removed alias SPBRG of SPBRGL
+              fix of incomplete change dd 2012/03/14)
+ 2012/06/06 - Up to 16 suffixed (a..f,0..9) tried with identical device ID's.
+ 2012/07/02 - 0.1.37
+ 2012/07/05 - MPLAB 8.86
+ 2012/07/09 - 0.1.38
+ 2012/09/04 - MPLAB 8.87
+ 2012/09/07 - Added 18[L]F24K50/25K50/45K50 and LF variants.
+            - Extended check on presence of ANSEL registers
+              (more than ANSELA alone)
+ 2012/09/09 - 0.1.39
+ 2012/10/28 - Fixed conversion to K/M/G/T to force a whole number (WDTPS)
+            - Added 18F97J94 family (12 PICs of 18fxxJ94/99 group)
+            - Fixed some missing pin aliases of 16[l]f1508/09.
+ 2012/11/09 - Fixed 'val2' where it should be 'val2u' in fusedef_details
+            - Added several OSC keywords to fusedefmap.cmd
+            - Added support for new fusedef keywords
+ 2012/11/10 - Added support for ANCON3 register for 16-bits core
+              Note: 18FxxJ94/99 have ANCON1..3, others ANCON0..2
+            - Suppressed extraneous aliases of pin_E3 for 14H core
+            - When pin not defined in port:
+              + no pin defined with LATx register
+              + no pseudo variable defined for corresponding LATx bit
+            - Fusedef keyword for protection of all code memory in most
+              cases changed to ALL_PROTECTED in stead of address range
+              for PICs which allow also protecting a part of code memory.
+ 2012/11/11 - 0.1.40
+            - Fixed missing enable_digital_io() procedures for 18f97J94 family
+ 2012/11/11 - MPLAB 8.88
+ 2012/11/12 - Added 16lf1824t39a
+ 2012/11/13 - 0.1.41
+ 2013/01/07 - Added 12lf1552 (updated ANSEL2J procedure)
+ 2013/01/23 - MPLAB 8.89
+            - Corrected data memory specifications of several newer
+              midrange PICs (16lf1824t39a, etc).
+            - Fixed error in fusedefmap.cmd (intrc_clkout -> intrc_noclkout)
+            - SSPMSK declared as pseudo variable (address shared with SSPADD)
+              for 16f677/687/689/690,
+                  16f707/720/721
+                  16f722/723/724/726/727
+                  16f722a/723a
+                  16f882/883/884/886/887
+                  18f2xj13,18f2xj53,18f4xj13,18f4xj53
+                  18f6xk22,18f8xk22
+                  (and their LF variants if any)
+            - PMDOUT1L/H declared as normal SFR, even though their addresses
+              are shared with PMADDRL/H, but these are exclusively used
+              depending on the mode of operation (master or slave mode).
+              for 18f4xj11,18f4xj50,18f4xj13,18f4xj53,
+                  18f6xj11,18f6xj16,18f6xj50,18f6xj55
+                  18f8xj11,18f8xj16,18f8xj50,18f8xj55
+            - Documentation updated (NMMR section).
+            - Removed 'pragma inline' from pseudo variables of NMMR registers
+              of 14 and 16 bits core
+            - Several minor changes (MPLAB 8.89)
+ 2013/01/25 - 0.1.42
+            - Added code to load OSCCAL with value in high memory
+              for PICs with OSCCAL register (some baseline and midrange)
+ 2013/01/28 - Excluded some PICs because not supported by compiler:
+              12F520, 12f529t29a, 12f529T48a, 16F570
+ 2013/01/29 - Baseline and classic midrange PICs support max 4 banks.
+              Modified data memory in devicespecific.json accordingly
+ 2013/02/02 - Rehabilitated 16F54,57,59 and PICs which were excluded
+              per 2010/01/02, but now RAM limited to 4 banks.
+ 2013/02/05 - With OSCCAL value in high memory: 1 word less code memory.
+ 2013/02/15 - Added 16f1788/89, 16f570 (Ansel2j, pinmap.py, fusdefmap.cmd).
+ 2013/02/16 - Fixed error with limitation to 4 banks (load_sfr1x)
+            - Fixed missing pin_AN5/6/7 of 16[l]f1784/7.
+ 2013/02/17 - 0.1.43
+ 2013/03/02 - Adding maximum ADC resolution (# bits) as constant
+              (default 8 or 10 bits, other via devicespecific.json).
+ 2013/03/03 - Alias ADRES for ADRES0, ADRESH for ADRES0H, ADRESL for ADRES0L.
+ 2013/03/04 - 0.1.44
+ 2013/03/07 - Fixed error in pinmap.py of alias names of RC7 of 16[l]f1828/9.
+ 2013/03/19 - Fixed config bits: unused bits read as '1' of most(!) midrange
+              and as '0' for most(!) baseline PICs. Exceptions are covered by
+              FUSEDEFAULT in devicespecific.json (changed significantly too).
+              Results in other default fuse settings for about 60 PICs.
+ 2013/03/20 - 0.1.45
+ 2013/04/02 - MPLAB 8.90
+            - Un-enumerate SSPxBUF/ADD/MSK (some PICs).
+ 2013/04/03 - Minor corrections of devicespecific.json.
+ 2013/04/14 - Replaced SysMapCase() in script by Translate()
+              for compatibility with Regina-Rexx.
+ 2013/04/18 - Fixed accidentally suppressed ADCON2_CHSNx bitfields (14H core).
+            - Un-enumerate ADCON2 fields TRIGSEL and CHSN (14H core).
+            - Un-enumerate CMxCON1 fields CxPCH and CxNCH (14H core).
+            - Un-enumerate CLKRCON fields CLKRDC and CLKRDIV (14H core).
+            - Rename SLRCONx_SLRCONxy bits to SLRCONx_SLRxy (14H core).
+            - Rename ODCONx_ODCONxy bits to ODCONx_ODxy (14H core).
+ 2012/04/19 - Updated the section in devicefiles.html about port shadowing.
+ 2013/04/20 - 0.1.46
+            - Un-enumerate CDAFVR and ADFVR bits of FVRCON (14 and 14H core).
+            - Shadow bytes for ports declared volatile (baseline and midrange).
+            - Remove 'pragma inline' of all pseudo variables which take
+              (or are expected to take) more than three code words.
+              This applies mainly to PORTx_low/high[_direction].
+ 2013/04/27 - 'pragma data' specifies all data memory, incl shared.
+              'pragma shared' specifies shared part of 'pragma data'.
+            - Bytes for port shadowing allocated in shared memory for code
+              optimization (prevent need for bank switching).
+            - Memory section in devicefiles.html largely rewritten.
+ 2013/04/28 - Devicespecific (+ mergedata.cmd) adapted to these changes.
+              NONSHAREDDATA replaced by DATA, SHAREDDATA replaced by SHARED
+              (consequently also in dev2jal script).
+ 2013/04/29 - 0.1.47
+ 2013/05/06 - Remove 'shared' in declarations of all variables
+              (awaiting a fix of the compiler!).
+ 2013/05/07 - Added shared SFR range (core 14H and 16) to 'pragma shared'
+              (thus core registers of 14H core and SFRs in accessbank
+              of 16-bits core are included).
+            - _pic_accum (and _pic_isr_w) for 12, 14 and 14H bit core
+              allocated in high shared memory, for 16 bits core in low
+              shared memory.
+ 2013/06/17 - MPLAB 8.91
+ 2013/07/11 - Enumerated RTCCFG_RTCPTR bits when missing (core 16)
+            - Added alias T1CON_T1OSCEN for T1CON_SOSCEN (core 14H and 16)
+            - Added support fort 16f/hv753 in ANSEL2J
+ 2013/07/20 - Improved read-speed of devicespecific and PinMap json files
+ 2013/08/17 - MPLAB 8.92
+ 2013/10/26 - excluded 16f527 and 16f570 (unsupported banking method).
+
+
+
+ --------------------------------------------------------------------
+   Summary of changes of edc2jal.cmd Rexx script
+ --------------------------------------------------------------------
+ 2013/05/19 - 0.0.01
+            - First attempt
+            - MPLAB-X 1.50
+ 2013/06/17 - 0.0.02
+            - MPLAB-X 1.80
+ 2013/06/21 - 0.0.03
+            - splitted script into 2 parts:
+              + expand MPLAB-X .pic files to .edc files.
+              + create .jal JalV2 device files from .edc files
+            - added pin declarations and pseudo variables
+ 2013/06/24 - 0.0.04
+ 2013/06/27 - tab characters in .pic files translated to space
+ 2013/07/03 - MPLAB-X 1.85
+            - added support for multiplexed SFRs (muxedsfr).
+ 2013/07/05 - converted fuse_def statements to dev2jal style
+ 2013/07/06 - 0.0.05
+            - various changes
+ 2013/07/11 - 0.0.06
+ 2013/07/12 - converted option_reg_subfields for core 12
+ 2013/07/13 - 0.0.07
+            - for general (not specificaly handled) fuse_def keywords:
+              semantic cname: ON -> ENABLED, OFF -> DISABLED
+ 2013/07/21 - 0.0.08
+            - Improved read-speed of Devicespecific and PinMap json files
+              (by reading whole file at once in stead byte-by-byte)
+ 2013/07/24 - Moved declaration of multiplexed SFRs with conditional
+              bit setting to a separate procedure and declaration
+              of these SFRs at end of declaration 'normal' SFRs.
+ 2013/07/25 - 0.0.09
+            - Position of pseudo variable for splitted _ADCS bits now
+              dependent of core: with ADCON0 or ADCON1, which comes last.
+            - Condition of multiplexed SFRs copied from .pic file
+              (was hard coded implementation).
+ 2013/07/26 - 0.0.10
+            - added 'bit*2 ADCON1_VCFG' when VCFG enumerated
+            - added check for single pins of PORTx, LATx and TRISx
+ 2013/07/27 - added suppress of SSPxMSK/ADD/BUF (+ alias)  expansions.
+ 2013/07/28 - 0.0.11
+            - Added TRISA pseudo variables for 12f529txxx PICs
+              (correction of MPLAB-X: NMMR GPIO -> TRISA)
+            - Added FLASH data as EEPROM (for 12f1529txxx PICs)
+ 2013/07/29 - All previously 'manual' changes in MPLAB_X files are now
+              implemented in the edc2jal script.
+            - devicefiles.html adapted to the MPLAB-X situation.
+ 2013/07/29 - 0.0.12
+            - Contents modification moved from pic2edc to edc2jal script
+              (e.g. for 12F529Txxx: PORTB -> GPIO, and corr. pins).
+ 2013/07/30 - Fixed bug in port shadow declarations (missing underscore)
+ 2013/07/31 - 0.0.13
+            - Added check on matching datasheet and pgmspec numbers.
+            - Added a 'miscellaneous' section to the device files with
+              commentline indicating range of free shared memory.
+              Moved also other declarations and comments to miscellaneous
+              like PPS-group, USB info.
+ 2013/08/01 - Improved toascii() procedure.
+ 2013/08/03 - Fixed ADC_ADCS_BITCOUNT = 0 for PICs with ADCS bits
+              in ANSEL (like 12f683).
+ 2013/08/04 - Improved macro file_macro_module() procedure in pic2edc script.
+              (fixed the bug in the insert offset, also of toascii())
+ 2013/08/05 - Added code to suppress duplicate declarations of aliases and
+              pseudo-variables due to (many!) aliases in the .pic files.
+              For this purpose some procedures give now a returncode.
+ 2013/08/04 - 0.0.14
+ 2013/08/05 - Added script 'createpinmap.cmd' to create 'pinmap.py' from
+              the .edc files.
+ 2013/08/05 - Handle embedded '+' and '-' chars in pin alias names
+              (was only trailing chars like in Vref+, Vref-)
+ 2013/08/07 - Renamed createpinmap.cmd to pinmap_create.cmd.
+              Added code to correct errors and omissions in MPLAB-X.
+              Added check on MPLAB-X version mumber.
+            - Added 16f753 and 16hv753 to ansel2j procedure.
+ 2013/08/08 - Update of devicefilesx.html (esp. generation process).
+            - Added several code pieces to suppress duplicate names/aliases.
+ 2013/08/16 - Fixed default fuse settings (use 'default' in stead of 'impl'),
+              limiting bits for core 12,14,14H to 0xFFF resp 0x3FFF.
+ 2013/08/28 - Replaced pinmap_create.cmd by pinmap_create.py.
+ 2013/08/29 - Renamed directory edc.185 to edc_185.
+ 2013/09/01 - No translate of output to uppercase in pic2edc script.
+              * SFRs and bitfields, fuse_defs/descriptions may be mixed case.
+            - Fixed several minor bugs in pic2edc.cmd script.
+            - Modified pinmap_create.py script for the use of dom and json
+ 2013/09/01 - 0.0.15
+ 2013/09/02 - Modified parsing of .edc file to use exact (mixed) case
+            - Fixed bug with SFRMode node without childs
+              <edc:SFRMODE ..... />  with 16F720 and maybe others.
+ 2013/09/03 - Joined registers have no subfields (removed call).
+            - Fixed bug with reserved fusedef bits: it counts for offset!
+ 2013/09/04 - 0.0.16
+            - MPLAB-X_VERSION file contains MPLAB-X and script version
+ 2013/09/05 - Converted pic2edc.cmd script to python: pic2edc.py.
+ 2013/09/06 - Added write of mplab-x version file to pic2edc.py.
+ 2013/09/07 - 0.0.17
+            - MPLAB-X 1.90
+            - BUG: xml parse does not process module imports!
+ 2013/09/08 - Adapted pinmap_create.py for MPLAB-X 190
+            - Added sort to pinmap_create.py to get pins in name sequence
+ 2013/09/09 - Pin specs of 16f722.pic totally wrong! Replaced by 16lf722.
+ 2013/09/09 - 0.0.18
+ 2013/09/11 - Introduced PPS group 3 for 18fxxj94/99 family (DS 30575).
+            - Fixed bug in nmmr12() for interpreting TRISB of 12Fxxx  as TRISA.
+ 2013/09/18 - Excluded 16f527 and 16f570: unsupported bank selection method.
+ 2013/09/25 - Fixed mixed case of bitfields.
+            - Removed correction of DeviceIDs of 16lf1902/3: 0x2C20 and 0x2C00
+              are correct (checked with hardware, error in DataSheet).
+            - Excluded 16f1829lin because of issue with LATC LT.0 contents.
+ 2013/09/26 - Fixed issue with 16f1829lin and included it again.
+ 2013/09/27 - Removed double suppress of SSPxMSK/ADD/BUF subfields.
+ 2013/10/19 - Fixed bug with default fuse settings of 18Fs ('0x' prefix).
+ 2013/10/19 - 0.0.19
+ 2013/10/20 - Minor revision of building default fuse settings.
+              Baseline and midrange PICs have unused fuse bits "read as one",
+              but some "read as zero" and when not correct in MPLAB-X
+              it is corrected by devicespecific.json (16f526/630/676).
+              Also some bit settings are for preferred defaults e.g. a
+              specific pattern to disable code protection (12f529TxxA).
+            - Fixed minor bug with StackDepth determination.
+            - Fixed a bug with SFR Mirror handling.
+ 2013/11/01 - Suppress declaration of non existing pins, like
+              pins RE3..7 of 18f4439/4539.
+            - Changed several warnings to info (msglevel 2 -> 1).
+ 2013/11/02 - Skip fuse_def OSC without 'cname' specification,
+              these caused dubious 'duplicate' messages.
+ 2013/11/04 - Fixed fuse_def ECH in fusedefmap.cmd (added _NOCLKOUT).
+            - Fixed several fuse_defs for midrange
+              RC_NOCLKOUT -> RC_CLKOUT (16f5x, 16f7x, 16f8x, 16f87xx).
+            - Skip fuse_def OSC of which description
+              starts with '1' or '0' (with warning).
+            - Fixed bugs in some entries in fusedefmap.cmd like for
+              18f6525 and introduced some new OSC keywords.
+              Complete range now declared (no more false duplicates).
+            - Removed special code for fusedef OSC (INTOSC) of 16f9xx.
+ 2013/11/05 - Added suffix _USB_xx to several fused_defs for PICs with USB
+              (when USB uses a different oscillator than the core).
+ 2013/11/05 - 0.0.20
+ 2013/11/07 - Changed fuse addresses of 18Fs to byte*3 (was dword).
+ 2013/11/09 - MPLAB-X 1.95
+ 2013/11/11 - 0.0.21
+ 2013/11/20 - Added to pinmap.py: RB3 for 18f86j11/16 and 18f87j11.
+            - Normalized fuse_def values of PLLSEL and SDOMUX.
+ 2013/11/22 - 0.0.22
+ 2013/11/29 - Extract data and shared memory ranges from .edc file,
+              devicespecific.json needs to contain only overriding values.
+              No more need of .lkr files for data memory specs.
+            - Fixed pragma shared of 16F818 (was 0x70-0x7f, now 0x40-0x7f).
+ 2013/12/01 - 0.0.23
+ 2014/01/16 - MPLAB-X 2.00
+            - With this version of MPLAB .pic files are expanded!
+              + pic2edc script significantly simplified!
+              + added code to correct more stupid Microchip errors
+              + added code to split lines with more than 1 xml item
+                (edc2jal requirement)
+            - Manually added the missing specifications of config bits IESO
+              and FCMEN to MPLAB-X .pic files of 16[l]f1703/7.
+            - 12 new PICs: 12[l]f1571/2, 16[l]f1705/09/13/16.
+ 2014/01/24 - Fixed double underscore with embedded '+' or '-' in pin name.
+            - Manually removed trailing 'n' of 'DAC1VREF+n' of 16[l]f1788.
+ 2014/01/25 - 0.0.24
+            - Use of unique 'procid' in .pic file in MPLAB-X for
+              jallib_chipdef in stead of core+deviceID[+suffix].
+ 2014/02/03 - Manual correction of WDTCCS of 12lf1612 in MPLAB-X 2.00
+            - Added code for fusedefs WDTCCS, WDTCPS, WDTCWS.
+            - 4 new PICs: 12[L]F1612, 16[L]F1613
+ 2014/02/06 - Added const CHIP_ID (same hex word as in chipdef_jallib)
+              to every device file.
+            - Fixed missing declaration of jansel_an4 with 12f1571/2.
+ 2014/02/07 - Renamed bitname NMCLR to MCLR (pinmap.py and PORTx reg.).
+            - Redone rename of SLRCON and ODCON bits to datasheet name.
+            - Fixed missing pin_E3 when only pin on PORTE and input-only.
+ 2014/02/13 - New PICs: 16[L]F1717/18/19
+            - Fixed missing pin_E3 for some more PICs.
+            - Issue a warning when 'fuse_def OSC' is missing.
+ 2014/02/13 - 0.0.25
+ 2014/02/15 - Use 'cname' in stead of 'desc' attribute in .edc file to
+              determine fuse_def OSC keyword (via compound variable).
+              Is more consistent and makes old MPLAB stuff superfluous,
+              and no more need for file fusedefmap.cmd.
+              Info messages are issued with mapping exceptions.
+ 2014/02/17 - Changed some fuse_def OSC keywords, fixed some errors.
+ 2014/02/18 - Removed fuse_defs of unimplemented config bits and
+              umplemented bit patterns (marked 'hidden' in .pic file).
+              Mainly for baseline and (enhanced) midrange, some 18Fs.
+ 2014/02/19 - Fixed missing multi_module_aliases for multiplexed regs.
+            - Fixed missing 'fuse_def WDT SOFTWARE' for several 18Fs
+              (was erroneously specified as DISABLED).
+            - Revised the determination of WDT keyword,
+              device files may have slightly different keywords
+              (often DISABLED -> SOFTWARE)
+ 2014/02/20 - When WDTCON not present fuse_def WDT 'CONTROL' changed
+              to 'DISABLED'
+ 2014/02/21 - 0.0.26
+            - Made a Python script to produce a list of sub keywords and
+              descriptions of any DCRFieldDef keyword (name attribute).
+              Supports one or more keywords, presumably aliases.
+              Meant to develop and improve fuse_defs.
+            - Added a comment line in header with 'generated by'.
+ 2014/02/23 - MPLAB-X 2.05  (minor changes)
+ 2014/03/11 - Replace enumerated OSCCON_SCS bits by bit*2 OSCCON_SCS.
+              Note: some PICs have a bit*1 SCS field!
+ 2014/03/14 - 0.0.27
+ 2014/03/23 - Simplified fuse_def PLLEN to ENABLED and DISABLED.
+            - Same: fuse_def IOSCFS to F4MHZ and F8MHZ.
+ 2014/03/24 - 0.0.28
+ 2014/03/25 - Undone the rename of USBDIV to USBPLL for
+              18f245x/255x,445x/455x.
+ 2014/03/26 - Renamed FOSC2 keywords to ON and OFF like in datasheet.
+ 2014/03/27 - 0.0.29
+ 2014/03/28 - Improved 'toascii' procedure
+ 2014/04/05 - Changed fuse_def CLKOEN to CLKOUTEN (18fxxj94/99).
+ 2014/04/29 - Added pin_A3 to PORTA when missing in LATA
+            - Removed existing add of pin_A3 for 18(l)f13/14K50
+              Changed addition of pin_A0/1/3 to pin_A0/1,
+              pin_A3 now read-only: no LATA3 (maybe no TRISA3).
+ 2014/04/30 - Fixed bug in generation of enable_digital_io():
+              some ADCON/ANCON registers were not set.
+            - Fixed wrong size of OPTION_REG_PS of about
+              70 midrange PICs (bit -> bit*3).
+ 2014/05/09 - Not fixed (yet): missing PMDOUT1{L|H}
+
+
+
+ --------------------------------------------------------------------
+   Summary of changes of pic2jal.py Python script
+ --------------------------------------------------------------------
+ 2014/04/20 - Pic2jal.py version 0.0.1
+              Generates device files directly from MPLAB-X .pic files
+ 2014/04/20 - Script version 0.0.2
+            - exclude 16hv540 (OTP), 16f527/570 (BSR for bank selection)
+ 2014/04/20 - Filled list_osccal()
+ 2014/04/21 - Script version 0.0.3
+            - Switched from own parsing of .pic file to dom/xml parsing
+ 2014/04/25 - Added SFR (+ started adding subfields)
+ 2014/04/26 - Script version 0.0.4
+ 2014/04/27 - Added elementary fuse_def info
+ 2014/04/28 - Added fuse_def semantics
+ 2014/04/29 - Added 'mirror' information of SFRs (multiple addresses)
+ 2014/04/30 - Added fuse_def keyword normalization (semantics keywords to be done)
+ 2014/05/01 - Completed miscellaneous
+ 2014/05/05 - MPLAB-X 2.10
+ 2014/05/07 - Added declaration of muxed registers.
+              Now declared pseudo registers immediately after the originals
+              and no more assumptions about control register address.
+              Takes some more instructions, but is conform MPLAB-X methods.
+              To conserve some space this method is not used for the subfields
+              the WDTCON_ADSHR bit is set/reset directly in stead
+              Note: Muxed registers can also exist within joined registers!
+ 2014/05/07 - Script version 0.0.6
+ 2014/05/08 - Added pseudo variables for subfields of muxed registers
+ 2014/05/09 - Fixed missing PMDOUT1L/H (in edc2jal.cmd script)
+ 2014/05/10 - Gradually activating more fuse_def specific code
+ 2014/05/14 - Added multi-module_bitfields
+ 2014/05/20 - Removed wrong variable CCP10CON_DC1B (e.g. of 16f1527)
+            - Removed shadowing and aliases of PORTVP/LATVP/TRISVP (18fxxJ94/99)
+            - Fixed empty analog_off() procedure (18fxxj94/99)
+ 2014/05/21 - Fixed setting of fusedef WURE (12f635, 16F636/9)
+            - Fixed missing aliases INTCON_TMR0IE/IF of some PICs
+ 2014/05/22 - PMODE, ABW and DATABW (and their aliases) are separate things!
+              PMODE left asis, ABW added, BW changed to DBW for clarity and
+              to avoid confusion (misinterpretation)
+ 2014/05/23 - Excluded 12f529txxa: bank switching via BSR not supported by compiler
+ 2014/05/24 - Added pseudo variables for NMMR TRISx and OPTION_REG
+ 2014/05/25 - Fixed pragma shared for 12f510,16f506: all SFRs are shared
+              (mirror specs are missing in .pic files of MPLAB-X)
+ 2014/05/26 - Manually corrected in mplab-x 2.10 width of CCPxCAP_CTS to 2.
+              (was 2 in mplab-x 2.05, 8 in mplab-x 2.10)
+ 2014/05/27 - Script version 0.0.7
+ 2014/06/03 - Fixed various loose ends from edc2jal.cmd
+ 2014/06/04 - Temporary added fusedef VOLTAGE V20 alongside V21 (compatibility).
+            - Changed 18f2450 board file VOLTAGE V20 to V21
+            - Fixed error in pin_A1'put of 18(l)f1xk50 (in edc2jal.cmd)
+ 2014/06/06 - Fixed missing fusedef debug (12/HV752)
+ 2014/06/27 - Fixed dup underscore in pin aliases with embedded "+" or "-" char.
+ 2014/06/28 - Fixed names of port fields other than pin_xx: for pics without
+              LATx use '_portx_' prefix (for pics with LATx 'portx:).
+            - Fixed fusedef BBSIZ and T1OSCSEL.
+ 2014/07/01 - Fixed cfgvar["adcs_bits"] of PICs with splitted adcs bits.
+ 2014/07/03 - Boot blocks (18Fs only) assumed expressed always in words.
+ 2014/07/04 - Fixed missing muliplexed SFRs (like PMDOUT1L/H with 18f45j11)
+            - Script version 0.0.8
+ 2014/07/07 - Changed pinmap_create.py script to read .pic files directly
+              from MPLAB-X directories (was preprocessed .edc files).
+              Note: sequence changes because of separate subdirectories.
+ 2014/07/09 - MPLAB-X 2.15
+              Note: Of remappable pins the default alias isn't listed anymore!
+            - Fuse_def nZCD (MPLAB-X 2.15) renamed to ZCDDIS (datasheet).
+            - Corrected in mplab-x 2.15 width of CCPxCAP_CTS and
+              CCPxCAP_CCPxCTS to 2 (was 8) for 12[l]f1612 16[l]f1613.
+            - Corrected in mplab-x 2.15 CRCDAT field CRDCDAT7 to CRCDAT7
+              (name and cname) of 12[l]f1612 16[l]f1613.
+ 2014/07/10 - Script version 0.0.9
+ 2014/07/11 - Added a comment line in chipdef_jallib.jal before each
+              group of PICs with the same core.
+ 2014/07/23 - Fixed space between 'put' and '(' for ADCON_ADCS for 12 PICs
+ 2014/08/03 - Added support of CHIPDEF as first parameter to generate only a
+              new chipdef_jallib.jal file without generating any device files.
+ 2014/08/17 - Converted torelease.cmd to Python
+ 2014/08/18 - Fixed library count in torelease.cmd (missed networking)
+ 2014/08/19 - Committed torelease.py
+ 2014/08/20 - Enhanced torelease.py (code, comments, bug fixes)
+ 2014/08/24 - Added missing multi-bit fields SSPM of SSPxCON1 and aliases.
+              (in cases where only enumerated bits are present in .pic file).
+ 2014/09/04 - Normalized fusedef PRICLKEN to PCLKEN (18f25k22, etc).
+ 2014/09/05 - Added aliases for pin_CK1 and pin_DT1 and _direction bits.
+ 2014/09/06 - MPLAB-X 2.20
+ 2014/09/11 - Fixed missing alias SPBRG for SP1BRG.
+ 2014/11/05 - MPLAB-X 2.25
+            - For 8-bit wide bitfields use 'mask' to determine actual width.
+              Since 2.20 bitfields which are the single bitfield in a
+              register (or registers with less than 8 active bits!)
+              are specified with width 8 and a bitmask for the actual width.
+            - Fusedef nZCD and ZCDDIS normalized to ZCD.
+ 2014/11/27 - MPLAB-X 2.26
+            - OPTION_REG_NWPUEN renamed to OPTION_REG_WPUEN
+              because this is the name used in the datasheets.
+ 2014/12/08 - Added pin_A0/1 and pin_A0/A1_directions for 16[l]f1454/55/59.
+ 2015/01/01 - Year 2014 -> 2015
+ 2015/01/02 - More consistent fuse_def keyword choice for CCPxMUX,
+              a pin_Xy keyword is used in stead of EN/DISABLE.
+              For a number of high-end 18Fs a pin_Xy_Pq is used.
+ 2015/01/19 - Updated procedure ansel2j for 16[l]f176x.
+ 2015/01/21 - Script version 0.1.0
+ 2015/02/16 - MPLAB-X 2.30
+            - Removed aliases for MCLR, ICDDAT/CLK, ICSPDAT/CLK, IOCxx, INTxx.
+              Note: several (midrange) device files didn't have these anyway!
+            - Added some missing aliases in pinmap (e.g. AN0 for 16f1618/9).
+            - Check for equal datasheet numbers in .pic file and
+              devicespecific limited to last 4 digits (no suffixes expected!).
+            - Corrections of ANSEL2J proc for ANSELx regs, esp. 14H series.
+ 2015/02/18 - Adapted script to allow it processed successfully by pydoc.
+              Replaced block comments before procedures by documentation
+              strings after the def statements (PEP257).
+ 2015/02/19 - Suppress declaration of 'RESERVED' bitfields.
+ 2015/02/20 - Fixed duplicate P1 and X1 keywords with pragma fuse_def PLLDIV
+              (of 18fxxj94/99): P1 used for USB no divide, X1 used for no PLL.
+ 2015/03/08 - The device files are now generated under Linux Mint, which
+              required some changes in the script for the paths of material.
+            - MPLAB-X version 2.35 or 3.00 beta: the latter is slightly better.
+ 2015/03/18 - Small changes to improve usability with Linux.
+ 2015/04/03 - Converted compilesamples script from Rexx to Python and
+              incorporated the compilerelease script.
+ 2015/06/13 - MPLABX v3.00
+            - Changed name of origin of xml files extracted from crownking.edc.jar
+              (removed extra directory level crownking.jar.edc).
+ 2015/06/15 - MPLABX v3.05
+            - Added highest level subdirectory in 'source' of device file.
+ 2015/07/24 - Script version 0.1.1
+            - Added support vor 16[l]f183xx PICs
+              + ANSEL2J procedure for different pin ADC alias naming convention.
+              + configuration bits: new OSC, RTCOSC and BrownOut keywords.
+ 2015/09/06 - MPLABX v3.10
+            - New device files:
+ 2015/10/14 - Removed ENABLED option from pragma target XINST,
+              JalV2 does not support extended instruction set.
+ 2015/10/23 - Script version 0.1.2
+            - Added 16[l]f18855/75 (to ANSEL2J procedure).
+            - Modified pinmap_create.py to handle aliases with blanks in name
+              and suppress duplicate aliases (Vref- and Vref+ for ADC / DAC),
+              this applies especially to 16lf18875.
+            - Fixed fusedef WDTCSS to support another option.
+ 2015/11/10 - MPLABX v3.15
+            - Enhanced determination and formatting of brownout voltage value
+              Now rounded to next tenth of a degree (was truncated).
+              Requires changes of some samples (using MINIMUM or V20 for V21).
+ 2015/11/25 - Script version 0.1.3
+            - Added PPS_4: core=14H, presence of PPSLOCK register.
+                    PPS_5: core=14H, presence of PPSLOCK and PMD0 registers.
+              PPS_GROUPs 1 and 2 now derived from core and picname:
+              PPS_1: core=14,18fxxj11/50, PPS_2: core=14,18fxxj13/53.
+              Group PPS_3 now: core=16 and presence of OSCCON2_IOLOCK.
+              PPSGROUP specifications removed from devicespecific.json.
+ 2015/12/07 - Suppress duplicates in a fuse_def specification.
+ 2015/12/09 - Released device files and blink samples for 16f18xxx.
+ 2015/12/14 - Improved handling of 2nd commandline argument (selection).
+ 2015/12/30 - JalV2 2.4q5
+ 2016/01/08 - MPLABX v3.20
+            - Copyright end date is now automatically current year.
+ 2016/03/01 - Script version 0.1.4
+            - MPLABX v3.25
+            - Unnamed register subfields now treated as reserved.
+ 2016/03/11 - Added alias TxCON_TxSYNC alias for TxCON_NTxSYNC, alias
+              TxCON_NTxSYNC for TxCON_SYNC or both for other TxCON_xxSYNC' bit.
+            - Fixed minor bug in mask determination of SFR subfields.
+ 2016/04/01 - Added TxCON_Tx... and TxCON_TMRx... aliases when missing.
+ 2016/04/13 - MPLABX v3.26
+ 2016/05/17 - MPLABX v3.30
+ 2016/05/18 - Script version 0.1.5
+            - List of RxyPPS output PPS constants now sorted on value.
+            - Removed the addition of a useless PPS_CK alias for PPS_TX
+              when no pattern present in .pic file.
+            - Converted script from Python2 to Python3 (approx. 20% faster!)
+            - Added a check for Python version 3.3.0 and inform user
+              when an older version is actually used.
+ 2016/05/25 - 'Fixed' rounding of exactly .5 to an even number by Python.
+              E.g. brownout voltage 2.05V was rounded to 2.0V, now to 2.1V
+              Consequently several other voltages are now 1 (0.1V) higher.
+ 2016/05/29 - Make distinction for Brownout Voltage between "F" or "LF" PICs
+              when 2 values are given in description (e.g. with 16f18855).
+ 2016/05/30 - Script version 0.1.6
+            - Fusedef mapping dictionaries static (not explictly initialised)
+              and replaced (most) fusedef PLLDIV code by a dictionary.
+ 2016/06/02 - Circumvent error in MPLAB-X (SD02 -> SDO2) in pinmap_create.py.
+ 2016/06/09 - Fixed missing PPS output synonyms of a pattern.
+ 2016/??/?? - MPLABX v3.35
+ 2016/06/23 - Added alias PPS_TX for missing PPS_CK
+            - Added PPS_CK and PPS_TX from PPS_CKTX
+ 2016/07/27 - Replaced text 'part of Jallib' by 'following Jallib-style'
+              in headings of generated files.
+ 2016/09/20 - MPLABX v3.40
+ 2016/09/23 - Added support for ANx pin mapping fot 18[l]fxxk40
+              (new naming convention, like 16f18xxx)
+              MPLABX 3.45
+ 2016/10/02 - Accept more keywords for SCANE fusedef
+            - Minor improvement for brownout voltage description scanning.
+            - Support for 16[l]f153xx, compensating for JoinedSFRs without
+              children (maybe a temporary fix).
+            - MPLABX v3.50
+ 2016/12/26 - Suppress warning about duplicate fuse_def for WDC
+ 2017/01/17 - Script version 0.1.7
+            - So far with all PICs all LATx register came after PORTx
+              in the MPLABX .pic files and the derived declarations for
+              pins and shadowing were after the LATx registers.
+              With 18f27k40 and others LATx comes before PORTx, which
+              requires a different place of the shadowing PORT and pins.
+              All pseudo variables and aliases need be declared after
+              the last of PORTx and LATx in the device file.
+            - Reserved fuse_def bits checked with 'startswith("RESERVED")',
+              was checked for "== RESERVED".
+            - Correction: PPS_CK2 (0x0F) must be PPS_CK1 for 16[l]f15355/6
+            - Added PPS output for 18F series with PPSGROUPs 4 and 5!
+ 2017/01/26 - MPLABX v3.51
+ 2017/01/26 - In anself2j(): multiple 'picname.startswith()' replaced by
+              picname.startswith((<list-of-strings>))
+            - Fixed error with 6-bits subfields (these were missing).
+ 2017/01/31 - Script version 0.1.8
+            - Minor optimisations: reduced fp.write() calls
+            - Refactored normalize_fusedef_value(): replaced lengthy
+              if-elif-else construct by subfunction calls
+              (mimic case/switch construct). This is easier to read
+              and maintain, and fractionally faster.
+            - MPLABX v3.55
+ 2017/02/05 - Fixed missing disable of higher numbered comparators
+              (e.g. 16f1779 has 8!) in JAL procedure comparator_off().
+            - Fixed bit setting of CMxCON0 in JAL comparator_off() procedure.
+              CxSP bit must be 1 for many PICs. Power-on-reset mask
+              of CM1CON0 (as in .pic file) used for all CMxCON0 registers.
+ 2017/03/10 - Script version 0.1.9
+            - Added support for 18fxxk42 (like PWRTS fuse_def)
+            - .pic files of MPLABX appear to have an "edc:_addr" attribute
+              for SFRs (new to me, don't know since which version).
+              This allows to abandon calculation of current sfraddr.
+              It fixes also wrong addresses of some SFRs of some PICs
+              among which 16lf1566/7, 18[l]fxxk40/42.
+            - Fixed some wrong pin_ANxy declarations with bigger 14H PICs.
+ 2017/03/13 - Some joined SFRs in .pic files have nzwidth 2 but should be 3
+              (mainly in 18fxxk42 PICs). This caused script errors.
+              Width of joined SFR now checked against number of joined SFRs
+              (can be Muxed- or regular SFRDefs).
+            - Reported JoinedSFRdef width errors to Microchip.
+              (found later that some reported 'errors' are not so!).
+ 2017/03/18 - Script version 0.2.0
+            - Optimized collection of SFR mirror addresses: limited to
+              cores 12 and 14 en to PICs with mirror addresses.
+              No differences in output with Script version 0.1.9!
+              Renamed collect_sfraddr() to collect_mirrors()
+              and sfrranges to sfr_mirrors,
+            - Changed output of TEST run to ramdisk (also in comparejal.py)
+ 2017/03/20 - Added boolean 'jallib_contribution' to allow distinction
+              between generation of Jallib approved device files (True),
+              or private device files (False).
+ 2017/04/12 - Added alias 'MODE' for 'CCP1M' or 'CCP1MODE' bitfield
+              of ?CCPxCON registers
+ 2017/04/19 - MPLABX v3.60
+ 2017/04/22 - Adding alias for PPS_SCL for PPS_SCK and PPS_SDA for PPS_SDO
+              when SPI is present but I2C not in .pic file (e.g. 16f1615)
+ 2017/04/27 - Some adaptions of the scripts to simplify running it on
+              another system or platform (supported: 'posix' and 'nt')
+            - Relative paths (also in in related scripts) changed
+              to absolute paths.
+            - Converted some Jallib scripts to Python3 and
+              added check on Python version >= 3.3
+ 2017/04/28 - Script version 0.2.1
+            - Temporary disabled PROD option
+ 2017/05/04 - Added CCPIE/F aliases for CCP1IE/F
+ 2017/05/30 - MPLABX v3.61
+ 2017/06/27 - MPLABX v3.65
+            - New PIC types (naming convention): 18...Q..
+ 2017/07/09 - Created new script "all-in-one.py" to generate device files
+              and blink samples from scratch (e.g. with a new version of
+              MPLABX).
+              Most scripts now require environment variables "PIC2JAL"
+              and "MPLABXVERSION", which can be specified 'manually'
+              before running a script, but the all-in-one script takes
+              care of that too (after being adapted to the system setup).
+ 2017/07/21   Script version 0.2.2
+ 2017/07/30 - Suppress expansion of subfields of PPS registers.
+            - Fixed devicespecific.json for missing or wrong maximum
+              ADC resolutions of some newer PICs.
+ 2017/08/12 - MPLABX v4.00
+ 2017/08/13 - Minor changes of all-in-one script:
+              - Added logging of the pic2jal and blink-a-led scripts.
+              - Removed superfluous unlinks of log files.
+              - Make sure script is NOT run in destination directory.
+            - Fixed ADC pin declarations for new 16[l]f191* PICs.
+ 2017/09/01 - Fixed missing declaration of pin_A5 when it is MCLR
+              e.g. 16f1847, 18f1220, 16f19155(?).
+ 2017/09/18 - MPLABX v4.01
+ 2017/09/28 - pps_check script renamed to pps_groups.py and its output
+              to pps_groups.html.
+            - all-in-one script extended with generation of a html-table
+              of PPS_GROUPs to be inserted in devicefiles.html.
+            - comparejal script added to devpkg.
+            - devpkg.py script and its README adapted to these changes.
+            - Modified jallib.css to get correct display of ordered and
+              unordered lists (probably html version related).
+ 2017/10/01 - Added special code for pragma fusedef PWRTE to support
+              various delay values like with 16f19155, 18f25k42, etc.
+              Similar to PWRTS for this.
+ 2017/10/12 - Removed (download-)date of datasheets from wiki tables
+              in script createdswikis.py.
+ 2017/10/13 - All-in-one script: added warning when previous results present.
+ 2017/10/16 - Fixed error in dsclean.py with numbers 3000xxxx and 4000xxxx.
+ 2017/10/22 - Replaced 'mkdir' by 'makedirs' to be sure that also parent
+              directories are created if necessary.
+ 2017/10/23 - Edited headers of scripts according to Jallib standards.
+ 2017/10/27 - Copied the part of the script extract_pininfos which creates
+              a file with pin aliases into the pinmap_create script.
+              This script creates a file 'pinaliases.json' replacing
+              the file pinmap_pininfos.json. The pic2jal script adapted!
+              The extract_pininfos script is not required anymore for
+              device files generation and removed from the all-in-one script.
+            - Excluded more pins from the pinmap_aliaslist in pinmap_create
+              script (like D+, D-, etc.), there are probaby more candidates!
+ 2017/10/28 - Removed from the all-in-one script copy of 'constants-jallib.jal'
+              to the destination directory. Not needed since compiler
+              will include it from the current working directory.
+ 2017/10/29 - Script Version 0.2.3
+ 2017/10/30 - Added 2 fusedef collect scripts to distribution package.
+ 2017/10/31 - Added a removal of JalV2 unsupported PICs to the
+              mplabxtract script.
+            - Removed 're.match' on pictype from most scripts, since the
+              mplabxtract script collects only JalV2 supported PICs
+              and all other scripts use that collection.
+            - Fixed omission in mplabxtract.py: missed baseline 16HV*
+ 2017/11/01 - Modified pinmap_create script for easier readable
+              layout of pinmap.py and pinaliases.json.
+            - Fixed error with additional RE3 in 18f2331/2431.
+            - Fixed some missing pin aliases in high-end PICs (e.g. 18f86j11)
+ 2017/11/02 - Changed first line of all Python scripts to
+              #!/usr/bin/env python3    (was #!/usr/bin/python3)
+ 2017/11/03 - Fixed error in pinmap_create and pinlist script:
+              Shifting of RAx and GPx to front of aliaslist failed.
+ 2017/11/04 - Moved  conversion in alias names of '+' and '-'
+              into _POS and _NEG from the pic2jal script to the
+              pinmap_create script (for pinaliases.json).
+              Fixed also double inderscores in some alias names.
+            - Revised parts of comparejal script (no functional differences).
+ 2017/11/05 - Refactured mplabxtract script: extract operation performed
+              internally by a Python function rather than calling 7ZIP.
+ 2017/11/06 - Changed platform checks from os.name into platform.system().
+              This makes a distinction between Linux and Mac OS.
+            - Scripts shared on Dropbox.
+ 2017/11/08 - mplabxtract script extended with searching for crownking.jar.edc
+              in MPLABX-IDE when not found in MPLABX-IPE.
+ 2017/11/11 - Restructured and simplified the pps_groups script.
+
+
+----
+
+To do: - Add pin_VPx and pin_VPx_direction declarations (18f97j94 family)
+
+
+
+
+
