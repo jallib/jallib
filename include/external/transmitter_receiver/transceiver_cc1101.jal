@@ -1,0 +1,433 @@
+-- Title: cc1101 transceiver library
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.4q5
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library provides functions the TI cc1101 receiver.
+--              Working baud rates are 1.2khz, 100khz and 250khz at 433.92Mhz.
+--              This device will also work in the 900mhz range.
+--              Max device power is 10dBi
+--
+-- Notes: I am not an RF genius, do your own testing and check your RF laws before
+--        using. Use SmartRF studio for other settings.
+--
+-- Sources:
+-- https://www.ccsinfo.com/forum/viewtopic.php?t=54957&postdays=0&postorder=asc&start=0
+--
+
+-- variables
+var byte cc1101_tx_buffer[CC1101_BUF_SIZE]
+var byte cc1101_rx_buffer[CC1101_BUF_SIZE]
+
+const byte CC1101_WRITE_BURST = 0x40
+const byte CC1101_READ_SINGLE = 0x80
+const byte CC1101_READ_BURST  = 0xC0
+
+var byte cc1101_has_error = 0
+
+-- prototypes (defined later)
+procedure cc1101_good_packet_received_callback(byte in packet_size)
+procedure cc1101_bad_packet_received_callback(byte in error)
+
+-- REGSITERS
+const byte CC1101_IOCFG2    = 0x00 -- GDO2 output pin configuration
+const byte CC1101_IOCFG1    = 0x01 -- GDO1 output pin configuration
+const byte CC1101_IOCFG0    = 0x02 -- GDO0 output pin configuration
+const byte CC1101_FIFOTHR   = 0x03 -- RX FIFO and TX FIFO thresholds
+const byte CC1101_SYNC1     = 0x04 -- Sync word, high int8
+const byte CC1101_SYNC0     = 0x05 -- Sync word, low int8
+const byte CC1101_PKTLEN    = 0x06 -- Packet length
+const byte CC1101_PKTCTRL1  = 0x07 -- Packet automation control
+const byte CC1101_PKTCTRL0  = 0x08 -- Packet automation control
+const byte CC1101_ADDR      = 0x09 -- Device address
+const byte CC1101_CHANNR    = 0x0A -- Channel number
+const byte CC1101_FSCTRL1   = 0x0B -- Frequency synthesizer control
+const byte CC1101_FSCTRL0   = 0x0C -- Frequency synthesizer control
+const byte CC1101_FREQ2     = 0x0D -- Frequency control word, high int8
+const byte CC1101_FREQ1     = 0x0E -- Frequency control word, middle int8
+const byte CC1101_FREQ0     = 0x0F -- Frequency control word, low int8
+const byte CC1101_MDMCFG4   = 0x10 -- Modem configuration
+const byte CC1101_MDMCFG3   = 0x11 -- Modem configuration
+const byte CC1101_MDMCFG2   = 0x12 -- Modem configuration
+const byte CC1101_MDMCFG1   = 0x13 -- Modem configuration
+const byte CC1101_MDMCFG0   = 0x14 -- Modem configuration
+const byte CC1101_DEVIATN   = 0x15 -- Modem deviation setting
+const byte CC1101_MCSM2     = 0x16 -- Main Radio Control State Machine configuration
+const byte CC1101_MCSM1     = 0x17 -- Main Radio Control State Machine configuration
+const byte CC1101_MCSM0     = 0x18 -- Main Radio Control State Machine configuration
+const byte CC1101_FOCCFG    = 0x19 -- Frequency Offset Compensation configuration
+const byte CC1101_BSCFG     = 0x1A -- Bit Synchronization configuration
+const byte CC1101_AGCCTRL2  = 0x1B -- AGC control
+const byte CC1101_AGCCTRL1  = 0x1C -- AGC control
+const byte CC1101_AGCCTRL0  = 0x1D -- AGC control
+const byte CC1101_WOREVT1   = 0x1E -- High int8 Event 0 timeout
+const byte CC1101_WOREVT0   = 0x1F -- Low int8 Event 0 timeout
+const byte CC1101_WORCTRL   = 0x20 -- Wake On Radio control
+const byte CC1101_FREND1    = 0x21 -- Front end RX configuration
+const byte CC1101_FREND0    = 0x22 -- Front end TX configuration
+const byte CC1101_FSCAL3    = 0x23 -- Frequency synthesizer calibration
+const byte CC1101_FSCAL2    = 0x24 -- Frequency synthesizer calibration
+const byte CC1101_FSCAL1    = 0x25 -- Frequency synthesizer calibration
+const byte CC1101_FSCAL0    = 0x26 -- Frequency synthesizer calibration
+const byte CC1101_RCCTRL1   = 0x27 -- RC oscillator configuration
+const byte CC1101_RCCTRL0   = 0x28 -- RC oscillator configuration
+const byte CC1101_FSTEST    = 0x29 -- Frequency synthesizer calibration control
+const byte CC1101_PTEST     = 0x2A -- Production test
+const byte CC1101_AGCTEST   = 0x2B -- AGC test
+const byte CC1101_TEST2     = 0x2C -- Various test settings
+const byte CC1101_TEST1     = 0x2D -- Various test settings
+const byte CC1101_TEST0     = 0x2E -- Various test settings
+
+-- Commands
+const byte CC1101_SRES = 0x30 -- Reset chip.
+const byte CC1101_SFSTXON = 0x31 -- Enable and calibrate frequency synthesizer (if MCSM0.FS_AUTOCAL = 1).
+-- If in RX / TX: Go to a wait state where only the synthesizer is
+-- Running (for quick RX / TX turnaround).
+const byte CC1101_SXOFF = 0x32 -- Turn off crystal oscillator.
+const byte CC1101_SCAL = 0x33 -- Calibrate frequency synthesizer and turn it off
+-- (Enables quick start).
+const byte CC1101_SRX = 0x34 -- Enable RX. Perform calibration first if coming from IDLE and
+-- MCSM0.FS_AUTOCAL = 1.
+const byte CC1101_STX = 0x35 -- In IDLE state: Enable TX. Perform calibration first if
+-- MCSM0.FS_AUTOCAL = 1. If in RX state and CCA is enabled:
+-- Only go to TX if channel is clear.
+const byte CC1101_SIDLE = 0x36 -- Exit RX / TX, turn off frequency synthesizer and exit
+-- Wake-On-Radio mode if applicable.
+const byte CC1101_SAFC = 0x37 -- Perform AFC adjustment of the frequency synthesizer
+const byte CC1101_SWOR = 0x38 -- Start automatic RX polling sequence (Wake-on-Radio)
+const byte CC1101_SPWD = 0x39 -- Enter power down mode when CSn goes high.
+const byte CC1101_SFRX = 0x3A -- Flush the RX FIFO buffer.
+const byte CC1101_SFTX = 0x3B -- Flush the TX FIFO buffer.
+const byte CC1101_SWORRST = 0x3C -- Reset real time clock.
+const byte CC1101_SNOP = 0x3D -- No operation. May be used to pad strobe commands to two
+-- int8s for simpler software.
+const byte CC1101_PARTNUM = 0x30
+const byte CC1101_VERSION = 0x31
+const byte CC1101_FREQEST = 0x32
+const byte CC1101_LQI = 0x33
+const byte CC1101_RSSI = 0x34
+const byte CC1101_MARCSTATE = 0x35
+const byte CC1101_WORTIME1 = 0x36
+const byte CC1101_WORTIME0 = 0x37
+const byte CC1101_PKTSTATUS = 0x38
+const byte CC1101_VCO_VC_DAC = 0x39
+const byte CC1101_TXBYTES = 0x3A
+const byte CC1101_RXBYTES = 0x3B
+const byte CC1101_PATABLE = 0x3E
+const byte CC1101_TXFIFO = 0x3F
+const byte CC1101_RXFIFO = 0x3F
+
+--------------------------------------------------------------------------------
+-- Register Read
+--------------------------------------------------------------------------------
+function cc1101_read_register(byte in address) return byte is
+   var byte temp, value
+   temp = address | CC1101_READ_SINGLE -- read register command
+   
+   cc1101_chip_select = low
+   spi_master = temp
+   value = spi_master
+   cc1101_chip_select = high
+   return value
+end function
+
+--------------------------------------------------------------------------------
+-- Register Write
+--------------------------------------------------------------------------------
+procedure cc1101_write_register(byte in address, byte in value) is
+   cc1101_chip_select = low
+   spi_master = address
+   spi_master = value
+   cc1101_chip_select = high
+end procedure
+
+--------------------------------------------------------------------------------
+-- Write multiple to TX buffer
+--------------------------------------------------------------------------------
+procedure cc1101_write_burst_reg(byte in address, byte in length) is
+   cc1101_chip_select = low
+   spi_master = (address | CC1101_WRITE_BURST)
+   delay_10us(1)
+
+   var byte i = 0
+   for length using i loop
+      spi_master = cc1101_tx_buffer[i]
+      delay_10us(1)
+   end loop
+   cc1101_chip_select = high
+end procedure
+
+--------------------------------------------------------------------------------
+-- Send a single byte command
+--------------------------------------------------------------------------------
+procedure cc1101_strobe(byte in strobe) is
+   cc1101_chip_select = low
+   spi_master = strobe -- write address
+   cc1101_chip_select = high
+end procedure
+
+--------------------------------------------------------------------------------
+-- Read Status Byte
+--------------------------------------------------------------------------------
+function cc1101_read_status(byte in addr) return byte is
+   cc1101_chip_select = low
+   var byte x
+   spi_master = (addr|CC1101_READ_BURST)
+   x = spi_master
+   cc1101_chip_select = high
+   return x
+end function
+
+--------------------------------------------------------------------------------
+-- Read multiple from RX buffer
+--------------------------------------------------------------------------------
+procedure cc1101_read_burst_register(byte in addr, byte in step) is
+   cc1101_chip_select = low
+   spi_master = (addr|CC1101_READ_BURST)
+
+   var byte i = 0
+   for step using i loop
+      cc1101_rx_buffer[i] = spi_master
+   end loop
+   cc1101_chip_select = high
+end procedure
+
+--------------------------------------------------------------------------------
+-- Rf settings - 1.2k baud
+--
+-- Values generated from SmartRF studio
+-- 433.92MHz 1.2Kbaud, 10dB
+-- GFSK, dev. 5KHz, RX filter BW 58KHz
+--------------------------------------------------------------------------------
+procedure cc1101_config_433_92mhz__1_2kbaud() is
+   cc1101_write_register(CC1101_IOCFG0,0x06)   -- GDO0 Output Pin Configuration
+   cc1101_write_register(CC1101_FIFOTHR,0x47)  -- RX FIFO and TX FIFO Thresholds
+   cc1101_write_register(CC1101_SYNC1,0x7A)    -- Sync Word, High Byte
+   cc1101_write_register(CC1101_SYNC0,0x0E)    -- Sync Word, Low Byte
+   cc1101_write_register(CC1101_PKTLEN,0x14)   -- Packet Length
+   cc1101_write_register(CC1101_PKTCTRL0,0x05) -- Packet Automation Control
+   cc1101_write_register(CC1101_FSCTRL1,0x06)  -- Frequency Synthesizer Control
+   cc1101_write_register(CC1101_FREQ2,0x10)    -- Frequency Control Word, High Byte
+   cc1101_write_register(CC1101_FREQ1,0xB0)    -- Frequency Control Word, Middle Byte
+   cc1101_write_register(CC1101_FREQ0,0x73)    -- Frequency Control Word, Low Byte
+   cc1101_write_register(CC1101_MDMCFG4,0xF5)  -- Modem Configuration
+   cc1101_write_register(CC1101_MDMCFG3,0x83)  -- Modem Configuration
+   cc1101_write_register(CC1101_MDMCFG2,0x12)  -- Modem Configuration
+   cc1101_write_register(CC1101_MDMCFG1,0x21)  -- Modem Configuration
+   cc1101_write_register(CC1101_DEVIATN,0x15)  -- Modem Deviation Setting
+   cc1101_write_register(CC1101_MCSM0,0x18)    -- Main Radio Control State Machine Configuration
+   cc1101_write_register(CC1101_FOCCFG,0x16)   -- Frequency Offset Compensation Configuration
+   cc1101_write_register(CC1101_AGCCTRL2,0x43) -- AGC Control
+   cc1101_write_register(CC1101_AGCCTRL1,0x49) -- AGC Control
+   cc1101_write_register(CC1101_WORCTRL,0xFB)  -- Wake On Radio Control
+   cc1101_write_register(CC1101_FSCAL3,0xE9)   -- Frequency Synthesizer Calibration
+   cc1101_write_register(CC1101_FSCAL2,0x2A)   -- Frequency Synthesizer Calibration
+   cc1101_write_register(CC1101_FSCAL1,0x00)   -- Frequency Synthesizer Calibration
+   cc1101_write_register(CC1101_FSCAL0,0x1F)   -- Frequency Synthesizer Calibration
+   cc1101_write_register(CC1101_TEST2,0x81)    -- Various Test Settings
+   cc1101_write_register(CC1101_TEST1,0x35)    -- Various Test Settings
+   cc1101_write_register(CC1101_TEST0,0x09)    -- Various Test Settings
+end procedure
+
+--------------------------------------------------------------------------------
+-- Rf settings - 100k baud
+--------------------------------------------------------------------------------
+procedure cc1101_config_433_92mhz_100kbaud() is
+   cc1101_write_register(CC1101_AGCCTRL0,0xb0)
+   cc1101_write_register(CC1101_AGCCTRL1,0x00)
+   cc1101_write_register(CC1101_AGCCTRL2,0xc7)
+   cc1101_write_register(CC1101_BSCFG,0x1c)
+   cc1101_write_register(CC1101_FOCCFG,0x1d)
+   cc1101_write_register(CC1101_FREND1,0xb6)
+   cc1101_write_register(CC1101_FREQ0,0x62)
+   cc1101_write_register(CC1101_FREQ1,0xa7)
+   cc1101_write_register(CC1101_FREQ2,0x10)
+   cc1101_write_register(CC1101_FSCAL0,0x1f)
+   cc1101_write_register(CC1101_FSCAL1,0x00)
+   cc1101_write_register(CC1101_FSCAL2,0x2a)
+   cc1101_write_register(CC1101_FSCAL3,0xea)
+   cc1101_write_register(CC1101_FSCTRL1,0x08)
+   cc1101_write_register(CC1101_IOCFG0,0x06)
+   cc1101_write_register(CC1101_MCSM0,0x18)
+   cc1101_write_register(CC1101_MDMCFG2,0x13)
+   cc1101_write_register(CC1101_MDMCFG3,0xf8)
+   cc1101_write_register(CC1101_MDMCFG4,0x5b)
+   cc1101_write_register(CC1101_PKTCTRL0,0x05)
+   cc1101_write_register(CC1101_TEST0,0x09)
+   cc1101_write_register(CC1101_TEST1,0x31)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Rf settings - 250k baud
+--
+-- Smart RF Studio 7 Settings:
+-- -- Base Frequency:    433.999969 MHz
+-- -- Xtal:              26.000000  MHz
+-- -- Modulation Format: 2-FSK
+-- -- Channel Number:    0
+-- -- Data Rate:         249.939 kBaud
+-- -- Deviation:         126.953125 kHz
+-- -- Channel Spacing:   199.951172 kHz
+-- -- RF Filter BW:      650.000000 kHz
+-- -- TX Power:          0dBm
+-- -- Carrier Frequency: 433.999969 MHz
+-- -- Manchester Enable: No
+-- -- PA Ramping:        No
+-- -- Whitening:         No
+--------------------------------------------------------------------------------
+procedure cc1101_config_433_92mhz_250kbaud() is
+cc1101_write_register(CC1101_IOCFG0,0x06)    -- GDO0 Output Pin Configuration
+cc1101_write_register(CC1101_PKTCTRL0,0x05)    -- Packet Automation Control
+cc1101_write_register(CC1101_FSCTRL1,0x08)    -- Frequency Synthesizer Control
+cc1101_write_register(CC1101_FREQ2,0x10)    -- Frequency Control Word, High Byte
+cc1101_write_register(CC1101_FREQ1,0xB1)    -- Frequency Control Word, Middle Byte
+cc1101_write_register(CC1101_FREQ0,0x3B)    -- Frequency Control Word, Low Byte
+cc1101_write_register(CC1101_MDMCFG4,0x1D)    -- Modem Configuration
+cc1101_write_register(CC1101_MDMCFG3,0x3B)    -- Modem Configuration
+cc1101_write_register(CC1101_MDMCFG2,0x03)    -- Modem Configuration
+cc1101_write_register(CC1101_DEVIATN,0x62)    -- Modem Deviation Setting
+cc1101_write_register(CC1101_MCSM0,0x18)    -- Main Radio Control State Machine Configuration
+cc1101_write_register(CC1101_FOCCFG,0x1D)    -- Frequency Offset Compensation Configuration
+cc1101_write_register(CC1101_BSCFG,0x1C)    -- Bit Synchronization Configuration
+cc1101_write_register(CC1101_AGCCTRL2,0xC7)    -- AGC Control
+cc1101_write_register(CC1101_AGCCTRL1,0x00)    -- AGC Control
+cc1101_write_register(CC1101_AGCCTRL0,0xB2)    -- AGC Control
+cc1101_write_register(CC1101_WORCTRL,0xFB)    -- Wake On Radio Control
+cc1101_write_register(CC1101_FREND1,0xB6)    -- Front End RX Configuration
+cc1101_write_register(CC1101_FSCAL3,0xEA)    -- Frequency Synthesizer Calibration
+cc1101_write_register(CC1101_FSCAL2,0x2A)    -- Frequency Synthesizer Calibration
+cc1101_write_register(CC1101_FSCAL1,0x00)    -- Frequency Synthesizer Calibration
+cc1101_write_register(CC1101_FSCAL0,0x1F)    -- Frequency Synthesizer Calibration
+cc1101_write_register(CC1101_TEST0,0x09)    -- Various Test Settings
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Turn on TX
+--------------------------------------------------------------------------------
+procedure cc1101_tx_on() is
+   cc1101_write_register(CC1101_PATABLE,0xC0)   -- 10dB
+end procedure
+
+--------------------------------------------------------------------------------
+-- Turn off TX
+--------------------------------------------------------------------------------
+procedure cc1101_tx_off() is
+   cc1101_write_register(CC1101_PATABLE,0x60)   -- 0dB
+end procedure
+
+--------------------------------------------------------------------------------
+-- Initialize
+--------------------------------------------------------------------------------
+procedure cc1101_init() is
+   cc1101_chip_select_direction = output
+   cc1101_chip_select = high
+   cc1101_gdo0_direction = input
+
+   -- issue manual POR sequence and SRES:
+   cc1101_chip_select = high
+   pin_sck = 1
+   pin_sdo = 0
+
+   -- strobe CS low/high
+   delay_10us(1)
+   cc1101_chip_select = low
+   delay_10us(1)
+   cc1101_chip_select = high
+   pin_sck = 0
+   delay_10us(4)
+   cc1101_chip_select = low
+   delay_10us(1)
+   -- wait for CHIP_RDYn :
+   while pin_sdi == HIGH loop
+   end loop
+   -- SRES:
+   delay_10us(1)
+   cc1101_strobe(CC1101_SRES)
+
+   delay_1ms(1)
+
+   -- Write, then Read back one of the above as a health check.
+   cc1101_write_register(CC1101_FREQ0,0x73)   --Frequency Control Word, Low Byte
+   if cc1101_read_register(CC1101_FREQ0) != 0x73 then
+      cc1101_has_error = 1
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Send data in cc1101_tx_buffer
+--------------------------------------------------------------------------------
+procedure cc1101_send_packet(byte in size) is
+  cc1101_write_register(CC1101_TXFIFO, size)
+  cc1101_write_burst_reg (CC1101_TXFIFO, size) -- write the data to be sent
+  cc1101_strobe (CC1101_STX) -- send data into the transmit mode
+
+  -- Wait for cc1101_gdo0 to be set -> sync transmitted
+  while cc1101_gdo0 == 0 loop
+      cc1101_strobe(CC1101_SNOP)
+  end loop
+  
+  -- Wait for cc1101_gdo0 to be cleared -> end of packet
+  while cc1101_gdo0 == 1 loop
+      cc1101_strobe(CC1101_SNOP)
+  end loop
+  
+  cc1101_strobe (CC1101_SFTX)
+end procedure
+
+--------------------------------------------------------------------------------
+-- Receive packet (fills cc1101_rx_buffer)
+--------------------------------------------------------------------------------
+function cc1101_receive_packet() return byte is
+   var byte packet_length
+   var byte rssi,lqi
+   var bit cc1101_crc_ok at lqi : 7
+
+   -- wait for a packet
+   cc1101_strobe(CC1101_SRX) -- entry into the receiving state
+   var dword step = 0
+   while cc1101_gdo0 == 0 loop
+      step = step + 1
+      if step == 0xFFFFFF then
+         cc1101_bad_packet_received_callback(1)
+         exit loop
+      end if
+   end loop
+   step = 0
+   while cc1101_gdo0 == 1 loop
+      step = step + 1
+      if step == 0xFFFFFF then
+         cc1101_bad_packet_received_callback(1)
+         exit loop
+      end if
+   end loop
+
+   -- Get number of bytes in the packet.
+   var byte rx_bytes = cc1101_read_status (CC1101_RXBYTES)
+
+   if ((rx_bytes & 0x7F) > 0) & ((rx_bytes & 0x80) == 0) then
+   
+      packet_length = cc1101_read_register (CC1101_RXFIFO)
+      cc1101_read_burst_register (CC1101_RXFIFO, packet_length)
+
+      cc1101_chip_select = low
+      spi_master = (CC1101_RXFIFO|CC1101_READ_BURST)
+      rssi = spi_master
+      lqi = spi_master
+      cc1101_chip_select = high
+
+      if cc1101_crc_ok == 1 then
+         cc1101_good_packet_received_callback(packet_length)
+         return (1)
+      else
+         cc1101_bad_packet_received_callback(0)
+         return (0)
+      end if
+   else
+      cc1101_bad_packet_received_callback(2)
+      return 0
+   end if
+end function
