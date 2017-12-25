@@ -82,17 +82,17 @@ alias spi_master_exchange is spi_master_hw_exchange
 -- Configure cc1101
 const byte CC1101_BUF_SIZE = 20
 --
-alias cc1101_chip_select is pin_a2
-alias cc1101_chip_select_direction is pin_a2_direction
-alias cc1101_gdo0 is pin_a3
-alias cc1101_gdo0_direction is pin_a3_direction
+alias cc1101_chip_select is pin_a1
+alias cc1101_chip_select_direction is pin_a1_direction
+alias cc1101_gdo0 is pin_a2
+alias cc1101_gdo0_direction is pin_a2_direction
 --
 include transceiver_cc1101
 cc1101_init()
 ;cc1101_config_433_92__1_2_kb()
 cc1101_config_433_92mhz_100kbaud()
 ;cc1101_config_433_92mhz_250kbaud()
-cc1101_tx_on()
+cc1101_tx_10dbi()
 
 --
 if cc1101_has_error == TRUE then
@@ -120,14 +120,11 @@ end procedure
 -- Called when a bad packet is received.
 procedure cc1101_bad_packet_received_callback(byte in error) is
    if error == 0 then
-      print_string(serial_data,"ERROR: CRC ERROR\r\n");
+      print_string(serial_data,"ERROR 0: CRC ERROR\r\n");
    elsif error == 1 then
-      print_string(serial_data,"ERROR: unknown\r\n")
-      -- reset and re-config the chip
-      cc1101_init()
-      ;cc1101_config_433_92__1_2_kb()
-      cc1101_config_433_92mhz_100kbaud()
-      cc1101_tx_on()
+      print_string(serial_data,"ERROR 1: RX buffer overflowed, RX buffer has been cleard.\r\n")
+   elsif error == 2 then
+      print_string(serial_data,"ERROR 2: RX buffer overflowed, RX buffer has been cleard.\r\n")
    end if
 end procedure
 
@@ -150,7 +147,7 @@ forever loop
    -- RX:
    forever loop
       -- Wait for new packets.
-      var byte return_value = cc1101_receive_packet()
+      cc1101_receive_packet()
       led = !led
    end loop
 end loop

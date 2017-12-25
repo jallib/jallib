@@ -170,6 +170,20 @@ procedure cc1101_strobe(byte in strobe) is
 end procedure
 
 --------------------------------------------------------------------------------
+-- Select receive mode
+--------------------------------------------------------------------------------
+procedure cc1101_receive_mode() is
+   cc1101_strobe(CC1101_SRX) -- entry into the receiving state
+end procedure
+
+--------------------------------------------------------------------------------
+-- Select transmit mode
+--------------------------------------------------------------------------------
+procedure cc1101_transmit_mode() is
+   cc1101_strobe(CC1101_STX) -- entry into the receiving state
+end procedure
+
+--------------------------------------------------------------------------------
 -- Read Status Byte
 --------------------------------------------------------------------------------
 function cc1101_read_status(byte in addr) return byte is
@@ -306,17 +320,11 @@ end procedure
 
 
 --------------------------------------------------------------------------------
--- Turn on TX
+-- Set TX power to 10dbi
 --------------------------------------------------------------------------------
-procedure cc1101_tx_on() is
-   cc1101_write_register(CC1101_PATABLE,0xC0)   -- 10dB
-end procedure
-
---------------------------------------------------------------------------------
--- Turn off TX
---------------------------------------------------------------------------------
-procedure cc1101_tx_off() is
-   cc1101_write_register(CC1101_PATABLE,0x60)   -- 0dB
+procedure cc1101_tx_10dbi() is
+   pragma inline
+   cc1101_write_register(CC1101_PATABLE,0xC0)
 end procedure
 
 --------------------------------------------------------------------------------
@@ -349,10 +357,12 @@ procedure cc1101_init() is
    cc1101_strobe(CC1101_SRES)
 
    delay_1ms(1)
+   
 
-   -- Write, then Read back one of the above as a health check.
-   cc1101_write_register(CC1101_FREQ0,0x73)   --Frequency Control Word, Low Byte
-   if cc1101_read_register(CC1101_FREQ0) != 0x73 then
+   cc1101_write_register(CC1101_PKTLEN,CC1101_BUF_SIZE) -- Set max packet length
+
+   -- Read back max packet length as a health check.
+   if cc1101_read_register(CC1101_PKTLEN) != CC1101_BUF_SIZE then
       cc1101_has_error = 1
    end if
 end procedure
@@ -363,7 +373,7 @@ end procedure
 procedure cc1101_send_packet(byte in size) is
   cc1101_write_register(CC1101_TXFIFO, size)
   cc1101_write_burst_reg (CC1101_TXFIFO, size) -- write the data to be sent
-  cc1101_strobe (CC1101_STX) -- send data into the transmit mode
+  cc1101_transmit_mode() -- select transmit mode
 
   -- Wait for cc1101_gdo0 to be set -> sync transmitted
   while cc1101_gdo0 == 0 loop
@@ -379,37 +389,39 @@ procedure cc1101_send_packet(byte in size) is
 end procedure
 
 --------------------------------------------------------------------------------
--- Receive packet (fills cc1101_rx_buffer)
+-- Receive packet (fills array cc1101_rx_buffer[])
 --------------------------------------------------------------------------------
-function cc1101_receive_packet() return byte is
+procedure cc1101_receive_packet() is
    var byte packet_length
    var byte rssi,lqi
    var bit cc1101_crc_ok at lqi : 7
+   var byte rx_bytes
+   var bit rx_fifo_overflow at rx_bytes : 7
 
-   -- wait for a packet
-   cc1101_strobe(CC1101_SRX) -- entry into the receiving state
-   var dword step = 0
+   -- Wait for a packet and check for overflow.
    while cc1101_gdo0 == 0 loop
-      step = step + 1
-      if step == 0xFFFFFF then
-         cc1101_bad_packet_received_callback(1)
-         exit loop
+      -- enter receive mode
+      cc1101_receive_mode()
+      
+      -- check for overflow
+      rx_bytes = cc1101_read_status(CC1101_RXBYTES)
+      ;rx_bytes = cc1101_read_status(CC1101_PKTSTATUS)
+      if rx_fifo_overflow == 1 then
+         cc1101_strobe(CC1101_SFRX) -- flush the rx fifo
+         cc1101_bad_packet_received_callback(2)
       end if
    end loop
-   step = 0
+
+   -- Packet is arriving, wait till we have received the full packet.
    while cc1101_gdo0 == 1 loop
-      step = step + 1
-      if step == 0xFFFFFF then
-         cc1101_bad_packet_received_callback(1)
-         exit loop
-      end if
    end loop
 
-   -- Get number of bytes in the packet.
-   var byte rx_bytes = cc1101_read_status (CC1101_RXBYTES)
+   -- Get number of bytes in the rx buffer & overflow bit.
+   rx_bytes = cc1101_read_status(CC1101_RXBYTES)
 
-   if ((rx_bytes & 0x7F) > 0) & ((rx_bytes & 0x80) == 0) then
-   
+   -- If bytes are received and rx buffer is not full
+   if rx_bytes <= CC1101_BUF_SIZE then -- GOOD
+
       packet_length = cc1101_read_register (CC1101_RXFIFO)
       cc1101_read_burst_register (CC1101_RXFIFO, packet_length)
 
@@ -421,13 +433,15 @@ function cc1101_receive_packet() return byte is
 
       if cc1101_crc_ok == 1 then
          cc1101_good_packet_received_callback(packet_length)
-         return (1)
-      else
+         return
+      else -- crc error
+         cc1101_strobe(CC1101_SFRX) -- flush the rx fifo
          cc1101_bad_packet_received_callback(0)
-         return (0)
+         return
       end if
-   else
-      cc1101_bad_packet_received_callback(2)
-      return 0
+   else -- rx buffer overflowed
+      cc1101_strobe(CC1101_SFRX) -- flush the rx fifo
+      cc1101_bad_packet_received_callback(1)
+      return
    end if
-end function
+end procedure
