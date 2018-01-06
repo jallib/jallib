@@ -38,7 +38,22 @@ nb: I try to support most of the microcontrollers produced by MicroChip,
 
 History
 =======
-2.4q3 -- ?? ??? 2014
+2.4q6 -- 25 October 2016
+         * create 32 & 64 bit linux files
+         * create an ISR pre-amble & save the state variables there
+           (allows for some optimization not allowed elsewhere)
+         * add and subtract of arrays on 14 bit hybrids failed
+         * passing structure pointers into arrays failed
+2.4q5 -- 29 December 2015
+         * allow whereis() on variables
+         * fix whereis() in expressions
+
+2.4q4 -- 25 December 2015
+         * fixed large lookup tables
+         * fixed data error with inline assembly on hybrid chips
+         * fixed error when using lookup tables in expressions on 16 bit chips
+
+2.4q3 -- 27 September 2014
          * fixed exponent adjust when floating multiply/divide by an integral
            power of 2
          * allow exponent adjust when floating multiply/divide by a floating
