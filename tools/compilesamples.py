@@ -4,7 +4,7 @@ Title: Compile all Jallib samples
 
 Author: Rob Hamerling, Copyright (c) 2015..2017, all rights reserved.
 
-Adapted-by:
+Adapted-by: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
 
 Compiler: N/A
 
@@ -39,7 +39,6 @@ base, mplabxversion = check_and_set_environment()              # obtain environm
 if (base == ""):
    exit(1)
 
-import sys
 import os
 import time
 import subprocess
@@ -59,7 +58,7 @@ if (platform_name == "Linux"):
    jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
    compiler = os.path.join(os.getcwd(), "jalv2-x86-64")        # compiler (in current directory)
 elif (platform_name == "Windows"):
-   jallib   = os.path.join("N:\\", "jallib")                   # local copy jallib master
+   jallib   = os.path.join("D:\\", "jallib-master")                   # local copy jallib master
    compiler = os.path.join(os.getcwd(), "jalv2.exe")           # compiler (in current directory)
 elif (platform_name == "Darwin"):
    jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master

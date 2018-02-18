@@ -4,7 +4,7 @@
 
  Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
 
- Adapted-by:
+ Adapted-by: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
 
  Revision: $Revision$
 
@@ -41,9 +41,32 @@ import os, sys
 import re
 import time
 import string
+import platform
+
+from pic2jal_environment import check_and_set_environment
+base, mplabxversion = check_and_set_environment()              # obtain environment variables
+if (base == ""):
+   exit(1)
+
+platform_name = platform.system()
+
+   # --- platform dependent paths
+if (platform_name == "Linux"):
+   jallib   = os.path.join("/", "media", "ramdisk", "jallib")      # local copy Jallib master
+   compiler = os.path.join(os.getcwd(), "jalv2-x86-64")        # compiler (in current directory)
+elif (platform_name == "Windows"):
+#   jallib   = os.path.join("D:\\", "jallib-master")                   # local copy jallib master
+   jallib   = os.path.join("D:\\", "GitHub", "jallib")                   # local copy jallib master
+   compiler = os.path.join(os.getcwd(), "jalv2.exe")           # compiler (in current directory)
+elif (platform_name == "Darwin"):
+   jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
+   compiler = os.path.join(os.getcwd(), "jalv2osx")            # compiler (in current directory)
+else:
+   print("Please add platform specific info to this script!")
+   exit(1)
 
 
-jallib     = os.path.join("/", "media", "nas", "jallib")    # directory of local copy of Jallib
+
 libdir     = os.path.join(jallib, "include")                # device files and function libraries
 smpdir     = os.path.join(jallib, "sample")                 # samples
 projdir    = os.path.join(jallib, "project")                # projects

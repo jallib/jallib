@@ -4,7 +4,7 @@ Title: Compare new device files with previous committed device files
 
 Author: Rob Hamerling, Copyright (c) 2017..2017, all rights reserved.
 
-Adapted-by:
+Adapted-by: Rob Jansen, Copyright (c) 2017..2017, all rights reserved.
 
 Revision: $Revision$
 
@@ -49,7 +49,7 @@ if (platform_name == "Linux"):
    kdiff  = "kdiff3"                                                 # assumed to be in path
    cpy    = os.path.join(base, "comparejal_copy.sh")                 # copy commandfile
 elif (platform_name == "Windows"):
-   olddir = os.path.join("N:\\", "jallib", "include", "device")      # previous device files
+   olddir = os.path.join("D:\\", "jallib-master", "include", "device")      # previous device files
    kdiff  = os.path.join("C:\\", "Program Files", "KDiff3", "kdiff3.exe")    # full path
    cpy    = os.path.join(base, "comparejal_copy.cmd")                # copy commandfile
 elif (platform_name == "Darwin"):                                    # Mac

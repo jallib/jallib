@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Title: Extract .pic files of JALV2 supported PICs
+Title: Collect .PIC files of JALV2 supported PICs
 
-Author: Rob Hamerling, Copyright (c) 2014..2017, all rights reserved.
+Author: Rob Hamerling, Copyright (c) 2014..2018, all rights reserved.
 
 Adapted-by:
 
@@ -14,13 +14,13 @@ This file is part of jallib  https://github.com/jallib/jallib
 Released under the BSD license https://www.opensource.org/licenses/bsd-license.php
 
 Description:
-   Extract .PIC files of JALV2 supported PICs from MPLAB-X file crownking.edc.jar
+   Copy .PIC files of JALV2 supported PICs from MPLABX to working directory
 
 Sources: N/A
 
 Notes:
    - May need to be run with root or administrator privileges
-   - Either MPLABX-IPE or MPLABX-IDE needs be installed.
+   - MPLABX-IDE needs be installed.
 
 """
 
@@ -31,70 +31,45 @@ if (base == ""):
 
 import os
 import sys
-import zipfile
+import glob
+# import zipfile
 import platform
-
-# begin part of platform specific paths (Linux, Windows, OSX (Darwin))
-# _ipe_ stands for MPLABX-IPE, _ide_ stands for MPLABX_IDE, _com_ stands for either or both
-jar_com_pfx_linux   = os.path.join("/", "opt", "microchip", "mplabx", "v" + mplabxversion)
-jar_com_pfx_windows = os.path.join("C:\\", "Program Files (x86)", "microchip", "mplabx", "v" + mplabxversion)
-jar_com_pfx_darwin  = os.path.join("/", "Applications", "microchip", "mplabx", "v" + mplabxversion)
-
-# last part of platform specific paths
-jar_com_sfx_linux   = os.path.join("lib", "crownking.edc.jar")
-jar_com_sfx_windows = os.path.join("lib", "crownking.edc.jar")
-jar_ipe_sfx_darwin  = os.path.join("Contents", "Resources", "mplab_ide", "mplablibs", "modules", "ext", "crownking.edc.jar")
-jar_ide_sfx_darwin  = os.path.join("Contents", "Java", "lib", "crownking.edc.jar")
+import shutil
 
 platform_name = platform.system()
 
-# platform specific path of 'crownking.edc.jar
+# platform specific path prefix (Linux, Windows, OSX (Darwin))
 if (platform_name == "Linux"):
-   jar = os.path.join(jar_com_pfx_linux, "mplab_ipe", jar_com_sfx_linux)
-   if not os.path.exists(jar):
-      jar = os.path.join(jar_com_pfx_linux, "mplab_ide", jar_com_sfx_linux)
+   xml_pfx = os.path.join("/", "opt", "microchip", "mplabx", "v" + mplabxversion)
 elif (platform_name == "Windows"):
-   jar = os.path.join(jar_com_pfx_windows, "mplab_ipe", jar_com_sfx_windows)
-   if not os.path.exists(jar):
-      jar = os.path.join(jar_com_pfx_windows, "mplab_ide", jar_com_sfx_windows)
+ #  xml_pfx = os.path.join("C:\\", "Program Files (x86)", "microchip", "mplabx", "v" + mplabxversion)
+   xml_pfx = os.path.join("D:\\", "picscripts", "mplabx_v" + mplabxversion)
 elif (platform_name == "Darwin"):
-   jar = os.path.join(jar_com_pfx_darwin, "mplab_ipe.app", jar_ipe_sfx_darwin)
-   if not os.path.exists(jar):
-      jar = os.path.join(jar_com_pfx_darwin, "mplab_ide.app", jar_ide_sfx_darwin)
+   xml_pfx = os.path.join("/", "Applications", "microchip", "mplabx", "v" + mplabxversion)
 else:
-   print("Please add platform specific settings for this type of system")
+   sys.stderr.write("Please add proper environment settings for this platform\n")
    exit(1)
-
-if not os.path.exists(jar):
-   print("Could not locate the required MPLABX file 'crownking.edc.jar'")
-   exit(1)
+   
+# Complete prefixes and suffixes
+#xml_prefix = os.path.join(xml_pfx, "packs", "Microchip")
+xml_prefix = os.path.join(xml_pfx, "Microchip")
+xml_suffix = os.path.join("__version__", "edc")
 
 # destination of extracted .pic files:
-dst = os.path.join(base, "mplabx." + mplabxversion)   # destination of .pic xml files
+dst = os.path.join(base, "mplabx." + mplabxversion, "content", "edc")   # destination of .pic xml files
 
-# Selection strings for .pic files to be collected from .jar archive
-# Note: This is the name format used by Python zipfile module,
-#       common for all platforms (thus not a os.path.join() object).
-
-pic_select = (
-   # 12 bits
-   "content/edc/16c5x/PIC10F",
-   "content/edc/16c5x/PIC12F",
-   "content/edc/16c5x/PIC16F",
-   "content/edc/16c5x/PIC16HV",
-   # 14 bits
-   "content/edc/16xxxx/PIC10F",
-   "content/edc/16xxxx/PIC10LF",
-   "content/edc/16xxxx/PIC12F",
-   "content/edc/16xxxx/PIC12LF",
-   "content/edc/16xxxx/PIC12HV",
-   "content/edc/16xxxx/PIC16F",
-   "content/edc/16xxxx/PIC16LF",
-   "content/edc/16xxxx/PIC16HV",
-   # 16 bits
-   "content/edc/18xxxx/PIC18F",
-   "content/edc/18xxxx/PIC18LF"
-   )
+# Selection of directories of .PIC files to be collected from MPLABX
+pic_select = {
+   # appropriate input and corresponding output directories
+   "PIC10-12Fxxx_DFP"   : "16c5x",              # was 12-bits only, now mixed 12/14
+   "PIC12-16F1xxx_DFP"  : "16xxxx",             # mixed 12/14 bits
+   "PIC16F1xxxx_DFP"    : "16xxxx",             
+   "PIC16Fxxx_DFP"      : "16xxxx",             # mixed 12/14 bits
+   "PIC18F-J_DFP"       : "18xxxx",
+   "PIC18F-K_DFP"       : "18xxxx",   
+   "PIC18F-Q_DFP"       : "18xxxx",
+   "PIC18Fxxxx_DFP"     : "18xxxx"
+   }
 
 # Unsupported PICs (exceptions to the selection above!)
 
@@ -102,21 +77,42 @@ unsup  = ("PIC12F529T39A.PIC", "PIC12F529T48A.PIC",
           "PIC16HV540.PIC", "PIC16F527.PIC", "PIC16F570.PIC")
 
 
-
 # ===  E N T R Y   P O I N T ===
 
 if (__name__ == "__main__"):
 
-   print("Extracting .pic files of JalV2 supported PICs from:\n", jar)
+   print("Copying .PIC files of JalV2 supported PICs from MPLABX V%s" % mplabxversion)
 
    if not os.path.exists(dst):                  # check existence
       os.makedirs(dst)                          # create destination directory
 
-   with zipfile.ZipFile(jar, "r") as zf:        # open .jar file
-      for name in zf.namelist():                # all files
-         if name.startswith(pic_select):        # selection candidate
-            if (os.path.split(name)[1] not in unsup):   # check JalV2 supported
-               zf.extract(name, path=dst)       # get it
+   for picdir in pic_select.keys():             # all directories with PIC files 
+      picpath = os.path.join(xml_prefix, picdir, xml_suffix) # build path of dir with .PIC files      
+      os.chdir(picpath)                         # make it current working directory
+      filelist = glob.glob("PIC1*.PIC")         # make list of selected .PIC files
+      for f in filelist:                        # all of these
+         if (f not in unsup):                   # when supported by JalV2 
+            with open(f, "r") as fp:
+               ln = fp.readline()                # first line
+               arch_offset = ln.index("edc:arch=")    # search core
+               if (arch_offset > 0):             
+                  arch = ln[arch_offset + 10 : arch_offset + 13].lower()  # leading 3 chars
+                  if (arch == "16c"):   
+                     subdir = "16c5x"
+                  elif ((arch == "16x") | (arch == "16e")):
+                     subdir = "16xxxx"
+                  elif (arch == "18x"):
+                     subdir = "18xxxx"
+                  else:
+                     sys.stderr.write("WNG! %s: Unrecognised core specification: %s\n" % (f, arch))
+                     subdir = pic_select[picdir]   # take most likely
+               else: 
+                   sys.stderr.write("%s: No core specification found\n" % f)
+                   continue   
+               picdst = os.path.join(dst, subdir)  # destination directory
+               if not os.path.exists(picdst):      # check for existence
+                  os.makedirs(picdst)   
+               shutil.copy2(f, picdst)             # copy .PIC file
 
    print("Done!\n")
 
