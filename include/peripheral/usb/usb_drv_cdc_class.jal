@@ -1,6 +1,6 @@
 -- Title: USB Communication Device Class driver
 -- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
--- Adapted-by: - Matthew Schinkel
+-- Adapted-by: - Matthew Schinkel, Rob Jansen, Copyright (c) 2018
 -- Compiler: >=2.4q2
 -- Revision: $Revision$
 --
@@ -93,6 +93,7 @@ procedure usb_handle_class_request_callback() is
     var word len = usb_sdp_length
     var word val = usb_sdp_value
     var byte valbt[2] at usb_sdp_value
+	  var byte index
 
     case (req01) of
 		USB_REQ_SEND_BREAK:
@@ -136,7 +137,13 @@ if false then
 else
 				usb_delivery_bytes_max_send = 0xFF
 				usb_delivery_bytes_to_send = 7
-				_usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, cdc_line_coding, usb_delivery_bytes_to_send )
+        if defined(POSTINC1) then
+				  _usb_copy_array_to_ram( USB_IN_DELIVERY_BUFFER_LOC, cdc_line_coding, usb_delivery_bytes_to_send )
+			  else
+          for usb_delivery_bytes_to_send using index loop
+           usb_delivery_buffer[index] = cdc_line_coding[index]
+          end loop
+				end if
 				usb_delivery_buffer_size = USB_EP0_IN_SIZE
 				-- usb_delivery_bytes_to_send
 				usb_control_mode = USB_CM_CTRL_READ_DATA_STAGE
@@ -257,7 +264,10 @@ procedure usb_handle_class_ctrl_read_callback() is
 	end case
 end procedure
 
+
+if defined(POSTINC1) then
 procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
+-- Use POSTINC and memory pointer to copy data.
     pragma inline
     var byte cdc_rx_next
     if USB_CDC_DEBUG > 0  then
@@ -291,7 +301,8 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
 					print_byte_hex(serial_hw_data,cdc_rx_wr)
 					serial_hw_write("$")
 					print_byte_hex(serial_hw_data,ch)
-					serial_newline()
+		      print_crlf(serial_hw_data)
+				
 				end if
 				
                 cdc_rx_buffer[cdc_rx_wr] = ch
@@ -309,6 +320,58 @@ procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte 
         end if
     end if
 end procedure
+else
+procedure usb_ep_data_out_callback(byte in end_point, byte in data[], byte in byte_count) is
+-- Use copy arrays to copy data.
+  pragma inline
+  var byte cdc_rx_next
+  var byte index
+  if USB_CDC_DEBUG > 0  then
+    const byte str[] = " EP data out: "
+    const byte str1[] = " bytes "
+    print_string(serial_hw_data,str)
+    print_byte_hex(serial_hw_data,byte_count)
+    print_string(serial_hw_data,str1)
+  end if
+
+  -- We have some data!
+  if (end_point == USB_CDC_DATA_ENDPOINT) then
+    -- it's the data end point
+    for byte_count using index loop
+
+      cdc_rx_next = cdc_rx_wr + 1	-- get next buffer position
+
+      if (cdc_rx_next == USB_CDC_RX_BUFFER_SIZE) then
+        -- if we're at the end
+        cdc_rx_next = 0	-- then wrap to the beginning
+      end if
+
+      if (cdc_rx_next != cdc_rx_rd) then
+        -- if space in the fifo
+				if USB_CDC_DEBUG > 0  then
+					serial_hw_write("$")
+					print_byte_hex(serial_hw_data,cdc_rx_wr)
+					serial_hw_write("$")
+					print_byte_hex(serial_hw_data,data[index])
+		      print_crlf(serial_hw_data)
+			  end if
+				
+        cdc_rx_buffer[cdc_rx_wr] = data[index]
+        cdc_rx_wr = cdc_rx_next  -- and move pointer along
+        cdc_rx_free = cdc_rx_free - 1
+      else
+      -- else... just ignore it, we've lost a byte, no room in the fifo
+      end if
+    end loop
+  else
+    if USB_CDC_DEBUG > 0  then
+    const byte str[] = "data for ep "
+    print_string(serial_hw_data,str)
+    print_byte_hex(serial_hw_data,end_point)
+    end if
+  end if
+end procedure
+end if -- POSTINC1
 
 -- --------------------------------------------------------------------------------------
 -- This function returns the status of the SIE tx buffer. Either the SIE can own the
@@ -490,7 +553,7 @@ function usb_cdc_getc() return byte is
 		print_byte_hex(serial_hw_data,cdc_rx_rd)
 		serial_hw_write("<")
 		print_byte_hex(serial_hw_data,cdc_rx_char)
-		serial_newline()
+		print_crlf(serial_hw_data)
 	end if
 
     -- move read pointer to next position in fifo

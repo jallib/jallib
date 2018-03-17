@@ -1,7 +1,7 @@
 -- Title: USB driver library
 -- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
--- Adapted-by: - Matthew Schinkel
--- Compiler: >=2.4q2
+-- Adapted-by: - Matthew Schinkel, Rob Jansen, Copyright (c) 2018..2018
+-- Compiler: >= jalv2.4q6
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -20,9 +20,9 @@
 --
 --
 
+if defined(POSTINC1) then
 include memory_pointer1
-
--- --------------------------------------------------------------------------------------
+ -- --------------------------------------------------------------------------------------
 -- Internal memory copy procedure
 -- This function copies the content from a source array towards the specified
 -- destination memory location. The function copies num_bytes bytes
@@ -36,6 +36,7 @@ procedure _usb_copy_array_to_ram(word in dst, byte in data[], byte in num_bytes 
 		mem_pointer1 = data[index]
 	end loop
 end procedure
+end if
 
 -- --------------------------------------------------------------------------------------
 -- This procedure sends the content of the USB delivery buffer in the USB SIE
@@ -70,8 +71,8 @@ procedure usb_send_data_chunk() is
 	
 		if USB_DEBUG > 0  then
 			var byte idx
-			
-			print_crlf(serial_data)
+		
+			print_crlf(serial_hw_data)
 			--print_byte_hex(serial_hw_data,  usb_delivery_bytes_max_send )
 			--serial_hw_write( "~" )
 			print_byte_hex(serial_hw_data,  byte_cnt )
@@ -167,13 +168,16 @@ end procedure
 -- byte_cnt the number of bytes to be send, and is_new_sequence determines if the data
 -- tranmission is starting with USB packet o (if set to true), otherwise the USB packet
 -- is toggled before transmission.
+-- If the controller support POSTINC then that is used to copy data otherwise a standard
+-- array copy is used to copy the data.
 -- --------------------------------------------------------------------------------------
 procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit in is_new_sequence ) is
 	
 	var byte idx;
+	var byte index
 
 	if USB_DEBUG > 0 then
-		print_crlf(serial_data)
+		print_crlf(serial_hw_data)
 		serial_hw_write("~")
 		print_byte_hex(serial_hw_data,  endpoint )
 		serial_hw_write(">")
@@ -186,7 +190,13 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 	case endpoint of
 		0:
 		block
-			_usb_copy_array_to_ram( USB_EP0_IN_ADDR, data, byte_cnt )
+     if defined(POSTINC1) then
+		    _usb_copy_array_to_ram( USB_EP0_IN_ADDR, data, byte_cnt )
+      else
+        for byte_cnt using index loop
+          usb_ep0in_buf[index] = data[index]
+        end loop
+      end if
 			usb_bd0in_addr = USB_EP0_IN_ADDR
 			var volatile bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
 			
@@ -196,7 +206,7 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 			end if
 			
 			if USB_DEBUG > 0  then
-				print_crlf(serial_data)
+		    print_crlf(serial_hw_data)
 				serial_hw_write("i")
 				print_byte_hex(serial_hw_data,  usb_bd0in_stat )
 			end if
@@ -217,7 +227,13 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 		1:
 		block
 			if USB_EP1 then
-				_usb_copy_array_to_ram( USB_EP1_IN_ADDR, data, byte_cnt )
+        if defined(POSTINC1) then
+  			  _usb_copy_array_to_ram( USB_EP1_IN_ADDR, data, byte_cnt )
+        else
+        for byte_cnt using index loop
+          usb_ep1in_buf[index] = data[index]
+         end loop
+        end if
 				usb_bd1in_addr = USB_EP1_IN_ADDR
 				
 				usb_bd1in_cnt = byte_cnt
@@ -235,7 +251,13 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 		2:
 		block
 			if USB_EP2 then
-				_usb_copy_array_to_ram( USB_EP2_IN_ADDR, data, byte_cnt )
+        if defined(POSTINC1) then
+				  _usb_copy_array_to_ram( USB_EP2_IN_ADDR, data, byte_cnt )
+        else
+          for byte_cnt using index loop
+            usb_ep2in_buf[index] = data[index]
+          end loop
+        end if
 				usb_bd2in_addr = USB_EP2_IN_ADDR
 				var volatile bit dts_bit at usb_bd2in_stat : USB_BDSTATUS_DTS
 				if is_new_sequence then
@@ -251,7 +273,13 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 		3:
 		block
 			if USB_EP3 then
-				_usb_copy_array_to_ram( USB_EP3_IN_ADDR, data, byte_cnt )
+        if defined(POSTINC1) then
+			    _usb_copy_array_to_ram( USB_EP3_IN_ADDR, data, byte_cnt )
+        else
+          for byte_cnt using index loop
+            usb_ep3in_buf[index] = data[index]
+          end loop
+        end if
 				usb_bd3in_addr = USB_EP3_IN_ADDR
 				var volatile bit dts_bit at usb_bd3in_stat : USB_BDSTATUS_DTS
 				if is_new_sequence then
@@ -267,13 +295,12 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
 		otherwise
 		block		
 			if USB_DEBUG > 0  then
-				print_crlf(serial_data)
+		    print_crlf(serial_hw_data)
 				const byte str[] = " ENDPOINT NOT SUPPORTED YET! "
 				print_string( serial_hw_data,str);
 			end if	
 		end block
 	end case
-
 end procedure
 
 
@@ -388,7 +415,7 @@ procedure usb_stall_ep0() is
 	-- set BSTALL bit and UOWN bit (SIE will own the buffer)
 
 	if USB_DEBUG > 0  then
-		print_crlf(serial_data)
+		print_crlf(serial_hw_data)
 		serial_hw_write("o")
 		print_byte_hex(serial_hw_data,  usb_bd0out_stat )
 		print_byte_hex(serial_hw_data,  usb_bd0out_stat | 0b_1000_0100)	
@@ -408,7 +435,7 @@ procedure usb_prime_ep0_out() is
 	if ( usb_control_mode == USB_CM_CTRL_READ_DATA_STAGE ) then
 		new_value = 0x8C
 		if USB_DEBUG > 0  then
-			print_crlf(serial_data)
+		  print_crlf(serial_hw_data)
 			serial_hw_write("i")
 			print_byte_hex(serial_hw_data,  usb_bd0in_stat )
 			print_byte_hex(serial_hw_data, 0)	
@@ -420,7 +447,7 @@ procedure usb_prime_ep0_out() is
 	end if
 	
 	if USB_DEBUG > 0  then
-		print_crlf(serial_data)
+		print_crlf(serial_hw_data)
 		serial_hw_write("o")
 		print_byte_hex(serial_hw_data,  usb_bd0out_stat )
 		print_byte_hex(serial_hw_data, new_value)	

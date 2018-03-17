@@ -1,7 +1,7 @@
 -- Title: USB Serial 
 -- Author: Albert Faber, Copyright (c) 2009, all rights reserved.
--- Adapted-by: 
--- Compiler: >=2.4k
+-- Adapted-by: Rob Jansen, Copyright (c) 2018, all rights reserved.
+-- Compiler: >= jalv2.4q6
 -- Revision: $Revision$
 -- 
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -72,9 +72,51 @@ include usb_defs
 -- The default control enpoint
 -- Interrupt endpoint
 -- And the bulk endpoint
+-- Note: Addresses are based on USB_BDT_ADDRESS, which differ for devices.
 -------------------------------------------------------------------------
+if (USB_BDT_ADDRESS  == 0x0020) then
+-- For the  PIC16F1455 the buffers are different we set the start adress
+-- to the second CPU banked address starting as 0x0A0 which equals the base
+-- address of 0x020 + 0x080. Space is reserved by using array usb_bd_dummy.
 const bit USB_EP0 = 1
+const byte USB_EP0_OUT_SIZE = 8
+const word USB_EP0_OUT_ADDR = (USB_BASE_ADDRESS + 0x0080 )
+const byte USB_EP0_IN_SIZE  = 8
+const word USB_EP0_IN_ADDR  = (USB_EP0_OUT_ADDR + USB_EP0_OUT_SIZE )
 
+var volatile byte usb_ep0out_buf[ USB_EP0_OUT_SIZE ] at USB_EP0_OUT_ADDR
+var volatile byte usb_ep0in_buf[ USB_EP0_IN_SIZE ] at USB_EP0_IN_ADDR
+
+const bit USB_EP1 = 1
+const byte USB_EP1_OUT_SIZE = 8
+const word USB_EP1_OUT_ADDR = (USB_BASE_ADDRESS + 0x0090 )
+const byte USB_EP1_IN_SIZE  = 8
+const word USB_EP1_IN_ADDR  = (USB_EP1_OUT_ADDR + USB_EP1_OUT_SIZE )
+
+var volatile byte usb_ep1out_buf[ USB_EP1_OUT_SIZE ] at USB_EP1_OUT_ADDR
+var volatile byte usb_ep1in_buf[ USB_EP1_IN_SIZE ] at USB_EP1_IN_ADDR
+
+const bit USB_EP2 = 1
+const byte USB_EP2_OUT_SIZE = 8
+const word USB_EP2_OUT_ADDR = (USB_BASE_ADDRESS + 0x00A0 )
+const byte USB_EP2_IN_SIZE  = 8
+const word USB_EP2_IN_ADDR  = (USB_EP2_OUT_ADDR + USB_EP2_OUT_SIZE )
+
+var volatile byte usb_ep2out_buf[ USB_EP2_OUT_SIZE ] at USB_EP2_OUT_ADDR
+var volatile byte usb_ep2in_buf[ USB_EP2_IN_SIZE ] at USB_EP2_IN_ADDR
+
+const bit USB_EP3 = 1
+const byte USB_EP3_OUT_SIZE = 8
+const word USB_EP3_OUT_ADDR = (USB_BASE_ADDRESS + 0x00B0 )
+const byte USB_EP3_IN_SIZE = 8
+const word USB_EP3_IN_ADDR  = (USB_EP3_OUT_ADDR + USB_EP3_OUT_SIZE )
+
+var volatile byte usb_ep3out_buf[ USB_EP3_OUT_SIZE ] at USB_EP3_OUT_ADDR
+var volatile byte usb_ep3in_buf[ USB_EP3_IN_SIZE ] at USB_EP3_IN_ADDR
+else
+-- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200. The start address
+-- lies after the end address of usb_bd3in which is 0x001f.
+const bit USB_EP0 = 1
 const byte USB_EP0_OUT_SIZE = 8
 const word USB_EP0_OUT_ADDR = (USB_BASE_ADDRESS + 0x0020 )
 const byte USB_EP0_IN_SIZE  = 8
@@ -109,6 +151,8 @@ const word USB_EP3_IN_ADDR  = (USB_EP3_OUT_ADDR + USB_EP3_OUT_SIZE )
 
 var volatile byte usb_ep3out_buf[ USB_EP3_OUT_SIZE ] at USB_EP3_OUT_ADDR
 var volatile byte usb_ep3in_buf[ USB_EP3_IN_SIZE ] at USB_EP3_IN_ADDR
+end if
+
 
 if defined( USB_CDC_TX_BUFFER_SIZE ) == false then
 -- -----------------------------------------------------------------------
@@ -190,7 +234,8 @@ var volatile byte usb_cdc_eptx_buffer[USB_EP3_IN_SIZE] at USB_EP3_IN_ADDR
 var volatile byte usb_cdc_eprx_buffer[USB_EP3_OUT_SIZE] at USB_EP3_OUT_ADDR
 
 
-if defined( USB_SERIAL_VENDOR_ID ) == false then-- -----------------------------------------------------------------------
+if defined( USB_SERIAL_VENDOR_ID ) == false then
+-------------------------------------------------------------------------
 -- USB_SERIAL_VENDOR_ID is set to Microchip if const is not defined by 
 -- the user of the usb_serial library. One can set the USB_SERIAL_VENDOR_ID
 -- by defining the const before inclusion of the usb_serial library

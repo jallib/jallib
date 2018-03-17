@@ -1,6 +1,6 @@
 -- Title: USB constant definitions
 -- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
--- Adapted-by: -
+-- Adapted-by: Rob Jansen, (c) 2018, all rights reserved.
 -- Compiler: >=2.4j
 -- Revision: $Revision$
 -- 
@@ -44,11 +44,26 @@ if !defined(pie2_usbie) then
    alias pir2_usbif is pir3_usbif
 end if
 
+-- Addresses are based on USB_BDT_ADDRESS, which differ for devices.
+-- Used here are 0x0020 for PIC16F1454/55/59 and 0x0200 for PIC18F14K50
 alias USB_BASE_ADDRESS is USB_BDT_ADDRESS
 
+if (USB_BDT_ADDRESS  == 0x0020) then
+-- Buffer size is 80 bytes (see below) so we put it in its own bank starting
+-- at address 0x120 which equals the base adress of 0x020 + 0x100
+-- The other two banks at 0x0020 and 0x00A0 are already use (see below).
+const word USB_IN_DELIVERY_BUFFER_LOC = ( USB_BASE_ADDRESS + 0x0100 )
+else
+-- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200.
+-- Address must be above 0x70 due to end address of USB_EP3_IN_ADDR
 const word USB_IN_DELIVERY_BUFFER_LOC = ( USB_BASE_ADDRESS + 0x0078 )
+end if
 
-var byte usb_delivery_buffer[ 8 ] at USB_IN_DELIVERY_BUFFER_LOC
+-- Although initially defined with a size of 8 bytes in the initial driver
+-- version using the POSTINC function this usb_delivery_buffer must be much
+-- larger since it is also used to transmit the device descriptor which is 67
+-- bytes long. So we set it tot 80 bytes in size.
+var byte usb_delivery_buffer[ 80 ] at USB_IN_DELIVERY_BUFFER_LOC
 var byte usb_delivery_bytes_max_send
 var byte usb_delivery_bytes_sent
 var byte usb_delivery_buffer_size
@@ -65,7 +80,16 @@ end if
 const byte USB_HIGHEST_EP = 3
 const bit USB_SELF_POWERED = 1
 
+if (USB_BDT_ADDRESS  == 0x0020) then
+-- Address must start somewhere after end address of usb_bd3in which ends
+-- at base address + 0x001f.
+const word usb_sdp_loc = ( USB_BASE_ADDRESS + 0x0020 )
+else
+-- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200.
+-- Address must be above end address of USB_IN_DELIVERY_BUFFER_LOC which ends
+-- at 0x00C8. Here it placed just before the end of the usb_bd_array.
 const word usb_sdp_loc = ( USB_BASE_ADDRESS + 0x00F8 )
+end if
 
 var volatile byte usb_sdp[8] at usb_sdp_loc
 var volatile byte usb_sdp_request_type at usb_sdp_loc
@@ -76,20 +100,20 @@ var volatile word usb_sdp_length at usb_sdp_loc + 6
 
 
 -- USB_STATUS
-const byte USB_STATUS_IDLE 			= 0
+const byte USB_STATUS_IDLE 			    = 0
 const byte USB_STATUS_SET_ADDRESS 	= 1
 	
 -- USB STATE
-const byte USB_STATE_POWERED	= 0 -- USB device is powered up, ready to start negotiating
-const byte USB_STATE_DEFAULT 	= 1	-- USB device is now negotiating
-const byte USB_STATE_ADDRESS 	= 2	-- USB device now has an address
+const byte USB_STATE_POWERED	  = 0 -- USB device is powered up, ready to start negotiating
+const byte USB_STATE_DEFAULT 	  = 1	-- USB device is now negotiating
+const byte USB_STATE_ADDRESS 	  = 2	-- USB device now has an address
 const byte USB_STATE_CONFIGURED	= 3 -- USB device is completely configured and ready to rock and roll 
  
 -- USB COMMAND MODES
-const byte USB_CM_IDLE 							= 0 -- No control transfer taking place
-const byte USB_CM_CTRL_WRITE_DATA_STAGE 		= 1 -- Device receiving data during the data stage 
+const byte USB_CM_IDLE 							          = 0 -- No control transfer taking place
+const byte USB_CM_CTRL_WRITE_DATA_STAGE 		  = 1 -- Device receiving data during the data stage
 const byte USB_CM_CTRL_WRITE_DATA_STAGE_CLASS	= 2 -- Device receiving data during the data stage destined for the class 
-const byte USB_CM_CTRL_READ_DATA_STAGE 			= 3 -- Device sending data during the data stage
+const byte USB_CM_CTRL_READ_DATA_STAGE 		  	= 3 -- Device sending data during the data stage
 const byte USB_CM_CTRL_READ_DATA_STAGE_CLASS 	= 4 -- Device class is sending data during the data stage
 const byte USB_CM_CTRL_READ_AWAITING_STATUS 	= 5 -- Device is awaiting reception of status after sending data
 const byte USB_CM_CTRL_WRITE_SENDING_STATUS 	= 6 -- Device is sending status after receiving data 
@@ -110,14 +134,14 @@ const byte USB_REQUEST_REQ_SYNCH_FRAME 		= 0x0c
 
 
 -- Bits of BDn.stat when UOWN = 0
-const byte USB_BDSTATUS_UOWN	= 7	-- 0 if uC owns buffer
-const byte USB_BDSTATUS_DTS		= 6	-- 1 data 1 packet, 0 data 0 packet
-const byte USB_BDSTATUS_KEN		= 5	-- 1 USB will keep buffer indefinately, 0 USB will hand back buffer
+const byte USB_BDSTATUS_UOWN	  = 7	-- 0 if uC owns buffer
+const byte USB_BDSTATUS_DTS		  = 6	-- 1 data 1 packet, 0 data 0 packet
+const byte USB_BDSTATUS_KEN		  = 5	-- 1 USB will keep buffer indefinately, 0 USB will hand back buffer
 const byte USB_BDSTATUS_INCDIS 	= 4	-- 1 Address increment disabled (for SPP), 0 address increment enabled
-const byte USB_BDSTATUS_DTSEN	= 3	-- 1 data toggle sync on, 0 data toggle sync off
+const byte USB_BDSTATUS_DTSEN	  = 3	-- 1 data toggle sync on, 0 data toggle sync off
 const byte USB_BDSTATUS_BSTALL	= 2	-- 1 buffer stall enabled, 0 buffer stall disabled
-const byte USB_BDSTATUS_BC9		= 1	-- bit 9 of buffer count
-const byte USB_BDSTATUS_BC8		= 0	-- bit 8 of buffer count
+const byte USB_BDSTATUS_BC9		  = 1	-- bit 9 of buffer count
+const byte USB_BDSTATUS_BC8		  = 0	-- bit 8 of buffer count
 
 
 const USB_DATA_STAGE_DIR_BIT = 7
@@ -133,9 +157,9 @@ const USB_REQUEST_TYPE0_BIT = 5 -- 01= Request for a specific class
 -- 0b00011= Other element (whatever that means)
 
 -- Token
-const byte USB_PID_OUT = 0b00000001
-const byte USB_PID_IN = 0b00001001
-const byte USB_PID_SOF = 0b00000101
+const byte USB_PID_OUT   = 0b00000001
+const byte USB_PID_IN    = 0b00001001
+const byte USB_PID_SOF   = 0b00000101
 const byte USB_PID_SETUP = 0b00001101
 
 -- Data
@@ -150,13 +174,25 @@ const byte USB_PID_NAK		= 0b00001010
 const byte USB_PID_STALL	= 0b00001110
 const byte USB_PID_NYET		= 0b00000110
 
-
 var byte usb_state = USB_STATE_POWERED
 var byte usb_status
 var byte usb_control_mode
 var byte usb_address
 
+-- The PIC16F1455 does not have 256 bytes but banks of 80 bytes. We need
+-- to reserve three banks for the PIC16F1455 to prevent that the compiler
+-- uses it for something else.
+if (USB_BDT_ADDRESS  == 0x0020) then
+-- Buffer reservarion used for the buffer descriptions. So this buffer overlays
+-- with the 5 usb buffer descriptions on purpose (see below).
+var volatile byte usb_bd_array[ 80 ] at ( USB_BASE_ADDRESS + 0x0000 ) -- 0x020
+-- Buffer reservation used by end points (see usb_serial.jal).
+var volatile byte usb_bd_dumm1[ 80 ] at ( USB_BASE_ADDRESS + 0x0080 ) -- 0x0A0
+else
+-- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200. This PIC has a
+-- memory space of 256 bytes.
 var volatile byte usb_bd_array[ 256 ] at ( USB_BASE_ADDRESS + 0x0000 )
+end if
 
 var volatile byte usb_bd0out[4]		at ( USB_BASE_ADDRESS + 0x0000 )
 var volatile byte usb_bd0out_stat 	at usb_bd0out[0]
@@ -213,35 +249,6 @@ var volatile byte usb_bd3in_cnt   	at usb_bd3in[1]
 var volatile word usb_bd3in_addr 	at usb_bd3in[2]
 var volatile byte usb_bd3in_addrl 	at usb_bd3in[2]
 var volatile byte usb_bd3in_addrh 	at usb_bd3in[3]
-
-var volatile byte usb_bd4out[4]		at ( USB_BASE_ADDRESS + 0x0020 )
-var volatile byte usb_bd4out_stat 	at usb_bd4out[0]
-var volatile byte usb_bd4out_cnt   	at usb_bd4out[1]
-var volatile word usb_bd4out_addr 	at usb_bd4out[2]
-var volatile byte usb_bd4out_addrl 	at usb_bd4out[2]
-var volatile byte usb_bd4out_addrh 	at usb_bd4out[3]
-
-var volatile byte usb_bd4in[4]		at ( USB_BASE_ADDRESS + 0x0024 )
-var volatile byte usb_bd4in_stat 	at usb_bd4in[0]
-var volatile byte usb_bd4in_cnt   	at usb_bd4in[1]
-var volatile word usb_bd4in_addr 	at usb_bd4in[2]
-var volatile byte usb_bd4in_addrl 	at usb_bd4in[2]
-var volatile byte usb_bd4in_addrh 	at usb_bd4in[3]
-
-var volatile byte usb_bd5out[4]		at ( USB_BASE_ADDRESS + 0x0028 )
-var volatile byte usb_bd5out_stat 	at usb_bd5out[0]
-var volatile byte usb_bd5out_cnt   	at usb_bd5out[1]
-var volatile word usb_bd5out_addr 	at usb_bd5out[2]
-var volatile byte usb_bd5out_addrl 	at usb_bd5out[2]
-var volatile byte usb_bd5out_addrh 	at usb_bd5out[3]
-
-var volatile byte usb_bd5in[4]		at ( USB_BASE_ADDRESS + 0x002C )
-var volatile byte usb_bd5in_stat 	at usb_bd5in[0]
-var volatile byte usb_bd5in_cnt   	at usb_bd5in[1]
-var volatile word usb_bd5in_addr 	at usb_bd5in[2]
-var volatile byte usb_bd5in_addrl 	at usb_bd5in[2]
-var volatile byte usb_bd5in_addrh 	at usb_bd5in[3]
-
 
 var volatile bit EP1STALL   at  UEP1:0
 var volatile bit EP1INEN   	at  UEP1:1
