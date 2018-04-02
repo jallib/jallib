@@ -1,6 +1,6 @@
 -- Title: USB constant definitions
 -- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
--- Adapted-by: Rob Jansen, (c) 2018, all rights reserved.
+-- Adapted-by: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
 -- Compiler: 2.4q6
 -- Revision: $Revision$
 -- 
@@ -31,6 +31,40 @@
 -- libs and samples (and user code), and since current implementation isn't able
 -- to use USB data *before* BDT, we're aliasing BDT to this variable.
 
+-- RJ: Some notes about addresses, the memory map and the buffers used
+-- -------------------------------------------------------------------
+-- The USB_BDT_ADDRESS can differ per PIC. Also the memory bank(s) defined for
+-- use for USB are not continuous for all PICs. For example the PIC18F14K50
+-- has 256 bytes of continuous USB memory from 0x200 - 0x2ff but the PIC16F1455
+-- has 512 bytes of USB memory starting at linear address 0x2000 but since we can
+-- only used banked addressing starting at 0x020, buffers sizes are limited to
+-- 80 bytes for these PICs.
+-- In the USB driver the following USB buffers with sizes are used:
+-- *) usb_bd_array[80]. This buffer holds all buffer descriptions. This driver
+--    only uses 8 (4 in and 4 out) buffer descriptions of 4 bytes so only 32
+--    bytes are actually used.
+-- *) usb_sdp_buffer[8]. Some general purpose USB buffer.
+-- *) usb_epxout_buf[8] and usb_epxin_buf[8] where x = 0..3. These are the
+--    end point buffers. The number of buffers used depend on the type of USB
+--    device. The maximum currently in use are 4 (0..3) endpoint buffers so in
+--    total 64 bytes.
+-- *) usb_delivery_buffer[80]. This buffer should be capable of holding a complete
+--    device descriptor which is at most of 67 bytes
+-- For the PIC16F1454/55/59 we use the banks with the following addresses:
+-- *) usb_bd_array        starting at USB_BASE_ADDRESS + 0x0000  (first bank)
+-- *) usb_sdp_buffer      starting at USB_BASE_ADDRESS + 0x0020  (first bank)
+-- *) usb_epxoutbuf       starting at USB_BASE_ADDRESS + 0x0080  (second bank)
+-- *) usb_delivery_buffer starting at USB_BASE_ADDRESS + 0x0100  (third bank)
+-- For the PIC18F14K50 we do not use use banks but the following addresses:
+-- *) usb_bd_array        starting at USB_BASE_ADDRESS + 0x0000
+-- *) usb_sdp_buffer      starting at USB_BASE_ADDRESS + 0x00f8
+-- *) usb_epxoutbuf       starting at USB_BASE_ADDRESS + 0x0020
+-- *) usb_delivery_buffer starting at USB_BASE_ADDRESS + 0x0078
+-- Since arrays are declared at a certain address we must make sure that all
+-- used memory locations are reserved so that the compiler knows they are used.
+-- Because of this a dummy buffer usb_bd_endpt[80] is also declared which
+-- reserves the required space for the usb_epxoutbuf and usb_epxinbuf.
+
 if defined(USB_BDT_ADDRESS) == false then
    _error "This PIC has no declared USB_BDT_ADDRESS constant, is it really a USB capable PIC ? If so, please report !"
    -- need to define constant anyway to error is reported at proper compilation state
@@ -44,25 +78,28 @@ if !defined(pie2_usbie) then
    alias pir2_usbif is pir3_usbif
 end if
 
--- Addresses are based on USB_BDT_ADDRESS, which differ for devices.
--- Used here are 0x0020 for PIC16F1454/55/59 and 0x0200 for PIC18F14K50
+-- Addresses are based on USB_BDT_ADDRESS, which may differ per PIC device.
+-- Used in this driver are 0x0020 for PIC16F1454/55/59 and 0x0200 for PIC18F14K50
+-- as defined in the device file of these PICs.
 alias USB_BASE_ADDRESS is USB_BDT_ADDRESS
 
+
 if (USB_BDT_ADDRESS  == 0x0020) then
--- Buffer size is 80 bytes (see below) so we put it in its own bank starting
--- at address 0x120 which equals the base adress of 0x020 + 0x100
--- The other two banks at 0x0020 and 0x00A0 are already use (see below).
-const word USB_IN_DELIVERY_BUFFER_LOC = ( USB_BASE_ADDRESS + 0x0100 )
-else
--- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200.
--- Address must be above 0x70 due to end address of USB_EP3_IN_ADDR
-const word USB_IN_DELIVERY_BUFFER_LOC = ( USB_BASE_ADDRESS + 0x0078 )
+  -- Buffer size is 80 bytes (see below) so we put it in its own bank starting
+  -- at address 0x120 which equals the base adress of 0x020 + 0x100
+  -- The other two banks at 0x0020 and 0x00A0 are already use (see below).
+  const word USB_IN_DELIVERY_BUFFER_LOC = ( USB_BASE_ADDRESS + 0x0100 )
+end if
+if (USB_BDT_ADDRESS  == 0x0200) then
+  -- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200.
+  -- Address must be above 0x70 due to end address of USB_EP3_IN_ADDR
+  const word USB_IN_DELIVERY_BUFFER_LOC = ( USB_BASE_ADDRESS + 0x0078 )
 end if
 
--- Although initially defined with a size of 8 bytes in the initial driver
--- version using the POSTINC function this usb_delivery_buffer must be much
+-- Although defined with a size of 8 bytes in the initial driver version
+-- using only the POSTINC function, this usb_delivery_buffer must be much
 -- larger since it is also used to transmit the device descriptor which is 67
--- bytes long. So we set it tot 80 bytes in size.
+-- bytes long. So it has been re-declared to 80 bytes in size.
 var byte usb_delivery_buffer[ 80 ] at USB_IN_DELIVERY_BUFFER_LOC
 var byte usb_delivery_bytes_max_send
 var byte usb_delivery_bytes_sent
@@ -80,15 +117,17 @@ end if
 const byte USB_HIGHEST_EP = 3
 const bit USB_SELF_POWERED = 1
 
+--const word usb_sdp_loc = ( USB_BASE_ADDRESS + 0x0030 )
 if (USB_BDT_ADDRESS  == 0x0020) then
--- Address must start somewhere after end address of usb_bd3in which ends
--- at base address + 0x001f.
-const word usb_sdp_loc = ( USB_BASE_ADDRESS + 0x0020 )
-else
--- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200.
--- Address must be above end address of USB_IN_DELIVERY_BUFFER_LOC which ends
--- at 0x00C8. Here it placed just before the end of the usb_bd_array.
-const word usb_sdp_loc = ( USB_BASE_ADDRESS + 0x00F8 )
+  -- Address must start somewhere after end address of usb_bd3in which ends
+  -- at base address + 0x001f.
+  const word usb_sdp_loc = ( USB_BASE_ADDRESS + 0x0020 )
+end if
+if (USB_BDT_ADDRESS  == 0x0200) then
+  -- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200.
+  -- Address must be above end address of USB_IN_DELIVERY_BUFFER_LOC which ends
+  -- at 0x00C8. Here it placed just before the end of the usb_bd_array.
+  const word usb_sdp_loc = ( USB_BASE_ADDRESS + 0x00F8 )
 end if
 
 var volatile byte usb_sdp[8] at usb_sdp_loc
@@ -150,7 +189,7 @@ const USB_REQUEST_TYPE0_BIT = 5 -- 01= Request for a specific class
 -- const byte USB_REQUEST_TYPE_MASK = 0b_0110_000
 -- 10= Vendor specific
 --						
---  Bits 4-0 define recipient bits
+-- Bits 4-0 define recipient bits
 -- 0b00000= Device
 -- 0b00001= Specific interface
 -- 0b00010= Endpoint
@@ -179,19 +218,26 @@ var byte usb_status
 var byte usb_control_mode
 var byte usb_address
 
--- The PIC16F1455 does not have 256 bytes but banks of 80 bytes. We need
--- to reserve three banks for the PIC16F1455 to prevent that the compiler
--- uses it for something else.
+-- Start address of the end points. Note: USB_BASE_ADDRESS must not be used
+-- anymore to define the start address of the end points since the now defined
+-- used USB_EPO_ADDRESS may differ per PIC!
+-- For backwards compatibility the use of USB_BASE_ADDRESS still works for
+-- older sample programa since the start address for was not changed.
+-- This constant is now used in usb_serial.jal.
 if (USB_BDT_ADDRESS  == 0x0020) then
--- Buffer reservarion used for the buffer descriptions. So this buffer overlays
--- with the 5 usb buffer descriptions on purpose (see below).
-var volatile byte usb_bd_array[ 80 ] at ( USB_BASE_ADDRESS + 0x0000 ) -- 0x020
--- Buffer reservation used by end points (see usb_serial.jal).
-var volatile byte usb_bd_dumm1[ 80 ] at ( USB_BASE_ADDRESS + 0x0080 ) -- 0x0A0
-else
--- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200. This PIC has a
--- memory space of 256 bytes.
-var volatile byte usb_bd_array[ 256 ] at ( USB_BASE_ADDRESS + 0x0000 )
+  const USB_EP0_ADDRESS = USB_BASE_ADDRESS + 0x0080
+  -- Buffer reservation used by end points. This buffer overlays with the
+  -- endpoint buffers on purpose (see e.g. usb_serial.jal).
+  var volatile byte usb_bd_endpt[ 80 ] at ( USB_EP0_ADDRESS )
+  -- Buffer reservarion used for the buffer descriptions. This buffer overlays
+  -- with the 4 usb buffer descriptions on purpose (see below).
+  var volatile byte usb_bd_array[ 80 ] at ( USB_BASE_ADDRESS + 0x0000 )
+end if
+if (USB_BDT_ADDRESS  == 0x0200) then
+  const USB_EP0_ADDRESS = USB_BASE_ADDRESS + 0x0020
+  -- Other USB_BDT_ADDRESS, for PIC18F14K50 this is 0x0200. This PIC has a
+  -- memory space of 256 bytes so we reserve the full range at once.
+  var volatile byte usb_bd_array[ 256 ] at ( USB_BASE_ADDRESS + 0x0000 )
 end if
 
 var volatile byte usb_bd0out[4]		at ( USB_BASE_ADDRESS + 0x0000 )
