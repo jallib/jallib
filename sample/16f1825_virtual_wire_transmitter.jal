@@ -1,0 +1,102 @@
+-- -----------------------------------------------------------------------------
+-- Title: Transmitter test program for testing a Virtual Wire connection.
+--
+-- Author: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.4q6
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: http://www.airspayce.com/mikem/arduino/VirtualWire.pdf
+--
+-- Description: This test program transmits a message via a Virtual Wire
+--              connection using a standard 433 MHz RF transmitter module.
+--
+-- Dependencies: -
+--
+-- Notes: -
+--
+-- -----------------------------------------------------------------------------
+
+-- Some compiler pragmas for optimizations
+pragma warn all no             -- We do not want to know all compiler warnings
+pragma opt variable_reduce yes -- Reduce variables.
+
+include 16f1825                -- target PICmicro
+
+-- This program assumes no crystal but uses the 32 MHz internal oscillator
+pragma target clock 32_000_000     -- oscillator frequency 32 MHz
+
+-- Configuration memory settings (fuses)
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PWRTE    enabled         -- Power up timer
+pragma target MCLR     internal        -- reset internal
+pragma target PLLEN    enabled         -- PLL Enable
+pragma target WDT      disabled        -- no watchdog
+pragma target LVP      disabled        -- no Low Voltage Programming
+
+-- Set the internal clock frequency to 32 MHz
+OSCCON_IRCF   = 0b1110  -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00    -- Clock determined by FOSC (32 MHz)
+
+-- ------------------------------ Pins -----------------------------------------
+enable_digital_io() -- Make all pins digital I/O
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_0011        -- Weak pull-up for RA0, RA1, RA4, RA5
+WPUC = 0b0011_1111        -- Weak pull-up for RC0-RC5
+OPTION_REG_WPUEN = FALSE  -- Enable Weak Pull-Up
+
+-- Declaration of the virtual wire transmitter pin. Pin 9 of the 16F1825
+alias vw_tx_pin is pin_c1
+pin_c1_direction = output
+
+-- LED indicating transmission of the message. Connect via 330 Ohm resistor.
+-- High is LED on.
+alias led is pin_a2
+pin_a2_direction = output
+
+-- Input pin that determined the bitrate. High is high bitrate.
+alias bitrate is pin_c0
+pin_c0_direction = input
+
+-- ------------------- Constant and variable declarations ----------------------
+const byte VW_MESSAGE_BUFFER = 25
+const byte tx_buf[] = "Hello Virtual Wire!\n"
+
+-- ------------------------------ Main Program  --------------------------------
+-- include virtual_wire             -- Full driver version
+include virtual_wire_transmitter -- Transmitter only version
+
+-- Initialize virtual wire driver.
+if bitrate then
+  vw_setup(VW_SPEED_2000)         -- High bitrate.
+else
+  vw_setup(VW_SPEED_1000)         -- Low bitrate
+end if
+
+led = false
+
+forever loop
+  if !vw_tx_active
+  then
+     led = true
+     _usec_delay(100_000)
+    -- Transmitter ready, send data.
+    if vw_send(tx_buf, count(tx_buf))
+    then
+    end if
+  else led = false
+  end if
+
+end loop
+
+
+
+
+
