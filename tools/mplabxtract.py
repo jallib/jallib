@@ -4,7 +4,7 @@ Title: Collect .PIC files of JALV2 supported PICs
 
 Author: Rob Hamerling, Copyright (c) 2014..2018, all rights reserved.
 
-Adapted-by:
+Adapted-by: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
 
 Revision: $Revision$
 
@@ -21,6 +21,7 @@ Sources: N/A
 Notes:
    - May need to be run with root or administrator privileges
    - MPLABX-IDE needs be installed.
+   - Modified for MPLABX 4.20 (changed directory structure using version numbering)
 
 """
 
@@ -32,7 +33,6 @@ if (base == ""):
 import os
 import sys
 import glob
-# import zipfile
 import platform
 import shutil
 
@@ -42,18 +42,19 @@ platform_name = platform.system()
 if (platform_name == "Linux"):
    xml_pfx = os.path.join("/", "opt", "microchip", "mplabx", "v" + mplabxversion)
 elif (platform_name == "Windows"):
- #  xml_pfx = os.path.join("C:\\", "Program Files (x86)", "microchip", "mplabx", "v" + mplabxversion)
-   xml_pfx = os.path.join("D:\\", "picscripts", "mplabx_v" + mplabxversion)
+   # When using the Windows MPLABX installation from the original location use this:
+   #  xml_pfx = os.path.join("C:\\", "Program Files (x86)", "microchip", "mplabx", "v" + mplabxversion)
+
+   # Currnently using a local copy from another location.
+   xml_pfx = os.path.join("D:\\", "picscripts", "mplabx", "mplabx_v" + mplabxversion)
 elif (platform_name == "Darwin"):
    xml_pfx = os.path.join("/", "Applications", "microchip", "mplabx", "v" + mplabxversion)
 else:
    sys.stderr.write("Please add proper environment settings for this platform\n")
    exit(1)
    
-# Complete prefixes and suffixes
-#xml_prefix = os.path.join(xml_pfx, "packs", "Microchip")
-xml_prefix = os.path.join(xml_pfx, "Microchip")
-xml_suffix = os.path.join("__version__", "edc")
+# xml path prefixes
+xml_prefix = os.path.join(xml_pfx, "packs", "Microchip")
 
 # destination of extracted .pic files:
 dst = os.path.join(base, "mplabx." + mplabxversion, "content", "edc")   # destination of .pic xml files
@@ -63,12 +64,13 @@ pic_select = {
    # appropriate input and corresponding output directories
    "PIC10-12Fxxx_DFP"   : "16c5x",              # was 12-bits only, now mixed 12/14
    "PIC12-16F1xxx_DFP"  : "16xxxx",             # mixed 12/14 bits
-   "PIC16F1xxxx_DFP"    : "16xxxx",             
+   "PIC16F1xxxx_DFP"    : "16xxxx",             # 14-bits
    "PIC16Fxxx_DFP"      : "16xxxx",             # mixed 12/14 bits
-   "PIC18F-J_DFP"       : "18xxxx",
-   "PIC18F-K_DFP"       : "18xxxx",   
-   "PIC18F-Q_DFP"       : "18xxxx",
-   "PIC18Fxxxx_DFP"     : "18xxxx"
+   "PIC18F-J_DFP"       : "18xxxx",             # )
+   "PIC18F-K_DFP"       : "18xxxx",             # ) 16-bits
+   "PIC18F-Q_DFP"       : "18xxxx",             # )
+   "PIC18Fxxxx_DFP"     : "18xxxx",             # )
+   "PIC8bit-Development-Only_DFP" : "18xxxx"    # future PICs?
    }
 
 # Unsupported PICs (exceptions to the selection above!)
@@ -87,7 +89,17 @@ if (__name__ == "__main__"):
       os.makedirs(dst)                          # create destination directory
 
    for picdir in pic_select.keys():             # all directories with PIC files 
-      picpath = os.path.join(xml_prefix, picdir, xml_suffix) # build path of dir with .PIC files      
+      picvers = os.path.join(xml_prefix, picdir) # path to version directories
+      picpath = os.path.join(picvers, "__version__", "edc")  # default path (< 4.20)
+      # If a version number is listed as directory we assume that the highest version is listed as the last one and
+      # if present we will use that latest (last) version as base for the PICs to extract.
+      # For the next version of MPLABX it needs to be checked.
+      for file in os.listdir(picvers):
+         if os.path.isdir(os.path.join(picvers, file)):      # must be a directory
+            if "edc" in os.listdir(os.path.join(picvers, file)):  # contains edc directory
+               picpath = os.path.join(picvers, file, "edc")  # modified path
+               break
+      print("Processing", picpath)               # progress signal
       os.chdir(picpath)                         # make it current working directory
       filelist = glob.glob("PIC1*.PIC")         # make list of selected .PIC files
       for f in filelist:                        # all of these
