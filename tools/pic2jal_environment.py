@@ -63,7 +63,7 @@ def check_and_set_environment():
    try:
       mplabxversion = os.environ["MPLABXVERSION"]  # obtain existing MPLABX version
    except:                                         # when not present: create new
-      mplabxversion = "4.10"
+      mplabxversion = "5.0"
       sys.stdout.write("MPLABX version: " + mplabxversion + "\n")
       os.environ["MPLABXVERSION"] = mplabxversion
 

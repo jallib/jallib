@@ -2430,7 +2430,7 @@ pinmap = {
    "16F18456": 
           {
           "RA0" : ["RA0", "ANA0", "C1IN0-", "C2IN0-", "CLCIN0"], 
-          "RA1" : ["RA1", "ANA1", "C1N1-", "C1N1+", "CLCIN1"], 
+          "RA1" : ["RA1", "ANA1", "C1IN1-", "C2IN1-", "CLCIN1"], 
           "RA2" : ["RA2", "ANA2", "ADCVREF-", "C1IN0+", "C2IN0+", "DAC1VREF-", "DAC1OUT1"], 
           "RA3" : ["RA3", "ANA3", "ADCVREF+", "C1IN1+", "DAC1VREF+", "MDCARL"], 
           "RA4" : ["RA4", "ANA4", "MDCARH", "T0CKI", "CCP5IN"], 
@@ -7587,7 +7587,7 @@ pinmap = {
    "16LF18456": 
           {
           "RA0" : ["RA0", "ANA0", "C1IN0-", "C2IN0-", "CLCIN0"], 
-          "RA1" : ["RA1", "ANA1", "C1N1-", "C1N1+", "CLCIN1"], 
+          "RA1" : ["RA1", "ANA1", "C1IN1-", "C2IN1-", "CLCIN1"], 
           "RA2" : ["RA2", "ANA2", "ADCVREF-", "C1IN0+", "C2IN0+", "DAC1VREF-", "DAC1OUT1"], 
           "RA3" : ["RA3", "ANA3", "ADCVREF+", "C1IN1+", "DAC1VREF+", "MDCARL"], 
           "RA4" : ["RA4", "ANA4", "MDCARH", "T0CKL", "CCP5IN"], 
