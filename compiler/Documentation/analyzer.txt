@@ -1,0 +1,104 @@
+Code Analyzers
+==============
+There are three different code analyzers run after the pcode has been
+generated:
+
+1. pcode analyzer
+
+This determines what code is accessible by following each code path. Any
+code found not to be accessible is simply not compiled. There are a few
+different reasons code may be found not to be accessible:
+
+  a. a procedure is defined by never used
+  b. any code following a non-conditional branch
+         goto dummy
+         a = 1
+     since there is no label before 'a = 1', there is no possible way
+     that statement can be reached, so it is removed
+     
+     Note: this happens often with the generated code, so there will
+           almost always be code marked ``dead'' in the listing.
+
+Each p-code instruction is also marked `user' and/or `interrupt' depending
+on the context in which is is reached.
+
+It is a good idea not to share code between user and interrupt level. Doing
+so necessitates saving any temporary variables used on entry to the interrupt,
+and restoring them on exit.
+
+The p-code analyzer also removes some common but unneeded occurances, such as:
+  Sequence                   Result
+  ========                   ======
+  call xxxx                  goto xxx
+  return
+  
+         goto label          goto removed
+  label: ...
+
+           goto label        goto label1 (also true for calls)
+           ...
+  label:   goto label1
+
+           goto label        return
+           ...
+  label:   return
+
+
+2. PIC data access analyzer
+
+There are four data areas on the PIC 16F877, and a couple of bits
+(status<rp1> and status<rp0>) are used to determine from which area data should
+be retrieved. Some programs automatically setup these registers for each
+data access -- which requires two instructions per access overhead. The
+analyzer keeps track of the state of these bits, and only changes them when
+necessary.
+
+Each bit can be in one of three states: set, clear, or indeterminate.
+Indeterminate means simply that an instruction is accessible through multiple
+paths, and each path has different set/clear values.
+
+There are also some locations that are mirrored in multiple banks. For
+example status is available to all banks, so it is never necessary to set
+the bank access bits when accessing it. tmr0 is accessible in banks 0 and 2.
+
+Note: One major failing here is after a ``call'' is executed, the bank
+      access bits are marked indeterminate. I've yet to come up with a
+      reasonable solution to this.
+
+3. PIC branch analyzer
+
+The branching instructions on the PIC 16F877 each take a 10 bit operand,
+allowing a value of 0..2047. However, it has 8K of code space. To fix this,
+it is necessary to set to bits pclath<4> and pclath<3> to the high bits
+of the address. Again, some programs automatically do this prior to each
+branch causing an extra two instructions per branch.
+
+The PIC code access analyzer tracks these bits and only sets them as
+necessary. The bit states are the same as for the PIC data access analyzer.
+
+Note 1: As above, these bits are set to ``indeterminate'' after a `call'
+
+Note 2: This analyzer might require multiple passes through the code. It works
+        as follows:
+           a.everything is assume to reside in the same bank
+             (all branch instructions are one instruction long)
+           b.for all labels which require bank bits to be set, the instruction
+             length is adjusted accordingly
+           c.an effect of (b) above might be to push even more instructions
+             out of range. If this happens (b) is repeated.
+             
+Note 3: A branch bit goes indeterminate in two cases:
+           a.After any call instruction.
+           b.If the label appears very close to a bank boundary and is
+             accessed through both a branch instruction and through the
+             processing of instructions as follows:
+
+             2047         movlw 1
+             2048  label: btfsc status,c
+             ...
+             xxxx         goto label
+
+             In this case, going from location 2047 to 2048, the branch bits 
+             will be <0:0>, while the ``goto xxxx'' guarantees the branch 
+             bits will be <0:1>
+

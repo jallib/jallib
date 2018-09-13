@@ -1,0 +1,95 @@
+PICbase Technical Information
+=============================
+
+The PICbase library translates between the p-code output of the compilers
+(currently, PICbsc, and PICjal) to PIC assembly and machine code. Many of
+the details, such as calling convention and variable allocation, occur here.
+By abstracting it like this it should be possible to port the compilers
+to other architectures.
+
+* recursion
+===========
+
+A function is recursive if it is either recusively called, or is called
+at both interrupt and user level. Each recursive function is assigned a
+counter variable, and an entry function which, in pseudo code looks like:
+
+  recursive_preamble
+    if (entry_ct) then ' we're already in this function
+      stack_ptr -= frame_sz
+      copy(stack_ptr, frame_start, frame_sz)
+    end if
+    entry_ct++
+
+  recursive_postamble
+    entry_ct--
+    if (entry_ct) then ' someone's still in this function
+      copy(frame_start, stack_ptr, frame_sz)
+      stack_ptr += frame_sz
+    end if
+
+A call to a recursive function then becomes:
+
+  call recursive_preamble
+  copy parameters in
+  call recursive_function
+  copy parameters out
+  call recursive_postamble
+
+With only an 8-deep stack, recursion is probably not a good idea
+but if I ever introduce the deep-stack modifications we should be
+alright.
+
+* indirect function calls
+=========================
+
+Indirect function calls are another beast. Each indirect function
+call also needs a premble & postamble, much like the recursive ones.
+All parameters are stored in a  fixed parameter block, then copied
+out as necessary. The sequence looks like this:
+  
+  copy parameters to the common parameter block
+  call indirect_function
+    copy parameters from common block to function block
+    execute function
+    copy parameters from function block to common block
+  copy the parameters out of the common parameter block
+
+* variable allocation
+=====================
+
+Variables are allocated starting with the largest block and continuing
+to the smallest. They're allocated using a virtual-stack technique and
+retain the highest address used for allocation. This way variables
+can overlap with each other.
+
+For functions, there are three ways local variables are allocated:
+
+  1. not recursive, never called indirectly
+     The variables are allocated discretely. There is no relationship
+     between where any two variables might be allocated
+
+  2. not recursive, called indirectly
+     The paramters are allocated into a single parameter block. This
+     allows a simple block copy to be used when moving the parameters
+     into and out of the common block, All other local variables are
+     allocated discretely
+
+  3. recursive
+     All local variables are allocated in a single block. This allows
+     simple block copy to be used.
+
+* pseudo-stack
+==============
+
+The PIC doesn't contain a hardware data stack (eg, no PUSH or POP
+instructions). When needed, a pseudo stack is created. The initial
+stack pointer is set to the highest position of the largest block
+and grows down.
+
+* temporary variables
+=====================
+
+The lifetime of a temporary variable is one statement. The temporary
+variable is a single block per function.
+

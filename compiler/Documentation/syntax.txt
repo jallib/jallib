@@ -1,0 +1,789 @@
+PICbsc Syntax
+=============
+
+Definitions
+==========
+The following abbreviations are used below:
+
+  expr       : any expression
+    An expression is anything that evaluates to a value, for example
+    b + c, x + 1, etc.
+
+  cexpr      : constant expression
+    An expression that can be fully evaluated at compile time. For example
+    1 + 2.
+
+  lexpr      : logical expression
+    A logical expression. This differs from an expression in that
+    the result is 0 if the expression is zero, and 1 if the expression
+    is anything other than 0.
+
+  {a|b|c}    : must be one of a,b,c
+
+  name       : names begin with a letter or '_' followed by any number of
+               of letters (a-z), digits (0-9), or '_'
+
+  var        : variable
+
+  UPPER CASE : upper case is used to denote keywords
+
+  block      : series of basic statements
+
+  label      : a name defined as a line label
+
+  [...]      : the following is optional
+
+
+Syntax
+======
+The following are optional, but if they appear they must be at the beginning
+of the file in the following order:
+
+PIC type
+  Define PIC type. If this is not used, the default is the 16f877.
+  This is analogous to issuing ``include p{type}.inc'' after the
+  OSCILLATOR command. To see a list of supported types, look at the *.inc 
+  files.
+
+FREQ cexpr
+  Set the PIC frequency in KHz. This can be any value, the default
+  is 20000 (or 20.0).
+
+OSCILLATOR {RC|CRYSTAL}
+  Set the oscillator type. This only ADC_Config.
+
+Record Definition
+=================
+  A record is a group of related variables and is defined as follows:
+
+  RECORD name
+    {type} var1[(dim)][,var2...]
+    ...
+  END RECORD
+
+  Example:
+    RECORD motor
+      WORD speed
+      BYTE direction
+    END RECORD
+
+  A record can be used to create variables, as in (from the example above):
+
+    motor a
+
+  To reference members of a record, use the record name + '.' + member name:
+
+  a.speed     = 5
+  a.direction = 1
+
+  A record is simply a type of variable. Only two operators are allowed
+  on it:
+
+    assignment : a record can only be assigned to a record of like type
+                 or 0 which will set all members to 0
+    equality   : two records are equal if they have the same type and each
+                 member is equal.
+
+Variable Types
+==============
+  There are two types of variables : intrinsic and user defined
+  (see Record Definition above). The intrinsic types are:
+
+  BOOLEAN:  1 bit value          (range is              0..1            )
+  BIT    :  n bit unsigned value (range depends on size (n)             )
+  SBIT   :  n bit signed value   (range depends on size (n)             )
+  BYTE   :  8 bit unsigned value (range is              0..255          )
+  SBYTE  :  8 bit signed value   (range is           -128..127          )
+  WORD   : 16 bit unsigned value (range is              0..65,535       )
+  SWORD  : 16 bit signed value   (range is        -32,768..32,767       )
+  DWORD  : 32 bit unsigned value (range is              0..4,294,967,296)
+  SDWORD : 32 bit signed value   (range is -2,147,483,648..2,147,483,647)
+
+
+Variable definition
+===================
+
+  {type} [VOLATILE] name[(cexpr)][@pos][:bit][=expr][,name2...]
+
+  or, for BIT types:
+
+  BIT [VOLATILE] name[:bit_size][@pos:bit_pos][=expr][,name2...]
+
+  or, for BOOLEAN types:
+
+  BOOLEAN [VOLATILE] name[@pos:bit_pos][=expr][,name...]
+
+  The VOLATILE keyword means the variable might change by some external
+  event, or be accessed externally, so the ``not assigned'' and ``not used''
+  warnings should not be emitted. It is mainly used for setting up the
+  PIC special function registers. See the third example below.
+
+  (cexpr)     create an array of cexpr elements. This is not available
+              for BIT types
+
+  :bit_size   for BIT variables this determines how many bits will be
+              occupied. If not used, the default is one bit.
+
+  @pos        This does two things depending on the value of pos:
+                 if pos is a constantr expression, it sets the variable 
+                   base. This is most useful when defining PIC registers. 
+                   There is no error checking. No automatically allocated 
+                   variable will share the same space.
+                 if pos is the name of a variable, it creates an alias
+                   to that variable. This means both variables will share
+                   the same space.
+
+  :bit_pos    For BIT and BOOLEAN variables this defines the bit position 
+              in the range 0 (least significant bit) through the size of pos.
+
+  Example:
+    BYTE a,b,c(10),dummy@$19d
+
+  Defines a and b to be byte variables, and c to be an array of 10
+  bytes, accessed from c(0) through c(9), and dummy which will be
+  placed at location $19d.
+
+    WORD x=5, y(10)={1,2,3,4,5,6,7,8,9,10}
+
+  x is a word variable and is initialized to 5
+  y is a 10 element array of words, initialized y(0) = 1, 
+  y(1) = 2 ... y(9) = 10
+
+    BYTE VOLATILE _status @ $0003 [ALL]
+    BYTE VOLATILE _tmr0   @ $0001 [0,2]
+
+  This is an advanced use, normally only for creating ``*.inc'' files
+  but available to everyone.
+    VOLATILE means an external force could read or modify the variable.
+    In this case, the PIC itself.
+  The last bit, between the brackets ([..]) defines in which banks
+  a variable is mirrored. In the PIC family the data area is divided
+  into banks. Each bank is 128 bytes and may include special function
+  registers and (or) user data.
+
+  BIT _status_z @ _status : _z 
+
+  This creates a BIT variable that is aliased to _status:_z
+    
+  All variables must be defined before use or a ``variable not found''
+  error will be generated.
+
+  Note1: The PIC has four separate regions, or bank, for general
+         purpose use. In this implementation, an array can span
+         multiple banks, so an array could be 200 bytes long,
+         even though the largest space in any region is only 96 bytes.
+         There is a performance penalty for arrays that span banks,
+         and a warning will be issued if this happens.
+
+  Note2: There is no checking when using the '@pos' syntax, it is
+         assumed you know what you're doing! The only guarantee is
+         that when variable allocation occurs, no variable will
+         be placed at the location.
+
+  Note2a:There is an implicit assumption in the code generator that
+         a variable element (that would be a single variable, or
+         an element of an array) fits completely within a bank. So,
+         for instance, if a WORD variable is put at $7f, the low
+         order byte will be at $7f, and the high order byte will
+         be at $00 (since the bank wraps here).
+
+  Note3: Variables are stored in little-endian format, where the
+         least significant bytes are stored in memory first, followed
+         by the most significant bytes.
+
+  Note4: BITs that haven't been positioned are packed into a hidden
+         variable that is as large as necessary to hold all defined
+         bits. No attempt is made to pack them optimally
+
+  Note5: The difference between a 1-bit BIT and a BOOLEAN is
+         assignment semantics. Assigning to a one BIT value translates
+         roughly into:
+           b = (x & 1)
+         whereas assigning to a BOOLEAN value translates roughly
+         into:
+           b = 0
+           if (x) then
+             b = 1
+           end
+         which, on the PIC archtecture can be optimized.
+           
+Named Constant definition
+=========================
+  CONSTANT {type} name = cexpr
+  CONSTANT {type} name([cexpr]) = (cexpr1, cexpr2...)
+
+  Named constants are simply names given to constant values. This is
+  very useful in a number of situations where the same value is used
+  many different places. Instead of needing to change each occurrence, one
+  need only change the value of the named constant.
+
+  Named constants can be used anywhere a constant is used.
+
+  In the first form, a simple named constant is created, while in the
+  second an array of constants is created. The number of initializers
+  must match the array size.
+
+  An array of named constants will only be compiled into the code if
+  a variable reference is used. For example:
+
+  y = named_constant(x)
+
+  If x is a variable, then the array named_constant() will need to be
+  written into the code so the lookup can take place dynamically.
+
+  Named constants of any size can contain up to 255 elements.
+
+Literals
+========
+  There are four literal representations:
+    Decimal     : any combination of the digits '0' through '9'
+                  Example: 123
+    Scaled      : If decimal number has a '.' optionally followed by more
+    Decimal       decimal numbers, the result is scaled by 1000,
+                  so 123.456 becomes 123456 and 123. becomes 123000
+    Hexadecimal : any combination of the digits '0' through '9'
+                  and 'a' through 'f', giving 16 possibilities
+                  per digit. Hexadecimal numbers are preceded with
+                  a '$'
+                  Example: $55 which is the same as decimal 85
+    Binary      : any combination of the digits '0' and '1'. Binary
+                  numbers are preceded by a '%'
+                  Example %111 which is the same as decimal 7
+
+Expressions
+===========
+  Expressions are variables and literals combined with operations.
+
+  Example : a = b + c
+
+  Sums b & c and puts the result into a.
+
+  The following operators are allowed, in order of precedence
+  (unary operations take a single parameter, as in !a, whereas
+  binary operations take two parameters, as in a+b):
+
+    (...)       -- an expression in parenthesis is evaluated first
+    !!, !, -, ~ -- unary operations
+                   !! -- logical. If the following value is 0, the
+                         result is 0, if the following value is not 0,
+                         the result is 1
+                    ! -- NOT. If the following value is 0, the
+                         result is 1, if the following value is not 0,
+                         the result is 0
+                    - -- negation (two's complement)
+                    ~ -- binary complement
+    *, /, mod   -- multiply, divide, modulus (remainder)
+    +, -        -- addition & subtraction
+    <<, >>      -- shift left, shift right
+    <, <=, =    -- relationals: less than, less or equal, equal
+    <>, >=, >      not equal, greater or equal, greater than
+    &, |, ~     -- bitwise and, bitwise inclusive or, bitwise
+                   exclusive or
+    ||, &&      -- logical or and logical and (see Note 1)
+
+  Note 1: '&' and '|' have two meanings: in an assignment, these are bitwise
+          operations, whereas in an ``if'' clause, these are logical 
+          operations.
+  Note 2: the result of a logical operations is always 0 (FALSE) or 1 (TRUE)
+  Note 3: There is a performance penalty when using arrays. Since the PIC
+          can only access one array at a time, if more than one array
+          is used, one of the values is first put into a temporary.
+          For example, a(c) + a(d) becomes tmp = a(d), a(c) + tmp.
+  Note 4: An exception to Note 3 above is an array with a constant
+          subscript. There is no penalty in either speed or size
+          when a constant is used to describe an array element.
+          For example a(5) + a(6).
+  Note 5: For most operations, the operation is inlined, or written directly
+          into the code. The exception is *, /, and mod, which are
+          function calls. For example, c = a * b becomes:
+            _accum1 = a
+            _accum2 = b
+            call multiply
+            c = _result
+  Note 6: An exception to Note 5 above when the second operator is a constant
+          power of 2, in which case it is inlined as follows:
+            (b * 8) becomes (b << 3)
+            (b / 16) becomes (b >> 4)
+            (b % 4) becomes (b &  3)
+  Note 7: When doing division, the remainder is held in the system
+          variable, _remainder. So, if you need both the result and
+          the remainder, you can have it without the overhead of
+          an extra operation.
+          Instead of writing:
+            c = a / 9
+            b = a mod 9
+          one could write:
+            c = a / 9
+            b = _remainder
+          saving the cost of the modulus. This is only true when Note 6
+          is not in effect.
+  Note 8: BIT variables are generally converted to BYTE before use in an
+          expression. There is, however, special handling for single-bit
+          variables.
+          
+
+Promotion
+=========
+  Variables of any type and be mixed in an expression. Before the operation
+  takes place, the variable are made the same size (promoted) as follows:
+
+  First  -- both variables are made the same size, with signed variables
+            being sign extended, and unsigned variables being padded with 
+            zeros.
+  Second -- If both variables are signed, the result is signed, otherwise
+            the result is unsigned.
+
+Procedure Definition
+===================
+  PROC name([[type] var1[, [type] var2...]])
+    block
+  END PROC
+
+  Define a procedure named name. If it expects parameters, they are defined
+  by var1, var2... which must have been previously defined.
+
+  CALL name([expr1[, expr2...]])
+
+  Call a defined procedure named name. If the procedure was defined with
+  parameters, the same number of parameter must be passed as expected. These
+  parameters are passed by reference. For example:
+
+  PROC dummy(a, b, c)
+    a = 1
+    b = 2
+    c = 3
+  END PROC
+
+  CALL dummy(e, f, g)
+
+  This is really shorthand for:
+    a = e
+    b = f
+    c = g
+    GOSUB dummy
+    e = a
+    f = b
+    g = c
+
+  If the procedure is called with expressions instead of variables:
+
+  CALL dummy(1, 2, g)
+  
+  This becomes:
+    a = 1
+    b = 2
+    c = g
+    GOSUB dummy
+    g = c
+
+  since an expression cannot be assigned anything.
+
+Flow Control
+============
+  FOR var = expr1 TO expr2
+    block
+  NEXT
+
+  This sets var to expr1, execute block, and increments var until
+  var = expr2.
+
+  Note: some care must be taken to prevent an infinite loop of expr2
+        can never be reached. For example, if var is a BYTE variable
+        and expr2 is 256, var can never reach byte (since its range
+        is only to 255).
+
+  IF expr1 THEN
+    block1
+  [ELIF expr2
+    block2]
+  [ELSE
+    block3]
+  END IF
+
+  If expr1 is non-0, execute block1, otherwise if ELIF and expr2
+  is non-0, execute block2, otherwise if ELSE exists, execute block3.
+  Any number of ELIF clauses may exist.
+
+  GOSUB label
+
+  Pass control to label, and execute the statement following the
+  GOSUB when RETURN is execute.
+
+  RETURN
+
+  Return to the statement following GOSUB.
+
+  GOTO label
+
+  Pass control to label. Control never returns.
+
+  DO
+    [block]
+  WHILE expr
+
+  Execute block until expr evaluates to 0
+
+  WHILE expr
+    [block]
+  END WHILE
+
+  Execute block while expr is non-zero. This differes from DO..WHILE in
+  that the expression is evaluated first.
+
+  END
+
+  End the program. This simply creates a loop:
+    do 
+      sleep
+    while (1)
+
+  SLEEP
+  
+  Put the PIC into sleep mode.
+
+Misc Commands
+=============
+  INCLUDE filename
+    This causes future reads to come from filename. When the
+    end of that file is reached, processing continues on the line
+    following the INCLUDE line. First filename is looked for in the
+    current directory. If it is not found, the include path
+    (as set by the -I argument) is searched.
+
+    Note1: The included file cannot contain the FREQ, OSCILLATOR, or
+           PIC commands
+
+    Note2: There is no protection from including the same file multiple
+           times, or recursive inclusion.
+
+    Note3: Each included file requires a file handle (the files are not
+           closed then re-opened) so on some systems -- mainly MSDOS --
+           there might be a small limit to depth of inclusion.
+
+    
+  CLEAR
+    Set all user registers to 0. Much care must be taken when using this.
+    It should *never* be called at interrupt level, or when a timer is
+    running. If called, it should be called only once at the beginning
+    of the program.
+
+  DELAY cexpr, cexpr2
+    Delay cexpr us. Because the delay is done with a software loop, the
+    expression must be constant.
+
+    Note1: The delay executes a simple software loop. If interrupts
+           are enabled the actual delay might be substantially different
+           than that set (unless called from an ISR).
+
+    Note2: The delay loops using zero, one, two or three variables depending
+           upon how long the delay is. Unfortunately, I've not come up with
+           an efficient way to determine the best values for use in the
+           two or three variable loop case, so I do it brute-force
+           (try all values, keep the best set). If you notice a long
+           delay in the PIC output phase of the compilation, chances
+           are it's trying to determine the optimal values for a delay.
+           The only machine I have in which this worst case problem is
+           noticable is an old Gateway Nomad 486-25SX. Assuming you're 
+           using something a bit more modern you should be OK.
+
+    Note3: The upper limit for a delay is the maximum DWORD value, or
+           4294967295 usec or almost three days. This also requires
+           a little over 5 1/2 K of program memory.
+
+    Note4: The second parameter to this function is ignored but
+           required. The most it would save would be 8 instructions &
+           I didn't think it worth the hassle.
+
+  INTERRUPT_ENABLE
+    Enable interrupts
+
+  INTERRUPT_DISABLE
+    Disable interrupts
+
+  IR_USER_BEGIN
+    block
+  IR_USER_END
+
+  This creates a user defined interrupt which is called whenever any
+  interrupt is triggered. It is up to the user to make sure whatever
+  conditions must be set (or reset) are done within the ISR.
+
+  PRINT {str|expr}[,...]
+    Send output through the USART. This is mostly useful for debugging,
+    though it could be used just about anywhere. expr can be any expression,
+    and str is a quoted string, as in "this is a string"
+
+    str follows the standard C escape conventions as follows:
+    
+    "\a" -- bell
+    "\b" -- backspace
+    "\f" -- form feed
+    "\n" -- line feed
+    "\r" -- carriage return
+    "\t" -- horizontal tab
+    "\v" -- vertical tab
+    "\x#" -- # is a series of hexadecimal digits ('0'..'9', 'a'..'f')
+             which is replaced by the single character represented
+    "\#" -- # is a series of octal digits ('0'..'7') which is replaced
+            by the single character represented.
+    anything else following the escape character is untranslated.
+
+    on the PIC, str must also be less than 255 characters long.
+
+    Example : PRINT "a=", a, "b=", b, "\r\n"
+
+    Note: When printing, the wait_tx command is issued *before* each
+          character is printed, so if you mix PRINT and TX_LOAD, make
+          sure a a TX_WAIT exists before the TX_LOAD.
+
+ADC Functions
+=============
+  IR_ADC_BEGIN
+    block
+  IR_ADC_END
+
+  Define an interrupt service routine for use by the ADC. This is called
+  if interrupt-on-complete is set during ADC_CONFIG.
+
+  ADC_CONFIG channel, power, format, control, intr
+    channel, power format, control and intr are all expressions.
+
+    Configure the ADC.
+      channel : ADC channel (0 to 7)
+      power   : 0 to power off the ADC subsystem, non-0 to power on the 
+                ADC subsystem
+      format  : 0 to left justify result, non-0 to right justify result
+      control : how the ADC is controlled. See ...
+      intr    : 0 to poll the result, non-0 to call IR_ADC when complete
+
+    This must be used before any other ADC functions or the results of
+    those functions are undefined.
+
+    Note : although any expressions are allowed above, the code is
+           much more compact if constant expressions are used.
+
+  ADC_ON
+    Power up the ADC subsystem.
+
+  ADC_OFF
+    Power off the ADC subsystem.
+
+  ADC_START
+    Begin the ADC conversion.
+
+  ADC_STORE var
+    Put the results of the last ADC conversion into var. This must be
+    used either in IR_ADC if interrupt are enabled, or after a call to
+    ADC_WAIT if polling is enabled.
+
+  ADC_WAIT
+    Wait for the ADC to complete.
+
+EEPROM Functions
+================
+  EEPROM_READ addr, var
+    Read a value from the on-chip EEPROM. 0 <= addr <= 255
+    for the 16f877.
+
+  EEPROM_WRITE addr, var
+    Write a value to the on-chip EEPROM. 0 <= addr <= 255
+    for the 16f877.
+
+  EEPROM_WAIT
+    Wait for the last EEPROM write to complete. This is only needed
+    if you immediatly follow an EEPROM_WRITE with an EEPROM_READ as in:
+
+      EEPROM_WRITE 0, 5
+      EEPROM_WAIT
+      EEPROM_READ  10, x
+
+    Each EEPROM_WRITE implicitly begins with an EEPROM_WAIT, so multiple
+    writes will work successfully. The only time this is required is when
+
+
+PWM Functions
+=============
+  IR_PWM_BEGIN
+    block
+  IR_PWM_END
+
+  Create the PWM interrupt service routine.
+
+  PWM_CONFIG period, duty, channel, intr
+    period : period in us. For example 50.00us = 20KHz
+    duty   : Set the amount of time power is sent, 0 - 100.
+    channel: which PWM unit to define, 1, 2, or 3 for both.
+    intr   : 0 (no interrupt), or 1..16 interrupt after each intr
+             periods
+
+    Note : although any expressions are allowed above, the code is
+           much more compact if constant expressions are used.
+
+  PWM_DUTY duty, channel
+    Set the amount of time power is sent, 0 - 100 (same as the
+    second and third parameters to PWM_CONFIG)
+
+  PWM_OFF [ccp1 | ccp2 | all ]
+    Power down the desired PWM subsystem.
+
+  PWM_PERIOD expr
+    Set the PWM period. This is the same as the first parameter to
+    PWM_CONFIG.
+
+  PWM_REG expr
+
+Port I/O Commands
+=================
+  IR_PORTB_BEGIN
+    block
+  IR_PORTB_END
+
+  Create the port B interrupt service routine. On the 16f877 this is called
+  whenever bits 4..7 on port B change.
+
+  INTERRUPT_PORTB enable, pullup
+
+  Set the port B interrupt.
+    enable is 0 (disable) non-0 (enable)
+    pullup is 0 (pullup disable) non-0 (pullup enable)
+  
+  PINHIGH {A,B,C,D,E}, bit
+    Set a bit (0 <= bit <= 7) on a port.
+
+  PINLOW {A,B,C,D,E}, bit
+    Clear a bit (0 <= bit <= 7) on a port.
+
+  PINRD {A,B,C,D,E}, bit, var
+    Read the bit (0 <= bit <= 7) on port and put the result into var.
+    var will be 0 if the bit is clear, 1 if set.
+
+  PORTOUT {A,B,C,D,E}, expr
+    Output the result of an expression to a port
+
+  PORTRD {A,B,C,D,E}, var
+    Set var to the value of the port.
+
+  SETPORT {A,B,C,D,E}, expr
+    Set the bits of a port to in or out.
+
+    A bit of 0 sets the corresponding pin to output, and a bit of 1
+    sets the corresponding pin to input.
+
+USART Commands
+==============
+  IR_RX_BEGIN
+    block
+  IR_RX_END
+
+  If configured with USART_CONFIG, this interrupt is called each time
+  a character has been received
+
+  IR_TX_BEGIN
+    block
+  IR_TX_END
+
+  If configured with USART_CONFIG, this interrupt is called each time
+  the transmit register goes empty (the USART is ready for another byte).
+
+  USART_CONFIG {RX|TX}, 8, baud, intr
+
+  Configured the USART:
+    RX|TX : configure either receive or transmit
+    8     : # of bits, must be 8
+    baud  : baud rate in bps (300, 19200, ...)
+    intr  : non-0 to enable the corresponding interrupt
+
+    Note : although any expressions are allowed above, the code is
+           much more compact if constant expressions are used.
+
+    Note2: The baud rate generator is shared for both RX and TX, so
+           setting one value for RX and a different one for TX will
+           result in the last set rate being used for both.
+
+  RX_ERR_CHECK var
+    Sets var to the value of the last receive error.
+      0 : none
+      1 : overrun
+      2 : framing
+      3 : both
+
+  RX_STORE var
+    Sets var to the last received character. This should only be
+    called in the IR_RX routine, or after WAIT_RX.
+
+  TX_LOAD var
+    Transmit the value set in var. This should only be called in the
+    IR_TX routine or after WAIT_TX.
+
+  WAIT_RX
+    Loop until a character is received
+
+  WAIT_TX
+    Loop until the transmit register becomes empty.
+
+Timer Commands
+==============
+  IR_TIMER_BEGIN
+    block
+  IR_TIMER_END
+
+  If the timer is set to interrupt enable, this routine will be called
+  at the end of each time period and the time period is reset.
+
+  TIMER_CONFIG timeout, intr
+    timeout : the timeout in us
+    intr    : interrupt on timeout
+
+  TIMER_READ var
+    Set var to the contents of the timer. Note that var contains the
+    actually contents of timer, which is not in any particular units.
+    The timer actually counts forward, and an interrupt occurs when
+    is rolls from 65535 to 0.
+
+  TIMER_START
+    start the timer
+
+  TIMER_STOP
+    stop the timer
+
+  TIMER_WRITE expr
+    Set the timer to the result of expr. Note that this expression is
+    in cycles, not ms.
+
+  TIMER_COUNTDOWN
+    Wait for the timer to reach 0.
+
+
+pragmas
+=======
+pragmas are hints to the compiler and are mostly used for setting
+up the various PIC variables, but here they are to use as you see fit.
+
+pragma WARN [ON | OFF]
+
+  Turn on or off compiler warnings. Errors will still be emitted.
+
+pragma DATA low, high
+
+  Inform the compiler that variables may be stored in the area [low, high]
+
+pragma RESTART loc
+
+  Inform the compiler that the first instructions executed after power
+  on or reset is at loc. This is currently ignored.
+
+pragma INTERRUPT loc
+
+  Inform the compiler that when an interrupt occurs, execution for the
+  interrupt service begins at location loc. This is currently ignored.
+
+pragma CODE size
+
+  Inform the compiler that size words are available for code
+
+pragma PICLOADER loc
+
+  Inform the compiler that there exists a PIC loader (as opposed to
+  requiring a PIC programmer) and it begins at location loc. This
+  number is ignored if the -norickpic argument is given to the compiler.
+

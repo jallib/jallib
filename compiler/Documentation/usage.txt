@@ -1,0 +1,224 @@
+Using PICbsc
+============
+
+Format: picbsc {options} filename
+
+  -I path[;...] : set the include path, elements seperated with ';'
+  -hex name : set the hex file to name, default is filename + ".hex"
+  -asm name : set the assembly file to name, default is filename + ".asm"
+  -norickpic: Rick Farmer's PIC loader (the default shipped with the MarkIII)
+              requires a slightly different startup sequence. This is the
+              default. If you're not using his PIC loader, define this and
+              the generated code will be straight PIC.
+  -debug    : display debugging information
+  -quiet    : do not display status updates (only warnings and errors
+              will be displayed)
+
+
+Once run, two files will be created -- the assembly file and an Intel hex
+file suitable for loading into the PIC. I couldn't find a document formally
+describing INTEL HEX-8 format, so I made my best guess. The assembly file
+can be assembled with MPLAB, though that's not required.
+
+Variable names and labels are restricted to 1023 bytes. If assembled with
+MPLAB, they must be kept below 32 bytes.
+
+Errors and warnings displayed. The first character on the line denotes:
+  E : error
+  W : warning
+  D : debug
+  S : status
+
+Parser Messages
+===============
+E ``Constant expression expected'' 
+  The expression must evaluate to constant. This is true when defining
+  arrays and using the DELAY command.
+
+E ``Syntax error''
+  An error exists in the syntax on the line
+
+E ``...defined more than once''
+  The name given to a variable, procedure, or line label is already in use.
+  There are two namespaces : one used by variables, and one by
+  line labels and procedure names.
+
+E ``...expected for block starting on line...''
+  A block terminator (ENDIF, ENDWHILE, NEXT, ENDPROC, IR_xxx_END) was expected
+  but the end of file was reached. The line displayed is the line that contains
+  the start of the block.
+
+E ``...not defined''
+  The destination of a GOTO or GOSUB has not been defined.
+
+E ``Subscript out of range''
+  A constant subscript for a variable was out of range. For example, if
+  x is a 10 element array, saying y = x(10) will yield this error. Note
+  that variable subscripts (y = x(y)) are *not* checked.
+
+E ``Value expected.''
+  When parsing an expression, a value was expected but not found. 
+
+E ``IR_... not defined''
+  A configuration command specified that an interrupt should occur on
+  completion, but the matching interrupt handler was not found.
+
+E ``...already defined''
+  The named interrupt routine was previously defined.
+
+W ``...never referenced''
+  A variable was defined but never referenced; no space will be allocated
+  for it.
+
+W ``...never assigned''
+  A variable was defined and used, but never assigned a value. It will be
+  turned into a constant 0 and no space will be allocated for it.
+
+W ``...assigned but not used''
+  A variable was assigned but never used. All code related to the assignment
+  will be dropped, and no space will be allocated for it.
+
+E ``procedure name exists''
+  A procedure is being defined that was previously defined.
+
+E ``constant cannot be used here''
+  When defining a procedure, the parameters must be variables.
+
+E ``constant expected''
+  A constant was expected.
+
+E ``constant out of range''
+  The constant could not be converted into a value. Constants are limited
+  to 32 bits (0..4,294,967,295)
+
+E ``cannot take part of a one-byte value''
+  The effect of _H and _L is to reduce the size of a variable by 1/2. A
+  one byte variable cannot be further reduced.
+
+E ``variable name expected''
+  A variable name was expected.
+
+E ``array size must be constant''
+  An array size must be a constant expression.
+
+E ``array size must be > 0''
+  An array size must be 1 or more.
+
+E ``position must be constant''
+  When positioning a variable, the position must be a constant expression.
+
+E/W ``only the first ... of ... elements of ... have been initialized''
+  For an array, not all of the elements were initialized. This is a
+  warning for variable arrays, and an error for constant arrays.
+
+E ``type expected''
+  One of : BYTE, SBYTE, WORD, SWORD, DWORD, or SDWORD is needed.
+
+E ``internal error...''
+  A critical error exists; processing cannot continue.
+
+E ``division by 0''
+  The second operand to '/' or 'mod' is a constant 0.
+
+E ``assign to constant not allowed''
+  One cannot assign a value to a constant. For example 2 = 1.
+
+W ``extra characters at end of line ignored''
+  A command was fully processed but there were stray characters after.
+  For example:
+    a = b + c d
+  The parser finishes at ``c'' above, but then noticed ``d''.
+
+W ``size mismatch''
+  Two variables of different sizes are being used together.
+
+W ``constant
+  
+PIC Code Generator Errors
+=========================
+E: ``label not found! ...''
+  The named label was not found. This is an unrecoverable error.
+
+E: ``code generation error!...''
+  There are four PIC operations that result in skipping the following
+  instruction. During processing, instructions are inserted to setup
+  data access or branch destination access. Somehow, one of these
+  instructions was inserted immediately after a ``skip the following
+  command'' instruction invalidating the sequence.
+
+E: ``no room for...''
+  Data space has been exhausted.
+
+W: ``... spans ... banks''
+  An array spans multiple banks. This is only a warning that code size
+  and performance will suffer.
+
+W: ``constant out of range''
+  A bit operation takes a value from 0..7. A value out of this range
+  was found.
+
+Status Messages
+===============
+S: ``compiling pass...''
+  The BASIC parser makes two passes over the code to resolve forward
+  references.
+
+S: ``...commands freed''
+  The low-memory compiler frees dead (unreachable) commands. This simply
+  informs you how many were freed.
+
+S: ``...labels removed''
+  The low-memory compiler frees unused labels. This simply informs you
+  how many were freed.
+
+S: ``p-code optimized''
+  The second phase has been entered.
+
+S: ``dumping result''
+  The ASM, HEX, and LST files are being generated.
+
+S: ``finding intrinsics''
+  The PIC generator is determining if the multiplication and/or division
+  routines are needed, and if so how many bits are needed for each.
+
+S: ``...multiply (... bits) divide (... bits)''
+  If the number of bits is non-0, a multiply and/or divide routine of the
+  specified number of bits will be created.
+
+S: ``generating PIC code pass...''
+  The PIC code generator executes two passes.
+
+S: ``fixing up data bits (STATUS<RP1:RP0>)''
+  There are four data banks on the PIC, and which was is accessed is determined
+  by the values of RP1 and RP0. When the PIC code is being generated, these
+  statements are left out. After all of the code has been generated, they
+  are put it. The data bank analyzer tracks the state of the bits so unnecessary 
+  changes are not made.
+
+S: ``...inserted ... instructions''
+  This lets you know how many instructions were needed by the preceding
+  pass.
+
+S: ``fixing up branch bits (PCLATH<4:3>)''
+  There are four, 2K code banks and when branching one must set
+  PCLATH<4:3> to the correct bank. These instructions are not put in when
+  generating the code, but after the code has been generated and the 
+  data bits fixed up. Multiple passes are required here, because each
+  insertion could bump something past a boundary. The branch bank analyzer
+  tracks the state of the bits so unnecessary changes are not made.
+
+S: ``...inserted ... instructions in ... passes''
+  This lets you know how many instructions were inserted by the preceding
+  pass.
+
+S: ``...bank: # ... #''
+  This shows the boundary of a data bank. Normally, there are four data
+  banks, but if a variable is positioned manually, it might split a bank.
+
+S: ``allocating variables''
+  The variables are being assigned places in the PIC data banks.
+
+S: ``...data used: ...''
+  Displays the amount of data space used.
+
+

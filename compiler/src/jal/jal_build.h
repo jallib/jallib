@@ -1,0 +1,2 @@
+#define JAL_BUILD 20161025
+#define JAL_VERSION_STR "jalv24q6"

@@ -1,0 +1,166 @@
+pointers with JALv2
+===================
+
+Currently, the only way to declare a pointer in JALv2 is by using it in a
+parameter as follows:
+
+PROCEDURE test(BYTE IN xx[])
+
+Here, xx is a pointer to BYTE. Only arrays of BYTE can be passed to it.
+
+Array access on a PIC is non-trivial. There are actually four different
+types. A pointer is always 2-bytes, and the top two bits (15:14) define
+what type of pointer it is:
+
+00 : data pointer, accessed through IRP:FSR
+01 : lookup table (const array)
+10 : EEPROM
+11 : FLASH (program memory)
+
+Type 00 can be used directly by a program; temporary storage might not be
+required. The other types *cannot* be used directly by a program. First they
+must go into a temporary, then and only then can they be used.
+
+Types 10 and 11 require a seperate accessor function.
+
+A post-processing step, just prior to code generation, scans all assignments
+to pointers. If all assignments are simple or lookup the process is trivial.
+If any assignments are EEPROM or FLASH, or if a pointer is assigned multiple
+types, access to that pointer will always require a function call.
+
+;
+; Entry:
+;   _pic_pointer + 1    : base MSB
+;   W                   : base LSB
+; Exit:
+;   return in W
+;
+_pic_pointer_value_get
+   movwf _pic_pointer
+   btfsc _pic_pointer + 1, 7
+   goto  eeprom_or_flash
+   btfsc _pic_pointer + 1, 6
+   goto  lookup
+simple: ; 00
+   movwf _fsr
+   bcf   _status, _irp
+   btfsc _pic_pointer + 1, 0
+   bsf   _status, _irp
+   movf  _ind, w
+   ret
+lookup: ; 01
+   movf  _pic_pointer + 1, w
+   andlw 0x1f
+   movwf _pclath
+   movf  _pic_pointer, w
+   movwf _pcl
+eeprom_or_flash: ; 1x
+   btfsc _pic_pointer + 1, 6
+   goto flash
+eeprom: ; 10
+   movwf _eeaddr
+   bcf   _eecon1, _eepgd
+   bsf   _eecon1, _rd
+   movf  _eedata, w
+   ret
+flash:  ; 11
+   ;
+   ; program memory is read in words, so we'll need to shift
+   ; _pic_pointer
+   movlw _pic_pointer + 1
+   andwf 0x20 ; top 2 bits are used elsewhere, this clears _status:_c
+   movwf _pic_pointer + 1
+   rrf   _pic_pointer + 1, w
+   movwf _eeadrh
+   rrf   _pic_pointer, w
+   movwf _eeadr
+   bsf   _eecon1, _eepgd
+   bsf   _eecon1, _rd
+   nop
+   nop
+   movf  _eedata, w
+   btfsc _pic_pointer, 0
+   movf  _eedath, w
+   ret
+
+;
+; Entry:
+;   _pic_pointer     : base LSB
+;   _pic_pointer + 1 : base MSB
+;   W                : value to write
+; Exit:
+;   return in W
+;
+_pic_pointer_value_set
+  movwf _pic_accum
+  btfsc _pic_pointer + 1, 7
+  goto  eeprom_or_flash
+  btfsc _pic_pointer + 1, 6
+  goto  lookup
+simple: ; 00
+  movf  _pic_pointer, w
+  movwf _fsr
+  bcf   _status, _irp
+  btfsc _pic_pointer + 1, 0
+  bsf   _status, _irp
+  movf  _pic_accum, w
+  movwf _ind
+lookup: ; 01 should clearly never get here, no-op
+  ret
+eeprom_or_flash:
+  bcf   _pic_pointer_gie
+  btfsc _intcon, _gie
+  bsf   _pic_pointer_gie
+  btsfc _pic_pointer + 1, 6
+  goto  flash
+eeprom: ; 10
+  btfsc _eecon1, _wr
+  goto  eeprom
+  movf  _pic_pointer, w
+  movwf _eeadr
+  movf  _pic_accum, w
+  movwf _eedata
+  bcf   _eecon1, _eepgd
+  bsf   _eecon1, _wren
+  bcf   _intcon, _gie
+  movlw 0x55
+  movwf _eecon2
+  movlw 0xaa
+  movwf _eecon2
+  bsf   _eecon1, _wr
+  btfsc _pic_pointer_gie
+  bsf   _intcon, _gie
+  bcf   _eecon1, _wren
+  ret
+flash:
+  ;
+  ; flash writes are always done in *words* so, first we
+  ; need to read from flash which will actually set everything
+  ; up for us
+  ;
+  call  _pic_pointer_value_get
+  movlw _pic_accum
+  btfsc _pic_pointer, 0
+  goto  write_high
+  movwf _eedata
+  goto  flash_continue
+write_high:
+  movwf _eedath
+flash_continue:
+  bsf   _eecon1, _eepgd
+  bsf   _eecon1, _wren
+  bcf   _intcon, _gie
+  movlw 0x55
+  movwf _eecon2
+  movlw 0xaa
+  movwf _eecon2
+  bsf   _eecon1, _wr
+  nop
+  nop
+  btfsc _pic_pointer_gie
+  bsf   _intcon, _gie
+  bcf   _eecon1, _wren
+  ret
+  
+  movlw 
+

@@ -1,0 +1,104 @@
+Interesting Thoughts
+====================
+
+* indirect calls
+================
+  
+  Indirect calls are implemented via a special entry point. A
+  special variable block, _indirect_params, is created with a size
+  large enough to hold all of the parameters in the largest
+  indirect call. First, all parameters are assigned into this
+  parameter block, then for the indirect entry the parameters
+  are copied back out. At exit, all pass-by-reference parameter
+  are copied back.
+
+  This, along with recursion discussed below leads to an interesting
+  question : should all *local* variables be allocated in a single block?
+
+  I'm thinking the variable allocator will need to work on three
+  levels:
+    1. no indirect, no recursion
+       -- each variable is allocated discretely to facilitate the most
+          efficient memory usage
+    2. indirect, no recursion
+       -- all parameters are allocated to a single block, but all other
+          local variables are assigned discretely
+    3. recursion
+       -- all parameters + local variables are allocated to a single
+          block
+
+* recursion
+  Recursion *should* be possible by using a scratch area as follows.
+  Each function has a single-byte counter, ``entered,'' with pseudo-code as 
+  follows:
+
+  preamble:
+    the call *must* put any parameters into a temporary block called
+    _system. the contents of this block will then be copied into the
+    appropriate local variable.
+
+    if (entered) then
+      sp -= sizeof(local data)
+      copy sp, localdata (copy local data into are pointed to by sp)
+    endif
+    entered++;
+    ...
+  postamble:
+    --entered
+    if (0 != entered) then
+      copy localdata, sp (copy local data back from sp)
+      sp += sizeof(local data)
+    endif
+
+  
+* deep stack
+  The callstack on a PIC is limited. For example, the 16f87x has an 8 level 
+  stack. If interrupts are enabled, that leaves a real stack depth of 7 since
+  one must always be reserved for the interrupt.
+
+  To increase this (aka, ``deep stack'') one could create a jump table 
+  attached to each function. Then all calls would be changed into
+
+             movlw label_x
+             goto  called_function
+    label_x: ...
+
+  now, at the end of called_function, instead of a RET, jump to the next label.
+  Granted, this causes a minimum overhead of 1+3(x) where x is the number of 
+  callers to the particular function, but it might be fun to do.
+
+  Call overhead (was 2 cycles):
+    1 -- movlw x
+    2 -- goto  called_function
+    3 -- movwf {ret} (2 to setup the data bits, 1 for the store)
+  ---
+    7
+
+  Return overhead (was 2 cycles):
+    3 -- movfw {ret}
+    4 -- jump ret_table
+    4 -- setup pclath, addwf pc,f
+    4 -- setup pclath, jump to return address
+  ---
+   15
+
+* temporaries
+  If I ever want functions instead of just procedures, I'll need a better way 
+  to deal with temporaries. Currently, they all exist in a single shared area,
+  but even that is *not* currently being done optimally. The first thing to do 
+  here is change how temporaries are dealt with. There should be a single 
+  block large enough to hold all temporaries.
+
+  There are two obvious solutions to this:
+    1. temporaries are added to struct _funcname
+       pros : locality. this guarentees the temporaries are in the same bank
+              as the other local variables, so cross-bank access is minimized
+       cons : temporaries do not share the same space, so a certain amount of 
+              waste is created
+
+    2. temporaries share a single space as they currently do, but analysis is 
+       run on the code and any temporaries that need to be saved are during
+       the preamble
+       pros : more efficient use of data space
+       cons : more analysis is requires; locality of reference is lost.
+

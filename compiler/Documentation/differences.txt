@@ -1,0 +1,133 @@
+Differences between PICbsc and CH Basic
+=======================================
+
+These are the differences between CH-Basic and PICbsc:
+
+* A constant with a decimal is scaled up by 1000
+  This is a *big one* and can easily lead to errors. Since PICbsc does
+  not allow floating point, and does allow expressions everywhere, there
+  was little choice but to scale numbers. This is an issue for DELAY, 
+  FREQ, PWM_CONFIG, TIMER_CONFIG, and USART_CONFIG.
+
+  The standard command:
+
+  FREQ 20
+
+  For PICbsc, that sets the frequency to 20KHz, whereas for CHBasic it
+  sets the frequency to 20MHz. PICbsc needs:
+
+  FREQ 20.
+
+  or
+  
+  FREQ 20.0
+
+  to work correctly. Same for DELAY, PWM_CONFIG, TIMER_CONFIG and 
+  USART_CONFIG. These should all be checked before compiling a CHBasic 
+  program to PICbsc.
+
+* New types: DWORD and SDWORD are 32-bit unsigned and signed respectively.
+
+* REAL is not supported.
+
+* All expressions are allowed, including constant expressions. Here's one place
+  that the CH Basic makes no sense to me. One cannot write, for example,
+  ``a = 1 + 2'' in CH Basic.
+
+* The only place a constant expression is required is in the DELAY statement.
+  Everywhere else, any expression can be used. Please note, that the amount
+  of code will increase dramatically when constant expressions are not used.
+  An example of this is pwm_period x. If x is a constant, this requires
+  3 p-code instructions. If is a variable, it requires 18.
+
+* Variables are promoted and demoted as needed, so one need never use a certain
+  size variable. The promotion rules are:
+    Given two variables, A and B, size is defined as the number of bits and
+    type is either signed or unsigned:
+
+    The size of the result is the larger of the size of A or B.
+    The type of the result is unsigned if either A or B is unsigned.
+
+    Size is adjusted first, and if the size of a signed value is increased,
+    the value is sign extended.
+
+* IF expressions are the same as other expressions and can be grouped
+  with parenthesis as needed
+
+* ELIF is a new statement
+
+* PRINT statement is new
+
+* DO...WHILE is new
+
+* WHILE...END WHILE is new
+
+* A block can be ended with either two words (END IF) or one (ENDIF)
+
+* A label can appear on the same line with a statement:
+
+  label : x = 5
+
+* A comment can appear on the same line with a statement:
+  x = 5 'set x to 5
+
+* All PIC registers are available to the user as normal, BYTE variables, and
+  all PIC flags are available as named constants. The names are simply
+  '_' + the PIC name. For example the Timer 1 control register can be
+  directly accessed as _t1con.
+
+* _H and _L can be used with arrays, eg x_l(5) = y sets the lower part
+  of array x
+
+* Arrays can span banks. This is generally a bad idea, as it requires
+  more code and can cause confusion when debugging, but there are times
+  when it is very convenient.
+
+  The confusion arises because even though an array can span banks, an
+  element can not, so the variable allocation might appear to put one
+  variable in the middle of an array. Take the following example:
+
+  WORD a(5)
+  BYTE b
+
+  Say a was placed at location 0xe9. It would map as follows:
+    a(0) -- 0x0e9 0x0ea
+    a(1) -- 0x0eb 0x0ec
+    a(2) -- 0x0ed 0x0ee
+    a(3) -- 0x110 0x111 <-- note the bank shift
+    a(4) -- 0x112 0x113
+
+    b    -- 0x0ef
+
+    Note that since a is 16 bits wide, an element cannot fit at 0x0ef so
+    a(3) moves to the next bank, leaving a hole at 0x0ef. Since b is only
+    8 bits, it fits comfortably at 0x0ef, so it appears to be right
+    in the middle of array a.
+
+  An attempt is made to make sure arrays do not span banks, and a warning
+  is emitted if for some reason it does happen.
+
+* The '_h' and '_l' have been extended for the new 32 bit type and can
+  be chained. Given DWORD a:
+    a_h   : high 16 bits
+    a_h_h : high  8 bits of a_h
+    a_h_l : low   8 bits of a_h
+    a_l   : low  16 bits
+    a_l_h : high  8 bits of a_l
+    a_l_l : low   8 bits of a_l
+
+* Interrupt function (IR_*) do not need to be at the beginning of the
+  program.
+
+* There is an implied END at the end of each program.
+
+* END is translated into:
+     label: sleep
+            goto label
+
+  This is not always what is wanted but does cut power consumption. A
+  different way to keep the processor running but not in sleep mode
+  is to use an infinite loop such as:
+    DO
+    WHILE (1)
+
