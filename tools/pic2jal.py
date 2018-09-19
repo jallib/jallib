@@ -64,9 +64,9 @@ import time
 from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
-scriptauthor = "Rob Hamerling & Rob Jansen"
-scriptversion = "0.2.5"  # script version
-compilerversion = "2.4q6"  # latest JalV2 compiler version
+scriptauthor = "Rob Hamerling, Rob Jansen"
+scriptversion = "0.2.6"  # script version
+compilerversion = "2.5"  # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
 # Additional file specifications
@@ -439,28 +439,31 @@ def list_devicefile_header(fp, picfile):
     fp.write("--\n" +
              "include chipdef_jallib                  -- common constants\n" +
              "--\n" +
-             "pragma  target  cpu    PIC_" + cfgvar["core"] + "            -- (banks=%d)\n" % cfgvar["numbanks"] +
-             "pragma  target  chip   " + picname.upper() + "\n" +
-             "pragma  target  bank   0x%04X\n" % cfgvar["banksize"])
+             "pragma  target  cpu        PIC_" + cfgvar["core"] + "        -- (banks=%d)\n" % cfgvar["numbanks"] +
+             "pragma  target  chip       " + picname.upper() + "\n" +
+             "pragma  target  bank       0x%04X\n" % cfgvar["banksize"])
+    # Pragma for number of banks is only needed for the compiler when more than 32 banks for PIC with core 14H.
+    if (cfgvar["core"] == '14H') & (cfgvar["numbanks"] > 32):
+        fp.write("pragma  target  numbanks   %d\n" % cfgvar["numbanks"])
     if cfgvar["pagesize"] > 0:
-        fp.write("pragma  target  page   0x%04X\n" % cfgvar["pagesize"])
-    fp.write("pragma  stack          %d\n" % cfgvar["hwstack"])
+        fp.write("pragma  target  page       0x%04X\n" % cfgvar["pagesize"])
+    fp.write("pragma  stack              %d\n" % cfgvar["hwstack"])
     if cfgvar["osccal"] > 0:
-        fp.write("pragma  code           %d" % (cfgvar["codesize"] - 1) + " " * 15 + "-- (excl high mem word)\n")
+        fp.write("pragma  code               %d" % (cfgvar["codesize"] - 1) + " " * 15 + "-- (excl high mem word)\n")
     else:
-        fp.write("pragma  code           %d\n" % cfgvar["codesize"])
+        fp.write("pragma  code               %d\n" % cfgvar["codesize"])
     if "eeaddr" in cfgvar:
-        fp.write("pragma  eeprom         0x%X,%d\n" % (cfgvar["eeaddr"], cfgvar["eesize"]))
+        fp.write("pragma  eeprom             0x%X,%d\n" % (cfgvar["eeaddr"], cfgvar["eesize"]))
     if "idaddr" in cfgvar:
-        fp.write("pragma  ID             0x%X,%d\n" % (cfgvar["idaddr"], cfgvar["idsize"]))
+        fp.write("pragma  ID                 0x%X,%d\n" % (cfgvar["idaddr"], cfgvar["idsize"]))
     if "DATA" in picdata:
-        fp.write("pragma  data           " + picdata["DATA"] + "\n")
+        fp.write("pragma  data               " + picdata["DATA"] + "\n")
         print("   pragma data overruled by specification in devicespecific")
     else:
         for i in range(0, len(cfgvar["datarange"]), 5):  # max 5 ranges per line
             y = cfgvar["datarange"][i: i + 5]
-            fp.write("pragma  data           " + ",".join(("0x%X-0x%X" % (r[0], r[1] - 1)) for r in y) + "\n")
-    fp.write("pragma  shared         ")
+            fp.write("pragma  data               " + ",".join(("0x%X-0x%X" % (r[0], r[1] - 1)) for r in y) + "\n")
+    fp.write("pragma  shared             ")
     global sharedmem
     sharedmem = []  # clear
     if "SHARED" in picdata:
@@ -2291,9 +2294,10 @@ def list_digital_io(fp, picname):
         else:
             fp.write("   ADCON  = 0b0000_0000\n")
         if ("ADCON1" in names):
-            if ("ADCGROUP" not in picdata):  # 18[l]fxxk40
+            if ("ADCGROUP" not in picdata):  # 18[l]f6xk40
                 print("   Provisional value for ADCON1 specified")
-                fp.write("   ADCON1 = 0b0000_00000\n")
+ #               fp.write("   ADCON1 = 0b0000_00000\n") #RJ: 2018-02-24. Corrected, one zero to many.
+                fp.write("   ADCON1 = 0b0000_0000\n")
             elif (picdata["ADCGROUP"] == "ADC_V1"):
                 fp.write("   ADCON1 = 0b0000_0111\n")
             elif picdata["ADCGROUP"] in ("ADC_V2", "ADC_V4", "ADC_V5", "ADC_V6", "ADC_V12"):
@@ -2463,7 +2467,7 @@ def list_pps_out_consts(fp, root, picname):
                 for f in ppsoutdict[k]:
                     if (picname in ("16f15355", "16f15356", "16lf15355", "16lf15356")):
                         if ((f == "CK2") & (k == 0x0F)):
-                            f = "CK1"  # correction of MPLABX error
+                            f = "CK1"  # correction of MPLABX error. @2018-06-17: Correction still needed.
                     fp.write(pps_line_format % (f, "0x%02X" % (k)))
                     if ((f == "TXCK") | (f == "CKTX")):  # frequent combo in MPLABX
                         if (["TX"] not in ppsoutdict.values()):
@@ -2610,8 +2614,11 @@ def list_dcrfieldsem(fp, key, dcrfielddef, offset):
                                     str = "       " + fieldname + " = " + "0x%X" % (eval(when[-1]) << offset)
                                     fp.write("%-40s -- %s\n" % (str, desc))
                                 if (key == "ICPRT"):
-                                    if (cfgvar["picname"] in ("18f1230", "18f1330", "18f24k50",
-                                                              "18f25k50", "18lf24k50", "18lf25k50")):
+                                    #RJ: 2018-02-24: Changed since 18F1230 and 18F1330 have no ICPRT.
+#                                    if (cfgvar["picname"] in ("18f1230", "18f1330", "18f24k50",
+#                                                              "18f25k50", "18lf24k50", "18lf25k50")):
+                                    #RJ: 2018-02-24: Omission MPLABX. The XML is missing the 'Enabled' option for ICPRT.
+                                    if (cfgvar["picname"] in ("18f24k50", "18f25k50", "18lf24k50", "18lf25k50")):
                                         print("   Adding 'ENABLED' for fuse_def " + key)
                                         str = "       ENABLED = 0x20"
                                         fp.write("%-40s %s\n" % (str, "-- ICPORT enabled"))
