@@ -1,49 +1,37 @@
 JalV2 readme
 ============
 
-Please see jaldiff.txt for important information about differences.
-
 Included in this archive:
 
 README.txt    : this file
 
-Documentation/jalv2.txt       : JALv2 language documentation
-Documentation/jalv2opt.txt    : JALv2 compiler options
-Documentation/jalv2pragma.txt : JALv2 pragmas
+jalv2.txt       & jalv2.pdf        : JALv2 language documentation
+jalv2opt.txt    & jalv2opt.pdf     : JALv2 compiler options
+jalv2pragma.txt & jalv2pragmal.pdf : JALv2 pragmas
 
-bin/jalv2     : the linux binary. requires libc.so.6
-bin/jalv2.exe : win32 binary (no debugging, optimization on)
-bin/jalv2d.exe: win32 binary with debugging enabled
+jalv2.exe     : Windows 32-bit binary 
+jalv2_64.exe  : Windows 64-bit binary 
+jalv2-i686    : Linux 32-bit binary
+jalv2-x86-64  : Linux 64-bit binary
 
-chipdef/*     : chip definition files
-
-Makefiles and executable for eComStation (OS/2) are available at
-http://www.robh.nl/picsoft.php#jalv2
-
-Note this package contains only the compiler. For a comprehensive set 
-of JalV2 libraries see the Jallib collection at: 
-
-http://jallib.google.code
-
-or Bert van Dam's JAL Startpack:
-
-http://www.vandam.tk
-
-nb: I try to support most of the microcontrollers produced by MicroChip,
-    but there are far too many for me to claim complete support. If you
-    find a controller for which JALv2 does not produce working code,
-    please let me know.
-    At the moment, the 16F54, 16F57 and 16F59 are the only ones
-    known not to work.
+For device files go to: https://github.com/jallib/jallib/tree/master/include/device
 
 History
 =======
+2.5   -- 18 September 2018
+         * fixed #222: JAL Compiler jalv2.4q6 does not support new PICs with 64 banks
+		   (new compiler pragma 'numbanks' added) 
+
+-------- 12 September 2018: Kyle York retiring after a job well done,  
+         compiler maintenance taken over by Rob Jansen
+
 2.4q6 -- 25 October 2016
          * create 32 & 64 bit linux files
          * create an ISR pre-amble & save the state variables there
            (allows for some optimization not allowed elsewhere)
          * add and subtract of arrays on 14 bit hybrids failed
          * passing structure pointers into arrays failed
+
 2.4q5 -- 29 December 2015
          * allow whereis() on variables
          * fix whereis() in expressions
@@ -1090,20 +1078,4 @@ History
          * fixed `a = b +/- c', where c is a constant
 
 0.90  -- Initial release -- 30 October 2005
-
-Bugs
-====
-
-Of course not! If you find one, please drop me a note:
-
-mailto://kyle@casadeyork.com
-
-There are two known issues however (not bugs mind you):
-
-1. The assembly file always has ``list p=16f877'' regardless of the
-   actual processor being used.
-
-2. The TRIS instructions, according to the PIC12C5XX datasheet, should
-   be 0x0005, 0x0006, and 0x0007 (for TRIS 5, TRIS 6, and TRIS 7).
-   MPASM emits 0x0065, 0x0066, and 0x0067.
 
