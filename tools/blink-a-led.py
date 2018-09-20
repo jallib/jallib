@@ -3,7 +3,7 @@
 
   Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
 
-  Adapted-by:
+  Adapted-by: Rob Jansen,  Copyright (c) 2018..2018, all rights reserved.
 
   Revision: $Revision$
 
@@ -61,8 +61,8 @@ platform_name = platform.system()
 
 # --- general constants
 
-ScriptAuthor    = "Rob Hamerling"
-CompilerVersion = "2.4q6"
+ScriptAuthor    = "Rob Hamerling, Rob Jansen"
+CompilerVersion = "2.5"
 
 
 # specification of system dependent compiler executable
