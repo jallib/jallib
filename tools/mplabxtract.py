@@ -44,7 +44,6 @@ if (platform_name == "Linux"):
 elif (platform_name == "Windows"):
    # When using the Windows MPLABX installation from the original location use this:
    #  xml_pfx = os.path.join("C:\\", "Program Files (x86)", "microchip", "mplabx", "v" + mplabxversion)
-
    # Currnently using a local copy from another location.
    xml_pfx = os.path.join("D:\\", "picscripts", "mplabx", "mplabx_v" + mplabxversion)
 elif (platform_name == "Darwin"):
@@ -74,9 +73,10 @@ pic_select = {
    }
 
 # Unsupported PICs (exceptions to the selection above!)
-
+# RJ: PIC16F527 and PIC15F570 generate errors in the script. According to Rob Hamerling not supported by JAL compiler.
 unsup  = ("PIC12F529T39A.PIC", "PIC12F529T48A.PIC",
           "PIC16HV540.PIC", "PIC16F527.PIC", "PIC16F570.PIC")
+
 
 
 # ===  E N T R Y   P O I N T ===
