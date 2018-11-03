@@ -65,7 +65,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "0.2.6"  # script version
+scriptversion = "0.2.7"  # script version
 compilerversion = "2.5"  # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -2429,9 +2429,11 @@ def list_pps_out_consts(fp, root, picname):
    Output:  List of constants for PICs in PPS_GROUPS 4 and 5
    Returns: (nothing)
    Notes:   patterns are first collected, then listed sorted on pattern value
+            Some check is done on valid pattern to assume that RxyPPS is never > 100 (found a valid max of 48)
    """
     ppsoutdict = {}  # dictionary of (value:name)
-    nopatt = 128  # dummy key for missing pattern
+    nopatt = 200 # dummy key for missing pattern
+    pps_warning = False
     remaplist = root.getElementsByTagName("edc:RemappablePin")
     for pin in remaplist:
         pindir = pin.getAttribute("edc:direction")
@@ -2463,7 +2465,10 @@ def list_pps_out_consts(fp, root, picname):
         ppskeys = list(ppsoutdict.keys())
         ppskeys.sort()
         for k in ppskeys:
-            if (k < 128):  # pattern found in .pic file
+            # If RxyPPS is too big there might be an error in the MPLABX file. Assume 100 it too big.
+            if (k > 100):
+                pps_warning = True
+            if (k < 200): # pattern found in .pic file
                 for f in ppsoutdict[k]:
                     if (picname in ("16f15355", "16f15356", "16lf15355", "16lf15356")):
                         if ((f == "CK2") & (k == 0x0F)):
@@ -2498,6 +2503,8 @@ def list_pps_out_consts(fp, root, picname):
             fp.write(pps_alias_format % ("SDA", "SDO"))
 
         fp.write("--\n")
+    if (pps_warning == True):
+        print("   Warning: Possible error in MPLABX for PPS")
 
 
 def list_fuse_defs(fp, root):
