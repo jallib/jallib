@@ -16,10 +16,13 @@ If you're looking for a specific library, welcome here! You may want to:
  * Browse the [Jal users site](http://www.justanotherlanguage.org) for introductions to JAL
 in general and the use of several Jallib libraries in particular.
 
+For a quick start on how to install Jallib, compile and run a jal program on your PIC have a look at [Installing and using Jallib](https://github.com/jallib/jallib/wiki/Installing-and-using-Jallib).
+
 Also have a look at **UnixCompilingFromSvnHowto** wiki. It'll help you to use the whole repository.
  * jalapi is the jallib API documentation
  * have a look at our [jallib discussion group](https://groups.google.com/forum/#!forum/jallib),
-where you can get some help 
+where you can get some help on jallib development or
+* have a look at our [jallist discussion group](https://groups.yahoo.com/neo/groups/jallist/info) where you can discuss coding issues with jal 
 
 The repository is organized in such a way that it is easy to find where you are looking for
 (libraries, sample programs, device files, etc...). 
