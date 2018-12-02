@@ -68,9 +68,7 @@ pic_select = {
    "PIC18F-J_DFP"       : "18xxxx",             # )
    "PIC18F-K_DFP"       : "18xxxx",             # ) 16-bits
    "PIC18F-Q_DFP"       : "18xxxx",             # )
-   "PIC18Fxxxx_DFP"     : "18xxxx",             # )
-   "PIC8bit-Development-Only_DFP" : "18xxxx"    # future PICs?
-   }
+   "PIC18Fxxxx_DFP"     : "18xxxx"}             # )
 
 # Unsupported PICs (exceptions to the selection above!)
 # RJ: PIC16F527 and PIC15F570 generate errors in the script. According to Rob Hamerling not supported by JAL compiler.

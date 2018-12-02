@@ -88,6 +88,7 @@ datasheet = {}  # datasheet + suffix on DS number
 sharedmem = []  # list if allocatable shared mem ranges
 sfr_mirrors = {}  # base address + mirror addresses if any
 names = []  # list of names of declared variables
+Debug = False # When set to True additional debug information is printed.
 
 # translation/normalisation of fusedef keywords
 # Key = MPLABX cname, value = Jallib keyword
@@ -2656,6 +2657,8 @@ def normalize_fusedef_key(key):
 
     elif (key in fusedef_kwd):
         key = fusedef_kwd[key]  # translate by table (dictionary)
+    elif (Debug == True):
+        print("   Debug: No normalization done for fusedef keyword ",key)
 
     return key
 
@@ -3941,6 +3944,8 @@ if (__name__ == "__main__"):
 
     print("   Pic2jal script version", scriptversion,
           "\n   Creating JalV2 device files with MPLABX version", mplabxversion)
+    if (Debug == True):
+        print("   Debug Active!")
     elapsed = time.time()
     count = generate_devicefiles(selection.lower(), dstdir)  # call real generation routine
     elapsed = time.time() - elapsed
