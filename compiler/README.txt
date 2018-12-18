@@ -14,12 +14,21 @@ jalv2_64.exe  : Windows 64-bit binary
 jalv2-i686    : Linux 32-bit binary
 jalv2-x86-64  : Linux 64-bit binary
 
-For device files go to: https://github.com/jallib/jallib/tree/master/include/device
+Compiler issues can be registered and found at: https://github.com/jallib/jalv2compiler/issues
+
+For device files and include files visit: https://github.com/jallib/jallib/tree/master/include/device
 
 History
 =======
+2.5r1 -- 18 December 2018 
+         * fixed #1:Compiler generates incorrect error when using 'whereis()' 
+		            if variable optimization is set to 'yes'
+         * fixed #2: Compiler passes incorrect parameter when adding a constant 
+		             to a variable in combination with inline (thanks Kyle!)
+		 * fixed an uninitialized variable problem in the compiler code (effect unknown)
+		 
 2.5   -- 18 September 2018
-         * fixed #222: JAL Compiler jalv2.4q6 does not support new PICs with 64 banks
+         * fixed #4: JAL Compiler jalv2.4q6 does not support new PICs with 64 banks
 		   (new compiler pragma 'numbanks' added) 
 
 -------- 12 September 2018: Kyle York retiring after a job well done,  
