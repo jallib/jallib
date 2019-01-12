@@ -20,9 +20,13 @@ For device files and include files visit: https://github.com/jallib/jallib/tree/
 
 History
 =======
+2.5r2 -- 12 January 2019
+         * fixed #6: Compiler handles index in constant array of records incorrectly 
+
 2.5r1 -- 18 December 2018 
          * fixed #1:Compiler generates incorrect error when using 'whereis()' 
 		            if variable optimization is set to 'yes'
+					Note: This may introduce a slight increase in usage of data space
          * fixed #2: Compiler passes incorrect parameter when adding a constant 
 		             to a variable in combination with inline (thanks Kyle!)
 		 * fixed an uninitialized variable problem in the compiler code (effect unknown)
