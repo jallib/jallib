@@ -21,8 +21,8 @@ Dim $Folder = "C:\JallibWorkplace" ; NO TRAILING /
 
 FileInstall(	"files\7za.exe"											,@tempdir & "\7za.exe",1)
 FileInstall(	"files\jaledit0.9.0.9.zip"								,@tempdir & "\jaledit.zip",1)
-FileInstall(	"files\jallib-pack-jalv24q3-1.1.0.zip"				,@tempdir & "\jallib.zip",1)
-FileInstall(	"files\jalv24q3.zip"									,@tempdir & "\jalv2.zip",1)
+FileInstall(	"files\jallib-pack-jalv25r2-1.4.0beta2.zip"				,@tempdir & "\jallib.zip",1)
+;FileInstall(	"files\jalv24q3.zip"									,@tempdir & "\jalv2.zip",1)
 FileInstall(	"images\jal_logo.jpg"									,@tempdir & "\jal_logo.jpg")
 
 ;includes
@@ -92,6 +92,7 @@ Local $Group3 = GUICtrlCreateGroup("", 200, 0, 395, $height - 50)
 ;~    guictrlsetstate($Checkbox2,$GUI_Checked)
    guictrlsetstate($Checkbox3,$GUI_Checked)
 GUICtrlCreateGroup("", -99, -99, 1, 1) ;close group
+
 
 Local $Group4 = GUICtrlCreateGroup("", 200, 0, 395, $height - 50)
    Local $Label5 = GUICtrlCreateLabel("Installing, Please wait...", 220, 25,370)
@@ -212,6 +213,7 @@ Func NextButton()
 		 GUICtrlSetState($BrowseButton ,$GUI_HIDE)
 		 GUICtrlSetState($Label5 ,$GUI_SHOW)
 		 GUICtrlSetState($Label6 ,$GUI_SHOW)
+		 GUICtrlSetState($NextButton ,$GUI_HIDE)
 
 ;~ 		 if (GUICtrlRead($Checkbox2) == 1) Then
 ;~ 			;RunCommand(@tempdir & '\7za.exe x -y "' & @tempdir & '\jalv2.zip" -o"' & $Folder & "\compiler" & '"')
@@ -253,6 +255,7 @@ Func NextButton()
 		 GUICtrlSetData($Label5, "Installation is complete!")
 		 GUICtrlSetData($NextButton, "Finnish")
 		 GUICtrlSetState($CancelButton ,$GUI_HIDE) ; hide the cancel button
+		 GUICtrlSetState($NextButton ,$GUI_SHOW)
 
 		 if (GUICtrlRead($Checkbox3) == 1) Then
 			guictrlsetstate($Checkbox4,$GUI_Checked)
@@ -331,7 +334,7 @@ Func RunCommand(ByRef $Command)
 	   $stream &= StdOutRead($pid)
    Until @error
 
-   FileWrite ($Folder & "\install.log",$stream)
+   ;FileWrite ($Folder & "\install.log",$stream)
 EndFunc
 
 ;copy multiple files
