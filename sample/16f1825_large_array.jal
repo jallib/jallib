@@ -1,0 +1,109 @@
+-- Title: Test program for Large Array 
+-- Author: Rob Jansen, copyright (c) 2019..2019, all rights reserved.
+-- Adapted-by: 
+-- Compiler: >=2.5r2
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This is an example large array for creating an array that
+--              take up more then 256 bytes memory. 
+--
+-- Sources:
+--
+-- Notes:
+-- Supports byte array with up to 2048 entries (LARGE_ARRAY_1_VARIABLE_SIZE = 1)
+-- Supports word array with up to 1024 entries (LARGE_ARRAY_1_VARIABLE_SIZE = 2)
+-- Supports dword array with up to 512 entries (LARGE_ARRAY_1_VARIABLE_SIZE = 4)
+-- Creates an array named large_array_1
+-- Use "alias new_array_name is large_array_1" to rename the array
+--
+-- Important: There is no range check on the index in the array.
+--
+-- Example:
+-- const dword LARGE_ARRAY_1_SIZE = 600        -- choose number of array variables
+-- const dword LARGE_ARRAY_1_VARIABLE_SIZE = 2 -- choose bytes size of variables
+-- include large_array_1                       -- include the array library
+-- alias test is large_array_1                 -- rename/alias the array
+--
+--
+
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     INTERNAL        -- Reset internal
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_1111       -- Weak pull-up for open pins.
+WPUC = 0b0000_0000       -- No weak pull-up for port C, all used.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()
+alias pin_RX_direction  is pin_C5_direction  -- Pin 5 for 14 pin DIP
+alias pin_TX_direction  is pin_C4_direction  -- Pin 6 for 14 pin DIP.
+
+const serial_hw_baudrate = 115_200
+
+-- setup uart for communication
+include serial_hardware
+serial_hw_init()
+
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+-- Setup the large array
+const dword LARGE_ARRAY_1_SIZE = 200         -- choose number of array variables
+const dword LARGE_ARRAY_1_VARIABLE_SIZE = 4  -- choose size of variables (byte*1)
+include large_array_1                        -- include the array library
+alias test is large_array_1                  -- rename/alias the array to test
+
+-- send start via serial port
+serial_hw_write("S")
+serial_hw_write("T")
+serial_hw_write("A")
+serial_hw_write("R")
+serial_hw_write("T")
+
+_usec_delay(1_000_000) -- 1 sec delay
+
+-- store some values
+test[50] = 0x11
+test[51] = 0x22
+test[26] = 0x33
+test[27] = 0x44
+test[56] = 0x55
+test[57] = 0x66
+test[49] = 0x77
+test[17] = 0x88
+
+-- read some values
+serial_hw_write(test[50])
+serial_hw_write(test[51])
+serial_hw_write(test[26])
+serial_hw_write(test[27])
+serial_hw_write(test[56])
+serial_hw_write(test[57])
+serial_hw_write(test[49])
+serial_hw_write(test[17])
+
+_usec_delay(1_000_000) -- 1 sec delay
+
+-- send end via serial port
+serial_hw_write ("E")
+serial_hw_write ("N")
+serial_hw_write ("D")
