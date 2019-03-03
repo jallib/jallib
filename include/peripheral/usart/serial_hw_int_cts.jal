@@ -1,8 +1,8 @@
 -- ----------------------------------------------------------------------
 -- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
--- Author: Rob Hamerling, Copyright (c) 2008..2015, all rights reserved.
--- Adapted-by: Joep Suijs
--- Compiler: 2.4q3
+-- Author: Rob Hamerling, Copyright (c) 2008..2018, all rights reserved.
+-- Adapted-by: Joep Suijs, Rob Jansen
+-- Compiler: 2.5
 -- Revision: $Revision$
 --
 -- This file is part of jallib  (https://github.com/jallib/jallib)
@@ -175,6 +175,13 @@ var volatile byte  _serial_offsetrcvhead           -- offset next byte from port
 -- variable keeping track of next byte available to application program
 var volatile byte  _serial_offsetrcvtail           -- offset next byte to appl
 
+-- Aliases to support other PICs.
+if (defined(PIE3_RCIE) == TRUE) then               -- PIE3/PIR3
+   alias PIE1_RCIE is PIE3_RC1IE
+   alias PIR1_RCIF is PIR3_RC1IF
+   alias PIE1_TXIE is PIE3_TX1IE
+   alias PIR1_TXIF is PIR3_TX1IF
+end if
 
 -- ----------------------------------------------------------------------
 -- Title:     USART serial transmit interrupt handler
@@ -182,11 +189,11 @@ var volatile byte  _serial_offsetrcvtail           -- offset next byte to appl
 -- Returns:   (nothing)
 -- ----------------------------------------------------------------------
 procedure  _serial_transmit_interrupt_handler() is
-
+   
    pragma interrupt
-
+   
    var  byte  x
-
+   
    if ((PIR1_TXIF == TRUE) & (PIE1_TXIE == TRUE)) then          -- UART xmit interrupt
       if (_serial_offsetxmttail != _serial_offsetxmthead) then  -- data in xmit buffer
          x = _serial_xmtbuf[_serial_offsetxmttail]              -- next byte to xmit
@@ -199,7 +206,7 @@ procedure  _serial_transmit_interrupt_handler() is
          PIE1_TXIE = DISABLED                                   -- disable xmit interrupts
       end if
    end if
-
+   
 end procedure
 
 
@@ -211,13 +218,13 @@ end procedure
 --            <SERIAL_DELTA> bytes free space.
 -- ----------------------------------------------------------------------
 procedure  _serial_receive_interrupt_handler() is
-
+   
    pragma interrupt
-
+   
    var  byte  x
-
+   
    if  (PIR1_RCIF == TRUE)  then                -- UART receive interrupt
-
+      
       if ((RCSTA_OERR == TRUE) | (RCSTA_FERR == TRUE)) then  -- frame/overr error
          x = RCREG                              -- flush hardware buffer
          while RCSTA_OERR == TRUE loop          -- overrun state
@@ -231,10 +238,10 @@ procedure  _serial_receive_interrupt_handler() is
          if defined(serial_ctsinv) then
             serial_ctsinv = FALSE               -- ensure CTS true
          end if
-
+         
       else                                      -- data without errors
          _serial_rcvbuf[_serial_offsetrcvhead] = RCREG      -- move byte to rcv buffer
-
+         
          if (defined(serial_receive_wedge) == TRUE) then
             -- receive wedge - a user program can define this procedure.
             --
@@ -252,7 +259,7 @@ procedure  _serial_receive_interrupt_handler() is
             -- If you are not sure you need this, you probably don't!
             serial_receive_wedge(_serial_rcvbuf[_serial_offsetrcvhead])
          end if
-
+         
          x = _serial_offsetrcvhead + 1          -- update offset
          if x >= SERIAL_RCVBUFSIZE then         -- end of buffer reached
             x = 0                               -- wrap
@@ -260,7 +267,7 @@ procedure  _serial_receive_interrupt_handler() is
          if (x != _serial_offsetrcvtail) then   -- buffer not yet full
             _serial_offsetrcvhead = x           -- update offset
          end if                                 -- (else discard byte,
-                                                --  CTS flow control has failed)
+         --  CTS flow control has failed)
          if defined(serial_ctsinv) then
             if (serial_ctsinv == FALSE) then    -- CTS is TRUE
                if _serial_offsetrcvhead > _serial_offsetrcvtail then  -- offset difference
@@ -274,9 +281,9 @@ procedure  _serial_receive_interrupt_handler() is
             end if
          end if
       end if
-
+      
    end if
-
+   
 end procedure
 
 
@@ -289,13 +296,13 @@ end procedure
 --            bytes free space after delivering byte to caller.
 -- ----------------------------------------------------------------------
 function serial_hw_read(byte out data) return bit is
-
+   
    var  byte  x                                 -- for buffer management
-
+   
    if (_serial_offsetrcvtail == _serial_offsetrcvhead) then  -- receive buffer empty
       return FALSE                              -- no data available
    end if
-
+   
    data = _serial_rcvbuf[_serial_offsetrcvtail] -- first available byte
    _serial_offsetrcvtail = _serial_offsetrcvtail + 1
    if (_serial_offsetrcvtail >= SERIAL_RCVBUFSIZE) then  -- end of buffer reached
@@ -313,15 +320,15 @@ function serial_hw_read(byte out data) return bit is
          end if
       end if
    end if
-
+   
    return TRUE                                  -- byte available
-
+   
 end function
 
 -- Deprecated function -------------------
 function  serial_receive_byte(byte out data) return bit is
    pragma inline
-  _warn "serial_receive_byte() is deprecated - please use  serial_hw_read()"
+   _warn "serial_receive_byte() is deprecated - please use  serial_hw_read()"
    return serial_hw_read(data)
 end function
 
@@ -337,11 +344,11 @@ end function
 --                       (returns only after data has been stored in buffer)
 -- ----------------------------------------------------------------------
 function  serial_send_byte(byte in data) return byte is
-
+   
    var  byte  newxmthead                        -- offset in circular buffer
-
+   
    if (_serial_offsetxmthead == _serial_offsetxmttail  &  -- nothing buffered
-       PIR1_TXIF == TRUE) then                  -- and UART not busy
+   PIR1_TXIF == TRUE) then                  -- and UART not busy
       PIE1_TXIE = DISABLED                      -- disable xmt interrupt
       TXREG = data                              -- transmit byte immediately
    else                                         -- use circular buffer
@@ -364,9 +371,9 @@ function  serial_send_byte(byte in data) return byte is
       end if
       PIE1_TXIE = ENABLED                       -- (re-)enable xmit interrupts
    end if
-
+   
    return data                                  -- transmitted byte!
-
+   
 end function
 
 
@@ -379,18 +386,18 @@ end function
 --            - Never returns zero. If "1" is returned, regard buffer as full.
 -- ----------------------------------------------------------------------
 function  serial_hw_tx_buffer_free() return byte is
-
+   
    var  byte  buffer_free
-
+   
    buffer_free = _serial_offsetxmttail - _serial_offsetxmthead  -- difference
-                                                -- between head and tail pointers
+   -- between head and tail pointers
    if (_serial_offsetxmttail <= _serial_offsetxmthead) then     -- adjust when
-                                                -- free space crosses end-of-buffer boundary
+      -- free space crosses end-of-buffer boundary
       buffer_free = buffer_free + SERIAL_XMTBUFSIZE             -- or buffer is empty
    end if
-
+   
    return buffer_free
-
+   
 end function
 
 
@@ -415,35 +422,35 @@ end procedure
 -- Returns:   (nothing)
 -- ----------------------------------------------------------------------
 procedure serial_hw_init() is
-
+   
    _serial_offsetxmthead  = 0                   -- offset next byte from appl
    _serial_offsetxmttail  = 0                   -- offset next byte to port
    _serial_offsetrcvhead  = 0                   -- offset next byte from port
    _serial_offsetrcvtail  = 0                   -- offset next byte to appl
-
+   
    TXSTA                  = 0b0000_0000         -- reset (8 databits, asyn)
    RCSTA                  = 0b0000_0000         -- reset (8 databits, asyn)
-
+   
    _calculate_and_set_baudrate()                -- set baudrate and control bits
-
+   
    pin_RX_direction       = INPUT               -- make receive pin input
    pin_TX_direction       = INPUT               -- make transmit pin input!
-                                                -- (required by some older PICs like 16f628)
-
+   -- (required by some older PICs like 16f628)
+   
    TXSTA_TXEN             = ENABLED             -- enable transmit (makes TX pin output)
-
+   
    RCSTA_SPEN             = ENABLED             -- activate serial port
    RCSTA_CREN             = ENABLED             -- continuous receive enable
-
+   
    PIE1_RCIE              = ENABLED             -- USART receive int. enable
-                                                -- (PIE1_TXIE handled dynamically)
+   -- (PIE1_TXIE handled dynamically)
    INTCON_PEIE            = ENABLED             -- peripheral interrupts
    INTCON_GIE             = ENABLED             -- general interrupts
-
+   
    if defined(serial_ctsinv) then
       serial_ctsinv       = FALSE               -- CTS true: accept PC data
    end if
-
+   
 end procedure
 
 
@@ -474,4 +481,15 @@ function serial_hw_data'get() return byte is
    end loop
    return data                                  -- return received data
 end function
+
+-- generic function to check if a byte is received
+function serial_hw_data_available() return bit is
+   return _serial_offsetrcvtail != _serial_offsetrcvhead
+end function
+
+-- generic function to check if transmit buffer is empty
+function serial_hw_data_ready() return bit is
+   return _serial_offsetxmthead == _serial_offsetxmttail
+end function
+
 
