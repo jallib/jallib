@@ -1,0 +1,238 @@
+-- -----------------------------------------------------------------------------
+-- Title: ESP8266 TCP server led on/off sample program.
+--
+-- Author: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
+--
+-- Adapted-by:    
+--
+-- Compiler: 2.5r2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: Inspired by https://github.com/bportaluri/WiFiEsp 
+--
+-- Description:
+-- ------------
+-- This example starts a TCP server as to be able to control a led by sending 
+-- one data byte to the PIC. To test as follows:
+-- -) Start the application and wait until it has been connected to your 
+--    Access Point. Make sure you have set the right SSID and password in 
+--    'MY_SSID' and 'MY_PASSWORD'.
+-- -) In Telnet open a connecton on your computer using the IP address 
+--    assigned to the ESP module by your Access Point using the port as defined 
+--    by MY_PORT, e.g: o 192.168.1.14 80
+-- -) Start typing characters in the Telnet window. When typing "H" the led 
+--    will turn on. When typing "L' the led will turn off. When typing "T" the 
+--    led value will toggle between on and off.
+-- -) Each time valid data is received by the PIC, the status of the led
+--    (On or Off) is sent back to the PC which should appear in the Telnet Window.
+--    A second led on the PIC will be on when the initialization of the ESP8266 
+--    was succesfull. 
+--
+-- Dependencies: -
+--
+-- Hardware info:
+-- --------------
+-- Important!. The ESP8266 uses a supply voltage of 3.3 Volt. Make sure that 
+--             your PIC also runs at that supply voltage or make use of a level 
+--             shifter for connecting the USART pins from the PIC to the ESP8266.
+--             Next to that the connection from the PIC to the PC has to be
+--             buffered by an RS232 driver like the MAX232. For the connections
+--             of the RS232 connection below a non-twisting cable is assumed 
+--             between the MAX232 and the PC.
+--
+-- PIC connections (40 pin DIP):
+-- *) TX pin 1 (25) of the USART1 of the PIC to the RX pin of the ESP8266 module.
+-- *) RX pin 1 (26) of the USART1 of the PIC to the TX pin of the ESP8266 module.
+-- *) TX pin 2 (22) of the USART2 of the PIC to the pin 11 of the MAX232.
+-- *) RX pin 2 (21) of the USART2 of the PIC to the pin 12 of the MAX232. 
+-- *) The led via a 330 Ohm resistor to pin 2 of the PIC. Led is active High.
+--
+-- Connect the ESP8266 module as follows:
+-- *) RST pin to 3.3 V
+-- *) EN pin with a resistor of 1 kOhm to the 3.3 V 
+-- *) GPIO15 pin with a resistor of 1 kOhn to ground
+--
+-- ------------------------------- Pragmas -------------------------------------
+-- Some compiler pragmas for optimizations
+pragma warn all no              
+pragma opt variable_reduce yes   
+
+include 16f19176                
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000  -- oscillator frequency
+--
+pragma target OSC      OFF         -- internal oscillator
+pragma target RSTOSC   HFINT32     -- select 32 MHz
+pragma target CLKOUTEN DISABLED    -- no clock output
+pragma target WDT      DISABLED    -- watchdog
+pragma target BROWNOUT DISABLED    -- no brownout reset
+pragma target FCMEN    DISABLED    -- no clock monitoring
+pragma target CSWEN    ENABLED     -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      DISABLED    -- no low voltage programming
+pragma target MCLR     EXTERNAL    -- external reset
+OSCCON2 = 0x00                     -- 32 MHz and no division
+--
+-- Enable weak pull up for all ports since some inputs are not connected
+WPUA = 0b1111_1111       
+WPUB = 0b1111_1111       
+WPUC = 0b1101_1111       
+WPUD = 0b1111_1111       
+WPUE = 0b0000_1011  
+
+enable_digital_io()
+
+-- -------------------------------- Pins ---------------------------------------
+-- Declaration of the USART1 pins for the ESP8266 Module.
+alias pin_RX_direction  is pin_C7_direction  -- Pin 26 for 40 pin DIP
+alias pin_TX_direction  is pin_C6_direction  -- Pin 25 for 40 pin DIP. 
+
+-- Declaration of the remapped USART2 pins for the PC.
+alias pin_RX2_direction is pin_D2_direction  -- Pin 21 for 40 pin DIP
+alias pin_TX2_direction is pin_D3_direction  -- Pin 22 for 40 pin DIP.
+
+alias led is pin_A0                          -- Pin 2 for 40 pin DIP.
+pin_A0_direction = output                    
+
+-- ------------------------- Constant declarations -----------------------------
+const serial_hw2_baudrate  = 115200 -- Terminal connection.
+
+-- We do not need a large esp8266 receive buffer, change the default.
+const ESP8266_MAX_RECEIVE_BUFFER = 30    
+
+const byte MY_SSID[]     = "Your_ID"
+const byte MY_PASSWORD[] = "Your_Password"
+const byte MY_PORT[]     = "80"  -- Port 80 is used for HTTP TCP requests.
+
+const bit LED_ON  = TRUE
+const bit LED_OFF = FALSE
+
+-- -------------------------- Includes go here --- -----------------------------
+include serial_hw2_int_cts  -- Debug information via the second RS232 interface
+include esp8266
+include print
+include PPS                            
+
+-- ------------------------- Variable declarations -----------------------------
+var byte connection 
+var bit led_status
+var bit all_ok
+
+-- ------------------------- Functions and Procedures --------------------------
+-- Make character uppercase - if not already.
+function uppercase(byte in character) return byte is
+   if (character > 0x61) then
+      return (character - 0x20)
+   else
+      return character
+   end if
+end function
+
+
+procedure print_receive_buffer() is 
+   var word index_counter
+   for esp8266_bytes_received using index_counter loop
+      serial_hw2_data = esp8266_receive_buffer[index_counter]
+   end loop
+end procedure 
+
+-- ------------------------------- Main Program  ------------------------------- 
+_usec_delay(1_000_000) -- Gives ESP module also time to start up.
+
+-- Re-assign the pins. Note: This must always be done to let it work even for 
+-- the default assignment.
+pps_control_lock(FALSE)                
+RC6PPS = PPS_TX1       -- TX1 re-assigned to C6  (default)             
+RX1PPS = PPS_RC7       -- C7 re-assigned to RX1  (default)            
+RD3PPS = PPS_TX2       -- TX2 re-assigned to D3       
+RX2PPS = PPS_RD2       -- D2  re-assigned to RX2              
+pps_control_lock(TRUE)                 
+
+serial_hw2_init()
+
+print_crlf(serial_hw2_data)
+print_string(serial_hw2_data,"Sample TCP server program for ESP8266 controlling a led using Telnet.\r\n")
+print_string(serial_hw2_data,"Led can be H(igh) = on , L(ow) = off or T(oggle).\r\n")
+
+led_status = LED_OFF
+
+-- Initialize the device and connect to the Access Point until succes.
+all_ok = FALSE
+while !all_ok loop
+   print_string(serial_hw2_data,"Initializing ESP8266 module ...")
+   if esp8266_init() then
+      print_string(serial_hw2_data," succes.\n")
+      -- Succes, connect to the Access Point.
+      while (esp8266_get_connection_status() != ESP8266_CONNECTED) loop
+         print_string(serial_hw2_data,"Connecting to WiFi network ... ")
+         if esp8266_connect_to_ap(MY_SSID, MY_PASSWORD) then
+            print_string(serial_hw2_data," succes.\n")
+            all_ok = TRUE
+         else
+            print_string(serial_hw2_data," failed.\n")
+         end if       
+      end loop
+   else 
+      print_string(serial_hw2_data," failed.\n")
+   end if 
+end loop
+
+-- Start the webserver with a timeout of 10 minutes (600 seconds).
+all_ok = FALSE
+while !all_ok loop
+   print_string(serial_hw2_data,"Starting TCP server with 10 minute timeout ...")
+   all_ok = esp8266_server_start(MY_PORT)
+   all_ok = all_ok & esp8266_set_server_timeout("600")
+   if all_ok then
+      print_string(serial_hw2_data," succes.\n")
+   else
+      print_string(serial_hw2_data," failed.\n") 
+   end if 
+end loop
+
+-- Show the IP address to connect to.
+if all_ok & esp8266_get_ip_address() then
+   print_string(serial_hw2_data,"Start a Telnet session to the IP address  ")
+   print_receive_buffer()
+   print_string(serial_hw2_data," using port  ")
+   print_string(serial_hw2_data,MY_PORT)
+   print_crlf(serial_hw2_data)
+   print_string(serial_hw2_data,"Use the keys H, L or T")
+   print_crlf(serial_hw2_data)
+   
+end if
+
+forever loop
+   led = led_status
+   if esp8266_data_available() then
+      if esp8266_get_data(connection) then
+         -- Valid data received, make always uppercase and check content.
+         if (esp8266_bytes_received == 1) then
+            if (uppercase(esp8266_receive_buffer[0]) == "H") then
+               print_string(serial_hw2_data,"Received command to turn led on.\r\n")
+               led_status = LED_ON
+            elsif (uppercase(esp8266_receive_buffer[0]) == "L") then
+               print_string(serial_hw2_data,"Received command to turn led off.\r\n")
+               led_status = LED_OFF
+            elsif (uppercase(esp8266_receive_buffer[0]) == "T") then
+               print_string(serial_hw2_data,"Received command to toggle led.\r\n")
+               led_status = !led_status
+            end if
+            -- Make sure that the response we will send goes to the this connection.
+            esp8266_set_connection(connection)
+            if led_status then
+               esp8266_send_data("On\r\n")
+            else
+               esp8266_send_data("Off\r\n")
+            end if  
+         end if      
+      end if
+   end if
+end loop
+
+
+

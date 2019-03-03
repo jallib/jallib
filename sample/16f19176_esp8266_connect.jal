@@ -1,0 +1,207 @@
+-- -----------------------------------------------------------------------------
+-- Title: ESP8266 connect sample program.
+--
+-- Author: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
+--
+-- Adapted-by: 
+--
+-- Compiler: 2.5r2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: Inspired by https://github.com/bportaluri/WiFiEsp    
+--
+-- Description:  
+-- ------------
+-- This example connects to an encrypted WiFi network using an ESP8266 module. 
+-- Then it prints the MAC address of the WiFi module, the IP address obtained 
+-- and some WiFi status via the second USART to the PC. Via a web terminal 
+-- program the data can be read on the PC.
+-- Make sure you have set the right SSID and password in 'MY_SSID' and 
+-- 'MY_PASSWORD'.    
+--
+-- Dependencies: -
+--
+-- Hardware info:
+-- --------------
+-- Important!. The ESP8266 uses a supply voltage of 3.3 Volt. Make sure that 
+--             your PIC also runs at that supply voltage or make use of a level 
+--             shifter for connecting the USART pins from the PIC to the ESP8266.
+--             Next to that the connection from the PIC to the PC has to be
+--             buffered by an RS232 driver like the MAX232. For the connections
+--             of the RS232 connection below a non-twisting cable is assumed 
+--             between the MAX232 and the PC.
+--
+-- PIC connections (40 pin DIP):
+-- *) TX pin 1 (25) of the USART1 of the PIC to the RX pin of the ESP8266 module.
+-- *) RX pin 1 (26) of the USART1 of the PIC to the TX pin of the ESP8266 module.
+-- *) TX pin 2 (22) of the USART2 of the PIC to the pin 11 of the MAX232.
+-- *) RX pin 2 (21) of the USART2 of the PIC to the pin 12 of the MAX232. 
+--
+-- Connect the ESP8266 module as follows:
+-- *) RST pin to 3.3 V
+-- *) EN pin with a resistor of 1 kOhm to the 3.3 V 
+-- *) GPIO15 pin with a resistor of 1 kOhn to ground
+--
+-- -------------------------------- Pragmas -------------------------------------
+-- Some compiler pragmas for optimizations
+pragma warn all no              
+pragma opt variable_reduce yes   
+
+include 16f19176                  
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000  -- oscillator frequency
+--
+pragma target OSC      OFF         -- internal oscillator
+pragma target RSTOSC   HFINT32     -- select 32 MHz
+pragma target CLKOUTEN DISABLED    -- no clock output
+pragma target WDT      DISABLED    -- watchdog
+pragma target BROWNOUT DISABLED    -- no brownout reset
+pragma target FCMEN    DISABLED    -- no clock monitoring
+pragma target CSWEN    ENABLED     -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      DISABLED    -- no low voltage programming
+pragma target MCLR     EXTERNAL    -- external reset
+OSCCON2 = 0x00                     -- 32 MHz and no division
+--
+-- Enable weak pull up for all ports since some inputs are not connected
+WPUA = 0b1111_1111       
+WPUB = 0b1111_1111       
+WPUC = 0b1101_1111       
+WPUD = 0b1111_1111       
+WPUE = 0b0000_1011  
+
+enable_digital_io()
+
+-- -------------------------------- Pins ---------------------------------------
+-- Declaration of the USART1 pins for the ESP8266 Module.
+alias pin_RX_direction  is pin_C7_direction  -- Pin 26 for 40 pin DIP
+alias pin_TX_direction  is pin_C6_direction  -- Pin 25 for 40 pin DIP. 
+
+-- Declaration of the remapped USART2 pins for the PC.
+alias pin_RX2_direction is pin_D2_direction  -- Pin 21 for 40 pin DIP
+alias pin_TX2_direction is pin_D3_direction  -- Pin 22 for 40 pin DIP.
+
+-- ------------------------- Constant declarations -----------------------------
+const serial_hw2_baudrate  = 115200 -- Terminal connection. 
+
+-- WiFi connection constants.
+const byte MY_SSID[]     = "Your_ID"
+const byte MY_PASSWORD[] = "Your_Password"
+
+-- ------------------------- Variable declarations -----------------------------
+var bit all_ok
+
+-- -------------------------- Includes go here --- -----------------------------
+include serial_hw2_int_cts  -- Debug information via the second RS232 interface
+include esp8266
+include print
+include PPS                            
+
+-- ------------------------- Functions and Procedures --------------------------
+procedure print_receive_buffer() is 
+   var word index_counter
+   for esp8266_bytes_received using index_counter loop
+      serial_hw2_data = esp8266_receive_buffer[index_counter]
+   end loop
+end procedure 
+
+procedure print_wifi_status() is
+   if esp8266_get_ssid() then
+      print_string(serial_hw2_data,"SSID: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining SSID.\n")
+   end if  
+   
+   if esp8266_get_bssid() then
+      print_string(serial_hw2_data,"BSSID: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining BSSID.\n")
+   end if  
+   
+   if esp8266_get_ip_address() then
+      print_string(serial_hw2_data,"Local IP address is: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining local IP address.\n")
+   end if 
+   
+   if esp8266_get_mac_address() then
+      print_string(serial_hw2_data,"Local MAC address is: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining local MAC address.\n")
+   end if 
+   
+   if esp8266_get_channel() then
+      print_string(serial_hw2_data,"Channel: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining channel.\n")
+   end if    
+   
+   if esp8266_get_rssi() then
+      print_string(serial_hw2_data,"Signal Strength (RSSI): ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining signal strength.\n")
+   end if    
+end procedure
+
+-- ------------------------------- Main Program  ------------------------------- 
+_usec_delay(1_000_000) -- Gives ESP module also time to start up.
+
+-- Re-assign the pins. Note: This must always be done to let it work even for 
+-- the default assignment.
+pps_control_lock(FALSE)                
+RC6PPS = PPS_TX1       -- TX1 re-assigned to C6  (default)             
+RX1PPS = PPS_RC7       -- C7 re-assigned to RX1  (default)            
+RD3PPS = PPS_TX2       -- TX2 re-assigned to D3       
+RX2PPS = PPS_RD2       -- D2  re-assigned to RX2              
+pps_control_lock(TRUE)                 
+
+serial_hw2_init()
+
+print_crlf(serial_hw2_data)
+print_string(serial_hw2_data,"Sample connect program for ESP8266.\n")
+
+-- Initialize the device and connect to the AP until succes.
+all_ok = FALSE
+while !all_ok loop
+   print_string(serial_hw2_data,"Initializing ESP8266 module ...")
+   if esp8266_init() then
+      print_string(serial_hw2_data," succes.\n")
+      -- Succes, connect to the Access Point.
+      while (esp8266_get_connection_status() != ESP8266_CONNECTED) loop
+         print_string(serial_hw2_data,"Connecting to WiFi network ... ")
+         if esp8266_connect_to_ap(MY_SSID, MY_PASSWORD) then
+            print_string(serial_hw2_data," succes.\n")
+            all_ok = TRUE
+         else
+            print_string(serial_hw2_data," failed.\n")
+         end if       
+      end loop
+   else 
+      print_string(serial_hw2_data," failed.\n")
+   end if 
+end loop
+
+forever loop
+   print_wifi_status()
+   print_crlf(serial_hw2_data)
+   _usec_delay(1_000_000)
+end loop
+
+
+

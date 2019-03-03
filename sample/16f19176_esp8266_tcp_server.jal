@@ -1,0 +1,276 @@
+-- -----------------------------------------------------------------------------
+-- Title: ESP8266 TCP server sample program.
+--
+-- Author: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
+--
+-- Adapted-by: 
+--
+-- Compiler: 2.5r2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: Inspired by https://github.com/bportaluri/WiFiEsp 
+--
+-- Description: 
+-- ------------
+--  This example starts a TCP server. To test as follows:
+--  -) Start the application and wait until it has been connected to your AP. 
+--     Make sure you have set the right SSID and password in 'MY_SSID' and 
+--     'MY_PASSWORD'.
+--  -) Start a terminal emulation program on your computer so that you can see
+--     which information is send via the second USART connection (the first
+--     USART connection is used by the ESP8266 library).
+--  -) Start a Telnet session on your computer. Make sure that 'MY_HOST' is set 
+--     to the IP address of your computer.
+--  -) In Telnet open a connecton o the ESP8266 module using the IP address 
+--     assigned to it (note that IP address of the module is printed by this 
+--     application) using the port as defined by 'MY_PORT, 
+--     e.g: o 192.168.1.14 80
+--  -) Start typing characters in the Telnet window. They should appear on your
+--     screen via the terminal emulator progra. 
+--  -) Each time valid data is received by the module, the message 'Thanks!' is 
+--     sent back to the PC which should appear in the Telnet Window.
+--
+-- Dependencies: -
+--
+-- Hardware info:
+-- --------------
+-- Important!. The ESP8266 uses a supply voltage of 3.3 Volt. Make sure that 
+--             your PIC also runs at that supply voltage or make use of a level 
+--             shifter for connecting the USART pins from the PIC to the ESP8266.
+--             Next to that the connection from the PIC to the PC has to be
+--             buffered by an RS232 driver like the MAX232. For the connections
+--             of the RS232 connection below a non-twisting cable is assumed 
+--             between the MAX232 and the PC.
+--
+-- PIC connections (40 pin DIP):
+-- *) TX pin 1 (25) of the USART1 of the PIC to the RX pin of the ESP8266 module.
+-- *) RX pin 1 (26) of the USART1 of the PIC to the TX pin of the ESP8266 module.
+-- *) TX pin 2 (22) of the USART2 of the PIC to the pin 11 of the MAX232.
+-- *) RX pin 2 (21) of the USART2 of the PIC to the pin 12 of the MAX232. 
+--
+-- Connect the ESP8266 module as follows:
+-- *) RST pin to 3.3 V
+-- *) EN pin with a resistor of 1 kOhm to the 3.3 V 
+-- *) GPIO15 pin with a resistor of 1 kOhn to ground
+--
+-- ----------------------------- Pragmas ---------------------------------------
+-- Some compiler pragmas for optimizations
+pragma warn all no              
+pragma opt variable_reduce yes   
+
+include 16f19176                  
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000  -- oscillator frequency
+--
+pragma target OSC      OFF         -- internal oscillator
+pragma target RSTOSC   HFINT32     -- select 32 MHz
+pragma target CLKOUTEN DISABLED    -- no clock output
+pragma target WDT      DISABLED    -- watchdog
+pragma target BROWNOUT DISABLED    -- no brownout reset
+pragma target FCMEN    DISABLED    -- no clock monitoring
+pragma target CSWEN    ENABLED     -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      DISABLED    -- no low voltage programming
+pragma target MCLR     EXTERNAL    -- external reset
+OSCCON2 = 0x00                     -- 32 MHz and no division
+--
+-- Enable weak pull up for all ports since some inputs are not connected
+WPUA = 0b1111_1111       
+WPUB = 0b1111_1111       
+WPUC = 0b1101_1111       
+WPUD = 0b1111_1111       
+WPUE = 0b0000_1011  
+
+enable_digital_io()
+
+-- -------------------------------- Pins ---------------------------------------
+-- Declaration of the USART1 pins for the ESP8266 Module.
+alias pin_RX_direction  is pin_C7_direction  -- Pin 26 for 40 pin DIP
+alias pin_TX_direction  is pin_C6_direction  -- Pin 25 for 40 pin DIP. 
+
+-- Declaration of the remapped USART2 pins for the PC.
+alias pin_RX2_direction is pin_D2_direction  -- Pin 21 for 40 pin DIP
+alias pin_TX2_direction is pin_D3_direction  -- Pin 22 for 40 pin DIP.
+
+-- ------------------------- Constant declarations -----------------------------
+const serial_hw2_baudrate  = 115200  -- Terminal connection. 
+
+-- We do not need a large esp8266 receive buffer, change the default.
+const ESP8266_MAX_RECEIVE_BUFFER = 30    
+
+-- WiFi connection constants.
+const byte MY_SSID[]     = "Your_ID"
+const byte MY_PASSWORD[] = "Your_Password"
+const byte MY_PORT[]     = "80"  -- Port 80 is used for HTTP TCP requests.
+
+-- -------------------------- Includes go here --- -----------------------------
+include serial_hw2_int_cts  -- Information via the second RS232 interface
+include esp8266
+include print
+include PPS                            
+
+-- ------------------------- Variable declarations -----------------------------
+var byte connection 
+var bit all_ok
+var bit received_data
+
+-- ------------------------- Functions and Procedures --------------------------
+procedure print_receive_buffer() is 
+   var word index_counter
+   for esp8266_bytes_received using index_counter loop
+      serial_hw2_data = esp8266_receive_buffer[index_counter]
+   end loop
+end procedure 
+
+
+procedure print_wifi_status() is
+   if esp8266_get_ssid() then
+      print_string(serial_hw2_data,"SSID: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining SSID.\n")
+   end if  
+   
+   if esp8266_get_bssid() then
+      print_string(serial_hw2_data,"BSSID: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining BSSID.\n")
+   end if  
+   
+   if esp8266_get_ip_address() then
+      print_string(serial_hw2_data,"Local IP address is: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining local IP address.\n")
+   end if 
+   
+   if esp8266_get_mac_address() then
+      print_string(serial_hw2_data,"Local MAC address is: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining local MAC address.\n")
+   end if 
+   
+   if esp8266_get_channel() then
+      print_string(serial_hw2_data,"Channel: ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining channel.\n")
+   end if    
+   
+   if esp8266_get_rssi() then
+      print_string(serial_hw2_data,"Signal Strength (RSSI): ")
+      print_receive_buffer()
+      print_crlf(serial_hw2_data)
+   else
+      print_string(serial_hw2_data,"Error obtaining signal strength.\n")
+   end if    
+end procedure
+
+-- ------------------------------- Main Program  ------------------------------- 
+_usec_delay(1_000_000) -- Gives ESP module also time to start up.
+
+-- Re-assign the pins. Note: This must always be done to let it work even for 
+-- the default assignment.
+pps_control_lock(FALSE)                
+RC6PPS = PPS_TX1       -- TX1 re-assigned to C6  (default)             
+RX1PPS = PPS_RC7       -- C7 re-assigned to RX1  (default)            
+RD3PPS = PPS_TX2       -- TX2 re-assigned to D3       
+RX2PPS = PPS_RD2       -- D2  re-assigned to RX2              
+pps_control_lock(TRUE)                 
+
+serial_hw2_init()
+
+received_data = FALSE
+print_crlf(serial_hw2_data)
+print_string(serial_hw2_data,"Sample TCP server program for ESP8266.\n")
+
+-- Initialize the device and connect to the Access Point until succes.
+all_ok = FALSE
+while !all_ok loop
+   print_string(serial_hw2_data,"Initializing ESP8266 module ...")
+   if esp8266_init() then
+      print_string(serial_hw2_data," succes.\n")
+      -- Succes, connect to the Access Point.
+      while (esp8266_get_connection_status() != ESP8266_CONNECTED) loop
+         print_string(serial_hw2_data,"Connecting to WiFi network ... ")
+         if esp8266_connect_to_ap(MY_SSID, MY_PASSWORD) then
+            print_string(serial_hw2_data," succes.\n")
+            all_ok = TRUE
+         else
+            print_string(serial_hw2_data," failed.\n")
+         end if       
+      end loop
+   else 
+      print_string(serial_hw2_data," failed.\n")
+   end if 
+end loop
+
+print_wifi_status()
+
+-- Start the server until succes.
+all_ok = FALSE
+while !all_ok loop
+   print_string(serial_hw2_data,"Starting TCP server ...")
+   if esp8266_server_start(MY_PORT) then
+      print_string(serial_hw2_data," started.\n")
+      all_ok = TRUE
+   else
+      print_string(serial_hw2_data," failed.\n") 
+   end if 
+end loop
+
+-- Show the IP address to connect to.
+if all_ok & esp8266_get_ip_address() then
+   print_string(serial_hw2_data,"Open a Telnet window to connect to IP address ")
+   print_receive_buffer()
+   print_string(serial_hw2_data," and port ")
+   print_string(serial_hw2_data,MY_PORT)
+   print_crlf(serial_hw2_data)
+end if
+
+forever loop
+   -- Poll the device and print the data that is coming from the server. 
+   while esp8266_data_available() loop
+      print_string(serial_hw2_data,"Data - ")
+      if esp8266_get_data(connection) then
+         print_string(serial_hw2_data,"Received: ")
+         print_receive_buffer()
+         print_crlf(serial_hw2_data)
+         received_data = TRUE
+      else
+         print_string(serial_hw2_data,"Incorrect.\n")
+      end if 
+      -- Before we will send something back we accept more data to be received
+      -- since the data is sent is small packages from the Telnet window.
+      -- Note that this delay can only be used if the data entry is slow.
+      _usec_delay(500_000)
+   end loop
+   
+   -- We return a thank when we have received something.
+   if received_data then
+      print_string(serial_hw2_data,"Sending some data back ...")
+      -- Make sure that the response we will send goes to the this connection.
+      esp8266_set_connection(connection)
+      if esp8266_send_data("Thanks!\r\n") then
+         print_string(serial_hw2_data," succes!\n")
+      else
+         print_string(serial_hw2_data," failed!\n")
+      end if
+      received_data = FALSE
+   end if
+   
+end loop
+
+
+

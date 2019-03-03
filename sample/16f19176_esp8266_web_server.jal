@@ -1,0 +1,263 @@
+-- -----------------------------------------------------------------------------
+-- Title: ESP8266 web server sample program.
+--
+-- Author: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
+--
+-- Adapted-by:    
+--
+-- Compiler: 2.5r2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: Inspired by https://github.com/bportaluri/WiFiEsp 
+--
+-- Description:  
+-- ------------
+-- Start the ESP8266 as a webserver. The Web Page will show the status of one 
+-- of the input pins after a request has been given by the web browser.
+-- The web browser must connect to the given IP address which is obtained from 
+-- the Access Point. 
+-- Note that this program uses the HTML to format the data but the nformation 
+-- could also have been sent using plain text. 
+-- Make sure you have set the right SSID and password in 'MY_SSID' and 
+-- 'MY_PASSWORD'.    
+--
+-- Dependencies: -
+--
+-- Hardware info:
+-- --------------
+-- Important!. The ESP8266 uses a supply voltage of 3.3 Volt. Make sure that 
+--             your PIC also runs at that supply voltage or make use of a level 
+--             shifter for connecting the USART pins from the PIC to the ESP8266.
+--             Next to that the connection from the PIC to the PC has to be
+--             buffered by an RS232 driver like the MAX232. For the connections
+--             of the RS232 connection below a non-twisting cable is assumed 
+--             between the MAX232 and the PC.
+--
+-- PIC connections (40 pin DIP):
+-- *) TX pin 1 (25) of the USART1 of the PIC to the RX pin of the ESP8266 module.
+-- *) RX pin 1 (26) of the USART1 of the PIC to the TX pin of the ESP8266 module.
+-- *) TX pin 2 (22) of the USART2 of the PIC to the pin 11 of the MAX232.
+-- *) RX pin 2 (21) of the USART2 of the PIC to the pin 12 of the MAX232. 
+--
+-- Connect the ESP8266 module as follows:
+-- *) RST pin to 3.3 V
+-- *) EN pin with a resistor of 1 kOhm to the 3.3 V 
+-- *) GPIO15 pin with a resistor of 1 kOhn to ground
+--
+-- ------------------------------- Pragmas -------------------------------------
+-- Some compiler pragmas for optimizations
+pragma warn all no              
+pragma opt variable_reduce yes   
+
+include 16f19176                  
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000  -- oscillator frequency
+--
+pragma target OSC      OFF         -- internal oscillator
+pragma target RSTOSC   HFINT32     -- select 32 MHz
+pragma target CLKOUTEN DISABLED    -- no clock output
+pragma target WDT      DISABLED    -- watchdog
+pragma target BROWNOUT DISABLED    -- no brownout reset
+pragma target FCMEN    DISABLED    -- no clock monitoring
+pragma target CSWEN    ENABLED     -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      DISABLED    -- no low voltage programming
+pragma target MCLR     EXTERNAL    -- external reset
+OSCCON2 = 0x00                     -- 32 MHz and no division
+--
+-- Enable weak pull up for all ports since some inputs are not connected
+WPUA = 0b1111_1111       
+WPUB = 0b1111_1111       
+WPUC = 0b1101_1111       
+WPUD = 0b1111_1111       
+WPUE = 0b0000_1011  
+
+enable_digital_io()
+
+-- -------------------------------- Pins ---------------------------------------
+-- Declaration of the USART1 pins for the ESP8266 Module.
+alias pin_RX_direction  is pin_C7_direction  -- Pin 26 for 40 pin DIP
+alias pin_TX_direction  is pin_C6_direction  -- Pin 25 for 40 pin DIP. 
+
+-- Declaration of the remapped USART2 pins for the PC.
+alias pin_RX2_direction is pin_D2_direction  -- Pin 21 for 40 pin DIP
+alias pin_TX2_direction is pin_D3_direction  -- Pin 22 for 40 pin DIP.
+
+alias status_pin is pin_A1                   -- The status of this pin will ...
+pin_A1_direction = input                     -- ... be shown on the web page.
+
+-- ------------------------- Constant declarations -----------------------------
+const serial_hw2_baudrate  = 115200 -- Default speed for debugging.
+
+-- We need a bigger buffer for the web server. When using a Chrome browser, a
+-- HTTP Get request is less than 500 bytes.
+const ESP8266_MAX_RECEIVE_BUFFER = 1000
+
+const byte MY_SSID[]     = "Your_ID"
+const byte MY_PASSWORD[] = "Your_Password"
+const byte MY_PORT[]     = "80" -- Port 80 is used for HTTP TCP requests. 
+
+-- -------------------------- Includes go here --- -----------------------------
+include serial_hw2_int_cts  -- Debug information via the second RS232 interface
+include esp8266
+include print
+include PPS                            
+
+-- ------------------------- Variable declarations -----------------------------
+var byte connection
+var byte character
+var bit all_ok
+
+-- ------------------------- Functions and Procedures --------------------------
+-- Parse the data in the ESP8266 receive buffer and return true if the 
+-- given token if found.
+function parse_response(byte in token[]) return bit is
+   var word buffer_index
+   var byte token_index
+   
+   -- Start token given, look for start token.
+   token_index = 0
+   buffer_index = 0
+   while (token_index < count(token)) & (buffer_index < esp8266_bytes_received) loop
+      if (esp8266_receive_buffer[buffer_index] == token[token_index]) then 
+         token_index = token_index + 1
+      else
+         -- No match (yet), try again.
+         token_index = 0
+      end if  
+      buffer_index = buffer_index + 1
+   end loop
+   return (token_index == count(token))
+end function
+
+procedure print_receive_buffer() is 
+   var word index_counter
+   for esp8266_bytes_received using index_counter loop
+      serial_hw2_data = esp8266_receive_buffer[index_counter]
+   end loop
+end procedure 
+
+-- ------------------------------- Main Program  ------------------------------- 
+_usec_delay(1_000_000) -- Gives ESP module also time to start up.
+
+-- Re-assign the pins. Note: This must always be done to let it work even for 
+-- the default assignment.
+pps_control_lock(FALSE)                
+RC6PPS = PPS_TX1       -- TX1 re-assigned to C6  (default)             
+RX1PPS = PPS_RC7       -- C7 re-assigned to RX1  (default)            
+RD3PPS = PPS_TX2       -- TX2 re-assigned to D3       
+RX2PPS = PPS_RD2       -- D2  re-assigned to RX2              
+pps_control_lock(TRUE)                 
+
+serial_hw2_init()
+
+print_crlf(serial_hw2_data)
+print_string(serial_hw2_data,"Sample web server program for ESP8266.\n")
+
+-- Initialize the device and connect to the Access Point until succes.
+all_ok = FALSE
+while !all_ok loop
+   print_string(serial_hw2_data,"Initializing ESP8266 module ...")
+   if esp8266_init() then
+      print_string(serial_hw2_data," succes.\n")
+      -- Succes, connect to the Access Point.
+      while (esp8266_get_connection_status() != ESP8266_CONNECTED) loop
+         print_string(serial_hw2_data,"Connecting to WiFi network ... ")
+         if esp8266_connect_to_ap(MY_SSID, MY_PASSWORD) then
+            print_string(serial_hw2_data," succes.\n")
+            all_ok = TRUE
+         else
+            print_string(serial_hw2_data," failed.\n")
+         end if       
+      end loop
+   else 
+      print_string(serial_hw2_data," failed.\n")
+   end if 
+end loop
+
+-- Start the webserver with a timeout of 10 minutes (600 seconds).
+all_ok = FALSE
+while !all_ok loop
+   print_string(serial_hw2_data,"Starting TCP server with 10 minute timeout ...")
+   all_ok = esp8266_server_start(MY_PORT)
+   all_ok = all_ok & esp8266_set_server_timeout("600")
+   if all_ok then
+      print_string(serial_hw2_data," succes.\n")
+   else
+      print_string(serial_hw2_data," failed.\n") 
+   end if 
+end loop
+
+-- Show the IP address to connect to.
+if all_ok & esp8266_get_ip_address() then
+   print_string(serial_hw2_data,"Open your browser and browse to IP address ")
+   print_receive_buffer()
+   print_crlf(serial_hw2_data)
+end if
+
+
+forever loop
+   -- Poll the pin and send the data as website when there is a request. Note
+   -- that a request is a long message that does not fit in the receive buffer.
+   -- We only need to check if valid data was received of which we will
+   -- assume it was a request.  
+   if esp8266_data_available() then
+      -- Something was received. Get the data but ingnore the content. 
+      print_string(serial_hw2_data,"Data received. Processing ... ")
+      if esp8266_get_data(connection) then
+         -- A HTTP request has the following format:
+         -- *) A Request-line
+         -- *) Zero or more header (General|Request|Entity) fields followed by CRLF
+         -- *) An empty line (i.e., a line with nothing preceding the CRLF) 
+         --    indicating the end of the header fields
+         -- *) Optionally a message-body
+         
+         -- Make sure that the request goes to the this connection.
+         esp8266_set_connection(connection)
+         
+         -- We interpret 2 new-lines as a http request.
+         if parse_response("\r\n\r\n") then
+            print_string(serial_hw2_data,"succes. Sending response ... ")     
+            -- Send the response. The connection will be closed after completion 
+            -- of the response.
+            all_ok = esp8266_send_data("HTTP/1.1 200 OK\r\n")
+            all_ok = all_ok & esp8266_send_data("Content-Type: text/html\r\n")
+            all_ok = all_ok & esp8266_send_data("Connection: close\r\n")  
+            all_ok = all_ok & esp8266_send_data("\r\n") -- End of request.
+            all_ok = all_ok & esp8266_send_data("<!DOCTYPE html>\r\n")
+            all_ok = all_ok & esp8266_send_data("<html>\r\n")
+            all_ok = all_ok & esp8266_send_data("<h1>Hello World!</h1>\r\n")
+            all_ok = all_ok & esp8266_send_data("<br>\r\n")
+            all_ok = all_ok & esp8266_send_data("Input pin A1: ")
+            if status_pin then
+               all_ok = all_ok & esp8266_send_data("High")  
+            else
+               all_ok = all_ok & esp8266_send_data("Low")
+            end if 
+            all_ok = all_ok & esp8266_send_data("<br>\r\n")
+            all_ok = all_ok & esp8266_send_data("</html>\r\n")
+            if all_ok then
+               print_string(serial_hw2_data,"succes.\r\n")
+            else
+               print_string(serial_hw2_data,"failed.\r\n")
+            end if
+         else
+            print_string(serial_hw2_data,"no HTTP request.\r\n")                
+         end if
+      else
+         print_string(serial_hw2_data,"failed.\r\n")    
+      end if
+      if esp8266_close_connection() then
+         print_string(serial_hw2_data,"Connection closed succesfully.\r\n")    
+      else
+         print_string(serial_hw2_data,"Error closing connection.\r\n")    
+      end if 
+   end if
+end loop
+
+
+
