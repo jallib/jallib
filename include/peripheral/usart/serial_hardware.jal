@@ -1,7 +1,7 @@
 -- Title: USART hardware control
--- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
--- Adapted-by: Sebastien Lelong, Rob Hamerling
--- Compiler: 2.4o
+-- Author: Stef Mientki, Copyright (c) 2002..2018, all rights reserved.
+-- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
+-- Compiler: 2.5
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -31,6 +31,14 @@
 --              alias  pin_RX_direction  is  pin_RX_RB1_direction
 --
 
+-- Aliases to support other PICs.
+if (defined(PIE3_RCIE) == TRUE) then  -- PIE3/PIR3
+   alias PIE1_RCIE is PIE3_RC1IE
+   alias PIR1_RCIF is PIR3_RC1IF
+   alias PIE1_TXIE is PIE3_TX1IE
+   alias PIR1_TXIF is PIR3_TX1IF
+end if
+
 include usart_common
 
 
@@ -40,26 +48,26 @@ include usart_common
 -- Returns:   (nothing)
 -- -----------------------------------------------------------------------
 procedure serial_hw_init() is
-
+   
    TXSTA = 0b0000_0000                             -- reset (8 databits, async)
    RCSTA = 0b0000_0000                             -- reset (8 databits, async)
-
+   
    _calculate_and_set_baudrate()                   -- transmit and receive speed
-
+   
    PIE1_RCIE = FALSE                               -- disable receive interrupts
    PIE1_TXIE = FALSE                               -- disable transmit interrupts
-
+   
    pin_RX_direction = INPUT                        -- make receive pin input
    pin_TX_direction = INPUT                        -- make transmit pin input!
-                                                   -- (required by some older ..
-                                                   --  .. PICs like 16f628)
-
+   -- (required by some older ..
+   --  .. PICs like 16f628)
+   
    TXSTA_TXEN = TRUE                               -- Enable transmitter
-                                                   -- (makes transmit pin output)
-
+   -- (makes transmit pin output)
+   
    RCSTA_SPEN = enabled                            -- activate serial port
    RCSTA_CREN = enabled                            -- continuous receive
-
+   
 end procedure
 
 
@@ -111,7 +119,7 @@ procedure serial_hw_write_word(word in data) is
    while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
    TXREG = dx[1]
    asm nop                  -- necessary for good optimized compiler, loading
-                            -- of TXREG doesn't immediately set PIR1_TXIF
+   -- of TXREG doesn't immediately set PIR1_TXIF
    while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
    TXREG = dx[0]
 end procedure
@@ -128,19 +136,19 @@ end procedure
 -- -----------------------------------------------------------------------
 function _serial_hw_read(byte out data) return bit is
    pragma inline
-
+   
    if PIR1_RCIF then                               -- check if data available
       data = RCREG                                 -- pass received byte to caller
       PIR1_RCIF = FALSE                            -- eur@fiwhex.nl 12-sept-08
    else
       return FALSE                                 -- no data available
    end if
-
+   
    if RCSTA_OERR then                              -- reset USART after overrrun
       RCSTA_CREN = FALSE
       RCSTA_CREN = TRUE
    end if
-
+   
    return TRUE
 end function
 
