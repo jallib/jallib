@@ -1,0 +1,916 @@
+-- -----------------------------------------------------------------------------
+-- Title: ESP8266 Library for interfacing with an ESP8266 module via the USART.
+--
+-- Author: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
+--
+-- Adapted-by: 
+--
+-- Compiler: 2.5r2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources:
+-- -------- 
+-- Inspired by https://github.com/bportaluri/WiFiEsp
+-- See ESP8266 Instruction Set version 2.0.0 and 
+-- https://room-15.github.io/blog/2015/03/26/esp8266-at-command-reference/
+--
+-- Description: 
+-- ------------
+-- Library for using the ESP8266 Wifi Module based on version 2.0.0 of the
+-- ESP8166 AT command set. Some functionality provided by this library:
+-- -) Supports Wifi, TCP, UDP and SSL
+-- -) Supports client and server mode
+-- -) Supports mutlti connection mode 
+--
+-- Dependencies:
+-- ------------- 
+-- This library uses the first USART for communicating with the ESP8266. Due to
+-- the high communication speed with the ESP8266 it uses the interrupt driven 
+-- USART library with the default buffer sizes. See serial_hw_int_cts.jal for 
+-- more information on these buffer sizes.
+-- For big data reception it also includes the large_array_1.jal library.
+--
+-- Notes: 
+-- ------
+-- In order to make the use of this library more easy, all public pins
+-- constants, variable, functions and procedures are mentioned at the 
+-- start of this library.
+-- Since the ESP8266 uses the USART as interface, function and procedure 
+-- paramaters are mostly character (string) based.
+-- When using the device as web server, a sufficiently large receive buffer is
+-- needed as to be able to parse all received data.
+-- This library was tested using an ESP8266 ESP-12F.
+--
+-- --------------------------Public pins ---------------------------------------
+-- Make sure you have defined the USART1 pins!
+-- alias pin_RX_direction  is pin_xx_direction  -- PIC depending.
+-- alias pin_TX_direction  is pin_xx_direction  -- PIC depending.
+
+if !defined(pin_RX_direction) then
+   _ERROR "USART1 pins for ESP8266 Module not defined!"
+end if
+if !defined(pin_TX_direction) then
+   _ERROR "USART1 pins for ESP8266 Module not defined!"
+end if
+
+-- --------------------Public constant declarations -----------------------------
+const serial_hw_baudrate   = 115200 -- Default speed for ESP8266 module.
+
+-- The size of the receive buffer can be defined by the user.
+if !defined(ESP8266_MAX_RECEIVE_BUFFER) then
+   const ESP8266_MAX_RECEIVE_BUFFER = 80 
+end if
+
+-- Mode declarations.
+const byte ESP8266_MODE_STATION    = 1
+const byte ESP8266_MODE_AP         = 2
+const byte ESP8266_MODE_AP_STATION = 3
+
+-- Connection status declarations.
+const byte ESP8266_IDLE         = 0
+const byte ESP8266_CONNECTED    = 1
+const byte ESP8266_DISCONNECTED = 2
+const byte ESP8266_ERROR        = 3
+
+-- The default of is not by accident since in server mode the ESP8266 will 
+-- also use this ID. 
+const byte ESP8266_DEFAULT_CONNECTION = 0
+
+-- ------------------ Public variable declarations -----------------------------
+-- We need to check the array size to determine if we need a larger array than 
+-- the one that normally fits in one bank. If so we include a library to handle
+-- larger arrays.
+if (ESP8266_MAX_RECEIVE_BUFFER <= 80) then
+   var byte esp8266_receive_buffer[ESP8266_MAX_RECEIVE_BUFFER]
+else
+   const word LARGE_ARRAY_1_SIZE = ESP8266_MAX_RECEIVE_BUFFER        
+   const word LARGE_ARRAY_1_VARIABLE_SIZE = 1 -- Array of bytes.
+   include large_array_1   
+   alias esp8266_receive_buffer is large_array_1
+end if 
+
+-- Global variable that indicates how many bytes are in the global ESP8266
+-- receive buffer.
+var word esp8266_bytes_received
+
+-- Control ESP8266 via first USART. 
+include serial_hw_int_cts   
+
+-- ---------------- Public functions and procedures ----------------------------
+-- Note: Some functions copy the data from the serial buffer to the global 
+--       'esp8266_receive_buffer'. The number of bytes is then given in 
+--       the global variable 'esp8266_bytes_received'
+
+-- Initialze the serial interface and reset the ESP module. Returns TRUE if
+-- succesful.
+function esp8266_init() return bit
+
+--- Put the ESP8266 back to its factory default settings. Returns TRUE if 
+-- succesful.
+function esp8266_restore() return bit      
+
+-- Check the presence of the ESP8266 module and return TRUE when found.
+function esp8266_alive() return bit
+
+-- Connect to access point not saving this to flash. For use of special 
+-- characters in the parameters see the instruction set of the ESP8266.
+-- Returns TRUE if succesfull.
+function esp8266_connect_to_ap(byte in ssid[], byte in password[]) return bit 
+
+-- Disconnect the ESP8266 module from the Access Point. Returns TRUE when
+-- succesfull.
+function esp8266_disconnect_from_ap() return bit 
+
+-- Ping to the host and return TRUE when succesful. 
+function esp8266_ping(byte in host[]) return bit
+
+-- Return the connection status of the ESP8266. Status can be:
+-- ESP8266_IDEL, ESP8266_CONNECTED, ESP8266_DISCONNECTED, ESP8266_ERROR
+function esp8266_get_connection_status() return byte 
+
+-- Returns the local IP address of the ESP8266 module as a string in the 
+-- ESP8266 receive buffer and returns TRUE when succesfull, e.g. 10.0.0.11
+function esp8266_get_ip_address() return bit 
+
+-- Returns the local MAC address of the ESP8266 module as a string in the 
+-- ESP8266 receive buffer and returns TRUE when succesfull, e.g. 18:fe:34:f3:02:cd 
+function esp8266_get_mac_address() return bit 
+
+-- Returns the IP address of the Access Point as a string in the ESP8266 
+-- receive buffer e.g, 10.0.0.11
+
+-- Returns the IP address of the access point as a string in the ESP8266 
+-- receive buffer and returns TRUE when succesfull, e.g 10.0.0.11
+function esp8266_get_ap_ip_address() return bit 
+
+-- Set IP address of the access point of the ESP8266 module. The IP address 
+-- must be given as text string. Returns TRUE when succesfull.
+function esp8266_set_ap_ip_address(byte in ip_address[]) return bit
+
+-- Returns the SSID to which the ESP8266 module is connected in the receive
+-- buffer of the ESP8266. Returns TRUE when succesfull.
+function esp8266_get_ssid() return bit 
+
+-- Returns the BSSID of the ESP8266 module in the receive buffer of the ESP8266. 
+-- Returns TRUE when succesfull.
+function esp8266_get_bssid() return bit 
+
+-- Returns the channel to which the ESP8266 module is connected in the receive
+-- buffer of the ESP8266. Returns TRUE when succesfull.
+function esp8266_get_channel() return bit 
+
+-- Returns the rssi of the ESP8266 module in the receive buffer of the ESP8266. 
+-- Returns TRUE when succesfull.
+function esp8266_get_rssi() return bit 
+
+-- Start the ESP8266 module to act as client. Returns TRUE when succesfull.
+function _esp8266_client_start(byte in connection_type[], byte in host[], byte in port[]) return bit 
+
+-- Start a client tcp connection and return TRUE if connected. Note that when there
+-- was already a connection, FALSE is returned.
+function esp8266_client_start_tcp(byte in host[], byte in port[]) return bit 
+
+-- Start a client udp connection and return TRUE if connected. Note that when there
+-- was already a connection, FALSE is returned.
+function esp8266_client_start_udp(byte in host[], byte in port[]) return bit 
+
+-- Start a client ssl connection and return TRUE if connected. Note that when there
+-- was already a connection, FALSE is returned.
+function esp8266_client_start_ssl(byte in host[], byte in port[]) return bit 
+
+-- Stop the client connection. Returns TRUE when succesfull.
+function esp8266_client_stop() return bit 
+
+-- Sends the given string via the ESP8266 to the current connection.  
+-- Returns TRUE when succesfull. 
+function esp8266_send_data(byte in command[]) return bit 
+
+-- Returns TRUE if data is present in the serial buffer. The data must be 
+-- processes as soon as possible using the function esp8266_get_data().
+function esp8266_data_available() return bit
+
+-- Call this function when data is available. The serial data is processed and
+-- copied to the global receive buffer. It returns TRUE when all data is
+-- correctly processed and it returns the connection number from which the
+-- data was received. Note that more data can be received than we can handle 
+-- in the receive buffer. Because of that we copy no more bytes than can be 
+-- stored in the receive buffer. All remaining data will then be lost.
+function esp8266_get_data(byte out connection) return bit 
+
+-- Start TCP server on specified port. Returns TRUE when succesfull.
+function esp8266_server_start(byte in port[]) return bit 
+
+-- Stop TCP server on specified port. Returns TRUE when succesfull. 
+function esp8266_server_stop(byte in port[]) return bit 
+
+-- Set TCP server timeout. Timeout is given in miliseconds. "0" means not
+-- timeout. Returns TRUE when succesfull. 
+function esp8266_set_server_timeout(byte in timeout[]) return bit 
+
+-- Close the currently set connection. Returns TRUE when succesfull. 
+function esp8266_close_connection() return bit 
+
+-- Set the connection number to be used when sending a response.
+procedure esp8266_set_connection(byte in link_id)
+
+-- Get the currently set connection number
+function esp8266_get_connection() return byte
+
+
+-- -------------------- Private constant declarations --------------------------
+
+const       _ESP8266_ACK_WAIT_TIME_US        = 500_000   -- 500 ms always.
+const dword _ESP8266_RESPONSE_TIMEOUT_10_US  = 1_500_000 -- 15 seconds max.
+
+-- We do not accept data transmissions >= 2k
+const word  _ESP8266_MAX_DATA_BYTES  = 2048
+
+-- Special character declarations.
+const byte  _ESP8266_CARRIAGE_RETURN = 0x0D
+const byte  _ESP8266_LINE_FEED       = 0x0A  
+const byte  _ESP8266_COMMA           = 0x2C
+const byte  _ESP8266_COLON           = 0x3A
+const byte  _ESP8266_DOUBLE_QUOTE    = 0x22
+
+-- ------------------ Private variable declarations -----------------------------
+var byte _esp8266_mode
+var byte _esp8266_link_id
+
+-- ------------------------- Functions and Procedures --------------------------
+
+procedure _esp8266_flush_serial_receive_buffer() is
+   var byte dummy
+   
+   while serial_hw_read(dummy) loop 
+      -- Nothing, just flushing the input buffer.
+   end loop 
+end procedure
+
+
+-- Sends the given string to the USART. 
+procedure _esp8266_send_data(byte in command[]) is
+   var byte index
+   
+   for count(command) using index loop
+      serial_hw_data = command[index]
+   end loop
+end procedure
+
+
+-- Wait a certain time for a character to be receives and return TRUE when a 
+-- character was received and return the character. Note that once read,
+-- from the serial buffer the character is gone.
+function _esp8266_get_character(byte out character) return bit is
+   var dword waittime = _ESP8266_RESPONSE_TIMEOUT_10_US 
+   var bit character_received = FALSE
+   
+   while !character_received & (waittime > 0) loop
+      if serial_hw_read(character) then
+         character_received = TRUE
+      end if
+      _usec_delay(10) -- Do not wait too long since bitrate is high.
+      waittime = waittime - 1
+   end loop
+   return character_received
+end function
+
+
+-- Parse the data in the serial buffer, received from the ESP8266 and return 
+-- true if the given token if found.
+function _esp8266_check_response(byte in token[]) return bit is
+   var byte index
+   var byte character
+   var bit stop 
+   
+   -- Start token given, look for start token.
+   index = 0
+   stop = FALSE
+   while (index < count(token)) & !stop loop
+      -- Getting the character is a one time read so stop as soon as it is over.
+      if _esp8266_get_character(character) then
+         if (character == token[index]) then
+            index = index + 1
+         else
+            -- No match (yet), try again.
+            index = 0
+         end if  
+      else
+         stop = TRUE
+      end if
+   end loop
+   return (index == count(token))
+end function
+
+
+-- Copy the EPS8266 data from the serial buffer to the global EPS8266 receive 
+-- buffer until a carriage return is received. The number of copied bytes is 
+-- returned in the global variable esp8266_bytes_received
+procedure _esp8266_copy_response() is
+   var byte character
+   var bit stop
+   
+   stop = FALSE
+   esp8266_bytes_received = 0
+   while !stop & (esp8266_bytes_received < ESP8266_MAX_RECEIVE_BUFFER) loop
+      -- Getting the character is a one time read so stop as soon as it is over.
+      if _esp8266_get_character(character) then
+         if (character == _ESP8266_CARRIAGE_RETURN) then
+            stop = TRUE
+         else
+            esp8266_receive_buffer[esp8266_bytes_received] = character
+            esp8266_bytes_received = esp8266_bytes_received + 1
+         end if
+      else
+         stop = TRUE
+      end if
+   end loop
+end procedure
+
+
+-- Check for acknoledge of a send command (OK). The wait time after having 
+-- received the acknowledge it to prevent that commands are given to fast to the 
+-- ESP8266 module. We flush the buffer as to remove the carriage return and line 
+-- feed after the OK.
+function _esp8266_acknowledge() return bit is
+   var bit result
+   result = _esp8266_check_response("OK")
+   _usec_delay(_ESP8266_ACK_WAIT_TIME_US)
+   _esp8266_flush_serial_receive_buffer() 
+   return result
+end function
+
+-- Returns true if the ESP8266 is responding.
+function esp8266_alive() return bit is
+   var byte counter = 0
+   var bit is_alive = FALSE
+   
+   -- Try the connection a few times.
+   while (counter < 3) & !is_alive loop
+      _esp8266_send_data("AT\r\n")
+      is_alive = _esp8266_acknowledge() 
+      counter = counter + 1
+   end loop
+   return is_alive
+end function
+
+
+-- Put the ESP8266 back to its factory default settings. Returns TRUE if 
+-- succesful.   
+function esp8266_restore() return bit is
+   _esp8266_send_data("AT+RESTORE\r\n")
+   return _esp8266_acknowledge()
+end function
+
+
+-- Reset the ESP8266. Returns true when succesfull.
+function esp8266_reset() return bit is
+   var bit response_ok 
+   
+   -- Reset device.
+   _esp8266_send_data("AT+RST\r\n")
+   response_ok = _esp8266_acknowledge()
+   -- Disable echo of command (default on).
+   _esp8266_send_data("ATE0\r\n")
+   response_ok = response_ok & _esp8266_acknowledge()
+   -- Set station mode + Acces Point
+   _esp8266_mode = ESP8266_MODE_AP_STATION
+   _esp8266_send_data("AT+CWMODE_CUR=1\r\n")
+   response_ok = response_ok & _esp8266_acknowledge()
+   -- Set multiple connection mode.
+   _esp8266_send_data("AT+CIPMUX=1\r\n")
+   response_ok = response_ok & _esp8266_acknowledge()
+   -- Do not show remote IP and port with "+IPD".
+   _esp8266_send_data("AT+CIPDINFO=0\r\n")
+   response_ok = response_ok & _esp8266_acknowledge()
+   -- Disable auto connect.
+   _esp8266_send_data("AT+CWAUTOCONN=0\r\n")
+   response_ok = response_ok & _esp8266_acknowledge()
+   -- Enable DHCP.
+   _esp8266_send_data("AT+CWDHCP=1,1\r\n")
+   return response_ok & _esp8266_acknowledge()
+end function
+
+-- Initialze the serial interface and reset the ESP module. Returns TRUE if
+-- succesful.  
+function esp8266_init() return bit is
+   var bit response_ok 
+   
+   serial_hw_init()
+   esp8266_bytes_received = 0
+   _esp8266_link_id = ESP8266_DEFAULT_CONNECTION
+   response_ok = esp8266_alive()
+   return response_ok & esp8266_reset()
+end function
+
+
+-- Connect to access point not saving this to flash. For use of special 
+-- characters in the parameters see the instruction set of the ESP8266.
+-- Returns TRUE if succesfull.  
+function esp8266_connect_to_ap(byte in ssid[], byte in password[]) return bit is
+   _esp8266_send_data("AT+CWJAP_CUR=\"")
+   _esp8266_send_data(ssid)
+   _esp8266_send_data("\",\"")
+   _esp8266_send_data(password)
+   _esp8266_send_data("\"\r\n")
+   return _esp8266_acknowledge()
+end function
+
+-- Set the WiFi mode and start the access point.
+function esp8266_start_ap(byte in ssid[], byte in password[], byte in channel[], byte in encoding[], byte in espmode[]) return bit is
+   var bit response_ok = FALSE 
+   
+   -- Set AP mode, use CUR mode to avoid automatic start at boot.
+   _esp8266_send_data("AT+CWMODE_CUR=")
+   _esp8266_send_data(espmode)
+   _esp8266_send_data("\r\n")
+   if _esp8266_acknowledge() then
+      _esp8266_send_data("AT+CWSAP_CUR=\"")
+      _esp8266_send_data(ssid)
+      _esp8266_send_data("\",\"")
+      _esp8266_send_data(password)
+      _esp8266_send_data("\",")
+      _esp8266_send_data(channel)
+      _esp8266_send_data(",")
+      _esp8266_send_data(encoding)
+      _esp8266_send_data("\r\n")      
+      if _esp8266_acknowledge() then
+         if (espmode[0] == ESP8266_MODE_AP) then
+            -- Enable DHCP for AP mode
+            _esp8266_send_data("AT+CWDHCP_CUR=0,1\r\n")
+         elsif (espmode[0] == ESP8266_MODE_AP_STATION) then
+            -- Enable DHCP for AP and station mode
+            _esp8266_send_data("AT+CWDHCP_CUR=2,1\r\n") 
+         end if      
+      end if
+      response_ok = _esp8266_acknowledge()
+   end if
+   return response_ok
+end function
+
+
+-- Disconnect the ESP8266 module from the Access Point. Returns TRUE when
+-- succesfull.
+function esp8266_disconnect_from_ap() return bit is
+   _esp8266_send_data("AT+CWQAP\r\n")
+   return _esp8266_acknowledge()
+end function
+
+
+-- Ping to the host and return TRUE when succesful. 
+function esp8266_ping(byte in host[]) return bit is
+   _esp8266_send_data("AT+PING=\"")
+   _esp8266_send_data(host)
+   _esp8266_send_data("\"\r\n")
+   return _esp8266_acknowledge()
+end function
+
+
+-- Return the connection status of the ESP8266. Status can be:
+-- ESP8266_IDEL, ESP8266_CONNECTED, ESP8266_DISCONNECTED, ESP8266_ERROR
+function esp8266_get_connection_status() return byte is
+   var byte connection_status 
+   
+   _esp8266_send_data("AT+CIPSTATUS\r\n")
+   -- We get the status first, parse it.
+   if _esp8266_check_response("STATUS:") then
+      _esp8266_copy_response()
+      -- Status is given in the position 0 of the buffer
+      if (esp8266_receive_buffer[0] == "2") | (esp8266_receive_buffer[0] == "3") |
+      (esp8266_receive_buffer[0] == "4") then
+         connection_status = ESP8266_CONNECTED
+      elsif (esp8266_receive_buffer[0] == "5") then 
+         connection_status = ESP8266_DISCONNECTED 
+      else
+         connection_status = ESP8266_IDLE 
+      end if
+   else  
+      connection_status = ESP8266_ERROR    
+   end if
+   if !_esp8266_acknowledge() then
+      connection_status = ESP8266_ERROR    
+   end if
+   return connection_status 
+end function
+
+
+-- Search for a string with double quotes in the receive buffer and strip them
+-- from the string. The results is placed back in the receive buffer.
+-- Double quotes are used for example in IP and MAC addresses.
+function _esp8266_strip_double_quoto() return bit is
+   var word read_index
+   var word write_index
+   var bit all_done = FALSE
+   
+   read_index = 0
+   write_index = 0
+   -- Search for first double quote.
+   while (esp8266_receive_buffer[read_index] != _ESP8266_DOUBLE_QUOTE) & 
+      (read_index < esp8266_bytes_received) loop
+      read_index = read_index + 1
+   end loop
+   if (esp8266_receive_buffer[read_index] == _ESP8266_DOUBLE_QUOTE) then
+      read_index = read_index + 1
+      -- Move all data until we again find a double quote.
+      while (esp8266_receive_buffer[read_index] != _ESP8266_DOUBLE_QUOTE) & 
+         (read_index < esp8266_bytes_received) loop
+         esp8266_receive_buffer[write_index] = esp8266_receive_buffer[read_index]
+         read_index = read_index + 1
+         write_index = write_index + 1
+      end loop
+      -- If all OK, correct the number of received bytes in the receive buffer.
+      if (esp8266_receive_buffer[read_index] == _ESP8266_DOUBLE_QUOTE) then
+         esp8266_bytes_received = write_index
+         all_done = TRUE
+      end if
+   end if 
+   return all_done
+end function
+
+
+-- Returns the local IP address as a string in the ESP8266 receive buffer and
+-- returns TRUE when succesfull. For example you can get the following responses:
+-- +CIFSR:APIP,"192.168.4.1"
+-- +CIFSR:APMAC,"1a:fe:34:f3:02:cd"
+-- +CIFSR:STAIP,"10.0.0.11"
+-- +CIFSR:STAMAC,"18:fe:34:f3:02:cd"
+-- It returns the string without quotes, so: 10.0.0.11
+function esp8266_get_ip_address() return bit is
+   var bit all_ok = FALSE
+   
+   _esp8266_send_data("AT+CIFSR\r\n")
+   if _esp8266_check_response("+CIFSR:STAIP,") then
+      _esp8266_copy_response()
+      all_ok = _esp8266_strip_double_quoto() 
+   end if
+   return all_ok & _esp8266_acknowledge()   
+end function
+
+
+-- Returns the local MAC address as a string in the ESP8266 receive buffer and
+-- returns TRUE when succesfull. For example you can get the following responses:
+-- +CIFSR:APIP,"192.168.4.1"
+-- +CIFSR:APMAC,"1a:fe:34:f3:02:cd"
+-- +CIFSR:STAIP,"10.0.0.11"
+-- +CIFSR:STAMAC,"18:fe:34:f3:02:cd"
+-- It returns the string without quotes, so: 18:fe:34:f3:02:cd 
+function esp8266_get_mac_address() return bit is
+   var bit all_ok = FALSE
+   
+   _esp8266_send_data("AT+CIFSR\r\n")
+   if _esp8266_check_response("+CIFSR:STAMAC,") then
+      _esp8266_copy_response()
+      all_ok = _esp8266_strip_double_quoto()
+   end if
+   return all_ok & _esp8266_acknowledge()   
+end function
+
+
+-- Returns the IP address of the access point as a string in the ESP8266 
+-- receive buffer and returns TRUE when succesfull.. 
+-- It returns the string without quotes, e.g: 10.0.0.11
+function esp8266_get_ap_ip_address() return bit is
+   var bit all_ok = FALSE
+   
+   _esp8266_send_data("T+CIPAP_CUR?\r\n")
+   if _esp8266_check_response("+CIPAP_CUR:") then
+      _esp8266_copy_response()
+      all_ok = _esp8266_strip_double_quoto() 
+   end if
+   return all_ok & _esp8266_acknowledge()   
+end function
+
+
+-- Set IP address of the access point of the ESP8266 module. The IP address 
+-- must be given as text string. Returns TRUE when succesfull.
+function esp8266_set_ap_ip_address(byte in ip_address[]) return bit is
+   _esp8266_send_data("AT+CIPSTA_CUR=\"")
+   _esp8266_send_data(ip_address)
+   _esp8266_send_data("\"\r\n")
+   return _esp8266_acknowledge()
+end function
+
+
+-- This function extract the given item from the receive buffer and moves it
+-- to the front of the receive buffer. Each item in the receive buffer must be
+-- separated by a comma. The first item is always at the start of the buffer. 
+function _esp8266_extract_item(byte in item_number) return bit is
+   var byte item_counter = 1
+   var word read_index = 0
+   var word write_index = 0
+   var bit item_found = FALSE
+   
+   while !item_found & (read_index < esp8266_bytes_received) loop
+      if (item_counter == item_number)
+      then 
+         -- Item found, move it to the start of the receive buffer.
+         while (read_index < esp8266_bytes_received) & 
+            (esp8266_receive_buffer[read_index] != _ESP8266_COMMA) loop
+            esp8266_receive_buffer[write_index] = esp8266_receive_buffer[read_index]
+            read_index = read_index + 1
+            write_index = write_index + 1
+         end loop
+         esp8266_bytes_received = write_index
+         item_found = TRUE
+      else
+         -- Look for the next item by looping until the next commma.
+         while (read_index < esp8266_bytes_received) &
+            (esp8266_receive_buffer[read_index] != _ESP8266_COMMA) loop  
+            read_index = read_index + 1
+         end loop
+         -- Skip the comma. 
+         read_index = read_index + 1
+         item_counter = item_counter + 1
+      end if
+   end loop
+   return item_found
+end function
+
+
+-- Returns the SSID to which the ESP8266 module is connected in the receive
+-- buffer of the ESP8266. Returns TRUE when succesfull.
+function esp8266_get_ssid() return bit is
+   var bit all_ok = FALSE
+   
+   _esp8266_send_data("AT+CWJAP_CUR?\r\n")
+   if _esp8266_check_response("+CWJAP_CUR:") then
+      _esp8266_copy_response()
+      all_ok = _esp8266_extract_item(1)
+      all_ok = all_ok & _esp8266_strip_double_quoto() 
+   end if
+   return all_ok & _esp8266_acknowledge()   
+end function
+
+
+-- Returns the BSSID of the ESP8266 module in the receive buffer of the ESP8266. 
+-- Returns TRUE when succesfull.
+function esp8266_get_bssid() return bit is
+   var bit all_ok = FALSE
+   
+   _esp8266_send_data("AT+CWJAP_CUR?\r\n")
+   if _esp8266_check_response("+CWJAP_CUR:") then
+      _esp8266_copy_response()
+      all_ok = _esp8266_extract_item(2)
+      all_ok = all_ok & _esp8266_strip_double_quoto() 
+   end if
+   return all_ok & _esp8266_acknowledge()   
+end function
+
+
+-- Returns the channel to which the ESP8266 module is connected in the receive
+-- buffer of the ESP8266. Returns TRUE when succesfull.
+function esp8266_get_channel() return bit is
+   var bit all_ok = FALSE
+   
+   _esp8266_send_data("AT+CWJAP_CUR?\r\n")
+   if _esp8266_check_response("+CWJAP_CUR:") then
+      _esp8266_copy_response()
+      all_ok = _esp8266_extract_item(3)
+   end if
+   return all_ok & _esp8266_acknowledge()   
+end function
+
+
+-- Returns the rssi of the ESP8266 module in the receive buffer of the ESP8266. 
+-- Returns TRUE when succesfull.
+function esp8266_get_rssi() return bit is
+   var bit all_ok = FALSE
+   
+   _esp8266_send_data("AT+CWJAP_CUR?\r\n")
+   if _esp8266_check_response("+CWJAP_CUR:") then
+      _esp8266_copy_response()
+      all_ok = _esp8266_extract_item(4)
+   end if
+   return all_ok & _esp8266_acknowledge()   
+end function
+
+-- Start the ESP8266 module to act as client. Returns TRUE when succesfull.
+function _esp8266_client_start(byte in connection_type[], byte in host[], byte in port[]) return bit is
+   _esp8266_send_data("AT+CIPSTART=")
+   serial_hw_data = _esp8266_link_id + 0x30   
+   _esp8266_send_data(",\"")
+   _esp8266_send_data(connection_type)
+   _esp8266_send_data("\",\"")
+   _esp8266_send_data(host)
+   _esp8266_send_data("\",")
+   _esp8266_send_data(port)
+   _esp8266_send_data("\r\n")      
+   return _esp8266_acknowledge() 
+end function
+
+-- Start a client tcp connection and return TRUE if connected. Note that when there
+-- was already a connection, FALSE is returned.
+function esp8266_client_start_tcp(byte in host[], byte in port[]) return bit is
+   return _esp8266_client_start("TCP", host, port)
+end function
+
+
+-- Start a client udp connection and return TRUE if connected. Note that when there
+-- was already a connection, FALSE is returned.
+function esp8266_client_start_udp(byte in host[], byte in port[]) return bit is
+   return _esp8266_client_start("UDP", host, port)
+end function
+
+
+-- Start a client ssl connection and return TRUE if connected. Note that when there
+-- was already a connection, FALSE is returned.
+function esp8266_client_start_ssl(byte in host[], byte in port[]) return bit is
+   return _esp8266_client_start("SSL", host, port)
+end function
+
+-- Stop the client connection. Returns TRUE when succesfull.
+function esp8266_client_stop() return bit is
+   _esp8266_send_data("AT+CIPCLOSE=")
+   serial_hw_data = _esp8266_link_id + 0x30 
+   _esp8266_send_data("\r\n")      
+   return _esp8266_acknowledge()   
+end function
+
+
+-- Sends the given string via the ESP8266 to the current connection.  
+-- Returns TRUE when succesfull. 
+function esp8266_send_data(byte in command[]) return bit is
+   var byte index
+   var bit all_ok 
+   
+   _esp8266_send_data("AT+CIPSEND=")
+   -- Use currently set connection number.
+   serial_hw_data = _esp8266_link_id + 0x30
+   serial_hw_data= ","
+   -- Convert string length to ASCII and send it.
+   if (count(command) > 100) then
+      serial_hw_data = ((count(command) / 100) + 0x30)
+   end if 
+   if (count(command) > 10) then
+      serial_hw_data = (((count(command) % 100) / 10) + 0x30)
+   end if
+   serial_hw_data = ((count(command) % 10) + 0x30)
+   _esp8266_send_data("\r\n") 
+   all_ok = _esp8266_acknowledge()      
+   for count(command) using index loop
+      serial_hw_data = command[index]
+   end loop
+   all_ok = all_ok & _esp8266_check_response("SEND OK\r\n")
+   return all_ok 
+end function
+
+
+-- Returns TRUE if data is present in the serial buffer. The data must be 
+-- processes as soon as possible using the function esp8266_get_data().
+function esp8266_data_available() return bit is
+   return serial_hw_data_available()
+end function
+
+-- Returns the byte from the serial buffer. Used for debugging.
+procedure esp8266_give_serial_byte(byte out character) is
+   serial_hw_read(character)
+end procedure
+
+
+-- Call this function when data is available. The serial data is processed and
+-- copied to the global receive buffer. It returns TRUE when all data is
+-- correctly processed and it returns the connection number from which the
+-- data was received. Note that more data can be received than we can handle 
+-- in the receive buffer. Because of that we copy no more bytes than can be 
+-- stored in the receive buffer. All remaining data will then be lost.
+function esp8266_get_data(byte out connection) return bit is
+   var word nr_of_bytes
+   var word copy_counter
+   var word index
+   var byte character
+   var bit stop
+   var bit response_ok
+   
+   response_ok = FALSE
+   -- Since we do not want to wait for too long when somthing goes wrong, we 
+   -- skip the other calls in case of error.
+   if _esp8266_check_response("+IPD,") then
+      -- Check from which connection this data comes.
+      if _esp8266_get_character(character) then
+         connection = character - 0x30
+         response_ok = _esp8266_check_response(",") 
+      else
+         response_ok = FALSE -- Timeout.
+      end if
+   end if
+   if response_ok then
+      -- We need to parse the content from the serial receive buffer based
+      -- on the given length so we do not use the copy response function here.
+      nr_of_bytes = 0
+      stop = FALSE
+      -- Check if the data is OK and convert the byte count from string to byte. 
+      -- First parse until ":" to get the length of the message.
+      while response_ok & !stop loop
+         -- Getting the character is a one time read so stop as soon as it is over.
+         if _esp8266_get_character(character) then 
+            if (character == _ESP8266_COLON) then
+               stop = TRUE
+            else
+               -- Check if byte is valid number
+               if (character >= "0") & (character <= "9") then
+                  nr_of_bytes = (nr_of_bytes * 10) + word(character - "0")
+                  -- We do have a limit of the number of bytes that we accept in
+                  -- one transmission.
+                  if (nr_of_bytes >= _ESP8266_MAX_DATA_BYTES) then
+                     response_ok = FALSE
+                  end if
+               else
+                  response_ok = FALSE
+               end if
+            end if
+         else
+            -- We should not have a timeout. 
+            response_ok = FALSE
+         end if 
+      end loop
+      if stop then
+         -- Now copy the number of bytes to the right position in the receive 
+         -- buffer but not more than we can store in the buffer to prevent
+         -- buffer overrun. All other data is lost in that case.
+         if (nr_of_bytes > ESP8266_MAX_RECEIVE_BUFFER) then
+            copy_counter = ESP8266_MAX_RECEIVE_BUFFER
+         else
+            copy_counter = nr_of_bytes
+         end if  
+         esp8266_bytes_received = copy_counter
+         index = 0
+         stop = FALSE
+         while !stop & (copy_counter > 0) loop
+            if _esp8266_get_character(character) then
+               esp8266_receive_buffer[index] = character
+               copy_counter = copy_counter - 1
+               nr_of_bytes = nr_of_bytes - 1
+               index = index + 1
+            else
+               stop = TRUE
+            end if
+         end loop
+         -- In case we received more bytes than we can store in the receive buffer
+         -- we need to read them all as to check that we got the complete message.
+         while !stop & (nr_of_bytes > 0) loop
+            if _esp8266_get_character(character) then
+               nr_of_bytes = nr_of_bytes - 1
+            else
+               -- We should not have a timeout.
+               stop = TRUE
+            end if
+         end loop      
+         response_ok = (nr_of_bytes == 0) -- All done.
+      end if
+   end if
+   if !response_ok then
+      _esp8266_flush_serial_receive_buffer() 
+   end if
+   return response_ok
+end function
+
+
+-- Start TCP server on specified port. Returns TRUE when succesfull.  
+function esp8266_server_start(byte in port[]) return bit is
+   _esp8266_send_data("AT+CIPSERVER=1,")
+   _esp8266_send_data(port)
+   _esp8266_send_data("\r\n")
+   return _esp8266_acknowledge()
+end function
+
+
+-- Stop TCP server on specified port. Returns TRUE when succesfull.  
+function esp8266_server_stop(byte in port[]) return bit is
+   _esp8266_send_data("AT+CIPSERVER=0,")
+   _esp8266_send_data(port)
+   _esp8266_send_data("\r\n")
+   return _esp8266_acknowledge()
+end function
+
+
+-- Set TCP server timeout. Timeout is given in miliseconds. "0" means not
+-- timeout. Returns TRUE when succesfull.  
+function esp8266_set_server_timeout(byte in timeout[]) return bit is
+   _esp8266_send_data("AT+CIPSTO=")
+   _esp8266_send_data(timeout)
+   _esp8266_send_data("\r\n")
+   return _esp8266_acknowledge()
+end function
+
+-- Close the currently set connection. Returns TRUE when succesfull.  
+function esp8266_close_connection() return bit is
+   _esp8266_send_data("AT+CIPCLOSE=")
+   serial_hw_data = _esp8266_link_id  + 0x30
+   _esp8266_send_data("\r\n")
+   return _esp8266_acknowledge()
+end function
+
+-- Set the connection number to be used when sending a response.
+procedure esp8266_set_connection(byte in link_id) is
+   _esp8266_link_id = link_id
+end procedure
+
+-- Get the currently set connection number
+function esp8266_get_connection() return byte is
+   return _esp8266_link_id
+end function
+
+
