@@ -65,8 +65,8 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "0.2.7"  # script version
-compilerversion = "2.5"  # latest JalV2 compiler version
+scriptversion = "1.0.0"     # script version
+compilerversion = "2.5r2"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
 # Additional file specifications
@@ -2276,7 +2276,8 @@ def ansel2j(reg, ans):
                     ansx = 99
             elif (picname in ("18f24k50", "18lf24k50", "18f25k50", "18lf25k50", "18f45k50", "18lf45k50")):
                 ansx = (0, 1, 2, 3, 99, 4, 99, 99)[ansx]
-            elif (picname.endswith("k40")):
+            elif (picname.endswith(("k40", "k83", "q10"))): #RJ: 2019-03-24. MPLABX_V5.15
+#                elif (picname.endswith("k40")):
                 ansx = ansx
             elif picname.endswith("k22") & (ansx == 5):
                 ansx = 4  # jump
@@ -2290,10 +2291,12 @@ def ansel2j(reg, ans):
 #                               "16f184", "16lf184",   # RJ: 2018-02-17. Corrected
                                "16f1842", "16lf1842",  # RJ: 2018-02-17. Corrected
                                "16f1844", "16lf1844",  # RJ: 2018-02-17. Corrected
+                               "16f1845", "16lf1845",  # RJ: 2019-03-24. Added MPLABX_V5.15
                                "16f188", "16lf188",
                                "16f191", "16lf191")):
             aliasname = "AN%c%d" % ("ABCDEFG"[ansx // 8], ansx % 8)  # new ADC pin naming convention
-        elif (picname.endswith(("k40", "k42"))):  # 18[l]fxxk40/42
+        elif (picname.endswith(("k40", "k42", "k83", "q10"))):  # 18[l]fxxk40/42 #RJ: 2019-03-24. 18[l]fxxq10, 18[l]fkxx83
+#            elif (picname.endswith(("k40", "k42"))):  # 18[l]fxxk40/42
             aliasname = "AN%c%d" % ("ABCDEFG"[ansx // 8], ansx % 8)  # new ADC pin naming convention
         else:
             aliasname = "AN%d" % ansx
@@ -2771,7 +2774,7 @@ def normalize_fusedef_key(key):
     elif (key in fusedef_kwd):
         key = fusedef_kwd[key]  # translate by table (dictionary)
     else:
-        print("   No normalization done for fusedef keyword ",key)
+        print("   Warning: No normalization done for fusedef keyword ",key)
 
     return key
 
