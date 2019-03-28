@@ -1,0 +1,904 @@
+-- -----------------------------------------------------------------------------
+-- Title: PIC low voltage programmer (LVP) for PIC16F18857.
+--
+-- Author: Rob Jansen, Copyright (c) 2019..2019, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: >= jalv2.5r2
+--
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
+-- Description: Program the data from the program buffer into the second PIC.
+--              The programmer must not be slowed down by the main loop so it
+--              is interrupt driven using an SPI interface.
+--              Supports the PIC16F18857 and for extra testing the PIC16F18456.
+--              
+-- Sources: Programming-specification PIC16F188xx
+-- 
+-- Notes: Lines SDO and SDO of the SPI interface are connected together as to 
+--        create a bi-directional interface.
+-- 
+-- ------------------------- Constant declarations -----------------------------
+
+-- Selects one of the PICs supported by this programmer. Note that the board
+-- is as default designed for the 16F18857 as application PIC. Just changing
+-- this setting is not enough since the file jalpic_one.py includes by default
+-- the device file of the PIC16F18857. The second PIC mentioned here is just
+-- for testing purposes to see if that works. PICs must be pin-compatible and
+-- programming specification compatible in order to be able to swap..
+const PIC_ID = 16_18857   -- This is the original application PIC.
+--const PIC_ID = 16_18456 -- This is just used for backup and test.
+
+if (PIC_ID == 16_18456) then
+   -- PIC16F18456 device constants. For testing only!
+   const word FLASH_SIZE                     = 16384 -- 14 bit words.
+   const word EEPROM_SIZE                    = 256   -- bytes.
+   const byte DEVICE_ID_HIGH_PIC2            = 0x30  
+   const byte DEVICE_ID_LOW_PIC2             = 0xD9 
+   const byte DEVICE_ID_ADDRESS_HIGH_PIC2    = 0x80  
+   const byte DEVICE_ID_ADDRESS_LOW_PIC2     = 0x06
+   const byte FLASH_START_ADDRESS_HIGH_PIC2  = 0x00  
+   const byte FLASH_START_ADDRESS_LOW_PIC2   = 0x00
+   const byte FLASH_END_ADDRESS_HIGH_PIC2    = 0x3F  
+   const byte FLASH_END_ADDRESS_LOW_PIC2     = 0xFF
+   const byte CONFIG_START_ADDRESS_HIGH_PIC2 = 0x80  
+   const byte CONFIG_START_ADDRESS_LOW_PIC2  = 0x07
+   const byte CONFIG_END_ADDRESS_HIGH_PIC2   = 0x80  
+   const byte CONFIG_END_ADDRESS_LOW_PIC2    = 0x0B
+   const byte EEPROM_START_ADDRESS_HIGH_PIC2 = 0xF0  
+   const byte EEPROM_START_ADDRESS_LOW_PIC2  = 0x00
+elsif (PIC_ID == 16_18857) then
+   -- PIC16F18857 device constants. Default application PIC of the board.
+   const word FLASH_SIZE                     = 32768 -- 14 bit words.
+   const word EEPROM_SIZE                    = 256   -- bytes.
+   const byte DEVICE_ID_HIGH_PIC2            = 0x30  
+   const byte DEVICE_ID_LOW_PIC2             = 0x74 
+   const byte DEVICE_ID_ADDRESS_HIGH_PIC2    = 0x80  
+   const byte DEVICE_ID_ADDRESS_LOW_PIC2     = 0x06
+   const byte FLASH_START_ADDRESS_HIGH_PIC2  = 0x00  
+   const byte FLASH_START_ADDRESS_LOW_PIC2   = 0x00
+   const byte FLASH_END_ADDRESS_HIGH_PIC2    = 0x7F  
+   const byte FLASH_END_ADDRESS_LOW_PIC2     = 0xFF
+   const byte CONFIG_START_ADDRESS_HIGH_PIC2 = 0x80  
+   const byte CONFIG_START_ADDRESS_LOW_PIC2  = 0x07
+   const byte CONFIG_END_ADDRESS_HIGH_PIC2   = 0x80  
+   const byte CONFIG_END_ADDRESS_LOW_PIC2    = 0x0B
+   const byte EEPROM_START_ADDRESS_HIGH_PIC2 = 0xF0  
+   const byte EEPROM_START_ADDRESS_LOW_PIC2  = 0x00
+end if
+
+-- Programmer states.
+const byte _PROGRAMMER_IDLE             = 0
+const byte _PROGRAMMER_START            = 1
+const byte _PROGRAMMER_LVP_START        = 2
+const byte _PROGRAMMER_LVP_END          = 3
+const byte _PROGRAMMER_WRITE_LATCH      = 4
+const byte _PROGRAMMER_READ_START       = 5
+const byte _PROGRAMMER_READ_LATCH       = 6
+const byte _PROGRAMMER_WRITE_ADDRESS    = 7
+const byte _PROGRAMMER_WRITE_DATA       = 8
+const byte _PROGRAMMER_READ_DATA        = 9
+const byte _PROGRAMMER_STORE_DATA_START = 10
+const byte _PROGRAMMER_ERASE_START      = 11
+const byte _PROGRAMMER_WAIT             = 12
+const byte _PROGRAMMER_VERIFY_START     = 13
+const byte _PROGRAMMER_VERIFY_DATA      = 14
+const byte _PROGRAMMER_BLANK_CHECK      = 15
+const byte _PROGRAMMER_DONE             = 16
+const byte _PROGRAMMER_ERROR            = 17
+
+-- PIC program commmands.
+const byte PIC_LOAD_PC_ADDRESS                       = 0x80
+const byte PIC_BULK_ERASE_PROGRAM_MEMORY             = 0x18                       
+const byte PIC_ROW_ERASE_PROGRAM_MEMORY              = 0xF0
+const byte PIC_WRITE_DATA_FOR_NVM_WITHOUT_INCREMENT  = 0x00
+const byte PIC_WRITE_DATA_FOR_NVM_WITH_INCREMENT     = 0x02
+const byte PIC_READ_DATA_FROM_NVM_WITHOUT_INCREMENT  = 0xFC
+const byte PIC_READ_DATA_FROM_NVM_WITH_INCREMENT     = 0xFE
+const byte PIC_INCREMENT_ADDRESS                     = 0xF8
+const byte PIC_BEGIN_INTERNALLY_TIMED_PROGRAMMING    = 0xE0
+const byte PIC_BEGIN_EXTERNALLY_TIMED_PROGRAMMING    = 0xC0
+const byte PIC_END_EXTERNALLY_TIMED_PROGRAMMING      = 0x82
+
+-- Other programming constants.
+const byte LVP_SEQUENCE[] = "MCHP"  -- LVP initiation sequence.   
+const byte MAX_LATCHES    = 32
+const byte BYTES_IN_LATCH = 4
+
+-- Timer constants we use Fosc/4 and prescale 8 so a 1.5 MHz clock for timer 1.
+const word TIMEOUT_2_8_MS  = 4_300  -- 2.8 ms used for flash programming.
+const word TIMEOUT_5_6_MS  = 8_400  -- 5.6 ms used for configuratioin words . 
+const word TIMEOUT_14_MS   = 21_000  -- 14 ms for bulk erase.
+
+-- ------------------------- Variable declarations -----------------------------
+-- Due to the fact that EEPROM can only be written in 1 word and we need for
+-- each write programming time, extra buffers are needed to store that data.
+-- With this array we can store 10 * MAX_BYTE_BUFFER = 300 bytes.
+const byte NR_OF_PROGRAM_BUFFERS = 10
+var byte program_buffer_0[MAX_BYTE_BUFFER]
+var byte program_buffer_1[MAX_BYTE_BUFFER]
+var byte program_buffer_2[MAX_BYTE_BUFFER]
+var byte program_buffer_3[MAX_BYTE_BUFFER]
+var byte program_buffer_4[MAX_BYTE_BUFFER]
+var byte program_buffer_5[MAX_BYTE_BUFFER]
+var byte program_buffer_6[MAX_BYTE_BUFFER]
+var byte program_buffer_7[MAX_BYTE_BUFFER]
+var byte program_buffer_8[MAX_BYTE_BUFFER]
+var byte program_buffer_9[MAX_BYTE_BUFFER]
+var byte bytes_in_program_buffers[NR_OF_PROGRAM_BUFFERS]
+var byte free_program_buffer
+var byte next_program_buffer
+
+-- We need a quick way so shift 24 bits so we use an array with a dword which
+-- overlays with it so that we can shift the bytes in the buffer. Note that the
+-- latch_buffer layout is as follows:
+-- msb [3] [2] [1] [0] lsb
+--       << shift left
+--       >> shift right
+var dword latch
+var byte latch_buffer[4] at latch
+var word nr_of_latches_to_write   
+var word nr_of_latches_to_read   
+var word nr_of_latches_to_verify  
+var word programming_time
+var byte main_programmer_state
+var byte next_programmer_state
+var byte read_index
+var byte write_index
+var byte verify_index
+var byte latch_index
+var byte bytes_to_read
+var byte bytes_to_write
+var bit  _device_verify
+var bit  _device_empty
+var bit  single_latch_programming
+var bit  word_programming
+
+-- ------------------------- Functions and Procedures --------------------------              
+
+-- Timer functions used for measureing the programming time.
+procedure timer_init() is
+   TMR1 = 0
+   T1CON_TMR1CS = 0b00  -- Fosc/4.
+   T1CON_T1CKPS = 0b11  -- Prescale 8.
+   T1CON_TMR1ON = FALSE -- Stop Timer.                   
+   PIR1_TMR1IF = FALSE
+   PIE1_TMR1IE = TRUE
+   PIR1_TMR1IF = FALSE
+end procedure
+
+
+procedure timer_start(word in how_long) is
+   TMR1 = 65_535 - how_long
+   PIR1_TMR1IF = FALSE
+   T1CON_TMR1ON = TRUE -- Start Timer.                   
+end procedure
+
+
+procedure timer_interrupt is pragma interrupt
+   if PIR1_TMR1IF then
+      PIR1_TMR1IF = FALSE
+      T1CON_TMR1ON = FALSE -- Stop Timer.                   
+      -- If we are waiting for a programming cycle it is now done
+      if (main_programmer_state == _PROGRAMMER_WAIT)
+      then
+         main_programmer_state = next_programmer_state
+         PIR1_SSP1IF = TRUE  -- Force to next state. 
+      end if
+   end if
+end procedure
+
+
+-- Initialize the programmer and the SPI interface it uses.
+procedure programmer_init() is
+   main_programmer_state = _PROGRAMMER_IDLE 
+   next_programmer_state = _PROGRAMMER_IDLE 
+   -- Make sure the spi pins are not interfering with the pins of pic 2.
+   spi_sdi_direction = input   
+   spi_sdo_direction = input   
+   spi_sck_direction = input 
+   pic2_reset = TRUE  -- Disable LVP.      
+   bytes_in_program_buffer = 0
+   free_program_buffer = 0
+   next_program_buffer = 0
+   _device_empty = FALSE -- This is an assumption.
+   -- Data is clocked on the trailing edge of the clock. Use Fosc/4
+   SSPSTAT = 0b0000_0000
+   SSPCON1 = 0b0010_0001 -- Use Fosc/16 = 3 MHz.
+   PIR1_SSP1IF = FALSE 
+   PIE1_SSP1IE = TRUE 
+   INTCON_PEIE = TRUE
+   INTCON_GIE  = TRUE   
+end procedure
+
+
+procedure programmer_reset() is
+   main_programmer_state = _PROGRAMMER_IDLE 
+   next_programmer_state = _PROGRAMMER_IDLE 
+   -- Make sure the spi pins are not interfering with the pins of pic 2.
+   spi_sdi_direction = input   
+   spi_sdo_direction = input   
+   spi_sck_direction = input  
+   bytes_in_program_buffer = 0
+   free_program_buffer = 0
+   next_program_buffer = 0
+   _device_empty = FALSE -- This is an assumption.
+   pic2_reset = TRUE  -- Disable LVP.      
+end procedure
+
+
+function programmer_idle() return bit is
+   return main_programmer_state == _PROGRAMMER_IDLE
+end function
+
+
+function programmer_done() return bit is
+   return main_programmer_state == _PROGRAMMER_DONE
+end function
+
+
+function programmer_error() return bit is
+   return main_programmer_state == _PROGRAMMER_ERROR
+end function
+
+
+function programmer_ready() return bit is
+   return (main_programmer_state == _PROGRAMMER_IDLE) |
+          (main_programmer_state == _PROGRAMMER_DONE) |
+          (main_programmer_state == _PROGRAMMER_ERROR)         
+end function
+
+
+procedure programmer_start() is
+   main_programmer_state = _PROGRAMMER_START
+   -- Start programmer.
+   PIR1_SSP1IF = TRUE
+end procedure
+
+
+procedure programmer_stop() is
+   main_programmer_state = _PROGRAMMER_LVP_END   
+   -- Start programmer.
+   PIR1_SSP1IF = TRUE
+end procedure
+
+
+procedure latch_shift_left() is
+   latch = latch << 1
+end procedure
+
+
+procedure latch_shift_right() is
+   latch = latch >> 1
+end procedure
+
+
+function device_empty() return bit is
+   return _device_empty
+end function
+
+                                           
+-- Bulk erase program memory (flash) and configuration words. 
+procedure bulk_erase_flash() is
+   program_buffer[0] = FLASH_START_ADDRESS_HIGH_PIC2
+   program_buffer[1] = FLASH_START_ADDRESS_LOW_PIC2
+   word_programming = TRUE 
+   main_programmer_state = _PROGRAMMER_WRITE_ADDRESS
+   next_programmer_state = _PROGRAMMER_ERASE_START
+   PIR1_SSP1IF = TRUE -- Start programmer.  
+end procedure
+
+
+-- Bulk erase EEPROM. 
+procedure bulk_erase_eeprom() is
+   program_buffer[0] = EEPROM_START_ADDRESS_HIGH_PIC2
+   program_buffer[1] = EEPROM_START_ADDRESS_LOW_PIC2
+   word_programming = FALSE 
+   main_programmer_state = _PROGRAMMER_WRITE_ADDRESS
+   next_programmer_state = _PROGRAMMER_ERASE_START
+   PIR1_SSP1IF = TRUE -- Start programmer.  
+end procedure
+
+
+-- Precondition: Programmer was started (LVP mode) and programmer done.
+procedure blank_check_flash() is
+   program_buffer[0] = FLASH_START_ADDRESS_HIGH_PIC2  
+   program_buffer[1] = FLASH_START_ADDRESS_LOW_PIC2       
+   read_buffer[0] = 0xFF -- This is a dummy for ...
+   read_buffer[1] = 0x3F -- ... the first read.
+   main_programmer_state = _PROGRAMMER_WRITE_ADDRESS
+   next_programmer_state = _PROGRAMMER_BLANK_CHECK
+   nr_of_latches_to_read = FLASH_SIZE -- Test all flash. 1 word is 1 latch.
+   word_programming = TRUE 
+   _device_empty = FALSE   -- This is an assumption.
+   PIR1_SSP1IF = TRUE   -- Start programmer. 
+end procedure
+
+
+-- Precondition: Programmer was started (LVP mode) and programmer done. Note
+-- that although the EEPROM is programmed in bytes not words, still the Intel
+-- hex file gives the data in words with the most significant byte being 0x00.
+procedure blank_check_eeprom() is
+   program_buffer[0] = EEPROM_START_ADDRESS_HIGH_PIC2 
+   program_buffer[1] = EEPROM_START_ADDRESS_LOW_PIC2  
+   read_buffer[0] = 0xFF -- This is a dummy for ...
+   read_buffer[1] = 0x00 -- ... the first read.
+   main_programmer_state = _PROGRAMMER_WRITE_ADDRESS
+   next_programmer_state = _PROGRAMMER_BLANK_CHECK
+   nr_of_latches_to_read = EEPROM_SIZE -- Test all EEPROM. 1 byte is 1 latch.
+   word_programming = FALSE 
+   _device_empty = FALSE   -- This is an assumption.
+   PIR1_SSP1IF = TRUE   -- Start programmer. 
+end procedure
+
+
+-- Precondition: Programmer was started (LVP mode) and programmer done.
+procedure get_device_id() is
+   program_buffer[0] = DEVICE_ID_ADDRESS_HIGH_PIC2
+   program_buffer[1] = DEVICE_ID_ADDRESS_LOW_PIC2  
+   main_programmer_state = _PROGRAMMER_WRITE_ADDRESS
+   next_programmer_state = _PROGRAMMER_READ_DATA
+   read_index = 0
+   nr_of_latches_to_read = 1   -- Read one latch to get the device id.
+   word_programming = TRUE -- Device ID is a word.
+   PIR1_SSP1IF = TRUE  -- Start programmer. 
+end procedure
+
+
+function device_id_ok() return bit is
+   return (read_buffer[1] == DEVICE_ID_HIGH_PIC2) & (read_buffer[0] == DEVICE_ID_LOW_PIC2)
+end function
+
+
+-- Copy the data from the parse buffer to a free program buffer. Returns true
+-- if a buffer was free and data was copied, otherwise returns false.
+function copy_to_program_buffer() return bit is
+   var byte index 
+   var bit all_ok
+   
+    free_program_buffer = free_program_buffer + 1
+    if (free_program_buffer == NR_OF_PROGRAM_BUFFERS) then
+       free_program_buffer = 0
+    end if 
+    if (free_program_buffer == next_program_buffer) then
+        -- We are catching up with the programmer which is not OK.
+       all_ok = FALSE
+    else
+       bytes_in_program_buffers[free_program_buffer] = bytes_in_parse_buffer
+       all_ok = TRUE
+       case free_program_buffer of 
+          0:
+          block
+             for bytes_in_parse_buffer using index loop
+                program_buffer_0[index] = parse_buffer[index]
+             end loop
+          end block
+          1:
+          block
+             for bytes_in_parse_buffer using index loop
+                program_buffer_1[index] = parse_buffer[index]
+             end loop
+          end block
+          2:
+          block
+             for bytes_in_parse_buffer using index loop
+                program_buffer_2[index] = parse_buffer[index]
+             end loop
+          end block
+          3:
+          block
+            for bytes_in_parse_buffer using index loop
+                program_buffer_3[index] = parse_buffer[index]
+             end loop
+          end block
+          4:
+          block
+             for bytes_in_parse_buffer using index loop
+                program_buffer_4[index] = parse_buffer[index]
+             end loop
+          end block
+          5:
+          block
+             for bytes_in_parse_buffer using index loop
+                program_buffer_5[index] = parse_buffer[index]
+             end loop
+          end block
+          6:
+          block
+             for bytes_in_parse_buffer using index loop
+                program_buffer_6[index] = parse_buffer[index]
+             end loop
+          end block
+          7:
+          block
+             for bytes_in_parse_buffer using index loop
+                program_buffer_7[index] = parse_buffer[index]
+             end loop
+          end block
+          8:
+          block
+             for bytes_in_parse_buffer using index loop
+             program_buffer_8[index] = parse_buffer[index]
+             end loop
+          end block
+          9:
+          block
+             for bytes_in_parse_buffer using index loop
+                program_buffer_9[index] = parse_buffer[index]
+             end loop
+          end block
+       end case
+    end if
+    return all_ok
+end function
+
+
+-- Copy the data from the next program buffer to the global program buffer.
+-- Returns true if data was available and a copy was done, otherwise returns false.
+function copy_from_program_buffer() return bit is
+   var byte index 
+   var bit all_ok
+   
+    if (next_program_buffer == free_program_buffer) then
+       all_ok = FALSE
+    else
+       next_program_buffer = next_program_buffer + 1
+       if (next_program_buffer == NR_OF_PROGRAM_BUFFERS) then
+          next_program_buffer = 0
+       end if 
+       bytes_in_program_buffer =  bytes_in_program_buffers[next_program_buffer]
+       all_ok = TRUE
+       case next_program_buffer of 
+          0:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_0[index]
+             end loop
+          end block
+          1:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_1[index]
+             end loop
+          end block
+          2:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_2[index]
+             end loop
+          end block
+          3:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_3[index]
+             end loop
+          end block
+          4:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_4[index]
+             end loop
+          end block
+          5:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_5[index]
+             end loop
+          end block
+          6:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_6[index]
+             end loop
+          end block
+          7:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_7[index]
+             end loop
+          end block
+          8:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_8[index]
+             end loop
+          end block
+          9:
+          block
+             for bytes_in_program_buffer using index loop
+                program_buffer[index] = program_buffer_9[index]
+             end loop
+          end block
+       end case
+    end if
+    return all_ok
+
+end function
+
+
+-- Program one line item from the parse buffer to the second PIC. The address
+-- is already present in parse buffer location 0 and 1. We copy the parse
+-- buffer to the temporary program buffers as to free it up for the next parse action.
+-- Precondition: Programmer was started (LVP mode) and programmer buffer is free.
+function program_device(bit in verify_only) return bit is
+   var byte index
+   var byte number_of_latches
+   var bit all_ok
+
+   -- We allow not more than the maximum number of latches to be programmed and 
+   -- we cannot start if we did not yet handle the buffer.
+   if ((bytes_in_parse_buffer / 2) <= MAX_LATCHES) & copy_to_program_buffer() then
+      _device_verify = verify_only
+      -- We can start a new transmission only if we are done with the previous
+      -- action otherwise we will wait for it to arrive in done.
+      if programmer_done() then
+         PIR1_SSP1IF = TRUE  -- Restart programmer.
+      end if 
+      all_ok = TRUE
+   else
+      all_ok = FALSE
+   end if
+   return all_ok
+end function
+ 
+
+-- Program the second PIC with the contents of the program buffer using LVP
+-- and VDD first mode. Initially the programmer is in the idle state but after 
+---LVP has been started the programmer comes into the done state after each 
+-- action. When LVP is disabled the programmer goes back to the idle state.
+procedure programmer_interrupt() is pragma interrupt
+   var byte received_spi_data
+   var byte high_compare
+   var byte low_compare
+   var byte index
+   var bit all_ok
+
+   if PIR1_SSP1IF then
+      PIR1_SSP1IF = FALSE
+      -- Always read the SPI data.
+      received_spi_data = SSPBUF
+
+      case main_programmer_state of
+
+         _PROGRAMMER_IDLE, _PROGRAMMER_ERROR: 
+         block
+         end block
+
+         -- This state is reached after an action was completed succcesfully.
+         -- In this state the programming mode is still active.
+         _PROGRAMMER_DONE:  
+         block
+            -- It can happen that new data is waiting to be programmed, if
+            -- so do it.
+            if copy_from_program_buffer() then
+               -- We have 3 parameter to initialize before programming:
+               -- 1) Programming in words or bytes
+               -- 2) Programming in one latch or multiple latches
+               -- 3) Programmming time.
+               -- We set them based on the address that is used. Checking the
+               -- high byte of the address is sufficient.
+               if (program_buffer[0] <= FLASH_END_ADDRESS_HIGH_PIC2) then
+                  -- Programming Flash.
+                  word_programming = TRUE 
+                  single_latch_programming = FALSE 
+                  programming_time = TIMEOUT_2_8_MS
+               elsif (program_buffer[0] <= CONFIG_END_ADDRESS_HIGH_PIC2) then
+                  -- Programming Configuration Words.
+                  word_programming = TRUE 
+                  single_latch_programming = TRUE 
+                  programming_time = TIMEOUT_5_6_MS
+               else
+                  -- Programming EEPROM.
+                  word_programming = FALSE 
+                  single_latch_programming = TRUE 
+                  programming_time = TIMEOUT_5_6_MS
+               end if
+               nr_of_latches_to_write = (bytes_in_program_buffer - 2) / 2
+               write_index = 2 -- Start of data after the address is written.
+               verify_index = 2  -- Same for verifying data that is read.
+               -- Program or Verify.
+               if _device_verify then
+                  main_programmer_state = _PROGRAMMER_VERIFY_START
+                  -- In case of verify we only read data so we do not activate
+                  -- the single latch programming.
+                  single_latch_programming = FALSE
+               else
+                  main_programmer_state = _PROGRAMMER_WRITE_ADDRESS
+                  next_programmer_state = _PROGRAMMER_WRITE_DATA
+               end if
+               PIR1_SSP1IF = TRUE  -- Start programmer.
+            end if
+         end block
+
+         --  Start the Low Voltage Programming (LVP) sequence.
+         _PROGRAMMER_START:
+         block
+            spi_sdo_direction = output
+            spi_sck_direction = output   
+            pic2_reset = FALSE 
+            -- Start the transmission with the first byte to write.
+            write_index = 1
+            main_programmer_state = _PROGRAMMER_LVP_START
+            _usec_delay(350) -- Tents + Tenth wait time. Needed!
+            SSPBUF = LVP_SEQUENCE[0]
+         end block
+
+         _PROGRAMMER_LVP_START:
+         block
+            SSPBUF = LVP_SEQUENCE[write_index]
+            write_index = write_index + 1
+            if (write_index == count(LVP_SEQUENCE)) then
+               main_programmer_state = _PROGRAMMER_DONE
+            end if
+         end block
+      
+         -- Stop the Low Voltage Programmming (LVP) mode.
+         _PROGRAMMER_LVP_END:
+         block
+            -- Stop the LVP sequence.
+            pic2_reset = TRUE        
+            spi_sdo_direction = input
+            spi_sck_direction = input   
+            main_programmer_state = _PROGRAMMER_IDLE
+         end block
+      
+
+         _PROGRAMMER_WRITE_LATCH:
+         block
+            SSPBUF = latch_buffer[latch_index]
+            if (latch_index == 0) then
+               main_programmer_state = next_programmer_state
+            else
+               latch_index = latch_index - 1
+            end if
+         end block
+
+         _PROGRAMMER_READ_START:
+         block
+            -- Set SPI data to input as to be able to read.
+            spi_sdo_direction = input
+            latch_index = 2 -- Read remaining 3 bytes (buffer 2 .. 0).  
+            main_programmer_state = _PROGRAMMER_READ_LATCH 
+            SSPBUF = 0 -- Clock in the data for the next cycle.
+         end block
+
+         _PROGRAMMER_READ_LATCH:
+         block
+            latch_buffer[latch_index] = received_spi_data
+            if (latch_index == 0) then
+               -- Move the data to the read buffer in the right order. Note
+               -- that we need only the highest 14 bits (1 word). 
+               -- In the read buffer we should store the LSB first as to give
+               -- it the same format as the program buffer.
+               latch_shift_right()
+               read_buffer[read_index] = latch_buffer[0] -- LSB.
+               read_index = read_index + 1      
+               if word_programming then
+                  read_buffer[read_index] = latch_buffer[1] & 0b0011_1111 -- MSB.
+               else
+                  read_buffer[read_index] = 0x00 -- No bits in higher word for byte.
+               end if      
+               read_index = read_index + 1
+               main_programmer_state = next_programmer_state
+               PIR1_SSP1IF = TRUE  -- Force to next state.. 
+            else
+               latch_index = latch_index - 1
+               SSPBUF = 0 -- Clock in the data for the next cycle.    
+            end if
+         end block
+
+         _PROGRAMMER_WRITE_ADDRESS:
+         block
+            -- Make SDO output to enable transmission.
+            spi_sdo_direction = output
+            -- Prepare the address in the right order and set the command.
+            latch_buffer[2] = 0 -- Padding to create 32 bits.
+            latch_buffer[1] = program_buffer[0] -- MSB of address.
+            latch_buffer[0] = program_buffer[1] -- LSB of address.   
+            latch_shift_left()
+            latch_index = 2 -- Write remaining 3 bytes (buffer 2 .. 0).
+            main_programmer_state = _PROGRAMMER_WRITE_LATCH
+            SSPBUF = PIC_LOAD_PC_ADDRESS
+         end block
+
+
+         -- This part writes all data present in the program buffer. For programming
+         -- configuration words and EEPROM we need to program these not all at once 
+         -- but word by word, so called single latch programming. 
+         _PROGRAMMER_WRITE_DATA:
+         block
+            if(nr_of_latches_to_write != 0) then 
+               nr_of_latches_to_write = nr_of_latches_to_write - 1
+               -- Make SDO output to enable transmission.
+               spi_sdo_direction = output
+               -- Prepare the data in the right order and set the command.
+               latch_buffer[2] = 0 -- Padding to create 32 bits.
+               -- Note that in the program buffer, for data the first byte is 
+               -- the LSB and the second byte is the MSB.
+               latch_buffer[0] = program_buffer[write_index] -- LSB of data.
+               write_index = write_index + 1
+               if word_programming then
+                  latch_buffer[1] = program_buffer[write_index] & 
+                                    0b0011_1111 -- MSB of data.
+               else
+                  latch_buffer[1] = 0x00 -- MSB of data.
+               end if
+               write_index = write_index + 1
+               latch_shift_left()
+               latch_index = 2  -- Write remaining 3 bytes (buffer 2 .. 0).
+               -- The next state depends if we need to do single latch programming.
+               main_programmer_state = _PROGRAMMER_WRITE_LATCH 
+               if single_latch_programming then
+                  next_programmer_state = _PROGRAMMER_STORE_DATA_START 
+               else
+                  next_programmer_state = _PROGRAMMER_WRITE_DATA -- Return here. 
+               end if
+               -- When we are writing the last latch do not increment the PC
+               -- since the programming command may then program the following
+               -- row instead of the current one.  In case of single latch
+               -- programming we need to read the data from the same location.
+               if (nr_of_latches_to_write == 0) | single_latch_programming then
+                  SSPBUF = PIC_WRITE_DATA_FOR_NVM_WITHOUT_INCREMENT
+               else 
+                  SSPBUF = PIC_WRITE_DATA_FOR_NVM_WITH_INCREMENT 
+               end if
+            else
+               main_programmer_state = _PROGRAMMER_STORE_DATA_START 
+               PIR1_SSP1IF = TRUE  -- Force to next state. 
+            end if
+         end block
+
+         _PROGRAMMER_READ_DATA:
+         block
+           if(nr_of_latches_to_read != 0) then 
+               -- Make SDO output as to send command.
+               spi_sdo_direction = output
+               nr_of_latches_to_read = nr_of_latches_to_read - 1
+               main_programmer_state = _PROGRAMMER_READ_START 
+               if (nr_of_latches_to_read == 0) then
+                  SSPBUF = PIC_READ_DATA_FROM_NVM_WITHOUT_INCREMENT
+               else
+                  SSPBUF = PIC_READ_DATA_FROM_NVM_WITH_INCREMENT
+               end if
+            else
+               main_programmer_state = _PROGRAMMER_DONE  
+               PIR1_SSP1IF = TRUE  -- Force to next state. 
+            end if
+         end block
+
+         _PROGRAMMER_VERIFY_START:
+         block
+            if single_latch_programming then
+               nr_of_latches_to_verify =  1
+            else 
+               nr_of_latches_to_verify = (bytes_in_program_buffer - 2) / 2
+            end if
+            -- Prepare read buffer for verifying the data we read back.
+            read_index = 0
+            main_programmer_state = _PROGRAMMER_WRITE_ADDRESS
+            next_programmer_state = _PROGRAMMER_VERIFY_DATA
+            PIR1_SSP1IF = TRUE  -- Force to next state. 
+         end block
+
+          _PROGRAMMER_VERIFY_DATA:
+          block
+            if(nr_of_latches_to_verify != 0) then 
+               nr_of_latches_to_verify = nr_of_latches_to_verify - 1
+               -- Make SDO output as to send command.
+               spi_sdo_direction = output
+               -- When we are reading the last latch do not increment the PC
+               -- which gave a problem in programming but not sure in reading.
+               if (nr_of_latches_to_verify == 0) | single_latch_programming then
+                  SSPBUF = PIC_READ_DATA_FROM_NVM_WITHOUT_INCREMENT
+               else 
+                  SSPBUF = PIC_READ_DATA_FROM_NVM_WITH_INCREMENT
+               end if
+               main_programmer_state = _PROGRAMMER_READ_START 
+            else
+               -- Check if the data read is the same as the data in the
+               -- write buffer. Note that the read buffer does not contain
+               -- the address to read from which we should skip.
+               all_ok = TRUE
+               -- Read index equals the number of bytes in the read buffer. The
+               -- address itself is not in the read buffer.
+               index = 0 
+               while (index < read_index) & all_ok loop
+                  if program_buffer[verify_index] != read_buffer[index] then
+                     all_ok = FALSE
+                  else
+                     index = index + 1
+                     verify_index = verify_index + 1
+                  end if
+               end loop
+               if all_ok then
+                  if single_latch_programming & (nr_of_latches_to_write != 0)
+                  then 
+                     -- Single latch goes address by address. Next address and
+                     -- continue writing data.
+                     if (program_buffer[1] != 0xFF) then
+                         program_buffer[1] = program_buffer[1] + 1
+                     else
+                         program_buffer[0] = program_buffer[0] + 1
+                         program_buffer[1] = 0x00
+                     end if
+                     main_programmer_state = _PROGRAMMER_WRITE_ADDRESS
+                     next_programmer_state = _PROGRAMMER_WRITE_DATA 
+                  else
+                     main_programmer_state = _PROGRAMMER_DONE
+                  end if
+               else
+                  main_programmer_state = _PROGRAMMER_ERROR 
+               end if 
+               PIR1_SSP1IF = TRUE  -- Force to next state. 
+            end if
+         end block
+
+         _PROGRAMMER_BLANK_CHECK:
+         block
+            -- Check if one word in one latch is empty. The first read is a fake
+            -- one. For words only 14 bits most significant bits are relevant and
+            -- for bytes only the 8 most significant bits.
+            low_compare = 0xFF -- Low byte.
+            if word_programming then
+               high_compare = 0x3F -- 14 bits.
+            else
+               high_compare = 0x00 -- 8 bits.
+            end if 
+            if (read_buffer[0] != low_compare) | (read_buffer[1] != high_compare)
+            then
+               main_programmer_state = _PROGRAMMER_ERROR 
+               PIR1_SSP1IF = TRUE  -- Force to next state. 
+            else      
+               if(nr_of_latches_to_read != 0) then 
+                  nr_of_latches_to_read = nr_of_latches_to_read - 1
+                  -- Make SDO output as to send command.
+                  spi_sdo_direction = output
+                  read_index = 0  -- We only compare latches so 2 bytes.
+                  -- When we are reading the last latch do not increment the PC
+                  -- which gave a problem in programming but not sure in reading.
+                  if (nr_of_latches_to_write == 0) then
+                     SSPBUF = PIC_READ_DATA_FROM_NVM_WITHOUT_INCREMENT
+                  else 
+                     SSPBUF = PIC_READ_DATA_FROM_NVM_WITH_INCREMENT
+                  end if
+                  main_programmer_state = _PROGRAMMER_READ_START 
+               else
+                  -- All was well.
+                  _device_empty = TRUE 
+                  main_programmer_state = _PROGRAMMER_DONE
+                  PIR1_SSP1IF = TRUE  -- Force to next state. 
+               end if 
+            end if
+         end block
+
+         _PROGRAMMER_STORE_DATA_START:
+         block
+            main_programmer_state = _PROGRAMMER_WAIT
+            next_programmer_state = _PROGRAMMER_VERIFY_START
+            timer_start(programming_time)
+            SSPBUF = PIC_BEGIN_INTERNALLY_TIMED_PROGRAMMING
+         end block
+
+         _PROGRAMMER_ERASE_START:
+         block
+            SSPBUF = PIC_BULK_ERASE_PROGRAM_MEMORY
+            timer_start(TIMEOUT_14_MS)
+            main_programmer_state = _PROGRAMMER_WAIT   
+            next_programmer_state = _PROGRAMMER_DONE   
+         end block
+      
+         _PROGRAMMER_WAIT:
+         block
+            -- This state is only left after a timeout of timer 1.
+         end block
+           
+      end case         
+
+   end if 
+    
+end procedure
+

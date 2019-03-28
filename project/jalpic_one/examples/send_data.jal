@@ -1,0 +1,77 @@
+-- ------------------------------------------------------
+-- Title: JALPIC One serial test program.
+--
+-- Author: Rob Jansen, Copyright (c) 2019..2019 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler:2.5
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+--    Sends the message 'Hello from PIC16F18857!' and also returns any data
+--    that is received. The LED will toggle each time the Hello message is sent.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+include jalpic_one         -- include the board definition file
+
+-- Definitions needed for serial_hw_int_cts.
+alias pin_RX_direction  is pin_C7_direction  -- Pin 18 for 28 pin DIP
+alias pin_TX_direction  is pin_C6_direction  -- Pin 17 for 28 pin DIP.
+const serial_hw_baudrate = 115200            -- Terminal connection. 
+
+include serial_hw_int_cts -- We use this version because of its buffer.
+include print
+include pps
+
+-- Global variables.
+var word timer
+var byte character
+var bit led_value
+
+enable_digital_io()         -- make all pins digital I/O
+
+-- On the JALPIC One board a LED is present, connected to port A0 for testing.
+alias  led       is pin_a0
+pin_a0_direction = OUTPUT
+
+-- Set the pinning for the UART. This is default but still needed.
+pps_control_lock(FALSE)                
+RC6PPS = PPS_TX        -- TX1 re-assigned to C6  (default)             
+RXPPS  = PPS_RC7       -- C7 re-assigned to RX1  (default)            
+pps_control_lock(TRUE)                 
+
+serial_hw_init()
+led_value = TRUE
+timer = 0
+
+forever loop
+   _usec_delay(1_000)
+    
+   -- We do several things. We echo the data we receive and once and a while
+   -- we send a hello message when no more data is received.
+   if serial_hw_read(character) then
+      serial_hw_data = character
+      timer = 0
+   end if
+   
+   -- Message sent every 5 seconds.
+   timer = timer + 1
+   if (timer == 5_000) then
+      led_value = !led_value
+      timer = 0
+      print_string(serial_hw_data,"\r\nHello from application PIC16F18857!\r\n")
+   end if
+
+   led = led_value
+end loop
+

@@ -1,0 +1,573 @@
+-- -----------------------------------------------------------------------------
+-- Title: USB interface and main program for the JALPIC One.
+--
+-- Author: Rob Jansen, Copyright (c) 2019..2019, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: >= jalv2.5r2
+--
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
+-- Description: Software of the interface between the USB and the application
+-- PIC on the JALPIC One development board. This program support the following major
+-- functions:
+-- *) Interface with the USB port, acting as a serial port
+-- *) Program/Erase/Verify the application PIC on the JALPIC One development board.
+-- *) Act as a terminal on the USB, redirecting the RS232 data from the application
+--    PIC via its own serial port to the USB. 
+--
+-- Sources: 
+-- 
+-- Notes: 
+--
+-- ------------------------------------------------------
+--
+-- chip setup
+include 16f1455                  -- Target processor.
+
+pragma target clock       48_000_000
+
+-- Compiler options.
+Pragma warn all no              
+Pragma opt variable_reduce yes
+
+-- ------------------------------- Pragmas -------------------------------------
+-- Settings for external 12 MHz crystal and system clock 48 MHz.
+pragma target OSC           HS       -- External crystal
+pragma target CLKOUTEN      ENABLED  -- CLKOUT function is enabled
+pragma target PLLMULT       N4X      -- PLL Multipler Selection Bit, 4x Output Frequency Selected
+-- Other fuses
+pragma target CPUDIV        P1       -- NO CPU system divide
+pragma target USBLSCLK      F48MHZ   -- System clock expects 48 MHz, FS/LS USB CLKENs divide-by is set to 8.
+pragma target PLLEN         ENABLED  -- 3x or 4x PLL Enabled
+pragma target FCMEN         DISABLED -- Fail-Safe Clock Monitor is disabled
+pragma target WRT           DISABLED -- Write protection off
+pragma target STVR          ENABLED  -- Stack Overflow or Underflow will cause a Reset
+pragma target LPBOR         DISABLED -- Low-Power BOR is disabled
+pragma target IESO          DISABLED -- Internal/External Switchover Mode is disabled
+pragma target PWRTE         DISABLED -- power up timer
+pragma target BROWNOUT      DISABLED -- no brownout detection
+pragma target WDT           DISABLED -- Watchdog disabled
+pragma target MCLR          Internal -- Internal reset
+pragma target LVP           ENABLED  -- Use low-voltage programming
+pragma target VOLTAGE       MAXIMUM  -- brown out voltage
+pragma target CP            DISABLED -- Program memory code protection is disabled
+OSCCON        = 0b1111_1100          -- Select PLL,3x, 16MHz internal oscillator
+
+-- Enable weak pull-up for all pins.
+OPTION_REG_WPUEN = FALSE     
+WPUA          = 0b0011_1000 
+TRISC         = 0b0011_1111  
+
+-- -------------------------------- Pins ---------------------------------------
+-- Serial connection.
+alias pin_RX_direction is pin_RX_DT_direction
+alias pin_TX_direction is pin_TX_CK_direction
+
+-- ------------------------- Constant declarations -----------------------------
+-- Serial baudrate.
+const serial_hw_baudrate = 115_200
+
+-- Control states for main loop
+const byte CONTROL_IDLE                       = 0
+const byte CONTROL_PARSE_INPUT                = 1
+const byte CONTROL_PROGRAM_VERIFY_DEVICE      = 2
+const byte CONTROL_REQUEST_ERASE_FLASH        = 3
+const byte CONTROL_REQUEST_ERASE_EEPROM       = 4
+const byte CONTROL_ERASE_DEVICE               = 5
+const byte CONTROL_REQUEST_BLANK_CHECK_FLASH  = 6
+const byte CONTROL_REQUEST_BLANK_CHECK_EEPROM = 7
+const byte CONTROL_BLANK_CHECK_DEVICE         = 8
+const byte CONTROL_REQUEST_DEVICE_ID          = 9
+const byte CONTROL_CHECK_DEVICE_ID            = 10
+const byte CONTROL_RESET                      = 11
+const byte CONTROL_START_PROGRAMMER           = 12
+const byte CONTROL_STOP_PROGRAMMER            = 13
+const byte CONTROL_TERMINAL_MODE              = 14
+
+-- 5 Seconds wait time for new data.   
+const dword MAX_WAIT_TIME = 500_000  
+
+-- -------------------------- Includes go here --- -----------------------------
+include print
+include serial_hw_int_cts
+include definitions
+include usb_serial
+include intel_hex_parser
+include programmer
+
+-- ------------------------- Variable declarations -----------------------------
+var dword timeout_counter
+var byte counter
+var byte character
+var byte index
+var byte main_control_state
+var byte next_control_state
+var byte response
+var byte parse_type
+var bit carriage_return_received
+var bit line_feed_received
+var bit line_item_received
+var bit verify_only
+var bit terminal_mode
+var bit message_given
+
+-- ------------------------- Functions and Procedures --------------------------
+
+-- Make character uppercase, if not already.
+function uppercase(byte in character) return byte is
+   if (character >= 0x61) then
+      return (character - 0x20)
+   else
+      return character
+   end if
+end function
+
+-- Parse the data in the line item buffer and return true if the given token if found.
+function parse_line_item(byte in token[]) return bit is
+   var byte buffer_index
+   var byte token_index
+
+   token_index = 0
+   buffer_index = 0
+   while (token_index < count(token)) & (buffer_index < bytes_in_line_item_buffer) loop
+      if (uppercase(line_item_buffer[buffer_index]) == token[token_index]) then 
+         token_index = token_index + 1
+      else
+         -- No match (yet), try again.
+         token_index = 0
+      end if  
+      buffer_index = buffer_index + 1
+   end loop
+   return (token_index == count(token))
+end function
+
+
+-- Flush the line item but also clear the line item received for a new reception
+-- and reset the timeout counter.
+procedure flush_line_item_buffer() is
+  bytes_in_line_item_buffer = 0
+  line_item_received = FALSE
+end procedure
+
+
+procedure reset_jaluino() is
+   main_control_state = CONTROL_IDLE
+   next_control_state = CONTROL_IDLE
+   bytes_in_usb_buffer= 0
+   timeout_counter = 0
+   carriage_return_received = FALSE
+   line_feed_received = FALSE
+   line_item_received = FALSE
+   message_given = FALSE
+   response = RESPONSE_NONE
+   programmer_reset()
+   terminal_mode = FALSE
+   debug_on = FALSE
+end procedure
+
+-- ------------------------------- Main Program  ------------------------------- 
+enable_digital_io()
+pic2_reset = FALSE  -- Reset the application PIC.
+_usec_delay(200_000)
+pic2_reset = TRUE
+
+-- Setup the libraries used
+usb_serial_init()
+serial_hw_init()
+timer_init()
+programmer_init()
+
+-- Initialize global variables.
+reset_jaluino()
+
+-- Main loop starts here.
+forever loop
+   -- Poll the usb ISR function on a regular base, in order to serve the USB
+   -- requests. It does not work on an interrupt basis.
+   usb_serial_flush()
+
+   -- Check if USB device has been configured by the HOST.
+   if (usb_cdc_line_status() !=  0x00) then
+      if !message_given then
+         message_given = TRUE
+         if debug_on then
+            print_string(serial_hw_data,"JALPIC One debug mode on.\r\n")
+            print_string(serial_hw_data,"Device Configured.\r\n")
+         end if   
+      end if 
+   end if
+
+   -- See if we are in terminal mode. If so we just copy data from USB
+   -- to serial and the other way around and we ignore all other stuff until 
+   -- escape (0x1B) or ctrl-c (0x03) is entered by the client.
+   if terminal_mode then
+      if usb_serial_read(character) then
+         if (character == CTRL_C) | (character == ESCAPE) then
+            -- Escape resets everything to the intial values.
+            reset_jaluino()
+            response = RESPONSE_OK
+         else
+            -- Echo all characters.
+            serial_hw_data = character
+         end if
+      end if
+      if serial_hw_read(character) then
+         usb_serial_data = character
+      end if 
+   else
+      -- Normal operation, check for input USB character and buffer it. 
+      if usb_serial_read(character) then
+         -- We process command lines, terminated by CR + LF.
+         if (character == CARRIAGE_RETURN) then
+            carriage_return_received = TRUE
+         elsif  (character == LINE_FEED) then 
+            line_feed_received = TRUE
+         elsif (bytes_in_usb_buffer < MAX_ASCII_BUFFER) then
+            usb_buffer[bytes_in_usb_buffer] = character
+            bytes_in_usb_buffer = bytes_in_usb_buffer + 1
+         end if
+         if carriage_return_received & line_feed_received then
+            if false then
+               print_string(serial_hw_data,"Bytes Received: ")
+               print_byte_dec(serial_hw_data,bytes_in_usb_buffer)
+               print_crlf(serial_hw_data)
+            end if 
+            -- Copy this data to the line item buffer as to free up this buffer so
+            -- that new data can be received while other processing is done.
+            for bytes_in_usb_buffer using index loop
+               line_item_buffer[index] = usb_buffer[index]
+            end loop
+            bytes_in_line_item_buffer = bytes_in_usb_buffer
+            bytes_in_usb_buffer = 0
+            line_item_received = TRUE
+            carriage_return_received = FALSE
+            line_feed_received = FALSE
+         end if
+      end if
+   end if
+
+   -- Main controller.
+   case main_control_state of
+    
+      CONTROL_IDLE:
+      block
+         if line_item_received then
+            -- This should be a command, parse it.
+            if parse_line_item("!P") then
+               -- Put in programming mode, then wait for the hexfile.
+               verify_only = FALSE
+               timeout_counter = 0
+               response = RESPONSE_OK  
+               main_control_state = CONTROL_START_PROGRAMMER
+               next_control_state = CONTROL_PARSE_INPUT
+            elsif parse_line_item("!EF") then
+               -- Erase flash and configuration words.
+               main_control_state = CONTROL_START_PROGRAMMER
+               next_control_state = CONTROL_REQUEST_ERASE_FLASH
+            elsif parse_line_item("!EE") then
+               -- Erase eeprom.
+               main_control_state = CONTROL_START_PROGRAMMER
+               next_control_state = CONTROL_REQUEST_ERASE_EEPROM
+            elsif parse_line_item("!V") then
+               -- Verify device.
+               verify_only = TRUE
+               timeout_counter = 0
+               response = RESPONSE_OK
+               main_control_state = CONTROL_START_PROGRAMMER
+               next_control_state = CONTROL_PARSE_INPUT
+            elsif parse_line_item("!BF") then
+               -- Blank check flash.
+               main_control_state = CONTROL_START_PROGRAMMER
+               next_control_state = CONTROL_REQUEST_BLANK_CHECK_FLASH
+            elsif parse_line_item("!BE") then
+               -- Blank check eeprom.
+               main_control_state = CONTROL_START_PROGRAMMER
+               next_control_state = CONTROL_REQUEST_BLANK_CHECK_EEPROM
+           elsif parse_line_item("!R") then
+               -- Reset device and second PIC.
+               main_control_state = CONTROL_RESET
+               next_control_state = CONTROL_IDLE
+            elsif parse_line_item("!A") then
+               -- Are we alive? Check the device ID of the second PIC.
+               main_control_state = CONTROL_START_PROGRAMMER
+               next_control_state = CONTROL_REQUEST_DEVICE_ID
+            elsif parse_line_item("!T") then
+               -- Terminal mode. This is special since it disables all other
+               -- functions.
+               terminal_mode = TRUE
+               response = RESPONSE_OK  
+            elsif parse_line_item("!D") then
+               -- Debug mode toggle.
+               if debug_on then
+                  debug_on = FALSE
+                  print_string(serial_hw_data,"Debug mode off.\r\n")
+               else
+                  debug_on = TRUE
+                  message_given = FALSE 
+               end if
+               response = RESPONSE_OK  
+           else
+               -- Unknown command.
+               response = RESPONSE_UNKNOWN 
+            end if
+            flush_line_item_buffer() 
+         end if
+       end block
+
+      -- Start the Intel Hex parser. If we do not get any data for too long
+      -- we will stop and send a timeout error.
+      CONTROL_PARSE_INPUT:
+      block
+         if line_item_received  then
+            timeout_counter = 0
+            -- Parse the Intel Hex line and free the line item buffer.
+            if parse_hex_line(parse_type) then
+               if debug_on then
+                  print_string(serial_hw_data,"Data parsed successful.\r\n")
+               end if 
+               main_control_state = CONTROL_PROGRAM_VERIFY_DEVICE
+             else
+               if debug_on then
+                  print_string(serial_hw_data,"Parser error!\r\n")
+               end if 
+               response = RESPONSE_ERROR
+               main_control_state = CONTROL_IDLE
+            end if
+            flush_line_item_buffer()
+         else
+            _usec_delay(10) -- Some time is needed to create the timeout.
+            timeout_counter = timeout_counter + 1
+            if (timeout_counter == MAX_WAIT_TIME) then
+               response = RESPONSE_TIMEOUT
+               main_control_state = CONTROL_STOP_PROGRAMMER
+           end if 
+         end if
+      end block
+      
+      -- Program the device with one line item.
+      CONTROL_PROGRAM_VERIFY_DEVICE:
+      block
+         if (parse_type == PARSE_TYPE_DATA) then
+            if debug_on then
+               print_parse_buffer() 
+            end if 
+            -- Programmer must be done and not in error.
+            if programmer_error() then
+               if debug_on then 
+                  print_string(serial_hw_data,"Programmer Error!\r\n")
+                  print_string(serial_hw_data,"Data to program: ")
+                  for read_index using counter loop
+                     print_byte_hex(serial_hw_data,program_buffer[counter + 2])  
+                  end loop
+                  print_crlf(serial_hw_data)
+                  print_string(serial_hw_data,"Data verified: ")
+                  for read_index using counter loop
+                     print_byte_hex(serial_hw_data,read_buffer[counter])  
+                  end loop
+                  print_crlf(serial_hw_data)
+               end if 
+               main_control_state = CONTROL_STOP_PROGRAMMER
+            elsif program_device(verify_only) then
+               -- Data is copied to the program buffer so we can look for the
+               -- next input.
+               main_control_state = CONTROL_PARSE_INPUT
+               if debug_on then
+                  if verify_only then
+                     print_string(serial_hw_data,"Verifying ... \r\n")
+                  else
+                     print_string(serial_hw_data,"Programming ... \r\n")
+                  end if
+               end if
+            else
+               if debug_on then
+                  print_string(serial_hw_data,"Error starting programmer!\r\n")
+               end if
+               main_control_state = CONTROL_STOP_PROGRAMMER
+            end if
+         elsif (parse_type == PARSE_TYPE_END) then
+            -- End record we can stop the programmer when it is ready.
+            if debug_on then
+               print_string(serial_hw_data,"Parser ended.\r\n")
+            end if 
+            response = RESPONSE_OK
+            main_control_state = CONTROL_STOP_PROGRAMMER
+         else
+            -- It is only a record that contains an address, we do nothing.  
+            main_control_state = CONTROL_PARSE_INPUT
+         end if
+      end block
+      
+      CONTROL_REQUEST_ERASE_FLASH:
+      block
+         if programmer_done() then
+            if debug_on then
+               print_string(serial_hw_data,"Erasing flash.\r\n")
+            end if 
+            bulk_erase_flash()
+            main_control_state = CONTROL_ERASE_DEVICE
+               next_control_state = CONTROL_STOP_PROGRAMMER
+            response = RESPONSE_OK
+         end if
+      end block
+      
+      CONTROL_REQUEST_ERASE_EEPROM:
+      block
+         if programmer_done() then
+            if debug_on then
+               print_string(serial_hw_data,"Erasing EEPROM.\r\n")
+            end if 
+            bulk_erase_eeprom()
+            main_control_state = CONTROL_ERASE_DEVICE
+            next_control_state = CONTROL_STOP_PROGRAMMER
+            response = RESPONSE_OK
+         end if
+      end block
+      
+      CONTROL_ERASE_DEVICE:
+      block
+         if programmer_error() then
+            if debug_on then
+               print_string(serial_hw_data,"error erasing device!\r\n")
+            end if 
+            response = RESPONSE_ERROR
+            main_control_state = CONTROL_STOP_PROGRAMMER   
+         elsif programmer_done() then
+            if debug_on then
+               print_string(serial_hw_data,"done!\r\n")
+            end if 
+            main_control_state = next_control_state
+         end if
+      end block
+      
+      CONTROL_REQUEST_BLANK_CHECK_FLASH:
+      block
+         if programmer_done() then
+            if debug_on then
+               print_string(serial_hw_data,"Blank checking flash ... ")
+            end if 
+            blank_check_flash()
+            main_control_state = CONTROL_BLANK_CHECK_DEVICE 
+        end if
+      end block
+
+      CONTROL_REQUEST_BLANK_CHECK_EEPROM:
+      block
+         if programmer_done() then
+            if debug_on then
+               print_string(serial_hw_data,"Blank checking EEPROM ... ")
+            end if 
+            blank_check_eeprom()
+            main_control_state = CONTROL_BLANK_CHECK_DEVICE 
+        end if
+      end block
+
+      CONTROL_BLANK_CHECK_DEVICE:
+      block
+         if programmer_error() then
+            if debug_on then
+               print_string(serial_hw_data,"device not empty! Read: \r\n")
+               print_byte_hex(serial_hw_data,read_buffer[0])  
+               print_byte_hex(serial_hw_data,read_buffer[1])
+               print_crlf(serial_hw_data)
+            end if 
+            main_control_state = CONTROL_STOP_PROGRAMMER 
+            response = RESPONSE_ERROR
+         elsif device_empty() then
+            if debug_on then
+               print_string(serial_hw_data,"device empty.\r\n")
+            end if 
+            main_control_state = CONTROL_STOP_PROGRAMMER 
+            response = RESPONSE_OK
+        end if
+      end block
+  
+      CONTROL_REQUEST_DEVICE_ID:
+      block
+         if programmer_ready() then
+            if debug_on then
+               print_string(serial_hw_data,"Device ID: ")
+            end if 
+            get_device_id()
+            main_control_state = CONTROL_CHECK_DEVICE_ID
+         end if
+      end block
+
+      CONTROL_CHECK_DEVICE_ID:
+      block
+         if programmer_done() then
+            if debug_on then 
+               print_byte_hex(serial_hw_data,read_buffer[0])     
+               print_byte_hex(serial_hw_data,read_buffer[1]) 
+            end if    
+            if device_id_ok() then
+               response = RESPONSE_OK
+               if debug_on then 
+                  print_string(serial_hw_data," is OK.\r\n")
+               end if
+            else
+               response = RESPONSE_ERROR
+               if debug_on then 
+                  print_string(serial_hw_data," is incorrect!\r\n")
+               end if
+            end if
+            main_control_state = CONTROL_STOP_PROGRAMMER
+         end if
+      end block
+      
+      CONTROL_RESET:
+      block
+         -- We always do that independent of the state of the parser or the
+         -- programmer.
+         if debug_on then 
+            print_string(serial_hw_data,"Reset.\r\n\r\n")
+         end if
+         reset_jaluino()
+         pic2_reset = FALSE  -- Reset is active low.
+         _usec_delay(1_000)
+         pic2_reset = TRUE
+         response = RESPONSE_OK
+      end block
+
+      CONTROL_START_PROGRAMMER:
+      block
+         if programmer_idle() then
+            if debug_on then 
+               print_string(serial_hw_data,"Start programmer.\r\n")
+            end if
+            programmer_start()
+            main_control_state = next_control_state
+         else
+            if debug_on then 
+               print_string(serial_hw_data,"Programmer not yet ready!\r\n")
+            end if
+         end if
+      end block
+
+      CONTROL_STOP_PROGRAMMER:
+      block
+         if programmer_ready() then
+            if debug_on then 
+               print_string(serial_hw_data,"Stop programmer.\r\n\r\n")
+            end if
+            programmer_stop()
+            main_control_state = CONTROL_IDLE 
+         end if
+      end block
+     
+   end case
+     
+   -- See if we need to send a response.
+   if (response != RESPONSE_NONE) then
+      -- Send response as ASCII.
+      usb_serial_data = response +  0x30  
+      usb_serial_data = CARRIAGE_RETURN 
+      usb_serial_data = LINE_FEED
+      response = RESPONSE_NONE
+   end if 
+        
+end loop

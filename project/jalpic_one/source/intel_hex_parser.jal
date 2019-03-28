@@ -1,0 +1,258 @@
+-- -----------------------------------------------------------------------------
+-- Title: Intel Hex parser
+--
+-- Author: Rob Jansen, Copyright (c) 2019..2019, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: >= jalv2.5r2
+--
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
+-- Description: Parse one line of an Intel Hex file and convert it to binary
+--              which is used for programming the PIC.
+--
+-- Sources: 
+-- 
+-- Notes: 
+-- 
+-- ------------------------- Constant declarations -----------------------------
+-- Intel Hex record types.
+const byte RECORD_DATA                     = 0x00
+const byte RECORD_END_OF_FILE              = 0x01
+const byte RECORD_EXTENDED_SEGMENT_ADDRESS = 0x02
+const byte RECORD_START_SEGMENT_ADDRESS    = 0x03
+const byte RECORD_EXTENDED_LINEAIR_ADDRESS = 0x04
+const byte RECORD_START_LINEAIR_ADDRESS    = 0x05
+
+-- Returned Intel Hex records types.
+const byte PARSE_TYPE_DATA    = 0
+const byte PARSE_TYPE_ADDRESS = 1
+const byte PARSE_TYPE_END     = 2
+
+-- ------------------------- Variable declarations -----------------------------
+-- We have to remember the start address since sometimes a record only gives
+-- an address that is later used to determine the final address for the data.
+var dword ihex_start_address = 0
+
+-- ------------------------- Functions and Procedures --------------------------              
+
+-- For debugging. Print the contents of the program buffer.
+procedure print_parse_buffer() is
+var byte index
+   -- See note above on the write buffer about the positions used in the buffer.
+   print_string(serial_hw_data,"Number of bytes: ")
+   print_byte_dec(serial_hw_data,bytes_in_parse_buffer - 2)
+   print_crlf(serial_hw_data)     
+   print_string(serial_hw_data,"Address: ")
+   print_byte_hex(serial_hw_data,parse_buffer[0])
+   print_byte_hex(serial_hw_data,parse_buffer[1])
+   print_crlf(serial_hw_data)     
+   print_string(serial_hw_data,"Data: ")
+   index = 2
+   for (bytes_in_parse_buffer - 2) loop
+      print_byte_hex(serial_hw_data,parse_buffer[index])  
+      index = index + 1
+   end loop
+   print_crlf(serial_hw_data)     
+   print_crlf(serial_hw_data)     
+end procedure
+
+-- Convert an ASCII numer character to a byte value and return TRUE when successful.
+function char_to_byte(byte in source, byte out destination) return bit is
+var bit all_ok
+
+   all_ok = TRUE
+   -- Check if source is a valid character.
+   if (source >= "0") & (source <= "9") then
+      destination = source - "0"
+   elsif (source >= "A") & (source <= "F") then
+      destination = (source - "A") + 10
+   elsif (source >= "a") & (source <= "f") then
+      destination = (source - "a") + 10
+   else
+      all_ok = FALSE
+   end if
+   return all_ok
+end function
+
+
+-- Parse a line item from the Intel Hex input and copy the extracted bytes to 
+-- the program buffer. The Intel Hex ASCII data is converted into binary data.
+-- The function returns TRUE if parsing was OK and returns the type of record
+-- that was parsed.
+function parse_hex_line(byte out which_parse_type) return bit is
+   var dword final_start_address 
+   var word ihex_offset_address
+   var byte type_of_parse_data
+   var byte ihex_record_type
+   var byte ihex_record_checksum
+   var byte ihex_checksum
+   var byte ihex_read_index
+   var byte ihex_write_index
+   var byte ihex_number_of_bytes
+   var byte ihex_data_counter
+   var byte nibble
+   var byte temp_byte
+   var bit parse_ok
+
+   parse_ok = TRUE
+   
+   -- Check for the colun character to indicate the start of the item.
+   if (line_item_buffer[0] == COLON) then
+      if debug_on then 
+         print_string(serial_hw_data,"S")
+      end if
+   else 
+      parse_ok = FALSE
+   end if
+      
+   -- Get the byte count.
+   if parse_ok then
+      if char_to_byte(line_item_buffer[1], ihex_number_of_bytes) & 
+         char_to_byte(line_item_buffer[2], nibble) then
+         ihex_number_of_bytes = (ihex_number_of_bytes * 16) + nibble
+         ihex_checksum = ihex_number_of_bytes
+         if (ihex_number_of_bytes >= MAX_BYTE_BUFFER) then
+            parse_ok = FALSE
+         end if
+         if debug_on then 
+            print_string(serial_hw_data,"#")
+         end if
+      else 
+         parse_ok = FALSE
+      end if
+   end if
+      
+   -- Get the offst address.  
+   if parse_ok then
+      if char_to_byte(line_item_buffer[3], temp_byte) &
+         char_to_byte(line_item_buffer[4], nibble) then
+         temp_byte = (temp_byte * 16) + nibble
+         ihex_checksum = ihex_checksum + temp_byte
+         ihex_offset_address = word(temp_byte)
+         if char_to_byte(line_item_buffer[5], temp_byte) &
+            char_to_byte(line_item_buffer[6], nibble) then
+            temp_byte = (temp_byte * 16) + nibble
+            ihex_checksum = ihex_checksum + temp_byte
+            ihex_offset_address = (ihex_offset_address * 256) + word(temp_byte)
+            if debug_on then 
+               print_string(serial_hw_data,"O")
+            end if
+         else 
+            parse_ok = FALSE
+         end if
+      else 
+         parse_ok = FALSE
+      end if
+   end if 
+      
+   -- Get the record type. 
+   if parse_ok then 
+      if char_to_byte(line_item_buffer[7], ihex_record_type) &
+         char_to_byte(line_item_buffer[8], nibble) then
+         ihex_record_type = (ihex_record_type * 16) + nibble
+         ihex_checksum = ihex_checksum + ihex_record_type
+         if debug_on then 
+            print_string(serial_hw_data,"T")
+         end if
+         ihex_read_index = 9  -- Here starts the data.
+         ihex_write_index = 2 -- Reserve 2 places to store final address.
+         ihex_data_counter = ihex_number_of_bytes
+      else 
+         parse_ok = FALSE
+      end if
+   end if
+      
+   -- Get the data and store it in the programming buffer.
+   while parse_ok & (ihex_data_counter > 0) loop
+      if char_to_byte(line_item_buffer[ihex_read_index], temp_byte) & 
+         char_to_byte(line_item_buffer[ihex_read_index + 1], nibble) then
+         temp_byte = (temp_byte * 16) + nibble
+         ihex_checksum = ihex_checksum + temp_byte 
+         parse_buffer[ihex_write_index] = temp_byte
+         ihex_read_index = ihex_read_index + 2
+         ihex_write_index = ihex_write_index + 1
+         ihex_data_counter = ihex_data_counter - 1
+         if debug_on then 
+            print_string(serial_hw_data,"d")
+         end if
+      else
+         parse_ok = false
+      end if   
+   end loop
+      
+    -- Get the record checksum and check it.
+   if parse_ok then
+      if char_to_byte(line_item_buffer[ihex_read_index], ihex_record_checksum) & 
+         char_to_byte(line_item_buffer[ihex_read_index + 1], nibble) then
+         ihex_record_checksum = (ihex_record_checksum * 16) + nibble
+         -- Check the ihex_checksum, make two's complement
+         ihex_checksum = (ihex_checksum ^ 0xFF) + 1
+         if (ihex_checksum == ihex_record_checksum) then
+            if debug_on then 
+               print_string(serial_hw_data,"C")
+            end if
+         else 
+            parse_ok = FALSE
+         end if
+      else 
+         parse_ok = FALSE
+      end if
+   end if
+
+   -- See if we need to store a new address. Note that in this record it is
+   -- indicated if we need to adjust the address for ranges above 64k.
+   if parse_ok then
+      if (ihex_record_type == RECORD_EXTENDED_SEGMENT_ADDRESS) then
+         -- New start address, get data to see if we go beyond the 64k boundary.
+         -- This is a fixed record so we can use the calculated values in 
+         -- the program buffer.
+         ihex_start_address = (256 * dword(parse_buffer[2])) + 
+                              dword(parse_buffer[3])
+         ihex_start_address = ihex_start_address << 4
+         if debug_on then 
+            print_string(serial_hw_data,"A")
+         end if
+         bytes_in_parse_buffer = 0 -- Only new start address.
+         which_parse_type = PARSE_TYPE_ADDRESS
+      elsif (ihex_record_type == RECORD_EXTENDED_LINEAIR_ADDRESS) then
+          -- New start address, get data to see if we go beyond the 64k boundary.
+         ihex_start_address = (256 * dword(parse_buffer[2])) + 
+                              dword(parse_buffer[3])
+         ihex_start_address = ihex_start_address << 16
+         if debug_on then 
+            print_string(serial_hw_data,"A")
+         end if
+         bytes_in_parse_buffer = 0 -- Only new start address.
+         which_parse_type = PARSE_TYPE_ADDRESS
+      elsif (ihex_record_type == RECORD_END_OF_FILE) then
+         bytes_in_parse_buffer = 0  -- End of recordd.
+         which_parse_type = PARSE_TYPE_END
+      elsif (ihex_record_type == RECORD_DATA) then
+         -- Save this actual address in the program buffer. Note that the
+         -- Intel hex file is byte oriented while the PIC is word oriented so
+         -- we need to divide the final start address by 2 (shift right)
+         final_start_address = ihex_start_address + ihex_offset_address
+         final_start_address = final_start_address >> 1
+         parse_buffer[0] = byte(final_start_address >> 8)
+         parse_buffer[1] = byte(final_start_address & 0x0000_00ff)           
+         if debug_on then 
+            print_string(serial_hw_data,"D")
+         end if
+         bytes_in_parse_buffer = ihex_number_of_bytes + 2 
+         which_parse_type = PARSE_TYPE_DATA
+      else
+         parse_ok = FALSE
+      end if
+      if debug_on then
+         print_crlf(serial_hw_data)
+      end if
+   end if
+
+   return parse_ok
+
+end function
