@@ -34,8 +34,7 @@ PDF of the user manual of the JALPIC One development board
 Tools
 -----
 File jalpic_one.py. Python script to easy the programming of the JALPIC One development board
-Directory jalpic_one_32: Compiled version of the jalpic_one.py script for 32 bit Windows
-Directory jalpic_one_64: Compiled version of the jalpic_one.py script for 64 bit Windows
+See the manual on how to create a compiled version of this script.
 When using the compiled version, Python does not have to be installed.
 
 Notes
