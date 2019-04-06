@@ -86,11 +86,12 @@ const byte CONTROL_REQUEST_DEVICE_ID          = 9
 const byte CONTROL_CHECK_DEVICE_ID            = 10
 const byte CONTROL_RESET                      = 11
 const byte CONTROL_START_PROGRAMMER           = 12
-const byte CONTROL_STOP_PROGRAMMER            = 13
-const byte CONTROL_TERMINAL_MODE              = 14
+const byte CONTROL_PROGRAMMER_STARTED         = 13
+const byte CONTROL_STOP_PROGRAMMER            = 14
+const byte CONTROL_TERMINAL_MODE              = 15
 
--- 5 Seconds wait time for new data.   
-const dword MAX_WAIT_TIME = 500_000  
+-- 10 Seconds wait time for new data.
+const dword MAX_WAIT_TIME = 1_000_000
 
 -- -------------------------- Includes go here --- -----------------------------
 include print
@@ -109,8 +110,7 @@ var byte main_control_state
 var byte next_control_state
 var byte response
 var byte parse_type
-var bit carriage_return_received
-var bit line_feed_received
+var bit line_end_received
 var bit line_item_received
 var bit verify_only
 var bit terminal_mode
@@ -160,8 +160,7 @@ procedure reset_jaluino() is
    next_control_state = CONTROL_IDLE
    bytes_in_usb_buffer= 0
    timeout_counter = 0
-   carriage_return_received = FALSE
-   line_feed_received = FALSE
+   line_end_received = FALSE
    line_item_received = FALSE
    message_given = FALSE
    response = RESPONSE_NONE
@@ -222,16 +221,29 @@ forever loop
    else
       -- Normal operation, check for input USB character and buffer it. 
       if usb_serial_read(character) then
-         -- We process command lines, terminated by CR + LF.
-         if (character == CARRIAGE_RETURN) then
-            carriage_return_received = TRUE
-         elsif  (character == LINE_FEED) then 
-            line_feed_received = TRUE
+         -- We process command lines, terminated by CR + LF. Note that different
+         -- OS-es use different endings of lines. There are three options:
+         -- 1) CR + LF
+         -- 2) CR
+         -- 3) LF
+         -- When CR or LF is received while no data is received this will
+         -- be ignored. Spaces in the input are also ignored.
+         if (character == SPACE) then
+            -- Ignore spaces.
+         elsif (character == CARRIAGE_RETURN) then
+            if (bytes_in_usb_buffer > 0) then
+               line_end_received = TRUE
+            end if
+         elsif  (character == LINE_FEED) then
+            if (bytes_in_usb_buffer > 0) then
+               line_end_received = TRUE
+            end if
          elsif (bytes_in_usb_buffer < MAX_ASCII_BUFFER) then
             usb_buffer[bytes_in_usb_buffer] = character
             bytes_in_usb_buffer = bytes_in_usb_buffer + 1
          end if
-         if carriage_return_received & line_feed_received then
+         -- We can have 0 bytes if we receive CR + LF so skip that case.
+         if line_end_received then
             if false then
                print_string(serial_hw_data,"Bytes Received: ")
                print_byte_dec(serial_hw_data,bytes_in_usb_buffer)
@@ -245,8 +257,7 @@ forever loop
             bytes_in_line_item_buffer = bytes_in_usb_buffer
             bytes_in_usb_buffer = 0
             line_item_received = TRUE
-            carriage_return_received = FALSE
-            line_feed_received = FALSE
+            line_end_received = FALSE
          end if
       end if
    end if
@@ -261,8 +272,6 @@ forever loop
             if parse_line_item("!P") then
                -- Put in programming mode, then wait for the hexfile.
                verify_only = FALSE
-               timeout_counter = 0
-               response = RESPONSE_OK  
                main_control_state = CONTROL_START_PROGRAMMER
                next_control_state = CONTROL_PARSE_INPUT
             elsif parse_line_item("!EF") then
@@ -276,8 +285,6 @@ forever loop
             elsif parse_line_item("!V") then
                -- Verify device.
                verify_only = TRUE
-               timeout_counter = 0
-               response = RESPONSE_OK
                main_control_state = CONTROL_START_PROGRAMMER
                next_control_state = CONTROL_PARSE_INPUT
             elsif parse_line_item("!BF") then
@@ -540,11 +547,39 @@ forever loop
                print_string(serial_hw_data,"Start programmer.\r\n")
             end if
             programmer_start()
-            main_control_state = next_control_state
+            timeout_counter = 0
+            main_control_state = CONTROL_PROGRAMMER_STARTED
          else
             if debug_on then 
                print_string(serial_hw_data,"Programmer not yet ready!\r\n")
             end if
+         end if
+      end block
+
+      CONTROL_PROGRAMMER_STARTED:
+      block
+         if programmer_done() then
+            if debug_on then
+               print_string(serial_hw_data,"Start programmer done.\r\n")
+            end if
+            timeout_counter = 0
+            -- The program and verify command have a delayed response otherwise
+            -- the data would arrive before the programmer was started.
+            if (next_control_state == CONTROL_PARSE_INPUT) then
+               response = RESPONSE_OK
+            end if
+            main_control_state = next_control_state
+         else
+            -- Do not wait forever. A timeout indicates a problem.
+            _usec_delay(10) -- Some time is needed to create the timeout.
+            timeout_counter = timeout_counter + 1
+            if (timeout_counter == MAX_WAIT_TIME) then
+               response = RESPONSE_TIMEOUT
+               main_control_state = CONTROL_STOP_PROGRAMMER
+               if debug_on then
+                  print_string(serial_hw_data,"Programmer start timeout!\r\n")
+               end if
+           end if
          end if
       end block
 

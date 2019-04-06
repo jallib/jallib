@@ -44,14 +44,13 @@ silk screen of the board desing, e.g adding the text 'JALPIC One'. The board des
 was not changed but note that when the zipfile is used to order a board, this text will not
 be on it unless a new zipfile with Gerber file is created.
 
-When using Python you need to have PySerial and Keyboard installed:
+When using Python you need to have PySerial installed:
 -) Python website: https://www.python.org/
 -) Install PySerial: python -m pip install pyserial
--) Install Keyboard: pip install keyboard
 
-A short video on how the board works can be found on: https://youtu.be/FflefweJHWU
+A short video on how the board works can be found on: https://www.youtube.com/watch?v=lj-_5-6WYTY
 
 Rob Jansen
-2019-03-28
+2019-04-05
 
 

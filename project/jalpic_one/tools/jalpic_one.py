@@ -21,12 +21,20 @@
 import sys
 import os
 import serial
-import keyboard
+import platform
 
+#platform_name = platform.system()
 default_baudrate = 115200
-default_port = "com3"
 ser = serial.Serial()
 
+# Set the default comport. Default is com3 under Windows.
+def get_default_comport():
+    if sys.platform.startswith('linux'):
+        return "/dev/ttyACM0"
+    elif sys.platform.startswith('darwin'):
+        return "/dev/ttyACM0"
+    else:
+        return "com3"
 
 # Initialize and open the serial port. Returns True when successful.
 def serial_init(which_port):
@@ -109,16 +117,16 @@ def copy_file(which_file):
 if __name__ == "__main__":
     # Main program starts here.
     print("Script for programming the JALPIC development board.")
+    comport = get_default_comport()
     # If 2 arguments are given we assume the default port.
     if (len(sys.argv) == 2):
         hexfile = sys.argv[1]
-        comport = default_port
     elif (len(sys.argv) == 3):
         hexfile = sys.argv[1]
         comport = sys.argv[2]
     else:
         print("Arguments must be <file> and optional <comport>.")
-        print("If no <comport> is given, the program uses:", default_port)
+        print("If no <comport> is given, the program uses:", comport)
         sys.exit(1)
 
     # Check if file exists.
@@ -144,10 +152,9 @@ if __name__ == "__main__":
         serial_end()
         sys.exit(0)
     else:
-	    # In case of an error we ask the user to press escape otherwise the error
+	    # In case of an error we ask the user to press Enter otherwise the error
 		# will not be visible when programming from e.g. JalEdit. In this way the
         # user can see what went wrong.
-        print("Programming failed, press escape to continue.")
-        keyboard.wait('esc')
+        input("Programming failed, press Enter key to continue: ")
         serial_end()
         sys.exit(1)
