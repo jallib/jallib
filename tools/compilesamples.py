@@ -59,7 +59,7 @@ if (platform_name == "Linux"):
    compiler = os.path.join(os.getcwd(), "jalv2-x86-64")        # compiler (in current directory)
 elif (platform_name == "Windows"):
    jallib   = os.path.join("D:\\", "GitHub", "jallib")                   # local copy jallib master
-#   jallib   = os.path.join("D:\\", "jallib-master")                   # local copy jallib master
+#   jallib   = os.path.join("D:\\", "GitHub_Copy", "jallib")             # local copy jallib master
    compiler = os.path.join(os.getcwd(), "jalv2.exe")           # compiler (in current directory)
 elif (platform_name == "Darwin"):
    jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master

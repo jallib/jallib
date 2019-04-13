@@ -2,9 +2,9 @@
 """
 Title: Generate Jallib device files and blink-a-led samples.
 
-Author: Rob Hamerling, Copyright (c) 2017..2017, all rights reserved.
+Author: Rob Hamerling, Copyright (c) 2017..2019, all rights reserved.
 
-Adapted-by:
+Adapted-by: Rob Jansen
 
 Revision: $Revision$
 
@@ -116,7 +116,7 @@ if (__name__ == "__main__"):
    # copy required files for next step to destination
    print("Copying some files to", base)
    try:
-      shutil.copy2("datasheet.list", base)
+#      shutil.copy2("datasheet.list", base)
       shutil.copy2("devicespecific.json", base)
    except:
       print("Failed to copy file(s) to", base)
@@ -131,11 +131,6 @@ if (__name__ == "__main__"):
    # Verify device files and create, verify and compile blink-a-led samples
    if (run_script("blink-a-led.py", args=["test"]) == False):
       exit(6)
-
-   # step 7
-   # Generate file pps_groups.html to be inserted in devicefiles.html
-   if (run_script("pps_groups.py") == False):
-      exit(7)
 
    print("\nAll done!\n")
 

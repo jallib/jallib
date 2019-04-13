@@ -27,13 +27,9 @@ Description:
       registers and bit fields, which makes it easier to build device
       independent libraries.
   Some additional information is collected via some Jallib tools files:
-      - devicespecific.json - with PIC specific data like datasheet number
-                              (maintained manually).
-                              No datasheet-number -> no device file!
+      - devicespecific.json - with PIC specific data
       - pinaliases.json     - with aliases for pins
                               (generated from MPLABX files).
-      - datasheet.list      - list of datasheets with actual suffix
-                              (maintained manually).
 
 Sources:  MPLABX .pic files, datasheets
 
@@ -65,7 +61,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.0.0"     # script version
+scriptversion = "1.1"       # script version
 compilerversion = "2.5r2"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -74,7 +70,6 @@ jallib_contribution = True  # True: for jallib, False: for private use
 picdir = os.path.join(base, "mplabx." + mplabxversion, "content", "edc")  # .pic files
 pinaliasfile = os.path.join(base, "pinaliases.json")  # pin aliases
 devspecfile = os.path.join(base, "devicespecific.json")  # some PIC properties not in MPLABX
-datasheetfile = os.path.join(base, "datasheet.list")  # list of datasheets
 
 # destination of device files depends on 1st commandline parameter
 
@@ -84,7 +79,6 @@ cfgvar = {}  # collection of some PIC properties
 devspec = {}  # contents of devicespecific.json
 pinaliases = {}  # contents of pinaliases.py
 pinanmap = {}  # pin_ANx pins
-datasheet = {}  # datasheet + suffix on DS number
 sharedmem = []  # list if allocatable shared mem ranges
 sfr_mirrors = {}  # base address + mirror addresses if any
 names = []  # list of names of declared variables
@@ -532,24 +526,6 @@ def list_devicefile_header(fp, picfile):
              "const  word  CHIP_ID     = 0x%04X" % (cfgvar["procid"]) + "            -- ID in chipdef_jallib\n" +
              "const  byte  PICTYPE[]   = \"" + picname.upper() + "\"\n")
     picdata = dict(list(devspec[picname.upper()].items()))
-    fp.write("const  byte  DATASHEET[] = \"" + datasheet[picdata["DATASHEET"]] + "\"\n")
-    if "dsid" in cfgvar:
-        dsid1 = cfgvar["dsid"]
-        if (dsid1 != "0") & (dsid1 != ""):
-            dsid1 = dsid1[-4]  # last 4 digits cfgvar spec
-            dsid2 = picdata["DATASHEET"][-4]  # "   "   "    devicespecific
-            if (dsid1 != dsid2):
-                print("   Conflicting datasheet numbers:")
-                print("   .pic file: ", cfgvar["dsid"], ", devicespecific: ", picdata["DATASHEET"])
-    if picdata["PGMSPEC"] != "-":
-        fp.write("const  byte  PGMSPEC[]   = \"" + datasheet[picdata["PGMSPEC"]] + "\"\n")
-    fp.write("--\n" +
-             "-- Vdd Range: " + cfgvar["vddmin"] + "-" + cfgvar["vddmax"] +
-             " Nominal: " + cfgvar["vddnom"] + "\n" +
-             "-- Vpp Range: " + cfgvar["vppmin"] + "-" + cfgvar["vppmax"] +
-             " Default: " + cfgvar["vppdef"] + "\n" +
-             "--\n")
-    list_separator(fp)
     fp.write("--\n" +
              "include chipdef_jallib                  -- common constants\n" +
              "--\n" +
@@ -818,9 +794,6 @@ def list_sfr(fp, sfr):
         width = eval(sfr.getAttribute("edc:nzwidth"))
         if ((width == 8) & ("SPBRGL" not in names)):
             list_alias(fp, "SPBRGL", sfrname)
-    #  elif (sfrname in ("SPBRGH", "SPBRGH1", "SP1BRGH")):
-    #     if ("SPBRG" not in names):
-    #        list_variable(fp, "SPBRG", 2, sfraddr - 1)
     elif (sfrname in ("SPBRG2", "SP2BRG")):
         if ("SPBRGL2" not in names):
             list_alias(fp, "SPBRGL2", sfrname)
@@ -971,9 +944,6 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                     pass
                 elif ((sfrname == "GPIO") & (fieldname.startswith("GPIO"))):
                     pass
-                # elif ((sfrname == "GPIO") & (fieldname.startswith("GP"))):
-                #    if (width == 1):
-                #       list_bitfield(fp, "GPIO_GP" + fieldname[-1], 1, "GPIO" + "_", offset)
                 elif ((sfrname == "GPIO") & (width == 1) & ("0" <= pinnumber <= "7")):
                     list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname + "_", offset)
                     pin = "pin_A" + pinnumber
@@ -1011,13 +981,6 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                     if ("OPTION_REG_PS" not in names):
                         list_bitfield(fp, sfrname + "_PS", 3, sfrname, offset - 2)
                     list_alias(fp, "T0CON_T0PS", sfrname + "_PS")
-                # elif ((sfrname == "OSCCON") & (fieldname.startswith("IRCF")) & (width == 1)):
-                #    print(sfrname, fieldname, width)
-                #    pass                                   # suppress enumerated IRCF bits
-                # elif ((sfrname == "OSCCON") & (len(fieldname) > 3) &  \
-                #       (fieldname.startswith("SCS")) & (width == 1)):
-                #    print(sfrname, fieldname, width)
-                #    pass                                   # suppress enumerated SCS bits
                 elif ((sfrname == "PORTB") & (fieldname.startswith("RB")) & (picname.startswith("12"))):
                     list_bitfield(fp, "GPIO_GP" + fieldname[2:], 1, "GPIO_", offset)
                 elif ((sfrname.startswith("PORT")) & (sfrname != "PORTVP") & (width == 1) &
@@ -1108,9 +1071,9 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                     list_bitfield(fp, sfrname + "_VCFG", 2, sfrname, offset)
                 elif ((fieldname.startswith("AN")) & (width == 1) &
                       (sfrname.startswith(("ADCON", "ANSEL")))):
-                    ansx = ansel2j(sfrname, fieldname)
-                    if (ansx < 99):
-                        list_alias(fp, "JANSEL_ANS%d" % ansx, sfrname + "_" + fieldname)
+                   ansx = ansel2j(sfrname, fieldname)
+                   if (ansx < 99):
+                      list_alias(fp, "JANSEL_ANS%d" % ansx, sfrname + "_" + fieldname)
                 elif ((sfrname == "CANCON") & (fieldname == "REQOP0")):
                     list_bitfield(fp, "CANCON_REQOP", 3, sfrname, offset)
                 elif ((sfrname == "FVRCON") & (fieldname in ("CDAFVR0", "ADFVR0"))):
@@ -1988,7 +1951,6 @@ def list_status_subfield(fp, field, offset):
             offset = offset + width
     return offset
 
-
 def ansel2j(reg, ans):
     """ Determine JANSEL number for ANSELx bit
 
@@ -2276,8 +2238,7 @@ def ansel2j(reg, ans):
                     ansx = 99
             elif (picname in ("18f24k50", "18lf24k50", "18f25k50", "18lf25k50", "18f45k50", "18lf45k50")):
                 ansx = (0, 1, 2, 3, 99, 4, 99, 99)[ansx]
-            elif (picname.endswith(("k40", "k83", "q10"))): #RJ: 2019-03-24. MPLABX_V5.15
-#                elif (picname.endswith("k40")):
+            elif (picname.endswith("k40")):
                 ansx = ansx
             elif picname.endswith("k22") & (ansx == 5):
                 ansx = 4  # jump
@@ -2288,15 +2249,13 @@ def ansel2j(reg, ans):
     if (ansx < 99):  # AN pin present
         if picname.startswith(("16f153", "16lf153",
                                "16f183", "16lf183",
-#                               "16f184", "16lf184",   # RJ: 2018-02-17. Corrected
-                               "16f1842", "16lf1842",  # RJ: 2018-02-17. Corrected
-                               "16f1844", "16lf1844",  # RJ: 2018-02-17. Corrected
-                               "16f1845", "16lf1845",  # RJ: 2019-03-24. Added MPLABX_V5.15
+                               "16f1845", "16lf1845",
+                               "16f1842", "16lf1842",
+                               "16f1844", "16lf1844",
                                "16f188", "16lf188",
                                "16f191", "16lf191")):
             aliasname = "AN%c%d" % ("ABCDEFG"[ansx // 8], ansx % 8)  # new ADC pin naming convention
-        elif (picname.endswith(("k40", "k42", "k83", "q10"))):  # 18[l]fxxk40/42 #RJ: 2019-03-24. 18[l]fxxq10, 18[l]fkxx83
-#            elif (picname.endswith(("k40", "k42"))):  # 18[l]fxxk40/42
+        elif (picname.endswith(("k40", "k42"))):  # 18[l]fxxk40/42
             aliasname = "AN%c%d" % ("ABCDEFG"[ansx // 8], ansx % 8)  # new ADC pin naming convention
         else:
             aliasname = "AN%d" % ansx
@@ -2326,36 +2285,9 @@ def list_digital_io(fp, picname):
 
     picdata = dict(list(devspec[picname.upper()].items()))  # pic specific info
 
-    if ("ADCGROUP" not in picdata):  # no ADC group specified
-        if (("ADCON" in names) | ("ADCON0" in names) | ("ADCON1" in names)):
-            print("   Has ADCONx register, but no ADCgroup found in", devspecfile)
-        ADC_group = "0"  # no ADC module
-        ADC_res = "0"  # # bits
-    else:  # ADC group specified
-        ADC_group = picdata["ADCGROUP"]
-        if ("ADCMAXRESOLUTION" not in picdata):  # # ADC bits not specified
-            if (not (("ADRESH" in names) | ("ADRES0H" in names))):
-                ADC_res = "8"  # default max res
-            else:
-                ADC_res = "10"
-        else:
-            ADC_res = picdata["ADCMAXRESOLUTION"]  # specified ADC resolution
-
-    fp.write("const      ADC_GROUP          = " + ADC_group)
-    if ADC_group == "0":
-        fp.write("        -- no ADC module present\n")
-        fp.write("const byte ADC_NTOTAL_CHANNEL = " + "0\n")
-    else:
-        fp.write("\n")
-        fp.write("const byte ADC_NTOTAL_CHANNEL = " + "%d" % (len(pinanmap[picname.upper()])) + "\n")
+    fp.write("\n")
     fp.write("const byte ADC_ADCS_BITCOUNT  = " + "%d" % cfgvar["adcs_bits"] + "\n")
-    fp.write("const byte ADC_MAX_RESOLUTION = " + ADC_res + "\n")
     fp.write("--\n")
-
-    # if ((ADC_group == "0"  &  picdata["pinaliases.picnameCaps.ANCOUNT > 0) |,
-    #     (ADC_group \= "0" & pinaliases.picnameCaps.ANCOUNT = 0)):
-    #    print("   Possible conflict between ADC-group (" + ADC_group + ") " \
-    #          "and number of ADC channels (" + pinaliases.picnameCaps.ANCOUNT + ")\n"))
 
     analog = []  # list of analog component names
     if (("ANSEL" in names) |
@@ -2411,20 +2343,11 @@ def list_digital_io(fp, picname):
         else:
             fp.write("   ADCON  = 0b0000_0000\n")
         if ("ADCON1" in names):
-            if ("ADCGROUP" not in picdata):  # 18[l]f6xk40
+            if ("ADCON1" not in picdata):
                 print("   Provisional value for ADCON1 specified")
- #               fp.write("   ADCON1 = 0b0000_00000\n") #RJ: 2018-02-24. Corrected, one zero to many.
                 fp.write("   ADCON1 = 0b0000_0000\n")
-            elif (picdata["ADCGROUP"] == "ADC_V1"):
-                fp.write("   ADCON1 = 0b0000_0111\n")
-            elif picdata["ADCGROUP"] in ("ADC_V2", "ADC_V4", "ADC_V5", "ADC_V6", "ADC_V12"):
-                fp.write("   ADCON1 = 0b0000_1111\n")
-            elif (picdata["ADCGROUP"] == "ADC_V3"):
-                fp.write("   ADCON1 = 0b0111_1111\n")
             else:
-                fp.write("   ADCON1 = 0b0000_0000\n")
-                if ("ADCON1_PCFG" in names):
-                    print("   ADCON1_PCFG field present: PIC maybe in wrong ADC_GROUP")
+                fp.write("   ADCON1 = " + picdata["ADCON1"] + "\n")
             if "ADCON2" in names:
                 fp.write("   ADCON2 = 0b0000_0000\n")  # all groups
         fp.write("end procedure\n")
@@ -2738,11 +2661,7 @@ def list_dcrfieldsem(fp, key, dcrfielddef, offset):
                                     str = "       " + fieldname + " = " + "0x%X" % (eval(when[-1]) << offset)
                                     fp.write("%-40s -- %s\n" % (str, desc))
                                 if (key == "ICPRT"):
-                                    #RJ: 2018-02-24: Changed since 18F1230 and 18F1330 have no ICPRT.
-#                                    if (cfgvar["picname"] in ("18f1230", "18f1330", "18f24k50",
-#                                                              "18f25k50", "18lf24k50", "18lf25k50")):
-                                    #RJ: 2018-02-24: Omission MPLABX. The XML is missing the 'Enabled' option for ICPRT.
-                                    if (cfgvar["picname"] in ("18f24k50", "18f25k50", "18lf24k50", "18lf25k50")):
+                                   if (cfgvar["picname"] in ("18f24k50", "18f25k50", "18lf24k50", "18lf25k50")):
                                         print("   Adding 'ENABLED' for fuse_def " + key)
                                         str = "       ENABLED = 0x20"
                                         fp.write("%-40s %s\n" % (str, "-- ICPORT enabled"))
@@ -3021,8 +2940,6 @@ def normalize_fusedef_value(key, val, desc):
         else:
             return descu
 
-    #         if (kwdvalue[0].isdigit()):
-    #            return "F" + kwdvalue[0] + "MHZ"
 
     def lpt1osc(val):
         if (val == "ON"):
@@ -3912,21 +3829,6 @@ def read_pinaliases_file():
                         pinanmap[PICname].append(alias)
 
 
-def read_datasheet_file():
-    """ Read datasheet.list
-
-   Input:   (nothing, uses global variable 'datasheetfile')
-   Output:  fills "datasheet" dictionary
-   Returns: (nothing)
-   Notes:   Translates unqualified datasheet number to one with suffix (letter)
-   """
-    global datasheet
-    with open(datasheetfile, "r") as fp:
-        for ln in fp:
-            ds = ln.split(" ", 1)[0]  # datasheet number+suffix
-            datasheet[ds[:-1]] = ds  # strip suffix (letter) for key
-
-
 def pic2jal(picfile, dstdir):
     """ Convert a single MPLABX .pic file to a JalV2 device file
 
@@ -3980,8 +3882,7 @@ def generate_devicefiles(selection, dstdir):
         "16xxxx": "(Enhanced) Mid-Range (14-bits core)",
         "18xxxx": "High Performance Series (16-bits core)"
     }
-    read_datasheet_file()  # for datasheet suffix
-    read_devspec_file()  # PIC specific info, like datasheet #
+    read_devspec_file()  # PIC specific info #
     read_pinaliases_file()  # pin aliases
     with open(os.path.join(dstdir, "chipdef_jallib.jal"), "w") as fp:  # common include for device files
         list_chipdef_header(fp)  # create header of chipdef file
@@ -4053,8 +3954,6 @@ if (__name__ == "__main__"):
     else:
         selection = "1*"
 
-    if not os.path.exists(datasheetfile):
-        shutil.copyfile("datasheet.list", datasheetfile)
     if not os.path.exists(devspecfile):
         shutil.copyfile("devicespecific.json", devspecfile)
 

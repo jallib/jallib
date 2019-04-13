@@ -3,7 +3,7 @@
 
   Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
 
-  Adapted-by: Rob Jansen,  Copyright (c) 2018..2018, all rights reserved.
+  Adapted-by: Rob Jansen,  Copyright (c) 2018..2019, all rights reserved.
 
   Revision: $Revision$
 
@@ -27,7 +27,7 @@
 
   Sources:
 
-  Version: 0.1.1
+  Version: 0.2
 
   Notes:
    - A blink-a-led sample is generated for every device file:
@@ -38,8 +38,6 @@
      INTOSC and INTOSC for USB!
    - With a second commandline argument the generation of samples can be
      limited to a subset: specify a PICname (with wildcard characters).
-   - when a datasheet is renumbered (e.g. 41234 -> 40001234),
-     the ircf dictionary must be modified accordingly.
 
 """
 
@@ -55,6 +53,7 @@ import time
 import glob
 import subprocess
 import shutil
+import json
 import platform
 
 platform_name = platform.system()
@@ -62,7 +61,7 @@ platform_name = platform.system()
 # --- general constants
 
 ScriptAuthor    = "Rob Hamerling, Rob Jansen"
-CompilerVersion = "2.5"
+CompilerVersion = "2.5r2"
 
 
 # specification of system dependent compiler executable
@@ -87,163 +86,13 @@ try:
 except:
    python_exec = "python"                                # Python3 is probably default
 
+devspecfile = os.path.join(base, "devicespecific.json")  # some PIC properties needed here.
 
 
 # global dictionaries for PIC information, re-filled with every PIC
 var = {}
 fusedef = {}
-
-
-# OSCCON_IRCF settings for 4 MHz INTOSC per datasheet number
-ircf =   { 30221    : "--",
-           30292    : "--",
-           30325    : "--",
-           30430    : "--",
-           30445    : "--",
-           30485    : "--",
-           30487    : "110",
-           30491    : "--",
-           30498    : "110",
-           30509    : "101",      # falls back on DS 39977
-           30569    : "--",
-           30575    : "--",       # special!
-           30684    : "101",
-           35007    : "--",
-           39564    : "--",
-           39582    : "--",
-           39597    : "--",
-           39598    : "110",
-           39599    : "110",
-           39605    : "110",
-           39609    : "--",
-           39612    : "--",
-           39616    : "110",
-           39625    : "110",
-           39626    : "110",
-           39629    : "110",
-           39631    : "110",
-           39632    : "110",
-           39635    : "110",
-           39636    : "110",
-           39637    : "110",
-           39646    : "110",
-           39663    : "--",       # no 4 MHz
-           39682    : "--",       # no 4 MHz
-           39689    : "110",
-           39755    : "110",      # falls back on DS 39631
-           39758    : "110",
-           39760    : "--",       # no 4 MHz
-           39761    : "110",
-           39762    : "--",       # no 4 MHz
-           39770    : "110",
-           39774    : "110",
-           39775    : "110",
-           39778    : "110",
-           39887    : "110",      # falls back on DS 39632
-           39894    : "110",      # falls back on DS 39646
-           39896    : "110",      # falls back on DS 39629
-           39931    : "110",
-           39932    : "110",
-           39933    : "110",
-           39948    : "110",      # false back on DS 39933
-           39957    : "101",
-           39960    : "101",      # falls back on DS 39625
-           39963    : "110",
-           39964    : "110",
-           39974    : "110",
-           39977    : "101",
-           39979    : "110",
-           40039    : "--",
-           40044    : "--",
-           40197    : "--",
-           40300    : "--",
-           41159    : "--",
-           41190    : "--",
-           41202    : "110",
-           41203    : "110",
-           41206    : "--",
-           41211    : "110",
-           41213    : "--",
-           41232    : "110",
-           41236    : "--",
-           41249    : "110",
-           41250    : "110",
-           41262    : "110",
-           41268    : "--",       # IOSCFS = 0 for 4MHz
-           41270    : "--",       # IOSCFS = 0 for 4MHz
-           41288    : "--",       # IOSCFS = 0 for 4MHz
-           41291    : "110",
-           41302    : "--",       # IOSCFS = 0 for 4MHz
-           41303    : "101",
-           41319    : "--",       # IOSCFS = 0 for 4MHz
-           41326    : "--",       # IOSCFS = 0 for 4MHz
-           41350    : "101",
-           41364    : "1101",
-           41365    : "101",
-           41391    : "1101",
-           41414    : "1101",
-           41417    : "01",       # PLLEN = 1
-           41418    : "01",       # PLLEN = 1
-           41455    : "1101",
-           41458    : "1101",
-           41569    : "1101",
-           41575    : "1101",
-           41580    : "101",      # falls back on DS 41365
-           41607    : "1101",
-           41624    : "1101",
-           41634    : "--",       # IOSCFS = 0 for 4MHz
-           41635    : "--",       # IOSCFS = 0 for 4MHz
-           41636    : "1101",
-           41637    : "1101",
-           41657    : "1101",
-           41673    : "1101",     # falls back on DS 41440
-           41675    : "1101",
-           30000684 : "101",
-           40001239 : "--",
-           40001341 : "01",       # PLLEN = 1
-           40001412 : "101",
-           40001413 : "1101",
-           40001419 : "1101",
-           40001430 : "01",       # PLLEN : 1
-           40001440 : "1101",
-           40001441 : "1101",
-           40001452 : "1101",
-           40001453 : "1101",
-           40001455 : "1101",
-           40001574 : "1101",
-           40001569 : "1101",
-           40001576 : "10",
-           40001579 : "1101",
-           40001585 : "101",
-           40001586 : "1101",
-           40001594 : "1101",
-           40001607 : "1101",
-           40001609 : "1101",
-           40001615 : "1101",
-           40001636 : "1101",
-           40001637 : "1101",
-           40001639 : "1101",
-           40001652 : "--",      # IOSCFS : 0 for 4MHz
-           40001674 : "1101",
-           40001675 : "1101",
-           40001684 : "--",      # IOSCFS : 0 for 4MHz
-           40001709 : "10",
-           40001715 : "1101",
-           40001722 : "1101",
-           40001723 : "1101",
-           40001726 : "1101",
-           40001729 : "1101",
-           40001737 : "1101",
-           40001740 : "1101",
-           40001761 : "1101",
-           40001769 : "1101",
-           40001770 : "1101",
-           40001775 : "1101",
-           40001782 : "1101",
-           40001810 : "1101",
-           40001817 : "1101",
-           40001819 : "1101"
-           }
+devspec = {}  # contents of devicespecific.json
 
 
 # List of PICs for which an extra INTOSC blink sample should
@@ -315,6 +164,18 @@ def collect_fusedef(fp):
       ln = fp.readline()
    return kwdlist
 
+def read_devspec_file():
+    """ Read devicespecific.json
+
+   Input:   (nothing, uses global variable 'devspec')
+   Output:  fills "devspec" dictionary
+   Returns: (nothing)
+   """
+    global devspec  # global variable
+    with open(devspecfile, "r") as fp:
+        devspec = json.load(fp)  # obtain contents devicespecific
+
+
 # ------------------------------------------------------------
 def scan_devfile(devfile):
    """ Scan device file for selected device info.
@@ -376,13 +237,7 @@ def scan_devfile(devfile):
             elif (fuse.startswith("XINST")):
                fusedef["xinst"] = collect_fusedef(fp)
          else:
-            if (ln.find(" DATASHEET[]") >= 0):
-               ds = words[-1].strip('"')                             # last word excl quotes
-               if ds.isdigit():
-                  var["datasheet"] = int(ds)
-               elif ds[:-1].isdigit():                               # without suffix
-                  var["datasheet"] = int(ds[:-1])
-            elif (ln.find(" WDTCON_SWDTEN ") >= 0):
+            if (ln.find(" WDTCON_SWDTEN ") >= 0):
                var["wdtcon_swdten"] = True                           # has field
             elif (ln.find(" USB_BDT_ADDRESS ") >= 0):
                var["usb_bdt"] = True
@@ -461,13 +316,8 @@ def compile_sample(runtype, pgmname):
       smpdir = dstprod                                # destination of created samples
       cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", "-s", include, pgmname]     # compiler options
    else:                                              # test mode
- #     include = ";".join([devtest, incljal])         # test device files + prod JAL files
- #     if (not os.path.exists(os.path.join(devtest, "chipdef_jallib.jal"))):
- #        include = ";".join([devprod, incljal])      # prod device files + prod JAL files
- #     smpdir = dsttest                               # destination of created samples
       fhex = os.path.join(dstdir, os.path.splitext(pgmname)[0] + ".hex")     # hex compiler output
       fasm = os.path.join(dstdir, os.path.splitext(pgmname)[0] + ".asm")     # assembler compiler output
- #      cmdlist = [compiler, "-asm", fasm, "-hex", fhex, "-no-codfile", "-s", include, pgmname]     # compiler options
    cmdlist = [compiler, "-asm", fasm, "-hex", fhex, "-no-codfile", "-s", devdir, pgmname]     # compiler cmd
    flog = os.path.join(dstdir, pgmname[:-3] + "log")  # compiler output report in test directory
    if (os.path.exists(flog)):
@@ -483,7 +333,6 @@ def compile_sample(runtype, pgmname):
       numerrors = int(loglist[-4])                    # get number of errors
       numwarnings = int(loglist[-2])                  # and warnings
       if ( (numerrors == 0) and (numwarnings == 0) ):
-#        print("   Compilation of", pgmname, "successful!")  # OK! (zero errors, zero warnings))
          shutil.move(pgmname, destfile)               # move sample
          if os.path.exists(fhex):                     # remove hex output
             os.remove(fhex)
@@ -523,11 +372,14 @@ def build_sample(pic, pin, osctype, oscword):
       print("   Unrecognized oscillator type:", osctype)
       return None
 
-   if (osctype.startswith("INTOSC")  &             # no 4 MHz INTOSC for some PICs
-       (var["datasheet"] in (39663, 30009663, 39682, 30009682,
-                             39760, 30009760, 39762, 30009762))):
-      print("   Does not support 4 MHz with internal oscillator")
-      return None
+   picdata = dict(list(devspec[pic.upper()].items()))  # pic specific info
+
+   # No 4 MHz INTOSC for some PICs indicated by mentioning the OSCCON_IRCF in devicespecific.json but
+   # without a value ("-").
+   if osctype.startswith("INTOSC") & ("OSCCON_IRCF" in picdata):
+      if (picdata["OSCCON_IRCF"] == "-"):
+         print("   Does not support 4 MHz with internal oscillator")
+         return None
 
    def fusedef_insert(fuse, kwd, cmt):
       """ Insert a fusedef line (if fuse and specific keyword are present)
@@ -617,7 +469,7 @@ def build_sample(pic, pin, osctype, oscword):
    # other OSC related fuse_defs
    if ("pllen" in fusedef):                          # PLLEN present
       if (osctype == "INTOSC"):                      # INTOSC selected
-         if (var["datasheet"] in (41341, 41417, 41418, 40001430, 40001341, 40001417, 40001418)):
+         if ("PLLEN" in picdata):
             fusedef_insert("pllen", "ENABLED", "PLL on")
          else:
             fusedef_insert("pllen", "DISABLED", "PLL off")
@@ -679,32 +531,8 @@ def build_sample(pic, pin, osctype, oscword):
       if ("oscfrq_hffrq" in var):
          fp.write("OSCFRQ_HFFRQ = 0b010                -- Fosc 32 -> 4 MHz\n")
       if ("ircfwidth" in var):
-         if (var["ircfwidth"] > 0):
-            ds = var["datasheet"]                    # get datasheet of this PIC (int)
-            if (ds not in ircf):
-               if (ds < 100000):                     # (old) 5-digit number
-                  dstmp = (ds // 10000) * 10000000 + (ds % 10000)  # try 8-digit number
-                  if (dstmp in ircf):
-                     ds = dstmp
-               elif (10000000 < ds < 100000000):     # (new) 8-digit number
-                  dstmp = (ds // 10000000) * 10000 + (ds % 10000)  # try 5-digit number
-                  if (dstmp in ircf):
-                     ds = dstmp
-            if (ds not in ircf):                     # not in ircf dictionary
-               print("   No OSCCON_IRCF entry in dictionary table for datasheet", ds)
-               print("   Assumed to be 0b1101")
-               fp.write("OSCCON_IRCF = 0b1101                -- 4 MHz (presumably)\n")
-            elif (len(ircf[ds]) != var["ircfwidth"]):
-               print("   Conflict between width of OSCCON_IRCF (",
-                         var["ircfwidth"], ") and ", len(ircf[ds]))
-               print("   No OSCCON_IRCF specified")
-               fp.write("-- OSCCON_IRCF = 0b1101             -- to be corrected by user!\n")
-            elif (ircf[ds] == "--"):
-               print("   Invalid bit pattern (", ircf[ds], ") for OSCCON_IRCF")
-               print("   No OSCCON_IRCF specified")
-               fp.write("-- OSCCON_IRCF = 0b1101             -- to be corrected by user!\n")
-            else:
-               fp.write("OSCCON_IRCF = 0b%-5s" % (ircf[ds]) + "               -- 4 MHz\n")
+         if (var["ircfwidth"] > 0) & ("OSCCON_IRCF" in picdata):
+            fp.write("OSCCON_IRCF = 0b%-5s" % picdata["OSCCON_IRCF"] + "               -- 4 MHz\n")
       if ("osctune_pllen" in var):
          fp.write("OSCTUNE_PLLEN = FALSE               -- no PLL\n")
       if ("osccon_spllen" in var):
@@ -862,6 +690,7 @@ if (__name__ == "__main__"):
       selection = "1*.jal"                            # default selection
 
    print("Creating blink-a-led sample files")
+   read_devspec_file()  # PIC specific info, like OSCCON_IRCF #
    elapsed = time.time()
    cwd = os.getcwd()                                  # remember working directory
    if (runtype == "PROD"):
@@ -878,9 +707,6 @@ if (__name__ == "__main__"):
       print("No device files found matching", selection)
       sys.exit(1)
    devs.sort()                                        # alphanumeric order
-
-#   if not os.path.exists(os.path.join(devdir, "constants_jallib.jal")):
-#      shutil.copyfile("constants_jallib.jal", devdir)
 
    count = main(runtype, devs)                        # the actual process
 
