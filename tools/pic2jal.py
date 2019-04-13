@@ -856,25 +856,26 @@ def list_sfr_subfield(fp, child, sfrname, offset):
     if (child.nodeType == Node.ELEMENT_NODE):
         if (child.nodeName == "edc:AdjustPoint"):
             picname = cfgvar["picname"]
-            if ((offset == 0) & (picname in ("18f13k50", "18lf13k50", "18f14k50", "18lf14k50",
-                                             "16f1454", "16f1455", "16f1459",
-                                             "16lf1454", "16lf1455", "16lf1459"))):
-                if ((sfrname == "LATA") & ("pin_A0" not in names)):
-                    print("   Adding pin_A0, A1")
-                    for p in range(2):  # add pin_A0..A1
-                        list_bitfield(fp, "LATA_LATA%d" % (p), 1, "LATA", p)
-                        list_bitfield(fp, "pin_A%d" % (p), 1, "PORTA", p)
-                        list_pin_alias(fp, "A%d" % (p), "PORTA")
-                        fp.write("procedure pin_A%d'put(bit in x at LATA : %d) is\n" % (p, p) +
-                                 "   pragma inline\n" +
-                                 "end procedure\n" +
-                                 "--\n")
-                elif ((sfrname == "TRISA") & ("pin_A0_direction" not in names)):
-                    print("   Adding pin_A0/A1_direction")
-                    for p in range(2):  # add pin_A0..A1
-                        list_bitfield(fp, "TRISA_TRISA%d" % (p), 1, "TRISA", p)
-                        list_alias(fp, "pin_A%d_direction" % (p), "TRISA_TRISA%d" % (p))
-                        list_pin_direction_alias(fp, "A%d" % (p), "PORTA")
+#RJ: 2019-04-13. Removed since these pins can only be input so do not have a direction.
+#            if ((offset == 0) & (picname in ("18f13k50", "18lf13k50", "18f14k50", "18lf14k50",
+#                                            "16f1454", "16f1455", "16f1459",
+#                                            "16lf1454", "16lf1455", "16lf1459"))):
+#                if ((sfrname == "LATA") & ("pin_A0" not in names)):
+#                    print("   Adding pin_A0, A1")
+#                    for p in range(2):  # add pin_A0..A1
+#                        list_bitfield(fp, "LATA_LATA%d" % (p), 1, "LATA", p)
+#                        list_bitfield(fp, "pin_A%d" % (p), 1, "PORTA", p)
+#                        list_pin_alias(fp, "A%d" % (p), "PORTA")
+#                        fp.write("procedure pin_A%d'put(bit in x at LATA : %d) is\n" % (p, p) +
+#                                 "   pragma inline\n" +
+#                                 "end procedure\n" +
+#                                 "--\n")
+#                elif ((sfrname == "TRISA") & ("pin_A0_direction" not in names)):
+#                    print("   Adding pin_A0/A1_direction")
+#                    for p in range(2):  # add pin_A0..A1
+#                        list_bitfield(fp, "TRISA_TRISA%d" % (p), 1, "TRISA", p)
+#                        list_alias(fp, "pin_A%d_direction" % (p), "TRISA_TRISA%d" % (p))
+#                        list_pin_direction_alias(fp, "A%d" % (p), "PORTA")
             offset = offset + eval(child.getAttribute("edc:offset"))
 
         elif (child.nodeName == "edc:SFRFieldDef"):
