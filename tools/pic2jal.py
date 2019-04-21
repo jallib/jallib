@@ -4,7 +4,7 @@ Title: Create JalV2 device files for Microchip 8-bits flash PICs.
 
 Author: Rob Hamerling, Copyright (c) 2014..2017, all rights reserved.
 
-Adapted-by: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
+Adapted-by: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
 
 Revision: $Revision$
 
@@ -61,7 +61,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.1"       # script version
+scriptversion = "1.2"       # script version
 compilerversion = "2.5r2"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -869,13 +869,6 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                                  "   pragma inline\n" +
                                  "end procedure\n" +
                                  "--\n")
-#RJ: 2019-04-13. Removed since these pins can only be input so do not have a direction.
-#                elif ((sfrname == "TRISA") & ("pin_A0_direction" not in names)):
-#                    print("   Adding pin_A0/A1_direction")
-#                    for p in range(2):  # add pin_A0..A1
-#                        list_bitfield(fp, "TRISA_TRISA%d" % (p), 1, "TRISA", p)
-#                        list_alias(fp, "pin_A%d_direction" % (p), "TRISA_TRISA%d" % (p))
-#                        list_pin_direction_alias(fp, "A%d" % (p), "PORTA")
             offset = offset + eval(child.getAttribute("edc:offset"))
 
         elif (child.nodeName == "edc:SFRFieldDef"):
@@ -1070,11 +1063,6 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                 # additional declarations:
                 if ((sfrname.startswith("ADCON")) & (fieldname.endswith("VCFG0"))):
                     list_bitfield(fp, sfrname + "_VCFG", 2, sfrname, offset)
-                elif ((fieldname.startswith("AN")) & (width == 1) &
-                      (sfrname.startswith(("ADCON", "ANSEL")))):
-                   ansx = ansel2j(sfrname, fieldname)
-                   if (ansx < 99):
-                      list_alias(fp, "JANSEL_ANS%d" % ansx, sfrname + "_" + fieldname)
                 elif ((sfrname == "CANCON") & (fieldname == "REQOP0")):
                     list_bitfield(fp, "CANCON_REQOP", 3, sfrname, offset)
                 elif ((sfrname == "FVRCON") & (fieldname in ("CDAFVR0", "ADFVR0"))):
@@ -1105,18 +1093,6 @@ def list_sfr_subfield(fp, child, sfrname, offset):
             offset = offset + width
 
     return offset
-
-
-"""
-            elif ( (sfrname.find("CCP") >= 0) & (sfrname.endswith("CON")) &  \         # ?CCPxCON
-                   (((fieldname.startswith("CCP")) & (fieldname.endswith("Y")))  | \
-                    ((fieldname.startswith("DC"))  & (fieldname.endswith("B0")))) ):
-               if (fieldname.startswith("DC")):
-                  field = sfrname + "_" + fieldname[:-1]
-               else:
-                  field = sfrname + "_DC" + fieldname[3:-1] + "B"
-               list_bitfield(fp, field, 2, sfrname, offset - width + 1)
-"""
 
 
 def list_muxed_sfr(fp, selectsfr):
@@ -1607,10 +1583,6 @@ def list_pin_direction_alias(fp, portbit, port):
         fp.write("--\n")
 
 
-#  else:
-#     print("   R" + portbit, "is an unknown pin")
-
-
 def list_variable(fp, var, width, addr):
     """ Generate a line with a volatile variable
 
@@ -1951,323 +1923,6 @@ def list_status_subfield(fp, field, offset):
                     fp.write("const        byte   %-25s =  %d\n" % ("_" + fieldname, offset))
             offset = offset + width
     return offset
-
-def ansel2j(reg, ans):
-    """ Determine JANSEL number for ANSELx bit
-
-   Input:   - register  (ANSELx,ADCONx,ANCONx, etc.)
-            - Name of bit (ANSy / ANSELy)
-   Returns: - channel number (decimal, default is the value of y in ANSy)
-              (99 indicates 'no JANSEL number')
-   Notes:   - procedure has 3 'core' groups and a subgroup for each ANSELx register.
-            - needs adaptation for every new PIC(-group).
-   """
-    if (ans[-2:].isdigit()):  # name ends with 2 digits
-        ansx = int(ans[-2:])  # 2 digits seq. nbr.
-    else:  # 1 digit assumed
-        ansx = int(ans[-1:])  # single digit seq. nbr.
-    core = cfgvar["core"]
-    picname = cfgvar["picname"]  # in lowercase!
-
-    if ((core == "12") | (core == "14")):  # baseline or classic midrange
-        if reg in ("ANSELH", "ANSEL1"):
-            if ansx < 8:  # continuation of ANSEL[0|A]
-                ansx = ansx + 8
-        elif (reg == "ANSELG"):
-            if ansx < 8:
-                ansx = ansx + 8
-        elif (reg == "ANSELE"):
-            if picname.startswith(("16f70", "16lf70", "16f72", "16lf72")):
-                ansx = ansx + 5
-            else:
-                ansx = ansx + 20
-        elif (reg == "ANSELD"):
-            if picname.startswith(("16f70", "16lf70", "16f72", "16lf72")):
-                ansx = 99  # not for ADC
-            else:
-                ansx = ansx + 12
-        elif (reg == "ANSELC"):
-            if picname.startswith(("16f70", "16lf70")):
-                ansx = 99
-            elif picname.endswith(("f720", "f721")):
-                ansx = (4, 5, 6, 7, 99, 99, 8, 9)[ansx]
-            elif picname.endswith(("f753", "hv753")):
-                ansx = (4, 5, 6, 7, 99, 99, 99, 99)[ansx]
-            else:
-                ansx = ansx + 12
-        elif (reg == "ANSELB"):
-            if picname.endswith(("f720", "f721")):
-                ansx = ansx + 6
-            elif picname.startswith(("16f70", "16lf70", "16f72", "16lf72")):
-                ansx = (12, 10, 8, 9, 11, 13, 99, 99)[ansx]
-            else:
-                ansx = ansx + 6
-        elif reg in ("ANSELA", "ANSEL", "ANSEL0", "ADCON0"):
-            if picname.endswith(("f720", "f721", "f752", "hv752", "f753", "hv753")):
-                ansx = (0, 1, 2, 99, 3, 99, 99, 99)[ansx]
-            elif picname.startswith(("16f70", "16lf70", "16f72", "16lf72")):
-                ansx = (0, 1, 2, 3, 99, 4, 99, 99)[ansx]
-            elif (picname.startswith("16f9") & (ans[0:3] != "ANS")):
-                ansx = 99  # skip dup ANSEL subfields 16f9xx
-        else:
-            print("   Unsupported ADC register:", reg)
-            ansx = 99
-
-    elif (core == "14H"):  # enhanced midrange
-        if (reg == "ANSELG"):
-            if picname.startswith(("16f191", "16lf191")):
-                ansx = ansx + 48
-            else:
-                ansx = (99, 15, 14, 13, 12, 99, 99, 99)[ansx]
-        elif (reg == "ANSELF"):
-            if picname.startswith(("16f191", "16lf191")):
-                ansx = ansx + 40
-            else:
-                ansx = (16, 6, 7, 8, 9, 10, 11, 5)[ansx]
-        elif (reg == "ANSELE"):
-            if picname.startswith(("16f151", "16lf151",
-                                   "16f171", "16lf171",
-                                   "16f178", "16lf178",
-                                   "16f190", "16lf190",
-                                   "16f193", "16lf193")):
-                ansx = ansx + 5
-            elif picname.startswith(("16f152", "16lf152")):
-                ansx = (27, 28, 29, 99, 99, 99, 99, 99)[ansx]
-            elif picname.startswith("16lf156"):
-                ansx = (30, 41, 31, 99, 99, 99, 99, 99)[ansx]
-            elif picname.startswith(("16f1537", "16lf1537",
-                                     "16f1538", "16lf1538",
-                                     "16f183", "16lf183",
-                                     "16f188", "16lf188",
-                                     "16f191", "16lf191")):
-                ansx = ansx + 32
-            elif picname.startswith(("16f194", "16lf194")):
-                ansx = 99  # none
-            else:
-                ansx = ansx + 20
-        elif (reg == "ANSELD"):
-            if picname.startswith(("16f151", "16lf151",
-                                   "16f17", "16lf17")):
-                ansx = ansx + 20
-            elif picname.startswith(("16f152", "16lf152")):
-                ansx = (23, 24, 25, 26, 99, 99, 99, 99)[ansx]
-            elif picname.startswith("16lf156"):
-                ansx = (42, 32, 43, 33, 34, 44, 35, 45)[ansx]
-            elif picname.startswith(("16f1537", "16lf1537",
-                                     "16f1538", "16lf1538",
-                                     "16f183", "16lf183",
-                                     "16f188", "16lf188",
-                                     "16f191", "16lf191")):
-                ansx = ansx + 24
-            elif picname.startswith(("16f193", "16lf193")):
-                ansx = 99
-            else:
-                print("   ANSEL2J: Unsupported ADC register:", reg)
-                ansx = 99  # none
-        elif (reg == "ANSELC"):
-            if picname.startswith(("16f151", "16lf151",
-                                   "16f171", "16lf171",
-                                   "16f177", "16lf177")):
-                ansx = (99, 99, 14, 15, 16, 17, 18, 19)[ansx]
-            elif picname.startswith("16lf1554"):
-                ansx = (13, 23, 12, 22, 11, 21, 99, 99)[ansx]
-            elif picname.startswith("16lf1559"):
-                ansx = (13, 23, 12, 22, 11, 21, 14, 24)[ansx]
-            elif picname.startswith("16lf156"):
-                ansx = (12, 23, 13, 24, 14, 25, 15, 26)[ansx]
-            elif picname.startswith(("16f145", "16lf145",
-                                     "16f150", "16lf150",
-                                     "16f157", "16lf157",
-                                     "16f161", "16lf161",
-                                     "16f170", "16lf170",
-                                     "16f176", "16lf176",
-                                     "16f182", "16lf182")):
-                ansx = (4, 5, 6, 7, 99, 99, 8, 9)[ansx]
-            elif picname.startswith(("16f178", "16lf178")):
-                ansx = 99  # none
-            elif picname.startswith(("16f153", "16lf153",
-                                     "16f183", "16lf183",
-                                     "16f184", "16lf184",
-                                     "16f188", "16lf188",
-                                     "16f191", "16lf191")):
-                ansx = ansx + 16
-            else:
-                print("   ANSEL2J: Unsupported ADC register:", reg)
-                ansx = 99  # none
-        if (reg == "ANSELB"):
-            if picname in ("16f1826", "16lf1826",
-                           "16f1827", "16lf1827",
-                           "16f1847", "16lf1847"):
-                ansx = (99, 11, 10, 9, 8, 7, 5, 6)[ansx]
-            elif picname.startswith(("16f145", "16lf145",
-                                     "16f161", "16lf161",
-                                     "16f176", "16lf176")):
-                ansx = (99, 99, 99, 99, 10, 11, 99, 99)[ansx]
-            elif picname.startswith(("16f150", "16lf150",
-                                     "16f157", "16lf157",
-                                     "16f170", "16lf170",
-                                     "16f182", "16lf182")):
-                ansx = (99, 99, 99, 99, 10, 11, 99, 99)[ansx]
-            elif picname.startswith(("16f151", "16lf151",
-                                     "16f171", "16lf171",
-                                     "16f177", "16lf177",
-                                     "16f178", "16lf178",
-                                     "16f190", "16lf190",
-                                     "16f193", "16lf193")):
-                ansx = (12, 10, 8, 9, 11, 13, 99, 99)[ansx]
-            elif picname.startswith("16lf155"):
-                ansx = (99, 99, 99, 99, 26, 16, 25, 15)[ansx]
-            elif picname.startswith("16lf156"):
-                ansx = (16, 27, 17, 28, 18, 29, 19, 40)[ansx]
-            elif picname.startswith(("16f152", "16lf152")):
-                ansx = (17, 18, 19, 20, 21, 22, 99, 99)[ansx]
-            elif picname.startswith(("16f153", "16lf153",
-                                     "16f183", "16lf183",
-                                     "16f184", "16lf184",
-                                     "16f188", "16lf188",
-                                     "16f191", "16lf191")):
-                ansx = ansx + 8
-            else:
-                print("   ANSEL2J: Unsupported ADC register:", reg)
-                ansx = 99  # none
-        if (reg == "ANSELA"):
-            if picname in ("16f1826", "16lf1826",
-                           "16f1827", "16lf1827",
-                           "16f1847", "16lf1847"):
-                ansx = ansx + 0
-            elif picname.startswith(("16f153", "16lf153",
-                                     "16f183", "16lf183",
-                                     "16f184", "16lf184",
-                                     "16f188", "16lf188",
-                                     "16f191", "16lf191")):
-                ansx = ansx + 0  # ansx is OK asis
-            elif picname.startswith(("16f145", "16lf145")):
-                ansx = (99, 99, 99, 99, 3, 99, 99, 99)[ansx]
-            elif picname.startswith(("12f161", "12lf161",
-                                     "16f157", "16lf157",
-                                     "16f161", "16lf161",
-                                     "16f170", "16lf170",
-                                     "16f176", "16lf176")):
-                ansx = (0, 1, 2, 99, 3, 99, 99, 99)[ansx]
-            elif picname.startswith(("12f15", "12lf15",
-                                     "12f182", "12lf182",
-                                     "12f184", "12lf184",
-                                     "16f150", "16lf150",
-                                     "16f170", "16lf170",
-                                     "16f182", "16lf182")):
-                ansx = (0, 1, 2, 99, 3, 4, 99, 99)[ansx]
-            elif picname.startswith("16lf155"):
-                ansx = (0, 1, 2, 99, 10, 20, 99, 99)[ansx]
-            elif picname.startswith("16lf156"):
-                ansx = (20, 10, 0, 1, 2, 21, 22, 11)[ansx]
-            elif picname.startswith(("16f151", "16lf151",
-                                     "16f152", "16lf152",
-                                     "16f171", "16lf171",
-                                     "16f177", "16lf177",
-                                     "16f178", "16lf178",
-                                     "16f190", "16lf190",
-                                     "16f193", "16lf193",
-                                     "16f194", "16lf194")):
-                ansx = (0, 1, 2, 3, 99, 4, 99, 99)[ansx]
-            else:
-                print("   ANSEL2J: Unsupported ADC register:", reg)
-                ansx = 99
-
-    elif (core == "16"):  # 18F series
-        if (reg == "ANCON3"):
-            if (ansx < 8):
-                if picname.endswith(("j94", "j99")):
-                    ansx = ansx + 16
-                else:
-                    ansx = ansx + 24
-        elif (reg == "ANCON2"):
-            if (ansx < 8):
-                if picname.endswith(("j94", "j99")):
-                    ansx = ansx + 8
-                else:
-                    ansx = ansx + 16
-        elif (reg == "ANCON1"):
-            if (ansx < 8):
-                if picname.endswith(("j94", "j99")):
-                    ansx = ansx + 0
-                else:
-                    ansx = ansx + 8
-        elif (reg == "ANCON0"):
-            if (ansx < 8):
-                ansx = ansx + 0
-        elif ((reg == "ANSELH") | (reg == "ANSEL1")):
-            if ((picname in ("18f13k22", "18lf13k22", "18f14k22", "18lf14k22")) &
-                    (ans.startswith("ANSEL"))):
-                # print("   Suppressing probably duplicate JANSEL_ANSx declaration (" + ans + ")")
-                ansx = 99
-            elif (ansx < 8):
-                ansx = ansx + 8
-        elif (reg == "ANSELG"):
-            if (picname.endswith("k40")):
-                ansx = ansx + 48
-            else:
-                ansx = ansx + 48
-        elif (reg == "ANSELF"):
-            if (picname.endswith("k40")):
-                ansx = ansx + 40
-            else:
-                ansx = ansx + 40
-        elif (reg == "ANSELE"):
-            if (picname.endswith("k40")):
-                ansx = ansx + 32
-            else:
-                ansx = ansx + 5
-        elif (reg == "ANSELD"):
-            if (picname.endswith("k40")):
-                ansx = ansx + 24
-            else:
-                ansx = ansx + 20
-        elif (reg == "ANSELC"):
-            if (picname.endswith("k40")):
-                ansx = ansx + 16
-            else:
-                ansx = ansx + 12
-        elif (reg == "ANSELB"):
-            if (picname.endswith("k40")):
-                ansx = ansx + 8
-            else:
-                ansx = (12, 10, 8, 9, 11, 13, 99, 99)[ansx]
-        elif reg in ("ANSELA", "ANSEL", "ANSEL0"):
-            if picname in ("18f13k22", "18lf13k22", "18f14k22", "18lf14k22"):
-                if (ans.startswith("ANSEL")):
-                    # print("   Suppressing probably duplicate JANSEL_ANSx declarations (" + ans + ")")
-                    ansx = 99
-            elif (picname in ("18f24k50", "18lf24k50", "18f25k50", "18lf25k50", "18f45k50", "18lf45k50")):
-                ansx = (0, 1, 2, 3, 99, 4, 99, 99)[ansx]
-            elif (picname.endswith("k40")):
-                ansx = ansx
-            elif picname.endswith("k22") & (ansx == 5):
-                ansx = 4  # jump
-        else:
-            print("   Unsupported ADC register:", reg)
-            ansx = 99
-
-    if (ansx < 99):  # AN pin present
-        if picname.startswith(("16f153", "16lf153",
-                               "16f183", "16lf183",
-                               "16f1845", "16lf1845",
-                               "16f1842", "16lf1842",
-                               "16f1844", "16lf1844",
-                               "16f188", "16lf188",
-                               "16f191", "16lf191")):
-            aliasname = "AN%c%d" % ("ABCDEFG"[ansx // 8], ansx % 8)  # new ADC pin naming convention
-        elif (picname.endswith(("k40", "k42"))):  # 18[l]fxxk40/42
-            aliasname = "AN%c%d" % ("ABCDEFG"[ansx // 8], ansx % 8)  # new ADC pin naming convention
-        else:
-            aliasname = "AN%d" % ansx
-        # RJ: 2018-02-18. Exclude error message for PICs that have ANx pins but no ADC.
-        if picname in ("12f609", "12hv609",
-                       "16f1454", "16lf1454"):
-            ansx = 99
-        elif (aliasname not in pinanmap[picname.upper()]):
-            print("   No", aliasname, "in pinanmap corresponding to", reg + "_" + ans)
-            ansx = 99
-    return ansx
 
 
 def list_digital_io(fp, picname):
