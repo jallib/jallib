@@ -1,9 +1,11 @@
 #!/usr/bin/python
 #
-#
 # Title: jallib main wrapper script
-# Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
-# Adapted-by:
+#
+# Author: Sebastien Lelong, Copyright (c) 2008..2019, all rights reserved.
+#
+# Adapted-by: Rob Hamerling
+#
 # Compiler:
 #
 # This file is part of jallib (https://github.com/jallib/jallib)
@@ -11,7 +13,7 @@
 #
 # Sources:
 #
-# Description: this script handles common tasks when using the jallib SVN repository
+# Description: this script handles common tasks when using the jallib repository
 # `jallib help` for more !
 #
 # Dependencies: according to the following actions, you'll need to install the
@@ -23,9 +25,24 @@ deps = [
     ]
 # Of course, since it's about jal, you'll need jalv2 compiler installed
 # (not bundled in binary executables)
-# - jalv2 executable (compile): http://www.casadeyork.com/jalv2
+# - jalv2 executable (compile): https://github.com/jallib/jalv2compiler/bin
 #
 # Notes:
+#   RH: Adapted to Python3 and some other changes, such as:
+#       - automatic changes by the 2to3 conversion program sucha as print()
+#       - removed 'imp': UTF-8 is standard
+#       - changed file(..) into open(...) or  with open(...) as ..
+#       - removed 'cmp=lambda ...' specifications with sorted() functions
+#       - improved in do_compile() separation of arguments for Jallib.py and JalV2
+#       - improved do_list()
+#       - some texts in do_validate()
+#       - changed references to googlecode into github and 'googlecode' not
+#         accepted anymore as reference in library headers
+#       - added reports in do_reindent() of files being processed (or why not)
+#       - no abort with indent level errors, just report (with line number)
+#       Most manual changes are accompanied by a comment marked RH
+#
+#       - to do: replace formatting with "%" by .format()
 #
 
 
@@ -34,9 +51,10 @@ import getopt
 import re
 import datetime, time
 import types as pytypes
+# RH import imp
 
-reload(sys)
-sys.setdefaultencoding("UTF-8")
+# RH imp.reload(sys)
+# RH sys.setdefaultencoding("UTF-8")
 
 try:
     import glob
@@ -104,7 +122,7 @@ def get_full_board_path(sample_dir,board=""):
 
 
 def find_includes(jalfile):
-    content = file(jalfile).read()
+    content = open(jalfile).read()
     return re.findall("^\s*include\s+(\w+)\s*",content,re.MULTILINE)
 
 
@@ -154,16 +172,16 @@ def clean_compiler_products(fromjalfile):
         # luckily all product files have 3-letters extension
         if f[:-4] == noext and f[-4:] in [".asm",".hex",".err",".cod",".obj",".lst"]:
             toclean = os.path.join(outdir,f)
-            print >> sys.stderr, "Cleaning %s" % toclean
+            print("Cleaning %s" % toclean, file=sys.stderr)
             try:
                 os.unlink(toclean)
-            except OSError,e:
-                print >> sys.stderr, "Can't clean %s because: %s" % (toclean,e)
+            except OSError as e:
+                print("Can't clean %s because: %s" % (toclean,e), file=sys.stderr)
 
 
 def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
     if not has_subprocess:
-        print >> sys.stderr, "You can't use this action, because subprocess module is not installed"
+        print("You can't use this action, because subprocess module is not installed", file=sys.stderr)
         sys.exit(255)
 
     # If we can't parse given args, this means there're all
@@ -181,12 +199,12 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
         try:
             opts, args = getopt.getopt(args, ACTIONS['compile']['options'])
             return opts,args
-        except getopt.error,e:
+        except getopt.error as e:
             return parse_args(args,-1)
 
     # There's not even an argument for the compiler...
     if not original_args:
-        print >> sys.stderr, "Missing arguments to jalv2 compiler..."
+        print("Missing arguments to jalv2 compiler...", file=sys.stderr)
         sys.exit(255)
 
     # Try to extract jallib args
@@ -199,9 +217,13 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
         # there are opts for jallib, but args for jalv2 may have been
         # eaten in parse_args(). Need to extract them according to opts
         jallib_args = []
-        map(lambda i: jallib_args.extend(i),opts)
-        args = list(set(original_args).difference(set(jallib_args)))
-
+  # RH    list(map(lambda i: jallib_args.extend(i),opts))
+  # replaced by:
+        for x in opts: jallib_args.extend(x)
+  # RH    args = list(set(original_args).difference(set(jallib_args)))
+  # To keep sequence of arguments (and not remove duplicates)
+  # replaced by:
+        args = [x for x in original_args if x not in jallib_args]
 
     jalv2_exec = None
     dirs = []
@@ -213,7 +235,7 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
         elif o == '-E':
             jalv2_exec = v
         else:
-            print >> sys.stderr, "Wrong option %s" % o
+            print("Wrong option %s" % o, file=sys.stderr)
     # No root specified ? Try env var, else defaut to cwd
     if not dirs:
         try:
@@ -238,14 +260,14 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
             # assume srcfile is last arg (it not, can't clean)
             srcfile = cmd[-1]
             if not srcfile.endswith(".jal"):
-                print >> sys.stderr, "Can't clean, because can't know which file is the source file"
+                print("Can't clean, because can't know which file is the source file", file=sys.stderr)
                 return status
             clean_compiler_products(srcfile)
 
         return status
 
-    except subprocess.CalledProcessError,e:
-        print >> sys.stderr, "Error while compiling file (status=%s).\nSee previous message." % e.returncode
+    except subprocess.CalledProcessError as e:
+        print("Error while compiling file (status=%s).\nSee previous message." % e.returncode, file=sys.stderr)
         exitonerror and sys.exit(e.returncode)
         return e.returncode
 
@@ -260,7 +282,7 @@ def content_not_empty(val):
 def compiler_version(val):
     return re.match("^(>|<|>=|<=|=)?\d+(\.\d+\w*)+\s+$",val)
 
-JALLIB = """^-- This file is part of (jallib|jaluino)\s+\((http://(jallib|jaluino).googlecode.com|https://github.com/jallib/jallib)\)"""
+JALLIB = """^-- This file is part of jallib\s+\(https://github.com/jallib/jallib\)"""
 LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
 LICENSE2 = """^-- Released under the ZLIB license\s+\(http://www.opensource.org/licenses/zlib-license.html\)"""
 
@@ -358,8 +380,8 @@ def validate_header(content):
         if re.match(LICENSE,line) or re.match(LICENSE2,line):
             license = True
             if jallib: break
-    not jallib and errors.append("Cannot find references to jallib (should have: %s)" % repr(JALLIB))
-    not license and errors.append("Cannot find references to license")
+    not jallib and errors.append("Cannot find correct reference to jallib respository URL")
+    not license and errors.append("Cannot find correct reference to license URL")
     for field_dict in FIELDS:
         c,errs = validate_field(header,**field_dict)
         errors.extend(errs)
@@ -373,7 +395,7 @@ def validate_filename(filename):
     filename = os.path.basename(filename)
     if filename.lower() != filename:
         errors.append("Filename is not lowercase: %s" % filename)
-    # should have "jal" extention
+    # should have "jal" extension
     if not filename.endswith(".jal"):
         warnings.append("Filename doesn't have '*.jal' extention: %s" % filename)
 
@@ -427,7 +449,7 @@ def validate_lower_case(content):
             if caps.findall(token):
                 weird.setdefault("Found Capitals in token: %s" % repr(token),[]).append(i)
     # reconsitute errors, with multiple line number if error has occured multiple time
-    for s,nums in weird.items():
+    for s,nums in list(weird.items()):
         err = "%s: %s" % (",".join(map(str,nums)),s)
         errors.append(err)
 
@@ -460,7 +482,7 @@ def validate(filename):
     errors.extend(errs)
     warnings.extend(warns)
     # also extract line number (enumerate from 0, count from 1)
-    content = [(i + 1,l) for i,l in enumerate(open(filename,"r").readlines())]
+    content = [(i + 1,l) for i,l in enumerate(open(filename).readlines())]
     errors.extend(validate_header(content))
     # remaining content has no more header
     errs = validate_code(content)
@@ -470,14 +492,14 @@ def validate(filename):
 
 
 def report(filename,errors,warnings):
-    print >> sys.stderr, "File: %s" % filename
-    print >> sys.stderr, "%d errors found" % len(errors)
+    print("File: %s" % filename, file=sys.stderr)
+    print("%d errors found" % len(errors), file=sys.stderr)
     for err in errors:
-        print >> sys.stderr, "\tERROR: %s:%s" % (os.path.basename(filename),err)
-    print >> sys.stderr
-    print >> sys.stderr, "%d warnings found" % len(warnings)
+        print("\tERROR: %s: %s" % (os.path.basename(filename),err), file=sys.stderr)
+    print(file=sys.stderr)
+    print("%d warnings found " % len(warnings), file=sys.stderr)
     for warn in warnings:
-        print >> sys.stderr, "\twarning: %s:%s" % (os.path.basename(filename),warn)
+        print("\twarning: %s: %s " % (os.path.basename(filename),warn), file=sys.stderr)
 
     if errors or warnings:
         return True
@@ -558,8 +580,8 @@ def normalize_linefeed(content):
 
 def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
     # try to find which linefeed is used
-    board = file(boardfile).read().splitlines()
-    test = file(testfile).read().splitlines()
+    board = open(boardfile).read().splitlines()
+    test = open(testfile).read().splitlines()
     # keep test's headers, but enrich them with info about how files were merged
     # headers need index (enumerate() on content)
     # extract_header will change content in place, ie. will remove
@@ -578,15 +600,14 @@ def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
     test = [l for i,l in test]
     merged = merge_board_testfile(board,test)
     # wb: write binary format, no ASCII/chars interpretation
-    fout = file(outfile,"wb")
-    fout.write(header)
-    fout.write(merged)
-    fout.close()
+    with open(outfile,"wb") as fout:
+        fout.write(header)
+        fout.write(merged)
 
     # compile it !
     status = do_compile([outfile],exitonerror=False,clean=True)
     if status == 0:
-        print "Succesfully generated sample '%s' from board '%s' and test '%s'" % (outfile,boardfile,testfile)
+        print("Succesfully generated sample '%s' from board '%s' and test '%s'" % (outfile,boardfile,testfile))
     elif deleteiffailed:
         # delete the file !
         clean_compiler_products(outfile)
@@ -602,16 +623,19 @@ def find_test_files(testdir):
     testfiles = []
     for d in [d for d in os.listdir(testdir) if d != "board" and not d.startswith(".")]:
         d = os.path.join(testdir,d)
-        testfiles.extend([os.path.join(d,v) for v in get_jal_filenames(d,predicate=lambda _,x: x.startswith("test_")).values()])
+        testfiles.extend([os.path.join(d,v) for v in list(get_jal_filenames(d,predicate=lambda _,x: x.startswith("test_")).values())])
     return testfiles
 
 def preferred_board(board):
-    data = file(board).read()
+    with open(board) as fin:
+        data = fin.read()
     # well, should not consider comment but... should not occur, right ? :)
     return "@jallib preferred" in data
 
 def is_test_autoable(test):
-    return not "@jallib skip-auto" in file(test).read()
+    with open(test) as fin:
+        data = fin.read()
+    return not "@jallib skip-auto" in data
 
 def generate_samples_for_board(path_to_sample,board,outdir=None):
     if outdir:
@@ -626,16 +650,16 @@ def generate_samples_for_board(path_to_sample,board,outdir=None):
     # ony being used to auto-generate samples
     for test in fulltestfiles:
         if not is_test_autoable(test):
-            print >> sys.stderr, "Skip test '%s' because tagged 'skip-auto'" % test
+            print("Skip test '%s' because tagged 'skip-auto'" % test, file=sys.stderr)
             continue
         samplename = picname + "_" + os.path.basename(test)[5:] # remove "test_", naming convention
         fullsamplepath = outdir and os.path.join(outdir,samplename) or get_full_sample_path(path_to_sample,samplename)
         try:
            generate_one_sample(board,test,fullsamplepath)
-        except Exception,e:
-           print >> sys.stderr,"Invalid board/test combination: %s" % e
+        except Exception as e:
+           print("Invalid board/test combination: %s" % e, file=sys.stderr)
            import traceback
-           print >> sys.stderr, traceback.format_exc()
+           print(traceback.format_exc(), file=sys.stderr)
            continue
 
 def generate_samples_for_test(path_to_sample,test,outdir=None):
@@ -646,7 +670,7 @@ def generate_samples_for_test(path_to_sample,test,outdir=None):
     fullboardfiles = find_board_files(boardpath)
 
     if not is_test_autoable(test):
-        print >> sys.stderr, "Skip test '%s' because tagged 'skip-auto'" % test
+        print("Skip test '%s' because tagged 'skip-auto'" % test, file=sys.stderr)
         return
 
     # in automated mode, only board files with "@jallib preferred" are kept.
@@ -654,17 +678,17 @@ def generate_samples_for_test(path_to_sample,test,outdir=None):
     # ony being used to auto-generate samples
     for board in fullboardfiles:
         if not preferred_board(board):
-            print >> sys.stderr,"board %s is not 'preferred', skip it" % board
+            print("board %s is not 'preferred', skip it" % board, file=sys.stderr)
             continue
         picname = os.path.basename(board).split("_")[1] # naming convention
         samplename = picname + "_" + os.path.basename(test)[5:] # remove "test_", naming convention
         fullsamplepath = outdir and os.path.join(outdir,samplename) or get_full_sample_path(path_to_sample,samplename)
         try:
            generate_one_sample(board,test,fullsamplepath)
-        except Exception,e:
-           print >> sys.stderr,"Invalid board/test combination: %s" % e
+        except Exception as e:
+           print("Invalid board/test combination: %s" % e, file=sys.stderr)
            import traceback
-           print >> sys.stderr, traceback.format_exc()
+           print(traceback.format_exc(), file=sys.stderr)
            continue
 
 def generate_all_samples(path_to_sample,outdir=None):
@@ -672,7 +696,7 @@ def generate_all_samples(path_to_sample,outdir=None):
     fullboarfiles = find_board_files(boardpath)
     for board in fullboarfiles:
         if not preferred_board(board):
-            print >> sys.stderr,"board %s is not 'preferred', skip it" % board
+            print("board %s is not 'preferred', skip it" % board, file=sys.stderr)
             continue
         generate_samples_for_board(path_to_sample,board,outdir)
 
@@ -680,8 +704,8 @@ def generate_all_samples(path_to_sample,outdir=None):
 def do_sample(args=[]):
     try:
         opts, args = getopt.getopt(args, ACTIONS['sample']['options'])
-    except getopt.error,e:
-        print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+    except getopt.error as e:
+        print("Wrong option or missing argument: %s" % e.opt, file=sys.stderr)
         sys.exit(255)
 
     boardfile = None
@@ -710,7 +734,7 @@ def do_sample(args=[]):
         # don't delete sample if compilation fails: user knows what he's doing
         generate_one_sample(boardfile,testfile,outfile,deleteiffailed=False)
     else:
-        print >> sys.stderr, "Provide a board, a test file and an output file"
+        print("Provide a board, a test file and an output file", file=sys.stderr)
         sys.exit(255)
 
 
@@ -729,15 +753,18 @@ def reindent_file(filename,withchar,howmany):
     Default jallib standard is 3-spaces indentation
     '''
     indentchars = howmany * withchar
-    data = file(filename).read()
+    with open(filename) as fin:
+        data = fin.read()
     lines = re.split("\n|\r\n",data)
     # End the file with a linefeed
     if re.match("[\S]+", lines[-1]):
         lines.append(os.linesep)
 
+    line_number = 0
     level = 0
     content = []
     for l in lines:
+        line_number += 1
         # This exception is known as Joep's exception :)
         if l.startswith(";"):
             content.append(l)
@@ -745,14 +772,14 @@ def reindent_file(filename,withchar,howmany):
         # check if comments
         try:
             code,comchars,comment = re.match("(.*?)(-{2}|;)(.*)",l).groups()
-        except AttributeError,e:
+        except AttributeError as e:
             # no comments, normalize
             code = l
             comchars = comment = ""
 
         # remove strings between " and ', to focus only on jal keywords
         onlyjalkw = re.sub("[\"|'].*[\"|']","",code)
-        fields = map(lambda x: x.lower(),onlyjalkw.strip().split())
+        fields = [x.lower() for x in onlyjalkw.strip().split()]
 
         do_postinc = do_preincpost = do_predec = False
         if set(fields).intersection(set(POSTINC)):
@@ -799,19 +826,25 @@ def reindent_file(filename,withchar,howmany):
 
         content.append(indentchars * level + code + comchars + comment)
         if level < 0:
-            raise Exception("Adjusting indent level gives negative one. Please report bug !")
+     # RH      raise Exception("Adjusting indent level gives negative one. Please report bug !")
+     # No abort, just report the error with its source line number, do not write back
+            print("--> Indent level reached negative value before line {:d}, reindent cancelled!".format(line_number))
+            return
 
-    assert level == 0, "Reached the end of file, but indent level is not null (it should be): %s" % filename
+  # RH   assert level == 0, "-->Reached the end of file, but indent level is not null (it should be!)"
+  # No abort, just report the error including source line number, do not write back
+    if level > 0:
+        print("--> Reached end of file, but indent level is not zero (it should be!), reindent cancelled!")
+        return
     # ok, now we can save the content back to the file
-    fout = file(filename,"wb")
-    fout.write(os.linesep.join(content))
-    fout.close()
+    with open(filename, "w") as fout:
+        fout.write('\n'.join(content))
 
 def do_reindent(args):
     try:
         opts, args = getopt.getopt(args, ACTIONS['reindent']['options'])
-    except getopt.error,e:
-        print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+    except getopt.error as e:
+        print("Wrong option or missing argument: %s" % e.opt, file=sys.stderr)
         sys.exit(255)
 
     # default jallib standard
@@ -828,13 +861,23 @@ def do_reindent(args):
                     withchar = " "
                 else:
                     withchar = s
-    except Exception,e:
-        print >> sys.stderr, "Can't understand %s (error: %s)" % (repr(v),e)
+    except Exception as e:
+        print("Can't understand %s (error: %s)" % (repr(v),e), file=sys.stderr)
 
+    filename_org = args[0]
     if has_glob and len(args) == 1:
         args = glob.glob(args[0])
-    for filename in args:
-        reindent_file(filename,withchar,howmany)
+    # RH report files: to be reindented, not-found or refused (no .jal extension)
+    if len(args) == 0:
+        print("Could not locate any file(s) with specification: {:s}".format(filename_org), file=sys.stderr)
+    else:
+        for filename in args:
+            # RH jal files only (file must have extension '.jal')
+            if os.path.splitext(filename)[1] == ".jal":
+                print("Reindenting: {:s}".format(filename), file=sys.stdout)
+                reindent_file(filename,withchar,howmany)
+            else:
+                print("Refused {:s}: reindent handles only files with extension '.jal'".format(filename), file=sys.stderr)
 
 
 #---------------#
@@ -843,22 +886,23 @@ def do_reindent(args):
 
 def unittest(filename,verbose=False):
     oracle = {'success' : None, 'failure' : None, 'notrun' : None}
-    content = file(filename).read().splitlines()
+    with open(filename) as fin:
+        content = fin.read().splitlines()
     fnout = filename + ".stdout"
     fnerr = filename + ".stderr"
     try:
         try:
-            fout = file(fnout,"w")
-            ferr = file(fnerr,"w")
+            fout = open(fnout,"w")
+            ferr = open(fnerr,"w")
             status = do_compile([filename],exitonerror=False,clean=False,stdout=fout,stderr=ferr)
             fout.close()
             ferr.close()
-        except Exception,e:
-            print >> sys.stderr, "Error while compiling file '%s': %s" % (filename,e)
+        except Exception as e:
+            print("Error while compiling file '%s': %s" % (filename,e), file=sys.stderr)
             raise
 
         if status == 0:
-            print "%s compiled, running tests..." % filename
+            print("%s compiled, running tests..." % filename)
 
             jal = filename
             asm = filename.replace(".jal",".asm")
@@ -867,8 +911,8 @@ def unittest(filename,verbose=False):
             try:
                 from picshell.console.picshell_unittest import picshell_unittest
                 oracle = picshell_unittest(jal,asm,hex)
-            except ImportError,e:
-                print >> sys.stderr, "Can't find PICShell libraries. Install PICShell and adjust PYTHONPATH\n%s" % e
+            except ImportError as e:
+                print("Can't find PICShell libraries. Install PICShell and adjust PYTHONPATH\n%s" % e, file=sys.stderr)
                 sys.exit(255)
                 oracle['failure'] = 1
 
@@ -876,14 +920,14 @@ def unittest(filename,verbose=False):
             oracle['failure'] = 1
 
     finally:
-        fout = file(fnout)
-        ferr = file(fnerr)
+        fout = open(fnout)
+        ferr = open(fnerr)
 
         clean_compiler_products(filename)
 
         if verbose:
-            print fout.read()
-            print ferr.read()
+            print(fout.read())
+            print(ferr.read())
 
         fout.close()
         ferr.close()
@@ -894,7 +938,8 @@ def unittest(filename,verbose=False):
     return oracle
 
 def get_testcases(filename):
-    content = file(filename).read().splitlines()
+    with open(filename) as fin:
+        content = fine.read().splitlines()
     restags = parse_tags(content,"section","testcase")
     return restags
 
@@ -904,11 +949,11 @@ def parse_unittest(filename,run_testcases=[]):
 
     # build a pseudo board
     pseudoboard = []
-    [pseudoboard.extend(l) for k,l in restags['section'].items()]
+    [pseudoboard.extend(l) for k,l in list(restags['section'].items())]
 
     # extract each tests, and store them in temporary files
     test_filenames = []
-    for testname,testcontent in restags['testcase'].items():
+    for testname,testcontent in list(restags['testcase'].items()):
         if run_testcases and not testname in run_testcases:
             continue
         wholetest = merge_board_testfile(pseudoboard,testcontent)
@@ -924,8 +969,8 @@ def do_unittest(args):
 
     try:
         opts, args = getopt.getopt(args, ACTIONS['unittest']['options'])
-    except getopt.error,e:
-        print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+    except getopt.error as e:
+        print("Wrong option or missing argument: %s" % e.opt, file=sys.stderr)
         sys.exit(255)
 
     # default jallib standard
@@ -951,7 +996,7 @@ def do_unittest(args):
     if filename.endswith(".jalt"):
         if list_only:
             restags = get_testcases(filename)
-            print "\n".join(restags['testcase'].keys())
+            print("\n".join(list(restags['testcase'].keys())))
         else:
             utests = parse_unittest(filename,testcases)
             for t in utests:
@@ -963,14 +1008,14 @@ def do_unittest(args):
                         os.unlink(t)
                 if oracle['failure'] or oracle['notrun']:
                     at_least_one_failed = True
-                print "Test results: %s" % oracle
+                print("Test results: %s" % oracle)
 
     # or just a regular file
     else:
         oracle = unittest(filename)
         if oracle['failure'] or oracle['notrun']:
             at_least_one_failed = True
-        print "Test results: %s" % oracle
+        print("Test results: %s" % oracle)
 
     if at_least_one_failed:
         sys.exit(1)
@@ -982,17 +1027,17 @@ def do_unittest(args):
 # JALAPI FUNC #
 #-------------#
 
-SVN_URL_SAMPLEDIR = "http://code.google.com/p/jallib/source/browse/trunk/sample"
+SVN_URL_SAMPLEDIR = "https://github.com/jallib/jallib/sample"
 
 def do_jalapi(args):
     if not has_cheetah:
-        print >> sys.stderr, "You can't use this action, because cheetah module is not installed"
+        print("You can't use this action, because cheetah module is not installed", file=sys.stderr)
         sys.exit(255)
 
     try:
         opts, args = getopt.getopt(args, ACTIONS['jalapi']['options'])
-    except getopt.error,e:
-        print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+    except getopt.error as e:
+        print("Wrong option or missing argument: %s" % e.opt, file=sys.stderr)
         sys.exit(255)
 
     tmplfile = None
@@ -1016,21 +1061,21 @@ def do_jalapi(args):
             if v == '-':
                 outfile = sys.stdout
             else:
-                outfile = file(v,"w")
+                outfile = open(v,"w")
         else:
-            print >> sys.stderr, "Wrong option %s" % o
+            print("Wrong option %s" % o, file=sys.stderr)
 
     if not tmplfile:
-        print >> sys.stderr, "You must specify a template file with -t option"
+        print("You must specify a template file with -t option", file=sys.stderr)
         sys.exit(255)
     if not outfile:
-        print >> sys.stderr, "You must specify an output filename with -o option"
+        print("You must specify an output filename with -o option", file=sys.stderr)
         sys.exit(255)
 
     # env.var > arg
     sampledir = os.environ.get('JALLIB_SAMPLEDIR',sampledir)
     if not sampledir:
-        print >> sys.stderr, "Specify a sample directory, either with -d option, or JALLIB_SAMPLEDIR environment variable"
+        print("Specify a sample directory, either with -d option, or JALLIB_SAMPLEDIR environment variable", file=sys.stderr)
         sys.exit(255)
 
     assert len(args) == 1, "Need one and only one jal file"
@@ -1042,7 +1087,9 @@ def do_jalapi(args):
     if os.path.isdir(w):
         dfiles = get_jal_filenames(w,predicate=no_device)
         files = []
-        for f,path in sorted(dfiles.items(),cmp=lambda x,y: cmp(x[0],y[0])):
+   # RH for f,path in sorted(list(dfiles.items()),cmp=lambda x,y: cmp(x[0],y[0])):
+   # replaced by
+        for f,path in sorted(list(dfiles.items())):
             files.append(os.path.join(w,path))
     else:
         files = [w]
@@ -1057,7 +1104,7 @@ def do_jalapi(args):
     else:
         api,samples = jalinfos[0]
         output = jalapi_generate({'api' : api, 'samples' : samples},tmplfile,sampledir,locallinks)
-    print >> outfile, output.replace("\r","")
+    print(output.replace("\r",""), file=outfile)
 
 def jalapi_extract(jalfile,sampledir,svnbaseurl,locallinks):
     # extract JSG info
@@ -1072,7 +1119,7 @@ def jalapi_extract_samples(jalfile,sampledir,svnbaseurl,locallinks):
     libname = re.sub("\.jal$","",os.path.basename(jalfile))
     def use_lib(dir,sample):
         return libname in find_includes(os.path.join(dir,sample))
-    samples = get_jal_filenames(sampledir,predicate=use_lib).values()
+    samples = list(get_jal_filenames(sampledir,predicate=use_lib).values())
     dsamples = {}
 
     def joinurl(p1,p2):
@@ -1093,13 +1140,13 @@ def jalapi_extract_samples(jalfile,sampledir,svnbaseurl,locallinks):
 def jalapi_extract_doc(filename):
     # deals with header
     # jsg wants line number...
-    content = [(i + 1,l) for i,l in enumerate(open(filename,"r").readlines())]
+    content = [(i + 1,l) for i,l in enumerate(open(filename).readlines())]
     header = extract_header(content)
     dhead = {}
     for field_dict in FIELDS:
         # Special case: when still '--' comment chars,this means new paragraph
         c,_ = validate_field(header,**field_dict)
-        c = c and "\n".join(map(lambda c: re.sub("^--","\n\n",c),c.split("\n"))) or c
+        c = c and "\n".join([re.sub("^--","\n\n",c) for c in c.split("\n")]) or c
         dhead[field_dict['field']] = c
 
     # now deals with procedure/function definitions
@@ -1157,7 +1204,7 @@ def jalapi_extract_comments(i,origline,content):
 
     # no comment found
     if not doc:
-        print >> sys.stderr, "No documentation found for %s (line %s)" % (repr(origline),i)
+        print("No documentation found for %s (line %s)" % (repr(origline),i), file=sys.stderr)
         return (origline,None)
     # back to human readable content
     doc.reverse()
@@ -1167,7 +1214,7 @@ def jalapi_extract_comments(i,origline,content):
 def jalapi_generate(infos,tmpl_file,sampledir,locallinks):
 
     # prepare template
-    tmplsrc = "".join(file(tmpl_file,"r").readlines())
+    tmplsrc = "".join(open(tmpl_file).readlines())
     klass = Cheetah.Template.Template.compile(tmplsrc)
     tmpl = klass()
     tmpl.locallinks = locallinks
@@ -1206,16 +1253,17 @@ def get_library_list(repos=None):
     for gdir in gdirs:
         found = get_jal_filenames(gdir)
         # rebuild complete path
-        for fname,path in found.items():
+        for fname,path in list(found.items()):
             jalfiles[fname] = os.path.join(gdir,path)
-
     return jalfiles
 
 def do_list(_trash):
     jalfiles = get_library_list()
     # sort on filename (not using path)
-    for jalfile in sorted(jalfiles.items(),cmp=lambda a,b: cmp(a[0],b[0])):
-        print jalfile[1]
+  # RH  for jalfile in sorted(list(jalfiles.items()),cmp=lambda a,b: cmp(a[0],b[0])):
+  # replaced by
+    for jalfile in sorted(list(jalfiles.items())):
+        print(jalfile[1])
 
 
 #----------#
@@ -1323,8 +1371,8 @@ def api_parse_content(lines,strict=True):
 
     # normalize: replace {} used to keep things unique by real list
     final = {}.fromkeys(desc)
-    for k,v in desc.items():
-        final[k] = v.values()
+    for k,v in list(desc.items()):
+        final[k] = list(v.values())
 
     return final
 
@@ -1336,7 +1384,7 @@ def api_parse(filenames,filelist=[]):
         if filename == "-":
             lines = sys.stdin.readlines()
         else:
-            lines = file(filename).readlines()
+            lines = open(filename).readlines()
 
         basefn = os.path.basename(filename)
         apis[basefn] = api_parse_content(lines,strict=False)
@@ -1350,7 +1398,7 @@ def api2xml(py,elem=None,doc=None,libname=None):
         elem = doc.appendChild(doc.createElement("api"))
         elem.setAttribute("name",libname.replace(".jal",""))
     if isinstance(py,pytypes.DictType):
-        for k,v in py.items():
+        for k,v in list(py.items()):
             node = doc.createElement(k)
             elem.appendChild(node)
             api2xml(v,node,doc)
@@ -1369,14 +1417,14 @@ def api2json(py):
     return simplejson.dumps(py)
 
 def api2pickle(py):
-    import cPickle
-    return cPickle.dumps(py)
+    import pickle
+    return pickle.dumps(py)
 
 def do_api(args):
     try:
         opts, args = getopt.getopt(args, ACTIONS['api']['options'])
-    except getopt.error,e:
-        print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+    except getopt.error as e:
+        print("Wrong option or missing argument: %s" % e.opt, file=sys.stderr)
         sys.exit(255)
 
     # now args contain jal file
@@ -1398,14 +1446,14 @@ def do_api(args):
         elif o == '-k':
             outpickl = True
         elif o == '-o':
-            outfile = file(v,"w")
+            outfile = open(v,"w")
         elif o == '-l':
-            filelist = [f.strip() for f in file(v).readlines()]
+            filelist = [f.strip() for f in open(v).readlines()]
         else:
-            print >> sys.stderr, "Wrong option %s" % o
+            print("Wrong option %s" % o, file=sys.stderr)
 
     if not args and not filelist:
-        print >> sys.stderr, "You must specify a JAL file as input (last argument) or a file list (-l option)"
+        print("You must specify a JAL file as input (last argument) or a file list (-l option)", file=sys.stderr)
 
         sys.exit(255)
 
@@ -1436,7 +1484,7 @@ METRIC_KEYS = ["compiler_path","compiler_version","tokens","chars","lines","file
                "soft_stack_avail","soft_stack_used","soft_stack_avail","filename"]
 
 def parse_compiler_output(out,err="",compiler=None,filename=None):
-    dout = dict(zip(METRIC_KEYS,[None] * len(METRIC_KEYS)))
+    dout = dict(list(zip(METRIC_KEYS,[None] * len(METRIC_KEYS))))
     dout["compiler_path"] = compiler
     dout["filename"] = filename
     outs = out.splitlines()
@@ -1478,41 +1526,41 @@ def compare_compiler_outputs(douts):
     return array
 
 def monitor_display_human(results):
-    print
-    print " " * 20,
+    print()
+    print(" " * 20, end=' ')
     nelem = len(results["filename"])
     for x in range(nelem):
-        print "%35s" % results["filename"][x],
-    print
-    print
+        print("%35s" % results["filename"][x], end=' ')
+    print()
+    print()
     for param in METRIC_KEYS:
         if param == "filename":
             continue
-        print "%20s" % param,
+        print("%20s" % param, end=' ')
         for x in range(nelem):
-            print "%35s" % results[param][x],
-        print
+            print("%35s" % results[param][x], end=' ')
+        print()
 
 def monitor_display_csv(results):
     nelem = len(results["filename"])
-    print ",",  # placeholder for param column
+    print(",", end=' ')  # placeholder for param column
     for x in range(nelem):
-        print "%s," % results["filename"][x],
-    print
+        print("%s," % results["filename"][x], end=' ')
+    print()
     for param in METRIC_KEYS:
         if param == "filename":
             continue
-        print "%s," % param,
+        print("%s," % param, end=' ')
         for x in range(nelem):
-            print "%s," % results[param][x],
-        print
+            print("%s," % results[param][x], end=' ')
+        print()
 
 def do_monitor(args):
 
     try:
         opts, args = getopt.getopt(args, ACTIONS['monitor']['options'])
-    except getopt.error,e:
-        print >> sys.stderr, "Wrong option or missing argument: %s" % e.opt
+    except getopt.error as e:
+        print("Wrong option or missing argument: %s" % e.opt, file=sys.stderr)
         sys.exit(255)
 
     list_only = False
@@ -1559,18 +1607,18 @@ def do_monitor(args):
 
         fnout = filename + ".stdout"
         fnerr = filename + ".stderr"
-        fout = file(fnout,"w")
-        ferr = file(fnerr,"w")
+        fout = open(fnout,"w")
+        ferr = open(fnerr,"w")
         try:
             status = do_compile(args,exitonerror=False,clean=False,stdout=fout,stderr=ferr)
-            output = file(fnout).read()
-            errput = file(fnerr).read()
+            output = open(fnout).read()
+            errput = open(fnerr).read()
             try:
                 dout = parse_compiler_output(output,compiler=compiler,filename=filename)
                 douts.append(dout)
-            except IndexError,e:
+            except IndexError as e:
                 import traceback
-                print >> sys.stderr, traceback.format_exc()
+                print(traceback.format_exc(), file=sys.stderr)
                 sys.exit(1)
         finally:
             os.unlink(fnout)
@@ -1590,8 +1638,8 @@ def do_monitor(args):
 #############
 
 def generic_help():
-    print """
-jallib wrapper script (revision: $Revision$)
+    print("""
+Jallib wrapper script
 Actions:
     - compile  : compile the given file, expanding one or more root
                  directories containing libraries
@@ -1605,25 +1653,24 @@ Actions:
 
 Use 'help' with each action for more (eg. "jallib help compile")
 
-http://jallib.googlecode.com
-"""
+https://github.com/jallib/jallib
+""")
 
 def do_license(_trash):
-    print """
-http://jallib.googlecode.com
-Released under the BSD license
-
-"""
+    print("""
+Jallib repository URL: https://github.com/jallib/jallib
+Released under the BSD license (https://opensource.org/licenses/bsd-license.php)
+""")
     if deps:
-        print """
+        print("""
 "jallib" binary executables are bundled with several libraries,
 please refer to them for their respective licenses:
-"""
+""")
         for t in deps:
-            print "    - %s (%s)" % (t[0],t[2])
+            print("    - %s (%s)" % (t[0],t[2]))
 
 def compile_help():
-    print """
+    print("""
     jallib compile file.jal
 
 Use this option to actually compile the given file. This script
@@ -1655,21 +1702,21 @@ Additional options:
 (for convenience, jallib script's options are uppercased, whereas jalv2's
 are lowercased)
 
-"""
+""")
 
 def validate_help():
-    print """
+    print("""
     jallib validate file.jal [another_file.jal yet_anoter_file.jal ...]
 
 Use this option to validate (or not...) your file against
 the Jallib Style Guide (JSG). Not all rules are checked, so
 while validating a file, please manually have a look to it too !
 
-See: http://code.google.com/p/jallib/wiki/JallibStyleGuide for more
-"""
+See: https://github.com/jallib/jallib/wiki/Jallib-Style-Guide for more
+""")
 
 def reindent_help():
-    print """
+    print("""
     jallib reindent [-c <indent-rule>] file.jal [anotherfile.jal ...]
 
 Reindent the given jal file, and save it back to the same file.
@@ -1685,10 +1732,10 @@ with special cases for space and tab chars (for convenience). Examples:
  - remove indentation: "-c 0-space"
  - indent with "XXXX" (hey contrived example !): "-c 4-X"
 
-"""
+""")
 
 def unittest_help():
-    print """
+    print("""
     jallib test file.jal [file.jal]
 
 Run test file and produce results.
@@ -1708,7 +1755,7 @@ Tests is done using PICShell unittesting facilities. Several actions can be chec
 
   - @assertEquals: will check a variable against a value (from PICShell).
 
-"""
+""")
 
 ###  - @assertWarning: will check given text will appear as a warning during
 ###                    compilation (from jallib)
@@ -1716,7 +1763,7 @@ Tests is done using PICShell unittesting facilities. Several actions can be chec
 
 
 def jalapi_help():
-    print """
+    print("""
     jallib jalapi [-l|-s] [-d path/to/sample] -t template.tmpl
                   -o output_file.html one_file.jal|one_dir
 
@@ -1732,19 +1779,19 @@ library, and produces link to them.
     -t : specifies the template to use to generate HTML
     -s : produces a single HTML page (useful combined with directory passed
          as parameter)
-    -l : build local link (default is to point to Google Code SVN repository)
+    -l : build local link (default is to point to Github repository)
     -d : specifies the directory containing samples (if not set, expected to be
          found in JALLIB_SAMPLEDIR environment variable
-    -g : specifies the Google Code SVN base URL containing samples, to build
+    -g : specifies the Github base URL containing samples, to build
          links to samples (ignored if -l is set).
-         Default: http://code.google.com/p/jallib/source/browse/trunk/sample
+         Default: https://github.com/jallib/jallib/sample
     -o : specifies which file to write HTML documentation to (use "-o -" to
          on stdout)
 
-"""
+""")
 
 def sample_help():
-   print """
+   print("""
    jallib sample [-a path/to/sample | -b boardfile -t testfile -o output]
 
 Generate samples from board files and test files. In order to do this,
@@ -1766,10 +1813,10 @@ from one board file and one test file (using -b, -t and -o options).
     -o: specify the output sample filename, or the output directory
         when used in combination with -a option
 
-"""
+""")
 
 def list_help():
-    print """
+    print("""
     jallib list
 
 List JAL libraries found according to JALLIB_REPOS variable.
@@ -1780,10 +1827,10 @@ precedence rule.
 
 Output contains one line per library.
 
-"""
+""")
 
 def api_help():
-    print """
+    print("""
     jallib api [-x|-j|-p] [-o output] ([-l flist|-] | (-|f1.jal f2.jal ...))
 
 Takes a JAL file (or read stdin if "-" is specified), parses and
@@ -1804,11 +1851,11 @@ Several output formats are supported:
 If -o option is specified, output is written in a file, else written
 on stdout.
 
-"""
+""")
 
 
 def monitor_help():
-    print """
+    print("""
     jallib monitor [-f format] [compiler1[,repos1]:]file1.jal [compiler2[,repos2]:]file2.jal [...]
 
 Compiles file1.jal using compiler1 binary against lib repository repos1,
@@ -1824,7 +1871,7 @@ given file. Explored recursively. Same meaning as -R option of action "compile".
 "format" specifies how results are display. Available values are:
     - human : displays a table readable by mere mortals (default)
     - csv : outputs results as a CSV file, comma seperated
-"""
+""")
 
 def do_help(action_args=[]):
     action = None
@@ -1848,7 +1895,7 @@ ACTIONS = {
         'unittest'  : {'callback' : do_unittest, 'options' : 'kvl',        'help' : unittest_help},
         'monitor'   : {'callback' : do_monitor,  'options' : 'f:',         'help' : monitor_help},
         'help'      : {'callback' : do_help,     'options' : '',           'help' : None},
-        'license'   : {'callback' : do_license,  'options' : '',           'help' : None},
+        'license'   : {'callback' : do_license,  'options' : '',           'help' : do_help},
         }
 
 
@@ -1859,14 +1906,14 @@ if __name__ == "__main__":
         action_args = sys.argv[2:]
         try:
             callme = ACTIONS[action]['callback']
-        except KeyError,e:
+        except KeyError as e:
             if action in ('help','--help','-h'):
                 do_help(action_args)
                 sys.exit(0)
             else:
-                print >> sys.stderr, "Unknown action %s" % e
+                print("Unknown action %s" % e, file=sys.stderr)
                 sys.exit(255)
         callme(action_args)
-    except IndexError,e:
-        print >> sys.stderr, "Please provide an action: %s" % repr(ACTIONS.keys())
+    except IndexError as e:
+        print("Please provide an action: %s" % repr(list(ACTIONS.keys())), file=sys.stderr)
         sys.exit(255)
