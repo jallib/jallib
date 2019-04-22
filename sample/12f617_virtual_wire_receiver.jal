@@ -1,0 +1,140 @@
+-- -----------------------------------------------------------------------------
+-- Title: Receiver test program for testing a Virtual Wire connection.
+--
+-- Author: Rob Jansen, Copyright (c) 2019..2019, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.5r2
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: http://www.airspayce.com/mikem/arduino/VirtualWire.pdf
+--
+-- Description: This test program receives one byte via a Virtual Wire
+--              connection using a standard 433 MHz RF transmitter module.
+--              The value of the byte will turn a led off (0x00) or on (0xFF).
+--              If the wrong data is received an error led will be off.
+--              This sample program shows that the virtual wire library can be
+--              used on smaller PICs too. It uses the received only version.
+--
+-- Dependencies: -
+--
+-- Notes: -
+--
+-- -----------------------------------------------------------------------------
+
+-- Some compiler pragmas for optimizations
+pragma warn all no             -- We do not want to know all compiler warnings
+pragma opt variable_reduce yes -- Reduce variables.
+
+include 12f617                 -- target PICmicro
+
+; Use internal clock and internal reset.
+pragma target OSC    INTOSC_NOCLKOUT -- Internal Clock
+pragma target PWRTE  Enabled         -- Power up timer
+pragma target MCLR   Internal        -- Reset internal
+pragma target WDT    Disabled        -- No watchdog
+pragma target IOSCFS F8MHZ           -- Set internal oscillator to 8 MHz
+pragma target clock  8_000_000       -- oscillator frequency 8 MHz
+
+-- ------------------------------ Pins -----------------------------------------
+-- Transmitter pin for virtual wire.
+alias vw_rx_pin is pin_GP0    -- Pin 7. Data reception pin. Do not weak pull-up!
+pin_GP0_direction = input
+
+alias high_bitrate is pin_GP3 -- Pin 4. Enabled when high.
+Pin_GP3_Direction = input
+
+alias ok_led is Pin_GP4       -- Pin 3. When high LED is on.
+Pin_GP4_Direction = output
+
+alias error_led is Pin_GP5    -- Pin 2. When high LED is on.
+Pin_GP5_Direction = output
+
+-- Enable weak pull..
+WPU = 0b0011_1110         -- Weak pull-up enabled for all port pins, except GP0.
+OPTION_REG_NGPPU = FALSE  -- Enable Weak Pull-Up
+
+-- ------------------- Constant and variable declarations ----------------------
+const byte VW_MESSAGE_BUFFER = 1 -- We only expect one byte.
+
+-- Selection of bitrates.
+const byte VW_SPEED_1000 = 250 -- 1000 bits/second
+const byte VW_SPEED_2000 = 125 -- 2000 bits/second
+
+var byte how_long
+
+include virtual_wire_receiver -- Receiver only version. Saves memory.
+
+-- --------------------- Functions and Procedures ------------------------------
+-- These two procedures are needed for using the virtual wire library. The
+-- timer can be any timer of the PIC.
+procedure timer2_setup(byte in bitrate) is
+  -- The timer runs at Fosc/4 so 8.000.000 Hz --> 2 MHz.
+  -- If we prescale by 1 then it stays at 2 MHz. With a bit time of 1 ms
+  -- (1000 bit/s) and a sample time of VW_RX_SAMPLES_PER_BIT (=8) gives
+  -- 2 MHz / 250 = 8 kHz or 125 us. For 2000 bits/s the reload value has to
+  -- be 125 (gives 16 kHz divided by 8 samples gives 2000 bits/s)
+  T2CON_T2CKPS  = 0b00   -- Prescale = 1
+  T2CON_TOUTPS  = 0b0000 -- Postcale = 0
+  PR2 = bitrate          -- Compare value
+  PIE1_TMR2IE   = TRUE   -- Enable Timer 2 interrupt
+  T2CON_TMR2ON  = TRUE   -- Start Timer
+  -- Enable all interrupts.
+  INTCON_PEIE = TRUE     -- Peripheral interrupts enabled.
+  INTCON_GIE  = TRUE     -- Globale interrupt enabled
+end procedure
+
+procedure timer2_interrupt() is pragma interrupt
+  -- Timer procedure. Call the virtual wire serviice routine if needed.
+  if PIR1_TMR2IF then
+     PIR1_TMR2IF = FALSE
+     -- Call the virtual wire service routine.
+     vw_service()
+  end if
+end procedure
+
+-- ------------------------------ Main Program  --------------------------------
+enable_digital_io()
+
+-- Initialize virtual wire driver.
+vw_init()
+if high_bitrate then
+  timer2_setup(VW_SPEED_2000) -- High bitrate.
+else
+  timer2_setup(VW_SPEED_1000) -- Low bitrate
+end if
+vw_rx_start()                 -- Start the receiver pll running.
+
+ok_led = FALSE
+error_led = FALSE
+
+forever loop
+  how_long = VW_MESSAGE_BUFFER -- Maximum number of bytes to copy.
+  if vw_get_message(how_long) then
+     if (how_long == 1) then
+        -- It can only be one byte that we received.
+        if (vw_rx_return_buf[0] == 0x00) then
+           ok_led = FALSE
+           error_led = FALSE
+        elsif (vw_rx_return_buf[0] == 0xFF) then
+           ok_led = TRUE
+           error_led = FALSE
+        else
+           error_led = TRUE
+        end if
+     else
+        error_led = TRUE
+     end if
+  end if
+
+end loop
+
+
+
+
+

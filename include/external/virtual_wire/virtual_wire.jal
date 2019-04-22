@@ -1,11 +1,11 @@
 -- -----------------------------------------------------------------------------
 -- Title: Virtual Wire
 --
--- Author: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
 --
--- Adapted-by: Rob Jansen, small bug fix in transmiter.
+-- Adapted-by:
 --
--- Compiler: 2.4q6
+-- Compiler: 2.5r2
 --
 -- Revision: $Revision$
 --
@@ -18,19 +18,23 @@
 --              on Virtual Wire. The driver implements a Phase Locked Loop to
 --              increase sensitivity and so extend the range of the connection.
 --              Next to that it uses a special encoding format for the bit
---              pattern to stay DC neutral. Also see sources for more
---              information on Virtual Wire.
+--              pattern to stay DC neutral. See sources for more information
+--              on Virtual Wire.
 --              A standard 433 MHz transmitter and 433 MHz receiver was used
---              for testing this driver.
---              This driver was created and tested for the following PICs:
---              -) 12F617     at 8 MHz
---              -) 16F1823/25 at 32 MHz
---              -) 16F1455    at 48 MHz
---              -) 18F14K50   at 48 MHz
---              In order to support more PICs, the _vw_timer_setup (Timer2)
---              initialization routine has to be extended.
---              Since the driver can be used for transmission or reception,
---              a transmit only version and receive only version were extracted.
+--              for testing this driver using a maximum bitrate of 2000 bits/s.
+--              In order to use this driver the main program must have the
+--              following defined (this to make this driver PIC independent):
+--              -) An alias for the tranmission pin vw_tx_pin.
+--              -) An alias for the receive pin vw_rx_pin.
+--              -) Initializing a timer that is used for transmission and
+--                 reception. The timer must run at 8 times the bitrate.
+--              -) An interrupt routine of the used timer which must call the
+--                 vw_service() procedure.
+--              A transmitter only and receiver only version is also available
+--              to save data space and code space for use in smaller PICs.
+--
+--              Note that you have to define a vw_tx_pin and and vw_rx_pin in
+--              order to be able to use this library.
 --
 -- Dependencies: -
 --
@@ -39,38 +43,79 @@
 --    of the lack of pointers which could not pass a receive buffer.
 -- *) The inverting of the output and input signal was removed.
 -- *) The 6 to 4 conversion was changed into a look-up table to improve speed.
--- *) The variables and procedure that indicate the number of bad and good
---    received messages were removed to save data space. This includes the
---    message count which was also removed.
--- *) The maximum message length was reduced to 10 to save data space.
+-- *) The maximum message length was reduced to 10 to save data space but can
+--    be changed by the user by setting VW_MAX_MESSAGE_LEN to another value.
 -- *) The transmission header was moved from data to constant as to decrease
 --    the size of the transmit buffer and so save data space.
--- *) The transmission buffer and receiption buffer were combined into one
+-- *) The transmission buffer and reception buffer were combined into one
 --    buffer to save data space. This can be done since the original driver does
 --    not support transmission and reception at the same time.
--- *) The bit rate is not ultimate flexible. Instead 2 values, 1000 bit/s and
---    2000 bits/s, can be selected. For devices running at 8 MHz select the
---    1000 bits/s bitrate. The lower the bitrate the higher the range.
+-- *) The bit rate is defined by the user by initializing the used timer.
 --
 -- -------------------------------- Pins ---------------------------------------
-
--- Declare the transmit pin if not defined in the main program. Default is A0.
+-- A transmit pin must be defined by the main program.
 if !defined(vw_tx_pin) then
-  alias vw_tx_pin is pin_c1
-  pin_c1_direction = output
+   pragma error "A Virtual Wire transmission pin (vw_tx_pin) must be defined"
 end if
 
--- Declare the receive pin if not defined in the main program. Default is A1.
+-- A receive pin must be defined by the main program. Note. Do not enable
+-- weak-pull up on this pin since the receiver may not be able to pull it down.
 if !defined(vw_rx_pin) then
-  alias vw_rx_pin is pin_c2   -- Note. Do not enable weak-pull up.
-  pin_c2_direction = input
+   pragma error "A Virtual Wire reception pin (vw_rx_pin) must be defined"
 end if
+
+-- ------------------ Public functions and procedurs  --------------------------------
+
+-- Initialize the virtual wire driver.
+procedure vw_init()
+
+-- This is the service routine that must be called by the main program when the
+-- timer overflows. Its job is to output the next bit from the transmitter
+-- (every 8 calls) and to call the PLL code if the receiver is enabled.
+procedure vw_service()
+
+-- Wait until transmitter is available (!vw_tx_active) and encode and queue the
+-- message into vw_tx_buf. The message is raw bytes, with no packet structure
+-- imposed. It is transmitted preceded a byte count and followed by 2 FCS bytes.
+-- After the transmission is done, the transmitter is stopped.
+function vw_send(byte in buf[], byte in len) return bit
+
+-- Enable the receiver. When a message becomes available, the vw_rx_done flag
+-- is set, and vw_wait_rx() will return.
+procedure vw_rx_start()
+
+-- Disable the receiver.
+procedure vw_rx_stop()
+
+-- Return true if the transmitter is active (busy).
+function vw_tx_active() return bit
+
+-- Wait for the transmitter to become available. Busy-wait loop until the
+-- ISR says the message has been sent.
+procedure vw_wait_tx()
+
+-- Wait for the receiver to get a message. Busy-wait loop until the ISR says
+-- a message is available can then call vw_get_message()
+procedure vw_wait_rx()
+
+-- Return true if there is a message available.
+function vw_have_message() return bit
+
+-- Get the last message received (without byte count or FCS). Copy at most
+-- len bytes, set len to the actual number copied. Return true if there is a
+-- message and the FCS is OK. The data is copied to a receive buffer.
+function vw_get_message(byte in out len) return bit
+
+-- Returns the number of good received messages.
+function vw_get_rx_good() return dword
+
+-- Returns the number of bad messages received and dropped due to bad lengths.
+function vw_get_rx_bad() return dword
+
+-- Reset the good and bad received messages count.
+procedure vw_reset_rx_good_bad_count()
 
 -- ------------------------- Constant declarations -----------------------------
-
--- Selection of bitrates.
-const byte VW_SPEED_1000 = 250 -- 1000 bits/second
-const byte VW_SPEED_2000 = 125 -- 2000 bits/second
 
 -- The user can define the buffer, if not defined we define it here.
 -- Maximum number of bytes in a message, counting the byte (1) count and FCS (2)
@@ -127,64 +172,72 @@ const byte vw_tx_header_buf[VW_HEADER_LEN]
 var byte vw_tx_rx_buf[VW_MAX_MESSAGE_LEN * 2]
 
 -- Number of symbols in VW_Tx_Buf to be sent
-var byte vw_tx_len = 0
+var byte vw_tx_len
 
 -- Index of he next symbot to send. Ranges from 0 to VW_Tx_Len
-var byte vw_tx_index = 0
+var byte vw_tx_index
 
 -- Bit number of next bot to send
-var byte vw_tx_bit = 0
+var byte vw_tx_bit
 
 -- Sample number for the transmitter. Runs 0 to 7 during one bit interval.
-var byte vw_tx_sample = 0
+var byte vw_tx_sample
 
 -- Indicates if the transmitter is active.
-var bit vw_tx_enabled = false
+var bit vw_tx_enabled
 
 -- Indicates that the header must be transmitted first.
-var bit vw_tx_header = false
+var bit vw_tx_header
 
 -- Current receiver sample
-var bit vw_rx_sample = false
+var bit vw_rx_sample
 
 -- Last receivers sample.
-var bit vw_rx_last_sample = false
+var bit vw_rx_last_sample
 
 -- PLL ramp, varies between 0 and VW_RX_RAMP_LEN-1 (159) over
 -- VW_RX_SAMPLES_PER_BIT (8) samples per nominal bit time.
 -- When the PLL is synchronised, bit transitions happen at about the
 -- 0 mark.
-var byte vw_rx_pll_ramp = 0
+var byte vw_rx_pll_ramp
 
 -- This is the integrate and dump integral. If there are <5 0 samples in the PLL cycle
 -- the bit is declared a 0, else a 1
-var byte vw_rx_integrator = 0
+var byte vw_rx_integrator
 
 -- Flag indicates if we have seen the start symbol of a new message and are
 -- in the processes of reading and decoding it
-var bit vw_rx_active = FALSE
+var bit vw_rx_active
 
 -- Flag to indicate that a new message is available
-var bit vw_rx_done = FALSE
+var bit vw_rx_done
 
 -- Flag to indicate the receiver PLL is to run
-var bit vw_rx_enabled = FALSE
+var bit vw_rx_enabled
 
 -- Last 12 bits received, so we can look for the start symbol
-var word vw_rx_bits = 0
+var word vw_rx_bits
 
 -- How many bits of message we have received. Ranges from 0 to 12
-var byte vw_rx_bit_count = 0
+var byte vw_rx_bit_count
 
 -- The buffer to copy the return message to for the main program. This buffer
 -- is smaller than the combined vw_tx_rx_buf since it only holds data no symbol.s
 var byte vw_rx_return_buf[VW_MAX_PAYLOAD]
 
 -- The incoming message expected length
-var byte vw_rx_count = 0
+var byte vw_rx_count
 
 -- The incoming message buffer length received so far
-var byte vw_rx_len = 0
+var byte vw_rx_len
+
+-- Number of bad messages received and dropped due to bad lengths. Only
+-- available in complete virtual wire driver for testing purposes.
+var dword vw_rx_bad
+
+-- Number of good messages received. Only available in complete virtual
+-- wire driver for testing purposes.
+var dword vw_rx_good
 
 -- 4 bit to 6 bit symbol converter table for coding
 -- Used to convert the high and low nibbles of the transmitted data
@@ -249,7 +302,7 @@ var byte this_byte
   end if
   
   if (vw_rx_pll_ramp >= VW_RX_RAMP_LEN)then
-  	-- Add this to the 12th bit of vw_rx_bits, LSB first
+     -- Add this to the 12th bit of vw_rx_bits, LSB first
 	  -- The last 12 bits are kept
 	  vw_rx_bits = vw_rx_bits >> 1
 
@@ -283,6 +336,7 @@ var byte this_byte
 		      if (vw_rx_count < 4) | (vw_rx_count > VW_MAX_MESSAGE_LEN) then
 			      -- Stupid message length, drop the whole thing
 			      vw_rx_active = false
+			      vw_rx_bad = vw_rx_bad + 1
             return
 		      end if -- vw_rx_count
 		    end if -- vw_rx_len
@@ -293,11 +347,12 @@ var byte this_byte
 		    if (vw_rx_len >= vw_rx_count) then
 		      -- Got all the bytes now
 		      vw_rx_active = false
+		      vw_rx_good = vw_rx_good + 1
 		      vw_rx_done = true --  Better come get it before the next one starts
 		    end if -- vw_rx_len
 		    vw_rx_bit_count = 0
 	    end if -- vw_rx_bit_count
-	  -- Not in a message, see if we have a start symbol
+       -- Not in a message, see if we have a start symbol
 	  elsif (vw_rx_bits == 0xb38) then
 	    -- Have start symbol, start collecting message
 	    vw_rx_active = true
@@ -308,52 +363,28 @@ var byte this_byte
   end if -- vw_rx_pll_ramp
 end procedure -- _vw_pll
 
--- Intialize Timer 2 to generate the RF bit time.
-procedure _vw_timer_setup(byte in bitrate) is
-if (target_chip == PIC_12F617) then
-  -- The timer runs at Fosc/4 so 8.000.000 Hz --> 2 MHz.
-  -- If we prescale by 1 then it stays at 2 MHz. With a bit time of 1 ms and a
-  -- sample time of VW_RX_SAMPLES_PER_BIT (=8) 2 MHz / 250 = 8 kHz or 125 us
-  -- so the timer compare value has to be 250 for 1000 bits/s or 125 for 2000.
-  -- and no postcaling is needed.
-  T2CON_T2CKPS  = 0b00   -- Prescale = 1
-  T2CON_TOUTPS  = 0b0000 -- Postcale = 0
-  PR2 = bitrate -- Compare value
-end if
-if (target_chip == PIC_16F1825) | (target_chip == PIC_16F1823) then
-  -- The timer runs at Fosc/4 so 32.000.000 Hz --> 8 MHz.
-  -- If we prescale by 4 then it runs at 2 MHz. With a bit time of 1 ms and a
-  -- sample time of VW_RX_SAMPLES_PER_BIT (=8) 2 MHz / 250 = 8 kHz or 125 us
-  -- so the timer compare value has to be 250 for 1000 bits/s or 125 for 2000.
-  -- and no postcaling is needed.
-  T2CON_T2CKPS  = 0b01   -- Prescale = 4
-  T2CON_T2OUTPS = 0b0000 -- Postcale = 0
-  PR2 = bitrate -- Compare value
-end if
-if (target_chip == PIC_18F14K50) | (target_chip == PIC_16F1455) then
-  -- The timer runs at Fosc/4 so 48.000.000 Hz --> 12 MHz.
-  -- If we prescale by 1 then it stays at 12 MHz. With a bit time of 1 ms and a
-  -- sample time of VW_RX_SAMPLES_PER_BIT (=8) 12 MHz / 250 / 6 = 8 kHz or 125 us
-  -- so the timer compare value has to be 250 for 1000 bits/s or 125 for 2000.
-  -- and postcaling needs to be 8
-  T2CON_T2CKPS  = 0b00   -- Prescale = 1
-  T2CON_T2OUTPS = 0b0101 -- Postcale = 6
-  PR2 = bitrate -- Compare value
-end if
-  T2CON_TMR2ON  = true   -- Start Timer
-   -- Enable all interrupts.
-  PIE1_TMR2IE = true -- Enable Timer 2 interrupt
-  INTCON_PEIE       = TRUE  -- Peripheral interrupts enabled.
-  INTCON_GIE        = TRUE  -- Globale interrupt enabled
-end procedure
-
--- This procedure initialized the timer 2 that is used for creating the pulse
--- time interrupt. This has to be VW_RX_SAMPLES_PER_BIT times the bit time.
-procedure vw_setup(byte in bitrate) is
-  -- First init some RF related variables used for tranmission.
-  vw_tx_pin = false  -- Output is '0'.
-  -- Setup timer.
-  _vw_timer_setup(bitrate)
+-- Initialize the virtual wire driver.
+procedure vw_init() is
+  vw_tx_pin = FALSE
+  vw_tx_enabled = FALSE
+  vw_tx_header = FALSE
+  vw_tx_len = 0
+  vw_tx_index = 0
+  vw_tx_bit = 0
+  vw_tx_sample = 0
+  vw_rx_sample = FALSE
+  vw_rx_last_sample = FALSE
+  vw_rx_active = FALSE
+  vw_rx_done = FALSE
+  vw_rx_enabled = FALSE
+  vw_rx_pll_ramp = 0
+  vw_rx_integrator = 0
+  vw_rx_bits = 0
+  vw_rx_bit_count = 0
+  vw_rx_count = 0
+  vw_rx_len = 0
+  vw_rx_bad = 0
+  vw_rx_good = 0
 end procedure
 
 -- Start the transmitter, call when the tx buffer is ready to go and vw_tx_len is
@@ -504,22 +535,36 @@ function vw_get_message(byte in out len) return bit is
    return (crc == 0xf0b8) -- FCS OK?
 end function
 
--- This is the interrupt service routine called when timer2 overflows
--- Its job is to output the next bit from the transmitter (every 8 calls)
--- and to call the PLL code if the receiver is enabled
-procedure timer2_interrupt() is pragma interrupt
 
-  -- Check if time overflow happened.
-  if PIR1_TMR2IF then
-    PIR1_TMR2IF = false
+-- Return the number of good received messages count.
+function vw_get_rx_good() return dword is
+    return vw_rx_good
+end function
 
-    if (vw_rx_enabled & !vw_tx_enabled) then
+
+-- Return the number of bad messages received and dropped due to bad lengths.
+function vw_get_rx_bad() return dword is
+    return vw_rx_bad
+end function
+
+-- Reset the good and bad received message count
+procedure vw_reset_rx_good_bad_count() is
+   vw_rx_good = 0
+   vw_rx_bad = 0
+end procedure
+
+-- This is the service routine that must be called by the main program when the
+-- timer overflows. Its job is to output the next bit from the transmitter
+-- (every 8 calls) and to call the PLL code if the receiver is enabled.
+procedure vw_service() is
+
+   if (vw_rx_enabled & !vw_tx_enabled) then
       vw_rx_sample = vw_rx_pin
-	  end if
+	end if
 
-    -- Do transmitter stuff first to reduce transmitter bit jitter due
-    -- to variable receiver processing.
-    if vw_tx_enabled & (vw_tx_sample == 0) then
+   -- Do transmitter stuff first to reduce transmitter bit jitter due
+   -- to variable receiver processing.
+   if vw_tx_enabled & (vw_tx_sample == 0) then
       -- Check if we are transmission the header
       if vw_tx_header then
         vw_tx_pin = vw_tx_header_buf[vw_tx_index] & (1 << vw_tx_bit)
@@ -539,7 +584,7 @@ procedure timer2_interrupt() is pragma interrupt
 	      -- Finished sending the whole message? (after waiting one bit period
 	      -- since the last bit)
 	      if (vw_tx_index >= vw_tx_len) then
-	        vw_tx_stop()--
+	        vw_tx_stop()
 	      else
           vw_tx_pin = vw_tx_rx_buf[vw_tx_index] & (1 << vw_tx_bit)
 	        vw_tx_bit = vw_tx_bit + 1
@@ -548,19 +593,18 @@ procedure timer2_interrupt() is pragma interrupt
 	          vw_tx_index = vw_tx_index + 1
 	        end if
 	      end if -- vw_tx_index
-	    end if -- vw_tx_header
-    end if -- vw_tx_enabled
-    vw_tx_sample = vw_tx_sample + 1
-    -- Only once per 8 samples we change the bit.
-    if (vw_tx_sample > 7) then
-      vw_tx_sample = 0
-    end if
+	   end if -- vw_tx_header
+   end if -- vw_tx_enabled
+   vw_tx_sample = vw_tx_sample + 1
+   -- Only once per 8 samples we change the bit.
+   if (vw_tx_sample > 7) then
+     vw_tx_sample = 0
+   end if
 
-    if (vw_rx_enabled & !vw_tx_enabled) then
-      _vw_pll()
-    end if
+   if (vw_rx_enabled & !vw_tx_enabled) then
+     _vw_pll()
+   end if
 
-  end if -- Interrupt flag
 end procedure
 
 

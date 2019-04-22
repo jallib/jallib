@@ -1,11 +1,11 @@
 -- -----------------------------------------------------------------------------
 -- Title: Transmitter test program for testing a Virtual Wire connection.
 --
--- Author: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
 --
 -- Adapted-by:
 --
--- Compiler: 2.4q6
+-- Compiler: 2.5r2
 --
 -- Revision: $Revision$
 --
@@ -56,28 +56,68 @@ OPTION_REG_WPUEN = FALSE  -- Enable Weak Pull-Up
 alias vw_tx_pin is pin_c1
 pin_c1_direction = output
 
+-- Dummy declaration of the virtual wire receiver pin. Only needed when using
+-- the full virtual wire library.
+alias vw_rx_pin is pin_c2   -- Pin 8. Note. Do not enable weak-pull up.
+pin_c2_direction = input
+
 -- LED indicating transmission of the message. Connect via 330 Ohm resistor.
 -- High is LED on.
 alias led is pin_a2
 pin_a2_direction = output
 
 -- Input pin that determined the bitrate. High is high bitrate.
-alias bitrate is pin_c0
+alias high_bitrate is pin_c0
 pin_c0_direction = input
 
 -- ------------------- Constant and variable declarations ----------------------
 const byte VW_MESSAGE_BUFFER = 25
 const byte tx_buf[] = "Hello Virtual Wire!\n"
 
+-- Selection of bitrates.
+const byte VW_SPEED_1000 = 250 -- 1000 bits/second
+const byte VW_SPEED_2000 = 125 -- 2000 bits/second
+
+include virtual_wire             -- Full driver version
+--include virtual_wire_transmitter -- Transmitter only version. Saves memory.
+
+-- --------------------- Functions and Procedures ------------------------------
+-- These two procedures are needed for using the virtual wire library. The
+-- timer can be any timer of the PIC.
+procedure timer2_setup(byte in bitrate) is
+  -- The timer runs at Fosc/4 so 32.000.000 Hz --> 8 MHz.
+  -- If we prescale by 4 then it runs at 2 MHz. With a bit time of 1 ms
+  -- (1000 bit/s) and a sample time of VW_RX_SAMPLES_PER_BIT (=8) gives
+  -- 2 MHz / 250 = 8 kHz or 125 us. For 2000 bits/s the reload value has to
+  -- be 125 (gives 16 kHz divided by 8 samples gives 2000 bits/s)
+  T2CON_T2CKPS  = 0b01   -- Prescale = 4
+  T2CON_T2OUTPS = 0b0000 -- Postcale = 0
+  PR2 = bitrate          -- Compare value
+  PIE1_TMR2IE   = TRUE   -- Enable Timer 2 interrupt
+  T2CON_TMR2ON  = TRUE   -- Start Timer
+  -- Enable all interrupts.
+  INTCON_PEIE = TRUE     -- Peripheral interrupts enabled.
+  INTCON_GIE  = TRUE     -- Globale interrupt enabled
+end procedure
+
+procedure timer2_interrupt() is pragma interrupt
+  -- Timer procedure. Call the virtual wire serviice routine if needed.
+  if PIR1_TMR2IF then
+     PIR1_TMR2IF = FALSE
+     -- Call the virtual wire service routine.
+     vw_service()
+  end if
+end procedure
+
 -- ------------------------------ Main Program  --------------------------------
--- include virtual_wire             -- Full driver version
-include virtual_wire_transmitter -- Transmitter only version
 
 -- Initialize virtual wire driver.
-if bitrate then
-  vw_setup(VW_SPEED_2000)         -- High bitrate.
+vw_init()
+-- Setup the timer and the bitrate.
+if high_bitrate then
+  timer2_setup(VW_SPEED_2000)         -- High bitrate.
 else
-  vw_setup(VW_SPEED_1000)         -- Low bitrate
+  timer2_setup(VW_SPEED_1000)         -- Low bitrate
 end if
 
 led = false

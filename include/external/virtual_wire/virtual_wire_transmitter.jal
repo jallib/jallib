@@ -1,11 +1,11 @@
 -- -----------------------------------------------------------------------------
 -- Title: Virtual Wire transmitter only version
 --
--- Author: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
 --
--- Adapted-by: Rob Jansen, small bug fix in transmiter.
+-- Adapted-by:
 --
--- Compiler: 2.4q6
+-- Compiler: 2.5r2
 --
 -- Revision: $Revision$
 --
@@ -24,18 +24,35 @@
 --
 -- -------------------------------- Pins ---------------------------------------
 
--- Declare the transmit pin if not defined in the main program. Default is A0.
+-- A transmit pin must be defined by the main program.
 if !defined(vw_tx_pin) then
-  alias vw_tx_pin is pin_c1
-  pin_c1_direction = output
+   pragma error "A Virtual Wire transmission pin (vw_tx_pin) must be defined"
 end if
 
 
--- ------------------------- Constant declarations -----------------------------
+-- ------------------ Public functions and procedurs  --------------------------------
+-- Initialize the virtual wire driver.
+procedure vw_init()
 
--- Selection of bitrates.
-const byte VW_SPEED_1000 = 250 -- 1000 bits/second
-const byte VW_SPEED_2000 = 125 -- 2000 bits/second
+-- This is the service routine that must be called by the main program when the
+-- timer overflows. Its job is to output the next bit from the transmitter
+-- (every 8 calls).
+procedure vw_service()
+
+-- Wait until transmitter is available (!vw_tx_active) and encode and queue the
+-- message into vw_tx_buf. The message is raw bytes, with no packet structure
+-- imposed. It is transmitted preceded a byte count and followed by 2 FCS bytes.
+-- After the transmission is done, the transmitter is stopped.
+function vw_send(byte in buf[], byte in len) return bit
+
+-- Return true if the transmitter is active (busy).
+function vw_tx_active() return bit
+
+-- Wait for the transmitter to become available. Busy-wait loop until the
+-- ISR says the message has been sent.
+procedure vw_wait_tx()
+
+-- ------------------------- Constant declarations -----------------------------
 
 -- The user can define the buffer, if not defined we define it here.
 -- Maximum number of bytes in a message, counting the byte (1) count and FCS (2)
@@ -92,22 +109,22 @@ const byte vw_tx_header_buf[VW_HEADER_LEN]
 var byte vw_tx_rx_buf[VW_MAX_MESSAGE_LEN * 2]
 
 -- Number of symbols in VW_Tx_Buf to be sent
-var byte vw_tx_len = 0
+var byte vw_tx_len
 
 -- Index of he next symbot to send. Ranges from 0 to VW_Tx_Len
-var byte vw_tx_index = 0
+var byte vw_tx_index
 
 -- Bit number of next bot to send
-var byte vw_tx_bit = 0
+var byte vw_tx_bit
 
 -- Sample number for the transmitter. Runs 0 to 7 during one bit interval.
-var byte vw_tx_sample = 0
+var byte vw_tx_sample
 
 -- Indicates if the transmitter is active.
-var bit vw_tx_enabled = false
+var bit vw_tx_enabled
 
 -- Indicates that the header must be transmitted first.
-var bit vw_tx_header = false
+var bit vw_tx_header
 
 -- 4 bit to 6 bit symbol converter table for coding
 -- Used to convert the high and low nibbles of the transmitted data
@@ -131,52 +148,15 @@ var word data_2
   return (((data_2 << 8) | (crc >> 8)) ^ (data_2 >> 4) ^ (data_2 << 3))
 end function
 
--- Intialize Timer 2 to generate the RF bit time.
-procedure _vw_timer_setup(byte in bitrate) is
-if (target_chip == PIC_12F617) then
-  -- The timer runs at Fosc/4 so 8.000.000 Hz --> 2 MHz.
-  -- If we prescale by 1 then it stays at 2 MHz. With a bit time of 1 ms and a
-  -- sample time of VW_RX_SAMPLES_PER_BIT (=8) 2 MHz / 250 = 8 kHz or 125 us
-  -- so the timer compare value has to be 250 for 1000 bits/s or 125 for 2000.
-  -- and no postcaling is needed.
-  T2CON_T2CKPS  = 0b00   -- Prescale = 1
-  T2CON_TOUTPS  = 0b0000 -- Postcale = 0
-  PR2 = bitrate -- Compare value
-end if
-if (target_chip == PIC_16F1825) | (target_chip == PIC_16F1823) then
-  -- The timer runs at Fosc/4 so 32.000.000 Hz --> 8 MHz.
-  -- If we prescale by 4 then it runs at 2 MHz. With a bit time of 1 ms and a
-  -- sample time of VW_RX_SAMPLES_PER_BIT (=8) 2 MHz / 250 = 8 kHz or 125 us
-  -- so the timer compare value has to be 250 for 1000 bits/s or 125 for 2000.
-  -- and no postcaling is needed.
-  T2CON_T2CKPS  = 0b01   -- Prescale = 4
-  T2CON_T2OUTPS = 0b0000 -- Postcale = 0
-  PR2 = bitrate -- Compare value
-end if
-if (target_chip == PIC_18F14K50) | (target_chip == PIC_16F1455) then
-  -- The timer runs at Fosc/4 so 48.000.000 Hz --> 12 MHz.
-  -- If we prescale by 1 then it stays at 12 MHz. With a bit time of 1 ms and a
-  -- sample time of VW_RX_SAMPLES_PER_BIT (=8) 12 MHz / 250 / 6 = 8 kHz or 125 us
-  -- so the timer compare value has to be 250 for 1000 bits/s or 125 for 2000.
-  -- and postcaling needs to be 8
-  T2CON_T2CKPS  = 0b00   -- Prescale = 1
-  T2CON_T2OUTPS = 0b0101 -- Postcale = 6
-  PR2 = bitrate -- Compare value
-end if
-  T2CON_TMR2ON  = true   -- Start Timer
-   -- Enable all interrupts.
-  PIE1_TMR2IE = true -- Enable Timer 2 interrupt
-  INTCON_PEIE       = TRUE  -- Peripheral interrupts enabled.
-  INTCON_GIE        = TRUE  -- Globale interrupt enabled
-end procedure
-
--- This procedure initialized the timer 0 that is used for creating the pulse
--- time interrupt. This has to be VW_RX_SAMPLES_PER_BIT times the bit time.
-procedure vw_setup(byte in bitrate) is
-  -- First init some RF related variables used for tranmission.
-  vw_tx_pin = false  -- Output is '0'.
-  -- Setup timer.
-  _vw_timer_setup(bitrate)
+-- Initialize the virtual wire driver.
+procedure vw_init() is
+  vw_tx_pin = FALSE
+  vw_tx_enabled = FALSE
+  vw_tx_header = FALSE
+  vw_tx_len = 0
+  vw_tx_index = 0
+  vw_tx_bit = 0
+  vw_tx_sample = 0
 end procedure
 
 -- Start the transmitter, call when the tx buffer is ready to go and vw_tx_len is
@@ -265,23 +245,19 @@ function vw_send(byte in buf[], byte in len) return bit is
 end function
 
 
--- This is the interrupt service routine called when timer1 overflows
--- Its job is to output the next bit from the transmitter (every 8 calls)
--- and to call the PLL code if the receiver is enabled
-procedure timer2_interrupt() is pragma interrupt
+-- This is the service routine that must be called by the main program when the
+-- timer overflows. Its job is to output the next bit from the transmitter
+-- (every 8 calls).
+procedure vw_service() is
 
-  -- Check if time overflow happened.
-  if PIR1_TMR2IF then
-    PIR1_TMR2IF = false
-
-    if vw_tx_enabled & (vw_tx_sample == 0) then
-      -- Check if we are transmission the header
-      if vw_tx_header then
-        vw_tx_pin = vw_tx_header_buf[vw_tx_index] & (1 << vw_tx_bit)
-	      vw_tx_bit = vw_tx_bit + 1
-	      if (vw_tx_bit >= 6) then
-	        vw_tx_bit = 0
-	        vw_tx_index = vw_tx_index + 1
+  if vw_tx_enabled & (vw_tx_sample == 0) then
+    -- Check if we are transmission the header
+    if vw_tx_header then
+       vw_tx_pin = vw_tx_header_buf[vw_tx_index] & (1 << vw_tx_bit)
+       vw_tx_bit = vw_tx_bit + 1
+       if (vw_tx_bit >= 6) then
+       vw_tx_bit = 0
+       vw_tx_index = vw_tx_index + 1
 	       end if
 	       if (vw_tx_index >=  VW_HEADER_LEN) then
 	         -- Header done.
@@ -311,7 +287,6 @@ procedure timer2_interrupt() is pragma interrupt
       vw_tx_sample = 0
     end if
 
-  end if -- Interrupt flag
 end procedure
 
 
